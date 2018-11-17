@@ -18,6 +18,14 @@
 #define COMPILE_TIME_ASSERT(cond) \
     ((void)sizeof(char[1 - 2*!(condition)]))
 
+typedef uint32_t pblk_id_t;
+typedef uint64_t mb_magic_t;
+typedef uint32_t mb_type_t;
+typedef uint32_t mb_version_t;
+typedef uint32_t mb_crc32_t;
+
+#define NIOVA_MB_CHAIN_LINK_MAGIC  0xfefefefe0c0c0c0c
+#define NIOVA_MB_HEADER_DATA_MAGIC 0xf0f0f0f0033d3d3f
 /**
  * The maximum single device size that is currently supported.
  */
@@ -58,7 +66,7 @@
 /**
  * Number of total physical blocks on a single device.
  */
-#define PBLK_ADDR_BITS (NIOVA_MAX_DEVICE_SIZE_BITS - PBLK_SIZE_BITS)
+#define PBLK_ADDR_BITS (sizeof(pblk_id_t) * NBBY)
 
 /**
  * Virtual block device chunk size.  The 'chunk' is a logical division or
