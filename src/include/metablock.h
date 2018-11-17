@@ -31,9 +31,8 @@ struct mb_dpblk_entry
     pblk_id_t mdpbe_pblk_id;
 } PACKED;
 
-
-#define VBLK_ENTRY_PAD_SIZE                                             \
-    ((sizeof(uint64_t) * NBBY) -                                        \
+#define VBLK_ENTRY_PAD_SIZE                                               \
+    ((sizeof(uint64_t) * NBBY) -                                          \
      (VBLK_BITS + VBLK_RUN_LEN_BITS + VBLK_PBLK_IDX + MB_DPBLK_IDX_BITS + \
       VBLK_ENTRY_TYPE_BITS))
 
