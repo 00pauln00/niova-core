@@ -7,6 +7,7 @@
 #ifndef NIOVA_METABLOCK_H
 #define NIOVA_METABLOCK_H 1
 
+#include <stdio.h>
 #include "common.h"
 #include "ec.h"
 
@@ -30,6 +31,12 @@ struct mb_dpblk_entry
     pblk_id_t mdpbe_pblk_id;
 } PACKED;
 
+
+#define VBLK_ENTRY_PAD_SIZE                                             \
+    ((sizeof(uint64_t) * NBBY) -                                        \
+     (VBLK_BITS + VBLK_RUN_LEN_BITS + VBLK_PBLK_IDX + MB_DPBLK_IDX_BITS + \
+      VBLK_ENTRY_TYPE_BITS))
+
 /**
  * -- struct mb_vblk_entry --
  * Metablock virtual block entry.
@@ -42,11 +49,11 @@ struct mb_dpblk_entry
 struct mb_vblk_entry
 {
     uint64_t mvbe_blk:VBLK_BITS,
-             mvbe_nblks:VBLK_RUN_LEN_BITS,
-             mvbe_dpblk_idx:VBLK_PBLK_IDX,
-             mvbe_dxspblk_info_idx:MB_DPBLK_IDX_BITS,
-             mvbe_type:VBLK_ENTRY_TYPE_BITS,
-             mvbe__pad;
+        mvbe_nblks:VBLK_RUN_LEN_BITS,
+        mvbe_dpblk_idx:VBLK_PBLK_IDX,
+        mvbe_dpblk_info_idx:MB_DPBLK_IDX_BITS,
+        mvbe_type:VBLK_ENTRY_TYPE_BITS,
+        mvbe__pad:VBLK_ENTRY_PAD_SIZE;
 } PACKED;
 
 /**
@@ -83,7 +90,7 @@ struct mb_chain_link_entry
  * -- struct mb_cblk_entry --
  * Checksum block entry.  Checksum blocks entries reside in the metablock.
  */
-#define mb_chain_link_entry mb_cblk_entry
+#define mb_cblk_entry mb_chain_link_entry
 //typedef struct mb_chain_link_entry struct mb_cblk_entry;
 
 /**
@@ -133,7 +140,7 @@ struct mb_header_data
     pblk_id_t            mbh_self_pblk_id;
     uint32_t             mbh_num_dpblks;
     uint32_t             mbh_num_vblks;
-    struct mb_cblk_entry mbh_cblks[MB_MAX_NUM_CHKSUM_BLKS];
+    struct mb_cblk_entry mbh_cblks[MB_MAX_CPBLKS];
     // <-- mbh_hash coverage continues to the rest of the pblk ... >
 } PACKED;
 
@@ -149,32 +156,32 @@ struct mb_header_persistent
     union
     {
         struct mb_header_chain_link mbhp_chain_link;
-        unsigned char               mbhp_data_front[MB_HEADER_IO_SIZE_BYTES];
+        unsigned char               mbhp_data_front[MB_HDR_CHAIN_LINK_IO_SIZE];
     };
     union
     {
         struct mb_header_data       mbhp_mb;
-        unsigned char               mbhp_data_back[MB_HEADER_IO_SIZE_BYTES];
+        unsigned char               mbhp_data_back[MB_HDR_DATA_IO_SIZE];
     };
 } PACKED;
 
+
+#if 1
 static inline void
 mb_compile_time_checks(void)
 {
     COMPILE_TIME_ASSERT((NIOVA_TXN_BITS + EC_DATA_BITS + EC_PARITY_BITS +
                          EC_POS_BITS) <= (sizeof(uint64_t) * NBBY));
 
-    COMPILE_TIME_ASSERT(sizeof(struct mb_vblk_addr) ==
-                        MB_VBLK_SIZE_BYTES);
+    COMPILE_TIME_ASSERT(sizeof(struct mb_dpblk_entry) ==
+                        MB_DPBLK_ENTRY_SIZE_BYTES);
 
-    COMPILE_TIME_ASSERT(sizeof(struct mb_data_pblk) ==
-                        MB_DATA_PBLK_SIZE_BYTES);
-
-    COMPILE_TIME_ASSERT(sizeof(struct mb_chksum_blk) ==
-                        MB_CHKSUM_BLK_SIZE_BYTES);
+    COMPILE_TIME_ASSERT(sizeof(struct mb_vblk_entry) ==
+                        MB_VBLK_ENTRY_SIZE_BYTES);
 
     COMPILE_TIME_ASSERT(sizeof(struct mb_header_persistent) ==
-                        MB_HEADER_IO_SIZE_BYTES * 2);
+                        MB_HEADER_SIZE_BYTES);
 }
+#endif
 
 #endif

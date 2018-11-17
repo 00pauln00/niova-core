@@ -7,7 +7,8 @@
 #ifndef NIOVA_COMMON_H
 #define NIOVA_COMMON_H 1
 
-#include <sys/types.h>
+//#include <sys/types.h>
+#include <stdint.h>
 
 #ifndef NBBY
 #define NBBY 8
@@ -16,7 +17,7 @@
 #define PACKED __attribute__((packed))
 
 #define COMPILE_TIME_ASSERT(cond) \
-    ((void)sizeof(char[1 - 2*!(condition)]))
+    ((void)sizeof(char[1 - 2*!(cond)]))
 
 typedef uint32_t pblk_id_t;
 typedef uint64_t mb_magic_t;
@@ -46,14 +47,21 @@ typedef uint32_t mb_crc32_t;
  * Metablock chain link hash sizes.
  */
 #define MB_CHAIN_LINK_HASH_BITS         256 // Support sha256
-#define MB_CHAIN_LINK_HASH_BYTES        (MB_CHAIN_LINK_BITS / NBBY)
-#define MB_CHAIN_LINK_HASH_UINT64_BYTES (MB_CHAIN_LINK_BITS / sizeof(uint64_t))
+#define MB_CHAIN_LINK_HASH_BYTES        (MB_CHAIN_LINK_HASH_BITS / NBBY)
+#define MB_CHAIN_LINK_HASH_UINT64_BYTES (MB_CHAIN_LINK_HASH_BITS / sizeof(uint64_t))
+
+/**
+ * Metablock header size.  This header includes two components:  chain link,
+ * and header data.
+ */
+#define MB_HEADER_SIZE_BYTES 4096
 
 /**
  * The Metablock header I/O size used both for the chain link and the
  * header contents.
  */
-#define MB_HEADER_IO_SIZE_BYTES 1024
+#define MB_HDR_CHAIN_LINK_IO_SIZE 1024
+#define MB_HDR_DATA_IO_SIZE (MB_HEADER_SIZE_BYTES - MB_HDR_CHAIN_LINK_IO_SIZE)
 
 /**
  * Physical block size is currently fixed at 128KiB.  Physical blocks (aka
@@ -74,7 +82,7 @@ typedef uint32_t mb_crc32_t;
  * distribution, residency, and management.
  */
 #define VBLKDEV_CHUNK_SIZE_BITS  33 // 8GiB
-#define VBLKDEV_CHUNK_SIZE_BYTES (1ULL << CHUNK_SIZE_BITS)
+#define VBLKDEV_CHUNK_SIZE_BYTES (1ULL << VBLKDEV_CHUNK_SIZE_BITS)
 
 /**
  * Virtual block address size is 4KiB.
@@ -87,7 +95,7 @@ typedef uint32_t mb_crc32_t;
  * of a chunk in vblk address size.  In other words, the number of virtual
  * blocks which can reside in a chunk.
  */
-#define VBLK_BITS (CHUNK_SIZE_BITS - VBLK_SIZE_BITS)
+#define VBLK_BITS (VBLKDEV_CHUNK_SIZE_BITS - VBLK_SIZE_BITS)
 
 /**
  * Virtual block address run length bits is used to represent coalesced virtual
@@ -99,12 +107,6 @@ typedef uint32_t mb_crc32_t;
  * Virtual block index into a physical block.
  */
 #define VBLK_PBLK_IDX VBLK_RUN_LEN_BITS
-
-/**
- * Metablock header size.  This header includes two components:  chain link,
- * and header data.
- */
-#define MB_HEADER_SIZE_BYTES 4096
 
 /**
  * Metablock virtual address entry size in bytes.
@@ -123,7 +125,7 @@ typedef uint32_t mb_crc32_t;
 /**
  * Metablock:  data physical blocks per checksum physical block.
  */
-#define MB_DPBLKS_PER_CPBLK (PBLK_SIZE_BYTES / MB_CHKSUM_BYTES_PER_PBLK)
+#define MB_DPBLKS_PER_CPBLK (PBLK_SIZE_BYTES / MB_CHKSUM_BYTES_PER_DPBLK)
 
 #define MB_DPBLKS_PER_CPBLK_HARDCODED 1024
 
@@ -153,7 +155,7 @@ static inline void
 common_compile_time_asserts(void)
 {
     COMPILE_TIME_ASSERT(MB_MAX_DPBLKS == MB_MAX_DPBLKS_HARDCODED);
-    COMPILE_TIME_ASSERT((1U << MB_DPBLK_IDX_BITS) <= MB_MAX_DPBLKS);
+    COMPILE_TIME_ASSERT((1U << MB_DPBLK_IDX_BITS) >= MB_MAX_DPBLKS);
     COMPILE_TIME_ASSERT(MB_MAX_CPBLKS == MB_MAX_CPBLKS_HARDCODED);
     COMPILE_TIME_ASSERT(MB_DPBLKS_PER_CPBLK == MB_DPBLKS_PER_CPBLK_HARDCODED);
 }
