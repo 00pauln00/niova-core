@@ -49,11 +49,11 @@ struct mb_dpblk_entry
 struct mb_vblk_entry
 {
     uint64_t mvbe_blk:VBLK_BITS,
-        mvbe_nblks:VBLK_RUN_LEN_BITS,
-        mvbe_dpblk_idx:VBLK_PBLK_IDX,
-        mvbe_dpblk_info_idx:MB_DPBLK_IDX_BITS,
-        mvbe_type:VBLK_ENTRY_TYPE_BITS,
-        mvbe__pad:VBLK_ENTRY_PAD_SIZE;
+             mvbe_nblks:VBLK_RUN_LEN_BITS,
+             mvbe_dpblk_idx:VBLK_PBLK_IDX,
+             mvbe_dpblk_info_idx:MB_DPBLK_IDX_BITS,
+             mvbe_type:VBLK_ENTRY_TYPE_BITS,
+             mvbe__pad:VBLK_ENTRY_PAD_SIZE;
 } PACKED;
 
 /**
