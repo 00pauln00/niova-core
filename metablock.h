@@ -16,16 +16,17 @@
  * -- struct mb_dpblk_entry --
  * Metablock data physical block entry.
  * @mdpb_txnid:  txn id in which this data block was written
- * @mdpbe_ec_type:  erasure coding type
+ * @mdpbe_ec_ndata:  erasure coding:  number of data blocks
+ * @mdpbe_ec_nparity:  erasure coding:  number of parity blocks
  * @mdpbe_ec_pos:  position of the this dpblk in the ec group
  * @mdpbe_pblk_id:  physical block identifier of the owning device
  */
 struct mb_dpblk_entry
 {
     uint64_t  mdpbe_txnid:NIOVA_TXN_BITS,
-              mdpbe_ec_type:NIOVA_EC_TYPE_BITS,
-              mdpbe_ec_pos:NIOVA_EC_POS_BITS,
-              mdpbe__pad;
+              mdpbe_ec_ndata:EC_DATA_BITS,
+              mdpbe_ec_nparity:EC_PARITY_BITS,
+              mdpbe_ec_pos:EC_POS_BITS;
     pblk_id_t mdpbe_pblk_id;
 } PACKED;
 
@@ -160,6 +161,9 @@ struct mb_header_persistent
 static inline void
 mb_compile_time_checks(void)
 {
+    COMPILE_TIME_ASSERT((NIOVA_TXN_BITS + EC_DATA_BITS + EC_PARITY_BITS +
+                         EC_POS_BITS) <= (sizeof(uint64_t) * NBBY));
+
     COMPILE_TIME_ASSERT(sizeof(struct mb_vblk_addr) ==
                         MB_VBLK_SIZE_BYTES);
 
