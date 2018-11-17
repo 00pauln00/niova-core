@@ -48,7 +48,8 @@ typedef uint32_t mb_crc32_t;
  */
 #define MB_CHAIN_LINK_HASH_BITS         256 // Support sha256
 #define MB_CHAIN_LINK_HASH_BYTES        (MB_CHAIN_LINK_HASH_BITS / NBBY)
-#define MB_CHAIN_LINK_HASH_UINT64_BYTES (MB_CHAIN_LINK_HASH_BITS / sizeof(uint64_t))
+#define MB_CHAIN_LINK_HASH_UINT64_BYTES \
+    (MB_CHAIN_LINK_HASH_BYTES / sizeof(uint64_t))
 
 /**
  * Metablock header size.  This header includes two components:  chain link,
