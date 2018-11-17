@@ -71,26 +71,26 @@
 /**
  * Virtual block address size is 4KiB.
  */
-#define VBLK_ADDR_SIZE_BITS  12 // 4KiB
-#define VBLK_ADDR_SIZE_BYTES (1ULL << VBLK_SIZE_BITS)
+#define VBLK_SIZE_BITS  12 // 4KiB
+#define VBLK_SIZE_BYTES (1ULL << VBLK_SIZE_BITS)
 
 /**
  * Virtual block address identifier bits represents the address space size
  * of a chunk in vblk address size.  In other words, the number of virtual
  * blocks which can reside in a chunk.
  */
-#define VBLK_ADDR_BITS (CHUNK_SIZE_BITS - VBLK_ADDR_SIZE_BITS)
+#define VBLK_BITS (CHUNK_SIZE_BITS - VBLK_SIZE_BITS)
 
 /**
  * Virtual block address run length bits is used to represent coalesced virtual
  * blocks which are residing in the same pblk.
  */
-#define VBLK_ADDR_RUN_LEN_BITS (PBLK_SIZE_BITS - VBLK_ADDR_SIZE_BITS)
+#define VBLK_RUN_LEN_BITS (PBLK_SIZE_BITS - VBLK_SIZE_BITS)
 
 /**
  * Virtual block index into a physical block.
  */
-#define VBLK_PBLK_IDX VBLK_ADDR_RUN_LEN_BITS
+#define VBLK_PBLK_IDX VBLK_RUN_LEN_BITS
 
 /**
  * Metablock header size.  This header includes two components:  chain link,
@@ -101,7 +101,7 @@
 /**
  * Metablock virtual address entry size in bytes.
  */
-#define MB_VBLK_ADDR_ENTRY_SIZE_BYTES 8
+#define MB_VBLK_ENTRY_SIZE_BYTES 8
 /**
  * Metablock physical address entry size in bytes
  */
@@ -124,10 +124,13 @@
  */
 #define MB_MAX_DPBLKS \
     ((PBLK_SIZE_BYTES - MB_HEADER_SIZE_BYTES) / \
-     (MB_VBLK_ADDR_ENTRY_SIZE_BYTES + MB_DPBLK_ENTRY_SIZE_BYTES))
+     (MB_VBLK_ENTRY_SIZE_BYTES + MB_DPBLK_ENTRY_SIZE_BYTES))
 
 #define MB_MAX_DPBLKS_HARDCODED 6348
-
+/**
+ * Metablock data physical block bits needed to index MB_MAX_DPBLKS
+ */
+#define MB_DPBLK_IDX_BITS 13
 /**
  * Maximum number of checksum physical blocks which can be referenced by a
  * metablock.
@@ -142,6 +145,7 @@ static inline void
 common_compile_time_asserts(void)
 {
     COMPILE_TIME_ASSERT(MB_MAX_DPBLKS == MB_MAX_DPBLKS_HARDCODED);
+    COMPILE_TIME_ASSERT((1U << MB_DPBLK_IDX_BITS) <= MB_MAX_DPBLKS);
     COMPILE_TIME_ASSERT(MB_MAX_CPBLKS == MB_MAX_CPBLKS_HARDCODED);
     COMPILE_TIME_ASSERT(MB_DPBLKS_PER_CPBLK == MB_DPBLKS_PER_CPBLK_HARDCODED);
 }

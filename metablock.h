@@ -8,30 +8,46 @@
 #define NIOVA_METABLOCK_H 1
 
 #include "common.h"
+#incldue "ec.h"
 
-#define PBLK_INFO_IDX_BITS 13
-#define VBLK_INFO_PAD_BITS 12
-#define VBLK_ADDR_TYPE_BITS 8
+#define VBLK_ENTRY_TYPE_BITS 8
 #define CBLK_CRC_BITS 32
 
-struct mb_vblk_addr
+/**
+ * -- struct mb_dpblk_entry --
+ * Metablock data physical block entry.
+ * @mdpb_txnid:  txn id in which this data block was written
+ * @mdpbe_ec_type:  erasure coding type
+ * @mdpbe_ec_pos:  position of the this dpblk in the ec group
+ * mdpbe_pblk_id:  physical block identifier of the owning device
+ */
+struct mb_dpblk_entry
 {
-    uint64_t mvba_blk:VBLK_ADDR_BITS,
-             mvba_nblks:VBLK_ADDR_RUN_LEN_BITS,
-             mvba_pblk_idx:VBLK_PBLK_IDX,
-             mvba_pblk_info_idx:PBLK_INFO_IDX_BITS,
-             mvba_type:VBLK_ADDR_TYPE_BITS,
-             mvba__pad:VBLK_INFO_PAD_BITS;
+    uint64_t mdpbe_txnid:NIOVA_TXN_BITS,
+             mdpbe_ec_type:NIOVA_EC_TYPE_BITS,
+             mdpbe_ec_pos:NIOVA_EC_POS_BITS,
+             mdpbe__pad;
+    uint32_t mdpbe_pblk_id:PBLK_ADDR_BITS,
+             mdpbe__pad1;
 } PACKED;
 
-struct mb_data_pblk
+/**
+ * -- struct mb_vblk_entry --
+ * Metablock virtual block entry.
+ * @mvbe_blk:  Virtual block number within the owning chunk.
+ * @mvbe_nblks:  Number of consecutive blocks represented in the entry.
+ * @mvbe_dpblk_idx:  Index into the physical block where the contents reside.
+ * @mvbe_dpblk_info_idx:  Index into the metablock's dpblk info array.
+ * @mvbe_type:  The virtual block type.
+ */
+struct mb_vblk_entry
 {
-    uint64_t mdpb_txnid:NIOVA_TXN_BITS,
-             mdpb_ec_type:NIOVA_EC_TYPE_BITS,
-             mdpb_ec_pos:NIOVA_EC_POS_BITS,
-             mdpb__pad;
-    uint32_t mdpb_pblk_id:PBLK_ADDR_BITS,
-             mdpb__pad1;
+    uint64_t mvbe_blk:VBLK_BITS,
+             mvbe_nblks:VBLK_RUN_LEN_BITS,
+             mvbe_dpblk_idx:VBLK_PBLK_IDX,
+             mvbe_dxspblk_info_idx:MB_DPBLK_IDX_BITS,
+             mvbe_type:VBLK_ENTRY_TYPE_BITS,
+             mvbe__pad;
 } PACKED;
 
 struct mb_hash
@@ -116,7 +132,7 @@ static inline void
 mb_compile_time_checks(void)
 {
     COMPILE_TIME_ASSERT(sizeof(struct mb_vblk_addr) ==
-                        MB_VBLK_ADDR_SIZE_BYTES);
+                        MB_VBLK_SIZE_BYTES);
 
     COMPILE_TIME_ASSERT(sizeof(struct mb_data_pblk) ==
                         MB_DATA_PBLK_SIZE_BYTES);
