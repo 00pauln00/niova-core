@@ -7,7 +7,6 @@
 #ifndef NIOVA_COMMON_H
 #define NIOVA_COMMON_H 1
 
-//#include <sys/types.h>
 #include <stdint.h>
 
 #ifndef NBBY
@@ -24,6 +23,18 @@ typedef uint64_t mb_magic_t;
 typedef uint32_t mb_type_t;
 typedef uint32_t mb_version_t;
 typedef uint32_t mb_crc32_t;
+typedef uint64_t vblkdev_chunk_id_t;
+
+typedef struct vblkdev_id
+{
+    uint64_t vdb_id[2];
+} vblkdev_id_t;
+
+struct vblkdev_chunk
+{
+    vblkdev_id_t       vbdc_dev;
+    vblkdev_chunk_id_t vbdc_chunk;
+};
 
 #define NIOVA_MB_CHAIN_LINK_MAGIC  0xfefefefe0c0c0c0c
 #define NIOVA_MB_HEADER_DATA_MAGIC 0xf0f0f0f0033d3d3f

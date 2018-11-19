@@ -6,6 +6,7 @@
 
 #include "common.h"
 #include "metablock.h"
+#include "metaroot.h"
 
 #include <stdio.h>
 
@@ -19,6 +20,11 @@ main(void)
 
     fprintf(stdout, "sizeof(struct mb_header_persistent) = %zd\n",
             sizeof(hp));
+
+    struct vblkdev_metaroot_header mrh;
+
+    fprintf(stdout, "sizeof(struct vblkdev_metaroot_header) = %zd\n",
+            sizeof(mrh));
 
     fprintf(stdout, "simple test OK\n");
     return 0;

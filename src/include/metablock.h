@@ -4,10 +4,9 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
 
-#ifndef NIOVA_METABLOCK_H
-#define NIOVA_METABLOCK_H 1
+#ifndef METABLOCK_H
+#define METABLOCK_H 1
 
-#include <stdio.h>
 #include "common.h"
 #include "ec.h"
 
@@ -39,11 +38,11 @@ struct mb_dpblk_entry
 /**
  * -- struct mb_vblk_entry --
  * Metablock virtual block entry.
- * @mvbe_blk:  Virtual block number within the owning chunk.
- * @mvbe_nblks:  Number of consecutive blocks represented in the entry.
- * @mvbe_dpblk_idx:  Index into the physical block where the contents reside.
- * @mvbe_dpblk_info_idx:  Index into the metablock's dpblk info array.
- * @mvbe_type:  The virtual block type.
+ * @mvbe_blk:  virtual block number within the owning chunk.
+ * @mvbe_nblks:  number of consecutive blocks represented in the entry.
+ * @mvbe_dpblk_idx:  index into the physical block where the contents reside.
+ * @mvbe_dpblk_info_idx:  index into the metablock's dpblk info array.
+ * @mvbe_type:  the virtual block type.
  */
 struct mb_vblk_entry
 {
@@ -131,6 +130,7 @@ struct mb_header_data
     mb_magic_t           mbh_magic;
     struct mb_hash       mbh_hash; // must match mbcl_self_mb
     // <-- START: mbh_self_hash coverage -->
+    struct vblkdev_chunk mbh_chunk;
     mb_version_t         mbh_version;
     uint32_t             mbh__pad;
     mb_type_t            mbh_type; //general metablock?
@@ -183,4 +183,4 @@ mb_compile_time_checks(void)
 }
 #endif
 
-#endif
+#endif //METABLOCK_H
