@@ -8,6 +8,7 @@
 #define NIOVA_COMMON_H 1
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifndef NBBY
 #define NBBY 8

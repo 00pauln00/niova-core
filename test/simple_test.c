@@ -7,7 +7,7 @@
 #include "common.h"
 #include "metablock.h"
 #include "metaroot.h"
-
+#include "generic_metablock.h"
 #include <stdio.h>
 
 int
@@ -25,6 +25,11 @@ main(void)
 
     fprintf(stdout, "sizeof(struct vblkdev_metaroot_header) = %zd\n",
             sizeof(mrh));
+
+    struct generic_metablock_header_persistent gmh;
+
+    fprintf(stdout, "sizeof(struct generic_metablock_header) = %zd\n",
+            sizeof(gmh));
 
     fprintf(stdout, "simple test OK\n");
     return 0;
