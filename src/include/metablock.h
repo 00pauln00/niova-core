@@ -124,6 +124,9 @@ struct mb_header_chain_link
  * @mbh_num_dpblks: number of data physical blocks.
  * @mbh_num_vblks:  number of virtual block entries.
  * @mbh_cblks:  checksum block entries.
+ * @mbh_mbh_lowest_txn:  lowest transaction number represented by this MB.
+ * @mbh_mbh_highest_txn:  highest transaction number represented by this MB.
+ *     NOTE:  the MB chain must represent every txn which has occurred.
  */
 struct mb_header_data
 {
@@ -139,6 +142,8 @@ struct mb_header_data
     pblk_id_t            mbh_self_pblk_id;
     uint32_t             mbh_num_dpblks;
     uint32_t             mbh_num_vblks;
+    txn_id_t             mbh_lowest_txn;
+    txn_id_t             mbh_highest_txn;
     struct mb_cblk_entry mbh_cblks[MB_MAX_CPBLKS];
     // <-- mbh_hash coverage continues to the rest of the pblk ... >
 } PACKED;
