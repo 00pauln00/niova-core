@@ -16,7 +16,11 @@ vblkdev_handle_test(void)
     vb_id.vdb_id[1] = 456;
 
     struct vblkdev_handle *vbh = vbh_get(vb_id, true);
+    NIOVA_ASSERT(vbh && !vbh_cmp(vbh, (struct vblkdev_handle *)&vb_id));
     vbh_put(vbh);
+
+    vbh = vbh_get(vb_id, false);
+    NIOVA_ASSERT(!vbh);
 }
 
 int

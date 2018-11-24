@@ -4,41 +4,14 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
 
+#include "common.h"
 #include "tree.h"
 #include "lock.h"
 #include "log.h"
 #include "vblkdev_handle.h"
 
-static inline int
-vbh_tree_cmp(const struct vblkdev_handle *left,
-             const struct vblkdev_handle *right)
-{
-    int i;
-    for (i = 0; i < VBLKDEV_ID_WORDS; i++)
-    {
-        if (left->vbh_id.vdb_id[i] < right->vbh_id.vdb_id[i])
-            return -1;
-        else if (left->vbh_id.vdb_id[i] > right->vbh_id.vdb_id[i])
-            return 1;
-    }
-    return 0;
-}
-
-static inline int
-vbch_tree_cmp(const struct vblkdev_chunk_handle *left,
-              const struct vblkdev_chunk_handle *right)
-{
-    if (left->vbch_id < right->vbch_id)
-        return -1;
-    else if (left->vbch_id > right->vbch_id)
-        return 1;
-
-    return 0;
-}
-
-RB_GENERATE(vblkdev_handle_tree, vblkdev_handle, vbh_tenry, vbh_tree_cmp);
-RB_GENERATE(vblkdev_chunk_handle_tree, vblkdev_chunk_handle, vbch_tenry,
-            vbch_tree_cmp);
+RB_GENERATE(vblkdev_handle_tree, vblkdev_handle, vbh_tenry, vbh_cmp);
+RB_GENERATE(chunk_handle_tree, chunk_handle, ch_tenry, ch_cmp);
 
 struct vblkdev_handle_tree vbhTree;
 spinlock_t                 vbhSubsysLock;
@@ -69,7 +42,6 @@ vbh_new(void)
 
     return vbh;
 }
-
 
 static void
 vbh_init(struct vblkdev_handle *vbh, const vblkdev_id_t vbh_id)
