@@ -5,3 +5,5 @@
 .gitignore
 TAGS
 test/simple_test
+*.o
+niova
