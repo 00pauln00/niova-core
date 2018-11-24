@@ -8,29 +8,54 @@
 #include "metablock.h"
 #include "metaroot.h"
 #include "generic_metablock.h"
+#include "log.h"
+#include "lock.h"
 #include <stdio.h>
+
+static void
+spin_lock_test(void)
+{
+    spinlock_t lock;
+
+    spinlock_init(&lock);
+    spinlock_lock(&lock);
+    spinlock_unlock(&lock);
+
+    int rc = spinlock_trylock(&lock);
+    NIOVA_ASSERT(!rc);
+
+    spinlock_unlock(&lock);
+    spinlock_destroy(&lock);
+
+    STDOUT_MSG("spin lock tests OK");
+}
 
 int
 main(void)
 {
+    // Simple assert test
+    NIOVA_ASSERT(1 == 1);
+
+    // Test the spinlock api
+    spin_lock_test();
+
     struct mb_header_persistent hp;
 
-    fprintf(stderr, "sizeof(struct mb_vblk_entry) = %zd\n",
+    STDOUT_MSG("sizeof(struct mb_vblk_entry) = %zd",
             sizeof(struct mb_vblk_entry));
 
-    fprintf(stdout, "sizeof(struct mb_header_persistent) = %zd\n",
+    STDOUT_MSG("sizeof(struct mb_header_persistent) = %zd",
             sizeof(hp));
 
     struct vblkdev_metaroot_header mrh;
 
-    fprintf(stdout, "sizeof(struct vblkdev_metaroot_header) = %zd\n",
+    STDOUT_MSG("sizeof(struct vblkdev_metaroot_header) = %zd",
             sizeof(mrh));
 
     struct generic_metablock_header_persistent gmh;
 
-    fprintf(stdout, "sizeof(struct generic_metablock_header) = %zd\n",
-            sizeof(gmh));
+    STDOUT_MSG("sizeof(struct generic_metablock_header) = %zd",
+               sizeof(gmh));
 
-    fprintf(stdout, "simple test OK\n");
     return 0;
 }
