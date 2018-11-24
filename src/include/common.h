@@ -9,6 +9,8 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdlib.h>
+#include <stdbool.h>
 
 #ifndef NBBY
 #define NBBY 8
@@ -27,9 +29,11 @@ typedef uint32_t mb_crc32_t;
 typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
 
+#define VBLKDEV_ID_WORDS 2
+
 typedef struct vblkdev_id
 {
-    uint64_t vdb_id[2];
+    uint64_t vdb_id[VBLKDEV_ID_WORDS];
 } vblkdev_id_t;
 
 struct vblkdev_chunk
@@ -173,5 +177,8 @@ common_compile_time_asserts(void)
     COMPILE_TIME_ASSERT(MB_MAX_CPBLKS == MB_MAX_CPBLKS_HARDCODED);
     COMPILE_TIME_ASSERT(MB_DPBLKS_PER_CPBLK == MB_DPBLKS_PER_CPBLK_HARDCODED);
 }
+
+#define niova_malloc malloc
+#define niova_free   free
 
 #endif //NIOVA_COMMON_H

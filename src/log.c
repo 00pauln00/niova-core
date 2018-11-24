@@ -10,6 +10,12 @@
 
 enum log_level dbgLevel = LL_WARN;
 
+void
+log_level_set(enum log_level ll)
+{
+    dbgLevel = ll;
+}
+
 thread_id_t
 thread_id_get(void)
 {

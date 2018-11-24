@@ -75,4 +75,7 @@ thread_id_get(void);
 void
 thread_abort(void);
 
+void
+log_level_set(enum log_level);
+
 #endif //NIOVA_LOG_H
