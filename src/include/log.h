@@ -44,17 +44,22 @@ ll_to_string(enum log_level ll)
     return "debug";
 }
 
-#define LOG_MSG(lvl, message, ...)                                   \
-{                                                                    \
-    if (lvl <= dbgLevel)                                             \
-    {                                                                \
-        fprintf(stderr, "<%s:%lx:%s@%d> " message "\n",              \
-                ll_to_string(lvl), thread_id_get(), __func__,        \
-                __LINE__, ##__VA_ARGS__);                            \
-        if (lvl == LL_FATAL)                                         \
-            thread_abort();                                          \
-    }                                                                \
+#define LOG_MSG(lvl, message, ...)                                      \
+{                                                                       \
+    if (lvl <= dbgLevel)                                                \
+    {                                                                   \
+        struct timespec ts;                                             \
+        clock_gettime(CLOCK_MONOTONIC_RAW, &ts);                        \
+        fprintf(stderr, "<%ld.%05hu:%s:%lx:%s@%d> " message "\n",       \
+                ts.tv_sec, (unsigned short)ts.tv_nsec,                  \
+                ll_to_string(lvl), thread_id_get(), __func__,           \
+                __LINE__, ##__VA_ARGS__);                               \
+        if (lvl == LL_FATAL)                                            \
+            thread_abort();                                             \
+    }                                                                   \
 }
+
+#define log_msg LOG_MSG
 
 #define STDOUT_MSG(message, ...)                                      \
 {                                                                     \
