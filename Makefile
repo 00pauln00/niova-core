@@ -7,10 +7,12 @@ LDFLAGS		= -lpthread
 CORE_INCLUDES   = \
 	src/include/lock.h \
 	src/include/log.h \
+	src/include/random.h \
 	src/include/vblkdev_handle.h
 
 CORE_OBJFILES   = \
 	src/log.o \
+	src/random.o \
 	src/vblkdev_handle.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
@@ -24,6 +26,11 @@ $(TARGET): $(ALL_OBJFILES) $(CORE_INCLUDES)
 check: private CFLAGS = $(DEBUG_CFLAGS)
 check: $(CORE_OBJFILES)
 	$(CC) $(DEBUG_CFLAGS) -o test/simple_test test/simple_test.c \
+		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+
+client-test: private CFLAGS = $(DEBUG_CFLAGS)
+client-test: $(CORE_OBJFILES)
+	$(CC) $(DEBUG_CFLAGS) -o test/client_mmap test/client_mmap.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 pahole : check
