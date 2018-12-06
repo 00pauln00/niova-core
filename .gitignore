@@ -6,5 +6,6 @@
 .gitignore
 TAGS
 test/simple_test
+test/client_mmap
 *.o
 niova
