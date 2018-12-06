@@ -13,10 +13,10 @@
 #include "tree.h"
 
 RB_HEAD(chunk_handle_tree, chunk_handle);
-RB_PROTOTYPE(chunk_handle_tree, chunk_handle, ch_tenry, ch_tree_cmp);
+RB_PROTOTYPE(chunk_handle_tree, chunk_handle, ch_tentry, ch_tree_cmp);
 
 RB_HEAD(vblkdev_handle_tree, vblkdev_handle);
-RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tenry, vbh_tree_cmp);
+RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_tree_cmp);
 
 /**
  * -- struct chunk_handle --
@@ -29,7 +29,7 @@ RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tenry, vbh_tree_cmp);
 struct chunk_handle
 {
     vblkdev_chunk_id_t            ch_id;
-    RB_ENTRY_PACKED(chunk_handle) ch_tenry;
+    RB_ENTRY_PACKED(chunk_handle) ch_tentry;
     int                           ch_ref;
     bool                          ch_has_dirty_dpblks;
 };
@@ -52,10 +52,10 @@ struct chunk_handle
 struct vblkdev_handle
 {
     vblkdev_id_t                    vbh_id; // Must be first entry
-    RB_ENTRY_PACKED(vblkdev_handle) vbh_tenry;
+    RB_ENTRY_PACKED(vblkdev_handle) vbh_tentry;
+    int                             vbh_ref;
     struct chunk_handle_tree        vbh_chunk_handle_tree;
     spinlock_t                      vbh_lock;
-    int                             vbh_ref;
 };
 
 #define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)                      \

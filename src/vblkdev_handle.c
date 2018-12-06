@@ -10,8 +10,8 @@
 #include "log.h"
 #include "vblkdev_handle.h"
 
-RB_GENERATE(vblkdev_handle_tree, vblkdev_handle, vbh_tenry, vbh_cmp);
-RB_GENERATE(chunk_handle_tree, chunk_handle, ch_tenry, ch_cmp);
+RB_GENERATE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_cmp);
+RB_GENERATE(chunk_handle_tree, chunk_handle, ch_tentry, ch_cmp);
 
 struct vblkdev_handle_tree vbhTree;
 spinlock_t                 vbhSubsysLock;
@@ -22,14 +22,14 @@ bool                       vbhInitialized = false;
 #define VBH_UNLOCK spinlock_unlock(&vbhSubsysLock)
 
 static void
-vbh_num_handles_inc(void)
+vbh_num_handles_inc_locked(void)
 {
     NIOVA_ASSERT(vbhNumHandles >= 0)
     vbhNumHandles++;
 }
 
 static void
-vbh_num_handles_dec(void)
+vbh_num_handles_dec_locked(void)
 {
     NIOVA_ASSERT(vbhNumHandles > 0)
     vbhNumHandles--;
@@ -96,7 +96,7 @@ vbh_add(const vblkdev_id_t vbh_id)
     if (!vbh_already)
         vbh->vbh_ref = 1;
 
-    vbh_num_handles_inc();
+    vbh_num_handles_inc_locked();
 
     VBH_UNLOCK;
 
@@ -129,7 +129,7 @@ vbh_put(struct vblkdev_handle *vbh)
 
         NIOVA_ASSERT(removed == vbh);
 
-        vbh_num_handles_dec();
+        vbh_num_handles_dec_locked();
     }
 
     VBH_UNLOCK;
