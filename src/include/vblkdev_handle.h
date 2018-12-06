@@ -13,10 +13,10 @@
 #include "tree.h"
 
 RB_HEAD(chunk_handle_tree, chunk_handle);
-RB_PROTOTYPE(chunk_handle_tree, chunk_handle, ch_tentry, ch_tree_cmp);
+RB_PROTOTYPE(chunk_handle_tree, chunk_handle, ch_tentry, ch_cmp);
 
 RB_HEAD(vblkdev_handle_tree, vblkdev_handle);
-RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_tree_cmp);
+RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_cmp);
 
 /**
  * -- struct chunk_handle --
