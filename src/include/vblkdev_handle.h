@@ -28,10 +28,10 @@ RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tenry, vbh_tree_cmp);
  */
 struct chunk_handle
 {
-    vblkdev_chunk_id_t                    ch_id;
+    vblkdev_chunk_id_t            ch_id;
     RB_ENTRY_PACKED(chunk_handle) ch_tenry;
-    int                                   ch_ref;
-    bool                                  ch_has_dirty_dpblks;
+    int                           ch_ref;
+    bool                          ch_has_dirty_dpblks;
 };
 
 #define DBG_VBLKDEV_CHUNK_HNDL(log_level, vbch, fmt, ...)               \
@@ -51,11 +51,11 @@ struct chunk_handle
  */
 struct vblkdev_handle
 {
-    vblkdev_id_t                     vbh_id; // Must be first entry
-    RB_ENTRY_PACKED(vblkdev_handle)  vbh_tenry;
-    struct chunk_handle_tree         vbh_chunk_handle_tree;
-    spinlock_t                       vbh_lock;
-    int                              vbh_ref;
+    vblkdev_id_t                    vbh_id; // Must be first entry
+    RB_ENTRY_PACKED(vblkdev_handle) vbh_tenry;
+    struct chunk_handle_tree        vbh_chunk_handle_tree;
+    spinlock_t                      vbh_lock;
+    int                             vbh_ref;
 };
 
 #define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)                      \
