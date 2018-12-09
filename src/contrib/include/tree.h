@@ -325,6 +325,15 @@ struct {                                \
     unsigned char rbe_color;            /* node color */        \
 }  __attribute__ ((__packed__))
 
+#define REF_RB_ENTRY_PACKED(type)                            \
+struct {                                                     \
+    struct type  *rbe_left;                                  \
+    struct type  *rbe_right;                                 \
+    struct type  *rbe_parent;                                \
+    unsigned char rbe_color;                                 \
+    int           rbe_ref_cnt;                               \
+}  __attribute__ ((__packed__))
+
 #define RB_LEFT(elm, field)        (elm)->field.rbe_left
 #define RB_RIGHT(elm, field)        (elm)->field.rbe_right
 #define RB_PARENT(elm, field)        (elm)->field.rbe_parent
