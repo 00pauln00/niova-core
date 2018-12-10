@@ -13,7 +13,7 @@
 static void
 chunk_handle_test(struct vblkdev_handle *vbh)
 {
-    vblkdev_chunk_id_t chunk_id = 789;
+    vblkdev_chunk_id_t chunk_id = 0x789;
 
     struct chunk_handle *ch = ch_get(vbh, chunk_id, true);
     NIOVA_ASSERT(ch);
@@ -25,8 +25,8 @@ static void
 vblkdev_handle_test(void)
 {
     vblkdev_id_t vb_id;
-    vb_id.vdb_id[0] = 123;
-    vb_id.vdb_id[1] = 456;
+    vb_id.vdb_id[0] = 0x123;
+    vb_id.vdb_id[1] = 0x456;
 
     struct vblkdev_handle *vbh = vbh_get(vb_id, true);
     NIOVA_ASSERT(vbh && !vbh_compare(vbh, (struct vblkdev_handle *)&vb_id));
@@ -36,7 +36,7 @@ vblkdev_handle_test(void)
     vbh_put(vbh);
 
     vbh = vbh_get(vb_id, false);
-//    NIOVA_ASSERT(!vbh);
+    NIOVA_ASSERT(!vbh);
 }
 
 int

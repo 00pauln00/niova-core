@@ -16,10 +16,20 @@
 #define NBBY 8
 #endif
 
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 #define PACKED __attribute__((packed))
 
-#define COMPILE_TIME_ASSERT(cond) \
+#define L2_CACHELINE_SIZE_BYTES 64
+#define CACHE_ALIGN_MEMBER(memb)                                \
+    __attribute__((aligned(L2_CACHELINE_SIZE_BYTES))) memb
+
+#define COMPILE_TIME_ASSERT(cond)               \
     ((void)sizeof(char[1 - 2*!(cond)]))
+
+#define CONST_OVERRIDE(type, var, value)         \
+    *(type *)&(var) = value;
 
 typedef uint32_t pblk_id_t;
 typedef uint64_t mb_magic_t;
@@ -29,7 +39,15 @@ typedef uint32_t mb_crc32_t;
 typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
 
+#define NIOVA_OSD_ID_WORDS 2
 #define VBLKDEV_ID_WORDS 2
+
+#define NIOVA_SECTOR_SIZE 512
+
+typedef struct niova_osd_id
+{
+    uint64_t nosd_id[NIOVA_OSD_ID_WORDS];
+} niosd_id_t;
 
 typedef struct vblkdev_id
 {
@@ -179,6 +197,7 @@ common_compile_time_asserts(void)
 }
 
 #define niova_malloc malloc
+#define niova_calloc calloc
 #define niova_free   free
 
 #endif //NIOVA_COMMON_H

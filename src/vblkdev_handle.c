@@ -12,8 +12,9 @@
 #include "ref_tree_proto.h"
 #include "vblkdev_handle.h"
 
-REF_TREE_HEAD(vblkdev_handle_tree, vblkdev_handle);
-
+/**
+ * vbh_cmp - private ref tree comparison function.
+ */
 static int
 vbh_cmp(const struct vblkdev_handle *a, const struct vblkdev_handle *b)
 {
@@ -28,33 +29,50 @@ vbh_cmp(const struct vblkdev_handle *a, const struct vblkdev_handle *b)
     return 0;
 }
 
+/**
+ * vbh_compare - export the compare function for external users.
+ */
 int vbh_compare(const struct vblkdev_handle *a, const struct vblkdev_handle *b)
 {
     return vbh_cmp(a, b);
 }
 
+/* Declare and generate the ref tree aspects.
+ */
+REF_TREE_HEAD(vblkdev_handle_tree, vblkdev_handle);
 REF_TREE_GENERATE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_cmp);
 
+/* vbhTree is the global ref tree head for all vblkdev handles.
+ */
 struct vblkdev_handle_tree vbhTree;
+
+/* vbhNumHandles tracks the number of allocated handles in the system.
+ */
 ssize_t                    vbhNumHandles;
+
 bool                       vbhInitialized = false;
 
 #define VBH_LOCK   spinlock_lock(&vbhTree.lock)
 #define VBH_UNLOCK spinlock_unlock(&vbhTree.lock)
 
 /**
- * This function must be called when at least one ref is already held.
+ * vbh_ref_cnt_inc - increment the reference count of an already referenced
+ *    vbh.
+ * @vbh:  The handle which is to be incremented.
  */
 void
 vbh_ref_cnt_inc(struct vblkdev_handle *vbh)
 {
-    NIOVA_ASSERT(vbh->vbh_tentry.rbe_ref_cnt > 0);
+    NIOVA_ASSERT(VBH_TO_REF_CNT(vbh) > 0);
 
     VBH_LOCK;
-    vbh->vbh_tentry.rbe_ref_cnt++;
+    VBH_TO_REF_CNT(vbh)++;
     VBH_UNLOCK;
 }
 
+/**
+ * vbh_num_handles_inc_locked - increment the number of active vblkdev_handles.
+ */
 static void
 vbh_num_handles_inc_locked(void)
 {
@@ -62,6 +80,9 @@ vbh_num_handles_inc_locked(void)
     vbhNumHandles++;
 }
 
+/**
+ * vbh_num_handles_dec_locked - decrement the number of active vblkdev_handles.
+ */
 static void
 vbh_num_handles_dec_locked(void)
 {
@@ -69,17 +90,25 @@ vbh_num_handles_dec_locked(void)
     vbhNumHandles--;
 }
 
+/**
+ * vbh_init - called from vbh_constructor to initialize a vblkdev_handle.
+ * @vbh_id:  The vblkdev_handle ID to be assigned to this handle.
+ */
 static void
 vbh_init(struct vblkdev_handle *vbh, const vblkdev_id_t vbh_id)
 {
     vbh->vbh_id = vbh_id;
-    vbh->vbh_ref = 0;
     spinlock_init(&vbh->vbh_lock);
     REF_TREE_INIT(&vbh->vbh_chunk_handle_tree, ch_constructor, ch_destructor);
 
     DBG_VBLKDEV_HNDL(LL_DEBUG, vbh, "");
 }
 
+/**
+ * vbh_constructor - private constructor which allocates and initializes
+ *    memory for a vblkdev_handle.
+ * @init_vbh:  initialiazation source data.
+ */
 static struct vblkdev_handle *
 vbh_constructor(const struct vblkdev_handle *init_vbh)
 {
@@ -93,6 +122,11 @@ vbh_constructor(const struct vblkdev_handle *init_vbh)
     return vbh;
 }
 
+/**
+ * vbh_destructor - private destructor function called by the ref tree when the
+ *    vblkdev_handle's ref count hits zero.
+ * @vbh:  the handle to destroy.
+ */
 static int
 vbh_destructor(struct vblkdev_handle *vbh)
 {
@@ -100,7 +134,7 @@ vbh_destructor(struct vblkdev_handle *vbh)
 
     vbh_num_handles_dec_locked();
 
-    NIOVA_ASSERT(!vbh->vbh_ref);
+    NIOVA_ASSERT(!VBH_TO_REF_CNT(vbh));
     NIOVA_ASSERT(RB_EMPTY(&vbh->vbh_chunk_handle_tree.rt_head));
     spinlock_destroy(&vbh->vbh_lock);
     niova_free(vbh);
@@ -108,6 +142,11 @@ vbh_destructor(struct vblkdev_handle *vbh)
     return 0;
 }
 
+/**
+ * vbh_put - return a referenced vblkdev_handle.  This may cause the handle to
+ *    be released.
+ * @vbh:  the handle to return.
+ */
 void
 vbh_put(struct vblkdev_handle *vbh)
 {
@@ -116,6 +155,11 @@ vbh_put(struct vblkdev_handle *vbh)
     RT_PUT(vblkdev_handle_tree, &vbhTree, vbh);
 }
 
+/**
+ * vbh_get - return a referenced vblkdev_handle to the caller.
+ * @vbh_id:  the vblkdev ID of this handle.
+ * @add:  conditionally creates the entry if it does not exist.
+ */
 struct vblkdev_handle *
 vbh_get(const vblkdev_id_t vbh_id, const bool add)
 {
@@ -129,6 +173,10 @@ vbh_get(const vblkdev_id_t vbh_id, const bool add)
     return vbh;
 }
 
+/**
+ * vbh_subsystem_init - called at startup time to initialize the global
+ *    variables in this file.
+ */
 void
 vbh_subsystem_init(void)
 {
@@ -140,6 +188,9 @@ vbh_subsystem_init(void)
     LOG_MSG(LL_DEBUG, "done");
 }
 
+/**
+ * vbh_subsystem_destroy - called at shutdown and runs some simple checks.
+ */
 void
 vbh_subsystem_destroy(void)
 {

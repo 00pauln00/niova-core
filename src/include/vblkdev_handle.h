@@ -14,6 +14,8 @@
 #include "tree.h"
 #include "ref_tree_proto.h"
 
+/* Declare the chunk handle tree here for use by vblkdev_handle
+ */
 REF_TREE_HEAD(chunk_handle_tree, chunk_handle);
 
 #define DBG_VBLKDEV_CHUNK_HNDL(log_level, vbch, fmt, ...)               \
@@ -35,15 +37,16 @@ struct vblkdev_handle
 {
     vblkdev_id_t                   vbh_id; // Must be first entry
     REF_TREE_ENTRY(vblkdev_handle) vbh_tentry;
-    int                            vbh_ref;
     struct chunk_handle_tree       vbh_chunk_handle_tree;
     spinlock_t                     vbh_lock;
 };
 
+#define VBH_TO_REF_CNT(vbh) (vbh)->vbh_tentry.rbe_ref_cnt
+
 #define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)                      \
     LOG_MSG(log_level, "vbh@%p %zx:%zx ref=%d "fmt, (vbh),              \
-            (vbh)->vbh_id.vdb_id[0], (vbh)->vbh_id.vdb_id[1], (vbh)->vbh_ref, \
-            ##__VA_ARGS__)
+        (vbh)->vbh_id.vdb_id[0], (vbh)->vbh_id.vdb_id[1],               \
+            VBH_TO_REF_CNT((vbh)), ##__VA_ARGS__)
 
 void
 vbh_subsystem_init(void);

@@ -3,13 +3,18 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
+#define _GNU_SOURCE 1 // for O_DIRECT
+#include <libaio.h>
 
 #include "common.h"
+#include "log.h"
+#include "lock.h"
+
 #include "metablock.h"
 #include "metaroot.h"
 #include "generic_metablock.h"
-#include "log.h"
-#include "lock.h"
+#include "superblock.h"
+#include "niosd_io.h"
 
 static void
 spin_lock_test(void)
@@ -38,13 +43,18 @@ main(void)
     // Test the spinlock api
     spin_lock_test();
 
-    struct mb_header_persistent hp;
-
     STDOUT_MSG("sizeof(struct mb_vblk_entry) = %zd",
-            sizeof(struct mb_vblk_entry));
+               sizeof(struct mb_vblk_entry));
+
+    struct mb_header_persistent hp;
 
     STDOUT_MSG("sizeof(struct mb_header_persistent) = %zd",
             sizeof(hp));
+
+    struct sb_header_persistent sbp;
+
+    STDOUT_MSG("sizeof(struct sb_header_persistent) = %zd",
+               sizeof(sbp));
 
     struct vblkdev_metaroot_header mrh;
 
@@ -55,6 +65,10 @@ main(void)
 
     STDOUT_MSG("sizeof(struct generic_metablock_header) = %zd",
                sizeof(gmh));
+
+    struct niosd_io_request niorq;
+
+    STDOUT_MSG("sizeof(struct niosd_io_request) = %zd", sizeof(niorq));
 
     return 0;
 }

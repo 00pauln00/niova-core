@@ -130,11 +130,11 @@ struct mb_header_chain_link
  */
 struct mb_header_data
 {
-    mb_magic_t           mbh_magic;
-    struct mb_hash       mbh_hash; // must match mbcl_self_mb
+    mb_magic_t           mbh_magic; // this should go into a common header
+    struct mb_hash       mbh_hash; // must match mbcl_self_mb (common header?)
     // <-- START: mbh_self_hash coverage -->
     struct vblkdev_chunk mbh_chunk;
-    mb_version_t         mbh_version;
+    mb_version_t         mbh_version; // this should go into a common header
     uint32_t             mbh__pad;
     mb_type_t            mbh_type; //general metablock?
     uint32_t             mbh__pad0;

@@ -17,6 +17,7 @@ struct vblkdev_handle;
 /**
  * -- struct chunk_handle --
  * Virtual block device chunk handle structure.
+ * @ch_vbh:  backpointer to owning vblkdev handle.
  * @ch_id:  the chunk ID.
  * @ch_tenry:  tree link.
  * @ch_ref:  reference count for this handle.  NOTE:  the reference count is
@@ -31,8 +32,8 @@ struct chunk_handle
     bool                         ch_has_dirty_dpblks;
 };
 
-#define DBG_CHUNK_HNDL(log_level, ch, fmt, ...)                     \
-    log_msg(log_level, "ch@%p %zx ref=%d "fmt, (ch),                \
+#define DBG_CHUNK_HNDL(log_level, ch, fmt, ...)                        \
+    log_msg(log_level, "ch@%p %zx ref:%d "fmt, (ch),                   \
             (ch)->ch_id, (ch)->ch_ref,  ##__VA_ARGS__)
 
 struct chunk_handle *

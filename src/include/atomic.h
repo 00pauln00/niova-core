@@ -9,6 +9,13 @@
 #ifndef NIOVA_ATOMIC_H
 #define NIOVA_ATOMIC_H 1
 
+#include "common.h"
+
+typedef volatile long long int niova_atomic64_t;
+typedef volatile int           niova_atomic32_t;
+typedef volatile short int     niova_atomic16_t;
+typedef volatile signed char   niova_atomic8_t;
+
 // bool __sync_bool_compare_and_swap (type *ptr, type oldval type newval, ...)
 #define niova_atomic_cas __sync_bool_compare_and_swap
 
