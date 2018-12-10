@@ -100,8 +100,9 @@
         return elm;                                                     \
     }                                                                   \
 
-#define RT_GET(name, head, lookup_elm)     name##_GET(head, lookup_elm, false);
-#define RT_GET_ADD(name, head, lookup_elm) name##_GET(head, lookup_elm, true);
-#define RT_PUT(name, head, elm)            name##_PUT(head, elm);
+#define RT_GET(name, head, lookup_elm, add) name##_GET(head, lookup_elm, add)
+#define RT_LOOKUP(name, head, lookup_elm)   name##_GET(head, lookup_elm, false)
+#define RT_GET_ADD(name, head, lookup_elm)  name##_GET(head, lookup_elm, true)
+#define RT_PUT(name, head, elm)             name##_PUT(head, elm)
 
 #endif //REF_TREE_H

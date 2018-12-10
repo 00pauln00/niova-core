@@ -8,11 +8,14 @@ CORE_INCLUDES   = \
 	src/include/lock.h \
 	src/include/log.h \
 	src/include/random.h \
+	src/include/ref_tree_proto.h \
+	src/include/chunk_handle.h \
 	src/include/vblkdev_handle.h
 
 CORE_OBJFILES   = \
 	src/log.o \
 	src/random.o \
+	src/chunk_handle.o \
 	src/vblkdev_handle.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)

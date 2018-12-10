@@ -6,7 +6,20 @@
 
 #include "log.h"
 #include "common.h"
+
+#include "chunk_handle.h"
 #include "vblkdev_handle.h"
+
+static void
+chunk_handle_test(struct vblkdev_handle *vbh)
+{
+    vblkdev_chunk_id_t chunk_id = 789;
+
+    struct chunk_handle *ch = ch_get(vbh, chunk_id, true);
+    NIOVA_ASSERT(ch);
+
+    ch_put(ch);
+}
 
 static void
 vblkdev_handle_test(void)
@@ -16,11 +29,14 @@ vblkdev_handle_test(void)
     vb_id.vdb_id[1] = 456;
 
     struct vblkdev_handle *vbh = vbh_get(vb_id, true);
-    NIOVA_ASSERT(vbh && !vbh_cmp(vbh, (struct vblkdev_handle *)&vb_id));
+    NIOVA_ASSERT(vbh && !vbh_compare(vbh, (struct vblkdev_handle *)&vb_id));
+
+    chunk_handle_test(vbh);
+
     vbh_put(vbh);
 
     vbh = vbh_get(vb_id, false);
-    NIOVA_ASSERT(!vbh);
+//    NIOVA_ASSERT(!vbh);
 }
 
 int

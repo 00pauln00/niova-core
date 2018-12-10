@@ -88,7 +88,7 @@ ref_tree_tests(void)
     {
         te_lookup.val = i;
         struct test_entry *te =
-            RT_GET(ref_tree_test_head, &test_rt, &te_lookup);
+            RT_LOOKUP(ref_tree_test_head, &test_rt, &te_lookup);
 
         NIOVA_ASSERT(!te);
     }

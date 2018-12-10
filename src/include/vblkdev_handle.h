@@ -10,29 +10,11 @@
 #include "common.h"
 #include "log.h"
 #include "lock.h"
+
 #include "tree.h"
+#include "ref_tree_proto.h"
 
-RB_HEAD(chunk_handle_tree, chunk_handle);
-RB_PROTOTYPE(chunk_handle_tree, chunk_handle, ch_tentry, ch_cmp);
-
-RB_HEAD(vblkdev_handle_tree, vblkdev_handle);
-RB_PROTOTYPE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_cmp);
-
-/**
- * -- struct chunk_handle --
- * Virtual block device chunk handle structure.
- * @ch_id:  the chunk ID.
- * @ch_tenry:  tree link.
- * @ch_ref:  reference count for this handle.  NOTE:  the reference count is
- *    managed by the owning vblkdev_handle's lock.
- */
-struct chunk_handle
-{
-    vblkdev_chunk_id_t            ch_id;
-    RB_ENTRY_PACKED(chunk_handle) ch_tentry;
-    int                           ch_ref;
-    bool                          ch_has_dirty_dpblks;
-};
+REF_TREE_HEAD(chunk_handle_tree, chunk_handle);
 
 #define DBG_VBLKDEV_CHUNK_HNDL(log_level, vbch, fmt, ...)               \
     LOG_MSG(log_level, "vbch@%p %zx ref=%d "fmt, (vbch),                \
@@ -51,11 +33,11 @@ struct chunk_handle
  */
 struct vblkdev_handle
 {
-    vblkdev_id_t                    vbh_id; // Must be first entry
-    RB_ENTRY_PACKED(vblkdev_handle) vbh_tentry;
-    int                             vbh_ref;
-    struct chunk_handle_tree        vbh_chunk_handle_tree;
-    spinlock_t                      vbh_lock;
+    vblkdev_id_t                   vbh_id; // Must be first entry
+    REF_TREE_ENTRY(vblkdev_handle) vbh_tentry;
+    int                            vbh_ref;
+    struct chunk_handle_tree       vbh_chunk_handle_tree;
+    spinlock_t                     vbh_lock;
 };
 
 #define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)                      \
@@ -75,31 +57,10 @@ vbh_get(const vblkdev_id_t, const bool);
 void
 vbh_put(struct vblkdev_handle *);
 
-static inline int
-vbh_cmp(const struct vblkdev_handle *a,
-        const struct vblkdev_handle *b)
-{
-    int i;
-    for (i = 0; i < VBLKDEV_ID_WORDS; i++)
-    {
-        if (a->vbh_id.vdb_id[i] < b->vbh_id.vdb_id[i])
-            return -1;
-        else if (a->vbh_id.vdb_id[i] > b->vbh_id.vdb_id[i])
-            return 1;
-    }
-    return 0;
-}
+int
+vbh_compare(const struct vblkdev_handle *, const struct vblkdev_handle *);
 
-static inline int
-ch_cmp(const struct chunk_handle *a,
-       const struct chunk_handle *b)
-{
-    if (a->ch_id < b->ch_id)
-        return -1;
-    else if (a->ch_id > b->ch_id)
-        return 1;
-
-    return 0;
-}
+void
+vbh_ref_cnt_inc(struct vblkdev_handle *);
 
 #endif //VBLKDEV_HANDLE_H
