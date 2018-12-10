@@ -10,7 +10,6 @@
 #include "generic_metablock.h"
 #include "log.h"
 #include "lock.h"
-#include <stdio.h>
 
 static void
 spin_lock_test(void)

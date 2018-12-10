@@ -27,6 +27,10 @@ check: private CFLAGS = $(DEBUG_CFLAGS)
 check: $(CORE_OBJFILES)
 	$(CC) $(DEBUG_CFLAGS) -o test/simple_test test/simple_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(DEBUG_CFLAGS) -o test/ref_test_test test/ref_tree_test.c \
+		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	test/simple_test
+	test/ref_test_test
 
 client-test: private CFLAGS = $(DEBUG_CFLAGS)
 client-test: $(CORE_OBJFILES)
