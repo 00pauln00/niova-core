@@ -102,61 +102,99 @@ niosd_io_compl_event_ring_get_to_fill(struct niosd_io_ctx *nioctx,
 static niosd_io_event_ctx_t
 niosd_device_event_thread_sleep(void)
 {
-    usleep(64);
+    usleep(100);
 }
 
-// HERE we MUST get all the events that we claimed to get!
-static niosd_io_event_ctx_int_t
-niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx,
-                                    struct io_event *event_head,
-                                    const long int num_events_to_get)
+static niosd_io_event_ctx_int64_t
+niosd_device_event_ring_get_next_to_fill(struct niosd_io_ctx *nioctx,
+                                         struct io_event **events_head)
 {
-    long int events_remaining = num_events_to_get;
+    long int num_events_to_get = 0;
+
+    while (!num_events_to_get)
+    {
+        num_events_to_get =
+            niosd_io_compl_event_ring_get_to_fill(nioctx, events_head);
+
+        if (!num_events_to_get)
+            niosd_device_event_thread_sleep();
+    }
+
+    NIOVA_ASSERT(num_events_to_get > 0);
+
+    return num_events_to_get;
+}
+
+static niosd_io_event_ctx_t
+niosd_device_event_thread_debug_new_events(const struct io_event *events_head,
+                                           const int num_events_completed)
+{
+    DEBUG_BLOCK(LL_DEBUG)
+    {
+        int i;
+        for (i = 0; i < num_events_completed; i++)
+        {
+            const struct niosd_io_request *niorq = events_head[i].data;
+            DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
+        }
+    }
+}
+
+static niosd_io_event_ctx_t
+niosd_device_event_thread_post_new_events(struct niosd_io_ctx *nioctx,
+                                          struct io_event *events_head,
+                                          const int num_events_completed)
+{
+    niosd_device_event_thread_debug_new_events(events_head,
+                                               num_events_completed);
+
+    /* Notify completion ctx that new events have been obtained.
+     */
+    niosd_ctx_increment_cer_counter(nioctx, head, num_events_completed);
+}
+
+static niosd_io_event_ctx_int_t
+niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
+{
     int rc = 0;
-    struct timespec ts = {.tv_sec = 2, .tv_nsec = 0};
 
     do
     {
-        long int idx = num_events_to_get - events_remaining;
+        struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000};
+
+        struct io_event *events_head;
+
+        long int num_events_to_get =
+            niosd_device_event_ring_get_next_to_fill(nioctx, &events_head);
 
         int num_events_completed =
             io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
-                         events_remaining, &event_head[idx], &ts);
+                         num_events_to_get, &events_head[0], &ts);
 
-        log_msg(LL_DEBUG, "completed=%d remaining=%ld event_buf=%p",
-                num_events_completed, events_remaining, &event_head[idx]);
+        log_msg(LL_DEBUG, "completed=%d max_to_get=%ld event_buf=%p",
+                num_events_completed, num_events_to_get, &events_head[0]);
 
         if (num_events_completed > 0)
         {
-            niosd_ctx_increment_cer_counter(nioctx, head,
-                                            num_events_completed);
+            NIOVA_ASSERT(num_events_to_get <= num_events_completed);
 
-            events_remaining -= num_events_completed;
-
-            NIOVA_ASSERT(events_remaining >= 0);
-            {
-                int i;
-                for (i = 0; i < events_remaining; i++)
-                {
-                    //    niorq->niorq_iocb.data = niorq;
-
-                    struct niosd_io_request *niorq = event_head[i].data;
-                    DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
-                }
-            }
+            niosd_device_event_thread_post_new_events(nioctx, events_head,
+                                                      num_events_completed);
         }
-        else
+        else if (num_events_completed < 0)
         {
             if (num_events_completed == -EINTR)
                 continue;
             else
                 rc = num_events_completed;
         }
+        else
+        {
+            continue;
+        }
 
-    } while (events_remaining && niosd_event_thread_should_continue(nioctx));
+    } while (!rc && niosd_event_thread_should_continue(nioctx));
 
-    //XXX if / when an error is returned we need to get rid of all the pending
-    //    requests in the device.
     return rc;
 }
 
@@ -169,27 +207,7 @@ niosd_device_event_thread(void *arg)
 
     struct niosd_io_ctx *nioctx = arg;
 
-    long int rc = 0;
-
-    do
-    {
-        struct io_event *events_head;
-        long int num_events_to_get =
-            niosd_io_compl_event_ring_get_to_fill(nioctx, &events_head);
-
-        log_msg(LL_DEBUG, "num_events_to_get=%lu head=%p",
-                num_events_to_get, events_head);
-
-        if (num_events_to_get > 0)
-            rc = niosd_device_event_thread_getevents(nioctx, events_head,
-                                                     num_events_to_get);
-        else
-            niosd_device_event_thread_sleep();
-
-        if (rc < 0)
-            break;
-
-    } while (niosd_event_thread_should_continue(nioctx));
+    long int rc = niosd_device_event_thread_getevents(nioctx);
 
     log_msg(LL_DEBUG, "stopping");
 

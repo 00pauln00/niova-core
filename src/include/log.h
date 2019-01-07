@@ -59,6 +59,9 @@ ll_to_string(enum log_level ll)
     }                                                                   \
 }
 
+#define DEBUG_BLOCK(lvl)                        \
+    if (lvl <= dbgLevel)
+
 #define log_msg LOG_MSG
 
 #define STDOUT_MSG(message, ...)                                      \
