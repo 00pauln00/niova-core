@@ -22,8 +22,6 @@
 
 #define NIOSD_MAX_AIO_EVENTS       65536
 #define NIOSD_MAX_AIO_NREQS_SUBMIT 256
-#define NIOSD_AIO_NRETRIES         32
-#define NIOSD_AIO_RETRY_DELAY_USEC 100
 
 #define NIOSD_GETEVENTS_MIN        1
 #define NIOSD_GETEVENTS_MAX        NIOSD_MAX_AIO_NREQS_SUBMIT
@@ -32,6 +30,7 @@
  */
 typedef void     niosd_io_submitter_ctx_t;
 typedef int      niosd_io_submitter_ctx_int_t;
+typedef int64_t  niosd_io_submitter_ctx_int64_t;
 typedef uint64_t niosd_io_submitter_ctx_uint64_t;
 
 /* Event thread context
@@ -39,13 +38,16 @@ typedef uint64_t niosd_io_submitter_ctx_uint64_t;
 typedef void     niosd_io_event_ctx_t;
 typedef bool     niosd_io_event_ctx_bool_t;
 typedef int      niosd_io_event_ctx_int_t;
+typedef int64_t  niosd_io_event_ctx_int64_t;
 typedef uint64_t niosd_io_event_ctx_uint64_t;
 
 /* Completion thread context
  */
 typedef void     niosd_io_completion_cb_ctx_t;
 typedef int      niosd_io_completion_cb_ctx_int_t;
+typedef int64_t  niosd_io_completion_cb_ctx_int64_t;
 typedef uint64_t niosd_io_completion_cb_ctx_uint64_t;
+typedef size_t   niosd_io_completion_cb_ctx_size_t;
 
 enum niosd_dev_status
 {
@@ -86,11 +88,19 @@ struct niosd_io_compl_event_ring
     const size_t                        niocer_num_events;
 };
 
-#define niosd_ctx_increment_cer_counter(nioctx, counter, value)       \
+#define niosd_ctx_increment_cer_counter(nioctx, counter, value) \
     (nioctx)->nioctx_cer.niocer_##counter += value
+
+#define niosd_ctx_decrement_cer_counter(nioctx, counter, value) \
+    (nioctx)->nioctx_cer.niocer_##counter -= value
 
 #define niosd_ctx_to_cer_counter(nioctx, counter)       \
     (nioctx)->nioctx_cer.niocer_##counter
+
+#define niosd_ctx_to_cer_memb niosd_ctx_to_cer_counter
+
+#define niosd_ctx_to_cer_event(nioctx, event_slot)      \
+    &(nioctx)->nioctx_cer.niocer_events[event_slot]
 
 struct niosd_io_ctx
 {
@@ -233,5 +243,16 @@ niosd_device_open(struct niosd_device *);
 
 niosd_io_submitter_ctx_int_t
 niosd_device_close(struct niosd_device *);
+
+niosd_io_submitter_ctx_int_t
+niosd_io_request_init(struct niosd_io_request *, struct niosd_io_ctx *,
+                      pblk_id_t, enum niosd_io_request_type, uint32_t, void *,
+                      niosd_io_callback_t, void *);
+
+niosd_io_submitter_ctx_int_t
+niosd_io_submit(struct niosd_io_request **, long int);
+
+niosd_io_completion_cb_ctx_size_t
+niosd_io_events_complete(struct niosd_io_ctx *, long int);
 
 #endif

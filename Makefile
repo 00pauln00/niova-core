@@ -1,6 +1,7 @@
 CC		= gcc
 INCLUDE 	= -Isrc/include -Isrc/contrib/include
 DEBUG_CFLAGS 	= -Wall -g -O0 $(INCLUDE)
+#DEBUG_CFLAGS 	= -Wall -g -O2 $(INCLUDE)
 CFLAGS 		= -O2 -Wall $(INCLUDE)
 CFLAGS 	= -Wall -g -O0 $(INCLUDE)
 LDFLAGS		= -lpthread -laio
@@ -50,4 +51,4 @@ pahole : check
 	pahole test/simple_test
 
 clean :
-	rm -fv test/simple_test $(ALL_OBJFILES) $(TARGET) *~
+	rm -fv test/simple_test test/niosd_io_test test/ref_test_test $(ALL_OBJFILES) $(TARGET) *~

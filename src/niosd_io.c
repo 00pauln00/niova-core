@@ -86,7 +86,7 @@ niosd_io_compl_event_ring_get_to_fill(struct niosd_io_ctx *nioctx,
     tail = tail % cer->niocer_num_events;
 
     if (tail > head) // Don't overwrite the tail slot
-        nevents_to_fill= MIN(nevents_to_fill, tail - head - 1);
+        nevents_to_fill = MIN(nevents_to_fill, tail - head - 1);
 
     if (nevents_to_fill)
     {
@@ -123,14 +123,27 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx,
             io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
                          events_remaining, &event_head[idx], &ts);
 
-        log_msg(LL_DEBUG, "num_events_completed=%d", num_events_completed);
+        log_msg(LL_DEBUG, "completed=%d remaining=%ld event_buf=%p",
+                num_events_completed, events_remaining, &event_head[idx]);
 
-        if (rc > 0)
+        if (num_events_completed > 0)
         {
             niosd_ctx_increment_cer_counter(nioctx, head,
                                             num_events_completed);
 
+            events_remaining -= num_events_completed;
+
             NIOVA_ASSERT(events_remaining >= 0);
+            {
+                int i;
+                for (i = 0; i < events_remaining; i++)
+                {
+                    //    niorq->niorq_iocb.data = niorq;
+
+                    struct niosd_io_request *niorq = event_head[i].data;
+                    DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
+                }
+            }
         }
         else
         {
@@ -164,7 +177,8 @@ niosd_device_event_thread(void *arg)
         long int num_events_to_get =
             niosd_io_compl_event_ring_get_to_fill(nioctx, &events_head);
 
-        log_msg(LL_DEBUG, "num_events_to_get=%lu", num_events_to_get);
+        log_msg(LL_DEBUG, "num_events_to_get=%lu head=%p",
+                num_events_to_get, events_head);
 
         if (num_events_to_get > 0)
             rc = niosd_device_event_thread_getevents(nioctx, events_head,
@@ -174,6 +188,7 @@ niosd_device_event_thread(void *arg)
 
         if (rc < 0)
             break;
+
     } while (niosd_event_thread_should_continue(nioctx));
 
     log_msg(LL_DEBUG, "stopping");
@@ -378,10 +393,6 @@ niosd_io_request_init_aio_internal(struct niosd_io_request *niorq)
 {
     int rc = 0;
 
-    /* Use struct iocb's data member for storing the original 'req'.
-     */
-    niorq->niorq_iocb.data = niorq;
-
     int ndev_fd =
         niosd_device_to_fd(niosd_ctx_to_device(niorq->niorq_ctx));
 
@@ -418,6 +429,10 @@ niosd_io_request_init_aio_internal(struct niosd_io_request *niorq)
         rc = -EOPNOTSUPP;
         break;
     }
+
+    /* Use struct iocb's data member for storing the original 'req'.
+     */
+    niorq->niorq_iocb.data = niorq;
 
     return rc;
 }
@@ -462,73 +477,11 @@ niosd_io_request_init(struct niosd_io_request *niorq,
     return niosd_io_request_init_aio_internal(niorq);
 }
 
-/**
- * niosd_io_submit_aio_internal - helper function for linux aio io_submit().
- *    This routine deals with the implementation details of io_submit() which
- *    include the possibility of queing, and not immediately accepting, an
- *    array of requests.
- */
 static niosd_io_submitter_ctx_int_t
-niosd_io_submit_aio_internal(struct niosd_io_request **niorqs, long int nreqs)
+niosd_io_submit_requests_prep(struct niosd_io_request **niorqs,
+                              struct iocb **iocb_ptrs, long int nreqs,
+                              struct niosd_io_ctx **nioctx)
 {
-    if (nreqs > niosdMaxAioNreqsSubmit)
-        return -E2BIG;
-
-    else if (!nreqs)
-        return -EINVAL;
-
-    struct iocb *iocb_ptrs[nreqs];
-
-    long int i;
-    for (i = 0; i < nreqs; i++)
-        iocb_ptrs[i] = &niorqs[i]->niorq_iocb;
-
-    int nsubmitted;
-    int nretries;
-    int rc = 0;
-
-    for (nsubmitted = 0, nretries = 0; nsubmitted < nreqs &&
-             nretries < NIOSD_AIO_NRETRIES; nretries++)
-    {
-        int nreqs_this_iteration = nreqs - nsubmitted;
-        int nsub_this_iteration =
-            io_submit(niorqs[i]->niorq_ctx->nioctx_ctx, nreqs_this_iteration,
-                      &iocb_ptrs[nsubmitted]);
-
-        nsubmitted += nsub_this_iteration;
-
-        rc = nreqs_this_iteration != nsub_this_iteration ? errno : 0;
-        if (rc && rc != EAGAIN)
-        {
-            log_msg(LL_ERROR, "io_submit(): %s", strerror(errno));
-            return -rc;
-        }
-
-        //XXXX
-        ///is this correct -- maybe want to increment on success?
-//        niosd_ctx_increment_cer_counter(&reqs[0]->niorq_ctx, nsub,
-//                                        nreqs_this_iteration);
-        if (rc)
-        {
-            log_msg(LL_WARN, "io_submit(): %s (retries=%d)",
-                    strerror(errno), nretries + 1);
-
-            /* Wait a little bit before retrying
-             */
-            usleep(NIOSD_AIO_RETRY_DELAY_USEC * (nretries + 1));
-        }
-    }
-
-    return -rc;
-}
-
-static niosd_io_submitter_ctx_int_t
-niosd_io_submit_requests_check(struct niosd_io_request **niorqs,
-                               long int nreqs)
-{
-    if (nreqs <= 0)
-        return -EINVAL;
-
     const struct niosd_io_ctx *first_nioctx = niorqs[0]->niorq_ctx;
     long int i;
 
@@ -544,17 +497,118 @@ niosd_io_submit_requests_check(struct niosd_io_request **niorqs,
         {
             return -EOPNOTSUPP;
         }
+
+        iocb_ptrs[i] = &niorqs[i]->niorq_iocb;
     }
+
+    /* Return back to the caller.
+     */
+    *nioctx = niorqs[0]->niorq_ctx;
 
     return 0;
 }
 
+/**
+ * niosd_io_submit_aio_internal - helper function for linux aio io_submit().
+ *    This routine deals with the implementation details of io_submit() which
+ *    include the possibility of queuing, and not immediately accepting, an
+ *    array of requests.
+ * NOTES:  Each request in the array must belong to the same niorq_ctx.
+ */
+static niosd_io_submitter_ctx_int_t
+niosd_io_submit_aio_internal(struct niosd_io_request **niorqs, long int nreqs)
+{
+    if (nreqs <= 0)
+        return -EINVAL;
+
+    else if (nreqs > niosdMaxAioNreqsSubmit)
+        return -E2BIG;
+
+    struct iocb *iocb_ptrs[nreqs];
+    struct niosd_io_ctx *nioctx;
+
+    int rc = niosd_io_submit_requests_prep(niorqs, iocb_ptrs, nreqs, &nioctx);
+    if (rc != 0)
+        return rc;
+
+    /* Optimistically increment the 'nsub' count prior to any submission
+     * attempt to avoid the 'head' counter racing ahead of 'nsub'.
+     */
+    niosd_ctx_increment_cer_counter(nioctx, nsub, nreqs);
+
+    int nsubmitted;
+
+    for (nsubmitted = 0; nsubmitted < nreqs;)
+    {
+        rc = io_submit(nioctx->nioctx_ctx, nreqs - nsubmitted,
+                       &iocb_ptrs[nsubmitted]);
+        if (rc >= 0)
+        {
+            nsubmitted += rc;
+            log_msg(LL_DEBUG, "io_submit(): %d", rc);
+        }
+        else if (rc == -EINTR)
+        {
+            log_msg(LL_DEBUG, "io_submit(): %s", strerror(-rc));
+            continue;
+        }
+        else if (rc == -EAGAIN)
+        {
+            log_msg(LL_WARN, "io_submit(): %s (remaining=%ld)",
+                    strerror(-rc), nreqs - nsubmitted);
+            /* The caller needs to complete some event processing to make
+             * space.
+             */
+            break;
+        }
+        else
+        {
+            niosd_ctx_decrement_cer_counter(nioctx, nsub, nreqs - nsubmitted);
+            log_msg(LL_ERROR, "io_submit(): %s", strerror(-rc));
+
+            return -rc;
+        }
+    }
+
+    return nsubmitted;
+}
+
+/**
+ * niosd_io_submit - Public entry point for I/O request submission by the
+ *   submitter thread.
+ * @niorqs:  array of niosd_io_requests
+ * @nreqs:  number of requests in the array.
+ */
 niosd_io_submitter_ctx_int_t
 niosd_io_submit(struct niosd_io_request **niorqs, long int nreqs)
 {
-    int rc = niosd_io_submit_requests_check(niorqs, nreqs);
-    if (rc)
-        return rc;
-
     return niosd_io_submit_aio_internal(niorqs, nreqs);
+}
+
+niosd_io_completion_cb_ctx_size_t
+niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
+{
+    const uint64_t tail_cnt = niosd_ctx_to_cer_counter(nioctx, tail);
+    size_t nevents_processed = 0;
+    long int i;
+
+    for (i = 0; i < max_events && niosd_ctx_pending_completion_ops(nioctx);
+         i++)
+    {
+        const int event_slot =
+            (tail_cnt + i) % niosd_ctx_to_cer_memb(nioctx, num_events);
+
+        struct io_event *event = niosd_ctx_to_cer_event(nioctx, event_slot);
+        struct niosd_io_request *niorq = event->data;
+
+        niosd_ctx_increment_cer_counter(nioctx, tail, 1);
+
+        DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
+
+        niorq->niorq_cb(niorq);
+
+        nevents_processed++;
+    }
+
+    return nevents_processed;
 }
