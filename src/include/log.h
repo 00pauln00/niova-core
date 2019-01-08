@@ -49,9 +49,9 @@ ll_to_string(enum log_level ll)
     if (lvl <= dbgLevel)                                                \
     {                                                                   \
         struct timespec ts;                                             \
-        clock_gettime(CLOCK_MONOTONIC_RAW, &ts);                        \
-        fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",       \
-                ts.tv_sec, ts.tv_nsec,                  \
+        clock_gettime(CLOCK_MONOTONIC, &ts);                            \
+        fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",         \
+                ts.tv_sec, ts.tv_nsec,                                  \
                 ll_to_string(lvl), thread_id_get(), __func__,           \
                 __LINE__, ##__VA_ARGS__);                               \
         if (lvl == LL_FATAL)                                            \
