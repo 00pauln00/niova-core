@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <pthread.h>
 
+#include "common.h"
+
 typedef pthread_t thread_id_t;
 
 enum log_level
@@ -49,7 +51,7 @@ ll_to_string(enum log_level ll)
     if (lvl <= dbgLevel)                                                \
     {                                                                   \
         struct timespec ts;                                             \
-        clock_gettime(CLOCK_MONOTONIC, &ts);                            \
+        niova_unstable_clock(&ts);                                      \
         fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",         \
                 ts.tv_sec, ts.tv_nsec,                                  \
                 ll_to_string(lvl), thread_id_get(), __func__,           \

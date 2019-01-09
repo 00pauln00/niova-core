@@ -126,17 +126,21 @@ niosd_device_event_ring_get_next_to_fill(struct niosd_io_ctx *nioctx,
 }
 
 static niosd_io_event_ctx_t
-niosd_device_event_thread_debug_new_events(const struct io_event *events_head,
-                                           const int num_events_completed)
+niosd_device_event_thread_iter_new_events(const struct io_event *events_head,
+                                          const int num_events_completed)
 {
-    DEBUG_BLOCK(LL_DEBUG)
+    struct timespec now;
+    niova_unstable_clock(&now);
+
+    int i;
+    for (i = 0; i < num_events_completed; i++)
     {
-        int i;
-        for (i = 0; i < num_events_completed; i++)
-        {
-            const struct niosd_io_request *niorq = events_head[i].data;
-            DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
-        }
+        struct niosd_io_request *niorq = events_head[i].data;
+        niosd_io_request_time_stamp_apply(niorq,
+                                          NIOSD_IO_REQ_TIMER_EVENT_REAPED,
+                                          now);
+
+        DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
     }
 }
 
@@ -145,8 +149,8 @@ niosd_device_event_thread_post_new_events(struct niosd_io_ctx *nioctx,
                                           struct io_event *events_head,
                                           const int num_events_completed)
 {
-    niosd_device_event_thread_debug_new_events(events_head,
-                                               num_events_completed);
+    niosd_device_event_thread_iter_new_events(events_head,
+                                              num_events_completed);
 
     /* Notify completion ctx that new events have been obtained.
      */
@@ -490,6 +494,9 @@ niosd_io_request_init(struct niosd_io_request *niorq,
     niorq->niorq_cb = niorq_cb;
     niorq->niorq_cb_data = cb_data;
 
+    memset(&niorq->niorq_timers, 0,
+           sizeof(struct timespec) * NIOSD_IO_REQ_TIMER_ALL);
+
     DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
 
     return niosd_io_request_init_aio_internal(niorq);
@@ -501,8 +508,11 @@ niosd_io_submit_requests_prep(struct niosd_io_request **niorqs,
                               struct niosd_io_ctx **nioctx)
 {
     const struct niosd_io_ctx *first_nioctx = niorqs[0]->niorq_ctx;
-    long int i;
+    struct timespec now;
 
+    niova_unstable_clock(&now);
+
+    long int i;
     for (i = 0; i < nreqs; i++)
     {
         if (i > 0)
@@ -517,6 +527,9 @@ niosd_io_submit_requests_prep(struct niosd_io_request **niorqs,
         }
 
         iocb_ptrs[i] = &niorqs[i]->niorq_iocb;
+
+        niosd_io_request_time_stamp_apply(niorqs[i],
+                                          NIOSD_IO_REQ_TIMER_SUBMITTED, now);
     }
 
     /* Return back to the caller.
@@ -608,8 +621,11 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
 {
     const uint64_t tail_cnt = niosd_ctx_to_cer_counter(nioctx, tail);
     size_t nevents_processed = 0;
-    long int i;
 
+    struct timespec now;
+    niova_unstable_clock(&now);
+
+    long int i;
     for (i = 0; i < max_events && niosd_ctx_pending_completion_ops(nioctx);
          i++)
     {
@@ -618,6 +634,9 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
 
         struct io_event *event = niosd_ctx_to_cer_event(nioctx, event_slot);
         struct niosd_io_request *niorq = event->data;
+
+        niosd_io_request_time_stamp_apply(niorq,
+                                          NIOSD_IO_REQ_TIMER_CB_EXEC, now);
 
         niosd_ctx_increment_cer_counter(nioctx, tail, 1);
 

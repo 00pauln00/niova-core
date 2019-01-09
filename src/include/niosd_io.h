@@ -16,9 +16,9 @@
 #include <limits.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <time.h>
 
 #include "common.h"
-#include "atomic.h"
 
 #define NIOSD_MAX_AIO_EVENTS       65536
 #define NIOSD_MAX_AIO_NREQS_SUBMIT 256
@@ -174,6 +174,14 @@ struct niosd_io_request;
 
 typedef void (*niosd_io_callback_t)(struct niosd_io_request *);
 
+enum niosd_io_request_timers
+{
+    NIOSD_IO_REQ_TIMER_SUBMITTED = 0,
+    NIOSD_IO_REQ_TIMER_EVENT_REAPED = 1,
+    NIOSD_IO_REQ_TIMER_CB_EXEC = 2,
+    NIOSD_IO_REQ_TIMER_ALL = 3,
+};
+
 /**
  * -- niosd_io_request --
  * The request structure which holds all relevant information for request
@@ -206,16 +214,17 @@ struct niosd_io_request
     };
     niosd_io_callback_t        niorq_cb;
     void                      *niorq_cb_data;
+    struct timespec            niorq_timers[NIOSD_IO_REQ_TIMER_ALL];
 };
 
 #define DBG_NIOSD_REQ(log_level, iorq, fmt, ...)                        \
     log_msg(log_level,                                                  \
-            "iorq@%p %s(%zu:%zu) pblk:%x ns:%u t:%d buf:%p "fmt,      \
+            "iorq@%p %s(%zu:%zu) pblk:%x ns:%u t:%d buf:%p "fmt,        \
             (iorq), niosd_ctx_to_device((iorq)->niorq_ctx)->ndev_name,  \
             niosd_ctx_pending_io_ops((iorq)->niorq_ctx),                \
             niosd_ctx_pending_completion_ops((iorq)->niorq_ctx),        \
             (iorq)->niorq_pblk_id, (iorq)->niorq_nsectors,              \
-            (iorq)->niorq_type, (iorq)->niorq_src_buf, ##__VA_ARGS__)
+            (iorq)->niorq_type, (iorq)->niorq_src_buf, ##__VA_ARGS__);  \
 
 static inline struct niosd_io_ctx *
 niosd_device_to_ctx(struct niosd_device *ndev, enum niosd_io_ctx_type type)
@@ -233,6 +242,21 @@ niosd_ctx_to_device(struct niosd_io_ctx *nioctx)
     return (struct niosd_device *)((char *)nioctx -
                                    offsetof(struct niosd_device,
                                             ndev_ctxs[nioctx->nioctx_type]));
+}
+
+static inline void
+niosd_io_request_time_stamp(struct niosd_io_request *niorq,
+                            const enum niosd_io_request_timers timer)
+{
+    niova_unstable_clock(&niorq->niorq_timers[timer]);
+}
+
+static inline void
+niosd_io_request_time_stamp_apply(struct niosd_io_request *niorq,
+                                  const enum niosd_io_request_timers timer,
+                                  const struct timespec ts)
+{
+    niorq->niorq_timers[timer] = ts;
 }
 
 niosd_io_submitter_ctx_t
