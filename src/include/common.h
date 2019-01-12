@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
+#include <string.h>
+
+/* No NIOVA includes may be added here!
+ */
 
 #ifndef NBBY
 #define NBBY 8

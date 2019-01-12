@@ -9,6 +9,8 @@
 
 #include "ref_tree_proto.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 REF_TREE_HEAD(ref_tree_test_head, test_entry);
 
 struct test_entry
@@ -97,6 +99,8 @@ ref_tree_tests(void)
 int
 main(void)
 {
+    lreg_subsystem_init();
+
     ref_tree_tests();
 
     return 0;

@@ -13,14 +13,16 @@ CORE_INCLUDES   = \
 	src/include/ref_tree_proto.h \
 	src/include/chunk_handle.h \
 	src/include/vblkdev_handle.h \
-	src/include/niosd_io.h
+	src/include/niosd_io.h \
+	src/include/local_registry.h
 
 CORE_OBJFILES   = \
 	src/log.o \
 	src/random.o \
 	src/chunk_handle.o \
 	src/vblkdev_handle.o \
-	src/niosd_io.o
+	src/niosd_io.o \
+	src/local_registry.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova
