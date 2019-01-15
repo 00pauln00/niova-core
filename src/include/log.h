@@ -12,6 +12,8 @@
 #include "common.h"
 #include "local_registry.h"
 
+LREG_ROOT_ENTRY_EXPORT(logEntries);
+
 typedef pthread_t thread_id_t;
 
 enum log_level
@@ -78,7 +80,9 @@ struct log_entry_info
     int _node_install_rc = 0;                                           \
     if (lreg_node_needs_installation(&regFileEntry))                    \
     {                                                                   \
-        _node_install_rc = lreg_node_install_in_root(&regFileEntry);    \
+        _node_install_rc =                                              \
+            lreg_node_install(&regFileEntry,                            \
+                              LREG_ROOT_ENTRY_PTR(logEntries));         \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY);                    \
     }                                                                   \
@@ -90,33 +94,29 @@ struct log_entry_info
                      _node_install_rc == -EALREADY);                    \
     }                                                                   \
 
-#define LOG_MSG(lvl, message, ...)                                      \
+#define SIMPLE_LOG_MSG(level, message, ...)                             \
 {                                                                       \
-    REGISTY_ENTRY_FUNCTION_GENERATE(lvl);                               \
-                                                                        \
-    if (logEntryInfo.lei_level <= dbgLevel)                             \
+    if (level <= dbgLevel)                                              \
     {                                                                   \
         struct timespec ts;                                             \
         niova_unstable_clock(&ts);                                      \
         fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",         \
                 ts.tv_sec, ts.tv_nsec,                                  \
-                ll_to_string(lvl), thread_id_get(), __func__,           \
+                ll_to_string(level), thread_id_get(), __func__,         \
                 __LINE__, ##__VA_ARGS__);                               \
-        if (lvl == LL_FATAL)                                            \
-            thread_abort();                                             \
+        if (level == LL_FATAL) thread_abort();                          \
     }                                                                   \
 }
 
-#define FATAL_MSG(message, ...)                                         \
+#define LOG_MSG(lvl, message, ...)                                      \
 {                                                                       \
-    struct timespec ts;                                                 \
-    niova_unstable_clock(&ts);                                          \
-    fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",             \
-            ts.tv_sec, ts.tv_nsec,                                      \
-            ll_to_string(LL_FATAL), thread_id_get(), __func__,          \
-            __LINE__, ##__VA_ARGS__);                                   \
-    thread_abort();                                                     \
+    REGISTY_ENTRY_FUNCTION_GENERATE(lvl);                               \
+                                                                        \
+    SIMPLE_LOG_MSG(logEntryInfo.lei_level, message, ##__VA_ARGS__);     \
 }
+
+#define FATAL_MSG(message, ...)                         \
+    SIMPLE_LOG_MSG(LL_FATAL, message, ##__VA_ARGS__)
 
 #define NIOVA_ASSERT(cond)                                      \
 {                                                               \
@@ -147,5 +147,8 @@ log_level_set(enum log_level);
 
 int
 log_lreg_cb(enum lreg_node_cb_ops, struct lreg_node *lrn, struct lreg_value *);
+
+init_ctx_t
+log_subsys_init(void) __attribute__ ((constructor (LOG_SUBSYS_CTOR_PRIORITY)));
 
 #endif //NIOVA_LOG_H

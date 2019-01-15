@@ -94,8 +94,6 @@ main(void)
 {
     log_level_set(LL_DEBUG);
 
-    lreg_subsystem_init();
-
     int rc = create_test_device();
     if (rc)
         exit(rc);

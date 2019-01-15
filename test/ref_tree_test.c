@@ -99,8 +99,6 @@ ref_tree_tests(void)
 int
 main(void)
 {
-    lreg_subsystem_init();
-
     ref_tree_tests();
 
     return 0;

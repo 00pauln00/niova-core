@@ -11,6 +11,8 @@
 
 enum log_level dbgLevel = LL_WARN;
 
+LREG_ROOT_ENTRY_GENERATE(logEntries, LREG_USER_TYPE_LOG);
+
 static lreg_install_int_ctx_t
 log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                            struct lreg_value *lreg_val)
@@ -87,3 +89,10 @@ thread_abort(void)
 {
     abort();
 }
+
+init_ctx_t
+log_subsys_init(void)
+{
+    LREG_ROOT_ENTRY_INSTALL(logEntries);
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
+};

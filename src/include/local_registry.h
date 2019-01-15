@@ -214,7 +214,48 @@ lreg_node_init(struct lreg_node *, enum lreg_node_types, enum lreg_user_types,
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
 
-void
-lreg_subsystem_init(void);
+init_ctx_t
+lreg_subsystem_init(void)
+    __attribute__ ((constructor (LREG_SUBSYS_CTOR_PRIORITY)));
+
+#define LREG_ROOT_ENTRY_GENERATE(name, user_type)                       \
+    static lreg_install_int_ctx_t                                       \
+    lreg_root_cb##name(enum lreg_node_cb_ops op, struct lreg_node *lrn, \
+                       struct lreg_value *lreg_val)                     \
+    {                                                                   \
+        switch (op)                                                     \
+        {                                                               \
+        case LREG_NODE_CB_OP_GET_NAME:                                  \
+            snprintf(lreg_val->lrv_string, LREG_VALUE_STRING_MAX,       \
+                     #name);                                            \
+            break;                                                      \
+        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */           \
+        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */           \
+        case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */           \
+        case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */           \
+            break;                                                      \
+        default:                                                        \
+            return -ENOENT;                                             \
+        }                                                               \
+                                                                        \
+        return 0;                                                       \
+    }                                                                   \
+                                                                        \
+    struct lreg_node rootEntry##name = {                                \
+        .lrn_cb_arg = (void *)1,                                        \
+        .lrn_node_type = LREG_NODE_TYPE_OBJECT,                         \
+        .lrn_user_type = user_type,                                     \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_cb = lreg_root_cb##name                                    \
+    }                                                                   \
+
+#define LREG_ROOT_ENTRY_EXPORT(name)                                    \
+    extern struct lreg_node rootEntry##name
+
+#define LREG_ROOT_ENTRY_PTR(name)                                        \
+    &rootEntry##name
+
+#define LREG_ROOT_ENTRY_INSTALL(name)                                    \
+    NIOVA_ASSERT(!lreg_node_install_in_root(LREG_ROOT_ENTRY_PTR(name)))
 
 #endif //LOCAL_REGISTRY_H

@@ -80,7 +80,5 @@ main(void)
 
     STDOUT_MSG("sizeof(struct niosd_io_request) = %zd", sizeof(niorq));
 
-    lreg_subsystem_init();
-
     return 0;
 }

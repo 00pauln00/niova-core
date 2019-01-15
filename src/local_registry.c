@@ -58,6 +58,7 @@ lreg_install_int_ctx_t
 lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
 {
     NIOVA_ASSERT(lRegInitialized);
+    NIOVA_ASSERT(!lreg_node_needs_installation(parent));
 
 #if 0
     struct lreg_value lrv;
@@ -128,9 +129,16 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
     lrn->lrn_cb = cb;
 
     SLIST_ENTRY_INIT(&lrn->lrn_lentry);
+    SLIST_INIT(&lrn->lrn_head);
 
     if (user_type != LREG_USER_TYPE_ROOT)
+    {
         DBG_LREG_NODE(LL_DEBUG, lrn, "");
+    }
+    else
+    {
+        lrn->lrn_install_state = LREG_NODE_INSTALLED;
+    }
 }
 
 static lreg_install_int_ctx_t
@@ -150,7 +158,7 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
-void
+init_ctx_t
 lreg_subsystem_init(void)
 {
     NIOVA_ASSERT(!lRegInitialized);
@@ -161,4 +169,6 @@ lreg_subsystem_init(void)
                    lreg_root_node_cb, true);
 
     lRegInitialized = true;
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }
