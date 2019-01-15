@@ -19,8 +19,7 @@ typedef int  lreg_install_int_ctx_t;
 typedef bool lreg_install_bool_ctx_t;
 typedef	void lreg_svc_ctx_t;
 
-#define LREG_NODE_NAME_MAX 63
-#define LREG_VALUE_STRING_MAX 63
+#define LREG_VALUE_STRING_MAX 255
 
 enum lreg_node_types
 {
@@ -57,13 +56,14 @@ enum lreg_node_cb_ops
  */
 struct lreg_value
 {
+    enum lreg_node_types lrv_request_type;
     union
     {
-        uint64_t lrv_unsigned_val;
-        uint64_t lrv_signed_val;
-        float    lrv_float;
-        bool     lrv_bool;
-        char     lrv_string[LREG_VALUE_STRING_MAX];
+        uint64_t         lrv_unsigned_val;
+        int64_t          lrv_signed_val;
+        float            lrv_float;
+        bool             lrv_bool;
+        char             lrv_string[LREG_VALUE_STRING_MAX + 1];
     };
 };
 
@@ -77,13 +77,13 @@ typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
  */
 struct lreg_node
 {
-//    char                             lrn_name[LREG_NODE_NAME_MAX + 1];
     enum lreg_node_types             lrn_node_type;
     enum lreg_user_types             lrn_user_type;
     uint8_t                          lrn_install_state;
     uint16_t                         lrn_tmp_node:1,
                                      lrn_statically_allocated:1,
                                      lrn_root_node:1,
+                                     lrn_monitor:1,
                                      lrn_may_destroy:1;
     void                            *lrn_cb_arg;
     lrn_cb_t                         lrn_cb;
@@ -154,10 +154,9 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
     return '?';
 }
 
-
 #define DBG_LREG_NODE(log_level, lrn, fmt, ...)                         \
 {                                                                       \
-    log_msg(log_level, "lrn@%p %s %c%c%c%c%c%c%c arg=%p "fmt,           \
+    log_msg(log_level, "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,         \
             (lrn),                                                      \
             (const char *)({                                            \
                 struct lreg_value lrv;                                  \
@@ -171,6 +170,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
             (lrn)->lrn_tmp_node              ? 't' : '-',               \
             (lrn)->lrn_root_node             ? 'r' : '-',               \
             (lrn)->lrn_may_destroy           ? 'd' : '-',               \
+            (lrn)->lrn_monitor               ? 'm' : '-',               \
             (lrn)->lrn_cb_arg, ##__VA_ARGS__);                          \
 }
 
@@ -252,10 +252,10 @@ lreg_subsystem_init(void)
 #define LREG_ROOT_ENTRY_EXPORT(name)                                    \
     extern struct lreg_node rootEntry##name
 
-#define LREG_ROOT_ENTRY_PTR(name)                                        \
+#define LREG_ROOT_ENTRY_PTR(name)                                       \
     &rootEntry##name
 
-#define LREG_ROOT_ENTRY_INSTALL(name)                                    \
+#define LREG_ROOT_ENTRY_INSTALL(name)                                   \
     NIOVA_ASSERT(!lreg_node_install_in_root(LREG_ROOT_ENTRY_PTR(name)))
 
 #endif //LOCAL_REGISTRY_H

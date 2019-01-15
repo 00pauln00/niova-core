@@ -48,7 +48,7 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
         NIOVA_ASSERT(!rc); // Bogus entries should not be here.
 
         if (!strncmp(sibling_val.lrv_string, child_val.lrv_string,
-                     LREG_NODE_NAME_MAX))
+                     LREG_VALUE_STRING_MAX))
             return -EEXIST;
     }
     return 0;
@@ -59,16 +59,6 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
 {
     NIOVA_ASSERT(lRegInitialized);
     NIOVA_ASSERT(!lreg_node_needs_installation(parent));
-
-#if 0
-    struct lreg_value lrv;
-    child->lrn_cb(LREG_NODE_CB_OP_GET_NAME, child, &lrv);
-
-    STDOUT_MSG("child=%p %c parent=%p %c %s",
-               child, lreg_node_to_node_type(child), parent,
-               lreg_node_to_node_type(parent),
-               lrv.lrv_string);
-#endif
 
     if (!lreg_node_needs_installation(child))
         return -EALREADY;
@@ -99,10 +89,6 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
     }
 
     LREG_SUBSYS_UNLOCK;
-
-#if 0
-    STDOUT_MSG("%s rc=%d: %s", lrv.lrv_string, rc, strerror(-rc));
-#endif
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
     DBG_LREG_NODE(LL_DEBUG, child, "child");
