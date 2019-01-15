@@ -25,6 +25,8 @@
 #include <pthread.h>
 #include <linux/limits.h>
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 #define IC_BLOCKS_PER_MMAP_REGION 16
 #if 1
 #define IC_MMAP_SIZE (1048576)
@@ -288,8 +290,8 @@ ipc_mmap_client_io_complete(struct ipcmmap_config *ic, const int ncompletions)
 
         enum log_level lvl = (rc != sizeof(io_op)) ? LL_FATAL : LL_DEBUG;
 
-        log_msg(lvl, "read() rc=%d: %s",
-                rc, rc != sizeof(io_op) ? strerror(errno) : "");
+        SIMPLE_LOG_MSG(lvl, "read() rc=%d: %s",
+                       rc, rc != sizeof(io_op) ? strerror(errno) : "");
 
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending)
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_txn == io_op.io_txn);
@@ -365,8 +367,8 @@ ipc_mmap_client_recv_thread(void *arg)
 
         enum log_level lvl = (rc != sizeof(io_op)) ? LL_FATAL : LL_DEBUG;
 
-        log_msg(lvl, "read() rc=%d: %s",
-                rc, rc != sizeof(io_op) ? strerror(errno) : "");
+        SIMPLE_LOG_MSG(lvl, "read() rc=%d: %s",
+                       rc, rc != sizeof(io_op) ? strerror(errno) : "");
 
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending)
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_txn == io_op.io_txn);
