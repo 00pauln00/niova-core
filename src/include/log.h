@@ -10,6 +10,9 @@
 #include <pthread.h>
 
 #include "common.h"
+#include "local_registry.h"
+
+LREG_ROOT_ENTRY_EXPORT(logEntries);
 
 typedef pthread_t thread_id_t;
 
@@ -24,7 +27,6 @@ enum log_level
 };
 
 extern enum log_level dbgLevel;
-
 
 static inline const char *
 ll_to_string(enum log_level ll)
@@ -46,19 +48,80 @@ ll_to_string(enum log_level ll)
     return "debug";
 }
 
-#define LOG_MSG(lvl, message, ...)                                      \
+struct log_entry_info
+{
+    enum log_level lei_level;
+    int            lei_lineno;
+    const char    *lei_func;
+};
+
+#define REGISTRY_ENTRY_FILE_GENERATE                                    \
+    static struct lreg_node regFileEntry = {                            \
+        .lrn_cb_arg = (void *)__FILE__,                                 \
+        .lrn_node_type = LREG_NODE_TYPE_ARRAY,                          \
+        .lrn_user_type = LREG_USER_TYPE_LOG,                            \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_cb = log_lreg_cb,                                          \
+    }
+
+#define REGISTY_ENTRY_FUNCTION_GENERATE(debug_level)                    \
+    static struct log_entry_info logEntryInfo = {                       \
+        .lei_level = debug_level,                                       \
+        .lei_lineno = __LINE__,                                         \
+        .lei_func = __func__,                                           \
+    };                                                                  \
+    static struct lreg_node logMsgLrn = {                               \
+        .lrn_cb_arg = &logEntryInfo,                                    \
+        .lrn_node_type = LREG_NODE_TYPE_UNSIGNED_VAL,                   \
+        .lrn_user_type = LREG_USER_TYPE_LOG,                            \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_cb = log_lreg_cb,                                          \
+    };                                                                  \
+    int _node_install_rc = 0;                                           \
+    if (lreg_node_needs_installation(&regFileEntry))                    \
+    {                                                                   \
+        _node_install_rc =                                              \
+            lreg_node_install(&regFileEntry,                            \
+                              LREG_ROOT_ENTRY_PTR(logEntries));         \
+        NIOVA_ASSERT(!_node_install_rc ||                               \
+                     _node_install_rc == -EALREADY);                    \
+    }                                                                   \
+    if (lreg_node_needs_installation(&logMsgLrn))                       \
+    {                                                                   \
+        _node_install_rc = lreg_node_install(&logMsgLrn,                \
+                                             &regFileEntry);            \
+        NIOVA_ASSERT(!_node_install_rc ||                               \
+                     _node_install_rc == -EALREADY);                    \
+    }                                                                   \
+
+#define SIMPLE_LOG_MSG(level, message, ...)                             \
 {                                                                       \
-    if (lvl <= dbgLevel)                                                \
+    if (level <= dbgLevel)                                              \
     {                                                                   \
         struct timespec ts;                                             \
         niova_unstable_clock(&ts);                                      \
         fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",         \
                 ts.tv_sec, ts.tv_nsec,                                  \
-                ll_to_string(lvl), thread_id_get(), __func__,           \
+                ll_to_string(level), thread_id_get(), __func__,         \
                 __LINE__, ##__VA_ARGS__);                               \
-        if (lvl == LL_FATAL)                                            \
-            thread_abort();                                             \
+        if (level == LL_FATAL) thread_abort();                          \
     }                                                                   \
+}
+
+#define LOG_MSG(lvl, message, ...)                                      \
+{                                                                       \
+    REGISTY_ENTRY_FUNCTION_GENERATE(lvl);                               \
+                                                                        \
+    SIMPLE_LOG_MSG(logEntryInfo.lei_level, message, ##__VA_ARGS__);     \
+}
+
+#define FATAL_MSG(message, ...)                         \
+    SIMPLE_LOG_MSG(LL_FATAL, message, ##__VA_ARGS__)
+
+#define NIOVA_ASSERT(cond)                                      \
+{                                                               \
+    if (!(cond))                                                \
+        FATAL_MSG("failed assertion: "#cond);                   \
 }
 
 #define DEBUG_BLOCK(lvl)                        \
@@ -73,12 +136,6 @@ ll_to_string(enum log_level ll)
             __LINE__,##__VA_ARGS__);                                  \
 }
 
-#define NIOVA_ASSERT(cond)                                      \
-{                                                               \
-    if (!(cond))                                                \
-        LOG_MSG(LL_FATAL, "failed assertion: "#cond);           \
-}
-
 thread_id_t
 thread_id_get(void);
 
@@ -87,5 +144,11 @@ thread_abort(void);
 
 void
 log_level_set(enum log_level);
+
+int
+log_lreg_cb(enum lreg_node_cb_ops, struct lreg_node *lrn, struct lreg_value *);
+
+init_ctx_t
+log_subsys_init(void) __attribute__ ((constructor (LOG_SUBSYS_CTOR_PRIORITY)));
 
 #endif //NIOVA_LOG_H

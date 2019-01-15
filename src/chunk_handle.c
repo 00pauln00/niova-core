@@ -12,6 +12,8 @@
 #include "vblkdev_handle.h"
 #include "chunk_handle.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 /**
  * ch_cmp - private comparison function for ref tree.
  */

@@ -12,6 +12,11 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <time.h>
+#include <errno.h>
+#include <string.h>
+
+/* No NIOVA includes may be added here!
+ */
 
 #ifndef NBBY
 #define NBBY 8
@@ -39,6 +44,8 @@ typedef uint32_t mb_version_t;
 typedef uint32_t mb_crc32_t;
 typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
+
+typedef void     init_ctx_t;
 
 #define NIOVA_OSD_ID_WORDS 2
 #define VBLKDEV_ID_WORDS 2
@@ -245,5 +252,10 @@ common_compile_time_asserts(void)
         }                                                               \
     } while (0)
 #endif
+
+enum constructor_priorities {
+    LREG_SUBSYS_CTOR_PRIORITY = 101,
+    LOG_SUBSYS_CTOR_PRIORITY,
+};
 
 #endif //NIOVA_COMMON_H

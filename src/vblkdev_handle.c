@@ -12,6 +12,8 @@
 #include "ref_tree_proto.h"
 #include "vblkdev_handle.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 /**
  * vbh_cmp - private ref tree comparison function.
  */

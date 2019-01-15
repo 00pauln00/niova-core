@@ -15,6 +15,7 @@
 #include "generic_metablock.h"
 #include "superblock.h"
 #include "niosd_io.h"
+#include "local_registry.h"
 
 static void
 spin_lock_test(void)
@@ -22,11 +23,20 @@ spin_lock_test(void)
     spinlock_t lock;
 
     spinlock_init(&lock);
+
+    STDOUT_MSG("lock init value=%d", lock);
+
     spinlock_lock(&lock);
+
+    STDOUT_MSG("lock locked value=%d", lock);
     spinlock_unlock(&lock);
+
+    STDOUT_MSG("lock unlocked value=%d", lock);
 
     int rc = spinlock_trylock(&lock);
     NIOVA_ASSERT(!rc);
+
+    STDOUT_MSG("lock trylocked value=%d", lock);
 
     spinlock_unlock(&lock);
     spinlock_destroy(&lock);

@@ -14,6 +14,8 @@
 
 #include "niosd_io.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 #define NIOSD_IO_OPEN_FLAGS (O_DIRECT | O_RDWR)
 #define NIOSD_MIN_DEVICE_SZ_IN_PBLKS 8192UL
 #define NIOSD_MIN_DEVICE_SZ_IN_BYTES                    \

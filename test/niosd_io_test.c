@@ -10,8 +10,11 @@
 #include <unistd.h>
 
 #include "log.h"
+#include "local_registry.h"
 
 #include "niosd_io.h"
+
+REGISTRY_ENTRY_FILE_GENERATE;
 
 #define TEST_DEVICE_NAME "./test_niosd.device"
 #define TEST_DEVICE_SIZE_IN_BYTES (1024ul * 1024ul * 1024ul)
