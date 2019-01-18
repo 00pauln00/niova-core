@@ -4,6 +4,7 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
 
+#define _GNU_SOURCE
 #include <pthread.h>
 #include <stdlib.h>
 
@@ -22,14 +23,14 @@ log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     switch (op)
     {
     case LREG_NODE_CB_OP_GET_NAME:
-        snprintf(lreg_val->lrv_string, LREG_VALUE_STRING_MAX, "%s:%d",
-                 lei->lei_func, (int)lei->lei_lineno);
+        snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
+                 "%s:%d", lei->lei_func, (int)lei->lei_lineno);
         break;
     case LREG_NODE_CB_OP_READ_VAL:
-        lreg_val->lrv_unsigned_val = lei->lei_level;
+        lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_level;
         break;
     case LREG_NODE_CB_OP_WRITE_VAL:
-        lei->lei_level = lreg_val->lrv_unsigned_val;
+        lei->lei_level = lreg_val->put.lrv_value_in.lrv_unsigned_val;
         break;
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
     case LREG_NODE_CB_OP_DESTROY_NODE:
@@ -48,7 +49,8 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     switch (op)
     {
     case LREG_NODE_CB_OP_GET_NAME:
-        strncpy(lreg_val->lrv_string, lrn->lrn_cb_arg, LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lrn->lrn_cb_arg,
+                LREG_VALUE_STRING_MAX);
         break;
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
     case LREG_NODE_CB_OP_DESTROY_NODE:
@@ -76,18 +78,6 @@ void
 log_level_set(enum log_level ll)
 {
     dbgLevel = ll;
-}
-
-thread_id_t
-thread_id_get(void)
-{
-    return pthread_self();
-}
-
-void
-thread_abort(void)
-{
-    abort();
 }
 
 init_ctx_t

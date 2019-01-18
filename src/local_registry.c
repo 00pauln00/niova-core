@@ -4,31 +4,48 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
 
+#define _GNU_SOURCE
 #include <pthread.h>
+#include <unistd.h>
 
 #include "log.h"
+#include "lock.h"
 #include "atomic.h"
 #include "local_registry.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static struct lreg_node lRegRootNode;
-static bool             lRegInitialized = false;
-static pthread_rwlock_t lRegRwLock = PTHREAD_RWLOCK_INITIALIZER;
+static struct lreg_node_list      lRegInstallingNodes;
+static struct lreg_node           lRegRootNode;
+static bool                       lRegInitialized = false;
+static spinlock_t                 lRegLock;
+static pthread_t                  lRegSvcThread;
+static struct lreg_svc_thread_ctl lRegSvcThreadCtl;
+static pthread_rwlock_t           lRegRwLock;
 
 #define LREG_SUBSYS_WRLOCK pthread_rwlock_wrlock(&lRegRwLock)
 #define LREG_SUBSYS_RDLOCK pthread_rwlock_rdlock(&lRegRwLock)
 #define LREG_SUBSYS_UNLOCK pthread_rwlock_unlock(&lRegRwLock)
 
+#define LREG_NODE_INSTALL_LOCK   spinlock_lock(&lRegLock)
+#define LREG_NODE_INSTALL_UNLOCK spinlock_unlock(&lRegLock)
+
+/**
+ * lreg_root_node_get - returns the root node of the local registry.
+ */
+struct lreg_node *
+lreg_root_node_get(void)
+{
+    NIOVA_ASSERT(lRegInitialized);
+
+    return &lRegRootNode;
+}
+
+#if 0
 static lreg_install_int_ctx_t
 lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
                                         const struct lreg_node *parent)
 {
-    if (!(parent->lrn_node_type == LREG_NODE_TYPE_OBJECT ||
-          (parent->lrn_node_type == LREG_NODE_TYPE_ARRAY &&
-           parent->lrn_user_type == child->lrn_user_type)))
-        return -EINVAL;
-
     /* Grab the name of the child object.
      */
     struct lreg_value child_val;
@@ -39,7 +56,8 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
 
     struct lreg_node *sibling = NULL;
 
-    SLIST_FOREACH(sibling, &parent->lrn_head, lrn_lentry)
+    //XXx do we care about naming collisions here?
+    CIRCLEQ_FOREACH(sibling, &parent->lrn_head, lrn_lentry)
     {
         struct lreg_value sibling_val;
 
@@ -51,55 +69,128 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
                      LREG_VALUE_STRING_MAX))
             return -EEXIST;
     }
+
     return 0;
 }
+#endif
 
-lreg_install_int_ctx_t
-lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
+/**
+ * lreg_node_install - executed exclusively by the registry service thread
+ *    (lreg_svc_ctx_t) when installing new nodes from the lRegInstallingNodes
+ *    queue.
+ * @child:  the child being installed
+ * NOTES:  the parent list head (lrn_head) is exclusively owned by the
+ *    registry service thread.
+ */
+static lreg_svc_ctx_t
+lreg_node_install(struct lreg_node *child)
 {
-    NIOVA_ASSERT(lRegInitialized);
+    struct lreg_node *parent = child->lrn_parent_for_install_only;
+
     NIOVA_ASSERT(!lreg_node_needs_installation(parent));
 
-    if (!lreg_node_needs_installation(child))
+    /* This is really required only for LREG_NODE_TYPE_ARRAY and
+     * LREG_NODE_TYPE_OBJECT.
+     */
+    CIRCLEQ_INIT(&child->lrn_head);
+
+    //int rc = lreg_node_install_check_passes_wrlocked(child, parent);
+
+    int rc = child->lrn_may_destroy ?
+        -ESTALE : child->lrn_cb(LREG_NODE_CB_OP_INSTALL_NODE, child, NULL);
+
+    if (!rc)
+    {
+        const bool install_complete_ok = lreg_node_install_complete(child);
+        NIOVA_ASSERT(install_complete_ok);
+
+        CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
+
+        DBG_LREG_NODE(LL_DEBUG, parent, "parent");
+        DBG_LREG_NODE(LL_DEBUG, child, "child");
+    }
+    else
+    {
+        int destroy_rc =
+            child->lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
+
+        DBG_LREG_NODE(LL_WARN, child,
+                      "child install failed - install: '%s', destroy: '%s'",
+                      strerror(-rc), strerror(-destroy_rc));
+    }
+}
+
+/**
+ * lreg_install_get_queued_node - detects a queued node, removes, and returns
+ *    it.
+ */
+static lreg_svc_lrn_ctx_t
+lreg_install_get_queued_node(void)
+{
+    struct lreg_node *install = NULL;
+
+    LREG_NODE_INSTALL_LOCK;
+    if (!CIRCLEQ_EMPTY(&lRegInstallingNodes))
+    {
+        install = CIRCLEQ_FIRST(&lRegInstallingNodes);
+        CIRCLEQ_REMOVE(&lRegInstallingNodes, install, lrn_lentry);
+    }
+    LREG_NODE_INSTALL_UNLOCK;
+
+    return install;
+}
+
+/**
+ * lreg_install_queued_nodes - called only by the service thread to install the
+ *    registry nodes which are on the install queue.
+ */
+static lreg_svc_ctx_t
+lreg_install_queued_nodes(void)
+{
+    struct lreg_node *install;
+
+    while ((install = lreg_install_get_queued_node()))
+        lreg_node_install(install);
+}
+
+/**
+ * lreg_node_queue_for_install - Inserts a registry node into the installation
+ *    queue.
+ * @child - the child node to be installed.
+ * NOTE: the child must have its parent object assigned to its
+ *       lrn_parent_for_install_only struct member.
+ */
+lreg_install_int_ctx_t
+lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
+{
+    NIOVA_ASSERT(child && parent);
+
+    if (!(parent->lrn_node_type == LREG_NODE_TYPE_OBJECT ||
+          (parent->lrn_node_type == LREG_NODE_TYPE_ARRAY &&
+           parent->lrn_user_type == child->lrn_user_type)))
+        return -EINVAL;
+
+    else if (!lreg_node_needs_installation(child))
         return -EALREADY;
 
     else if (!child->lrn_cb_arg)
-        return -EINVAL;
+        return -ENOENT;
 
     else if (!lreg_node_install_prep_ok(child))
         return -EALREADY;
 
-    SLIST_INIT(&child->lrn_head);
-
-    NIOVA_ASSERT(SLIST_ENTRY_DETACHED(&child->lrn_lentry));
-
-    LREG_SUBSYS_WRLOCK;
-
-    int rc = lreg_node_install_check_passes_wrlocked(child, parent);
-    if (!rc)
-    {
-        rc = child->lrn_cb(LREG_NODE_CB_OP_INSTALL_NODE, child, NULL);
-        if (!rc)
-        {
-            const bool install_complete_ok = lreg_node_install_complete(child);
-            NIOVA_ASSERT(install_complete_ok);
-
-            SLIST_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
-        }
-    }
-
-    LREG_SUBSYS_UNLOCK;
-
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
     DBG_LREG_NODE(LL_DEBUG, child, "child");
 
-    return rc;
-}
+    LREG_NODE_INSTALL_LOCK;
 
-lreg_install_int_ctx_t
-lreg_node_install_in_root(struct lreg_node *child)
-{
-    return lreg_node_install(child, &lRegRootNode);
+    child->lrn_parent_for_install_only = parent;
+
+    CIRCLEQ_INSERT_TAIL(&lRegInstallingNodes, child, lrn_lentry);
+
+    LREG_NODE_INSTALL_UNLOCK;
+
+    return 0;
 }
 
 void
@@ -114,8 +205,8 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
 
     lrn->lrn_cb = cb;
 
-    SLIST_ENTRY_INIT(&lrn->lrn_lentry);
-    SLIST_INIT(&lrn->lrn_head);
+    CIRCLEQ_ENTRY_INIT(&lrn->lrn_lentry);
+    CIRCLEQ_INIT(&lrn->lrn_head);
 
     if (user_type != LREG_USER_TYPE_ROOT)
     {
@@ -136,7 +227,8 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     switch (op)
     {
     case LREG_NODE_CB_OP_GET_NAME:
-	snprintf(lreg_val->lrv_string, LREG_VALUE_STRING_MAX, "root");
+	snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
+                 "root");
         break;
     default:
         break;
@@ -144,17 +236,83 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+static lreg_svc_thread_t
+lreg_svc_thread(void *arg)
+{
+    const struct lreg_svc_thread_ctl *lstc = arg;
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
+
+    while (!lstc->lstc_halt)
+    {
+        if (lstc->lstc_may_run)
+            lreg_install_queued_nodes();
+        else
+            usleep(1000);
+    }
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
+
+    return (void *)0;
+}
+
+void
+lreg_svc_enable(void)
+{
+    lRegSvcThreadCtl.lstc_may_run = 1;
+}
+
+void
+lreg_svc_halt(void)
+{
+    lRegSvcThreadCtl.lstc_halt = 1;
+}
+
+init_ctx_t
+lreg_svc_thread_start(void)
+{
+    int rc = thread_create(&lRegSvcThread, NULL, lreg_svc_thread,
+                           &lRegSvcThreadCtl, "lreg_svc");
+
+    FATAL_IF(rc, "pthread_create(): %s", strerror(errno));
+}
+
 init_ctx_t
 lreg_subsystem_init(void)
 {
     NIOVA_ASSERT(!lRegInitialized);
+
+    spinlock_init(&lRegLock);
+    NIOVA_ASSERT_strerror(!pthread_rwlock_init(&lRegRwLock, NULL));
+
+    CIRCLEQ_INIT(&lRegInstallingNodes);
 
     lRegRootNode.lrn_root_node = 1;
 
     lreg_node_init(&lRegRootNode, LREG_NODE_TYPE_OBJECT, LREG_USER_TYPE_ROOT,
                    lreg_root_node_cb, true);
 
+    lreg_svc_thread_start();
+    lreg_svc_enable();
+
     lRegInitialized = true;
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
+}
+
+destroy_ctx_t
+lreg_subsystem_destroy(void)
+{
+    lreg_svc_halt();
+
+    void *retval;
+
+    int rc = pthread_join(lRegSvcThread, &retval);
+    if (rc)
+        rc = -errno;
+
+    spinlock_destroy(&lRegLock);
+    NIOVA_ASSERT_strerror(!pthread_rwlock_destroy(&lRegRwLock));
+
+    SIMPLE_LOG_MSG(LL_WARN, "svc thread: %s", strerror(-rc));
 }

@@ -14,7 +14,8 @@ CORE_INCLUDES   = \
 	src/include/chunk_handle.h \
 	src/include/vblkdev_handle.h \
 	src/include/niosd_io.h \
-	src/include/local_registry.h
+	src/include/local_registry.h \
+	src/include/thread.h
 
 CORE_OBJFILES   = \
 	src/log.o \
@@ -22,7 +23,8 @@ CORE_OBJFILES   = \
 	src/chunk_handle.o \
 	src/vblkdev_handle.o \
 	src/niosd_io.o \
-	src/local_registry.o
+	src/local_registry.o \
+	src/thread.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova

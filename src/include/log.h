@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <pthread.h>
 
+#include "thread.h"
 #include "common.h"
 #include "local_registry.h"
 
@@ -81,15 +82,15 @@ struct log_entry_info
     if (lreg_node_needs_installation(&regFileEntry))                    \
     {                                                                   \
         _node_install_rc =                                              \
-            lreg_node_install(&regFileEntry,                            \
-                              LREG_ROOT_ENTRY_PTR(logEntries));         \
+            lreg_node_install_prepare(&regFileEntry,                    \
+                                      LREG_ROOT_ENTRY_PTR(logEntries)); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY);                    \
     }                                                                   \
     if (lreg_node_needs_installation(&logMsgLrn))                       \
     {                                                                   \
-        _node_install_rc = lreg_node_install(&logMsgLrn,                \
-                                             &regFileEntry);            \
+        _node_install_rc = lreg_node_install_prepare(&logMsgLrn,        \
+                                                     &regFileEntry);    \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY);                    \
     }                                                                   \
@@ -100,9 +101,9 @@ struct log_entry_info
     {                                                                   \
         struct timespec ts;                                             \
         niova_unstable_clock(&ts);                                      \
-        fprintf(stderr, "<%ld.%lu:%s:%lx:%s@%d> " message "\n",         \
+        fprintf(stderr, "<%ld.%lu:%s:%s:%s@%d> " message "\n",          \
                 ts.tv_sec, ts.tv_nsec,                                  \
-                ll_to_string(level), thread_id_get(), __func__,         \
+                ll_to_string(level), thread_name_get(), __func__,       \
                 __LINE__, ##__VA_ARGS__);                               \
         if (level == LL_FATAL) thread_abort();                          \
     }                                                                   \
@@ -118,10 +119,24 @@ struct log_entry_info
 #define FATAL_MSG(message, ...)                         \
     SIMPLE_LOG_MSG(LL_FATAL, message, ##__VA_ARGS__)
 
+#define FATAL_IF(cond, message, ...)            \
+{                                               \
+    if ((cond))                                 \
+    {                                           \
+        FATAL_MSG(message, ##__VA_ARGS__);      \
+    }                                           \
+}
+
 #define NIOVA_ASSERT(cond)                                      \
 {                                                               \
     if (!(cond))                                                \
         FATAL_MSG("failed assertion: "#cond);                   \
+}
+
+#define NIOVA_ASSERT_strerror(cond)                                     \
+{                                                                       \
+    if (!(cond))                                                        \
+        FATAL_MSG("failed assertion: "#cond", %s", strerror(errno));    \
 }
 
 #define DEBUG_BLOCK(lvl)                        \
@@ -135,12 +150,6 @@ struct log_entry_info
             thread_id_get(), __func__,                                \
             __LINE__,##__VA_ARGS__);                                  \
 }
-
-thread_id_t
-thread_id_get(void);
-
-void
-thread_abort(void);
 
 void
 log_level_set(enum log_level);

@@ -3,8 +3,10 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
-#define _GNU_SOURCE 1 // for O_DIRECT
+#define _GNU_SOURCE 1
+#include <pthread.h>
 #include <libaio.h>
+
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -226,9 +228,10 @@ niosd_ctx_event_thread_start(struct niosd_io_ctx *nioctx)
     NIOVA_ASSERT(niosd_ctx_to_device(nioctx)->ndev_status ==
                  NIOSD_DEV_STATUS_STARTING);
 
-    int rc = pthread_create(&nioctx->nioctx_event_thread, NULL,
-                            niosd_device_event_thread, (void *)nioctx);
-    return rc;
+    int rc = thread_create(&nioctx->nioctx_event_thread, NULL,
+                           niosd_device_event_thread, (void *)nioctx,
+                           "niosd_event" );
+    return -rc;
 }
 
 /**
@@ -295,12 +298,7 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
         }
 
         rc = niosd_ctx_event_thread_start(nioctx);
-        if (rc)
-        {
-            log_msg(LL_ERROR, "niosd_ctx_event_thread_start(): %s",
-                    strerror(-rc));
-            return rc;
-        }
+        FATAL_IF(rc, "niosd_ctx_event_thread_start(): %s", strerror(-rc));
     }
 
     return 0;

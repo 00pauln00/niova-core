@@ -46,6 +46,7 @@ typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
 
 typedef void     init_ctx_t;
+typedef void     destroy_ctx_t;
 
 #define NIOVA_OSD_ID_WORDS 2
 #define VBLKDEV_ID_WORDS 2

@@ -18,6 +18,9 @@ typedef void lreg_install_ctx_t;
 typedef int  lreg_install_int_ctx_t;
 typedef bool lreg_install_bool_ctx_t;
 typedef	void lreg_svc_ctx_t;
+typedef void * lreg_svc_thread_t;
+typedef	struct lreg_node * lreg_svc_lrn_ctx_t;
+typedef	int  lreg_svc_int_ctx_t;
 
 #define LREG_VALUE_STRING_MAX 255
 
@@ -51,23 +54,60 @@ enum lreg_node_cb_ops
     LREG_NODE_CB_OP_DESTROY_NODE,
 };
 
-/**
- * -- struct lreg_value --
- */
-struct lreg_value
+struct lreg_value_types
 {
-    enum lreg_node_types lrv_request_type;
     union
     {
-        uint64_t         lrv_unsigned_val;
-        int64_t          lrv_signed_val;
-        float            lrv_float;
-        bool             lrv_bool;
-        char             lrv_string[LREG_VALUE_STRING_MAX + 1];
+        uint64_t lrv_unsigned_val;
+        int64_t  lrv_signed_val;
+        float    lrv_float;
+        bool     lrv_bool;
+        char     lrv_string[LREG_VALUE_STRING_MAX + 1];
     };
 };
 
+/**
+ * -- struct lreg_value --
+ * Complex value structure used for obtained multi-faceted object values from
+ * local registry nodes.
+ * - GET operation:
+ * @lrv_value_idx_in:  logical value index for a value "get" operation.
+ * @lrv_num_values_out:  number of values found at this object.
+ * @lrv_request_type_out:  value type corresponding to the requested index.
+ * @lrv_value_out:  storage for output value.
+ * - PUT operation:
+ * @lrv_key_string:  key string for the provided value.
+ * @lrv_value_in:  input value storage.
+ */
+struct lreg_value
+{
+    union
+    {
+        struct
+        {
+            unsigned int            lrv_value_idx_in;
+            unsigned int            lrv_num_values_out;
+            enum lreg_node_types    lrv_request_type_out;
+            struct lreg_value_types lrv_value_out;
+        } get;
+
+        struct
+        {
+            char                    lrv_key_string[LREG_VALUE_STRING_MAX + 1];
+            struct lreg_value_types lrv_value_in;
+        } put;
+    };
+};
+
+#define LREG_VALUE_TO_OUT_STR(lrv)              \
+    (lrv)->get.lrv_value_out.lrv_string
+
+#define LREG_VALUE_TO_IN_STR(lrv)               \
+    (lrv)->put.lrv_value_in.lrv_string
+
 struct lreg_node;
+
+CIRCLEQ_HEAD(lreg_node_list, lreg_node);
 
 typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
                         struct lreg_value *);
@@ -77,18 +117,28 @@ typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
  */
 struct lreg_node
 {
-    enum lreg_node_types             lrn_node_type;
-    enum lreg_user_types             lrn_user_type;
-    uint8_t                          lrn_install_state;
-    uint16_t                         lrn_tmp_node:1,
-                                     lrn_statically_allocated:1,
-                                     lrn_root_node:1,
-                                     lrn_monitor:1,
-                                     lrn_may_destroy:1;
-    void                            *lrn_cb_arg;
-    lrn_cb_t                         lrn_cb;
-    SLIST_ENTRY(lreg_node)           lrn_lentry;
-    SLIST_HEAD(lreg_list, lreg_node) lrn_head; //arrays and objects
+    enum lreg_node_types      lrn_node_type;
+    enum lreg_user_types      lrn_user_type;
+    uint8_t                   lrn_install_state;
+    uint8_t                   lrn_tmp_node:1,
+                              lrn_statically_allocated:1,
+                              lrn_root_node:1,
+                              lrn_monitor:1,
+                              lrn_may_destroy:1;
+    void                     *lrn_cb_arg;
+    lrn_cb_t                  lrn_cb;
+    CIRCLEQ_ENTRY(lreg_node)  lrn_lentry;
+    union
+    {
+        struct lreg_node_list lrn_head; //arrays and objects
+        struct lreg_node     *lrn_parent_for_install_only;
+    };
+};
+
+struct lreg_svc_thread_ctl
+{
+    uint32_t lstc_may_run:1,
+             lstc_halt:1;
 };
 
 static inline char
@@ -156,12 +206,12 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 
 #define DBG_LREG_NODE(log_level, lrn, fmt, ...)                         \
 {                                                                       \
+    struct lreg_value lrv;                                              \
     log_msg(log_level, "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,         \
             (lrn),                                                      \
             (const char *)({                                            \
-                struct lreg_value lrv;                                  \
                 (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, (lrn), &lrv);   \
-                lrv.lrv_string;                                         \
+                LREG_VALUE_TO_OUT_STR(&lrv);                            \
             }),                                                         \
             lreg_node_to_node_type(lrn),                                \
             lreg_node_to_user_type(lrn),                                \
@@ -201,11 +251,11 @@ lreg_node_install_complete(struct lreg_node *lrn)
                             LREG_NODE_INSTALLED) ? true : false;
 }
 
-lreg_install_int_ctx_t
-lreg_node_install(struct lreg_node *, struct lreg_node *);
+struct lreg_node *
+lreg_root_node_get(void);
 
 lreg_install_int_ctx_t
-lreg_node_install_in_root(struct lreg_node *);
+lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
 
 void
 lreg_node_init(struct lreg_node *, enum lreg_node_types, enum lreg_user_types,
@@ -218,6 +268,10 @@ init_ctx_t
 lreg_subsystem_init(void)
     __attribute__ ((constructor (LREG_SUBSYS_CTOR_PRIORITY)));
 
+init_ctx_t
+lreg_subsystem_destroy(void)
+    __attribute__ ((destructor (LREG_SUBSYS_CTOR_PRIORITY)));
+
 #define LREG_ROOT_ENTRY_GENERATE(name, user_type)                       \
     static lreg_install_int_ctx_t                                       \
     lreg_root_cb##name(enum lreg_node_cb_ops op, struct lreg_node *lrn, \
@@ -226,8 +280,8 @@ lreg_subsystem_init(void)
         switch (op)                                                     \
         {                                                               \
         case LREG_NODE_CB_OP_GET_NAME:                                  \
-            snprintf(lreg_val->lrv_string, LREG_VALUE_STRING_MAX,       \
-                     #name);                                            \
+            snprintf(LREG_VALUE_TO_OUT_STR(lreg_val),                   \
+                     LREG_VALUE_STRING_MAX, #name);                     \
             break;                                                      \
         case LREG_NODE_CB_OP_READ_VAL:     /* fall through */           \
         case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */           \
@@ -256,6 +310,8 @@ lreg_subsystem_init(void)
     &rootEntry##name
 
 #define LREG_ROOT_ENTRY_INSTALL(name)                                   \
-    NIOVA_ASSERT(!lreg_node_install_in_root(LREG_ROOT_ENTRY_PTR(name)))
+    NIOVA_ASSERT(!lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name),  \
+                                            lreg_root_node_get()))
+
 
 #endif //LOCAL_REGISTRY_H
