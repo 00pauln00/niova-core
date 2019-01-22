@@ -247,8 +247,8 @@ lreg_svc_thread(void *arg)
     {
         if (lstc->lstc_may_run)
             lreg_install_queued_nodes();
-        else
-            usleep(1000);
+
+        usleep(1000);
     }
 
     SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
