@@ -257,6 +257,7 @@ common_compile_time_asserts(void)
 enum constructor_priorities {
     LREG_SUBSYS_CTOR_PRIORITY = 101,
     LOG_SUBSYS_CTOR_PRIORITY,
+    VBLKDEV_HANDLE_CTOR_PRIORITY,
 };
 
 #endif //NIOVA_COMMON_H

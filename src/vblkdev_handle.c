@@ -31,14 +31,6 @@ vbh_cmp(const struct vblkdev_handle *a, const struct vblkdev_handle *b)
     return 0;
 }
 
-/**
- * vbh_compare - export the compare function for external users.
- */
-int vbh_compare(const struct vblkdev_handle *a, const struct vblkdev_handle *b)
-{
-    return vbh_cmp(a, b);
-}
-
 /* Declare and generate the ref tree aspects.
  */
 REF_TREE_HEAD(vblkdev_handle_tree, vblkdev_handle);
@@ -46,16 +38,23 @@ REF_TREE_GENERATE(vblkdev_handle_tree, vblkdev_handle, vbh_tentry, vbh_cmp);
 
 /* vbhTree is the global ref tree head for all vblkdev handles.
  */
-struct vblkdev_handle_tree vbhTree;
+static struct vblkdev_handle_tree vbhTree;
 
 /* vbhNumHandles tracks the number of allocated handles in the system.
  */
-ssize_t                    vbhNumHandles;
-
-bool                       vbhInitialized = false;
+static ssize_t                    vbhNumHandles;
+static bool                       vbhInitialized = false;
 
 #define VBH_LOCK   spinlock_lock(&vbhTree.lock)
 #define VBH_UNLOCK spinlock_unlock(&vbhTree.lock)
+
+/**
+ * vbh_compare - export the compare function for external users.
+ */
+int vbh_compare(const struct vblkdev_handle *a, const struct vblkdev_handle *b)
+{
+    return vbh_cmp(a, b);
+}
 
 /**
  * vbh_ref_cnt_inc - increment the reference count of an already referenced
@@ -187,7 +186,7 @@ vbh_subsystem_init(void)
 
     vbhInitialized = true;
 
-    LOG_MSG(LL_DEBUG, "done");
+    LOG_MSG(LL_DEBUG, "hello");
 }
 
 /**
@@ -201,5 +200,5 @@ vbh_subsystem_destroy(void)
 
     vbhInitialized = false;
 
-    LOG_MSG(LL_DEBUG, "done");
+    LOG_MSG(LL_DEBUG, "goodbye");
 }

@@ -48,12 +48,6 @@ struct vblkdev_handle
         (vbh)->vbh_id.vdb_id[0], (vbh)->vbh_id.vdb_id[1],               \
             VBH_TO_REF_CNT((vbh)), ##__VA_ARGS__)
 
-void
-vbh_subsystem_init(void);
-
-void
-vbh_subsystem_destroy(void);
-
 struct vblkdev_handle *
 vbh_get(const vblkdev_id_t, const bool);
 
@@ -65,5 +59,13 @@ vbh_compare(const struct vblkdev_handle *, const struct vblkdev_handle *);
 
 void
 vbh_ref_cnt_inc(struct vblkdev_handle *);
+
+void
+vbh_subsystem_init(void)
+     __attribute__ ((constructor (VBLKDEV_HANDLE_CTOR_PRIORITY)));
+
+void
+vbh_subsystem_destroy(void)
+    __attribute__ ((destructor (VBLKDEV_HANDLE_CTOR_PRIORITY)));
 
 #endif //VBLKDEV_HANDLE_H
