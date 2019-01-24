@@ -11,6 +11,7 @@
 
 #include "thread.h"
 #include "common.h"
+#include "util.h"
 #include "local_registry.h"
 
 LREG_ROOT_ENTRY_EXPORT(logEntries);
@@ -19,11 +20,12 @@ typedef pthread_t thread_id_t;
 
 enum log_level
 {
-    LL_FATAL = 0,
-    LL_ERROR = 1,
-    LL_WARN  = 2,
-    LL_DEBUG = 3,
-    LL_TRACE = 4,
+    LL_FATAL  = 0,
+    LL_ERROR  = 1,
+    LL_WARN   = 2,
+    LL_NOTIFY = 4,
+    LL_DEBUG  = 5,
+    LL_TRACE  = 6,
     LL_MAX
 };
 

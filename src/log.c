@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 
+#include "ctor.h"
 #include "log.h"
 
 enum log_level dbgLevel = LL_WARN;

@@ -15,7 +15,8 @@ CORE_INCLUDES   = \
 	src/include/vblkdev_handle.h \
 	src/include/niosd_io.h \
 	src/include/local_registry.h \
-	src/include/thread.h
+	src/include/thread.h \
+	src/include/util.h
 
 CORE_OBJFILES   = \
 	src/log.o \

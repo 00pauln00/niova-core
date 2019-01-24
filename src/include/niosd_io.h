@@ -74,10 +74,27 @@ enum niosd_io_request_type
 
 enum niosd_io_ctx_type
 {
-    NIOSD_IO_CTX_TYPE_DEFAULT   = 0,
-    NIOSD_IO_CTX_TYPE_COMPACTOR = 1,
-    NIOSD_IO_CTX_TYPE_MAX       = 2,
+    NIOSD_IO_CTX_TYPE_ANY       = 0,
+    NIOSD_IO_CTX_TYPE_DEFAULT   = 1,
+    NIOSD_IO_CTX_TYPE_COMPACTOR = 2,
+    NIOSD_IO_CTX_TYPE_MAX       = 3,
 };
+
+static inline char
+niosd_io_ctx_type_to_char(const enum niosd_io_ctx_type t)
+{
+    switch (t)
+    {
+    case NIOSD_IO_CTX_TYPE_DEFAULT:
+        return 'D';
+    case NIOSD_IO_CTX_TYPE_COMPACTOR:
+        return 'C';
+    default:
+        break;
+    }
+
+    return 'U';
+}
 
 struct niosd_io_compl_event_ring
 {
@@ -107,7 +124,7 @@ struct niosd_io_ctx
     bool                             nioctx_ready;
     enum niosd_io_ctx_type           nioctx_type;
     io_context_t                     nioctx_ctx;
-    pthread_t                        nioctx_event_thread;
+    struct thread_ctl                nioctx_thr_ctl;
     struct niosd_io_compl_event_ring nioctx_cer;
 };
 

@@ -10,6 +10,7 @@
 #include "common.h"
 #include "log.h"
 #include "lock.h"
+#include "ctor.h"
 
 #include "tree.h"
 #include "ref_tree_proto.h"

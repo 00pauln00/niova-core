@@ -15,13 +15,12 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static struct lreg_node_list      lRegInstallingNodes;
-static struct lreg_node           lRegRootNode;
-static bool                       lRegInitialized = false;
-static spinlock_t                 lRegLock;
-static pthread_t                  lRegSvcThread;
-static struct lreg_svc_thread_ctl lRegSvcThreadCtl;
-static pthread_rwlock_t           lRegRwLock;
+static struct lreg_node_list lRegInstallingNodes;
+static struct lreg_node      lRegRootNode;
+static bool                  lRegInitialized = false;
+static spinlock_t            lRegLock;
+static struct thread_ctl     lRegSvcThreadCtl;
+static pthread_rwlock_t      lRegRwLock;
 
 #define LREG_SUBSYS_WRLOCK pthread_rwlock_wrlock(&lRegRwLock)
 #define LREG_SUBSYS_RDLOCK pthread_rwlock_rdlock(&lRegRwLock)
@@ -239,16 +238,17 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 static lreg_svc_thread_t
 lreg_svc_thread(void *arg)
 {
-    const struct lreg_svc_thread_ctl *lstc = arg;
+    struct thread_ctl *tc = arg;
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 
-    while (!lstc->lstc_halt)
-    {
-        if (lstc->lstc_may_run)
-            lreg_install_queued_nodes();
+    /* Cause this thread to sleep at the top of 'THREAD_LOOP_WITH_CTL'.
+     */
+    thread_ctl_set_user_pause_usec(tc, THR_PAUSE_DEFAULT_USECS);
 
-        usleep(1000);
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        lreg_install_queued_nodes();
     }
 
     SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
@@ -256,23 +256,17 @@ lreg_svc_thread(void *arg)
     return (void *)0;
 }
 
-void
+static void
 lreg_svc_enable(void)
 {
-    lRegSvcThreadCtl.lstc_may_run = 1;
+    thread_ctl_run(&lRegSvcThreadCtl);
 }
 
-void
-lreg_svc_halt(void)
-{
-    lRegSvcThreadCtl.lstc_halt = 1;
-}
-
-init_ctx_t
+static init_ctx_t
 lreg_svc_thread_start(void)
 {
-    int rc = thread_create(&lRegSvcThread, NULL, lreg_svc_thread,
-                           &lRegSvcThreadCtl, "lreg_svc");
+    int rc = thread_create(lreg_svc_thread, &lRegSvcThreadCtl, "lreg_svc",
+                           NULL, NULL);
 
     FATAL_IF(rc, "pthread_create(): %s", strerror(errno));
 }
@@ -303,13 +297,7 @@ lreg_subsystem_init(void)
 destroy_ctx_t
 lreg_subsystem_destroy(void)
 {
-    lreg_svc_halt();
-
-    void *retval;
-
-    int rc = pthread_join(lRegSvcThread, &retval);
-    if (rc)
-        rc = -errno;
+    int rc = thread_halt_and_destroy(&lRegSvcThreadCtl);
 
     spinlock_destroy(&lRegLock);
     NIOVA_ASSERT_strerror(!pthread_rwlock_destroy(&lRegRwLock));

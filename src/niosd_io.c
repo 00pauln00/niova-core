@@ -12,8 +12,10 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "util.h"
 #include "log.h"
 
+#include "thread.h"
 #include "niosd_io.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -166,42 +168,31 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
 {
     int rc = 0;
 
-    do
+    struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000};
+
+    struct io_event *events_head;
+
+    long int num_events_to_get =
+        niosd_device_event_ring_get_next_to_fill(nioctx, &events_head);
+
+    int num_events_completed =
+        io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
+                     num_events_to_get, &events_head[0], &ts);
+
+    log_msg(LL_DEBUG, "completed=%d max_to_get=%ld event_buf=%p",
+            num_events_completed, num_events_to_get, &events_head[0]);
+
+    if (num_events_completed > 0)
     {
-        struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000};
+        NIOVA_ASSERT(num_events_to_get <= num_events_completed);
 
-        struct io_event *events_head;
-
-        long int num_events_to_get =
-            niosd_device_event_ring_get_next_to_fill(nioctx, &events_head);
-
-        int num_events_completed =
-            io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
-                         num_events_to_get, &events_head[0], &ts);
-
-        log_msg(LL_DEBUG, "completed=%d max_to_get=%ld event_buf=%p",
-                num_events_completed, num_events_to_get, &events_head[0]);
-
-        if (num_events_completed > 0)
-        {
-            NIOVA_ASSERT(num_events_to_get <= num_events_completed);
-
-            niosd_device_event_thread_post_new_events(nioctx, events_head,
-                                                      num_events_completed);
-        }
-        else if (num_events_completed < 0)
-        {
-            if (num_events_completed == -EINTR)
-                continue;
-            else
-                rc = num_events_completed;
-        }
-        else
-        {
-            continue;
-        }
-
-    } while (!rc && niosd_event_thread_should_continue(nioctx));
+        niosd_device_event_thread_post_new_events(nioctx, events_head,
+                                                  num_events_completed);
+    }
+    else if (num_events_completed < 0) // Error case
+    {
+        rc = (num_events_completed == -EINTR) ? 0 : num_events_completed;
+    }
 
     return rc;
 }
@@ -209,13 +200,23 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
 static niosd_io_event_ctx_t *
 niosd_device_event_thread(void *arg)
 {
+    struct thread_ctl *tc = arg;
+    NIOVA_ASSERT(tc);
+
+    struct niosd_io_ctx *nioctx = tc->tc_arg;
+    NIOVA_ASSERT(nioctx);
+
     log_msg(LL_DEBUG, "starting");
 
-    NIOVA_ASSERT(arg);
+    long int rc;
 
-    struct niosd_io_ctx *nioctx = arg;
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        rc = niosd_device_event_thread_getevents(nioctx);
 
-    long int rc = niosd_device_event_thread_getevents(nioctx);
+        if (rc || !niosd_event_thread_should_continue(nioctx))
+            break;
+    }
 
     log_msg(LL_DEBUG, "stopping");
 
@@ -228,9 +229,15 @@ niosd_ctx_event_thread_start(struct niosd_io_ctx *nioctx)
     NIOVA_ASSERT(niosd_ctx_to_device(nioctx)->ndev_status ==
                  NIOSD_DEV_STATUS_STARTING);
 
-    int rc = thread_create(&nioctx->nioctx_event_thread, NULL,
-                           niosd_device_event_thread, (void *)nioctx,
-                           "niosd_event" );
+    DECL_AND_FMT_STRING(thr_name, MAX_THREAD_NAME, "niosd_event.%c",
+                        niosd_io_ctx_type_to_char(nioctx->nioctx_type));
+
+    int rc = thread_create(niosd_device_event_thread, &nioctx->nioctx_thr_ctl,
+                           thr_name, (void *)nioctx, NULL);
+
+    if (!rc)
+        thread_ctl_run(&nioctx->nioctx_thr_ctl);
+
     return -rc;
 }
 
@@ -324,9 +331,9 @@ niosd_device_close(struct niosd_device *ndev)
         enum niosd_io_ctx_type i;
         for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
         {
-            void *ret;
-            pthread_join(niosd_device_to_ctx(ndev, i)->nioctx_event_thread,
-                         &ret);
+            struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
+
+            thread_halt_and_destroy(&nioctx->nioctx_thr_ctl);
         }
     }
 

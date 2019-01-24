@@ -7,8 +7,9 @@
 #ifndef LOCAL_REGISTRY_H
 #define LOCAL_REGISTRY_H 1
 
-#include "queue.h"
 #include "common.h"
+#include "ctor.h"
+#include "queue.h"
 #include "atomic.h"
 
 /* "Install context" is designated for threads other than the glreg service
@@ -133,12 +134,6 @@ struct lreg_node
         struct lreg_node_list lrn_head; //arrays and objects
         struct lreg_node     *lrn_parent_for_install_only;
     };
-};
-
-struct lreg_svc_thread_ctl
-{
-    uint32_t lstc_may_run:1,
-             lstc_halt:1;
 };
 
 static inline char
