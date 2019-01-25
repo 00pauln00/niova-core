@@ -16,8 +16,6 @@
 
 LREG_ROOT_ENTRY_EXPORT(logEntries);
 
-typedef pthread_t thread_id_t;
-
 enum log_level
 {
     LL_FATAL  = 0,
