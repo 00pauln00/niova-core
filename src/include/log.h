@@ -23,10 +23,11 @@ enum log_level
     LL_FATAL  = 0,
     LL_ERROR  = 1,
     LL_WARN   = 2,
-    LL_NOTIFY = 4,
-    LL_DEBUG  = 5,
-    LL_TRACE  = 6,
-    LL_MAX
+    LL_NOTIFY = 3,
+    LL_DEBUG  = 4,
+    LL_TRACE  = 5,
+    LL_MAX    = 6,
+    LL_ANY    = LL_MAX,
 };
 
 extern enum log_level dbgLevel;
@@ -67,9 +68,9 @@ struct log_entry_info
         .lrn_cb = log_lreg_cb,                                          \
     }
 
-#define REGISTY_ENTRY_FUNCTION_GENERATE(debug_level)                    \
+#define REGISTY_ENTRY_FUNCTION_GENERATE                                 \
     static struct log_entry_info logEntryInfo = {                       \
-        .lei_level = debug_level,                                       \
+        .lei_level = LL_ANY,                                            \
         .lei_lineno = __LINE__,                                         \
         .lei_func = __func__,                                           \
     };                                                                  \
@@ -99,7 +100,7 @@ struct log_entry_info
 
 #define SIMPLE_LOG_MSG(level, message, ...)                             \
 {                                                                       \
-    if (level <= dbgLevel)                                              \
+    if ((level) <= dbgLevel)                                            \
     {                                                                   \
         struct timespec ts;                                             \
         niova_unstable_clock(&ts);                                      \
@@ -107,15 +108,17 @@ struct log_entry_info
                 ts.tv_sec, ts.tv_nsec,                                  \
                 ll_to_string(level), thread_name_get(), __func__,       \
                 __LINE__, ##__VA_ARGS__);                               \
-        if (level == LL_FATAL) thread_abort();                          \
+        if ((level) == LL_FATAL)                                        \
+            thread_abort();                                             \
     }                                                                   \
 }
 
 #define LOG_MSG(lvl, message, ...)                                      \
 {                                                                       \
-    REGISTY_ENTRY_FUNCTION_GENERATE(lvl);                               \
+    REGISTY_ENTRY_FUNCTION_GENERATE;                                    \
                                                                         \
-    SIMPLE_LOG_MSG(logEntryInfo.lei_level, message, ##__VA_ARGS__);     \
+    SIMPLE_LOG_MSG(logEntryInfo.lei_level == LL_ANY ?                   \
+                   lvl : logEntryInfo.lei_level, message, ##__VA_ARGS__); \
 }
 
 #define FATAL_MSG(message, ...)                         \
