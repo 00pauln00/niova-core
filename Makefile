@@ -16,7 +16,8 @@ CORE_INCLUDES   = \
 	src/include/niosd_io.h \
 	src/include/local_registry.h \
 	src/include/thread.h \
-	src/include/util.h
+	src/include/util.h \
+	src/include/local_ctl_interface.h
 
 CORE_OBJFILES   = \
 	src/log.o \
@@ -25,7 +26,8 @@ CORE_OBJFILES   = \
 	src/vblkdev_handle.o \
 	src/niosd_io.o \
 	src/local_registry.o \
-	src/thread.o
+	src/thread.o \
+	src/local_ctl_interface.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova

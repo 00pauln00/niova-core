@@ -11,6 +11,7 @@
 
 #include "log.h"
 #include "local_registry.h"
+#include "local_ctl_interface.h"
 
 #include "niosd_io.h"
 

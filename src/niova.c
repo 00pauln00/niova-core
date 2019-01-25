@@ -45,10 +45,10 @@ main(void)
     log_level_set(LL_DEBUG);
 
     STDOUT_MSG("niovad is here");
-    vbh_subsystem_init();
 
     vblkdev_handle_test();
 
-    vbh_subsystem_destroy();
+    sleep(30);
+
     STDOUT_MSG("niovad exit");
 }

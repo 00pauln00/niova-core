@@ -138,7 +138,7 @@ thread_halt_and_destroy(struct thread_ctl *tc)
         rc = -errno;
 
     const enum log_level log_level =
-        (rc || (long int *)retval) ? LL_NOTIFY : LL_WARN;
+        (rc || (long int *)retval) ? LL_WARN : LL_NOTIFY;
 
     DBG_THREAD_CTL(log_level, tc, "pthread_join(): %s, thr_retval=%p",
                    strerror(rc), (long int *)retval);
