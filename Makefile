@@ -2,8 +2,8 @@ CC		= gcc
 INCLUDE 	= -Isrc/include -Isrc/contrib/include
 DEBUG_CFLAGS 	= -Wall -g -O0 $(INCLUDE)
 #DEBUG_CFLAGS 	= -Wall -g -O2 $(INCLUDE)
+COVERAGE_FLAGS  = -Wall -g -O0 -fprofile-arcs -ftest-coverage --coverage $(INCLUDE)
 CFLAGS 		= -O2 -Wall $(INCLUDE)
-CFLAGS 	= -Wall -g -O0 $(INCLUDE)
 LDFLAGS		= -lpthread -laio
 
 CORE_INCLUDES   = \
@@ -37,17 +37,26 @@ all: $(TARGET)
 $(TARGET): $(ALL_OBJFILES) $(CORE_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-check: private CFLAGS = $(DEBUG_CFLAGS)
-check: $(CORE_OBJFILES)
-	$(CC) $(DEBUG_CFLAGS) -o test/simple_test test/simple_test.c \
+test_build: $(CORE_OBJFILES)
+	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
-	$(CC) $(DEBUG_CFLAGS) -o test/ref_test_test test/ref_tree_test.c \
+	$(CC) $(CFLAGS) -o test/ref_test_test test/ref_tree_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
-	$(CC) $(DEBUG_CFLAGS) -o test/niosd_io_test test/niosd_io_test.c \
+	$(CC) $(CFLAGS) -o test/niosd_io_test test/niosd_io_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	test/simple_test
 	test/ref_test_test
 	test/niosd_io_test
+
+check: CFLAGS = $(DEBUG_CFLAGS)
+check: test_build
+
+coverage : CFLAGS = $(COVERAGE_FLAGS)
+coverage : test_build
+coverage : $(TARGET)
+	./niova
+	lcov -b . --capture --directory . --output-file niova-lcov.out
+	genhtml ./niova-lcov.out --output-directory ./niova-lcov
 
 client-test: private CFLAGS = $(DEBUG_CFLAGS)
 client-test: $(CORE_OBJFILES)
