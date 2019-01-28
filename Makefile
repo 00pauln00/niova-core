@@ -5,6 +5,7 @@ DEBUG_CFLAGS 	= -Wall -g -O0 $(INCLUDE)
 COVERAGE_FLAGS  = -Wall -g -O0 -fprofile-arcs -ftest-coverage --coverage $(INCLUDE)
 CFLAGS 		= -O2 -Wall $(INCLUDE)
 LDFLAGS		= -lpthread -laio
+NIOVA_LCOV      = niova-lcov
 
 CORE_INCLUDES   = \
 	src/include/lock.h \
@@ -51,12 +52,13 @@ test_build: $(CORE_OBJFILES)
 check: CFLAGS = $(DEBUG_CFLAGS)
 check: test_build
 
-coverage : CFLAGS = $(COVERAGE_FLAGS)
-coverage : test_build
-coverage : $(TARGET)
+cov : CFLAGS = $(COVERAGE_FLAGS)
+cov : test_build
+cov : $(TARGET)
 	./niova
-	lcov --no-external -b . --capture --directory . --output-file niova-lcov.out
-	genhtml ./niova-lcov.out --output-directory ./niova-lcov
+	lcov --no-external -b . --capture --directory . --output-file \
+		$(NIOVA_LCOV).out
+	genhtml ./niova-lcov.out --output-directory ./$(NIOVA_LCOV)
 
 client-test: private CFLAGS = $(DEBUG_CFLAGS)
 client-test: $(CORE_OBJFILES)
@@ -67,4 +69,9 @@ pahole : check
 	pahole test/simple_test
 
 clean :
-	rm -fv test/simple_test test/niosd_io_test test/ref_test_test $(ALL_OBJFILES) $(TARGET) *~
+	rm -fv test/simple_test test/niosd_io_test test/ref_test_test \
+	$(ALL_OBJFILES) $(TARGET) *~ src/*.gcno src/*.gcda *.gcno *.gcda \
+	$(NIOVA_LCOV).out
+
+clean-cov: clean
+	rm -Rfv $(NIOVA_LCOV)

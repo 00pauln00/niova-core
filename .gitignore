@@ -7,5 +7,14 @@
 TAGS
 test/simple_test
 test/client_mmap
+test/niosd_io_test
+test/ref_test_test
+niova-lcov/
+niova-lcov.out
+*.diff
+a.out
+*-SAVE
 *.o
 niova
+*.gcno
+*.gcda
