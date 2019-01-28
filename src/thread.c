@@ -55,12 +55,8 @@ thread_ctl_should_pause(struct thread_ctl *tc)
 thread_exec_ctx_t
 thread_ctl_pause(struct thread_ctl *tc)
 {
-    int rc = usleep(tc->tc_pause_usecs);
-    if (rc < 0)
-    {
-        rc = errno;
-        NIOVA_ASSERT(rc == EINTR);
-    }
+    FATAL_IF_strerror((usleep(tc->tc_pause_usecs) && errno != EINTR),
+                      "usleep() failure");
 
     tc->tc_pause_usecs = 0;
 }

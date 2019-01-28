@@ -130,6 +130,14 @@ struct log_entry_info
     }                                           \
 }
 
+#define FATAL_IF_strerror(cond, message, ...)           \
+{                                                       \
+    if ((cond))                                         \
+    {                                                   \
+        FATAL_MSG(message": %s", ##__VA_ARGS__, strerror(errno));        \
+    }                                                   \
+}
+
 #define NIOVA_ASSERT(cond)                                      \
 {                                                               \
     if (!(cond))                                                \

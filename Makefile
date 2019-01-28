@@ -55,7 +55,7 @@ coverage : CFLAGS = $(COVERAGE_FLAGS)
 coverage : test_build
 coverage : $(TARGET)
 	./niova
-	lcov -b . --capture --directory . --output-file niova-lcov.out
+	lcov --no-external -b . --capture --directory . --output-file niova-lcov.out
 	genhtml ./niova-lcov.out --output-directory ./niova-lcov
 
 client-test: private CFLAGS = $(DEBUG_CFLAGS)

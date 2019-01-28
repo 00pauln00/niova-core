@@ -145,22 +145,16 @@ lctli_subsystem_init(void)
     NIOVA_ASSERT(!lctliInitialized);
 
     lctliInotifyFd = inotify_init1(IN_NONBLOCK);
-    if (lctliInotifyFd < 0)
-    {
-        lctliInotifyFd = errno;
-        FATAL_MSG("inotify_init(): %s", strerror(lctliInotifyFd));
-    }
+
+    FATAL_IF_strerror((lctliInotifyFd < 0),
+                      "inotify_init1(), path=%s", TEST_INOTIFY_PATH);
 
     lctliInotifyWatchFd =
         inotify_add_watch(lctliInotifyFd, TEST_INOTIFY_PATH,
                           IN_CLOSE_WRITE | IN_ACCESS);
 
-    if (lctliInotifyWatchFd < 0)
-    {
-        lctliInotifyWatchFd = errno;
-        FATAL_MSG("inotify_add_watch(): %s (dir=%s)",
-                  strerror(lctliInotifyWatchFd), TEST_INOTIFY_PATH);
-    }
+    FATAL_IF_strerror((lctliInotifyWatchFd < 0),
+                      "inotify_add_watch(), path=%s", TEST_INOTIFY_PATH);
 
     lctli_inotify_thread_start();
 
