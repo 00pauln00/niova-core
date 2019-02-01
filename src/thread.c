@@ -39,6 +39,7 @@ thread_ctl_should_pause(struct thread_ctl *tc)
         /* Thread control asked this thread to stop running for now.
          */
         tc->tc_pause_usecs = THR_PAUSE_DEFAULT_USECS;
+
         return true;
     }
     else if (tc->tc_user_pause_usecs)
@@ -46,7 +47,9 @@ thread_ctl_should_pause(struct thread_ctl *tc)
         /* The thread itself has asked to pause.
          */
         tc->tc_pause_usecs = tc->tc_user_pause_usecs;
-        return true;
+        tc->tc_user_pause_toggle = !tc->tc_user_pause_toggle;
+
+        return tc->tc_user_pause_toggle ? false : true;
     }
 
     return false;

@@ -18,7 +18,9 @@ CORE_INCLUDES   = \
 	src/include/local_registry.h \
 	src/include/thread.h \
 	src/include/util.h \
-	src/include/local_ctl_interface.h
+	src/include/local_ctl_interface.h \
+	src/include/env.h \
+	src/include/init.h
 
 CORE_OBJFILES   = \
 	src/log.o \
@@ -28,7 +30,8 @@ CORE_OBJFILES   = \
 	src/niosd_io.o \
 	src/local_registry.o \
 	src/thread.o \
-	src/local_ctl_interface.o
+	src/local_ctl_interface.o \
+	src/init.o \
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova

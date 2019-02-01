@@ -7,6 +7,7 @@
 #define _GNU_SOURCE
 #include <pthread.h>
 #include <unistd.h>
+#include <string.h>
 
 #include "log.h"
 #include "lock.h"
@@ -21,6 +22,16 @@ static bool                  lRegInitialized = false;
 static spinlock_t            lRegLock;
 static struct thread_ctl     lRegSvcThreadCtl;
 static pthread_rwlock_t      lRegRwLock;
+
+const char *lRegSeparatorString = "::";
+
+typedef bool (*lrn_walk_cb_t)(struct lreg_node *, void *);
+
+struct lreg_node_lookup_handle
+{
+    const char       *lnlh_name;
+    struct lreg_node *lnlh_node;
+};
 
 #define LREG_SUBSYS_WRLOCK pthread_rwlock_wrlock(&lRegRwLock)
 #define LREG_SUBSYS_RDLOCK pthread_rwlock_rdlock(&lRegRwLock)
@@ -38,6 +49,241 @@ lreg_root_node_get(void)
     NIOVA_ASSERT(lRegInitialized);
 
     return &lRegRootNode;
+}
+
+/**
+ * lreg_node_walk_locked - with the lock held and starting with the parent,
+ *   walk the tree executing the provided callback function.
+ * @parent:  root for the walk.
+ * @lrn_wcb:  walk call back function.
+ * @cb_arg:  opaque argument supplied to the callback.
+ */
+static void
+lreg_node_walk_locked(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
+                      void *cb_arg)
+{
+    struct lreg_node *child;
+
+    DBG_LREG_NODE(LL_DEBUG, (struct lreg_node *)parent, "parent");
+
+    CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
+    {
+        DBG_LREG_NODE(LL_DEBUG, child, "");
+
+        if (!lrn_wcb(child, cb_arg))
+            break;
+    }
+}
+
+/**
+ * lreg_node_walk_locked_cb - generic callback function for a registry walk.
+ * @lrn:  registry node which was provided by lreg_node_walk_locked().
+ * @arg:  call back arg which was provided to lreg_node_walk_locked().
+ * Return:  boolean signifying whether the walk may be stopped.
+ */
+static bool
+lreg_node_lookup_walk_cb(struct lreg_node *lrn, void *arg)
+{
+    struct lreg_node_lookup_handle *lnlh = arg;
+    struct lreg_value lrv;
+
+    if (!lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn, &lrv) &&
+        !strncmp(LREG_VALUE_TO_OUT_STR(&lrv), lnlh->lnlh_name,
+                 LREG_VALUE_STRING_MAX))
+    {
+        DBG_LREG_NODE(LL_DEBUG, lrn, "found");
+
+        lnlh->lnlh_node = lrn;
+
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * lreg_node_lookup_locked - Find the node which corresponds to the provided
+ *   path.
+ * @registry_path:  A string which is used to represent a registry path.
+ * @lrn:  Pointer for the returned lreg node.
+ */
+static int
+lreg_node_lookup_locked(const char *registry_path, struct lreg_node **lrn)
+{
+    if (!lrn)
+        return -EINVAL;
+
+    char *tmp = strndup(registry_path, LREG_VALUE_STRING_MAX);
+    if (!tmp)
+    {
+        int rc = -errno;
+        LOG_MSG(LL_ERROR, "strndup():  %s", strerror(-rc));
+
+        return rc;
+    }
+
+    struct lreg_node *parent = lreg_root_node_get();
+    struct lreg_node_lookup_handle lnlh;
+
+    char *strtok_save_ptr = NULL;
+    char *next_reg_path;
+
+    for (next_reg_path = strtok_r(tmp, lRegSeparatorString, &strtok_save_ptr);
+         next_reg_path != NULL;
+         next_reg_path = strtok_r(NULL, lRegSeparatorString, &strtok_save_ptr))
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "%s", next_reg_path);
+
+        lnlh.lnlh_name = next_reg_path;
+        lnlh.lnlh_node = NULL;
+
+        lreg_node_walk_locked(parent, lreg_node_lookup_walk_cb, &lnlh);
+
+        parent = lnlh.lnlh_node;
+        if (!parent)
+            break;
+    }
+
+    free(tmp);
+
+    *lrn = parent;
+
+    return parent ? 0 : -ENOENT;
+}
+
+/**
+ * lreg_node_recurse_locked - worker function used for registry recursion.
+ * @parent:  current node to process.
+ * @lrn_rcb:  the callback to issue.
+ * @depth: the current depth.
+ */
+static lreg_user_int_ctx_t
+lreg_node_recurse_locked(struct lreg_node *parent, lrn_recurse_cb_t lrn_rcb,
+                         const int depth)
+{
+    int indent = (depth + 1) * 4;
+    DBG_LREG_NODE(LL_WARN, parent, "here");
+
+    struct lreg_value lrv_parent;
+
+    int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, parent,
+                                   &lrv_parent);
+    if (rc)
+        return rc;
+
+    SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, 0, indent, "", '{');
+
+    unsigned int i, num_keys = lrv_parent.get.lrv_num_keys_out;
+
+    for (i = 0; i < num_keys; i++)
+    {
+        struct lreg_value lrv = {.lrv_value_idx_in = i};
+
+        lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, parent, &lrv);
+
+        lrn_rcb(&lrv, depth, i, false);
+
+        if (lrv.get.lrv_request_type_out == LREG_NODE_TYPE_ARRAY ||
+            lrv.get.lrv_request_type_out == LREG_NODE_TYPE_OBJECT)
+        {
+            struct lreg_node *child;
+            CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
+            {
+                lreg_node_recurse_locked(child, lrn_rcb, depth + 1);
+                if (child != CIRCLEQ_LAST(&parent->lrn_head))
+                    SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth + 1, 0,
+                                   indent, "", ',');
+            }
+
+        }
+        lrn_rcb(&lrv, depth, i, true);
+        if (i < num_keys - 1)
+            SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, 0, indent, "", ',');
+    }
+
+    SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, 0, indent, "", '}');
+
+    return 0;
+}
+
+lreg_user_ctx_t
+lreg_node_recurse_json_cb(struct lreg_value *lrv, const int depth,
+                          const int element_number, const bool done)
+{
+    int indent = (depth + 1) * 4;
+
+    if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_NODE_TYPE_ARRAY ||
+        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_NODE_TYPE_OBJECT)
+    {
+        if (done)
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, element_number,
+                           indent, "",
+                           LREG_VALUE_TO_REQ_TYPE(lrv) ==
+                           LREG_NODE_TYPE_ARRAY ?
+                           ']' : '}');
+        }
+        else
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %s\"%s\": %c", depth,
+                           element_number, indent, "",
+                           element_number ? "" : "",
+                           lrv->lrv_key_string,
+                           LREG_VALUE_TO_REQ_TYPE(lrv) ==
+                           LREG_NODE_TYPE_ARRAY ?
+                           '[' : '{');
+        }
+    }
+    else if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_NODE_TYPE_STRING && !done)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s%s\"%s\": \"%s\"", depth,
+                       element_number, indent, "",
+                       element_number ? "" : "",
+                       lrv->lrv_key_string,
+                       LREG_VALUE_TO_OUT_STR(lrv));
+    }
+    else if (!done)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s%s\"%s\": %lu", depth,
+                       element_number, indent, "",
+                       element_number ? "" : "",
+                       lrv->lrv_key_string,
+                       lrv->get.lrv_value_out.lrv_unsigned_val);
+    }
+}
+
+/**
+ * lreg_node_recurse - public function which attempts to lookup and recurse the
+ *   provided registry path.
+ * @registry_path:  the path to recurse.
+ * @lrn_rcb:  the callback to issue while recursing the registry nodes.
+ */
+lreg_user_int_ctx_t
+//lreg_node_recurse(const char *registry_path, lrn_recurse_cb_t lrn_rcb)
+lreg_node_recurse(const char *registry_path)
+{
+    LREG_SUBSYS_RDLOCK;
+
+    struct lreg_node *recurse_root = NULL;
+
+    int rc = lreg_node_lookup_locked(registry_path, &recurse_root);
+
+    if (!rc && recurse_root)
+    {
+        DBG_LREG_NODE(LL_WARN, recurse_root, "got it");
+
+        rc = lreg_node_recurse_locked(recurse_root, lreg_node_recurse_json_cb,
+                                      0);
+    }
+    else
+    {
+        log_msg(LL_WARN, "lreg_node_lookup_locked() %s: %s",
+                registry_path, strerror(-rc));
+    }
+
+    LREG_SUBSYS_UNLOCK;
+
+    return rc;
 }
 
 #if 0
@@ -73,6 +319,22 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
 }
 #endif
 
+static lreg_svc_ctx_t
+lreg_node_install_add(struct lreg_node *child, struct lreg_node *parent)
+{
+    DBG_LREG_NODE(LL_TRACE, parent, "parent");
+    DBG_LREG_NODE(LL_DEBUG, child, "parent=%p", parent);
+
+    LREG_SUBSYS_WRLOCK;
+
+    const bool install_complete_ok = lreg_node_install_complete(child);
+    NIOVA_ASSERT(install_complete_ok);
+
+    CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
+
+    LREG_SUBSYS_UNLOCK;
+}
+
 /**
  * lreg_node_install - executed exclusively by the registry service thread
  *    (lreg_svc_ctx_t) when installing new nodes from the lRegInstallingNodes
@@ -81,7 +343,7 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
  * NOTES:  the parent list head (lrn_head) is exclusively owned by the
  *    registry service thread.
  */
-static lreg_svc_ctx_t
+static lreg_svc_ctx_t // or init_ctx_t
 lreg_node_install(struct lreg_node *child)
 {
     struct lreg_node *parent = child->lrn_parent_for_install_only;
@@ -96,22 +358,17 @@ lreg_node_install(struct lreg_node *child)
     //int rc = lreg_node_install_check_passes_wrlocked(child, parent);
 
     int rc = child->lrn_may_destroy ?
-        -ESTALE : child->lrn_cb(LREG_NODE_CB_OP_INSTALL_NODE, child, NULL);
+        -ESTALE :
+        lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_NODE, child, NULL);
 
     if (!rc)
     {
-        const bool install_complete_ok = lreg_node_install_complete(child);
-        NIOVA_ASSERT(install_complete_ok);
-
-        CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
-
-        DBG_LREG_NODE(LL_DEBUG, parent, "parent");
-        DBG_LREG_NODE(LL_DEBUG, child, "child");
+        lreg_node_install_add(child, parent);
     }
     else
     {
         int destroy_rc =
-            child->lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
+            lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
 
         DBG_LREG_NODE(LL_WARN, child,
                       "child install failed - install: '%s', destroy: '%s'",
@@ -152,6 +409,16 @@ lreg_install_queued_nodes(void)
         lreg_node_install(install);
 }
 
+static lreg_install_ctx_t
+lreg_node_queue_for_install(struct lreg_node *child)
+{
+    LREG_NODE_INSTALL_LOCK;
+
+    CIRCLEQ_INSERT_TAIL(&lRegInstallingNodes, child, lrn_lentry);
+
+    LREG_NODE_INSTALL_UNLOCK;
+}
+
 /**
  * lreg_node_queue_for_install - Inserts a registry node into the installation
  *    queue.
@@ -163,9 +430,10 @@ lreg_install_int_ctx_t
 lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
 {
     NIOVA_ASSERT(child && parent);
+    NIOVA_ASSERT(child != parent);
 
-    if (!(parent->lrn_node_type == LREG_NODE_TYPE_OBJECT ||
-          (parent->lrn_node_type == LREG_NODE_TYPE_ARRAY &&
+    if (!(LREG_NODE_IS_OBJECT(parent) ||
+          (LREG_NODE_IS_ARRAY(parent) &&
            parent->lrn_user_type == child->lrn_user_type)))
         return -EINVAL;
 
@@ -179,15 +447,11 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
         return -EALREADY;
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
-    DBG_LREG_NODE(LL_DEBUG, child, "child");
-
-    LREG_NODE_INSTALL_LOCK;
+    DBG_LREG_NODE(LL_DEBUG, child, "child parent=%p", parent);
 
     child->lrn_parent_for_install_only = parent;
 
-    CIRCLEQ_INSERT_TAIL(&lRegInstallingNodes, child, lrn_lentry);
-
-    LREG_NODE_INSTALL_UNLOCK;
+    init_ctx() ? lreg_node_install(child) : lreg_node_queue_for_install(child);
 
     return 0;
 }
@@ -251,7 +515,7 @@ lreg_svc_thread(void *arg)
         lreg_install_queued_nodes();
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
+    SIMPLE_LOG_MSG(LL_WARN, "goodbye");
 
     return (void *)0;
 }
@@ -291,7 +555,7 @@ lreg_subsystem_init(void)
 
     lRegInitialized = true;
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
+    SIMPLE_LOG_MSG(LL_WARN, "hello");
 }
 
 destroy_ctx_t
@@ -302,5 +566,5 @@ lreg_subsystem_destroy(void)
     spinlock_destroy(&lRegLock);
     NIOVA_ASSERT_strerror(!pthread_rwlock_destroy(&lRegRwLock));
 
-    SIMPLE_LOG_MSG(LL_WARN, "svc thread: %s", strerror(-rc));
+    SIMPLE_LOG_MSG(LL_WARN, "goodbye, svc thread: %s", strerror(-rc));
 }

@@ -32,7 +32,8 @@ struct thread_ctl
     char       tc_thr_name[MAX_THREAD_NAME + 1];
     pthread_t  tc_thread_id;
     uint32_t   tc_run:1,
-               tc_halt:1;
+               tc_halt:1,
+               tc_user_pause_toggle:1;
     useconds_t tc_user_pause_usecs;
     useconds_t tc_pause_usecs;
     void      *tc_arg;

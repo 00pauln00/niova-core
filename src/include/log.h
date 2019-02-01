@@ -9,12 +9,14 @@
 #include <stdio.h>
 #include <pthread.h>
 
-#include "thread.h"
 #include "common.h"
+
+#include "init.h"
+#include "thread.h"
 #include "util.h"
 #include "local_registry.h"
 
-LREG_ROOT_ENTRY_EXPORT(logEntries);
+LREG_ROOT_ENTRY_EXPORT(log_entry_map);
 
 enum log_level
 {
@@ -41,13 +43,17 @@ ll_to_string(enum log_level ll)
         return "error";
     case LL_WARN:
         return "warn";
+    case LL_NOTIFY:
+        return "notify";
+    case LL_DEBUG:
+        return "debug";
     case LL_TRACE:
         return "trace";
     default:
         break;
     }
 
-    return "debug";
+    return "default";
 }
 
 struct log_entry_info
@@ -60,8 +66,8 @@ struct log_entry_info
 #define REGISTRY_ENTRY_FILE_GENERATE                                    \
     static struct lreg_node regFileEntry = {                            \
         .lrn_cb_arg = (void *)__FILE__,                                 \
-        .lrn_node_type = LREG_NODE_TYPE_ARRAY,                          \
-        .lrn_user_type = LREG_USER_TYPE_LOG,                            \
+        .lrn_node_type = LREG_NODE_TYPE_OBJECT,                         \
+        .lrn_user_type = LREG_USER_TYPE_LOG_file,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_cb = log_lreg_cb,                                          \
     }
@@ -74,8 +80,8 @@ struct log_entry_info
     };                                                                  \
     static struct lreg_node logMsgLrn = {                               \
         .lrn_cb_arg = &logEntryInfo,                                    \
-        .lrn_node_type = LREG_NODE_TYPE_UNSIGNED_VAL,                   \
-        .lrn_user_type = LREG_USER_TYPE_LOG,                            \
+        .lrn_node_type = LREG_NODE_TYPE_OBJECT,                         \
+        .lrn_user_type = LREG_USER_TYPE_LOG_func,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_cb = log_lreg_cb,                                          \
     };                                                                  \
@@ -84,7 +90,7 @@ struct log_entry_info
     {                                                                   \
         _node_install_rc =                                              \
             lreg_node_install_prepare(&regFileEntry,                    \
-                                      LREG_ROOT_ENTRY_PTR(logEntries)); \
+                                      LREG_ROOT_ENTRY_PTR(log_entry_map)); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY);                    \
     }                                                                   \
@@ -113,10 +119,17 @@ struct log_entry_info
 
 #define LOG_MSG(lvl, message, ...)                                      \
 {                                                                       \
-    REGISTY_ENTRY_FUNCTION_GENERATE;                                    \
-                                                                        \
-    SIMPLE_LOG_MSG(logEntryInfo.lei_level == LL_ANY ?                   \
-                   lvl : logEntryInfo.lei_level, message, ##__VA_ARGS__); \
+    if (!init_ctx())                                                    \
+    {                                                                   \
+        REGISTY_ENTRY_FUNCTION_GENERATE;                                \
+        SIMPLE_LOG_MSG(logEntryInfo.lei_level == LL_ANY ?               \
+                       lvl : logEntryInfo.lei_level, message,           \
+                       ##__VA_ARGS__);                                  \
+    }                                                                   \
+    else                                                                \
+    {                                                                   \
+        SIMPLE_LOG_MSG(lvl, message, ##__VA_ARGS__);                    \
+    }                                                                   \
 }
 
 #define FATAL_MSG(message, ...)                         \
@@ -162,13 +175,33 @@ struct log_entry_info
             __LINE__,##__VA_ARGS__);                                  \
 }
 
+#define STDERR_MSG(message, ...)                                      \
+{                                                                     \
+    fprintf(stdout, "<%lx:%s@%d> " message "\n",                      \
+            thread_id_get(), __func__,                                \
+            __LINE__,##__VA_ARGS__);                                  \
+}
+
+static inline bool
+log_level_is_valid(unsigned int level)
+{
+    return level < LL_MAX ? true : false;
+}
+
 void
 log_level_set(enum log_level);
+
+void
+log_level_set_from_env(void);
 
 int
 log_lreg_cb(enum lreg_node_cb_ops, struct lreg_node *lrn, struct lreg_value *);
 
 init_ctx_t
 log_subsys_init(void) __attribute__ ((constructor (LOG_SUBSYS_CTOR_PRIORITY)));
+
+destroy_ctx_t
+log_subsys_destroy(void)
+    __attribute__ ((destructor (LOG_SUBSYS_CTOR_PRIORITY)));
 
 #endif //NIOVA_LOG_H

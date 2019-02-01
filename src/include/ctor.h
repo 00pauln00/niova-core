@@ -10,10 +10,12 @@
  * Startup (and shutdown) order for NIOVA subsystems.
  */
 enum constructor_priorities {
-    LREG_SUBSYS_CTOR_PRIORITY = 101,
+    INIT_START_CTOR_PRIORITY = 101,
+    LREG_SUBSYS_CTOR_PRIORITY,
     LOG_SUBSYS_CTOR_PRIORITY,
     LCTLI_SUBSYS_PRIORITY,
     VBLKDEV_HANDLE_CTOR_PRIORITY,
+    INIT_COMPLETE_CTOR_PRIORITY,
 };
 
 #endif

@@ -179,7 +179,7 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
         io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
                      num_events_to_get, &events_head[0], &ts);
 
-    log_msg(LL_DEBUG, "completed=%d max_to_get=%ld event_buf=%p",
+    log_msg(LL_TRACE, "completed=%d max_to_get=%ld event_buf=%p",
             num_events_completed, num_events_to_get, &events_head[0]);
 
     if (num_events_completed > 0)

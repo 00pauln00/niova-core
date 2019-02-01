@@ -9,6 +9,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "init.h"
 #include "log.h"
 #include "local_registry.h"
 #include "local_ctl_interface.h"
@@ -93,7 +94,7 @@ complete_request(struct niosd_device *ndev)
 int
 main(void)
 {
-    log_level_set(LL_DEBUG);
+    REGISTY_ENTRY_FUNCTION_GENERATE;
 
     int rc = create_test_device();
     if (rc)
@@ -118,6 +119,10 @@ main(void)
 
     for (i = 0; i < 10; i++)
         complete_request(&ndev);
+
+    usleep(100);
+
+    lreg_node_recurse("log_entry_map");
 
     return niosd_device_close(&ndev);
 }

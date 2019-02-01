@@ -22,6 +22,12 @@ typedef	void lreg_svc_ctx_t;
 typedef void * lreg_svc_thread_t;
 typedef	struct lreg_node * lreg_svc_lrn_ctx_t;
 typedef	int  lreg_svc_int_ctx_t;
+typedef	void lreg_user_ctx_t;
+typedef	int lreg_user_int_ctx_t;
+
+struct lreg_value;
+typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
+                                 const bool);
 
 #define LREG_VALUE_STRING_MAX 255
 
@@ -41,7 +47,8 @@ enum lreg_user_types
 {
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_FAULT,
-    LREG_USER_TYPE_LOG,
+    LREG_USER_TYPE_LOG_file,
+    LREG_USER_TYPE_LOG_func,
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_ANY,
 };
@@ -73,7 +80,8 @@ struct lreg_value_types
  * local registry nodes.
  * - GET operation:
  * @lrv_value_idx_in:  logical value index for a value "get" operation.
- * @lrv_num_values_out:  number of values found at this object.
+ * @lrv_op_in:  the op from which the results were produced.
+ * @lrv_num_keys_out:  number of values found at this object.
  * @lrv_request_type_out:  value type corresponding to the requested index.
  * @lrv_value_out:  storage for output value.
  * - PUT operation:
@@ -82,19 +90,20 @@ struct lreg_value_types
  */
 struct lreg_value
 {
+    char                            lrv_key_string[LREG_VALUE_STRING_MAX + 1];
+    unsigned int                    lrv_value_idx_in;
+    enum lreg_node_cb_ops           lrv_op_in;
     union
     {
         struct
         {
-            unsigned int            lrv_value_idx_in;
-            unsigned int            lrv_num_values_out;
+            unsigned int            lrv_num_keys_out;
             enum lreg_node_types    lrv_request_type_out;
             struct lreg_value_types lrv_value_out;
         } get;
 
         struct
         {
-            char                    lrv_key_string[LREG_VALUE_STRING_MAX + 1];
             struct lreg_value_types lrv_value_in;
         } put;
     };
@@ -105,6 +114,15 @@ struct lreg_value
 
 #define LREG_VALUE_TO_IN_STR(lrv)               \
     (lrv)->put.lrv_value_in.lrv_string
+
+#define LREG_VALUE_TO_REQ_TYPE(lrv)             \
+    (lrv)->get.lrv_request_type_out
+
+#define LREG_NODE_IS_ARRAY(lrn)                 \
+    ((lrn)->lrn_node_type == LREG_NODE_TYPE_ARRAY)
+
+#define LREG_NODE_IS_OBJECT(lrn)                 \
+    ((lrn)->lrn_node_type == LREG_NODE_TYPE_OBJECT)
 
 struct lreg_node;
 
@@ -168,7 +186,9 @@ lreg_node_to_user_type(const struct lreg_node *lrn)
         return 'n';
     case LREG_USER_TYPE_FAULT:
         return 'f';
-    case LREG_USER_TYPE_LOG:
+    case LREG_USER_TYPE_LOG_file:
+        return 'L';
+    case LREG_USER_TYPE_LOG_func:
         return 'l';
     case LREG_USER_TYPE_ROOT:
         return 'R';
@@ -246,6 +266,19 @@ lreg_node_install_complete(struct lreg_node *lrn)
                             LREG_NODE_INSTALLED) ? true : false;
 }
 
+static inline int
+lreg_node_exec_lrn_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                      struct lreg_value *lrv)
+{
+    if (!lrn)
+        return -EINVAL;
+
+    if (lrv)
+        lrv->lrv_op_in = op;
+
+    return lrn->lrn_cb(op, lrn, lrv);
+}
+
 struct lreg_node *
 lreg_root_node_get(void);
 
@@ -272,14 +305,25 @@ lreg_subsystem_destroy(void)
     lreg_root_cb##name(enum lreg_node_cb_ops op, struct lreg_node *lrn, \
                        struct lreg_value *lreg_val)                     \
     {                                                                   \
+        if (lreg_val)                                                   \
+            lreg_val->get.lrv_num_keys_out = 1;                         \
+                                                                        \
         switch (op)                                                     \
         {                                                               \
         case LREG_NODE_CB_OP_GET_NAME:                                  \
+            snprintf(lreg_val->lrv_key_string,                          \
+                     LREG_VALUE_STRING_MAX, #name);                     \
             snprintf(LREG_VALUE_TO_OUT_STR(lreg_val),                   \
                      LREG_VALUE_STRING_MAX, #name);                     \
             break;                                                      \
         case LREG_NODE_CB_OP_READ_VAL:     /* fall through */           \
         case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */           \
+            if (lreg_val->lrv_value_idx_in != 0)                        \
+                return -EINVAL;                                         \
+            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_ARRAY;  \
+            snprintf(lreg_val->lrv_key_string,                          \
+                     LREG_VALUE_STRING_MAX, #name);                     \
+            break;                                                      \
         case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */           \
         case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */           \
             break;                                                      \
@@ -292,7 +336,7 @@ lreg_subsystem_destroy(void)
                                                                         \
     struct lreg_node rootEntry##name = {                                \
         .lrn_cb_arg = (void *)1,                                        \
-        .lrn_node_type = LREG_NODE_TYPE_OBJECT,                         \
+        .lrn_node_type = LREG_NODE_TYPE_ARRAY,                          \
         .lrn_user_type = user_type,                                     \
         .lrn_statically_allocated = 1,                                  \
         .lrn_cb = lreg_root_cb##name                                    \
@@ -308,5 +352,8 @@ lreg_subsystem_destroy(void)
     NIOVA_ASSERT(!lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name),  \
                                             lreg_root_node_get()))
 
+lreg_user_int_ctx_t
+lreg_node_recurse(const char *);
+//lreg_node_recurse(const char *, lrn_recurse_cb_t);
 
 #endif //LOCAL_REGISTRY_H
