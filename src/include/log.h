@@ -58,14 +58,23 @@ ll_to_string(enum log_level ll)
 
 struct log_entry_info
 {
-    enum log_level lei_level;
-    int            lei_lineno;
-    const char    *lei_func;
+    enum log_level  lei_level;
+    int             lei_lineno;
+    union
+    {
+        const char *lei_func;
+        const char *lei_file;
+    };
 };
 
 #define REGISTRY_ENTRY_FILE_GENERATE                                    \
+    static struct log_entry_info logEntryFileInfo = {                   \
+        .lei_level = LL_ANY,                                            \
+        .lei_file = __FILE__,                                           \
+    };                                                                  \
+                                                                        \
     static struct lreg_node regFileEntry = {                            \
-        .lrn_cb_arg = (void *)__FILE__,                                 \
+        .lrn_cb_arg = &logEntryFileInfo,                                \
         .lrn_node_type = LREG_NODE_TYPE_OBJECT,                         \
         .lrn_user_type = LREG_USER_TYPE_LOG_file,                       \
         .lrn_statically_allocated = 1,                                  \
@@ -117,14 +126,22 @@ struct log_entry_info
     }                                                                   \
 }
 
+/**
+ * LOG_MSG - during normal runtime, take the log level first from this
+ *    registry entry's level, and next from the file's level.  If neither are
+ *    set, then use the level provided by the caller.
+ */
 #define LOG_MSG(lvl, message, ...)                                      \
 {                                                                       \
     if (!init_ctx())                                                    \
     {                                                                   \
         REGISTY_ENTRY_FUNCTION_GENERATE;                                \
-        SIMPLE_LOG_MSG(logEntryInfo.lei_level == LL_ANY ?               \
-                       lvl : logEntryInfo.lei_level, message,           \
-                       ##__VA_ARGS__);                                  \
+                                                                        \
+        enum log_level my_lvl = logEntryInfo.lei_level != LL_ANY ?      \
+            logEntryInfo.lei_level : logEntryFileInfo.lei_level;        \
+                                                                        \
+        SIMPLE_LOG_MSG(my_lvl == LL_ANY ? lvl : logEntryInfo.lei_level, \
+                       message, ##__VA_ARGS__);                         \
     }                                                                   \
     else                                                                \
     {                                                                   \

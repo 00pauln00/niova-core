@@ -27,35 +27,64 @@ enum log_lreg_function_entry_values
 enum log_lreg_file_entry_values
 {
     LOG_LREG_FILE_NAME = 0,
+    LOG_LREG_FILE_LEVEL,
     LOG_LREG_FILE_LOG_ENTRIES,
     LOG_LREG_FILE_MAX,
 };
 
 static void
 log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
-                                         const struct lreg_node *lrn,
+                                         struct log_entry_info *lei,
                                          struct lreg_value *lreg_val)
 {
-    if (lreg_val->lrv_value_idx_in > LOG_LREG_FILE_MAX ||
-        op != LREG_NODE_CB_OP_READ_VAL)
+    if (lreg_val->lrv_value_idx_in > LOG_LREG_FILE_MAX)
         return;
 
-    if (lreg_val->lrv_value_idx_in == LOG_LREG_FILE_LOG_ENTRIES)
+    if (op == LREG_NODE_CB_OP_WRITE_VAL)
     {
-        snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                 "log-entries");
+        if (lreg_val->lrv_value_idx_in == LOG_LREG_FILE_LEVEL &&
+            log_level_is_valid(lreg_val->put.lrv_value_in.lrv_unsigned_val))
+        {
+            enum log_level lvl = lreg_val->put.lrv_value_in.lrv_unsigned_val;
 
-	lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_ARRAY;
+            lei->lei_level = lvl;
+        }
     }
-    else
+    else if (op == LREG_NODE_CB_OP_READ_VAL)
     {
-        snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                 "file-name");
+        switch (lreg_val->lrv_value_idx_in)
+        {
+        case LOG_LREG_FILE_NAME:
+            snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
+                     "file-name");
 
-	strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lrn->lrn_cb_arg,
-                LREG_VALUE_STRING_MAX);
+            strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
+                    LREG_VALUE_STRING_MAX);
 
-        lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+            break;
+
+        case LOG_LREG_FILE_LEVEL:
+            strncpy(lreg_val->lrv_key_string, "file-log-level",
+                    LREG_VALUE_STRING_MAX);
+
+            snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
+                     "%s", ll_to_string(lei->lei_level));
+
+            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+
+            break;
+
+        case LOG_LREG_FILE_LOG_ENTRIES:
+            snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
+                     "log-entries");
+
+            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_ARRAY;
+            break;
+
+        default:
+            break;
+        }
     }
 }
 
@@ -160,7 +189,9 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                        struct lreg_value *lreg_val)
 {
     if (lreg_val)
-        lreg_val->get.lrv_num_keys_out = 2;
+        lreg_val->get.lrv_num_keys_out = LOG_LREG_FILE_MAX;
+
+    struct log_entry_info *lei = lrn->lrn_cb_arg;
 
     switch (op)
     {
@@ -168,7 +199,7 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         if (!lreg_val)
             return -EINVAL;
 
-        strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lrn->lrn_cb_arg,
+        strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
                 LREG_VALUE_STRING_MAX);
 
         break;
@@ -177,7 +208,7 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         if (!lreg_val)
             return -EINVAL;
 
-        log_lreg_file_entry_multi_facet_value_cb(op, lrn, lreg_val);
+        log_lreg_file_entry_multi_facet_value_cb(op, lei, lreg_val);
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
