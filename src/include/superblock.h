@@ -17,15 +17,35 @@
  * truncated or had its leading blocks overwritten.
  */
 
+/**
+ * -- struct sb_header_data --
+ * Superblock contents.
+ * @sbh_magic:  The magic number for a superblock.
+ * @sbh_hash:  The hash of the structure's contents (excluding itself and
+ *     the magic).
+ * @sbh_version:  The SB version.
+ * @sbh_niosd_id:  UUID of this "physical" device.
+ * @sbh_pblk_id:  Physical block ID at which this SB resides.
+ * @sbh_sb_replica_num:  The number of this SB replica.
+ * @sbh_dev_phys_sz_in_bytes:  The size of this device - note - that "devices"
+ *     should be capable of expanding.
+ * @sbh_dev_prov_sz_in_bytes:  The provisioned size of this device which may
+ *     be smaller than the physical size.
+ * @sbh_num_pblks:  Number of usable physical blocks per the provisioned size.
+ */
 struct sb_header_data
 {
-    mb_magic_t     sbh_magic;
-    struct mb_hash sbh_hash;
-    mb_version_t   sbh_version;
-    niosd_id_t     sbh_niosd_id;
-    uint64_t       sbh_dev_sz_in_bytes;
-    uint64_t       sbh_used_sz_in_bytes;
-    uint64_t       sbh_num_pblks;
+    mb_magic_t       sbh_magic;
+    struct mb_hash   sbh_hash;
+    struct { // <-- START: sbh_hash coverage -->
+        mb_version_t sbh_version;
+        niosd_id_t   sbh_niosd_id;
+        uint64_t     sbh_pblk_id;
+        uint64_t     sbh_sb_replica_num;
+        uint64_t     sbh_dev_phys_sz_in_bytes;
+        uint64_t     sbh_dev_prov_sz_in_bytes;
+        uint64_t     sbh_num_pblks;
+    };      // <-- END: sbh_hash coverage -->
 };
 
 /**
