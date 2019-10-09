@@ -30,6 +30,10 @@ struct chunk_handle
     REF_TREE_ENTRY(chunk_handle) ch_tentry;
     int                          ch_ref;
     bool                         ch_has_dirty_dpblks;
+    //doubly linked list of metablock handles
+    //pointers to metablk-content-index-blocks (2)
+    //  - vblk caching
+    //  - promoted tier physical data
 };
 
 #define DBG_CHUNK_HNDL(log_level, ch, fmt, ...)                        \
