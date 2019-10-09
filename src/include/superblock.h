@@ -39,8 +39,8 @@ struct sb_header_data
     struct mb_hash   sbh_hash;
     struct { // <-- START: sbh_hash coverage -->
         mb_version_t sbh_version;
+        pblk_id_t    sbh_pblk_id;
         niosd_id_t   sbh_niosd_id;
-        uint64_t     sbh_pblk_id;
         uint64_t     sbh_sb_replica_num;
         uint64_t     sbh_dev_phys_sz_in_bytes;
         uint64_t     sbh_dev_prov_sz_in_bytes;
