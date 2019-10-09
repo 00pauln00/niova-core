@@ -14,6 +14,7 @@
 #include <time.h>
 #include <errno.h>
 #include <string.h>
+#include <uuid/uuid.h>
 
 /* No NIOVA includes may be added here!
  */
@@ -55,7 +56,11 @@ typedef void     destroy_ctx_t;
 
 typedef struct niova_osd_id
 {
-    uint64_t nosd_id[NIOVA_OSD_ID_WORDS];
+    union
+    {
+        uint64_t nosd_id[NIOVA_OSD_ID_WORDS];
+        uuid_t   nosd_uuid;
+    };
 } niosd_id_t;
 
 typedef struct vblkdev_id
@@ -203,6 +208,9 @@ common_compile_time_asserts(void)
     COMPILE_TIME_ASSERT((1U << MB_DPBLK_IDX_BITS) >= MB_MAX_DPBLKS);
     COMPILE_TIME_ASSERT(MB_MAX_CPBLKS == MB_MAX_CPBLKS_HARDCODED);
     COMPILE_TIME_ASSERT(MB_DPBLKS_PER_CPBLK == MB_DPBLKS_PER_CPBLK_HARDCODED);
+
+    COMPILE_TIME_ASSERT(sizeof(uuid_t) ==
+                        (sizeof(uint64_t) * NIOVA_OSD_ID_WORDS));
 }
 
 #endif //NIOVA_COMMON_H

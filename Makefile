@@ -4,10 +4,11 @@ DEBUG_CFLAGS 	= -Wall -g -O0 $(INCLUDE)
 #DEBUG_CFLAGS 	= -Wall -g -O2 $(INCLUDE)
 COVERAGE_FLAGS  = -Wall -g -O0 -fprofile-arcs -ftest-coverage --coverage $(INCLUDE)
 CFLAGS 		= -O2 -Wall $(INCLUDE)
-LDFLAGS		= -lpthread -laio
+LDFLAGS		= -lpthread -laio -luuid
 NIOVA_LCOV      = niova-lcov
 
 CORE_INCLUDES   = \
+	src/include/common.h \
 	src/include/lock.h \
 	src/include/log.h \
 	src/include/random.h \
@@ -15,6 +16,7 @@ CORE_INCLUDES   = \
 	src/include/chunk_handle.h \
 	src/include/vblkdev_handle.h \
 	src/include/niosd_io.h \
+	src/include/niosd_uuid.h \
 	src/include/local_registry.h \
 	src/include/thread.h \
 	src/include/util.h \
@@ -28,6 +30,7 @@ CORE_OBJFILES   = \
 	src/chunk_handle.o \
 	src/vblkdev_handle.o \
 	src/niosd_io.o \
+	src/niosd_uuid.o \
 	src/local_registry.o \
 	src/thread.o \
 	src/local_ctl_interface.o \
