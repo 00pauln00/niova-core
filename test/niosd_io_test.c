@@ -49,8 +49,7 @@ static void
 submit_request_cb(struct niosd_io_request *niorq)
 {
     log_msg(LL_DEBUG, "niorq=%p sink_buf=%p", niorq, niorq->niorq_sink_buf);
-    niova_free(niorq->niorq_sink_buf);
-    niova_free(niorq);
+    niosd_io_request_destroy(niorq);
 }
 
 static int
@@ -62,7 +61,9 @@ submit_request(struct niosd_device *ndev)
     if (!niorq)
         return -errno;
 
-    char *buf = niova_malloc(NIOVA_SECTOR_SIZE);
+    char *buf = NULL;
+    posix_memalign((void **)&buf, NIOVA_SECTOR_SIZE, NIOVA_SECTOR_SIZE);
+
     if (!buf)
         return -errno;
 

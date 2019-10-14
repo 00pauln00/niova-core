@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "ec.h"
+#include "metablock_digest.h"
 
 #define VBLK_ENTRY_TYPE_BITS 8
 
@@ -62,7 +63,7 @@ struct mb_vblk_entry
  */
 struct mb_hash
 {
-    uint32_t          mh_type;
+    mb_digest_type_t  mh_type;
     uint32_t          mh__pad;
     union
     {

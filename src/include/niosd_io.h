@@ -52,10 +52,14 @@ typedef size_t   niosd_io_completion_cb_ctx_size_t;
 enum niosd_dev_status
 {
     NIOSD_DEV_STATUS_INVALID = 0,
-    NIOSD_DEV_STATUS_STOPPED,
+    NIOSD_DEV_STATUS_STARTUP_DEV_OPEN, // device is opening
+    NIOSD_DEV_STATUS_STARTUP_SB_SCAN, // superblocks are being scanned
+    NIOSD_DEV_STATUS_STARTUP_CHAIN_SCAN, // chunk chains are being scanned
     NIOSD_DEV_STATUS_RUNNING,
-    NIOSD_DEV_STATUS_STARTING,
+    NIOSD_DEV_STATUS_STOPPED,
     NIOSD_DEV_STATUS_ERROR,
+    NIOSD_DEV_STATUS_SB_INIT, // initialize the superblock with a new uuid
+    NIOSD_DEV_STATUS_SB_ERROR // error was observed while reading SB chain
 };
 
 enum niosd_io_request_type
@@ -128,9 +132,12 @@ struct niosd_io_ctx
     struct niosd_io_compl_event_ring nioctx_cer;
 };
 
+struct sb_header_data;
+
 struct niosd_device
 {
     char                             ndev_name[PATH_MAX + 1];
+    struct sb_header_data           *ndev_sb;
     struct stat                      ndev_stb;
     int                              ndev_fd;
     enum niosd_dev_status            ndev_status;
@@ -222,13 +229,16 @@ struct niosd_io_request
     struct niosd_io_ctx       *niorq_ctx;
     struct iocb                niorq_iocb;
     pblk_id_t                  niorq_pblk_id;
-    uint32_t                   niorq_nsectors;
+    uint16_t                   niorq_nsectors;
+    uint16_t                   niorq_compl_ev_done:1;
     enum niosd_io_request_type niorq_type;
     union
     {
         void                  *niorq_sink_buf;
         const void            *niorq_src_buf;
     };
+    long                       niorq_res; // from linux aio
+    long                       niorq_res2;
     niosd_io_callback_t        niorq_cb;
     void                      *niorq_cb_data;
     struct timespec            niorq_timers[NIOSD_IO_REQ_TIMER_ALL];
@@ -236,12 +246,21 @@ struct niosd_io_request
 
 #define DBG_NIOSD_REQ(log_level, iorq, fmt, ...)                        \
     log_msg(log_level,                                                  \
-            "iorq@%p %s(%zu:%zu) pblk:%x ns:%u t:%d buf:%p "fmt,        \
+            "iorq@%p %s(%zu:%zu) pblk:%x ns:%u t:%d ev=%u buf:%p "      \
+            "res:%ld,%ld "fmt,                                          \
             (iorq), niosd_ctx_to_device((iorq)->niorq_ctx)->ndev_name,  \
             niosd_ctx_pending_io_ops((iorq)->niorq_ctx),                \
             niosd_ctx_pending_completion_ops((iorq)->niorq_ctx),        \
             (iorq)->niorq_pblk_id, (iorq)->niorq_nsectors,              \
-            (iorq)->niorq_type, (iorq)->niorq_src_buf, ##__VA_ARGS__);  \
+            (iorq)->niorq_type, (iorq)->niorq_compl_ev_done,            \
+            (iorq)->niorq_src_buf, (iorq)->niorq_res,                   \
+            (iorq)->niorq_res2, ##__VA_ARGS__)
+
+#define NIOSD_REQ_FATAL_IF(cond, iorq, message, ...)                   \
+    if ((cond))                                                        \
+    {                                                                  \
+        DBG_NIOSD_REQ(LL_FATAL, iorq, message, ##__VA_ARGS__);         \
+    }
 
 static inline struct niosd_io_ctx *
 niosd_device_to_ctx(struct niosd_device *ndev, enum niosd_io_ctx_type type)
@@ -284,6 +303,9 @@ niosd_device_open(struct niosd_device *);
 
 niosd_io_submitter_ctx_int_t
 niosd_device_close(struct niosd_device *);
+
+void
+niosd_io_request_destroy(struct niosd_io_request *);
 
 niosd_io_submitter_ctx_int_t
 niosd_io_request_init(struct niosd_io_request *, struct niosd_io_ctx *,

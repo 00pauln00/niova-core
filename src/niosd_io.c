@@ -42,7 +42,7 @@ niosd_device_params_init(const char *dev_name, struct niosd_device *ndev)
     strncpy(ndev->ndev_name, dev_name, PATH_MAX);
 
     ndev->ndev_fd = -1;
-    ndev->ndev_status = NIOSD_DEV_STATUS_STARTING;
+    ndev->ndev_status = NIOSD_DEV_STATUS_STARTUP_DEV_OPEN;
 }
 
 static niosd_io_event_ctx_bool_t
@@ -227,7 +227,7 @@ static int
 niosd_ctx_event_thread_start(struct niosd_io_ctx *nioctx)
 {
     NIOVA_ASSERT(niosd_ctx_to_device(nioctx)->ndev_status ==
-                 NIOSD_DEV_STATUS_STARTING);
+                 NIOSD_DEV_STATUS_STARTUP_DEV_OPEN);
 
     DECL_AND_FMT_STRING(thr_name, MAX_THREAD_NAME, "niosd_event.%c",
                         niosd_io_ctx_type_to_char(nioctx->nioctx_type));
@@ -319,7 +319,7 @@ niosd_io_submitter_ctx_int_t
 niosd_device_close(struct niosd_device *ndev)
 {
     if (ndev->ndev_status != NIOSD_DEV_STATUS_RUNNING &&
-        ndev->ndev_status != NIOSD_DEV_STATUS_STARTING)
+        ndev->ndev_status != NIOSD_DEV_STATUS_STARTUP_DEV_OPEN)
         return -EINVAL;
 
     const enum niosd_dev_status ndev_status = ndev->ndev_status;
@@ -366,7 +366,7 @@ niosd_device_close(struct niosd_device *ndev)
 int
 niosd_device_open(struct niosd_device *ndev)
 {
-    if (ndev->ndev_status != NIOSD_DEV_STATUS_STARTING)
+    if (ndev->ndev_status != NIOSD_DEV_STATUS_STARTUP_DEV_OPEN)
     {
         log_msg(LL_ERROR, "%s: invalid device state", ndev->ndev_name);
 
@@ -467,6 +467,23 @@ niosd_io_request_init_aio_internal(struct niosd_io_request *niorq)
 }
 
 /**
+ * niosd_io_request_destroy - free request memory.
+ */
+void
+niosd_io_request_destroy(struct niosd_io_request *niorq)
+{
+    if (niorq)
+    {
+        DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
+
+        if (niorq->niorq_sink_buf)
+            niova_free(niorq->niorq_sink_buf);
+
+        niova_free(niorq);
+    }
+}
+
+/**
  * niosd_io_request_init - initializes a user I/O request.
  * @req:  pointer to the request.
  * @dev:  pointer to the device which will service the request.
@@ -484,7 +501,7 @@ niosd_io_request_init(struct niosd_io_request *niorq,
                       enum niosd_io_request_type type, uint32_t nsectors,
                       void *buf, niosd_io_callback_t niorq_cb, void *cb_data)
 {
-    if (!niorq || !nioctx || !niorq_cb)
+    if (!niorq || !nioctx || !niorq_cb || !nsectors)
         return -EINVAL;
 
     /* Check the device status
@@ -497,6 +514,7 @@ niosd_io_request_init(struct niosd_io_request *niorq,
     niorq->niorq_pblk_id = pblk_id;
     niorq->niorq_type = type;
     niorq->niorq_nsectors = nsectors;
+    niorq->niorq_compl_ev_done = 0;
     niorq->niorq_sink_buf = buf;
     niorq->niorq_cb = niorq_cb;
     niorq->niorq_cb_data = cb_data;
@@ -623,6 +641,32 @@ niosd_io_submit(struct niosd_io_request **niorqs, long int nreqs)
     return niosd_io_submit_aio_internal(niorqs, nreqs);
 }
 
+static void
+noisd_io_request_complete(struct niosd_io_request *niorq,
+                        const struct io_event *event,
+                        const struct timespec now)
+{
+    niosd_io_request_time_stamp_apply(niorq,
+                                      NIOSD_IO_REQ_TIMER_CB_EXEC, now);
+
+    niorq->niorq_res = event->res;
+    niorq->niorq_res2 = event->res2;
+
+    const enum log_level log_level =
+        (niorq->niorq_res || niorq->niorq_res2) ? LL_WARN : LL_DEBUG;
+
+    DBG_NIOSD_REQ(log_level, niorq, "");
+
+    NIOSD_REQ_FATAL_IF((niorq->niorq_compl_ev_done), niorq,
+                       "niorq_compl_ev_done already set");
+
+    niorq->niorq_compl_ev_done = 1;
+
+    /* Execute the user callback.  *niorq may be freed after the cb.
+     */
+    niorq->niorq_cb(niorq);
+}
+
 niosd_io_completion_cb_ctx_size_t
 niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
 {
@@ -642,14 +686,9 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
         struct io_event *event = niosd_ctx_to_cer_event(nioctx, event_slot);
         struct niosd_io_request *niorq = event->data;
 
-        niosd_io_request_time_stamp_apply(niorq,
-                                          NIOSD_IO_REQ_TIMER_CB_EXEC, now);
-
         niosd_ctx_increment_cer_counter(nioctx, tail, 1);
 
-        DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
-
-        niorq->niorq_cb(niorq);
+        noisd_io_request_complete(niorq, event, now);
 
         nevents_processed++;
     }

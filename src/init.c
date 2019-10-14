@@ -38,7 +38,7 @@ init_start(void)
 
     initCtx = true;
 
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
     log_level_set_from_env();
 }
 
@@ -48,7 +48,7 @@ init_complete(void)
     NIOVA_ASSERT(initCtx);
     NIOVA_ASSERT(!destroyCtx);
 
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 
     initCtx = false;
 }
@@ -60,7 +60,7 @@ destroy_start(void)
     NIOVA_ASSERT(!destroyCtx);
 
     destroyCtx = true;
-    SIMPLE_LOG_MSG(LL_WARN, "goodbye");
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
 }
 
 destroy_ctx_t
@@ -69,5 +69,5 @@ destroy_complete(void)
     NIOVA_ASSERT(!initCtx);
     NIOVA_ASSERT(destroyCtx);
 
-    SIMPLE_LOG_MSG(LL_WARN, "goodbye");
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
 }

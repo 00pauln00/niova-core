@@ -515,7 +515,7 @@ lreg_svc_thread(void *arg)
         lreg_install_queued_nodes();
     }
 
-    SIMPLE_LOG_MSG(LL_WARN, "goodbye");
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
 
     return (void *)0;
 }
@@ -555,7 +555,7 @@ lreg_subsystem_init(void)
 
     lRegInitialized = true;
 
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }
 
 destroy_ctx_t
@@ -566,5 +566,5 @@ lreg_subsystem_destroy(void)
     spinlock_destroy(&lRegLock);
     NIOVA_ASSERT_strerror(!pthread_rwlock_destroy(&lRegRwLock));
 
-    SIMPLE_LOG_MSG(LL_WARN, "goodbye, svc thread: %s", strerror(-rc));
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread: %s", strerror(-rc));
 }

@@ -46,6 +46,16 @@ typedef uint32_t mb_crc32_t;
 typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
 
+#define ID_ANY_8bit  255
+
+#define ID_ANY_64bit -1ULL
+
+#define NIOSD_ID_ANY_64bit ID_ANY_64bit
+
+#define PBLK_ID_ANY -1U
+#define PBLK_ID_MAX -2U
+#define MB_VERSION_ANY -1U
+
 typedef void     init_ctx_t;
 typedef void     destroy_ctx_t;
 

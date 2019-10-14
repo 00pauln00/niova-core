@@ -274,11 +274,11 @@ init_ctx_t
 log_subsys_init(void)
 {
     LREG_ROOT_ENTRY_INSTALL(log_entry_map);
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 };
 
 destroy_ctx_t
 log_subsys_destroy(void)
 {
-    SIMPLE_LOG_MSG(LL_WARN, "goodbye");
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
 };
