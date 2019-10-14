@@ -184,7 +184,7 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
 
     if (num_events_completed > 0)
     {
-        NIOVA_ASSERT(num_events_to_get <= num_events_completed);
+        NIOVA_ASSERT(num_events_completed <= num_events_to_get);
 
         niosd_device_event_thread_post_new_events(nioctx, events_head,
                                                   num_events_completed);
