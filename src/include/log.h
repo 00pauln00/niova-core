@@ -168,6 +168,12 @@ struct log_entry_info
     }                                                   \
 }
 
+#define EXIT_ERROR_MSG(exit_val, message, ...)          \
+{                                                       \
+    SIMPLE_LOG_MSG(LL_ERROR, message, ##__VA_ARGS__);   \
+    exit(exit_val);                                     \
+}
+
 #define NIOVA_ASSERT(cond)                                      \
 {                                                               \
     if (!(cond))                                                \

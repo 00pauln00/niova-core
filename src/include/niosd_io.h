@@ -20,7 +20,11 @@
 
 #include "common.h"
 
-#define NIOSD_MAX_AIO_EVENTS       65536
+#define NIOSD_MAX_AIO_EVENTS       1048576
+#define NIOSD_DEFAULT_AIO_EVENTS   65536
+#define NIOSD_LOWER_AIO_EVENTS     8192
+#define NIOSD_MIN_AIO_EVENTS       128
+
 #define NIOSD_MAX_AIO_NREQS_SUBMIT 256
 
 #define NIOSD_GETEVENTS_MIN        1

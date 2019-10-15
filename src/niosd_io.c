@@ -10,23 +10,117 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #include "common.h"
 #include "util.h"
 #include "log.h"
+#include "env.h"
 
 #include "thread.h"
 #include "niosd_io.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+#define NIOSD_LINUX_PROC_AIO_MAX "/proc/sys/fs/aio-max-nr"
 #define NIOSD_IO_OPEN_FLAGS (O_DIRECT | O_RDWR)
 #define NIOSD_MIN_DEVICE_SZ_IN_PBLKS 8192UL
 #define NIOSD_MIN_DEVICE_SZ_IN_BYTES                    \
     (NIOSD_MIN_DEVICE_SZ_IN_PBLKS * PBLK_SIZE_BYTES)
 
-static size_t niosdMaxAioEvents = NIOSD_MAX_AIO_EVENTS;
-static size_t niosdMaxAioNreqsSubmit = NIOSD_MAX_AIO_NREQS_SUBMIT;
+static size_t niosdMaxAioEvents;
+static size_t niosdMaxAioNreqsSubmit;
+
+static size_t
+niosd_num_aio_events_from_env(void)
+{
+    size_t env_num_aio_events = 0;
+    char *env_num_aio_events_str = getenv(NIOVA_NUM_AIO_EVENTS_ENV);
+
+    if (env_num_aio_events_str)
+    {
+        env_num_aio_events = atoll(env_num_aio_events_str);
+        if (env_num_aio_events > NIOSD_MAX_AIO_EVENTS)
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "env variable %s value exceeds max (%u)",
+                           NIOVA_NUM_AIO_EVENTS_ENV, NIOSD_MAX_AIO_EVENTS);
+
+            env_num_aio_events = NIOSD_MAX_AIO_EVENTS;
+        }
+        else if (env_num_aio_events < NIOSD_MIN_AIO_EVENTS)
+        {
+            SIMPLE_LOG_MSG(LL_WARN,
+                           "env variable %s (%s) value below minumum (%u)",
+                           NIOVA_NUM_AIO_EVENTS_ENV, env_num_aio_events_str,
+                           NIOSD_MIN_AIO_EVENTS);
+
+            env_num_aio_events = NIOSD_MIN_AIO_EVENTS;
+        }
+    }
+
+    return env_num_aio_events;
+}
+
+static size_t
+niosd_max_aio_events_from_proc(void)
+{
+    size_t proc_max_events = NIOSD_LOWER_AIO_EVENTS; //conservative guess
+    FILE *proc_max_aio_fp = fopen(NIOSD_LINUX_PROC_AIO_MAX, "r");
+
+    if (proc_max_aio_fp)
+    {
+        if (!fscanf(proc_max_aio_fp, "%zu", &proc_max_events))
+            SIMPLE_LOG_MSG(LL_ERROR, "fscanf(%s): returns 0",
+                           NIOSD_LINUX_PROC_AIO_MAX);
+
+        if (fclose(proc_max_aio_fp))
+            SIMPLE_LOG_MSG(LL_ERROR, "fclose(%s):  %s",
+                           NIOSD_LINUX_PROC_AIO_MAX, strerror(errno));
+    }
+    else
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "fopen(%s) failed: %s",
+                       NIOSD_LINUX_PROC_AIO_MAX, strerror(errno));
+    }
+
+    return proc_max_events;
+}
+
+static void
+niosd_set_num_aio_events(void)
+{
+    if (niosdMaxAioEvents && niosdMaxAioNreqsSubmit)
+        return;
+
+    const int num_aio_ctxs = NIOSD_IO_CTX_TYPE_MAX - NIOSD_IO_CTX_TYPE_DEFAULT;
+    const size_t env = niosd_num_aio_events_from_env();
+    const size_t proc = niosd_max_aio_events_from_proc();
+
+    /* Use 'env' if it was specified but ensure it does not exceed 'proc'.
+     */
+    const size_t num_aio_events =
+        MIN((env ? env : NIOSD_DEFAULT_AIO_EVENTS), proc);
+
+    SIMPLE_LOG_MSG(LL_WARN,
+                   "nctxs=%d;  num-aio: env=%zu, proc=%zu, default=%u",
+                   num_aio_ctxs, env, proc, NIOSD_DEFAULT_AIO_EVENTS);
+
+    if (num_aio_events < NIOSD_MIN_AIO_EVENTS)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "num_aio_events=%zu is too small to proceed.",
+                       num_aio_events);
+        EXIT_ERROR_MSG(1, "Please increase %s to at least %d and restart.",
+                       NIOSD_LINUX_PROC_AIO_MAX, NIOSD_MIN_AIO_EVENTS);
+    }
+
+    niosdMaxAioEvents = num_aio_events / num_aio_ctxs;
+    niosdMaxAioNreqsSubmit = MIN(niosdMaxAioEvents,
+                                 NIOSD_MAX_AIO_NREQS_SUBMIT);
+
+    SIMPLE_LOG_MSG(LL_WARN, "niosdMaxAioEvents=%zu niosdMaxAioNreqsSubmit=%zu",
+                   niosdMaxAioEvents, niosdMaxAioNreqsSubmit);
+}
 
 /**
  * niosd_device_params_init - initialize the provided device structure with
@@ -366,6 +460,8 @@ niosd_device_close(struct niosd_device *ndev)
 int
 niosd_device_open(struct niosd_device *ndev)
 {
+    niosd_set_num_aio_events();
+
     if (ndev->ndev_status != NIOSD_DEV_STATUS_STARTUP_DEV_OPEN)
     {
         log_msg(LL_ERROR, "%s: invalid device state", ndev->ndev_name);

@@ -7,6 +7,6 @@
 #define _NIOVA_ENV_H_ 1
 
 #define NIOVA_LOG_LEVEL "NIOVA_LOG_LEVEL"
-
+#define NIOVA_NUM_AIO_EVENTS_ENV "NIOVA_NUM_AIO_EVENTS"
 
 #endif
