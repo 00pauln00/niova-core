@@ -8,6 +8,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <sys/resource.h>
 
 #include "init.h"
 #include "log.h"
@@ -245,7 +247,8 @@ niot_spin_niorq_completion(struct niosd_device *ndev)
             usleep(pollSleepUsecs);
     }
 
-    STDERR_MSG("num_completed=%zu", num_completed);
+    if (num_completed != numOps)
+        STDERR_MSG("num_completed=%zu", num_completed);
 }
 
 static void
@@ -314,6 +317,48 @@ niot_getopt(int argc, char **argv)
     }
 }
 
+static void
+niot_print_stats(const struct timespec *wall_time)
+{
+    struct rusage rusage = {0};
+
+    if (getrusage(RUSAGE_SELF, &rusage))
+        STDERR_MSG("getrusage() failed:  %s", strerror(errno));
+
+    float iops = numOps / timespec_2_float(wall_time);
+
+    fprintf(stdout,
+            "NIOVA niosd Test\n"
+            "\tdevice:      %s\n"
+            "\tio-pattern:  random\n"
+            "\tio-depth:    %zu\n"
+            "\tio-size:     %zu\n"
+            "\tnum-io-ops:  %zu\n"
+            "\tpoll-usleep: %u usecs\n"
+            "\tread-ratio:  %u\n"
+            "\twall-time:   %ld.%ld\n"
+            "\tiops:        %.2f\n\n"
+
+            "System Usage Stats\n"
+            "\tusr-time:    %ld.%ld\n"
+            "\tsys-time:    %ld.%ld\n"
+            "\tmaxrss:      %ldkb\n"
+            "\tminflt:      %ld\n"
+            "\tmajflt:      %ld\n"
+            "\tinblock:     %ld\n"
+            "\toutblock:    %ld\n"
+            "\tvol-ctxsw:   %ld\n"
+            "\tinvol-ctxsw: %ld\n",
+            testDevName, ioDepth,
+            ioNumSectors * NIOVA_SECTOR_SIZE, numOps, pollSleepUsecs,
+            rwRatio, wall_time->tv_sec, wall_time->tv_nsec, iops,
+            rusage.ru_utime.tv_sec, rusage.ru_utime.tv_usec,
+            rusage.ru_stime.tv_sec, rusage.ru_stime.tv_usec,
+            rusage.ru_maxrss, rusage.ru_minflt, rusage.ru_majflt,
+            rusage.ru_inblock, rusage.ru_oublock, rusage.ru_nvcsw,
+            rusage.ru_nivcsw);
+}
+
 int
 main(int argc, char **argv)
 {
@@ -342,6 +387,9 @@ main(int argc, char **argv)
 
     const size_t num_initial_launch = MIN(numOps, ioDepth);
 
+    struct timespec ts[2];
+    niova_unstable_clock(&ts[0]);
+
     for (size_t i = 0; i < num_initial_launch; i++)
     {
         rc = niot_submit_request(&ndev, &niorqArray[i]);
@@ -355,7 +403,12 @@ main(int argc, char **argv)
 
     niot_spin_niorq_completion(&ndev);
 
+    niova_unstable_clock(&ts[1]);
+    timespecsub(&ts[1], &ts[0], &ts[0]);
+
 //    lreg_node_recurse("log_entry_map");
+
+    niot_print_stats(&ts[0]);
 
     return niosd_device_close(&ndev);
 }

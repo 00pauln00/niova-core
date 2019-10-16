@@ -67,4 +67,22 @@ char name[len + 1];                                             \
     } while (0)
 #endif
 
+static inline unsigned long
+timespec_2_usec(const struct timespec *ts)
+{
+    return (ts->tv_sec * 1000000) + (ts->tv_nsec / 1000);
+}
+
+static inline unsigned long
+timespec_2_msec(const struct timespec *ts)
+{
+    return (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
+}
+
+static inline float
+timespec_2_float(const struct timespec *ts)
+{
+    return (float)ts->tv_sec + (.000000001 * (float)ts->tv_nsec);
+}
+
 #endif

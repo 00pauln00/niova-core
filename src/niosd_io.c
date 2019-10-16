@@ -102,7 +102,7 @@ niosd_set_num_aio_events(void)
     const size_t num_aio_events =
         MIN((env ? env : NIOSD_DEFAULT_AIO_EVENTS), proc);
 
-    SIMPLE_LOG_MSG(LL_WARN,
+    SIMPLE_LOG_MSG(LL_NOTIFY,
                    "nctxs=%d;  num-aio: env=%zu, proc=%zu, default=%u",
                    num_aio_ctxs, env, proc, NIOSD_DEFAULT_AIO_EVENTS);
 
@@ -118,7 +118,8 @@ niosd_set_num_aio_events(void)
     niosdMaxAioNreqsSubmit = MIN(niosdMaxAioEvents,
                                  NIOSD_MAX_AIO_NREQS_SUBMIT);
 
-    SIMPLE_LOG_MSG(LL_WARN, "niosdMaxAioEvents=%zu niosdMaxAioNreqsSubmit=%zu",
+    SIMPLE_LOG_MSG(LL_NOTIFY,
+                   "niosdMaxAioEvents=%zu niosdMaxAioNreqsSubmit=%zu",
                    niosdMaxAioEvents, niosdMaxAioNreqsSubmit);
 }
 

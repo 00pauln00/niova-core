@@ -47,15 +47,22 @@ all: $(TARGET)
 $(TARGET): $(ALL_OBJFILES) $(CORE_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-test_build: $(CORE_OBJFILES)
+
+
+tests: $(CORE_OBJFILES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/ref_test_test test/ref_tree_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/niosd_io_test test/niosd_io_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
-	$(CC) $(CFLAGS) -o test/pthread_cond_signal_test test/pthread_cond_signal_test.c \
+	$(CC) $(CFLAGS) -o test/pthread_cond_signal_test \
+		test/pthread_cond_signal_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+
+test_build: tests
+test_build:
+	mkdir -p /tmp/.niova
 	test/simple_test
 	test/ref_test_test
 	test/niosd_io_test
