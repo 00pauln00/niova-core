@@ -488,6 +488,26 @@ niosd_device_open(struct niosd_device *ndev)
         return -rc;
     }
 
+    if (S_ISBLK(ndev->ndev_stb.st_mode))
+    {
+        off_t seek_val = lseek(ndev->ndev_fd, 0, SEEK_END);
+        if (seek_val < 0)
+        {
+            int rc = errno;
+
+            log_msg(LL_ERROR, "dev=%s lseek() failed:  %s",
+                    ndev->ndev_name, strerror(rc));
+
+            niosd_device_close(ndev);
+
+            return -rc;
+        }
+
+        ndev->ndev_stb.st_size = seek_val;
+
+        (off_t)lseek(ndev->ndev_fd, 0, SEEK_SET);
+    }
+
     if (ndev->ndev_stb.st_size < NIOSD_MIN_DEVICE_SZ_IN_BYTES)
     {
         log_msg(LL_ERROR, "%s is %zu bytes - min size=%llu",
@@ -738,9 +758,9 @@ niosd_io_submit(struct niosd_io_request **niorqs, long int nreqs)
 }
 
 static void
-noisd_io_request_complete(struct niosd_io_request *niorq,
-                        const struct io_event *event,
-                        const struct timespec now)
+niosd_io_request_complete(struct niosd_io_request *niorq,
+                          const struct io_event *event,
+                          const struct timespec now)
 {
     niosd_io_request_time_stamp_apply(niorq,
                                       NIOSD_IO_REQ_TIMER_CB_EXEC, now);
@@ -749,7 +769,7 @@ noisd_io_request_complete(struct niosd_io_request *niorq,
     niorq->niorq_res2 = event->res2;
 
     const enum log_level log_level =
-        (niorq->niorq_res || niorq->niorq_res2) ? LL_WARN : LL_DEBUG;
+        niorq_has_error(niorq) ? LL_WARN : LL_DEBUG;
 
     DBG_NIOSD_REQ(log_level, niorq, "");
 
@@ -784,7 +804,7 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
 
         niosd_ctx_increment_cer_counter(nioctx, tail, 1);
 
-        noisd_io_request_complete(niorq, event, now);
+        niosd_io_request_complete(niorq, event, now);
 
         nevents_processed++;
     }

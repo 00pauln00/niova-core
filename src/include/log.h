@@ -200,7 +200,7 @@ struct log_entry_info
 
 #define STDERR_MSG(message, ...)                                      \
 {                                                                     \
-    fprintf(stdout, "<%lx:%s@%d> " message "\n",                      \
+    fprintf(stderr, "<%lx:%s@%d> " message "\n",                      \
             thread_id_get(), __func__,                                \
             __LINE__,##__VA_ARGS__);                                  \
 }

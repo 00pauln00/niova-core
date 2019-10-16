@@ -63,6 +63,8 @@ typedef void     destroy_ctx_t;
 #define VBLKDEV_ID_WORDS 2
 
 #define NIOVA_SECTOR_SIZE 512
+#define NIOVA_BLOCK_SIZE  4096
+#define NIOVA_SECTORS_PER_BLOCK (NIOVA_BLOCK_SIZE / NIOVA_SECTOR_SIZE)
 
 typedef struct niova_osd_id
 {

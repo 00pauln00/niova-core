@@ -266,6 +266,15 @@ struct niosd_io_request
         DBG_NIOSD_REQ(LL_FATAL, iorq, message, ##__VA_ARGS__);         \
     }
 
+static inline bool
+niorq_has_error(const struct niosd_io_request *niorq)
+{
+    return (niorq->niorq_res2 ||
+            (niorq->niorq_res &&
+             niorq->niorq_res != (niorq->niorq_nsectors *
+                                  NIOVA_SECTOR_SIZE))) ? true : false;
+}
+
 static inline struct niosd_io_ctx *
 niosd_device_to_ctx(struct niosd_device *ndev, enum niosd_io_ctx_type type)
 {
