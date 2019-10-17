@@ -46,9 +46,11 @@ struct thread_ctl
             (tc)->tc_halt ? 'h' : '-',                         \
             (tc)->tc_arg, ##__VA_ARGS__)
 
-#define THREAD_LOOP_WITH_CTL(tc)                \
-    for (; thread_ctl_should_continue(tc);      \
-         thread_ctl_pause_if_should(tc))
+#define THREAD_LOOP_WITH_CTL(tc)                                        \
+    for (; thread_ctl_loop_test(tc); thread_ctl_pause_if_should(tc))
+
+thread_exec_ctx_bool_t
+thread_ctl_loop_test(struct thread_ctl *);
 
 thread_exec_ctx_bool_t
 thread_ctl_should_pause(struct thread_ctl *);

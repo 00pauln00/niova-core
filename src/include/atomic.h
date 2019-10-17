@@ -29,6 +29,7 @@ typedef volatile signed char   niova_atomic8_t;
 #define niova_atomic_dec(ptr)      __sync_sub_and_fetch(ptr, 1)
 #define niova_atomic_add(ptr, val) __sync_add_and_fetch(ptr, val)
 #define niova_atomic_sub(ptr, val) __sync_sub_and_fetch(ptr, val)
-#define niova_atomic_read(ptr)    *(volatile typeof(* ptr) *)ptr
+#define niova_atomic_read(ptr)     *(volatile typeof(* ptr) *)ptr
+#define niova_atomic_init(ptr, val) (*(ptr) = (val))
 
 #endif //NIOVA_ATOMIC_H

@@ -44,7 +44,7 @@ te_construct(const struct test_entry *in)
 static int
 te_destruct(struct test_entry *destroy)
 {
-    log_msg(LL_WARN, "destroy item %d@%p", destroy->val, destroy);
+    log_msg(LL_DEBUG, "destroy item %d@%p", destroy->val, destroy);
     niova_free(destroy);
 
     return 0;

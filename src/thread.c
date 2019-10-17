@@ -71,6 +71,17 @@ thread_ctl_pause_if_should(struct thread_ctl *tc)
         thread_ctl_pause(tc);
 }
 
+thread_exec_ctx_bool_t
+thread_ctl_loop_test(struct thread_ctl *tc)
+{
+    bool should_continue = thread_ctl_should_continue(tc);
+
+    if (should_continue)
+        thread_ctl_pause_if_should(tc);
+
+    return should_continue;
+}
+
 thread_exec_ctx_t
 thread_ctl_set_user_pause_usec(struct thread_ctl *tc, uint32_t usecs)
 {
