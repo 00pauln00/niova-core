@@ -326,6 +326,7 @@ niot_print_stats(const struct timespec *wall_time)
         STDERR_MSG("getrusage() failed:  %s", strerror(errno));
 
     float iops = numOps / timespec_2_float(wall_time);
+    float bw = iops * ioNumSectors * NIOVA_SECTOR_SIZE / 1048576;
 
     fprintf(stdout,
             "NIOVA niosd Test\n"
@@ -337,7 +338,8 @@ niot_print_stats(const struct timespec *wall_time)
             "\tpoll-usleep: %u usecs\n"
             "\tread-ratio:  %u\n"
             "\twall-time:   %ld.%ld\n"
-            "\tiops:        %.2f\n\n"
+            "\tiops:        %.2f\n"
+            "\tbandwidth:   %.2f MiB/sec\n\n"
 
             "System Usage Stats\n"
             "\tusr-time:    %ld.%ld\n"
@@ -351,7 +353,7 @@ niot_print_stats(const struct timespec *wall_time)
             "\tinvol-ctxsw: %ld\n",
             testDevName, ioDepth,
             ioNumSectors * NIOVA_SECTOR_SIZE, numOps, pollSleepUsecs,
-            rwRatio, wall_time->tv_sec, wall_time->tv_nsec, iops,
+            rwRatio, wall_time->tv_sec, wall_time->tv_nsec, iops, bw,
             rusage.ru_utime.tv_sec, rusage.ru_utime.tv_usec,
             rusage.ru_stime.tv_sec, rusage.ru_stime.tv_usec,
             rusage.ru_maxrss, rusage.ru_minflt, rusage.ru_majflt,
