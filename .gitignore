@@ -8,7 +8,10 @@ TAGS
 test/simple_test
 test/client_mmap
 test/niosd_io_test
-test/ref_test_test
+test/ref_tree_test
+test/binary_hist_test
+test/work_dispatch_test
+test_niosd.device
 niova-lcov/
 niova-lcov.out
 *.diff
