@@ -19,6 +19,7 @@
 #include <time.h>
 
 #include "common.h"
+#include "binary_hist.h"
 
 #define NIOSD_MAX_AIO_EVENTS       1048576
 #define NIOSD_DEFAULT_AIO_EVENTS   65536
@@ -127,12 +128,37 @@ struct niosd_io_compl_event_ring
 #define niosd_ctx_to_cer_event(nioctx, event_slot)      \
     &(nioctx)->nioctx_cer.niocer_events[event_slot]
 
+
+enum niosd_io_ctx_stats_hist
+{
+    NICSH_RD_SIZE_IN_SECTORS = 0,
+    NICSH_WR_SIZE_IN_SECTORS = 1,
+    NICSH_RD_LATENCY_USEC    = 2,
+    NICSH_WR_LATENCY_USEC    = 3,
+    NICSH_IO_TO_CB_TIME_USEC = 4,
+    NICSH_IO_NUM_PENDING     = 5,
+    NICSH_IO_CTX_STATS_MAX   = 6,
+};
+
+#define NICSH_DEF_IO_SIZE_START_BIT 9
+#define NICSH_DEF_IO_SIZE_NBUCKETS  9
+
+#define NICSH_DEF_IO_LAT_START_BIT  2
+#define NICSH_DEF_IO_LAT_NBUCKETS   19
+
+#define NICSH_DEF_IO_TO_CB_START_BIT 2
+#define NICSH_DEF_IO_TO_CB_LAT_NBUCKETS 19
+
+#define NICSH_DEF_IO_NUM_PDNG_START_BIT 0
+#define NICSH_DEF_IO_NUM_PDNG_NBUCKETS  18
+
 struct niosd_io_ctx
 {
     bool                             nioctx_ready;
     enum niosd_io_ctx_type           nioctx_type;
     io_context_t                     nioctx_ctx;
     struct thread_ctl                nioctx_thr_ctl;
+    struct binary_hist               nioctx_stats[NICSH_IO_CTX_STATS_MAX];
     struct niosd_io_compl_event_ring nioctx_cer;
 };
 
@@ -293,6 +319,12 @@ niosd_ctx_to_device(struct niosd_io_ctx *nioctx)
                                             ndev_ctxs[nioctx->nioctx_type]));
 }
 
+static inline size_t
+niosd_io_request_nsectors_to_bytes(const struct niosd_io_request *niorq)
+{
+    return niosd_nsectors_to_bytes(niorq->niorq_nsectors);
+}
+
 static inline void
 niosd_io_request_time_stamp(struct niosd_io_request *niorq,
                             const enum niosd_io_request_timers timer)
@@ -306,6 +338,28 @@ niosd_io_request_time_stamp_apply(struct niosd_io_request *niorq,
                                   const struct timespec ts)
 {
     niorq->niorq_timers[timer] = ts;
+}
+
+static inline long long
+niosd_io_request_time_stamp_to_usec(struct niosd_io_request *niorq,
+                                     enum niosd_io_request_timers ts)
+{
+    return timespec_2_usec(&niorq->niorq_timers[ts]);
+}
+
+static inline int
+niosd_io_request_latency_stages_usec(struct niosd_io_request *niorq,
+                                     enum niosd_io_request_timers start,
+                                     enum niosd_io_request_timers end,
+                                     long long *value)
+{
+    if (!niorq || !value || start >= end)
+        return -EINVAL;
+
+    *value = MAX(0, (niosd_io_request_time_stamp_to_usec(niorq, end) -
+                     niosd_io_request_time_stamp_to_usec(niorq, start)));
+
+    return 0;
 }
 
 niosd_io_submitter_ctx_t

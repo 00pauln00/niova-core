@@ -22,6 +22,7 @@ CORE_INCLUDES   = \
 	src/include/util.h \
 	src/include/local_ctl_interface.h \
 	src/include/metablock_digest.h \
+	src/include/binary_hist.h \
 	src/include/env.h \
 	src/include/init.h
 
@@ -59,10 +60,14 @@ tests: $(CORE_OBJFILES)
 	$(CC) $(CFLAGS) -o test/work_dispatch_test \
 		test/work_dispatch_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/binary_hist_test \
+		test/binary_hist_test.c \
+		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 test_build: tests
 test_build:
 	mkdir -p /tmp/.niova
+	test/binary_hist_test
 	test/simple_test
 	test/ref_tree_test
 	test/niosd_io_test

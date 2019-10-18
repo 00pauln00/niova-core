@@ -23,6 +23,8 @@
 #define NBBY 8
 #endif
 
+#define TYPE_SZ_BITS(type) (sizeof(type) * NBBY)
+
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 

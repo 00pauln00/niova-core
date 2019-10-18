@@ -29,6 +29,16 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define NIOSD_MIN_DEVICE_SZ_IN_BYTES                    \
     (NIOSD_MIN_DEVICE_SZ_IN_PBLKS * PBLK_SIZE_BYTES)
 
+static int nicsh_params[NICSH_IO_CTX_STATS_MAX][2] =
+{
+    {NICSH_DEF_IO_SIZE_START_BIT,     NICSH_DEF_IO_SIZE_NBUCKETS},
+    {NICSH_DEF_IO_SIZE_START_BIT,     NICSH_DEF_IO_SIZE_NBUCKETS},
+    {NICSH_DEF_IO_LAT_START_BIT,      NICSH_DEF_IO_LAT_NBUCKETS},
+    {NICSH_DEF_IO_LAT_START_BIT,      NICSH_DEF_IO_LAT_NBUCKETS},
+    {NICSH_DEF_IO_TO_CB_START_BIT,    NICSH_DEF_IO_TO_CB_LAT_NBUCKETS},
+    {NICSH_DEF_IO_NUM_PDNG_START_BIT, NICSH_DEF_IO_NUM_PDNG_NBUCKETS},
+};
+
 static size_t niosdMaxAioEvents;
 static size_t niosdMaxAioNreqsSubmit;
 
@@ -375,6 +385,35 @@ niosd_io_completion_event_ring_destroy(struct niosd_io_compl_event_ring *cer)
 }
 
 static int
+niosd_device_ctxs_stats_hist_init(struct niosd_io_ctx *nioctx)
+{
+    int rc = 0;
+
+    for (int i = 0; i < NICSH_IO_CTX_STATS_MAX && !rc; i++)
+        rc = binary_hist_init(&nioctx->nioctx_stats[i], nicsh_params[i][0],
+                              nicsh_params[i][1]);
+
+    return rc;
+}
+
+static void
+niosd_device_dump_nioctx_stats(const struct niosd_io_ctx *nioctx)
+{
+    for (int j = 0; j < NICSH_IO_CTX_STATS_MAX; j++)
+    {
+        const struct binary_hist *bh = &nioctx->nioctx_stats[j];
+
+        for (int k = 0; k < binary_hist_size(bh); k++)
+        {
+            STDERR_MSG("%d: %lld,%lld: %lld", j,
+                       binary_hist_lower_bucket_range(bh, k),
+                       binary_hist_upper_bucket_range(bh, k),
+                       binary_hist_get_cnt(bh, k));
+        }
+    }
+}
+
+static int
 niosd_device_ctxs_init(struct niosd_device *ndev)
 {
     enum niosd_io_ctx_type i;
@@ -384,7 +423,15 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
         struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
         struct niosd_io_compl_event_ring *cer = &nioctx->nioctx_cer;
 
-        int rc = niosd_io_completion_event_ring_init(cer, niosdMaxAioEvents);
+        int rc = niosd_device_ctxs_stats_hist_init(nioctx);
+        if (rc)
+        {
+            log_msg(LL_ERROR, "niosd_device_ctxs_stats_hist_init(): %s",
+                    strerror(-rc));
+            return rc;
+        }
+
+        rc = niosd_io_completion_event_ring_init(cer, niosdMaxAioEvents);
         if (rc)
         {
             log_msg(LL_ERROR, "niosd_io_completion_event_ring_init(): %s",
@@ -446,6 +493,9 @@ niosd_device_close(struct niosd_device *ndev)
         for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
+
+            niosd_device_dump_nioctx_stats(nioctx);
+
             niosd_io_completion_event_ring_destroy(&nioctx->nioctx_cer);
         }
     }
@@ -670,6 +720,8 @@ niosd_io_submit_requests_prep(struct niosd_io_request **niorqs,
 
         iocb_ptrs[i] = &niorqs[i]->niorq_iocb;
 
+//        DBG_NIOSD_REQ(LL_WARN, niorqs[i], "");
+
         niosd_io_request_time_stamp_apply(niorqs[i],
                                           NIOSD_IO_REQ_TIMER_SUBMITTED, now);
     }
@@ -759,6 +811,59 @@ niosd_io_submit(struct niosd_io_request **niorqs, long int nreqs)
 }
 
 static void
+niosd_io_request_ingest_stats(struct niosd_io_request *niorq)
+{
+    if (!niorq ||
+        (niorq->niorq_type != NIOSD_REQ_TYPE_PREAD &&
+         niorq->niorq_type != NIOSD_REQ_TYPE_PWRITE))
+        return;
+
+    struct niosd_io_ctx *nioctx = niorq->niorq_ctx;
+
+    /* I/O Size
+     */
+    struct binary_hist *bh =
+        &nioctx->nioctx_stats[(niorq->niorq_type == NIOSD_REQ_TYPE_PREAD ?
+                               NICSH_RD_SIZE_IN_SECTORS :
+                               NICSH_WR_SIZE_IN_SECTORS)];
+
+    binary_hist_incorporate_val(bh, niosd_io_request_nsectors_to_bytes(niorq));
+
+    /* Latency related stats
+     */
+    long long lat;
+
+    bh = &nioctx->nioctx_stats[(niorq->niorq_type == NIOSD_REQ_TYPE_PREAD ?
+                                NICSH_RD_LATENCY_USEC :
+                                NICSH_WR_LATENCY_USEC)];
+
+    int rc =
+        niosd_io_request_latency_stages_usec(niorq,
+                                             NIOSD_IO_REQ_TIMER_SUBMITTED,
+                                             NIOSD_IO_REQ_TIMER_EVENT_REAPED,
+                                             &lat);
+    if (!rc)
+        binary_hist_incorporate_val(bh, lat);
+
+    bh = &nioctx->nioctx_stats[NICSH_IO_TO_CB_TIME_USEC];
+
+    rc =
+        niosd_io_request_latency_stages_usec(niorq,
+                                             NIOSD_IO_REQ_TIMER_EVENT_REAPED,
+                                             NIOSD_IO_REQ_TIMER_CB_EXEC,
+                                             &lat);
+    if (!rc)
+        binary_hist_incorporate_val(bh, lat);
+
+//    DBG_NIOSD_REQ(LL_WARN, niorq, "lat=%lld rc=%d", lat, rc);
+
+    /* Pending I/O Depth
+     */
+    bh = &nioctx->nioctx_stats[NICSH_IO_NUM_PENDING];
+    binary_hist_incorporate_val(bh, niosd_ctx_pending_io_ops(nioctx));
+}
+
+static void
 niosd_io_request_complete(struct niosd_io_request *niorq,
                           const struct io_event *event,
                           const struct timespec now)
@@ -779,9 +884,14 @@ niosd_io_request_complete(struct niosd_io_request *niorq,
 
     niorq->niorq_compl_ev_done = 1;
 
+    niosd_io_request_ingest_stats(niorq);
+
     /* Execute the user callback.  *niorq may be freed after the cb.
      */
     niorq->niorq_cb(niorq);
+
+    //xxx if cb latency is to be measured the clock parameter to this function
+    //    will have to be modified
 }
 
 niosd_io_completion_cb_ctx_size_t

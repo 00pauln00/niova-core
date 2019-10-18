@@ -67,13 +67,13 @@ char name[len + 1];                                             \
     } while (0)
 #endif
 
-static inline unsigned long
+static inline unsigned long long
 timespec_2_usec(const struct timespec *ts)
 {
     return (ts->tv_sec * 1000000) + (ts->tv_nsec / 1000);
 }
 
-static inline unsigned long
+static inline unsigned long long
 timespec_2_msec(const struct timespec *ts)
 {
     return (ts->tv_sec * 1000) + (ts->tv_nsec / 1000000);
