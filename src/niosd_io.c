@@ -116,6 +116,12 @@ niosd_set_num_aio_events(void)
                    "nctxs=%d;  num-aio: env=%zu, proc=%zu, default=%u",
                    num_aio_ctxs, env, proc, NIOSD_DEFAULT_AIO_EVENTS);
 
+    niosdMaxAioEvents = highest_power_of_two_from_val(num_aio_events /
+                                                      num_aio_ctxs);
+
+    niosdMaxAioNreqsSubmit = MIN(niosdMaxAioEvents,
+                                 NIOSD_MAX_AIO_NREQS_SUBMIT);
+
     if (num_aio_events < NIOSD_MIN_AIO_EVENTS)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "num_aio_events=%zu is too small to proceed.",
@@ -123,10 +129,6 @@ niosd_set_num_aio_events(void)
         EXIT_ERROR_MSG(1, "Please increase %s to at least %d and restart.",
                        NIOSD_LINUX_PROC_AIO_MAX, NIOSD_MIN_AIO_EVENTS);
     }
-
-    niosdMaxAioEvents = num_aio_events / num_aio_ctxs;
-    niosdMaxAioNreqsSubmit = MIN(niosdMaxAioEvents,
-                                 NIOSD_MAX_AIO_NREQS_SUBMIT);
 
     SIMPLE_LOG_MSG(LL_NOTIFY,
                    "niosdMaxAioEvents=%zu niosdMaxAioNreqsSubmit=%zu",
@@ -193,8 +195,8 @@ niosd_io_compl_event_ring_get_to_fill(struct niosd_io_ctx *nioctx,
     /* Convert absolute counts relative to the array size.  It's permissible
      * for the relative tail to be > the head.
      */
-    head = head % cer->niocer_num_events;
-    tail = tail % cer->niocer_num_events;
+    head &= cer->niocer_event_mask;
+    tail &= cer->niocer_event_mask;
 
     if (tail > head) // Don't overwrite the tail slot
         nevents_to_fill = MIN(nevents_to_fill, tail - head - 1);
@@ -366,7 +368,11 @@ static int
 niosd_io_completion_event_ring_init(struct niosd_io_compl_event_ring *cer,
                                     size_t num_events)
 {
+    NIOVA_ASSERT(number_of_ones_in_val(num_events) == 1);
+
     CONST_OVERRIDE(size_t, cer->niocer_num_events, num_events);
+    CONST_OVERRIDE(size_t, cer->niocer_event_mask, (num_events - 1));
+
     cer->niocer_events = niova_calloc(num_events, sizeof(struct io_event));
 
     return !cer->niocer_events ? -errno : 0;
@@ -382,6 +388,7 @@ niosd_io_completion_event_ring_destroy(struct niosd_io_compl_event_ring *cer)
     cer->niocer_events = NULL;
 
     CONST_OVERRIDE(size_t, cer->niocer_num_events, 0);
+    CONST_OVERRIDE(size_t, cer->niocer_event_mask, 0);
 }
 
 static int
@@ -405,10 +412,11 @@ niosd_device_dump_nioctx_stats(const struct niosd_io_ctx *nioctx)
 
         for (int k = 0; k < binary_hist_size(bh); k++)
         {
-            STDERR_MSG("%d: %lld,%lld: %lld", j,
-                       binary_hist_lower_bucket_range(bh, k),
-                       binary_hist_upper_bucket_range(bh, k),
-                       binary_hist_get_cnt(bh, k));
+            SIMPLE_LOG_MSG(LL_NOTIFY,
+                           "%d: %lld,%lld: %lld", j,
+                           binary_hist_lower_bucket_range(bh, k),
+                           binary_hist_upper_bucket_range(bh, k),
+                           binary_hist_get_cnt(bh, k));
         }
     }
 }
@@ -907,8 +915,8 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
     for (i = 0; i < max_events && niosd_ctx_pending_completion_ops(nioctx);
          i++)
     {
-        const int event_slot =
-            (tail_cnt + i) % niosd_ctx_to_cer_memb(nioctx, num_events);
+        const unsigned int event_slot =
+            (tail_cnt + i) & niosd_ctx_to_cer_memb(nioctx, event_mask);
 
         struct io_event *event = niosd_ctx_to_cer_event(nioctx, event_slot);
         struct niosd_io_request *niorq = event->data;

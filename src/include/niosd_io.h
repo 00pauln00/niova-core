@@ -111,7 +111,8 @@ struct niosd_io_compl_event_ring
     niosd_io_event_ctx_uint64_t         CACHE_ALIGN_MEMBER(niocer_head);
     niosd_io_completion_cb_ctx_uint64_t CACHE_ALIGN_MEMBER(niocer_tail);
     struct io_event                    *niocer_events;
-    const size_t                        niocer_num_events;
+    const uint64_t                      niocer_num_events;
+    const uint64_t                      niocer_event_mask;
 };
 
 #define niosd_ctx_increment_cer_counter(nioctx, counter, value) \

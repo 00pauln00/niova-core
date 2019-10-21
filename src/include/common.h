@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <string.h>
 #include <uuid/uuid.h>
+#include <stdio.h>
 
 /* No NIOVA includes may be added here!
  */
@@ -225,6 +226,23 @@ common_compile_time_asserts(void)
 
     COMPILE_TIME_ASSERT(sizeof(uuid_t) ==
                         (sizeof(uint64_t) * NIOVA_OSD_ID_WORDS));
+}
+
+static inline unsigned long long
+highest_power_of_two_from_val(unsigned long long val)
+{
+    if (!val)
+        return 0;
+
+    int pos = TYPE_SZ_BITS(unsigned long long) - __builtin_clzll(val) - 1;
+
+    return 1ULL << pos;
+}
+
+static inline int
+number_of_ones_in_val(unsigned long long val)
+{
+    return __builtin_popcount(val);
 }
 
 #endif //NIOVA_COMMON_H

@@ -63,6 +63,9 @@ tests: $(CORE_OBJFILES)
 	$(CC) $(CFLAGS) -o test/binary_hist_test \
 		test/binary_hist_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/common_test \
+		test/common_test.c \
+		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 test_build: tests
 test_build:
