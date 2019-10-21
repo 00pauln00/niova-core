@@ -27,7 +27,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define TEST_BULK_BUFFER_SIZE (1024ul * 1024ul)
 
 #define MAX_IO_DEPTH 32768
-#define OPTS         "f:s:n:z:d:r:u:"
+#define OPTS         "f:s:n:z:d:r:u:t:"
 #define MAX_DEV_SIZE (1ULL << 44) //4TiB
 #define MIN_DEV_SIZE (1ULL << 30) //1GiB
 #define DEF_DEV_SIZE (MIN_DEV_SIZE * 10ULL)
@@ -48,6 +48,7 @@ static size_t                   ioDepth =
     (TEST_BULK_BUFFER_SIZE / (DEF_NUM_SECTORS * NIOVA_SECTOR_SIZE));
 
 static useconds_t               pollSleepUsecs;
+static struct timespec          runTime;
 
 #if 0
 struct niorq_cb_data
@@ -227,12 +228,14 @@ niot_prepare_test_device(const char *dev_name, size_t dev_size)
 }
 
 static void
-niot_spin_niorq_completion(struct niosd_device *ndev)
+niot_spin_niorq_completion(struct niosd_device *ndev,
+                           const struct timespec *start_time)
 {
     struct niosd_io_ctx *nioctx =
         niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_DEFAULT);
 
     size_t num_completed = 0;
+    bool timeout_reached = false;
 
     for (; niorqsDone < numOps;)
     {
@@ -243,11 +246,37 @@ niot_spin_niorq_completion(struct niosd_device *ndev)
 
         num_completed += n;
 
+        useconds_t sleep_usecs = pollSleepUsecs;
+
+        if (runTime.tv_sec > 0)
+        {
+            struct timespec current_run_time;
+            niova_unstable_clock(&current_run_time);
+
+            timespecsub(&current_run_time, start_time, &current_run_time);
+
+            if (timespeccmp(&current_run_time, &runTime, >=))
+            {
+                timeout_reached = true;
+                break;
+            }
+            else
+            {
+                timespecsub(&runTime, &current_run_time, &current_run_time);
+                sleep_usecs = MIN(timespec_2_usec(&current_run_time),
+                                  pollSleepUsecs);
+
+                SIMPLE_LOG_MSG(LL_TRACE,
+                               "remaining=%ld.%ld", current_run_time.tv_sec,
+                               current_run_time.tv_nsec);
+            }
+        }
+
         if (!n && pollSleepUsecs)
-            usleep(pollSleepUsecs);
+            usleep(sleep_usecs);
     }
 
-    if (num_completed != numOps)
+    if (num_completed != numOps && !timeout_reached)
         STDERR_MSG("num_completed=%zu", num_completed);
 }
 
@@ -258,7 +287,7 @@ niot_print_help(const int error)
             "niosd_io_test [-f test-device (or file)] [-z dev-size-bytes]\n"
             "              [-n num-ops] [-s io-num-sectors (512-byte)]\n"
             "              [-d io-depth] [-r read-ratio]\n"
-            "              [-u poll-usecs-sleep]\n");
+            "              [-u poll-usecs-sleep] [-t max-time (secs)\n");
     exit(error);
 }
 
@@ -309,7 +338,9 @@ niot_getopt(int argc, char **argv)
         case 'u':
             pollSleepUsecs = atoi(optarg);
             break;
-
+        case 't':
+            runTime.tv_sec = atoi(optarg);
+            break;
         default:
             niot_print_help(EINVAL);
             break;
@@ -325,7 +356,7 @@ niot_print_stats(const struct timespec *wall_time)
     if (getrusage(RUSAGE_SELF, &rusage))
         STDERR_MSG("getrusage() failed:  %s", strerror(errno));
 
-    float iops = numOps / timespec_2_float(wall_time);
+    float iops = niorqsDone / timespec_2_float(wall_time);
     float bw = iops * ioNumSectors * NIOVA_SECTOR_SIZE / 1048576;
 
     fprintf(stdout,
@@ -334,7 +365,7 @@ niot_print_stats(const struct timespec *wall_time)
             "\tio-pattern:  random\n"
             "\tio-depth:    %zu\n"
             "\tio-size:     %zu\n"
-            "\tnum-io-ops:  %zu\n"
+            "\tnum-io-ops:  %zu / %zu (Completed:  %.02f%%)\n"
             "\tpoll-usleep: %u usecs\n"
             "\tread-ratio:  %u\n"
             "\twall-time:   %ld.%ld\n"
@@ -352,7 +383,8 @@ niot_print_stats(const struct timespec *wall_time)
             "\tvol-ctxsw:   %ld\n"
             "\tinvol-ctxsw: %ld\n",
             testDevName, ioDepth,
-            ioNumSectors * NIOVA_SECTOR_SIZE, numOps, pollSleepUsecs,
+            ioNumSectors * NIOVA_SECTOR_SIZE, niorqsDone, numOps,
+            (100.00 * (float)niorqsDone / (float)numOps), pollSleepUsecs,
             rwRatio, wall_time->tv_sec, wall_time->tv_nsec, iops, bw,
             rusage.ru_utime.tv_sec, rusage.ru_utime.tv_usec,
             rusage.ru_stime.tv_sec, rusage.ru_stime.tv_usec,
@@ -403,7 +435,7 @@ main(int argc, char **argv)
         }
     }
 
-    niot_spin_niorq_completion(&ndev);
+    niot_spin_niorq_completion(&ndev, &ts[0]);
 
     niova_unstable_clock(&ts[1]);
     timespecsub(&ts[1], &ts[0], &ts[0]);
