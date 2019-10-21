@@ -13,6 +13,8 @@
 #include <unistd.h>
 #include <semaphore.h>
 #include <signal.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
 
 #define NUM_SECONDS_TO_RUN_TEST 2ULL
 
@@ -26,7 +28,10 @@ size_t num_wakeups;
 int pipe_fds[2];
 bool pipe_is_closed;
 
-struct thread_ctl tc[2];
+int epoll_pipe_0[2];
+int epoll_pipe_1[2];
+
+struct thread_ctl tc[3];
 
 niova_atomic64_t waiters;
 
@@ -120,8 +125,8 @@ pthread_cond_test(void)
     thread_halt_and_destroy(&tc[0]);
     thread_halt_and_destroy(&tc[1]);
 
-    STDOUT_MSG("pthread_cond: num_wakeups per sec=%zd",
-               (size_t)(num_wakeups / NUM_SECONDS_TO_RUN_TEST));
+    fprintf(stdout, "%.02f\t\t%s\n",
+            (NUM_SECONDS_TO_RUN_TEST * 1000000000.00 / num_wakeups), __func__);
 }
 
 static void
@@ -146,8 +151,9 @@ sem_test(void)
     thread_halt_and_destroy(&tc[0]);
     thread_halt_and_destroy(&tc[1]);
 
-    STDOUT_MSG("sem_test: num_wakeups per sec=%zd",
-               (size_t)(num_wakeups / NUM_SECONDS_TO_RUN_TEST));
+    fprintf(stdout, "%.02f\t\t%s\n",
+            (NUM_SECONDS_TO_RUN_TEST * 1000000000.00 / num_wakeups), __func__);
+
 }
 
 static void *
@@ -197,6 +203,8 @@ pipe_dispatcher(void *arg)
 static void
 pipe_test(void)
 {
+    num_wakeups = 0;
+
     signal(SIGPIPE, SIG_IGN);
 
     NIOVA_ASSERT(!pipe(pipe_fds));
@@ -218,8 +226,175 @@ pipe_test(void)
     thread_halt_and_destroy(&tc[0]);
     thread_halt_and_destroy(&tc[1]);
 
-    STDOUT_MSG("pipe_test: num_wakeups per sec=%zd",
-               (size_t)(num_wakeups / NUM_SECONDS_TO_RUN_TEST));
+    fprintf(stdout, "%.02f\t\t%s\n",
+            (NUM_SECONDS_TO_RUN_TEST * 1000000000.00 / num_wakeups), __func__);
+
+    signal(SIGPIPE, SIG_DFL);
+}
+
+struct epoll_worker_priv
+{
+    const char *ewp_name;
+    size_t      ewp_cnt;
+    int         ewp_fd;
+};
+
+#define MAX_EPOLL_EVENTS 31
+
+static void *
+epoll_worker(void *arg)
+{
+    struct thread_ctl *tc = arg;
+
+    /* Don't initialize the epoll fd until the master says it's OK to proceed.
+     */
+    thread_ctl_pause_if_should(tc);
+
+    struct epoll_event my_ev[2] = {0};
+    struct epoll_worker_priv ewp[2] = {0};
+
+    ewp[0].ewp_name = "epoll-fd foo";
+    ewp[0].ewp_fd   = epoll_pipe_0[0];
+
+    ewp[1].ewp_name = "epoll-fd bar";
+    ewp[1].ewp_fd   = epoll_pipe_1[0];
+
+    my_ev[0].events = my_ev[1].events = EPOLLIN;
+    my_ev[0].data.ptr = &ewp[0];
+    my_ev[1].data.ptr = &ewp[1];
+
+    int epfd = epoll_create1(0);
+    FATAL_IF((epfd < 0), "epoll_create1(): %s", strerror(errno));
+
+    FATAL_IF(((fcntl(epoll_pipe_0[0], F_SETFL, O_NONBLOCK) ||
+               fcntl(epoll_pipe_1[0], F_SETFL, O_NONBLOCK))),
+             "fcntl(): %s", strerror(errno));
+
+    int rc;
+    rc = epoll_ctl(epfd, EPOLL_CTL_ADD, epoll_pipe_0[0], &my_ev[0]);
+    FATAL_IF((rc != 0), "epoll_ctl(0): %s", strerror(errno));
+
+    rc = epoll_ctl(epfd, EPOLL_CTL_ADD, epoll_pipe_1[0], &my_ev[1]);
+    FATAL_IF((rc != 0), "epoll_ctl(1): %s", strerror(errno));
+
+    struct epoll_event events[MAX_EPOLL_EVENTS];
+
+    bool stop = false;
+
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        char c;
+        int nfds = epoll_wait(epfd, events, MAX_EPOLL_EVENTS, 1);
+
+        FATAL_IF((nfds < 0 && errno != EINTR), "epoll_wait(): %s",
+                 strerror(errno));
+
+        for (int i = 0; i < nfds; i++)
+        {
+            struct epoll_event *ev = &events[i];
+
+            if (!ev->data.ptr)
+            {
+                STDERR_MSG("event idx=%d, null data.ptr", i);
+                continue;
+            }
+            struct epoll_worker_priv *ewp_ev =
+                (struct epoll_worker_priv *)ev->data.ptr;
+
+            ewp_ev->ewp_cnt++;
+
+#define MAX_EVENTS_TO_REAP 32
+            for (int j = 0; j < MAX_EVENTS_TO_REAP; j++)
+            {
+                ssize_t rc = read(ewp->ewp_fd, &c, 1);
+                if (rc != 1)
+                {
+                    int save_errno = errno;
+                    if (save_errno == EWOULDBLOCK || save_errno == EAGAIN)
+                        break;
+
+                    if (!pipe_is_closed)
+                        STDERR_MSG("read() returned %zd:  %s", rc,
+                                   strerror(save_errno));
+                    {
+                        stop = true;
+                        break;
+                    }
+                }
+                num_wakeups++;
+            }
+        }
+        if (stop)
+            break;
+    }
+
+//    fprintf(stdout, "%s cnt=%zu\n", ewp[0].ewp_name, ewp[0].ewp_cnt);
+//    fprintf(stdout, "%s cnt=%zu\n", ewp[1].ewp_name, ewp[1].ewp_cnt);
+
+    return NULL;
+}
+
+static void *
+epoll_dispatcher(void *arg)
+{
+    struct thread_ctl *tc = arg;
+
+    int fd = *(int *)tc->tc_arg;
+
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        unsigned char c = 0;
+        ssize_t rc = write(fd, &c, 1);
+        if (rc != 1)
+        {
+            if (!pipe_is_closed)
+                STDERR_MSG("write() returned %zd:  %s", rc, strerror(errno));
+            break;
+        }
+    }
+
+    return NULL;
+}
+
+static void
+epoll_test(void)
+{
+    num_wakeups = 0;
+    pipe_is_closed = false;
+
+    signal(SIGPIPE, SIG_IGN);
+
+    NIOVA_ASSERT(!pipe(epoll_pipe_0));
+    NIOVA_ASSERT(!pipe(epoll_pipe_1));
+
+    thread_create(epoll_worker, &tc[0], "epoll_worker", NULL, NULL);
+
+    thread_create(epoll_dispatcher, &tc[1], "epoll_dispatcher0",
+                  (void *)&epoll_pipe_0[1], NULL);
+
+    thread_create(epoll_dispatcher, &tc[2], "epoll_dispatcher1",
+                  (void *)&epoll_pipe_1[1], NULL);
+
+    thread_ctl_run(&tc[0]);
+    thread_ctl_run(&tc[1]);
+    thread_ctl_run(&tc[2]);
+
+    for (int i = 0; i < NUM_SECONDS_TO_RUN_TEST; i++)
+        sleep(1);
+
+    pipe_is_closed = true;
+
+    NIOVA_ASSERT(!close(epoll_pipe_0[0]));
+    NIOVA_ASSERT(!close(epoll_pipe_0[1]));
+    NIOVA_ASSERT(!close(epoll_pipe_1[0]));
+    NIOVA_ASSERT(!close(epoll_pipe_1[1]));
+
+    thread_halt_and_destroy(&tc[1]);
+    thread_halt_and_destroy(&tc[2]);
+    thread_halt_and_destroy(&tc[0]);
+
+    fprintf(stdout, "%.02f\t\t%s\n",
+            (NUM_SECONDS_TO_RUN_TEST * 1000000000.00 / num_wakeups), __func__);
 
     signal(SIGPIPE, SIG_DFL);
 }
@@ -227,6 +402,10 @@ pipe_test(void)
 int
 main(void)
 {
+    fprintf(stdout, "NS/OP\t\tTest Name\n"
+            "---------------------------------------------\n");
+
+    epoll_test();
     pthread_cond_test();
     sem_test();
     pipe_test();

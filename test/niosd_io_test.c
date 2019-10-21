@@ -27,7 +27,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define TEST_BULK_BUFFER_SIZE (1024ul * 1024ul)
 
 #define MAX_IO_DEPTH 32768
-#define OPTS         "f:s:n:z:d:r:u:t:"
+#define OPTS         "f:s:n:z:d:r:u:t:e:"
 #define MAX_DEV_SIZE (1ULL << 44) //4TiB
 #define MIN_DEV_SIZE (1ULL << 30) //1GiB
 #define DEF_DEV_SIZE (MIN_DEV_SIZE * 10ULL)
@@ -49,14 +49,7 @@ static size_t                   ioDepth =
 
 static useconds_t               pollSleepUsecs;
 static struct timespec          runTime;
-
-#if 0
-struct niorq_cb_data
-{
-    int foo;
-};
-static struct niorq_cb_data niorqCbDataArray[IO_DEPTH];
-#endif
+static int                      sleepBeforeExit;
 
 static enum niosd_io_request_type
 niot_get_op_type(unsigned int rw_ratio, unsigned int rand_val)
@@ -341,6 +334,9 @@ niot_getopt(int argc, char **argv)
         case 't':
             runTime.tv_sec = atoi(optarg);
             break;
+        case 'e':
+            sleepBeforeExit = atoi(optarg);
+            break;
         default:
             niot_print_help(EINVAL);
             break;
@@ -439,6 +435,10 @@ main(int argc, char **argv)
 
     niova_unstable_clock(&ts[1]);
     timespecsub(&ts[1], &ts[0], &ts[0]);
+
+    STDOUT_MSG("sleepBeforeExit=%d", sleepBeforeExit);
+    if (sleepBeforeExit)
+        sleep(sleepBeforeExit);
 
 //    lreg_node_recurse("log_entry_map");
 

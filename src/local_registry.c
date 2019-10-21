@@ -270,14 +270,14 @@ lreg_node_recurse(const char *registry_path)
 
     if (!rc && recurse_root)
     {
-        DBG_LREG_NODE(LL_WARN, recurse_root, "got it");
+        DBG_LREG_NODE(LL_DEBUG, recurse_root, "got it");
 
         rc = lreg_node_recurse_locked(recurse_root, lreg_node_recurse_json_cb,
                                       0);
     }
     else
     {
-        log_msg(LL_WARN, "lreg_node_lookup_locked() %s: %s",
+        log_msg(LL_DEBUG, "lreg_node_lookup_locked() %s: %s",
                 registry_path, strerror(-rc));
     }
 
