@@ -66,14 +66,18 @@ tests: $(CORE_OBJFILES)
 	$(CC) $(CFLAGS) -o test/common_test \
 		test/common_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/micro_test \
+		test/micro_test.c \
+		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 test_build: tests
 test_build:
 	mkdir -p /tmp/.niova
+	test/micro_test
 	test/binary_hist_test
 	test/simple_test
 	test/ref_tree_test
-	test/niosd_io_test
+	test/niosd_io_test -t 1
 	test/work_dispatch_test
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
