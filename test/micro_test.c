@@ -9,10 +9,20 @@
 #include "common.h"
 #include "log.h"
 #include "random.h"
+#include "atomic.h"
 
 #define DEF_ITER 200000000
 #define PRIME 1040071U
 #define SMALL_PRIME 7879U
+
+size_t iterator;
+
+static void
+simple_noop(void)
+{
+    (void)iterator;
+    return;
+}
 
 static void
 simple_random(void)
@@ -61,6 +71,33 @@ simple_addition(void)
 }
 
 static void
+atomic_addition(void)
+{
+    static niova_atomic64_t val = PRIME;
+    niova_atomic_inc(&val);
+
+    (void)val;
+}
+
+static void
+atomic_cas_noop(void)
+{
+    static niova_atomic64_t val = PRIME;
+    niova_atomic_cas(&val, 0, 1);
+
+    (void)val;
+}
+
+static void
+atomic_cas(void)
+{
+    static niova_atomic64_t val = 0;
+    niova_atomic_cas(&val, iterator, iterator + 1);
+
+    (void)val;
+}
+
+static void
 simple_multiply(void)
 {
     static unsigned long long val = SMALL_PRIME;
@@ -75,7 +112,7 @@ run_micro(void (*func)(void), size_t iterations, const char *name)
     struct timespec ts[2];
     niova_unstable_clock(&ts[0]);
 
-    for (size_t i = 0; i < iterations; i++)
+    for (iterator = 0; iterator < iterations; iterator++)
         func();
 
     niova_unstable_clock(&ts[1]);
@@ -94,7 +131,11 @@ main(void)
     fprintf(stdout, "NS/OP\t\tTest Name\n"
             "----------------------------------------------\n");
 
+    run_micro(simple_noop, DEF_ITER, "simple_noop");
     run_micro(simple_addition, DEF_ITER, "simple_addition");
+    run_micro(atomic_addition, DEF_ITER, "atomic_addition");
+    run_micro(atomic_cas, DEF_ITER, "atomic_cas");
+    run_micro(atomic_cas_noop, DEF_ITER, "atomic_cas_noop");
     run_micro(simple_multiply, DEF_ITER, "simple_multiply");
     run_micro(simple_modulus, 10000, "simple_modulus");
 
