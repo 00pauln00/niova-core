@@ -142,16 +142,18 @@ thread_halt_and_destroy(struct thread_ctl *tc)
     thread_ctl_halt(tc);
 
     void *retval;
+    int my_errno = 0;
     int rc = pthread_join(tc->tc_thread_id, &retval);
 
     if (rc)
-        rc = -errno;
+        my_errno = errno;
 
     const enum log_level log_level =
         (rc || (long int *)retval) ? LL_WARN : LL_NOTIFY;
 
-    DBG_THREAD_CTL(log_level, tc, "pthread_join(): %s, thr_retval=%p",
-                   strerror(rc), (long int *)retval);
+    DBG_THREAD_CTL(log_level, tc,
+                   "pthread_join(): rc=%d errno=%s, thr_retval=%p",
+                   rc, strerror(my_errno), (long int *)retval);
 
     return rc;
 }

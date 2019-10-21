@@ -275,8 +275,6 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
 {
     int rc = 0;
 
-    struct timespec ts = {.tv_sec = 0, .tv_nsec = 100000000};
-
     struct io_event *events_head;
 
     long int num_events_to_get =
@@ -284,9 +282,10 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
 
     int num_events_completed =
         io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
-                     num_events_to_get, &events_head[0], &ts);
+                     num_events_to_get, &events_head[0], NULL);
 
-    log_msg(LL_TRACE, "completed=%d max_to_get=%ld event_buf=%p",
+    log_msg((num_events_completed < 0 ? LL_NOTIFY : LL_TRACE),
+            "completed=%d max_to_get=%ld event_buf=%p",
             num_events_completed, num_events_to_get, &events_head[0]);
 
     if (num_events_completed > 0)
@@ -298,7 +297,16 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
     }
     else if (num_events_completed < 0) // Error case
     {
-        rc = (num_events_completed == -EINTR) ? 0 : num_events_completed;
+        switch (num_events_completed)
+        {
+        // Errors which may be overridden
+        case -EINVAL: //returned if the ioctx was closed with io_destroy()
+        case -EINTR:  //fall through
+            num_events_completed = 0;
+            break;
+        default:
+            break;
+        }
     }
 
     return rc;
@@ -482,6 +490,9 @@ niosd_device_close(struct niosd_device *ndev)
         for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
+
+            int rc = io_destroy(nioctx->nioctx_ctx);
+            FATAL_IF((rc != 0), "io_destroy():  %s", strerror(-rc));
 
             thread_halt_and_destroy(&nioctx->nioctx_thr_ctl);
         }
