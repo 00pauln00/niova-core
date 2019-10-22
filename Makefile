@@ -98,8 +98,8 @@ client-test: $(CORE_OBJFILES)
 	$(CC) $(DEBUG_CFLAGS) -o test/client_mmap test/client_mmap.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-pahole : check
-	pahole test/simple_test
+pahole : tests
+	pahole test/niosd_io_test
 
 clean :
 	rm -fv test/simple_test test/niosd_io_test test/ref_test_test \

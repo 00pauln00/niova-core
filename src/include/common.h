@@ -24,6 +24,10 @@
 #define NBBY 8
 #endif
 
+#define READ_PIPE_IDX  0
+#define WRITE_PIPE_IDX 1
+#define NUM_PIPE_FD    2
+
 #define TYPE_SZ_BITS(type) (sizeof(type) * NBBY)
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))

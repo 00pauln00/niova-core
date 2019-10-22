@@ -135,6 +135,118 @@ niosd_set_num_aio_events(void)
                    niosdMaxAioEvents, niosdMaxAioNreqsSubmit);
 }
 
+static niosd_io_event_ctx_t
+nioctx_blocking_mode_notify(struct niosd_io_ctx *nioctx)
+{
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return;
+
+    int rc = 0;
+    struct niosd_io_ctx_blocking *nb = &nioctx->nioctx_blocking;
+
+    while (nb->nioctxb_waking_cnt < nb->nioctxb_blocking_cnt)
+    {
+        char c[NIOSD_BLOCKING_MODE_WRITE_SZ] = {'x'};
+
+        rc = write(nb->nioctxb_pipe[WRITE_PIPE_IDX], c,
+                   NIOSD_BLOCKING_MODE_WRITE_SZ);
+
+        if (rc == NIOSD_BLOCKING_MODE_WRITE_SZ)
+        {
+            uint64_t old_val = nb->nioctxb_waking_cnt;
+            nb->nioctxb_waking_cnt++;
+            rc = 0;
+
+            SIMPLE_LOG_MSG(LL_DEBUG, "%ld old=%ld", nb->nioctxb_waking_cnt,
+                           old_val);
+        }
+        else
+        {
+            rc = -errno;
+            break;
+        }
+    }
+
+    if (rc)
+        SIMPLE_LOG_MSG(LL_WARN, "%s", strerror(-rc));
+}
+
+/**
+ * nioctx_blocking_mode_cleanup - disables blocking mode on the nioctx and
+ *    closes the pipe.
+ */
+static int
+nioctx_blocking_mode_cleanup(struct niosd_io_ctx *nioctx)
+{
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return -EINVAL;
+
+    struct niosd_io_ctx_blocking *nb = &nioctx->nioctx_blocking;
+
+    nioctx->nioctx_use_blocking_mode = 0;
+
+    int save_errno[NUM_PIPE_FD];
+
+    for (int i = 0; i < NUM_PIPE_FD; i++)
+        save_errno[i] = close(nb->nioctxb_pipe[i]) ? errno : 0;
+
+    const enum log_level level = (save_errno[0] || save_errno[1]) ?
+        LL_WARN : LL_TRACE;
+
+    SIMPLE_LOG_MSG(level, "%s", strerror((save_errno[0] || save_errno[1])));
+
+    return save_errno[0] ? save_errno[0] : save_errno[1];
+}
+
+/**
+ * nioctx_blocking_mode_setup - create the ability for a thread to block on
+ *    event handler completion.  This call creates a non-blocking pipe and
+ *    stores the pipe in the nioctx.
+ */
+static int
+nioctx_blocking_mode_setup(struct niosd_io_ctx *nioctx)
+{
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return -EINVAL;
+
+    struct niosd_io_ctx_blocking *nb = &nioctx->nioctx_blocking;
+
+    nb->nioctxb_blocking_cnt = nb->nioctxb_waking_cnt = 0;
+
+    int rc = pipe(nb->nioctxb_pipe);
+
+    for (int i = 0; i < NUM_PIPE_FD && !rc; i++)
+    {
+        rc = fcntl(nb->nioctxb_pipe[i], F_SETPIPE_SZ,
+                   NIOSD_BLOCKING_MODE_PIPE_SZ);
+
+        if (rc == NIOSD_BLOCKING_MODE_PIPE_SZ)
+            rc = fcntl(nb->nioctxb_pipe[i], F_SETFL, O_NONBLOCK);
+    }
+
+    rc = rc ? -errno : 0;
+
+    if (rc)
+        (int)nioctx_blocking_mode_cleanup(nioctx);
+
+    SIMPLE_LOG_MSG(LL_NOTIFY, "%s", strerror(-rc));
+
+    return rc;
+}
+
+/**
+ * nioctx_blocking_mode_fd_get - return the file descriptor (which should be
+ *   the read end of an open pipe.
+ */
+int
+nioctx_blocking_mode_fd_get(const struct niosd_io_ctx *nioctx)
+{
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return -EINVAL;
+
+    return nioctx->nioctx_blocking.nioctxb_pipe[READ_PIPE_IDX];
+}
+
 /**
  * niosd_device_params_init - initialize the provided device structure with
  *    the device name.
@@ -268,6 +380,8 @@ niosd_device_event_thread_post_new_events(struct niosd_io_ctx *nioctx,
     /* Notify completion ctx that new events have been obtained.
      */
     niosd_ctx_increment_cer_counter(nioctx, head, num_events_completed);
+
+    nioctx_blocking_mode_notify(nioctx);
 }
 
 static niosd_io_event_ctx_int_t
@@ -464,6 +578,12 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
 
         rc = niosd_ctx_event_thread_start(nioctx);
         FATAL_IF(rc, "niosd_ctx_event_thread_start(): %s", strerror(-rc));
+
+        if (nioctx->nioctx_use_blocking_mode)
+        {
+            rc = nioctx_blocking_mode_setup(nioctx);
+            FATAL_IF(rc, "nioctx_blocking_mode_setup(): %s", strerror(-rc));
+        }
     }
 
     return 0;
@@ -490,6 +610,9 @@ niosd_device_close(struct niosd_device *ndev)
         for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
+
+            if (nioctx->nioctx_use_blocking_mode)
+                (int)nioctx_blocking_mode_cleanup(nioctx);
 
             int rc = io_destroy(nioctx->nioctx_ctx);
             FATAL_IF((rc != 0), "io_destroy():  %s", strerror(-rc));
@@ -914,13 +1037,22 @@ niosd_io_request_complete(struct niosd_io_request *niorq,
 }
 
 niosd_io_completion_cb_ctx_size_t
-niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
+niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events,
+                         const bool may_block)
 {
     const uint64_t tail_cnt = niosd_ctx_to_cer_counter(nioctx, tail);
     size_t nevents_processed = 0;
 
     struct timespec now;
     niova_unstable_clock(&now);
+
+    /* The caller is telling us that its context may block on nioctxb_pipe
+     * following this function.  Enable notificiations on nioctxb_pipe here.
+     * The idea is to avoid a race by allowing the wakeup notification before
+     * incrementing the event completion counter.
+     */
+    if (may_block)
+        niosd_ctx_increment_blocking_cnt(nioctx);
 
     long int i;
     for (i = 0; i < max_events && niosd_ctx_pending_completion_ops(nioctx);
