@@ -6,8 +6,12 @@
 #ifndef NIOVA_LOG_H
 #define NIOVA_LOG_H 1
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE 1
 #include <stdio.h>
 #include <pthread.h>
+#undef _GNU_SOURCE
+#endif
 
 #include "common.h"
 
