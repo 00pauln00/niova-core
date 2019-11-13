@@ -243,8 +243,15 @@ lctli_prepare(struct local_ctl_interface *lctli, const char *path)
         return -save_err;
     }
 
+    char input_path[PATH_MAX];
+
+    rc = snprintf(input_path, PATH_MAX, "%s/%s",
+                  path, lctliSubdirs[LCTLI_SUBDIR_INPUT]);
+    if (rc >= PATH_MAX)
+        return -ENAMETOOLONG;
+
     lctli->lctli_inotify_watch_fd =
-        inotify_add_watch(lctli->lctli_inotify_fd, path,
+        inotify_add_watch(lctli->lctli_inotify_fd, input_path,
                           IN_CLOSE_WRITE | IN_ACCESS);
 
     if (lctli->lctli_inotify_watch_fd < 0)
