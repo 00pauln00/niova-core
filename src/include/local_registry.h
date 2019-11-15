@@ -296,7 +296,7 @@ init_ctx_t
 lreg_subsystem_init(void)
     __attribute__ ((constructor (LREG_SUBSYS_CTOR_PRIORITY)));
 
-init_ctx_t
+destroy_ctx_t
 lreg_subsystem_destroy(void)
     __attribute__ ((destructor (LREG_SUBSYS_CTOR_PRIORITY)));
 

@@ -13,6 +13,7 @@
 #include "lock.h"
 #include "atomic.h"
 #include "local_registry.h"
+#include "thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -533,6 +534,8 @@ lreg_svc_thread_start(void)
                            NULL, NULL);
 
     FATAL_IF(rc, "pthread_create(): %s", strerror(errno));
+
+    thread_ctl_monitor_via_watchdog(&lRegSvcThreadCtl);
 }
 
 init_ctx_t

@@ -39,7 +39,6 @@ init_start(void)
     initCtx = true;
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
-    log_level_set_from_env();
 }
 
 init_ctx_t

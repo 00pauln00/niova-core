@@ -279,9 +279,10 @@ lctli_subsystem_init(void)
     NIOVA_ASSERT(lctli);
     NIOVA_ASSERT(numLocalCtlIfs == 1);
 
-    const char *inotify_path = getenv(NIOVA_INOTIFY_PATH);
-    if (!inotify_path)
-        inotify_path = DEFAULT_INOTIFY_PATH;
+    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_inotify_path);
+
+    const char *inotify_path = (ev && ev->nev_present) ?
+        ev->nev_string : DEFAULT_INOTIFY_PATH;
 
     int rc = lctli_prepare(lctli, inotify_path);
 

@@ -19,6 +19,7 @@ CORE_INCLUDES   = \
 	src/include/niosd_uuid.h \
 	src/include/local_registry.h \
 	src/include/thread.h \
+	src/include/watchdog.h \
 	src/include/util.h \
 	src/include/local_ctl_interface.h \
 	src/include/metablock_digest.h \
@@ -36,9 +37,11 @@ CORE_OBJFILES   = \
 	src/local_registry.o \
 	src/superblock.o \
 	src/thread.o \
+	src/watchdog.o \
 	src/local_ctl_interface.o \
 	src/metablock_digest.o \
 	src/init.o \
+	src/env.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova
@@ -98,6 +101,7 @@ client-test: $(CORE_OBJFILES)
 	$(CC) $(DEBUG_CFLAGS) -o test/client_mmap test/client_mmap.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
+pahole: CFLAGS = $(DEBUG_CFLAGS)
 pahole : tests
 	pahole test/niosd_io_test
 

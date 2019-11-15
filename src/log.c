@@ -245,34 +245,14 @@ log_level_set(enum log_level ll)
     dbgLevel = ll;
 }
 
-void
-log_level_set_from_env(void)
-{
-    char *env_log_level = getenv(NIOVA_LOG_LEVEL);
-
-    SIMPLE_LOG_MSG(LL_DEBUG, "env_log_level=%s", env_log_level);
-
-    if (env_log_level)
-    {
-        int value = atoi(env_log_level);
-
-        if (value >= 0 && value < LL_MAX)
-	{
-            enum log_level lvl = value;
-            log_level_set(lvl);
-	}
-	else
-        {
-            STDERR_MSG("Invalid value (%d) for %s,\n"
-                       "values are between %d and %d",
-                       value, NIOVA_LOG_LEVEL, LL_FATAL, LL_MAX - 1);
-        }
-    }
-}
-
 init_ctx_t
 log_subsys_init(void)
 {
+    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_log_level);
+
+    if (ev && ev->nev_present)
+        log_level_set(ev->nev_long_value);
+
     LREG_ROOT_ENTRY_INSTALL(log_entry_map);
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 };

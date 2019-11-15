@@ -24,6 +24,7 @@ char name[len + 1];                                             \
 
 #define niova_unstable_clock(dest) clock_gettime(CLOCK_MONOTONIC, (dest))
 #define niova_stable_clock(dest) clock_gettime(CLOCK_MONOTONIC_RAW, (dest))
+#define niova_realtime_clock(dest) clock_gettime(CLOCK_REALTIME, (dest))
 
 /**
  * BSD timespec macros

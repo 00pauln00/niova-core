@@ -19,15 +19,41 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 __thread char thrName[MAX_THREAD_NAME + 1];
 
+thread_exec_ctx_t
+thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
+{
+    NIOVA_ASSERT(!tc->tc_watchdog);
+
+    int rc = watchdog_add_thread(&tc->tc_watchdog_handle);
+
+    if (!rc)
+        tc->tc_watchdog = 1;
+
+    DBG_THREAD_CTL((rc ? LL_ERROR : LL_DEBUG), tc, "%s",
+                   rc ? strerror(-rc) : "");
+}
+
 thread_exec_ctx_bool_t
 thread_ctl_should_continue(const struct thread_ctl *tc)
 {
     return tc->tc_halt ? false : true;
 }
 
+static thread_exec_ctx_t
+thread_ctl_inc_iteration_cnt(struct thread_ctl *tc)
+{
+    if (tc)
+        watchdog_inc_exec_cnt(&tc->tc_watchdog_handle);
+}
+
 thread_exec_ctx_bool_t
 thread_ctl_should_pause(struct thread_ctl *tc)
 {
+    /* Bump the iteration counter here so that continual pauses don't
+     * trigger the watchdog.
+     */
+    thread_ctl_inc_iteration_cnt(tc);
+
     if (!thread_ctl_should_continue(tc))
     {
         /* Thread is halting, no need to wait.

@@ -53,6 +53,13 @@ typedef uint32_t mb_crc32_t;
 typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
 
+/* Thread context defines
+ */
+typedef pthread_t thread_id_t;
+typedef void      thread_exec_ctx_t;
+typedef bool      thread_exec_ctx_bool_t;
+typedef uint64_t  thread_exec_ctx_u64_t;
+
 #define ID_ANY_8bit  255
 
 #define ID_ANY_64bit -1ULL

@@ -45,31 +45,9 @@ static size_t niosdMaxAioNreqsSubmit;
 static size_t
 niosd_num_aio_events_from_env(void)
 {
-    size_t env_num_aio_events = 0;
-    char *env_num_aio_events_str = getenv(NIOVA_NUM_AIO_EVENTS_ENV);
+    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_num_aio_events);
 
-    if (env_num_aio_events_str)
-    {
-        env_num_aio_events = atoll(env_num_aio_events_str);
-        if (env_num_aio_events > NIOSD_MAX_AIO_EVENTS)
-        {
-            SIMPLE_LOG_MSG(LL_WARN, "env variable %s value exceeds max (%u)",
-                           NIOVA_NUM_AIO_EVENTS_ENV, NIOSD_MAX_AIO_EVENTS);
-
-            env_num_aio_events = NIOSD_MAX_AIO_EVENTS;
-        }
-        else if (env_num_aio_events < NIOSD_MIN_AIO_EVENTS)
-        {
-            SIMPLE_LOG_MSG(LL_WARN,
-                           "env variable %s (%s) value below minumum (%u)",
-                           NIOVA_NUM_AIO_EVENTS_ENV, env_num_aio_events_str,
-                           NIOSD_MIN_AIO_EVENTS);
-
-            env_num_aio_events = NIOSD_MIN_AIO_EVENTS;
-        }
-    }
-
-    return env_num_aio_events;
+    return (ev && ev->nev_present) ? (size_t)ev->nev_long_value : 0;
 }
 
 static size_t

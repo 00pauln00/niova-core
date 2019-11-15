@@ -6,8 +6,60 @@
 #ifndef _NIOVA_ENV_H_
 #define _NIOVA_ENV_H_ 1
 
-#define NIOVA_LOG_LEVEL "NIOVA_LOG_LEVEL"
-#define NIOVA_NUM_AIO_EVENTS_ENV "NIOVA_NUM_AIO_EVENTS"
-#define NIOVA_INOTIFY_PATH "NIOVA_INOTIFY_PATH"
+#include "init.h"
+
+enum niova_env_var_type
+{
+    NIOVA_ENV_VAR_TYPE_NONE,
+    NIOVA_ENV_VAR_TYPE_STRING,
+    NIOVA_ENV_VAR_TYPE_LONG,
+    NIOVA_ENV_VAR_TYPE_OTHER,
+};
+
+enum niova_env_subsystem
+{
+    NIOVA_ENV_SUBSYSTEM_LOG,
+    NIOVA_ENV_SUBSYSTEM_AIO,
+    NIOVA_ENV_SUBSYSTEM_INOTIFY,
+    NIOVA_ENV_SUBSYSTEM_WATCHDOG,
+};
+
+enum niova_env_var_num
+{
+    NIOVA_ENV_VAR_MIN                = 0,
+    NIOVA_ENV_VAR_log_level          = 0,
+    NIOVA_ENV_VAR_num_aio_events     = 1,
+    NIOVA_ENV_VAR_inotify_path       = 2,
+    NIOVA_ENV_VAR_watchdog_disable   = 3,
+    NIOVA_ENV_VAR_watchdog_frequency = 4,
+    NIOVA_ENV_VAR_watchdog_stall_cnt = 5,
+    NIOVA_ENV_VAR_MAX                = 6,
+};
+
+struct niova_env_var
+{
+    const char              *nev_name;
+    const char              *nev_string;
+    enum niova_env_var_type  nev_type;
+    enum niova_env_subsystem nev_subsystem;
+    enum niova_env_var_num   nev_var_num;
+    long long                nev_min;
+    long long                nev_default;
+    long long                nev_max;
+    long long                nev_long_value;
+    bool                     nev_present;
+    int                      nev_rc;
+};
+
+const struct niova_env_var *
+env_get(enum niova_env_var_num ev);
+
+init_ctx_t
+env_init(void)
+    __attribute__ ((constructor (ENV_VAR_SUBSYS_CTOR_PRIORITY)));
+
+destroy_ctx_t
+env_destroy(void)
+    __attribute__ ((destructor (ENV_VAR_SUBSYS_CTOR_PRIORITY)));
 
 #endif
