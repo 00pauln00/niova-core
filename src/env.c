@@ -73,75 +73,80 @@ static struct niova_env_var niovaEnvVars[] = {
 };
 
 static void
-env_parse_long(const char *ev_string, struct niova_env_var *ev)
+env_parse_long(const char *ev_string, struct niova_env_var *nev)
 {
-    if (!ev_string || !ev)
+    if (!ev_string || !nev)
         return;
 
-    ev->nev_long_value = strtoll(ev_string, NULL, 10);
+    nev->nev_long_value = strtoll(ev_string, NULL, 10);
 
-    if (ev->nev_long_value == LLONG_MIN || ev->nev_long_value == LLONG_MAX)
+    if (nev->nev_long_value == LLONG_MIN || nev->nev_long_value == LLONG_MAX)
     {
-        ev->nev_rc = -errno;
-        ev->nev_long_value = -1;
+        nev->nev_rc = -errno;
+        nev->nev_long_value = -1;
 
         SIMPLE_LOG_MSG(LL_WARN, "env-var %s has invalid value (%s): %s",
-                       ev->nev_name, ev_string, strerror(-ev->nev_rc));
+                       nev->nev_name, ev_string, strerror(-nev->nev_rc));
 
         return;
     }
 
-    if (ev->nev_long_value > ev->nev_max)
+    if (nev->nev_long_value > nev->nev_max)
     {
-        ev->nev_rc = -ERANGE;
+        nev->nev_rc = -ERANGE;
 
         SIMPLE_LOG_MSG(LL_WARN,
                        "env-var %s exceeds the max value (%lld), applying max",
-                       ev->nev_name, ev->nev_max);
+                       nev->nev_name, nev->nev_max);
 
-        ev->nev_long_value = ev->nev_max;
+        nev->nev_long_value = nev->nev_max;
     }
-    else if (ev->nev_long_value < ev->nev_min)
+    else if (nev->nev_long_value < nev->nev_min)
     {
-        ev->nev_rc = -ERANGE;
+        nev->nev_rc = -ERANGE;
 
         SIMPLE_LOG_MSG(LL_WARN,
                        "env-var %s less than min value (%lld), applying min",
-                       ev->nev_name, ev->nev_min);
+                       nev->nev_name, nev->nev_min);
 
-        ev->nev_long_value = ev->nev_min;
+        nev->nev_long_value = nev->nev_min;
     }
 
     SIMPLE_LOG_MSG(LL_WARN,
                    "env-var %s value %lld applied from environment",
-                   ev->nev_name, ev->nev_long_value);
+                   nev->nev_name, nev->nev_long_value);
 }
 
 static void
-env_parse(const char *ev_string, struct niova_env_var *ev)
+env_parse(const char *ev_string, struct niova_env_var *nev)
 {
-    ev->nev_present = true;
+    if (!ev_string || !nev)
+        return;
 
-    switch (ev->nev_type)
+    nev->nev_present = true;
+    nev->nev_rc = 0; // may be overridden in env_parse_long()
+
+    switch (nev->nev_type)
     {
     case NIOVA_ENV_VAR_TYPE_NONE:
-        SIMPLE_LOG_MSG(LL_WARN, "env-var %s detected", ev->nev_name);
+        SIMPLE_LOG_MSG(LL_WARN, "env-var %s detected", nev->nev_name)
         break;
 
     case NIOVA_ENV_VAR_TYPE_STRING:
         SIMPLE_LOG_MSG(LL_WARN, "env-var %s value %s applied from environment",
-                       ev->nev_name, ev_string);
-        ev->nev_string = ev_string;
+                       nev->nev_name, ev_string);
+        nev->nev_string = ev_string;
         break;
 
     case NIOVA_ENV_VAR_TYPE_LONG:
-        env_parse_long(ev_string, ev);
+        env_parse_long(ev_string, nev);
         break;
 
     default:
+        nev->nev_rc = -EOPNOTSUPP;
         SIMPLE_LOG_MSG(LL_WARN,
                        "env-var %s value %s not applied (unsupported type)",
-                       ev->nev_name, ev_string);
+                       nev->nev_name, ev_string);
 
         break;
     }
@@ -153,12 +158,20 @@ env_load(void)
     for (enum niova_env_var_num i = NIOVA_ENV_VAR_MIN;
          i < NIOVA_ENV_VAR_MAX; i++)
     {
-        NIOVA_ASSERT(niovaEnvVars[i].nev_var_num == i);
-        NIOVA_ASSERT(niovaEnvVars[i].nev_name);
+        struct niova_env_var *nev = &niovaEnvVars[i];
 
-        const char *ev_string = getenv(niovaEnvVars[i].nev_name);
+        NIOVA_ASSERT(nev->nev_var_num == i);
+        NIOVA_ASSERT(nev->nev_name);
+
+        const char *ev_string = getenv(nev->nev_name);
+
         if (ev_string)
-            env_parse(ev_string, (struct niova_env_var *)&niovaEnvVars[i]);
+        {
+            env_parse(ev_string, nev);
+
+            if (nev->nev_cb)
+                nev->nev_cb(nev);
+        }
     }
 }
 

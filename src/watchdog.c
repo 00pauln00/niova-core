@@ -149,11 +149,13 @@ watchdog_track_threads(struct watchdog_instance *wdi)
     WDI_LOCK(wdi);
     CIRCLEQ_FOREACH(wdh, &wdi->wdi_thread_list, wdh_lentry)
     {
-        /* Only monitor threads which are in the running
+        const struct thread_ctl *thr_ctl = watchdog_handle_2_thread_ctl(wdh);
+
+        /* Only monitor threads which are running
          */
-        if (thread_ctl_thread_is_watched(watchdog_handle_2_thread_ctl(wdh)) &&
-            thread_ctl_thread_is_running(watchdog_handle_2_thread_ctl(wdh)) &&
-            !thread_ctl_thread_is_halting(watchdog_handle_2_thread_ctl(wdh)))
+        if (thread_ctl_thread_is_watched(thr_ctl) &&
+            thread_ctl_thread_is_running(thr_ctl) &&
+            !thread_ctl_thread_is_halting(thr_ctl))
         {
             if (wdh->wdh_thread_exec_cnt == wdh->wdh_exec_cnt_tracker)
                 wdh->wdh_current_stalls++;
@@ -161,8 +163,8 @@ watchdog_track_threads(struct watchdog_instance *wdi)
                 wdh->wdh_exec_cnt_tracker = wdh->wdh_thread_exec_cnt;
         }
 
-        DBG_THREAD_CTL(LL_DEBUG, watchdog_handle_2_thread_ctl(wdh),
-                       "cur-stalls=%lx", wdh->wdh_current_stalls);
+        DBG_THREAD_CTL(LL_DEBUG, thr_ctl, "cur-stalls=%lx",
+                       wdh->wdh_current_stalls);
     }
     WDI_UNLOCK(wdi);
 }

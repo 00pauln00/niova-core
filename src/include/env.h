@@ -49,6 +49,7 @@ struct niova_env_var
     long long                nev_long_value;
     bool                     nev_present;
     int                      nev_rc;
+    void                   (*nev_cb)(const struct niova_env_var *);
 };
 
 const struct niova_env_var *
