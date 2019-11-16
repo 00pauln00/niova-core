@@ -88,6 +88,8 @@ watchdog_add_thread(struct watchdog_handle *wdh)
 
     WDI_UNLOCK(wdi);
 
+    DBG_THREAD_CTL(LL_NOTIFY, watchdog_handle_2_thread_ctl(wdh), "");
+
     return 0;
 }
 
@@ -120,6 +122,9 @@ watchdog_remove_thread(struct watchdog_handle *wdh)
     WDI_SIGNAL_LOCKED(wdi);
 
     WDI_UNLOCK(wdi);
+
+    DBG_THREAD_CTL(LL_NOTIFY, watchdog_handle_2_thread_ctl(wdh), "rc=%d",
+                   removed ? 0 : -ENOENT);
 
     return removed ? 0 : -ENOENT;
 }

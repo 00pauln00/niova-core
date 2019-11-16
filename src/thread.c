@@ -19,8 +19,8 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 __thread char thrName[MAX_THREAD_NAME + 1];
 
-thread_exec_ctx_t
-thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
+static thread_exec_ctx_t
+thread_ctl_monitor_via_watchdog_internal(struct thread_ctl *tc)
 {
     NIOVA_ASSERT(!tc->tc_watchdog);
 
@@ -31,6 +31,19 @@ thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
 
     DBG_THREAD_CTL((rc ? LL_ERROR : LL_DEBUG), tc, "%s",
                    rc ? strerror(-rc) : "");
+}
+
+/**
+ * thread_ctl_monitor_via_watchdog - optional public interface for users who
+ *    wish to add a thread to the watchdog at some point after calling
+ *    thread_create().  However, the preferred method for watchdog usage is
+ *    by calling thread_create_watched().
+ *
+ */
+thread_exec_ctx_t
+thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
+{
+    thread_ctl_monitor_via_watchdog_internal(tc);
 }
 
 thread_exec_ctx_bool_t
@@ -143,9 +156,10 @@ thread_name_get(void)
     return (const char *)thrName;
 }
 
-int
-thread_create(void *(*start_routine)(void *), struct thread_ctl *tc,
-              const char *name, void *arg, const pthread_attr_t *attr)
+static int
+thread_create_internal(void *(*start_routine)(void *), struct thread_ctl *tc,
+                       const char *name, void *arg, const pthread_attr_t *attr,
+                       bool use_watchdog)
 {
     memset(tc, 0, sizeof(struct thread_ctl));
 
@@ -157,15 +171,41 @@ thread_create(void *(*start_routine)(void *), struct thread_ctl *tc,
     {
         strncpy(tc->tc_thr_name, name, MAX_THREAD_NAME);
         rc = pthread_setname_np(tc->tc_thread_id, name);
+
+        if (!rc && use_watchdog)
+            thread_ctl_monitor_via_watchdog_internal(tc);
     }
 
     return rc;
 }
 
 int
+thread_create(void *(*start_routine)(void *), struct thread_ctl *tc,
+              const char *name, void *arg, const pthread_attr_t *attr)
+{
+    return thread_create_internal(start_routine, tc, name, arg, attr, false);
+}
+
+int
+thread_create_watched(void *(*start_routine)(void *), struct thread_ctl *tc,
+                      const char *name, void *arg, const pthread_attr_t *attr)
+{
+    return thread_create_internal(start_routine, tc, name, arg, attr, true);
+}
+
+void
+thread_ctl_remove_from_watchdog(struct thread_ctl *tc)
+{
+    if (tc && tc->tc_watchdog)
+        watchdog_remove_thread(&tc->tc_watchdog_handle);
+}
+
+int
 thread_halt_and_destroy(struct thread_ctl *tc)
 {
     thread_ctl_halt(tc);
+
+    thread_ctl_remove_from_watchdog(tc);
 
     void *retval;
     int my_errno = 0;

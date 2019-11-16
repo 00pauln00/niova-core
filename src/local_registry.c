@@ -530,12 +530,10 @@ lreg_svc_enable(void)
 static init_ctx_t
 lreg_svc_thread_start(void)
 {
-    int rc = thread_create(lreg_svc_thread, &lRegSvcThreadCtl, "lreg_svc",
-                           NULL, NULL);
+    int rc = thread_create_watched(lreg_svc_thread, &lRegSvcThreadCtl,
+                                   "lreg_svc", NULL, NULL);
 
     FATAL_IF(rc, "pthread_create(): %s", strerror(errno));
-
-    thread_ctl_monitor_via_watchdog(&lRegSvcThreadCtl);
 }
 
 init_ctx_t

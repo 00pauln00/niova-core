@@ -103,6 +103,10 @@ thread_create(void *(*)(void *), struct thread_ctl *, const char *, void *,
               const pthread_attr_t *);
 
 int
+thread_create_watched(void *(*)(void *), struct thread_ctl *, const char *,
+                      void *, const pthread_attr_t *);
+
+int
 thread_halt_and_destroy(struct thread_ctl *);
 
 void
@@ -110,5 +114,8 @@ thread_abort(void);
 
 thread_exec_ctx_t
 thread_ctl_monitor_via_watchdog(struct thread_ctl *tc);
+
+void
+thread_ctl_remove_from_watchdog(struct thread_ctl *tc);
 
 #endif

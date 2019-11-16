@@ -180,8 +180,8 @@ lctli_inotify_thread(void *arg)
 static init_ctx_t
 lctli_inotify_thread_start(struct local_ctl_interface *lctli)
 {
-    int rc = thread_create(lctli_inotify_thread, &lctli->lctli_thr_ctl,
-                           "lctli_inotify", lctli, NULL);
+    int rc = thread_create_watched(lctli_inotify_thread, &lctli->lctli_thr_ctl,
+                                   "lctli_inotify", lctli, NULL);
 
     FATAL_IF(rc, "thread_create(): %s", strerror(errno));
 }

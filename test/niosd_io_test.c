@@ -541,7 +541,6 @@ main(int argc, char **argv)
     niova_unstable_clock(&ts[1]);
     timespecsub(&ts[1], &ts[0], &ts[0]);
 
-    STDOUT_MSG("sleepBeforeExit=%d", sleepBeforeExit);
     if (sleepBeforeExit)
         sleep(sleepBeforeExit);
 
