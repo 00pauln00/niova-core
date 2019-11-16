@@ -51,8 +51,6 @@ all: $(TARGET)
 $(TARGET): $(ALL_OBJFILES) $(CORE_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-
-
 tests: $(CORE_OBJFILES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
@@ -85,8 +83,12 @@ test_build:
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
 
-check: CFLAGS = $(DEBUG_CFLAGS)
+check: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 check: test_build
+
+asan: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+asan: tests
+asan: niova
 
 cov : CFLAGS = $(COVERAGE_FLAGS)
 cov : test_build
