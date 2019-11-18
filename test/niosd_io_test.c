@@ -15,11 +15,13 @@
 
 #include "init.h"
 #include "log.h"
-#include "local_registry.h"
-#include "local_ctl_interface.h"
+#include "registry.h"
+#include "ctl_interface.h"
 #include "random.h"
+#include "epoll_mgr.h"
 
 #include "niosd_io.h"
+#include "epoll_mgr.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -53,17 +55,47 @@ static useconds_t               pollSleepUsecs;
 static struct timespec          runTime;
 static int                      sleepBeforeExit;
 static bool                     useEpoll = false;
-static int                      epfd;
-static struct epoll_event       ep_event;
-
+struct epoll_mgr                epollMgr;
+struct epoll_handle             epollHandle;
 static struct niosd_device      ndev;
-
 static bool                     sequentialIO = false;
 
-#if 0
-#define MAX_EPOLL_EVENTS 16
-static struct epoll_event       out_events[MAX_EPOLL_EVENTS];
-#endif
+static size_t epollCbExecCnt;
+
+static void
+epollCb(const struct epoll_handle *eph)
+{
+    FUNC_ENTRY(LL_DEBUG);
+    NIOVA_ASSERT(eph == &epollHandle);
+
+    struct niosd_io_ctx *nioctx = eph->eph_arg;
+    NIOVA_ASSERT(nioctx);
+    epollCbExecCnt++;
+
+    ssize_t rc = ev_pipe_drain(&nioctx->nioctx_evp);
+    if (rc == -1 && (errno != EWOULDBLOCK || errno != EAGAIN))
+    {
+        EXIT_ERROR_MSG(errno, "read() returned %zd: %s",
+                       rc, strerror(errno));
+    }
+
+    size_t num_complete = 0;
+    for (;;)
+    {
+        size_t n = niosd_io_events_complete(nioctx,
+                                            MIN(ioDepth,
+                                                (numOps - niorqsDone)));
+        num_complete += n;
+        if (!n)
+            break;
+    }
+
+    SIMPLE_LOG_MSG(LL_DEBUG,
+                   "epollCbExecCnt=%zu drain-bytes=%zd ncomp-here=%zd",
+                   num_complete, epollCbExecCnt, rc);
+
+    evp_increment_reader_cnt(&nioctx->nioctx_evp);
+}
 
 static enum niosd_io_request_type
 niot_get_op_type(unsigned int rw_ratio, unsigned int val)
@@ -237,6 +269,36 @@ niot_prepare_test_device(const char *dev_name, size_t dev_size)
     return rc;
 }
 
+static bool
+niot_test_time_expired(useconds_t *sleep_usecs,
+                       const struct timespec *start_time)
+{
+    if (runTime.tv_sec > 0)
+    {
+        struct timespec current_run_time;
+        niova_unstable_clock(&current_run_time);
+
+        timespecsub(&current_run_time, start_time, &current_run_time);
+
+        if (timespeccmp(&current_run_time, &runTime, >=))
+        {
+            return true;
+        }
+        else
+        {
+            timespecsub(&runTime, &current_run_time, &current_run_time);
+            *sleep_usecs = MIN(timespec_2_usec(&current_run_time),
+                               pollSleepUsecs);
+
+            SIMPLE_LOG_MSG(LL_TRACE,
+                           "remaining=%ld.%ld", current_run_time.tv_sec,
+                           current_run_time.tv_nsec);
+        }
+    }
+
+    return false;
+}
+
 static void
 niot_spin_niorq_completion(struct niosd_device *ndev,
                            const struct timespec *start_time)
@@ -244,104 +306,43 @@ niot_spin_niorq_completion(struct niosd_device *ndev,
     struct niosd_io_ctx *nioctx =
         niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_DEFAULT);
 
-    size_t num_completed = 0;
+    useconds_t sleep_usecs = pollSleepUsecs;
     bool timeout_reached = false;
-    bool zero_events_completed = false;
 
     for (; niorqsDone < numOps;)
     {
-        /* If the remaining number of ops is < ioDepth, then just spin - don't
-         * block, otherwise the process will get stuck.
-         */
-        if ((numOps - niorqsDone) <= ioDepth)
-            zero_events_completed = false;
-
-        bool must_block = zero_events_completed;
-
-        size_t n = niosd_io_events_complete(nioctx, ioDepth,
-                                            zero_events_completed);
-        if (!n)
-            zero_events_completed = true;
-
-        SIMPLE_LOG_MSG(LL_DEBUG, "num_completed=(%zu %zu)",
-                       n, num_completed);
-
-        num_completed += n;
-
-        useconds_t sleep_usecs = pollSleepUsecs;
-
-        if (runTime.tv_sec > 0)
+        if (niot_test_time_expired(&sleep_usecs, start_time))
         {
-            struct timespec current_run_time;
-            niova_unstable_clock(&current_run_time);
-
-            timespecsub(&current_run_time, start_time, &current_run_time);
-
-            if (timespeccmp(&current_run_time, &runTime, >=))
-            {
-                timeout_reached = true;
-                break;
-            }
-            else
-            {
-                timespecsub(&runTime, &current_run_time, &current_run_time);
-                sleep_usecs = MIN(timespec_2_usec(&current_run_time),
-                                  pollSleepUsecs);
-
-                SIMPLE_LOG_MSG(LL_TRACE,
-                               "remaining=%ld.%ld", current_run_time.tv_sec,
-                               current_run_time.tv_nsec);
-            }
+            timeout_reached = true;
+            break;
         }
 
-        if (pollSleepUsecs)
+        if (useEpoll)
         {
-            if (n == 0)
-                usleep(sleep_usecs);
-        }
-        else if (useEpoll && must_block)
-        {
-            struct epoll_event ev = {0};
-
-            SIMPLE_LOG_MSG(LL_DEBUG, "about to epoll_wait()");
-
-            int rc = epoll_wait(epfd, &ev, 1, -1);
+            int rc = epoll_mgr_wait_and_process_events(&epollMgr, 100);
             if (rc < 0)
             {
-                STDERR_MSG("epoll_wait(): %s", strerror(errno));
+                STDERR_MSG("epoll_mgr_wait_and_process_events(): %s",
+                            strerror(errno));
             }
-            else if (rc > 1)
+        }
+        else
+        {
+            for (;;)
             {
-                EXIT_ERROR_MSG(1, "epoll_wait() returned %d", rc);
+                if(!niosd_io_events_complete(nioctx,
+                                             MIN(ioDepth,
+                                                 (numOps - niorqsDone))))
+                    break;
             }
-            else if (rc == 1)
-            {
-                char c;
-                ssize_t rc, cnt = 0;
-                /* Clear out the pipe, hopefully there's only a single
-                 * byte here.
-                 */
-                while ((rc = read(ev.data.fd, &c, 1)) == 1)
-                    cnt++;
 
-                if (rc != -1 && (errno != EWOULDBLOCK || errno != EAGAIN))
-                {
-                    EXIT_ERROR_MSG(errno, "read() returned %zd: %s",
-                                   rc, strerror(errno));
-                }
-                else if (cnt > 1)
-                {
-                    STDERR_MSG("cnt=%zd > 1", cnt);
-                }
-            }
-            /* Reset this variable.
-             */
-            zero_events_completed = false;
+            if (niorqsDone < numOps && pollSleepUsecs)
+                usleep(sleep_usecs);
         }
     }
 
-    if (num_completed != numOps && !timeout_reached)
-        STDERR_MSG("num_completed=%zu", num_completed);
+    if (niorqsDone != numOps && !timeout_reached)
+        STDERR_MSG("num_completed=%zu", niorqsDone);
 }
 
 static void
@@ -472,20 +473,22 @@ prepare_epoll(struct niosd_device *ndev)
 {
     NIOVA_ASSERT(useEpoll);
 
-    const struct niosd_io_ctx *nioctx =
+    int rc = epoll_mgr_setup(&epollMgr);
+    FATAL_IF((rc), "epoll_mgr_setup(): %s", strerror(-rc));
+
+    struct niosd_io_ctx *nioctx =
         niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_DEFAULT);
 
     int fd = nioctx_blocking_mode_fd_get(nioctx);
     FATAL_IF((fd < 0), "nioctx_blocking_mode_fd_get(): %s", strerror(-fd));
 
-    ep_event.data.fd = fd;
-    ep_event.events = EPOLLIN;
+    rc = epoll_handle_init(&epollHandle, fd, EPOLLIN, epollCb, nioctx);
+    FATAL_IF((rc), "epoll_handle_init(): %s", strerror(-rc));
 
-    epfd = epoll_create1(0);
-    FATAL_IF((epfd < 0), "epoll_create1(): %s", strerror(errno));
+    evp_increment_reader_cnt(&nioctx->nioctx_evp);
 
-    int rc = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ep_event);
-    FATAL_IF((rc != 0), "epoll_ctl(0): %s", strerror(errno));
+    rc = epoll_handle_add(&epollMgr, &epollHandle);
+    FATAL_IF((rc), "epoll_handle_add(): %s", strerror(-rc));
 }
 
 int
@@ -503,7 +506,8 @@ main(int argc, char **argv)
 
     niosd_device_params_init(testDevName, &ndev);
     if (useEpoll)
-        niosd_device_params_enable_blocking_mode(&ndev, NIOSD_IO_CTX_TYPE_DEFAULT);
+        niosd_device_params_enable_blocking_mode(&ndev,
+                                                 NIOSD_IO_CTX_TYPE_DEFAULT);
 
     /* Allocate an aligned buffer which can hold a lots of concurrent requests.
      */

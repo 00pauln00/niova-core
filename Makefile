@@ -17,16 +17,17 @@ CORE_INCLUDES   = \
 	src/include/vblkdev_handle.h \
 	src/include/niosd_io.h \
 	src/include/niosd_uuid.h \
-	src/include/local_registry.h \
+	src/include/registry.h \
 	src/include/thread.h \
 	src/include/watchdog.h \
 	src/include/util.h \
-	src/include/local_ctl_interface.h \
+	src/include/ctl_interface.h \
 	src/include/metablock_digest.h \
 	src/include/binary_hist.h \
 	src/include/env.h \
 	src/include/init.h \
-	src/include/ev_pipe.h
+	src/include/ev_pipe.h \
+	src/include/epoll_mgr.h
 
 CORE_OBJFILES   = \
 	src/log.o \
@@ -35,15 +36,16 @@ CORE_OBJFILES   = \
 	src/vblkdev_handle.o \
 	src/niosd_io.o \
 	src/niosd_uuid.o \
-	src/local_registry.o \
+	src/registry.o \
 	src/superblock.o \
 	src/thread.o \
 	src/watchdog.o \
-	src/local_ctl_interface.o \
+	src/ctl_interface.o \
 	src/metablock_digest.o \
 	src/init.o \
 	src/env.o \
-	src/ev_pipe.o
+	src/ev_pipe.o \
+	src/epoll_mgr.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova

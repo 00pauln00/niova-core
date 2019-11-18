@@ -14,7 +14,7 @@
 #include "queue.h"
 #include "log.h"
 #include "thread.h"
-#include "local_registry.h"
+#include "registry.h"
 #include "env.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;

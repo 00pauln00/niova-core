@@ -15,7 +15,7 @@
 #include "generic_metablock.h"
 #include "superblock.h"
 #include "niosd_io.h"
-#include "local_registry.h"
+#include "registry.h"
 
 static void
 spin_lock_test(void)

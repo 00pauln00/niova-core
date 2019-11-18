@@ -941,22 +941,13 @@ niosd_io_request_complete(struct niosd_io_request *niorq,
 }
 
 niosd_io_completion_cb_ctx_size_t
-niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events,
-                         const bool may_block)
+niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
 {
     const uint64_t tail_cnt = niosd_ctx_to_cer_counter(nioctx, tail);
     size_t nevents_processed = 0;
 
     struct timespec now;
     niova_unstable_clock(&now);
-
-    /* The caller is telling us that its context may block on nioctxb_pipe
-     * following this function.  Enable notificiations on nioctxb_pipe here.
-     * The idea is to avoid a race by allowing the wakeup notification before
-     * incrementing the event completion counter.
-     */
-    if (may_block)
-        evp_increment_reader_cnt(&nioctx->nioctx_evp);
 
     long int i;
     for (i = 0; i < max_events && niosd_ctx_pending_completion_ops(nioctx);

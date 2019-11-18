@@ -18,7 +18,7 @@
 #include "init.h"
 #include "thread.h"
 #include "util.h"
-#include "local_registry.h"
+#include "registry.h"
 
 LREG_ROOT_ENTRY_EXPORT(log_entry_map);
 

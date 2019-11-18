@@ -400,7 +400,7 @@ niosd_io_submitter_ctx_int_t
 niosd_io_submit(struct niosd_io_request **, long int);
 
 niosd_io_completion_cb_ctx_size_t
-niosd_io_events_complete(struct niosd_io_ctx *, long int, const bool);
+niosd_io_events_complete(struct niosd_io_ctx *, long int);
 
 int
 nioctx_blocking_mode_fd_get(const struct niosd_io_ctx *nioctx);
