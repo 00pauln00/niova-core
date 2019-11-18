@@ -544,7 +544,7 @@ main(int argc, char **argv)
     if (sleepBeforeExit)
         sleep(sleepBeforeExit);
 
-//    lreg_node_recurse("log_entry_map");
+  lreg_node_recurse("log_entry_map");
 
     niot_print_stats(&ts[0]);
 

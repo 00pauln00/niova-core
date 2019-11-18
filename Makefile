@@ -25,7 +25,8 @@ CORE_INCLUDES   = \
 	src/include/metablock_digest.h \
 	src/include/binary_hist.h \
 	src/include/env.h \
-	src/include/init.h
+	src/include/init.h \
+	src/include/ev_pipe.h
 
 CORE_OBJFILES   = \
 	src/log.o \
@@ -41,7 +42,8 @@ CORE_OBJFILES   = \
 	src/local_ctl_interface.o \
 	src/metablock_digest.o \
 	src/init.o \
-	src/env.o
+	src/env.o \
+	src/ev_pipe.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova

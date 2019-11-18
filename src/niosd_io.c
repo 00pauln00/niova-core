@@ -23,6 +23,8 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+LREG_ROOT_ENTRY_GENERATE(niosd_io_reg_root_entry, LREG_USER_TYPE_NIOSD_IO);
+
 #define NIOSD_LINUX_PROC_AIO_MAX "/proc/sys/fs/aio-max-nr"
 #define NIOSD_IO_OPEN_FLAGS (O_DIRECT | O_RDWR)
 #define NIOSD_MIN_DEVICE_SZ_IN_PBLKS 8192UL
@@ -113,116 +115,13 @@ niosd_set_num_aio_events(void)
                    niosdMaxAioEvents, niosdMaxAioNreqsSubmit);
 }
 
-static niosd_io_event_ctx_t
-nioctx_blocking_mode_notify(struct niosd_io_ctx *nioctx)
-{
-    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
-        return;
-
-    int rc = 0;
-    struct niosd_io_ctx_blocking *nb = &nioctx->nioctx_blocking;
-
-    while (nb->nioctxb_waking_cnt < nb->nioctxb_blocking_cnt)
-    {
-        char c[NIOSD_BLOCKING_MODE_WRITE_SZ] = {'x'};
-
-        rc = write(nb->nioctxb_pipe[WRITE_PIPE_IDX], c,
-                   NIOSD_BLOCKING_MODE_WRITE_SZ);
-
-        if (rc == NIOSD_BLOCKING_MODE_WRITE_SZ)
-        {
-            uint64_t old_val = nb->nioctxb_waking_cnt;
-            nb->nioctxb_waking_cnt++;
-            rc = 0;
-
-            SIMPLE_LOG_MSG(LL_DEBUG, "%ld old=%ld", nb->nioctxb_waking_cnt,
-                           old_val);
-        }
-        else
-        {
-            rc = -errno;
-            break;
-        }
-    }
-
-    if (rc)
-        SIMPLE_LOG_MSG(LL_WARN, "%s", strerror(-rc));
-}
-
-/**
- * nioctx_blocking_mode_cleanup - disables blocking mode on the nioctx and
- *    closes the pipe.
- */
-static int
-nioctx_blocking_mode_cleanup(struct niosd_io_ctx *nioctx)
-{
-    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
-        return -EINVAL;
-
-    struct niosd_io_ctx_blocking *nb = &nioctx->nioctx_blocking;
-
-    nioctx->nioctx_use_blocking_mode = 0;
-
-    int save_errno[NUM_PIPE_FD];
-
-    for (int i = 0; i < NUM_PIPE_FD; i++)
-        save_errno[i] = close(nb->nioctxb_pipe[i]) ? errno : 0;
-
-    const enum log_level level = (save_errno[0] || save_errno[1]) ?
-        LL_WARN : LL_TRACE;
-
-    SIMPLE_LOG_MSG(level, "%s", strerror((save_errno[0] || save_errno[1])));
-
-    return save_errno[0] ? save_errno[0] : save_errno[1];
-}
-
-/**
- * nioctx_blocking_mode_setup - create the ability for a thread to block on
- *    event handler completion.  This call creates a non-blocking pipe and
- *    stores the pipe in the nioctx.
- */
-static int
-nioctx_blocking_mode_setup(struct niosd_io_ctx *nioctx)
-{
-    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
-        return -EINVAL;
-
-    struct niosd_io_ctx_blocking *nb = &nioctx->nioctx_blocking;
-
-    nb->nioctxb_blocking_cnt = nb->nioctxb_waking_cnt = 0;
-
-    int rc = pipe(nb->nioctxb_pipe);
-
-    for (int i = 0; i < NUM_PIPE_FD && !rc; i++)
-    {
-        rc = fcntl(nb->nioctxb_pipe[i], F_SETPIPE_SZ,
-                   NIOSD_BLOCKING_MODE_PIPE_SZ);
-
-        if (rc == NIOSD_BLOCKING_MODE_PIPE_SZ)
-            rc = fcntl(nb->nioctxb_pipe[i], F_SETFL, O_NONBLOCK);
-    }
-
-    rc = rc ? -errno : 0;
-
-    if (rc)
-        (int)nioctx_blocking_mode_cleanup(nioctx);
-
-    SIMPLE_LOG_MSG(LL_NOTIFY, "%s", strerror(-rc));
-
-    return rc;
-}
-
-/**
- * nioctx_blocking_mode_fd_get - return the file descriptor (which should be
- *   the read end of an open pipe.
- */
 int
 nioctx_blocking_mode_fd_get(const struct niosd_io_ctx *nioctx)
 {
     if (!nioctx || !nioctx->nioctx_use_blocking_mode)
         return -EINVAL;
 
-    return nioctx->nioctx_blocking.nioctxb_pipe[READ_PIPE_IDX];
+    return evp_read_fd_get(&nioctx->nioctx_evp);
 }
 
 /**
@@ -345,6 +244,15 @@ niosd_device_event_thread_iter_new_events(const struct io_event *events_head,
 
         DBG_NIOSD_REQ(LL_DEBUG, niorq, "");
     }
+}
+
+static niosd_io_event_ctx_t
+nioctx_blocking_mode_notify(struct niosd_io_ctx *nioctx)
+{
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return;
+
+    ev_pipe_notify(&nioctx->nioctx_evp);
 }
 
 static niosd_io_event_ctx_t
@@ -522,6 +430,15 @@ niosd_device_dump_nioctx_stats(const struct niosd_io_ctx *nioctx)
 }
 
 static int
+nioctx_blocking_mode_setup(struct niosd_io_ctx *nioctx)
+{
+     if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+         return -EINVAL;
+
+     return ev_pipe_setup(&nioctx->nioctx_evp);
+}
+
+static int
 niosd_device_ctxs_init(struct niosd_device *ndev)
 {
     enum niosd_io_ctx_type i;
@@ -565,6 +482,15 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
     }
 
     return 0;
+}
+
+static int
+nioctx_blocking_mode_cleanup(struct niosd_io_ctx *nioctx)
+{
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return -EINVAL;
+
+    return ev_pipe_cleanup(&nioctx->nioctx_evp);
 }
 
 /**
@@ -1030,7 +956,7 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events,
      * incrementing the event completion counter.
      */
     if (may_block)
-        niosd_ctx_increment_blocking_cnt(nioctx);
+        evp_increment_reader_cnt(&nioctx->nioctx_evp);
 
     long int i;
     for (i = 0; i < max_events && niosd_ctx_pending_completion_ops(nioctx);
@@ -1050,4 +976,18 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events,
     }
 
     return nevents_processed;
+}
+
+init_ctx_t
+niosd_io_subsys_init(void)
+{
+    SIMPLE_FUNC_ENTRY(LL_DEBUG);
+
+    LREG_ROOT_ENTRY_INSTALL(niosd_io_reg_root_entry);
+}
+
+destroy_ctx_t
+niosd_io_subsys_destroy(void)
+{
+    SIMPLE_FUNC_ENTRY(LL_DEBUG);
 }

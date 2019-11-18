@@ -20,6 +20,7 @@ enum log_lreg_function_entry_values
 {
     LOG_LREG_ENTRY_LEVEL = 0,
     LOG_LREG_ENTRY_LINENO,
+    LOG_LREG_ENTRY_EXEC_CNT,
     LOG_LREG_ENTRY_FUNC,
     LOG_LREG_ENTRY_MAX,
 };
@@ -126,6 +127,13 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
                     LREG_VALUE_STRING_MAX);
             lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
             lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_lineno;
+            break;
+
+        case LOG_LREG_ENTRY_EXEC_CNT:
+            strncpy(lreg_val->lrv_key_string, "exec-cnt",
+                    LREG_VALUE_STRING_MAX);
+            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
+            lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_exec_cnt;
             break;
 
         case LOG_LREG_ENTRY_FUNC:

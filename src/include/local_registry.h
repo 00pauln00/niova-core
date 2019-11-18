@@ -49,6 +49,7 @@ enum lreg_user_types
     LREG_USER_TYPE_FAULT,
     LREG_USER_TYPE_LOG_file,
     LREG_USER_TYPE_LOG_func,
+    LREG_USER_TYPE_NIOSD_IO,
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_ANY,
 };

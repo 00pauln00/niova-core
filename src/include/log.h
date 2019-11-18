@@ -64,6 +64,7 @@ struct log_entry_info
 {
     enum log_level  lei_level;
     int             lei_lineno;
+    size_t          lei_exec_cnt;
     union
     {
         const char *lei_func;
@@ -130,6 +131,18 @@ struct log_entry_info
     }                                                                   \
 }
 
+#define FUNC_ENTRY(level)                       \
+    LOG_MSG(level, "enter")
+
+#define FUNC_EXIT(level)                        \
+    LOG_MSG(level, "exit")
+
+#define SIMPLE_FUNC_ENTRY(level)                \
+    SIMPLE_LOG_MSG(level, "enter")
+
+#define SIMPLE_FUNC_EXIT(level)                 \
+    SIMPLE_LOG_MSG(level, "exit")
+
 /**
  * LOG_MSG - during normal runtime, take the log level first from this
  *    registry entry's level, and next from the file's level.  If neither are
@@ -140,6 +153,8 @@ struct log_entry_info
     if (!init_ctx())                                                    \
     {                                                                   \
         REGISTY_ENTRY_FUNCTION_GENERATE;                                \
+                                                                        \
+        logEntryInfo.lei_exec_cnt++;                                    \
                                                                         \
         enum log_level my_lvl = logEntryInfo.lei_level != LL_ANY ?      \
             logEntryInfo.lei_level : logEntryFileInfo.lei_level;        \

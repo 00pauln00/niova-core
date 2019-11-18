@@ -20,6 +20,8 @@
 
 #include "common.h"
 #include "binary_hist.h"
+#include "ctor.h"
+#include "ev_pipe.h"
 
 #define NIOSD_MAX_AIO_EVENTS       1048576
 #define NIOSD_DEFAULT_AIO_EVENTS   65536
@@ -30,9 +32,6 @@
 
 #define NIOSD_GETEVENTS_MIN        1
 #define NIOSD_GETEVENTS_MAX        NIOSD_MAX_AIO_NREQS_SUBMIT
-
-#define NIOSD_BLOCKING_MODE_WRITE_SZ 1
-#define NIOSD_BLOCKING_MODE_PIPE_SZ 4096
 
 /* Submitter thread context
  */
@@ -162,17 +161,10 @@ enum niosd_io_ctx_stats_hist
 #define NICSH_DEF_IO_NUM_PDNG_START_BIT 0
 #define NICSH_DEF_IO_NUM_PDNG_NBUCKETS  18
 
-struct niosd_io_ctx_blocking
-{
-    int                              nioctxb_pipe[NUM_PIPE_FD];
-    niosd_io_blocking_ctx_uint64_t   CACHE_ALIGN_MEMBER(nioctxb_blocking_cnt);
-    niosd_io_event_ctx_uint64_t      CACHE_ALIGN_MEMBER(nioctxb_waking_cnt);
-};
-
 struct niosd_io_ctx
 {
     uint32_t                         nioctx_use_blocking_mode:1;
-    struct niosd_io_ctx_blocking     nioctx_blocking;
+    struct ev_pipe                   nioctx_evp;
     enum niosd_io_ctx_type           nioctx_type;
     io_context_t                     nioctx_ctx;
     struct thread_ctl                nioctx_thr_ctl;
@@ -191,12 +183,6 @@ struct niosd_device
     enum niosd_dev_status            ndev_status;
     struct niosd_io_ctx              ndev_ctxs[NIOSD_IO_CTX_TYPE_MAX];
 };
-
-static inline niosd_io_blocking_ctx_t
-niosd_ctx_increment_blocking_cnt(struct niosd_io_ctx *nioctx)
-{
-    nioctx->nioctx_blocking.nioctxb_blocking_cnt++;
-}
 
 static inline void
 niosd_device_params_enable_blocking_mode(struct niosd_device *ndev,
@@ -418,5 +404,13 @@ niosd_io_events_complete(struct niosd_io_ctx *, long int, const bool);
 
 int
 nioctx_blocking_mode_fd_get(const struct niosd_io_ctx *nioctx);
+
+init_ctx_t
+niosd_io_subsys_init(void)
+     __attribute__ ((constructor (NIOSD_IO_CTOR_PRIORITY)));
+
+destroy_ctx_t
+niosd_io_subsys_destroy(void)
+    __attribute__ ((destructor (NIOSD_IO_CTOR_PRIORITY)));
 
 #endif
