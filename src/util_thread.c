@@ -78,8 +78,6 @@ util_thread_subsystem_init(void)
 {
     FUNC_ENTRY(LL_WARN);
 
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
-
     NIOVA_ASSERT(!utilThread.ut_started);
 
     int rc = epoll_mgr_setup(&utilThread.ut_epm);
@@ -107,8 +105,6 @@ destroy_ctx_t
 util_thread_subsystem_destroy(void)
 {
     FUNC_ENTRY(LL_WARN);
-
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
 
     if (utilThread.ut_started)
     {
