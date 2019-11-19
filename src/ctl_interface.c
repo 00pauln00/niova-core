@@ -18,6 +18,7 @@
 #include "registry.h"
 #include "ctl_interface.h"
 #include "env.h"
+#include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -84,7 +85,7 @@ lctli_new(void)
 
 // need a max number of start-time config options that can be present
 
-static lctli_inotify_thread_t
+static util_thread_ctx_t
 lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
 {
     const struct inotify_event *event;
@@ -107,7 +108,7 @@ lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
     }
 }
 
-static lctli_inotify_thread_t
+static util_thread_ctx_t
 lctli_inotify_thread_poll_handle_event(struct ctl_interface *lctli)
 {
     char buf[INOTIFY_BUFFER_SIZE]
@@ -133,57 +134,22 @@ lctli_inotify_thread_poll_handle_event(struct ctl_interface *lctli)
     }
 }
 
-static lctli_inotify_thread_int_t
-lctli_inotify_thread_poll(struct ctl_interface *lctli)
+static util_thread_ctx_t
+lctli_epoll_mgr_cb(const struct epoll_handle *eph)
 {
-    struct pollfd pfd = {.fd = lctli->lctli_inotify_fd, .events = POLLIN};
+    NIOVA_ASSERT(eph);
 
-    int rc = poll(&pfd, INOTIFY_MAX_POLL_FDS, INOTIFY_POLLING_MSEC);
+    struct ctl_interface *lctli = eph->eph_arg;
 
-    rc = rc < 0 ? -errno : rc;
-
-    switch (rc)
+    if (eph->eph_fd != lctli->lctli_inotify_fd)
     {
-    case INOTIFY_MAX_POLL_FDS:
-        lctli_inotify_thread_poll_handle_event(lctli);
-        rc = 0;
-        break;
-    case -EINTR:
-        rc = 0;
-        break;
-    default:
-        break;
+        LOG_MSG(LL_ERROR, "invalid fd=%d (expected %d)",
+                eph->eph_fd, lctli->lctli_inotify_fd);
+
+        return;
     }
 
-    return rc;
-}
-
-static lctli_inotify_thread_t *
-lctli_inotify_thread(void *arg)
-{
-    struct thread_ctl *tc = arg;
-    struct ctl_interface *lctli = tc->tc_arg;
-
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
-
-    NIOVA_ASSERT(lctli);
-
-    THREAD_LOOP_WITH_CTL(tc)
-    {
-        int rc = lctli_inotify_thread_poll(lctli);
-        FATAL_IF(rc, "lctli_inotify_thread_poll(): %s", strerror(-rc));
-    }
-
-    return (void *)0;
-}
-
-static init_ctx_t
-lctli_inotify_thread_start(struct ctl_interface *lctli)
-{
-    int rc = thread_create_watched(lctli_inotify_thread, &lctli->lctli_thr_ctl,
-                                   "lctli_inotify", lctli, NULL);
-
-    FATAL_IF(rc, "thread_create(): %s", strerror(errno));
+    return lctli_inotify_thread_poll_handle_event(lctli);
 }
 
 static int
@@ -285,12 +251,12 @@ lctli_subsystem_init(void)
         ev->nev_string : DEFAULT_INOTIFY_PATH;
 
     int rc = lctli_prepare(lctli, inotify_path);
-
     FATAL_IF(rc, "lctli_prepare(): %s", strerror(-rc));
 
-    lctli_inotify_thread_start(lctli);
+    rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
+                                       lctli_epoll_mgr_cb, (void *)lctli);
 
-    thread_ctl_run(&lctli->lctli_thr_ctl);
+    FATAL_IF(rc, "util_thread_install_event_src(): %s", strerror(-rc));
 }
 
 destroy_ctx_t
@@ -300,7 +266,7 @@ lctli_subsystem_destroy(void)
 
     if (lctli->lctli_init)
     {
-        thread_halt_and_destroy(&lctli->lctli_thr_ctl);
+        //remove from utility thread?
 
         inotify_rm_watch(lctli->lctli_inotify_fd,
                          lctli->lctli_inotify_watch_fd);
