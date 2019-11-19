@@ -125,7 +125,7 @@ niosd_device_params_init(const char *dev_name, struct niosd_device *ndev)
 {
     memset(ndev, 0, sizeof(*ndev));
 
-    strncpy(ndev->ndev_name, dev_name, PATH_MAX);
+    strncpy(ndev->ndev_name, dev_name, MAX_NIOSD_DEVICE_NAME);
 
     ndev->ndev_fd = -1;
     ndev->ndev_status = NIOSD_DEV_STATUS_STARTUP_DEV_OPEN;

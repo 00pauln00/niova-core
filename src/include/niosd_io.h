@@ -228,9 +228,11 @@ niosd_io_ctx_2_stats_bh(struct niosd_io_ctx *nioctx,
 
 struct sb_header_data;
 
+#define MAX_NIOSD_DEVICE_NAME (LREG_VALUE_STRING_MAX - 5)
+
 struct niosd_device
 {                                    //XXx fixme!
-    char                             ndev_name[LREG_VALUE_STRING_MAX - 5];
+    char                             ndev_name[MAX_NIOSD_DEVICE_NAME];
     struct sb_header_data           *ndev_sb;
     struct stat                      ndev_stb;
     int                              ndev_fd;
