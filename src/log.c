@@ -94,7 +94,7 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
                                              struct log_entry_info *lei,
                                              struct lreg_value *lreg_val)
 {
-    if (lreg_val->lrv_value_idx_in > LOG_LREG_ENTRY_MAX)
+    if (lreg_val->lrv_value_idx_in >= LOG_LREG_ENTRY_MAX)
         return;
 
     if (op == LREG_NODE_CB_OP_WRITE_VAL)

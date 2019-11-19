@@ -445,8 +445,8 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     else if (!lreg_node_needs_installation(child))
         return -EALREADY;
 
-    else if (!child->lrn_cb_arg)
-        return -ENOENT;
+//    else if (!child->lrn_cb_arg)
+//        return -ENOENT;
 
     else if (!lreg_node_install_prep_ok(child))
         return -EALREADY;
@@ -463,7 +463,7 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
 
 void
 lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
-               enum lreg_user_types user_type, lrn_cb_t cb,
+               enum lreg_user_types user_type, lrn_cb_t cb, void *cb_arg,
                bool statically_allocated)
 {
     lrn->lrn_node_type = node_type;
@@ -472,6 +472,7 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
     lrn->lrn_statically_allocated = !!statically_allocated;
 
     lrn->lrn_cb = cb;
+    lrn->lrn_cb_arg = cb_arg;
 
     CIRCLEQ_ENTRY_INIT(&lrn->lrn_lentry);
     CIRCLEQ_INIT(&lrn->lrn_head);
@@ -541,7 +542,7 @@ lreg_subsystem_init(void)
     lRegRootNode.lrn_root_node = 1;
 
     lreg_node_init(&lRegRootNode, LREG_NODE_TYPE_OBJECT, LREG_USER_TYPE_ROOT,
-                   lreg_root_node_cb, true);
+                   lreg_root_node_cb, NULL, true);
 
     lRegInitialized = true;
 

@@ -49,7 +49,8 @@ enum lreg_user_types
     LREG_USER_TYPE_FAULT,
     LREG_USER_TYPE_LOG_file,
     LREG_USER_TYPE_LOG_func,
-    LREG_USER_TYPE_NIOSD_IO,
+    LREG_USER_TYPE_NIOSD_IO_CTX,
+    LREG_USER_TYPE_NIOSD_IO_CTX_STATS,
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_ANY,
 };
@@ -115,6 +116,9 @@ struct lreg_value
 
 #define LREG_VALUE_TO_IN_STR(lrv)               \
     (lrv)->put.lrv_value_in.lrv_string
+
+#define LREG_VALUE_TO_OUT_SIGNED_INT(lrv)       \
+    (lrv)->get.lrv_value_out.lrv_signed_val
 
 #define LREG_VALUE_TO_REQ_TYPE(lrv)             \
     (lrv)->get.lrv_request_type_out
@@ -288,7 +292,7 @@ lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
 
 void
 lreg_node_init(struct lreg_node *, enum lreg_node_types, enum lreg_user_types,
-               lrn_cb_t, bool);
+               lrn_cb_t, void *, bool);
 
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);

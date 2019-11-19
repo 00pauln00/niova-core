@@ -20,26 +20,16 @@
 
 #include "thread.h"
 #include "niosd_io.h"
+#include "util_thread.h"
+#include "niosd_io_stats.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
-
-LREG_ROOT_ENTRY_GENERATE(niosd_io_reg_root_entry, LREG_USER_TYPE_NIOSD_IO);
 
 #define NIOSD_LINUX_PROC_AIO_MAX "/proc/sys/fs/aio-max-nr"
 #define NIOSD_IO_OPEN_FLAGS (O_DIRECT | O_RDWR)
 #define NIOSD_MIN_DEVICE_SZ_IN_PBLKS 8192UL
 #define NIOSD_MIN_DEVICE_SZ_IN_BYTES                    \
     (NIOSD_MIN_DEVICE_SZ_IN_PBLKS * PBLK_SIZE_BYTES)
-
-static int nicsh_params[NICSH_IO_CTX_STATS_MAX][2] =
-{
-    {NICSH_DEF_IO_SIZE_START_BIT,     NICSH_DEF_IO_SIZE_NBUCKETS},
-    {NICSH_DEF_IO_SIZE_START_BIT,     NICSH_DEF_IO_SIZE_NBUCKETS},
-    {NICSH_DEF_IO_LAT_START_BIT,      NICSH_DEF_IO_LAT_NBUCKETS},
-    {NICSH_DEF_IO_LAT_START_BIT,      NICSH_DEF_IO_LAT_NBUCKETS},
-    {NICSH_DEF_IO_TO_CB_START_BIT,    NICSH_DEF_IO_TO_CB_LAT_NBUCKETS},
-    {NICSH_DEF_IO_NUM_PDNG_START_BIT, NICSH_DEF_IO_NUM_PDNG_NBUCKETS},
-};
 
 static size_t niosdMaxAioEvents;
 static size_t niosdMaxAioNreqsSubmit;
@@ -400,36 +390,6 @@ niosd_io_completion_event_ring_destroy(struct niosd_io_compl_event_ring *cer)
 }
 
 static int
-niosd_device_ctxs_stats_hist_init(struct niosd_io_ctx *nioctx)
-{
-    int rc = 0;
-
-    for (int i = 0; i < NICSH_IO_CTX_STATS_MAX && !rc; i++)
-        rc = binary_hist_init(&nioctx->nioctx_stats[i], nicsh_params[i][0],
-                              nicsh_params[i][1]);
-
-    return rc;
-}
-
-static void
-niosd_device_dump_nioctx_stats(const struct niosd_io_ctx *nioctx)
-{
-    for (int j = 0; j < NICSH_IO_CTX_STATS_MAX; j++)
-    {
-        const struct binary_hist *bh = &nioctx->nioctx_stats[j];
-
-        for (int k = 0; k < binary_hist_size(bh); k++)
-        {
-            SIMPLE_LOG_MSG(LL_NOTIFY,
-                           "%d: %lld,%lld: %lld", j,
-                           binary_hist_lower_bucket_range(bh, k),
-                           binary_hist_upper_bucket_range(bh, k),
-                           binary_hist_get_cnt(bh, k));
-        }
-    }
-}
-
-static int
 nioctx_blocking_mode_setup(struct niosd_io_ctx *nioctx)
 {
      if (!nioctx || !nioctx->nioctx_use_blocking_mode)
@@ -448,15 +408,7 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
         struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
         struct niosd_io_compl_event_ring *cer = &nioctx->nioctx_cer;
 
-        int rc = niosd_device_ctxs_stats_hist_init(nioctx);
-        if (rc)
-        {
-            log_msg(LL_ERROR, "niosd_device_ctxs_stats_hist_init(): %s",
-                    strerror(-rc));
-            return rc;
-        }
-
-        rc = niosd_io_completion_event_ring_init(cer, niosdMaxAioEvents);
+        int rc = niosd_io_completion_event_ring_init(cer, niosdMaxAioEvents);
         if (rc)
         {
             log_msg(LL_ERROR, "niosd_io_completion_event_ring_init(): %s",
@@ -470,6 +422,8 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
             log_msg(LL_ERROR, "niosd_io_ctx_setup(): %s", strerror(-rc));
             return rc;
         }
+
+        nioctx_stats_init(nioctx);
 
         rc = niosd_ctx_event_thread_start(nioctx);
         FATAL_IF(rc, "niosd_ctx_event_thread_start(): %s", strerror(-rc));
@@ -540,7 +494,7 @@ niosd_device_close(struct niosd_device *ndev)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
 
-            niosd_device_dump_nioctx_stats(nioctx);
+            nioctx_stats_dump(nioctx);
 
             niosd_io_completion_event_ring_destroy(&nioctx->nioctx_cer);
         }
@@ -857,59 +811,6 @@ niosd_io_submit(struct niosd_io_request **niorqs, long int nreqs)
 }
 
 static void
-niosd_io_request_ingest_stats(struct niosd_io_request *niorq)
-{
-    if (!niorq ||
-        (niorq->niorq_type != NIOSD_REQ_TYPE_PREAD &&
-         niorq->niorq_type != NIOSD_REQ_TYPE_PWRITE))
-        return;
-
-    struct niosd_io_ctx *nioctx = niorq->niorq_ctx;
-
-    /* I/O Size
-     */
-    struct binary_hist *bh =
-        &nioctx->nioctx_stats[(niorq->niorq_type == NIOSD_REQ_TYPE_PREAD ?
-                               NICSH_RD_SIZE_IN_SECTORS :
-                               NICSH_WR_SIZE_IN_SECTORS)];
-
-    binary_hist_incorporate_val(bh, niosd_io_request_nsectors_to_bytes(niorq));
-
-    /* Latency related stats
-     */
-    long long lat;
-
-    bh = &nioctx->nioctx_stats[(niorq->niorq_type == NIOSD_REQ_TYPE_PREAD ?
-                                NICSH_RD_LATENCY_USEC :
-                                NICSH_WR_LATENCY_USEC)];
-
-    int rc =
-        niosd_io_request_latency_stages_usec(niorq,
-                                             NIOSD_IO_REQ_TIMER_SUBMITTED,
-                                             NIOSD_IO_REQ_TIMER_EVENT_REAPED,
-                                             &lat);
-    if (!rc)
-        binary_hist_incorporate_val(bh, lat);
-
-    bh = &nioctx->nioctx_stats[NICSH_IO_TO_CB_TIME_USEC];
-
-    rc =
-        niosd_io_request_latency_stages_usec(niorq,
-                                             NIOSD_IO_REQ_TIMER_EVENT_REAPED,
-                                             NIOSD_IO_REQ_TIMER_CB_EXEC,
-                                             &lat);
-    if (!rc)
-        binary_hist_incorporate_val(bh, lat);
-
-//    DBG_NIOSD_REQ(LL_WARN, niorq, "lat=%lld rc=%d", lat, rc);
-
-    /* Pending I/O Depth
-     */
-    bh = &nioctx->nioctx_stats[NICSH_IO_NUM_PENDING];
-    binary_hist_incorporate_val(bh, niosd_ctx_pending_io_ops(nioctx));
-}
-
-static void
 niosd_io_request_complete(struct niosd_io_request *niorq,
                           const struct io_event *event,
                           const struct timespec now)
@@ -930,7 +831,7 @@ niosd_io_request_complete(struct niosd_io_request *niorq,
 
     niorq->niorq_compl_ev_done = 1;
 
-    niosd_io_request_ingest_stats(niorq);
+    nioctx_stats_ingest_from_niorq(niorq);
 
     /* Execute the user callback.  *niorq may be freed after the cb.
      */
@@ -967,18 +868,4 @@ niosd_io_events_complete(struct niosd_io_ctx *nioctx, long int max_events)
     }
 
     return nevents_processed;
-}
-
-init_ctx_t
-niosd_io_subsys_init(void)
-{
-    SIMPLE_FUNC_ENTRY(LL_DEBUG);
-
-    LREG_ROOT_ENTRY_INSTALL(niosd_io_reg_root_entry);
-}
-
-destroy_ctx_t
-niosd_io_subsys_destroy(void)
-{
-    SIMPLE_FUNC_ENTRY(LL_DEBUG);
 }

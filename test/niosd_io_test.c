@@ -551,6 +551,7 @@ main(int argc, char **argv)
         sleep(sleepBeforeExit);
 
   lreg_node_recurse("log_entry_map");
+  lreg_node_recurse("nioctx_stats_root_entry");
 
     niot_print_stats(&ts[0]);
 

@@ -12,6 +12,8 @@
 #include "epoll_mgr.h"
 
 typedef void util_thread_ctx_t;
+typedef void util_thread_ctx_reg_t;
+typedef int  util_thread_ctx_reg_int_t;
 
 int
 util_thread_install_event_src(int fd, int events,

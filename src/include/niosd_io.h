@@ -22,6 +22,7 @@
 #include "binary_hist.h"
 #include "ctor.h"
 #include "ev_pipe.h"
+#include "registry.h"
 
 #define NIOSD_MAX_AIO_EVENTS       1048576
 #define NIOSD_DEFAULT_AIO_EVENTS   65536
@@ -113,6 +114,22 @@ niosd_io_ctx_type_to_char(const enum niosd_io_ctx_type t)
     return 'U';
 }
 
+static inline const char *
+niosd_io_ctx_type_to_string(const enum niosd_io_ctx_type t)
+{
+    switch (t)
+    {
+    case NIOSD_IO_CTX_TYPE_DEFAULT:
+        return "user-io-ctx";
+    case NIOSD_IO_CTX_TYPE_COMPACTOR:
+        return "system-io-ctx";
+    default:
+        break;
+    }
+
+    return "unknown";
+}
+
 struct niosd_io_compl_event_ring
 {
     niosd_io_submitter_ctx_uint64_t     CACHE_ALIGN_MEMBER(niocer_nsub);
@@ -149,6 +166,28 @@ enum niosd_io_ctx_stats_hist
     NICSH_IO_CTX_STATS_MAX   = 6,
 };
 
+static inline const char *
+niosd_io_ctx_stats_hist_2_name(enum niosd_io_ctx_stats_hist stat)
+{
+    switch (stat)
+    {
+    case NICSH_RD_SIZE_IN_SECTORS:
+        return "read_size_in_sectors";
+    case NICSH_WR_SIZE_IN_SECTORS:
+        return "write_size_in_sectors";
+    case NICSH_RD_LATENCY_USEC:
+        return "read_latency_usec";
+    case NICSH_WR_LATENCY_USEC:
+        return "write_latency_usec";
+    case NICSH_IO_TO_CB_TIME_USEC:
+        return "cb_queue_latency";
+    case NICSH_IO_NUM_PENDING:
+        return "io_pending_count";
+    default:
+        return "unknown";
+    }
+}
+
 #define NICSH_DEF_IO_SIZE_START_BIT 9
 #define NICSH_DEF_IO_SIZE_NBUCKETS  9
 
@@ -161,6 +200,13 @@ enum niosd_io_ctx_stats_hist
 #define NICSH_DEF_IO_NUM_PDNG_START_BIT 0
 #define NICSH_DEF_IO_NUM_PDNG_NBUCKETS  18
 
+struct niosd_io_ctx_stats
+{
+    enum niosd_io_ctx_stats_hist niocs_stat_type;
+    struct binary_hist           niocs_bh;
+    struct lreg_node             niocs_lrn;
+};
+
 struct niosd_io_ctx
 {
     uint32_t                         nioctx_use_blocking_mode:1;
@@ -168,15 +214,23 @@ struct niosd_io_ctx
     enum niosd_io_ctx_type           nioctx_type;
     io_context_t                     nioctx_ctx;
     struct thread_ctl                nioctx_thr_ctl;
-    struct binary_hist               nioctx_stats[NICSH_IO_CTX_STATS_MAX];
+    struct niosd_io_ctx_stats        nioctx_stats[NICSH_IO_CTX_STATS_MAX];
     struct niosd_io_compl_event_ring nioctx_cer;
+    struct lreg_node                 nioctx_lreg_node;
 };
+
+static inline struct binary_hist *
+niosd_io_ctx_2_stats_bh(struct niosd_io_ctx *nioctx,
+                        enum niosd_io_ctx_stats_hist counter)
+{
+    return &nioctx->nioctx_stats[counter].niocs_bh;
+}
 
 struct sb_header_data;
 
 struct niosd_device
-{
-    char                             ndev_name[PATH_MAX + 1];
+{                                    //XXx fixme!
+    char                             ndev_name[LREG_VALUE_STRING_MAX - 5];
     struct sb_header_data           *ndev_sb;
     struct stat                      ndev_stb;
     int                              ndev_fd;
@@ -404,13 +458,5 @@ niosd_io_events_complete(struct niosd_io_ctx *, long int);
 
 int
 nioctx_blocking_mode_fd_get(const struct niosd_io_ctx *nioctx);
-
-init_ctx_t
-niosd_io_subsys_init(void)
-     __attribute__ ((constructor (NIOSD_IO_CTOR_PRIORITY)));
-
-destroy_ctx_t
-niosd_io_subsys_destroy(void)
-    __attribute__ ((destructor (NIOSD_IO_CTOR_PRIORITY)));
 
 #endif

@@ -17,6 +17,7 @@ CORE_INCLUDES   = \
 	src/include/vblkdev_handle.h \
 	src/include/niosd_io.h \
 	src/include/niosd_uuid.h \
+	src/include/niosd_io_stats.h \
 	src/include/registry.h \
 	src/include/thread.h \
 	src/include/watchdog.h \
@@ -37,6 +38,7 @@ CORE_OBJFILES   = \
 	src/vblkdev_handle.o \
 	src/niosd_io.o \
 	src/niosd_uuid.o \
+	src/niosd_io_stats.o \
 	src/registry.o \
 	src/superblock.o \
 	src/thread.o \
