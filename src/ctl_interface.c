@@ -33,7 +33,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 typedef void lctli_inotify_thread_t;
 typedef int  lctli_inotify_thread_int_t;
 
-struct local_ctl_interface
+struct ctl_interface
 {
     const char       *lctli_path;
     bool              lctli_init;
@@ -55,14 +55,14 @@ const char *lctliSubdirs[LCTLI_SUBDIR_MAX] =
     [LCTLI_SUBDIR_OUTPUT] = "output"
 };
 
-static struct local_ctl_interface localCtlIf[LCTLI_MAX];
+static struct ctl_interface localCtlIf[LCTLI_MAX];
 static pthread_mutex_t lctlMutex = PTHREAD_MUTEX_INITIALIZER;
 static int numLocalCtlIfs;
 
-static struct local_ctl_interface *
+static struct ctl_interface *
 lctli_new(void)
 {
-    struct local_ctl_interface *new_lctli = NULL;
+    struct ctl_interface *new_lctli = NULL;
 
     pthread_mutex_lock(&lctlMutex);
 
@@ -108,7 +108,7 @@ lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
 }
 
 static lctli_inotify_thread_t
-lctli_inotify_thread_poll_handle_event(struct local_ctl_interface *lctli)
+lctli_inotify_thread_poll_handle_event(struct ctl_interface *lctli)
 {
     char buf[INOTIFY_BUFFER_SIZE]
         __attribute__ ((aligned(__alignof__(struct inotify_event))));
@@ -134,7 +134,7 @@ lctli_inotify_thread_poll_handle_event(struct local_ctl_interface *lctli)
 }
 
 static lctli_inotify_thread_int_t
-lctli_inotify_thread_poll(struct local_ctl_interface *lctli)
+lctli_inotify_thread_poll(struct ctl_interface *lctli)
 {
     struct pollfd pfd = {.fd = lctli->lctli_inotify_fd, .events = POLLIN};
 
@@ -162,7 +162,7 @@ static lctli_inotify_thread_t *
 lctli_inotify_thread(void *arg)
 {
     struct thread_ctl *tc = arg;
-    struct local_ctl_interface *lctli = tc->tc_arg;
+    struct ctl_interface *lctli = tc->tc_arg;
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 
@@ -178,7 +178,7 @@ lctli_inotify_thread(void *arg)
 }
 
 static init_ctx_t
-lctli_inotify_thread_start(struct local_ctl_interface *lctli)
+lctli_inotify_thread_start(struct ctl_interface *lctli)
 {
     int rc = thread_create_watched(lctli_inotify_thread, &lctli->lctli_thr_ctl,
                                    "lctli_inotify", lctli, NULL);
@@ -203,7 +203,7 @@ lctli_check_and_mk_inotify_path(const char *path)
 }
 
 static int
-lctli_prepare(struct local_ctl_interface *lctli, const char *path)
+lctli_prepare(struct ctl_interface *lctli, const char *path)
 {
     if (!lctli || !path)
         return -EINVAL;
@@ -274,7 +274,7 @@ lctli_prepare(struct local_ctl_interface *lctli, const char *path)
 init_ctx_t
 lctli_subsystem_init(void)
 {
-    struct local_ctl_interface *lctli = lctli_new();
+    struct ctl_interface *lctli = lctli_new();
 
     NIOVA_ASSERT(lctli);
     NIOVA_ASSERT(numLocalCtlIfs == 1);
@@ -296,7 +296,7 @@ lctli_subsystem_init(void)
 destroy_ctx_t
 lctli_subsystem_destroy(void)
 {
-    struct local_ctl_interface *lctli = &localCtlIf[LCTLI_DEFAULT_IDX];
+    struct ctl_interface *lctli = &localCtlIf[LCTLI_DEFAULT_IDX];
 
     if (lctli->lctli_init)
     {
