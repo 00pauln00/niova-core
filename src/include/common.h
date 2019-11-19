@@ -15,7 +15,12 @@
 #include <errno.h>
 #include <string.h>
 #include <uuid/uuid.h>
+
+#ifndef  _STDIO_H
+#define _STDIO_H 1
 #include <stdio.h>
+#undef _STDIO_H
+#endif
 
 /* No NIOVA includes may be added here!
  */
