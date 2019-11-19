@@ -79,6 +79,8 @@ epollCb(const struct epoll_handle *eph)
                        rc, strerror(errno));
     }
 
+    SIMPLE_LOG_MSG(LL_DEBUG, "ev_pipe_drain=%zd", rc);
+
     size_t num_complete = 0;
     for (;;)
     {

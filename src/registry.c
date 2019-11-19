@@ -14,6 +14,8 @@
 #include "atomic.h"
 #include "registry.h"
 #include "thread.h"
+#include "util_thread.h"
+#include "ev_pipe.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -21,8 +23,8 @@ static struct lreg_node_list lRegInstallingNodes;
 static struct lreg_node      lRegRootNode;
 static bool                  lRegInitialized = false;
 static spinlock_t            lRegLock;
-static struct thread_ctl     lRegSvcThreadCtl;
 static pthread_rwlock_t      lRegRwLock;
+static struct ev_pipe        lRegEVP;
 
 const char *lRegSeparatorString = "::";
 
@@ -418,6 +420,8 @@ lreg_node_queue_for_install(struct lreg_node *child)
     CIRCLEQ_INSERT_TAIL(&lRegInstallingNodes, child, lrn_lentry);
 
     LREG_NODE_INSTALL_UNLOCK;
+
+    ev_pipe_notify(&lRegEVP);
 }
 
 /**
@@ -500,40 +504,28 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
-static lreg_svc_thread_t
-lreg_svc_thread(void *arg)
+static util_thread_ctx_t
+lreg_util_thread_cb(const struct epoll_handle *eph)
 {
-    struct thread_ctl *tc = arg;
+    FUNC_ENTRY(LL_DEBUG);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
-
-    /* Cause this thread to sleep at the top of 'THREAD_LOOP_WITH_CTL'.
-     */
-    thread_ctl_set_user_pause_usec(tc, THR_PAUSE_DEFAULT_USECS);
-
-    THREAD_LOOP_WITH_CTL(tc)
+    if (eph->eph_fd != evp_read_fd_get(&lRegEVP))
     {
-        lreg_install_queued_nodes();
+        LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
+                eph->eph_fd, evp_read_fd_get(&lRegEVP));
+
+        return;
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye");
+    ssize_t rc = ev_pipe_drain(&lRegEVP);
+    if (rc < 0 && (rc != -EWOULDBLOCK || rc != -EAGAIN))
+        LOG_MSG(LL_WARN, "ev_pipe_drain() %s", strerror(-rc));
 
-    return (void *)0;
-}
+    SIMPLE_LOG_MSG(LL_DEBUG, "ev_pipe_drain()=%zd", rc);
 
-static void
-lreg_svc_enable(void)
-{
-    thread_ctl_run(&lRegSvcThreadCtl);
-}
+    lreg_install_queued_nodes();
 
-static init_ctx_t
-lreg_svc_thread_start(void)
-{
-    int rc = thread_create_watched(lreg_svc_thread, &lRegSvcThreadCtl,
-                                   "lreg_svc", NULL, NULL);
-
-    FATAL_IF(rc, "pthread_create(): %s", strerror(errno));
+    evp_increment_reader_cnt(&lRegEVP);
 }
 
 init_ctx_t
@@ -551,10 +543,17 @@ lreg_subsystem_init(void)
     lreg_node_init(&lRegRootNode, LREG_NODE_TYPE_OBJECT, LREG_USER_TYPE_ROOT,
                    lreg_root_node_cb, true);
 
-    lreg_svc_thread_start();
-    lreg_svc_enable();
-
     lRegInitialized = true;
+
+    int rc = ev_pipe_setup(&lRegEVP);
+    FATAL_IF((rc), "ev_pipe_setup(): %s", strerror(-rc));
+
+    evp_increment_reader_cnt(&lRegEVP);
+
+    rc = util_thread_install_event_src(evp_read_fd_get(&lRegEVP), EPOLLIN,
+                                       lreg_util_thread_cb, NULL);
+
+    FATAL_IF((rc), "util_thread_install_event_src(): %s", strerror(-rc));
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }
@@ -562,10 +561,10 @@ lreg_subsystem_init(void)
 destroy_ctx_t
 lreg_subsystem_destroy(void)
 {
-    int rc = thread_halt_and_destroy(&lRegSvcThreadCtl);
+    //Remove from util thread?
 
     spinlock_destroy(&lRegLock);
     NIOVA_ASSERT_strerror(!pthread_rwlock_destroy(&lRegRwLock));
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread: %s", strerror(-rc));
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread");
 }

@@ -86,9 +86,9 @@ ssize_t
 ev_pipe_drain(struct ev_pipe *evp)
 {
     char sink_buf[PIPE_DRAIN_SIZE];
-    ssize_t num_bytes, rc;
+    ssize_t num_bytes = 0, rc = 0;
 
-    for (num_bytes = 0, rc = 0; rc > 0; )
+    for (;;)
     {
         rc = read(evp_read_fd_get(evp), sink_buf, PIPE_DRAIN_SIZE);
 
