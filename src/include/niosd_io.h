@@ -157,8 +157,8 @@ struct niosd_io_compl_event_ring
 
 enum niosd_io_ctx_stats_hist
 {
-    NICSH_RD_SIZE_IN_SECTORS = 0,
-    NICSH_WR_SIZE_IN_SECTORS = 1,
+    NICSH_RD_SIZE_IN_BYTES   = 0,
+    NICSH_WR_SIZE_IN_BYTES   = 1,
     NICSH_RD_LATENCY_USEC    = 2,
     NICSH_WR_LATENCY_USEC    = 3,
     NICSH_IO_TO_CB_TIME_USEC = 4,
@@ -171,10 +171,10 @@ niosd_io_ctx_stats_hist_2_name(enum niosd_io_ctx_stats_hist stat)
 {
     switch (stat)
     {
-    case NICSH_RD_SIZE_IN_SECTORS:
-        return "read_size_in_sectors";
-    case NICSH_WR_SIZE_IN_SECTORS:
-        return "write_size_in_sectors";
+    case NICSH_RD_SIZE_IN_BYTES:
+        return "read_size_in_bytes";
+    case NICSH_WR_SIZE_IN_BYTES:
+        return "write_size_in_bytes";
     case NICSH_RD_LATENCY_USEC:
         return "read_latency_usec";
     case NICSH_WR_LATENCY_USEC:

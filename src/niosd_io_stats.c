@@ -240,8 +240,8 @@ nioctx_stats_ingest_from_niorq(struct niosd_io_request *niorq)
     struct binary_hist *bh =
         niosd_io_ctx_2_stats_bh(nioctx,
                                 (niorq->niorq_type == NIOSD_REQ_TYPE_PREAD ?
-                                 NICSH_RD_SIZE_IN_SECTORS :
-                                 NICSH_WR_SIZE_IN_SECTORS));
+                                 NICSH_RD_SIZE_IN_BYTES :
+                                 NICSH_WR_SIZE_IN_BYTES));
 
     binary_hist_incorporate_val(bh, niosd_io_request_nsectors_to_bytes(niorq));
 
