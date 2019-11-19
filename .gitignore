@@ -21,3 +21,11 @@ a.out
 niova
 *.gcno
 *.gcda
+openssl-speed.txt
+pahole.out
+.gdb_history
+uncommitted/
+test/common_test
+test/micro_test
+TODO*
+*.json
