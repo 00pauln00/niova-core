@@ -101,7 +101,9 @@ lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
                 (event->mask & IN_ISDIR) ? "[dir]" : "[file]");
 #if 0
         if (!(event->mask & IN_ISDIR) &&
-            (event->mask & IN_CLOSE_WRITE || event->mask & IN_ACCESS))
+            (event->mask & IN_CLOSE_WRITE ||
+             event->mask & IN_ATTRIB      ||
+             event->mask & IN_MOVED_TO))
         {
         }
 #endif
@@ -218,7 +220,7 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
 
     lctli->lctli_inotify_watch_fd =
         inotify_add_watch(lctli->lctli_inotify_fd, input_path,
-                          IN_CLOSE_WRITE | IN_ACCESS);
+                          IN_CLOSE_WRITE | IN_ATTRIB | IN_MOVED_TO);
 
     if (lctli->lctli_inotify_watch_fd < 0)
     {
