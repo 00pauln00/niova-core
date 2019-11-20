@@ -231,8 +231,8 @@ struct sb_header_data;
 #define MAX_NIOSD_DEVICE_NAME (LREG_VALUE_STRING_MAX - 5)
 
 struct niosd_device
-{                                    //XXx fixme!
-    char                             ndev_name[MAX_NIOSD_DEVICE_NAME];
+{
+    char                             ndev_name[MAX_NIOSD_DEVICE_NAME + 1];
     struct sb_header_data           *ndev_sb;
     struct stat                      ndev_stb;
     int                              ndev_fd;
