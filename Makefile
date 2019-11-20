@@ -29,7 +29,9 @@ CORE_INCLUDES   = \
 	src/include/init.h \
 	src/include/ev_pipe.h \
 	src/include/epoll_mgr.h \
-	src/include/util_thread.h
+	src/include/util_thread.h \
+	src/include/ctl_interface_cmd.h \
+	src/include/io.h
 
 CORE_OBJFILES   = \
 	src/log.o \
@@ -49,7 +51,9 @@ CORE_OBJFILES   = \
 	src/env.o \
 	src/ev_pipe.o \
 	src/epoll_mgr.o \
-	src/util_thread.o
+	src/util_thread.o \
+	src/ctl_interface_cmd.o \
+	src/io.o
 
 ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
 TARGET 		= niova

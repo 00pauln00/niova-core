@@ -15,6 +15,8 @@ typedef void util_thread_ctx_t;
 typedef void util_thread_ctx_reg_t;
 typedef int  util_thread_ctx_reg_int_t;
 
+typedef char util_thread_ctx_ctli_char_t;
+
 int
 util_thread_install_event_src(int fd, int events,
                               void (*ut_cb)(const struct epoll_handle *),

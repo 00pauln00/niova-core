@@ -17,6 +17,7 @@
 #include "thread.h"
 #include "registry.h"
 #include "ctl_interface.h"
+#include "ctl_interface_cmd.h"
 #include "env.h"
 #include "util_thread.h"
 
@@ -89,9 +90,8 @@ static util_thread_ctx_t
 lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
 {
     const struct inotify_event *event;
-    char *ptr;
 
-    for (ptr = buf; ptr < (buf + len);
+    for (char *ptr = buf; ptr < (buf + len);
          ptr += sizeof(struct inotify_event) + event->len)
     {
         event = (const struct inotify_event *)ptr;
@@ -99,6 +99,9 @@ lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
         LOG_MSG(LL_WARN, "event@%p mask=%x name=%s %s ",
                 event, event->mask, event->name,
                 (event->mask & IN_ISDIR) ? "[dir]" : "[file]");
+
+        if (!(event->mask & IN_ISDIR))
+            ctlic_process_new_cmd(event->name);
 #if 0
         if (!(event->mask & IN_ISDIR) &&
             (event->mask & IN_CLOSE_WRITE ||
