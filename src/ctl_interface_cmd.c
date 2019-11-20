@@ -47,7 +47,7 @@ struct ctlic_request
 {
     const struct cic_token *cr_token;
     const char             *cr_value;
-    struct ctlic_file       cf_file[CTLIC_CMD_TOTAL];
+    struct ctlic_file       cr_file[CTLIC_CMD_TOTAL];
 };
 
 #define CTLIC_NUM_CMDS 2
@@ -72,12 +72,12 @@ ctlic_request_prepare(struct ctlic_request *cr)
 
         for (int i = 0; i < CTLIC_CMD_TOTAL; i++)
         {
-            cr->cf_file[i].cf_nbytes_written = 0;
-            cr->cf_file[i].cf_file_name = NULL;
-            cr->cf_file[i].cf_fd = -1;
-            cr->cf_file[i].cf_buffer = ctlicBuffer[i];
+            cr->cr_file[i].cf_nbytes_written = 0;
+            cr->cr_file[i].cf_file_name = NULL;
+            cr->cr_file[i].cf_fd = -1;
+            cr->cr_file[i].cf_buffer = ctlicBuffer[i];
 
-            memset(cr->cf_file[i].cf_buffer, 0, CTLIC_BUFFER_SIZE);
+            memset(cr->cr_file[i].cf_buffer, 0, CTLIC_BUFFER_SIZE);
         }
     }
 }
@@ -89,8 +89,8 @@ ctlic_request_done(struct ctlic_request *cr)
     {
         for (int i = 0; i < CTLIC_CMD_TOTAL; i++)
         {
-            if (cr->cf_file[i].cf_fd >= 0)
-                close(cr->cf_file[i].cf_fd);
+            if (cr->cr_file[i].cf_fd >= 0)
+                close(cr->cr_file[i].cf_fd);
         }
     }
 }
@@ -120,7 +120,7 @@ ctlic_open_and_read_input_file(const char *input_cmd_file,
      */
     ctlic_request_prepare(cr);
 
-    struct ctlic_file *cf_in = &cr->cf_file[CTLIC_CMD_INPUT];
+    struct ctlic_file *cf_in = &cr->cr_file[CTLIC_CMD_INPUT];
 
     cf_in->cf_file_name = input_cmd_file;
 
@@ -135,11 +135,15 @@ ctlic_open_and_read_input_file(const char *input_cmd_file,
     cf_in->cf_nbytes_written =
         io_read(cf_in->cf_fd, cf_in->cf_buffer, stb.st_size);
 
+    /* Check for any basic errors
+     */
     if (cf_in->cf_nbytes_written < 0)
     {
         rc = (int)cf_in->cf_nbytes_written;
         goto error;
     }
+    /* The file's size has shrunk - ignore it
+     */
     else if (cf_in->cf_nbytes_written != stb.st_size)
     {
         rc = -EMSGSIZE;
@@ -166,7 +170,9 @@ ctlic_process_new_cmd(const char *input_cmd_file)
 
     SIMPLE_LOG_MSG(LL_WARN, "file=%s\ncontents=\n%s",
                    input_cmd_file,
-                   (const char *)cr.cf_file[CTLIC_CMD_INPUT].cf_buffer);
+                   (const char *)cr.cr_file[CTLIC_CMD_INPUT].cf_buffer);
+
+    ctlic_request_done(&cr);
 }
 
 init_ctx_t
