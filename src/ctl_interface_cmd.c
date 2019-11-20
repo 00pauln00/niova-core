@@ -14,6 +14,21 @@
 #include "util_thread.h"
 #include "io.h"
 
+enum ctlic_cmd_input_output
+{
+    CTLIC_CMD_INPUT = 0,
+    CTLIC_CMD_OUTPUT,
+    CTLIC_CMD_TOTAL,
+};
+
+#define CTLIC_BUFFER_SIZE 4096
+
+/* The entire ctl interface is single threaded, executed by the util_thread.
+ * This means that only a single set of buffers are needed
+ */
+static util_thread_ctx_ctli_char_t
+ctlicBuffer[CTLIC_CMD_TOTAL][CTLIC_BUFFER_SIZE];
+
 struct ctlic_token
 {
     const char  *ct_name;
@@ -28,13 +43,6 @@ struct ctlic_file
     ssize_t                 cf_nbytes_written;
 };
 
-enum ctlic_cmd_input_output
-{
-    CTLIC_CMD_INPUT = 0,
-    CTLIC_CMD_OUTPUT,
-    CTLIC_CMD_TOTAL,
-};
-
 struct ctlic_request
 {
     const struct cic_token *cr_token;
@@ -42,13 +50,17 @@ struct ctlic_request
     struct ctlic_file       cf_file[CTLIC_CMD_TOTAL];
 };
 
-#define CTLIC_BUFFER_SIZE 4096
+#define CTLIC_NUM_CMDS 2
+#define CTLIC_MAX_REQ_NAME_LEN 32
 
-/* The entire ctl interface is single threaded, executed by the util_thread.
- * This means that only a single set of buffers are needed
- */
-static util_thread_ctx_ctli_char_t
-ctlicBuffer[CTLIC_CMD_TOTAL][CTLIC_BUFFER_SIZE];
+static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_CMDS] = {
+    {
+        .ct_name = "GET",
+    },
+    {
+        .ct_name = "OUTFILE",
+    },
+};
 
 static void
 ctlic_request_prepare(struct ctlic_request *cr)
@@ -82,19 +94,6 @@ ctlic_request_done(struct ctlic_request *cr)
         }
     }
 }
-
-
-#define CTLIC_NUM_CMDS 2
-#define CTLIC_MAX_REQ_NAME_LEN 32
-
-static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_CMDS] = {
-    {
-        .ct_name = "GET",
-    },
-    {
-        .ct_name = "OUTFILE",
-    },
-};
 
 static int
 ctlic_open_and_read_input_file(const char *input_cmd_file,
