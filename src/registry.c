@@ -11,9 +11,7 @@
 
 #include "log.h"
 #include "lock.h"
-#include "atomic.h"
 #include "registry.h"
-#include "thread.h"
 #include "util_thread.h"
 #include "ev_pipe.h"
 
