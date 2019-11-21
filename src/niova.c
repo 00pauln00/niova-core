@@ -48,7 +48,8 @@ main(void)
 
     vblkdev_handle_test();
 
-    sleep(30);
+    for (;;)
+        ;
 
     STDOUT_MSG("niovad exit");
 }

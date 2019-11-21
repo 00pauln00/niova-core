@@ -7,8 +7,10 @@
 #ifndef _CTLI_CMD_H
 #define _CTLI_CMD_H 1
 
-void
-ctlic_process_new_cmd(const char *input_cmd_file);
+#include "util_thread.h"
+
+util_thread_ctx_ctli_t
+ctlic_process_request(const char *input_cmd_file);
 
 init_ctx_t
 ctlic_init(void)

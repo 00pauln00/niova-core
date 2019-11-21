@@ -101,7 +101,7 @@ lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
                 (event->mask & IN_ISDIR) ? "[dir]" : "[file]");
 
         if (!(event->mask & IN_ISDIR))
-            ctlic_process_new_cmd(event->name);
+            ctlic_process_request(event->name);
 #if 0
         if (!(event->mask & IN_ISDIR) &&
             (event->mask & IN_CLOSE_WRITE ||

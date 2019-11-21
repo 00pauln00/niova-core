@@ -8,52 +8,42 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <ctype.h>
+#include <regex.h>
 
 #include "log.h"
 #include "ctl_interface_cmd.h"
 #include "util_thread.h"
 #include "io.h"
 
-enum ctlic_cmd_input_output
-{
-    CTLIC_CMD_INPUT = 0,
-    CTLIC_CMD_OUTPUT,
-    CTLIC_CMD_TOTAL,
-};
+#define CTLIC_BUFFER_SIZE        4096
+#define CTLIC_MAX_TOKENS_PER_REQ 32
+#define CTLIC_MAX_VALUE_SIZE     512
+#define CTLIC_MAX_VALUE_DEPTH    32 // Max 'tree' depth which can be queried
+#define CTLIC_NUM_CMDS           2
+#define CTLIC_MAX_REQ_NAME_LEN   32
 
-#define CTLIC_BUFFER_SIZE 4096
+enum ctlic_cmd_input_output_files
+{
+    CTLIC_INPUT_FILE = 0,
+    CTLIC_OUTPUT_FILE,
+    CTLIC_NUM_FILES,
+};
 
 /* The entire ctl interface is single threaded, executed by the util_thread.
  * This means that only a single set of buffers are needed
  */
 static util_thread_ctx_ctli_char_t
-ctlicBuffer[CTLIC_CMD_TOTAL][CTLIC_BUFFER_SIZE];
+ctlicBuffer[CTLIC_NUM_FILES][CTLIC_BUFFER_SIZE];
 
 struct ctlic_token
 {
-    const char  *ct_name;
-    size_t       ct_name_len;
+    const char *ct_name;
+    size_t      ct_name_len;
 };
 
-struct ctlic_file
+static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_CMDS] =
 {
-    const char             *cf_file_name;
-    char                   *cf_buffer;
-    int                     cf_fd;
-    ssize_t                 cf_nbytes_written;
-};
-
-struct ctlic_request
-{
-    const struct cic_token *cr_token;
-    const char             *cr_value;
-    struct ctlic_file       cr_file[CTLIC_CMD_TOTAL];
-};
-
-#define CTLIC_NUM_CMDS 2
-#define CTLIC_MAX_REQ_NAME_LEN 32
-
-static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_CMDS] = {
     {
         .ct_name = "GET",
     },
@@ -62,15 +52,60 @@ static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_CMDS] = {
     },
 };
 
+struct ctlic_depth_segment
+{
+    unsigned int cds_free_regex:1;
+    const char  *cds_str;
+    regex_t      cds_regex;
+};
+
+struct ctlic_matched_token
+{
+    const struct ctlic_token  *cmt_token;
+    size_t                     cmt_value_idx;
+    char                       cmt_value[CTLIC_MAX_VALUE_SIZE];
+    size_t                     cmt_current_depth;
+    size_t                     cmt_num_depth_segments;
+    struct ctlic_depth_segment cmt_depth_segments[CTLIC_MAX_VALUE_DEPTH];
+};
+
+struct ctlic_file
+{
+    const char *cf_file_name;
+    char       *cf_buffer;
+    int         cf_fd;
+    ssize_t     cf_nbytes_written;
+};
+
+struct ctlic_request
+{
+    size_t                     cr_num_matched_tokens;
+    struct ctlic_matched_token cr_matched_token[CTLIC_MAX_TOKENS_PER_REQ];
+    struct ctlic_file          cr_file[CTLIC_NUM_FILES];
+};
+
+static void
+ctlic_matched_token_init(struct ctlic_matched_token *cmt)
+{
+    if (cmt)
+    {
+        cmt->cmt_token = NULL;
+        cmt->cmt_value_idx = 0;
+        memset(cmt->cmt_value, 0, CTLIC_MAX_VALUE_SIZE);
+    }
+}
+
 static void
 ctlic_request_prepare(struct ctlic_request *cr)
 {
     if (cr)
     {
-        cr->cr_token = NULL;
-        cr->cr_value = NULL;
+        cr->cr_num_matched_tokens = 0;
 
-        for (int i = 0; i < CTLIC_CMD_TOTAL; i++)
+        for (int i = 0; i < CTLIC_MAX_TOKENS_PER_REQ; i++)
+            ctlic_matched_token_init(&cr->cr_matched_token[i]);
+
+        for (int i = 0; i < CTLIC_NUM_FILES; i++)
         {
             cr->cr_file[i].cf_nbytes_written = 0;
             cr->cr_file[i].cf_file_name = NULL;
@@ -85,12 +120,25 @@ ctlic_request_prepare(struct ctlic_request *cr)
 static void
 ctlic_request_done(struct ctlic_request *cr)
 {
-    if (cr)
+    if (!cr)
+        return;
+
+    for (int i = 0; i < CTLIC_NUM_FILES; i++)
     {
-        for (int i = 0; i < CTLIC_CMD_TOTAL; i++)
+        if (cr->cr_file[i].cf_fd >= 0)
+            close(cr->cr_file[i].cf_fd);
+    }
+
+    for (size_t i = 0; i < cr->cr_num_matched_tokens; i++)
+    {
+        struct ctlic_matched_token *cmt = &cr->cr_matched_token[i];
+
+        for (size_t j = 0; j < cmt->cmt_num_depth_segments; j++)
         {
-            if (cr->cr_file[i].cf_fd >= 0)
-                close(cr->cr_file[i].cf_fd);
+            struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[j];
+
+            if (cds->cds_free_regex)
+                regfree(&cds->cds_regex);
         }
     }
 }
@@ -120,7 +168,7 @@ ctlic_open_and_read_input_file(const char *input_cmd_file,
      */
     ctlic_request_prepare(cr);
 
-    struct ctlic_file *cf_in = &cr->cr_file[CTLIC_CMD_INPUT];
+    struct ctlic_file *cf_in = &cr->cr_file[CTLIC_INPUT_FILE];
 
     cf_in->cf_file_name = input_cmd_file;
 
@@ -157,20 +205,234 @@ error:
     return rc;
 }
 
-void
-ctlic_process_new_cmd(const char *input_cmd_file)
+static int
+ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
 {
-    struct ctlic_request cr;
+    if (!cmt)
+        return -EINVAL;
+
+    for (size_t i = 0; i < cmt->cmt_num_depth_segments; i++)
+    {
+        struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[i];
+
+        int rc = regcomp(&cds->cds_regex, cds->cds_str, REG_NOSUB);
+        if (rc)
+        {
+            char err_str[64] = {0};
+            regerror(rc, &cds->cds_regex, err_str, 63);
+
+            SIMPLE_LOG_MSG(LL_WARN, "regcomp(`%s'): %s",
+                           cmt->cmt_depth_segments[i].cds_str, err_str);
+
+            return -EBADMSG;
+        }
+        else
+        {
+            cds->cds_free_regex = 1;
+
+            SIMPLE_LOG_MSG(LL_WARN, "%s regcomp():  OK",
+                           cmt->cmt_depth_segments[i].cds_str);
+        }
+    }
+
+    return 0;
+}
+
+static int
+ctlic_parse_token_value(struct ctlic_matched_token *cmt)
+{
+    if (!cmt ||
+        !cmt->cmt_value_idx ||
+        cmt->cmt_num_depth_segments ||
+        cmt->cmt_value_idx > CTLIC_MAX_VALUE_SIZE - 1 ||
+        cmt->cmt_value[0] != '/')
+        return -EINVAL;
+
+    bool escape_char = false;
+    bool prev_char_was_solidus = false;
+
+    for (size_t i = 0; i < cmt->cmt_value_idx; i++)
+    {
+        if (cmt->cmt_value[i] == '\\')
+        {
+            escape_char = true;
+            continue;
+        }
+        else if (cmt->cmt_value[i] == '/' && !escape_char)
+        {
+            cmt->cmt_value[i] = '\0';
+            prev_char_was_solidus = true;
+            escape_char = false;
+            continue;
+        }
+        else if (prev_char_was_solidus)
+        {
+            if (cmt->cmt_num_depth_segments == CTLIC_MAX_VALUE_DEPTH)
+                return -E2BIG;
+
+            struct ctlic_depth_segment *cds =
+                &cmt->cmt_depth_segments[cmt->cmt_num_depth_segments++];
+
+            cds->cds_str = &cmt->cmt_value[i];
+
+            prev_char_was_solidus = false;
+            escape_char = false;
+        }
+    }
+
+    return ctlic_prepare_token_values(cmt);
+}
+
+static void
+ctlic_dump_request_items(const struct ctlic_request *cr)
+{
+    if (!cr)
+        return;
+
+    for (size_t i = 0; i < cr->cr_num_matched_tokens; i++)
+    {
+        if (cr->cr_matched_token[i].cmt_token)
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "(%s) %s -> `%s'",
+                           cr->cr_file[CTLIC_INPUT_FILE].cf_file_name,
+                           cr->cr_matched_token[i].cmt_token->ct_name,
+                           cr->cr_matched_token[i].cmt_value);
+        }
+    }
+}
+
+static int
+ctlic_parse_request_values(struct ctlic_request *cr)
+{
+    if (!cr || cr->cr_num_matched_tokens > CTLIC_MAX_TOKENS_PER_REQ)
+        return -EINVAL;
+
+    for (size_t i = 0; i < cr->cr_num_matched_tokens; i++)
+    {
+        int rc = ctlic_parse_token_value(&cr->cr_matched_token[i]);
+
+        if (rc)
+            return rc;
+    }
+
+    return 0;
+}
+
+static int
+ctlic_parse_request(struct ctlic_request *cr)
+{
+    if (!cr)
+        return -EINVAL;
+
+    const struct ctlic_file *cf_in = &cr->cr_file[CTLIC_INPUT_FILE];
+
+    if (!cf_in->cf_buffer)
+        return -EINVAL;
+
+    for (ssize_t i = 0; i < cf_in->cf_nbytes_written; i++)
+    {
+        const char c = cf_in->cf_buffer[i];
+
+        struct ctlic_matched_token *cmt =
+            &cr->cr_matched_token[cr->cr_num_matched_tokens];
+
+        if (!cmt->cmt_token)
+        {
+            if (isspace(c))
+                continue; // Filter out leading whitespace
+
+            else if (!isupper(c)) // Tokens are entirely upper case
+                return -EBADMSG;
+
+            bool found = false;
+
+            // Have the first upper case char in a word
+            for (int j = 0; j < CTLIC_NUM_CMDS; j++)
+            {
+                if ((ctlInterfaceCmds[j].ct_name_len + i) >
+                    cf_in->cf_nbytes_written) // Check len prior to strncmp()
+                    return -EBADMSG;
+
+                if (!strncmp(ctlInterfaceCmds[j].ct_name, &cf_in->cf_buffer[i],
+                             ctlInterfaceCmds[j].ct_name_len))
+                {
+                    cmt->cmt_token = &ctlInterfaceCmds[j];
+
+                    // Found it, move indexer to the word's end
+                    i += ctlInterfaceCmds[j].ct_name_len - 1;
+                    found = true;
+                }
+            }
+
+            if (!found)
+                return -EBADMSG;
+            else
+                continue;
+        }
+        else // Read chars into cmt_value
+        {
+            if (!cmt->cmt_value_idx)
+            {
+                if (isspace(c))
+                    continue; // Filter out leading whitespace
+
+                else if (c != '/')
+                    return -EBADMSG;
+            }
+            else if (c == '\n')
+            {
+                cr->cr_num_matched_tokens++;
+
+                if (cr->cr_num_matched_tokens > CTLIC_MAX_TOKENS_PER_REQ)
+                    return -EBADMSG;
+
+                else
+                    continue;
+            }
+
+            if (cmt->cmt_value_idx == CTLIC_MAX_VALUE_SIZE - 1)
+                return -EBADMSG; // Value length check
+
+            cmt->cmt_value[cmt->cmt_value_idx++] = c;
+        }
+    }
+
+    ctlic_dump_request_items(cr);
+
+    int rc = ctlic_parse_request_values(cr);
+    if (rc)
+        return rc;
+
+//XX call into the registry
+
+    return 0;
+}
+
+util_thread_ctx_ctli_t
+ctlic_process_request(const char *input_cmd_file)
+{
+    struct ctlic_request cr = {0};
 
     int rc = ctlic_open_and_read_input_file(input_cmd_file, &cr);
 
     if (rc)
+    {
         SIMPLE_LOG_MSG(LL_NOTIFY, "ctlic_open_and_read_input_file(`%s'): %s",
                        input_cmd_file, strerror(-rc));
+        return;
+    }
 
     SIMPLE_LOG_MSG(LL_WARN, "file=%s\ncontents=\n%s",
                    input_cmd_file,
-                   (const char *)cr.cr_file[CTLIC_CMD_INPUT].cf_buffer);
+                   (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
+
+    rc = ctlic_parse_request(&cr);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "invalid %s:  file=%s\ncontents=\n%s",
+                       strerror(-rc), input_cmd_file,
+                       (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
+    }
 
     ctlic_request_done(&cr);
 }
