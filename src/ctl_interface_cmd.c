@@ -13,6 +13,7 @@
 
 #include "log.h"
 #include "ctl_interface_cmd.h"
+#include "ctl_interface.h"
 #include "util_thread.h"
 #include "io.h"
 
@@ -20,7 +21,6 @@
 #define CTLIC_MAX_TOKENS_PER_REQ 32
 #define CTLIC_MAX_VALUE_SIZE     512
 #define CTLIC_MAX_VALUE_DEPTH    32 // Max 'tree' depth which can be queried
-#define CTLIC_NUM_CMDS           2
 #define CTLIC_MAX_REQ_NAME_LEN   32
 
 enum ctlic_cmd_input_output_files
@@ -36,19 +36,29 @@ enum ctlic_cmd_input_output_files
 static util_thread_ctx_ctli_char_t
 ctlicBuffer[CTLIC_NUM_FILES][CTLIC_BUFFER_SIZE];
 
-struct ctlic_token
+enum ctl_cmd_inteface_token
 {
-    const char *ct_name;
-    size_t      ct_name_len;
+    CTLIC_TOKEN_GET = 0,
+    CTLIC_TOKEN_OUTFILE,
+    CTLIC_NUM_TOKENS,
 };
 
-static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_CMDS] =
+struct ctlic_token
 {
-    {
+    const char                 *ct_name;
+    size_t                      ct_name_len;
+    enum ctl_cmd_inteface_token ct_token_value;
+};
+
+static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_TOKENS] =
+{
+    [CTLIC_TOKEN_GET] {
         .ct_name = "GET",
+        .ct_token_value = CTLIC_TOKEN_GET,
     },
-    {
+    [CTLIC_TOKEN_OUTFILE] {
         .ct_name = "OUTFILE",
+        .ct_token_value = CTLIC_TOKEN_OUTFILE,
     },
 };
 
@@ -141,6 +151,45 @@ ctlic_request_done(struct ctlic_request *cr)
                 regfree(&cds->cds_regex);
         }
     }
+}
+
+static int
+ctlic_open_output_file(int out_dirfd, struct ctlic_request *cr)
+{
+    if (out_dirfd < 0 || !cr || !cr->cr_num_matched_tokens)
+        return -EINVAL;
+
+    struct ctlic_file *cf = &cr->cr_file[CTLIC_OUTPUT_FILE];
+    if (cf->cf_fd >= 0 || cf->cf_file_name)
+        return -EINVAL;
+
+    bool found = false;
+    const struct ctlic_matched_token *cmt = NULL;
+
+    /* Set the output file name.
+     */
+    for (size_t i = 0; i < cr->cr_num_matched_tokens; i++)
+    {
+        cmt = &cr->cr_matched_token[i];
+        if (!cmt->cmt_token) // Something went badly wrong here..
+            return -EINVAL;
+
+        if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_OUTFILE)
+        {
+            found = true;
+            break;
+        }
+    }
+
+    if (!found || cmt->cmt_num_depth_segments != 1)
+        return -EBADMSG;
+
+    cf->cf_file_name = cmt->cmt_depth_segments[0].cds_str;
+
+    cf->cf_fd = openat(out_dirfd, cf->cf_file_name,
+                       O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+    return cf->cf_fd < 0 ? -errno : 0;
 }
 
 static int
@@ -347,7 +396,7 @@ ctlic_parse_request(struct ctlic_request *cr)
             bool found = false;
 
             // Have the first upper case char in a word
-            for (int j = 0; j < CTLIC_NUM_CMDS; j++)
+            for (int j = 0; j < CTLIC_NUM_TOKENS; j++)
             {
                 if ((ctlInterfaceCmds[j].ct_name_len + i) >
                     cf_in->cf_nbytes_written) // Check len prior to strncmp()
@@ -403,44 +452,54 @@ ctlic_parse_request(struct ctlic_request *cr)
     if (rc)
         return rc;
 
-//XX call into the registry
-
     return 0;
 }
 
 util_thread_ctx_ctli_t
-ctlic_process_request(const char *input_cmd_file)
+ctlic_process_request(const struct ctli_cmd_handle *cch)
 {
+    if (!cch || !cch->ctlih_input_file_name || cch->ctlih_output_dirfd < 0)
+        return;
+
     struct ctlic_request cr = {0};
 
-    int rc = ctlic_open_and_read_input_file(input_cmd_file, &cr);
+    int rc = ctlic_open_and_read_input_file(cch->ctlih_input_file_name, &cr);
 
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "ctlic_open_and_read_input_file(`%s'): %s",
-                       input_cmd_file, strerror(-rc));
+                       cch->ctlih_input_file_name, strerror(-rc));
         return;
     }
 
     SIMPLE_LOG_MSG(LL_WARN, "file=%s\ncontents=\n%s",
-                   input_cmd_file,
+                   cch->ctlih_input_file_name,
                    (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
 
     rc = ctlic_parse_request(&cr);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_WARN, "invalid %s:  file=%s\ncontents=\n%s",
-                       strerror(-rc), input_cmd_file,
+                       strerror(-rc), cch->ctlih_input_file_name,
                        (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
+        goto done;
     }
 
+    rc = ctlic_open_output_file(cch->ctlih_output_dirfd, &cr);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "ctlic_open_output_file(): %s", strerror(-rc));
+        goto done;
+    }
+
+done:
     ctlic_request_done(&cr);
 }
 
 init_ctx_t
 ctlic_init(void)
 {
-    for (int i = 0; i < CTLIC_NUM_CMDS; i++)
+    for (int i = 0; i < CTLIC_NUM_TOKENS; i++)
     {
         struct ctlic_token *ctlic = &ctlInterfaceCmds[i];
         if (ctlic->ct_name)

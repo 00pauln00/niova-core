@@ -9,8 +9,10 @@
 
 #include "util_thread.h"
 
+struct ctli_cmd_handle;
+
 util_thread_ctx_ctli_t
-ctlic_process_request(const char *input_cmd_file);
+ctlic_process_request(const struct ctli_cmd_handle *cch);
 
 init_ctx_t
 ctlic_init(void)

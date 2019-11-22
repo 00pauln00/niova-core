@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <limits.h>
 
@@ -41,6 +42,7 @@ struct ctl_interface
     bool              lctli_init;
     int               lctli_inotify_fd;
     int               lctli_inotify_watch_fd;
+    int               lctli_output_dirfd;
     struct thread_ctl lctli_thr_ctl;
 };
 
@@ -87,7 +89,8 @@ lctli_new(void)
 // need a max number of start-time config options that can be present
 
 static util_thread_ctx_t
-lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
+lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
+                                       char *buf, const ssize_t len)
 {
     const struct inotify_event *event;
 
@@ -101,7 +104,14 @@ lctli_inotify_thread_poll_parse_buffer(char *buf, const ssize_t len)
                 (event->mask & IN_ISDIR) ? "[dir]" : "[file]");
 
         if (!(event->mask & IN_ISDIR))
-            ctlic_process_request(event->name);
+        {
+            struct ctli_cmd_handle cch = {
+                .ctlih_output_dirfd = lctli->lctli_output_dirfd,
+                .ctlih_input_file_name = event->name
+            };
+
+            ctlic_process_request(&cch);
+        }
 #if 0
         if (!(event->mask & IN_ISDIR) &&
             (event->mask & IN_CLOSE_WRITE ||
@@ -134,7 +144,7 @@ lctli_inotify_thread_poll_handle_event(struct ctl_interface *lctli)
         }
         else
         {
-            lctli_inotify_thread_poll_parse_buffer(buf, len);
+            lctli_inotify_thread_poll_parse_buffer(lctli, buf, len);
         }
     }
 }
@@ -199,6 +209,15 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
         rc = lctli_check_and_mk_inotify_path(subdir_path);
         if (rc)
             return rc;
+
+        if (i == LCTLI_SUBDIR_OUTPUT)
+        {
+            lctli->lctli_output_dirfd =
+                open(subdir_path, O_DIRECTORY | O_RDONLY);
+
+            if (lctli->lctli_output_dirfd < 0)
+                return -errno;
+        }
     }
 
     lctli->lctli_path = path;
