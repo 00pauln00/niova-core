@@ -34,10 +34,6 @@ struct lreg_node_lookup_handle
     struct lreg_node *lnlh_node;
 };
 
-#define LREG_SUBSYS_WRLOCK pthread_rwlock_wrlock(&lRegRwLock)
-#define LREG_SUBSYS_RDLOCK pthread_rwlock_rdlock(&lRegRwLock)
-#define LREG_SUBSYS_UNLOCK pthread_rwlock_unlock(&lRegRwLock)
-
 #define LREG_NODE_INSTALL_LOCK   spinlock_lock(&lRegLock)
 #define LREG_NODE_INSTALL_UNLOCK spinlock_unlock(&lRegLock)
 
@@ -263,8 +259,6 @@ lreg_user_int_ctx_t
 //lreg_node_recurse(const char *registry_path, lrn_recurse_cb_t lrn_rcb)
 lreg_node_recurse(const char *registry_path)
 {
-    LREG_SUBSYS_RDLOCK;
-
     struct lreg_node *recurse_root = NULL;
 
     int rc = lreg_node_lookup_locked(registry_path, &recurse_root);
@@ -281,8 +275,6 @@ lreg_node_recurse(const char *registry_path)
         log_msg(LL_DEBUG, "lreg_node_lookup_locked() %s: %s",
                 registry_path, strerror(-rc));
     }
-
-    LREG_SUBSYS_UNLOCK;
 
     return rc;
 }
@@ -326,14 +318,10 @@ lreg_node_install_add(struct lreg_node *child, struct lreg_node *parent)
     DBG_LREG_NODE(LL_TRACE, parent, "parent");
     DBG_LREG_NODE(LL_DEBUG, child, "parent=%p", parent);
 
-    LREG_SUBSYS_WRLOCK;
-
     const bool install_complete_ok = lreg_node_install_complete(child);
     NIOVA_ASSERT(install_complete_ok);
 
     CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
-
-    LREG_SUBSYS_UNLOCK;
 }
 
 /**
