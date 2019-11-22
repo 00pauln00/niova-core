@@ -49,15 +49,15 @@ lreg_root_node_get(void)
 }
 
 /**
- * lreg_node_walk_locked - with the lock held and starting with the parent,
+ * lreg_node_walk - with the lock held and starting with the parent,
  *   walk the tree executing the provided callback function.
  * @parent:  root for the walk.
  * @lrn_wcb:  walk call back function.
  * @cb_arg:  opaque argument supplied to the callback.
  */
 static void
-lreg_node_walk_locked(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
-                      void *cb_arg)
+lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
+               void *cb_arg)
 {
     struct lreg_node *child;
 
@@ -73,9 +73,9 @@ lreg_node_walk_locked(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
 }
 
 /**
- * lreg_node_walk_locked_cb - generic callback function for a registry walk.
- * @lrn:  registry node which was provided by lreg_node_walk_locked().
- * @arg:  call back arg which was provided to lreg_node_walk_locked().
+ * lreg_node_walk_cb - generic callback function for a registry walk.
+ * @lrn:  registry node which was provided by lreg_node_walk().
+ * @arg:  call back arg which was provided to lreg_node_walk().
  * Return:  boolean signifying whether the walk may be stopped.
  */
 static bool
@@ -99,13 +99,13 @@ lreg_node_lookup_walk_cb(struct lreg_node *lrn, void *arg)
 }
 
 /**
- * lreg_node_lookup_locked - Find the node which corresponds to the provided
+ * lreg_node_lookup - Find the node which corresponds to the provided
  *   path.
  * @registry_path:  A string which is used to represent a registry path.
  * @lrn:  Pointer for the returned lreg node.
  */
 static int
-lreg_node_lookup_locked(const char *registry_path, struct lreg_node **lrn)
+lreg_node_lookup(const char *registry_path, struct lreg_node **lrn)
 {
     if (!lrn)
         return -EINVAL;
@@ -134,7 +134,7 @@ lreg_node_lookup_locked(const char *registry_path, struct lreg_node **lrn)
         lnlh.lnlh_name = next_reg_path;
         lnlh.lnlh_node = NULL;
 
-        lreg_node_walk_locked(parent, lreg_node_lookup_walk_cb, &lnlh);
+        lreg_node_walk(parent, lreg_node_lookup_walk_cb, &lnlh);
 
         parent = lnlh.lnlh_node;
         if (!parent)
@@ -149,14 +149,14 @@ lreg_node_lookup_locked(const char *registry_path, struct lreg_node **lrn)
 }
 
 /**
- * lreg_node_recurse_locked - worker function used for registry recursion.
+ * lreg_node_recurse - worker function used for registry recursion.
  * @parent:  current node to process.
  * @lrn_rcb:  the callback to issue.
  * @depth: the current depth.
  */
 static lreg_user_int_ctx_t
-lreg_node_recurse_locked(struct lreg_node *parent, lrn_recurse_cb_t lrn_rcb,
-                         const int depth)
+lreg_node_recurse_from_parent(struct lreg_node *parent,
+                              lrn_recurse_cb_t lrn_rcb, const int depth)
 {
     int indent = (depth + 1) * 4;
     DBG_LREG_NODE(LL_WARN, parent, "here");
@@ -186,7 +186,7 @@ lreg_node_recurse_locked(struct lreg_node *parent, lrn_recurse_cb_t lrn_rcb,
             struct lreg_node *child;
             CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
             {
-                lreg_node_recurse_locked(child, lrn_rcb, depth + 1);
+                lreg_node_recurse_from_parent(child, lrn_rcb, depth + 1);
                 if (child != CIRCLEQ_LAST(&parent->lrn_head))
                     SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth + 1, 0,
                                    indent, "", ',');
@@ -261,18 +261,18 @@ lreg_node_recurse(const char *registry_path)
 {
     struct lreg_node *recurse_root = NULL;
 
-    int rc = lreg_node_lookup_locked(registry_path, &recurse_root);
+    int rc = lreg_node_lookup(registry_path, &recurse_root);
 
     if (!rc && recurse_root)
     {
         DBG_LREG_NODE(LL_DEBUG, recurse_root, "got it");
 
-        rc = lreg_node_recurse_locked(recurse_root, lreg_node_recurse_json_cb,
-                                      0);
+        rc = lreg_node_recurse_from_parent(recurse_root,
+                                           lreg_node_recurse_json_cb, 0);
     }
     else
     {
-        log_msg(LL_DEBUG, "lreg_node_lookup_locked() %s: %s",
+        log_msg(LL_DEBUG, "lreg_node_lookup() %s: %s",
                 registry_path, strerror(-rc));
     }
 
