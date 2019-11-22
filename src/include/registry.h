@@ -25,6 +25,8 @@ typedef	int  lreg_svc_int_ctx_t;
 typedef	void lreg_user_ctx_t;
 typedef	int lreg_user_int_ctx_t;
 
+typedef bool (*lrn_walk_cb_t)(struct lreg_node *, void *, const int);
+
 struct lreg_value;
 typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
                                  const bool);
@@ -360,5 +362,10 @@ lreg_subsystem_destroy(void)
 lreg_user_int_ctx_t
 lreg_node_recurse(const char *);
 //lreg_node_recurse(const char *, lrn_recurse_cb_t);
+
+void
+lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
+               void *cb_arg, const int depth);
+
 
 #endif //_REGISTRY_H

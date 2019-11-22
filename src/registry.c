@@ -26,8 +26,6 @@ static struct ev_pipe        lRegEVP;
 
 const char *lRegSeparatorString = "::";
 
-typedef bool (*lrn_walk_cb_t)(struct lreg_node *, void *);
-
 struct lreg_node_lookup_handle
 {
     const char       *lnlh_name;
@@ -55,9 +53,9 @@ lreg_root_node_get(void)
  * @lrn_wcb:  walk call back function.
  * @cb_arg:  opaque argument supplied to the callback.
  */
-static void
+void
 lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
-               void *cb_arg)
+               void *cb_arg, const int depth)
 {
     struct lreg_node *child;
 
@@ -67,7 +65,7 @@ lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
     {
         DBG_LREG_NODE(LL_DEBUG, child, "");
 
-        if (!lrn_wcb(child, cb_arg))
+        if (!lrn_wcb(child, cb_arg, depth + 1))
             break;
     }
 }
@@ -79,7 +77,7 @@ lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
  * Return:  boolean signifying whether the walk may be stopped.
  */
 static bool
-lreg_node_lookup_walk_cb(struct lreg_node *lrn, void *arg)
+lreg_node_lookup_walk_cb(struct lreg_node *lrn, void *arg, const int depth)
 {
     struct lreg_node_lookup_handle *lnlh = arg;
     struct lreg_value lrv;
@@ -88,7 +86,7 @@ lreg_node_lookup_walk_cb(struct lreg_node *lrn, void *arg)
         !strncmp(LREG_VALUE_TO_OUT_STR(&lrv), lnlh->lnlh_name,
                  LREG_VALUE_STRING_MAX))
     {
-        DBG_LREG_NODE(LL_DEBUG, lrn, "found");
+        DBG_LREG_NODE(LL_DEBUG, lrn, "found %d", depth);
 
         lnlh->lnlh_node = lrn;
 
@@ -134,7 +132,7 @@ lreg_node_lookup(const char *registry_path, struct lreg_node **lrn)
         lnlh.lnlh_name = next_reg_path;
         lnlh.lnlh_node = NULL;
 
-        lreg_node_walk(parent, lreg_node_lookup_walk_cb, &lnlh);
+        lreg_node_walk(parent, lreg_node_lookup_walk_cb, &lnlh, -1);
 
         parent = lnlh.lnlh_node;
         if (!parent)

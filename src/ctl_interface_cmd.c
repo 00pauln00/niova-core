@@ -17,6 +17,8 @@
 #include "util_thread.h"
 #include "io.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 #define CTLIC_BUFFER_SIZE        4096
 #define CTLIC_MAX_TOKENS_PER_REQ 32
 #define CTLIC_MAX_VALUE_SIZE     512
@@ -89,7 +91,9 @@ struct ctlic_file
 
 struct ctlic_request
 {
+    struct lreg_value          cr_lreg_val;
     size_t                     cr_num_matched_tokens;
+    size_t                     cr_current_token;
     struct ctlic_matched_token cr_matched_token[CTLIC_MAX_TOKENS_PER_REQ];
     struct ctlic_file          cr_file[CTLIC_NUM_FILES];
 };
@@ -323,10 +327,10 @@ ctlic_parse_token_value(struct ctlic_matched_token *cmt)
                 &cmt->cmt_depth_segments[cmt->cmt_num_depth_segments++];
 
             cds->cds_str = &cmt->cmt_value[i];
-
-            prev_char_was_solidus = false;
-            escape_char = false;
         }
+
+        prev_char_was_solidus = false;
+        escape_char = false;
     }
 
     return ctlic_prepare_token_values(cmt);
@@ -455,6 +459,88 @@ ctlic_parse_request(struct ctlic_request *cr)
     return 0;
 }
 
+static struct ctlic_matched_token *
+ctlic_get_current_matched_token(struct ctlic_request *cr)
+{
+    NIOVA_ASSERT(cr && cr->cr_current_token < CTLIC_MAX_TOKENS_PER_REQ);
+
+    struct ctlic_matched_token *cmt =
+        &cr->cr_matched_token[cr->cr_current_token];
+
+    NIOVA_ASSERT(cmt->cmt_token);
+    NIOVA_ASSERT(cmt->cmt_num_depth_segments < CTLIC_MAX_VALUE_DEPTH);
+
+    return cmt;
+}
+
+static bool // return 'false' to terminate scan
+ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
+{
+    if (!lrn)
+        return false;
+
+    NIOVA_ASSERT(arg && depth >= 0);
+
+    struct ctlic_request *cr = arg;
+    struct ctlic_matched_token *cmt = ctlic_get_current_matched_token(cr);
+
+    if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_GET)
+    {
+        /* Do not exceed the depth specified in the GET request.
+         */
+        if (depth + 1 > cmt->cmt_num_depth_segments)
+            return false;
+
+        struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[depth];
+
+        int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn,
+                                       &cr->cr_lreg_val);
+        if (rc)
+            return false;
+
+        rc = regexec(&cds->cds_regex,
+                     LREG_VALUE_TO_OUT_STR(&cr->cr_lreg_val), 0, NULL,
+                     REG_NOTBOL | REG_NOTEOL);
+
+//Xxx this log installation should post an event on the pipe!
+        DBG_LREG_NODE(LL_WARN, lrn, "matched: %s (depth=%d) (cds=%s)",
+                      rc ? "no" : "yes", depth, cds->cds_str);
+
+        if (!rc)
+        {
+            if (lrn->lrn_node_type == LREG_NODE_TYPE_OBJECT ||
+                lrn->lrn_node_type == LREG_NODE_TYPE_ARRAY)
+                lreg_node_walk(lrn, ctlic_scan_registry_cb, arg, depth);
+        }
+    }
+
+    return true;
+}
+
+static void
+ctlic_scan_registry(struct ctlic_request *cr)
+{
+    if (!cr)
+        return;
+
+    struct lreg_node *lrn = lreg_root_node_get();
+    if (!lrn)
+        return;
+
+    cr->cr_current_token = 0;
+
+    for (cr->cr_current_token = 0;
+         cr->cr_current_token < cr->cr_num_matched_tokens;
+         cr->cr_current_token++)
+    {
+        const struct ctlic_matched_token *cmt =
+            &cr->cr_matched_token[cr->cr_current_token];
+
+        if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_GET)
+            lreg_node_walk(lrn, ctlic_scan_registry_cb, (void *)cr, -1);
+    }
+}
+
 util_thread_ctx_ctli_t
 ctlic_process_request(const struct ctli_cmd_handle *cch)
 {
@@ -491,6 +577,8 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
         SIMPLE_LOG_MSG(LL_WARN, "ctlic_open_output_file(): %s", strerror(-rc));
         goto done;
     }
+
+    ctlic_scan_registry(&cr);
 
 done:
     ctlic_request_done(&cr);
