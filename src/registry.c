@@ -425,9 +425,8 @@ lreg_node_queue_for_install(struct lreg_node *child)
 /**
  * lreg_node_queue_for_install - Inserts a registry node into the installation
  *    queue.
- * @child - the child node to be installed.
- * NOTE: the child must have its parent object assigned to its
- *       lrn_parent_for_install_only struct member.
+ * @child: The child node to be installed.
+ * @parent:  The child's parent node.
  */
 lreg_install_int_ctx_t
 lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
@@ -443,9 +442,6 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     else if (!lreg_node_needs_installation(child))
         return -EALREADY;
 
-//    else if (!child->lrn_cb_arg)
-//        return -ENOENT;
-
     else if (!lreg_node_install_prep_ok(child))
         return -EALREADY;
 
@@ -459,6 +455,18 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     return 0;
 }
 
+/**
+ * lreg_node_init - public method for initializing a registry node prior to
+ *    installation.
+ * @lrn: Pointer to the registry node which is to be initialized.
+ * @node_type: The type of the registry node.
+ * @user_type: The subsystem to which the node belongs.
+ * @cb: Callback function used for queries and modifications.
+ * @cb_arg:  Callback function argument.
+ * @statically_allocated:  Set to 'true' when the memory behind *lrn has not
+ *    been allocated from the heap.  This is typically the case with log msg
+ *    lrn objects.
+ */
 void
 lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
                enum lreg_user_types user_type, lrn_cb_t cb, void *cb_arg,
