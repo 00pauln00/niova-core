@@ -174,7 +174,6 @@ watchdog_track_threads(struct watchdog_instance *wdi)
     WDI_UNLOCK(wdi);
 }
 
-
 static watchdog_exec_ctx_t *
 watchdog_svc_thread(void *arg)
 {
@@ -182,6 +181,10 @@ watchdog_svc_thread(void *arg)
 
     struct thread_ctl *tc = arg;
     NIOVA_ASSERT(tc);
+
+    tc->tc_is_watchdog_thread = 1;
+
+    thread_ctl_set_self(tc);
 
     struct watchdog_instance *wdi = tc->tc_arg;
     NIOVA_ASSERT(wdi);

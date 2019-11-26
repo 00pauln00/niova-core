@@ -56,6 +56,9 @@ util_thread_main(void *arg)
     FUNC_ENTRY(LL_WARN);
 
     struct thread_ctl *tc = arg;
+    tc->tc_is_utility_thread = 1;
+
+    thread_ctl_set_self(tc);
 
     NIOVA_ASSERT(tc && tc->tc_arg);
 

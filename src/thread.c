@@ -18,6 +18,7 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 __thread char thrName[MAX_THREAD_NAME + 1];
+__thread const struct thread_ctl *thrCtl;
 
 static thread_exec_ctx_t
 thread_ctl_monitor_via_watchdog_internal(struct thread_ctl *tc)

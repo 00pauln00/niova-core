@@ -23,6 +23,7 @@
 #define THR_PAUSE_DEFAULT_USECS 1000
 
 extern __thread char thrName[MAX_THREAD_NAME + 1];
+extern __thread const struct thread_ctl *thrCtl;
 
 struct thread_ctl
 {
@@ -30,7 +31,9 @@ struct thread_ctl
     uint32_t                  tc_run:1,
                               tc_halt:1,
                               tc_user_pause_toggle:1,
-                              tc_watchdog:1;
+                              tc_watchdog:1,
+                              tc_is_utility_thread:1,
+                              tc_is_watchdog_thread:1;
     pthread_t                 tc_thread_id;
     useconds_t                tc_user_pause_usecs;
     useconds_t                tc_pause_usecs;
@@ -117,5 +120,23 @@ thread_ctl_monitor_via_watchdog(struct thread_ctl *tc);
 
 void
 thread_ctl_remove_from_watchdog(struct thread_ctl *tc);
+
+static inline void
+thread_ctl_set_self(struct thread_ctl *tc)
+{
+    thrCtl = tc;
+}
+
+static inline bool
+thread_ctl_is_utility_thread(void)
+{
+    return (thrCtl && thrCtl->tc_is_utility_thread) ? true : false;
+}
+
+static inline bool
+thread_ctl_is_watchdog_thread(void)
+{
+    return (thrCtl && thrCtl->tc_is_watchdog_thread) ? true : false;
+}
 
 #endif

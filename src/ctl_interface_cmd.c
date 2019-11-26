@@ -502,7 +502,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
                      LREG_VALUE_TO_OUT_STR(&cr->cr_lreg_val), 0, NULL,
                      REG_NOTBOL | REG_NOTEOL);
 
-//Xxx this log installation should post an event on the pipe!
+//Xxx this log installation should not post an event on the pipe!
         DBG_LREG_NODE(LL_WARN, lrn, "matched: %s (depth=%d) (cds=%s)",
                       rc ? "no" : "yes", depth, cds->cds_str);
 
