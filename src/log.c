@@ -59,7 +59,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
         {
         case LOG_LREG_FILE_NAME:
             snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                     "file-name");
+                     "file_name");
 
             strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
                     LREG_VALUE_STRING_MAX);
@@ -68,7 +68,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             break;
 
         case LOG_LREG_FILE_LEVEL:
-            strncpy(lreg_val->lrv_key_string, "file-log-level",
+            strncpy(lreg_val->lrv_key_string, "file_log_level",
                     LREG_VALUE_STRING_MAX);
 
             snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
@@ -80,7 +80,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
 
         case LOG_LREG_FILE_LOG_ENTRIES:
             snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                     "log-entries");
+                     "log_entries");
 
             lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_ARRAY;
             break;
@@ -114,7 +114,7 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
         switch (lreg_val->lrv_value_idx_in)
         {
         case LOG_LREG_ENTRY_LEVEL:
-            strncpy(lreg_val->lrv_key_string, "log-level",
+            strncpy(lreg_val->lrv_key_string, "log_level",
                     LREG_VALUE_STRING_MAX);
 
             snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
@@ -125,14 +125,14 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             break;
 
         case LOG_LREG_ENTRY_LINENO:
-            strncpy(lreg_val->lrv_key_string, "line-number",
+            strncpy(lreg_val->lrv_key_string, "line_number",
                     LREG_VALUE_STRING_MAX);
             lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
             lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_lineno;
             break;
 
         case LOG_LREG_ENTRY_EXEC_CNT:
-            strncpy(lreg_val->lrv_key_string, "exec-cnt",
+            strncpy(lreg_val->lrv_key_string, "exec_cnt",
                     LREG_VALUE_STRING_MAX);
             lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
             lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_exec_cnt;
