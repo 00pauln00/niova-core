@@ -1,0 +1,2 @@
+GET /.*/.*/.*/.*
+OUTFILE /foo.out

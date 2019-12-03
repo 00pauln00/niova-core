@@ -13,6 +13,7 @@
 struct ctli_cmd_handle
 {
     int         ctlih_output_dirfd;
+    int         ctlih_input_dirfd;
     const char *ctlih_input_file_name;
 };
 

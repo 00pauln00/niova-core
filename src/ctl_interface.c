@@ -42,6 +42,7 @@ struct ctl_interface
     bool              lctli_init;
     int               lctli_inotify_fd;
     int               lctli_inotify_watch_fd;
+    int               lctli_input_dirfd;
     int               lctli_output_dirfd;
     struct thread_ctl lctli_thr_ctl;
 };
@@ -106,6 +107,7 @@ lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
         if (!(event->mask & IN_ISDIR))
         {
             struct ctli_cmd_handle cch = {
+                .ctlih_input_dirfd = lctli->lctli_input_dirfd,
                 .ctlih_output_dirfd = lctli->lctli_output_dirfd,
                 .ctlih_input_file_name = event->name
             };
@@ -210,7 +212,15 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
         if (rc)
             return rc;
 
-        if (i == LCTLI_SUBDIR_OUTPUT)
+        if (i == LCTLI_SUBDIR_INPUT)
+        {
+            lctli->lctli_input_dirfd =
+                open(subdir_path, O_DIRECTORY | O_RDONLY);
+
+            if (lctli->lctli_input_dirfd < 0)
+                return -errno;
+        }
+        else if (i == LCTLI_SUBDIR_OUTPUT)
         {
             lctli->lctli_output_dirfd =
                 open(subdir_path, O_DIRECTORY | O_RDONLY);

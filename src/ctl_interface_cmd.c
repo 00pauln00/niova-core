@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <ctype.h>
 #include <regex.h>
+#include <stdio.h>
 
 #include "log.h"
 #include "ctl_interface_cmd.h"
@@ -20,10 +21,12 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 #define CTLIC_BUFFER_SIZE        4096
-#define CTLIC_MAX_TOKENS_PER_REQ 32
-#define CTLIC_MAX_VALUE_SIZE     512
+#define CTLIC_MAX_TOKENS_PER_REQ 8
+#define CTLIC_MAX_VALUE_SIZE     80
 #define CTLIC_MAX_VALUE_DEPTH    32 // Max 'tree' depth which can be queried
 #define CTLIC_MAX_REQ_NAME_LEN   32
+#define CTLIC_MAX_TAB_DEPTH      (CTLIC_MAX_VALUE_DEPTH * 2)
+#define CTLIC_MAX_SIBLING_CNT    16384
 
 enum ctlic_cmd_input_output_files
 {
@@ -66,9 +69,13 @@ static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_TOKENS] =
 
 struct ctlic_depth_segment
 {
-    unsigned int cds_free_regex:1;
+    unsigned int cds_free_regex:1,
+                 cds_free_regex_value:1,
+                 cds_tab_depth:6;
     const char  *cds_str;
+    const char  *cds_str_value;
     regex_t      cds_regex;
+    regex_t      cds_regex_value;
 };
 
 struct ctlic_matched_token
@@ -91,11 +98,22 @@ struct ctlic_file
 
 struct ctlic_request
 {
-    struct lreg_value          cr_lreg_val;
     size_t                     cr_num_matched_tokens;
     size_t                     cr_current_token;
+    size_t                     cr_output_byte_cnt;
+    size_t                     cr_current_tab_depth;
     struct ctlic_matched_token cr_matched_token[CTLIC_MAX_TOKENS_PER_REQ];
     struct ctlic_file          cr_file[CTLIC_NUM_FILES];
+};
+
+struct ctlic_iterator
+{
+    struct ctlic_request *citer_cr;
+    struct lreg_value     citer_lv;
+    size_t                citer_starting_byte_cnt;
+    size_t                citer_tab_depth;
+    size_t                citer_sibling_num;
+    bool                  citer_open_stanza;
 };
 
 static void
@@ -140,7 +158,10 @@ ctlic_request_done(struct ctlic_request *cr)
     for (int i = 0; i < CTLIC_NUM_FILES; i++)
     {
         if (cr->cr_file[i].cf_fd >= 0)
+        {
             close(cr->cr_file[i].cf_fd);
+            cr->cr_file[i].cf_fd = -1;
+        }
     }
 
     for (size_t i = 0; i < cr->cr_num_matched_tokens; i++)
@@ -197,9 +218,10 @@ ctlic_open_output_file(int out_dirfd, struct ctlic_request *cr)
 }
 
 static int
-ctlic_open_and_read_input_file(const char *input_cmd_file,
+ctlic_open_and_read_input_file(const struct ctli_cmd_handle *cch,
                                struct ctlic_request *cr)
 {
+    const char *input_cmd_file = cch ? cch->ctlih_input_file_name : NULL;
     if (!input_cmd_file || !cr)
         return -EINVAL;
 
@@ -207,7 +229,8 @@ ctlic_open_and_read_input_file(const char *input_cmd_file,
 
     /* Lookup the file, check the type and file size.
      */
-    int rc = stat(input_cmd_file, &stb);
+    int rc = fstatat(cch->ctlih_input_dirfd, input_cmd_file, &stb,
+                     AT_SYMLINK_NOFOLLOW);
     if (rc < 0)
         return -errno;
 
@@ -227,7 +250,7 @@ ctlic_open_and_read_input_file(const char *input_cmd_file,
 
     /* Open the file
      */
-    cf_in->cf_fd = open(input_cmd_file, O_RDONLY);
+    cf_in->cf_fd = openat(cch->ctlih_input_dirfd, input_cmd_file, O_RDONLY);
     if (cf_in->cf_fd < 0)
         return -errno;
 
@@ -389,6 +412,7 @@ ctlic_parse_request(struct ctlic_request *cr)
         struct ctlic_matched_token *cmt =
             &cr->cr_matched_token[cr->cr_num_matched_tokens];
 
+        // First, try to detect a token such as "GET" or "OUTFILE"
         if (!cmt->cmt_token)
         {
             if (isspace(c))
@@ -473,46 +497,274 @@ ctlic_get_current_matched_token(struct ctlic_request *cr)
     return cmt;
 }
 
+#if 0
+static int
+ctlic_scan_registry_cb_output_writer_null_stanza(struct ctlic_request *cr,
+                                                 const int depth,
+                                                 const int sibling_number,
+                                                 const bool open_stanza,
+                                                 enum lreg_node_types type)
+{
+    if (!cr || depth < 0 || sibling_number < 0 ||
+        (type != LREG_NODE_TYPE_ARRAY && type != LREG_NODE_TYPE_OBJECT))
+        return -EINVAL;
+
+    const char *out_char = open_stanza ?
+        ((type == LREG_NODE_TYPE_OBJECT) ? "{" : "[") :
+        ((type == LREG_NODE_TYPE_OBJECT) ? "}" : "]");
+
+    char tab_array[64] = {0};
+    for (int i = 0; i < MIN(depth, 63); i++)
+        tab_array[i] = '\t';
+
+    int rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                     "%s%s%s%s",
+                     sibling_number ? "," : "",
+                     //             Final closing "}"
+                     (depth || (!depth && !open_stanza)) ? "\n" : "",
+                     tab_array, out_char);
+
+    return rc >= 0 ? 0 : -errno;
+}
+#endif
+
+static int
+ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
+{
+    if (!citer || !citer->citer_cr)
+        return -EINVAL;
+
+    else if (citer->citer_tab_depth > CTLIC_MAX_TAB_DEPTH ||
+             citer->citer_sibling_num > CTLIC_MAX_SIBLING_CNT)
+        return -E2BIG;
+
+    const char *value_string;
+    bool object_or_array = false;
+    bool open_stanza = citer->citer_open_stanza;
+    struct lreg_value *lv = &citer->citer_lv;
+    size_t tab_depth = citer->citer_tab_depth;
+    size_t sibling_number = citer->citer_sibling_num;
+    struct ctlic_request *cr = citer->citer_cr;
+    size_t starting_byte_cnt = citer->citer_starting_byte_cnt;
+
+    switch (LREG_VALUE_TO_REQ_TYPE(lv))
+    {
+    case LREG_NODE_TYPE_OBJECT: // XXX change me to 'value type'
+    case LREG_NODE_TYPE_ANON_OBJECT:
+        object_or_array = true;
+        value_string = open_stanza ? "{" : "}";
+        break;
+    case LREG_NODE_TYPE_ARRAY:
+        object_or_array = true;
+        value_string = open_stanza ? "[" : "]";
+        break;
+    default:
+//XXX fix me - value needs to be type dependent
+//    strings values must be surrounded by \" but numerics are not.
+        value_string =
+            open_stanza ? LREG_VALUE_TO_OUT_STR(lv) : NULL;
+        break;
+    }
+
+    SIMPLE_LOG_MSG(LL_WARN, "key=`%s' depth=%zu sib-num=%zu open=%d",
+                   lv->lrv_key_string, tab_depth, sibling_number, open_stanza);
+
+    char tab_array[CTLIC_MAX_TAB_DEPTH] = {0};
+    for (int i = 0; i < MIN(tab_depth, CTLIC_MAX_TAB_DEPTH); i++)
+        tab_array[i] = '\t';
+
+    int rc = 0;
+
+    if (open_stanza)
+    {
+        if (tab_depth > 0)
+        {
+            switch (LREG_VALUE_TO_REQ_TYPE(lv))
+            {
+            case LREG_NODE_TYPE_ANON_OBJECT:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s%s",
+                             sibling_number > 0 ? "," : "",
+                             tab_array,
+                             value_string);
+                break;
+            case LREG_NODE_TYPE_ARRAY:
+            case LREG_NODE_TYPE_OBJECT:
+            case LREG_NODE_TYPE_STRING:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             object_or_array ?
+                             "%s\n%s\"%s\" : %s" :
+                             "%s\n%s\"%s\" : \"%s\"",
+                             sibling_number > 0 ? "," : "",
+                             tab_array,
+                             lv->lrv_key_string,
+                             value_string);
+                break;
+            case LREG_NODE_TYPE_BOOL:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s\"%s\" : %s",
+                             sibling_number > 0 ? "," : "",
+                             tab_array,
+                             lv->lrv_key_string,
+                             LREG_VALUE_TO_BOOL(lv) ?
+                             "true" : "false");
+                break;
+            case LREG_NODE_TYPE_SIGNED_VAL:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s\"%s\" : %ld",
+                             sibling_number > 0 ? "," : "",
+                             tab_array,
+                             lv->lrv_key_string,
+                             LREG_VALUE_TO_OUT_SIGNED_INT(lv));
+                break;
+            case LREG_NODE_TYPE_UNSIGNED_VAL:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s\"%s\" : %lu",
+                             sibling_number > 0 ? "," : "",
+                             tab_array,
+                             lv->lrv_key_string,
+                             LREG_VALUE_TO_OUT_UNSIGNED_INT(lv));
+                break;
+            case LREG_NODE_TYPE_FLOAT_VAL:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s\"%s\" : %f",
+                             sibling_number > 0 ? "," : "",
+                             tab_array,
+                             lv->lrv_key_string,
+                             LREG_VALUE_TO_OUT_FLOAT(lv));
+                break;
+            default:
+                break;
+            }
+        }
+        else
+        {
+            rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd, "{");
+        }
+    }
+
+    else if (value_string)
+    {
+            rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                         "%s%s%s%s",
+                         cr->cr_output_byte_cnt > starting_byte_cnt ?
+                         "\n" : "",
+                         cr->cr_output_byte_cnt > starting_byte_cnt ?
+                         tab_array : "",
+                         value_string,
+                         // Add a newline if this closes the final stanza
+                         !tab_depth ? "\n" : "");
+    }
+
+    if (rc > 0)
+        cr->cr_output_byte_cnt += rc;
+
+    citer->citer_open_stanza = false;
+    citer->citer_starting_byte_cnt = cr->cr_output_byte_cnt;
+
+    return rc >= 0 ? 0 : -errno;
+}
+
 static bool // return 'false' to terminate scan
 ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
 {
     if (!lrn)
         return false;
 
-    NIOVA_ASSERT(arg && depth >= 0);
+    struct ctlic_iterator *parent_citer = arg;
 
-    struct ctlic_request *cr = arg;
+    NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
+
+    struct ctlic_request *cr = parent_citer->citer_cr;
     struct ctlic_matched_token *cmt = ctlic_get_current_matched_token(cr);
+
+    struct ctlic_iterator my_citer = {
+        .citer_cr = cr,
+        .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
+        .citer_tab_depth = parent_citer->citer_tab_depth + 1,
+        .citer_sibling_num = parent_citer->citer_sibling_num,
+        .citer_open_stanza = true,
+    };
 
     if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_GET)
     {
         /* Do not exceed the depth specified in the GET request.
          */
-        if (depth + 1 > cmt->cmt_num_depth_segments)
+        if (depth - 1 >= cmt->cmt_num_depth_segments)
             return false;
 
-        struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[depth];
+        /* Subtract '1' from depth since depth '0' is the root ('/')
+         */
+        struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[depth - 1];
 
-        int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn,
-                                       &cr->cr_lreg_val);
+        struct lreg_value *lv = &my_citer.citer_lv;
+
+// XXx this all needs to be changed so that any member of an object or array
+// can be matched
+        int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NODE_INFO, lrn, lv);
         if (rc)
             return false;
 
-        rc = regexec(&cds->cds_regex,
-                     LREG_VALUE_TO_OUT_STR(&cr->cr_lreg_val), 0, NULL,
+        rc = regexec(&cds->cds_regex, LREG_VALUE_TO_OUT_STR(lv), 0, NULL,
                      REG_NOTBOL | REG_NOTEOL);
 
-//Xxx this log installation should not post an event on the pipe!
-        DBG_LREG_NODE(LL_WARN, lrn, "matched: %s (depth=%d) (cds=%s)",
-                      rc ? "no" : "yes", depth, cds->cds_str);
+//Xxx this log installation should not post an event on the pipe
+// since it's the util thread (it doesn't need synchro)
+        DBG_LREG_NODE(LL_WARN, lrn,
+                      "matched: %s (depth=%d, sib-num=%zd) (cds=%s) nseg=%zu",
+                      rc ? "no" : "yes", depth,
+                      parent_citer->citer_sibling_num, cds->cds_str,
+                      cmt->cmt_num_depth_segments);
 
-        if (!rc)
+        if (rc)
+            return true;
+
+        int depth_add = 1;
+        if (lrn->lrn_node_type == LREG_NODE_TYPE_ANON_OBJECT)
         {
-            if (lrn->lrn_node_type == LREG_NODE_TYPE_OBJECT ||
-                lrn->lrn_node_type == LREG_NODE_TYPE_ARRAY)
-                lreg_node_walk(lrn, ctlic_scan_registry_cb, arg, depth);
+            ctlic_scan_registry_cb_output_writer(&my_citer);
+            depth_add++;
+        }
+
+        const unsigned int nkeys = lv->get.lrv_num_keys_out;
+
+        for (unsigned int i = 0; i < nkeys; i++)
+        {
+            struct ctlic_iterator kv_citer = {
+                .citer_cr = cr,
+                .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
+                .citer_tab_depth = parent_citer->citer_tab_depth + depth_add,
+                .citer_sibling_num = i,
+                .citer_open_stanza = true,
+                .citer_lv = {.lrv_value_idx_in = i},
+            };
+
+            struct lreg_value *kv_lv = &kv_citer.citer_lv;
+
+            rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, lrn, kv_lv);
+
+            DBG_LREG_NODE(LL_WARN, lrn, "rc=%d", rc);
+            if (rc)
+                return false;
+
+            ctlic_scan_registry_cb_output_writer(&kv_citer);
+
+            if (cmt->cmt_num_depth_segments > depth &&
+                (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_NODE_TYPE_OBJECT ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_NODE_TYPE_ARRAY))
+            {
+                lreg_node_walk(lrn, ctlic_scan_registry_cb, (void *)&kv_citer,
+                               depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+            }
+
+            ctlic_scan_registry_cb_output_writer(&kv_citer);
         }
     }
+
+    if (lrn->lrn_node_type == LREG_NODE_TYPE_ANON_OBJECT)
+        ctlic_scan_registry_cb_output_writer(&my_citer);
+
+    parent_citer->citer_sibling_num++;
 
     return true;
 }
@@ -523,11 +775,32 @@ ctlic_scan_registry(struct ctlic_request *cr)
     if (!cr)
         return;
 
-    struct lreg_node *lrn = lreg_root_node_get();
-    if (!lrn)
+    struct lreg_node *lrn_root = lreg_root_node_get();
+    if (!lrn_root)
         return;
 
-    cr->cr_current_token = 0;
+    struct ctlic_iterator citer = {
+        .citer_cr = cr,
+        .citer_starting_byte_cnt = 0,
+        .citer_tab_depth = 0,
+        .citer_sibling_num = 0,
+        .citer_open_stanza = true,
+    };
+
+    int rc =
+        lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn_root,
+                              &citer.citer_lv);
+    if (rc)
+        return;
+
+    /* This should just print the opening "{" with no prepended "`key` =" since
+     * the root object is anonymous.  By bookending the token loop (just below)
+     * we allow the user to place multiple GET calls into the cmd file to
+     * create custom JSON outputs.
+     */
+    rc = ctlic_scan_registry_cb_output_writer(&citer);
+    if (rc)
+        return;
 
     for (cr->cr_current_token = 0;
          cr->cr_current_token < cr->cr_num_matched_tokens;
@@ -537,8 +810,11 @@ ctlic_scan_registry(struct ctlic_request *cr)
             &cr->cr_matched_token[cr->cr_current_token];
 
         if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_GET)
-            lreg_node_walk(lrn, ctlic_scan_registry_cb, (void *)cr, -1);
+            lreg_node_walk(lrn_root, ctlic_scan_registry_cb, (void *)&citer, 1,
+                           LREG_USER_TYPE_ANY);
     }
+
+    ctlic_scan_registry_cb_output_writer(&citer);
 }
 
 util_thread_ctx_ctli_t
@@ -549,7 +825,7 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
 
     struct ctlic_request cr = {0};
 
-    int rc = ctlic_open_and_read_input_file(cch->ctlih_input_file_name, &cr);
+    int rc = ctlic_open_and_read_input_file(cch, &cr);
 
     if (rc)
     {

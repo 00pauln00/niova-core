@@ -48,6 +48,8 @@ nioctx_stats_hist_lreg_multi_facet_handler(
 
     LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
         binary_hist_get_cnt(&niocs->niocs_bh, lv->lrv_value_idx_in);
+
+    lv->get.lrv_node_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
 }
 
 static util_thread_ctx_reg_int_t
@@ -107,12 +109,12 @@ nioctx_stats_lreg_multi_facet_handler(enum lreg_node_cb_ops op,
                 niosd_io_ctx_type_to_string(nioctx->nioctx_type),
                 LREG_VALUE_STRING_MAX);
 
-        lv->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+        lv->get.lrv_node_type_out = LREG_NODE_TYPE_STRING;
         break;
 
     case NIOCTX_LREG_STAT_ENTRIES:
         strncpy(lv->lrv_key_string, "nioctx-stats", LREG_VALUE_STRING_MAX);
-        lv->get.lrv_request_type_out = LREG_NODE_TYPE_OBJECT;
+        lv->get.lrv_node_type_out = LREG_NODE_TYPE_OBJECT;
         break;
 
     default:
@@ -137,6 +139,7 @@ nioctx_stats_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         if (!lv)
             return -EINVAL;
 
+        strncpy(lv->lrv_key_string, "niosd-ctx", LREG_VALUE_STRING_MAX);
         snprintf(LREG_VALUE_TO_OUT_STR(lv), LREG_VALUE_STRING_MAX, "%s.%c",
                  ndev->ndev_name,
                  niosd_io_ctx_type_to_char(nioctx->nioctx_type));
@@ -197,7 +200,7 @@ nioctx_stats_init_internal_stats(struct niosd_io_ctx *nioctx)
 
         lreg_node_init(&niocs->niocs_lrn, LREG_NODE_TYPE_OBJECT,
                        LREG_USER_TYPE_NIOSD_IO_CTX_STATS,
-                       nioctx_stats_hist_lreg_cb, (void *)niocs, false);
+                       nioctx_stats_hist_lreg_cb, (void *)niocs, false, false);
 
         rc = lreg_node_install_prepare(&niocs->niocs_lrn,
                                        &nioctx->nioctx_lreg_node);
@@ -213,11 +216,11 @@ nioctx_stats_init(struct niosd_io_ctx *nioctx)
 {
     lreg_node_init(&nioctx->nioctx_lreg_node, LREG_NODE_TYPE_OBJECT,
                    LREG_USER_TYPE_NIOSD_IO_CTX, nioctx_stats_lreg_cb, nioctx,
-                   false);
+                   false, true);
 
     int rc =
         lreg_node_install_prepare(&nioctx->nioctx_lreg_node,
-                                  LREG_ROOT_ENTRY_PTR(nioctx_stats_root_entry));
+                                 LREG_ROOT_ENTRY_PTR(nioctx_stats_root_entry));
 
     FATAL_IF(rc, "lreg_node_install_prepare(): %s", strerror(-rc));
 

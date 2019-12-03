@@ -7,81 +7,92 @@ CFLAGS 		= -O2 -Wall $(INCLUDE)
 LDFLAGS		= -lpthread -laio -luuid -lssl -lcrypto
 NIOVA_LCOV      = niova-lcov
 
-CORE_INCLUDES   = \
+SYS_CORE_INCLUDES = \
+	src/include/binary_hist.h \
 	src/include/common.h \
+	src/include/ctl_interface_cmd.h \
+	src/include/ctl_interface.h \
+	src/include/env.h \
+	src/include/epoll_mgr.h \
+	src/include/ev_pipe.h \
+	src/include/io.h \
+	src/include/init.h \
 	src/include/lock.h \
 	src/include/log.h \
 	src/include/random.h \
 	src/include/ref_tree_proto.h \
+	src/include/registry.h \
+	src/include/thread.h \
+	src/include/util.h \
+	src/include/util_thread.h \
+	src/include/watchdog.h
+
+SYS_CORE_OBJFILES = \
+	src/ctl_interface.o \
+	src/ctl_interface_cmd.o \
+	src/env.o \
+	src/epoll_mgr.o \
+	src/ev_pipe.o \
+	src/init.o \
+	src/io.o \
+	src/log.o \
+	src/random.o \
+	src/registry.o \
+	src/thread.o \
+	src/util_thread.o \
+	src/watchdog.o
+
+CORE_INCLUDES   = \
 	src/include/chunk_handle.h \
-	src/include/vblkdev_handle.h \
+	src/include/metablock_digest.h \
 	src/include/niosd_io.h \
 	src/include/niosd_uuid.h \
 	src/include/niosd_io_stats.h \
-	src/include/registry.h \
-	src/include/thread.h \
-	src/include/watchdog.h \
-	src/include/util.h \
-	src/include/ctl_interface.h \
-	src/include/metablock_digest.h \
-	src/include/binary_hist.h \
-	src/include/env.h \
-	src/include/init.h \
-	src/include/ev_pipe.h \
-	src/include/epoll_mgr.h \
-	src/include/util_thread.h \
-	src/include/ctl_interface_cmd.h \
-	src/include/io.h
+	src/include/vblkdev_handle.h
 
 CORE_OBJFILES   = \
-	src/log.o \
-	src/random.o \
 	src/chunk_handle.o \
-	src/vblkdev_handle.o \
+	src/metablock_digest.o \
 	src/niosd_io.o \
 	src/niosd_uuid.o \
 	src/niosd_io_stats.o \
-	src/registry.o \
 	src/superblock.o \
-	src/thread.o \
-	src/watchdog.o \
-	src/ctl_interface.o \
-	src/metablock_digest.o \
-	src/init.o \
-	src/env.o \
-	src/ev_pipe.o \
-	src/epoll_mgr.o \
-	src/util_thread.o \
-	src/ctl_interface_cmd.o \
-	src/io.o
+	src/vblkdev_handle.o
 
-ALL_OBJFILES    = src/niova.o $(CORE_OBJFILES)
-TARGET 		= niova
+ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
+ALL_INCLUDES      = $(CORE_INCLUDES) $(SYS_CORE_INCLUDES)
+ALL_OBJFILES      = src/niova.o $(ALL_CORE_OBJFILES)
+TARGET		  = niova
 
 all: $(TARGET)
 
-$(TARGET): $(ALL_OBJFILES) $(CORE_INCLUDES)
+$(TARGET): $(ALL_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-tests: $(CORE_OBJFILES)
+
+tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/ref_tree_test test/ref_tree_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/niosd_io_test test/niosd_io_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/work_dispatch_test \
 		test/work_dispatch_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/binary_hist_test \
 		test/binary_hist_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/common_test \
 		test/common_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/micro_test \
 		test/micro_test.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/registry_test \
+		test/registry_test.c \
+		$(SYS_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+
 
 test_build: tests
 test_build:
@@ -111,9 +122,9 @@ cov : $(TARGET)
 	genhtml ./niova-lcov.out --output-directory ./$(NIOVA_LCOV)
 
 client-test: private CFLAGS = $(DEBUG_CFLAGS)
-client-test: $(CORE_OBJFILES)
+client-test: $(ALL_CORE_OBJFILES)
 	$(CC) $(DEBUG_CFLAGS) -o test/client_mmap test/client_mmap.c \
-		$(CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 pahole: CFLAGS = $(DEBUG_CFLAGS)
 pahole : tests

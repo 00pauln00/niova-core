@@ -18,7 +18,7 @@ LREG_ROOT_ENTRY_GENERATE(log_entry_map, LREG_USER_TYPE_LOG_file);
 
 enum log_lreg_function_entry_values
 {
-    LOG_LREG_ENTRY_LEVEL = 0,
+    LOG_LREG_ENTRY_LEVEL,
     LOG_LREG_ENTRY_LINENO,
     LOG_LREG_ENTRY_EXEC_CNT,
     LOG_LREG_ENTRY_FUNC,
@@ -27,7 +27,7 @@ enum log_lreg_function_entry_values
 
 enum log_lreg_file_entry_values
 {
-    LOG_LREG_FILE_NAME = 0,
+    LOG_LREG_FILE_NAME,
     LOG_LREG_FILE_LEVEL,
     LOG_LREG_FILE_LOG_ENTRIES,
     LOG_LREG_FILE_MAX,
@@ -53,6 +53,8 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
     }
     else if (op == LREG_NODE_CB_OP_READ_VAL)
     {
+        lreg_val->get.lrv_user_type_out = LREG_USER_TYPE_LOG_func;
+
         switch (lreg_val->lrv_value_idx_in)
         {
         case LOG_LREG_FILE_NAME:
@@ -62,7 +64,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
                     LREG_VALUE_STRING_MAX);
 
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_STRING;
             break;
 
         case LOG_LREG_FILE_LEVEL:
@@ -72,7 +74,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
                      "%s", ll_to_string(lei->lei_level));
 
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_STRING;
 
             break;
 
@@ -80,7 +82,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
                      "log-entries");
 
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_ARRAY;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_ARRAY;
             break;
 
         default:
@@ -118,21 +120,21 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
                      "%s", ll_to_string(lei->lei_level));
 
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_STRING;
 
             break;
 
         case LOG_LREG_ENTRY_LINENO:
             strncpy(lreg_val->lrv_key_string, "line-number",
                     LREG_VALUE_STRING_MAX);
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
             lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_lineno;
             break;
 
         case LOG_LREG_ENTRY_EXEC_CNT:
             strncpy(lreg_val->lrv_key_string, "exec-cnt",
                     LREG_VALUE_STRING_MAX);
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_UNSIGNED_VAL;
             lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_exec_cnt;
             break;
 
@@ -143,7 +145,7 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
             snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
                      "%s", lei->lei_func);
 
-            lreg_val->get.lrv_request_type_out = LREG_NODE_TYPE_STRING;
+            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_STRING;
             break;
         default:
             break;
@@ -158,7 +160,9 @@ log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     struct log_entry_info *lei = lrn->lrn_cb_arg;
 
     if (lreg_val)
+    {
         lreg_val->get.lrv_num_keys_out = LOG_LREG_ENTRY_MAX;
+    }
 
     switch (op)
     {
@@ -196,16 +200,15 @@ static lreg_install_int_ctx_t
 log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                        struct lreg_value *lreg_val)
 {
-    if (lreg_val)
-        lreg_val->get.lrv_num_keys_out = LOG_LREG_FILE_MAX;
-
     struct log_entry_info *lei = lrn->lrn_cb_arg;
 
     switch (op)
     {
-    case LREG_NODE_CB_OP_GET_NAME:
+    case LREG_NODE_CB_OP_GET_NODE_INFO:
         if (!lreg_val)
             return -EINVAL;
+
+        lreg_val->get.lrv_num_keys_out = LOG_LREG_FILE_MAX;
 
         strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
                 LREG_VALUE_STRING_MAX);
@@ -237,10 +240,10 @@ log_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     NIOVA_ASSERT(lrn->lrn_user_type == LREG_USER_TYPE_LOG_file ||
                  lrn->lrn_user_type == LREG_USER_TYPE_LOG_func);
 
-    /* NOTE: lrv_request_type_out may be overridden later in the stack.
+    /* NOTE: lrv_node_type_out may be overridden later in the stack.
      */
     if (lreg_val)
-        lreg_val->get.lrv_request_type_out = lrn->lrn_node_type;
+        lreg_val->get.lrv_node_type_out = lrn->lrn_node_type;
 
     return lrn->lrn_user_type == LREG_USER_TYPE_LOG_file ?
         log_lreg_file_entry_cb(op, lrn, lreg_val) :

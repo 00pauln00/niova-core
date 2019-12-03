@@ -55,7 +55,8 @@ lreg_root_node_get(void)
  */
 void
 lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
-               void *cb_arg, const int depth)
+               void *cb_arg, const int depth,
+               const enum lreg_user_types user_type)
 {
     struct lreg_node *child;
 
@@ -63,9 +64,16 @@ lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
 
     CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
     {
-        DBG_LREG_NODE(LL_DEBUG, child, "");
+        DBG_LREG_NODE(LL_DEBUG, child, "search user_type=%d, found=%d",
+                      user_type, child->lrn_user_type);
 
-        if (!lrn_wcb(child, cb_arg, depth + 1))
+        if (child->lrn_user_type != user_type &&
+            user_type != LREG_USER_TYPE_ANY)
+            continue;
+
+        DBG_LREG_NODE(LL_NOTIFY, child, "");
+
+        if (!lrn_wcb(child, cb_arg, depth))
             break;
     }
 }
@@ -132,7 +140,8 @@ lreg_node_lookup(const char *registry_path, struct lreg_node **lrn)
         lnlh.lnlh_name = next_reg_path;
         lnlh.lnlh_node = NULL;
 
-        lreg_node_walk(parent, lreg_node_lookup_walk_cb, &lnlh, -1);
+        lreg_node_walk(parent, lreg_node_lookup_walk_cb, &lnlh, -1,
+                       LREG_USER_TYPE_ANY);
 
         parent = lnlh.lnlh_node;
         if (!parent)
@@ -178,8 +187,8 @@ lreg_node_recurse_from_parent(struct lreg_node *parent,
 
         lrn_rcb(&lrv, depth, i, false);
 
-        if (lrv.get.lrv_request_type_out == LREG_NODE_TYPE_ARRAY ||
-            lrv.get.lrv_request_type_out == LREG_NODE_TYPE_OBJECT)
+        if (lrv.get.lrv_node_type_out == LREG_NODE_TYPE_ARRAY ||
+            lrv.get.lrv_node_type_out == LREG_NODE_TYPE_OBJECT)
         {
             struct lreg_node *child;
             CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
@@ -357,7 +366,7 @@ lreg_node_install(struct lreg_node *child)
         int destroy_rc =
             lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
 
-        DBG_LREG_NODE(LL_WARN, child,
+        DBG_LREG_NODE((init_ctx() ? LL_FATAL : LL_WARN), child,
                       "child install failed - install: '%s', destroy: '%s'",
                       strerror(-rc), strerror(-destroy_rc));
     }
@@ -456,12 +465,13 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
 void
 lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
                enum lreg_user_types user_type, lrn_cb_t cb, void *cb_arg,
-               bool statically_allocated)
+               bool statically_allocated, bool array_element)
 {
     lrn->lrn_node_type = node_type;
     lrn->lrn_user_type = user_type;
 
     lrn->lrn_statically_allocated = !!statically_allocated;
+    lrn->lrn_array_element = !!array_element;
 
     lrn->lrn_cb = cb;
     lrn->lrn_cb_arg = cb_arg;
@@ -479,18 +489,32 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
     }
 }
 
-static lreg_install_int_ctx_t
+static util_thread_ctx_reg_int_t
 lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
-                  struct lreg_value *lreg_val)
+                  struct lreg_value *lv)
 {
-    (void)lrn;
+    if (!lrn || !lv)
+        return EINVAL;
 
     switch (op)
     {
     case LREG_NODE_CB_OP_GET_NAME:
-	snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
-                 "root");
+        /* This is imprecise since only a subset of LREG_USERs are children
+         * of the root object. Xxx
+         */
+        lv->get.lrv_num_keys_out = LREG_USER_TYPE_ANY;
+
+        // The root object is anonymous and has no "key".
+        lv->get.lrv_node_type_out = LREG_NODE_TYPE_ANON_OBJECT;
+        lv->lrv_key_string[0] = '\0';
         break;
+
+    case LREG_NODE_CB_OP_WRITE_VAL:
+    case LREG_NODE_CB_OP_READ_VAL: // Xxx this can be modified to allow reads
+                                   //   of
+
+        return -EOPNOTSUPP;
+
     default:
         break;
     }
@@ -534,7 +558,7 @@ lreg_subsystem_init(void)
     lRegRootNode.lrn_root_node = 1;
 
     lreg_node_init(&lRegRootNode, LREG_NODE_TYPE_OBJECT, LREG_USER_TYPE_ROOT,
-                   lreg_root_node_cb, NULL, true);
+                   lreg_root_node_cb, NULL, true, true);
 
     lRegInitialized = true;
 
