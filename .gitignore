@@ -11,6 +11,9 @@ test/niosd_io_test
 test/ref_tree_test
 test/binary_hist_test
 test/work_dispatch_test
+test/common_test
+test/micro_test
+test/registry_test
 test_niosd.device
 niova-lcov/
 niova-lcov.out
@@ -25,7 +28,6 @@ openssl-speed.txt
 pahole.out
 .gdb_history
 uncommitted/
-test/common_test
-test/micro_test
 TODO*
 *.json
+*.cmd
