@@ -134,7 +134,7 @@ lreg_node_lookup(const char *registry_path, struct lreg_node **lrn)
          next_reg_path != NULL;
          next_reg_path = strtok_r(NULL, lRegSeparatorString, &strtok_save_ptr))
     {
-        SIMPLE_LOG_MSG(LL_WARN, "%s", next_reg_path);
+        SIMPLE_LOG_MSG(LL_NOTIFY, "%s", next_reg_path);
 
         lnlh.lnlh_name = next_reg_path;
         lnlh.lnlh_node = NULL;

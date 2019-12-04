@@ -53,7 +53,7 @@ util_thread_install_event_src(int fd, int events,
 static util_thread_ctx_t *
 util_thread_main(void *arg)
 {
-    FUNC_ENTRY(LL_WARN);
+    FUNC_ENTRY(LL_DEBUG);
 
     struct thread_ctl *tc = arg;
     tc->tc_is_utility_thread = 1;
@@ -79,7 +79,7 @@ util_thread_main(void *arg)
 init_ctx_t
 util_thread_subsystem_init(void)
 {
-    FUNC_ENTRY(LL_WARN);
+    FUNC_ENTRY(LL_DEBUG);
 
     NIOVA_ASSERT(!utilThread.ut_started);
 
@@ -107,7 +107,7 @@ util_thread_subsystem_init(void)
 destroy_ctx_t
 util_thread_subsystem_destroy(void)
 {
-    FUNC_ENTRY(LL_WARN);
+    FUNC_ENTRY(LL_DEBUG);
 
     if (utilThread.ut_started)
     {

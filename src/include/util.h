@@ -18,6 +18,13 @@ char name[len + 1];                                             \
     FATAL_IF((rc > len), "rc=%d, requested len=%u", rc, len);   \
 }
 
+#define DECL_AND_INIT_STRING(name, str_len, init_char, init_char_len)   \
+char name[str_len + 1] = {0};                                           \
+{                                                                       \
+    for (int i = 0; i < MIN(str_len, init_char_len); i++)               \
+        name[i] = init_char;                                            \
+}
+
 #define niova_malloc malloc
 #define niova_calloc calloc
 #define niova_free   free

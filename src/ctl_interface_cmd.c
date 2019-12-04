@@ -298,7 +298,7 @@ ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
             char err_str[64] = {0};
             regerror(rc, &cds->cds_regex, err_str, 63);
 
-            SIMPLE_LOG_MSG(LL_WARN, "regcomp(`%s'): %s",
+            SIMPLE_LOG_MSG(LL_NOTIFY, "regcomp(`%s'): %s",
                            cmt->cmt_depth_segments[i].cds_str, err_str);
 
             return -EBADMSG;
@@ -307,7 +307,7 @@ ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
         {
             cds->cds_free_regex = 1;
 
-            SIMPLE_LOG_MSG(LL_WARN, "%s regcomp():  OK",
+            SIMPLE_LOG_MSG(LL_NOTIFY, "%s regcomp():  OK",
                            cmt->cmt_depth_segments[i].cds_str);
         }
     }
@@ -370,7 +370,7 @@ ctlic_dump_request_items(const struct ctlic_request *cr)
     {
         if (cr->cr_matched_token[i].cmt_token)
         {
-            SIMPLE_LOG_MSG(LL_WARN, "(%s) %s -> `%s'",
+            SIMPLE_LOG_MSG(LL_DEBUG, "(%s) %s -> `%s'",
                            cr->cr_file[CTLIC_INPUT_FILE].cf_file_name,
                            cr->cr_matched_token[i].cmt_token->ct_name,
                            cr->cr_matched_token[i].cmt_value);
@@ -504,7 +504,7 @@ ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
     const struct lreg_value *lv = &citer->citer_lv;
 
     /* If our sibling number is greater than 0 then always apply a comma to the
-     * outgoing JSON stream.  Otherwuse, if our parent's sibling count is
+     * outgoing JSON stream.  Otherwise, if our parent's sibling count is
      * positive and we're object or array, then print a comma.
      */
     if ((citer->citer_sibling_num > 0) ||
@@ -517,6 +517,32 @@ ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
     return "";
 }
 
+static const char *
+ctlic_citer_2_value_string(const struct ctlic_iterator *citer)
+{
+    if (!citer)
+        return NULL;
+
+    const char *value_string;
+
+    switch (LREG_VALUE_TO_REQ_TYPE(&citer->citer_lv))
+    {
+    case LREG_VAL_TYPE_OBJECT:
+    case LREG_VAL_TYPE_ANON_OBJECT:
+        value_string = citer->citer_open_stanza ? "{" : "}";
+        break;
+    case LREG_VAL_TYPE_ARRAY:
+        value_string = citer->citer_open_stanza ? "[" : "]";
+        break;
+    default:
+        value_string = citer->citer_open_stanza ?
+            LREG_VALUE_TO_OUT_STR(&citer->citer_lv) : NULL;
+        break;
+    }
+
+    return value_string;
+}
+
 static int
 ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
 {
@@ -527,46 +553,28 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
              citer->citer_sibling_num > CTLIC_MAX_SIBLING_CNT)
         return -E2BIG;
 
-    const char *value_string;
-    bool object_or_array = false;
-    bool open_stanza = citer->citer_open_stanza;
-    struct lreg_value *lv = &citer->citer_lv;
-    size_t tab_depth = citer->citer_tab_depth;
-    size_t sibling_number = citer->citer_sibling_num;
+    int rc = 0;
+
     struct ctlic_request *cr = citer->citer_cr;
-    size_t starting_byte_cnt = citer->citer_starting_byte_cnt;
+    const bool open_stanza = citer->citer_open_stanza;
+    const struct lreg_value *lv = &citer->citer_lv;
+    const size_t tab_depth = citer->citer_tab_depth;
+    const size_t sibling_number = citer->citer_sibling_num;
+    const size_t starting_byte_cnt = citer->citer_starting_byte_cnt;
+    const char *value_string = ctlic_citer_2_value_string(citer);
 
-    switch (LREG_VALUE_TO_REQ_TYPE(lv))
-    {
-    case LREG_VAL_TYPE_OBJECT: // XXX change me to 'value type'
-    case LREG_VAL_TYPE_ANON_OBJECT:
-        object_or_array = true;
-        value_string = open_stanza ? "{" : "}";
-        break;
-    case LREG_VAL_TYPE_ARRAY:
-        object_or_array = true;
-        value_string = open_stanza ? "[" : "]";
-        break;
-    default:
-//XXX fix me - value needs to be type dependent
-//    strings values must be surrounded by \" but numerics are not.
-        value_string =
-            open_stanza ? LREG_VALUE_TO_OUT_STR(lv) : NULL;
-        break;
-    }
-
-    SIMPLE_LOG_MSG(LL_WARN, "key=`%s' depth=%zu sib-num=%zu open=%d",
+    SIMPLE_LOG_MSG(LL_DEBUG, "key=`%s' depth=%zu sib-num=%zu open=%d",
                    lv->lrv_key_string, tab_depth, sibling_number, open_stanza);
 
-    char tab_array[CTLIC_MAX_TAB_DEPTH] = {0};
-    for (int i = 0; i < MIN(tab_depth, CTLIC_MAX_TAB_DEPTH); i++)
-        tab_array[i] = '\t';
-
-    int rc = 0;
+    DECL_AND_INIT_STRING(tab_array, CTLIC_MAX_TAB_DEPTH, '\t', tab_depth);
 
     if (open_stanza)
     {
-        if (tab_depth > 0)
+        if (!tab_depth)
+        {
+            rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd, "{");
+        }
+        else
         {
             switch (LREG_VALUE_TO_REQ_TYPE(lv))
             {
@@ -579,10 +587,15 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
                 break;
             case LREG_VAL_TYPE_ARRAY:
             case LREG_VAL_TYPE_OBJECT:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s\"%s\" : %s",
+                             ctlic_scan_registry_sibling_helper(citer),
+                             tab_array,
+                             lv->lrv_key_string,
+                             value_string);
+                break;
             case LREG_VAL_TYPE_STRING:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
-                             object_or_array ?
-                             "%s\n%s\"%s\" : %s" :
                              "%s\n%s\"%s\" : \"%s\"",
                              ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
@@ -626,13 +639,8 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
                 break;
             }
         }
-        else
-        {
-            rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd, "{");
-        }
     }
-
-    else if (value_string)
+    else if (value_string) // Close stanza
     {
             rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                          "%s%s%s%s",
@@ -700,7 +708,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
 
 //Xxx this log installation should not post an event on the pipe
 // since it's the util thread (it doesn't need synchro)
-        DBG_LREG_NODE(LL_WARN, lrn,
+        DBG_LREG_NODE(LL_DEBUG, lrn,
                       "matched: %s (depth=%d, sib-num=%zd) (cds=%s) nseg=%zu",
                       rc ? "no" : "yes", depth,
                       parent_citer->citer_sibling_num, cds->cds_str,
@@ -741,7 +749,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
 
             rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, lrn, kv_lv);
 
-            DBG_LREG_NODE(LL_WARN, lrn, "rc=%d", rc);
+            DBG_LREG_NODE(LL_DEBUG, lrn, "rc=%d", rc);
             if (rc)
                 return false;
 
@@ -841,14 +849,14 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
         return;
     }
 
-    SIMPLE_LOG_MSG(LL_WARN, "file=%s\ncontents=\n%s",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "file=%s\ncontents=\n%s",
                    cch->ctlih_input_file_name,
                    (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
 
     rc = ctlic_parse_request(&cr);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "invalid %s:  file=%s\ncontents=\n%s",
+        SIMPLE_LOG_MSG(LL_NOTIFY, "invalid %s:  file=%s\ncontents=\n%s",
                        strerror(-rc), cch->ctlih_input_file_name,
                        (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
         goto done;
@@ -857,7 +865,8 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
     rc = ctlic_open_output_file(cch->ctlih_output_dirfd, &cr);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "ctlic_open_output_file(): %s", strerror(-rc));
+        SIMPLE_LOG_MSG(LL_NOTIFY, "ctlic_open_output_file(): %s",
+                       strerror(-rc));
         goto done;
     }
 
