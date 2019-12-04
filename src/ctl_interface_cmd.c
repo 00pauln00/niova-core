@@ -113,6 +113,7 @@ struct ctlic_iterator
     size_t                citer_starting_byte_cnt;
     size_t                citer_tab_depth;
     size_t                citer_sibling_num;
+    size_t                citer_parents_sibling_num;
     bool                  citer_open_stanza;
 };
 
@@ -497,36 +498,24 @@ ctlic_get_current_matched_token(struct ctlic_request *cr)
     return cmt;
 }
 
-#if 0
-static int
-ctlic_scan_registry_cb_output_writer_null_stanza(struct ctlic_request *cr,
-                                                 const int depth,
-                                                 const int sibling_number,
-                                                 const bool open_stanza,
-                                                 enum lreg_node_types type)
+static const char *
+ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
 {
-    if (!cr || depth < 0 || sibling_number < 0 ||
-        (type != LREG_NODE_TYPE_ARRAY && type != LREG_NODE_TYPE_OBJECT))
-        return -EINVAL;
+    const struct lreg_value *lv = &citer->citer_lv;
 
-    const char *out_char = open_stanza ?
-        ((type == LREG_NODE_TYPE_OBJECT) ? "{" : "[") :
-        ((type == LREG_NODE_TYPE_OBJECT) ? "}" : "]");
+    /* If our sibling number is greater than 0 then always apply a comma to the
+     * outgoing JSON stream.  Otherwuse, if our parent's sibling count is
+     * positive and we're object or array, then print a comma.
+     */
+    if ((citer->citer_sibling_num > 0) ||
+        (citer->citer_parents_sibling_num > 0 &&
+         (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
+          LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY ||
+          LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ANON_OBJECT)))
+        return ",";
 
-    char tab_array[64] = {0};
-    for (int i = 0; i < MIN(depth, 63); i++)
-        tab_array[i] = '\t';
-
-    int rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
-                     "%s%s%s%s",
-                     sibling_number ? "," : "",
-                     //             Final closing "}"
-                     (depth || (!depth && !open_stanza)) ? "\n" : "",
-                     tab_array, out_char);
-
-    return rc >= 0 ? 0 : -errno;
+    return "";
 }
-#endif
 
 static int
 ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
@@ -549,12 +538,12 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
 
     switch (LREG_VALUE_TO_REQ_TYPE(lv))
     {
-    case LREG_NODE_TYPE_OBJECT: // XXX change me to 'value type'
-    case LREG_NODE_TYPE_ANON_OBJECT:
+    case LREG_VAL_TYPE_OBJECT: // XXX change me to 'value type'
+    case LREG_VAL_TYPE_ANON_OBJECT:
         object_or_array = true;
         value_string = open_stanza ? "{" : "}";
         break;
-    case LREG_NODE_TYPE_ARRAY:
+    case LREG_VAL_TYPE_ARRAY:
         object_or_array = true;
         value_string = open_stanza ? "[" : "]";
         break;
@@ -581,54 +570,54 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
         {
             switch (LREG_VALUE_TO_REQ_TYPE(lv))
             {
-            case LREG_NODE_TYPE_ANON_OBJECT:
+            case LREG_VAL_TYPE_ANON_OBJECT:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s%s",
-                             sibling_number > 0 ? "," : "",
+                             ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
                              value_string);
                 break;
-            case LREG_NODE_TYPE_ARRAY:
-            case LREG_NODE_TYPE_OBJECT:
-            case LREG_NODE_TYPE_STRING:
+            case LREG_VAL_TYPE_ARRAY:
+            case LREG_VAL_TYPE_OBJECT:
+            case LREG_VAL_TYPE_STRING:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              object_or_array ?
                              "%s\n%s\"%s\" : %s" :
                              "%s\n%s\"%s\" : \"%s\"",
-                             sibling_number > 0 ? "," : "",
+                             ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
                              lv->lrv_key_string,
                              value_string);
                 break;
-            case LREG_NODE_TYPE_BOOL:
+            case LREG_VAL_TYPE_BOOL:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %s",
-                             sibling_number > 0 ? "," : "",
+                             ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
                              lv->lrv_key_string,
                              LREG_VALUE_TO_BOOL(lv) ?
                              "true" : "false");
                 break;
-            case LREG_NODE_TYPE_SIGNED_VAL:
+            case LREG_VAL_TYPE_SIGNED_VAL:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %ld",
-                             sibling_number > 0 ? "," : "",
+                             ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
                              lv->lrv_key_string,
                              LREG_VALUE_TO_OUT_SIGNED_INT(lv));
                 break;
-            case LREG_NODE_TYPE_UNSIGNED_VAL:
+            case LREG_VAL_TYPE_UNSIGNED_VAL:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %lu",
-                             sibling_number > 0 ? "," : "",
+                             ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
                              lv->lrv_key_string,
                              LREG_VALUE_TO_OUT_UNSIGNED_INT(lv));
                 break;
-            case LREG_NODE_TYPE_FLOAT_VAL:
+            case LREG_VAL_TYPE_FLOAT_VAL:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %f",
-                             sibling_number > 0 ? "," : "",
+                             ctlic_scan_registry_sibling_helper(citer),
                              tab_array,
                              lv->lrv_key_string,
                              LREG_VALUE_TO_OUT_FLOAT(lv));
@@ -683,6 +672,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
         .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
         .citer_tab_depth = parent_citer->citer_tab_depth + 1,
         .citer_sibling_num = parent_citer->citer_sibling_num,
+        .citer_parents_sibling_num = parent_citer->citer_sibling_num,
         .citer_open_stanza = true,
     };
 
@@ -720,8 +710,15 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
             return true;
 
         int depth_add = 1;
-        if (lrn->lrn_node_type == LREG_NODE_TYPE_ANON_OBJECT)
+        if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
+            LREG_VAL_TYPE_ARRAY)
         {
+            /* If the parent is an array then "I" must be an anonymous
+             * sort (otherwise lreg_node_walk() would not have been called.
+             * NOTE: this likely means that 'arrays of arrays' are not
+             *       supported yet.
+             */
+            LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
             ctlic_scan_registry_cb_output_writer(&my_citer);
             depth_add++;
         }
@@ -735,6 +732,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
                 .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
                 .citer_tab_depth = parent_citer->citer_tab_depth + depth_add,
                 .citer_sibling_num = i,
+                .citer_parents_sibling_num = parent_citer->citer_sibling_num,
                 .citer_open_stanza = true,
                 .citer_lv = {.lrv_value_idx_in = i},
             };
@@ -750,19 +748,28 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
             ctlic_scan_registry_cb_output_writer(&kv_citer);
 
             if (cmt->cmt_num_depth_segments > depth &&
-                (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_NODE_TYPE_OBJECT ||
-                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_NODE_TYPE_ARRAY))
+                (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
             {
-                lreg_node_walk(lrn, ctlic_scan_registry_cb, (void *)&kv_citer,
+                struct ctlic_iterator sub_obj_kv_citer = kv_citer;
+                sub_obj_kv_citer.citer_sibling_num = 0;
+
+                lreg_node_walk(lrn, ctlic_scan_registry_cb,
+                               (void *)&sub_obj_kv_citer,
                                depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
             }
 
             ctlic_scan_registry_cb_output_writer(&kv_citer);
         }
-    }
 
-    if (lrn->lrn_node_type == LREG_NODE_TYPE_ANON_OBJECT)
-        ctlic_scan_registry_cb_output_writer(&my_citer);
+        if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
+            LREG_VAL_TYPE_ARRAY)
+        {
+            LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
+            ctlic_scan_registry_cb_output_writer(&my_citer);
+        }
+    }
 
     parent_citer->citer_sibling_num++;
 

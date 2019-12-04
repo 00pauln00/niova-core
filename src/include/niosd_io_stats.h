@@ -9,6 +9,7 @@
 
 #include "ctor.h"
 
+struct niosd_device;
 struct niosd_io_ctx;
 struct niosd_io_request;
 
@@ -21,12 +22,15 @@ nioctx_stats_dump(const struct niosd_io_ctx *nioctx);
 void
 nioctx_stats_init(struct niosd_io_ctx *nioctx);
 
+void
+niosd_io_stats_init(struct niosd_device *ndev);
+
 init_ctx_t
-nioctx_stats_subsys_init(void)
+niosd_io_stats_subsys_init(void)
      __attribute__ ((constructor (NIOSD_IO_CTX_STATS_CTOR_PRIORITY)));
 
 destroy_ctx_t
-nioctx_stats_subsys_destroy(void)
+niosd_io_stats_subsys_destroy(void)
     __attribute__ ((destructor (NIOSD_IO_CTX_STATS_CTOR_PRIORITY)));
 
 #endif

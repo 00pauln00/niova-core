@@ -80,7 +80,6 @@ struct log_entry_info
                                                                         \
     static struct lreg_node regFileEntry = {                            \
         .lrn_cb_arg = &logEntryFileInfo,                                \
-        .lrn_node_type = LREG_NODE_TYPE_ANON_OBJECT,                    \
         .lrn_user_type = LREG_USER_TYPE_LOG_file,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_array_element = 1,                                         \
@@ -95,7 +94,6 @@ struct log_entry_info
     };                                                                  \
     static struct lreg_node logMsgLrn = {                               \
         .lrn_cb_arg = &logEntryInfo,                                    \
-        .lrn_node_type = LREG_NODE_TYPE_ANON_OBJECT,                    \
         .lrn_user_type = LREG_USER_TYPE_LOG_func,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_array_element = 1,                                         \

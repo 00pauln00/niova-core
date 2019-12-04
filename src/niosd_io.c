@@ -570,6 +570,8 @@ niosd_device_open(struct niosd_device *ndev)
         return -ERANGE;
     }
 
+    niosd_io_stats_init(ndev);
+
     int rc = niosd_device_ctxs_init(ndev);
     if (rc)
         niosd_device_close(ndev); //XX should free everything!

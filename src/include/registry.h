@@ -35,6 +35,7 @@ typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
 
 enum lreg_value_types
 {
+    LREG_VAL_TYPE_NONE,
     LREG_VAL_TYPE_ARRAY,
     LREG_VAL_TYPE_BOOL,
     LREG_VAL_TYPE_OBJECT,
@@ -46,29 +47,16 @@ enum lreg_value_types
     LREG_VAL_TYPE_ANY,
 };
 
-//XX fix me, nodes should not have any type!
-enum lreg_node_types
-{
-    LREG_NODE_TYPE_NONE = 0,
-    LREG_NODE_TYPE_ARRAY,
-    LREG_NODE_TYPE_BOOL,
-    LREG_NODE_TYPE_OBJECT,
-    LREG_NODE_TYPE_ANON_OBJECT,
-    LREG_NODE_TYPE_SIGNED_VAL,
-    LREG_NODE_TYPE_STRING,
-    LREG_NODE_TYPE_UNSIGNED_VAL,
-    LREG_NODE_TYPE_FLOAT_VAL,
-    LREG_NODE_TYPE_ANY,
-};
-
 enum lreg_user_types
 {
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_FAULT,
     LREG_USER_TYPE_LOG_file,
     LREG_USER_TYPE_LOG_func,
+    LREG_USER_TYPE_NIOSD_IO,
     LREG_USER_TYPE_NIOSD_IO_CTX,
-    LREG_USER_TYPE_NIOSD_IO_CTX_STATS,
+    LREG_USER_TYPE_NIOSD_IO_STATS,
+    LREG_USER_TYPE_HISTOGRAM,
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_ANY,
 };
@@ -122,7 +110,6 @@ struct lreg_value
         {
             unsigned int           lrv_num_keys_out;
             enum lreg_value_types  lrv_value_type_out;
-            enum lreg_node_types   lrv_node_type_out;
             enum lreg_user_types   lrv_user_type_out;
             struct lreg_value_data lrv_value_out;
         } get;
@@ -133,6 +120,8 @@ struct lreg_value
         } put;
     };
 };
+
+#define lrv_node_type_out lrv_value_type_out //xxx to be removed
 
 #define LREG_VALUE_TO_OUT_STR(lrv)              \
     (lrv)->get.lrv_value_out.lrv_string
@@ -153,17 +142,10 @@ struct lreg_value
     (lrv)->get.lrv_value_out.lrv_float
 
 #define LREG_VALUE_TO_REQ_TYPE(lrv)             \
-    (lrv)->get.lrv_node_type_out
+    (lrv)->get.lrv_value_type_out
 
 #define LREG_VALUE_TO_USER_TYPE(lrv)             \
     (lrv)->get.lrv_user_type_out
-
-#define LREG_NODE_IS_ARRAY(lrn)                 \
-    ((lrn)->lrn_node_type == LREG_NODE_TYPE_ARRAY)
-
-#define LREG_NODE_IS_OBJECT(lrn)                 \
-    ((lrn)->lrn_node_type == LREG_NODE_TYPE_OBJECT ||   \
-     (lrn)->lrn_node_type == LREG_NODE_TYPE_ANON_OBJECT)
 
 struct lreg_node;
 
@@ -177,7 +159,6 @@ typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
  */
 struct lreg_node
 {
-    enum lreg_node_types      lrn_node_type;
     enum lreg_user_types      lrn_user_type;
     uint8_t                   lrn_install_state;
     uint8_t                   lrn_tmp_node:1,
@@ -197,23 +178,23 @@ struct lreg_node
 };
 
 static inline char
-lreg_node_to_node_type(enum lreg_node_types type)
+lreg_val_to_type(enum lreg_value_types type)
 {
     switch (type)
     {
-    case LREG_NODE_TYPE_NONE:
+    case LREG_VAL_TYPE_NONE:
         return 'n';
-    case LREG_NODE_TYPE_ARRAY:
+    case LREG_VAL_TYPE_ARRAY:
         return 'A';
-    case LREG_NODE_TYPE_BOOL:
+    case LREG_VAL_TYPE_BOOL:
         return 'B';
-    case LREG_NODE_TYPE_OBJECT:
+    case LREG_VAL_TYPE_OBJECT:
         return 'O';
-    case LREG_NODE_TYPE_ANON_OBJECT:
+    case LREG_VAL_TYPE_ANON_OBJECT:
         return 'o';
-    case LREG_NODE_TYPE_SIGNED_VAL:
+    case LREG_VAL_TYPE_SIGNED_VAL:
         return 'S';
-    case LREG_NODE_TYPE_UNSIGNED_VAL:
+    case LREG_VAL_TYPE_UNSIGNED_VAL:
         return 'U';
     default:
         break;
@@ -266,13 +247,12 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 #define DBG_LREG_NODE(log_level, lrn, fmt, ...)                         \
 {                                                                       \
     struct lreg_value lrv;                                              \
-    log_msg(log_level, "lrn@%p %s %c%c%c%c%c%c%c%c%c arg=%p "fmt,       \
+    log_msg(log_level, "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,         \
             (lrn),                                                      \
             (const char *)({                                            \
                 (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, (lrn), &lrv);   \
                 LREG_VALUE_TO_OUT_STR(&lrv);                            \
             }),                                                         \
-            lreg_node_to_node_type((lrn)->lrn_node_type),               \
             lreg_node_to_user_type(lrn),                                \
             lreg_node_to_install_state(lrn),                            \
             (lrn)->lrn_statically_allocated  ? 's' : '-',               \
@@ -331,8 +311,8 @@ lreg_install_int_ctx_t
 lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
 
 void
-lreg_node_init(struct lreg_node *, enum lreg_node_types, enum lreg_user_types,
-               lrn_cb_t, void *, bool, bool);
+lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
+               bool);
 
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
@@ -366,7 +346,6 @@ lreg_subsystem_destroy(void)
             if (lreg_val->lrv_value_idx_in != 0)                        \
                 return -EINVAL;                                         \
             lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_ARRAY;     \
-            lreg_val->get.lrv_node_type_out = LREG_NODE_TYPE_ARRAY;     \
             lreg_val->get.lrv_user_type_out = user_type;                \
             snprintf(lreg_val->lrv_key_string,                          \
                      LREG_VALUE_STRING_MAX, #name);                     \
@@ -385,7 +364,6 @@ lreg_subsystem_destroy(void)
                                                                         \
     struct lreg_node rootEntry##name = {                                \
         .lrn_cb_arg = (void *)1,                                        \
-        .lrn_node_type = LREG_NODE_TYPE_ARRAY,                          \
         .lrn_user_type = user_type,                                     \
         .lrn_statically_allocated = 1,                                  \
         .lrn_cb = lreg_root_cb##name                                    \

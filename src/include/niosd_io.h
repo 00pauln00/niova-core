@@ -76,6 +76,35 @@ enum niosd_dev_status
     NIOSD_DEV_STATUS_SB_ERROR // error was observed while reading SB chain
 };
 
+static inline const char *
+niosd_dev_status_2_string(const enum niosd_dev_status status)
+{
+    switch (status)
+    {
+    case NIOSD_DEV_STATUS_INVALID:
+        return "invalid";
+    case NIOSD_DEV_STATUS_STARTUP_DEV_OPEN:
+        return "opening";
+    case NIOSD_DEV_STATUS_STARTUP_SB_SCAN:
+        return "superblock_scan";
+    case NIOSD_DEV_STATUS_STARTUP_CHAIN_SCAN:
+        return "chunk_scan";
+    case NIOSD_DEV_STATUS_RUNNING:
+        return "running";
+    case NIOSD_DEV_STATUS_STOPPED:
+        return "stopped";
+    case NIOSD_DEV_STATUS_ERROR:
+        return "error";
+    case NIOSD_DEV_STATUS_SB_INIT:
+        return "superblock_init";
+    case NIOSD_DEV_STATUS_SB_ERROR:
+        return "superblock_error";
+    default:
+        break;
+    }
+    return "unknown";
+}
+
 enum niosd_io_request_type
 {
     NIOSD_REQ_TYPE_UNINIT  = 0,
@@ -120,9 +149,9 @@ niosd_io_ctx_type_to_string(const enum niosd_io_ctx_type t)
     switch (t)
     {
     case NIOSD_IO_CTX_TYPE_DEFAULT:
-        return "user-io-ctx";
+        return "user";
     case NIOSD_IO_CTX_TYPE_COMPACTOR:
-        return "system-io-ctx";
+        return "system";
     default:
         break;
     }
@@ -238,6 +267,7 @@ struct niosd_device
     int                              ndev_fd;
     enum niosd_dev_status            ndev_status;
     struct niosd_io_ctx              ndev_ctxs[NIOSD_IO_CTX_TYPE_MAX];
+    struct lreg_node                 ndev_lreg_node;
 };
 
 static inline void

@@ -48,10 +48,9 @@ lreg_root_node_get(void)
 
 /**
  * lreg_node_walk - with the lock held and starting with the parent,
- *   walk the tree executing the provided callback function.
- * @parent:  root for the walk.
- * @lrn_wcb:  walk call back function.
- * @cb_arg:  opaque argument supplied to the callback.
+ *   walk the tree executing the provided callback function.  @parent:
+ *   root for the walk.  @lrn_wcb: walk call back function.  @cb_arg:
+ *   opaque argument supplied to the callback.
  */
 void
 lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
@@ -187,8 +186,8 @@ lreg_node_recurse_from_parent(struct lreg_node *parent,
 
         lrn_rcb(&lrv, depth, i, false);
 
-        if (lrv.get.lrv_node_type_out == LREG_NODE_TYPE_ARRAY ||
-            lrv.get.lrv_node_type_out == LREG_NODE_TYPE_OBJECT)
+        if (lrv.get.lrv_value_type_out == LREG_VAL_TYPE_ARRAY ||
+            lrv.get.lrv_value_type_out == LREG_VAL_TYPE_OBJECT)
         {
             struct lreg_node *child;
             CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
@@ -216,15 +215,15 @@ lreg_node_recurse_json_cb(struct lreg_value *lrv, const int depth,
 {
     int indent = (depth + 1) * 4;
 
-    if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_NODE_TYPE_ARRAY ||
-        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_NODE_TYPE_OBJECT)
+    if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_ARRAY ||
+        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_OBJECT)
     {
         if (done)
         {
             SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, element_number,
                            indent, "",
                            LREG_VALUE_TO_REQ_TYPE(lrv) ==
-                           LREG_NODE_TYPE_ARRAY ?
+                           LREG_VAL_TYPE_ARRAY ?
                            ']' : '}');
         }
         else
@@ -234,11 +233,11 @@ lreg_node_recurse_json_cb(struct lreg_value *lrv, const int depth,
                            element_number ? "" : "",
                            lrv->lrv_key_string,
                            LREG_VALUE_TO_REQ_TYPE(lrv) ==
-                           LREG_NODE_TYPE_ARRAY ?
+                           LREG_VAL_TYPE_ARRAY ?
                            '[' : '{');
         }
     }
-    else if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_NODE_TYPE_STRING && !done)
+    else if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_STRING && !done)
     {
         SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s%s\"%s\": \"%s\"", depth,
                        element_number, indent, "",
@@ -346,8 +345,8 @@ lreg_node_install(struct lreg_node *child)
 
     NIOVA_ASSERT(!lreg_node_needs_installation(parent));
 
-    /* This is really required only for LREG_NODE_TYPE_ARRAY and
-     * LREG_NODE_TYPE_OBJECT.
+    /* This is really required only for LREG_VAL_TYPE_ARRAY and
+     * LREG_VAL_TYPE_OBJECT.
      */
     CIRCLEQ_INIT(&child->lrn_head);
 
@@ -429,12 +428,10 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     NIOVA_ASSERT(child && parent);
     NIOVA_ASSERT(child != parent);
 
-    if (!(LREG_NODE_IS_OBJECT(parent) ||
-          (LREG_NODE_IS_ARRAY(parent) &&
-           parent->lrn_user_type == child->lrn_user_type)))
-        return -EINVAL;
+//    if (parent->lrn_user_type == child->lrn_user_type)
+//        return -EINVAL;
 
-    else if (!lreg_node_needs_installation(child))
+    if (!lreg_node_needs_installation(child))
         return -EALREADY;
 
     else if (!lreg_node_install_prep_ok(child))
@@ -463,15 +460,12 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
  *    lrn objects.
  */
 void
-lreg_node_init(struct lreg_node *lrn, enum lreg_node_types node_type,
-               enum lreg_user_types user_type, lrn_cb_t cb, void *cb_arg,
-               bool statically_allocated, bool array_element)
+lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
+               lrn_cb_t cb, void *cb_arg, bool statically_allocated)
 {
-    lrn->lrn_node_type = node_type;
     lrn->lrn_user_type = user_type;
 
     lrn->lrn_statically_allocated = !!statically_allocated;
-    lrn->lrn_array_element = !!array_element;
 
     lrn->lrn_cb = cb;
     lrn->lrn_cb_arg = cb_arg;
@@ -505,7 +499,7 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         lv->get.lrv_num_keys_out = LREG_USER_TYPE_ANY;
 
         // The root object is anonymous and has no "key".
-        lv->get.lrv_node_type_out = LREG_NODE_TYPE_ANON_OBJECT;
+        lv->get.lrv_value_type_out = LREG_VAL_TYPE_ANON_OBJECT;
         lv->lrv_key_string[0] = '\0';
         break;
 
@@ -557,8 +551,8 @@ lreg_subsystem_init(void)
 
     lRegRootNode.lrn_root_node = 1;
 
-    lreg_node_init(&lRegRootNode, LREG_NODE_TYPE_OBJECT, LREG_USER_TYPE_ROOT,
-                   lreg_root_node_cb, NULL, true, true);
+    lreg_node_init(&lRegRootNode, LREG_USER_TYPE_ROOT, lreg_root_node_cb,
+                   NULL, true);
 
     lRegInitialized = true;
 
