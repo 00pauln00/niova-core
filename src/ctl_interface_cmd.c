@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <regex.h>
 #include <stdio.h>
+#include <linux/limits.h>
 
 #include "log.h"
 #include "ctl_interface_cmd.h"
@@ -179,6 +180,30 @@ ctlic_request_done(struct ctlic_request *cr)
     }
 }
 
+#define CTLIC_OUTPUT_TMP_FILE(tmp_str, file_name)                       \
+    const size_t CTLIC_OUTPUT_TMP_FILE_file_name_len =                  \
+        strnlen((file_name), PATH_MAX);                                 \
+    if (CTLIC_OUTPUT_TMP_FILE_file_name_len >= PATH_MAX - 2)            \
+        return -ENAMETOOLONG;                                           \
+    DECL_AND_FMT_STRING((tmp_str),                                      \
+                        CTLIC_OUTPUT_TMP_FILE_file_name_len + 2,        \
+                        ".%s", file_name);
+
+static int
+ctlic_rename_output_file(int out_dirfd, struct ctlic_request *cr)
+{
+    if (out_dirfd < 0 || !cr || !cr->cr_num_matched_tokens)
+        return -EINVAL;
+
+    struct ctlic_file *cf = &cr->cr_file[CTLIC_OUTPUT_FILE];
+    if (cf->cf_fd < 0 || !cf->cf_file_name)
+        return -EINVAL;
+
+    CTLIC_OUTPUT_TMP_FILE(tmp_name, cf->cf_file_name);
+
+    return renameat(out_dirfd, tmp_name, out_dirfd, cf->cf_file_name);
+}
+
 static int
 ctlic_open_output_file(int out_dirfd, struct ctlic_request *cr)
 {
@@ -207,12 +232,17 @@ ctlic_open_output_file(int out_dirfd, struct ctlic_request *cr)
         }
     }
 
-    if (!found || cmt->cmt_num_depth_segments != 1)
+    if (!found || cmt->cmt_num_depth_segments != 1 ||
+        !cmt->cmt_depth_segments[0].cds_str)
         return -EBADMSG;
 
     cf->cf_file_name = cmt->cmt_depth_segments[0].cds_str;
 
-    cf->cf_fd = openat(out_dirfd, cf->cf_file_name,
+    /* See macro definition above (the function may return from here).
+     */
+    CTLIC_OUTPUT_TMP_FILE(tmp_name, cf->cf_file_name);
+
+    cf->cf_fd = openat(out_dirfd, tmp_name,
                        O_WRONLY | O_CREAT | O_TRUNC, 0644);
 
     return cf->cf_fd < 0 ? -errno : 0;
@@ -872,6 +902,7 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
 
     ctlic_scan_registry(&cr);
 
+    rc = ctlic_rename_output_file(cch->ctlih_output_dirfd, &cr);
 done:
     ctlic_request_done(&cr);
 }

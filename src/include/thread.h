@@ -18,7 +18,7 @@
 #include "queue.h"
 #include "watchdog.h"
 
-#define MAX_THREAD_NAME 31
+#define MAX_THREAD_NAME 31UL
 
 #define THR_PAUSE_DEFAULT_USECS 1000
 

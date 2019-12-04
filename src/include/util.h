@@ -15,7 +15,7 @@
 char name[len + 1];                                             \
 {                                                               \
     int rc = snprintf(name, len, fmt, ##__VA_ARGS__);           \
-    FATAL_IF((rc > len), "rc=%d, requested len=%u", rc, len);   \
+    FATAL_IF((rc > len), "rc=%d, requested len=%zu", rc, len);  \
 }
 
 #define DECL_AND_INIT_STRING(name, str_len, init_char, init_char_len)   \
