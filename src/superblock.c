@@ -201,7 +201,7 @@ superblock_read_launch(struct niosd_device *ndev)
 
     rc = niosd_io_request_init(niorq,
                                niosd_device_to_ctx(ndev,
-                                                   NIOSD_IO_CTX_TYPE_DEFAULT),
+                                                   NIOSD_IO_CTX_TYPE_SYSTEM),
                                SB_PRIMARY_PBLK_ID, NIOSD_REQ_TYPE_PREAD, 8,
                                sb_blk_buf, superblock_read_continue_cb, NULL);
     if (rc)

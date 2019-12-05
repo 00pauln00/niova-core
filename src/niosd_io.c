@@ -74,7 +74,7 @@ niosd_set_num_aio_events(void)
     if (niosdMaxAioEvents && niosdMaxAioNreqsSubmit)
         return;
 
-    const int num_aio_ctxs = NIOSD_IO_CTX_TYPE_MAX - NIOSD_IO_CTX_TYPE_DEFAULT;
+    const int num_aio_ctxs = NIOSD_IO_CTX_TYPE_MAX;
     const size_t env = niosd_num_aio_events_from_env();
     const size_t proc = niosd_max_aio_events_from_proc();
 
@@ -404,7 +404,7 @@ niosd_device_ctxs_init(struct niosd_device *ndev)
 {
     enum niosd_io_ctx_type i;
 
-    for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
+    for (i = NIOSD_IO_CTX_TYPE_MIN; i < NIOSD_IO_CTX_TYPE_MAX; i++)
     {
         struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
         struct niosd_io_compl_event_ring *cer = &nioctx->nioctx_cer;
@@ -466,7 +466,7 @@ niosd_device_close(struct niosd_device *ndev)
     if (ndev_status == NIOSD_DEV_STATUS_RUNNING)
     {
         enum niosd_io_ctx_type i;
-        for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
+        for (i = NIOSD_IO_CTX_TYPE_MIN; i < NIOSD_IO_CTX_TYPE_MAX; i++)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
 
@@ -491,7 +491,7 @@ niosd_device_close(struct niosd_device *ndev)
     if (ndev_status == NIOSD_DEV_STATUS_RUNNING)
     {
         enum niosd_io_ctx_type i;
-        for (i = NIOSD_IO_CTX_TYPE_DEFAULT; i < NIOSD_IO_CTX_TYPE_MAX; i++)
+        for (i = NIOSD_IO_CTX_TYPE_MIN; i < NIOSD_IO_CTX_TYPE_MAX; i++)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
 

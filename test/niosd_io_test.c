@@ -203,7 +203,7 @@ niot_submit_request(struct niosd_device *ndev, struct niosd_io_request *niorq)
     int rc =
         niosd_io_request_init(niorq,
                               niosd_device_to_ctx(ndev,
-                                                  NIOSD_IO_CTX_TYPE_DEFAULT),
+                                                  NIOSD_IO_CTX_TYPE_USER),
                               niot_get_pblk_id(&ndev->ndev_stb, val),
                               niot_get_op_type(rwRatio, val),
                               ioNumSectors,
@@ -306,7 +306,7 @@ niot_spin_niorq_completion(struct niosd_device *ndev,
                            const struct timespec *start_time)
 {
     struct niosd_io_ctx *nioctx =
-        niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_DEFAULT);
+        niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_USER);
 
     useconds_t sleep_usecs = pollSleepUsecs;
     bool timeout_reached = false;
@@ -479,7 +479,7 @@ prepare_epoll(struct niosd_device *ndev)
     FATAL_IF((rc), "epoll_mgr_setup(): %s", strerror(-rc));
 
     struct niosd_io_ctx *nioctx =
-        niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_DEFAULT);
+        niosd_device_to_ctx(ndev, NIOSD_IO_CTX_TYPE_USER);
 
     int fd = nioctx_blocking_mode_fd_get(nioctx);
     FATAL_IF((fd < 0), "nioctx_blocking_mode_fd_get(): %s", strerror(-fd));
@@ -509,7 +509,7 @@ main(int argc, char **argv)
     niosd_device_params_init(testDevName, &ndev);
     if (useEpoll)
         niosd_device_params_enable_blocking_mode(&ndev,
-                                                 NIOSD_IO_CTX_TYPE_DEFAULT);
+                                                 NIOSD_IO_CTX_TYPE_USER);
 
     /* Allocate an aligned buffer which can hold a lots of concurrent requests.
      */
@@ -521,7 +521,7 @@ main(int argc, char **argv)
     if (rc)
         exit(rc);
 
-    /* NIOSD_IO_CTX_TYPE_DEFAULT should have an epoll'able fd for us.
+    /* NIOSD_IO_CTX_TYPE_USER should have an epoll'able fd for us.
      */
     if (useEpoll)
         prepare_epoll(&ndev);

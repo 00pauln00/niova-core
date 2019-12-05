@@ -117,14 +117,12 @@ enum niosd_io_request_type
 //  NIOSD_REQ_TYPE_PWRITEV = 7,
 };
 
-#define NIOSD_IO_CTXS_MAX 2
-
 enum niosd_io_ctx_type
 {
-    NIOSD_IO_CTX_TYPE_ANY       = 0,
-    NIOSD_IO_CTX_TYPE_DEFAULT   = 1,
-    NIOSD_IO_CTX_TYPE_COMPACTOR = 2,
-    NIOSD_IO_CTX_TYPE_MAX       = 3,
+    NIOSD_IO_CTX_TYPE_MIN    = 0,
+    NIOSD_IO_CTX_TYPE_USER   = NIOSD_IO_CTX_TYPE_MIN,
+    NIOSD_IO_CTX_TYPE_SYSTEM = 1,
+    NIOSD_IO_CTX_TYPE_MAX    = 2,
 };
 
 static inline char
@@ -132,9 +130,9 @@ niosd_io_ctx_type_to_char(const enum niosd_io_ctx_type t)
 {
     switch (t)
     {
-    case NIOSD_IO_CTX_TYPE_DEFAULT:
+    case NIOSD_IO_CTX_TYPE_USER:
         return 'D';
-    case NIOSD_IO_CTX_TYPE_COMPACTOR:
+    case NIOSD_IO_CTX_TYPE_SYSTEM:
         return 'C';
     default:
         break;
@@ -148,9 +146,9 @@ niosd_io_ctx_type_to_string(const enum niosd_io_ctx_type t)
 {
     switch (t)
     {
-    case NIOSD_IO_CTX_TYPE_DEFAULT:
+    case NIOSD_IO_CTX_TYPE_USER:
         return "user";
-    case NIOSD_IO_CTX_TYPE_COMPACTOR:
+    case NIOSD_IO_CTX_TYPE_SYSTEM:
         return "system";
     default:
         break;
