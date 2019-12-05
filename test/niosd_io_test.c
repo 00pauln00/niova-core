@@ -94,7 +94,7 @@ epollCb(const struct epoll_handle *eph)
 
     SIMPLE_LOG_MSG(LL_DEBUG,
                    "epollCbExecCnt=%zu drain-bytes=%zd ncomp-here=%zd",
-                   num_complete, epollCbExecCnt, rc);
+                   epollCbExecCnt, rc, num_complete);
 
     evp_increment_reader_cnt(&nioctx->nioctx_evp);
 }
