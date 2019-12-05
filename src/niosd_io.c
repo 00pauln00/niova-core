@@ -813,16 +813,13 @@ niosd_io_submit(struct niosd_io_request **niorqs, long int nreqs)
     return niosd_io_submit_aio_internal(niorqs, nreqs);
 }
 
-static void
+static niosd_io_completion_cb_ctx_t
 niosd_io_request_complete(struct niosd_io_request *niorq,
                           const struct io_event *event,
                           const struct timespec now)
 {
     niosd_io_request_time_stamp_apply(niorq,
                                       NIOSD_IO_REQ_TIMER_CB_EXEC, now);
-
-    niorq->niorq_res = event->res;
-    niorq->niorq_res2 = event->res2;
 
     const enum log_level log_level =
         niorq_has_error(niorq) ? LL_WARN : LL_DEBUG;
