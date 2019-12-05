@@ -5,10 +5,7 @@
  */
 
 #include "env.h"
-#include "ctor.h"
 #include "log.h"
-
-REGISTRY_ENTRY_FILE_GENERATE;
 
 enum log_level allocLogLevel = LL_DEBUG;
 
@@ -18,19 +15,9 @@ alloc_log_level_set(enum log_level ll)
     allocLogLevel = ll;
 }
 
-init_ctx_t
-alloc_subsys_init(void)
+void
+alloc_env_var_cb(const struct niova_env_var *nev)
 {
-    FUNC_ENTRY(LL_DEBUG);
-
-    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_alloc_log_level);
-
-    if (ev && ev->nev_present)
-	log_level_set(ev->nev_long_value);
-};
-
-destroy_ctx_t
-alloc_subsys_destroy(void)
-{
-    FUNC_ENTRY(LL_DEBUG);
-};
+    if (nev && nev->nev_present)
+        alloc_log_level_set((enum log_level)nev->nev_long_value);
+}

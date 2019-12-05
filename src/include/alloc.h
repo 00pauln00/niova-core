@@ -35,12 +35,9 @@ extern enum log_level allocLogLevel;
 void
 alloc_log_level_set(enum log_level ll);
 
-init_ctx_t
-alloc_subsys_init(void)
-    __attribute__ ((constructor (ALLOC_SUBSYS_CTOR_PRIORITY)));
+struct niova_env_var;
 
-destroy_ctx_t
-alloc_subsys_destroy(void)
-    __attribute__ ((destructor (ALLOC_SUBSYS_CTOR_PRIORITY)));
+void
+alloc_env_var_cb(const struct niova_env_var *nev);
 
 #endif

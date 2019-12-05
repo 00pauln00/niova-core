@@ -9,8 +9,10 @@
 
 #include "common.h"
 #include "epoll_mgr.h"
+#include "env.h"
+#include "ctor.h"
 
-#define EPOLL_MGR_MAX_EVENTS 4
+static size_t epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
 
 int
 epoll_mgr_setup(struct epoll_mgr *epm)
@@ -111,7 +113,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     if (!epm || !epm->epm_ready)
         return -EINVAL;
 
-    struct epoll_event evs[EPOLL_MGR_MAX_EVENTS];
+    struct epoll_event evs[epollMgrNumEvents];
 
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, EPOLL_MGR_MAX_EVENTS, timeout);
@@ -128,4 +130,11 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     }
 
     return nevents;
+}
+
+void
+epoll_mgr_env_var_cb(const struct niova_env_var *nev)
+{
+    if (nev && nev->nev_present)
+        epollMgrNumEvents = nev->nev_long_value;
 }

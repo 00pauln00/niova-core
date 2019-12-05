@@ -12,6 +12,8 @@
 #include "log.h"
 #include "niosd_io.h"
 #include "watchdog.h"
+#include "epoll_mgr.h"
+#include "alloc.h"
 
 static bool niovaEnvVarsSubsysInit = false;
 
@@ -79,6 +81,18 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_min       = 0,
         .nev_max       = LL_MAX,
         .nev_present   = false,
+        .nev_cb        = alloc_env_var_cb,
+    },
+    {
+        .nev_name      = "NIOVA_EPOLL_MGR_NEVENTS",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
+        .nev_var_num   = NIOVA_ENV_VAR_epoll_mgr_nevents,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = EPOLL_MGR_DEF_EVENTS,
+        .nev_min       = EPOLL_MGR_MIN_EVENTS,
+        .nev_max       = EPOLL_MGR_MAX_EVENTS,
+        .nev_present   = false,
+        .nev_cb        = epoll_mgr_env_var_cb,
     },
 };
 

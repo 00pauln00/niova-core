@@ -9,6 +9,10 @@
 
 #include <sys/epoll.h>
 
+#define EPOLL_MGR_MIN_EVENTS 1
+#define EPOLL_MGR_DEF_EVENTS 4
+#define EPOLL_MGR_MAX_EVENTS 128
+
 struct epoll_handle
 {
     int          eph_fd;
@@ -23,6 +27,11 @@ struct epoll_mgr
     int          epm_epfd;
     unsigned int epm_ready:1;
 };
+
+struct niova_env_var;
+
+void
+epoll_mgr_env_var_cb(const struct niova_env_var *nev);
 
 int
 epoll_mgr_setup(struct epoll_mgr *epm);
