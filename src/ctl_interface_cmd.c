@@ -19,7 +19,7 @@
 #include "util_thread.h"
 #include "io.h"
 
-REGISTRY_ENTRY_FILE_GENERATE;
+//REGISTRY_ENTRY_FILE_GENERATE;
 
 #define CTLIC_BUFFER_SIZE        4096
 #define CTLIC_MAX_TOKENS_PER_REQ 8

@@ -247,21 +247,23 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 #define DBG_LREG_NODE(log_level, lrn, fmt, ...)                         \
 {                                                                       \
     struct lreg_value lrv;                                              \
-    log_msg(log_level, "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,         \
-            (lrn),                                                      \
-            (const char *)({                                            \
-                (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, (lrn), &lrv);   \
-                LREG_VALUE_TO_OUT_STR(&lrv);                            \
-            }),                                                         \
-            lreg_node_to_user_type(lrn),                                \
-            lreg_node_to_install_state(lrn),                            \
-            (lrn)->lrn_statically_allocated  ? 's' : '-',               \
-            (lrn)->lrn_tmp_node              ? 't' : '-',               \
-            (lrn)->lrn_root_node             ? 'r' : '-',               \
-            (lrn)->lrn_may_destroy           ? 'd' : '-',               \
-            (lrn)->lrn_monitor               ? 'm' : '-',               \
-            (lrn)->lrn_array_element         ? 'a' : '-',               \
-            (lrn)->lrn_cb_arg, ##__VA_ARGS__);                          \
+    SIMPLE_LOG_MSG(log_level,                                           \
+                   "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,             \
+                   (lrn),                                               \
+                   (const char *)({                                     \
+                           (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME,      \
+                                         (lrn), &lrv);                  \
+                           LREG_VALUE_TO_OUT_STR(&lrv);                 \
+                       }),                                              \
+                   lreg_node_to_user_type(lrn),                         \
+                   lreg_node_to_install_state(lrn),                     \
+                   (lrn)->lrn_statically_allocated  ? 's' : '-',        \
+                   (lrn)->lrn_tmp_node              ? 't' : '-',        \
+                   (lrn)->lrn_root_node             ? 'r' : '-',        \
+                   (lrn)->lrn_may_destroy           ? 'd' : '-',        \
+                   (lrn)->lrn_monitor               ? 'm' : '-',        \
+                   (lrn)->lrn_array_element         ? 'a' : '-',        \
+                   (lrn)->lrn_cb_arg, ##__VA_ARGS__);                   \
 }
 
 static inline bool
