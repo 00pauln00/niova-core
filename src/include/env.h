@@ -33,7 +33,8 @@ enum niova_env_var_num
     NIOVA_ENV_VAR_watchdog_disable   = 3,
     NIOVA_ENV_VAR_watchdog_frequency = 4,
     NIOVA_ENV_VAR_watchdog_stall_cnt = 5,
-    NIOVA_ENV_VAR_MAX                = 6,
+    NIOVA_ENV_VAR_alloc_log_level    = 6,
+    NIOVA_ENV_VAR_MAX                = 7,
 };
 
 struct niova_env_var

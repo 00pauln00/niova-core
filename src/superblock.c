@@ -4,7 +4,9 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2019
  */
 
+
 #include "common.h"
+#include "alloc.h"
 #include "util.h"
 #include "superblock.h"
 #include "niosd_io.h"
@@ -18,7 +20,7 @@ superblock_allocate(struct niosd_device *ndev)
     if (ndev->ndev_sb)
         return -EALREADY;
 
-    ndev->ndev_sb = niova_calloc(1, sizeof(struct sb_header_data));
+    ndev->ndev_sb = niova_calloc((size_t)1, sizeof(struct sb_header_data));
 
     return !ndev->ndev_sb ? -errno : 0;
 }
@@ -54,7 +56,7 @@ superblock_read_done(struct niosd_io_request *niorq)
 static void
 superblock_read_error(const struct niosd_io_request *niorq)
 {
-    if (niorq->niorq_res || niorq->niorq_res2)
+    if (niorq_has_error(niorq))
     {
         struct niosd_device *ndev = niosd_ctx_to_device(niorq->niorq_ctx);
         struct sb_header_data *sb = ndev->ndev_sb;
@@ -148,7 +150,7 @@ superblock_read_continue_cb(struct niosd_io_request *niorq)
 
     NIOVA_ASSERT(sb_2_current_replica_num(sb) < sb_2_replica_num(sb));
 
-    if (niorq->niorq_res || niorq->niorq_res2)
+    if (niorq_has_error(niorq))
     {
         superblock_read_error(niorq);
         superblock_read_done(niorq);

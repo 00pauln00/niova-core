@@ -8,6 +8,7 @@
 #include "lock.h"
 #include "log.h"
 
+#include "alloc.h"
 #include "chunk_handle.h"
 #include "ref_tree_proto.h"
 #include "vblkdev_handle.h"

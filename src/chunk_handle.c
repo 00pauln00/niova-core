@@ -5,6 +5,7 @@
  */
 
 #include "common.h"
+#include "alloc.h"
 #include "lock.h"
 #include "log.h"
 #include "ref_tree_proto.h"

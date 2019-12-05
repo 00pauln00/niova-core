@@ -7,6 +7,7 @@
 #include "common.h"
 #include "log.h"
 
+#include "alloc.h"
 #include "ref_tree_proto.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;

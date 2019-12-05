@@ -18,6 +18,7 @@
 #include "registry.h"
 #include "ctl_interface.h"
 #include "random.h"
+#include "alloc.h"
 
 #include "niosd_io.h"
 #include "epoll_mgr.h"

@@ -8,6 +8,7 @@ LDFLAGS		= -lpthread -laio -luuid -lssl -lcrypto
 NIOVA_LCOV      = niova-lcov
 
 SYS_CORE_INCLUDES = \
+	src/include/alloc.h \
 	src/include/binary_hist.h \
 	src/include/common.h \
 	src/include/ctl_interface_cmd.h \
@@ -28,6 +29,7 @@ SYS_CORE_INCLUDES = \
 	src/include/watchdog.h
 
 SYS_CORE_OBJFILES = \
+	src/alloc.o \
 	src/ctl_interface.o \
 	src/ctl_interface_cmd.o \
 	src/env.o \

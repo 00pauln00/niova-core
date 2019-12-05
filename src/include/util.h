@@ -25,10 +25,6 @@ char name[str_len + 1] = {0};                                           \
         name[i] = init_char;                                            \
 }
 
-#define niova_malloc malloc
-#define niova_calloc calloc
-#define niova_free   free
-
 #define niova_unstable_clock(dest) clock_gettime(CLOCK_MONOTONIC, (dest))
 #define niova_stable_clock(dest) clock_gettime(CLOCK_MONOTONIC_RAW, (dest))
 #define niova_realtime_clock(dest) clock_gettime(CLOCK_REALTIME, (dest))

@@ -70,6 +70,16 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = WATCHDOG_MAX_STALL_CNT,
         .nev_present   = false,
     },
+    {
+        .nev_name      = "NIOVA_ALLOC_LOG_LEVEL",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_LOG,
+        .nev_var_num   = NIOVA_ENV_VAR_alloc_log_level,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = LL_WARN,
+        .nev_min       = 0,
+        .nev_max       = LL_MAX,
+        .nev_present   = false,
+    },
 };
 
 static void

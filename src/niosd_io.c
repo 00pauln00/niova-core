@@ -17,6 +17,7 @@
 #include "util.h"
 #include "log.h"
 #include "env.h"
+#include "alloc.h"
 
 #include "thread.h"
 #include "niosd_io.h"
