@@ -197,6 +197,7 @@ watchdog_svc_thread(void *arg)
         ts.tv_sec += wdi->wdi_timeout_sec;
 
         WDI_LOCK(wdi);
+
         int rc = pthread_cond_timedwait(&wdi->wdi_cond, &wdi->wdi_mutex, &ts);
 
         FATAL_IF_strerror((rc && rc != ETIMEDOUT),

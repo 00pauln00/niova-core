@@ -17,6 +17,7 @@ test/registry_test
 test_niosd.device
 niova-lcov/
 niova-lcov.out
+niova-ctl
 *.diff
 a.out
 *-SAVE

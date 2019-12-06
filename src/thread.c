@@ -7,6 +7,7 @@
 #define _GNU_SOURCE 1
 #include <pthread.h>
 #undef _GNU_SOURCE
+#include <signal.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -19,6 +20,37 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 __thread char thrName[MAX_THREAD_NAME + 1];
 __thread const struct thread_ctl *thrCtl;
+
+static void
+thr_ctl_basic_sighandler(int signum)
+{
+    SIMPLE_LOG_MSG(LL_NOTIFY, "caught signal=%d %p", signum, thrCtl);
+
+    if (!thrCtl)
+        return;
+
+    ((struct thread_ctl *)thrCtl)->tc_caught_stop_signal = 1;
+}
+
+static void
+thread_ctl_install_sighandlers(void)
+{
+    static bool handlers_installed = false;
+    if (handlers_installed)
+        return;
+
+    handlers_installed = true;
+
+    struct sigaction oldact;
+    FATAL_IF_strerror((sigaction(SIGALRM, NULL, &oldact)), "sigaction: ");
+
+    struct sigaction newact = oldact;
+    newact.sa_handler = &thr_ctl_basic_sighandler;
+    newact.sa_flags = 0;
+    sigemptyset(&newact.sa_mask);
+
+    FATAL_IF_strerror((sigaction(SIGALRM, &newact, NULL)), "sigaction: ");
+}
 
 static thread_exec_ctx_t
 thread_ctl_monitor_via_watchdog_internal(struct thread_ctl *tc)
@@ -50,7 +82,13 @@ thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
 thread_exec_ctx_bool_t
 thread_ctl_should_continue(const struct thread_ctl *tc)
 {
-    return tc->tc_halt ? false : true;
+    return tc->tc_halt || tc->tc_caught_stop_signal ? false : true;
+}
+
+thread_exec_ctx_bool_t
+thread_ctl_should_continue_self(void)
+{
+    return thrCtl ? thread_ctl_should_continue(thrCtl) : true;
 }
 
 static thread_exec_ctx_t
@@ -117,7 +155,10 @@ thread_ctl_loop_test(struct thread_ctl *tc)
     bool should_continue = thread_ctl_should_continue(tc);
 
     if (should_continue)
+    {
         thread_ctl_pause_if_should(tc);
+        should_continue = thread_ctl_should_continue(tc);
+    }
 
     return should_continue;
 }
@@ -184,6 +225,8 @@ int
 thread_create(void *(*start_routine)(void *), struct thread_ctl *tc,
               const char *name, void *arg, const pthread_attr_t *attr)
 {
+    thread_ctl_install_sighandlers();
+
     return thread_create_internal(start_routine, tc, name, arg, attr, false);
 }
 
@@ -210,17 +253,19 @@ thread_halt_and_destroy(struct thread_ctl *tc)
 
     void *retval;
     int my_errno = 0;
+
+    int kill_rc = pthread_kill(tc->tc_thread_id, SIGALRM);
     int rc = pthread_join(tc->tc_thread_id, &retval);
 
     if (rc)
         my_errno = errno;
 
     const enum log_level log_level =
-        (rc || (long int *)retval) ? LL_WARN : LL_NOTIFY;
+        (kill_rc || rc || (long int *)retval) ? LL_WARN : LL_NOTIFY;
 
     DBG_THREAD_CTL(log_level, tc,
-                   "pthread_join(): rc=%d errno=%s, thr_retval=%p",
-                   rc, strerror(my_errno), (long int *)retval);
+                   "pthread_join(): rc=%d:%d errno=%s, thr_retval=%p",
+                   kill_rc, rc, strerror(my_errno), (long int *)retval);
 
     return rc;
 }

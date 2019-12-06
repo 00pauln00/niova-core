@@ -33,7 +33,8 @@ struct thread_ctl
                               tc_user_pause_toggle:1,
                               tc_watchdog:1,
                               tc_is_utility_thread:1,
-                              tc_is_watchdog_thread:1;
+                              tc_is_watchdog_thread:1,
+                              tc_caught_stop_signal:1;
     pthread_t                 tc_thread_id;
     useconds_t                tc_user_pause_usecs;
     useconds_t                tc_pause_usecs;
@@ -51,7 +52,8 @@ struct thread_ctl
             (tc)->tc_arg, ##__VA_ARGS__)
 
 #define THREAD_LOOP_WITH_CTL(tc)                                        \
-    for (; thread_ctl_loop_test(tc); thread_ctl_pause_if_should(tc))
+    for (thread_ctl_set_self(tc); thread_ctl_loop_test(tc);             \
+         thread_ctl_pause_if_should(tc))
 
 thread_exec_ctx_bool_t
 thread_ctl_loop_test(struct thread_ctl *);
@@ -126,6 +128,9 @@ thread_ctl_set_self(struct thread_ctl *tc)
 {
     thrCtl = tc;
 }
+
+thread_exec_ctx_bool_t
+thread_ctl_should_continue_self(void);
 
 static inline bool
 thread_ctl_is_utility_thread(void)

@@ -32,6 +32,8 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define NIOSD_MIN_DEVICE_SZ_IN_BYTES                    \
     (NIOSD_MIN_DEVICE_SZ_IN_PBLKS * PBLK_SIZE_BYTES)
 
+#define NIOSD_IO_GETEVENTS_WAIT_TS {.tv_sec = 10, .tv_nsec = 0};
+
 static size_t niosdMaxAioEvents;
 static size_t niosdMaxAioNreqsSubmit;
 
@@ -267,13 +269,17 @@ niosd_device_event_thread_getevents(struct niosd_io_ctx *nioctx)
     int rc = 0;
 
     struct io_event *events_head;
+    struct timespec ts = NIOSD_IO_GETEVENTS_WAIT_TS;
 
     long int num_events_to_get =
         niosd_device_event_ring_get_next_to_fill(nioctx, &events_head);
 
+    /* io_getevents() may block for a while, so prior to entering, perform
+     * a check to see if a stop signal had been received.
+     */
     int num_events_completed =
         io_getevents(nioctx->nioctx_ctx, NIOSD_GETEVENTS_MIN,
-                     num_events_to_get, &events_head[0], NULL);
+                     num_events_to_get, &events_head[0], &ts);
 
     log_msg((num_events_completed < 0 ? LL_NOTIFY : LL_TRACE),
             "completed=%d max_to_get=%ld event_buf=%p",
@@ -470,13 +476,18 @@ niosd_device_close(struct niosd_device *ndev)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
 
+            thread_halt_and_destroy(&nioctx->nioctx_thr_ctl);
+        }
+
+        for (i = NIOSD_IO_CTX_TYPE_MIN; i < NIOSD_IO_CTX_TYPE_MAX; i++)
+        {
+            struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
+
             if (nioctx->nioctx_use_blocking_mode)
                 (int)nioctx_blocking_mode_cleanup(nioctx);
 
             int rc = io_destroy(nioctx->nioctx_ctx);
             FATAL_IF((rc != 0), "io_destroy():  %s", strerror(-rc));
-
-            thread_halt_and_destroy(&nioctx->nioctx_thr_ctl);
         }
     }
 

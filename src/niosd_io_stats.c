@@ -225,7 +225,7 @@ nioctx_stats_dump(const struct niosd_io_ctx *nioctx)
 
         for (int k = 0; k < binary_hist_size(bh); k++)
         {
-            SIMPLE_LOG_MSG(LL_NOTIFY,
+            SIMPLE_LOG_MSG(LL_TRACE,
                            "%d: %lld,%lld: %lld", j,
                            binary_hist_lower_bucket_range(bh, k),
                            binary_hist_upper_bucket_range(bh, k),

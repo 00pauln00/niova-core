@@ -66,7 +66,14 @@ ALL_INCLUDES      = $(CORE_INCLUDES) $(SYS_CORE_INCLUDES)
 ALL_OBJFILES      = src/niova.o $(ALL_CORE_OBJFILES)
 TARGET		  = niova
 
-all: $(TARGET)
+CTL_OBJFILES = src/niova-ctl.o $(ALL_CORE_OBJFILES)
+CTL_TARGET = niova-ctl
+
+all: $(TARGET) $(CTL_TARGET)
+
+
+$(CTL_TARGET): $(CTL_OBJFILES) $(ALL_INCLUDES)
+	$(CC) $(CFLAGS) -o $(CTL_TARGET) $(CTL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 $(TARGET): $(ALL_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
@@ -114,6 +121,11 @@ check: test_build
 asan: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 asan: tests
 asan: niova
+asan: niova-ctl
+
+debug: CFLAGS = $(DEBUG_CFLAGS)
+debug: niova
+debug: niova-ctl
 
 cov : CFLAGS = $(COVERAGE_FLAGS)
 cov : test_build
@@ -134,7 +146,8 @@ pahole : tests
 
 clean :
 	rm -fv test/simple_test test/niosd_io_test test/ref_test_test \
-	$(ALL_OBJFILES) $(TARGET) *~ src/*.gcno src/*.gcda *.gcno *.gcda \
+	$(ALL_OBJFILES) $(CTL_OBJFILES) $(TARGET) $(CTL_TARGET) \
+	*~ src/*.gcno src/*.gcda *.gcno *.gcda \
 	$(NIOVA_LCOV).out
 
 clean-cov: clean

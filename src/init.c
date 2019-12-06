@@ -3,7 +3,6 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
-
 #include "common.h"
 #include "log.h"
 
