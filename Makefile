@@ -16,6 +16,7 @@ SYS_CORE_INCLUDES = \
 	src/include/env.h \
 	src/include/epoll_mgr.h \
 	src/include/ev_pipe.h \
+	src/include/file_util.h \
 	src/include/io.h \
 	src/include/init.h \
 	src/include/lock.h \
@@ -35,6 +36,7 @@ SYS_CORE_OBJFILES = \
 	src/env.o \
 	src/epoll_mgr.o \
 	src/ev_pipe.o \
+	src/file_util.o \
 	src/init.o \
 	src/io.o \
 	src/log.o \

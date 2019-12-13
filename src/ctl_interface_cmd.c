@@ -18,6 +18,7 @@
 #include "ctl_interface.h"
 #include "util_thread.h"
 #include "io.h"
+#include "file_util.h"
 
 //REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -256,21 +257,6 @@ ctlic_open_and_read_input_file(const struct ctli_cmd_handle *cch,
     if (!input_cmd_file || !cr)
         return -EINVAL;
 
-    struct stat stb;
-
-    /* Lookup the file, check the type and file size.
-     */
-    int rc = fstatat(cch->ctlih_input_dirfd, input_cmd_file, &stb,
-                     AT_SYMLINK_NOFOLLOW);
-    if (rc < 0)
-        return -errno;
-
-    else if (!S_ISREG(stb.st_mode))
-        return -ENOTSUP;
-
-    else if (stb.st_size >= CTLIC_BUFFER_SIZE)
-        return -E2BIG;
-
     /* Init and assign buffers.
      */
     ctlic_request_prepare(cr);
@@ -279,37 +265,17 @@ ctlic_open_and_read_input_file(const struct ctli_cmd_handle *cch,
 
     cf_in->cf_file_name = input_cmd_file;
 
-    /* Open the file
-     */
-    cf_in->cf_fd = openat(cch->ctlih_input_dirfd, input_cmd_file, O_RDONLY);
-    if (cf_in->cf_fd < 0)
-        return -errno;
-
-    /* Read the file
-     */
     cf_in->cf_nbytes_written =
-        io_read(cf_in->cf_fd, cf_in->cf_buffer, stb.st_size);
+        file_util_open_and_read(cch->ctlih_input_dirfd, input_cmd_file,
+                                cf_in->cf_buffer, CTLIC_BUFFER_SIZE, NULL);
 
-    /* Check for any basic errors
-     */
     if (cf_in->cf_nbytes_written < 0)
     {
-        rc = (int)cf_in->cf_nbytes_written;
-        goto error;
-    }
-    /* The file's size has shrunk - ignore it
-     */
-    else if (cf_in->cf_nbytes_written != stb.st_size)
-    {
-        rc = -EMSGSIZE;
-        goto error;
+        ctlic_request_done(cr);
+        return (int)cf_in->cf_nbytes_written;
     }
 
     return 0;
-
-error:
-    ctlic_request_done(cr);
-    return rc;
 }
 
 static int
