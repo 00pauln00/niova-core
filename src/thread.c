@@ -255,6 +255,9 @@ thread_halt_and_destroy(struct thread_ctl *tc)
     int my_errno = 0;
 
     int kill_rc = pthread_kill(tc->tc_thread_id, SIGALRM);
+    if (kill_rc == ESRCH) // If the thread is already gone, ignore the error.
+        kill_rc = 0;
+
     int rc = pthread_join(tc->tc_thread_id, &retval);
 
     if (rc)
