@@ -14,6 +14,7 @@
 #include "watchdog.h"
 #include "epoll_mgr.h"
 #include "alloc.h"
+//#include "ctl_svc.h"
 
 static bool niovaEnvVarsSubsysInit = false;
 
@@ -93,6 +94,14 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = EPOLL_MGR_MAX_EVENTS,
         .nev_present   = false,
         .nev_cb        = epoll_mgr_env_var_cb,
+    },
+    {
+        .nev_name      = "NIOVA_LOCAL_CTL_SVC_DIR",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
+        .nev_var_num   = NIOVA_ENV_VAR_local_ctl_svc_dir,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+//        .nev_cb        = ctl_svc_set_local_dir,
     },
 };
 

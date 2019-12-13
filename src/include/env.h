@@ -22,6 +22,7 @@ enum niova_env_subsystem
     NIOVA_ENV_SUBSYSTEM_AIO,
     NIOVA_ENV_SUBSYSTEM_INOTIFY,
     NIOVA_ENV_SUBSYSTEM_WATCHDOG,
+    NIOVA_ENV_SUBSYSTEM_CTL_SVC,
 };
 
 enum niova_env_var_num
@@ -35,7 +36,8 @@ enum niova_env_var_num
     NIOVA_ENV_VAR_watchdog_stall_cnt = 5,
     NIOVA_ENV_VAR_alloc_log_level    = 6,
     NIOVA_ENV_VAR_epoll_mgr_nevents  = 7,
-    NIOVA_ENV_VAR_MAX                = 8,
+    NIOVA_ENV_VAR_local_ctl_svc_dir  = 8,
+    NIOVA_ENV_VAR_MAX                = 9,
 };
 
 struct niova_env_var
