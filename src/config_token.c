@@ -13,8 +13,12 @@
     "^[0-9a-f]\\{8\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{12\\}$"
 
 #define IPADDR_REGEX                                                    \
-    "^(([0-9]\\|[1-9][0-9]\\|1[0-9]\\{2\\}\\|2[0-4][0-9]\\|25[0-5])\\.)\\{3\\}([0-9]\\|[1-9][0-9]\\|1[0-9]\\{2\\}\\|2[0-4][0-9]\\|25[0-5])$"
+    "^\\(\\([0-9]\\|[1-9][0-9]\\|1[0-9]\\{2\\}\\|2[0-4][0-9]\\|25[0-5]\\)\\.\\)\\{3\\}\\([0-9]\\|[1-9][0-9]\\|1[0-9]\\{2\\}\\|2[0-4][0-9]\\|25[0-5]\\)$"
 
+#define HOSTNAME_REGEX                                                  \
+    "^\\(\\([a-zA-Z0-9]\\|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9]\\)\\.\\)*\\([A-Za-z0-9]\\|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9]\\)$"
+
+#define PORT_REGEX "^[0-9]\\{1,5\\}$"
 
 static
 struct conf_token confTokens[CT_ID__MAX] =
@@ -34,14 +38,20 @@ struct conf_token confTokens[CT_ID__MAX] =
     [CT_ID_HOSTNAME] {
         .ct_name = "HOSTNAME",
         .ct_name_len = 8,
-        .ct_val_regex = NULL, //todo
+        .ct_val_regex = HOSTNAME_REGEX,
         .ct_id = CT_ID_HOSTNAME,
     },
     [CT_ID_PORT] {
         .ct_name = "PORT",
         .ct_name_len = 4,
-        .ct_val_regex = NULL, //todo
+        .ct_val_regex = PORT_REGEX,
         .ct_id = CT_ID_PORT,
+    },
+    [CT_ID_STORE] {
+        .ct_name = "STORE",
+        .ct_name_len = 5,
+        .ct_val_regex = NULL,
+        .ct_id = CT_ID_STORE,
     },
     [CT_ID_UUID] {
         .ct_name = "UUID",
@@ -273,7 +283,8 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
 
                 if (conf_token_value_check_regex(ct, ctsp->ctsp_value_buf))
                 {
-                    SIMPLE_LOG_MSG(LL_WARN, "value-buf=%s failed regex(`%s')",
+                    SIMPLE_LOG_MSG(LL_NOTIFY,
+                                   "value-buf=%s failed regex(`%s')",
                                    ctsp->ctsp_value_buf, ct->ct_val_regex);
                     return -EBADMSG;
                 }

@@ -113,6 +113,7 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 test_build: tests
 test_build:
 	mkdir -p /tmp/.niova
+	test/config_token_test
 	test/micro_test
 	test/binary_hist_test
 	test/simple_test
