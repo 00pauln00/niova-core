@@ -11,6 +11,7 @@ SYS_CORE_INCLUDES = \
 	src/include/alloc.h \
 	src/include/binary_hist.h \
 	src/include/common.h \
+	src/include/config_token.h \
 	src/include/ctl_interface_cmd.h \
 	src/include/ctl_interface.h \
 	src/include/env.h \
@@ -31,6 +32,7 @@ SYS_CORE_INCLUDES = \
 
 SYS_CORE_OBJFILES = \
 	src/alloc.o \
+	src/config_token.o \
 	src/ctl_interface.o \
 	src/ctl_interface_cmd.o \
 	src/env.o \
@@ -103,6 +105,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/registry_test \
 		test/registry_test.c \
 		$(SYS_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/config_token_test \
+		test/config_token_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 
 test_build: tests

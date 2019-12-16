@@ -32,3 +32,4 @@ uncommitted/
 TODO*
 *.json
 *.cmd
+test/config_token_test
