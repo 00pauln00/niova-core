@@ -60,7 +60,8 @@ struct conf_token confTokens[CT_ID__MAX] =
 const regex_t *
 conf_token_2_regex_ptr(enum conf_token_id token_id)
 {
-    return confTokens[token_id].ct_val_regex ?
+    return (confTokens[token_id].ct_val_regex &&
+            confTokens[token_id].ct_regex_allocated) ?
         &confTokens[token_id].ct_regex : NULL;
 }
 
