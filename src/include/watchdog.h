@@ -21,6 +21,7 @@
 
 typedef thread_exec_ctx_u64_t watchdog_exec_ctx_u64_t;
 typedef void watchdog_exec_ctx_t;
+typedef int watchdog_exec_ctx_int_t;
 
 struct watchdog_handle
 {

@@ -129,13 +129,21 @@ watchdog_remove_thread(struct watchdog_handle *wdh)
     return removed ? 0 : -ENOENT;
 }
 
-static watchdog_exec_ctx_t
+static int
+watchdog_subsystem_init_env_var_apply(struct watchdog_instance *wdi);
+
+static watchdog_exec_ctx_int_t
 watchdog_instance_init(struct watchdog_instance *wdi)
 {
     WDI_LOCK(wdi);
 
-    NIOVA_ASSERT(wdi);
-    NIOVA_ASSERT(!wdi->wdi_init);
+    if (wdi->wdi_init || wdi->wdi_halt)
+    {
+        WDI_UNLOCK(wdi);
+        return -EALREADY;
+    }
+
+    watchdog_subsystem_init_env_var_apply(wdi);
 
     // .. just support one watchdog for now.
     NIOVA_ASSERT(wdi->wdi_is_default);
@@ -144,6 +152,8 @@ watchdog_instance_init(struct watchdog_instance *wdi)
     wdi->wdi_init = 1;
 
     WDI_UNLOCK(wdi);
+
+    return 0;
 }
 
 static watchdog_exec_ctx_t
@@ -198,10 +208,14 @@ watchdog_svc_thread(void *arg)
 
         WDI_LOCK(wdi);
 
-        int rc = pthread_cond_timedwait(&wdi->wdi_cond, &wdi->wdi_mutex, &ts);
+        if (!wdi->wdi_halt)
+        {
+            int rc =
+                pthread_cond_timedwait(&wdi->wdi_cond, &wdi->wdi_mutex, &ts);
 
-        FATAL_IF_strerror((rc && rc != ETIMEDOUT),
-                          "pthread_cond_timedwait() (rc=%d): ", rc);
+            FATAL_IF_strerror((rc && rc != ETIMEDOUT),
+                              "pthread_cond_timedwait() (rc=%d): ", rc);
+        }
 
         WDI_UNLOCK(wdi);
 
@@ -241,13 +255,12 @@ watchdog_subsystem_init(void)
 {
     struct watchdog_instance *wdi = &defaultWdi;
 
-    if (wdi->wdi_init || watchdog_subsystem_init_env_var_apply(wdi))
+    int rc = watchdog_instance_init(wdi);
+    if (rc)
         return;
 
-    watchdog_instance_init(wdi);
-
-    int rc = thread_create(watchdog_svc_thread, &wdi->wdi_thread_ctl,
-                           "watchdog", wdi, NULL);
+    rc = thread_create(watchdog_svc_thread, &wdi->wdi_thread_ctl,
+                       "watchdog", wdi, NULL);
 
     FATAL_IF_strerror(rc, "pthread_create(): ");
 
