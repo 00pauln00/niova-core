@@ -29,6 +29,8 @@
 #define NBBY 8
 #endif
 
+#define IPV4_STRLEN 16 // char buffer size for ipv4 addresses
+
 #define READ_PIPE_IDX  0
 #define WRITE_PIPE_IDX 1
 #define NUM_PIPE_FD    2
@@ -74,9 +76,6 @@ typedef uint64_t  thread_exec_ctx_u64_t;
 #define PBLK_ID_ANY -1U
 #define PBLK_ID_MAX -2U
 #define MB_VERSION_ANY -1U
-
-typedef void     init_ctx_t;
-typedef void     destroy_ctx_t;
 
 #define NIOVA_OSD_ID_WORDS 2
 #define VBLKDEV_ID_WORDS 2

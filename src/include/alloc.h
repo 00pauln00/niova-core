@@ -15,11 +15,27 @@ extern enum log_level allocLogLevel;
 #define niova_malloc(size)                                           \
 ({                                                                   \
     void *ptr = malloc(size);                                        \
+    FATAL_IF_strerror((!ptr), "niova_malloc: ");                     \
     LOG_MSG(allocLogLevel, "niova_malloc: %p %zu", ptr, size);       \
     ptr;                                                             \
 })
 
+#define niova_malloc_can_fail(nmemb, size)                                \
+({                                                                        \
+    void *ptr = malloc(nmemb, size);                                      \
+    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu %zu", ptr, nmemb, size); \
+    ptr;                                                                  \
+})
+
 #define niova_calloc(nmemb, size)                                         \
+({                                                                        \
+    void *ptr = calloc(nmemb, size);                                      \
+    FATAL_IF_strerror((!ptr), "niova_calloc: ");                          \
+    LOG_MSG(allocLogLevel, "niova_calloc: %p %zu %zu", ptr, nmemb, size); \
+    ptr;                                                                  \
+})
+
+#define niova_calloc_can_fail(nmemb, size)                                \
 ({                                                                        \
     void *ptr = calloc(nmemb, size);                                      \
     LOG_MSG(allocLogLevel, "niova_calloc: %p %zu %zu", ptr, nmemb, size); \

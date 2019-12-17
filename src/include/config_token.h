@@ -42,16 +42,19 @@ struct conf_token_set
 struct conf_token_set_parser
 {
     struct conf_token_set ctsp_cts;
-    const char            *ctsp_input_buf;
-    size_t                 ctsp_input_buf_size;
-    size_t                 ctsp_input_buf_off;
-    char                  *ctsp_value_buf;
-    size_t                 ctsp_value_buf_size;
-    int                    ctsp_parse_err;
-    void                  *ctsp_cb_arg;
-    int                  (*ctsp_cb)(const struct conf_token *,
-                                    const char *, size_t, void *, int);
+    const char           *ctsp_input_buf;
+    size_t                ctsp_input_buf_size;
+    size_t                ctsp_input_buf_off;
+    char                 *ctsp_value_buf;
+    size_t                ctsp_value_buf_size;
+    int                   ctsp_parse_err;
+    int                 (*ctsp_cb)(const struct conf_token *,
+                                   const char *, size_t, void *, int);
+    void                 *ctsp_cb_arg;
 };
+
+const regex_t *
+conf_token_2_regex_ptr(enum conf_token_id token_id);
 
 int
 conf_token_set_parser_init(struct conf_token_set_parser *ctsp,
@@ -59,9 +62,9 @@ conf_token_set_parser_init(struct conf_token_set_parser *ctsp,
                            size_t input_buf_size,
                            char *value_buf,
                            size_t value_buf_size,
-                           void *cb_arg,
                            int (*ctsp_cb)(const struct conf_token *,
-                                          const char *, size_t, void *, int));
+                                          const char *, size_t, void *, int),
+                           void *cb_arg);
 
 void
 conf_token_set_init(struct conf_token_set *cts);
@@ -73,8 +76,8 @@ void
 conf_token_set_disable(struct conf_token_set *cts, enum conf_token_id token_id);
 
 bool
-conf_token_set_enabled(const struct conf_token_set *cts,
-                       enum conf_token_id token_id);
+conf_token_set_token_is_enabled(const struct conf_token_set *cts,
+                                enum conf_token_id token_id);
 
 int
 conf_token_set_parse(struct conf_token_set_parser *ctsp);

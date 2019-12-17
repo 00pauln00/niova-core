@@ -164,7 +164,7 @@ ctsp_cb(const struct conf_token *ct, const char *val_buf, size_t val_buf_sz,
 
     int rc = 0;
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "token-name %10s val_sz %02zu err %01d %s\n",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "token-name %10s val_sz %02zu err %01d %s",
                    ct->ct_name, val_buf_sz, error, val_buf);
 
     return rc;
@@ -203,7 +203,7 @@ main(void)
                                   cttTestItems[i].ctti_tokens[j]);
 
         conf_token_set_parser_init(&ctsp, buf, read_rc, value_buf,
-                                   CONF_FILE_MAX_VALUE_SIZE, NULL, ctsp_cb);
+                                   CONF_FILE_MAX_VALUE_SIZE, ctsp_cb, NULL);
 
         rc = conf_token_set_parse(&ctsp);
 

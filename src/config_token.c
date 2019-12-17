@@ -57,6 +57,13 @@ struct conf_token confTokens[CT_ID__MAX] =
     },
 };
 
+const regex_t *
+conf_token_2_regex_ptr(enum conf_token_id token_id)
+{
+    return confTokens[token_id].ct_val_regex ?
+        &confTokens[token_id].ct_regex : NULL;
+}
+
 void
 conf_token_set_init(struct conf_token_set *cts)
 {
@@ -90,8 +97,8 @@ conf_token_set_disable(struct conf_token_set *cts, enum conf_token_id token_id)
 }
 
 bool
-conf_token_set_enabled(const struct conf_token_set *cts,
-                       enum conf_token_id token_id)
+conf_token_set_token_is_enabled(const struct conf_token_set *cts,
+                                enum conf_token_id token_id)
 {
     if (conf_token_set_args_valid(cts, token_id))
         return cts->cts_tokens[token_id] ? true : false;
@@ -130,9 +137,9 @@ conf_token_set_parser_init(struct conf_token_set_parser *ctsp,
                            size_t input_buf_size,
                            char *value_buf,
                            size_t value_buf_size,
-                           void *cb_arg,
                            int (*ctsp_cb)(const struct conf_token *,
-                                          const char *, size_t, void *, int))
+                                          const char *, size_t, void *, int),
+                           void *cb_arg)
 {
     if (ctsp && input_buf && input_buf_size > 0 && value_buf &&
         value_buf_size > 0 && ctsp_cb)

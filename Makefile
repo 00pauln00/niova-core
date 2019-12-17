@@ -14,6 +14,7 @@ SYS_CORE_INCLUDES = \
 	src/include/config_token.h \
 	src/include/ctl_interface_cmd.h \
 	src/include/ctl_interface.h \
+	src/include/ctl_svc.h \
 	src/include/env.h \
 	src/include/epoll_mgr.h \
 	src/include/ev_pipe.h \
@@ -36,6 +37,7 @@ SYS_CORE_OBJFILES = \
 	src/config_token.o \
 	src/ctl_interface.o \
 	src/ctl_interface_cmd.o \
+	src/ctl_svc.o \
 	src/env.o \
 	src/epoll_mgr.o \
 	src/ev_pipe.o \

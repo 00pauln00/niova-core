@@ -7,8 +7,8 @@
 #ifndef _WATCHDOG_H_
 #define _WATCHDOG_H_ 1
 
+#include "init.h"
 #include "ctor.h"
-#include "common.h"
 #include "queue.h"
 
 #define	WATCHDOG_DEFAULT_FREQUENCY 60

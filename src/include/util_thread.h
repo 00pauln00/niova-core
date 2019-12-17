@@ -7,7 +7,7 @@
 #ifndef _UTIL_THREAD_H_
 #define _UTIL_THREAD_H_ 1
 
-#include "common.h"
+#include "init.h"
 #include "ctor.h"
 #include "epoll_mgr.h"
 

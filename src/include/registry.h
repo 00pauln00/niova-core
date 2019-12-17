@@ -7,7 +7,7 @@
 #ifndef _REGISTRY_H
 #define _REGISTRY_H 1
 
-#include "common.h"
+#include "init.h"
 #include "ctor.h"
 #include "queue.h"
 #include "atomic.h"

@@ -8,8 +8,11 @@
 #define _NIOVA_INIT_H_ 1
 
 #include "common.h"
-
 #include "ctor.h"
+
+typedef void init_ctx_t;
+typedef int  init_ctx_int_t;
+typedef void destroy_ctx_t;
 
 bool
 init_ctx(void);
