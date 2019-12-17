@@ -24,6 +24,7 @@ SYS_CORE_INCLUDES = \
 	src/include/log.h \
 	src/include/random.h \
 	src/include/ref_tree_proto.h \
+	src/include/regex_defines.h \
 	src/include/registry.h \
 	src/include/thread.h \
 	src/include/util.h \
