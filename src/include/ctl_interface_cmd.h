@@ -14,8 +14,4 @@ struct ctli_cmd_handle;
 util_thread_ctx_ctli_t
 ctlic_process_request(const struct ctli_cmd_handle *cch);
 
-init_ctx_t
-ctlic_init(void)
-    __attribute__ ((constructor (LCTLI_CMD_SUBSYS_PRIORITY)));
-
 #endif

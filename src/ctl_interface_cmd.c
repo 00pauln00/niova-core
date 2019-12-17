@@ -19,6 +19,7 @@
 #include "util_thread.h"
 #include "io.h"
 #include "file_util.h"
+#include "config_token.h"
 
 //REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -43,32 +44,6 @@ enum ctlic_cmd_input_output_files
 static util_thread_ctx_ctli_char_t
 ctlicBuffer[CTLIC_NUM_FILES][CTLIC_BUFFER_SIZE];
 
-enum ctl_cmd_inteface_token
-{
-    CTLIC_TOKEN_GET = 0,
-    CTLIC_TOKEN_OUTFILE,
-    CTLIC_NUM_TOKENS,
-};
-
-struct ctlic_token
-{
-    const char                 *ct_name;
-    size_t                      ct_name_len;
-    enum ctl_cmd_inteface_token ct_token_value;
-};
-
-static struct ctlic_token ctlInterfaceCmds[CTLIC_NUM_TOKENS] =
-{
-    [CTLIC_TOKEN_GET] {
-        .ct_name = "GET",
-        .ct_token_value = CTLIC_TOKEN_GET,
-    },
-    [CTLIC_TOKEN_OUTFILE] {
-        .ct_name = "OUTFILE",
-        .ct_token_value = CTLIC_TOKEN_OUTFILE,
-    },
-};
-
 struct ctlic_depth_segment
 {
     unsigned int cds_free_regex:1,
@@ -82,8 +57,8 @@ struct ctlic_depth_segment
 
 struct ctlic_matched_token
 {
-    const struct ctlic_token  *cmt_token;
-    size_t                     cmt_value_idx;
+    const struct conf_token   *cmt_token;
+    size_t                     cmt_value_len;
     char                       cmt_value[CTLIC_MAX_VALUE_SIZE];
     size_t                     cmt_current_depth;
     size_t                     cmt_num_depth_segments;
@@ -100,12 +75,14 @@ struct ctlic_file
 
 struct ctlic_request
 {
-    size_t                     cr_num_matched_tokens;
-    size_t                     cr_current_token;
-    size_t                     cr_output_byte_cnt;
-    size_t                     cr_current_tab_depth;
-    struct ctlic_matched_token cr_matched_token[CTLIC_MAX_TOKENS_PER_REQ];
-    struct ctlic_file          cr_file[CTLIC_NUM_FILES];
+    size_t                       cr_num_matched_tokens;
+    size_t                       cr_current_token;
+    size_t                       cr_output_byte_cnt;
+    size_t                       cr_current_tab_depth;
+    char                         cr_value_buf[CTLIC_MAX_VALUE_SIZE];
+    struct ctlic_matched_token   cr_matched_token[CTLIC_MAX_TOKENS_PER_REQ];
+    struct ctlic_file            cr_file[CTLIC_NUM_FILES];
+    struct conf_token_set_parser cr_ctsp;
 };
 
 struct ctlic_iterator
@@ -125,7 +102,7 @@ ctlic_matched_token_init(struct ctlic_matched_token *cmt)
     if (cmt)
     {
         cmt->cmt_token = NULL;
-        cmt->cmt_value_idx = 0;
+        cmt->cmt_value_len = 0;
         memset(cmt->cmt_value, 0, CTLIC_MAX_VALUE_SIZE);
     }
 }
@@ -226,7 +203,7 @@ ctlic_open_output_file(int out_dirfd, struct ctlic_request *cr)
         if (!cmt->cmt_token) // Something went badly wrong here..
             return -EINVAL;
 
-        if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_OUTFILE)
+        if (cmt->cmt_token->ct_id == CT_ID_OUTFILE)
         {
             found = true;
             break;
@@ -315,16 +292,16 @@ static int
 ctlic_parse_token_value(struct ctlic_matched_token *cmt)
 {
     if (!cmt ||
-        !cmt->cmt_value_idx ||
+        !cmt->cmt_value_len ||
         cmt->cmt_num_depth_segments ||
-        cmt->cmt_value_idx > CTLIC_MAX_VALUE_SIZE - 1 ||
+        cmt->cmt_value_len > CTLIC_MAX_VALUE_SIZE - 1 ||
         cmt->cmt_value[0] != '/')
         return -EINVAL;
 
     bool escape_char = false;
     bool prev_char_was_solidus = false;
 
-    for (size_t i = 0; i < cmt->cmt_value_idx; i++)
+    for (size_t i = 0; i < cmt->cmt_value_len; i++)
     {
         if (cmt->cmt_value[i] == '\\')
         {
@@ -391,6 +368,41 @@ ctlic_parse_request_values(struct ctlic_request *cr)
     return 0;
 }
 
+/**
+ * ctlic_ctsp_cb - config token parsing callback for the ctl_interface_cmd
+ *   handler subsystem.  This callback doesn't do much other than
+ */
+static int
+ctlic_ctsp_cb(const struct conf_token *ct, const char *val_buf,
+              size_t val_buf_sz, void *cb_arg, int error)
+{
+    if (!ct || !val_buf || !val_buf_sz || !cb_arg)
+        return -EINVAL;
+
+    if (error)
+        return error;
+
+    struct ctlic_request *cr = cb_arg;
+
+    if (cr->cr_num_matched_tokens >= CTLIC_MAX_TOKENS_PER_REQ)
+        return -E2BIG;
+    else if (val_buf_sz >= CTLIC_MAX_VALUE_SIZE)
+        return -EOVERFLOW;
+
+    struct ctlic_matched_token *cmt =
+        &cr->cr_matched_token[cr->cr_num_matched_tokens++];
+
+    cmt->cmt_token = ct;
+    cmt->cmt_value_len = val_buf_sz;
+
+    strncpy(cmt->cmt_value, val_buf, val_buf_sz);
+
+    SIMPLE_LOG_MSG(LL_NOTIFY, "token-name %10s val_sz %02zu err %01d %s",
+                   ct->ct_name, val_buf_sz, error, val_buf);
+
+    return 0;
+}
+
 static int
 ctlic_parse_request(struct ctlic_request *cr)
 {
@@ -402,78 +414,25 @@ ctlic_parse_request(struct ctlic_request *cr)
     if (!cf_in->cf_buffer)
         return -EINVAL;
 
-    for (ssize_t i = 0; i < cf_in->cf_nbytes_written; i++)
-    {
-        const char c = cf_in->cf_buffer[i];
+    /* File contents have been read into 'file_buf'.
+     */
+    memset(&cr->cr_ctsp, 0, sizeof(struct conf_token_set_parser));
 
-        struct ctlic_matched_token *cmt =
-            &cr->cr_matched_token[cr->cr_num_matched_tokens];
+    conf_token_set_init(&cr->cr_ctsp.ctsp_cts);
+    conf_token_set_enable(&cr->cr_ctsp.ctsp_cts, CT_ID_GET);
+    conf_token_set_enable(&cr->cr_ctsp.ctsp_cts, CT_ID_OUTFILE);
 
-        // First, try to detect a token such as "GET" or "OUTFILE"
-        if (!cmt->cmt_token)
-        {
-            if (isspace(c))
-                continue; // Filter out leading whitespace
+    conf_token_set_parser_init(&cr->cr_ctsp, cf_in->cf_buffer,
+                               cf_in->cf_nbytes_written, cr->cr_value_buf,
+                               CTLIC_MAX_VALUE_SIZE, ctlic_ctsp_cb, cr);
 
-            else if (!isupper(c)) // Tokens are entirely upper case
-                return -EBADMSG;
-
-            bool found = false;
-
-            // Have the first upper case char in a word
-            for (int j = 0; j < CTLIC_NUM_TOKENS; j++)
-            {
-                if ((ctlInterfaceCmds[j].ct_name_len + i) >
-                    cf_in->cf_nbytes_written) // Check len prior to strncmp()
-                    return -EBADMSG;
-
-                if (!strncmp(ctlInterfaceCmds[j].ct_name, &cf_in->cf_buffer[i],
-                             ctlInterfaceCmds[j].ct_name_len))
-                {
-                    cmt->cmt_token = &ctlInterfaceCmds[j];
-
-                    // Found it, move indexer to the word's end
-                    i += ctlInterfaceCmds[j].ct_name_len - 1;
-                    found = true;
-                }
-            }
-
-            if (!found)
-                return -EBADMSG;
-            else
-                continue;
-        }
-        else // Read chars into cmt_value
-        {
-            if (!cmt->cmt_value_idx)
-            {
-                if (isspace(c))
-                    continue; // Filter out leading whitespace
-
-                else if (c != '/')
-                    return -EBADMSG;
-            }
-            else if (c == '\n')
-            {
-                cr->cr_num_matched_tokens++;
-
-                if (cr->cr_num_matched_tokens > CTLIC_MAX_TOKENS_PER_REQ)
-                    return -EBADMSG;
-
-                else
-                    continue;
-            }
-
-            if (cmt->cmt_value_idx == CTLIC_MAX_VALUE_SIZE - 1)
-                return -EBADMSG; // Value length check
-
-            cmt->cmt_value[cmt->cmt_value_idx++] = c;
-        }
-    }
+    int rc = conf_token_set_parse(&cr->cr_ctsp);
+    if (rc)
+        return rc;
 
     ctlic_dump_request_items(cr);
 
-    int rc = ctlic_parse_request_values(cr);
+    rc = ctlic_parse_request_values(cr);
     if (rc)
         return rc;
 
@@ -680,7 +639,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
         .citer_open_stanza = true,
     };
 
-    if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_GET)
+    if (cmt->cmt_token->ct_id == CT_ID_GET)
     {
         /* Do not exceed the depth specified in the GET request.
          */
@@ -820,7 +779,7 @@ ctlic_scan_registry(struct ctlic_request *cr)
         const struct ctlic_matched_token *cmt =
             &cr->cr_matched_token[cr->cr_current_token];
 
-        if (cmt->cmt_token->ct_token_value == CTLIC_TOKEN_GET)
+        if (cmt->cmt_token->ct_id == CT_ID_GET)
             lreg_node_walk(lrn_root, ctlic_scan_registry_cb, (void *)&citer, 1,
                            LREG_USER_TYPE_ANY);
     }
@@ -852,7 +811,7 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
     rc = ctlic_parse_request(&cr);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "invalid %s:  file=%s\ncontents=\n%s",
+        SIMPLE_LOG_MSG(LL_NOTIFY, "error: %s :: file=%s\ncontents=\n%s",
                        strerror(-rc), cch->ctlih_input_file_name,
                        (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
         goto done;
@@ -871,18 +830,4 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
     rc = ctlic_rename_output_file(cch->ctlih_output_dirfd, &cr);
 done:
     ctlic_request_done(&cr);
-}
-
-init_ctx_t
-ctlic_init(void)
-{
-    for (int i = 0; i < CTLIC_NUM_TOKENS; i++)
-    {
-        struct ctlic_token *ctlic = &ctlInterfaceCmds[i];
-        if (ctlic->ct_name)
-            ctlic->ct_name_len = strnlen(ctlic->ct_name,
-                                         CTLIC_MAX_REQ_NAME_LEN);
-
-        NIOVA_ASSERT(ctlic->ct_name_len < CTLIC_MAX_REQ_NAME_LEN);
-    }
 }
