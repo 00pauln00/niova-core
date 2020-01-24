@@ -15,6 +15,7 @@
 #include "epoll_mgr.h"
 #include "alloc.h"
 #include "ctl_svc.h"
+#include "udp.h"
 
 static bool niovaEnvVarsSubsysInit = false;
 
@@ -102,6 +103,17 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
         .nev_cb        = ctl_svc_set_local_dir,
+    },
+    {
+        .nev_name      = "NIOVA_UDP_PORT",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
+        .nev_var_num   = NIOVA_ENV_VAR_local_ctl_svc_dir,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_present   = false,
+        .nev_min       = NIOVA_MIN_UDP_PORT,
+        .nev_max       = NIOVA_MAX_UDP_PORT,
+        .nev_default   = NIOVA_DEFAULT_UDP_PORT,
+        .nev_cb        = udp_env_set_default_port,
     },
 };
 

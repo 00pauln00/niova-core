@@ -28,6 +28,7 @@ SYS_CORE_INCLUDES = \
 	src/include/regex_defines.h \
 	src/include/registry.h \
 	src/include/thread.h \
+	src/include/udp.h \
 	src/include/util.h \
 	src/include/util_thread.h \
 	src/include/watchdog.h
@@ -48,6 +49,7 @@ SYS_CORE_OBJFILES = \
 	src/random.o \
 	src/registry.o \
 	src/thread.o \
+	src/udp.o \
 	src/util_thread.o \
 	src/watchdog.o
 
@@ -111,6 +113,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/config_token_test \
 		test/config_token_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/udp_test \
+		test/udp_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 
 test_build: tests
@@ -121,6 +126,7 @@ test_build:
 	test/binary_hist_test
 	test/simple_test
 	test/ref_tree_test
+	test/udp_test
 	test/niosd_io_test -t 1
 	test/work_dispatch_test
 	taskset -c 0   test/work_dispatch_test
@@ -135,6 +141,7 @@ asan: niova
 asan: niova-ctl
 
 debug: CFLAGS = $(DEBUG_CFLAGS)
+debug: tests
 debug: niova
 debug: niova-ctl
 

@@ -35,6 +35,7 @@ struct thread_ctl
                               tc_is_utility_thread:1,
                               tc_is_watchdog_thread:1,
                               tc_caught_stop_signal:1;
+    int                       tc_ret; // thread return code
     pthread_t                 tc_thread_id;
     useconds_t                tc_user_pause_usecs;
     useconds_t                tc_pause_usecs;
