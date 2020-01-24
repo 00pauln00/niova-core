@@ -350,7 +350,7 @@ niot_spin_niorq_completion(struct niosd_device *ndev,
 static void
 niot_print_help(const int error)
 {
-    fprintf(errno ? stderr : stdout,
+    fprintf(error ? stderr : stdout,
             "niosd_io_test [-f test-device (or file)] [-z dev-size-bytes]\n"
             "              [-n num-ops] [-s io-num-sectors (512-byte)]\n"
             "              [-d io-depth] [-r read-ratio]\n"
