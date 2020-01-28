@@ -9,6 +9,8 @@
 
 #include "common.h"
 
+typedef uint32_t crc32_t;
+
 #if defined(__x86_64__)
 extern uint32_t
 crc_pcl(const unsigned char *buffer, int len, unsigned int crc_init);

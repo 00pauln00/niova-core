@@ -36,7 +36,7 @@ SYS_CORE_INCLUDES = \
 SYS_CORE_OBJFILES = \
 	src/alloc.o \
 	src/config_token.o \
-	src/contrib/crc32c-pcl-intel-asm_64.S \
+	src/contrib/crc32c-pcl-intel-asm_64.o \
 	src/ctl_interface.o \
 	src/ctl_interface_cmd.o \
 	src/ctl_svc.o \
@@ -118,11 +118,10 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 		test/udp_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-
-#raft: CFLAGS = $(DEBUG_CFLAGS)
-#raft: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
-#	$(CC) $(CFLAGS) -o raft_server src/raft.c \
-#	$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+raft: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+raft: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
+	$(CC) $(CFLAGS) -o raft_server src/raft.c \
+	$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 test_build: tests
 test_build:

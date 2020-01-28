@@ -10,4 +10,13 @@
 ssize_t
 io_read(int fd, char *buf, size_t size);
 
+ssize_t
+io_pwrite(int fd, const char *buf, size_t size, off_t offset);
+
+ssize_t
+io_pread(int fd, char *buf, size_t size, off_t offset);
+
+int
+io_fsync(int fd);
+
 #endif
