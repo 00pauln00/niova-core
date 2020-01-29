@@ -29,7 +29,7 @@
 #define NBBY 8
 #endif
 
-#define IPV4_STRLEN 16 // char buffer size for ipv4 addresses
+#define IPV4_STRLEN 16 // char buffer size for ipv4 addresses and NULL term
 
 #define READ_PIPE_IDX  0
 #define WRITE_PIPE_IDX 1
@@ -51,6 +51,8 @@
 
 #define CONST_OVERRIDE(type, var, value)         \
     *(type *)&(var) = value;
+
+typedef uint8_t raft_peer_t;
 
 typedef uint32_t pblk_id_t;
 typedef uint64_t mb_magic_t;

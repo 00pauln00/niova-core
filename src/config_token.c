@@ -55,6 +55,24 @@ struct conf_token confTokens[CT_ID__MAX] =
         .ct_val_regex = IPADDR_REGEX,
         .ct_id = CT_ID_IPADDR,
     },
+    [CT_ID_CTL_SVC_FILENAME] {
+        .ct_name = "",
+        .ct_name_len = 0,
+        .ct_val_regex = UUID_REGEX_CTL_SVC_FILE_NAME,
+        .ct_id = CT_ID_CTL_SVC_FILENAME,
+    },
+    [CT_ID_RAFT] {
+        .ct_name = "RAFT",
+        .ct_name_len = 4,
+        .ct_val_regex = UUID_REGEX,
+        .ct_id = CT_ID_RAFT,
+    },
+    [CT_ID_PEER] {
+        .ct_name = "PEER",
+        .ct_name_len = 4,
+        .ct_val_regex = UUID_REGEX,
+        .ct_id = CT_ID_PEER,
+    },
 };
 
 const regex_t *
@@ -211,10 +229,13 @@ conf_token_set_parse_match_token(const char *input_buf, size_t input_buf_size,
             continue;
 
         // Check len prior to strncmp()
-        if (ct->ct_name_len > input_buf_size)
+        if (ct->ct_name_len + 1 > input_buf_size)
             return NULL;
 
-        found = strncmp(ct->ct_name, input_buf, ct->ct_name_len) ?
+        // The token string be immediately followed by a tab or space.
+        found = (strncmp(ct->ct_name, input_buf, ct->ct_name_len) ||
+                 (input_buf[ct->ct_name_len] != ' ' &&
+                  input_buf[ct->ct_name_len] != '\t')) ?
             false : true;
     }
 
@@ -245,6 +266,7 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
 
     const struct conf_token *ct = NULL;
     size_t value_buf_idx = 0;
+    bool inside_comment = false;
 
     for (size_t i = ctsp->ctsp_input_buf_off;
          i < ctsp->ctsp_input_buf_size; i++, ctsp->ctsp_input_buf_off++)
@@ -255,8 +277,21 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
         {
             NIOVA_ASSERT(!value_buf_idx);
 
-            if (isspace(c))
+            if (c == '#')
+            {
+                inside_comment = true;
+                continue;
+            }
+            else if (inside_comment)
+            {
+                if (c == '\n')
+                    inside_comment = false;
+                continue;
+            }
+            else if (isspace(c))
+            {
                 continue; // Filter out leading whitespace
+            }
 
             ct =
                 conf_token_set_parse_match_token(&ctsp->ctsp_input_buf[i],

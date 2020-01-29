@@ -21,7 +21,9 @@ enum conf_token_id
     CT_ID_STORE,
     CT_ID_UUID,
     CT_ID_IPADDR,
+    CT_ID_CTL_SVC_FILENAME,
     CT_ID_RAFT,
+    CT_ID_PEER,
     CT_ID__MAX
 };
 

@@ -17,6 +17,7 @@
 #include "crc32.h"
 #include "alloc.h"
 #include "io.h"
+#include "random.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -49,9 +50,17 @@ struct raft_entry_header
 #define RAFT_ENTRY_SIZE           65536
 #define RAFT_ENTRY_MAX_DATA_SIZE  (RAFT_ENTRY_SIZE - RAFT_ENTRY_HEADER_RESERVE)
 
+#define RAFT_ELECTION_MAX_TIME_MS   300
+#define RAFT_ELECTION_MIN_TIME_MS   150
+#define RAFT_ELECTION_RANGE_MS                                  \
+    (RAFT_ELECTION_MAX_TIME_MS - RAFT_ELECTION_MIN_TIME_MS)
+
+#define RAFT_HEARTBEAT_TIME_MS      50
+
 static inline void
 raft_compile_time_checks(void)
 {
+    COMPILE_TIME_ASSERT(RAFT_ELECTION_RANGE_MS > 0);
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
 }
@@ -68,6 +77,8 @@ struct raft_log_header
     int64_t     rlh_current_term;
     uint64_t    rlh_seqno;
     raft_peer_t rlh_voted_for;
+    uuid_t      rlh_self_uuid; // UUID of this peer
+    uuid_t      rlh_raft_uuid; // UUID of raft instance
 };
 
 #define RAFT_LOG_HEADER_DATA_SIZE sizeof(struct raft_log_header)
@@ -538,24 +549,66 @@ raft_server_timerfd_close(struct raft_instance *ri)
 }
 
 static void
+raft_election_timeout_set(struct timespec *ts)
+{
+    if (!ts)
+        return;
+
+    unsigned long long msec =
+        RAFT_ELECTION_MIN_TIME_MS + (get_random() % RAFT_ELECTION_RANGE_MS);
+
+    msec_2_timespec(ts, msec);
+}
+
+static void
+raft_heartbeat_timeout_sec(struct timespec *ts)
+{
+    msec_2_timespec(ts, RAFT_HEARTBEAT_TIME_MS);
+}
+
+/**
+ * raft_server_timerfd_settime - set the timerfd based on the state of the
+ *    raft instance.
+ */
+static void
+raft_server_timerfd_settime(struct raft_instance *ri)
+{
+    struct itimerspec its = {0};
+
+    if (ri->ri_state == RAFT_STATE_LEADER)
+    {
+        raft_heartbeat_timeout_sec(&its.it_value);
+        its.it_interval = its.it_value;
+    }
+    else
+    {
+        raft_election_timeout_set(&its.it_value);
+    }
+
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "msec=%llu",
+                      nsec_2_msec(its.it_value.tv_nsec));
+
+    int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
+    if (rc)
+    {
+        rc = -errno;
+        DBG_RAFT_INSTANCE(LL_FATAL, ri, "timerfd_settime(): %s",
+                          strerror(-rc));
+    }
+}
+
+static void
 raft_server_timerfd_cb(const struct epoll_handle *eph)
 {
     struct raft_instance *ri = eph->eph_arg;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
-
-    size_t val;
+    size_t val, total = 0;
     while (read(ri->ri_timer_fd, &val, sizeof(size_t)) > 0)
-        ;
+        total += val;
 
-#if 0
-    struct itimerspec its = {.it_interval.tv_sec = 1,
-                             .it_interval.tv_nsec = 0,
-                             .it_value.tv_sec = 1,
-                             .it_value.tv_nsec = 0};
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "total=%zu", total);
 
-    timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
-#endif
+    raft_server_timerfd_settime(ri);
 }
 
 static int
@@ -589,12 +642,7 @@ error:
 static int
 raft_main_loop(struct raft_instance *ri)
 {
-    struct itimerspec its = {.it_interval.tv_sec = 1,
-                             .it_interval.tv_nsec = 0,
-                             .it_value.tv_sec = 1,
-                             .it_value.tv_nsec = 0};
-
-    timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
+    raft_server_timerfd_settime(ri);
 
     while (1)
         epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);

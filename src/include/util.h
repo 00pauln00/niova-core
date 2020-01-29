@@ -72,6 +72,28 @@ char name[str_len + 1] = {0};                                           \
 #endif
 
 static inline unsigned long long
+msec_2_nsec(unsigned long long msec)
+{
+    return (msec * 1000000);
+}
+
+static inline unsigned long long
+nsec_2_msec(unsigned long long nsec)
+{
+    return (nsec / 1000000);
+}
+
+static inline void
+msec_2_timespec(struct timespec *ts, unsigned long long msec)
+{
+    if (!ts)
+        return;
+
+    ts->tv_sec = msec / 1000;
+    ts->tv_nsec	= msec_2_nsec(msec % 1000);
+}
+
+static inline unsigned long long
 timespec_2_nsec(const struct timespec *ts)
 {
     return (ts->tv_sec * 1000000000) + ts->tv_nsec;
