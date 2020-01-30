@@ -14,6 +14,7 @@
 #include "registry.h"
 #include "util_thread.h"
 #include "ev_pipe.h"
+#include "init.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -425,6 +426,9 @@ lreg_node_queue_for_install(struct lreg_node *child)
 lreg_install_int_ctx_t
 lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
 {
+    if (destroy_ctx())
+        return 0;
+
     NIOVA_ASSERT(child && parent);
     NIOVA_ASSERT(child != parent);
 

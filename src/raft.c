@@ -644,7 +644,9 @@ raft_main_loop(struct raft_instance *ri)
 {
     raft_server_timerfd_settime(ri);
 
-    while (1)
+    size_t num_iterations = 10;
+
+    while (num_iterations--)
         epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);
 
     return 0;

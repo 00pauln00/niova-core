@@ -159,10 +159,10 @@ main(void)
     run_micro(atomic_cas_noop, DEF_ITER / 5, "atomic_cas_noop");
     run_micro(simple_multiply, DEF_ITER, "simple_multiply");
     run_micro(simple_modulus, DEF_ITER / 5, "simple_modulus");
-    run_micro(simple_crc32_64byte_buf, DEF_ITER / 5,
+    run_micro(simple_crc32_64byte_buf, DEF_ITER / 10,
               "simple_crc32_64byte_buf");
     run_micro(simple_random, DEF_ITER, "random-number-generate");
-    run_micro(simple_clock_gettime_mono, DEF_ITER / 5,
+    run_micro(simple_clock_gettime_mono, DEF_ITER / 20,
               "clock_gettime_monotonic");
     run_micro(simple_clock_gettime_mono_raw, DEF_ITER / 20,
               "clock_gettime_monotonic_raw");

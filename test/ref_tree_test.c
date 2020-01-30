@@ -69,7 +69,7 @@ ref_tree_tests(void)
         {
             te_lookup.val = j;
             struct test_entry *te =
-                RT_GET_ADD(ref_tree_test_head, &test_rt, &te_lookup);
+                RT_GET_ADD(ref_tree_test_head, &test_rt, &te_lookup, NULL);
 
             NIOVA_ASSERT(te->te_tentry.rbe_ref_cnt == i + 1);
 

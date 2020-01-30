@@ -26,20 +26,19 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+REF_TREE_HEAD(ctl_svc_node_tree, ctl_svc_node);
+
+REF_TREE_GENERATE(ctl_svc_node_tree, ctl_svc_node, csn_rtentry,
+                  ctl_svc_node_cmp);
+
 static struct ctl_svc_node_tree ctlSvcNodeTree;
 static const char *ctlSvcLocalDir = CTL_SVC_DEFAULT_LOCAL_DIR;
-
 
 #define CTL_SVR_NODE_TOKEN_HNDLR(name)                                  \
     static int                                                          \
     ctl_svc_node_token_hndlr_ ##name (struct ctl_svc_node *,            \
                                       const struct conf_token *,        \
                                       const char *, size_t)
-
-REF_TREE_HEAD(ctl_svc_node_tree, ctl_svc_node);
-
-REF_TREE_GENERATE(ctl_svc_node_tree, ctl_svc_node, csn_rtentry,
-                  ctl_svc_node_cmp);
 
 struct ctl_svc_node_type_suffix
 {
@@ -215,23 +214,14 @@ ctl_svc_raft_node_add_peer(struct ctl_svc_node *csn, const char *uuid_str)
 }
 
 static enum ctl_svc_node_type
-ctl_svc_detect_node_type(const char *input_file)
+ctl_svc_detect_node_type(const char *input_file_ext)
 {
-    size_t name_len = strnlen(input_file, PATH_MAX);
-    if (name_len < UUID_STR_LEN - 1)
-        return CTL_SVC_NODE_TYPE_ANY;
-
-    size_t i;
-    for (i = name_len; i > 0; i--)
-        if (input_file[i - 1] == '.')
-            break;
-
-    if (i > 0)
+    if (input_file_ext)
     {
         for (enum ctl_svc_node_type j = CTL_SVC_NODE_TYPE_NIOSD;
              j < CTL_SVC_NODE_TYPE_MAX; j++)
         {
-            if (!strncmp(ctlSvcNodeTypes[j].csnts_file_suffix, &input_file[i],
+            if (!strncmp(ctlSvcNodeTypes[j].csnts_file_suffix, input_file_ext,
                          ctlSvcNodeTypes[j].csnts_file_suffix_len))
                 return ctlSvcNodeTypes[j].csnts_type;
         }
@@ -247,26 +237,48 @@ ctl_svc_detect_node_type(const char *input_file)
  * @csn:  the ctl-svc node structure to be written.
  * @input_file_name:  name of the input file.
  */
-static enum ctl_svc_node_type
+static int
 ctl_svc_parse_input_file_name(struct ctl_svc_node *csn,
                               const char *input_file_name)
 {
-    enum ctl_svc_node_type csn_type =
-        ctl_svc_detect_node_type(input_file_name);
+    if (!csn || !input_file_name)
+        return -EINVAL;
 
-    if (csn_type >= CTL_SVC_NODE_TYPE_ANY)
-        return csn_type;
+    else if (strnlen(input_file_name, PATH_MAX) < UUID_STR_LEN ||
+             input_file_name[UUID_STR_LEN - 1] != '.')
+        return -EBADMSG;
 
-    csn->csn_type = csn_type;
+#if 0
+    /* Note that using size of 'NAME_MAX' is just to prevent recent versions
+     * of GCC from throwing '-Wformat-truncation' errors.  Otherwise, a char
+     * buffer of len UUID_STR_LEN would be fine.
+     */
+    char tmp_fname[NAME_MAX + 1] = {0};
+    strncpy(tmp_fname, input_file_name, NAME_MAX);
+#else
+    char tmp_fname[UUID_STR_LEN];
+    memcpy((void *)tmp_fname, (void *)input_file_name, UUID_STR_LEN);
+    tmp_fname[UUID_STR_LEN - 1] = '\0';
+#endif
 
-    int rc = uuid_parse(input_file_name, csn->csn_uuid);
+    /* First, parse the UUID to check for validity.
+     */
+    int rc = uuid_parse(tmp_fname, csn->csn_uuid);
     if (rc)
     {
         LOG_MSG(LL_NOTIFY, "uuid_parse() returns %d", rc);
         return CTL_SVC_NODE_TYPE_ANY;
     }
 
-    DBG_CTL_SVC_NODE(LL_WARN, csn, "");
+    /* Next, check the file extension.
+     */
+    enum ctl_svc_node_type csn_type =
+        ctl_svc_detect_node_type(&input_file_name[UUID_STR_LEN]);
+
+    if (csn_type >= CTL_SVC_NODE_TYPE_ANY)
+        return csn_type;
+
+    csn->csn_type = csn_type;
 
     return csn_type;
 }
@@ -457,6 +469,36 @@ ctl_svc_ctsp_cb(const struct conf_token *ct, const char *val_buf,
     return ctl_svc_apply_token_value_to_node(csn, ct, val_buf, val_buf_sz);
 }
 
+static void
+ctl_svc_node_release_internal_members(struct ctl_svc_node *destroy)
+{
+    if (ctl_svc_node_is_peer(destroy) && destroy->csn_peer.csnp_store)
+    {
+        niova_free(destroy->csn_peer.csnp_store);
+        destroy->csn_peer.csnp_store = NULL;
+    }
+}
+
+static int
+ctl_svc_node_tree_add(const struct ctl_svc_node *csn_from_caller_stack,
+                      int *rt_ret)
+{
+    NIOVA_ASSERT(csn_from_caller_stack && rt_ret);
+
+    struct ctl_svc_node *new_csn =
+        RT_GET_ADD(ctl_svc_node_tree, &ctlSvcNodeTree, csn_from_caller_stack,
+                   rt_ret);
+
+    if (!new_csn)
+        return -ENOMEM;
+
+    DBG_CTL_SVC_NODE(LL_NOTIFY, new_csn, "");
+
+    RT_PUT(ctl_svc_node_tree, &ctlSvcNodeTree, new_csn);
+
+    return 0;
+}
+
 /**
  * ctl_svc_process_conf_file - Function which reads and parses the contents of
  *    the input_file.  It first checks the file suffix to find the right
@@ -508,13 +550,31 @@ ctl_svc_process_conf_file(int ctl_svc_dir_fd, const char *input_file,
 
     rc = conf_token_set_parse(&ctsp);
     if (rc)
+    {
         LOG_MSG(LL_NOTIFY, "conf_token_set_parse(`%s'): %s",
                 input_file, strerror(-rc));
 
-// How do we know if this call created the object and therefore should leave
-// a ref intact?  This may be a more general issue..  Note that the STORE
-    // token may have caused us to allocate memory which would need to be freed.
-//    RT_GET_ADD();
+        return rc;
+    }
+
+    int rt_ret = 0;
+    rc = ctl_svc_node_tree_add(&csn, &rt_ret);
+
+    /* RT_GET_ADD() may place 2 different errors into 'rt_ret' while still
+     * returning a valid entry.  These are EEXIST and EALREADY.
+     * Both mean that an entry of the same id was already in the tree.
+     * The difference is that EALREADY is returned when the object
+     * destructor was already run.
+     * Why does that matter here?  Our stack-allocated 'csn' may have heap
+     * memory allocated to some of it members and these pointers were
+     * inherited by a newly contstructed object which was immediately
+     * released by RT_GET_ADD() due to a conflict.  It's important that
+     * we don't double free the pointers within the stack csn structure and
+     * it's also important that we do release these allocations if the
+     * destructor was not run.
+     */
+    if (rt_ret == -EEXIST)
+        ctl_svc_node_release_internal_members(&csn);
 
     return rc;
 }
@@ -624,11 +684,7 @@ ctl_svc_node_destruct(struct ctl_svc_node *destroy)
 
     DBG_CTL_SVC_NODE(LL_DEBUG, destroy, "");
 
-    if (ctl_svc_node_is_peer(destroy) && destroy->csn_peer.csnp_store)
-    {
-        niova_free(destroy->csn_peer.csnp_store);
-        destroy->csn_peer.csnp_store = NULL;
-    }
+    ctl_svc_node_release_internal_members(destroy);
 
     niova_free(destroy);
 
@@ -645,8 +701,11 @@ ctl_svc_set_local_dir(const struct niova_env_var *nev)
 init_ctx_t
 ctl_svc_init(void)
 {
-    REF_TREE_INIT(&ctlSvcNodeTree, ctl_svc_node_construct,
-                  ctl_svc_node_destruct);
+    /* Use an initial ref count of "2" so that entries don't require additional
+     * dependencies to remain in the tree after creation.
+     */
+    REF_TREE_INIT_ALT_REF(&ctlSvcNodeTree, ctl_svc_node_construct,
+                          ctl_svc_node_destruct, 2);
 
     int rc = ctl_svc_init_scan_entries();
 
@@ -659,4 +718,21 @@ destroy_ctx_t
 ctl_svc_destroy(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
+
+    struct ctl_svc_node *csn =
+        REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
+                     csn_rtentry);
+
+    for (; csn != NULL;
+         csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
+                            csn_rtentry))
+    {
+        for (int i = 0; i < REF_TREE_INITIAL_REF_CNT(&ctlSvcNodeTree); i++)
+            RT_PUT(ctl_svc_node_tree, &ctlSvcNodeTree, csn);
+    }
+
+    csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
+                       csn_rtentry);
+    if (csn)
+        DBG_CTL_SVC_NODE(LL_WARN, csn, "ctl_svc_node(s) still exist");
 }

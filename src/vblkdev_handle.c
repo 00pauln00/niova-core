@@ -167,7 +167,7 @@ vbh_get(const vblkdev_id_t vbh_id, const bool add)
 {
     struct vblkdev_handle *vbh =
         RT_GET(vblkdev_handle_tree, &vbhTree,
-               (struct vblkdev_handle *)&vbh_id, add);
+               (struct vblkdev_handle *)&vbh_id, add, NULL);
 
     if (vbh)
         DBG_VBLKDEV_HNDL(LL_DEBUG, vbh, "");

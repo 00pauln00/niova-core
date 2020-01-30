@@ -125,7 +125,7 @@ ch_get(struct vblkdev_handle *vbh, const vblkdev_chunk_id_t ch_id,
 
     struct chunk_handle *ch =
         RT_GET(chunk_handle_tree, &vbh->vbh_chunk_handle_tree,
-               (struct chunk_handle *)&ch_lookup, add);
+               (struct chunk_handle *)&ch_lookup, add, NULL);
 
     if (ch)
         DBG_CHUNK_HNDL(LL_DEBUG, ch, "");
