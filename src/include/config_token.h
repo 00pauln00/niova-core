@@ -18,6 +18,7 @@ enum conf_token_id
     CT_ID_OUTFILE,
     CT_ID_HOSTNAME,
     CT_ID_PORT,
+    CT_ID_CLIENT_PORT,
     CT_ID_STORE,
     CT_ID_UUID,
     CT_ID_IPADDR,
