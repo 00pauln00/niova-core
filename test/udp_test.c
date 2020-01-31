@@ -27,6 +27,14 @@ udp_test_basic(void)
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "udp_socket_setup(): %s", strerror(-rc));
+        return rc;
+    }
+
+    rc = udp_socket_bind(&ush);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "udp_socket_bind(): %s", strerror(-rc));
+        return rc;
     }
 
     char buf[udpSize];
@@ -41,7 +49,7 @@ udp_test_basic(void)
 
     rc = udp_socket_close(&ush);
 
-    return recv_rc ? recv_rc : rc;
+    return recv_rc ? (int)recv_rc : rc;
 }
 
 static void *

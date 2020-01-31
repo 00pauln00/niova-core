@@ -72,8 +72,38 @@ udp_socket_close(struct udp_socket_handle *ush)
     return (socket >= 0) ? close(socket) : 0;
 }
 
+int
+udp_socket_bind(struct udp_socket_handle *ush)
+{
+    if (!ush || ush->ush_socket < 0)
+        return -EINVAL;
+
+    if (ush->ush_port <= 0)
+        ush->ush_port = udpDefaultPort;
+
+    struct sockaddr_in addr_in = {0};
+
+    int rc = udp_setup_sockaddr_in(ush->ush_ipaddr, ush->ush_port, &addr_in);
+    if (!rc)
+    {
+        rc = bind(ush->ush_socket, (struct sockaddr *)&addr_in,
+                  sizeof(addr_in));
+        if (rc)
+        {
+            rc = -errno;
+            SIMPLE_LOG_MSG(LL_ERROR, "bind(): %s", strerror(-rc));
+        }
+    }
+
+    if (rc)
+        udp_socket_close(ush);
+
+    return rc;
+}
+
 /**
- * udp_socket_setup - configures a socket for sending and receiving UDP msgs.
+ * udp_socket_setup - initial stage for UDP socket configuration.  This call
+ *    does not bind() the socket so it's only a partial setup.
  */
 int
 udp_socket_setup(struct udp_socket_handle *ush)
@@ -87,32 +117,11 @@ udp_socket_setup(struct udp_socket_handle *ush)
     if (ush->ush_socket < 0)
     {
         rc = -errno;
-
         SIMPLE_LOG_MSG(LL_ERROR, "socket(): %s", strerror(-rc));
-        return rc;
+
+        udp_socket_close(ush);
     }
 
-    if (ush->ush_port <= 0)
-        ush->ush_port = udpDefaultPort;
-
-    struct sockaddr_in addr_in = {0};
-
-    rc = udp_setup_sockaddr_in(ush->ush_ipaddr, ush->ush_port, &addr_in);
-    if (rc)
-        goto out;
-
-    rc = bind(ush->ush_socket, (struct sockaddr *)&addr_in, sizeof(addr_in));
-    if (rc)
-    {
-        rc = -errno;
-        SIMPLE_LOG_MSG(LL_ERROR, "bind(): %s", strerror(-rc));
-        goto out;
-    }
-
-    return 0;
-
-out:
-    udp_socket_close(ush);
     return rc;
 }
 

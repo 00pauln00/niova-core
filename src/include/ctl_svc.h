@@ -114,6 +114,20 @@ ctl_svc_node_peer_2_port(const struct ctl_svc_node *csn)
         csn->csn_peer.csnp_port : 0;
 }
 
+static inline const uint16_t
+ctl_svc_node_peer_2_client_port(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_peer(csn)) ?
+        csn->csn_peer.csnp_client_port : 0;
+}
+
+static inline const char *
+ctl_svc_node_peer_2_ipaddr(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_peer(csn)) ?
+        csn->csn_peer.csnp_ipv4 : NULL;
+}
+
 static inline int
 ctl_svc_node_cmp(const struct ctl_svc_node *a, const struct ctl_svc_node *b)
 {

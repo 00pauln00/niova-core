@@ -24,11 +24,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define MAX_PEERS 11
 
-typedef uint8_t raft_peer_t;
-
 #define OPTS "u:r:h"
-
-#define RAFT_DEFAULT_LOG_PATH "/var/tmp/niova-raft-log."
 
 #define NUM_RAFT_LOG_HEADERS 2
 #define RAFT_ENTRY_PAD_SIZE 95
@@ -101,9 +97,18 @@ enum raft_epoll_handles
     RAFT_EPOLL_NUM_HANDLES,
 };
 
+enum raft_udp_listen_sockets
+{
+    RAFT_UDP_LISTEN_MIN    = 0,
+    RAFT_UDP_LISTEN_SERVER = RAFT_UDP_LISTEN_MIN,
+    RAFT_UDP_LISTEN_CLIENT = 1,
+    RAFT_UDP_LISTEN_MAX    = 2,
+    RAFT_UDP_LISTEN_ANY    = RAFT_UDP_LISTEN_MAX,
+};
+
 struct raft_instance
 {
-    struct udp_socket_handle ri_ush;
+    struct udp_socket_handle ri_ush[RAFT_UDP_LISTEN_MAX];
     struct ctl_svc_node     *ri_csn_raft;
     struct ctl_svc_node     *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
     struct ctl_svc_node     *ri_csn_this_peer;
@@ -124,11 +129,8 @@ struct raft_instance
 #define RAFT_PEER_ANY ID_ANY_8bit
 
 static struct raft_instance myRaft = {
-    .ri_state          = RAFT_STATE_FOLLOWER,
-    .ri_log_fd         = -1,
-    .ri_ush.ush_socket = -1,
-    .ri_ush.ush_port   = NIOVA_DEFAULT_UDP_PORT,
-    .ri_ush.ush_ipaddr = "127.0.0.1",
+    .ri_state  = RAFT_STATE_FOLLOWER,
+    .ri_log_fd = -1,
 };
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
@@ -491,22 +493,81 @@ raft_server_getopt(int argc, char **argv, struct raft_instance *ri)
 }
 
 static int
-raft_server_udp_socket_setup(struct raft_instance *ri)
+raft_server_udp_sockets_close(struct raft_instance *ri)
+{
+    int rc = 0;
+
+    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
+         i < RAFT_UDP_LISTEN_MAX; i++)
+    {
+        int tmp_rc = udp_socket_close(&ri->ri_ush[i]);
+        if (tmp_rc && !rc) // store the first error found.
+            rc = tmp_rc;
+    }
+
+    return rc;
+}
+
+static int
+raft_server_udp_sockets_bind(struct raft_instance *ri)
+{
+    int rc = 0;
+
+    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
+         i < RAFT_UDP_LISTEN_MAX && !rc; i++)
+        rc = udp_socket_bind(&ri->ri_ush[i]);
+
+    if (rc)
+        raft_server_udp_sockets_close(ri);
+
+    return rc;
+}
+
+static int
+raft_server_udp_sockets_setup(struct raft_instance *ri)
 {
     if (!ri)
         return -EINVAL;
 
-    ri->ri_ush.ush_port = ctl_svc_node_peer_2_port(ri->ri_csn_this_peer);
-    if (!ri->ri_ush.ush_port)
-        return -ENOENT;
+    int rc = 0;
 
-    return udp_socket_setup(&ri->ri_ush);
-}
+    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
+         i < RAFT_UDP_LISTEN_MAX; i++)
+    {
+        strncpy(ri->ri_ush[i].ush_ipaddr,
+                ctl_svc_node_peer_2_ipaddr(ri->ri_csn_this_peer), IPV4_STRLEN);
 
-static int
-raft_server_udp_socket_close(struct raft_instance *ri)
-{
-    return udp_socket_close(&ri->ri_ush);
+        if (i == RAFT_UDP_LISTEN_SERVER) // server <-> server comms port
+        {
+            ri->ri_ush[i].ush_port =
+                ctl_svc_node_peer_2_port(ri->ri_csn_this_peer);
+        }
+        else if (i == RAFT_UDP_LISTEN_CLIENT) // client <-> server port
+        {
+            ri->ri_ush[i].ush_port =
+                ctl_svc_node_peer_2_client_port(ri->ri_csn_this_peer);
+        }
+        else
+        {
+            rc = -ESOCKTNOSUPPORT;
+            break;
+        }
+
+        if (!ri->ri_ush[i].ush_port)
+        {
+            rc = -ENOENT;
+            break;
+        }
+
+        rc = udp_socket_setup(&ri->ri_ush[i]);
+        if (rc)
+            break;
+    }
+
+    if (rc)
+        raft_server_udp_sockets_close(ri);
+
+    return rc;
 }
 
 static int
@@ -600,6 +661,71 @@ raft_server_timerfd_cb(const struct epoll_handle *eph)
     raft_server_timerfd_settime(ri);
 }
 
+static enum raft_udp_listen_sockets
+raft_server_udp_identify_socket(const struct raft_instance *ri, const int fd)
+{
+    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
+         i < RAFT_UDP_LISTEN_MAX; i++)
+        if (udp_socket_handle_2_sockfd(&ri->ri_ush[i]) == fd)
+            return i;
+
+    return RAFT_UDP_LISTEN_ANY;
+}
+
+static void
+raft_server_udp_cb(const struct epoll_handle *eph)
+{
+    NIOVA_ASSERT(eph && eph->eph_arg);
+
+    struct raft_instance *ri = eph->eph_arg;
+
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "fd=%d type=%d",
+                      eph->eph_fd,
+                      raft_server_udp_identify_socket(ri, eph->eph_fd));
+}
+
+static int
+raft_epoll_cleanup(struct raft_instance *ri)
+{
+    for (enum raft_epoll_handles i = 0; i < RAFT_EPOLL_NUM_HANDLES; i++)
+        epoll_handle_del(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[i]);
+
+    return epoll_mgr_close(&ri->ri_epoll_mgr);
+}
+
+static int
+raft_epoll_setup_timerfd(struct raft_instance *ri)
+{
+    int rc =
+        epoll_handle_init(&ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD],
+                          ri->ri_timer_fd, EPOLLIN, raft_server_timerfd_cb,
+                          ri);
+
+    return rc ? rc :
+        epoll_handle_add(&ri->ri_epoll_mgr,
+                         &ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD]);
+}
+
+static int
+raft_epoll_setup_udp(struct raft_instance *ri, enum raft_epoll_handles reh)
+{
+    if (!ri ||
+        (reh != RAFT_EPOLL_HANDLE_PEER_UDP &&
+         reh != RAFT_EPOLL_HANDLE_CLIENT_UDP))
+        return -EINVAL;
+
+    enum raft_udp_listen_sockets ruls =
+        (reh == RAFT_EPOLL_HANDLE_PEER_UDP) ?
+        RAFT_UDP_LISTEN_SERVER : RAFT_UDP_LISTEN_CLIENT;
+
+    int rc = epoll_handle_init(&ri->ri_epoll_handles[reh],
+                               ri->ri_ush[ruls].ush_socket,
+                               EPOLLIN, raft_server_udp_cb, ri);
+
+    return rc ? rc : epoll_handle_add(&ri->ri_epoll_mgr, &
+                                      ri->ri_epoll_handles[reh]);
+}
+
 static int
 raft_epoll_setup(struct raft_instance *ri)
 {
@@ -610,21 +736,21 @@ raft_epoll_setup(struct raft_instance *ri)
     if (rc)
         return rc;
 
-    rc = epoll_handle_init(&ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD],
-                           ri->ri_timer_fd, EPOLLIN, raft_server_timerfd_cb,
-                           ri);
+    /* Add the timerfd to the epoll_mgr.
+     */
+    rc = raft_epoll_setup_timerfd(ri);
+
+    /* Next, add the udp sockets.
+     */
+    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
+         i < RAFT_UDP_LISTEN_MAX && !rc; i++)
+    {
+        rc = raft_epoll_setup_udp(ri, i);
+    }
+
     if (rc)
-        goto error;
+        raft_epoll_cleanup(ri);
 
-    rc = epoll_handle_add(&ri->ri_epoll_mgr,
-                          &ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD]);
-    if (rc)
-        goto error;
-
-    return 0;
-
-error:
-    epoll_mgr_close(&ri->ri_epoll_mgr);
     return rc;
 }
 
@@ -671,6 +797,9 @@ raft_server_instance_conf_init(struct raft_instance *ri)
      */
     if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
         return -EINVAL;
+
+    for (int i = RAFT_UDP_LISTEN_MIN; i < RAFT_UDP_LISTEN_MAX; i++)
+        udp_socket_handle_init(&ri->ri_ush[i]);
 
     /* (re)initialize the ctl-svc node pointers.
      */
@@ -743,7 +872,8 @@ cleanup:
 int
 main(int argc, char **argv)
 {
-    int udp_close_rc = 0, file_close_rc = 0;
+    int udp_close_rc = 0, file_close_rc = 0, timerfd_close_rc = 0,
+        epoll_close_rc = 0;
 
     raft_server_getopt(argc, argv, &myRaft);
 
@@ -754,10 +884,10 @@ main(int argc, char **argv)
         exit(rc);
     }
 
-    rc = raft_server_udp_socket_setup(&myRaft);
+    rc = raft_server_udp_sockets_setup(&myRaft);
     if (rc)
     {
-        STDERR_MSG("raft_server_udp_socket_setup(): %s", strerror(-rc));
+        STDERR_MSG("raft_server_udp_sockets_setup(): %s", strerror(-rc));
         exit(rc);
     }
 
@@ -770,17 +900,32 @@ main(int argc, char **argv)
         goto file_close;
 
     raft_epoll_setup(&myRaft);
+
+    /* bind() after adding the socket to the epoll set.
+     */
+    rc = raft_server_udp_sockets_bind(&myRaft);
+    if (rc)
+    {
+        STDERR_MSG("raft_server_udp_sockets_bind(): %s", strerror(-rc));
+        goto epoll_close;
+    }
+
     raft_main_loop(&myRaft);
 
-    rc = raft_server_timerfd_close(&myRaft);
+epoll_close:
+    epoll_close_rc = raft_epoll_cleanup(&myRaft);
+
+//timerfd_close:
+    timerfd_close_rc = raft_server_timerfd_close(&myRaft);
 
 file_close:
     file_close_rc = raft_server_log_file_close(&myRaft);
 
 udp_close:
-    udp_close_rc = raft_server_udp_socket_close(&myRaft);
+    udp_close_rc = raft_server_udp_sockets_close(&myRaft);
 
     raft_server_instance_destroy(&myRaft);
 
-    exit(rc || file_close_rc || udp_close_rc);
+    exit(rc || file_close_rc || udp_close_rc || timerfd_close_rc ||
+         epoll_close_rc);
 }
