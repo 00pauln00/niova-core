@@ -655,8 +655,17 @@ raft_server_instance_destroy(struct raft_instance *ri)
             ctl_svc_node_put(ri->ri_csn_raft_peers[i]);
 }
 
+/**
+ * raft_server_instance_conf_init - Initialize this raft instance's config
+ *    based on the 2 UUIDs passed in at startup time.  These UUIDs are for
+ *    the Raft instance itself (and the peers involved) and the peer UUID for
+ *    this instance.  The role of this function is to obtain the ctl_svc_node
+ *    objects which pertain to these UUIDs so that basic config information
+ *    can be obtained, such as: IP addresses, port numbers, and the raft log
+ *    pathname.
+ */
 static int
-raft_server_instance_init(struct raft_instance *ri)
+raft_server_instance_conf_init(struct raft_instance *ri)
 {
     /* Check the ri for the needed the UUID strings.
      */
@@ -738,10 +747,10 @@ main(int argc, char **argv)
 
     raft_server_getopt(argc, argv, &myRaft);
 
-    int rc = raft_server_instance_init(&myRaft);
+    int rc = raft_server_instance_conf_init(&myRaft);
     if (rc)
     {
-        STDERR_MSG("raft_server_instance_init(): %s", strerror(-rc));
+        STDERR_MSG("raft_server_instance_conf_init(): %s", strerror(-rc));
         exit(rc);
     }
 
