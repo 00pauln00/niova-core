@@ -739,6 +739,30 @@ ctl_svc_set_local_dir(const struct niova_env_var *nev)
         ctlSvcLocalDir = nev->nev_string;
 }
 
+static destroy_ctx_t
+ctl_svc_nodes_release(void)
+{
+    struct ctl_svc_node *csn =
+        REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
+                     csn_rtentry);
+
+    if (csn)
+    {
+        for (; csn != NULL;
+             csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree,
+                                ctl_svc_node, csn_rtentry))
+        {
+            for (int i = 0; i < REF_TREE_INITIAL_REF_CNT(&ctlSvcNodeTree); i++)
+                RT_PUT(ctl_svc_node_tree, &ctlSvcNodeTree, csn);
+        }
+
+        csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
+                           csn_rtentry);
+        if (csn)
+            DBG_CTL_SVC_NODE(LL_WARN, csn, "ctl_svc_node(s) still exist");
+    }
+}
+
 init_ctx_t
 ctl_svc_init(void)
 {
@@ -760,20 +784,5 @@ ctl_svc_destroy(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
 
-    struct ctl_svc_node *csn =
-        REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
-                     csn_rtentry);
-
-    for (; csn != NULL;
-         csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
-                            csn_rtentry))
-    {
-        for (int i = 0; i < REF_TREE_INITIAL_REF_CNT(&ctlSvcNodeTree); i++)
-            RT_PUT(ctl_svc_node_tree, &ctlSvcNodeTree, csn);
-    }
-
-    csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
-                       csn_rtentry);
-    if (csn)
-        DBG_CTL_SVC_NODE(LL_WARN, csn, "ctl_svc_node(s) still exist");
+    ctl_svc_nodes_release();
 }
