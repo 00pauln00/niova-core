@@ -87,6 +87,32 @@ ctl_svc_node_is_peer(const struct ctl_svc_node *csn)
              csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER)) ? true : false;
 }
 
+static inline bool
+ctl_svc_node_is_raft(const struct ctl_svc_node *csn)
+{
+    return (csn && csn->csn_type == CTL_SVC_NODE_TYPE_RAFT) ? true : false;
+}
+
+static inline const char *
+ctl_svc_node_peer_2_store(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_peer(csn)) ?
+        csn->csn_peer.csnp_store : NULL;
+}
+
+static inline const struct ctl_svc_node_raft *
+ctl_svc_node_raft_2_raft(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_raft(csn)) ? &csn->csn_raft : NULL;
+}
+
+static inline const uint16_t
+ctl_svc_node_peer_2_port(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_peer(csn)) ?
+        csn->csn_peer.csnp_port : 0;
+}
+
 static inline int
 ctl_svc_node_cmp(const struct ctl_svc_node *a, const struct ctl_svc_node *b)
 {
@@ -131,17 +157,30 @@ ctl_svc_node_type(const struct ctl_svc_node *csn)
 
 #define DBG_CTL_SVC_NODE(log_level, csn, fmt, ...)                      \
 {                                                                       \
-    char uuid_str[UUID_STR_LEN];                                        \
-    uuid_unparse((csn)->csn_uuid, uuid_str);                            \
-    LOG_MSG(log_level, "csn@%p %c %s ref=%d "fmt,                       \
-            (csn), ctl_svc_node_type((csn)), uuid_str,                  \
-            (csn)->csn_rtentry.rbe_ref_cnt, ##__VA_ARGS__);             \
+    char __uuid_str[UUID_STR_LEN];                                      \
+    uuid_unparse((csn)->csn_uuid, __uuid_str);                          \
+    LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt,              \
+            (csn), ctl_svc_node_type((csn)), __uuid_str,                \
+            (csn)->csn_rtentry.rbe_ref_cnt,                             \
+            (ctl_svc_node_is_peer((csn)) ?                              \
+             (csn)->csn_peer.csnp_store : NULL),                        \
+            ##__VA_ARGS__);                                             \
 }
 
 struct niova_env_var;
 
 void
 ctl_svc_set_local_dir(const struct niova_env_var *nev);
+
+int
+ctl_svc_node_lookup(const uuid_t lookup_uuid, struct ctl_svc_node **ret_csn);
+
+int
+ctl_svc_node_lookup_by_string(const char *uuid_str,
+                              struct ctl_svc_node **ret_csn);
+
+void
+ctl_svc_node_put(struct ctl_svc_node *csn);
 
 init_ctx_t
 ctl_svc_init(void)

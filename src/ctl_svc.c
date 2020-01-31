@@ -210,6 +210,8 @@ ctl_svc_raft_node_add_peer(struct ctl_svc_node *csn, const char *uuid_str)
 
     uuid_copy(csn->csn_raft.csnr_members[npeers].csrm_peer, tmp_uuid);
 
+    //DBG_CTL_SVC_NODE(LL_TRACE, csn, "npeer=%hhu %s", npeers, uuid_str);
+
     return 0;
 }
 
@@ -689,6 +691,45 @@ ctl_svc_node_destruct(struct ctl_svc_node *destroy)
     niova_free(destroy);
 
     return 0;
+}
+
+int
+ctl_svc_node_lookup(const uuid_t lookup_uuid, struct ctl_svc_node **ret_csn)
+{
+    uuid_t my_uuid;
+    uuid_copy(my_uuid, lookup_uuid);
+
+    struct ctl_svc_node *csn =
+        RT_LOOKUP(ctl_svc_node_tree, &ctlSvcNodeTree,
+                  (const struct ctl_svc_node *)&my_uuid);
+
+    if (!csn)
+        return -ENOENT;
+    else
+        *ret_csn = csn;
+
+    return 0;
+}
+
+int
+ctl_svc_node_lookup_by_string(const char *uuid_str,
+                              struct ctl_svc_node **ret_csn)
+{
+    if (!uuid_str || !ret_csn)
+        return -EINVAL;
+
+    uuid_t lookup_uuid;
+    if (uuid_parse(uuid_str, lookup_uuid))
+        return -EBADMSG;
+
+    return ctl_svc_node_lookup(lookup_uuid, ret_csn);
+}
+
+void
+ctl_svc_node_put(struct ctl_svc_node *csn)
+{
+    DBG_CTL_SVC_NODE(LL_TRACE, csn, "");
+    RT_PUT(ctl_svc_node_tree, &ctlSvcNodeTree, csn);
 }
 
 void

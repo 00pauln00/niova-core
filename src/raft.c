@@ -18,6 +18,7 @@
 #include "alloc.h"
 #include "io.h"
 #include "random.h"
+#include "ctl_svc.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -25,7 +26,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 typedef uint8_t raft_peer_t;
 
-#define OPTS "p:hL:"
+#define OPTS "u:r:h"
 
 #define RAFT_DEFAULT_LOG_PATH "/var/tmp/niova-raft-log."
 
@@ -103,8 +104,11 @@ enum raft_epoll_handles
 struct raft_instance
 {
     struct udp_socket_handle ri_ush;
-    raft_peer_t              ri_peerno;
-    uint8_t                  ri_init_log_path;
+    struct ctl_svc_node     *ri_csn_raft;
+    struct ctl_svc_node     *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
+    struct ctl_svc_node     *ri_csn_this_peer;
+    const char              *ri_raft_uuid_str;
+    const char              *ri_this_peer_uuid_str;
     enum raft_state          ri_state;
     int                      ri_timer_fd;
     int                      ri_log_fd;
@@ -121,9 +125,7 @@ struct raft_instance
 
 static struct raft_instance myRaft = {
     .ri_state          = RAFT_STATE_FOLLOWER,
-    .ri_peerno         = RAFT_PEER_ANY,
     .ri_log_fd         = -1,
-    .ri_init_log_path  = 1,
     .ri_ush.ush_socket = -1,
     .ri_ush.ush_port   = NIOVA_DEFAULT_UDP_PORT,
     .ri_ush.ush_ipaddr = "127.0.0.1",
@@ -137,8 +139,8 @@ static struct raft_instance myRaft = {
 
 #define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                      \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "ri@%p peer=%hhu state=%x term=%ld seqno=%ld v=%hhx "fmt, \
-                   (ri), (ri)->ri_peerno, (ri)->ri_state, (ri)->ri_term, \
+                   "ri@%p state=%x term=%ld seqno=%ld v=%hhx "fmt, \
+                   (ri), (ri)->ri_state, (ri)->ri_term, \
                    (ri)->ri_log_hdr_seqno, (ri)->ri_voted_for, ##__VA_ARGS__)
 
 static crc32_t
@@ -369,25 +371,16 @@ raft_server_log_file_setup_init_header(struct raft_instance *ri)
 static int
 raft_server_log_file_name_setup(struct raft_instance *ri)
 {
-    if (ri->ri_init_log_path)
-    {
-        int rc = snprintf(ri->ri_log, PATH_MAX, "%s", RAFT_DEFAULT_LOG_PATH);
-        if (rc > PATH_MAX - RAFT_LOG_SUFFIX_MAX_LEN)
-            return -ENAMETOOLONG;
-    }
+    if (!ri)
+        return -EINVAL;
 
-    size_t file_name_len = strnlen(ri->ri_log, PATH_MAX);
-    if ((PATH_MAX - file_name_len) <= RAFT_LOG_SUFFIX_MAX_LEN)
-        return -ENAMETOOLONG;
+    const char *store_path = ctl_svc_node_peer_2_store(ri->ri_csn_this_peer);
+    if (!store_path)
+        return -EINVAL;
 
-    char suffix[RAFT_LOG_SUFFIX_MAX_LEN];
-    int rc = snprintf(suffix, RAFT_LOG_SUFFIX_MAX_LEN, "%hhu", ri->ri_peerno);
-    if (rc >= RAFT_LOG_SUFFIX_MAX_LEN)
-        return -ENAMETOOLONG;
+    int rc = snprintf(ri->ri_log, PATH_MAX, "%s", store_path);
 
-    strncpy(&ri->ri_log[file_name_len], suffix, RAFT_LOG_SUFFIX_MAX_LEN);
-
-    return 0;
+    return rc > PATH_MAX ? -ENAMETOOLONG : 0;
 }
 
 static int
@@ -458,41 +451,34 @@ static void
 raft_server_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s -p peer_num [-L log-prefix]\n", argv[0]);
+            "Usage: %s -r UUID -n UUID\n", argv[0]);
 
     exit(error);
 }
 
 static void
-raft_server_getopt(int argc, char **argv)
+raft_server_getopt(int argc, char **argv, struct raft_instance *ri)
 {
+    if (!argc || !argv || !ri)
+        return;
+
     int opt;
+    bool have_raft_uuid = false, have_this_peer_uuid = false;
 
     while ((opt = getopt(argc, argv, OPTS)) != -1)
     {
         switch (opt)
         {
-        case 'p':
-            myRaft.ri_peerno = atoll(optarg);
-            if (myRaft.ri_peerno < 0 || myRaft.ri_peerno > MAX_PEERS)
-            {
-                fprintf(stderr, "peer_num exceeds MAX_PEERS (%d)\n",
-                        MAX_PEERS);
-                raft_server_print_help(EINVAL, argv);
-            }
+        case 'r':
+            ri->ri_raft_uuid_str = optarg;
+            have_raft_uuid = true;
+            break;
+        case 'u':
+            ri->ri_this_peer_uuid_str = optarg;
+            have_this_peer_uuid = true;
             break;
         case 'h':
             raft_server_print_help(0, argv);
-            break;
-        case 'L':
-            if (strnlen(optarg, PATH_MAX) >=
-                (PATH_MAX - RAFT_LOG_SUFFIX_MAX_LEN))
-            {
-                fprintf(stderr, "log file name is too long\n");
-                raft_server_print_help(EINVAL, argv);
-            }
-            myRaft.ri_init_log_path = 0;
-            strncpy(myRaft.ri_log, optarg, PATH_MAX - RAFT_LOG_SUFFIX_MAX_LEN);
             break;
         default:
             raft_server_print_help(EINVAL, argv);
@@ -500,18 +486,21 @@ raft_server_getopt(int argc, char **argv)
         }
     }
 
-    if (myRaft.ri_peerno == ID_ANY_8bit)
+    if (!have_raft_uuid || !have_this_peer_uuid)
         raft_server_print_help(EINVAL, argv);
 }
 
 static int
 raft_server_udp_socket_setup(struct raft_instance *ri)
 {
-    ri->ri_ush.ush_port += ri->ri_peerno;
+    if (!ri)
+        return -EINVAL;
 
-    int rc = udp_socket_setup(&ri->ri_ush);
+    ri->ri_ush.ush_port = ctl_svc_node_peer_2_port(ri->ri_csn_this_peer);
+    if (!ri->ri_ush.ush_port)
+        return -ENOENT;
 
-    return rc;
+    return udp_socket_setup(&ri->ri_ush);
 }
 
 static int
@@ -652,16 +641,116 @@ raft_main_loop(struct raft_instance *ri)
     return 0;
 }
 
+static void
+raft_server_instance_destroy(struct raft_instance *ri)
+{
+    if (ri->ri_csn_raft)
+        ctl_svc_node_put(ri->ri_csn_raft);
+
+    if (ri->ri_csn_this_peer)
+        ctl_svc_node_put(ri->ri_csn_this_peer);
+
+    for (int i = 0; i < CTL_SVC_MAX_RAFT_PEERS; i++)
+        if (ri->ri_csn_raft_peers[i])
+            ctl_svc_node_put(ri->ri_csn_raft_peers[i]);
+}
+
+static int
+raft_server_instance_init(struct raft_instance *ri)
+{
+    /* Check the ri for the needed the UUID strings.
+     */
+    if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
+        return -EINVAL;
+
+    /* (re)initialize the ctl-svc node pointers.
+     */
+    ri->ri_csn_raft = NULL;
+    ri->ri_csn_this_peer = NULL;
+    for (int i = 0; i < CTL_SVC_MAX_RAFT_PEERS; i++)
+        ri->ri_csn_raft_peers[i] = NULL;
+
+    /* Lookup 'this' node's ctl-svc object.
+     */
+    int rc = ctl_svc_node_lookup_by_string(ri->ri_this_peer_uuid_str,
+                                           &ri->ri_csn_this_peer);
+    if (rc)
+        goto cleanup;
+
+    /* Lookup the raft ctl-svc object.
+     */
+    rc = ctl_svc_node_lookup_by_string(ri->ri_raft_uuid_str, &ri->ri_csn_raft);
+    if (rc)
+        goto cleanup;
+
+    DBG_CTL_SVC_NODE(LL_WARN, ri->ri_csn_this_peer, "self");
+    DBG_CTL_SVC_NODE(LL_WARN, ri->ri_csn_raft, "raft");
+
+    const struct ctl_svc_node_raft *csn_raft =
+        ctl_svc_node_raft_2_raft(ri->ri_csn_raft);
+
+    if (!csn_raft)
+    {
+        rc = -EINVAL;
+        goto cleanup;
+    }
+    else if (csn_raft->csnr_num_members > CTL_SVC_MAX_RAFT_PEERS)
+    {
+        rc = -E2BIG;
+        goto cleanup;
+    }
+
+    bool this_peer_found_in_raft_node = false;
+    for (raft_peer_t i = 0; i < csn_raft->csnr_num_members; i++)
+    {
+        rc = ctl_svc_node_lookup(csn_raft->csnr_members[i].csrm_peer,
+                                 &ri->ri_csn_raft_peers[i]);
+        if (rc)
+            goto cleanup;
+
+        char uuid_str[UUID_STR_LEN];
+        uuid_unparse(csn_raft->csnr_members[i].csrm_peer, uuid_str);
+
+        DBG_CTL_SVC_NODE(LL_WARN, ri->ri_csn_raft,
+                         "raft-peer-%hhu %s", i, uuid_str);
+
+        if (!ctl_svc_node_cmp(ri->ri_csn_this_peer, ri->ri_csn_raft_peers[i]))
+            this_peer_found_in_raft_node = true;
+    }
+
+    if (!this_peer_found_in_raft_node)
+    {
+        rc = -ENODEV;
+        goto cleanup;
+    }
+
+    return 0;
+
+cleanup:
+    raft_server_instance_destroy(ri);
+    return rc;
+}
+
 int
 main(int argc, char **argv)
 {
     int udp_close_rc = 0, file_close_rc = 0;
 
-    raft_server_getopt(argc, argv);
+    raft_server_getopt(argc, argv, &myRaft);
 
-    int rc = raft_server_udp_socket_setup(&myRaft);
+    int rc = raft_server_instance_init(&myRaft);
     if (rc)
+    {
+        STDERR_MSG("raft_server_instance_init(): %s", strerror(-rc));
         exit(rc);
+    }
+
+    rc = raft_server_udp_socket_setup(&myRaft);
+    if (rc)
+    {
+        STDERR_MSG("raft_server_udp_socket_setup(): %s", strerror(-rc));
+        exit(rc);
+    }
 
     rc = raft_server_log_file_setup(&myRaft);
     if (rc)
@@ -681,6 +770,8 @@ file_close:
 
 udp_close:
     udp_close_rc = raft_server_udp_socket_close(&myRaft);
+
+    raft_server_instance_destroy(&myRaft);
 
     exit(rc || file_close_rc || udp_close_rc);
 }

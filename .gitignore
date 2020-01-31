@@ -34,3 +34,4 @@ TODO*
 *.cmd
 test/config_token_test
 test/udp_test
+raft_server
