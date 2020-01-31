@@ -41,7 +41,7 @@ struct conf_token confTokens[CT_ID__MAX] =
         .ct_name = "CLIENT_PORT",
         .ct_name_len = 11,
         .ct_val_regex = PORT_REGEX,
-        .ct_id = CT_ID_PORT,
+        .ct_id = CT_ID_CLIENT_PORT,
     },
     [CT_ID_STORE] {
         .ct_name = "STORE",
