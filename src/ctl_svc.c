@@ -105,6 +105,7 @@ ctlSvcNodeTypeTokens[CTL_SVC_NODE_TYPE_MAX][CT_ID__MAX] =
         CT_ID_IPADDR,
         CT_ID_STORE,
         CT_ID_PORT,
+        CT_ID_CLIENT_PORT,
         CT_ID_HOSTNAME,
     },
 };
@@ -131,13 +132,14 @@ static int
                                         const struct conf_token *,
                                         const char *, size_t) =
 {
-    [CT_ID_HOSTNAME] = ctl_svc_node_token_hndlr_HOSTNAME,
-    [CT_ID_IPADDR]   = ctl_svc_node_token_hndlr_IPADDR,
-    [CT_ID_PEER]     = ctl_svc_node_token_hndlr_PEER,
-    [CT_ID_PORT]     = ctl_svc_node_token_hndlr_PORT,
-    [CT_ID_RAFT]     = ctl_svc_node_token_hndlr_RAFT,
-    [CT_ID_STORE]    = ctl_svc_node_token_hndlr_STORE,
-    [CT_ID_UUID]     = ctl_svc_node_token_hndlr_UUID,
+    [CT_ID_CLIENT_PORT] = ctl_svc_node_token_hndlr_PORT,
+    [CT_ID_HOSTNAME]    = ctl_svc_node_token_hndlr_HOSTNAME,
+    [CT_ID_IPADDR]      = ctl_svc_node_token_hndlr_IPADDR,
+    [CT_ID_PEER]        = ctl_svc_node_token_hndlr_PEER,
+    [CT_ID_PORT]        = ctl_svc_node_token_hndlr_PORT,
+    [CT_ID_RAFT]        = ctl_svc_node_token_hndlr_RAFT,
+    [CT_ID_STORE]       = ctl_svc_node_token_hndlr_STORE,
+    [CT_ID_UUID]        = ctl_svc_node_token_hndlr_UUID,
 };
 
 /**
@@ -303,6 +305,10 @@ ctl_svc_node_token_hndlr_HOSTNAME(struct ctl_svc_node *csn,
     return 0;
 }
 
+/**
+ * ctl_svc_node_token_hndlr_PORT - this function services both
+ *    CT_ID_CLIENT_PORT and CT_ID_PORT.
+ */
 static int
 ctl_svc_node_token_hndlr_PORT(struct ctl_svc_node *csn,
                               const struct conf_token *ct,
@@ -318,9 +324,12 @@ ctl_svc_node_token_hndlr_PORT(struct ctl_svc_node *csn,
     if ((port < 0 || port == 0 || port > 65536))
         return -ERANGE;
 
-    csn->csn_peer.csnp_port = port;
+    if (ct->ct_id == CT_ID_CLIENT_PORT)
+        csn->csn_peer.csnp_client_port = port;
+    else
+        csn->csn_peer.csnp_port = port;
 
-    DBG_CTL_SVC_NODE(LL_DEBUG, csn, "%u", csn->csn_peer.csnp_port);
+    DBG_CTL_SVC_NODE(LL_DEBUG, csn, "%s %ld", ct->ct_name, port);
 
     return 0;
 }

@@ -54,7 +54,8 @@ struct ctl_svc_node_peer
     char         csnp_ipv4[IPV4_STRLEN];
     char        *csnp_store;
     uint16_t     csnp_port;
-    uint16_t     csnp__pad[3];
+    uint16_t     csnp_client_port;
+    uint16_t     csnp__pad[2];
     union {
         struct ctl_svc_node_raft_peer csnp_raft_info;
         struct ctl_svc_node_niosd     csnp_niosd_info;
