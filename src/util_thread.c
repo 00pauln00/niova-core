@@ -66,7 +66,7 @@ util_thread_main(void *arg)
 
     THREAD_LOOP_WITH_CTL(tc)
     {
-        int rc = epoll_mgr_wait_and_process_events(&ut->ut_epm, 1);
+        int rc = epoll_mgr_wait_and_process_events(&ut->ut_epm, 1000);
 
         if (rc < 0 && rc != -EINTR)
             LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
