@@ -107,6 +107,13 @@ ctl_svc_node_raft_2_raft(const struct ctl_svc_node *csn)
     return (csn && ctl_svc_node_is_raft(csn)) ? &csn->csn_raft : NULL;
 }
 
+static inline raft_peer_t
+ctl_svc_node_raft_2_num_members(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_raft(csn)) ?
+        csn->csn_raft.csnr_num_members : RAFT_PEER_ANY;
+}
+
 static inline const uint16_t
 ctl_svc_node_peer_2_port(const struct ctl_svc_node *csn)
 {
