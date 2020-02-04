@@ -14,6 +14,11 @@ static niova_atomic64_t numPingPongsDone;
 static size_t udpSize = 5000;
 static size_t runTime = 1;
 
+/**
+ * udp_test_basic - sets up a UDP socket, binds, and does a non-blocking read.
+ *    The function simply tests essential operations - it does not exchange
+ *    data between sockets.
+ */
 static int
 udp_test_basic(void)
 {
@@ -74,6 +79,14 @@ udp_test_pingpong_worker(void *arg)
     int rc = udp_socket_setup(my_ush);
     if (rc)
     {
+        tc->tc_ret = rc;
+        return NULL;
+    }
+
+    rc = udp_socket_bind(my_ush);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "udp_socket_bind(): %s", strerror(-rc));
         tc->tc_ret = rc;
         return NULL;
     }
