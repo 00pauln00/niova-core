@@ -7,6 +7,7 @@
 #define NIOVA_UTIL_H 1
 
 #include <stdio.h>
+#include <uuid/uuid.h>
 
 #include "common.h"
 #include "log.h"
@@ -23,6 +24,12 @@ char name[str_len + 1] = {0};                                           \
 {                                                                       \
     for (int i = 0; i < MIN(str_len, init_char_len); i++)               \
         name[i] = init_char;                                            \
+}
+
+#define DECLARE_AND_INIT_UUID_STR(name, uuid)   \
+char name[UUID_STR_LEN];                        \
+{                                               \
+    uuid_unparse(uuid, name);                   \
 }
 
 #define niova_unstable_clock(dest) clock_gettime(CLOCK_MONOTONIC, (dest))

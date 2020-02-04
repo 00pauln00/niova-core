@@ -141,6 +141,12 @@ ctl_svc_node_cmp(const struct ctl_svc_node *a, const struct ctl_svc_node *b)
     return uuid_compare(a->csn_uuid, b->csn_uuid);
 }
 
+static inline int
+ctl_svc_node_compare_uuid(const struct ctl_svc_node *a, const uuid_t uuid)
+{
+    return uuid_compare(a->csn_uuid, uuid);
+}
+
 /**
  * ctl_svc_node_check_string - compares the provided UUID string with the
  *    binary UUID stored in the node.

@@ -123,6 +123,11 @@ raft: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft_server src/raft.c \
 	$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
+raft_cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
+raft_cg: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
+	$(CC) $(CFLAGS) -o raft_server src/raft.c \
+	$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+
 test_build: tests
 test_build:
 	mkdir -p /tmp/.niova
