@@ -6,9 +6,13 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
+
+#include "common.h"
+#include "io.h"
 
 ssize_t
 io_read(int fd, char *buf, size_t size)
@@ -91,4 +95,70 @@ int
 io_fsync(int fd)
 {
     return fsync(fd);
+}
+
+/**
+ * io_fd_drain - helper function for non-blocking FDs which empties the
+ *    contents from the file descriptor.  This can be used in epoll callbacks
+ *    to empty pending data from the fd.  It's expected that this function
+ *    returns 0, signifying that all data have been read and the fd has been
+ *    emptied.
+ * @fd:  file descriptor to be emptied.
+ * @ret_data:  an optional parameter to store the contents of the file
+ *    descriptor in an aggregated count.
+ */
+ssize_t
+io_fd_drain(int fd, size_t *ret_data)
+{
+    ssize_t rrc, val, total;
+
+    for (rrc = 1, total = 0; rrc > 0; total += val)
+    {
+        rrc = read(fd, &val, sizeof(ssize_t));
+        if (rrc < 0 && errno != EINTR)
+            rrc = -errno;
+    }
+
+    if (ret_data)
+        *ret_data = total;
+
+    return (rrc == -EAGAIN || rrc == -EWOULDBLOCK) ? 0 : rrc;
+}
+
+/**
+ * io_iovs_map_consumed - given a set of source iov's, map them to the set of
+ *   destination iov's based on the number of bytes which have already been
+ *   processed.
+ * @src:  array of input iov's
+ * @dest:  array of output iov's which should be the same size as the 'src'
+ *    array.
+ * @num_iovs:  number of iov's in both 'src' and 'dest'.
+ * @bytes_already_consumed:  the total number of bytes from the 'src' iov
+ *    array which have been processed.
+ * Returns:  a positive number <= num_iovs which represents the number of
+ *    iov's which map unconsumed data.
+ */
+ssize_t
+io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
+                     const size_t num_iovs, ssize_t bytes_already_consumed)
+{
+    if (!src || !dest || !num_iovs || bytes_already_consumed < 0)
+        return -EINVAL;
+
+    ssize_t dest_num_iovs = 0;
+
+    for (size_t i = 0; i < num_iovs; bytes_already_consumed -= src[i].iov_len,
+             i++)
+    {
+        if (bytes_already_consumed < src[i].iov_len)
+        {
+            const size_t idx = dest_num_iovs++;
+            const size_t adjust = MAX(0, bytes_already_consumed);
+
+            dest[idx].iov_len = src[i].iov_len - adjust;
+            dest[idx].iov_base = (char *)src[i].iov_base + adjust;
+        }
+    }
+
+    return dest_num_iovs;
 }

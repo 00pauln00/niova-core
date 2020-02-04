@@ -7,6 +7,10 @@
 #ifndef _NIOVA_IO_H_
 #define _NIOVA_IO_H_ 1
 
+#include <sys/socket.h>
+
+#define IO_MAX_IOVS 256
+
 ssize_t
 io_read(int fd, char *buf, size_t size);
 
@@ -18,5 +22,24 @@ io_pread(int fd, char *buf, size_t size, off_t offset);
 
 int
 io_fsync(int fd);
+
+ssize_t
+io_fd_drain(int fd, size_t *ret_data);
+
+static inline size_t
+io_iovs_total_size_get(const struct iovec *iovs, const size_t iovlen)
+{
+    size_t total_size = 0;
+
+    if (iovs)
+        for (size_t i = 0; i < iovlen; i++)
+            total_size += iovs[i].iov_len;
+
+    return total_size;
+}
+
+ssize_t
+io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
+                     const size_t num_iovs, ssize_t bytes_already_consumed);
 
 #endif
