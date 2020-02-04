@@ -64,8 +64,12 @@ udp_socket_close(struct udp_socket_handle *ush);
 
 ssize_t
 udp_socket_recv(const struct udp_socket_handle *ush, struct iovec *iov,
-                const size_t iovlen, struct sockaddr_in *from, bool block);
+                size_t iovlen, struct sockaddr_in *from, bool block);
 
 ssize_t
-udp_socket_send(const struct udp_socket_handle *ush, struct iovec *iov,
+udp_socket_recv_fd(int fd, struct iovec *iov, size_t iovlen,
+                   struct sockaddr_in *from, bool block);
+
+ssize_t
+udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
                 const size_t iovlen, struct sockaddr_in *to);

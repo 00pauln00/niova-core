@@ -3,9 +3,15 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
+
+#include <fcntl.h>
+
 #include "log.h"
 #include "env.h"
 #include "udp.h"
+#include "io.h"
+
+REGISTRY_ENTRY_FILE_GENERATE;
 
 static int udpDefaultPort = NIOVA_DEFAULT_UDP_PORT;
 
@@ -16,22 +22,9 @@ udp_get_default_port(void)
 }
 
 static bool
-udp_iov_size_ok(const struct iovec *iovs, const size_t iovlen)
+udp_iov_size_ok(const size_t total_len)
 {
-    if (iovs && iovlen > 0)
-    {
-        size_t total_sz = 0;
-
-        for (size_t i = 0; i < iovlen; i++)
-        {
-            total_sz += iovs[i].iov_len;
-
-            if (total_sz > NIOVA_MAX_UDP_SIZE)
-                return false;
-        }
-    }
-
-    return true;
+    return total_len > NIOVA_MAX_UDP_SIZE ? false : true;
 }
 
 int
@@ -72,6 +65,10 @@ udp_socket_close(struct udp_socket_handle *ush)
     return (socket >= 0) ? close(socket) : 0;
 }
 
+/**
+ * udp_socket_bind - called at some point after udp_socket_setup() to complete
+ *    the setup of the UDP socket.
+ */
 int
 udp_socket_bind(struct udp_socket_handle *ush)
 {
@@ -102,8 +99,10 @@ udp_socket_bind(struct udp_socket_handle *ush)
 }
 
 /**
- * udp_socket_setup - initial stage for UDP socket configuration.  This call
- *    does not bind() the socket so it's only a partial setup.
+ * udp_socket_setup - initial stage for UDP socket configuration which creates
+ *    a UDP socket and makes it non-blocking.  This call does not bind() the
+ *    socket so it's only a partial setup.  To complete the setup,
+ *    udp_socket_bind() must be called after the this function.
  */
 int
 udp_socket_setup(struct udp_socket_handle *ush)
@@ -127,12 +126,15 @@ udp_socket_setup(struct udp_socket_handle *ush)
 
 ssize_t
 udp_socket_recv(const struct udp_socket_handle *ush, struct iovec *iov,
-                const size_t iovlen, struct sockaddr_in *from, bool block)
+                size_t iovlen, struct sockaddr_in *from, bool block)
 {
     if (!ush || !iov || !iovlen)
         return -EINVAL;
+    else if (iovlen > IO_MAX_IOVS)
+        return -E2BIG;
 
-    else if (!udp_iov_size_ok(iov, iovlen))
+    size_t total_size = io_iovs_total_size_get(iov, iovlen);
+    if (!total_size || !udp_iov_size_ok(total_size))
         return -EMSGSIZE;
 
     int socket = ush->ush_socket;
@@ -155,7 +157,6 @@ udp_socket_recv(const struct udp_socket_handle *ush, struct iovec *iov,
                          (!block && (rc == -EAGAIN || rc == -EWOULDBLOCK))) ?
                         LL_DEBUG : LL_WARN),
                        "recvmsg(): %s", strerror(-rc));
-
         return rc;
     }
 
@@ -179,36 +180,80 @@ udp_socket_recv(const struct udp_socket_handle *ush, struct iovec *iov,
 }
 
 ssize_t
-udp_socket_send(const struct udp_socket_handle *ush, struct iovec *iov,
+udp_socket_recv_fd(int fd, struct iovec *iov, size_t iovlen,
+                   struct sockaddr_in *from, bool block)
+{
+    struct udp_socket_handle ush = {
+        .ush_socket = fd,
+        .ush_port = 0,
+        .ush_ipaddr = "0.0.0.0",
+    };
+
+    return udp_socket_recv(&ush, iov, iovlen, from, block);
+}
+
+/**
+ * udp_socket_send - send the iov contents to the location specified by the
+ *    'to' parameter.  udp_socket_send() aims to deliver the entire payload
+ *    specified in 'iovs' and will not perform a partial delivery unless
+ *    there is some error returned by sendmsg().
+ */
+ssize_t
+udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
                 const size_t iovlen, struct sockaddr_in *to)
 {
     if (!ush || !iov || !iovlen || !to)
         return -EINVAL;
 
-    else if (!udp_iov_size_ok(iov, iovlen))
+    else if (iovlen > IO_MAX_IOVS)
+        return -E2BIG;
+
+    const ssize_t total_size = io_iovs_total_size_get(iov, iovlen);
+    if (!total_size || !udp_iov_size_ok(total_size))
         return -EMSGSIZE;
 
-    struct msghdr msg = {
-        .msg_name = to,
-        .msg_namelen = sizeof(*to),
-        .msg_iov = iov,
-        .msg_iovlen = iovlen,
-    };
-
-    ssize_t rc = sendmsg(ush->ush_socket, &msg, 0);
-    if (rc < 0)
+    /* sendmsg() should not perform partial sends but it's better to be safe
+     * than sorry.
+     */
+    ssize_t total_sent = 0;
+    ssize_t rc = 0;
+    for (ssize_t sendmsg_rc = 0; total_sent < total_size;)
     {
-        rc = -errno;
+        struct iovec my_iovs[iovlen];
+        const size_t my_iovlen = io_iovs_map_consumed(iov, my_iovs, iovlen,
+                                                      total_sent);
+        struct msghdr msg = {
+            .msg_name = to,
+            .msg_namelen = sizeof(*to),
+            .msg_iov = my_iovs,
+            .msg_iovlen = my_iovlen,
+        };
 
-        SIMPLE_LOG_MSG(LL_WARN, "sendmsg() %s:%u: %s",
+        sendmsg_rc = sendmsg(ush->ush_socket, &msg, 0);
+        if (sendmsg_rc < 0)
+        {
+            if (errno == EINTR) // retry the send.
+                continue;
+
+            rc = -errno;
+
+            LOG_MSG(LL_NOTIFY, "sendmsg() %s:%u: %s",
+                    inet_ntoa(to->sin_addr), ntohs(to->sin_port),
+                    strerror(-rc));
+            break;
+        }
+
+        total_sent += sendmsg_rc;
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "%s:%u rc=%zd total=(%zd:%zd)",
                        inet_ntoa(to->sin_addr), ntohs(to->sin_port),
-                       strerror(-rc));
-    }
-    else
-    {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "%s:%u nb=%zd",
-                       inet_ntoa(to->sin_addr), ntohs(to->sin_port), rc);
+                       sendmsg_rc, total_sent, total_size);
     }
 
-    return rc;
+    if (!rc && total_size != total_sent)
+        LOG_MSG(LL_NOTIFY, "incomplete send to %s:%u (%zd:%zd)",
+                inet_ntoa(to->sin_addr), ntohs(to->sin_port),
+                total_sent, total_size);
+
+    return rc ? rc : total_sent;
 }
