@@ -72,6 +72,8 @@ typedef uint64_t  thread_exec_ctx_u64_t;
 #define ID_ANY_8bit  255
 #define ID_ANY_64bit -1ULL
 
+#define RAFT_PEER_ANY ID_ANY_8bit
+
 #define NIOSD_ID_ANY_64bit ID_ANY_64bit
 
 #define PBLK_ID_ANY -1U
