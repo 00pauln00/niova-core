@@ -23,6 +23,8 @@ SYS_CORE_INCLUDES = \
 	src/include/init.h \
 	src/include/lock.h \
 	src/include/log.h \
+	src/include/raft.h \
+	src/include/raft_net.h \
 	src/include/random.h \
 	src/include/ref_tree_proto.h \
 	src/include/regex_defines.h \
@@ -70,6 +72,10 @@ CORE_OBJFILES   = \
 	src/niosd_io_stats.o \
 	src/superblock.o \
 	src/vblkdev_handle.o
+
+RAFT_OBJFILES	= \
+	src/raft_server.o	\
+	src/raft_net.o	\
 
 ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
 ALL_INCLUDES      = $(CORE_INCLUDES) $(SYS_CORE_INCLUDES)
@@ -119,9 +125,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
-raft: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
-	$(CC) $(CFLAGS) -o raft_server src/raft.c \
-	$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
+	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
+	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft_cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
 raft_cg: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
