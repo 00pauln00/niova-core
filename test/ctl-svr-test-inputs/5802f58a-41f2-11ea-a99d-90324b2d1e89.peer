@@ -1,0 +1,5 @@
+RAFT 		ae3f4a60-2038-11ea-ae5f-90324b2d1e85
+IPADDR 		127.0.0.1
+PORT 		6667
+CLIENT_PORT     16667
+STORE           /var/tmp/niova/ae3f4a60-2038-11ea-ae5f-90324b2d1e85.5802f58a-41f2-11ea-a99d-90324b2d1e89.raftdb
