@@ -35,6 +35,8 @@
 
 typedef void raft_server_udp_cb_ctx_t;
 typedef void raft_net_udp_cb_ctx_t;
+typedef void raft_net_udp_cb_ctx_t;
+typedef void raft_net_timerfd_cb_ctx_t;
 typedef void raft_server_timerfd_cb_ctx_t;
 typedef int  raft_server_timerfd_cb_ctx_int_t;
 typedef void raft_server_leader_mode_t;
@@ -183,6 +185,8 @@ struct raft_leader_state
     int64_t  rls_prev_idx_term[CTL_SVC_MAX_RAFT_PEERS];
 };
 
+struct epoll_handle;
+
 struct raft_instance
 {
     struct udp_socket_handle    ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -205,6 +209,8 @@ struct raft_instance
     struct raft_entry_header    ri_newest_entry_hdr;
     struct epoll_mgr            ri_epoll_mgr;
     struct epoll_handle         ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
+    raft_net_timerfd_cb_ctx_t (*ri_timer_fd_cb)(const struct epoll_handle *);
+    raft_net_udp_cb_ctx_t     (*ri_udp_recv_cb)(const struct epoll_handle *);
 };
 
 static inline void
@@ -359,11 +365,6 @@ raft_server_get_current_raft_entry_index(const struct raft_instance *ri)
 
     return current_reh_index;
 }
-
-
-raft_net_udp_cb_ctx_t
-raft_server_process_received_server_msg(struct raft_instance *ri,
-	                                const struct raft_rpc_msg *rrm);
 
 int
 raft_server_epoll_setup_timerfd(struct raft_instance *ri);

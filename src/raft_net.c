@@ -101,106 +101,32 @@ raft_net_udp_sockets_setup(struct raft_instance *ri)
     return rc;
 }
 
-static enum raft_udp_listen_sockets
-raft_net_udp_identify_socket(const struct raft_instance *ri, const int fd)
+static int
+raft_net_timerfd_create(struct raft_instance *ri)
 {
-    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
-         i < RAFT_UDP_LISTEN_MAX; i++)
-        if (udp_socket_handle_2_sockfd(&ri->ri_ush[i]) == fd)
-            return i;
+    if (!ri)
+        return -EINVAL;
 
-    return RAFT_UDP_LISTEN_ANY;
+    ri->ri_timer_fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    if (ri->ri_timer_fd < 0)
+        return -errno;
+
+    return 0;
 }
 
-static raft_net_udp_cb_ctx_t
-raft_net_process_received_msg(struct raft_instance *ri,
-                              const struct raft_rpc_msg *rrm,
-                              const char *sink_buf,
-                              const ssize_t recv_bytes,
-                              const struct sockaddr_in *from,
-                              enum raft_udp_listen_sockets sender_type)
+static int
+raft_net_timerfd_close(struct raft_instance *ri)
 {
-    NIOVA_ASSERT(ri && rrm);
+    if (!ri)
+	return -EINVAL;
 
-    DBG_RAFT_MSG(LL_DEBUG, rrm, "msg-size=(%zd) peer %s:%d sender-type=%d",
-                 recv_bytes, inet_ntoa(from->sin_addr),
-                 ntohs(from->sin_port), sender_type);
-
-    if (sender_type == RAFT_UDP_LISTEN_SERVER)
+    if (ri->ri_timer_fd >= 0)
     {
-        // Server <-> server messages do not have additional payloads.
-        if (recv_bytes != sizeof(struct raft_rpc_msg))
-        {
-            DBG_RAFT_MSG(LL_WARN, rrm,
-                         "Invalid msg size (%zd) from peer %s:%d",
-                         recv_bytes, inet_ntoa(from->sin_addr),
-                         ntohs(from->sin_port));
-            return;
-        }
-
-        raft_server_process_received_server_msg(ri, rrm);
-    }
-}
-
-/**
- * raft_server_udp_cb - this is the receive handler for all incoming UDP
- *    requests and replies.  The program is single threaded so the msg sink
- *    buffers are allocated statically here.  Operations than can be handled
- *    from this callback are:  client RPC requests, vote requests (if
- *    peer is candidate), vote replies (if self is candidate).
- */
-static raft_net_udp_cb_ctx_t
-raft_net_udp_cb(const struct epoll_handle *eph)
-{
-    static char sink_buf[RAFT_ENTRY_MAX_DATA_SIZE];
-    static struct raft_rpc_msg raft_rpc_msg;
-    static struct sockaddr_in from;
-    static struct iovec iovs[2] = {
-        [0].iov_base = (void *)&raft_rpc_msg,
-        [0].iov_len  = sizeof(struct raft_rpc_msg),
-        [1].iov_base = (void *)sink_buf,
-        [1].iov_len  = RAFT_ENTRY_MAX_DATA_SIZE,
-    };
-
-    NIOVA_ASSERT(eph && eph->eph_arg);
-
-    struct raft_instance *ri = eph->eph_arg;
-
-    /* Clear the fd descriptor before doing any other error checks on the
-     * sender.
-     */
-    ssize_t recv_bytes =
-        udp_socket_recv_fd(eph->eph_fd, iovs, 2, &from, false);
-
-    if (recv_bytes < 0) // return from a general recv error
-    {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "udp_socket_recv_fd():  %s",
-                          strerror(-recv_bytes));
-        return;
+        ri->ri_timer_fd = -1;
+        return close(ri->ri_timer_fd);
     }
 
-    /* Lookup the fd in our raft_interface table and identify it.
-     */
-    enum raft_udp_listen_sockets sender_type =
-        raft_net_udp_identify_socket(ri, eph->eph_fd);
-
-    if (sender_type != RAFT_UDP_LISTEN_SERVER &&
-        sender_type != RAFT_UDP_LISTEN_CLIENT)
-    {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                          "Invalid sender type: fd=%d type=%d",
-                          eph->eph_fd, sender_type);
-        return;
-    }
-
-    struct udp_socket_handle *ush = &ri->ri_ush[sender_type];
-    NIOVA_ASSERT(eph->eph_fd == ush->ush_socket);
-
-    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d type=%d rc=%zd",
-                      eph->eph_fd, sender_type, recv_bytes);
-
-    raft_net_process_received_msg(ri, &raft_rpc_msg, sink_buf, recv_bytes,
-                                  &from, sender_type);
+    return 0;
 }
 
 static int
@@ -226,10 +152,30 @@ raft_epoll_setup_udp(struct raft_instance *ri, enum raft_epoll_handles reh)
 
     int rc = epoll_handle_init(&ri->ri_epoll_handles[reh],
                                ri->ri_ush[ruls].ush_socket,
-                               EPOLLIN, raft_net_udp_cb, ri);
+                               EPOLLIN, ri->ri_udp_recv_cb, ri);
 
     return rc ? rc : epoll_handle_add(&ri->ri_epoll_mgr, &
                                       ri->ri_epoll_handles[reh]);
+}
+
+int
+raft_net_epoll_setup_timerfd(struct raft_instance *ri)
+{
+    if (!ri ||
+        (ri->ri_state != RAFT_STATE_CLIENT && !ri->ri_timer_fd_cb))
+        return -EINVAL; // Servers must have specified ri_timer_fd_cb
+
+    else if (!ri->ri_timer_fd_cb)
+        return 0;
+
+    int rc =
+        epoll_handle_init(&ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD],
+                          ri->ri_timer_fd, EPOLLIN, ri->ri_timer_fd_cb,
+	                  ri);
+
+    return rc ? rc :
+        epoll_handle_add(&ri->ri_epoll_mgr,
+                         &ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD]);
 }
 
 static int
@@ -242,12 +188,9 @@ raft_net_epoll_setup(struct raft_instance *ri)
     if (rc)
         return rc;
 
-    if (ri->ri_state != RAFT_STATE_CLIENT)
-    {
-        /* Add the timerfd to the epoll_mgr.
-         */
-        rc = raft_server_epoll_setup_timerfd(ri);
-    }
+    /* Add the timerfd to the epoll_mgr.
+     */
+    rc = raft_net_epoll_setup_timerfd(ri);
 
     /* Next, add the udp sockets.
      */
@@ -379,6 +322,8 @@ raft_net_instance_shutdown(struct raft_instance *ri)
 
     int udp_sockets_close = raft_net_udp_sockets_close(ri);
 
+    raft_net_timerfd_close(ri);
+
     raft_net_conf_destroy(ri);
 
     return (udp_sockets_close ? udp_sockets_close :
@@ -405,6 +350,16 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     {
         SIMPLE_LOG_MSG(LL_WARN, "raft_net_udp_sockets_setup(): %s",
                        strerror(-rc));
+        return rc;
+    }
+
+    rc = raft_net_timerfd_create(ri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_timerfd_create(): %s",
+                       strerror(-rc));
+
+        raft_net_instance_shutdown(ri);
         return rc;
     }
 
@@ -467,4 +422,17 @@ raft_net_server_instance_run(const char *raft_uuid_str,
     raft_net_instance_shutdown(&ri);
 
     return rc;
+}
+
+void
+raft_net_instance_apply_callbacks(struct raft_instance *ri,
+                                  void (*udp_recv_cb)(const struct
+	                                              epoll_handle *),
+                                  void (*timer_fd_cb)(const struct
+                                                      epoll_handle *))
+{
+    NIOVA_ASSERT(ri && udp_recv_cb);
+
+    ri->ri_udp_recv_cb = udp_recv_cb;
+    ri->ri_timer_fd_cb = timer_fd_cb;
 }
