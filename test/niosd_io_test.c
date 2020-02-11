@@ -198,7 +198,7 @@ niot_submit_request(struct niosd_device *ndev, struct niosd_io_request *niorq)
 
     static int counter;
 
-    unsigned int val = sequentialIO ? counter++ : get_random();
+    unsigned int val = sequentialIO ? counter++ : random_get();
 
     int rc =
         niosd_io_request_init(niorq,

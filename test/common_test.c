@@ -20,7 +20,7 @@ highest_power_of_two_test(void)
         for (int j = 0; j < 10; j++)
         {
             const unsigned long long val_with_inner_bits =
-                val + (get_random() % val);
+                val + (random_get() % val);
 
             NIOVA_ASSERT(val ==
                          highest_power_of_two_from_val(val_with_inner_bits));

@@ -695,7 +695,7 @@ raft_election_timeout_set(struct timespec *ts)
         return;
 
     unsigned long long msec =
-        RAFT_ELECTION_MIN_TIME_MS + (get_random() % RAFT_ELECTION_RANGE_MS);
+        RAFT_ELECTION_MIN_TIME_MS + (random_get() % RAFT_ELECTION_RANGE_MS);
 
     msec_2_timespec(ts, msec);
 }

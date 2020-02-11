@@ -70,6 +70,7 @@ typedef bool      thread_exec_ctx_bool_t;
 typedef uint64_t  thread_exec_ctx_u64_t;
 
 #define ID_ANY_8bit  255
+#define ID_ANY_32bit -1U
 #define ID_ANY_64bit -1ULL
 
 #define RAFT_PEER_ANY ID_ANY_8bit

@@ -13,4 +13,11 @@
 unsigned int
 get_random(void);
 
+unsigned int
+random_get(void);
+
+int
+random_init(unsigned int seed);
+
+
 #endif

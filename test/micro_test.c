@@ -31,7 +31,7 @@ static void
 simple_random(void)
 {
     static unsigned int foo;
-    foo += get_random();
+    foo += random_get();
 
     (void)foo;
 }

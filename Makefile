@@ -123,6 +123,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/udp_test \
 		test/udp_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/random-test \
+		test/random-test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)

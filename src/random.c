@@ -14,17 +14,31 @@ REGISTRY_ENTRY_FILE_GENERATE;
 static __thread struct random_data randomData;
 static __thread char randomStateBuf[RANDOM_STATE_BUF_LEN];
 static __thread bool randInit;
+static __thread unsigned int randSeed = 1040071U;
 
-unsigned int
-get_random(void)
+int
+random_init(unsigned int seed)
 {
     if (!randInit)
     {
         randInit = true;
 
-     	if (initstate_r(0, randomStateBuf, RANDOM_STATE_BUF_LEN, &randomData))
+        if (initstate_r(seed, randomStateBuf, RANDOM_STATE_BUF_LEN,
+                        &randomData))
             log_msg(LL_FATAL, "initstate_r() failed: %s", strerror(errno));
+
+        return 0;
     }
+
+    return -EALREADY;
+}
+
+unsigned int
+random_get(void)
+{
+    if (!randInit)
+        random_init(randSeed);
+
 
     unsigned int result;
     if (random_r(&randomData, (int *)&result))
