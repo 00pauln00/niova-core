@@ -9,6 +9,7 @@
 
 #include "common.h"
 #include "util.h"
+#include "raft_net.h"
 
 #define NUM_RAFT_LOG_HEADERS 2
 #define RAFT_ENTRY_PAD_SIZE 63
@@ -34,9 +35,6 @@
     (ri)->ri_csn_raft->csn_uuid
 
 typedef void raft_server_udp_cb_ctx_t;
-typedef void raft_net_udp_cb_ctx_t;
-typedef void raft_net_udp_cb_ctx_t;
-typedef void raft_net_timerfd_cb_ctx_t;
 typedef void raft_server_timerfd_cb_ctx_t;
 typedef int  raft_server_timerfd_cb_ctx_int_t;
 typedef void raft_server_leader_mode_t;
@@ -154,15 +152,6 @@ enum raft_epoll_handles
     RAFT_EPOLL_NUM_HANDLES,
 };
 
-enum raft_udp_listen_sockets
-{
-    RAFT_UDP_LISTEN_MIN    = 0,
-    RAFT_UDP_LISTEN_SERVER = RAFT_UDP_LISTEN_MIN,
-    RAFT_UDP_LISTEN_CLIENT = 1,
-    RAFT_UDP_LISTEN_MAX    = 2,
-    RAFT_UDP_LISTEN_ANY    = RAFT_UDP_LISTEN_MAX,
-};
-
 enum raft_vote_result
 {
     RATE_VOTE_RESULT_UNKNOWN,
@@ -186,6 +175,7 @@ struct raft_leader_state
 };
 
 struct epoll_handle;
+struct raft_instance;
 
 struct raft_instance
 {
@@ -194,6 +184,8 @@ struct raft_instance
     struct ctl_svc_node        *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
     struct ctl_svc_node        *ri_csn_this_peer;
     struct ctl_svc_node        *ri_csn_leader;
+    struct timespec             ri_last_send[CTL_SVC_MAX_RAFT_PEERS];
+    struct timespec             ri_last_recv[CTL_SVC_MAX_RAFT_PEERS];
     const char                 *ri_raft_uuid_str;
     const char                 *ri_this_peer_uuid_str;
     struct raft_candidate_state ri_candidate;
@@ -209,8 +201,9 @@ struct raft_instance
     struct raft_entry_header    ri_newest_entry_hdr;
     struct epoll_mgr            ri_epoll_mgr;
     struct epoll_handle         ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
-    raft_net_timerfd_cb_ctx_t (*ri_timer_fd_cb)(const struct epoll_handle *);
-    raft_net_udp_cb_ctx_t     (*ri_udp_recv_cb)(const struct epoll_handle *);
+    raft_net_timer_cb_t         ri_timer_fd_cb;
+    raft_net_udp_cb_t           ri_udp_client_recv_cb;
+    raft_net_udp_cb_t           ri_udp_server_recv_cb;
 };
 
 static inline void

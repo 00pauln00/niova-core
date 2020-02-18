@@ -25,32 +25,6 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 /**
- * raft_peer_2_idx - attempts to find the peer in the raft_instance
- *    "ri_csn_raft_peers" array.  If found, then the index of the peer is
- *    returned.  The returned index does not pertain to the raft configuration
- *    itself, as the raft config only works from a set of members which are
- *    not specifically labeled numerically.  The use of this function is to
- *    help track this candidate's vote tally.
- */
-static raft_peer_t
-raft_peer_2_idx(const struct raft_instance *ri, const uuid_t peer_uuid)
-{
-    NIOVA_ASSERT(ri && ri->ri_csn_raft && ri->ri_csn_raft_peers);
-
-    const raft_peer_t num_raft_peers =
-        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
-
-    // Do not tolerate an invalid raft peers number
-    NIOVA_ASSERT(num_raft_peers <= CTL_SVC_MAX_RAFT_PEERS);
-
-    for (raft_peer_t i = 0; i < num_raft_peers; i++)
-        if (!ctl_svc_node_compare_uuid(ri->ri_csn_raft_peers[i], peer_uuid))
-            return i;
-
-    return RAFT_PEER_ANY;
-}
-
-/**
  * raft_server_entry_calc_crc - calculate the provided entry's crc and return
  *    the result without storing the crc in the entry.
  */
@@ -1188,20 +1162,8 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 }
 
 static raft_server_timerfd_cb_ctx_t
-raft_server_timerfd_cb(const struct epoll_handle *eph)
+raft_server_timerfd_cb(struct raft_instance *ri)
 {
-    struct raft_instance *ri = eph->eph_arg;
-
-    ssize_t rc = io_fd_drain(ri->ri_timer_fd, NULL);
-    if (rc)
-    {
-        // Something went awry with the timerfd read.
-        DBG_RAFT_INSTANCE(LL_WARN, ri, "io_fd_drain(): %zd", rc);
-
-        raft_server_timerfd_settime(ri);
-        return;
-    }
-
     switch (ri->ri_state)
     {
     case RAFT_STATE_FOLLOWER: // fall through
@@ -1389,6 +1351,10 @@ raft_server_verify_sender_server_msg(struct raft_instance *ri,
         return NULL;
     }
 
+    // Xxx should ensure that the port and IP address of the sender match
+    //     the UUID. though this would mean that the configuration would
+    //     have to be updated on the recv'r if the peer's information changed.
+
     return ri->ri_csn_raft_peers[sender_idx];
 }
 
@@ -1407,6 +1373,8 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
 
     if (!sender_csn)
         return;
+
+    raft_net_update_last_comm_time(ri, sender_csn->csn_uuid, false);
 
     switch (rrm->rrm_type)
     {
@@ -1429,6 +1397,8 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
         break;
     }
 }
+
+
 
 static raft_net_udp_cb_ctx_t
 raft_server_udp_peer_recv_handler(struct raft_instance *ri,
@@ -1479,70 +1449,6 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     return;
 }
 
-static enum raft_udp_listen_sockets
-raft_server_udp_identify_socket(const struct raft_instance *ri, const int fd)
-{
-    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
-         i < RAFT_UDP_LISTEN_MAX; i++)
-        if (udp_socket_handle_2_sockfd(&ri->ri_ush[i]) == fd)
-            return i;
-
-    return RAFT_UDP_LISTEN_ANY;
-}
-
-/**
- * raft_server_udp_cb - this is the receive handler for all incoming UDP
- *    requests and replies.  The program is single threaded so the msg sink
- *    buffers are allocated statically here.  Operations than can be handled
- *    from this callback are:  client RPC requests, vote requests (if
- *    peer is candidate), vote replies (if self is candidate).
- */
-static raft_net_udp_cb_ctx_t
-raft_server_udp_cb(const struct epoll_handle *eph)
-{
-    static char sink_buf[RAFT_ENTRY_SIZE]; // 64kib
-    static struct sockaddr_in from;
-    static struct iovec iovs[1] = {
-        [0].iov_base = (void *)sink_buf,
-        [0].iov_len  = RAFT_ENTRY_SIZE,
-    };
-
-    NIOVA_ASSERT(eph && eph->eph_arg);
-
-    struct raft_instance *ri = eph->eph_arg;
-    NIOVA_ASSERT(ri && ri->ri_udp_recv_cb);
-
-    /* Clear the fd descriptor before doing any other error checks on the
-     * sender.
-     */
-    ssize_t recv_bytes =
-        udp_socket_recv_fd(eph->eph_fd, iovs, 2, &from, false);
-
-    if (recv_bytes < 0) // return from a general recv error
-    {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "udp_socket_recv_fd():  %s",
-                          strerror(-recv_bytes));
-        return;
-    }
-
-    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d type=%d rc=%zd",
-                      eph->eph_fd,
-                      raft_server_udp_identify_socket(ri, eph->eph_fd),
-                      recv_bytes);
-
-    switch (raft_server_udp_identify_socket(ri, eph->eph_fd))
-    {
-    case RAFT_UDP_LISTEN_SERVER:
-        raft_server_udp_peer_recv_handler(ri, sink_buf, recv_bytes, &from);
-        break;
-    case RAFT_UDP_LISTEN_CLIENT:
-        raft_server_udp_client_recv_handler(ri, sink_buf, recv_bytes, &from);
-        break;
-    default:
-        break;
-    }
-}
-
 int
 raft_server_instance_startup(struct raft_instance *ri)
 {
@@ -1550,8 +1456,9 @@ raft_server_instance_startup(struct raft_instance *ri)
 
     /* Assign the timer_fd and udp_recv callbacks.
      */
-    ri->ri_timer_fd_cb = raft_server_timerfd_cb;
-    ri->ri_udp_recv_cb = raft_server_udp_cb;
+    raft_net_instance_apply_callbacks(ri, raft_server_timerfd_cb,
+                                      raft_server_udp_client_recv_handler,
+                                      raft_server_udp_peer_recv_handler);
 
     int rc = raft_server_log_file_setup(ri);
     if (rc)

@@ -32,9 +32,18 @@ char name[UUID_STR_LEN];                        \
     uuid_unparse(uuid, name);                   \
 }
 
+/**
+ * clock_gettime() wrappers
+ */
 #define niova_unstable_clock(dest) clock_gettime(CLOCK_MONOTONIC, (dest))
+#define niova_unstable_coarse_clock(dest)       \
+    clock_gettime(CLOCK_MONOTONIC_COARSE, (dest))
+
 #define niova_stable_clock(dest) clock_gettime(CLOCK_MONOTONIC_RAW, (dest))
+
 #define niova_realtime_clock(dest) clock_gettime(CLOCK_REALTIME, (dest))
+#define niova_realtime_coarseclock(dest) \
+    clock_gettime(CLOCK_REALTIME_COARSE, (dest))
 
 /**
  * BSD timespec macros

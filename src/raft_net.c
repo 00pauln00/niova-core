@@ -23,6 +23,9 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+#define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
+#define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
+
 static int
 raft_net_udp_sockets_close(struct raft_instance *ri)
 {
@@ -138,6 +141,12 @@ raft_net_epoll_cleanup(struct raft_instance *ri)
     return epoll_mgr_close(&ri->ri_epoll_mgr);
 }
 
+/**
+ *  raft_net_udp_cb - forward declaration for the generic udp recv handler.
+ */
+static raft_net_udp_cb_ctx_t
+raft_net_udp_cb(const struct epoll_handle *);
+
 static int
 raft_epoll_setup_udp(struct raft_instance *ri, enum raft_epoll_handles reh)
 {
@@ -152,11 +161,14 @@ raft_epoll_setup_udp(struct raft_instance *ri, enum raft_epoll_handles reh)
 
     int rc = epoll_handle_init(&ri->ri_epoll_handles[reh],
                                ri->ri_ush[ruls].ush_socket,
-                               EPOLLIN, ri->ri_udp_recv_cb, ri);
+                               EPOLLIN, raft_net_udp_cb, ri);
 
-    return rc ? rc : epoll_handle_add(&ri->ri_epoll_mgr, &
-                                      ri->ri_epoll_handles[reh]);
+    return rc ? rc : epoll_handle_add(&ri->ri_epoll_mgr,
+                                      &ri->ri_epoll_handles[reh]);
 }
+
+raft_net_timerfd_cb_ctx_t
+raft_net_timerfd_cb(const struct epoll_handle *);
 
 int
 raft_net_epoll_setup_timerfd(struct raft_instance *ri)
@@ -170,8 +182,7 @@ raft_net_epoll_setup_timerfd(struct raft_instance *ri)
 
     int rc =
         epoll_handle_init(&ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD],
-                          ri->ri_timer_fd, EPOLLIN, ri->ri_timer_fd_cb,
-	                  ri);
+                          ri->ri_timer_fd, EPOLLIN, raft_net_timerfd_cb, ri);
 
     return rc ? rc :
         epoll_handle_add(&ri->ri_epoll_mgr,
@@ -424,15 +435,238 @@ raft_net_server_instance_run(const char *raft_uuid_str,
     return rc;
 }
 
+/**
+ * raft_peer_2_idx - attempts to find the peer in the raft_instance
+ *    "ri_csn_raft_peers" array.  If found, then the index of the peer is
+ *    returned.  The returned index does not pertain to the raft configuration
+ *    itself, as the raft config only works from a set of members which are
+ *    not specifically labeled numerically.  The use of this function is to
+ *    help track this candidate's vote tally.
+ */
+raft_peer_t
+raft_peer_2_idx(const struct raft_instance *ri, const uuid_t peer_uuid)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_raft && ri->ri_csn_raft_peers);
+
+    const raft_peer_t num_raft_peers =
+        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
+
+    // Do not tolerate an invalid raft peers number
+    NIOVA_ASSERT(num_raft_peers <= CTL_SVC_MAX_RAFT_PEERS);
+
+    for (raft_peer_t i = 0; i < num_raft_peers; i++)
+        if (!ctl_svc_node_compare_uuid(ri->ri_csn_raft_peers[i], peer_uuid))
+            return i;
+
+    return RAFT_PEER_ANY;
+}
+
+/**
+ * raft_net_verify_sender_server_msg - verify that an incoming RPC's UUIDs
+ *    match what it is expected based on the receiver's config.
+ */
+struct ctl_svc_node *
+raft_net_verify_sender_server_msg(struct raft_instance *ri,
+                                  const uuid_t sender_uuid,
+                                  const uuid_t sender_raft_uuid,
+                                  const struct sockaddr_in *sender_addr)
+{
+    if (!ri || !sender_uuid || uuid_is_null(sender_uuid))
+        return NULL;
+
+    /* Check the id of the sender to make sure they are part of the config
+     * and that the RPC is for the correct raft instance.
+     */
+    const raft_peer_t sender_idx = raft_peer_2_idx(ri, sender_uuid);
+
+    if (sender_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft) ||
+        ctl_svc_node_compare_uuid(ri->ri_csn_raft, sender_raft_uuid))
+    {
+        DECLARE_AND_INIT_UUID_STR(raft_uuid, ri->ri_csn_raft->csn_uuid);
+        DECLARE_AND_INIT_UUID_STR(peer_raft_uuid, sender_raft_uuid);
+
+        SIMPLE_LOG_MSG(LL_NOTIFY, "peer not found in my config %hhx %hhx",
+                       sender_idx,
+                       ctl_svc_node_raft_2_num_members(ri->ri_csn_raft));
+        SIMPLE_LOG_MSG(LL_NOTIFY, "my-raft=%s peer-raft=%s",
+                       raft_uuid, peer_raft_uuid);
+        return NULL;
+    }
+
+    struct ctl_svc_node *csn = ri->ri_csn_raft_peers[sender_idx];
+
+    const uint16_t expected_port = (ri->ri_state == RAFT_STATE_CLIENT ?
+                                    ctl_svc_node_peer_2_client_port(csn) :
+                                    ctl_svc_node_peer_2_port(csn));
+
+    if (ntohs(sender_addr->sin_port) != expected_port ||
+        strncmp(ctl_svc_node_peer_2_ipaddr(csn),
+                inet_ntoa(sender_addr->sin_addr), IPV4_STRLEN))
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "uuid (%s) on unexpected IP:port (%s:%hu)",
+                       sender_uuid, inet_ntoa(sender_addr->sin_addr),
+                       expected_port);
+        csn = NULL;
+    }
+
+    return csn;
+}
+
+/**
+ * raft_net_update_last_comm_time - may be used by application level send and
+ *     recv handlers to take and record a communication timestamp.
+ * @ri:  raft instance pointer
+ * @peer_uuid:  server peer uuid (client UUIDs should not be used here).
+ * @send_or_recv:  non-zero for 'send'.
+ */
+void
+raft_net_update_last_comm_time(struct raft_instance *ri,
+                               const uuid_t peer_uuid, bool send_or_recv)
+{
+    if (!ri || uuid_is_null(peer_uuid))
+        return;
+
+    const raft_peer_t peer_idx = raft_peer_2_idx(ri, peer_uuid);
+
+    if (peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
+        return;
+
+    struct timespec *ts = send_or_recv ?
+        &ri->ri_last_send[peer_idx] : &ri->ri_last_recv[peer_idx];
+
+    // ~1 ms granularity which should be fine for this app.
+    niova_unstable_coarse_clock(ts);
+}
+
+raft_peer_t
+raft_net_get_most_recently_responsive_server(struct raft_instance *ri)
+{
+    const raft_peer_t nraft_servers =
+        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
+
+    raft_peer_t start_peer = random_get() % nraft_servers;
+    raft_peer_t best_peer = start_peer;
+
+    unsigned long long recency_value = 0;
+
+    for (raft_peer_t i = 0; i < nraft_servers; i++)
+    {
+        const unsigned long long last_send =
+            timespec_2_msec(&ri->ri_last_send[i + start_peer]);
+
+        const unsigned long long last_recv =
+            timespec_2_msec(&ri->ri_last_recv[i + start_peer]);
+
+        unsigned long long tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_RECV;
+        if (!last_send)
+            tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_SEND;
+        else if (!last_recv)
+            tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_RECV;
+        else if (last_recv >= last_send)
+            tmp_recency_value = last_recv - last_send;
+
+        if (tmp_recency_value < recency_value)
+        {
+            best_peer = i + start_peer;
+            recency_value = tmp_recency_value;
+        }
+    }
+
+    return best_peer;
+}
+
+raft_net_timerfd_cb_ctx_t
+raft_net_timerfd_cb(const struct epoll_handle *eph)
+{
+    struct raft_instance *ri = eph->eph_arg;
+
+    ssize_t rc = io_fd_drain(ri->ri_timer_fd, NULL);
+    if (rc)
+    {
+        // Something went awry with the timerfd read.
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "io_fd_drain(): %zd", rc);
+        return;
+    }
+
+    if (ri->ri_timer_fd_cb)
+        ri->ri_timer_fd_cb(ri);
+}
+
+static enum raft_udp_listen_sockets
+raft_net_udp_identify_socket(const struct raft_instance *ri, const int fd)
+{
+    for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
+         i < RAFT_UDP_LISTEN_MAX; i++)
+        if (udp_socket_handle_2_sockfd(&ri->ri_ush[i]) == fd)
+            return i;
+
+    return RAFT_UDP_LISTEN_ANY;
+}
+
+/**
+ * raft_net_udp_cb - this is the receive handler for all incoming UDP
+ *    requests and replies.  The program is single threaded so the msg sink
+ *    buffers are allocated statically here.  Operations than can be handled
+ *    from this callback are:  client RPC requests, vote requests (if
+ *    peer is candidate), vote replies (if self is candidate).
+ */
+static raft_net_udp_cb_ctx_t
+raft_net_udp_cb(const struct epoll_handle *eph)
+{
+    static char sink_buf[RAFT_NET_MAX_RPC_SIZE];
+    static struct sockaddr_in from;
+    static struct iovec iovs[1] = {
+        [0].iov_base = (void *)sink_buf,
+        [0].iov_len  = RAFT_NET_MAX_RPC_SIZE,
+    };
+
+    NIOVA_ASSERT(eph && eph->eph_arg);
+
+    struct raft_instance *ri = eph->eph_arg;
+    NIOVA_ASSERT(ri);
+
+    /* Clear the fd descriptor before doing any other error checks on the
+     * sender.
+     */
+    ssize_t recv_bytes =
+        udp_socket_recv_fd(eph->eph_fd, iovs, 1, &from, false);
+
+    if (recv_bytes < 0) // return from a general recv error
+    {
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "udp_socket_recv_fd():  %s",
+                          strerror(-recv_bytes));
+        return;
+    }
+
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d type=%d rc=%zd",
+                      eph->eph_fd,
+                      raft_net_udp_identify_socket(ri, eph->eph_fd),
+                      recv_bytes);
+
+    switch (raft_net_udp_identify_socket(ri, eph->eph_fd))
+    {
+    case RAFT_UDP_LISTEN_SERVER:
+        if (ri->ri_udp_server_recv_cb)
+            ri->ri_udp_server_recv_cb(ri, sink_buf, recv_bytes, &from);
+        break;
+    case RAFT_UDP_LISTEN_CLIENT:
+        if (ri->ri_udp_client_recv_cb)
+            ri->ri_udp_client_recv_cb(ri, sink_buf, recv_bytes, &from);
+        break;
+    default:
+        break;
+    }
+}
+
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
-                                  void (*udp_recv_cb)(const struct
-	                                              epoll_handle *),
-                                  void (*timer_fd_cb)(const struct
-                                                      epoll_handle *))
+                                  raft_net_timer_cb_t timer_fd_cb,
+                                  raft_net_udp_cb_t udp_client_recv_cb,
+                                  raft_net_udp_cb_t udp_server_recv_cb)
 {
-    NIOVA_ASSERT(ri && udp_recv_cb);
+    NIOVA_ASSERT(ri);
 
-    ri->ri_udp_recv_cb = udp_recv_cb;
     ri->ri_timer_fd_cb = timer_fd_cb;
+    ri->ri_udp_client_recv_cb = udp_client_recv_cb;
+    ri->ri_udp_server_recv_cb = udp_server_recv_cb;
 }

@@ -37,6 +37,24 @@ simple_random(void)
 }
 
 static void
+simple_clock_gettime_mono_coarse(void)
+{
+    static struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_COARSE, &ts);
+
+    (void)ts;
+}
+
+static void
+simple_clock_gettime_realtime_coarse(void)
+{
+    static struct timespec ts;
+    clock_gettime(CLOCK_REALTIME_COARSE, &ts);
+
+    (void)ts;
+}
+
+static void
 simple_clock_gettime_mono(void)
 {
     static struct timespec ts;
@@ -50,6 +68,15 @@ simple_clock_gettime_mono_raw(void)
 {
     static struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+
+    (void)ts;
+}
+
+static void
+simple_clock_gettime_realtime(void)
+{
+    static struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
 
     (void)ts;
 }
@@ -109,6 +136,12 @@ simple_multiply(void)
     (void)val;
 }
 
+static void
+simple_uuid_generate(void)
+{
+    static uuid_t uuid;
+    uuid_generate(uuid);
+}
 
 static void
 simple_crc32_64byte_buf(void)
@@ -154,17 +187,25 @@ main(void)
 
     run_micro(simple_noop, DEF_ITER, "simple_noop");
     run_micro(simple_addition, DEF_ITER, "simple_addition");
-    run_micro(atomic_addition, DEF_ITER, "atomic_addition");
-    run_micro(atomic_cas, DEF_ITER / 5, "atomic_cas");
-    run_micro(atomic_cas_noop, DEF_ITER / 5, "atomic_cas_noop");
     run_micro(simple_multiply, DEF_ITER, "simple_multiply");
     run_micro(simple_modulus, DEF_ITER / 5, "simple_modulus");
+    run_micro(atomic_addition, DEF_ITER, "atomic_addition");
+    run_micro(atomic_cas_noop, DEF_ITER / 5, "atomic_cas_noop");
+    run_micro(atomic_cas, DEF_ITER / 5, "atomic_cas");
+    run_micro(simple_random, DEF_ITER, "random_number_generate");
     run_micro(simple_crc32_64byte_buf, DEF_ITER / 10,
               "simple_crc32_64byte_buf");
-    run_micro(simple_random, DEF_ITER, "random-number-generate");
+    run_micro(simple_clock_gettime_mono_coarse, DEF_ITER,
+              "clock_gettime_monotonic_coarse");
+    run_micro(simple_clock_gettime_realtime_coarse, DEF_ITER,
+              "clock_gettime_realtime_coarse");
     run_micro(simple_clock_gettime_mono, DEF_ITER / 20,
               "clock_gettime_monotonic");
-    run_micro(simple_clock_gettime_mono_raw, DEF_ITER / 20,
+    run_micro(simple_clock_gettime_realtime, DEF_ITER / 20,
+              "clock_gettime_realtime");
+    run_micro(simple_clock_gettime_mono_raw, DEF_ITER / 100,
               "clock_gettime_monotonic_raw");
+    run_micro(simple_uuid_generate, DEF_ITER / 10000,
+              "uuid_generate");
     return 0;
 }
