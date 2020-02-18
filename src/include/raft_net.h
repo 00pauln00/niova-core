@@ -45,18 +45,36 @@ enum raft_client_rpc_msg_type
     RAFT_CLIENT_RPC_MSG_TYPE_REQUEST  = 1,
     RAFT_CLIENT_RPC_MSG_TYPE_REPLY    = 2,
     RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT = 3,
-    RAFT_CLIENT_RPC_MSG_TYPE_ANY      = 4,
+    RAFT_CLIENT_RPC_MSG_TYPE_ANY      = 5,
 };
 
+/**
+ * -- struct raft_client_rpc_generic_msg --
+ * Raft client generic RPC message.
+ * @rcrgm_redirect_id:  Used in reply context to return the raft leader UUID.
+       Valid when rcrgm_error is RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT.
+ * @rcrgm_msg_id:  Unique RPC identifier which must be unique across client
+ *     process instances.
+ * @rcrgm_msg_commit_seqno: In request context, informs the server that the
+ *     client 'knows' the next value in the monotonic sequence.  The server
+ *     verifies the value and returns EILSEQ if the value violates the
+ *     sequence.  When EILSEQ is returned, the server will also set
+ *     rcrgm_msg_commit_seqno with the last raft-committed sequence number.
+ * @rcrgm_msg_size:  Size of the data appended to rcrgm_data.
+ * @rcrgm_error:  Error value sent in reply context.
+ * @rcrgm_msg_type:  One of enum raft_client_rpc_msg_type.  Note that
+ *     RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT is a special reply indicating that the
+ *     server was not the raft leader.
+ */
 struct raft_client_rpc_generic_msg
 {
-    uuid_t   rcrgm_redirect_id; // redirect ID (reply) if server not leader
-    uint64_t rcrgm_msg_seqno; // generic, non-persistent RPC sequence number
-    uint64_t rcrgm_msg_commit_seqno; // client app seqno committed in raft
+    uuid_t   rcrgm_redirect_id;
+    uint64_t rcrgm_msg_id;
+    uint64_t rcrgm_msg_commit_seqno;
     uint16_t rcrgm_msg_size;
-    uint16_t rcrgm_msg_type;
     uint16_t rcrgm_error;
-    uint16_t rcrgm__pad;
+    uint8_t  rcrgm_msg_type;
+    uint8_t  rcrgm__pad[3];
     char     rcrgm_data[];
 };
 

@@ -165,13 +165,10 @@ static raft_net_timerfd_cb_ctx_t
 rsc_ping_raft_service(struct raft_instance *ri)
 {
     if (ri->ri_csn_leader)
-    {
-        DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_leader, "");
-    }
-    else
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "no csn leader!");
-    }
+        return;
+
+    DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_leader, "");
+    DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_this_peer, "");
 }
 
 /**
@@ -183,6 +180,7 @@ rsc_timerfd_cb(struct raft_instance *ri)
     rsc_set_ping_target(ri);
     rsc_ping_raft_service(ri);
 
+    // Reset the timer before returning.
     rsc_timerfd_settime(ri);
 }
 
