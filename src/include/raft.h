@@ -7,8 +7,13 @@
 #ifndef __NIOVA_RAFT_H_
 #define __NIOVA_RAFT_H_ 1
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include "common.h"
 #include "util.h"
+#include "ctl_svc.h"
 #include "raft_net.h"
 
 #define NUM_RAFT_LOG_HEADERS 2
@@ -301,6 +306,13 @@ raft_server_state_to_char(enum raft_state state)
     }
 
     return '?';
+}
+
+static inline bool
+raft_instance_is_client(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_state == RAFT_STATE_CLIENT ? true : false;
 }
 
 /**

@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define RANDOM_STATE_BUF_LEN 32
+
 unsigned int
 get_random(void);
 

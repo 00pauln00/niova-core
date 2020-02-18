@@ -8,6 +8,7 @@
 #include <unistd.h>
 
 #include "raft_net.h"
+#include "raft_test.h"
 
 #define OPTS "u:r:h"
 

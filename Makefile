@@ -131,6 +131,8 @@ raft: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
+	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft_cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
 raft_cg: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)

@@ -37,3 +37,4 @@ test/udp_test
 raft_server
 raft-server
 test/random-test
+raft-client

@@ -49,7 +49,12 @@ raft_net_udp_sockets_bind(struct raft_instance *ri)
 
     for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
          i < RAFT_UDP_LISTEN_MAX && !rc; i++)
+    {
+        if (raft_instance_is_client(ri) && i == RAFT_UDP_LISTEN_SERVER)
+            continue;
+
         rc = udp_socket_bind(&ri->ri_ush[i]);
+    }
 
     if (rc)
         raft_net_udp_sockets_close(ri);
@@ -73,6 +78,9 @@ raft_net_udp_sockets_setup(struct raft_instance *ri)
 
         if (i == RAFT_UDP_LISTEN_SERVER) // server <-> server comms port
         {
+            if (raft_instance_is_client(ri))
+                continue; // no server listen port in client mode
+
             ri->ri_ush[i].ush_port =
                 ctl_svc_node_peer_2_port(ri->ri_csn_this_peer);
         }
@@ -174,7 +182,7 @@ int
 raft_net_epoll_setup_timerfd(struct raft_instance *ri)
 {
     if (!ri ||
-        (ri->ri_state != RAFT_STATE_CLIENT && !ri->ri_timer_fd_cb))
+        (!raft_instance_is_client(ri) && !ri->ri_timer_fd_cb))
         return -EINVAL; // Servers must have specified ri_timer_fd_cb
 
     else if (!ri->ri_timer_fd_cb)
@@ -208,6 +216,9 @@ raft_net_epoll_setup(struct raft_instance *ri)
     for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
          i < RAFT_UDP_LISTEN_MAX && !rc; i++)
     {
+        if (raft_instance_is_client(ri) && i == RAFT_UDP_LISTEN_SERVER)
+            continue;
+
         rc = raft_epoll_setup_udp(ri, i);
     }
 
@@ -245,8 +256,7 @@ raft_net_conf_init(struct raft_instance *ri)
 {
     /* Check the ri for the needed the UUID strings.
      */
-    if (!ri || !ri->ri_raft_uuid_str ||
-        (ri->ri_state != RAFT_STATE_CLIENT && !ri->ri_this_peer_uuid_str))
+    if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
         return -EINVAL;
 
     for (int i = RAFT_UDP_LISTEN_MIN; i < RAFT_UDP_LISTEN_MAX; i++)
@@ -307,7 +317,7 @@ raft_net_conf_init(struct raft_instance *ri)
             this_peer_found_in_raft_node = true;
     }
 
-    if (!this_peer_found_in_raft_node)
+    if (!this_peer_found_in_raft_node && !raft_instance_is_client(ri))
     {
         rc = -ENODEV;
         goto cleanup;
@@ -328,7 +338,7 @@ raft_net_instance_shutdown(struct raft_instance *ri)
 
     int epoll_close_rc = raft_net_epoll_cleanup(ri);
 
-    if (ri->ri_state != RAFT_STATE_CLIENT)
+    if (!raft_instance_is_client(ri))
         raft_server_instance_shutdown(ri);
 
     int udp_sockets_close = raft_net_udp_sockets_close(ri);
@@ -379,7 +389,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         rc = raft_server_instance_startup(ri);
         if (rc)
         {
-            SIMPLE_LOG_MSG(LL_WARN, "raft_instance_startup_server(): %s",
+            SIMPLE_LOG_MSG(LL_WARN, "raft_server_instance_startup(): %s",
                            strerror(-rc));
 
             raft_server_instance_shutdown(ri);
@@ -391,7 +401,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     rc = raft_net_epoll_setup(ri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "raft_epoll_setup(): %s", strerror(-rc));
+        SIMPLE_LOG_MSG(LL_WARN, "raft_net_epoll_setup(): %s", strerror(-rc));
 
         raft_net_instance_shutdown(ri);
         return rc;
@@ -402,7 +412,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     rc = raft_net_udp_sockets_bind(ri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "raft_server_udp_sockets_bind(): %s",
+        SIMPLE_LOG_MSG(LL_WARN, "raft_net_udp_sockets_bind(): %s",
                        strerror(-rc));
         raft_net_instance_shutdown(ri);
         return rc;
@@ -495,7 +505,7 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
 
     struct ctl_svc_node *csn = ri->ri_csn_raft_peers[sender_idx];
 
-    const uint16_t expected_port = (ri->ri_state == RAFT_STATE_CLIENT ?
+    const uint16_t expected_port = (raft_instance_is_client(ri) ?
                                     ctl_svc_node_peer_2_client_port(csn) :
                                     ctl_svc_node_peer_2_port(csn));
 

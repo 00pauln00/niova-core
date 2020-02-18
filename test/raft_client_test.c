@@ -1,6 +1,14 @@
 #include <stdio.h>
-#include <unistd.h>
+#include <sys/timerfd.h>
 
+#include "log.h"
+#include "udp.h"
+#include "epoll_mgr.h"
+#include "common.h"
+#include "crc32.h"
+
+#include "random.h"
+#include "raft.h"
 #include "raft_net.h"
 #include "raft_test.h"
 
@@ -12,7 +20,7 @@ const char *my_uuid_str;
 static struct random_data rand_data;
 static char rand_state_buf[RANDOM_STATE_BUF_LEN];
 
-#define RSC_TIMERFD_EXPIRE_MS 100U
+#define RSC_TIMERFD_EXPIRE_MS 1000U
 #define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 3U)
 
 /**
@@ -26,7 +34,7 @@ rsc_random_init(void)
 {
     if (initstate_r(0, rand_state_buf, RANDOM_STATE_BUF_LEN,
                     &rand_data))
-        log_msg(LL_FATAL, "initstate_r() failed: %s", strerror(errno));
+        SIMPLE_LOG_MSG(LL_FATAL, "initstate_r() failed: %s", strerror(errno));
 }
 
 static unsigned int
@@ -35,9 +43,18 @@ rsc_random_get(void)
     unsigned int result;
 
     if (random_r(&rand_data, (int *)&result))
-	log_msg(LL_FATAL, "random_r() failed: %s", strerror(errno));
+	SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
 
     return result;
+}
+
+static void
+rsc_print_help(const int error, char **argv)
+{
+    fprintf(error ? stderr : stdout,
+            "Usage: %s -r UUID -n UUID\n", argv[0]);
+
+    exit(error);
 }
 
 static void
@@ -54,6 +71,7 @@ rsc_getopt(int argc, char **argv)
         {
         case 'r':
             raft_uuid_str = optarg;
+
             break;
 	case 'u':
             my_uuid_str = optarg;
@@ -76,8 +94,6 @@ rsc_timerfd_settime(struct raft_instance *ri)
 {
     struct itimerspec its = {0};
 
-    raft_election_timeout_set(&its.it_value);
-
     msec_2_timespec(&its.it_value, RSC_TIMERFD_EXPIRE_MS);
 
     int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
@@ -93,7 +109,7 @@ rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
         return;
 
     const struct raft_client_rpc_msg *rcrm =
-        (const struct raft_rpc_msg *)recv_buffer;
+        (const struct raft_client_rpc_msg *)recv_buffer;
 
     struct ctl_svc_node *sender_csn =
         raft_net_verify_sender_server_msg(ri, rcrm->rcrm_sender_id,
@@ -105,36 +121,6 @@ rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
     raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
 
 
-}
-
-static raft_net_udp_cb_ctx_t
-rsc_udp_epoll_cb(const struct epoll_handle *eph)
-{
-    static char sink_buf[RAFT_ENTRY_SIZE]; // 64kib
-    static struct sockaddr_in from;
-    static struct iovec iovs[1] = {
-        [0].iov_base = (void *)sink_buf,
-        [0].iov_len  = RAFT_ENTRY_SIZE,
-    };
-
-    NIOVA_ASSERT(eph && eph->eph_arg);
-
-    struct raft_instance *ri = eph->eph_arg;
-
-    /* Clear the fd descriptor before doing any other error checks on the
-     * sender.
-     */
-    ssize_t recv_bytes =
-        udp_socket_recv_fd(eph->eph_fd, iovs, 1, &from, false);
-
-    if (recv_bytes < 0) // return from a general recv error
-    {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "udp_socket_recv_fd():  %s",
-                       strerror(-recv_bytes));
-        return;
-    }
-
-    rsc_udp_recv_handler(ri, iovs[0].iov_base, recv_bytes, &from);
 }
 
 static void
@@ -161,28 +147,23 @@ rsc_set_ping_target(struct raft_instance *ri)
  *    if our known raft leader is not responsive.  The ping will reply with
  *    application-specific data for this client instance.
  */
-static raft_timerfd_cb_ctx_t
+static raft_net_timerfd_cb_ctx_t
 rsc_ping_raft_service(struct raft_instance *ri)
 {
-
+    (void)ri;
 }
 
 /**
  * rsc_timerfd_cb - callback which is run when the timer_fd expires.
  */
-static raft_timerfd_cb_ctx_t
-rsc_timerfd_cb(const struct epoll_handle *eph)
+static raft_net_timerfd_cb_ctx_t
+rsc_timerfd_cb(struct raft_instance *ri)
 {
-    struct raft_instance *ri = eph->eph_arg;
+    SIMPLE_FUNC_ENTRY(LL_WARN);
 
-    ssize_t rc = io_fd_drain(ri->ri_timer_fd, NULL);
-    if (rc)
-    {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "io_fd_drain(): %zd", rc);
-        return;
-    }
+    rsc_ping_raft_service(ri);
 
-    rsc_send_ping_to_raft_service(ri);
+    rsc_timerfd_settime(ri);
 }
 
 static int
@@ -190,6 +171,8 @@ rsc_main_loop(struct raft_instance *ri)
 {
     if (!ri || ri->ri_state != RAFT_STATE_CLIENT)
         return -EINVAL;
+
+    int rc = 0;
 
     do
     {
@@ -212,8 +195,11 @@ main(int argc, char **argv)
 
     rsc_random_init();
 
-    raft_net_instance_apply_callbacks(&raft_client_instance,
-                                      rsc_udp_recv_cb, rsc_timerfd_cb);
+    raft_client_instance.ri_raft_uuid_str = raft_uuid_str;
+    raft_client_instance.ri_this_peer_uuid_str = my_uuid_str;
+
+    raft_net_instance_apply_callbacks(&raft_client_instance, rsc_timerfd_cb,
+                                      rsc_udp_recv_handler, NULL);
 
     int rc = raft_net_instance_startup(&raft_client_instance, true);
     if (rc)
@@ -223,7 +209,7 @@ main(int argc, char **argv)
         exit(-rc);
     }
 
-    rc = rsc_main_loop(&ri);
+    rc = rsc_main_loop(&raft_client_instance);
 
     exit(rc);
 }

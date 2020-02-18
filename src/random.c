@@ -10,7 +10,6 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define RANDOM_STATE_BUF_LEN 32
 static __thread struct random_data randomData;
 static __thread char randomStateBuf[RANDOM_STATE_BUF_LEN];
 static __thread bool randInit;

@@ -759,7 +759,7 @@ raft_server_sync_vote_choice(struct raft_instance *ri,
     return raft_server_log_header_write(ri, candidate, candidate_term);
 }
 
-static raft_server_timerfd_cb_ctx_t
+static raft_net_timerfd_cb_ctx_t
 raft_server_init_candidate_state(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -879,7 +879,7 @@ raft_server_vote_for_self(struct raft_instance *ri)
  *    follower or candidate mode and the leader has not provided a heartbeat
  *    within the timeout threshold.
  */
-static raft_server_timerfd_cb_ctx_t
+static raft_net_timerfd_cb_ctx_t
 raft_server_become_candidate(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
@@ -1118,7 +1118,7 @@ raft_server_prep_append_entries_for_follower(
     raerm->raerqm_prev_log_term = ri->ri_leader.rls_prev_idx_term[follower];
 }
 
-static raft_server_timerfd_cb_ctx_t
+static raft_net_timerfd_cb_ctx_t
 raft_server_issue_heartbeat(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
@@ -1161,7 +1161,7 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
     }
 }
 
-static raft_server_timerfd_cb_ctx_t
+static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
     switch (ri->ri_state)
