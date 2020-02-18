@@ -37,6 +37,7 @@ rsc_random_init(void)
         SIMPLE_LOG_MSG(LL_FATAL, "initstate_r() failed: %s", strerror(errno));
 }
 
+#if 0
 static unsigned int
 rsc_random_get(void)
 {
@@ -47,6 +48,7 @@ rsc_random_get(void)
 
     return result;
 }
+#endif
 
 static void
 rsc_print_help(const int error, char **argv)
@@ -119,8 +121,19 @@ rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
         return;
 
     raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
+}
 
+static bool
+rsc_server_target_is_stale(const struct raft_instance *ri,
+                           const uuid_t server_uuid)
+{
+    unsigned long long recency_ms = 0;
 
+    int rc = raft_net_get_comm_recency_value(ri,
+                                             raft_peer_2_idx(ri, server_uuid),
+                                             &recency_ms);
+
+    return (rc || recency_ms > RSC_STALE_SERVER_TIME_MS) ? true : false;
 }
 
 static void
@@ -128,7 +141,8 @@ rsc_set_ping_target(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    if (!ri->ri_csn_leader || rsc_server_target_is_stale(ri->ri_csn_leader))
+    if (!ri->ri_csn_leader ||
+        rsc_server_target_is_stale(ri, ri->ri_csn_leader->csn_uuid))
     {
         raft_peer_t target = raft_net_get_most_recently_responsive_server(ri);
 
@@ -150,7 +164,14 @@ rsc_set_ping_target(struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_t
 rsc_ping_raft_service(struct raft_instance *ri)
 {
-    (void)ri;
+    if (ri->ri_csn_leader)
+    {
+        DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_leader, "");
+    }
+    else
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "no csn leader!");
+    }
 }
 
 /**
@@ -159,8 +180,7 @@ rsc_ping_raft_service(struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_t
 rsc_timerfd_cb(struct raft_instance *ri)
 {
-    SIMPLE_FUNC_ENTRY(LL_WARN);
-
+    rsc_set_ping_target(ri);
     rsc_ping_raft_service(ri);
 
     rsc_timerfd_settime(ri);

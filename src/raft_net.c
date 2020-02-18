@@ -548,8 +548,37 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
     niova_unstable_coarse_clock(ts);
 }
 
+int
+raft_net_get_comm_recency_value(const struct raft_instance *ri,
+                                raft_peer_t raft_peer_idx,
+                                unsigned long long *recency_ms)
+{
+    if (!ri || !ri->ri_csn_raft || !recency_ms ||
+        raft_peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
+        return -EINVAL;
+
+    const unsigned long long last_send =
+        timespec_2_msec(&ri->ri_last_send[raft_peer_idx]);
+
+    const unsigned long long last_recv =
+        timespec_2_msec(&ri->ri_last_recv[raft_peer_idx]);
+
+    *recency_ms = RAFT_NET_PEER_RECENCY_NO_RECV;
+
+    if (!last_send)
+        *recency_ms = RAFT_NET_PEER_RECENCY_NO_SEND;
+
+    else if (!last_recv)
+        *recency_ms = RAFT_NET_PEER_RECENCY_NO_RECV;
+
+    else if (last_recv >= last_send)
+        *recency_ms = last_recv - last_send;
+
+    return 0;
+}
+
 raft_peer_t
-raft_net_get_most_recently_responsive_server(struct raft_instance *ri)
+raft_net_get_most_recently_responsive_server(const struct raft_instance *ri)
 {
     const raft_peer_t nraft_servers =
         ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
@@ -561,23 +590,16 @@ raft_net_get_most_recently_responsive_server(struct raft_instance *ri)
 
     for (raft_peer_t i = 0; i < nraft_servers; i++)
     {
-        const unsigned long long last_send =
-            timespec_2_msec(&ri->ri_last_send[i + start_peer]);
-
-        const unsigned long long last_recv =
-            timespec_2_msec(&ri->ri_last_recv[i + start_peer]);
-
+        raft_peer_t idx = (i + start_peer) % nraft_servers;
         unsigned long long tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_RECV;
-        if (!last_send)
-            tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_SEND;
-        else if (!last_recv)
-            tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_RECV;
-        else if (last_recv >= last_send)
-            tmp_recency_value = last_recv - last_send;
+
+        int rc = raft_net_get_comm_recency_value(ri, idx, &tmp_recency_value);
+        FATAL_IF((rc), "raft_net_get_comm_recency_value(): %s",
+                 strerror(-rc));
 
         if (tmp_recency_value < recency_value)
         {
-            best_peer = i + start_peer;
+            best_peer = idx;
             recency_value = tmp_recency_value;
         }
     }

@@ -195,6 +195,18 @@ ctl_svc_node_type(const struct ctl_svc_node *csn)
             ##__VA_ARGS__);                                             \
 }
 
+#define DBG_SIMPLE_CTL_SVC_NODE(log_level, csn, fmt, ...)               \
+{                                                                       \
+    char __uuid_str[UUID_STR_LEN];                                      \
+    uuid_unparse((csn)->csn_uuid, __uuid_str);                          \
+    SIMPLE_LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt,       \
+                   (csn), ctl_svc_node_type((csn)), __uuid_str,         \
+                   (csn)->csn_rtentry.rbe_ref_cnt,                      \
+                   (ctl_svc_node_is_peer((csn)) ?                       \
+                    (csn)->csn_peer.csnp_store : NULL),                 \
+                   ##__VA_ARGS__);                                      \
+}
+
 struct niova_env_var;
 
 void

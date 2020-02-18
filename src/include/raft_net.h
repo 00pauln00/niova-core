@@ -103,6 +103,11 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
                                const uuid_t peer_uuid, bool send_or_recv);
 
 raft_peer_t
-raft_net_get_most_recently_responsive_server(struct raft_instance *ri);
+raft_net_get_most_recently_responsive_server(const struct raft_instance *ri);
+
+int
+raft_net_get_comm_recency_value(const struct raft_instance *ri,
+                                raft_peer_t raft_peer_idx,
+                                unsigned long long *recency_ms);
 
 #endif
