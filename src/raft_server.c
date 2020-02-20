@@ -1321,44 +1321,6 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
 }
 
 /**
- * raft_server_verify_sender_server_msg - parse an incoming RPC msg to
- *    if the msg comes from a peer known to this config and that the raft UUID
- *    of the msg matches that of this config.
- */
-static struct ctl_svc_node * //raft_net_udp_cb_ctx_t
-raft_server_verify_sender_server_msg(struct raft_instance *ri,
-                                     const struct raft_rpc_msg *rrm)
-{
-    if (!ri || !rrm)
-        return NULL;
-
-    /* Check the id of the sender to make sure they are part of the config
-     * and that the RPC is for the correct raft instance.
-     */
-    const raft_peer_t sender_idx = raft_peer_2_idx(ri, rrm->rrm_sender_id);
-
-    if (sender_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft) ||
-        ctl_svc_node_compare_uuid(ri->ri_csn_raft, rrm->rrm_raft_id))
-    {
-        DECLARE_AND_INIT_UUID_STR(raft_uuid, ri->ri_csn_raft->csn_uuid);
-        DECLARE_AND_INIT_UUID_STR(peer_raft_uuid, rrm->rrm_raft_id);
-
-        DBG_RAFT_MSG(LL_NOTIFY, rrm, "peer not found in my config %hhx %hhx",
-                     sender_idx,
-                     ctl_svc_node_raft_2_num_members(ri->ri_csn_raft));
-        DBG_RAFT_MSG(LL_NOTIFY, rrm, "my-raft=%s peer-raft=%s",
-                     raft_uuid, peer_raft_uuid);
-        return NULL;
-    }
-
-    // Xxx should ensure that the port and IP address of the sender match
-    //     the UUID. though this would mean that the configuration would
-    //     have to be updated on the recv'r if the peer's information changed.
-
-    return ri->ri_csn_raft_peers[sender_idx];
-}
-
-/**
  * raft_server_process_received_server_msg - called following the arrival of
  *    a udp message on the server <-> server socket.  After verifying
  *    that the sender's UUID and its raft UUID are known, this function will
@@ -1366,13 +1328,10 @@ raft_server_verify_sender_server_msg(struct raft_instance *ri,
  */
 static raft_net_udp_cb_ctx_t
 raft_server_process_received_server_msg(struct raft_instance *ri,
-	                                const struct raft_rpc_msg *rrm)
+	                                const struct raft_rpc_msg *rrm,
+                                        struct ctl_svc_node *sender_csn)
 {
-    struct ctl_svc_node *sender_csn =
-        raft_server_verify_sender_server_msg(ri, rrm);
-
-    if (!sender_csn)
-        return;
+    NIOVA_ASSERT(ri && rrm && sender_csn);
 
     raft_net_update_last_comm_time(ri, sender_csn->csn_uuid, false);
 
@@ -1398,8 +1357,6 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
     }
 }
 
-
-
 static raft_net_udp_cb_ctx_t
 raft_server_udp_peer_recv_handler(struct raft_instance *ri,
                                   const char *recv_buffer,
@@ -1413,7 +1370,8 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
 
     const struct raft_rpc_msg *rrm = (const struct raft_rpc_msg *)recv_buffer;
 
-    // Server <-> server messages do not have additional payloads.
+    /* Server <-> server messages do not have additional payloads.
+     */
     if (recv_bytes != sizeof(struct raft_rpc_msg))
     {
         DBG_RAFT_MSG(LL_WARN, rrm,
@@ -1423,11 +1381,19 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
         return;
     }
 
+    /* Verify the sender's id before proceeding.
+     */
+    struct ctl_svc_node *sender_csn =
+        raft_net_verify_sender_server_msg(ri, rrm->rrm_sender_id,
+                                          rrm->rrm_raft_id, from);
+    if (!sender_csn)
+        return;
+
     DBG_RAFT_MSG(LL_DEBUG, rrm, "msg-size=(%zd) peer %s:%d",
                  recv_bytes, inet_ntoa(from->sin_addr),
                  ntohs(from->sin_port));
 
-    raft_server_process_received_server_msg(ri, rrm);
+    raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
 static raft_net_udp_cb_ctx_t

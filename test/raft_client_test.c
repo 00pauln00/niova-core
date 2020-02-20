@@ -73,7 +73,6 @@ rsc_getopt(int argc, char **argv)
         {
         case 'r':
             raft_uuid_str = optarg;
-
             break;
 	case 'u':
             my_uuid_str = optarg;
