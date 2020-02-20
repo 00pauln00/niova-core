@@ -72,6 +72,7 @@ struct raft_vote_reply_msg
 struct raft_append_entries_request_msg
 {
     int64_t  raerqm_term;
+    uint64_t raerqm_term_seqno; // used for read-window'ing
     uint64_t raerqm_commit_index;
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
@@ -82,10 +83,11 @@ struct raft_append_entries_request_msg
 
 struct raft_append_entries_reply_msg
 {
-    int64_t raerpm_term;
-    uint8_t raerpm_err_stale_term;
-    uint8_t raerpm_err_non_matching_prev_term;
-    uint8_t raerpm__pad[6];
+    int64_t  raerpm_term;
+    uint64_t raerpm_term_seqno; // used for read-window'ing
+    uint8_t  raerpm_err_stale_term;
+    uint8_t  raerpm_err_non_matching_prev_term;
+    uint8_t  raerpm__pad[6];
 };
 
 //#define RAFT_RPC_MSG_TYPE_Version0_SIZE 120
