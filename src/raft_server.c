@@ -1530,7 +1530,8 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
      *    post-commit.
      * 2. SM detects a write which had already been committed, here we reply
      *    to the client notifying it of the completion.
-     * 3. SM processes a read request, returning the requested application
+     * 3. SM detects a write which is still in progress, here no reply is sent.
+     * 4. SM processes a read request, returning the requested application
      *    data. (XXX need a buffer for this data!)
      */
     rc = ri->ri_server_sm_request_cb(rcm, from, &write_op, reply_buf,
