@@ -18,7 +18,10 @@ struct ctl_svc_node;
 struct sockaddr_in;
 
 typedef void raft_net_udp_cb_ctx_t;
+typedef int  raft_net_udp_cb_ctx_int_t;
 typedef void raft_net_timerfd_cb_ctx_t;
+
+struct raft_client_rpc_msg;
 
 typedef raft_net_udp_cb_ctx_t
     (*raft_net_udp_cb_t)(struct raft_instance *,
@@ -27,6 +30,17 @@ typedef raft_net_udp_cb_ctx_t
 
 typedef raft_net_timerfd_cb_ctx_t
     (*raft_net_timer_cb_t)(struct raft_instance *);
+
+// State machine request handler - reads and new writes
+typedef raft_net_udp_cb_ctx_int_t
+    (*raft_sm_request_handler_t)(const struct raft_client_rpc_msg *,
+                                 const struct sockaddr_in *,
+                                 bool *, char *, size_t *);
+
+// State machine commit handler - completed (committed + applied) writes
+typedef raft_net_udp_cb_ctx_int_t
+    (*raft_sm_commit_handler_t)(const struct raft_client_rpc_msg *,
+                                struct sockaddr_in *);
 
 #define RAFT_NET_MAX_RPC_SIZE 65000
 
@@ -72,7 +86,7 @@ struct raft_client_rpc_generic_msg
     uint64_t rcrgm_msg_id;
     uint64_t rcrgm_msg_commit_seqno;
     uint16_t rcrgm_msg_size;
-    uint16_t rcrgm_error;
+    int16_t  rcrgm_error;
     uint8_t  rcrgm_msg_type;
     uint8_t  rcrgm__pad[3];
     char     rcrgm_data[];
@@ -90,6 +104,22 @@ struct raft_client_rpc_msg
         struct raft_client_rpc_generic_msg rcrm_gmsg;
     };
 };
+
+#define DBG_RAFT_CLIENT_RPC(log_level, rcm, from, fmt, ...)             \
+{                                                                       \
+    char __uuid_str[UUID_STR_LEN];                                      \
+    uuid_unparse((rcm)->rcrm_sender_id, __uuid_str);                    \
+    LOG_MSG(log_level,                                                  \
+            "t=%u id=%lx cs=%lx sz=%hu mt=%hhx rc=%hd %s "fmt,        \
+            (rcm)->rcrm_type, (rcm)->rcrm_gmsg.rcrgm_msg_id,            \
+            (rcm)->rcrm_gmsg.rcrgm_msg_commit_seqno,                    \
+            (rcm)->rcrm_gmsg.rcrgm_msg_size,                            \
+            (rcm)->rcrm_gmsg.rcrgm_msg_type,                            \
+            (rcm)->rcrm_gmsg.rcrgm_error,                               \
+            __uuid_str,                                                 \
+            ##__VA_ARGS__);                                             \
+}
+
 
 int
 raft_net_instance_startup(struct raft_instance *ri, bool client_mode);
@@ -115,6 +145,10 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
                                   const uuid_t sender_uuid,
                                   const uuid_t sender_raft_uuid,
                                   const struct sockaddr_in *sender_addr);
+
+int
+raft_net_verify_sender_client_msg(struct raft_instance *ri,
+                                  const uuid_t sender_raft_uuid);
 
 void
 raft_net_update_last_comm_time(struct raft_instance *ri,

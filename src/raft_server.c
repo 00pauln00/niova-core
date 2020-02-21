@@ -685,6 +685,28 @@ raft_server_timerfd_settime(struct raft_instance *ri)
 }
 
 static int
+raft_server_send_msg_to_client(struct udp_socket_handle *ush,
+                               const struct sockaddr_in *dest,
+                               struct raft_client_rpc_msg *rcm,
+                               const char *reply_buf,
+                               const size_t reply_buf_size)
+{
+    if (!ush || !dest || !rcm)
+        return -EINVAL;
+
+    struct iovec iov[2] = {
+        [0].iov_len = sizeof(*rcm),
+        [0].iov_base = (void *)rcm,
+        [1].iov_len = reply_buf_size,
+        [1].iov_base = (void *)reply_buf,
+    };
+
+    ssize_t size_rc = udp_socket_send(ush, iov, 2, dest);
+
+    return (int)size_rc;
+}
+
+static int
 raft_server_send_msg(struct udp_socket_handle *ush,
                      struct ctl_svc_node *rp, const struct raft_rpc_msg *rrm)
 {
@@ -1396,23 +1418,140 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
     raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
+/**
+ * raft_server_may_process_client_request - this function checks the state of
+ *    this raft instance to determine if it's qualified to accept a client
+ *    request.
+ */
+static raft_net_udp_cb_ctx_int_t
+raft_server_may_accept_client_request(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    // XXX Need several checks here!
+
+    /* Not the leader, then cause a redirect reply to be done.
+     */
+    if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
+        return -ENOSYS;
+
+#if 0
+    // 2. am I a fresh raft leader?
+    else if (!raft_leader_instance_is_fresh(ri))
+        return -EAGAIN;
+
+    // 3. have I applied all of the lastApplied entries that I need -
+    //    including a fake AE command (which is written to the logs)?
+    else if (!raft_leader_has_applied_txn_in_my_term(ri))
+        return -EBUSY;
+#endif
+
+    return 0;
+}
+
+static raft_net_udp_cb_ctx_t
+raft_server_reply_to_client(struct raft_instance *ri,
+                            const struct sockaddr_in *dest,
+                            const struct raft_client_rpc_msg *request_rcm,
+                            const int reply_error_code, const char *reply_buf,
+                            const size_t reply_buf_sz)
+{
+    if (!ri || !ri->ri_csn_this_peer || !dest || !request_rcm ||
+        reply_buf_sz > RAFT_NET_MAX_RPC_SIZE)
+        return;
+
+    // Copy the source msg and then tailor it accordingly
+    struct raft_client_rpc_msg reply_rcm = *request_rcm;
+
+    uuid_clear(reply_rcm.rcrm_gmsg.rcrgm_redirect_id);
+
+    reply_rcm.rcrm_gmsg.rcrgm_msg_size = reply_buf_sz;
+
+    // may be reset below
+    reply_rcm.rcrm_gmsg.rcrgm_msg_type = RAFT_CLIENT_RPC_MSG_TYPE_REPLY;
+    reply_rcm.rcrm_gmsg.rcrgm_error = reply_error_code;
+
+    switch (reply_error_code)
+    {
+    case -ENOSYS:
+        reply_rcm.rcrm_gmsg.rcrgm_msg_type = RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT;
+
+        if (ri->ri_csn_leader)
+            uuid_copy(reply_rcm.rcrm_gmsg.rcrgm_redirect_id,
+                      ri->ri_csn_leader->csn_uuid);
+        break;
+    default:
+        break;
+    }
+
+    DBG_RAFT_CLIENT_RPC(LL_WARN, &reply_rcm, dest, "");
+
+    /* Set the sender_id AFTER logging so dest UUID is logged not our UUID.
+     */
+    uuid_copy(reply_rcm.rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
+
+    raft_server_send_msg_to_client(&ri->ri_ush[RAFT_UDP_LISTEN_CLIENT],
+                                   dest, &reply_rcm, reply_buf, reply_buf_sz);
+}
+
 static raft_net_udp_cb_ctx_t
 raft_server_udp_client_recv_handler(struct raft_instance *ri,
-                                  const char *recv_buffer,
-                                  ssize_t recv_bytes,
-                                  const struct sockaddr_in *from)
+                                    const char *recv_buffer,
+                                    ssize_t recv_bytes,
+                                    const struct sockaddr_in *from)
 {
+    static char reply_buf[RAFT_NET_MAX_RPC_SIZE];
+
     NIOVA_ASSERT(ri && from);
 
-    if (!recv_buffer || !recv_bytes)
+    if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
+        recv_bytes < sizeof(struct raft_client_rpc_msg))
         return;
 
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    (void)rcm;
+    if (raft_net_verify_sender_client_msg(ri, rcm->rcrm_raft_id))
+        return;
 
-    return;
+    int rc = raft_server_may_accept_client_request(ri);
+    if (rc)
+    {
+        raft_server_reply_to_client(ri, from, rcm, rc, NULL, 0);
+        return;
+    }
+
+    bool write_op = false;
+    size_t reply_size = 0;
+
+    /* Call into the application state machine logic.  There are several
+     * outcomes here:
+     * 1. SM detects a new write, here it may store sender info for reply
+     *    post-commit.
+     * 2. SM detects a write which had already been committed, here we reply
+     *    to the client notifying it of the completion.
+     * 3. SM processes a read request, returning the requested application
+     *    data. (XXX need a buffer for this data!)
+     */
+    rc = ri->ri_server_sm_request_cb(rcm, from, &write_op, reply_buf,
+                                     &reply_size);
+
+//Xxx should do this again 'if (raft_server_may_accept_client_request(ri))'
+//    since cb's may run for a long time.
+
+    /* Read operation or an already committed + applied write operation.
+     */
+    if (!write_op || (write_op && rc == -EALREADY))
+        raft_server_reply_to_client(ri, from, rcm, 0, reply_buf, reply_size);
+
+#if 0
+    /* Store the request as an entry in the Raft log.  Do not reply to the
+     * client until the write is committed.
+     */
+    else if (write_op && !rc)
+        raft_server_leader_write_new_entry(ri, rcm->rcrm_gmsg.rcrgm_data,
+                                           rcm->rcrm_gmsg.rcrgm_msg_size);
+#endif
 }
 
 int

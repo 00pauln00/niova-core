@@ -522,6 +522,17 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     return csn;
 }
 
+int
+raft_net_verify_sender_client_msg(struct raft_instance *ri,
+                                  const uuid_t sender_raft_uuid)
+{
+    if (!ri || uuid_is_null(sender_raft_uuid))
+        return -EINVAL;
+
+    return ctl_svc_node_compare_uuid(ri->ri_csn_raft, sender_raft_uuid) ?
+        -ENODEV : 0;
+}
+
 /**
  * raft_net_update_last_comm_time - may be used by application level send and
  *     recv handlers to take and record a communication timestamp.

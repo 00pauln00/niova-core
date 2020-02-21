@@ -211,6 +211,8 @@ struct raft_instance
     raft_net_timer_cb_t         ri_timer_fd_cb;
     raft_net_udp_cb_t           ri_udp_client_recv_cb;
     raft_net_udp_cb_t           ri_udp_server_recv_cb;
+    raft_sm_request_handler_t   ri_server_sm_request_cb;
+    raft_sm_request_handler_t   ri_server_sm_commit_cb;
 };
 
 static inline void
@@ -315,6 +317,13 @@ raft_instance_is_client(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     return ri->ri_state == RAFT_STATE_CLIENT ? true : false;
+}
+
+static inline bool
+raft_instance_is_leader(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_state == RAFT_STATE_LEADER ? true : false;
 }
 
 /**

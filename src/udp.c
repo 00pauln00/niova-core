@@ -200,7 +200,7 @@ udp_socket_recv_fd(int fd, struct iovec *iov, size_t iovlen,
  */
 ssize_t
 udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
-                const size_t iovlen, struct sockaddr_in *to)
+                const size_t iovlen, const struct sockaddr_in *to)
 {
     if (!ush || !iov || !iovlen || !to)
         return -EINVAL;
@@ -223,7 +223,7 @@ udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
         const size_t my_iovlen = io_iovs_map_consumed(iov, my_iovs, iovlen,
                                                       total_sent);
         struct msghdr msg = {
-            .msg_name = to,
+            .msg_name = (void *)to,
             .msg_namelen = sizeof(*to),
             .msg_iov = my_iovs,
             .msg_iovlen = my_iovlen,
