@@ -1495,6 +1495,29 @@ raft_server_reply_to_client(struct raft_instance *ri,
 }
 
 static raft_net_udp_cb_ctx_t
+raft_server_leader_write_new_entry(struct raft_instance *ri,
+                                   const char *data, const size_t len)
+{
+    if (!raft_instance_is_leader(ri))
+        return;
+
+    size_t entry_index =
+        raft_entry_idx_to_phys_idx(ri->ri_newest_entry_hdr.reh_index);
+
+    int rc = raft_server_entry_write(ri, entry_index, data, len);
+    if (rc)
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_entry_write(): %s",
+                          strerror(-rc));
+
+    // We need to schedule ourselves to potentially deliver this new block
+    // to the followers.  However, we should attempt to only send this
+    // followers which are ready for this block.  Otherwise, if a follower
+    // does see a msg at an index > its max index, it should NACK with its
+    // max index so that the rollback protocal can complete without starting
+    // over.
+}
+
+static raft_net_udp_cb_ctx_t
 raft_server_udp_client_recv_handler(struct raft_instance *ri,
                                     const char *recv_buffer,
                                     ssize_t recv_bytes,
@@ -1537,22 +1560,23 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     rc = ri->ri_server_sm_request_cb(rcm, from, &write_op, reply_buf,
                                      &reply_size);
 
+    DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "rc=%d wr=%d rbuf-sz=%zu",
+                        rc, write_op, reply_size);
+
 //Xxx should do this again 'if (raft_server_may_accept_client_request(ri))'
-//    since cb's may run for a long time.
+//    since cb's may run for a long time and the server may have been deposed
 
     /* Read operation or an already committed + applied write operation.
      */
     if (!write_op || (write_op && rc == -EALREADY))
         raft_server_reply_to_client(ri, from, rcm, 0, reply_buf, reply_size);
 
-#if 0
     /* Store the request as an entry in the Raft log.  Do not reply to the
      * client until the write is committed.
      */
     else if (write_op && !rc)
         raft_server_leader_write_new_entry(ri, rcm->rcrm_gmsg.rcrgm_data,
                                            rcm->rcrm_gmsg.rcrgm_msg_size);
-#endif
 }
 
 int
