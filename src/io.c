@@ -92,9 +92,19 @@ io_pread(int fd, char *buf, size_t size, off_t offset)
 }
 
 int
+io_ftruncate(int fd, off_t length)
+{
+    int rc = ftruncate(fd, length);
+
+    return rc ? -errno : 0;
+}
+
+int
 io_fsync(int fd)
 {
-    return fsync(fd);
+    int rc = fsync(fd);
+
+    return rc ? -errno : 0;
 }
 
 /**

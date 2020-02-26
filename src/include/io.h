@@ -21,6 +21,9 @@ ssize_t
 io_pread(int fd, char *buf, size_t size, off_t offset);
 
 int
+io_ftruncate(int fd, off_t length);
+
+int
 io_fsync(int fd);
 
 ssize_t

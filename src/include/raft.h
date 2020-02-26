@@ -33,6 +33,8 @@
 
 #define RAFT_HEARTBEAT_TIME_MS      50
 
+#define RAFT_MIN_APPEND_ENTRY_IDX -1
+
 #define RAFT_INSTANCE_2_SELF_UUID(ri)          \
     (ri)->ri_csn_this_peer->csn_uuid
 
@@ -40,6 +42,11 @@
     (ri)->ri_csn_raft->csn_uuid
 
 typedef void raft_server_udp_cb_ctx_t;
+typedef int  raft_server_udp_cb_ctx_int_t;
+typedef bool raft_server_udp_cb_ctx_bool_t;
+typedef bool raft_server_udp_cb_follower_ctx_bool_t;
+typedef int  raft_server_udp_cb_follower_ctx_int_t;
+typedef void raft_server_udp_cb_follower_ctx_t;
 typedef void raft_server_timerfd_cb_ctx_t;
 typedef int  raft_server_timerfd_cb_ctx_int_t;
 typedef void raft_server_leader_mode_t;
@@ -124,6 +131,19 @@ struct raft_entry_header
     uuid_t   reh_raft_uuid; // UUID of raft instance
     char     reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
+
+static inline bool
+raft_entry_is_header_block(const struct raft_entry_header *reh)
+{
+    NIOVA_ASSERT(reh);
+    if (reh->reh_log_hdr_blk)
+    {
+        NIOVA_ASSERT(reh->reh_index < NUM_RAFT_LOG_HEADERS);
+        return true;
+    }
+
+    return false;
+}
 
 struct raft_entry
 {
@@ -273,15 +293,18 @@ raft_compile_time_checks(void)
 {                                                                       \
     char __uuid_str[UUID_STR_LEN];                                      \
     uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);           \
+    char __leader_uuid_str[UUID_STR_LEN] = {0};                         \
+    if (ri->ri_csn_leader)                                              \
+        uuid_unparse((ri)->ri_csn_leader->csn_uuid, __uuid_str);         \
                                                                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "%c et=%lx ei=%lx ht=%lx hs=%lx v=%s "fmt,           \
+                   "%c et=%lx ei=%lx ht=%lx hs=%lx v=%s l=%s"fmt,       \
                    raft_server_state_to_char((ri)->ri_state),           \
                    raft_server_get_current_raft_entry_term((ri)),       \
                    raft_server_get_current_raft_entry_index((ri)),      \
                    (ri)->ri_log_hdr.rlh_term,                           \
                    (ri)->ri_log_hdr.rlh_seqno,                          \
-                   __uuid_str, ##__VA_ARGS__);                          \
+                   __uuid_str, __leader_uuid_str, ##__VA_ARGS__);       \
 }
 
 #define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)              \
@@ -324,6 +347,13 @@ raft_instance_is_leader(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     return ri->ri_state == RAFT_STATE_LEADER ? true : false;
+}
+
+static inline bool
+raft_instance_is_follower(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_state == RAFT_STATE_FOLLOWER ? true : false;
 }
 
 /**
