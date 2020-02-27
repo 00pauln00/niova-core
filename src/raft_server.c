@@ -1046,6 +1046,28 @@ raft_server_candidate_becomes_follower(struct raft_instance *ri,
     ri->ri_state = RAFT_STATE_FOLLOWER;
 }
 
+static bool
+raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    if (raft_instance_is_leader(ri))
+    {
+        const struct raft_leader_state *rls = &ri->ri_leader;
+
+        DBG_RAFT_INSTANCE_FATAL_IF((rls->rls_leader_term !=
+                                    ri->ri_log_hdr.rlh_term), ri,
+                                   "leader-term=%lx != log-hdr-term",
+                                   rls->rls_leader_term);
+
+        return rls->rls_initial_term_idx >= ri->ri_commit_idx ? true : false;
+    }
+
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "not-leader");
+
+    return false;
+}
+
 /**
  * raft_server_leader_init_state - setup the raft instance for leader duties.
  */
@@ -1062,6 +1084,14 @@ raft_server_leader_init_state(struct raft_instance *ri)
         ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
 
     struct raft_leader_state *rls = &ri->ri_leader;
+
+    /* Stash the current raft-entry index.  In general, this leader should
+     * place the block @(current-raft-entry-idx + 1).  When this next index
+     * has been committed and APPLIED by this leader, or in other words, when
+     * ri_commit_idx >= rls_initial_term_idx, then this leader can reply to
+     * clients.
+     */
+    rls->rls_initial_term_idx = raft_server_get_current_raft_entry_index(ri);
 
     for (raft_peer_t i = 0; i < num_raft_peers; i++)
     {
@@ -1085,6 +1115,11 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
 
     // Modify timer_fd timeout for the leader role.
     raft_server_timerfd_settime(ri);
+
+    /* Deliver a "dummy" commit to the followers - we cannot respond to client
+     * until this commit has been applied. -- what should the dummy app handler
+     * look like and what should the entry and request msg look like?
+     */
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
@@ -1738,23 +1773,23 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    // XXX Need several checks here!
-
     /* Not the leader, then cause a redirect reply to be done.
      */
     if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
         return -ENOSYS;
 
 #if 0
+    // XXX Need this check!
+
     // 2. am I a fresh raft leader?
     else if (!raft_leader_instance_is_fresh(ri))
         return -EAGAIN;
 
+#endif
     // 3. have I applied all of the lastApplied entries that I need -
     //    including a fake AE command (which is written to the logs)?
     else if (!raft_leader_has_applied_txn_in_my_term(ri))
         return -EBUSY;
-#endif
 
     return 0;
 }
@@ -1863,7 +1898,7 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
      *    to the client notifying it of the completion.
      * 3. SM detects a write which is still in progress, here no reply is sent.
      * 4. SM processes a read request, returning the requested application
-     *    data. (XXX need a buffer for this data!)
+     *    data.
      */
     rc = ri->ri_server_sm_request_cb(rcm, from, &write_op, reply_buf,
                                      &reply_size);

@@ -75,7 +75,7 @@ CORE_OBJFILES   = \
 
 RAFT_OBJFILES	= \
 	src/raft_server.o	\
-	src/raft_net.o	\
+	src/raft_net.o
 
 ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
 ALL_INCLUDES      = $(CORE_INCLUDES) $(SYS_CORE_INCLUDES)
@@ -135,9 +135,9 @@ raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft_cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
-raft_cg: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
-	$(CC) $(CFLAGS) -o raft_server src/raft.c \
-	$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+raft_cg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
+	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
+	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 test_build: tests
 test_build:
@@ -186,7 +186,8 @@ pahole : tests
 clean :
 	rm -fv test/simple_test test/niosd_io_test test/ref_test_test \
 	$(ALL_OBJFILES) $(CTL_OBJFILES) $(TARGET) $(CTL_TARGET) \
-	*~ src/*.gcno src/*.gcda *.gcno *.gcda \
+	$(RAFT_OBJFILES) \
+	*~ src/*.gcno src/*.gcda *.gcno *.gcda *.expand src/*.expand \
 	$(NIOVA_LCOV).out
 
 clean-cov: clean

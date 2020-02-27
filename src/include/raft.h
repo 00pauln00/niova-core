@@ -17,7 +17,7 @@
 #include "raft_net.h"
 
 #define NUM_RAFT_LOG_HEADERS 2
-#define RAFT_ENTRY_PAD_SIZE 63
+#define RAFT_ENTRY_PAD_SIZE 62
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
@@ -84,7 +84,8 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
     uint16_t raerqm_entries_sz; // if '0' then "heartbeat" msg
-    uint16_t raerqm__pad[3];
+    uint8_t  raerqm_leader_change_marker;
+    uint8_t  raerqm__pad[5];
     char     raerqm_entries[]; // Must be last
 };
 
@@ -126,10 +127,11 @@ struct raft_entry_header
     int64_t  reh_raft_index; // the raft index number
 #endif
     int64_t  reh_term;
-    uint32_t reh_log_hdr_blk:1;
     uuid_t   reh_self_uuid; // UUID of this peer
     uuid_t   reh_raft_uuid; // UUID of raft instance
-    char     reh_pad[RAFT_ENTRY_PAD_SIZE];
+    uint8_t  reh_log_hdr_blk;
+    uint8_t  reh_leader_change_marker; // noop
+    uint8_t  reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
 
 static inline bool
@@ -194,7 +196,7 @@ struct raft_candidate_state
 
 struct raft_leader_state
 {
-    uint64_t rls_commit_idx;
+    uint64_t rls_initial_term_idx; // log index at the start of my term
     int64_t  rls_leader_term;
 //    uint64_t rls_match_idx[CTL_SVC_MAX_RAFT_PEERS];
     uint64_t rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
@@ -298,12 +300,13 @@ raft_compile_time_checks(void)
         uuid_unparse((ri)->ri_csn_leader->csn_uuid, __uuid_str);         \
                                                                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "%c et=%lx ei=%lx ht=%lx hs=%lx v=%s l=%s"fmt,       \
+                   "%c et=%lx ei=%lx ht=%lx hs=%lx ci=%lx v=%s l=%s"fmt, \
                    raft_server_state_to_char((ri)->ri_state),           \
                    raft_server_get_current_raft_entry_term((ri)),       \
                    raft_server_get_current_raft_entry_index((ri)),      \
                    (ri)->ri_log_hdr.rlh_term,                           \
                    (ri)->ri_log_hdr.rlh_seqno,                          \
+                   (ri)->ri_commit_idx,                                 \
                    __uuid_str, __leader_uuid_str, ##__VA_ARGS__);       \
 }
 
