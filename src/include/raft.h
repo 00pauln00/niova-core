@@ -47,6 +47,7 @@ typedef bool raft_server_udp_cb_ctx_bool_t;
 typedef bool raft_server_udp_cb_follower_ctx_bool_t;
 typedef int  raft_server_udp_cb_follower_ctx_int_t;
 typedef void raft_server_udp_cb_follower_ctx_t;
+typedef void raft_server_udp_cb_leader_t;
 typedef void raft_server_timerfd_cb_ctx_t;
 typedef int  raft_server_timerfd_cb_ctx_int_t;
 typedef void raft_server_leader_mode_t;

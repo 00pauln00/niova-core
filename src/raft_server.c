@@ -22,6 +22,13 @@
 #include "raft.h"
 #include "raft_net.h"
 
+enum raft_write_entry_opts
+{
+    RAFT_WR_ENTRY_OPT_NONE                 = 0,
+    RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER = 1,
+    RAFT_WR_ENTRY_OPT_ANY                  = 255,
+};
+
 REGISTRY_ENTRY_FILE_GENERATE;
 
 /**
@@ -76,7 +83,8 @@ static void
 raft_server_entry_init(struct raft_entry *re, const size_t entry_index,
                        const uint64_t current_term,
                        const uuid_t self_uuid, const uuid_t raft_uuid,
-                       const char *data, const size_t len)
+                       const char *data, const size_t len,
+                       enum raft_write_entry_opts opts)
 {
     NIOVA_ASSERT(re);
     NIOVA_ASSERT(data && len);
@@ -91,6 +99,8 @@ raft_server_entry_init(struct raft_entry *re, const size_t entry_index,
     reh->reh_index = entry_index;
     reh->reh_term = current_term;
     reh->reh_log_hdr_blk = entry_index < NUM_RAFT_LOG_HEADERS ? 1 : 0;
+    reh->reh_leader_change_marker =
+        (opts == RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER) ? 1 : 0;
 
     uuid_copy(reh->reh_self_uuid, self_uuid);
     uuid_copy(reh->reh_raft_uuid, raft_uuid);
@@ -153,9 +163,11 @@ raft_server_get_raft_current_idx(const struct raft_instance *ri)
  */
 static int
 raft_server_entry_write(struct raft_instance *ri, const size_t entry_index,
-                        const char *data, size_t len)
+                        const char *data, size_t len,
+                        enum raft_write_entry_opts opts)
 {
-    if (!ri || !data || !len || !ri->ri_csn_this_peer || !ri->ri_csn_raft)
+    if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft ||
+        (opts != RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER && (!data || !len)))
         return -EINVAL;
 
     else if (len > RAFT_ENTRY_MAX_DATA_SIZE)
@@ -169,7 +181,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t entry_index,
 
     raft_server_entry_init(re, entry_index, ri->ri_log_hdr.rlh_term,
                            RAFT_INSTANCE_2_SELF_UUID(ri),
-                           RAFT_INSTANCE_2_RAFT_UUID(ri), data, len);
+                           RAFT_INSTANCE_2_RAFT_UUID(ri), data, len, opts);
 
     DBG_RAFT_ENTRY(LL_WARN, &re->re_header, "");
 
@@ -359,7 +371,8 @@ raft_server_log_header_write(struct raft_instance *ri, const uuid_t candidate,
 
     return raft_server_entry_write(ri, block_num,
                                    (const char *)&ri->ri_log_hdr,
-                                   sizeof(struct raft_log_header));
+                                   sizeof(struct raft_log_header),
+                                   RAFT_WR_ENTRY_OPT_NONE);
 }
 
 static int
@@ -1105,6 +1118,54 @@ raft_server_leader_init_state(struct raft_instance *ri)
     }
 }
 
+static raft_net_udp_cb_ctx_t
+raft_server_write_next_entry(struct raft_instance *ri,
+                             const char *data, const size_t len,
+                             enum raft_write_entry_opts opts)
+{
+    const size_t next_entry_phys_idx =
+        raft_entry_idx_to_phys_idx(raft_server_get_raft_current_idx(ri) + 1);
+
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%zd len=%zd",
+                      next_entry_phys_idx, len);
+
+    int rc = raft_server_entry_write(ri, next_entry_phys_idx, data, len, opts);
+    if (rc)
+        DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
+                          strerror(-rc));
+}
+
+static raft_net_udp_cb_ctx_t
+raft_server_leader_write_new_entry(struct raft_instance *ri,
+                                   const char *data, const size_t len,
+                                   enum raft_write_entry_opts opts)
+{
+#if 1
+    NIOVA_ASSERT(raft_instance_is_leader(ri));
+#else
+    if (!raft_instance_is_leader(ri))
+        return;
+#endif
+
+    raft_server_write_next_entry(ri, data, len, opts);
+
+    // We need to schedule ourselves to potentially deliver this new block
+    // to the followers.  However, we should attempt to only send this
+    // followers which are ready for this block.  Otherwise, if a follower
+    // does see a msg at an index > its max index, it should NACK with its
+    // max index so that the rollback protocal can complete without starting
+    // over.
+}
+
+static raft_server_udp_cb_leader_t
+raft_server_write_leader_change_marker(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_leader(ri));
+
+    raft_server_leader_write_new_entry(ri, NULL, 0,
+                                       RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER);
+}
+
 static raft_server_udp_cb_ctx_t
 raft_server_candidate_becomes_leader(struct raft_instance *ri)
 {
@@ -1120,6 +1181,7 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
      * until this commit has been applied. -- what should the dummy app handler
      * look like and what should the entry and request msg look like?
      */
+    raft_server_write_leader_change_marker(ri);
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
@@ -1556,22 +1618,6 @@ raft_server_process_append_entries_term_check_ops(
     return 0;
 }
 
-static raft_net_udp_cb_ctx_t
-raft_server_write_next_entry(struct raft_instance *ri,
-                             const char *data, const size_t len)
-{
-    const size_t next_entry_phys_idx =
-        raft_entry_idx_to_phys_idx(raft_server_get_raft_current_idx(ri) + 1);
-
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%zd len=%zd",
-                      next_entry_phys_idx, len);
-
-    int rc = raft_server_entry_write(ri, next_entry_phys_idx, data, len);
-    if (rc)
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
-                          strerror(-rc));
-}
-
 /**
  * raft_server_write_new_entry_from_leader - the log write portion of the
  *    AE operation.  The log index is derived from the raft-instance which
@@ -1595,7 +1641,8 @@ raft_server_write_new_entry_from_leader(
     NIOVA_ASSERT(raft_server_get_raft_current_idx(ri) ==
                  raerq->raerqm_prev_log_index);
 
-    raft_server_write_next_entry(ri, raerq->raerqm_entries, entry_size);
+    raft_server_write_next_entry(ri, raerq->raerqm_entries, entry_size,
+                                 RAFT_WR_ENTRY_OPT_NONE);
 }
 
 /**
@@ -1840,27 +1887,6 @@ raft_server_reply_to_client(struct raft_instance *ri,
 }
 
 static raft_net_udp_cb_ctx_t
-raft_server_leader_write_new_entry(struct raft_instance *ri,
-                                   const char *data, const size_t len)
-{
-#if 1
-    NIOVA_ASSERT(raft_instance_is_leader(ri));
-#else
-    if (!raft_instance_is_leader(ri))
-        return;
-#endif
-
-    raft_server_write_next_entry(ri, data, len);
-
-    // We need to schedule ourselves to potentially deliver this new block
-    // to the followers.  However, we should attempt to only send this
-    // followers which are ready for this block.  Otherwise, if a follower
-    // does see a msg at an index > its max index, it should NACK with its
-    // max index so that the rollback protocal can complete without starting
-    // over.
-}
-
-static raft_net_udp_cb_ctx_t
 raft_server_udp_client_recv_handler(struct raft_instance *ri,
                                     const char *recv_buffer,
                                     ssize_t recv_bytes,
@@ -1919,7 +1945,8 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
      */
     else if (write_op && !rc)
         raft_server_leader_write_new_entry(ri, rcm->rcrm_gmsg.rcrgm_data,
-                                           rcm->rcrm_gmsg.rcrgm_msg_size);
+                                           rcm->rcrm_gmsg.rcrgm_msg_size,
+                                           RAFT_WR_ENTRY_OPT_NONE);
 }
 
 int
