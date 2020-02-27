@@ -1023,40 +1023,94 @@ raft_server_become_candidate(struct raft_instance *ri)
     raft_server_broadcast_msg(ri, &rrm);
 }
 
+enum raft_become_follower_reasons
+{
+    RAFT_BFRSN_VOTED_FOR_PEER,
+    RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE,
+    RAFT_BFRSN_STALE_TERM_WHILE_LEADER,
+};
+
+static const char *
+raft_become_follower_reason_2_str(enum raft_become_follower_reasons reason)
+{
+    switch (reason)
+    {
+    case RAFT_BFRSN_VOTED_FOR_PEER:
+        return "voted-for-peer";
+    case RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE:
+        return "lost-election";
+    case RAFT_BFRSN_STALE_TERM_WHILE_LEADER:
+        return "stale-leader";
+    default:
+        break;
+    }
+
+    return NULL;
+}
+
 /**
- * raft_server_candidate_becomes_follower - handle the transition from a
- *    candidate to a follower for the case where a voter has informed us of
- *    a higher term number than our own.  This function sets the new term
- *    in ri_log_hdr but does not sync it to the raft log header.  Should this
- *    instance become a candidate before voting for another peer, the
- *    new_term provided here will be the new base term value.
+ * raft_server_becomes_follower - handle the transition from a
+ *    a follower either from candidate or leader state.  This function sets
+ *    the new term and sync's it to the header.  The peer-uuid is not set
+ *    in the log header unless the caller specifies it so.  This is generally
+ *    only done when the caller is raft_server_process_vote_reply().
+ *    Otherwise, this function is typically called when the term changes
+ *    elsewhere in the cluster and this node becomes a stale leader or
+ *    candidate.
+ * @ri:  raft instance
+ * @new_term:  the higher term provided by a peer
+ * @peer_with_newer_term:  peer uuid which provided the higher term
+ * @reason:  the reason why this instance becomes a follower
  */
 static void
-raft_server_candidate_becomes_follower(struct raft_instance *ri,
-                                       int64_t new_term,
-                                       const uuid_t peer_with_newer_term,
-                                       const bool append_entries_recv_ctx)
+raft_server_becomes_follower(struct raft_instance *ri,
+                             int64_t new_term,
+                             const uuid_t peer_with_newer_term,
+                             enum raft_become_follower_reasons reason)
 {
-    NIOVA_ASSERT(ri &&
-                 (new_term > ri->ri_log_hdr.rlh_term ||
-                  (append_entries_recv_ctx &&
-                   new_term >= ri->ri_log_hdr.rlh_term)));
+    NIOVA_ASSERT(ri);
 
-    DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
+    ri->ri_state = RAFT_STATE_FOLLOWER;
 
-    if (append_entries_recv_ctx)
+    /* Generally, in raft we become a follower when a higher term is observed.
+     * However when 2 or more peers become candidates for the same term, the
+     * losing peer may only be notified of a successful election completion
+     * when it recv's a AE RPC.
+     */
+    if (reason == RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE)
     {
-        DBG_RAFT_INSTANCE(LL_WARN, ri, "%s became leader before us (term %lx)",
-                          peer_uuid_str, new_term);
+        NIOVA_ASSERT(new_term >= ri->ri_log_hdr.rlh_term);
     }
     else
     {
-        DBG_RAFT_INSTANCE(LL_WARN, ri, "%s has >= term %lx",
-                          peer_uuid_str, new_term);
+        NIOVA_ASSERT(new_term > ri->ri_log_hdr.rlh_term);
     }
 
-    ri->ri_log_hdr.rlh_term = new_term;
-    ri->ri_state = RAFT_STATE_FOLLOWER;
+    DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
+
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "sender-uuid=%s term=%lx rsn=%s",
+                      peer_uuid_str, new_term,
+                      raft_become_follower_reason_2_str(reason));
+
+    // No need to sync the new term.
+    if (new_term == ri->ri_log_hdr.rlh_term)
+        return;
+
+    /* Use a null uuid since we didn't actually vote for this leader.
+     * Had we voted for this leader, the ri_log_hdr term would have been
+     * in sync already.
+     */
+    const uuid_t null_uuid = {0};
+    const bool sync_uuid = reason == RAFT_BFRSN_VOTED_FOR_PEER ? true : false;
+
+    int rc = raft_server_log_header_write(ri,
+                                          (sync_uuid ?
+                                           null_uuid : peer_with_newer_term),
+                                          new_term);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
+                               "raft_server_log_header_write() %s",
+                               strerror(-rc));
 }
 
 static bool
@@ -1126,8 +1180,8 @@ raft_server_write_next_entry(struct raft_instance *ri,
     const size_t next_entry_phys_idx =
         raft_entry_idx_to_phys_idx(raft_server_get_raft_current_idx(ri) + 1);
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%zd len=%zd",
-                      next_entry_phys_idx, len);
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%zd len=%zd opts=%d",
+                      next_entry_phys_idx, len, opts);
 
     int rc = raft_server_entry_write(ri, next_entry_phys_idx, data, len, opts);
     if (rc)
@@ -1148,6 +1202,7 @@ raft_server_leader_write_new_entry(struct raft_instance *ri,
 #endif
 
     raft_server_write_next_entry(ri, data, len, opts);
+//XXXX
 
     // We need to schedule ourselves to potentially deliver this new block
     // to the followers.  However, we should attempt to only send this
@@ -1226,8 +1281,9 @@ raft_server_process_vote_reply(struct raft_instance *ri,
              ri->ri_log_hdr.rlh_term < vreply->rvrpm_term)
     {
         // The peer has replied that our term is stale
-        raft_server_candidate_becomes_follower(ri, vreply->rvrpm_term,
-                                               rrm->rrm_sender_id, false);
+        raft_server_becomes_follower(ri, vreply->rvrpm_term,
+                                     rrm->rrm_sender_id,
+                                     RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
     }
     else if (result == RATE_VOTE_RESULT_YES &&
              raft_server_candidate_can_become_leader(ri))
@@ -1417,7 +1473,6 @@ raft_server_process_vote_request(struct raft_instance *ri,
     const struct raft_vote_request_msg *vreq = &rrm->rrm_vote_request;
 
     struct raft_rpc_msg rreply_msg = {0};
-    int rc = 0;
 
     /* Do some initialization on the reply message.
      */
@@ -1432,7 +1487,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
     rreply_msg.rrm_vote_reply.rvrpm_voted_granted =
         raft_server_process_vote_request_decide(ri, vreq) ? 1 : 0;
 
-    DBG_RAFT_MSG(LL_WARN, rrm, "vote=%s my term=%lx last=%lx:%lx",
+    DBG_RAFT_MSG(LL_NOTIFY, rrm, "vote=%s my term=%lx last=%lx:%lx",
                  rreply_msg.rrm_vote_reply.rvrpm_voted_granted ? "yes" : "no",
                  ri->ri_log_hdr.rlh_term,
                  raft_server_get_current_raft_entry_term(ri),
@@ -1442,19 +1497,9 @@ raft_server_process_vote_request(struct raft_instance *ri,
      * log header.
      */
     if (rreply_msg.rrm_vote_reply.rvrpm_voted_granted)
-    {
-        /// XXX there's one other case where this call needs to be made!
-        //      this is where / when a candidate gets an append entry RPC
-        //      from a peer!
-        raft_server_candidate_becomes_follower(ri, vreq->rvrqm_proposed_term,
-                                               rrm->rrm_sender_id, false);
-
-        rc = raft_server_log_header_write(ri, rrm->rrm_sender_id,
-                                          vreq->rvrqm_proposed_term);
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                   "raft_server_log_header_write() %s",
-                                   strerror(-rc));
-    }
+        raft_server_becomes_follower(ri, vreq->rvrqm_proposed_term,
+                                     rrm->rrm_sender_id,
+                                     RAFT_BFRSN_VOTED_FOR_PEER);
 
     /* Inform the candidate of our vote.
      */
@@ -1594,23 +1639,9 @@ raft_server_process_append_entries_term_check_ops(
 
     // Demote myself if candidate.
     if (ri->ri_state == RAFT_STATE_CANDIDATE)
-        raft_server_candidate_becomes_follower(ri, raerq->raerqm_term,
-                                               sender_csn->csn_uuid, true);
-
-    // Sync the leader's term number if it's higher than our own.
-    if (ri->ri_log_hdr.rlh_term < raerq->raerqm_term)
-    {
-        /* Use a null uuid since we didn't actually vote for this leader.
-         * Had we voted for this leader, the ri_log_hdr term would have been
-         * in sync already.
-         */
-        uuid_t null_uuid = {0};
-
-        int rc =
-            raft_server_log_header_write(ri, null_uuid, raerq->raerqm_term);
-
-        FATAL_IF((rc), "raft_server_log_header_write(): %s", strerror(-rc));
-    }
+        raft_server_becomes_follower(ri, raerq->raerqm_term,
+                                     sender_csn->csn_uuid,
+                                     RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
 
     // Apply leader csn pointer.
     raft_server_set_leader_csn(ri, sender_csn);
@@ -1711,6 +1742,9 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         NIOVA_ASSERT(rc == -ESTALE);
         reset_timerfd = false;
 
+        /* raerpm_term was already set by
+         * raft_server_process_append_entries_request_prep_reply().
+         */
         rae_reply->raerpm_err_stale_term = 1;
     }
     else
@@ -1728,6 +1762,30 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
 
     raft_server_send_msg(&ri->ri_ush[RAFT_UDP_LISTEN_SERVER], sender_csn,
                          &rreply_msg);
+}
+
+static raft_server_udp_cb_ctx_t
+raft_server_process_append_entries_reply(struct raft_instance *ri,
+                                         struct ctl_svc_node *sender_csn,
+                                         const struct raft_rpc_msg *rrm)
+{
+    NIOVA_ASSERT(ri && sender_csn && rrm);
+    NIOVA_ASSERT(!ctl_svc_node_compare_uuid(sender_csn, rrm->rrm_sender_id));
+
+    DBG_RAFT_MSG(LL_WARN, rrm, "");
+
+    if (raft_instance_is_leader(ri))
+        return;
+
+    const struct raft_append_entries_reply_msg *raerp =
+        &rrm->rrm_append_entries_reply;
+
+    if (raerp->raerpm_err_stale_term)
+        raft_server_becomes_follower(ri, raerp->raerpm_term,
+                                     sender_csn->csn_uuid,
+                                     RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
+
+    //XXX finish me!
 }
 
 /**
@@ -1760,10 +1818,8 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:
 	return raft_server_process_append_entries_request(ri, sender_csn, rrm);
 
-#if 0
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:
         return raft_server_process_append_entries_reply(ri, sender_csn, rrm);
-#endif
 
     default:
         DBG_RAFT_MSG(LL_NOTIFY, rrm, "unhandled msg type %d", rrm->rrm_type);
