@@ -358,6 +358,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return -EINVAL;
 
     ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_FOLLOWER;
+    ri->ri_commit_idx = -1; //Xxx this needs to go into a more general init fn
 
     int rc = raft_net_conf_init(ri);
     if (rc)

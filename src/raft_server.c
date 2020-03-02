@@ -193,7 +193,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t entry_index,
     DBG_RAFT_INSTANCE_FATAL_IF(
         (!raft_server_entry_next_entry_is_valid(ri, &re->re_header)), ri,
         "raft_server_entry_next_entry_is_valid() failed");
-
+//Xxx pwritev() would save a memcpy and a malloc..
     const ssize_t write_sz =
         io_pwrite(ri->ri_log_fd, (const char *)re, total_entry_size,
                   (entry_index * RAFT_ENTRY_SIZE));
@@ -1127,7 +1127,8 @@ raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
                                    "leader-term=%lx != log-hdr-term",
                                    rls->rls_leader_term);
 
-        return rls->rls_initial_term_idx >= ri->ri_commit_idx ? true : false;
+        return rls->rls_initial_term_idx >= ri->ri_last_applied_idx ?
+            true : false;
     }
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "not-leader");
@@ -1202,8 +1203,10 @@ raft_server_leader_write_new_entry(struct raft_instance *ri,
 #endif
 
     raft_server_write_next_entry(ri, data, len, opts);
-//XXXX
+//XXXX -- remember that the eventual RPC issuer must apply
+    //    opts to set raerqm_leader_change_marker.
 
+//XXX
     // We need to schedule ourselves to potentially deliver this new block
     // to the followers.  However, we should attempt to only send this
     // followers which are ready for this block.  Otherwise, if a follower
@@ -1369,21 +1372,35 @@ raft_server_prep_append_entries_for_follower(
 }
 
 static raft_net_timerfd_cb_ctx_t
+raft_server_heartbeat_msg_init(const struct raft_instance *ri,
+                               struct raft_rpc_msg *rrm)
+{
+    NIOVA_ASSERT(ri && rrm);
+
+    rrm->rrm_type = RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST;
+    rrm->rrm_version = 0;
+    rrm->rrm_append_entries_request.raerqm_term = ri->ri_log_hdr.rlh_term;
+
+    /* Note that ri_commit_idx from the leader may be lower than that
+     * of a follower until the leader commits a entry during its term.
+     */
+    rrm->rrm_append_entries_request.raerqm_commit_index = ri->ri_commit_idx;
+    rrm->rrm_append_entries_request.raerqm_entries_sz = 0;
+    rrm->rrm_append_entries_request.raerqm_heartbeat_msg = 1;
+
+    uuid_copy(rrm->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
+    uuid_copy(rrm->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+}
+
+static raft_net_timerfd_cb_ctx_t
 raft_server_issue_heartbeat(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
     NIOVA_ASSERT(ri->ri_state == RAFT_STATE_LEADER);
 
-    struct raft_rpc_msg rrm = {
-        .rrm_type = RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST,
-        .rrm_version = 0,
-        .rrm_append_entries_request.raerqm_term = ri->ri_log_hdr.rlh_term,
-        .rrm_append_entries_request.raerqm_commit_index = ri->ri_commit_idx,
-        .rrm_append_entries_request.raerqm_entries_sz = 0, //heartbeat
-    };
+    struct raft_rpc_msg rrm = {0};
 
-    uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(rrm.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    raft_server_heartbeat_msg_init(ri, &rrm);
 
     const raft_peer_t num_peers =
         ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
@@ -1575,7 +1592,7 @@ raft_server_append_entry_log_prepare_and_check(
 {
     NIOVA_ASSERT(ri && raerq);
 
-    // Prune our log if the leader's prev-idx is higher than our last-idx.
+    // Prune our log if out last-idx is higher than leader's prev-idx
     raft_server_append_entry_log_prune_if_needed(ri, raerq);
 
     const int64_t raft_current_idx = raft_server_get_raft_current_idx(ri);
@@ -1587,10 +1604,16 @@ raft_server_append_entry_log_prepare_and_check(
                       raerq->raerqm_prev_log_index,
                       raerq->raerqm_prev_log_term);
 
+    /* In this case, the leader's and follower's indexes have yet to converge
+     * which implies a "non_matching_prev_term" since the term isn't testable
+     * until the indexes match.
+     */
     if (raft_current_idx != raerq->raerqm_prev_log_index)
         return -ERANGE;
 
-    /* Equivalent log indexes but the terms do not match.
+    /* Equivalent log indexes but the terms do not match.  Note that this cond
+     * will likely lead to more pruning as the leader continues to decrement
+     * its raerqm_prev_log_index value for this follower.
      */
     if (ri->ri_newest_entry_hdr.reh_term != raerq->raerqm_prev_log_term)
         return -EEXIST;
@@ -1662,10 +1685,12 @@ raft_server_write_new_entry_from_leader(
     NIOVA_ASSERT(ri && raerq);
     NIOVA_ASSERT(raft_instance_is_follower(ri));
 
-    const size_t entry_size = raerq->raerqm_entries_sz;
-    if (!entry_size)
-        return; // This is a heartbeat msg.
+    if (raerq->raerqm_heartbeat_msg)
+        return; // This is a heartbeat msg which does not enter the log
 
+    const size_t entry_size = raerq->raerqm_entries_sz;
+
+    // Msg size of '0' is OK.
     NIOVA_ASSERT(entry_size <= RAFT_ENTRY_MAX_DATA_SIZE);
 
     // Sanity check on the 'next' idx to be written.
@@ -1684,10 +1709,13 @@ raft_server_write_new_entry_from_leader(
 static raft_server_udp_cb_ctx_t
 raft_server_process_append_entries_request_prep_reply(
     struct raft_instance *ri,
-    struct raft_rpc_msg *reply)
+    struct raft_rpc_msg *reply,
+    const struct raft_append_entries_request_msg *raerq)
 {
     reply->rrm_type = RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY;
     reply->rrm_append_entries_reply.raerpm_term = ri->ri_log_hdr.rlh_term;
+    reply->rrm_append_entries_reply.raerpm_heartbeat_msg =
+        raerq->raerqm_heartbeat_msg;
 
     uuid_copy(reply->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
     uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
@@ -1720,13 +1748,14 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
 
     struct raft_rpc_msg rreply_msg = {0};
 
-    raft_server_process_append_entries_request_prep_reply(ri, &rreply_msg);
-
     struct raft_append_entries_reply_msg *rae_reply =
         &rreply_msg.rrm_append_entries_reply;
 
     const struct raft_append_entries_request_msg *raerq =
         &rrm->rrm_append_entries_request;
+
+    raft_server_process_append_entries_request_prep_reply(ri, &rreply_msg,
+                                                          raerq);
 
     if (raft_server_process_append_entries_request_validity_check(raerq))
         return;
@@ -1764,6 +1793,161 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
                          &rreply_msg);
 }
 
+static raft_server_udp_cb_leader_ctx_int64_t
+raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_raft);
+    NIOVA_ASSERT(raft_instance_is_leader(ri));
+
+    struct raft_leader_state *rls = &ri->ri_leader;
+
+    raft_peer_t num_raft_members =
+        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
+
+    raft_peer_t this_peer_num =
+        raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
+
+    NIOVA_ASSERT(this_peer_num < num_raft_members);
+
+    uint8_t done_peers[CTL_SVC_MAX_RAFT_PEERS] = {0};
+    int64_t sorted_indexes[CTL_SVC_MAX_RAFT_PEERS] =
+        {RAFT_MIN_APPEND_ENTRY_IDX};
+
+    /* The leader doesn't update its own rls_next_idx[] slot so do that here
+     */
+    rls->rls_next_idx[this_peer_num] =
+        raft_server_get_raft_current_idx(ri) + 1;
+
+    /* Sort the group member's next-idx values - note that these are the NEXT
+     * index to be written not the already written idx value.
+     */
+    for (raft_peer_t i = 0; i < num_raft_members; i++)
+    {
+        raft_peer_t tmp_peer = RAFT_PEER_ANY;
+
+        for (raft_peer_t j = 0; i < num_raft_members; j++)
+        {
+            if (!done_peers[j] &&
+                (sorted_indexes[i] == RAFT_MIN_APPEND_ENTRY_IDX ||
+                 rls->rls_next_idx[j] < sorted_indexes[i]))
+            {
+                sorted_indexes[i] = rls->rls_next_idx[j];
+                tmp_peer = j;
+            }
+        }
+        NIOVA_ASSERT(tmp_peer < num_raft_members && !done_peers[tmp_peer]);
+        done_peers[tmp_peer] = 1;
+    }
+
+    // simple sanity check.
+    for (raft_peer_t i = 0; i < num_raft_members; i++)
+        NIOVA_ASSERT(sorted_indexes[i] != RAFT_MIN_APPEND_ENTRY_IDX);
+
+    const raft_peer_t majority_idx =
+        raft_majority_index_value(num_raft_members);
+
+    NIOVA_ASSERT(majority_idx < num_raft_members);
+
+    /* Be sure to subtract one from the majority value since that value is the
+     * 'next-idx'.
+     */
+    const int64_t committed_raft_idx = sorted_indexes[majority_idx] - 1;
+
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%lx",
+                      committed_raft_idx);
+
+    // Ensure the ri_commit_idx is not moving backwards!
+    NIOVA_ASSERT(committed_raft_idx <= ri->ri_commit_idx);
+
+    return committed_raft_idx;
+}
+
+/**
+ * raft_server_try_advance_commit_idx - after receiving a successful AE reply,
+ *     one where the follower was able to append the entry to its log, the
+ *     leader now checks to see if can commit any older entries.  The
+ *     determination for 'committed' relies on a majority of peers ACK'ing the
+ *     AE in this leader's term - the leader may only tally ACKs for AEs sent
+ *     in its term!
+ *     raft_leader_has_applied_txn_in_my_term() cannot be used here since the
+ *     data used by it must first be updated through a commit + apply
+ *     operation.
+ */
+static raft_server_udp_cb_leader_ctx_t
+raft_server_try_advance_commit_idx(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    NIOVA_ASSERT(raft_instance_is_leader(ri));
+
+    const struct raft_leader_state *rls = &ri->ri_leader;
+
+    const int64_t committed_raft_idx =
+        raft_server_leader_calculate_committed_idx(ri);
+
+    /* Only increase the commit index if the majority has ACKd this leader's
+     * "leader_change_marker" AE.
+     */
+    if (committed_raft_idx >= rls->rls_initial_term_idx &&
+        committed_raft_idx > ri->ri_commit_idx)
+    {
+        DBG_RAFT_INSTANCE(LL_WARN, ri, "updating ri_commit_idx to %lx",
+                          committed_raft_idx);
+
+        ri->ri_commit_idx = committed_raft_idx;
+
+        /* XXX here we can apply some entries to the state machine
+         *     however, it's not clear "when and how much" should be
+         *     undertaken.. it could be the case that newly booted system
+         *     would have to reply millions or even billions of logs once its
+         *     initial commit is ack'd and we can't have the leaders or
+         *     followers blocking heartbeats and acks just because they're
+         *     busy replaying a ton of transactions.  It is the case that the
+         *     clients will block, and there's not much we can do about that..
+         *     Some sort of scheduling will need to be done in order to get the
+         *     entries applied in a manner which allows for other operations
+         *     to occur as well.
+         */
+    }
+}
+
+static raft_server_udp_cb_leader_ctx_t
+raft_server_apply_append_entries_reply_result(
+    struct raft_instance *ri,
+    const uuid_t follower_uuid,
+    const struct raft_append_entries_reply_msg *raerp)
+{
+    NIOVA_ASSERT(ri && raerp);
+    NIOVA_ASSERT(raft_instance_is_leader(ri));
+
+    const raft_peer_t follower_idx = raft_peer_2_idx(ri, follower_uuid);
+    NIOVA_ASSERT(follower_idx != RAFT_PEER_ANY);
+
+    struct raft_leader_state *rls = &ri->ri_leader;
+
+    rls->rls_prev_idx_term[follower_idx] = -1;
+
+    if (raerp->raerpm_err_non_matching_prev_term)
+    {
+        // Xxx need to immediately schedule another AE to this follower until
+        //     we get an ACK.
+        if (rls->rls_next_idx[follower_idx] > 0)
+            rls->rls_next_idx[follower_idx]--;
+    }
+
+    // Heartbeats don't advance the follower index
+    else if (!raerp->raerpm_heartbeat_msg)
+    {
+        rls->rls_next_idx[follower_idx]++;
+
+        // Only called if the entry append was successful.
+        raft_server_try_advance_commit_idx(ri);
+    }
+
+///XXX update timestamp for follower ACK
+///XXX need to think about an 'epoch' which is incremented every 'n'
+///    ms perhaps in the timerfd
+}
+
 static raft_server_udp_cb_ctx_t
 raft_server_process_append_entries_reply(struct raft_instance *ri,
                                          struct ctl_svc_node *sender_csn,
@@ -1772,7 +1956,7 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
     NIOVA_ASSERT(ri && sender_csn && rrm);
     NIOVA_ASSERT(!ctl_svc_node_compare_uuid(sender_csn, rrm->rrm_sender_id));
 
-    DBG_RAFT_MSG(LL_WARN, rrm, "");
+    DBG_RAFT_MSG(LL_NOTIFY, rrm, "");
 
     if (raft_instance_is_leader(ri))
         return;
@@ -1784,8 +1968,9 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
         raft_server_becomes_follower(ri, raerp->raerpm_term,
                                      sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
-
-    //XXX finish me!
+    else
+        raft_server_apply_append_entries_reply_result(ri, sender_csn->csn_uuid,
+                                                      raerp);
 }
 
 /**

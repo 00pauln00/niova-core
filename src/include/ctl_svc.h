@@ -18,6 +18,7 @@
 
 #define CTL_SVC_DEFAULT_LOCAL_DIR "/etc/niova/ctl-svc/local"
 #define CTL_SVC_MAX_RAFT_PEERS 11
+#define CTL_SVC_MIN_RAFT_PEERS 4
 
 enum ctl_svc_node_type
 {

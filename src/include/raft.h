@@ -41,17 +41,19 @@
 #define RAFT_INSTANCE_2_RAFT_UUID(ri)           \
     (ri)->ri_csn_raft->csn_uuid
 
-typedef void raft_server_udp_cb_ctx_t;
-typedef int  raft_server_udp_cb_ctx_int_t;
-typedef bool raft_server_udp_cb_ctx_bool_t;
-typedef bool raft_server_udp_cb_follower_ctx_bool_t;
-typedef int  raft_server_udp_cb_follower_ctx_int_t;
-typedef void raft_server_udp_cb_follower_ctx_t;
-typedef void raft_server_udp_cb_leader_t;
-typedef void raft_server_timerfd_cb_ctx_t;
-typedef int  raft_server_timerfd_cb_ctx_int_t;
-typedef void raft_server_leader_mode_t;
-typedef int  raft_server_leader_mode_int_t;
+typedef void    raft_server_udp_cb_ctx_t;
+typedef int     raft_server_udp_cb_ctx_int_t;
+typedef bool    raft_server_udp_cb_ctx_bool_t;
+typedef bool    raft_server_udp_cb_follower_ctx_bool_t;
+typedef int     raft_server_udp_cb_follower_ctx_int_t;
+typedef void    raft_server_udp_cb_follower_ctx_t;
+typedef void    raft_server_udp_cb_leader_t;
+typedef void    raft_server_udp_cb_leader_ctx_t;
+typedef int64_t raft_server_udp_cb_leader_ctx_int64_t;
+typedef void    raft_server_timerfd_cb_ctx_t;
+typedef int     raft_server_timerfd_cb_ctx_int_t;
+typedef void    raft_server_leader_mode_t;
+typedef int     raft_server_leader_mode_int_t;
 
 enum raft_rpc_msg_type
 {
@@ -84,9 +86,10 @@ struct raft_append_entries_request_msg
     uint64_t raerqm_commit_index;
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
-    uint16_t raerqm_entries_sz; // if '0' then "heartbeat" msg
+    uint16_t raerqm_entries_sz;
+    uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
-    uint8_t  raerqm__pad[5];
+    uint8_t  raerqm__pad[4];
     char     raerqm_entries[]; // Must be last
 };
 
@@ -94,9 +97,10 @@ struct raft_append_entries_reply_msg
 {
     int64_t  raerpm_term;
     uint64_t raerpm_term_seqno; // used for read-window'ing
+    uint8_t  raerpm_heartbeat_msg;
     uint8_t  raerpm_err_stale_term;
     uint8_t  raerpm_err_non_matching_prev_term;
-    uint8_t  raerpm__pad[6];
+    uint8_t  raerpm__pad[5];
 };
 
 //#define RAFT_RPC_MSG_TYPE_Version0_SIZE 120
@@ -358,6 +362,22 @@ raft_instance_is_follower(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     return ri->ri_state == RAFT_STATE_FOLLOWER ? true : false;
+}
+
+static inline bool
+raft_num_members_is_valid(const raft_peer_t num_raft_members)
+{
+    return (num_raft_members > CTL_SVC_MAX_RAFT_PEERS ||
+            num_raft_members < CTL_SVC_MIN_RAFT_PEERS) ? false : true;
+}
+
+static inline raft_peer_t
+raft_majority_index_value(const raft_peer_t num_raft_members)
+{
+    if (!raft_num_members_is_valid(num_raft_members))
+        return RAFT_PEER_ANY;
+
+    return num_raft_members - (num_raft_members / 2) - 1;
 }
 
 /**
