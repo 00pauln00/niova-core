@@ -101,12 +101,25 @@ simple_addition(void)
 }
 
 static void
-atomic_addition(void)
+atomic_op(bool inc_or_read)
 {
     static niova_atomic64_t val = PRIME;
-    niova_atomic_inc(&val);
+    int64_t foo = inc_or_read ?
+        niova_atomic_inc(&val) : niova_atomic_read(&val);
 
     (void)val;
+}
+
+static void
+atomic_addition(void)
+{
+    return atomic_op(true);
+}
+
+static void
+atomic_read(void)
+{
+    return atomic_op(false);
 }
 
 static void
@@ -190,6 +203,7 @@ main(void)
     run_micro(simple_multiply, DEF_ITER, "simple_multiply");
     run_micro(simple_modulus, DEF_ITER / 5, "simple_modulus");
     run_micro(atomic_addition, DEF_ITER, "atomic_addition");
+    run_micro(atomic_read, DEF_ITER, "atomic_read");
     run_micro(atomic_cas_noop, DEF_ITER / 5, "atomic_cas_noop");
     run_micro(atomic_cas, DEF_ITER / 5, "atomic_cas");
     run_micro(simple_random, DEF_ITER, "random_number_generate");

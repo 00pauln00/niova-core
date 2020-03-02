@@ -9,9 +9,15 @@
 
 #include <sys/epoll.h>
 
-#define EPOLL_MGR_MIN_EVENTS 1
-#define EPOLL_MGR_DEF_EVENTS 4
-#define EPOLL_MGR_MAX_EVENTS 128
+#include "atomic.h"
+
+/**
+ *  There should be 1 event per fd (I think, based on my reading of the kernel's
+ *  eventpoll.c).  At this time, this library only supports these 3 static values.
+ */
+#define EPOLL_MGR_MIN_EVENTS 32
+#define EPOLL_MGR_DEF_EVENTS 128
+#define EPOLL_MGR_MAX_EVENTS 1024
 
 struct epoll_handle
 {
@@ -24,8 +30,9 @@ struct epoll_handle
 
 struct epoll_mgr
 {
-    int          epm_epfd;
-    unsigned int epm_ready:1;
+    int              epm_epfd;
+    niova_atomic32_t epm_num_handles;
+    unsigned int     epm_ready:1;
 };
 
 struct niova_env_var;

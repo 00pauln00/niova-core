@@ -7,6 +7,8 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "log.h"
+#include "atomic.h"
 #include "common.h"
 #include "epoll_mgr.h"
 #include "env.h"
@@ -22,6 +24,8 @@ epoll_mgr_setup(struct epoll_mgr *epm)
 
     else if (epm->epm_ready)
         return -EALREADY;
+
+    niova_atomic_init(&epm->epm_num_handles, 0);
 
     epm->epm_epfd = epoll_create1(0);
     if (epm->epm_epfd < 0)
@@ -81,7 +85,12 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
     if (!rc)
+    {
+        const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
+        NIOVA_ASSERT(num_handles > 0);
+
         eph->eph_installed = 1;
+    }
 
     return rc;
 }
@@ -102,7 +111,12 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_DEL, eph->eph_fd, &ev);
     if (!rc)
+    {
+        const int num_handles = niova_atomic_dec(&epm->epm_num_handles);
+        NIOVA_ASSERT(num_handles >= 0);
+
         eph->eph_installed = 0;
+    }
 
     return rc;
 }
@@ -113,10 +127,13 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     if (!epm || !epm->epm_ready)
         return -EINVAL;
 
-    struct epoll_event evs[epollMgrNumEvents];
+    int maxevents = MAX(1, MIN(epollMgrNumEvents,
+                               niova_atomic_read(&epm->epm_num_handles)));
+
+    struct epoll_event evs[maxevents];
 
     const int nevents =
-        epoll_wait(epm->epm_epfd, evs, EPOLL_MGR_MAX_EVENTS, timeout);
+        epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
 
     if (nevents < 0)
         return -errno;
