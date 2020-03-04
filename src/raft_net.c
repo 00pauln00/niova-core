@@ -23,9 +23,6 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
-#define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
-
 static int
 raft_net_udp_sockets_close(struct raft_instance *ri)
 {
@@ -178,7 +175,7 @@ raft_epoll_setup_udp(struct raft_instance *ri, enum raft_epoll_handles reh)
 raft_net_timerfd_cb_ctx_t
 raft_net_timerfd_cb(const struct epoll_handle *);
 
-int
+static int
 raft_net_epoll_setup_timerfd(struct raft_instance *ri)
 {
     if (!ri ||
@@ -387,6 +384,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
     if (!client_mode)
     {
+        // Call before raft_net_epoll_setup()
         rc = raft_server_instance_startup(ri);
         if (rc)
         {
@@ -408,7 +406,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return rc;
     }
 
-     /* bind() after adding the socket to the epoll set.
+    /* bind() after adding the socket to the epoll set.
      */
     rc = raft_net_udp_sockets_bind(ri);
     if (rc)
@@ -560,6 +558,38 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
     niova_unstable_coarse_clock(ts);
 }
 
+/**
+ * raft_net_get_comm_responsiveness_value - this function provides a
+ *     progressively increasing value when a remote peer does not reply to
+ *     msgs sent from this peer.
+ */
+int
+raft_net_get_comm_responsiveness_value(const struct raft_instance *ri,
+                                       raft_peer_t raft_peer_idx,
+                                       unsigned long long *responsiveness_ms)
+{
+    if (!ri || !ri->ri_csn_raft || !responsiveness_ms ||
+        raft_peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
+        return -EINVAL;
+
+    const unsigned long long last_send =
+        timespec_2_msec(&ri->ri_last_send[raft_peer_idx]);
+
+    const unsigned long long last_recv =
+        timespec_2_msec(&ri->ri_last_recv[raft_peer_idx]);
+
+    const unsigned long long now = niova_unstable_coarse_clock_get_msec();
+
+    *responsiveness_ms =
+        (last_send > last_recv) ? (now - last_send) : 0;
+
+    return 0;
+}
+
+/**
+ * raft_net_get_comm_recency_value - provides the difference in time between
+ *    the last received message from a remote peer and now.
+ */
 int
 raft_net_get_comm_recency_value(const struct raft_instance *ri,
                                 raft_peer_t raft_peer_idx,
@@ -575,16 +605,14 @@ raft_net_get_comm_recency_value(const struct raft_instance *ri,
     const unsigned long long last_recv =
         timespec_2_msec(&ri->ri_last_recv[raft_peer_idx]);
 
-    *recency_ms = RAFT_NET_PEER_RECENCY_NO_RECV;
+    unsigned long long now = niova_unstable_coarse_clock_get_msec();
 
-    if (!last_send)
-        *recency_ms = RAFT_NET_PEER_RECENCY_NO_SEND;
+    // This should not happen, but just in case..
+    if (now < MAX(last_recv, last_send))
+        now = MAX(last_recv, last_send);
 
-    else if (!last_recv)
-        *recency_ms = RAFT_NET_PEER_RECENCY_NO_RECV;
-
-    else if (last_recv >= last_send)
-        *recency_ms = last_recv - last_send;
+    // Return the lowest possible value if no send has been done yet.
+    *recency_ms = last_send ? (now - last_recv) : 0;
 
     return 0;
 }
@@ -603,7 +631,7 @@ raft_net_get_most_recently_responsive_server(const struct raft_instance *ri)
     for (raft_peer_t i = 0; i < nraft_servers; i++)
     {
         raft_peer_t idx = (i + start_peer) % nraft_servers;
-        unsigned long long tmp_recency_value = RAFT_NET_PEER_RECENCY_NO_RECV;
+        unsigned long long tmp_recency_value = 0;
 
         int rc = raft_net_get_comm_recency_value(ri, idx, &tmp_recency_value);
         FATAL_IF((rc), "raft_net_get_comm_recency_value(): %s",

@@ -28,6 +28,8 @@ struct epoll_handle
     void       (*eph_cb)(const struct epoll_handle *);
 };
 
+typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *);
+
 struct epoll_mgr
 {
     int              epm_epfd;

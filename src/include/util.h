@@ -9,14 +9,26 @@
 #include <stdio.h>
 #include <uuid/uuid.h>
 
+// Do not include "log.h" here!
 #include "common.h"
-#include "log.h"
+
+#if defined MY_FATAL_IF
+#undef MY_FATAL_IF
+#endif
+
+#define MY_FATAL_IF(cond, msg, ...)                     \
+    if (cond)                                           \
+    {                                                   \
+        fprintf(stderr, "<%s@%d>" msg"\n",              \
+                __func__, __LINE__, ##__VA_ARGS__);     \
+        abort();                                        \
+    }
 
 #define	DECL_AND_FMT_STRING(name, len, fmt, ...)                \
 char name[len + 1];                                             \
 {                                                               \
     int rc = snprintf(name, len, fmt, ##__VA_ARGS__);           \
-    FATAL_IF((rc > len), "rc=%d, requested len=%zu", rc, len);  \
+    MY_FATAL_IF((rc > len), "rc=%d, requested len=%zu", rc, len);  \
 }
 
 #define DECL_AND_INIT_STRING(name, str_len, init_char, init_char_len)   \
@@ -35,15 +47,21 @@ char name[UUID_STR_LEN];                        \
 /**
  * clock_gettime() wrappers
  */
-#define niova_unstable_clock(dest) clock_gettime(CLOCK_MONOTONIC, (dest))
-#define niova_unstable_coarse_clock(dest)       \
-    clock_gettime(CLOCK_MONOTONIC_COARSE, (dest))
+#define niova_unstable_clock(dest)                              \
+    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC, (dest)),         \
+                "clock_gettime() %s", strerror(errno))
 
-#define niova_stable_clock(dest) clock_gettime(CLOCK_MONOTONIC_RAW, (dest))
+#define niova_unstable_coarse_clock(dest)                       \
+    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC_COARSE, (dest)),  \
+                "clock_gettime() %s", strerror(errno))
 
-#define niova_realtime_clock(dest) clock_gettime(CLOCK_REALTIME, (dest))
-#define niova_realtime_coarseclock(dest) \
-    clock_gettime(CLOCK_REALTIME_COARSE, (dest))
+#define niova_stable_clock(dest)                                \
+    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC_RAW, (dest)),     \
+                "clock_gettime() %s", strerror(errno))
+
+#define niova_realtime_clock(dest)                              \
+    MY_FATAL_IF(clock_gettime(CLOCK_REALTIME, (dest)),          \
+                "clock_gettime() %s", strerror(errno))
 
 /**
  * BSD timespec macros
@@ -131,6 +149,24 @@ static inline float
 timespec_2_float(const struct timespec *ts)
 {
     return (float)ts->tv_sec + (.000000001 * (float)ts->tv_nsec);
+}
+
+static inline unsigned long long
+niova_unstable_coarse_clock_get_msec(void)
+{
+    struct timespec now;
+    niova_unstable_coarse_clock(&now);
+
+    return timespec_2_msec(&now);
+}
+
+static inline unsigned long long
+niova_unstable_coarse_clock_get_usec(void)
+{
+    struct timespec now;
+    niova_unstable_coarse_clock(&now);
+
+    return timespec_2_usec(&now);
 }
 
 #endif

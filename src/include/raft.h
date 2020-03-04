@@ -15,9 +15,10 @@
 #include "util.h"
 #include "ctl_svc.h"
 #include "raft_net.h"
+#include "ev_pipe.h"
 
 #define NUM_RAFT_LOG_HEADERS 2
-#define RAFT_ENTRY_PAD_SIZE 62
+#define RAFT_ENTRY_PAD_SIZE 63
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
@@ -54,6 +55,8 @@ typedef void    raft_server_timerfd_cb_ctx_t;
 typedef int     raft_server_timerfd_cb_ctx_int_t;
 typedef void    raft_server_leader_mode_t;
 typedef int     raft_server_leader_mode_int_t;
+typedef void    raft_server_epoll_ae_sender_t;
+typedef void    raft_server_epoll_sm_apply_t;
 
 enum raft_rpc_msg_type
 {
@@ -81,7 +84,9 @@ struct raft_vote_reply_msg
 
 struct raft_append_entries_request_msg
 {
-    int64_t  raerqm_term;
+    int64_t  raerqm_leader_term; // current term of the leader
+    int64_t  raerqm_log_term; // term of the log entry (prev_log_index + 1)
+                              // .. used for replays of old msgs
     uint64_t raerqm_term_seqno; // used for read-window'ing
     uint64_t raerqm_commit_index;
     int64_t  raerqm_prev_log_term;
@@ -95,7 +100,8 @@ struct raft_append_entries_request_msg
 
 struct raft_append_entries_reply_msg
 {
-    int64_t  raerpm_term;
+    int64_t  raerpm_leader_term;
+    int64_t  raerpm_prev_log_index;
     uint64_t raerpm_term_seqno; // used for read-window'ing
     uint8_t  raerpm_heartbeat_msg;
     uint8_t  raerpm_err_stale_term;
@@ -126,15 +132,10 @@ struct raft_entry_header
     uint64_t reh_magic;     // Magic is not included in the crc
     crc32_t  reh_crc;       // Crc is after the magic
     uint32_t reh_data_size; // The size of the log entry data
-    int64_t  reh_index;    // Must match physical offset + NUM_RAFT_LOG_HEADERS
-#if 0 //XXx
-    int64_t  reh_phys_index; // physical offset
-    int64_t  reh_raft_index; // the raft index number
-#endif
-    int64_t  reh_term;
+    int64_t  reh_index;     // Add NUM_RAFT_LOG_HEADERS to get phys offset
+    int64_t  reh_term;      // Term in which entry was originally written
     uuid_t   reh_self_uuid; // UUID of this peer
     uuid_t   reh_raft_uuid; // UUID of raft instance
-    uint8_t  reh_log_hdr_blk;
     uint8_t  reh_leader_change_marker; // noop
     uint8_t  reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
@@ -143,13 +144,8 @@ static inline bool
 raft_entry_is_header_block(const struct raft_entry_header *reh)
 {
     NIOVA_ASSERT(reh);
-    if (reh->reh_log_hdr_blk)
-    {
-        NIOVA_ASSERT(reh->reh_index < NUM_RAFT_LOG_HEADERS);
-        return true;
-    }
 
-    return false;
+    return reh->reh_index < 0 ? true : false;
 }
 
 struct raft_entry
@@ -160,6 +156,7 @@ struct raft_entry
 
 struct raft_log_header
 {
+    uint64_t rlh_version;
     uint64_t rlh_magic;
     int64_t  rlh_term;
     uint64_t rlh_seqno;
@@ -183,6 +180,8 @@ enum raft_epoll_handles
     RAFT_EPOLL_HANDLE_PEER_UDP,
     RAFT_EPOLL_HANDLE_CLIENT_UDP,
     RAFT_EPOLL_HANDLE_TIMERFD,
+    RAFT_EPOLL_HANDLE_EVP_AE_SEND,
+    RAFT_EPOLL_HANDLE_EVP_SM_APPLY,
     RAFT_EPOLL_NUM_HANDLES,
 };
 
@@ -201,15 +200,23 @@ struct raft_candidate_state
 
 struct raft_leader_state
 {
-    uint64_t rls_initial_term_idx; // log index at the start of my term
-    int64_t  rls_leader_term;
+    uint64_t           rls_initial_term_idx; // index at start of leader's term
+    int64_t            rls_leader_term;
 //    uint64_t rls_match_idx[CTL_SVC_MAX_RAFT_PEERS];
-    uint64_t rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
-    int64_t  rls_prev_idx_term[CTL_SVC_MAX_RAFT_PEERS];
+    uint64_t           rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
+    int64_t            rls_prev_idx_term[CTL_SVC_MAX_RAFT_PEERS];
+    unsigned long long rls_ae_sends_wait_until[CTL_SVC_MAX_RAFT_PEERS];
 };
 
 struct epoll_handle;
 struct raft_instance;
+
+enum raft_server_event_pipes
+{
+    RAFT_SERVER_EVP_AE_SEND  = 0,
+    RAFT_SERVER_EVP_SM_APPLY = 1,
+    RAFT_SERVER_EVP_ANY      = 2,
+};
 
 struct raft_instance
 {
@@ -240,6 +247,7 @@ struct raft_instance
     raft_net_udp_cb_t           ri_udp_server_recv_cb;
     raft_sm_request_handler_t   ri_server_sm_request_cb;
     raft_sm_request_handler_t   ri_server_sm_commit_cb;
+    struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
 };
 
 static inline void
@@ -276,8 +284,9 @@ raft_compile_time_checks(void)
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                      \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "APPREQ t=%lx ci=%lx pl=%lx:%lx sz=%hx %s "fmt,  \
-                       (rm)->rrm_append_entries_request.raerqm_term,    \
+                       "APPREQ t=%lx lt=%lx ci=%lx pl=%lx:%lx sz=%hx %s "fmt, \
+                       (rm)->rrm_append_entries_request.raerqm_leader_term, \
+                       (rm)->rrm_append_entries_request.raerqm_log_term, \
                        (rm)->rrm_append_entries_request.raerqm_commit_index, \
                        (rm)->rrm_append_entries_request.raerqm_prev_log_term, \
                        (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
@@ -292,9 +301,9 @@ raft_compile_time_checks(void)
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "re@%p crc=%x size=%u idx=%ld term=%ld lb=%x "fmt,   \
+                   "re@%p crc=%x size=%u idx=%ld term=%ld "fmt,         \
                    (re), (re)->reh_crc, (re)->reh_data_size, (re)->reh_index, \
-                   (re)->reh_term, (re)->reh_log_hdr_blk, ##__VA_ARGS__)
+                   (re)->reh_term, ##__VA_ARGS__)
 
 #define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                      \
 {                                                                       \
@@ -321,6 +330,21 @@ raft_compile_time_checks(void)
     {                                                                   \
         DBG_RAFT_INSTANCE(LL_FATAL, ri, message, ##__VA_ARGS__);        \
     }                                                                   \
+}
+
+static inline enum raft_epoll_handles
+raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
+{
+    switch (evps)
+    {
+    case RAFT_SERVER_EVP_AE_SEND:
+        return RAFT_SERVER_EVP_AE_SEND;
+    case RAFT_SERVER_EVP_SM_APPLY:
+        return RAFT_EPOLL_HANDLE_EVP_SM_APPLY;
+    default:
+        break;
+    }
+    return RAFT_EPOLL_NUM_HANDLES;
 }
 
 static inline char
@@ -397,6 +421,27 @@ raft_server_entry_header_is_null(const struct raft_entry_header *reh)
     return true;
 }
 
+static inline size_t
+raft_server_instance_get_num_log_headers(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri->ri_log_hdr.rlh_version == 0);
+
+    return NUM_RAFT_LOG_HEADERS;
+}
+
+static inline size_t
+raft_server_entry_idx_to_phys_idx(const struct raft_instance *ri,
+                                  int64_t entry_idx)
+{
+    NIOVA_ASSERT(ri);
+
+    entry_idx += raft_server_instance_get_num_log_headers(ri);
+
+    NIOVA_ASSERT(entry_idx > 0);
+
+    return entry_idx;
+}
+
 /**
  * raft_server_get_current_raft_entry_term - returns the term value from the
  *    most recent raft entry to have been written to the log.  Note that
@@ -411,8 +456,35 @@ raft_server_get_current_raft_entry_term(const struct raft_instance *ri)
 }
 
 /**
+ * raft_server_get_current_phys_entry_index - obtains the physical position
+ *   of the most recent entry.  This physical value is typically used for
+ *   I/O.
+ */
+static inline int64_t
+raft_server_get_current_phys_entry_index(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    int64_t current_phys_index = -1;
+
+    if (!raft_server_entry_header_is_null(&ri->ri_newest_entry_hdr))
+    {
+        current_phys_index = ri->ri_newest_entry_hdr.reh_index;
+
+        // ri_newest_entry_hdr should never have a log hdr block idx value.
+        NIOVA_ASSERT(current_phys_index >= 0);
+
+        current_phys_index += raft_server_instance_get_num_log_headers(ri);
+    }
+
+    return current_phys_index;
+}
+
+/**
  * raft_server_get_current_raft_entry_index - given a raft instance, returns
- *    the position of the last written application log entry.  The results
+ *    the logical position of the last written application log entry.  The
+ *    logical position is the physical index minus the number of
+ *    NUM_RAFT_LOG_HEADERS blocks.  The values processed by this function
  *    are based on the ri_newest_entry_hdr data, which stores a copy of the
  *    most recently written log entry.  If ri_newest_entry_hdr is null, this
  *    means the log has no entries.  Otherwise, a non-negative value is
@@ -427,9 +499,7 @@ raft_server_get_current_raft_entry_index(const struct raft_instance *ri)
 
     if (!raft_server_entry_header_is_null(&ri->ri_newest_entry_hdr))
     {
-        current_reh_index =
-            ri->ri_newest_entry_hdr.reh_index - NUM_RAFT_LOG_HEADERS;
-
+        current_reh_index = ri->ri_newest_entry_hdr.reh_index;
         NIOVA_ASSERT(current_reh_index >= 0);
     }
 

@@ -17,6 +17,9 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
+#define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
+#define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
+
 typedef void raft_net_udp_cb_ctx_t;
 typedef int  raft_net_udp_cb_ctx_int_t;
 typedef void raft_net_timerfd_cb_ctx_t;
@@ -43,6 +46,7 @@ typedef raft_net_udp_cb_ctx_int_t
                                 struct sockaddr_in *);
 
 #define RAFT_NET_MAX_RPC_SIZE 65000
+#define RAFT_NET_MAX_RETRY_MS 1000
 
 enum raft_udp_listen_sockets
 {
@@ -156,6 +160,11 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
 
 raft_peer_t
 raft_net_get_most_recently_responsive_server(const struct raft_instance *ri);
+
+int
+raft_net_get_comm_responsiveness_value(const struct raft_instance *ri,
+                                       raft_peer_t raft_peer_idx,
+                                       unsigned long long *responsiveness_ms);
 
 int
 raft_net_get_comm_recency_value(const struct raft_instance *ri,
