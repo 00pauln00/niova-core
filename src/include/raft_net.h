@@ -66,6 +66,13 @@ enum raft_client_rpc_msg_type
     RAFT_CLIENT_RPC_MSG_TYPE_ANY      = 5,
 };
 
+enum raft_net_comm_recency_type
+{
+    RAFT_COMM_RECENCY_RECV,
+    RAFT_COMM_RECENCY_SEND,
+    RAFT_COMM_RECENCY_UNACKED_SEND,
+};
+
 /**
  * -- struct raft_client_rpc_generic_msg --
  * Raft client generic RPC message.
@@ -162,13 +169,9 @@ raft_peer_t
 raft_net_get_most_recently_responsive_server(const struct raft_instance *ri);
 
 int
-raft_net_get_comm_responsiveness_value(const struct raft_instance *ri,
-                                       raft_peer_t raft_peer_idx,
-                                       unsigned long long *responsiveness_ms);
-
-int
-raft_net_get_comm_recency_value(const struct raft_instance *ri,
-                                raft_peer_t raft_peer_idx,
-                                unsigned long long *recency_ms);
+raft_net_comm_recency(const struct raft_instance *ri,
+                      raft_peer_t raft_peer_idx,
+                      enum raft_net_comm_recency_type type,
+                      unsigned long long *ret_ms);
 
 #endif

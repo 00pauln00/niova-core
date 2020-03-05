@@ -55,6 +55,7 @@ typedef void    raft_server_timerfd_cb_ctx_t;
 typedef int     raft_server_timerfd_cb_ctx_int_t;
 typedef void    raft_server_leader_mode_t;
 typedef int     raft_server_leader_mode_int_t;
+typedef int64_t raft_server_leader_mode_int64_t;
 typedef void    raft_server_epoll_ae_sender_t;
 typedef void    raft_server_epoll_sm_apply_t;
 
@@ -203,7 +204,7 @@ struct raft_leader_state
     uint64_t           rls_initial_term_idx; // index at start of leader's term
     int64_t            rls_leader_term;
 //    uint64_t rls_match_idx[CTL_SVC_MAX_RAFT_PEERS];
-    uint64_t           rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
+    int64_t            rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
     int64_t            rls_prev_idx_term[CTL_SVC_MAX_RAFT_PEERS];
     unsigned long long rls_ae_sends_wait_until[CTL_SVC_MAX_RAFT_PEERS];
 };
@@ -305,6 +306,14 @@ raft_compile_time_checks(void)
                    (re), (re)->reh_crc, (re)->reh_data_size, (re)->reh_index, \
                    (re)->reh_term, ##__VA_ARGS__)
 
+#define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)                 \
+{                                                                       \
+    if ((cond))                                                         \
+    {                                                                   \
+        DBG_RAFT_ENTRY(LL_FATAL, re, message, ##__VA_ARGS__);           \
+    }                                                                   \
+}
+
 #define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                      \
 {                                                                       \
     char __uuid_str[UUID_STR_LEN];                                      \
@@ -393,6 +402,26 @@ raft_num_members_is_valid(const raft_peer_t num_raft_members)
 {
     return (num_raft_members > CTL_SVC_MAX_RAFT_PEERS ||
             num_raft_members < CTL_SVC_MIN_RAFT_PEERS) ? false : true;
+}
+
+static inline raft_peer_t
+raft_num_members_validate_and_get(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_raft);
+
+    const raft_peer_t num_peers =
+	ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
+
+    NIOVA_ASSERT(raft_num_members_is_valid(num_peers));
+
+    return num_peers;
+}
+
+static inline bool
+raft_member_idx_is_valid(const struct raft_instance *ri,
+                         const raft_peer_t member)
+{
+    return member < raft_num_members_validate_and_get(ri) ? true : false;
 }
 
 static inline raft_peer_t

@@ -128,9 +128,9 @@ rsc_server_target_is_stale(const struct raft_instance *ri,
 {
     unsigned long long recency_ms = 0;
 
-    int rc = raft_net_get_comm_recency_value(ri,
-                                             raft_peer_2_idx(ri, server_uuid),
-                                             &recency_ms);
+    int rc = raft_net_comm_recency(ri, raft_peer_2_idx(ri, server_uuid),
+                                   RAFT_COMM_RECENCY_UNACKED_SEND,
+                                   &recency_ms);
 
     return (rc || recency_ms > RSC_STALE_SERVER_TIME_MS) ? true : false;
 }
