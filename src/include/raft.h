@@ -247,7 +247,7 @@ struct raft_instance
     raft_net_udp_cb_t           ri_udp_client_recv_cb;
     raft_net_udp_cb_t           ri_udp_server_recv_cb;
     raft_sm_request_handler_t   ri_server_sm_request_cb;
-    raft_sm_request_handler_t   ri_server_sm_commit_cb;
+    raft_sm_commit_handler_t    ri_server_sm_commit_cb;
     struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
     struct lreg_node            ri_lreg;
 };
@@ -303,9 +303,10 @@ raft_compile_time_checks(void)
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "re@%p crc=%x size=%u idx=%ld term=%ld "fmt,         \
-                   (re), (re)->reh_crc, (re)->reh_data_size, (re)->reh_index, \
-                   (re)->reh_term, ##__VA_ARGS__)
+                   "re@%p crc=%x size=%u idx=%ld term=%ld lcm=%hhx "fmt, \
+                   (re), (re)->reh_crc, (re)->reh_data_size,            \
+                   (re)->reh_index, (re)->reh_term,                     \
+                   (re)->reh_leader_change_marker , ##__VA_ARGS__)
 
 #define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)                 \
 {                                                                       \
@@ -324,13 +325,14 @@ raft_compile_time_checks(void)
         uuid_unparse((ri)->ri_csn_leader->csn_uuid, __uuid_str);         \
                                                                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "%c et=%lx ei=%lx ht=%lx hs=%lx ci=%lx v=%s l=%s"fmt, \
+                   "%c et=%lx ei=%lx ht=%lx hs=%lx ci=%lx:%lx v=%s l=%s " \
+                   fmt,                                                 \
                    raft_server_state_to_char((ri)->ri_state),           \
                    raft_server_get_current_raft_entry_term((ri)),       \
                    raft_server_get_current_raft_entry_index((ri)),      \
                    (ri)->ri_log_hdr.rlh_term,                           \
                    (ri)->ri_log_hdr.rlh_seqno,                          \
-                   (ri)->ri_commit_idx,                                 \
+                   (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,      \
                    __uuid_str, __leader_uuid_str, ##__VA_ARGS__);       \
 }
 

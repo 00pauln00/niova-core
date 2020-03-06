@@ -2360,6 +2360,10 @@ raft_server_append_entry_sender(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
+    if (!raft_instance_is_leader(ri) ||
+        raft_server_get_current_raft_entry_index(ri) < 0)
+        return;
+
     static char src_buf[RAFT_NET_MAX_RPC_SIZE];
     static char sink_buf[RAFT_ENTRY_SIZE];
 
@@ -2367,12 +2371,10 @@ raft_server_append_entry_sender(struct raft_instance *ri)
 //    const size_t data_len =
 //        RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_rpc_msg);
 
-    if (!raft_instance_is_leader(ri) ||
-        raft_server_get_current_raft_entry_index(ri) < 0)
-        return;
-
     const raft_peer_t num_raft_members = raft_num_members_validate_and_get(ri);
 
+    ///Xxx this is a big mess of code which needs to be made into some
+    //     subroutines.
     for (raft_peer_t i = 0; i < num_raft_members; i++)
     {
          struct ctl_svc_node *rp = ri->ri_csn_raft_peers[i];
@@ -2417,15 +2419,54 @@ raft_server_append_entry_sender(struct raft_instance *ri)
     }
 }
 
+static raft_server_epoll_sm_apply_t
+raft_server_state_machine_apply(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    NIOVA_ASSERT(ri->ri_last_applied_idx <= ri->ri_commit_idx);
+
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+
+    if (ri->ri_last_applied_idx == ri->ri_commit_idx)
+        return;
+
+    static char sink_buf[RAFT_ENTRY_SIZE];
+
+    const size_t phys_idx =
+        raft_server_entry_idx_to_phys_idx(ri, ri->ri_last_applied_idx + 1);
+
+    int rc =
+        raft_server_entry_read(ri, phys_idx, sink_buf, RAFT_ENTRY_SIZE, NULL);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
+                               strerror(-rc));
+
+    const struct raft_entry *re =
+        (const struct raft_entry *)sink_buf;
+
+    const struct raft_entry_header *reh = &re->re_header;
+
+    if (!reh->reh_leader_change_marker && ri->ri_server_sm_commit_cb)
+        ri->ri_server_sm_commit_cb((const struct raft_client_rpc_msg *)
+                                   re->re_data);
+
+    // Signify that the entry has been applied!
+    ri->ri_last_applied_idx++;
+
+    DBG_RAFT_ENTRY(LL_NOTIFY, reh, "");
+
+    if (ri->ri_last_applied_idx < ri->ri_commit_idx)
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
+}
+
 static raft_server_epoll_ae_sender_t
 raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
 {
     NIOVA_ASSERT(eph);
 
-    struct raft_instance *ri = eph->eph_arg;
+    io_fd_drain(eph->eph_fd, NULL);
 
-    ssize_t rc = io_fd_drain(eph->eph_fd, NULL);
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "io_fd_drain(): %zd", rc);
+    struct raft_instance *ri = eph->eph_arg;
 
     raft_server_append_entry_sender(ri);
 }
@@ -2435,11 +2476,11 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph)
 {
     NIOVA_ASSERT(eph);
 
+    io_fd_drain(eph->eph_fd, NULL);
+
     struct raft_instance *ri = eph->eph_arg;
 
-    ssize_t rc = io_fd_drain(eph->eph_fd, NULL);
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "io_fd_drain(): %zd", rc);
-    //XXX finish me
+    raft_server_state_machine_apply(ri);
 }
 
 static epoll_mgr_cb_t

@@ -42,8 +42,7 @@ typedef raft_net_udp_cb_ctx_int_t
 
 // State machine commit handler - completed (committed + applied) writes
 typedef raft_net_udp_cb_ctx_int_t
-    (*raft_sm_commit_handler_t)(const struct raft_client_rpc_msg *,
-                                struct sockaddr_in *);
+    (*raft_sm_commit_handler_t)(const struct raft_client_rpc_msg *);
 
 #define RAFT_NET_MAX_RPC_SIZE 65000
 #define RAFT_NET_MAX_RETRY_MS 1000
