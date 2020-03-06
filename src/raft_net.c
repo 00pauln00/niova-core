@@ -355,7 +355,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return -EINVAL;
 
     ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_FOLLOWER;
-    ri->ri_commit_idx = -1; //Xxx this needs to go into a more general init fn
 
     int rc = raft_net_conf_init(ri);
     if (rc)
@@ -383,8 +382,19 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     }
 
     if (!client_mode)
+        raft_server_instance_init(ri);
+
+    rc = raft_net_epoll_setup(ri);
+    if (rc)
     {
-        // Call before raft_net_epoll_setup()
+        SIMPLE_LOG_MSG(LL_WARN, "raft_net_epoll_setup(): %s", strerror(-rc));
+
+        raft_net_instance_shutdown(ri);
+        return rc;
+    }
+
+    if (!client_mode)
+    {
         rc = raft_server_instance_startup(ri);
         if (rc)
         {
@@ -395,15 +405,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
             return rc;
         }
-    }
-
-    rc = raft_net_epoll_setup(ri);
-    if (rc)
-    {
-        SIMPLE_LOG_MSG(LL_WARN, "raft_net_epoll_setup(): %s", strerror(-rc));
-
-        raft_net_instance_shutdown(ri);
-        return rc;
     }
 
     /* bind() after adding the socket to the epoll set.

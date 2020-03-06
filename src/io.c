@@ -126,7 +126,10 @@ io_fd_drain(int fd, size_t *ret_data)
     {
         rrc = read(fd, &val, sizeof(ssize_t));
         if (rrc < 0 && errno != EINTR)
+        {
             rrc = -errno;
+            break;
+        }
     }
 
     if (ret_data)

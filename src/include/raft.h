@@ -89,7 +89,7 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_log_term; // term of the log entry (prev_log_index + 1)
                               // .. used for replays of old msgs
     uint64_t raerqm_term_seqno; // used for read-window'ing
-    uint64_t raerqm_commit_index;
+    int64_t  raerqm_commit_index;
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
     uint16_t raerqm_entries_sz;
@@ -350,7 +350,7 @@ raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
     switch (evps)
     {
     case RAFT_SERVER_EVP_AE_SEND:
-        return RAFT_SERVER_EVP_AE_SEND;
+        return RAFT_EPOLL_HANDLE_EVP_AE_SEND;
     case RAFT_SERVER_EVP_SM_APPLY:
         return RAFT_EPOLL_HANDLE_EVP_SM_APPLY;
     default:
@@ -444,7 +444,7 @@ raft_majority_index_value(const raft_peer_t num_raft_members)
 static inline bool
 raft_server_entry_header_is_null(const struct raft_entry_header *reh)
 {
-    if (reh->reh_magic == RAFT_HEADER_MAGIC)
+    if (reh->reh_magic == RAFT_ENTRY_MAGIC)
         return false;
 
     const struct raft_entry_header null_reh = {0};
@@ -538,8 +538,8 @@ raft_server_get_current_raft_entry_index(const struct raft_instance *ri)
     return current_reh_index;
 }
 
-int
-raft_server_epoll_setup_timerfd(struct raft_instance *ri);
+void
+raft_server_instance_init(struct raft_instance *ri);
 
 int
 raft_server_instance_startup(struct raft_instance *ri);

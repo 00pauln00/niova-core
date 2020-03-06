@@ -104,7 +104,8 @@ raft_server_entry_init(const struct raft_instance *ri,
                        enum raft_write_entry_opts opts)
 {
     NIOVA_ASSERT(re);
-    NIOVA_ASSERT(data && len);
+    NIOVA_ASSERT(opts == RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER ||
+                 (data && len));
 
     // Should have been checked already
     NIOVA_ASSERT(len <= RAFT_ENTRY_MAX_DATA_SIZE);
@@ -145,7 +146,8 @@ raft_instance_update_newest_entry_hdr(struct raft_instance *ri,
                                       const struct raft_entry_header *reh)
 {
     NIOVA_ASSERT(ri && reh);
-    NIOVA_ASSERT(reh->reh_index >= 0);  // assert not a log header block.
+    if  (reh->reh_index < 0)
+        return;  // ignore log blocks
 
     ri->ri_newest_entry_hdr = *reh;
 
@@ -1170,8 +1172,11 @@ raft_server_write_next_entry(struct raft_instance *ri,
                              const char *data, const size_t len,
                              enum raft_write_entry_opts opts)
 {
-    const size_t next_entry_phys_idx =
-        raft_server_get_current_phys_entry_index(ri) + 1;
+    int64_t next_entry_phys_idx = raft_server_get_current_phys_entry_index(ri);
+    if (next_entry_phys_idx < 0)
+        next_entry_phys_idx = raft_server_instance_get_num_log_headers(ri);
+    else
+        next_entry_phys_idx += 1;
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%zd len=%zd opts=%d",
                       next_entry_phys_idx, len, opts);
@@ -2396,7 +2401,7 @@ raft_server_append_entry_sender(struct raft_instance *ri)
              raft_server_entry_idx_to_phys_idx(ri, raft_idx);
 
          int rc = raft_server_entry_read(ri, phys_idx, sink_buf,
-                                         RAFT_ENTRY_SIZE, NULL);
+                                         RAFT_ENTRY_MAX_DATA_SIZE, NULL);
          DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
                                     "raft_server_entry_read(): %s",
                                     strerror(-rc));
@@ -2464,11 +2469,19 @@ raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
 {
     NIOVA_ASSERT(eph);
 
-    io_fd_drain(eph->eph_fd, NULL);
+    FUNC_ENTRY(LL_DEBUG);
 
     struct raft_instance *ri = eph->eph_arg;
+    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_AE_SEND];
+
+    NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
+
+    ev_pipe_drain(evp);
 
     raft_server_append_entry_sender(ri);
+
+    evp_increment_reader_cnt(evp); //Xxx this is a mess
+    // should be inside ev_pipe.c!
 }
 
 static raft_server_epoll_sm_apply_t
@@ -2476,11 +2489,18 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph)
 {
     NIOVA_ASSERT(eph);
 
-    io_fd_drain(eph->eph_fd, NULL);
+    FUNC_ENTRY(LL_DEBUG);
 
     struct raft_instance *ri = eph->eph_arg;
 
+    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY];
+    NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
+
+    ev_pipe_drain(evp);
+
     raft_server_state_machine_apply(ri);
+    evp_increment_reader_cnt(evp); //Xxx this is a mess
+    // should be inside ev_pipe.c!
 }
 
 static epoll_mgr_cb_t
@@ -2529,6 +2549,9 @@ raft_server_evp_setup(struct raft_instance *ri)
             return rc;
         }
 
+        evp_increment_reader_cnt(&ri->ri_evps[i]); //Xxx this is a mess
+                                                   // should be inside ev_pipe.c!
+
         rc = epoll_handle_add(&ri->ri_epoll_mgr, eph);
         if (rc)
         {
@@ -2561,16 +2584,41 @@ raft_server_evp_cleanup(struct raft_instance *ri)
     return 0;
 }
 
-int
-raft_server_instance_startup(struct raft_instance *ri)
+void
+raft_server_instance_init(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_state == RAFT_STATE_FOLLOWER);
+
+    ri->ri_commit_idx = -1; //Xxx this needs to go into a more general init fn
+    ri->ri_last_applied_idx = -1;
 
     /* Assign the timer_fd and udp_recv callbacks.
      */
     raft_net_instance_apply_callbacks(ri, raft_server_timerfd_cb,
                                       raft_server_udp_client_recv_handler,
                                       raft_server_udp_peer_recv_handler);
+}
+
+static int
+raft_server_instance_lreg_init(struct raft_instance *ri)
+{
+    LREG_ROOT_ENTRY_INSTALL(raft_root_entry);
+
+    lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT,
+                   raft_instance_lreg_cb, ri, false);
+
+    return lreg_node_install_prepare(&ri->ri_lreg,
+                                     LREG_ROOT_ENTRY_PTR(raft_root_entry));
+}
+
+int
+raft_server_instance_startup(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_state == RAFT_STATE_FOLLOWER);
+
+    // raft_server_instance_init() should have been run
+    if (!ri->ri_timer_fd_cb)
+        return -EINVAL;
 
     int rc = raft_server_log_file_setup(ri);
     if (rc)
@@ -2600,14 +2648,10 @@ raft_server_instance_startup(struct raft_instance *ri)
         return rc;
     }
 
-    lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT,
-                   raft_instance_lreg_cb, ri, false);
-
-    rc = lreg_node_install_prepare(&ri->ri_lreg,
-                                   LREG_ROOT_ENTRY_PTR(raft_root_entry));
+    rc = raft_server_instance_lreg_init(ri);
     if (rc)
     {
-        DBG_RAFT_INSTANCE(LL_ERROR, ri, "lreg_node_install_prepare(): %s",
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_instance_lreg_init(): %s",
                           strerror(-rc));
 
         raft_server_instance_shutdown(ri);
