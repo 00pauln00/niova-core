@@ -249,6 +249,7 @@ struct raft_instance
     raft_sm_request_handler_t   ri_server_sm_request_cb;
     raft_sm_request_handler_t   ri_server_sm_commit_cb;
     struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
+    struct lreg_node            ri_lreg;
 };
 
 static inline void

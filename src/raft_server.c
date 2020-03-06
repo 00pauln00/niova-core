@@ -21,6 +21,9 @@
 #include "ctl_svc.h"
 #include "raft.h"
 #include "raft_net.h"
+#include "registry.h"
+
+LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
 
 enum raft_write_entry_opts
 {
@@ -30,6 +33,19 @@ enum raft_write_entry_opts
 };
 
 REGISTRY_ENTRY_FILE_GENERATE;
+
+enum raft_instance_lreg_entry_values
+{
+    RAFT_LREG_NONE = 0,
+    RAFT_LREG_MAX,
+};
+
+static int
+raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                      struct lreg_value *lv)
+{
+    return 0;
+}
 
 /**
  * raft_server_entry_calc_crc - calculate the provided entry's crc and return
@@ -2537,6 +2553,20 @@ raft_server_instance_startup(struct raft_instance *ri)
     if (rc)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "ev_pipe_setup(): %s",
+                          strerror(-rc));
+
+        raft_server_instance_shutdown(ri);
+        return rc;
+    }
+
+    lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT,
+                   raft_instance_lreg_cb, ri, false);
+
+    rc = lreg_node_install_prepare(&ri->ri_lreg,
+                                   LREG_ROOT_ENTRY_PTR(raft_root_entry));
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "lreg_node_install_prepare(): %s",
                           strerror(-rc));
 
         raft_server_instance_shutdown(ri);

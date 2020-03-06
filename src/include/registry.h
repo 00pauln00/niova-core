@@ -58,9 +58,9 @@ enum lreg_user_types
     LREG_USER_TYPE_NIOSD_IO_STATS,
     LREG_USER_TYPE_HISTOGRAM,
     LREG_USER_TYPE_ROOT,
+    LREG_USER_TYPE_RAFT,
     LREG_USER_TYPE_ANY,
 };
-
 
 enum lreg_node_cb_ops
 {
