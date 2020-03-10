@@ -169,7 +169,7 @@ raft_instance_update_newest_entry_hdr(struct raft_instance *ri,
  */
 static int
 raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
-                        const char *data, size_t len,
+                        const int64_t term, const char *data, size_t len,
                         enum raft_write_entry_opts opts)
 {
     if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft ||
@@ -185,7 +185,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
     if (!re)
         return -ENOMEM;
 
-    raft_server_entry_init(ri, re, phys_idx, ri->ri_log_hdr.rlh_term,
+    raft_server_entry_init(ri, re, phys_idx, term,
                            RAFT_INSTANCE_2_SELF_UUID(ri),
                            RAFT_INSTANCE_2_RAFT_UUID(ri), data, len, opts);
 
@@ -374,7 +374,7 @@ raft_server_log_header_write(struct raft_instance *ri, const uuid_t candidate,
 
     const size_t block_num = ri->ri_log_hdr.rlh_seqno % NUM_RAFT_LOG_HEADERS;
 
-    return raft_server_entry_write(ri, block_num,
+    return raft_server_entry_write(ri, block_num, ri->ri_log_hdr.rlh_term,
                                    (const char *)&ri->ri_log_hdr,
                                    sizeof(struct raft_log_header),
                                    RAFT_WR_ENTRY_OPT_NONE);
@@ -1172,20 +1172,23 @@ raft_server_leader_init_state(struct raft_instance *ri)
 }
 
 static raft_net_udp_cb_ctx_t
-raft_server_write_next_entry(struct raft_instance *ri,
+raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              const char *data, const size_t len,
                              enum raft_write_entry_opts opts)
 {
+     NIOVA_ASSERT(term >= raft_server_get_current_raft_entry_term(ri));
+
     int64_t next_entry_phys_idx = raft_server_get_current_phys_entry_index(ri);
     if (next_entry_phys_idx < 0)
         next_entry_phys_idx = raft_server_instance_get_num_log_headers(ri);
     else
         next_entry_phys_idx += 1;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%zd len=%zd opts=%d",
-                      next_entry_phys_idx, len, opts);
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%lx term=%lx len=%zd opts=%d",
+                      next_entry_phys_idx, term, len, opts);
 
-    int rc = raft_server_entry_write(ri, next_entry_phys_idx, data, len, opts);
+    int rc = raft_server_entry_write(ri, next_entry_phys_idx, term, data, len,
+                                     opts);
     if (rc)
         DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
                           strerror(-rc));
@@ -1193,7 +1196,8 @@ raft_server_write_next_entry(struct raft_instance *ri,
 
 static raft_net_udp_cb_ctx_t
 raft_server_leader_write_new_entry(struct raft_instance *ri,
-                                   const char *data, const size_t len,
+                                   const char *data,
+                                   const size_t len,
                                    enum raft_write_entry_opts opts)
 {
 #if 1
@@ -1203,7 +1207,12 @@ raft_server_leader_write_new_entry(struct raft_instance *ri,
         return;
 #endif
 
-    raft_server_write_next_entry(ri, data, len, opts);
+    /* The leader always appends to the end of its log so
+     * ri->ri_log_hdr.rlh_term must be used.  This contrasts with recovering
+     * followers which may not always be able to use the current term when
+     * rebuilding their log.
+     */
+    raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len, opts);
 //XXXX -- remember that the eventual RPC issuer must apply
     //    opts to set raerqm_leader_change_marker.
 
@@ -1788,6 +1797,11 @@ raft_server_write_new_entry_from_leader(
     if (raerq->raerqm_heartbeat_msg)
         return; // This is a heartbeat msg which does not enter the log
 
+    NIOVA_ASSERT(raerq->raerqm_log_term > 0);
+    NIOVA_ASSERT(raerq->raerqm_log_term > raerq->raerqm_prev_log_term);
+    NIOVA_ASSERT(raerq->raerqm_log_term >=
+                 raft_server_get_current_raft_entry_term(ri));
+
     const size_t entry_size = raerq->raerqm_entries_sz;
 
     // Msg size of '0' is OK.
@@ -1800,7 +1814,8 @@ raft_server_write_new_entry_from_leader(
     enum raft_write_entry_opts opts = raerq->raerqm_leader_change_marker ?
         RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER : RAFT_WR_ENTRY_OPT_NONE;
 
-    raft_server_write_next_entry(ri, raerq->raerqm_entries, entry_size, opts);
+    raft_server_write_next_entry(ri, raerq->raerqm_log_term,
+                                 raerq->raerqm_entries, entry_size, opts);
 }
 
 /**
@@ -1914,7 +1929,8 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         }
         else
         {
-            raft_server_write_new_entry_from_leader(ri, raerq);
+            if (!raerq->raerqm_heartbeat_msg)
+                raft_server_write_new_entry_from_leader(ri, raerq);
 
             /* Update our commit-idx based on the value sent from the leader.
              */

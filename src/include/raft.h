@@ -319,7 +319,7 @@ default:                                                                \
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "re@%p crc=%x size=%u idx=%ld term=%ld lcm=%hhx "fmt, \
+                   "re@%p crc=%x size=%u idx=%lx term=%lx lcm=%hhx "fmt, \
                    (re), (re)->reh_crc, (re)->reh_data_size,            \
                    (re)->reh_index, (re)->reh_term,                     \
                    (re)->reh_leader_change_marker , ##__VA_ARGS__)
