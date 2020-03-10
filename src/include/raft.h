@@ -58,6 +58,7 @@ typedef int     raft_server_leader_mode_int_t;
 typedef int64_t raft_server_leader_mode_int64_t;
 typedef void    raft_server_epoll_ae_sender_t;
 typedef void    raft_server_epoll_sm_apply_t;
+typedef void    raft_server_epoll_sm_apply_bool_t;
 
 enum raft_rpc_msg_type
 {
@@ -87,7 +88,7 @@ struct raft_append_entries_request_msg
 {
     int64_t  raerqm_leader_term; // current term of the leader
     int64_t  raerqm_log_term; // term of the log entry (prev_log_index + 1)
-                              // .. used for replays of old msgs
+                              // .. used for replays of old msgs ?? XXX needed?
     uint64_t raerqm_term_seqno; // used for read-window'ing
     int64_t  raerqm_commit_index;
     int64_t  raerqm_prev_log_term;
@@ -117,7 +118,8 @@ struct raft_rpc_msg
     uint32_t rrm_type;
     uint16_t rrm_version;
     uint16_t rrm__pad;
-    uuid_t   rrm_sender_id;
+//    uuid_t   rrm_dest_id; // XXX should match the recv'r
+    uuid_t   rrm_sender_id; // should match the sender
     uuid_t   rrm_raft_id;
     union
     {   // This union must be at the end of the structure
@@ -131,11 +133,11 @@ struct raft_rpc_msg
 struct raft_entry_header
 {
     uint64_t reh_magic;     // Magic is not included in the crc
-    crc32_t  reh_crc;       // Crc is after the magic
+    uuid_t   reh_self_uuid; // UUID of this peer
+    crc32_t  reh_crc;       // Crc is after the magic and self-uuid
     uint32_t reh_data_size; // The size of the log entry data
     int64_t  reh_index;     // Add NUM_RAFT_LOG_HEADERS to get phys offset
     int64_t  reh_term;      // Term in which entry was originally written
-    uuid_t   reh_self_uuid; // UUID of this peer
     uuid_t   reh_raft_uuid; // UUID of raft instance
     uint8_t  reh_leader_change_marker; // noop
     uint8_t  reh_pad[RAFT_ENTRY_PAD_SIZE];
@@ -168,6 +170,7 @@ struct raft_log_header
 
 enum raft_state
 {
+    RAFT_STATE_BOOTING,
     RAFT_STATE_LEADER,
     RAFT_STATE_FOLLOWER,
     RAFT_STATE_CANDIDATE,
@@ -201,7 +204,7 @@ struct raft_candidate_state
 
 struct raft_leader_state
 {
-    uint64_t           rls_initial_term_idx; // index at start of leader's term
+    int64_t            rls_initial_term_idx; // index at start of leader's term
     int64_t            rls_leader_term;
 //    uint64_t rls_match_idx[CTL_SVC_MAX_RAFT_PEERS];
     int64_t            rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
@@ -238,8 +241,8 @@ struct raft_instance
     char                        ri_log[PATH_MAX + 1];
     struct stat                 ri_log_stb;
     struct raft_log_header      ri_log_hdr;
-    uint64_t                    ri_commit_idx;
-    uint64_t                    ri_last_applied_idx;
+    int64_t                     ri_commit_idx;
+    int64_t                     ri_last_applied_idx;
     struct raft_entry_header    ri_newest_entry_hdr;
     struct epoll_mgr            ri_epoll_mgr;
     struct epoll_handle         ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
@@ -286,17 +289,30 @@ raft_compile_time_checks(void)
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                      \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "APPREQ t=%lx lt=%lx ci=%lx pl=%lx:%lx sz=%hx %s "fmt, \
+                       "AE_REQ t=%lx lt=%lx ci=%lx pl=%lx:%lx sz=%hx hb=%hhx lcm=%hhx %s "fmt, \
                        (rm)->rrm_append_entries_request.raerqm_leader_term, \
                        (rm)->rrm_append_entries_request.raerqm_log_term, \
                        (rm)->rrm_append_entries_request.raerqm_commit_index, \
                        (rm)->rrm_append_entries_request.raerqm_prev_log_term, \
                        (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
                        (rm)->rrm_append_entries_request.raerqm_entries_sz, \
+                       (rm)->rrm_append_entries_request.raerqm_heartbeat_msg, \
+                       (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
                        __uuid_str,                                      \
                        ##__VA_ARGS__);                                  \
         break;                                                          \
-    default:                                                            \
+    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                      \
+        SIMPLE_LOG_MSG(log_level,                                       \
+                       "AE_REPLY t=%lx pli=%lx hb=%hhx err=%hhx:%hhx %s "fmt, \
+                       (rm)->rrm_append_entries_reply.raerpm_leader_term, \
+                       (rm)->rrm_append_entries_reply.raerpm_prev_log_index, \
+                       (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg, \
+                       (rm)->rrm_append_entries_reply.raerpm_err_stale_term, \
+                       (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
+                       __uuid_str,                                      \
+                       ##__VA_ARGS__);                                  \
+        break;                                                          \
+default:                                                                \
         break;                                                          \
     }                                                                   \
 }
@@ -322,7 +338,8 @@ raft_compile_time_checks(void)
     uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);           \
     char __leader_uuid_str[UUID_STR_LEN] = {0};                         \
     if (ri->ri_csn_leader)                                              \
-        uuid_unparse((ri)->ri_csn_leader->csn_uuid, __uuid_str);         \
+        uuid_unparse((ri)->ri_csn_leader->csn_uuid,                     \
+                     __leader_uuid_str);                                \
                                                                         \
     SIMPLE_LOG_MSG(log_level,                                           \
                    "%c et=%lx ei=%lx ht=%lx hs=%lx ci=%lx:%lx v=%s l=%s " \
@@ -366,6 +383,8 @@ raft_server_state_to_char(enum raft_state state)
     {
     case RAFT_STATE_LEADER:
         return 'L';
+    case RAFT_STATE_BOOTING:
+        return 'B';
     case RAFT_STATE_FOLLOWER:
         return 'F';
     case RAFT_STATE_CANDIDATE:
@@ -398,6 +417,13 @@ raft_instance_is_follower(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     return ri->ri_state == RAFT_STATE_FOLLOWER ? true : false;
+}
+
+static inline bool
+raft_instance_is_booting(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_state == RAFT_STATE_BOOTING ? true : false;
 }
 
 static inline bool

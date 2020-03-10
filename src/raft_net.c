@@ -354,7 +354,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     if (!ri)
         return -EINVAL;
 
-    ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_FOLLOWER;
+    ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_BOOTING;
 
     int rc = raft_net_conf_init(ri);
     if (rc)
