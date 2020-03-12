@@ -253,6 +253,7 @@ struct raft_instance
     raft_sm_commit_handler_t    ri_server_sm_commit_cb;
     struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
     struct lreg_node            ri_lreg;
+    struct lreg_node            ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
 };
 
 static inline void
@@ -396,6 +397,28 @@ raft_server_state_to_char(enum raft_state state)
     }
 
     return '?';
+}
+
+static inline char *
+raft_server_state_to_string(enum raft_state state)
+{
+    switch (state)
+    {
+    case RAFT_STATE_LEADER:
+        return "leader";
+    case RAFT_STATE_BOOTING:
+        return "booting";
+    case RAFT_STATE_FOLLOWER:
+        return "follower";
+    case RAFT_STATE_CANDIDATE:
+        return "candidate";
+    case RAFT_STATE_CLIENT:
+        return "client";
+    default:
+        break;
+    }
+
+    return "unknown";
 }
 
 static inline bool
