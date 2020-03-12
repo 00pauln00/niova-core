@@ -658,16 +658,16 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
         if (rc)
             return false;
 
-        rc = regexec(&cds->cds_regex, LREG_VALUE_TO_OUT_STR(lv), 0, NULL,
+        rc = regexec(&cds->cds_regex, LREG_VALUE_TO_KEY_STR(lv), 0, NULL,
                      REG_NOTBOL | REG_NOTEOL);
 
 //Xxx this log installation should not post an event on the pipe
 // since it's the util thread (it doesn't need synchro)
         DBG_LREG_NODE(LL_DEBUG, lrn,
-                      "matched: %s (depth=%d, sib-num=%zd) (cds=%s) nseg=%zu",
+                      "matched: %s (depth=%d, sib-num=%zd) (cds=%s) lv=%s nseg=%zu",
                       rc ? "no" : "yes", depth,
                       parent_citer->citer_sibling_num, cds->cds_str,
-                      cmt->cmt_num_depth_segments);
+                      LREG_VALUE_TO_KEY_STR(lv), cmt->cmt_num_depth_segments);
 
         if (rc)
             return true;

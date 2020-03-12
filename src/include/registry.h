@@ -59,6 +59,7 @@ enum lreg_user_types
     LREG_USER_TYPE_HISTOGRAM,
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_RAFT,
+    LREG_USER_TYPE_RAFT_PEER_STATS,
     LREG_USER_TYPE_ANY,
 };
 
@@ -125,6 +126,9 @@ struct lreg_value
 
 #define LREG_VALUE_TO_OUT_STR(lrv)              \
     (lrv)->get.lrv_value_out.lrv_string
+
+#define LREG_VALUE_TO_KEY_STR(lrv)              \
+    (lrv)->lrv_key_string
 
 #define LREG_VALUE_TO_BOOL(lrv)                 \
     (lrv)->get.lrv_value_out.lrv_bool
