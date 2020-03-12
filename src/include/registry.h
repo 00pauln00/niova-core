@@ -257,7 +257,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
                    (const char *)({                                     \
                            (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME,      \
                                          (lrn), &lrv);                  \
-                           LREG_VALUE_TO_OUT_STR(&lrv);                 \
+                           LREG_VALUE_TO_KEY_STR(&lrv);                 \
                        }),                                              \
                    lreg_node_to_user_type(lrn),                         \
                    lreg_node_to_install_state(lrn),                     \

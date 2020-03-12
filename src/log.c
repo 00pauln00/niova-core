@@ -171,7 +171,7 @@ log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
             return -EINVAL;
 
         snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                 "log-entry-name");
+                 "log_entry_name");
 
         snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
                  "%s:%d", lei->lei_func, (int)lei->lei_lineno);
@@ -209,6 +209,9 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
             return -EINVAL;
 
         lreg_val->get.lrv_num_keys_out = LOG_LREG_FILE_MAX;
+
+        snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
+                 "log_file_entry_name");
 
         strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
                 LREG_VALUE_STRING_MAX);

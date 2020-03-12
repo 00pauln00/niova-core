@@ -504,7 +504,7 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
         // The root object is anonymous and has no "key".
         lv->get.lrv_value_type_out = LREG_VAL_TYPE_ANON_OBJECT;
-        lv->lrv_key_string[0] = '\0';
+        strncpy(lv->lrv_key_string, "ROOT", LREG_VALUE_STRING_MAX);
         break;
 
     case LREG_NODE_CB_OP_WRITE_VAL:
