@@ -63,8 +63,6 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         op != LREG_NODE_CB_OP_READ_VAL)
         return;
 
-    char uuid_str[UUID_STR_LEN];
-
     switch (lv->lrv_value_idx_in)
     {
     case RAFT_LREG_RAFT_UUID:
@@ -80,20 +78,18 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
         break;
     case RAFT_LREG_VOTED_FOR_UUID:
-        uuid_unparse(ri->ri_log_hdr.rlh_voted_for, uuid_str);
         strncpy(lv->lrv_key_string, "voted-for-uuid", LREG_VALUE_STRING_MAX);
-        strncpy(LREG_VALUE_TO_OUT_STR(lv), uuid_str, LREG_VALUE_STRING_MAX);
+        uuid_unparse(ri->ri_log_hdr.rlh_voted_for, LREG_VALUE_TO_OUT_STR(lv));
         lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
         break;
     case RAFT_LREG_LEADER_UUID:
-        lv->lrv_key_string[0] = '\0';
+        strncpy(lv->lrv_key_string, "leader-uuid", LREG_VALUE_STRING_MAX);
         if (ri->ri_csn_leader)
-        {
-            uuid_unparse(ri->ri_csn_leader->csn_uuid, uuid_str);
-            strncpy(lv->lrv_key_string, "leader-uuid", LREG_VALUE_STRING_MAX);
-            strncpy(LREG_VALUE_TO_OUT_STR(lv), uuid_str,
-                    LREG_VALUE_STRING_MAX);
-        }
+            uuid_unparse(ri->ri_csn_leader->csn_uuid,
+                         LREG_VALUE_TO_OUT_STR(lv));
+        else
+            lv->get.lrv_value_out.lrv_string[0] = '\0';
+
         lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
         break;
     case RAFT_LREG_PEER_STATE:
