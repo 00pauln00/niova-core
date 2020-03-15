@@ -66,83 +66,54 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     switch (lv->lrv_value_idx_in)
     {
     case RAFT_LREG_RAFT_UUID:
-        strncpy(lv->lrv_key_string, "raft-uuid", LREG_VALUE_STRING_MAX);
-        strncpy(LREG_VALUE_TO_OUT_STR(lv), ri->ri_raft_uuid_str,
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+        lreg_value_fill_string(lv, "raft-uuid", ri->ri_raft_uuid_str);
         break;
     case RAFT_LREG_PEER_UUID:
-        strncpy(lv->lrv_key_string, "peer-uuid", LREG_VALUE_STRING_MAX);
-        strncpy(LREG_VALUE_TO_OUT_STR(lv), ri->ri_this_peer_uuid_str,
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+        lreg_value_fill_string(lv, "peer-uuid", ri->ri_this_peer_uuid_str);
         break;
     case RAFT_LREG_VOTED_FOR_UUID:
-        strncpy(lv->lrv_key_string, "voted-for-uuid", LREG_VALUE_STRING_MAX);
-        uuid_unparse(ri->ri_log_hdr.rlh_voted_for, LREG_VALUE_TO_OUT_STR(lv));
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+        lreg_value_fill_string_uuid(lv, "voted-for-uuid",
+                                    ri->ri_log_hdr.rlh_voted_for);
         break;
     case RAFT_LREG_LEADER_UUID:
-        strncpy(lv->lrv_key_string, "leader-uuid", LREG_VALUE_STRING_MAX);
         if (ri->ri_csn_leader)
-            uuid_unparse(ri->ri_csn_leader->csn_uuid,
-                         LREG_VALUE_TO_OUT_STR(lv));
+            lreg_value_fill_string_uuid(lv, "leader-uuid",
+                                        ri->ri_csn_leader->csn_uuid);
         else
-            lv->get.lrv_value_out.lrv_string[0] = '\0';
-
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+            lreg_value_fill_string(lv, "lead-uuid", NULL);
         break;
     case RAFT_LREG_PEER_STATE:
-        strncpy(lv->lrv_key_string, "state", LREG_VALUE_STRING_MAX);
-        strncpy(LREG_VALUE_TO_OUT_STR(lv),
-                raft_server_state_to_string(ri->ri_state),
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+        lreg_value_fill_string(lv, "state",
+                               raft_server_state_to_string(ri->ri_state));
         break;
     case RAFT_LREG_TERM:
-        strncpy(lv->lrv_key_string, "term", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_SIGNED_INT(lv) = ri->ri_log_hdr.rlh_term;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_SIGNED_VAL;
+        lreg_value_fill_signed(lv, "term", ri->ri_log_hdr.rlh_term);
         break;
     case RAFT_LREG_COMMIT_IDX:
-        strncpy(lv->lrv_key_string, "commit-idx", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_SIGNED_INT(lv) = ri->ri_commit_idx;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_SIGNED_VAL;
+        lreg_value_fill_signed(lv, "commit-idx", ri->ri_commit_idx);
         break;
     case RAFT_LREG_LAST_APPLIED:
-        strncpy(lv->lrv_key_string, "last-applied", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_SIGNED_INT(lv) = ri->ri_last_applied_idx;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_SIGNED_VAL;
+        lreg_value_fill_signed(lv, "last-applied", ri->ri_last_applied_idx);
         break;
     case RAFT_LREG_NEWEST_ENTRY_IDX:
-        strncpy(lv->lrv_key_string, "newest-entry-idx", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
-            raft_server_get_current_raft_entry_index(ri);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_SIGNED_VAL;
+        lreg_value_fill_signed(lv, "newest-entry-idx",
+                               raft_server_get_current_raft_entry_index(ri));
         break;
     case RAFT_LREG_NEWEST_ENTRY_TERM:
-        strncpy(lv->lrv_key_string, "newest-entry-term",
-                LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
-            raft_server_get_current_raft_entry_term(ri);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_SIGNED_VAL;
+        lreg_value_fill_signed(lv, "newest-entry-term",
+                               raft_server_get_current_raft_entry_term(ri));
         break;
     case RAFT_LREG_NEWEST_ENTRY_SIZE:
-        strncpy(lv->lrv_key_string, "newest-entry-data-size",
-                LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) =
-            ri->ri_newest_entry_hdr.reh_data_size;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "newest-entry-data-size",
+                                 ri->ri_newest_entry_hdr.reh_data_size);
         break;
     case RAFT_LREG_NEWEST_ENTRY_CRC:
-        strncpy(lv->lrv_key_string, "newest-entry-crc",
-                LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) = ri->ri_newest_entry_hdr.reh_crc;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "newest-entry-crc",
+                                 ri->ri_newest_entry_hdr.reh_crc);
+        break;
     case RAFT_LREG_FOLLOWER_STATS:
-        strncpy(lv->lrv_key_string, "follower-stats", LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_ARRAY;
-        lv->get.lrv_user_type_out = LREG_USER_TYPE_RAFT_PEER_STATS;
+        lreg_value_fill_array(lv, "follower-stats",
+                              LREG_USER_TYPE_RAFT_PEER_STATS);
     default:
         break;
     }
@@ -178,25 +149,19 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
     NIOVA_ASSERT(raft_member_idx_is_valid(ri, peer) &&
                  ri->ri_csn_raft_peers[peer]);
 
-    char uuid_str[UUID_STR_LEN];
-
     switch (lv->lrv_value_idx_in)
     {
     case RAFT_PEER_STATS_ITEM_UUID:
-        uuid_unparse(ri->ri_csn_raft_peers[peer]->csn_uuid, uuid_str);
-        strncpy(lv->lrv_key_string, "peer-uuid", LREG_VALUE_STRING_MAX);
-        strncpy(LREG_VALUE_TO_OUT_STR(lv), uuid_str, LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+        lreg_value_fill_string_uuid(lv, "peer-uuid",
+                                    ri->ri_csn_raft_peers[peer]->csn_uuid);
         break;
     case RAFT_PEER_STATS_LAST_SEND:
-        strncpy(lv->lrv_key_string, "last-send", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) = ri->ri_last_send[peer].tv_sec;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "last-send",
+                                 ri->ri_last_send[peer].tv_sec);
         break;
     case RAFT_PEER_STATS_LAST_RECV:
-        strncpy(lv->lrv_key_string, "last-recv", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) = ri->ri_last_recv[peer].tv_sec;
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "last-recv",
+                                 ri->ri_last_recv[peer].tv_sec);
         break;
 #if 0
     case RAFT_PEER_STATS_BYTES_SENT:
@@ -205,21 +170,16 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         break;
 #endif
     case RAFT_PEER_STATS_PREV_LOG_IDX:
-        strncpy(lv->lrv_key_string, "next-idx", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) = ri->ri_leader.rls_next_idx[peer];
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "next-idx",
+                                 ri->ri_leader.rls_next_idx[peer]);
         break;
     case RAFT_PEER_STATS_PREV_LOG_TERM:
-        strncpy(lv->lrv_key_string, "prev-idx-term", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) =
-            ri->ri_leader.rls_prev_idx_term[peer];
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "prev-idx-term",
+                                 ri->ri_leader.rls_prev_idx_term[peer]);
         break;
     case RAFT_PEER_STATS_MS_UNTIL_RETRY:
-        strncpy(lv->lrv_key_string, "retry-again-at", LREG_VALUE_STRING_MAX);
-        LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) =
-            ri->ri_leader.rls_ae_sends_wait_until[peer];
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+        lreg_value_fill_unsigned(lv, "retry-again-at",
+                                 ri->ri_leader.rls_ae_sends_wait_until[peer]);
         break;
     default:
         break;

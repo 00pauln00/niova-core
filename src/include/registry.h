@@ -74,6 +74,13 @@ enum lreg_node_cb_ops
 
 #define LREG_NODE_CB_OP_GET_NAME LREG_NODE_CB_OP_GET_NODE_INFO
 
+union lreg_value_data_numeric
+{
+    uint64_t lrvdn_unsigned_val;
+    int64_t  lrvdn_signed_val;
+    float    lrvdn_float_val;
+};
+
 struct lreg_value_data
 {
     union
@@ -393,5 +400,109 @@ void
 lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
                void *cb_arg, const int depth,
                const enum lreg_user_types user_type);
+
+static inline void
+lreg_value_fill_key_and_type(struct lreg_value *lv, const char *key,
+                             const enum lreg_value_types type)
+{
+    if (lv)
+    {
+        if (key)
+            strncpy(lv->lrv_key_string, key, LREG_VALUE_STRING_MAX);
+
+        LREG_VALUE_TO_REQ_TYPE(lv) = type;
+    }
+
+}
+static inline void
+lreg_value_fill_string(struct lreg_value *lv, const char *key,
+                       const char *value)
+{
+    if (lv)
+    {
+        lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_STRING);
+
+        if (value)
+            strncpy(LREG_VALUE_TO_OUT_STR(lv), value, LREG_VALUE_STRING_MAX);
+    }
+}
+
+static inline void
+lreg_value_fill_string_uuid(struct lreg_value *lv, const char *key,
+                            const uuid_t uuid)
+{
+    if (lv)
+    {
+        char uuid_str[UUID_STR_LEN] = {0};
+        uuid_unparse(uuid, uuid_str);
+
+        lreg_value_fill_string(lv, key, uuid_str);
+    }
+}
+
+static inline void
+lreg_value_fill_numeric(struct lreg_value *lv, const char *key,
+                        const union lreg_value_data_numeric lvdu,
+                        const enum lreg_value_types type)
+{
+    if (lv && (type == LREG_VAL_TYPE_SIGNED_VAL ||
+               type == LREG_VAL_TYPE_UNSIGNED_VAL ||
+               type == LREG_VAL_TYPE_FLOAT_VAL))
+    {
+        lreg_value_fill_key_and_type(lv, key, type);
+        switch (type)
+        {
+        case LREG_VAL_TYPE_SIGNED_VAL:
+            LREG_VALUE_TO_OUT_SIGNED_INT(lv) = lvdu.lrvdn_signed_val;
+            break;
+        case LREG_VAL_TYPE_UNSIGNED_VAL:
+            LREG_VALUE_TO_OUT_UNSIGNED_INT(lv) = lvdu.lrvdn_unsigned_val;
+            break;
+        case LREG_VAL_TYPE_FLOAT_VAL:
+            LREG_VALUE_TO_OUT_FLOAT(lv) = lvdu.lrvdn_float_val;
+            break;
+        default:
+            break;
+        }
+    }
+}
+
+static inline void
+lreg_value_fill_signed(struct lreg_value *lv, const char *key,
+                       int64_t value)
+{
+    union lreg_value_data_numeric lvdu = {.lrvdn_signed_val = value};
+
+    lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_SIGNED_VAL);
+}
+
+static inline void
+lreg_value_fill_unsigned(struct lreg_value *lv, const char *key,
+                         uint64_t value)
+{
+    union lreg_value_data_numeric lvdu = {.lrvdn_unsigned_val = value};
+
+    lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_UNSIGNED_VAL);
+}
+
+static inline void
+lreg_value_fill_array(struct lreg_value *lv, const char *key,
+                       enum lreg_user_types user_type)
+
+{
+    lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_ARRAY);
+
+    lv->get.lrv_user_type_out = user_type;
+}
+
+static inline void
+lreg_value_fill_object(struct lreg_value *lv, const char *key,
+                       enum lreg_user_types user_type)
+
+{
+    lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_OBJECT);
+
+    lv->get.lrv_user_type_out = user_type;
+}
 
 #endif //_REGISTRY_H
