@@ -4,6 +4,8 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
 
+#include <syscall.h>
+
 #include "random.h"
 #include "common.h"
 #include "log.h"
@@ -14,6 +16,13 @@ static __thread struct random_data randomData;
 static __thread char randomStateBuf[RANDOM_STATE_BUF_LEN];
 static __thread bool randInit;
 static __thread unsigned int randSeed = 1040071U;
+
+pid_t gettid(void)
+{
+    pid_t tid = syscall(SYS_gettid);
+
+    return tid;
+}
 
 int
 random_init(unsigned int seed)
@@ -36,8 +45,7 @@ unsigned int
 random_get(void)
 {
     if (!randInit)
-        random_init(randSeed);
-
+        random_init(gettid() ^ randSeed);
 
     unsigned int result;
     if (random_r(&randomData, (int *)&result))
