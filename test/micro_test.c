@@ -104,10 +104,13 @@ static void
 atomic_op(bool inc_or_read)
 {
     static niova_atomic64_t val = PRIME;
-    int64_t foo = inc_or_read ?
+    static int64_t foo;
+
+    foo = inc_or_read ?
         niova_atomic_inc(&val) : niova_atomic_read(&val);
 
     (void)val;
+    (void)foo;
 }
 
 static void
