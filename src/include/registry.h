@@ -487,7 +487,7 @@ lreg_value_fill_unsigned(struct lreg_value *lv, const char *key,
 
 static inline void
 lreg_value_fill_array(struct lreg_value *lv, const char *key,
-                       enum lreg_user_types user_type)
+                      enum lreg_user_types user_type)
 
 {
     lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_ARRAY);

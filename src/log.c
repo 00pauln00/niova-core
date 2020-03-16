@@ -58,31 +58,17 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
         switch (lreg_val->lrv_value_idx_in)
         {
         case LOG_LREG_FILE_NAME:
-            snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                     "file_name");
-
-            strncpy(LREG_VALUE_TO_OUT_STR(lreg_val), lei->lei_file,
-                    LREG_VALUE_STRING_MAX);
-
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+            lreg_value_fill_string(lreg_val, "file_name", lei->lei_file);
             break;
 
         case LOG_LREG_FILE_LEVEL:
-            strncpy(lreg_val->lrv_key_string, "file_log_level",
-                    LREG_VALUE_STRING_MAX);
-
-            snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
-                     "%s", ll_to_string(lei->lei_level));
-
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
-
+            lreg_value_fill_string(lreg_val, "file_log_level",
+                                   ll_to_string(lei->lei_level));
             break;
 
         case LOG_LREG_FILE_LOG_ENTRIES:
-            snprintf(lreg_val->lrv_key_string, LREG_VALUE_STRING_MAX,
-                     "log_entries");
-
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_ARRAY;
+            lreg_value_fill_array(lreg_val, "log_entries",
+                                  LREG_USER_TYPE_LOG_func);
             break;
 
         default:
@@ -114,39 +100,22 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
         switch (lreg_val->lrv_value_idx_in)
         {
         case LOG_LREG_ENTRY_LEVEL:
-            strncpy(lreg_val->lrv_key_string, "log_level",
-                    LREG_VALUE_STRING_MAX);
-
-            snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
-                     "%s", ll_to_string(lei->lei_level));
-
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
-
+            lreg_value_fill_string(lreg_val, "log_level",
+                                   ll_to_string(lei->lei_level));
             break;
 
         case LOG_LREG_ENTRY_LINENO:
-            strncpy(lreg_val->lrv_key_string, "line_number",
-                    LREG_VALUE_STRING_MAX);
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
-            lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_lineno;
+            lreg_value_fill_unsigned(lreg_val, "line_number", lei->lei_lineno);
             break;
 
         case LOG_LREG_ENTRY_EXEC_CNT:
-            strncpy(lreg_val->lrv_key_string, "exec_cnt",
-                    LREG_VALUE_STRING_MAX);
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
-            lreg_val->get.lrv_value_out.lrv_unsigned_val = lei->lei_exec_cnt;
+            lreg_value_fill_unsigned(lreg_val, "exec_cnt", lei->lei_exec_cnt);
             break;
 
         case LOG_LREG_ENTRY_FUNC:
-            strncpy(lreg_val->lrv_key_string, "function",
-                    LREG_VALUE_STRING_MAX);
-
-            snprintf(LREG_VALUE_TO_OUT_STR(lreg_val), LREG_VALUE_STRING_MAX,
-                     "%s", lei->lei_func);
-
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+            lreg_value_fill_string(lreg_val, "function", lei->lei_func);
             break;
+
         default:
             break;
         }
