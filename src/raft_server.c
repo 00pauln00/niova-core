@@ -598,7 +598,7 @@ raft_server_log_header_write(struct raft_instance *ri, const uuid_t candidate,
 
     DBG_RAFT_INSTANCE_FATAL_IF((!uuid_is_null(candidate) &&
                                 ri->ri_log_hdr.rlh_term > candidate_term),
-                               ri, "invalid candidate term=%lx",
+                               ri, "invalid candidate term=%ld",
                                candidate_term);
 
     /* rlh_seqno is not used for the raft protocol.  It's used to bounce
@@ -901,7 +901,7 @@ raft_server_log_truncate(struct raft_instance *ri)
     rc = io_fsync(ri->ri_log_fd);
     FATAL_IF((rc), "io_fsync(): %s", strerror(-rc));
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-phys-idx=%lx",
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-phys-idx=%ld",
                       MAX(NUM_RAFT_LOG_HEADERS,
                           raft_server_get_current_phys_entry_index(ri)));
 }
@@ -1100,7 +1100,7 @@ raft_server_sync_vote_choice(struct raft_instance *ri,
 
     // These checks should have been done prior to entering this function!
     DBG_RAFT_INSTANCE_FATAL_IF((candidate_term <= ri->ri_log_hdr.rlh_term),
-                               ri, "candidate_term=%lx", candidate_term);
+                               ri, "candidate_term=%ld", candidate_term);
 
     DBG_RAFT_INSTANCE_FATAL_IF(
         (raft_peer_2_idx(ri, candidate) >=
@@ -1149,7 +1149,7 @@ raft_server_candidate_is_viable(const struct raft_instance *ri)
          ri->ri_candidate.rcs_term != ri->ri_log_hdr.rlh_term))
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri,
-                          "!candidate OR candidate-term (%lx) != ht",
+                          "!candidate OR candidate-term (%ld) != ht",
                           ri->ri_candidate.rcs_term);
         return false;
     }
@@ -1196,7 +1196,7 @@ raft_server_candidate_reg_vote_result(struct raft_instance *ri,
     struct raft_candidate_state *rcs = &ri->ri_candidate;
 
     DBG_RAFT_INSTANCE_FATAL_IF((rcs->rcs_term != ri->ri_log_hdr.rlh_term), ri,
-                               "rcs->rcs_term (%lx) != ri_log_hdr",
+                               "rcs->rcs_term (%ld) != ri_log_hdr",
                                rcs->rcs_term);
 
     rcs->rcs_results[peer_idx] = result;
@@ -1326,7 +1326,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
 
     DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "sender-uuid=%s term=%lx rsn=%s",
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "sender-uuid=%s term=%ld rsn=%s",
                       peer_uuid_str, new_term,
                       raft_become_follower_reason_2_str(reason));
 
@@ -1362,7 +1362,7 @@ raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
 
         DBG_RAFT_INSTANCE_FATAL_IF((rls->rls_leader_term !=
                                     ri->ri_log_hdr.rlh_term), ri,
-                                   "leader-term=%lx != log-hdr-term",
+                                   "leader-term=%ld != log-hdr-term",
                                    rls->rls_leader_term);
 
         return rls->rls_initial_term_idx >= ri->ri_last_applied_idx ?
@@ -1422,7 +1422,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
     else
         next_entry_phys_idx += 1;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%lx term=%lx len=%zd opts=%d",
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "entry-idx=%ld term=%ld len=%zd opts=%d",
                       next_entry_phys_idx, term, len, opts);
 
     int rc = raft_server_entry_write(ri, next_entry_phys_idx, term, data, len,
@@ -1602,7 +1602,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     }
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                      "peer=%hhx refresh=%s pt=%lx ni=%lx",
+                      "peer=%hhx refresh=%s pt=%ld ni=%ld",
                       follower, refresh ? "yes" : "no",
                       rls->rls_prev_idx_term[follower],
                       rls->rls_next_idx[follower]);
@@ -1680,7 +1680,7 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 
         raft_server_leader_init_append_entry_msg(ri, &rrm, i, true);
 
-        DBG_SIMPLE_CTL_SVC_NODE(LL_NOTIFY, rp, "idx=%hhx pli=%lx", i,
+        DBG_SIMPLE_CTL_SVC_NODE(LL_NOTIFY, rp, "idx=%hhx pli=%ld", i,
                       rrm.rrm_append_entries_request.raerqm_prev_log_index);
 
         raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, &rrm);
@@ -1763,7 +1763,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
     rreply_msg.rrm_vote_reply.rvrpm_voted_granted =
         raft_server_process_vote_request_decide(ri, vreq) ? 1 : 0;
 
-    DBG_RAFT_MSG(LL_NOTIFY, rrm, "vote=%s my term=%lx last=%lx:%lx",
+    DBG_RAFT_MSG(LL_NOTIFY, rrm, "vote=%s my term=%ld last=%ld:%ld",
                  rreply_msg.rrm_vote_reply.rvrpm_voted_granted ? "yes" : "no",
                  ri->ri_log_hdr.rlh_term,
                  raft_server_get_current_raft_entry_term(ri),
@@ -1844,12 +1844,12 @@ raft_server_append_entry_check_already_stored(
 
         FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
         FATAL_IF((reh.reh_term != raerq->raerqm_prev_log_term),
-                 "raerq->raerqm_prev_log_term=%lx != reh.reh_term=%lx",
+                 "raerq->raerqm_prev_log_term=%ld != reh.reh_term=%ld",
                  raerq->raerqm_prev_log_term, reh.reh_term);
     }
 
     DBG_RAFT_INSTANCE(LL_WARN, ri,
-                      "rci=%lx leader-prev-[idx:term]=%lx:%lx",
+                      "rci=%lx leader-prev-[idx:term]=%ld:%ld",
                       raft_current_idx,
                       raerq->raerqm_prev_log_index,
                       raerq->raerqm_prev_log_term);
@@ -1878,7 +1878,7 @@ raft_server_append_entry_log_prune_if_needed(
     DBG_RAFT_INSTANCE_FATAL_IF(
         (ri->ri_commit_idx >= raft_entry_idx_prune ||
          ri->ri_last_applied_idx >= raft_entry_idx_prune),
-        ri, "cannot prune committed entry raerq-nli=%lx",
+        ri, "cannot prune committed entry raerq-nli=%ld",
         raft_entry_idx_prune);
 
     if (raerq->raerqm_prev_log_index < 0)
@@ -1966,7 +1966,7 @@ raft_server_append_entry_log_prepare_and_check(
         rc = -EEXIST;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                      "rci=%lx leader-prev-[idx:term]=%lx:%lx rc=%d",
+                      "rci=%ld leader-prev-[idx:term]=%ld:%ld rc=%d",
                       raft_current_idx,
                       raerq->raerqm_prev_log_index,
                       raerq->raerqm_prev_log_term, rc);
@@ -2111,7 +2111,7 @@ raft_server_advance_commit_idx(struct raft_instance *ri,
     if (ri->ri_commit_idx < new_commit_idx &&
         raft_server_get_current_raft_entry_index(ri) >= new_commit_idx)
     {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new_commit_idx=%lx", new_commit_idx);
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new_commit_idx=%ld", new_commit_idx);
 
         ri->ri_commit_idx = new_commit_idx;
 
@@ -2214,6 +2214,9 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     rls->rls_next_idx[this_peer_num] =
         raft_server_get_current_raft_entry_index(ri) + 1;
 
+    rls->rls_prev_idx_term[this_peer_num] =
+        raft_server_get_current_raft_entry_term(ri);
+
     /* Sort the group member's next-idx values - note that these are the NEXT
      * index to be written not the already written idx value.
      */
@@ -2249,7 +2252,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
      */
     const int64_t committed_raft_idx = sorted_indexes[majority_idx] - 1;
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%lx",
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%ld",
                       committed_raft_idx);
 
     // Ensure the ri_commit_idx is not moving backwards!
@@ -2287,7 +2290,7 @@ raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
     if (committed_raft_idx >= rls->rls_initial_term_idx &&
         committed_raft_idx > ri->ri_commit_idx)
     {
-        DBG_RAFT_INSTANCE(LL_WARN, ri, "updating ri_commit_idx to %lx",
+        DBG_RAFT_INSTANCE(LL_WARN, ri, "updating ri_commit_idx to %ld",
                           committed_raft_idx);
 
         raft_server_advance_commit_idx(ri, committed_raft_idx);
@@ -2310,7 +2313,7 @@ raft_server_apply_append_entries_reply_result(
     struct raft_leader_state *rls = &ri->ri_leader;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                      "follower=%x next-idx=%lx err=%hhx rp-pli=%lx",
+                      "follower=%x next-idx=%ld err=%hhx rp-pli=%ld",
                       follower_idx, rls->rls_next_idx[follower_idx],
                       raerp->raerpm_err_non_matching_prev_term,
                       raerp->raerpm_prev_log_index);
@@ -2324,7 +2327,7 @@ raft_server_apply_append_entries_reply_result(
     if (raerp->raerpm_prev_log_index + 1 != rls->rls_next_idx[follower_idx])
     {
         DBG_RAFT_INSTANCE(LL_WARN, ri,
-                          "follower=%x reply-ni=%lx my-ni-for-follower=%lx",
+                          "follower=%x reply-ni=%ld my-ni-for-follower=%ld",
                           follower_idx, raerp->raerpm_prev_log_index,
                           rls->rls_next_idx[follower_idx]);
         return;
@@ -2336,8 +2339,6 @@ raft_server_apply_append_entries_reply_result(
         {
             rls->rls_next_idx[follower_idx]--;
             rls->rls_prev_idx_term[follower_idx] = -1; //Xxx this needs to go into a function
-
-            ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
         }
     }
 
@@ -2348,11 +2349,22 @@ raft_server_apply_append_entries_reply_result(
         rls->rls_next_idx[follower_idx]++;
 
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                          "follower=%x new-next-idx=%lx",
+                          "follower=%x new-next-idx=%ld",
                           follower_idx, rls->rls_next_idx[follower_idx]);
 
         // Only called if the entry append was successful.
         raft_server_leader_try_advance_commit_idx(ri);
+    }
+
+
+    if ((rls->rls_next_idx[follower_idx] - 1) <
+        raft_server_get_current_raft_entry_index(ri))
+    {
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+                          "follower=%x still lags next-idx=%ld",
+                          follower_idx, rls->rls_next_idx[follower_idx]);
+
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
     }
 
 ///XXX update timestamp for follower ACK
@@ -2704,7 +2716,7 @@ raft_server_append_entry_sender(struct raft_instance *ri)
 
          int rc = raft_server_entry_header_read(ri, phys_idx, reh);
          DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                    "raft_server_entry_header_read(%lx): %s",
+                                    "raft_server_entry_header_read(%ld): %s",
                                     raft_idx, strerror(-rc));
 
          raerq->raerqm_log_term = reh->reh_term;
