@@ -153,8 +153,10 @@ test_build:
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
 
-check: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 check: test_build
+
+check-noopt: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+check-noopt: test_build
 
 asan: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 asan: tests
