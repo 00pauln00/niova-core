@@ -134,8 +134,9 @@ struct raft_entry_header
 {
     uint64_t reh_magic;     // Magic is not included in the crc
     uuid_t   reh_self_uuid; // UUID of this peer
-    crc32_t  reh_crc;       // Crc is after the magic and self-uuid
-    uint32_t reh_data_size; // The size of the log entry data
+    crc32_t  reh_crc;       // Crc is after the magic and uuid's (all are constant).
+    uint32_t reh_data_size; // The size of the log entry data - must be below reh_crc!
+                            //    see raft_server_entry_calc_crc() before changing.
     int64_t  reh_index;     // Add NUM_RAFT_LOG_HEADERS to get phys offset
     int64_t  reh_term;      // Term in which entry was originally written
     uuid_t   reh_raft_uuid; // UUID of raft instance
@@ -243,6 +244,7 @@ struct raft_instance
     struct raft_log_header      ri_log_hdr;
     int64_t                     ri_commit_idx;
     int64_t                     ri_last_applied_idx;
+    crc32_t                     ri_last_applied_cumulative_crc;
     struct raft_entry_header    ri_newest_entry_hdr;
     struct epoll_mgr            ri_epoll_mgr;
     struct epoll_handle         ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
@@ -272,7 +274,7 @@ raft_compile_time_checks(void)
     {                                                                   \
     case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                                \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "VREQ nterm=%lx last=%lx:%lx %s "fmt,            \
+                       "VREQ nterm=%ld last=%ld:%ld %s "fmt,            \
                        (rm)->rrm_vote_request.rvrqm_proposed_term,      \
                        (rm)->rrm_vote_request.rvrqm_last_log_term,      \
                        (rm)->rrm_vote_request.rvrqm_last_log_index,     \
@@ -281,7 +283,7 @@ raft_compile_time_checks(void)
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                                  \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "VREPLY term=%lx granted=%s %s "fmt,             \
+                       "VREPLY term=%ld granted=%s %s "fmt,             \
                        (rm)->rrm_vote_reply.rvrpm_term,                 \
                        ((rm)->rrm_vote_reply.rvrpm_voted_granted ?      \
                         "yes" : "no"),                                  \
@@ -290,7 +292,7 @@ raft_compile_time_checks(void)
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                      \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "AE_REQ t=%lx lt=%lx ci=%lx pl=%lx:%lx sz=%hx hb=%hhx lcm=%hhx %s "fmt, \
+                       "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hx hb=%hhx lcm=%hhx %s "fmt, \
                        (rm)->rrm_append_entries_request.raerqm_leader_term, \
                        (rm)->rrm_append_entries_request.raerqm_log_term, \
                        (rm)->rrm_append_entries_request.raerqm_commit_index, \
@@ -304,7 +306,7 @@ raft_compile_time_checks(void)
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                      \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "AE_REPLY t=%lx pli=%lx hb=%hhx err=%hhx:%hhx %s "fmt, \
+                       "AE_REPLY t=%ld pli=%ld hb=%hhx err=%hhx:%hhx %s "fmt, \
                        (rm)->rrm_append_entries_reply.raerpm_leader_term, \
                        (rm)->rrm_append_entries_reply.raerpm_prev_log_index, \
                        (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg, \
@@ -320,7 +322,7 @@ default:                                                                \
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "re@%p crc=%x size=%u idx=%lx term=%lx lcm=%hhx "fmt, \
+                   "re@%p crc=%u size=%u idx=%ld term=%ld lcm=%hhx "fmt, \
                    (re), (re)->reh_crc, (re)->reh_data_size,            \
                    (re)->reh_index, (re)->reh_term,                     \
                    (re)->reh_leader_change_marker , ##__VA_ARGS__)
@@ -343,7 +345,7 @@ default:                                                                \
                      __leader_uuid_str);                                \
                                                                         \
     SIMPLE_LOG_MSG(log_level,                                           \
-                   "%c et=%lx ei=%lx ht=%lx hs=%lx ci=%lx:%lx v=%s l=%s " \
+                   "%c et=%ld ei=%ld ht=%ld hs=%ld ci=%ld:%ld v=%s l=%s " \
                    fmt,                                                 \
                    raft_server_state_to_char((ri)->ri_state),           \
                    raft_server_get_current_raft_entry_term((ri)),       \

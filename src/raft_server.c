@@ -45,11 +45,12 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_TERM,              // int64
     RAFT_LREG_COMMIT_IDX,        // int64
     RAFT_LREG_LAST_APPLIED,      // int64
+    RAFT_LREG_LAST_APPLIED_CCRC, // int64
     RAFT_LREG_NEWEST_ENTRY_IDX,  // int64
     RAFT_LREG_NEWEST_ENTRY_TERM, // int64
     RAFT_LREG_NEWEST_ENTRY_SIZE, // uint32
     RAFT_LREG_NEWEST_ENTRY_CRC,  // uint32
-    RAFT_LREG_FOLLOWER_STATS,        // array
+    RAFT_LREG_FOLLOWER_STATS,    // array
     RAFT_LREG_MAX,
 };
 
@@ -95,6 +96,10 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case RAFT_LREG_LAST_APPLIED:
         lreg_value_fill_signed(lv, "last-applied", ri->ri_last_applied_idx);
         break;
+    case RAFT_LREG_LAST_APPLIED_CCRC:
+        lreg_value_fill_signed(lv, "last-applied-cumulative-crc",
+                               ri->ri_last_applied_cumulative_crc);
+        break;
     case RAFT_LREG_NEWEST_ENTRY_IDX:
         lreg_value_fill_signed(lv, "newest-entry-idx",
                                raft_server_get_current_raft_entry_index(ri));
@@ -114,6 +119,7 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case RAFT_LREG_FOLLOWER_STATS:
         lreg_value_fill_array(lv, "follower-stats",
                               LREG_USER_TYPE_RAFT_PEER_STATS);
+        break;
     default:
         break;
     }
@@ -248,7 +254,7 @@ raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     if (lv)
         lv->get.lrv_num_keys_out =
             (raft_instance_is_leader(ri) ?
-             RAFT_LREG_MAX : RAFT_LREG_FOLLOWER_STATS) - 1;
+             RAFT_LREG_MAX : RAFT_LREG_FOLLOWER_STATS);
 
     switch (op)
     {
@@ -2761,6 +2767,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     // Signify that the entry has been applied!
     ri->ri_last_applied_idx++;
+
+    ri->ri_last_applied_cumulative_crc ^= reh->reh_crc;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "ri_last_applied_idx was incremented");
 
