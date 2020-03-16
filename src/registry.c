@@ -71,7 +71,7 @@ lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
             user_type != LREG_USER_TYPE_ANY)
             continue;
 
-        DBG_LREG_NODE(LL_NOTIFY, child, "");
+        DBG_LREG_NODE(LL_DEBUG, child, "");
 
         if (!lrn_wcb(child, cb_arg, depth))
             break;

@@ -271,7 +271,7 @@ ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
             char err_str[64] = {0};
             regerror(rc, &cds->cds_regex, err_str, 63);
 
-            SIMPLE_LOG_MSG(LL_NOTIFY, "regcomp(`%s'): %s",
+            SIMPLE_LOG_MSG(LL_DEBUG, "regcomp(`%s'): %s",
                            cmt->cmt_depth_segments[i].cds_str, err_str);
 
             return -EBADMSG;
@@ -280,7 +280,7 @@ ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
         {
             cds->cds_free_regex = 1;
 
-            SIMPLE_LOG_MSG(LL_NOTIFY, "%s regcomp():  OK",
+            SIMPLE_LOG_MSG(LL_DEBUG, "%s regcomp():  OK",
                            cmt->cmt_depth_segments[i].cds_str);
         }
     }
@@ -397,7 +397,7 @@ ctlic_ctsp_cb(const struct conf_token *ct, const char *val_buf,
 
     strncpy(cmt->cmt_value, val_buf, val_buf_sz);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "token-name %10s val_sz %02zu err %01d %s",
+    SIMPLE_LOG_MSG(LL_DEBUG, "token-name %10s val_sz %02zu err %01d %s",
                    ct->ct_name, val_buf_sz, error, val_buf);
 
     return 0;
@@ -804,7 +804,7 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
         return;
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "file=%s\ncontents=\n%s",
+    SIMPLE_LOG_MSG(LL_DEBUG, "file=%s\ncontents=\n%s",
                    cch->ctlih_input_file_name,
                    (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
 

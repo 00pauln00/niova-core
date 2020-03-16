@@ -995,7 +995,7 @@ raft_server_timerfd_settime(struct raft_instance *ri)
     }
 
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "msec=%llu",
-                      nsec_2_msec(its.it_value.tv_nsec));
+                      timespec_2_msec(&its.it_value));
 
     int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
     if (rc)
@@ -1601,7 +1601,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         rls->rls_prev_idx_term[follower] = reh.reh_term;
     }
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+    DBG_RAFT_INSTANCE((refresh ? LL_NOTIFY : LL_DEBUG), ri,
                       "peer=%hhx refresh=%s pt=%ld ni=%ld",
                       follower, refresh ? "yes" : "no",
                       rls->rls_prev_idx_term[follower],
@@ -1680,7 +1680,7 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 
         raft_server_leader_init_append_entry_msg(ri, &rrm, i, true);
 
-        DBG_SIMPLE_CTL_SVC_NODE(LL_NOTIFY, rp, "idx=%hhx pli=%ld", i,
+        DBG_SIMPLE_CTL_SVC_NODE(LL_DEBUG, rp, "idx=%hhx pli=%ld", i,
                       rrm.rrm_append_entries_request.raerqm_prev_log_index);
 
         raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, &rrm);
@@ -1965,7 +1965,7 @@ raft_server_append_entry_log_prepare_and_check(
              raerq->raerqm_prev_log_term)
         rc = -EEXIST;
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+    DBG_RAFT_INSTANCE((raerq->raerqm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
                       "rci=%ld leader-prev-[idx:term]=%ld:%ld rc=%d",
                       raft_current_idx,
                       raerq->raerqm_prev_log_index,
@@ -2312,7 +2312,7 @@ raft_server_apply_append_entries_reply_result(
 
     struct raft_leader_state *rls = &ri->ri_leader;
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+    DBG_RAFT_INSTANCE((raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
                       "follower=%x next-idx=%ld err=%hhx rp-pli=%ld",
                       follower_idx, rls->rls_next_idx[follower_idx],
                       raerp->raerpm_err_non_matching_prev_term,
@@ -2380,13 +2380,14 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
     NIOVA_ASSERT(ri && sender_csn && rrm);
     NIOVA_ASSERT(!ctl_svc_node_compare_uuid(sender_csn, rrm->rrm_sender_id));
 
-    DBG_RAFT_MSG(LL_NOTIFY, rrm, "");
+    const struct raft_append_entries_reply_msg *raerp =
+        &rrm->rrm_append_entries_reply;
+
+    DBG_RAFT_MSG((raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY),
+                 rrm, "");
 
     if (!raft_instance_is_leader(ri))
         return;
-
-    const struct raft_append_entries_reply_msg *raerp =
-        &rrm->rrm_append_entries_reply;
 
     /* raerpm_err_stale_term should only be considered if it's more recent than
      * our own term, otherwise it's stale.

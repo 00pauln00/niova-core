@@ -163,7 +163,7 @@ udp_socket_recv(const struct udp_socket_handle *ush, struct iovec *iov,
     if (from)
         *from = addr_in;
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "src=%s:%u nb=%zd flags=%x",
+    SIMPLE_LOG_MSG(LL_DEBUG, "src=%s:%u nb=%zd flags=%x",
                    inet_ntoa(addr_in.sin_addr), ntohs(addr_in.sin_port), rc,
                    msg.msg_flags);
 
