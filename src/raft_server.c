@@ -35,6 +35,24 @@ enum raft_write_entry_opts
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+static const char *
+raft_follower_reason_2_str(enum raft_follower_reasons reason)
+{
+    switch (reason)
+    {
+    case RAFT_BFRSN_VOTED_FOR_PEER:
+        return "voted-for-peer";
+    case RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE:
+        return "lost-election";
+    case RAFT_BFRSN_STALE_TERM_WHILE_LEADER:
+        return "stale-leader";
+    default:
+        break;
+    }
+
+    return NULL;
+}
+
 enum raft_instance_lreg_entry_values
 {
     RAFT_LREG_RAFT_UUID,         // string
@@ -42,6 +60,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_VOTED_FOR_UUID,    // string
     RAFT_LREG_LEADER_UUID,       // string
     RAFT_LREG_PEER_STATE,        // string
+    RAFT_LREG_FOLLOWER_REASON,   // string
     RAFT_LREG_TERM,              // int64
     RAFT_LREG_COMMIT_IDX,        // int64
     RAFT_LREG_LAST_APPLIED,      // int64
@@ -86,6 +105,11 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case RAFT_LREG_PEER_STATE:
         lreg_value_fill_string(lv, "state",
                                raft_server_state_to_string(ri->ri_state));
+        break;
+    case RAFT_LREG_FOLLOWER_REASON:
+        lreg_value_fill_string(lv, "follower-reason",
+                               raft_instance_is_leader(ri) ? "none" :
+                               raft_follower_reason_2_str(ri->ri_follower_reason));
         break;
     case RAFT_LREG_TERM:
         lreg_value_fill_signed(lv, "term", ri->ri_log_hdr.rlh_term);
@@ -1262,31 +1286,6 @@ raft_server_become_candidate(struct raft_instance *ri)
     raft_server_broadcast_msg(ri, &rrm);
 }
 
-enum raft_become_follower_reasons
-{
-    RAFT_BFRSN_VOTED_FOR_PEER,
-    RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE,
-    RAFT_BFRSN_STALE_TERM_WHILE_LEADER,
-};
-
-static const char *
-raft_become_follower_reason_2_str(enum raft_become_follower_reasons reason)
-{
-    switch (reason)
-    {
-    case RAFT_BFRSN_VOTED_FOR_PEER:
-        return "voted-for-peer";
-    case RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE:
-        return "lost-election";
-    case RAFT_BFRSN_STALE_TERM_WHILE_LEADER:
-        return "stale-leader";
-    default:
-        break;
-    }
-
-    return NULL;
-}
-
 /**
  * raft_server_becomes_follower - handle the transition from a
  *    a follower either from candidate or leader state.  This function sets
@@ -1305,11 +1304,12 @@ static void
 raft_server_becomes_follower(struct raft_instance *ri,
                              int64_t new_term,
                              const uuid_t peer_with_newer_term,
-                             enum raft_become_follower_reasons reason)
+                             enum raft_follower_reasons reason)
 {
     NIOVA_ASSERT(ri);
 
     ri->ri_state = RAFT_STATE_FOLLOWER;
+    ri->ri_follower_reason = reason;
 
     /* Generally, in raft we become a follower when a higher term is observed.
      * However when 2 or more peers become candidates for the same term, the
@@ -1329,7 +1329,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "sender-uuid=%s term=%ld rsn=%s",
                       peer_uuid_str, new_term,
-                      raft_become_follower_reason_2_str(reason));
+                      raft_follower_reason_2_str(reason));
 
     // No need to sync the new term.
     if (new_term == ri->ri_log_hdr.rlh_term)

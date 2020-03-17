@@ -230,6 +230,13 @@ enum raft_server_event_pipes
     RAFT_SERVER_EVP_ANY      = 2,
 };
 
+enum raft_follower_reasons
+{
+    RAFT_BFRSN_VOTED_FOR_PEER,
+    RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE,
+    RAFT_BFRSN_STALE_TERM_WHILE_LEADER,
+};
+
 struct raft_instance
 {
     struct udp_socket_handle    ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -244,6 +251,7 @@ struct raft_instance
     struct raft_candidate_state ri_candidate;
     struct raft_leader_state    ri_leader;
     enum raft_state             ri_state;
+    enum raft_follower_reasons  ri_follower_reason;
     int                         ri_timer_fd;
     int                         ri_log_fd;
     char                        ri_log[PATH_MAX + 1];
