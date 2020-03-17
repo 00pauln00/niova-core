@@ -93,6 +93,8 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_commit_index;
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
+    uint32_t raerqm_prev_idx_crc;
+    uint32_t raerqm_this_idx_crc;
     uint16_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
@@ -551,6 +553,14 @@ raft_server_get_current_raft_entry_term(const struct raft_instance *ri)
     NIOVA_ASSERT(ri);
 
     return ri->ri_newest_entry_hdr.reh_term;
+}
+
+static inline crc32_t
+raft_server_get_current_raft_entry_crc(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    return ri->ri_newest_entry_hdr.reh_crc;
 }
 
 /**
