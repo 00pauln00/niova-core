@@ -152,6 +152,9 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         op != LREG_NODE_CB_OP_READ_VAL)
         return;
 
+    const struct raft_follower_info *rfi =
+        raft_server_get_follower_info((struct raft_instance *)ri, peer);
+
     NIOVA_ASSERT(raft_member_idx_is_valid(ri, peer) &&
                  ri->ri_csn_raft_peers[peer]);
 
@@ -176,16 +179,14 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         break;
 #endif
     case RAFT_PEER_STATS_PREV_LOG_IDX:
-        lreg_value_fill_unsigned(lv, "next-idx",
-                                 ri->ri_leader.rls_next_idx[peer]);
+        lreg_value_fill_unsigned(lv, "next-idx", rfi->rfi_next_idx);
         break;
     case RAFT_PEER_STATS_PREV_LOG_TERM:
-        lreg_value_fill_unsigned(lv, "prev-idx-term",
-                                 ri->ri_leader.rls_prev_idx_term[peer]);
+        lreg_value_fill_unsigned(lv, "prev-idx-term", rfi->rfi_prev_idx_term);
         break;
     case RAFT_PEER_STATS_MS_UNTIL_RETRY:
         lreg_value_fill_unsigned(lv, "retry-again-at",
-                                 ri->ri_leader.rls_ae_sends_wait_until[peer]);
+                                 rfi->rfi_ae_sends_wait_until);
         break;
     default:
         break;
@@ -1401,11 +1402,10 @@ raft_server_leader_init_state(struct raft_instance *ri)
 
     for (raft_peer_t i = 0; i < num_raft_peers; i++)
     {
-        rls->rls_next_idx[i] =
-            raft_server_get_current_raft_entry_index(ri) + 1;
+        struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
 
-        rls->rls_prev_idx_term[i] =
-            raft_server_get_current_raft_entry_term(ri);
+        rfi->rfi_next_idx = raft_server_get_current_raft_entry_index(ri) + 1;
+        rfi->rfi_prev_idx_term = raft_server_get_current_raft_entry_term(ri);
     }
 }
 
@@ -1564,23 +1564,23 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
 
     NIOVA_ASSERT(raft_instance_is_leader(ri));
 
-    struct raft_leader_state *rls = &ri->ri_leader;
+    struct raft_follower_info *rfi =
+        raft_server_get_follower_info(ri, follower);
 
-    NIOVA_ASSERT(rls->rls_next_idx[follower] >= 0);
+    NIOVA_ASSERT(rfi->rfi_next_idx >= 0);
 
     // If the next_idx is '0' this means that no block have ever been written.
-    if (rls->rls_next_idx[follower] == 0)
-        rls->rls_prev_idx_term[follower] = 0;
+    if (rfi->rfi_next_idx == 0)
+        rfi->rfi_prev_idx_term = 0;
 
-    bool refresh = rls->rls_prev_idx_term[follower] < 0 ? true : false;
+    bool refresh = rfi->rfi_prev_idx_term < 0 ? true : false;
 
     if (refresh)
     {
         struct raft_entry_header reh = {0};
 
         const int64_t follower_prev_phys_entry_idx =
-            raft_server_entry_idx_to_phys_idx(ri,
-                                              rls->rls_next_idx[follower] - 1);
+            raft_server_entry_idx_to_phys_idx(ri, rfi->rfi_next_idx - 1);
 
         NIOVA_ASSERT(follower_prev_phys_entry_idx >=
                      raft_server_instance_get_num_log_headers(ri));
@@ -1598,14 +1598,13 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         DBG_RAFT_ENTRY_FATAL_IF((reh.reh_term < 0), &reh,
                                 "invalid reh.reh_term=%ld", reh.reh_term);
 
-        rls->rls_prev_idx_term[follower] = reh.reh_term;
+        rfi->rfi_prev_idx_term = reh.reh_term;
     }
 
     DBG_RAFT_INSTANCE((refresh ? LL_NOTIFY : LL_DEBUG), ri,
                       "peer=%hhx refresh=%s pt=%ld ni=%ld",
                       follower, refresh ? "yes" : "no",
-                      rls->rls_prev_idx_term[follower],
-                      rls->rls_next_idx[follower]);
+                      rfi->rfi_prev_idx_term, rfi->rfi_next_idx);
 
     return 0;
 }
@@ -1627,6 +1626,9 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri && ri->ri_csn_raft && rrm &&
                  raft_member_idx_is_valid(ri, follower));
+
+    const struct raft_follower_info *rfi =
+        raft_server_get_follower_info(ri, follower);
 
     rrm->rrm_type = RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST;
     rrm->rrm_version = 0;
@@ -1654,10 +1656,10 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     raerq->raerqm_leader_change_marker = 0;
 
     // Previous log index is the address of the follower's last write.
-    raerq->raerqm_prev_log_index = ri->ri_leader.rls_next_idx[follower] - 1;
+    raerq->raerqm_prev_log_index = rfi->rfi_next_idx - 1;
 
     // OK to copy the rls_prev_idx_term[] since it was refreshed above.
-    raerq->raerqm_prev_log_term = ri->ri_leader.rls_prev_idx_term[follower];
+    raerq->raerqm_prev_log_term = rfi->rfi_prev_idx_term;
 }
 
 static raft_net_timerfd_cb_ctx_t
@@ -2195,8 +2197,6 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     NIOVA_ASSERT(ri && ri->ri_csn_raft);
     NIOVA_ASSERT(raft_instance_is_leader(ri));
 
-    struct raft_leader_state *rls = &ri->ri_leader;
-
     raft_peer_t num_raft_members =
         ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
 
@@ -2209,13 +2209,13 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     int64_t sorted_indexes[CTL_SVC_MAX_RAFT_PEERS] =
         {[0 ... (CTL_SVC_MAX_RAFT_PEERS - 1)] = RAFT_MIN_APPEND_ENTRY_IDX};
 
-    /* The leader doesn't update its own rls_next_idx[] slot so do that here
+    /* The leader doesn't update its own rfi_next_idx slot so do that here
      */
-    rls->rls_next_idx[this_peer_num] =
-        raft_server_get_current_raft_entry_index(ri) + 1;
+    struct raft_follower_info *self =
+        raft_server_get_follower_info(ri, this_peer_num);
 
-    rls->rls_prev_idx_term[this_peer_num] =
-        raft_server_get_current_raft_entry_term(ri);
+    self->rfi_next_idx = raft_server_get_current_raft_entry_index(ri) + 1;
+    self->rfi_prev_idx_term = raft_server_get_current_raft_entry_term(ri);
 
     /* Sort the group member's next-idx values - note that these are the NEXT
      * index to be written not the already written idx value.
@@ -2226,11 +2226,14 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
 
         for (raft_peer_t j = 0; j < num_raft_members; j++)
         {
+            const struct raft_follower_info *rfi =
+                raft_server_get_follower_info(ri, j);
+
             if (!done_peers[j] &&
                 (sorted_indexes[i] == RAFT_MIN_APPEND_ENTRY_IDX ||
-                 rls->rls_next_idx[j] < sorted_indexes[i]))
+                 rfi->rfi_next_idx < sorted_indexes[i]))
             {
-                sorted_indexes[i] = rls->rls_next_idx[j];
+                sorted_indexes[i] = rfi->rfi_next_idx;
                 tmp_peer = j;
             }
         }
@@ -2310,11 +2313,12 @@ raft_server_apply_append_entries_reply_result(
     const raft_peer_t follower_idx = raft_peer_2_idx(ri, follower_uuid);
     NIOVA_ASSERT(follower_idx != RAFT_PEER_ANY);
 
-    struct raft_leader_state *rls = &ri->ri_leader;
+    struct raft_follower_info *rfi =
+        raft_server_get_follower_info(ri, follower_idx);
 
     DBG_RAFT_INSTANCE((raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
                       "follower=%x next-idx=%ld err=%hhx rp-pli=%ld",
-                      follower_idx, rls->rls_next_idx[follower_idx],
+                      follower_idx, rfi->rfi_next_idx,
                       raerp->raerpm_err_non_matching_prev_term,
                       raerp->raerpm_prev_log_index);
 
@@ -2324,45 +2328,45 @@ raft_server_apply_append_entries_reply_result(
      * rls_next_idx decreased, it's ok, subsequent AE requests will eventually
      * cause it happen.
      */
-    if (raerp->raerpm_prev_log_index + 1 != rls->rls_next_idx[follower_idx])
+    if (raerp->raerpm_prev_log_index + 1 != rfi->rfi_next_idx)
     {
         DBG_RAFT_INSTANCE(LL_WARN, ri,
                           "follower=%x reply-ni=%ld my-ni-for-follower=%ld",
                           follower_idx, raerp->raerpm_prev_log_index,
-                          rls->rls_next_idx[follower_idx]);
+                          rfi->rfi_next_idx);
         return;
     }
 
     if (raerp->raerpm_err_non_matching_prev_term)
     {
-        if (rls->rls_next_idx[follower_idx] > 0)
+        if (rfi->rfi_next_idx > 0)
         {
-            rls->rls_next_idx[follower_idx]--;
-            rls->rls_prev_idx_term[follower_idx] = -1; //Xxx this needs to go into a function
+            rfi->rfi_next_idx--;
+            rfi->rfi_prev_idx_term = -1; //Xxx this needs to go into a function
         }
     }
 
     // Heartbeats don't advance the follower index
     else if (!raerp->raerpm_heartbeat_msg)
     {
-        rls->rls_prev_idx_term[follower_idx] = -1;
-        rls->rls_next_idx[follower_idx]++;
+        rfi->rfi_prev_idx_term = -1;
+        rfi->rfi_next_idx++;
 
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
                           "follower=%x new-next-idx=%ld",
-                          follower_idx, rls->rls_next_idx[follower_idx]);
+                          follower_idx, rfi->rfi_next_idx);
 
         // Only called if the entry append was successful.
         raft_server_leader_try_advance_commit_idx(ri);
     }
 
 
-    if ((rls->rls_next_idx[follower_idx] - 1) <
+    if ((rfi->rfi_next_idx - 1) <
         raft_server_get_current_raft_entry_index(ri))
     {
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
                           "follower=%x still lags next-idx=%ld",
-                          follower_idx, rls->rls_next_idx[follower_idx]);
+                          follower_idx, rfi->rfi_next_idx);
 
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
     }
@@ -2621,7 +2625,7 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
 
 /**
  * raft_server_append_entry_should_send_to_follower - helper function which
- *    manages the rls_ae_sends_wait_until value for the given peer_idx.
+ *    manages the rfi_ae_sends_wait_until value for the given peer_idx.
  *    It returns a true when either the peer is not detected as unresponsive
  *    or after the waiting period has passed.
  */
@@ -2633,7 +2637,8 @@ raft_server_append_entry_should_send_to_follower(
     NIOVA_ASSERT(ri && ri->ri_csn_raft &&
                  raft_member_idx_is_valid(ri, raft_peer_idx));
 
-    struct raft_leader_state *rls = &ri->ri_leader;
+    struct raft_follower_info *rfi =
+        raft_server_get_follower_info(ri, raft_peer_idx);
 
     unsigned long long now_msec = niova_unstable_coarse_clock_get_msec();
     unsigned long long since_last_unacked = 0;
@@ -2647,25 +2652,24 @@ raft_server_append_entry_should_send_to_follower(
 
     if (since_last_unacked > 0) // No recv'd msgs since last send.
     {
-        if (now_msec > rls->rls_ae_sends_wait_until[raft_peer_idx])
-            rls->rls_ae_sends_wait_until[raft_peer_idx] =
+        if (now_msec > rfi->rfi_ae_sends_wait_until)
+            rfi->rfi_ae_sends_wait_until =
                 (now_msec +
                  MIN(RAFT_NET_MAX_RETRY_MS,
-                     (rls->rls_ae_sends_wait_until[raft_peer_idx] * 2 + 1)));
+                     (rfi->rfi_ae_sends_wait_until * 2 + 1)));
         else
             send_msg = false;
     }
     else
     {
-        rls->rls_ae_sends_wait_until[raft_peer_idx] = 0;
+        rfi->rfi_ae_sends_wait_until = 0;
     }
 
     // This is not a recency check and should be in a separate function Xxx
-    if (rls->rls_next_idx[raft_peer_idx] >
-        raft_server_get_current_raft_entry_index(ri))
+    if (rfi->rfi_next_idx > raft_server_get_current_raft_entry_index(ri))
     {
         // May only be ahead by '1'
-        NIOVA_ASSERT(rls->rls_next_idx[raft_peer_idx] ==
+        NIOVA_ASSERT(rfi->rfi_next_idx ==
                      raft_server_get_current_raft_entry_index(ri) + 1);
         send_msg = false;
     }

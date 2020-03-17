@@ -203,14 +203,21 @@ struct raft_candidate_state
     enum raft_vote_result rcs_results[CTL_SVC_MAX_RAFT_PEERS];
 };
 
+struct raft_follower_info
+{
+    int64_t            rfi_next_idx;
+    int64_t            rfi_current_idx_term;
+    int64_t            rfi_current_idx_crc;
+    int64_t            rfi_prev_idx_term;
+    int64_t            rfi_prev_idx_crc;
+    unsigned long long rfi_ae_sends_wait_until;
+};
+
 struct raft_leader_state
 {
-    int64_t            rls_initial_term_idx; // index at start of leader's term
-    int64_t            rls_leader_term;
-//    uint64_t rls_match_idx[CTL_SVC_MAX_RAFT_PEERS];
-    int64_t            rls_next_idx[CTL_SVC_MAX_RAFT_PEERS];
-    int64_t            rls_prev_idx_term[CTL_SVC_MAX_RAFT_PEERS];
-    unsigned long long rls_ae_sends_wait_until[CTL_SVC_MAX_RAFT_PEERS];
+    int64_t                   rls_initial_term_idx; // idx @start of ldr's term
+    int64_t                   rls_leader_term;
+    struct raft_follower_info rls_rfi[CTL_SVC_MAX_RAFT_PEERS];
 };
 
 struct epoll_handle;
@@ -340,7 +347,7 @@ default:                                                                \
     char __uuid_str[UUID_STR_LEN];                                      \
     uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);           \
     char __leader_uuid_str[UUID_STR_LEN] = {0};                         \
-    if (ri->ri_csn_leader)                                              \
+    if (ri->ri_csn_leader && !raft_instance_is_leader((ri)))            \
         uuid_unparse((ri)->ri_csn_leader->csn_uuid,                     \
                      __leader_uuid_str);                                \
                                                                         \
@@ -587,6 +594,15 @@ raft_server_get_current_raft_entry_index(const struct raft_instance *ri)
     }
 
     return current_reh_index;
+}
+
+static inline struct raft_follower_info *
+raft_server_get_follower_info(struct raft_instance *ri,
+                              const raft_peer_t member)
+{
+    NIOVA_ASSERT(ri && raft_member_idx_is_valid(ri, member));
+
+    return &ri->ri_leader.rls_rfi[member];
 }
 
 void
