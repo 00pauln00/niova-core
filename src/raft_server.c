@@ -1340,11 +1340,12 @@ raft_server_becomes_follower(struct raft_instance *ri,
      * in sync already.
      */
     const uuid_t null_uuid = {0};
-    const bool sync_uuid = reason == RAFT_BFRSN_VOTED_FOR_PEER ? true : false;
+    const bool sync_uuid =
+        (reason == RAFT_BFRSN_VOTED_FOR_PEER) ? true : false;
 
     int rc = raft_server_log_header_write(ri,
                                           (sync_uuid ?
-                                           null_uuid : peer_with_newer_term),
+                                           peer_with_newer_term : null_uuid),
                                           new_term);
 
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
