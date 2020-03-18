@@ -176,7 +176,7 @@ enum raft_peer_stats_items
 {
     RAFT_PEER_STATS_ITEM_UUID,
 //    RAFT_PEER_STATS_LAST_SEND,
-    RAFT_PEER_STATS_LAST_RECV,
+    RAFT_PEER_STATS_LAST_ACK,
 #if 0
 //    RAFT_PEER_STATS_BYTES_SENT,
 //    RAFT_PEER_STATS_BYTES_RECV,
@@ -219,11 +219,11 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
                                  ri->ri_last_send[peer].tv_sec);
         break;
 #endif
-    case RAFT_PEER_STATS_LAST_RECV:
-        ctime_r((const time_t *)&ri->ri_last_recv[peer].tv_sec, ctime_buf);
+    case RAFT_PEER_STATS_LAST_ACK:
+        ctime_r((const time_t *)&rfi->rfi_last_ack.tv_sec, ctime_buf);
         niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
 
-        lreg_value_fill_string(lv, "last-recv", ctime_buf);
+        lreg_value_fill_string(lv, "last-ack", ctime_buf);
 
         break;
 #if 0
@@ -1506,8 +1506,6 @@ raft_server_leader_write_new_entry(struct raft_instance *ri,
      * rebuilding their log.
      */
     raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len, opts);
-//XXXX -- remember that the eventual RPC issuer must apply
-    //    opts to set raerqm_leader_change_marker.
 
     // Schedule ourselves to send this entry to the other members.
     ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
@@ -2028,7 +2026,7 @@ raft_server_append_entry_log_prepare_and_check(
         if (raft_server_append_entry_check_already_stored(ri, raerq))
             return -EALREADY;
 
-        else // Otherwise, the log needs to be pruned.  XXX recheck me!
+        else // Otherwise, the log needs to be pruned.
             raft_server_append_entry_log_prune_if_needed(ri, raerq);
     }
 
@@ -2407,6 +2405,9 @@ raft_server_apply_append_entries_reply_result(
     struct raft_follower_info *rfi =
         raft_server_get_follower_info(ri, follower_idx);
 
+    // Update the last ack value for this follower.
+    niova_realtime_coarse_clock(&rfi->rfi_last_ack);
+
     DBG_RAFT_INSTANCE((raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
                       "follower=%x next-idx=%ld err=%hhx rp-pli=%ld",
                       follower_idx, rfi->rfi_next_idx,
@@ -2450,7 +2451,6 @@ raft_server_apply_append_entries_reply_result(
         raft_server_leader_try_advance_commit_idx(ri);
     }
 
-
     if ((rfi->rfi_next_idx - 1) <
         raft_server_get_current_raft_entry_index(ri))
     {
@@ -2459,10 +2459,6 @@ raft_server_apply_append_entries_reply_result(
 
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
     }
-
-///XXX update timestamp for follower ACK
-///XXX need to think about an 'epoch' which is incremented every 'n'
-///    ms perhaps in the timerfd
 }
 
 static raft_server_udp_cb_ctx_t
@@ -2573,6 +2569,43 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
     raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
+static raft_server_udp_cb_ctx_bool_t
+raft_leader_instance_is_fresh(const struct raft_instance *ri)
+{
+    if (!raft_instance_is_leader(ri))
+        return false;
+
+    struct timespec now;
+    niova_realtime_coarse_clock(&now);
+
+    size_t num_acked_within_window = 1; // count "self"
+
+    const raft_peer_t num_raft_peers = raft_num_members_validate_and_get(ri);
+
+    for (raft_peer_t i = 0; i < num_raft_peers; i++)
+    {
+        if (i == raft_server_instance_self_idx(ri))
+            continue;
+
+        const struct raft_follower_info *rfi =
+            raft_server_get_follower_info((struct raft_instance *)ri, i);
+
+        // Ignore if time has moved backwards
+        if (timespeccmp(&now, &rfi->rfi_last_ack, <=))
+            continue;
+
+        struct timespec diff;
+
+        timespecsub(&now, &rfi->rfi_last_ack, &diff);
+
+        if (timespec_2_msec(&diff) < RAFT_ELECTION_MIN_TIME_MS)
+            num_acked_within_window++;
+    }
+
+    return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
+        true : false;
+}
+
 /**
  * raft_server_may_process_client_request - this function checks the state of
  *    this raft instance to determine if it's qualified to accept a client
@@ -2583,25 +2616,21 @@ raft_server_may_accept_client_request(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
+    /* Not the leader, then cause a redirect reply to be done.
+     */
     if (raft_instance_is_booting(ri))
         return -EINPROGRESS;
 
     else if (raft_instance_is_candidate(ri))
         return -ENOENT;
 
-    /* Not the leader, then cause a redirect reply to be done.
-     */
     else if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
         return -ENOSYS;
-
-#if 0
-    // XXX Need this check!
 
     // 2. am I a fresh raft leader?
     else if (!raft_leader_instance_is_fresh(ri))
         return -EAGAIN;
 
-#endif
     // 3. have I applied all of the lastApplied entries that I need -
     //    including a fake AE command (which is written to the logs)?
     else if (!raft_leader_has_applied_txn_in_my_term(ri))
@@ -2727,8 +2756,12 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "rc=%d wr=%d rbuf-sz=%zu",
                         rc, write_op, reply_size);
 
-//Xxx should do this again 'if (raft_server_may_accept_client_request(ri))'
-//    since cb's may run for a long time and the server may have been deposed
+    // cb's may run for a long time and the server may have been deposed
+    if (raft_server_may_accept_client_request(ri))
+    {
+        raft_server_reply_to_client(ri, from, rcm, rc, NULL, 0);
+        return;
+    }
 
     /* Read operation or an already committed + applied write operation.
      */
@@ -2742,6 +2775,8 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
         raft_server_leader_write_new_entry(ri, rcm->rcrm_gmsg.rcrgm_data,
                                            rcm->rcrm_gmsg.rcrgm_msg_size,
                                            RAFT_WR_ENTRY_OPT_NONE);
+
+    //XXX is there a hook for a client reply?
 }
 
 /**

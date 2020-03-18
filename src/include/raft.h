@@ -212,6 +212,7 @@ struct raft_follower_info
     int64_t            rfi_current_idx_crc;
     int64_t            rfi_prev_idx_term;
     int64_t            rfi_prev_idx_crc;
+    struct timespec    rfi_last_ack;
     unsigned long long rfi_ae_sends_wait_until;
 };
 
