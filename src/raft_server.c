@@ -1426,7 +1426,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
     else
         next_entry_phys_idx += 1;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri,
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
                       "phys-entry-idx=%ld term=%ld len=%zd opts=%d",
                       next_entry_phys_idx, term, len, opts);
 
@@ -1495,7 +1495,7 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
 
     raft_server_set_leader_csn(ri, ri->ri_csn_this_peer);
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 }
 
 /**
@@ -1634,7 +1634,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     }
 
     DBG_RAFT_INSTANCE(((refresh_prev || refresh_current) ?
-                       LL_NOTIFY : LL_WARN), ri,
+                       LL_NOTIFY : LL_DEBUG), ri,
                       "peer=%hhx refresh=%d:%d pti=%ld:%ld ct=%ld",
                       follower, refresh_prev, refresh_current,
                       rfi->rfi_prev_idx_term, rfi->rfi_next_idx,
@@ -1824,9 +1824,6 @@ raft_server_append_entry_check_already_stored(
     NIOVA_ASSERT(ri && raerq);
     NIOVA_ASSERT(raft_instance_is_follower(ri));
 
-    // Should have been checked by caller
-    NIOVA_ASSERT(raerq->raerqm_log_term >= 0);
-
     // raerqm_prev_log_index can be -1 if no writes have ever been done.
     NIOVA_ASSERT(raerq->raerqm_prev_log_index >= RAFT_MIN_APPEND_ENTRY_IDX);
 
@@ -1846,16 +1843,31 @@ raft_server_append_entry_check_already_stored(
 
     struct raft_entry_header reh = {0};
 
-    int rc = raft_server_entry_header_read(ri, phys_idx, &reh);
-    FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
+    /* In a corner-case, the leader's msg may be stale and contain contents
+     * from a period where this peer and the leader were caught up.  As a
+     * result, the current log_term would not exist and we should not read
+     * this block.
+     */
+    if (raerq->raerqm_log_term > 0)
+    {
+        int rc = raft_server_entry_header_read(ri, phys_idx, &reh);
+        FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
 
-    if (reh.reh_term != raerq->raerqm_log_term)
-        return false;
+        if (reh.reh_term != raerq->raerqm_log_term)
+            return false;
 
-    FATAL_IF((raerq->raerqm_this_idx_crc != reh.reh_crc),
-             "crc (%u) does not match leader (%u) for phys-idx=%ld",
-             reh.reh_crc, raerq->raerqm_this_idx_crc, phys_idx);
-
+        FATAL_IF((raerq->raerqm_this_idx_crc != reh.reh_crc),
+                 "crc (%u) does not match leader (%u) for phys-idx=%ld",
+                 reh.reh_crc, raerq->raerqm_this_idx_crc, phys_idx);
+    }
+    else
+    {
+        DBG_RAFT_INSTANCE(
+            LL_WARN, ri,
+            "negative log-term %ld rci=%ld leader-prev-[idx:term]=%ld:%ld",
+            raerq->raerqm_log_term, raft_current_idx,
+            raerq->raerqm_prev_log_index, raerq->raerqm_prev_log_term);
+    }
     /* Check raerq->raerqm_prev_log_term - this is more of a sanity check to
      * ensure that the verified idx, leaders_next_idx_for_me, proceeds a valid
      * term of the prev-idx.
@@ -1865,7 +1877,7 @@ raft_server_append_entry_check_already_stored(
 
     if (!raft_phys_idx_is_log_header(phys_idx))
     {
-        rc = raft_server_entry_header_read(ri, phys_idx, &reh);
+        int rc = raft_server_entry_header_read(ri, phys_idx, &reh);
 
         FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
         FATAL_IF((reh.reh_term != raerq->raerqm_prev_log_term),
@@ -1876,7 +1888,7 @@ raft_server_append_entry_check_already_stored(
                  reh.reh_crc, raerq->raerqm_this_idx_crc, phys_idx);
     }
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri,
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
                       "rci=%ld leader-prev-[idx:term]=%ld:%ld",
                       raft_current_idx,
                       raerq->raerqm_prev_log_index,
@@ -2319,7 +2331,7 @@ raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
     if (committed_raft_idx >= rls->rls_initial_term_idx &&
         committed_raft_idx > ri->ri_commit_idx)
     {
-        DBG_RAFT_INSTANCE(LL_WARN, ri, "updating ri_commit_idx to %ld",
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "updating ri_commit_idx to %ld",
                           committed_raft_idx);
 
         raft_server_advance_commit_idx(ri, committed_raft_idx);
@@ -2378,8 +2390,7 @@ raft_server_apply_append_entries_reply_result(
         rfi->rfi_prev_idx_term = -1;
         rfi->rfi_next_idx++;
 
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                          "follower=%x new-next-idx=%ld",
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x new-next-idx=%ld",
                           follower_idx, rfi->rfi_next_idx);
 
         // Only called if the entry append was successful.
@@ -2390,8 +2401,7 @@ raft_server_apply_append_entries_reply_result(
     if ((rfi->rfi_next_idx - 1) <
         raft_server_get_current_raft_entry_index(ri))
     {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                          "follower=%x still lags next-idx=%ld",
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x still lags next-idx=%ld",
                           follower_idx, rfi->rfi_next_idx);
 
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
