@@ -2800,9 +2800,11 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
              raerq->raerqm_heartbeat_msg = 1;
          }
 
-         DBG_SIMPLE_CTL_SVC_NODE(LL_NOTIFY, rp, "idx=%hhx pli=%ld lt=%ld", i,
-                                 rrm->rrm_append_entries_request.raerqm_prev_log_index,
-                                 rrm->rrm_append_entries_request.raerqm_log_term);
+         DBG_SIMPLE_CTL_SVC_NODE(
+             (heartbeat ? LL_DEBUG : LL_NOTIFY), rp,
+             "idx=%hhx pli=%ld lt=%ld", i,
+             rrm->rrm_append_entries_request.raerqm_prev_log_index,
+             rrm->rrm_append_entries_request.raerqm_log_term);
 
          raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
     }
