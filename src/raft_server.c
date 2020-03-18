@@ -40,12 +40,16 @@ raft_follower_reason_2_str(enum raft_follower_reasons reason)
 {
     switch (reason)
     {
+    case RAFT_BFRSN_NONE:
+        return "none";
     case RAFT_BFRSN_VOTED_FOR_PEER:
         return "voted-for-peer";
     case RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE:
         return "lost-election";
     case RAFT_BFRSN_STALE_TERM_WHILE_LEADER:
         return "stale-leader";
+    case RAFT_BFRSN_LEADER_ALREADY_PRESENT:
+        return "leader-already-present";
     default:
         break;
     }
@@ -107,9 +111,11 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                raft_server_state_to_string(ri->ri_state));
         break;
     case RAFT_LREG_FOLLOWER_REASON:
-        lreg_value_fill_string(lv, "follower-reason",
-                               raft_instance_is_leader(ri) ? "none" :
-                               raft_follower_reason_2_str(ri->ri_follower_reason));
+        lreg_value_fill_string(
+            lv, "follower-reason",
+            (raft_instance_is_candidate(ri) ||
+             raft_instance_is_leader(ri)) ? "none" :
+            raft_follower_reason_2_str(ri->ri_follower_reason));
         break;
     case RAFT_LREG_TERM:
         lreg_value_fill_signed(lv, "term", ri->ri_log_hdr.rlh_term);
@@ -3086,6 +3092,7 @@ raft_server_main_loop(struct raft_instance *ri)
 {
     NIOVA_ASSERT(raft_instance_is_booting(ri));
     ri->ri_state = RAFT_STATE_FOLLOWER;
+    ri->ri_follower_reason = RAFT_BFRSN_LEADER_ALREADY_PRESENT;
 
     raft_server_timerfd_settime(ri);
 

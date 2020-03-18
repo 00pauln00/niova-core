@@ -234,9 +234,11 @@ enum raft_server_event_pipes
 
 enum raft_follower_reasons
 {
+    RAFT_BFRSN_NONE,
     RAFT_BFRSN_VOTED_FOR_PEER,
     RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE,
     RAFT_BFRSN_STALE_TERM_WHILE_LEADER,
+    RAFT_BFRSN_LEADER_ALREADY_PRESENT,
 };
 
 struct raft_instance
@@ -452,6 +454,13 @@ raft_instance_is_leader(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     return ri->ri_state == RAFT_STATE_LEADER ? true : false;
+}
+
+static inline bool
+raft_instance_is_candidate(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_state == RAFT_STATE_CANDIDATE ? true : false;
 }
 
 static inline bool
