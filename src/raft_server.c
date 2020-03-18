@@ -1292,6 +1292,31 @@ raft_server_become_candidate(struct raft_instance *ri)
     raft_server_broadcast_msg(ri, &rrm);
 }
 
+static void
+raft_server_update_log_header(struct raft_instance *ri, int64_t new_term,
+                              const uuid_t peer_with_newer_term)
+{
+    NIOVA_ASSERT(new_term > ri->ri_log_hdr.rlh_term);
+
+    int rc = raft_server_log_header_write(ri, peer_with_newer_term, new_term);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
+                               "raft_server_log_header_write() %s",
+                               strerror(-rc));
+}
+
+static void
+raft_server_try_update_log_header_null_voted_for_peer(struct raft_instance *ri,
+                                                      int64_t new_term)
+{
+    if (ri->ri_log_hdr.rlh_term < new_term)
+    {
+        const uuid_t null_uuid = {0};
+
+        raft_server_update_log_header(ri, new_term, null_uuid);
+    }
+}
+
 /**
  * raft_server_becomes_follower - handle the transition from a
  *    a follower either from candidate or leader state.  This function sets
@@ -1349,14 +1374,9 @@ raft_server_becomes_follower(struct raft_instance *ri,
     const bool sync_uuid =
         (reason == RAFT_BFRSN_VOTED_FOR_PEER) ? true : false;
 
-    int rc = raft_server_log_header_write(ri,
-                                          (sync_uuid ?
-                                           peer_with_newer_term : null_uuid),
-                                          new_term);
-
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                               "raft_server_log_header_write() %s",
-                               strerror(-rc));
+    raft_server_update_log_header(ri, new_term,
+                                  (sync_uuid ?
+                                   peer_with_newer_term : null_uuid));
 }
 
 static bool
@@ -2192,6 +2212,10 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
           "raft_server_process_append_entries_request_validity_check() fails");
         return;
     }
+
+    // Try to update the term if the leader has a higher one.
+    const int64_t leader_term = raerq->raerqm_leader_term;
+    raft_server_try_update_log_header_null_voted_for_peer(ri, leader_term);
 
     // Candidate timer - reset if this operation is valid.
     bool reset_timerfd = true;
