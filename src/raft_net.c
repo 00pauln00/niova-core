@@ -556,7 +556,7 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
         &ri->ri_last_send[peer_idx] : &ri->ri_last_recv[peer_idx];
 
     // ~1 ms granularity which should be fine for this app.
-    niova_unstable_coarse_clock(ts);
+    niova_realtime_coarse_clock(ts);
 }
 
 int
@@ -575,7 +575,7 @@ raft_net_comm_recency(const struct raft_instance *ri,
     const unsigned long long last_recv =
         timespec_2_msec(&ri->ri_last_recv[raft_peer_idx]);
 
-    unsigned long long now = niova_unstable_coarse_clock_get_msec();
+    unsigned long long now = niova_realtime_coarse_clock_get_msec();
 
     // This should not happen, but just in case..
     if (now < MAX(last_recv, last_send))

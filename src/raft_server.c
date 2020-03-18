@@ -36,6 +36,17 @@ enum raft_write_entry_opts
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static const char *
+raft_server_may_accept_client_request_reason(const struct raft_instance *ri);
+
+static raft_peer_t
+raft_server_instance_self_idx(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
+
+    return  raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
+}
+
+static const char *
 raft_follower_reason_2_str(enum raft_follower_reasons reason)
 {
     switch (reason)
@@ -65,6 +76,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_LEADER_UUID,       // string
     RAFT_LREG_PEER_STATE,        // string
     RAFT_LREG_FOLLOWER_REASON,   // string
+    RAFT_LREG_CLIENT_REQUESTS,   // string
     RAFT_LREG_TERM,              // int64
     RAFT_LREG_COMMIT_IDX,        // int64
     RAFT_LREG_LAST_APPLIED,      // int64
@@ -117,6 +129,11 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
              raft_instance_is_leader(ri)) ? "none" :
             raft_follower_reason_2_str(ri->ri_follower_reason));
         break;
+    case RAFT_LREG_CLIENT_REQUESTS:
+        lreg_value_fill_string(
+            lv, "client-requests",
+            raft_server_may_accept_client_request_reason(ri));
+        break;
     case RAFT_LREG_TERM:
         lreg_value_fill_signed(lv, "term", ri->ri_log_hdr.rlh_term);
         break;
@@ -158,7 +175,7 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
 enum raft_peer_stats_items
 {
     RAFT_PEER_STATS_ITEM_UUID,
-    RAFT_PEER_STATS_LAST_SEND,
+//    RAFT_PEER_STATS_LAST_SEND,
     RAFT_PEER_STATS_LAST_RECV,
 #if 0
 //    RAFT_PEER_STATS_BYTES_SENT,
@@ -182,6 +199,8 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         op != LREG_NODE_CB_OP_READ_VAL)
         return;
 
+    char ctime_buf[CTIME_R_STR_LEN];
+
     const struct raft_follower_info *rfi =
         raft_server_get_follower_info((struct raft_instance *)ri, peer);
 
@@ -194,13 +213,18 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         lreg_value_fill_string_uuid(lv, "peer-uuid",
                                     ri->ri_csn_raft_peers[peer]->csn_uuid);
         break;
+#if 0
     case RAFT_PEER_STATS_LAST_SEND:
         lreg_value_fill_unsigned(lv, "last-send",
                                  ri->ri_last_send[peer].tv_sec);
         break;
+#endif
     case RAFT_PEER_STATS_LAST_RECV:
-        lreg_value_fill_unsigned(lv, "last-recv",
-                                 ri->ri_last_recv[peer].tv_sec);
+        ctime_r((const time_t *)&ri->ri_last_recv[peer].tv_sec, ctime_buf);
+        niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
+
+        lreg_value_fill_string(lv, "last-recv", ctime_buf);
+
         break;
 #if 0
     case RAFT_PEER_STATS_BYTES_SENT:
@@ -1393,7 +1417,7 @@ raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
                                    "leader-term=%ld != log-hdr-term",
                                    rls->rls_leader_term);
 
-        return rls->rls_initial_term_idx >= ri->ri_last_applied_idx ?
+        return ri->ri_last_applied_idx > rls->rls_initial_term_idx ?
             true : false;
     }
 
@@ -2268,8 +2292,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     raft_peer_t num_raft_members =
         ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
 
-    raft_peer_t this_peer_num =
-        raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
+    raft_peer_t this_peer_num = raft_server_instance_self_idx(ri);
 
     NIOVA_ASSERT(raft_member_idx_is_valid(ri, this_peer_num));
 
@@ -2556,13 +2579,19 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
  *    request.
  */
 static raft_net_udp_cb_ctx_int_t
-raft_server_may_accept_client_request(struct raft_instance *ri)
+raft_server_may_accept_client_request(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
+    if (raft_instance_is_booting(ri))
+        return -EINPROGRESS;
+
+    else if (raft_instance_is_candidate(ri))
+        return -ENOENT;
+
     /* Not the leader, then cause a redirect reply to be done.
      */
-    if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
+    else if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
         return -ENOSYS;
 
 #if 0
@@ -2579,6 +2608,32 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
         return -EBUSY;
 
     return 0;
+}
+
+static const char *
+raft_server_may_accept_client_request_reason(const struct raft_instance *ri)
+{
+    int rc = raft_server_may_accept_client_request(ri);
+
+    switch (rc)
+    {
+    case 0:
+        return "accept";
+    case -ENOENT:
+        return "deny-leader-not-established";
+    case -EINPROGRESS:
+        return "deny-boot-in-progress";
+    case -ENOSYS:
+        return "forward-to-leader";
+    case -EAGAIN:
+        return "deny-may-be-deposed";
+    case -EBUSY:
+        return "deny-determining-commit-index";
+    default:
+        break;
+    }
+
+    return "unknown";
 }
 
 static raft_net_udp_cb_ctx_t
@@ -3033,10 +3088,15 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
     if (rc)
         return rc;
 
+    const raft_peer_t this_peer_num = raft_server_instance_self_idx(ri);
     const raft_peer_t num_members = raft_num_members_validate_and_get(ri);
+
     for (raft_peer_t i = 0; i < num_members; i++)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "i=%hhx", i);
+        if (i == this_peer_num) // Don't install object for ourselves.
+            continue;
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "i=%hhx", i);
         lreg_node_init(&ri->ri_lreg_peer_stats[i],
                        LREG_USER_TYPE_RAFT_PEER_STATS,
                        raft_instance_lreg_peer_stats_cb, ri, false);

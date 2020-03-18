@@ -12,6 +12,8 @@
 // Do not include "log.h" here!
 #include "common.h"
 
+#define CTIME_R_STR_LEN 26
+
 #if defined MY_FATAL_IF
 #undef MY_FATAL_IF
 #endif
@@ -44,6 +46,21 @@ char name[UUID_STR_LEN];                        \
     uuid_unparse(uuid, name);                   \
 }
 
+static inline void
+niova_newline_to_string_terminator(char *string, const size_t max_len)
+{
+    ssize_t len = strnlen(string, max_len);
+
+    for (ssize_t i = len - 1; i >=0; i--)
+    {
+        if (string[i] == '\n')
+        {
+            string[i] = '\0';
+            break;
+        }
+    }
+}
+
 /**
  * clock_gettime() wrappers
  */
@@ -62,6 +79,11 @@ char name[UUID_STR_LEN];                        \
 #define niova_realtime_clock(dest)                              \
     MY_FATAL_IF(clock_gettime(CLOCK_REALTIME, (dest)),          \
                 "clock_gettime() %s", strerror(errno))
+
+#define niova_realtime_coarse_clock(dest)                       \
+    MY_FATAL_IF(clock_gettime(CLOCK_REALTIME_COARSE, (dest)),   \
+                "clock_gettime() %s", strerror(errno))
+
 
 /**
  * BSD timespec macros
@@ -156,6 +178,15 @@ niova_unstable_coarse_clock_get_msec(void)
 {
     struct timespec now;
     niova_unstable_coarse_clock(&now);
+
+    return timespec_2_msec(&now);
+}
+
+static inline unsigned long long
+niova_realtime_coarse_clock_get_msec(void)
+{
+    struct timespec now;
+    niova_realtime_coarse_clock(&now);
 
     return timespec_2_msec(&now);
 }
