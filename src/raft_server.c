@@ -696,7 +696,6 @@ raft_server_header_load(struct raft_instance *ri)
             if (!most_recent_rlh ||
                 rlh[i].rlh_seqno > most_recent_rlh->rlh_seqno)
                 most_recent_rlh = &rlh[i];
-
         }
     }
 
@@ -1084,6 +1083,7 @@ raft_server_send_msg_to_client(struct raft_instance *ri,
 
     return (int)size_rc;
 }
+
 //XXX this needs to fixed to deal with application payload data
 static int
 raft_server_send_msg(struct raft_instance *ri,
@@ -2653,7 +2653,7 @@ raft_server_may_accept_client_request_reason(const struct raft_instance *ri)
     case -EINPROGRESS:
         return "deny-boot-in-progress";
     case -ENOSYS:
-        return "forward-to-leader";
+        return "redirect-to-leader";
     case -EAGAIN:
         return "deny-may-be-deposed";
     case -EBUSY:
