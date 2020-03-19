@@ -272,7 +272,6 @@ struct raft_instance
     raft_net_udp_cb_t           ri_udp_client_recv_cb;
     raft_net_udp_cb_t           ri_udp_server_recv_cb;
     raft_sm_request_handler_t   ri_server_sm_request_cb;
-    raft_sm_commit_handler_t    ri_server_sm_commit_cb;
     struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
     struct lreg_node            ri_lreg;
     struct lreg_node            ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];

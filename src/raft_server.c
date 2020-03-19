@@ -1062,24 +1062,23 @@ raft_server_timerfd_settime(struct raft_instance *ri)
 
 static int
 raft_server_send_msg_to_client(struct raft_instance *ri,
-                               const struct sockaddr_in *dest,
-                               struct raft_client_rpc_msg *rcm,
-                               const char *reply_buf,
-                               const size_t reply_buf_size)
+                               struct raft_client_rpc_msg *reply_msg,
+                               struct raft_net_client_request *rncr)
 {
-    if (!ri || !dest || !rcm)
+    if (!ri || !rncr || reply_msg ||
+        raft_net_sockaddr_is_valid(&rncr->rncr_remote_addr))
         return -EINVAL;
 
     struct udp_socket_handle *ush = &ri->ri_ush[RAFT_UDP_LISTEN_CLIENT];
 
     struct iovec iov[2] = {
-        [0].iov_len = sizeof(*rcm),
-        [0].iov_base = (void *)rcm,
-        [1].iov_len = reply_buf_size,
-        [1].iov_base = (void *)reply_buf,
+        [0].iov_len = sizeof(*reply_msg),
+        [0].iov_base = (void *)reply_msg,
+        [1].iov_len = rncr->rncr_reply_size,
+        [1].iov_base = (void *)rncr->rncr_buf,
     };
 
-    ssize_t size_rc = udp_socket_send(ush, iov, 2, dest);
+    ssize_t size_rc = udp_socket_send(ush, iov, 2, &rncr->rncr_remote_addr);
 
     return (int)size_rc;
 }
@@ -2667,47 +2666,50 @@ raft_server_may_accept_client_request_reason(const struct raft_instance *ri)
 
 static raft_net_udp_cb_ctx_t
 raft_server_reply_to_client(struct raft_instance *ri,
-                            const struct sockaddr_in *dest,
-                            const struct raft_client_rpc_msg *request_rcm,
-                            const int reply_error_code, const char *reply_buf,
-                            const size_t reply_buf_sz)
+                            struct raft_net_client_request *rncr)
 {
-    if (!ri || !ri->ri_csn_this_peer || !dest || !request_rcm ||
-        reply_buf_sz > RAFT_NET_MAX_RPC_SIZE)
+    if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft || !rncr ||
+        raft_net_sockaddr_is_valid(&rncr->rncr_remote_addr))
         return;
 
-    // Copy the source msg and then tailor it accordingly
-    struct raft_client_rpc_msg reply_rcm = *request_rcm;
+    struct raft_client_rpc_msg reply_rcm = {0};
 
-    uuid_clear(reply_rcm.rcrm_gmsg.rcrgm_redirect_id);
-
-    reply_rcm.rcrm_gmsg.rcrgm_msg_size = reply_buf_sz;
-
-    // may be reset below
-    reply_rcm.rcrm_gmsg.rcrgm_msg_type = RAFT_CLIENT_RPC_MSG_TYPE_REPLY;
-    reply_rcm.rcrm_gmsg.rcrgm_error = reply_error_code;
-
-    switch (reply_error_code)
-    {
-    case -ENOSYS:
-        reply_rcm.rcrm_gmsg.rcrgm_msg_type = RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT;
-
-        if (ri->ri_csn_leader)
-            uuid_copy(reply_rcm.rcrm_gmsg.rcrgm_redirect_id,
-                      ri->ri_csn_leader->csn_uuid);
-        break;
-    default:
-        break;
-    }
-
-    DBG_RAFT_CLIENT_RPC(LL_WARN, &reply_rcm, dest, "");
-
-    /* Set the sender_id AFTER logging so dest UUID is logged not our UUID.
-     */
+    uuid_copy(reply_rcm.rcrm_raft_id, ri->ri_csn_raft->csn_uuid);
     uuid_copy(reply_rcm.rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
-    raft_server_send_msg_to_client(ri, dest, &reply_rcm, reply_buf,
-                                   reply_buf_sz);
+    // Copy the reply info from the provided rncr pointer.
+    reply_rcm.rcrm_reply = rncr->rncr_reply;
+
+    // Peek at the rcrpm_redirect_id to determine if this is a redirect msg
+    reply_rcm.rcrm_type = uuid_is_null(rncr->rncr_reply.rcrpm_redirect_id) ?
+        RAFT_CLIENT_RPC_MSG_TYPE_REPLY : RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT;
+
+    DBG_RAFT_CLIENT_RPC(LL_WARN, rncr->rncr_request, &rncr->rncr_remote_addr,
+                        "original request");
+    DBG_RAFT_CLIENT_RPC(LL_WARN, &reply_rcm, &rncr->rncr_remote_addr,
+                        "reply data-size=%zd", rncr->rncr_reply_size);
+
+    raft_server_send_msg_to_client(ri, &reply_rcm, rncr);
+}
+
+static raft_net_udp_cb_ctx_t
+raft_server_udp_client_deny_request(struct raft_instance *ri,
+                                    const struct raft_client_rpc_msg *rcm,
+                                    const struct sockaddr_in *from,
+                                    const int rc)
+{
+    // Server cannot process this request.
+    struct raft_net_client_request rncr = {0};
+
+    if (rc == -ENOSYS && ri->ri_csn_leader)
+        uuid_copy(rncr.rncr_reply.rcrpm_redirect_id,
+                  ri->ri_csn_leader->csn_uuid);
+
+    rncr.rncr_reply.rcrpm_msg_id = rcm->rcrm_request.rcrqm_msg_id;
+    rncr.rncr_reply.rcrpm_error = rc;
+    rncr.rncr_remote_addr = *from;
+
+    return raft_server_reply_to_client(ri, &rncr);
 }
 
 static raft_net_udp_cb_ctx_t
@@ -2732,13 +2734,17 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
 
     int rc = raft_server_may_accept_client_request(ri);
     if (rc)
-    {
-        raft_server_reply_to_client(ri, from, rcm, rc, NULL, 0);
-        return;
-    }
+        return raft_server_udp_client_deny_request(ri, rcm, from, rc);
 
-    bool write_op = false;
-    size_t reply_size = 0;
+    struct raft_net_client_request rncr = {
+        .rncr_request = rcm,
+        .rncr_type = RAFT_NET_CLIENT_REQ_TYPE_NONE, // will be reset by cb
+        .rncr_remote_addr = *from,
+        .rncr_buf = reply_buf,
+        .rncr_buf_size = RAFT_NET_MAX_RPC_SIZE,
+        .rncr_reply_size = 0,
+        .rncr_reply = {{0}},
+    };
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
@@ -2750,30 +2756,31 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
      * 4. SM processes a read request, returning the requested application
      *    data.
      */
-    rc = ri->ri_server_sm_request_cb(rcm, from, &write_op, reply_buf,
-                                     &reply_size);
+    int cb_rc = ri->ri_server_sm_request_cb(&rncr);
+
+    // rncr.rncr_type was set by the callback;.
+    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
+        true : false;
 
     DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "rc=%d wr=%d rbuf-sz=%zu",
-                        rc, write_op, reply_size);
+                        cb_rc, write_op, rncr.rncr_reply_size);
 
     // cb's may run for a long time and the server may have been deposed
-    if (raft_server_may_accept_client_request(ri))
-    {
-        raft_server_reply_to_client(ri, from, rcm, rc, NULL, 0);
-        return;
-    }
+    rc = raft_server_may_accept_client_request(ri);
+    if (rc)
+        return raft_server_udp_client_deny_request(ri, rcm, from, rc);
 
     /* Read operation or an already committed + applied write operation.
      */
-    if (!write_op || (write_op && rc == -EALREADY))
-        raft_server_reply_to_client(ri, from, rcm, 0, reply_buf, reply_size);
+    if (!write_op || (write_op && cb_rc == -EALREADY)) // XXx rc handling ok?
+        raft_server_reply_to_client(ri, &rncr);
 
     /* Store the request as an entry in the Raft log.  Do not reply to the
      * client until the write is committed and applied!
      */
     else if (write_op && !rc)
-        raft_server_leader_write_new_entry(ri, rcm->rcrm_gmsg.rcrgm_data,
-                                           rcm->rcrm_gmsg.rcrgm_msg_size,
+        raft_server_leader_write_new_entry(ri, rcm->rcrm_request.rcrqm_data,
+                                           rcm->rcrm_request.rcrqm_msg_size,
                                            RAFT_WR_ENTRY_OPT_NONE);
 
     //XXX is there a hook for a client reply?
@@ -2943,6 +2950,17 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     struct raft_entry *re = (struct raft_entry *)sink_buf;
     struct raft_entry_header *reh = &re->re_header;
 
+    bool reply_to_client = false;
+
+    struct raft_net_client_request rncr = {
+        .rncr_type = RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
+        .rncr_request = (const struct raft_client_rpc_msg *)re->re_data,
+        .rncr_buf = sink_buf,
+        .rncr_buf_size = RAFT_ENTRY_SIZE,
+        .rncr_remote_addr = {0},
+        .rncr_reply = {{0}},
+    };
+
     int rc = raft_server_entry_header_read(ri, phys_idx, reh);
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
                                "raft_server_entry_header_read(): %s",
@@ -2955,8 +2973,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));
 
-        ri->ri_server_sm_commit_cb((const struct raft_client_rpc_msg *)
-                                   re->re_data);
+        int rc = ri->ri_server_sm_request_cb(&rncr);
+        if (!rc)
+            reply_to_client = true;
     }
 
     if (!reh->reh_leader_change_marker && !reh->reh_data_size)
@@ -2973,6 +2992,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     if (ri->ri_last_applied_idx < ri->ri_commit_idx)
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
+
+    if (reply_to_client)
+        raft_server_reply_to_client(ri, &rncr);
 }
 
 static raft_server_epoll_ae_sender_t
