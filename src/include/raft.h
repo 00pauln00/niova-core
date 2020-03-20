@@ -130,6 +130,9 @@ struct raft_rpc_msg
         struct raft_append_entries_request_msg rrm_append_entries_request;
         struct raft_append_entries_reply_msg   rrm_append_entries_reply;
     };
+/*  char rrm_payload[]; // future use if more msg types (other than
+ *      rrm_append_entries_request require payload
+ */
 };
 
 struct raft_entry_header

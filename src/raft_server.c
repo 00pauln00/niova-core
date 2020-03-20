@@ -1083,7 +1083,6 @@ raft_server_send_msg_to_client(struct raft_instance *ri,
     return (int)size_rc;
 }
 
-//XXX this needs to fixed to deal with application payload data
 static int
 raft_server_send_msg(struct raft_instance *ri,
                      const enum raft_udp_listen_sockets sock_src,
@@ -1093,6 +1092,17 @@ raft_server_send_msg(struct raft_instance *ri,
         (sock_src != RAFT_UDP_LISTEN_SERVER &&
          sock_src != RAFT_UDP_LISTEN_CLIENT))
         return -EINVAL;
+
+    /* For now, there's no use of multiple-IOVs since the only msg type
+     * requiring a payload is RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST.
+     */
+    const size_t msg_size = sizeof(struct raft_rpc_msg) +
+        (rrm->rrm_type ==
+         (RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ?
+          rrm->rrm_append_entries_request.raerqm_entries_sz : 0));
+
+    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
+        return -E2BIG;
 
     struct udp_socket_handle *ush = &ri->ri_ush[sock_src];
 
@@ -1112,7 +1122,7 @@ raft_server_send_msg(struct raft_instance *ri,
     }
 
     struct iovec iov = {
-        .iov_len = sizeof(*rrm),
+        .iov_len = msg_size,
         .iov_base = (void *)rrm
     };
 
@@ -1134,7 +1144,10 @@ raft_server_broadcast_msg(struct raft_instance *ri,
         if (rp == ri->ri_csn_this_peer)
             continue;
 
-        raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
+        int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
+
+        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
+                                   strerror(rc));
     }
 }
 
@@ -1848,8 +1861,11 @@ raft_server_process_vote_request(struct raft_instance *ri,
 
     /* Inform the candidate of our vote.
      */
-    raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
+    int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
                          &rreply_msg);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
+                               strerror(rc));
 }
 
 /**
@@ -2276,8 +2292,11 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     if (reset_timerfd)
         raft_server_timerfd_settime(ri);
 
-    raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
-                         &rreply_msg);
+    rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
+                              &rreply_msg);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
+                               strerror(rc));
 }
 
 static raft_server_udp_cb_leader_ctx_int64_t
@@ -2677,7 +2696,9 @@ raft_server_reply_to_client(struct raft_instance *ri,
     uuid_copy(reply_rcm.rcrm_raft_id, ri->ri_csn_raft->csn_uuid);
     uuid_copy(reply_rcm.rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
-    // Copy the reply info from the provided rncr pointer.
+    /* Copy the reply info from the provided rncr pointer.  This reply info
+     * fields have been written by the state_machine callback.
+     */
     reply_rcm.rcrm_reply = rncr->rncr_reply;
 
     // Peek at the rcrpm_redirect_id to determine if this is a redirect msg
@@ -2689,7 +2710,11 @@ raft_server_reply_to_client(struct raft_instance *ri,
     DBG_RAFT_CLIENT_RPC(LL_WARN, &reply_rcm, &rncr->rncr_remote_addr,
                         "reply data-size=%zd", rncr->rncr_reply_size);
 
-    raft_server_send_msg_to_client(ri, &reply_rcm, rncr);
+    int rc = raft_server_send_msg_to_client(ri, &reply_rcm, rncr);
+
+    if (rc)
+        DBG_RAFT_CLIENT_RPC(LL_ERROR, &reply_rcm, &rncr->rncr_remote_addr,
+                            "raft_server_send_msg(): %s", strerror(rc));
 }
 
 static raft_net_udp_cb_ctx_t
@@ -2765,7 +2790,10 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "rc=%d wr=%d rbuf-sz=%zu",
                         cb_rc, write_op, rncr.rncr_reply_size);
 
-    // cb's may run for a long time and the server may have been deposed
+    /* cb's may run for a long time and the server may have been deposed
+     * Xxx note that SM write requests left in this state may require
+     *   cleanup.
+     */
     rc = raft_server_may_accept_client_request(ri);
     if (rc)
         return raft_server_udp_client_deny_request(ri, rcm, from, rc);
@@ -2782,8 +2810,6 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
         raft_server_leader_write_new_entry(ri, rcm->rcrm_request.rcrqm_data,
                                            rcm->rcrm_request.rcrqm_msg_size,
                                            RAFT_WR_ENTRY_OPT_NONE);
-
-    //XXX is there a hook for a client reply?
 }
 
 /**
@@ -2927,7 +2953,10 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
              rrm->rrm_append_entries_request.raerqm_prev_log_index,
              rrm->rrm_append_entries_request.raerqm_log_term);
 
-         raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
+         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
+
+         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
+                                    strerror(rc));
     }
 }
 
