@@ -423,15 +423,17 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
 int
 raft_net_server_instance_run(const char *raft_uuid_str,
-                             const char *this_peer_uuid_str)
+                             const char *this_peer_uuid_str,
+                             raft_sm_request_handler_t sm_request_handler)
 {
-    if (!raft_uuid_str || !this_peer_uuid_str)
+    if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
         return -EINVAL;
 
     struct raft_instance ri = {0};
 
     ri.ri_raft_uuid_str = raft_uuid_str;
     ri.ri_this_peer_uuid_str = this_peer_uuid_str;
+    ri.ri_server_sm_request_cb = sm_request_handler;
     ri.ri_log_fd = -1;
 
     int rc = raft_net_instance_startup(&ri, false);
