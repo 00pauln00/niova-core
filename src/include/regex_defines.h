@@ -11,7 +11,7 @@
     "[0-9a-f]\\{8\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{12\\}"
 
 #define UUID_REGEX_CTL_SVC_FILE_NAME                                    \
-    "^"UUID_REGEX_BASE"\\.raft\\|peer$"
+    "^"UUID_REGEX_BASE"\\.raft$\\|peer$\\|raft_client$"
 
 #define UUID_REGEX                              \
     "^"UUID_REGEX_BASE"$"

@@ -251,9 +251,13 @@ raft_net_conf_destroy(struct raft_instance *ri)
 static int
 raft_net_conf_init(struct raft_instance *ri)
 {
+    uuid_t tmp, tmp1;
     /* Check the ri for the needed the UUID strings.
      */
-    if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
+    if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str ||
+        uuid_parse(ri->ri_this_peer_uuid_str, tmp) ||
+        uuid_parse(ri->ri_raft_uuid_str, tmp1) ||
+        !uuid_compare(tmp, tmp1))
         return -EINVAL;
 
     for (int i = RAFT_UDP_LISTEN_MIN; i < RAFT_UDP_LISTEN_MAX; i++)

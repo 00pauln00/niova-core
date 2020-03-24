@@ -68,8 +68,13 @@ struct ctl_svc_node_type_suffix ctlSvcNodeTypes[CTL_SVC_NODE_TYPE_MAX] =
     },
     [CTL_SVC_NODE_TYPE_RAFT_PEER] {
         .csnts_file_suffix = "peer",
-        .csnts_file_suffix_len = 5,
+        .csnts_file_suffix_len = 4,
         .csnts_type = CTL_SVC_NODE_TYPE_RAFT_PEER,
+    },
+    [CTL_SVC_NODE_TYPE_RAFT_CLIENT] {
+        .csnts_file_suffix = "raft_client",
+        .csnts_file_suffix_len = 11,
+        .csnts_type = CTL_SVC_NODE_TYPE_RAFT_CLIENT,
     },
     [CTL_SVC_NODE_TYPE_ANY] {
         .csnts_file_suffix = "", // This is effectively an invalid entry
@@ -107,6 +112,12 @@ ctlSvcNodeTypeTokens[CTL_SVC_NODE_TYPE_MAX][CT_ID__MAX] =
         CT_ID_PORT,
         CT_ID_CLIENT_PORT,
         CT_ID_HOSTNAME,
+    },
+    [CTL_SVC_NODE_TYPE_RAFT_CLIENT] = {
+        CT_ID_RAFT,
+        CT_ID_UUID,
+        CT_ID_IPADDR,
+        CT_ID_CLIENT_PORT,
     },
 };
 
@@ -358,7 +369,8 @@ ctl_svc_node_token_hndlr_RAFT(struct ctl_svc_node *csn,
     if (csn->csn_type == CTL_SVC_NODE_TYPE_RAFT)
         return ctl_svc_node_token_hndlr_UUID(csn, ct, val_buf, val_buf_sz);
 
-    else if (csn->csn_type != CTL_SVC_NODE_TYPE_RAFT_PEER)
+    else if (csn->csn_type != CTL_SVC_NODE_TYPE_RAFT_PEER &&
+             csn->csn_type != CTL_SVC_NODE_TYPE_RAFT_CLIENT)
         return -EOPNOTSUPP;
 
     else if (val_buf_sz > UUID_STR_LEN)

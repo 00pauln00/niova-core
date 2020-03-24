@@ -20,11 +20,15 @@
 #define CTL_SVC_MAX_RAFT_PEERS 11
 #define CTL_SVC_MIN_RAFT_PEERS 4
 
+/* Xxx In the case where suffixes are partially conflicting, place the longer
+ *     ones at lower values in the enum (this needs to be simplified).
+ */
 enum ctl_svc_node_type
 {
     CTL_SVC_NODE_TYPE_NIOSD,
-    CTL_SVC_NODE_TYPE_RAFT,
-    CTL_SVC_NODE_TYPE_RAFT_PEER,
+    CTL_SVC_NODE_TYPE_RAFT_PEER,   // ".peer"
+    CTL_SVC_NODE_TYPE_RAFT_CLIENT, // ".raft_client"
+    CTL_SVC_NODE_TYPE_RAFT,        // ".raft"
     CTL_SVC_NODE_TYPE_ANY,
     CTL_SVC_NODE_TYPE_MAX,
 };
@@ -86,6 +90,7 @@ ctl_svc_node_is_peer(const struct ctl_svc_node *csn)
 {
     return (csn &&
             (csn->csn_type == CTL_SVC_NODE_TYPE_NIOSD ||
+             csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT ||
              csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER)) ? true : false;
 }
 
