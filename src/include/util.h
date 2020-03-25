@@ -47,6 +47,16 @@ char name[UUID_STR_LEN];                        \
 }
 
 static inline void
+niova_uuid_2_uint64(const uuid_t uuid_in, uint64_t *high, uint64_t *low)
+{
+    if (high)
+        *high = *(const unsigned long long *)((const char *)&uuid_in[0]);
+
+    if (low)
+        *low = *(const unsigned long long *)((const char *)&uuid_in[8]);
+}
+
+static inline void
 niova_newline_to_string_terminator(char *string, const size_t max_len)
 {
     ssize_t len = strnlen(string, max_len);

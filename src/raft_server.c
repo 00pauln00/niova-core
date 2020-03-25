@@ -1109,9 +1109,6 @@ raft_server_send_msg(struct raft_instance *ri,
 
     struct udp_socket_handle *ush = &ri->ri_ush[sock_src];
 
-    if (sock_src == RAFT_UDP_LISTEN_SERVER)
-        raft_net_update_last_comm_time(ri, rp->csn_uuid, true);
-
     struct sockaddr_in dest;
     int rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(rp),
                                    ctl_svc_node_peer_2_port(rp), &dest);
@@ -1131,7 +1128,14 @@ raft_server_send_msg(struct raft_instance *ri,
 
     ssize_t size_rc = udp_socket_send(ush, &iov, 1, &dest);
 
-    return rc ? rc : size_rc;
+    if (size_rc < 0) // Return with system error here
+        return size_rc;
+
+    if (sock_src == RAFT_UDP_LISTEN_SERVER)
+        raft_net_update_last_comm_time(ri, rp->csn_uuid, true);
+
+    // Error if expected size was not produced
+    return size_rc == msg_size ? 0 : -ECOMM;
 }
 
 static void
@@ -1149,8 +1153,8 @@ raft_server_broadcast_msg(struct raft_instance *ri,
 
         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
 
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
-                                   strerror(rc));
+        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
+                                   "raft_server_send_msg(): %s", strerror(rc));
     }
 }
 

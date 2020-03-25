@@ -12,6 +12,8 @@
 #include "raft_net.h"
 #include "raft_test.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 #define OPTS "u:r:h"
 
 const char *raft_uuid_str;
@@ -20,7 +22,7 @@ const char *my_uuid_str;
 static struct random_data rand_data;
 static char rand_state_buf[RANDOM_STATE_BUF_LEN];
 
-#define RSC_TIMERFD_EXPIRE_MS 1000U
+#define RSC_TIMERFD_EXPIRE_MS 100U
 #define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 3U)
 
 /**
@@ -155,6 +157,53 @@ rsc_set_ping_target(struct raft_instance *ri)
     }
 }
 
+static int
+rsc_client_rpc_msg_init(struct raft_instance *ri,
+                        struct raft_client_rpc_msg *rcrm,
+                        enum raft_client_rpc_msg_type msg_type,
+                        uint16_t data_size, struct ctl_svc_node *dest_csn)
+{
+    if (!ri || !ri->ri_csn_raft || !rcrm || !dest_csn)
+        return -EINVAL;
+
+    else if (msg_type != RAFT_CLIENT_RPC_MSG_TYPE_PING &&
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_REQUEST)
+        return -EOPNOTSUPP;
+
+    else if (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REQUEST &&
+             (data_size == 0 ||
+              (data_size + sizeof(struct raft_client_rpc_msg) >
+               RAFT_NET_MAX_RPC_SIZE)))
+        return -EMSGSIZE;
+
+    memset(rcrm, 0, sizeof(struct raft_client_rpc_msg));
+
+    rcrm->rcrm_type = msg_type;
+    rcrm->rcrm_version = 0;
+    rcrm->rcrm_data_size = data_size;
+
+    uuid_copy(rcrm->rcrm_raft_id, ri->ri_csn_raft->csn_uuid);
+    uuid_copy(rcrm->rcrm_dest_id, dest_csn->csn_uuid);
+    uuid_copy(rcrm->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
+
+    // Generate the msg-id using our UUID as a base.
+    uint64_t uuid_int[2];
+    niova_uuid_2_uint64(ri->ri_csn_this_peer->csn_uuid, &uuid_int[0],
+                        &uuid_int[1]);
+
+    rcrm->rcrm_msg_id = uuid_int[0] ^ uuid_int[1] ^ random_get();
+
+    return 0;
+}
+
+static int
+rsc_client_rpc_ping_init(struct raft_instance *ri,
+                         struct raft_client_rpc_msg *rcrm)
+{
+    return rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_PING,
+                                   0, ri->ri_csn_leader);
+}
+
 /**
  * rsc_ping_raft_service - send a 'ping' to the raft leader or another node
  *    if our known raft leader is not responsive.  The ping will reply with
@@ -163,11 +212,28 @@ rsc_set_ping_target(struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_t
 rsc_ping_raft_service(struct raft_instance *ri)
 {
-    if (ri->ri_csn_leader)
+    if (!ri || !ri->ri_csn_leader)
         return;
 
-    DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_leader, "");
-    DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_this_peer, "");
+    DBG_SIMPLE_CTL_SVC_NODE(LL_DEBUG, ri->ri_csn_leader, "");
+
+    struct raft_client_rpc_msg rcrm;
+
+    int rc = rsc_client_rpc_ping_init(ri, &rcrm);
+    FATAL_IF((rc), "rsc_client_rpc_ping_init(): %s", strerror(-rc));
+
+    rc = raft_net_send_client_msg(ri, &rcrm);
+    if (rc)
+    {
+        struct sockaddr_in dest;
+        struct ctl_svc_node *csn = ri->ri_csn_leader;
+        int rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
+                                       ctl_svc_node_peer_2_client_port(csn),
+                                       &dest);
+
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, &rcrm, &dest,
+                            "raft_net_send_client_msg() %s", strerror(-rc));
+    }
 }
 
 /**
@@ -198,7 +264,7 @@ rsc_main_loop(struct raft_instance *ri)
         rc = epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);
         if (rc == -EINTR)
             rc = 0;
-    } while (rc > 0);
+    } while (rc >= 0);
 
     return rc;
 }

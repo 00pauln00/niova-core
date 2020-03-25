@@ -182,6 +182,8 @@ ctl_svc_node_type(const struct ctl_svc_node *csn)
             return 'R';
         case CTL_SVC_NODE_TYPE_RAFT_PEER:
             return 'r';
+        case CTL_SVC_NODE_TYPE_RAFT_CLIENT:
+            return 'c';
         default:
             break;
         }

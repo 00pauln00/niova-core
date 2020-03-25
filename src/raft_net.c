@@ -529,6 +529,49 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
 }
 
 int
+raft_net_send_client_msg(struct raft_instance *ri,
+                         struct raft_client_rpc_msg *rcrm)
+{
+    if (!ri || !ri->ri_csn_leader || !rcrm)
+        return -EINVAL;
+
+    const ssize_t msg_size =
+        sizeof(struct raft_client_rpc_msg) + rcrm->rcrm_data_size;
+
+    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
+        return -E2BIG;
+
+    struct ctl_svc_node *csn = ri->ri_csn_leader;
+    struct sockaddr_in dest;
+
+    int rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
+                                   ctl_svc_node_peer_2_client_port(csn),
+                                   &dest);
+    if (rc)
+    {
+        LOG_MSG(LL_NOTIFY, "udp_setup_sockaddr_in(): %s (peer=%s:%hu)",
+                strerror(-rc), ctl_svc_node_peer_2_ipaddr(csn),
+                ctl_svc_node_peer_2_client_port(csn));
+
+        return rc;
+    }
+
+    struct udp_socket_handle *ush = &ri->ri_ush[RAFT_UDP_LISTEN_CLIENT];
+
+    struct iovec iov[1] = {
+        [0].iov_len = msg_size,
+        [0].iov_base = (void *)rcrm,
+    };
+
+    ssize_t size_rc = udp_socket_send(ush, iov, 1, &dest);
+
+    if (size_rc == msg_size)
+        raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
+
+    return size_rc == msg_size ? 0 : -ECOMM;
+}
+
+int
 raft_net_verify_sender_client_msg(struct raft_instance *ri,
                                   const uuid_t sender_raft_uuid)
 {

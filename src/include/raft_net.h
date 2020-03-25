@@ -71,6 +71,7 @@ enum raft_client_rpc_msg_type
     RAFT_CLIENT_RPC_MSG_TYPE_REQUEST  = 1,
     RAFT_CLIENT_RPC_MSG_TYPE_REPLY    = 2,
     RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT = 3,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING     = 4,
     RAFT_CLIENT_RPC_MSG_TYPE_ANY      = 5,
 };
 
@@ -89,7 +90,11 @@ struct raft_client_rpc_msg
     uint64_t rcrm_msg_id;
     uuid_t   rcrm_raft_id;
     uuid_t   rcrm_sender_id;
-    uuid_t   rcrm_redirect_id;
+    union
+    {
+        uuid_t rcrm_dest_id;
+        uuid_t rcrm_redirect_id;
+    };
     int16_t  rcrm_app_error;
     int16_t  rcrm_sys_error;
     uint8_t  rcrm_pad[4];
@@ -143,6 +148,15 @@ struct raft_net_client_request
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
+                (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,           \
+                ##__VA_ARGS__);                                         \
+        break;                                                          \
+    case RAFT_CLIENT_RPC_MSG_TYPE_PING:                                 \
+        LOG_MSG(log_level,                                              \
+                "CLI-PING %s %s:%u id=%lx err=%hd:%hd "fmt,             \
+                __uuid_str,                                             \
+                inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
+                (rcm)->rcrm_msg_id,                                     \
                 (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,           \
                 ##__VA_ARGS__);                                         \
         break;                                                          \
@@ -200,5 +214,9 @@ raft_net_sockaddr_is_valid(const struct sockaddr_in *sockaddr)
     return memcmp(&null_sockaddr, sockaddr, sizeof(struct sockaddr_in)) ?
         false : true;
 }
+
+int
+raft_net_send_client_msg(struct raft_instance *ri,
+                         struct raft_client_rpc_msg *rcrm);
 
 #endif
