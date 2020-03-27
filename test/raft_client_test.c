@@ -16,14 +16,176 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define OPTS "u:r:h"
 
+#define SUCCESSFUL_PING_UNTIL_VIABLE 10
+
 const char *raft_uuid_str;
 const char *my_uuid_str;
 
-static struct random_data rand_data;
-static char rand_state_buf[RANDOM_STATE_BUF_LEN];
+static const struct ctl_svc_node *leaderCsn;
+static size_t                     leaderAliveCount;
+
+static struct random_data         randData;
+static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
 
 #define RSC_TIMERFD_EXPIRE_MS 100U
 #define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 3U)
+
+struct rsc_raft_test_info
+{
+    bool                        rtti_leader_is_viable;
+    bool                        rtti_initialized;
+    const uint32_t              rtti_random_seed;
+    struct timespec             rtti_last_request_sent;
+    struct timespec             rtti_last_request_ackd; // by leader
+    struct raft_test_values     rrti_committed;
+    // <---- Keep the below members intact ---->
+    struct raft_client_rpc_msg  rtti_rcrm;
+    struct raft_test_data_block rtti_rtdb;
+    char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+};
+
+/**
+ * The raft_client_test maintains only a single instance of
+ * rsc_raft_test_info - including the RPC request contents for read and write
+ * requests.  Read and write requests are completely serialized.  Pings,
+ * however, may run concurrently with read / write requests.
+ */
+static struct rsc_raft_test_info rRTI;
+
+static void
+rsc_set_initialized(void)
+{
+    NIOVA_ASSERT(!rRTI.rtti_initialized);
+    rRTI.rtti_initialized = true;
+}
+
+static bool
+rsc_is_initialized(void)
+{
+    return rRTI.rtti_initialized;
+}
+
+static void
+rsc_set_leader_viability(bool viable)
+{
+    rRTI.rtti_leader_is_viable = viable;
+}
+
+static bool
+rsc_leader_is_viable(void)
+{
+    return rRTI.rtti_leader_is_viable;
+}
+
+static uint64_t
+rsc_get_committed_seqno(void)
+{
+    return rRTI.rrti_committed.rtv_seqno;
+}
+
+static struct timespec *
+rsc_get_last_request_ackd(void)
+{
+    return &rRTI.rtti_last_request_ackd;
+}
+
+static struct raft_test_data_block *
+rsc_get_app_rtdb(void)
+{
+    return &rRTI.rtti_rtdb;
+}
+
+static struct raft_client_rpc_msg *
+rsc_get_app_rcrm(void)
+{
+    return &rRTI.rtti_rcrm;
+}
+
+static uint32_t
+rsc_get_random_seed(void)
+{
+    NIOVA_ASSERT(rRTI.rtti_random_seed);
+
+    return rRTI.rtti_random_seed;
+}
+
+/**
+ * rsc_get_pending_msg_id - obtain the unique message identifier from the last
+ *    RPC issued.
+ */
+static uint64_t
+rsc_get_pending_msg_id(void)
+{
+    return rRTI.rtti_rcrm.rcrm_msg_id;
+}
+
+static void
+rsc_init_global_raft_test_info(const struct raft_test_values *rtv)
+{
+    NIOVA_ASSERT(rtv && rtv->rtv_seqno > 0);
+    NIOVA_ASSERT(rsc_get_committed_seqno() == 0);
+
+    rRTI.rrti_committed = *rtv;
+
+    LOG_MSG(LL_WARN, "committed=%ld val=%ld",
+            rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
+}
+
+static void
+rsc_commit_rtv_to_raft_test_info(const struct raft_test_values *rtv)
+{
+    NIOVA_ASSERT(rtv);
+    NIOVA_ASSERT(rtv->rtv_seqno == rRTI.rrti_committed.rtv_seqno + 1);
+
+    if (!rRTI.rrti_committed.rtv_seqno)
+        NIOVA_ASSERT(!rRTI.rrti_committed.rtv_reply_xor_all_values);
+
+    rRTI.rrti_committed.rtv_seqno++;
+    rRTI.rrti_committed.rtv_reply_xor_all_values ^= rtv->rtv_request_value;
+
+    LOG_MSG(LL_WARN, "committed=%ld val=%ld",
+            rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
+}
+
+static void
+rsc_init_global_random_data(const struct random_data *rand_data,
+                            const char *rand_state_buf,
+                            size_t rand_state_buf_len)
+{
+    NIOVA_ASSERT(rand_data && rand_state_buf &&
+                  rand_state_buf_len == RANDOM_STATE_BUF_LEN);
+
+    randData = *rand_data;
+    memcpy(randStateBuf, rand_state_buf, RANDOM_STATE_BUF_LEN);
+}
+
+static void
+rsc_init_random_seed(const uuid_t self_uuid)
+{
+    NIOVA_ASSERT(!rRTI.rtti_random_seed);
+
+    // Generate the msg-id using our UUID as a base.
+    uint64_t uuid_int[2];
+    niova_uuid_2_uint64(self_uuid, &uuid_int[0], &uuid_int[1]);
+
+    const uint32_t *ptr = (const uint32_t *)&uuid_int;
+
+    CONST_OVERRIDE(uint32_t, rRTI.rtti_random_seed,
+                   (ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3]));
+
+    NIOVA_ASSERT(rRTI.rtti_random_seed);
+}
+
+static unsigned int
+rsc_random_get(struct random_data *rand_data)
+{
+    unsigned int result;
+
+    if (random_r(rand_data, (int *)&result))
+	SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
+
+    return result;
+}
 
 /**
  * rsc_random_init - create a private random generator which is only ever
@@ -32,96 +194,194 @@ static char rand_state_buf[RANDOM_STATE_BUF_LEN];
  *    be used here since it may be called elsewhere in the niova library.
  */
 static void
-rsc_random_init(void)
+rsc_random_init(struct random_data *rand_data, char *rand_state_buf)
 {
-    if (initstate_r(0, rand_state_buf, RANDOM_STATE_BUF_LEN,
-                    &rand_data))
+    if (initstate_r(rsc_get_random_seed(), rand_state_buf,
+                    RANDOM_STATE_BUF_LEN, rand_data))
         SIMPLE_LOG_MSG(LL_FATAL, "initstate_r() failed: %s", strerror(errno));
 }
 
-#if 0
-static unsigned int
-rsc_random_get(void)
+static int
+rsc_commit_seqno_validate(const struct raft_test_values *rtv,
+                          bool initialize_app)
 {
-    unsigned int result;
+    if (!rtv)
+        return -EINVAL;
 
-    if (random_r(&rand_data, (int *)&result))
-	SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
+    else if (!initialize_app && rtv->rtv_seqno > rsc_get_committed_seqno())
+        return -ERANGE;
 
-    return result;
-}
-#endif
+    uint64_t locally_generated_seq = 0;
 
-static void
-rsc_print_help(const int error, char **argv)
-{
-    fprintf(error ? stderr : stdout,
-            "Usage: %s -r UUID -n UUID\n", argv[0]);
+    struct random_data rand_data;
+    char rand_state_buf[RANDOM_STATE_BUF_LEN];
 
-    exit(error);
-}
+    rsc_random_init(&rand_data, rand_state_buf);
 
-static void
-rsc_getopt(int argc, char **argv)
-{
-    if (!argc || !argv)
-        return;
+    for (uint64_t i = 0; i < rtv->rtv_seqno; i++)
+        locally_generated_seq ^= rsc_random_get(&rand_data);
 
-    int opt;
+    if (locally_generated_seq != rtv->rtv_reply_xor_all_values)
+        return -EILSEQ;
 
-    while ((opt = getopt(argc, argv, OPTS)) != -1)
+    if (initialize_app)
     {
-        switch (opt)
-        {
-        case 'r':
-            raft_uuid_str = optarg;
-            break;
-	case 'u':
-            my_uuid_str = optarg;
-            break;
-        case 'h':
-            rsc_print_help(0, argv);
-            break;
-	default:
-            rsc_print_help(EINVAL, argv);
-            break;
-	}
+        rsc_init_global_random_data(&rand_data, rand_state_buf,
+                                    RANDOM_STATE_BUF_LEN);
+
+        rsc_init_global_raft_test_info(rtv);
+
+        rsc_set_initialized();
     }
 
-    if (!raft_uuid_str || !my_uuid_str)
-        rsc_print_help(EINVAL, argv);
+    return 0;
 }
 
-static void
-rsc_timerfd_settime(struct raft_instance *ri)
+static int
+rsc_bootstrap_committed_seqno(const struct raft_test_values *rtv)
+
 {
-    struct itimerspec its = {0};
+    if (rsc_get_committed_seqno())
+        return -EALREADY;
 
-    msec_2_timespec(&its.it_value, RSC_TIMERFD_EXPIRE_MS);
-
-    int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
-
-    FATAL_IF((rc), "timerfd_settime(): %s", strerror(errno));
+    return rsc_commit_seqno_validate(rtv, true);
 }
 
-static void
-rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
-                     ssize_t recv_bytes, const struct sockaddr_in *from)
+static raft_net_udp_cb_ctx_t
+rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
 {
-    if (recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
+    if (!rcrm)
+	return;
+
+    // This rtdb contains the original request contents
+    const struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+    // Assert that the msg id matches - it should have been checked prior
+    NIOVA_ASSERT(rcrm->rcrm_msg_id == rsc_get_pending_msg_id());
+    NIOVA_ASSERT(rtdb->rtdb_num_values > 0);
+    NIOVA_ASSERT(rtdb->rtdb_num_values <= RAFT_TEST_VALUES_MAX);
+
+    for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
+        rsc_commit_rtv_to_raft_test_info(&rtdb->rtdb_values[i]);
+}
+
+
+
+static raft_net_udp_cb_ctx_t
+rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
+{
+    if (!rcrm)
         return;
 
-    const struct raft_client_rpc_msg *rcrm =
-        (const struct raft_client_rpc_msg *)recv_buffer;
+    const struct raft_test_data_block *rtdb =
+        (const struct raft_test_data_block *)rcrm->rcrm_data;
 
-    struct ctl_svc_node *sender_csn =
-        raft_net_verify_sender_server_msg(ri, rcrm->rcrm_sender_id,
-                                          rcrm->rcrm_raft_id, from);
+    int16_t app_error = rcrm->rcrm_app_error;
 
-    if (!sender_csn)
+    DBG_RAFT_TEST_DATA_BLOCK((app_error ? LL_WARN : LL_NOTIFY), rtdb,
+                             "app-error=%s",
+                             app_error ? strerror(-app_error) : "OK");
+    if (app_error)
+    {
+        if (app_error == -ENOENT)
+            rsc_set_initialized();
+
         return;
+    }
 
-    raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
+    int rc = 0;
+
+    if (!rsc_get_committed_seqno()) // Capture current value from raft service
+    {
+        rc = rsc_bootstrap_committed_seqno(&rtdb->rtdb_values[0]);
+        FATAL_IF((rc), "rsc_bootstrap_committed_seqno(): %s", strerror(-rc));
+    }
+    else
+    {
+        rc = rsc_commit_seqno_validate(&rtdb->rtdb_values[0], false);
+        FATAL_IF((rc), "rsc_commit_seqno_validate(): %s", strerror(-rc));
+    }
+}
+
+static raft_net_udp_cb_ctx_t
+rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
+                                   const struct raft_client_rpc_msg *rcrm,
+                                   const struct ctl_svc_node *sender_csn,
+                                   const struct sockaddr_in *from)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_leader && sender_csn && from);
+
+    if (sender_csn != ri->ri_csn_leader)
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+                            "reply is not from leader");
+        return;
+    }
+    else if (rcrm->rcrm_data_size < sizeof(struct raft_test_data_block))
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "invalid reply size %hu",
+                            rcrm->rcrm_data_size);
+        return;
+    }
+    else if (rcrm->rcrm_msg_id != rsc_get_pending_msg_id())
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+                            "wrong msg-id, expected %lx",
+                            rsc_get_pending_msg_id());
+        return;
+    }
+
+    // Verify that we're the intended recipient.
+    const struct raft_test_data_block *rtdb =
+        (const struct raft_test_data_block *)rcrm->rcrm_data;
+
+    if (uuid_compare(rtdb->rtdb_client_uuid, ri->ri_csn_this_peer->csn_uuid))
+    {
+        char wrong_uuid[UUID_STR_LEN] = {0};
+
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+                            "wrong rtdb_client_uuid %s", wrong_uuid);
+        return;
+    }
+
+    // Ensure the operation type is valid.
+    if (rtdb->rtdb_op != RAFT_TEST_DATA_OP_READ &&
+        rtdb->rtdb_op != RAFT_TEST_DATA_OP_WRITE)
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "invalid rtdb_op=%hu",
+                            rtdb->rtdb_op);
+        return;
+    }
+
+    // Verify the size per the operation type.
+    const size_t expected_size =
+        (sizeof(struct raft_test_data_block) +
+         rtdb->rtdb_num_values * sizeof(struct raft_test_values));
+
+    const uint16_t expected_num_values =
+        rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ ? 1 : 0;
+
+    if (rtdb->rtdb_num_values != expected_num_values)
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+                            "rtdb %s has invalid rtdb_num_values %hu",
+                            raft_test_data_op_2_string(rtdb->rtdb_op),
+                            rtdb->rtdb_num_values);
+        return;
+    }
+    else if (rcrm->rcrm_data_size != expected_size)
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+                            "incorrect rcrm_data_size %s op, expected %zd",
+                            raft_test_data_op_2_string(rtdb->rtdb_op),
+                            expected_size);
+        return;
+    }
+
+    // Execute the application specific reply handler.
+    return rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ ?
+        rsc_process_read_reply(rcrm) :
+        rsc_process_write_reply(rcrm);
 }
 
 static bool
@@ -137,14 +397,137 @@ rsc_server_target_is_stale(const struct raft_instance *ri,
     return (rc || recency_ms > RSC_STALE_SERVER_TIME_MS) ? true : false;
 }
 
+static raft_net_udp_cb_ctx_t
+rsc_update_leader_from_redirect(struct raft_instance *ri,
+                                const struct sockaddr_in *from,
+                                const struct raft_client_rpc_msg *rcrm)
+{
+    if (!ri || !rcrm)
+        return;
+
+    raft_peer_t leader_idx = raft_peer_2_idx(ri, rcrm->rcrm_redirect_id);
+
+    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rcrm, from,
+                        "redirect to new leader idx=%hhu", leader_idx);
+
+    if (leader_idx > CTL_SVC_MAX_RAFT_PEERS)
+        return;
+
+    ri->ri_csn_leader = ri->ri_csn_raft_peers[leader_idx];
+
+    if (rsc_server_target_is_stale(ri, rcrm->rcrm_redirect_id))
+        timespec_clear(&ri->ri_last_send[leader_idx]); // "unstale" the leader
+
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+}
+
+static raft_net_udp_cb_ctx_t
+rsc_process_ping_reply(const struct raft_client_rpc_msg *rcrm,
+                       const struct ctl_svc_node *sender_csn)
+{
+    if (!rcrm || !sender_csn)
+        return;
+
+    if (sender_csn != leaderCsn)
+    {
+        leaderCsn = NULL;
+        leaderAliveCount = 0;
+        rsc_set_leader_viability(false);
+    }
+
+    switch (rcrm->rcrm_sys_error)
+    {
+    case 0:
+        leaderAliveCount++;
+        if (!leaderCsn)
+            leaderCsn = sender_csn;
+
+        if (!rsc_leader_is_viable() &&
+            leaderAliveCount > SUCCESSFUL_PING_UNTIL_VIABLE)
+            rsc_set_leader_viability(true);
+        break;
+    case -EINPROGRESS: // fall through
+    case -EAGAIN:      // fall through
+    case -EBUSY:
+        leaderAliveCount = 0;
+        rsc_set_leader_viability(false);
+        break;
+    case -ENOENT: // fall through
+    case -ENOSYS:
+        leaderCsn = NULL;
+        leaderAliveCount = 0;
+        rsc_set_leader_viability(false);
+    default:
+        break;
+    }
+}
+
+static raft_net_udp_cb_ctx_t
+rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
+                     ssize_t recv_bytes, const struct sockaddr_in *from)
+{
+    if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
+        recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
+        return;
+
+    const struct raft_client_rpc_msg *rcrm =
+        (const struct raft_client_rpc_msg *)recv_buffer;
+
+//Xxx need a stricter check on the msg contents
+    struct ctl_svc_node *sender_csn =
+        raft_net_verify_sender_server_msg(ri, rcrm->rcrm_sender_id,
+                                          rcrm->rcrm_raft_id, from);
+    if (!sender_csn)
+        return;
+
+    DBG_RAFT_CLIENT_RPC(
+        (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG), rcrm, from, "%s",
+        rcrm->rcrm_sys_error ?
+        raft_net_client_rpc_sys_error_2_string(rcrm->rcrm_sys_error) : "");
+
+    raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
+
+    if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
+    {
+        rsc_process_ping_reply(rcrm, sender_csn);
+    }
+    else if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT)
+    {
+        rsc_update_leader_from_redirect(ri, from, rcrm);
+    }
+    else if (!rcrm->rcrm_sys_error &&
+             rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
+    {
+        /* Copy the last_recv timestamp taken above.  This is used to track
+         * the liveness of the leader.
+         */
+        int rc = raft_net_comm_get_last_recv(ri, rcrm->rcrm_sender_id,
+                                             rsc_get_last_request_ackd());
+        FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
+
+        rsc_udp_recv_handler_process_reply(ri, rcrm, sender_csn, from);
+    }
+}
+
+static bool
+rsc_ping_target_is_stale(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    return (!ri->ri_csn_leader ||
+            rsc_server_target_is_stale(ri, ri->ri_csn_leader->csn_uuid)) ?
+        true : false;
+}
+
 static void
 rsc_set_ping_target(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    if (!ri->ri_csn_leader ||
-        rsc_server_target_is_stale(ri, ri->ri_csn_leader->csn_uuid))
+    if (rsc_ping_target_is_stale(ri))
     {
+        rsc_set_leader_viability(false);
+
         raft_peer_t target = raft_net_get_most_recently_responsive_server(ri);
 
         NIOVA_ASSERT(target <
@@ -187,11 +570,8 @@ rsc_client_rpc_msg_init(struct raft_instance *ri,
     uuid_copy(rcrm->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
     // Generate the msg-id using our UUID as a base.
-    uint64_t uuid_int[2];
-    niova_uuid_2_uint64(ri->ri_csn_this_peer->csn_uuid, &uuid_int[0],
-                        &uuid_int[1]);
-
-    rcrm->rcrm_msg_id = uuid_int[0] ^ uuid_int[1] ^ random_get();
+    rcrm->rcrm_msg_id =
+        ((uint64_t)rsc_get_random_seed() << 32) | random_get();
 
     return 0;
 }
@@ -236,17 +616,196 @@ rsc_ping_raft_service(struct raft_instance *ri)
     }
 }
 
+static void
+rsc_timerfd_settime(struct raft_instance *ri)
+{
+    struct itimerspec its = {0};
+
+    msec_2_timespec(&its.it_value, RSC_TIMERFD_EXPIRE_MS);
+
+    int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
+
+    FATAL_IF((rc), "timerfd_settime(): %s", strerror(errno));
+}
+
+static raft_net_timerfd_cb_ctx_t
+rsc_setup_read_request(struct raft_instance *ri)
+{
+    if (!ri)
+        return;
+
+    struct raft_client_rpc_msg *rcrm = rsc_get_app_rcrm();
+    struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+    rtdb->rtdb_op = RAFT_TEST_DATA_OP_READ;
+    rtdb->rtdb_num_values = 0;
+
+    int rc =
+        rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
+                                sizeof(*rtdb), ri->ri_csn_leader);
+    NIOVA_ASSERT(!rc);
+}
+
+static raft_net_timerfd_cb_ctx_t
+rsc_setup_write_request(struct raft_instance *ri)
+{
+    if (!ri)
+        return;
+
+    struct raft_client_rpc_msg *rcrm = rsc_get_app_rcrm();
+    struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+    rtdb->rtdb_op = RAFT_TEST_DATA_OP_WRITE;
+    rtdb->rtdb_num_values = 1;
+
+    for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
+    {
+        struct raft_test_values *rtv = &rtdb->rtdb_values[i];
+
+        rtv->rtv_seqno = rsc_get_committed_seqno() + 1;
+        rtv->rtv_request_value = rsc_random_get(&randData);
+    }
+
+    const size_t request_size =
+        sizeof(*rtdb) + (rtdb->rtdb_num_values *
+                         sizeof(struct raft_test_values));
+
+    int rc =
+        rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
+                                request_size, ri->ri_csn_leader);
+    NIOVA_ASSERT(!rc);
+}
+
+static raft_net_timerfd_cb_ctx_t
+rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
+{
+    if (!ri ||
+        (op != RAFT_TEST_DATA_OP_READ && op != RAFT_TEST_DATA_OP_WRITE))
+        return;
+
+    if (op == RAFT_TEST_DATA_OP_WRITE)
+        NIOVA_ASSERT(rsc_is_initialized());
+
+    struct raft_client_rpc_msg *rcrm = rsc_get_app_rcrm();
+    struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+    uuid_copy(rtdb->rtdb_client_uuid, ri->ri_csn_this_peer->csn_uuid);
+
+    const struct raft_test_values *possible_pending_rtv =
+        &rtdb->rtdb_values[0];
+
+    // If there's a pending write, resend it
+    if (rtdb->rtdb_op == RAFT_TEST_DATA_OP_WRITE &&
+        possible_pending_rtv->rtv_seqno > rsc_get_committed_seqno())
+    {
+        NIOVA_ASSERT(rsc_is_initialized());
+        NIOVA_ASSERT(possible_pending_rtv->rtv_seqno ==
+                     (rsc_get_committed_seqno() + 1));
+
+        struct sockaddr_in dest;
+        struct ctl_svc_node *csn = ri->ri_csn_leader;
+        udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
+                              ctl_svc_node_peer_2_client_port(csn),
+                              &dest);
+
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, &dest, "resend write request");
+    }
+    else if (op == RAFT_TEST_DATA_OP_WRITE)
+    {
+        rsc_setup_write_request(ri);
+    }
+    else
+    {
+        rsc_setup_read_request(ri);
+    }
+
+    int rc = raft_net_send_client_msg(ri, rcrm);
+    if (rc)
+    {
+        struct sockaddr_in dest;
+        struct ctl_svc_node *csn = ri->ri_csn_leader;
+        rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
+                                   ctl_svc_node_peer_2_client_port(csn),
+                                   &dest);
+
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, &dest,
+                            "raft_net_send_client_msg() %s", strerror(-rc));
+    }
+}
+
 /**
  * rsc_timerfd_cb - callback which is run when the timer_fd expires.
  */
 static raft_net_timerfd_cb_ctx_t
 rsc_timerfd_cb(struct raft_instance *ri)
 {
-    rsc_set_ping_target(ri);
-    rsc_ping_raft_service(ri);
+    static size_t exec_cnt;
+
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "rsc_leader_is_viable(): %s",
+                      rsc_leader_is_viable() ? "yes" : "no");
+
+    if (!rsc_leader_is_viable() || !(exec_cnt % 3))
+    {
+        rsc_set_ping_target(ri);
+        rsc_ping_raft_service(ri);
+    }
+    else
+    {
+        if (rsc_is_initialized())
+        {
+            if (!rsc_get_committed_seqno())
+                rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_WRITE);
+        }
+        else
+        {
+            rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_READ);
+        }
+    }
 
     // Reset the timer before returning.
     rsc_timerfd_settime(ri);
+
+    exec_cnt++;
+}
+
+static void
+rsc_print_help(const int error, char **argv)
+{
+    fprintf(error ? stderr : stdout,
+            "Usage: %s -r UUID -n UUID\n", argv[0]);
+
+    exit(error);
+}
+
+static void
+rsc_getopt(int argc, char **argv)
+{
+    if (!argc || !argv)
+        return;
+
+    int opt;
+
+    while ((opt = getopt(argc, argv, OPTS)) != -1)
+    {
+        switch (opt)
+        {
+        case 'r':
+            raft_uuid_str = optarg;
+            break;
+	case 'u':
+            my_uuid_str = optarg;
+            break;
+        case 'h':
+            rsc_print_help(0, argv);
+            break;
+	default:
+            rsc_print_help(EINVAL, argv);
+            break;
+	}
+    }
+
+    if (!raft_uuid_str || !my_uuid_str)
+        rsc_print_help(EINVAL, argv);
 }
 
 static int
@@ -276,7 +835,6 @@ main(int argc, char **argv)
 
     rsc_getopt(argc, argv);
 
-    rsc_random_init();
 
     raft_client_instance.ri_raft_uuid_str = raft_uuid_str;
     raft_client_instance.ri_this_peer_uuid_str = my_uuid_str;
@@ -291,6 +849,10 @@ main(int argc, char **argv)
                        strerror(-rc));
         exit(-rc);
     }
+
+    rsc_init_random_seed(raft_client_instance.ri_csn_this_peer->csn_uuid);
+
+    rsc_random_init(&randData, randStateBuf);
 
     rc = rsc_main_loop(&raft_client_instance);
 

@@ -609,6 +609,23 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
 }
 
 int
+raft_net_comm_get_last_recv(struct raft_instance *ri, const uuid_t peer_uuid,
+                            struct timespec *ts)
+{
+    if (!ri || !ts || uuid_is_null(peer_uuid))
+        return -EINVAL;
+
+    const raft_peer_t peer_idx = raft_peer_2_idx(ri, peer_uuid);
+
+    if (peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
+	return -ERANGE;
+
+    *ts = ri->ri_last_recv[peer_idx];
+
+    return 0;
+}
+
+int
 raft_net_comm_recency(const struct raft_instance *ri,
                       raft_peer_t raft_peer_idx,
                       enum raft_net_comm_recency_type type,

@@ -286,23 +286,29 @@ rst_sm_handler_read(struct raft_net_client_request *rncr)
         return -ENOSPC;
 
     const struct raft_client_rpc_msg *rrm = rncr->rncr_request;
-    const struct raft_test_data_block *rtdb =
+    const struct raft_test_data_block *src_rtdb =
         (const struct raft_test_data_block *)rrm->rcrm_data;
 
     struct rst_sm_node *rst_sm =
-        rst_sm_node_lookup(rtdb->rtdb_client_uuid, false);
+        rst_sm_node_lookup(src_rtdb->rtdb_client_uuid, false);
+
+    reply->rcrm_data_size = (sizeof(struct raft_test_data_block) +
+                             sizeof(struct raft_test_values));
+
+    struct raft_test_data_block *dest_rtdb =
+        (struct raft_test_data_block *)reply->rcrm_data;
+
+    dest_rtdb->rtdb_op = RAFT_TEST_DATA_OP_READ;
+    dest_rtdb->rtdb_num_values = 1; //regardless of error
+
+    uuid_copy(dest_rtdb->rtdb_client_uuid, src_rtdb->rtdb_client_uuid);
 
     if (!rst_sm)
-    {
         reply->rcrm_app_error = -ENOENT;
-    }
-    else
-    {
-        reply->rcrm_data_size = sizeof(struct raft_test_values);
 
-        memcpy(reply->rcrm_data, &rst_sm->smn_app.smna_committed,
+    else
+        memcpy(&dest_rtdb->rtdb_values[0], &rst_sm->smn_app.smna_committed,
                sizeof(struct raft_test_values));
-    }
 
     return 0;
 }
@@ -338,7 +344,7 @@ rst_sm_handler_verify_request_and_set_type(
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)request->rcrm_data;
 
-    DBG_RAFT_TEST_DATA_BLOCK(LL_DEBUG, rtdb, "");
+    DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, rtdb, "");
 
     /* Check the UUID inside the payload - only the payload will be written
      * into raft so it's vital to ensure the UUID matches that of the sender.

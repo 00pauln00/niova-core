@@ -137,6 +137,13 @@ niova_newline_to_string_terminator(char *string, const size_t max_len)
     } while (0)
 #endif
 
+static inline void
+timespec_clear(struct timespec *ts)
+{
+    if (ts)
+        ts->tv_sec = ts->tv_nsec = 0;
+}
+
 static inline unsigned long long
 msec_2_nsec(unsigned long long msec)
 {

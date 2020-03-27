@@ -10,10 +10,11 @@
 #include "common.h"
 #include "log.h"
 
-#define OPTS "s:hn:"
+#define OPTS "s:hn:v"
 
 static unsigned int seed = ID_ANY_32bit;
 static uint64_t     seqno = 10000;
+static bool         verbose = false;
 
 static void
 randtest_print_help(const int error, char **argv)
@@ -27,7 +28,7 @@ randtest_print_help(const int error, char **argv)
 static void
 randtest_getopt(int argc, char **argv)
 {
-      if (!argc || !argv)
+    if (!argc || !argv)
 	return;
 
     int opt;
@@ -44,6 +45,9 @@ randtest_getopt(int argc, char **argv)
             break;
         case 'n':
             seqno = atoll(optarg);
+            break;
+        case 'v':
+            verbose = true;
             break;
 	default:
             randtest_print_help(EINVAL, argv);
@@ -66,7 +70,12 @@ main(int argc, char **argv)
     unsigned int val = 0;
 
     for (uint64_t i = 0; i < seqno; i++)
+    {
         val = random_get();
+        if (verbose)
+            fprintf(stdout, "\ti=%04lx seqno=%lu rand-val=%08u\n",
+                    i, seqno, val);
+    }
 
     fprintf(stdout, "seqno=%lu rand-val=%08u\n", seqno, val);
 }

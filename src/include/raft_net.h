@@ -67,12 +67,13 @@ enum raft_udp_listen_sockets
 
 enum raft_client_rpc_msg_type
 {
-    RAFT_CLIENT_RPC_MSG_TYPE_INVALID  = 0,
-    RAFT_CLIENT_RPC_MSG_TYPE_REQUEST  = 1,
-    RAFT_CLIENT_RPC_MSG_TYPE_REPLY    = 2,
-    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT = 3,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING     = 4,
-    RAFT_CLIENT_RPC_MSG_TYPE_ANY      = 5,
+    RAFT_CLIENT_RPC_MSG_TYPE_INVALID    = 0,
+    RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
+    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 2,
+    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 3,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 4,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 5,
+    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 6,
 };
 
 enum raft_net_comm_recency_type
@@ -127,7 +128,7 @@ struct raft_net_client_request
     {                                                                   \
     case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                              \
         LOG_MSG(log_level,                                              \
-                "CLI-REQ %s %s:%u id=%lx sz=%hu "fmt,                   \
+                "CLI-REQ   %s %s:%u id=%lx sz=%hu "fmt,                 \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
@@ -136,7 +137,7 @@ struct raft_net_client_request
     case RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT:                             \
         uuid_unparse((rcm)->rcrm_redirect_id, __redir_uuid_str);        \
         LOG_MSG(log_level,                                              \
-                "CLI-REDIR %s %s:%u id=%lx sz=%hu redir-to=%s "fmt,     \
+                "CLI-RDIR  %s %s:%u id=%lx sz=%hu redir-to=%s "fmt,     \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
@@ -144,23 +145,52 @@ struct raft_net_client_request
         break;                                                          \
     case RAFT_CLIENT_RPC_MSG_TYPE_REPLY:                                \
         LOG_MSG(log_level,                                              \
-                "CLI-REP %s %s:%u id=%lx sz=%hu err=%hd:%hd "fmt,       \
+                "CLI-REPL  %s %s:%u id=%lx sz=%hu err=%hd:%hd "fmt,     \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
                 (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,           \
                 ##__VA_ARGS__);                                         \
         break;                                                          \
-    case RAFT_CLIENT_RPC_MSG_TYPE_PING:                                 \
+    case RAFT_CLIENT_RPC_MSG_TYPE_PING:        /* fall through */       \
+    case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                           \
         LOG_MSG(log_level,                                              \
-                "CLI-PING %s %s:%u id=%lx err=%hd:%hd "fmt,             \
+                "CLI-%s %s %s:%u id=%lx err=%hd:%hd "fmt,               \
+                (rcm)->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY ? \
+                "PREPL" : "PING ",                                      \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id,                                     \
                 (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,           \
                 ##__VA_ARGS__);                                         \
         break;                                                          \
+    default:                                                            \
+        break;                                                          \
     }                                                                   \
+}
+
+static inline char *
+raft_net_client_rpc_sys_error_2_string(const int rc)
+{
+    switch (rc)
+    {
+    case 0:
+        return "accept";
+    case -ENOENT:
+        return "deny-leader-not-established";
+    case -EINPROGRESS:
+        return "deny-boot-in-progress";
+    case -ENOSYS:
+        return "redirect-to-leader";
+    case -EAGAIN:
+        return "deny-may-be-deposed";
+    case -EBUSY:
+        return "deny-determining-commit-index";
+    default:
+        break;
+    }
+
+    return "unknown";
 }
 
 int
@@ -196,6 +226,10 @@ raft_net_verify_sender_client_msg(struct raft_instance *ri,
 void
 raft_net_update_last_comm_time(struct raft_instance *ri,
                                const uuid_t peer_uuid, bool send_or_recv);
+
+int
+raft_net_comm_get_last_recv(struct raft_instance *ri, const uuid_t peer_uuid,
+                            struct timespec *ts);
 
 raft_peer_t
 raft_net_get_most_recently_responsive_server(const struct raft_instance *ri);

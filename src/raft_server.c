@@ -2669,25 +2669,7 @@ raft_server_may_accept_client_request_reason(const struct raft_instance *ri)
 {
     int rc = raft_server_may_accept_client_request(ri);
 
-    switch (rc)
-    {
-    case 0:
-        return "accept";
-    case -ENOENT:
-        return "deny-leader-not-established";
-    case -EINPROGRESS:
-        return "deny-boot-in-progress";
-    case -ENOSYS:
-        return "redirect-to-leader";
-    case -EAGAIN:
-        return "deny-may-be-deposed";
-    case -EBUSY:
-        return "deny-determining-commit-index";
-    default:
-        break;
-    }
-
-    return "unknown";
+    return raft_net_client_rpc_sys_error_2_string(rc);
 }
 
 static raft_net_udp_cb_ctx_t
@@ -2746,7 +2728,11 @@ raft_server_udp_client_reply_init(const struct raft_instance *ri,
     uuid_copy(reply->rcrm_raft_id, ri->ri_csn_raft->csn_uuid);
     uuid_copy(reply->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
-    reply->rcrm_type = RAFT_CLIENT_RPC_MSG_TYPE_REPLY;
+    reply->rcrm_type = (rncr->rncr_request->rcrm_type ==
+                        RAFT_CLIENT_RPC_MSG_TYPE_PING) ?
+        RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY :
+        RAFT_CLIENT_RPC_MSG_TYPE_REPLY;
+
     reply->rcrm_msg_id = rncr->rncr_request->rcrm_msg_id;
 }
 
@@ -2787,6 +2773,9 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     int rc = raft_server_may_accept_client_request(ri);
     if (rc)
         return raft_server_udp_client_deny_request(ri, &rncr, rc);
+
+    if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
+        return raft_server_reply_to_client(ri, &rncr);
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
