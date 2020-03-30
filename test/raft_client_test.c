@@ -27,7 +27,7 @@ static size_t                     leaderAliveCount;
 static struct random_data         randData;
 static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
 
-#define RSC_TIMERFD_EXPIRE_MS 10U
+#define RSC_TIMERFD_EXPIRE_MS 1U
 #define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 3U)
 
 struct rsc_raft_test_info
@@ -117,6 +117,12 @@ static uint64_t
 rsc_get_pending_msg_id(void)
 {
     return rRTI.rtti_rcrm.rcrm_msg_id;
+}
+
+static void
+rsc_clear_pending_msg_id(void)
+{
+    rRTI.rtti_rcrm.rcrm_msg_id = 0;
 }
 
 static unsigned int
@@ -265,6 +271,14 @@ rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
     // This rtdb contains the original request contents
     const struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
 
+    if (rcrm->rcrm_sys_error || rcrm->rcrm_app_error)
+    {
+        DBG_RAFT_TEST_DATA_BLOCK(LL_WARN, rtdb, "sys=%s, app=%s",
+                                 strerror(-rcrm->rcrm_sys_error),
+                                 strerror(-rcrm->rcrm_app_error));
+        return;
+    }
+
     // Assert that the msg id matches - it should have been checked prior
     NIOVA_ASSERT(rcrm->rcrm_msg_id == rsc_get_pending_msg_id());
     NIOVA_ASSERT(rtdb->rtdb_num_values > 0);
@@ -273,8 +287,6 @@ rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
     for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
         rsc_commit_rtv_to_raft_test_info(&rtdb->rtdb_values[i]);
 }
-
-
 
 static raft_net_udp_cb_ctx_t
 rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
@@ -392,9 +404,12 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     }
 
     // Execute the application specific reply handler.
-    return rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ ?
-        rsc_process_read_reply(rcrm) :
+    if (rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ)
+        rsc_process_read_reply(rcrm);
+    else
         rsc_process_write_reply(rcrm);
+
+    rsc_clear_pending_msg_id();
 }
 
 static bool
@@ -775,7 +790,7 @@ rsc_timerfd_cb(struct raft_instance *ri)
             }
             else
             {
-                if (!(exec_cnt % 127))
+                if (!(exec_cnt % 31))
                     rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_READ);
                 else
                     rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_WRITE);

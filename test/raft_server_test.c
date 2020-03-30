@@ -51,6 +51,12 @@ REF_TREE_GENERATE(rst_sm_node_tree, rst_sm_node, smn_rtentry, rst_sm_node_cmp);
 
 static struct rst_sm_node_tree smNodeTree;
 
+static void
+rst_sm_node_put(struct rst_sm_node *sm)
+{
+    RT_PUT(rst_sm_node_tree, &smNodeTree, sm);
+}
+
 static struct rst_sm_node *
 rst_sm_node_lookup(const uuid_t lookup_uuid, const bool add)
 {
@@ -78,12 +84,9 @@ rst_sm_check_or_apply_values(struct rst_sm_node *sm,
     {
         const struct raft_test_values *new_rtv = &rtdb->rtdb_values[i];
 
-        DBG_RAFT_TEST_DATA_BLOCK(
-            LL_NOTIFY, rtdb,
-            "exseqno=%lu nseqno:val=%lu:%lu check=%d i=%hu",
-            sm_rtv->rtv_seqno, new_rtv->rtv_seqno, new_rtv->rtv_request_value,
-            check, i);
-
+        DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, rtdb,
+                                 "committed-seqno=%lu check=%d i=%hu",
+                                 sm_rtv->rtv_seqno, check, i);
         if (check)
         {
             if ((sm_rtv->rtv_seqno + 1 + i) != new_rtv->rtv_seqno)
@@ -160,7 +163,8 @@ static int
 rst_sm_handler_commit(struct raft_net_client_request *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_commit_data && rncr->rncr_reply &&
-                 rncr->rncr_reply_data_max_size <= RAFT_NET_MAX_RPC_SIZE);
+                 rncr->rncr_reply_data_max_size <= RAFT_NET_MAX_RPC_SIZE &&
+                 !rncr->rncr_write_raft_entry);
 
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)rncr->rncr_commit_data;
@@ -224,22 +228,15 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
     NIOVA_ASSERT(rncr && rncr->rncr_request && rncr->rncr_is_leader &&
                  rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE);
 
+    // Defaut to 'false'
+    rncr->rncr_write_raft_entry = false;
+
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
     // Map the raft_test_data_block from the request data
     const struct raft_client_rpc_msg *request = rncr->rncr_request;
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)request->rcrm_data;
-
-    // Map the last rtv in the array after verify range
-    const uint16_t num_rtv = rtdb->rtdb_num_values;
-
-    if (!num_rtv || num_rtv > RAFT_TEST_VALUES_MAX)
-    {
-        reply->rcrm_app_error = -EINVAL;
-        return -EINVAL;
-    }
-    const struct raft_test_values *last_rtv = &rtdb->rtdb_values[num_rtv - 1];
 
     // State machine app info
     struct rst_sm_node *rst_sm =
@@ -249,20 +246,32 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
 
     if (!rst_sm) // Malloc failure
     {
-        reply->rcrm_sys_error = -ENOMEM;
+        rncr->rncr_op_error = -ENOMEM;
         return -ENOMEM;
     }
+
+    // Initialize the reply here, pessimistically, for all error types.
+    int rc = rst_sm_reply_init(reply, rst_sm->smn_uuid,
+                               RAFT_TEST_DATA_OP_WRITE, NULL, 0);
+    FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
+
+    // Map the last rtv in the array after verify range
+    const uint16_t num_rtv = rtdb->rtdb_num_values;
+
+    if (!num_rtv || num_rtv > RAFT_TEST_VALUES_MAX)
+    {
+        reply->rcrm_app_error = -EINVAL;
+        goto out;
+    }
+    const struct raft_test_values *last_rtv = &rtdb->rtdb_values[num_rtv - 1];
 
     if (last_rtv->rtv_seqno <= sma->smna_committed.rtv_seqno)
     {
         /* Client sees 'ok', return an error to the caller so that this
          * request does not land in the log.
          */
-        int rc = rst_sm_reply_init(reply, rst_sm->smn_uuid,
-                                   RAFT_TEST_DATA_OP_WRITE, NULL, 0);
-        FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
-
-        return -EALREADY;
+        rncr->rncr_op_error = -EALREADY;
+        goto out;
     }
 
     /* The pending info this in this item was written by self in the current
@@ -297,26 +306,32 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
 
         if (reply->rcrm_app_error)
         {
+            rncr->rncr_op_error = reply->rcrm_app_error;
+
             DBG_RAFT_TEST_DATA_BLOCK(
                 LL_NOTIFY, rtdb,
                 "pending-seqno=%lu lrtv-seqno=%lu err=%s",
                 sma->smna_pending.rtv_seqno, last_rtv->rtv_seqno,
                 strerror(-reply->rcrm_app_error));
 
-            return reply->rcrm_app_error;
+            goto out;
         }
     }
 
     /* Ensure the sequence of this request is correct.  This could happen
      * if the client was buggy and issued an out-of-order request.
      */
-    int rc = rst_sm_check_values(rst_sm, rtdb);
+    rc = rst_sm_check_values(rst_sm, rtdb);
     if (rc)
     {
-         reply->rcrm_app_error = rc;
+        rncr->rncr_op_error = rc;
+        reply->rcrm_app_error = rc;
     }
     else
     {
+        // Success, entry may go into the raft log.
+        rncr->rncr_write_raft_entry = true;
+
         // Store some context for the reply (which will happen later)
         sma->smna_pending_msg_id = request->rcrm_msg_id;
         sma->smna_pending_entry_term = rncr->rncr_current_term;
@@ -327,6 +342,8 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
     DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, rtdb, "msg-id=%lx term=%lu rc=%s",
                              request->rcrm_msg_id, rncr->rncr_current_term,
                              strerror(-rc));
+out:
+    rst_sm_node_put(rst_sm);
 
     return rc;
 }
@@ -335,7 +352,8 @@ static int
 rst_sm_handler_read(struct raft_net_client_request *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_request &&
-                 rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_READ);
+                 rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_READ &&
+                 !rncr->rncr_write_raft_entry);
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 

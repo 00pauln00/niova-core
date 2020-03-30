@@ -2777,6 +2777,8 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
 
     struct raft_net_client_request rncr = {
         .rncr_type = RAFT_NET_CLIENT_REQ_TYPE_NONE, // will be reset by cb
+        .rncr_write_raft_entry = false,
+        .rncr_op_error = 0,
         .rncr_is_leader = raft_instance_is_leader(ri) ? true : false,
         .rncr_entry_term = ri->ri_log_hdr.rlh_term,
         .rncr_current_term = ri->ri_log_hdr.rlh_term,
@@ -2812,8 +2814,15 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;
 
-    DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "wr=%d cb_rc=%s",
-                        write_op, cb_rc ? strerror(-cb_rc) : "OK");
+    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
+
+    DBG_RAFT_CLIENT_RPC(log_level, rcm, from,
+                        "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
+                        write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
+                        strerror(-rncr.rncr_op_error), strerror(-cb_rc));
+
+    if (cb_rc) // Other than logging this issue, nothing can be done here
+        return;
 
     /* cb's may run for a long time and the server may have been deposed
      * Xxx note that SM write requests left in this state may require
@@ -2823,18 +2832,18 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     if (rc)
         return raft_server_udp_client_deny_request(ri, &rncr, rc);
 
-    /* Read operation or an already committed + applied write operation.
-     */
-    if (!write_op || (write_op && cb_rc == -EALREADY)) // XXx rc handling ok?
-        raft_server_reply_to_client(ri, &rncr);
-
     /* Store the request as an entry in the Raft log.  Do not reply to the
      * client until the write is committed and applied!
      */
-    else if (write_op && !rc)
+    if (rncr.rncr_write_raft_entry)
         raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
                                            rcm->rcrm_data_size,
                                            RAFT_WR_ENTRY_OPT_NONE);
+
+    /* Read operation or an already committed + applied write operation.
+     */
+    else
+        raft_server_reply_to_client(ri, &rncr);
 }
 
 /**
@@ -3017,6 +3026,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     struct raft_net_client_request rncr = {
         .rncr_type = RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
+        .rncr_write_raft_entry = false,
+        .rncr_op_error = 0,
         .rncr_is_leader = raft_instance_is_leader(ri) ? true : false,
         .rncr_entry_term = reh.reh_term,
         .rncr_current_term = ri->ri_log_hdr.rlh_term,
@@ -3033,12 +3044,13 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));
 
-        // Perform basic initialization on the reply buffer
-        raft_server_udp_client_reply_init(ri, &rncr);
-
         int rc = ri->ri_server_sm_request_cb(&rncr);
         if (!rc)
+        {
+            // Perform basic initialization on the reply buffer
+            raft_server_udp_client_reply_init(ri, &rncr);
             reply_to_client = true;
+        }
     }
 
     if (!reh.reh_leader_change_marker && !reh.reh_data_size)

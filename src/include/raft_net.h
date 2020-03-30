@@ -105,7 +105,9 @@ struct raft_client_rpc_msg
 struct raft_net_client_request
 {
     enum raft_net_client_request_type rncr_type; // may be set by sm callback
+    bool                              rncr_write_raft_entry;
     bool                              rncr_is_leader;
+    int                               rncr_op_error;
     int64_t                           rncr_entry_term;
     int64_t                           rncr_current_term;
     union
