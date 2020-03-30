@@ -286,6 +286,7 @@ raft_compile_time_checks(void)
     COMPILE_TIME_ASSERT(RAFT_ELECTION_RANGE_MS > 0);
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
+    COMPILE_TIME_ASSERT(RAFT_ENTRY_SIZE > RAFT_NET_MAX_RPC_SIZE);
 }
 
 #define DBG_RAFT_MSG(log_level, rm, fmt, ...)                           \
@@ -314,7 +315,7 @@ raft_compile_time_checks(void)
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                      \
         SIMPLE_LOG_MSG(log_level,                                       \
-                       "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hx hb=%hhx lcm=%hhx %s "fmt, \
+                       "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx crc=%u:%u %s "fmt, \
                        (rm)->rrm_append_entries_request.raerqm_leader_term, \
                        (rm)->rrm_append_entries_request.raerqm_log_term, \
                        (rm)->rrm_append_entries_request.raerqm_commit_index, \
@@ -323,6 +324,8 @@ raft_compile_time_checks(void)
                        (rm)->rrm_append_entries_request.raerqm_entries_sz, \
                        (rm)->rrm_append_entries_request.raerqm_heartbeat_msg, \
                        (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
+                       (rm)->rrm_append_entries_request.raerqm_prev_idx_crc, \
+                       (rm)->rrm_append_entries_request.raerqm_this_idx_crc, \
                        __uuid_str,                                      \
                        ##__VA_ARGS__);                                  \
         break;                                                          \

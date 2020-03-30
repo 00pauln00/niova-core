@@ -121,10 +121,46 @@ rst_sm_apply_values(struct rst_sm_node *sm,
 }
 
 static int
+rst_sm_reply_init(struct raft_client_rpc_msg *reply,
+                  const uuid_t uuid, enum raft_test_data_op op,
+                  const struct raft_test_values *rtv, int num_rtv)
+{
+    if (!reply)
+        return -EINVAL;
+
+    else if (op != RAFT_TEST_DATA_OP_READ &&
+             op != RAFT_TEST_DATA_OP_WRITE)
+        return -EOPNOTSUPP;
+
+    else if (num_rtv > 1)
+        return -E2BIG;
+
+    else if (num_rtv && !rtv)
+        return -EINVAL;
+
+    struct raft_test_data_block *reply_rtdb =
+        (struct raft_test_data_block *)reply->rcrm_data;
+
+    reply->rcrm_data_size =
+        sizeof(struct raft_test_data_block) +
+        (num_rtv * sizeof(struct raft_test_values));
+
+    reply_rtdb->rtdb_op = op;
+    reply_rtdb->rtdb_num_values = num_rtv;
+
+    uuid_copy(reply_rtdb->rtdb_client_uuid, uuid);
+
+    if (num_rtv)
+        memcpy(&reply_rtdb->rtdb_values[0], rtv, sizeof(*rtv));
+
+    return 0;
+}
+
+static int
 rst_sm_handler_commit(struct raft_net_client_request *rncr)
 {
-    NIOVA_ASSERT(rncr && rncr->rncr_commit_data &&
-                 rncr->rncr_reply_data_max_size <= RAFT_TEST_VALUES_MAX);
+    NIOVA_ASSERT(rncr && rncr->rncr_commit_data && rncr->rncr_reply &&
+                 rncr->rncr_reply_data_max_size <= RAFT_NET_MAX_RPC_SIZE);
 
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)rncr->rncr_commit_data;
@@ -156,6 +192,10 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
         // Entry was written by this leader.
         rncr->rncr_remote_addr = sma->smna_pending_client_addr;
         rncr->rncr_msg_id = sma->smna_pending_msg_id;
+
+        int rc = rst_sm_reply_init(rncr->rncr_reply, sm->smn_uuid,
+                                   RAFT_TEST_DATA_OP_WRITE, NULL, 0);
+        FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
     }
     else
     {
@@ -164,6 +204,11 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
     }
 
     rst_sm_apply_values(sm, rtdb);
+
+    /* Allow for the next pending write operation to land by resetting
+     * smna_pending.rtv_seqno.
+     */
+    sma->smna_pending.rtv_seqno = 0;
 
     return rc;
 }
@@ -213,6 +258,10 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
         /* Client sees 'ok', return an error to the caller so that this
          * request does not land in the log.
          */
+        int rc = rst_sm_reply_init(reply, rst_sm->smn_uuid,
+                                   RAFT_TEST_DATA_OP_WRITE, NULL, 0);
+        FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
+
         return -EALREADY;
     }
 
@@ -225,24 +274,36 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
      */
     if (sma->smna_pending_entry_term == rncr->rncr_current_term)
     {
-        NIOVA_ASSERT((int64_t)sma->smna_pending.rtv_seqno >=
-                     (int64_t)sma->smna_committed.rtv_seqno);
+        /* Pending value of '0' means nothing is pending.  It's the server's
+         * responsibility to prevent new msgs from being accepted while
+         * write operations are in progress.
+         */
+        if (sma->smna_pending.rtv_seqno)
+            NIOVA_ASSERT(sma->smna_pending.rtv_seqno >=
+                         sma->smna_committed.rtv_seqno);
+
+        // Is this a retried pending request?
 
         if (last_rtv->rtv_seqno <= sma->smna_pending.rtv_seqno)
-        {
-            // Is this a retried pending request?
             reply->rcrm_app_error = -EINPROGRESS;
-            return -EINPROGRESS;
-        }
-        else if (sma->smna_pending.rtv_seqno != ID_ANY_64bit)
-        {
-            /* Check if a request is already pending.  Clients may only have a
-             * single write operation in-flight at any time.  This check must
-             * be done after verifying that this is not a delayed retry (to
-             * which the server should reply OK).
-             */
+
+        /* Check if a request is already pending.  Clients may only have a
+         * single write operation in-flight at any time.  This check must
+         * be done after verifying that this is not a delayed retry (to
+         * which the server should reply OK).
+         */
+        else if (sma->smna_pending.rtv_seqno != 0)
             reply->rcrm_app_error = -EBUSY;
-            return -EBUSY;
+
+        if (reply->rcrm_app_error)
+        {
+            DBG_RAFT_TEST_DATA_BLOCK(
+                LL_NOTIFY, rtdb,
+                "pending-seqno=%lu lrtv-seqno=%lu err=%s",
+                sma->smna_pending.rtv_seqno, last_rtv->rtv_seqno,
+                strerror(-reply->rcrm_app_error));
+
+            return reply->rcrm_app_error;
         }
     }
 
@@ -263,7 +324,7 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
         sma->smna_pending = *last_rtv;
     }
 
-    DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, rtdb, "msg-id=%lu term=%lu rc=%s",
+    DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, rtdb, "msg-id=%lx term=%lu rc=%s",
                              request->rcrm_msg_id, rncr->rncr_current_term,
                              strerror(-rc));
 
@@ -292,23 +353,24 @@ rst_sm_handler_read(struct raft_net_client_request *rncr)
     struct rst_sm_node *rst_sm =
         rst_sm_node_lookup(src_rtdb->rtdb_client_uuid, false);
 
-    reply->rcrm_data_size = (sizeof(struct raft_test_data_block) +
-                             sizeof(struct raft_test_values));
+    int rc;
 
-    struct raft_test_data_block *dest_rtdb =
-        (struct raft_test_data_block *)reply->rcrm_data;
-
-    dest_rtdb->rtdb_op = RAFT_TEST_DATA_OP_READ;
-    dest_rtdb->rtdb_num_values = 1; //regardless of error
-
-    uuid_copy(dest_rtdb->rtdb_client_uuid, src_rtdb->rtdb_client_uuid);
-
-    if (!rst_sm)
+    if (rst_sm)
+    {
+        rc = rst_sm_reply_init(reply, src_rtdb->rtdb_client_uuid,
+                               RAFT_TEST_DATA_OP_READ,
+                               &rst_sm->smn_app.smna_committed, 1);
+    }
+    else
+    {
+        reply->rcrm_data_size = sizeof(struct raft_test_data_block);
         reply->rcrm_app_error = -ENOENT;
 
-    else
-        memcpy(&dest_rtdb->rtdb_values[0], &rst_sm->smn_app.smna_committed,
-               sizeof(struct raft_test_values));
+        rc = rst_sm_reply_init(reply, src_rtdb->rtdb_client_uuid,
+                               RAFT_TEST_DATA_OP_READ, NULL, 0);
+    }
+
+    FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
 
     return 0;
 }
@@ -397,6 +459,11 @@ raft_server_test_rst_sm_handler(struct raft_net_client_request *rncr)
 {
     if (!rncr || !rncr->rncr_request)
         return -EINVAL;
+
+    // Check for the minimum space requirements here.
+    else if (rncr->rncr_reply_data_max_size <
+             sizeof(struct raft_test_data_block))
+        return -ENOSPC;
 
     /* Requests have 3 logical types:  read, write, and commit.  Commit
      * requests are effectively "completed writes".  However, reads and writes
@@ -495,11 +562,6 @@ rst_sm_node_construct(const struct rst_sm_node *in)
         return NULL;
 
     uuid_copy(sm->smn_uuid, in->smn_uuid);
-
-    sm->smn_app.smna_committed.rtv_seqno = ID_ANY_64bit;
-    sm->smn_app.smna_pending.rtv_seqno = ID_ANY_64bit;
-    sm->smn_app.smna_pending_msg_id = ID_ANY_64bit;
-    sm->smn_app.smna_pending_entry_term = ID_ANY_64bit;
 
     return sm;
 }

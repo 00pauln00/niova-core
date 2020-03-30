@@ -359,7 +359,7 @@ raft_server_entry_calc_crc(const struct raft_entry *re)
     crc32_t crc = crc_pcl(buf, crc_len, 0);
 
     DBG_RAFT_ENTRY(((crc == rh->reh_crc) ? LL_DEBUG : LL_WARN),
-                   &re->re_header, "calculated crc=%x", crc);
+                   &re->re_header, "calculated crc=%u", crc);
 
     return crc;
 }
@@ -1099,11 +1099,16 @@ raft_server_send_msg(struct raft_instance *ri,
     /* For now, there's no use of multiple-IOVs since the only msg type
      * requiring a payload is RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST.
      */
+#if 0 //XXX reinvestigate!
     const size_t msg_size = sizeof(struct raft_rpc_msg) +
-        (rrm->rrm_type ==
-         (RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ?
-          rrm->rrm_append_entries_request.raerqm_entries_sz : 0));
+        (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ?
+         rrm->rrm_append_entries_request.raerqm_entries_sz : 0);
+#else
+    size_t msg_size = sizeof(struct raft_rpc_msg);
+    if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
+        msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
 
+#endif
     if (msg_size > RAFT_NET_MAX_RPC_SIZE)
         return -E2BIG;
 
@@ -1130,6 +1135,8 @@ raft_server_send_msg(struct raft_instance *ri,
 
     if (size_rc < 0) // Return with system error here
         return size_rc;
+
+    DBG_RAFT_MSG(LL_DEBUG, rrm, "");
 
     if (sock_src == RAFT_UDP_LISTEN_SERVER)
         raft_net_update_last_comm_time(ri, rp->csn_uuid, true);
@@ -1645,7 +1652,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     if (rfi->rfi_next_idx == 0)
     {
         rfi->rfi_prev_idx_term = 0;
-        rfi->rfi_current_idx_term = 1;
+        rfi->rfi_current_idx_term = -1;
     }
 
     // Grab the current idx info if the follower is behind
@@ -1653,9 +1660,13 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         raft_server_get_current_raft_entry_index(ri);
 
     const bool refresh_prev = rfi->rfi_prev_idx_term < 0 ? true : false;
+#if 0
     const bool refresh_current =
         (my_raft_idx >= rfi->rfi_next_idx &&
          (refresh_prev || rfi->rfi_current_idx_term < 0)) ? true : false;
+#else
+    const bool refresh_current = my_raft_idx >= rfi->rfi_next_idx ? true : false;
+#endif
 
     struct raft_entry_header reh = {0};
 
@@ -1702,10 +1713,10 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
 
     DBG_RAFT_INSTANCE(((refresh_prev || refresh_current) ?
                        LL_NOTIFY : LL_DEBUG), ri,
-                      "peer=%hhx refresh=%d:%d pti=%ld:%ld ct=%ld",
+                      "peer=%hhx refresh=%d:%d pti=%ld:%ld ct=%ld ccrc=%lu",
                       follower, refresh_prev, refresh_current,
                       rfi->rfi_prev_idx_term, rfi->rfi_next_idx,
-                      rfi->rfi_current_idx_term);
+                      rfi->rfi_current_idx_term, rfi->rfi_current_idx_crc);
 
     return 0;
 }
@@ -2152,7 +2163,7 @@ raft_server_write_new_entry_from_leader(
         return; // This is a heartbeat msg which does not enter the log
 
     NIOVA_ASSERT(raerq->raerqm_log_term > 0);
-    NIOVA_ASSERT(raerq->raerqm_log_term > raerq->raerqm_prev_log_term);
+    NIOVA_ASSERT(raerq->raerqm_log_term >= raerq->raerqm_prev_log_term);
     NIOVA_ASSERT(raerq->raerqm_log_term >=
                  raft_server_get_current_raft_entry_term(ri));
 
@@ -2367,7 +2378,8 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     /* Be sure to subtract one from the majority value since that value is the
      * 'next-idx'.
      */
-    const int64_t committed_raft_idx = sorted_indexes[majority_idx] - 1;
+    const int64_t committed_raft_idx =
+        MAX(sorted_indexes[majority_idx] - 1, 0);
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%ld",
                       committed_raft_idx);
@@ -2568,14 +2580,21 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
 
     const struct raft_rpc_msg *rrm = (const struct raft_rpc_msg *)recv_buffer;
 
+    size_t expected_msg_size = sizeof(struct raft_rpc_msg);
+
+    if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
+        expected_msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
+
     /* Server <-> server messages do not have additional payloads.
      */
-    if (recv_bytes != sizeof(struct raft_rpc_msg))
+    if (recv_bytes != expected_msg_size)
     {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                          "Invalid msg size (%zd) from peer %s:%d",
-                          recv_bytes, inet_ntoa(from->sin_addr),
-                          ntohs(from->sin_port));
+        DBG_RAFT_INSTANCE(
+            LL_NOTIFY, ri,
+            "Invalid msg size %zd (expected %zu) from peer %s:%d",
+            recv_bytes, expected_msg_size, inet_ntoa(from->sin_addr),
+            ntohs(from->sin_port));
+
         return;
     }
 
@@ -2793,7 +2812,8 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;
 
-    DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "rc=%d wr=%d", cb_rc, write_op);
+    DBG_RAFT_CLIENT_RPC(LL_WARN, rcm, from, "wr=%d cb_rc=%s",
+                        write_op, cb_rc ? strerror(-cb_rc) : "OK");
 
     /* cb's may run for a long time and the server may have been deposed
      * Xxx note that SM write requests left in this state may require
@@ -2986,31 +3006,29 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     const size_t phys_idx =
         raft_server_entry_idx_to_phys_idx(ri, ri->ri_last_applied_idx + 1);
 
-    struct raft_entry *re = (struct raft_entry *)sink_buf;
-    struct raft_entry_header *reh = &re->re_header;
+    struct raft_entry_header reh;
+
+    int rc = raft_server_entry_header_read(ri, phys_idx, &reh);
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
+                               "raft_server_entry_header_read(): %s",
+                               strerror(-rc));
 
     bool reply_to_client = false;
 
     struct raft_net_client_request rncr = {
         .rncr_type = RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
         .rncr_is_leader = raft_instance_is_leader(ri) ? true : false,
-        .rncr_entry_term = reh->reh_term,
+        .rncr_entry_term = reh.reh_term,
         .rncr_current_term = ri->ri_log_hdr.rlh_term,
-        .rncr_commit_data = re->re_data,
+        .rncr_commit_data = sink_buf,
         .rncr_remote_addr = {0},
         .rncr_reply = reply,
-        .rncr_reply_data_max_size = (RAFT_ENTRY_SIZE -
-                                     sizeof(struct raft_client_rpc_msg)),
+        .rncr_reply_data_max_size = RAFT_NET_MAX_RPC_SIZE,
     };
 
-    int rc = raft_server_entry_header_read(ri, phys_idx, reh);
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                               "raft_server_entry_header_read(): %s",
-                               strerror(-rc));
-
-    if (!reh->reh_leader_change_marker && reh->reh_data_size)
+    if (!reh.reh_leader_change_marker && reh.reh_data_size)
     {
-        rc = raft_server_entry_read(ri, phys_idx, sink_buf, reh->reh_data_size,
+        rc = raft_server_entry_read(ri, phys_idx, sink_buf, reh.reh_data_size,
                                     NULL);
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));
@@ -3023,17 +3041,17 @@ raft_server_state_machine_apply(struct raft_instance *ri)
             reply_to_client = true;
     }
 
-    if (!reh->reh_leader_change_marker && !reh->reh_data_size)
-        DBG_RAFT_ENTRY(LL_WARN, reh, "application entry contains no data!");
+    if (!reh.reh_leader_change_marker && !reh.reh_data_size)
+        DBG_RAFT_ENTRY(LL_WARN, &reh, "application entry contains no data!");
 
     // Signify that the entry has been applied!
     ri->ri_last_applied_idx++;
 
-    ri->ri_last_applied_cumulative_crc ^= reh->reh_crc;
+    ri->ri_last_applied_cumulative_crc ^= reh.reh_crc;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "ri_last_applied_idx was incremented");
 
-    DBG_RAFT_ENTRY(LL_NOTIFY, reh, "");
+    DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "");
 
     if (ri->ri_last_applied_idx < ri->ri_commit_idx)
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);

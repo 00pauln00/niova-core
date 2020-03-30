@@ -27,7 +27,7 @@ static size_t                     leaderAliveCount;
 static struct random_data         randData;
 static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
 
-#define RSC_TIMERFD_EXPIRE_MS 100U
+#define RSC_TIMERFD_EXPIRE_MS 10U
 #define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 3U)
 
 struct rsc_raft_test_info
@@ -119,6 +119,17 @@ rsc_get_pending_msg_id(void)
     return rRTI.rtti_rcrm.rcrm_msg_id;
 }
 
+static unsigned int
+rsc_random_get(struct random_data *rand_data)
+{
+    unsigned int result;
+
+    if (random_r(rand_data, (int *)&result))
+	SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
+
+    return result;
+}
+
 static void
 rsc_init_global_raft_test_info(const struct raft_test_values *rtv)
 {
@@ -127,8 +138,24 @@ rsc_init_global_raft_test_info(const struct raft_test_values *rtv)
 
     rRTI.rrti_committed = *rtv;
 
+    uint64_t xor_all_values = 0;
+
+    /* Fast-forward randData to the correct position.  Note that this brute-
+     * force approach was taken after some failed experiments with
+     * setstate_r().
+     */
+    for (uint64_t i = 1; i <= rtv->rtv_seqno; i++)
+    {
+        uint32_t val = rsc_random_get(&randData);
+        xor_all_values ^= val;
+
+        SIMPLE_LOG_MSG(LL_TRACE, "val=%u all=%lu", val, xor_all_values);
+    }
+
     LOG_MSG(LL_WARN, "committed=%ld val=%ld",
             rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
+
+    NIOVA_ASSERT(xor_all_values == rtv->rtv_reply_xor_all_values);
 }
 
 static void
@@ -148,18 +175,6 @@ rsc_commit_rtv_to_raft_test_info(const struct raft_test_values *rtv)
 }
 
 static void
-rsc_init_global_random_data(const struct random_data *rand_data,
-                            const char *rand_state_buf,
-                            size_t rand_state_buf_len)
-{
-    NIOVA_ASSERT(rand_data && rand_state_buf &&
-                  rand_state_buf_len == RANDOM_STATE_BUF_LEN);
-
-    randData = *rand_data;
-    memcpy(randStateBuf, rand_state_buf, RANDOM_STATE_BUF_LEN);
-}
-
-static void
 rsc_init_random_seed(const uuid_t self_uuid)
 {
     NIOVA_ASSERT(!rRTI.rtti_random_seed);
@@ -174,17 +189,6 @@ rsc_init_random_seed(const uuid_t self_uuid)
                    (ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3]));
 
     NIOVA_ASSERT(rRTI.rtti_random_seed);
-}
-
-static unsigned int
-rsc_random_get(struct random_data *rand_data)
-{
-    unsigned int result;
-
-    if (random_r(rand_data, (int *)&result))
-	SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
-
-    return result;
 }
 
 /**
@@ -213,22 +217,27 @@ rsc_commit_seqno_validate(const struct raft_test_values *rtv,
 
     uint64_t locally_generated_seq = 0;
 
-    struct random_data rand_data;
-    char rand_state_buf[RANDOM_STATE_BUF_LEN];
+    // Init to zero per initstate_r man page.
+    struct random_data rand_data = {0};
+    char rand_state_buf[RANDOM_STATE_BUF_LEN] = {0};
 
     rsc_random_init(&rand_data, rand_state_buf);
 
-    for (uint64_t i = 0; i < rtv->rtv_seqno; i++)
-        locally_generated_seq ^= rsc_random_get(&rand_data);
+    for (uint64_t i = 1; i <= rtv->rtv_seqno; i++)
+    {
+        uint32_t tmp = rsc_random_get(&rand_data);
+        locally_generated_seq ^= tmp;
+
+        SIMPLE_LOG_MSG(LL_TRACE, "seqno=%lu val=%u all-val[self:svr]=%lu:%lu",
+                       i, tmp, locally_generated_seq,
+                       rtv->rtv_reply_xor_all_values);
+    }
 
     if (locally_generated_seq != rtv->rtv_reply_xor_all_values)
         return -EILSEQ;
 
     if (initialize_app)
     {
-        rsc_init_global_random_data(&rand_data, rand_state_buf,
-                                    RANDOM_STATE_BUF_LEN);
-
         rsc_init_global_raft_test_info(rtv);
 
         rsc_set_initialized();
@@ -358,8 +367,12 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
         (sizeof(struct raft_test_data_block) +
          rtdb->rtdb_num_values * sizeof(struct raft_test_values));
 
-    const uint16_t expected_num_values =
+    uint16_t expected_num_values =
         rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ ? 1 : 0;
+
+    // Override expected value if an error is present.
+    if (rcrm->rcrm_app_error || rcrm->rcrm_sys_error)
+        expected_num_values = 0;
 
     if (rtdb->rtdb_num_values != expected_num_values)
     {
@@ -664,6 +677,9 @@ rsc_setup_write_request(struct raft_instance *ri)
 
         rtv->rtv_seqno = rsc_get_committed_seqno() + 1;
         rtv->rtv_request_value = rsc_random_get(&randData);
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "seqno=%lu val=%lu", rtv->rtv_seqno,
+                       rtv->rtv_request_value);
     }
 
     const size_t request_size =
@@ -754,7 +770,16 @@ rsc_timerfd_cb(struct raft_instance *ri)
         if (rsc_is_initialized())
         {
             if (!rsc_get_committed_seqno())
+            {
                 rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_WRITE);
+            }
+            else
+            {
+                if (!(exec_cnt % 127))
+                    rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_READ);
+                else
+                    rsc_schedule_next_request(ri, RAFT_TEST_DATA_OP_WRITE);
+            }
         }
         else
         {

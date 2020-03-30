@@ -565,6 +565,8 @@ raft_net_send_client_msg(struct raft_instance *ri,
 
     ssize_t size_rc = udp_socket_send(ush, iov, 1, &dest);
 
+    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rcrm, &dest, "size-rc=%zd", size_rc);
+
     if (size_rc == msg_size)
         raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
