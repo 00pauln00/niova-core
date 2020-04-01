@@ -158,7 +158,7 @@ rsc_init_global_raft_test_info(const struct raft_test_values *rtv)
         SIMPLE_LOG_MSG(LL_TRACE, "val=%u all=%lu", val, xor_all_values);
     }
 
-    LOG_MSG(LL_WARN, "committed=%ld val=%ld",
+    LOG_MSG(LL_NOTIFY, "committed=%ld val=%ld",
             rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
 
     NIOVA_ASSERT(xor_all_values == rtv->rtv_reply_xor_all_values);
@@ -168,15 +168,18 @@ static void
 rsc_commit_rtv_to_raft_test_info(const struct raft_test_values *rtv)
 {
     NIOVA_ASSERT(rtv);
-    NIOVA_ASSERT(rtv->rtv_seqno == rRTI.rrti_committed.rtv_seqno + 1);
 
     if (!rRTI.rrti_committed.rtv_seqno)
         NIOVA_ASSERT(!rRTI.rrti_committed.rtv_reply_xor_all_values);
 
+    FATAL_IF((rtv->rtv_seqno != rRTI.rrti_committed.rtv_seqno + 1),
+             "invalid seqno %lu, expected %lu",
+             rtv->rtv_seqno, rRTI.rrti_committed.rtv_seqno + 1);
+
     rRTI.rrti_committed.rtv_seqno++;
     rRTI.rrti_committed.rtv_reply_xor_all_values ^= rtv->rtv_request_value;
 
-    LOG_MSG(LL_WARN, "committed=%ld val=%ld",
+    LOG_MSG(LL_NOTIFY, "committed=%ld val=%ld",
             rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
 }
 
@@ -342,6 +345,12 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     {
         DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "invalid reply size %hu",
                             rcrm->rcrm_data_size);
+        return;
+    }
+    else if (!rsc_get_pending_msg_id())
+    {
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+                            "reply received but no outstanding requests");
         return;
     }
     else if (rcrm->rcrm_msg_id != rsc_get_pending_msg_id())
@@ -568,7 +577,16 @@ rsc_set_ping_target(struct raft_instance *ri)
     }
 }
 
-static int
+static void
+rsc_client_rpc_msg_assign_id(struct raft_client_rpc_msg *rcrm)
+{
+    // Generate the msg-id using our UUID as a base.x
+    if (rcrm)
+        rcrm->rcrm_msg_id =
+            ((uint64_t)rsc_get_random_seed() << 32) | random_get();
+}
+
+static raft_net_timerfd_cb_ctx_int_t
 rsc_client_rpc_msg_init(struct raft_instance *ri,
                         struct raft_client_rpc_msg *rcrm,
                         enum raft_client_rpc_msg_type msg_type,
@@ -597,9 +615,7 @@ rsc_client_rpc_msg_init(struct raft_instance *ri,
     uuid_copy(rcrm->rcrm_dest_id, dest_csn->csn_uuid);
     uuid_copy(rcrm->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
-    // Generate the msg-id using our UUID as a base.
-    rcrm->rcrm_msg_id =
-        ((uint64_t)rsc_get_random_seed() << 32) | random_get();
+    rsc_client_rpc_msg_assign_id(rcrm);
 
     return 0;
 }
@@ -632,16 +648,9 @@ rsc_ping_raft_service(struct raft_instance *ri)
 
     rc = raft_net_send_client_msg(ri, &rcrm);
     if (rc)
-    {
-        struct sockaddr_in dest;
-        struct ctl_svc_node *csn = ri->ri_csn_leader;
-        int rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
-                                       ctl_svc_node_peer_2_client_port(csn),
-                                       &dest);
-
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, &rcrm, &dest,
-                            "raft_net_send_client_msg() %s", strerror(-rc));
-    }
+        DBG_RAFT_CLIENT_RPC_LEADER(LL_DEBUG, ri, &rcrm,
+                                   "raft_net_send_client_msg() %s",
+                                   strerror(-rc));
 }
 
 static void
@@ -733,13 +742,13 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
         NIOVA_ASSERT(possible_pending_rtv->rtv_seqno ==
                      (rsc_get_committed_seqno() + 1));
 
-        struct sockaddr_in dest;
-        struct ctl_svc_node *csn = ri->ri_csn_leader;
-        udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
-                              ctl_svc_node_peer_2_client_port(csn),
-                              &dest);
+        const uint64_t prev_msg_id = rsc_get_pending_msg_id();
+        rsc_client_rpc_msg_assign_id(rcrm);
 
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, &dest, "resend write request");
+        DBG_RAFT_CLIENT_RPC_LEADER(
+            LL_NOTIFY, ri, rcrm,
+            "resend write request (pending-seqno=%lu) prev_msg_id=%lx",
+            possible_pending_rtv->rtv_seqno, prev_msg_id);
     }
     else if (op == RAFT_TEST_DATA_OP_WRITE)
     {
@@ -753,14 +762,9 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
     int rc = raft_net_send_client_msg(ri, rcrm);
     if (rc)
     {
-        struct sockaddr_in dest;
-        struct ctl_svc_node *csn = ri->ri_csn_leader;
-        rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
-                                   ctl_svc_node_peer_2_client_port(csn),
-                                   &dest);
-
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, &dest,
-                            "raft_net_send_client_msg() %s", strerror(-rc));
+        DBG_RAFT_CLIENT_RPC_LEADER(LL_NOTIFY, ri, rcrm,
+                                   "raft_net_send_client_msg() %s",
+                                   strerror(-rc));
     }
 }
 

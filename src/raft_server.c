@@ -1790,6 +1790,8 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
+    FUNC_ENTRY(LL_TRACE);
+
     switch (ri->ri_state)
     {
     case RAFT_STATE_FOLLOWER: // fall through

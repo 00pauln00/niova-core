@@ -28,6 +28,7 @@ struct sockaddr_in;
 typedef void raft_net_udp_cb_ctx_t;
 typedef int  raft_net_udp_cb_ctx_int_t;
 typedef void raft_net_timerfd_cb_ctx_t;
+typedef int  raft_net_timerfd_cb_ctx_int_t;
 
 struct raft_client_rpc_msg;
 struct raft_net_client_request;
@@ -168,6 +169,19 @@ struct raft_net_client_request
         break;                                                          \
     default:                                                            \
         break;                                                          \
+    }                                                                   \
+}
+
+#define DBG_RAFT_CLIENT_RPC_LEADER(log_level, ri, rcm, fmt, ...)        \
+{                                                                       \
+    if ((ri)->ri_csn_leader)                                            \
+    {                                                                   \
+        struct sockaddr_in dest;                                        \
+        struct ctl_svc_node *csn = (ri)->ri_csn_leader;                 \
+        udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),          \
+                              ctl_svc_node_peer_2_client_port(csn),     \
+                              &dest);                                   \
+        DBG_RAFT_CLIENT_RPC(log_level, rcm, &dest, fmt, ##__VA_ARGS__); \
     }                                                                   \
 }
 
