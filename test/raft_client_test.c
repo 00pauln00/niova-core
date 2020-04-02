@@ -276,7 +276,11 @@ rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
 
     if (rcrm->rcrm_sys_error || rcrm->rcrm_app_error)
     {
-        DBG_RAFT_TEST_DATA_BLOCK(LL_WARN, rtdb, "sys=%s, app=%s",
+        enum log_level log_level =
+            (rcrm->rcrm_app_error == -EALREADY ||
+             rcrm->rcrm_app_error == -EINPROGRESS) ? LL_NOTIFY : LL_WARN;
+
+        DBG_RAFT_TEST_DATA_BLOCK(log_level, rtdb, "sys=%s, app=%s",
                                  strerror(-rcrm->rcrm_sys_error),
                                  strerror(-rcrm->rcrm_app_error));
         return;
