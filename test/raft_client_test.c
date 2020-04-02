@@ -2,6 +2,7 @@
 #include <sys/timerfd.h>
 
 #include "log.h"
+#include "util_thread.h"
 #include "udp.h"
 #include "epoll_mgr.h"
 #include "common.h"
@@ -18,6 +19,8 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define SUCCESSFUL_PING_UNTIL_VIABLE 10
 
+LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
+
 const char *raft_uuid_str;
 const char *my_uuid_str;
 
@@ -28,7 +31,7 @@ static struct random_data         randData;
 static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
 
 #define RSC_TIMERFD_EXPIRE_MS 1U
-#define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 3U)
+#define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 5U)
 
 struct rsc_raft_test_info
 {
@@ -876,13 +879,110 @@ rsc_main_loop(struct raft_instance *ri)
     return rc;
 }
 
+enum raft_client_instance_lreg_values
+{
+    RAFT_CLIENT_LREG_RAFT_UUID,
+    RAFT_CLIENT_LREG_PEER_UUID,
+    RAFT_CLIENT_LREG_LEADER_UUID,
+    RAFT_CLIENT_LREG_PEER_STATE,
+    RAFT_CLIENT_LREG_MAX,
+};
+
+static util_thread_ctx_reg_t
+raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                                         const struct raft_instance *ri,
+                                         struct lreg_value *lv)
+{
+    if (!lv || !ri ||
+        lv->lrv_value_idx_in >= RAFT_CLIENT_LREG_MAX ||
+        op != LREG_NODE_CB_OP_READ_VAL)
+        return;
+
+    switch (lv->lrv_value_idx_in)
+    {
+    case RAFT_CLIENT_LREG_RAFT_UUID:
+        lreg_value_fill_string(lv, "raft-uuid", ri->ri_raft_uuid_str);
+        break;
+    case RAFT_CLIENT_LREG_PEER_UUID:
+        lreg_value_fill_string(lv, "client-uuid", ri->ri_this_peer_uuid_str);
+        break;
+    case RAFT_CLIENT_LREG_LEADER_UUID:
+        if (ri->ri_csn_leader)
+            lreg_value_fill_string_uuid(lv, "leader-uuid",
+                                        ri->ri_csn_leader->csn_uuid);
+        else
+            lreg_value_fill_string(lv, "leader-uuid", NULL);
+        break;
+    case RAFT_CLIENT_LREG_PEER_STATE:
+        lreg_value_fill_string(lv, "state",
+                               raft_server_state_to_string(ri->ri_state));
+        break;
+    default:
+        break;
+    }
+}
+
+static util_thread_ctx_reg_int_t
+raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                             struct lreg_value *lv)
+{
+    const struct raft_instance *ri = lrn->lrn_cb_arg;
+    if (!ri)
+        return -EINVAL;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = RAFT_CLIENT_LREG_MAX;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+        strncpy(lv->lrv_key_string, "raft_client_instance",
+                LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lv), ri->ri_this_peer_uuid_str,
+                LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        if (!lv)
+            return -EINVAL;
+
+        raft_client_instance_lreg_multi_facet_cb(op, ri, lv);
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        return -ENOENT;
+    }
+
+    return 0;
+}
+
+static int
+raft_client_test_lreg_init(struct raft_instance *ri)
+{
+    LREG_ROOT_ENTRY_INSTALL(raft_client_root_entry);
+
+    lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT_CLIENT,
+                   raft_client_instance_lreg_cb, ri, false);
+
+    int rc =
+        lreg_node_install_prepare(&ri->ri_lreg,
+                                  LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
+    return rc;
+}
+
 int
 main(int argc, char **argv)
 {
     struct raft_instance raft_client_instance = {0};
 
     rsc_getopt(argc, argv);
-
 
     raft_client_instance.ri_raft_uuid_str = raft_uuid_str;
     raft_client_instance.ri_this_peer_uuid_str = my_uuid_str;
@@ -894,6 +994,14 @@ main(int argc, char **argv)
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
+                       strerror(-rc));
+        exit(-rc);
+    }
+
+    rc = raft_client_test_lreg_init(&raft_client_instance);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_client_test_lreg_init(): %s",
                        strerror(-rc));
         exit(-rc);
     }

@@ -116,7 +116,7 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_string_uuid(lv, "leader-uuid",
                                         ri->ri_csn_leader->csn_uuid);
         else
-            lreg_value_fill_string(lv, "lead-uuid", NULL);
+            lreg_value_fill_string(lv, "leader-uuid", NULL);
         break;
     case RAFT_LREG_PEER_STATE:
         lreg_value_fill_string(lv, "state",
