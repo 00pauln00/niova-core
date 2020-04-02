@@ -42,6 +42,9 @@ struct rsc_raft_test_info
     struct timespec             rtti_last_request_sent;
     struct timespec             rtti_last_request_ackd; // by leader
     struct raft_test_values     rrti_committed;
+    struct raft_test_values     rrti_last_retried;
+    struct raft_test_values     rrti_last_validated;
+    size_t                      rrti_num_write_retries;
     // <---- Keep the below members intact ---->
     struct raft_client_rpc_msg  rtti_rcrm;
     struct raft_test_data_block rtti_rtdb;
@@ -61,6 +64,25 @@ rsc_set_initialized(void)
 {
     NIOVA_ASSERT(!rRTI.rtti_initialized);
     rRTI.rtti_initialized = true;
+}
+
+static void
+rsc_set_last_validated(const struct raft_test_values *rtv)
+{
+    if (rtv)
+        rRTI.rrti_last_validated = *rtv;
+}
+
+static uint64_t
+rsc_get_last_validated_seqno(void)
+{
+    return rRTI.rrti_last_validated.rtv_seqno;
+}
+
+static uint64_t
+rsc_get_last_validated_xor_sum(void)
+{
+    return rRTI.rrti_last_validated.rtv_reply_xor_all_values;
 }
 
 static struct rsc_raft_test_info *
@@ -172,6 +194,43 @@ rsc_get_pending_value(void)
 
     return -1;
 }
+
+static void
+rsc_update_retry_seqno(void)
+{
+    if (rsc_get_pending_msg_id())
+    {
+        struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+        if (rtdb->rtdb_op == RAFT_TEST_DATA_OP_WRITE)
+        {
+            rRTI.rrti_last_retried =
+                rtdb->rtdb_values[rtdb->rtdb_num_values - 1];
+
+            rRTI.rrti_num_write_retries++;
+        }
+    }
+}
+
+static uint64_t
+rsc_get_last_retry_seqno(void)
+{
+    return rRTI.rrti_last_retried.rtv_seqno;
+}
+
+static size_t
+rsc_get_num_write_retries(void)
+{
+    return rRTI.rrti_num_write_retries;
+}
+
+#if 0
+static uint64_t
+rsc_get_last_retry_request_value(void)
+{
+    return rRTI.rrti_last_retried.rtv_request_value;
+}
+#endif
 
 static unsigned int
 rsc_random_get(struct random_data *rand_data)
@@ -299,6 +358,8 @@ rsc_commit_seqno_validate(const struct raft_test_values *rtv,
 
         rsc_set_initialized();
     }
+
+    rsc_set_last_validated(rtv);
 
     return 0;
 }
@@ -794,7 +855,7 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
         NIOVA_ASSERT(possible_pending_rtv->rtv_seqno ==
                      (rsc_get_committed_seqno() + 1));
 
-//        rsc_client_update_retry_seqno();
+        rsc_update_retry_seqno();
 
         const uint64_t prev_msg_id = rsc_get_pending_msg_id();
         rsc_client_rpc_msg_assign_id(rcrm);
@@ -1020,6 +1081,7 @@ enum raft_client_app_lreg_values
     RAFT_CLIENT_APP_LREG_PENDING_VAL,            //uint64
     RAFT_CLIENT_APP_LREG_PENDING_MSG_ID,         //uint64
     RAFT_CLIENT_APP_LREG_LAST_RETRIED_SEQNO,     //uint64
+    RAFT_CLIENT_APP_LREG_NUM_WRITE_RETRIES,      //uint64
     RAFT_CLIENT_APP_LREG_LAST_VALIDATED_SEQNO,   //uint64
     RAFT_CLIENT_APP_LREG_LAST_VALIDATED_XOR_SUM, //uint64
     RAFT_CLIENT_APP_LREG_LEADER_ALIVE_CNT,       //int
@@ -1037,6 +1099,8 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         lv->lrv_value_idx_in >= RAFT_CLIENT_APP_LREG_MAX ||
         op != LREG_NODE_CB_OP_READ_VAL)
         return;
+
+    char ctime_buf[CTIME_R_STR_LEN];
 
     switch (lv->lrv_value_idx_in)
     {
@@ -1064,7 +1128,34 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         lreg_value_fill_unsigned(lv, "pending-msg-id",
                                  rsc_get_pending_msg_id());
         break;
-
+    case RAFT_CLIENT_APP_LREG_LAST_RETRIED_SEQNO:
+        lreg_value_fill_unsigned(lv, "last-retried-seqno",
+                                 rsc_get_last_retry_seqno());
+        break;
+    case RAFT_CLIENT_APP_LREG_NUM_WRITE_RETRIES:
+        lreg_value_fill_unsigned(lv, "num-write-retries",
+                                 rsc_get_num_write_retries());
+        break;
+    case RAFT_CLIENT_APP_LREG_LAST_VALIDATED_SEQNO:
+        lreg_value_fill_unsigned(lv, "last-validated-seqno",
+                                 rsc_get_last_validated_seqno());
+        break;
+    case RAFT_CLIENT_APP_LREG_LAST_VALIDATED_XOR_SUM:
+        lreg_value_fill_unsigned(lv, "last-validated-xor-sum",
+                                 rsc_get_last_validated_xor_sum());
+        break;
+    case RAFT_CLIENT_APP_LREG_LEADER_ALIVE_CNT:
+        lreg_value_fill_unsigned(lv, "leader-alive-cnt",
+                                 leaderAliveCount);
+        break;
+    case RAFT_CLIENT_APP_LREG_LEADER_VIABLE:
+        lreg_value_fill_bool(lv, "leader-is-viable", rsc_leader_is_viable());
+        break;
+    case RAFT_CLIENT_APP_LREG_LAST_REQUEST_ACKD:
+        ctime_r((const time_t *)rsc_get_last_request_ackd(), ctime_buf);
+        niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
+        lreg_value_fill_string(lv, "last-leader-ack", ctime_buf);
+        break;
     default:
         break;
     }
