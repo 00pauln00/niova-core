@@ -283,8 +283,8 @@ raft_net_conf_init(struct raft_instance *ri)
     if (rc)
         goto cleanup;
 
-    DBG_CTL_SVC_NODE(LL_WARN, ri->ri_csn_this_peer, "self");
-    DBG_CTL_SVC_NODE(LL_WARN, ri->ri_csn_raft, "raft");
+    DBG_CTL_SVC_NODE(LL_NOTIFY, ri->ri_csn_this_peer, "self");
+    DBG_CTL_SVC_NODE(LL_NOTIFY, ri->ri_csn_raft, "raft");
 
     const struct ctl_svc_node_raft *csn_raft =
         ctl_svc_node_raft_2_raft(ri->ri_csn_raft);
@@ -311,7 +311,7 @@ raft_net_conf_init(struct raft_instance *ri)
         DECLARE_AND_INIT_UUID_STR(uuid_str,
                                   csn_raft->csnr_members[i].csrm_peer);
 
-        DBG_CTL_SVC_NODE(LL_WARN, ri->ri_csn_raft,
+        DBG_CTL_SVC_NODE(LL_NOTIFY, ri->ri_csn_raft,
                          "raft-peer-%hhu %s", i, uuid_str);
 
         if (!ctl_svc_node_cmp(ri->ri_csn_this_peer, ri->ri_csn_raft_peers[i]))

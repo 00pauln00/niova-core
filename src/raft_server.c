@@ -358,7 +358,7 @@ raft_server_entry_calc_crc(const struct raft_entry *re)
 
     crc32_t crc = crc_pcl(buf, crc_len, 0);
 
-    DBG_RAFT_ENTRY(((crc == rh->reh_crc) ? LL_DEBUG : LL_WARN),
+    DBG_RAFT_ENTRY(((rh->reh_crc && crc != rh->reh_crc) ? LL_WARN : LL_DEBUG),
                    &re->re_header, "calculated crc=%u", crc);
 
     return crc;
@@ -414,6 +414,7 @@ raft_server_entry_init(const struct raft_instance *ri,
     reh->reh_term = current_term;
     reh->reh_leader_change_marker =
         (opts == RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER) ? 1 : 0;
+    reh->reh_crc = 0;
 
     uuid_copy(reh->reh_self_uuid, self_uuid);
     uuid_copy(reh->reh_raft_uuid, raft_uuid);
@@ -422,7 +423,7 @@ raft_server_entry_init(const struct raft_instance *ri,
 
     memcpy(re->re_data, data, len);
 
-    // Checksum the entire entry (which includes the 'data' section
+    // Checksum the entire entry - including the 'data' section
     reh->reh_crc = raft_server_entry_calc_crc(re);
 }
 
@@ -445,8 +446,8 @@ raft_instance_update_newest_entry_hdr(struct raft_instance *ri,
 
     ri->ri_newest_entry_hdr = *reh;
 
-    DBG_RAFT_ENTRY(LL_NOTIFY, &ri->ri_newest_entry_hdr, "");
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+    DBG_RAFT_ENTRY(LL_TRACE, &ri->ri_newest_entry_hdr, "");
+    DBG_RAFT_INSTANCE(LL_TRACE, ri, "");
 }
 
 /**
@@ -482,7 +483,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
                            RAFT_INSTANCE_2_SELF_UUID(ri),
                            RAFT_INSTANCE_2_RAFT_UUID(ri), data, len, opts);
 
-    DBG_RAFT_ENTRY(LL_WARN, &re->re_header, "");
+    DBG_RAFT_ENTRY(LL_NOTIFY, &re->re_header, "");
 
     /* Failues of the next set of operations will be fatal:
      * - Ensuring that the index increases by one and term is not decreasing
@@ -498,7 +499,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
                   (phys_idx * RAFT_ENTRY_SIZE));
 
     NIOVA_ASSERT(write_sz == total_entry_size);
-
+//Xxxx pwritev2 can do a sync write with a single syscall.
     int rc = io_fsync(ri->ri_log_fd);
     NIOVA_ASSERT(!rc);
 
@@ -572,13 +573,17 @@ raft_server_entry_read(struct raft_instance *ri, const size_t phys_entry_idx,
     if (!re)
         return -ENOMEM;
 
+//Xxx need timing info here
     const ssize_t read_sz =
         io_pread(ri->ri_log_fd, (char *)re, total_entry_size,
                  (phys_entry_idx * RAFT_ENTRY_SIZE));
 
-    DBG_RAFT_ENTRY(LL_WARN, &re->re_header, "rrc=%zu", read_sz);
+    DBG_RAFT_ENTRY_FATAL_IF((read_sz != total_entry_size),
+                            &re->re_header,
+                            "invalid read size rrc=%zu, expected %zu",
+                            read_sz, total_entry_size);
 
-    NIOVA_ASSERT(read_sz == total_entry_size);
+    DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "rrc=%zu", read_sz);
 
     const struct raft_entry_header *rh = &re->re_header;
 
@@ -624,13 +629,16 @@ raft_server_entry_header_read(struct raft_instance *ri,
              raft_server_get_current_phys_entry_index(ri) < phys_entry_idx)
         return -ERANGE;
 
+//Xxx needs timing info here
     const ssize_t read_sz =
         io_pread(ri->ri_log_fd, (char *)reh, sizeof(struct raft_entry_header),
                  (phys_entry_idx * RAFT_ENTRY_SIZE));
 
-    DBG_RAFT_ENTRY(LL_WARN, reh, "rrc=%zu", read_sz);
+    DBG_RAFT_ENTRY_FATAL_IF((read_sz != sizeof(struct raft_entry_header)),
+                            reh, "invalid read size rrc=%zu, expected %zu",
+                            read_sz, sizeof(struct raft_entry_header));
 
-    NIOVA_ASSERT(read_sz == sizeof(struct raft_entry_header));
+    DBG_RAFT_ENTRY(LL_DEBUG, reh, "rrc=%zu", read_sz);
 
     return read_server_entry_validate(ri, reh, phys_entry_idx);
 }
@@ -704,7 +712,7 @@ raft_server_header_load(struct raft_instance *ri)
 
     ri->ri_log_hdr = *most_recent_rlh;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 
     return 0;
 }
@@ -783,7 +791,7 @@ raft_server_log_file_setup(struct raft_instance *ri)
     if (rc)
         return rc;
 
-    SIMPLE_LOG_MSG(LL_WARN, "log-file=%s", ri->ri_log);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "log-file=%s", ri->ri_log);
 
     ri->ri_log_fd = open(ri->ri_log, O_CREAT | O_RDWR | O_SYNC, 0600);
     if (ri->ri_log_fd < 0)
@@ -1282,7 +1290,7 @@ raft_server_candidate_reg_vote_result(struct raft_instance *ri,
 
     rcs->rcs_results[peer_idx] = result;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "peer-idx=%hhu voted=%s",
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "peer-idx=%hhu voted=%s",
                       peer_idx, result == RATE_VOTE_RESULT_YES ? "yes" : "no");
 
     return 0;
@@ -1337,7 +1345,7 @@ raft_server_become_candidate(struct raft_instance *ri)
     uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
     uuid_copy(rrm.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 
     raft_server_broadcast_msg(ri, &rrm);
 }
@@ -1408,7 +1416,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
 
     DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "sender-uuid=%s term=%ld rsn=%s",
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "sender-uuid=%s term=%ld rsn=%s",
                       peer_uuid_str, new_term,
                       raft_follower_reason_2_str(reason));
 
@@ -1971,11 +1979,11 @@ raft_server_append_entry_check_already_stored(
                  reh.reh_crc, raerq->raerqm_this_idx_crc, phys_idx);
     }
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                      "rci=%ld leader-prev-[idx:term]=%ld:%ld",
-                      raft_current_idx,
-                      raerq->raerqm_prev_log_index,
-                      raerq->raerqm_prev_log_term);
+    DBG_RAFT_INSTANCE(
+        LL_DEBUG, ri,
+        "already-stored=yes rci=%ld leader-prev-[idx:term]=%ld:%ld",
+        raft_current_idx, raerq->raerqm_prev_log_index,
+        raerq->raerqm_prev_log_term);
 
     return true;
 }
@@ -2457,14 +2465,19 @@ raft_server_apply_append_entries_reply_result(
      * reply corresponds to it.  This is to handle cases where replies get
      * delayed by the network.  If the follower still needs to have its
      * rls_next_idx decreased, it's ok, subsequent AE requests will eventually
-     * cause it happen.
+     * cause it happen.  Note, this situation is common due to heartbeat msgs
+     * running concurrently with pending AE's.  Heartbeat replies may meet the
+     * criteria for advancing next-idx which will cause the non-hb AE reply
+     * to appear stale.
      */
     if (raerp->raerpm_prev_log_index + 1 != rfi->rfi_next_idx)
     {
-        DBG_RAFT_INSTANCE(LL_WARN, ri,
-                          "follower=%x reply-ni=%ld my-ni-for-follower=%ld",
-                          follower_idx, raerp->raerpm_prev_log_index,
-                          rfi->rfi_next_idx);
+        DBG_RAFT_INSTANCE(
+            LL_DEBUG, ri,
+            "follower=%x hb=%d reply-ni=%ld my-ni-for-follower=%ld",
+            follower_idx, raerp->raerpm_heartbeat_msg,
+            raerp->raerpm_prev_log_index, rfi->rfi_next_idx);
+
         return;
     }
 
@@ -2706,9 +2719,9 @@ raft_server_reply_to_client(struct raft_instance *ri,
      */
     const struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
-    DBG_RAFT_CLIENT_RPC(LL_WARN, rncr->rncr_request, &rncr->rncr_remote_addr,
+    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request, &rncr->rncr_remote_addr,
                         "original request");
-    DBG_RAFT_CLIENT_RPC(LL_WARN, reply, &rncr->rncr_remote_addr,
+    DBG_RAFT_CLIENT_RPC(LL_DEBUG, reply, &rncr->rncr_remote_addr,
                         "reply");
 
     int rc = raft_server_send_msg_to_client(ri, rncr);
@@ -2956,9 +2969,9 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
                  (struct raft_entry_header *)sink_buf;
 
              int rc = raft_server_entry_header_read(ri, phys_idx, reh);
-             DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                      "raft_server_entry_header_read(%ld): %s",
-                                        peer_next_raft_idx, strerror(-rc));
+             DBG_RAFT_INSTANCE_FATAL_IF(
+                 (rc), ri, "raft_server_entry_header_read(%ld): %s",
+                 peer_next_raft_idx, strerror(-rc));
 
              raerq->raerqm_entries_sz = reh->reh_data_size;
              raerq->raerqm_leader_change_marker =

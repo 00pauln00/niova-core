@@ -296,61 +296,61 @@ raft_compile_time_checks(void)
     switch ((rm)->rrm_type)                                             \
     {                                                                   \
     case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                                \
-        SIMPLE_LOG_MSG(log_level,                                       \
-                       "VREQ nterm=%ld last=%ld:%ld %s "fmt,            \
-                       (rm)->rrm_vote_request.rvrqm_proposed_term,      \
-                       (rm)->rrm_vote_request.rvrqm_last_log_term,      \
-                       (rm)->rrm_vote_request.rvrqm_last_log_index,     \
-                       __uuid_str,                                      \
-                       ##__VA_ARGS__);                                  \
+        LOG_MSG(log_level,                                              \
+                "VREQ nterm=%ld last=%ld:%ld %s "fmt,                   \
+                (rm)->rrm_vote_request.rvrqm_proposed_term,             \
+                (rm)->rrm_vote_request.rvrqm_last_log_term,             \
+                (rm)->rrm_vote_request.rvrqm_last_log_index,            \
+                __uuid_str,                                             \
+                ##__VA_ARGS__);                                         \
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                                  \
-        SIMPLE_LOG_MSG(log_level,                                       \
-                       "VREPLY term=%ld granted=%s %s "fmt,             \
-                       (rm)->rrm_vote_reply.rvrpm_term,                 \
-                       ((rm)->rrm_vote_reply.rvrpm_voted_granted ?      \
-                        "yes" : "no"),                                  \
-                       __uuid_str,                                      \
-                       ##__VA_ARGS__);                                  \
+        LOG_MSG(log_level,                                              \
+                "VREPLY term=%ld granted=%s %s "fmt,                    \
+                (rm)->rrm_vote_reply.rvrpm_term,                        \
+                ((rm)->rrm_vote_reply.rvrpm_voted_granted ?             \
+                 "yes" : "no"),                                         \
+                __uuid_str,                                             \
+                ##__VA_ARGS__);                                         \
         break;                                                          \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                      \
-        SIMPLE_LOG_MSG(log_level,                                       \
-                       "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx crc=%u:%u %s "fmt, \
-                       (rm)->rrm_append_entries_request.raerqm_leader_term, \
-                       (rm)->rrm_append_entries_request.raerqm_log_term, \
-                       (rm)->rrm_append_entries_request.raerqm_commit_index, \
-                       (rm)->rrm_append_entries_request.raerqm_prev_log_term, \
-                       (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
-                       (rm)->rrm_append_entries_request.raerqm_entries_sz, \
-                       (rm)->rrm_append_entries_request.raerqm_heartbeat_msg, \
-                       (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
-                       (rm)->rrm_append_entries_request.raerqm_prev_idx_crc, \
-                       (rm)->rrm_append_entries_request.raerqm_this_idx_crc, \
-                       __uuid_str,                                      \
-                       ##__VA_ARGS__);                                  \
+        LOG_MSG(log_level,                                              \
+                "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx crc=%u:%u %s "fmt, \
+                (rm)->rrm_append_entries_request.raerqm_leader_term,    \
+                (rm)->rrm_append_entries_request.raerqm_log_term,       \
+                (rm)->rrm_append_entries_request.raerqm_commit_index,   \
+                (rm)->rrm_append_entries_request.raerqm_prev_log_term,  \
+                (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
+                (rm)->rrm_append_entries_request.raerqm_entries_sz,     \
+                (rm)->rrm_append_entries_request.raerqm_heartbeat_msg,  \
+                (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
+                (rm)->rrm_append_entries_request.raerqm_prev_idx_crc,   \
+                (rm)->rrm_append_entries_request.raerqm_this_idx_crc,   \
+                __uuid_str,                                             \
+                ##__VA_ARGS__);                                         \
         break;                                                          \
-    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                      \
-        SIMPLE_LOG_MSG(log_level,                                       \
-                       "AE_REPLY t=%ld pli=%ld hb=%hhx err=%hhx:%hhx %s "fmt, \
-                       (rm)->rrm_append_entries_reply.raerpm_leader_term, \
-                       (rm)->rrm_append_entries_reply.raerpm_prev_log_index, \
-                       (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg, \
-                       (rm)->rrm_append_entries_reply.raerpm_err_stale_term, \
-                       (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
-                       __uuid_str,                                      \
-                       ##__VA_ARGS__);                                  \
+    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                        \
+        LOG_MSG(log_level,                                              \
+                "AE_REPLY t=%ld pli=%ld hb=%hhx err=%hhx:%hhx %s "fmt,  \
+                (rm)->rrm_append_entries_reply.raerpm_leader_term,      \
+                (rm)->rrm_append_entries_reply.raerpm_prev_log_index,   \
+                (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg,    \
+                (rm)->rrm_append_entries_reply.raerpm_err_stale_term,   \
+                (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
+                __uuid_str,                                             \
+                ##__VA_ARGS__);                                         \
         break;                                                          \
-default:                                                                \
+    default:                                                            \
         break;                                                          \
     }                                                                   \
 }
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
-    SIMPLE_LOG_MSG(log_level,                                           \
-                   "re@%p crc=%u size=%u idx=%ld term=%ld lcm=%hhx "fmt, \
-                   (re), (re)->reh_crc, (re)->reh_data_size,            \
-                   (re)->reh_index, (re)->reh_term,                     \
-                   (re)->reh_leader_change_marker , ##__VA_ARGS__)
+    LOG_MSG(log_level,                                                  \
+            "re@%p crc=%u size=%u idx=%ld term=%ld lcm=%hhx "fmt,       \
+            (re), (re)->reh_crc, (re)->reh_data_size,                   \
+            (re)->reh_index, (re)->reh_term,                            \
+            (re)->reh_leader_change_marker , ##__VA_ARGS__)
 
 #define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)                 \
 {                                                                       \
@@ -369,16 +369,16 @@ default:                                                                \
         uuid_unparse((ri)->ri_csn_leader->csn_uuid,                     \
                      __leader_uuid_str);                                \
                                                                         \
-    SIMPLE_LOG_MSG(log_level,                                           \
-                   "%c et=%ld ei=%ld ht=%ld hs=%ld ci=%ld:%ld v=%s l=%s " \
-                   fmt,                                                 \
-                   raft_server_state_to_char((ri)->ri_state),           \
-                   raft_server_get_current_raft_entry_term((ri)),       \
-                   raft_server_get_current_raft_entry_index((ri)),      \
-                   (ri)->ri_log_hdr.rlh_term,                           \
-                   (ri)->ri_log_hdr.rlh_seqno,                          \
-                   (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,      \
-                   __uuid_str, __leader_uuid_str, ##__VA_ARGS__);       \
+    LOG_MSG(log_level,                                                  \
+            "%c et=%ld ei=%ld ht=%ld hs=%ld ci=%ld:%ld v=%s l=%s "      \
+            fmt,                                                        \
+            raft_server_state_to_char((ri)->ri_state),                  \
+            raft_server_get_current_raft_entry_term((ri)),              \
+            raft_server_get_current_raft_entry_index((ri)),             \
+            (ri)->ri_log_hdr.rlh_term,                                  \
+            (ri)->ri_log_hdr.rlh_seqno,                                 \
+            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,             \
+            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);              \
 }
 
 #define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)              \

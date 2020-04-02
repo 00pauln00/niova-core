@@ -157,7 +157,8 @@ env_parse_long(const char *ev_string, struct niova_env_var *nev)
         nev->nev_long_value = nev->nev_min;
     }
 
-    SIMPLE_LOG_MSG(LL_WARN,
+    SIMPLE_LOG_MSG((nev->nev_long_value != nev->nev_default ?
+                    LL_WARN : LL_NOTIFY),
                    "env-var %s value %lld applied from environment",
                    nev->nev_name, nev->nev_long_value);
 }
