@@ -35,6 +35,7 @@ static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
 
 struct rsc_raft_test_info
 {
+    struct lreg_node            rtti_lreg;
     bool                        rtti_leader_is_viable;
     bool                        rtti_initialized;
     const uint32_t              rtti_random_seed;
@@ -62,6 +63,18 @@ rsc_set_initialized(void)
     rRTI.rtti_initialized = true;
 }
 
+static struct rsc_raft_test_info *
+rsc_get_raft_test_info(void)
+{
+    return &rRTI;
+}
+
+static struct lreg_node *
+rsc_get_lreg_node(void)
+{
+    return &rRTI.rtti_lreg;
+}
+
 static bool
 rsc_is_initialized(void)
 {
@@ -84,6 +97,12 @@ static uint64_t
 rsc_get_committed_seqno(void)
 {
     return rRTI.rrti_committed.rtv_seqno;
+}
+
+static uint64_t
+rsc_get_committed_xor_sum(void)
+{
+    return rRTI.rrti_committed.rtv_reply_xor_all_values;
 }
 
 static struct timespec *
@@ -126,6 +145,32 @@ static void
 rsc_clear_pending_msg_id(void)
 {
     rRTI.rtti_rcrm.rcrm_msg_id = 0;
+}
+
+static int64_t
+rsc_get_pending_seqno(void)
+{
+    if (rsc_get_pending_msg_id())
+    {
+        struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+        return rtdb->rtdb_values[rtdb->rtdb_num_values - 1].rtv_seqno;
+    }
+
+    return -1;
+}
+
+static int64_t
+rsc_get_pending_value(void)
+{
+    if (rsc_get_pending_msg_id())
+    {
+        struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
+
+        return rtdb->rtdb_values[rtdb->rtdb_num_values - 1].rtv_request_value;
+    }
+
+    return -1;
 }
 
 static unsigned int
@@ -749,6 +794,8 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
         NIOVA_ASSERT(possible_pending_rtv->rtv_seqno ==
                      (rsc_get_committed_seqno() + 1));
 
+//        rsc_client_update_retry_seqno();
+
         const uint64_t prev_msg_id = rsc_get_pending_msg_id();
         rsc_client_rpc_msg_assign_id(rcrm);
 
@@ -963,6 +1010,107 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+enum raft_client_app_lreg_values
+{
+    RAFT_CLIENT_APP_LREG_UUID,                   //string
+    RAFT_CLIENT_APP_LREG_INITIALIZED,            //bool
+    RAFT_CLIENT_APP_LREG_COMMITTED_SEQNO,        //uint64
+    RAFT_CLIENT_APP_LREG_COMMITTED_XOR_SUM,      //uint64
+    RAFT_CLIENT_APP_LREG_PENDING_SEQNO,          //uint64
+    RAFT_CLIENT_APP_LREG_PENDING_VAL,            //uint64
+    RAFT_CLIENT_APP_LREG_PENDING_MSG_ID,         //uint64
+    RAFT_CLIENT_APP_LREG_LAST_RETRIED_SEQNO,     //uint64
+    RAFT_CLIENT_APP_LREG_LAST_VALIDATED_SEQNO,   //uint64
+    RAFT_CLIENT_APP_LREG_LAST_VALIDATED_XOR_SUM, //uint64
+    RAFT_CLIENT_APP_LREG_LEADER_ALIVE_CNT,       //int
+    RAFT_CLIENT_APP_LREG_LEADER_VIABLE,          //string
+    RAFT_CLIENT_APP_LREG_LAST_REQUEST_ACKD,      //string
+    RAFT_CLIENT_APP_LREG_MAX,
+};
+
+static util_thread_ctx_reg_t
+raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                                    const struct raft_instance *ri,
+                                    struct lreg_value *lv)
+{
+    if (!lv || !ri ||
+        lv->lrv_value_idx_in >= RAFT_CLIENT_APP_LREG_MAX ||
+        op != LREG_NODE_CB_OP_READ_VAL)
+        return;
+
+    switch (lv->lrv_value_idx_in)
+    {
+    case RAFT_CLIENT_APP_LREG_UUID:
+        lreg_value_fill_string(lv, "app-uuid", my_uuid_str);
+        break;
+    case RAFT_CLIENT_APP_LREG_INITIALIZED:
+        lreg_value_fill_bool(lv, "initialized", rsc_is_initialized());
+        break;
+    case RAFT_CLIENT_APP_LREG_COMMITTED_SEQNO:
+        lreg_value_fill_unsigned(lv, "committed-seqno",
+                                 rsc_get_committed_seqno());
+        break;
+    case RAFT_CLIENT_APP_LREG_COMMITTED_XOR_SUM:
+        lreg_value_fill_unsigned(lv, "committed-xor-sum",
+                                 rsc_get_committed_xor_sum());
+        break;
+    case RAFT_CLIENT_APP_LREG_PENDING_SEQNO:
+        lreg_value_fill_signed(lv, "pending-seqno", rsc_get_pending_seqno());
+        break;
+    case RAFT_CLIENT_APP_LREG_PENDING_VAL:
+        lreg_value_fill_signed(lv, "pending-value", rsc_get_pending_value());
+        break;
+    case RAFT_CLIENT_APP_LREG_PENDING_MSG_ID:
+        lreg_value_fill_unsigned(lv, "pending-msg-id",
+                                 rsc_get_pending_msg_id());
+        break;
+
+    default:
+        break;
+    }
+}
+
+static util_thread_ctx_reg_int_t
+rsc_app_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                struct lreg_value *lv)
+{
+    const struct raft_instance *ri = lrn->lrn_cb_arg;
+    if (!ri)
+        return -EINVAL;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = RAFT_CLIENT_APP_LREG_MAX;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+        strncpy(lv->lrv_key_string, "raft_client_app",
+                LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lv), my_uuid_str,
+                LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        if (!lv)
+            return -EINVAL;
+
+        raft_client_app_lreg_multi_facet_cb(op, ri, lv);
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        return -ENOENT;
+    }
+
+    return 0;
+}
+
 static int
 raft_client_test_lreg_init(struct raft_instance *ri)
 {
@@ -974,6 +1122,16 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     int rc =
         lreg_node_install_prepare(&ri->ri_lreg,
                                   LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
+
+    if (!rc)
+    {
+        lreg_node_init(rsc_get_lreg_node(), LREG_USER_TYPE_RAFT_CLIENT_APP,
+                       rsc_app_lreg_cb, rsc_get_raft_test_info(), false);
+
+        rc = lreg_node_install_prepare(rsc_get_lreg_node(),
+                                       lreg_root_node_get());
+    }
+
     return rc;
 }
 

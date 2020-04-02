@@ -61,6 +61,7 @@ enum lreg_user_types
     LREG_USER_TYPE_RAFT,
     LREG_USER_TYPE_RAFT_PEER_STATS,
     LREG_USER_TYPE_RAFT_CLIENT,
+    LREG_USER_TYPE_RAFT_CLIENT_APP,
     LREG_USER_TYPE_ANY,
 };
 
@@ -80,6 +81,7 @@ union lreg_value_data_numeric
     uint64_t lrvdn_unsigned_val;
     int64_t  lrvdn_signed_val;
     float    lrvdn_float_val;
+    bool     lrvdn_bool_val;
 };
 
 struct lreg_value_data
@@ -415,6 +417,7 @@ lreg_value_fill_key_and_type(struct lreg_value *lv, const char *key,
     }
 
 }
+
 static inline void
 lreg_value_fill_string(struct lreg_value *lv, const char *key,
                        const char *value)
@@ -448,7 +451,8 @@ lreg_value_fill_numeric(struct lreg_value *lv, const char *key,
 {
     if (lv && (type == LREG_VAL_TYPE_SIGNED_VAL ||
                type == LREG_VAL_TYPE_UNSIGNED_VAL ||
-               type == LREG_VAL_TYPE_FLOAT_VAL))
+               type == LREG_VAL_TYPE_FLOAT_VAL ||
+               type == LREG_VAL_TYPE_BOOL))
     {
         lreg_value_fill_key_and_type(lv, key, type);
         switch (type)
@@ -462,10 +466,22 @@ lreg_value_fill_numeric(struct lreg_value *lv, const char *key,
         case LREG_VAL_TYPE_FLOAT_VAL:
             LREG_VALUE_TO_OUT_FLOAT(lv) = lvdu.lrvdn_float_val;
             break;
+        case LREG_VAL_TYPE_BOOL:
+            LREG_VALUE_TO_BOOL(lv) = lvdu.lrvdn_bool_val;
+            break;
         default:
             break;
         }
     }
+}
+
+static inline void
+lreg_value_fill_bool(struct lreg_value *lv, const char *key,
+                     bool value)
+{
+    union lreg_value_data_numeric lvdu = {.lrvdn_bool_val = value};
+
+    lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_BOOL);
 }
 
 static inline void
