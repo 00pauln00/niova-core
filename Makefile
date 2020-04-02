@@ -127,8 +127,14 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 		test/random-test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-raft: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
+	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
+	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
+	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
+
+raft_dbg: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+raft_dbg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
