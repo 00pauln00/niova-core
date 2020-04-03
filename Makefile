@@ -133,15 +133,15 @@ raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-raft_dbg: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
-raft_dbg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
+raft-dbg: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+raft-dbg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-raft_cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
-raft_cg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
+raft-cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
+raft-cg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 

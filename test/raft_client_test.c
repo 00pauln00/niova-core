@@ -7,7 +7,7 @@
 #include "epoll_mgr.h"
 #include "common.h"
 #include "crc32.h"
-
+#include "binary_hist.h"
 #include "random.h"
 #include "raft.h"
 #include "raft_net.h"
@@ -41,6 +41,7 @@ struct rsc_raft_test_info
     const uint32_t              rtti_random_seed;
     struct timespec             rtti_last_request_sent;
     struct timespec             rtti_last_request_ackd; // by leader
+    struct timespec             rtti_last_msg_recvd;
     struct raft_test_values     rrti_committed;
     struct raft_test_values     rrti_last_retried;
     struct raft_test_values     rrti_last_validated;
@@ -49,6 +50,37 @@ struct rsc_raft_test_info
     struct raft_client_rpc_msg  rtti_rcrm;
     struct raft_test_data_block rtti_rtdb;
     char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+};
+
+enum raft_client_instance_lreg_values
+{
+    RAFT_CLIENT_LREG_RAFT_UUID,
+    RAFT_CLIENT_LREG_PEER_UUID,
+    RAFT_CLIENT_LREG_LEADER_UUID,
+    RAFT_CLIENT_LREG_PEER_STATE,
+    RAFT_CLIENT_LREG_COMMIT_LATENCY,
+    RAFT_CLIENT_LREG_READ_LATENCY,
+    RAFT_CLIENT_LREG_MAX,
+};
+
+enum raft_client_app_lreg_values
+{
+    RAFT_CLIENT_APP_LREG_UUID,                   //string
+    RAFT_CLIENT_APP_LREG_INITIALIZED,            //bool
+    RAFT_CLIENT_APP_LREG_COMMITTED_SEQNO,        //uint64
+    RAFT_CLIENT_APP_LREG_COMMITTED_XOR_SUM,      //uint64
+    RAFT_CLIENT_APP_LREG_PENDING_SEQNO,          //uint64
+    RAFT_CLIENT_APP_LREG_PENDING_VAL,            //uint64
+    RAFT_CLIENT_APP_LREG_PENDING_MSG_ID,         //uint64
+    RAFT_CLIENT_APP_LREG_LAST_RETRIED_SEQNO,     //uint64
+    RAFT_CLIENT_APP_LREG_NUM_WRITE_RETRIES,      //uint64
+    RAFT_CLIENT_APP_LREG_LAST_VALIDATED_SEQNO,   //uint64
+    RAFT_CLIENT_APP_LREG_LAST_VALIDATED_XOR_SUM, //uint64
+    RAFT_CLIENT_APP_LREG_LEADER_ALIVE_CNT,       //int
+    RAFT_CLIENT_APP_LREG_LEADER_VIABLE,          //string
+    RAFT_CLIENT_APP_LREG_LAST_MSG_RECVD,         //string
+    RAFT_CLIENT_APP_LREG_LAST_REQUEST_ACKD,      //string
+    RAFT_CLIENT_APP_LREG_MAX,
 };
 
 /**
@@ -128,9 +160,28 @@ rsc_get_committed_xor_sum(void)
 }
 
 static struct timespec *
+rsc_get_last_msg_recvd(void)
+{
+    return &rRTI.rtti_last_msg_recvd;
+}
+
+static struct timespec *
 rsc_get_last_request_ackd(void)
 {
     return &rRTI.rtti_last_request_ackd;
+}
+
+static void
+rsc_set_last_request_ackd(const struct timespec *ts)
+{
+    if (ts)
+        rRTI.rtti_last_request_ackd = *ts;
+}
+
+static struct timespec *
+rsc_get_last_request_sent(void)
+{
+    return &rRTI.rtti_last_request_sent;
 }
 
 static struct raft_test_data_block *
@@ -374,11 +425,11 @@ rsc_bootstrap_committed_seqno(const struct raft_test_values *rtv)
     return rsc_commit_seqno_validate(rtv, true);
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_udp_cb_ctx_int_t
 rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
 {
     if (!rcrm)
-	return;
+	return -EINVAL;
 
     // This rtdb contains the original request contents
     const struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
@@ -392,7 +443,7 @@ rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
         DBG_RAFT_TEST_DATA_BLOCK(log_level, rtdb, "sys=%s, app=%s",
                                  strerror(-rcrm->rcrm_sys_error),
                                  strerror(-rcrm->rcrm_app_error));
-        return;
+        return rcrm->rcrm_app_error == -EALREADY ? 0 : rcrm->rcrm_app_error;
     }
 
     // Assert that the msg id matches - it should have been checked prior
@@ -402,13 +453,15 @@ rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
 
     for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
         rsc_commit_rtv_to_raft_test_info(&rtdb->rtdb_values[i]);
+
+    return 0;
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_udp_cb_ctx_int_t
 rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
 {
     if (!rcrm)
-        return;
+        return -EINVAL;
 
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)rcrm->rcrm_data;
@@ -423,7 +476,7 @@ rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
         if (app_error == -ENOENT)
             rsc_set_initialized();
 
-        return;
+        return app_error;
     }
 
     int rc = 0;
@@ -437,6 +490,45 @@ rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
     {
         rc = rsc_commit_seqno_validate(&rtdb->rtdb_values[0], false);
         FATAL_IF((rc), "rsc_commit_seqno_validate(): %s", strerror(-rc));
+    }
+
+    return 0;
+}
+
+static raft_net_udp_cb_ctx_t
+rsc_incorporate_ack_measurement(struct raft_instance *ri,
+                                const struct raft_client_rpc_msg *rcrm,
+                                const struct sockaddr_in *from,
+                                const struct timespec *current_time,
+                                enum raft_test_data_op op)
+{
+    if (!ri || !rcrm || !from || !current_time ||
+        (op != RAFT_TEST_DATA_OP_READ && op != RAFT_TEST_DATA_OP_WRITE))
+        return;
+
+    rsc_set_last_request_ackd(current_time);
+
+    const long long elapsed_msec =
+        (long long)(timespec_2_msec(current_time) -
+                    timespec_2_msec(rsc_get_last_request_sent()));
+
+    if (elapsed_msec < 0 || elapsed_msec > (3600 * 1000 * 24))
+    {
+        DBG_RAFT_CLIENT_RPC(LL_WARN, rcrm, from,
+                            "unreasonable elapsed time %lld", elapsed_msec);
+    }
+    else
+    {
+        enum raft_instance_hist_types type =
+            (op == RAFT_TEST_DATA_OP_READ ?
+             RAFT_INSTANCE_HIST_READ_LAT_MSEC :
+             RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+
+        struct binary_hist *bh = &ri->ri_rihs[type].rihs_bh;
+
+        binary_hist_incorporate_val(bh, elapsed_msec);
+        DBG_RAFT_CLIENT_RPC(LL_WARN, rcrm, from, "op=%s elapsed time %lld",
+                            raft_test_data_op_2_string(op), elapsed_msec);
     }
 }
 
@@ -525,11 +617,14 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
         return;
     }
 
-    // Execute the application specific reply handler.
-    if (rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ)
-        rsc_process_read_reply(rcrm);
-    else
-        rsc_process_write_reply(rcrm);
+    struct timespec ts;
+    niova_realtime_coarse_clock(&ts); // Exclude handler exec from measurement
+
+    int rc = rtdb->rtdb_op == RAFT_TEST_DATA_OP_READ ?
+        rsc_process_read_reply(rcrm) : rsc_process_write_reply(rcrm);
+
+    if (!rc)
+        rsc_incorporate_ack_measurement(ri, rcrm, from, &ts, rtdb->rtdb_op);
 
     rsc_clear_pending_msg_id();
 }
@@ -637,26 +732,22 @@ rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 
     raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
 
+    /* Copy the last_recv timestamp taken above.  This is used to track
+     * the liveness of the raft cluster.
+     */
+    int rc = raft_net_comm_get_last_recv(ri, rcrm->rcrm_sender_id,
+                                         rsc_get_last_msg_recvd());
+    FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
+
     if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
-    {
         rsc_process_ping_reply(rcrm, sender_csn);
-    }
+
     else if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT)
-    {
         rsc_update_leader_from_redirect(ri, from, rcrm);
-    }
+
     else if (!rcrm->rcrm_sys_error &&
              rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
-    {
-        /* Copy the last_recv timestamp taken above.  This is used to track
-         * the liveness of the leader.
-         */
-        int rc = raft_net_comm_get_last_recv(ri, rcrm->rcrm_sender_id,
-                                             rsc_get_last_request_ackd());
-        FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
-
         rsc_udp_recv_handler_process_reply(ri, rcrm, sender_csn, from);
-    }
 }
 
 static bool
@@ -847,6 +938,8 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
     const struct raft_test_values *possible_pending_rtv =
         &rtdb->rtdb_values[0];
 
+    bool msg_retry = false;
+
     // If there's a pending write, resend it
     if (rtdb->rtdb_op == RAFT_TEST_DATA_OP_WRITE &&
         possible_pending_rtv->rtv_seqno > rsc_get_committed_seqno())
@@ -864,6 +957,8 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
             LL_NOTIFY, ri, rcrm,
             "resend write request (pending-seqno=%lu) prev_msg_id=%lx",
             possible_pending_rtv->rtv_seqno, prev_msg_id);
+
+        msg_retry = true;
     }
     else if (op == RAFT_TEST_DATA_OP_WRITE)
     {
@@ -873,6 +968,9 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
     {
         rsc_setup_read_request(ri);
     }
+
+    if (!msg_retry) // Take a timestamp for non-retried msgs
+        niova_realtime_coarse_clock(rsc_get_last_request_sent());
 
     int rc = raft_net_send_client_msg(ri, rcrm);
     if (rc)
@@ -986,15 +1084,66 @@ rsc_main_loop(struct raft_instance *ri)
 
     return rc;
 }
-
-enum raft_client_instance_lreg_values
+static util_thread_ctx_reg_t
+raft_client_instance_hist_lreg_multi_facet_handler(
+    enum lreg_node_cb_ops op,
+    struct raft_instance_hist_stats *rihs,
+    struct lreg_value *lv)
 {
-    RAFT_CLIENT_LREG_RAFT_UUID,
-    RAFT_CLIENT_LREG_PEER_UUID,
-    RAFT_CLIENT_LREG_LEADER_UUID,
-    RAFT_CLIENT_LREG_PEER_STATE,
-    RAFT_CLIENT_LREG_MAX,
-};
+    if (!lv ||
+        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh) ||
+        op != LREG_NODE_CB_OP_READ_VAL)
+        return;
+
+    snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "%lld",
+             binary_hist_lower_bucket_range(&rihs->rihs_bh,
+                                            lv->lrv_value_idx_in));
+
+    LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
+        binary_hist_get_cnt(&rihs->rihs_bh, lv->lrv_value_idx_in);
+
+    lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+}
+
+static util_thread_ctx_reg_int_t
+raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
+                                  struct lreg_node *lrn,
+                                  struct lreg_value *lv)
+{
+    struct raft_instance_hist_stats *rihs = lrn->lrn_cb_arg;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = binary_hist_size(&rihs->rihs_bh);
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+
+        strncpy(LREG_VALUE_TO_OUT_STR(lv),
+                raft_instance_hist_stat_2_name(rihs->rihs_type),
+                LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        if (!lv)
+            return -EINVAL;
+
+        raft_client_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE:
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        return -ENOENT;
+    }
+
+    return 0;
+}
 
 static util_thread_ctx_reg_t
 raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
@@ -1024,6 +1173,14 @@ raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case RAFT_CLIENT_LREG_PEER_STATE:
         lreg_value_fill_string(lv, "state",
                                raft_server_state_to_string(ri->ri_state));
+        break;
+    case RAFT_CLIENT_LREG_COMMIT_LATENCY:
+        lreg_value_fill_object(lv, "commit-latency-msec",
+                               RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+        break;
+    case RAFT_CLIENT_LREG_READ_LATENCY:
+        lreg_value_fill_object(lv, "read-latency-msec",
+                               RAFT_INSTANCE_HIST_READ_LAT_MSEC);
         break;
     default:
         break;
@@ -1070,25 +1227,6 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     return 0;
 }
-
-enum raft_client_app_lreg_values
-{
-    RAFT_CLIENT_APP_LREG_UUID,                   //string
-    RAFT_CLIENT_APP_LREG_INITIALIZED,            //bool
-    RAFT_CLIENT_APP_LREG_COMMITTED_SEQNO,        //uint64
-    RAFT_CLIENT_APP_LREG_COMMITTED_XOR_SUM,      //uint64
-    RAFT_CLIENT_APP_LREG_PENDING_SEQNO,          //uint64
-    RAFT_CLIENT_APP_LREG_PENDING_VAL,            //uint64
-    RAFT_CLIENT_APP_LREG_PENDING_MSG_ID,         //uint64
-    RAFT_CLIENT_APP_LREG_LAST_RETRIED_SEQNO,     //uint64
-    RAFT_CLIENT_APP_LREG_NUM_WRITE_RETRIES,      //uint64
-    RAFT_CLIENT_APP_LREG_LAST_VALIDATED_SEQNO,   //uint64
-    RAFT_CLIENT_APP_LREG_LAST_VALIDATED_XOR_SUM, //uint64
-    RAFT_CLIENT_APP_LREG_LEADER_ALIVE_CNT,       //int
-    RAFT_CLIENT_APP_LREG_LEADER_VIABLE,          //string
-    RAFT_CLIENT_APP_LREG_LAST_REQUEST_ACKD,      //string
-    RAFT_CLIENT_APP_LREG_MAX,
-};
 
 static util_thread_ctx_reg_t
 raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
@@ -1151,10 +1289,15 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case RAFT_CLIENT_APP_LREG_LEADER_VIABLE:
         lreg_value_fill_bool(lv, "leader-is-viable", rsc_leader_is_viable());
         break;
+    case RAFT_CLIENT_APP_LREG_LAST_MSG_RECVD:
+        ctime_r((const time_t *)rsc_get_last_msg_recvd(), ctime_buf);
+        niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
+        lreg_value_fill_string(lv, "last-msg-recvd", ctime_buf);
+        break;
     case RAFT_CLIENT_APP_LREG_LAST_REQUEST_ACKD:
         ctime_r((const time_t *)rsc_get_last_request_ackd(), ctime_buf);
         niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
-        lreg_value_fill_string(lv, "last-leader-ack", ctime_buf);
+        lreg_value_fill_string(lv, "last-request-ack", ctime_buf);
         break;
     default:
         break;
@@ -1213,15 +1356,26 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     int rc =
         lreg_node_install_prepare(&ri->ri_lreg,
                                   LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
+    if (rc)
+        return rc;
 
-    if (!rc)
+    for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
+         i < RAFT_INSTANCE_HIST_MAX; i++)
     {
-        lreg_node_init(rsc_get_lreg_node(), LREG_USER_TYPE_RAFT_CLIENT_APP,
-                       rsc_app_lreg_cb, rsc_get_raft_test_info(), false);
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+                       raft_client_instance_hist_lreg_cb,
+                       (void *)&ri->ri_rihs[i], false);
 
-        rc = lreg_node_install_prepare(rsc_get_lreg_node(),
-                                       lreg_root_node_get());
+        rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+        if (rc)
+            return rc;
     }
+
+    lreg_node_init(rsc_get_lreg_node(), LREG_USER_TYPE_RAFT_CLIENT_APP,
+                   rsc_app_lreg_cb, rsc_get_raft_test_info(), false);
+
+    rc = lreg_node_install_prepare(rsc_get_lreg_node(),
+                                   lreg_root_node_get());
 
     return rc;
 }

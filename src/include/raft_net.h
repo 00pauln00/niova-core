@@ -22,6 +22,8 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
+#define RAFT_NET_BINARY_HIST_SIZE 16 // ~64 second (when used for msec)
+
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
 #define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
 

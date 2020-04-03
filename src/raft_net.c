@@ -352,6 +352,19 @@ raft_net_instance_shutdown(struct raft_instance *ri)
             (epoll_close_rc ? epoll_close_rc : 0));
 }
 
+static void
+raft_net_histogram_setup(struct raft_instance *ri)
+{
+    for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
+         i < RAFT_INSTANCE_HIST_MAX; i++)
+    {
+        binary_hist_init(&ri->ri_rihs[i].rihs_bh, 0,
+                         RAFT_NET_BINARY_HIST_SIZE);
+
+        ri->ri_rihs[i].rihs_type = i;
+    }
+}
+
 int
 raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 {
@@ -359,6 +372,8 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return -EINVAL;
 
     ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_BOOTING;
+
+    raft_net_histogram_setup(ri);
 
     int rc = raft_net_conf_init(ri);
     if (rc)

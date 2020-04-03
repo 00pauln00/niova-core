@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "binary_hist.h"
 #include "common.h"
 #include "util.h"
 #include "ctl_svc.h"
@@ -245,6 +246,24 @@ enum raft_follower_reasons
     RAFT_BFRSN_LEADER_ALREADY_PRESENT,
 };
 
+enum raft_instance_hist_types
+{
+    RAFT_INSTANCE_HIST_MIN                = 0,
+    RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC    = 0,
+    RAFT_INSTANCE_HIST_READ_LAT_MSEC      = 1,
+    RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC  = 2,
+    RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
+    RAFT_INSTANCE_HIST_MAX                = 4,
+    RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
+};
+
+struct raft_instance_hist_stats
+{
+    enum raft_instance_hist_types rihs_type;
+    struct binary_hist            rihs_bh;
+    struct lreg_node              rihs_lrn;
+};
+
 struct raft_instance
 {
     struct udp_socket_handle    ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -278,6 +297,7 @@ struct raft_instance
     struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
     struct lreg_node            ri_lreg;
     struct lreg_node            ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
+    struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
 };
 
 static inline void
@@ -424,6 +444,25 @@ raft_server_state_to_char(enum raft_state state)
     }
 
     return '?';
+}
+
+static inline const char *
+raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
+{
+    switch (hist)
+    {
+    case RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC:
+        return "commit-latency-msec";
+    case RAFT_INSTANCE_HIST_READ_LAT_MSEC:
+        return "read-latency-msec";
+    case RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC:
+        return "dev-read-latency-usec";
+    case RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC:
+        return "dev-write-latency-usec";
+    default:
+        break;
+    }
+    return "unknown";
 }
 
 static inline char *
