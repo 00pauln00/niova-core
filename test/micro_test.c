@@ -158,6 +158,18 @@ simple_uuid_generate(void)
     static uuid_t uuid;
     uuid_generate(uuid);
 }
+static void
+simple_uuid_generate_time(void)
+{
+    static uuid_t uuid;
+    uuid_generate_time(uuid);
+}
+static void
+simple_uuid_generate_random(void)
+{
+    static uuid_t uuid;
+    uuid_generate_random(uuid);
+}
 
 static void
 simple_crc32_64byte_buf(void)
@@ -191,15 +203,15 @@ run_micro(void (*func)(void), size_t iterations, const char *name)
 
     unsigned long long num_nsecs = timespec_2_nsec(&ts[0]);
 
-    fprintf(stdout, "%.03f\t\t%s\n",
+    fprintf(stdout, "%9.3f\t\t%s\n",
             (float)num_nsecs / (float)iterations, name);
 }
 
 int
 main(void)
 {
-    fprintf(stdout, "NS/OP\t\tTest Name\n"
-            "----------------------------------------------\n");
+    fprintf(stdout, "    NS/OP\t\tTest Name\n"
+            "--------------------------------------------------\n");
 
     run_micro(simple_noop, DEF_ITER, "simple_noop");
     run_micro(simple_addition, DEF_ITER, "simple_addition");
@@ -224,5 +236,9 @@ main(void)
               "clock_gettime_monotonic_raw");
     run_micro(simple_uuid_generate, DEF_ITER / 10000,
               "uuid_generate");
+    run_micro(simple_uuid_generate_random, DEF_ITER / 10000,
+              "uuid_generate_random");
+    run_micro(simple_uuid_generate_time, DEF_ITER / 10000,
+              "uuid_generate_time");
     return 0;
 }
