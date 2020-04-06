@@ -1121,9 +1121,9 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
         if (!lv)
             return -EINVAL;
 
-        strncpy(LREG_VALUE_TO_OUT_STR(lv),
-                raft_instance_hist_stat_2_name(rihs->rihs_type),
-                LREG_VALUE_STRING_MAX);
+        lreg_value_fill_key_and_type(
+            lv, raft_instance_hist_stat_2_name(rihs->rihs_type),
+            LREG_VAL_TYPE_OBJECT);
         break;
 
     case LREG_NODE_CB_OP_READ_VAL:
