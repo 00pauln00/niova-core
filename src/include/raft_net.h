@@ -22,7 +22,7 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
-#define RAFT_NET_BINARY_HIST_SIZE 16 // ~64 second (when used for msec)
+#define RAFT_NET_BINARY_HIST_SIZE 18
 
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
 #define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
@@ -113,6 +113,7 @@ struct raft_net_client_request
     int                               rncr_op_error;
     int64_t                           rncr_entry_term;
     int64_t                           rncr_current_term;
+    long long                         rncr_commit_duration_msec;
     union
     {
         const struct raft_client_rpc_msg *rncr_request;

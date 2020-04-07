@@ -31,6 +31,7 @@ struct rst_sm_node_app
     uint64_t                smna_pending_msg_id;
     struct sockaddr_in      smna_pending_client_addr;
     int64_t                 smna_pending_entry_term;
+    struct timespec         smna_pending_time_stamp;
 };
 
 struct rst_sm_node
@@ -197,6 +198,13 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
         rncr->rncr_remote_addr = sma->smna_pending_client_addr;
         rncr->rncr_msg_id = sma->smna_pending_msg_id;
 
+        struct timespec ts;
+        niova_realtime_coarse_clock(&ts);
+
+        rncr->rncr_commit_duration_msec =
+            (long long)(timespec_2_msec(&ts) -
+                        timespec_2_msec(&sma->smna_pending_time_stamp));
+
         int rc = rst_sm_reply_init(rncr->rncr_reply, sm->smn_uuid,
                                    RAFT_TEST_DATA_OP_WRITE, NULL, 0);
         FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
@@ -337,6 +345,8 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
         sma->smna_pending_entry_term = rncr->rncr_current_term;
         sma->smna_pending_client_addr = rncr->rncr_remote_addr;
         sma->smna_pending = *last_rtv;
+
+        niova_realtime_coarse_clock(&sma->smna_pending_time_stamp);
     }
 
     DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, rtdb, "msg-id=%lx term=%lu rc=%s",

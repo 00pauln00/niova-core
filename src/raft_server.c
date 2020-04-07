@@ -70,23 +70,28 @@ raft_follower_reason_2_str(enum raft_follower_reasons reason)
 
 enum raft_instance_lreg_entry_values
 {
-    RAFT_LREG_RAFT_UUID,         // string
-    RAFT_LREG_PEER_UUID,         // string
-    RAFT_LREG_VOTED_FOR_UUID,    // string
-    RAFT_LREG_LEADER_UUID,       // string
-    RAFT_LREG_PEER_STATE,        // string
-    RAFT_LREG_FOLLOWER_REASON,   // string
-    RAFT_LREG_CLIENT_REQUESTS,   // string
-    RAFT_LREG_TERM,              // int64
-    RAFT_LREG_COMMIT_IDX,        // int64
-    RAFT_LREG_LAST_APPLIED,      // int64
-    RAFT_LREG_LAST_APPLIED_CCRC, // int64
-    RAFT_LREG_NEWEST_ENTRY_IDX,  // int64
-    RAFT_LREG_NEWEST_ENTRY_TERM, // int64
-    RAFT_LREG_NEWEST_ENTRY_SIZE, // uint32
-    RAFT_LREG_NEWEST_ENTRY_CRC,  // uint32
-    RAFT_LREG_FOLLOWER_STATS,    // array
+    RAFT_LREG_RAFT_UUID,          // string
+    RAFT_LREG_PEER_UUID,          // string
+    RAFT_LREG_VOTED_FOR_UUID,     // string
+    RAFT_LREG_LEADER_UUID,        // string
+    RAFT_LREG_PEER_STATE,         // string
+    RAFT_LREG_FOLLOWER_REASON,    // string
+    RAFT_LREG_CLIENT_REQUESTS,    // string
+    RAFT_LREG_TERM,               // int64
+    RAFT_LREG_COMMIT_IDX,         // int64
+    RAFT_LREG_LAST_APPLIED,       // int64
+    RAFT_LREG_LAST_APPLIED_CCRC,  // int64
+    RAFT_LREG_NEWEST_ENTRY_IDX,   // int64
+    RAFT_LREG_NEWEST_ENTRY_TERM,  // int64
+    RAFT_LREG_NEWEST_ENTRY_SIZE,  // uint32
+    RAFT_LREG_NEWEST_ENTRY_CRC,   // uint32
+    RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
+    RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
+    RAFT_LREG_FOLLOWER_STATS,     // array - last follower node
+    RAFT_LREG_HIST_COMMIT_LAT,    // hist object
+    RAFT_LREG_HIST_READ_LAT,      // hist object
     RAFT_LREG_MAX,
+    RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_STATS,
 };
 
 static util_thread_ctx_reg_t
@@ -162,6 +167,30 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case RAFT_LREG_NEWEST_ENTRY_CRC:
         lreg_value_fill_unsigned(lv, "newest-entry-crc",
                                  ri->ri_newest_entry_hdr.reh_crc);
+        break;
+    case RAFT_LREG_HIST_COMMIT_LAT:
+        lreg_value_fill_object(
+            lv,
+            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC),
+            RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+        break;
+    case RAFT_LREG_HIST_READ_LAT:
+        lreg_value_fill_object(
+            lv,
+            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_READ_LAT_MSEC),
+            RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+        break;
+    case RAFT_LREG_HIST_DEV_READ_LAT:
+        lreg_value_fill_object(
+            lv,
+            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC),
+            RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC);
+        break;
+    case RAFT_LREG_HIST_DEV_WRITE_LAT:
+        lreg_value_fill_object(
+            lv,
+            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC),
+            RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
         break;
     case RAFT_LREG_FOLLOWER_STATS:
         lreg_value_fill_array(lv, "follower-stats",
@@ -309,7 +338,7 @@ raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     if (lv)
         lv->get.lrv_num_keys_out =
             (raft_instance_is_leader(ri) ?
-             RAFT_LREG_MAX : RAFT_LREG_FOLLOWER_STATS);
+             RAFT_LREG_MAX : RAFT_LREG_MAX_FOLLOWER);
 
     switch (op)
     {
@@ -493,6 +522,9 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
     DBG_RAFT_INSTANCE_FATAL_IF(
         (!raft_server_entry_next_entry_is_valid(ri, &re->re_header)), ri,
         "raft_server_entry_next_entry_is_valid() failed");
+
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
 //Xxx pwritev() would save a memcpy and a malloc..
     const ssize_t write_sz =
         io_pwrite(ri->ri_log_fd, (const char *)re, total_entry_size,
@@ -502,6 +534,17 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
 //Xxxx pwritev2 can do a sync write with a single syscall.
     int rc = io_fsync(ri->ri_log_fd);
     NIOVA_ASSERT(!rc);
+
+    niova_unstable_clock(&io_op[1]);
+
+    struct binary_hist *bh =
+        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC].rihs_bh;
+
+    const long long elapsed_usec =
+        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
+
+    if (elapsed_usec > 0)
+        binary_hist_incorporate_val(bh, elapsed_usec);
 
     /* Following the successful writing and sync of the entry, copy the
      * header contents into the raft instance.   Note, this is a noop if the
@@ -573,17 +616,31 @@ raft_server_entry_read(struct raft_instance *ri, const size_t phys_entry_idx,
     if (!re)
         return -ENOMEM;
 
-//Xxx need timing info here
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
+
     const ssize_t read_sz =
         io_pread(ri->ri_log_fd, (char *)re, total_entry_size,
                  (phys_entry_idx * RAFT_ENTRY_SIZE));
+
+    niova_unstable_clock(&io_op[1]);
+
+    struct binary_hist *bh =
+        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC].rihs_bh;
+
+    const long long elapsed_usec =
+        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
+
+    if (elapsed_usec > 0)
+        binary_hist_incorporate_val(bh, elapsed_usec);
 
     DBG_RAFT_ENTRY_FATAL_IF((read_sz != total_entry_size),
                             &re->re_header,
                             "invalid read size rrc=%zu, expected %zu",
                             read_sz, total_entry_size);
 
-    DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "rrc=%zu", read_sz);
+    DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "rrc=%zu usec=%lld", read_sz,
+                   elapsed_usec);
 
     const struct raft_entry_header *rh = &re->re_header;
 
@@ -3062,6 +3119,13 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         int rc = ri->ri_server_sm_request_cb(&rncr);
         if (!rc)
         {
+            struct binary_hist *bh =
+                &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
+
+            if (rncr.rncr_commit_duration_msec > 0)
+                binary_hist_incorporate_val(bh,
+                                            rncr.rncr_commit_duration_msec);
+
             // Perform basic initialization on the reply buffer
             raft_server_udp_client_reply_init(ri, &rncr);
             reply_to_client = true;
@@ -3222,6 +3286,68 @@ raft_server_instance_init(struct raft_instance *ri)
                                       raft_server_udp_peer_recv_handler);
 }
 
+static util_thread_ctx_reg_t
+raft_server_instance_hist_lreg_multi_facet_handler(
+    enum lreg_node_cb_ops op,
+    struct raft_instance_hist_stats *rihs,
+    struct lreg_value *lv)
+{
+    if (!lv ||
+	lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh) ||
+	op != LREG_NODE_CB_OP_READ_VAL)
+        return;
+
+    snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "%lld",
+             binary_hist_lower_bucket_range(&rihs->rihs_bh,
+                                            lv->lrv_value_idx_in));
+
+    LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
+	binary_hist_get_cnt(&rihs->rihs_bh, lv->lrv_value_idx_in);
+
+    lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+}
+
+static util_thread_ctx_reg_int_t
+raft_server_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
+                                  struct lreg_node *lrn,
+                                  struct lreg_value *lv)
+{
+    struct raft_instance_hist_stats *rihs = lrn->lrn_cb_arg;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = binary_hist_size(&rihs->rihs_bh);
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+
+        lreg_value_fill_key_and_type(
+            lv, raft_instance_hist_stat_2_name(rihs->rihs_type),
+            LREG_VAL_TYPE_OBJECT);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        if (!lv)
+            return -EINVAL;
+
+        raft_server_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
+	break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE:
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+	return -ENOENT;
+    }
+
+    return 0;
+}
+
+
 static int
 raft_server_instance_lreg_init(struct raft_instance *ri)
 {
@@ -3253,6 +3379,19 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
         if (rc)
             return rc;
     }
+
+    for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
+         i < RAFT_INSTANCE_HIST_MAX; i++)
+    {
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+                       raft_server_instance_hist_lreg_cb,
+                       (void *)&ri->ri_rihs[i], false);
+
+        rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+        if (rc)
+            return rc;
+    }
+
 
     return 0;
 }
