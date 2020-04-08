@@ -467,6 +467,12 @@ void
 lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
                lrn_cb_t cb, void *cb_arg, bool statically_allocated)
 {
+    if (!lrn)
+        return;
+
+    if (!statically_allocated)
+        memset(lrn, 0, sizeof(*lrn));
+
     lrn->lrn_user_type = user_type;
 
     lrn->lrn_statically_allocated = !!statically_allocated;

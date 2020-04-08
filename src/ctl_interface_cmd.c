@@ -708,6 +708,15 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
             if (rc)
                 return false;
 
+            if (lrn->lrn_ignore_items_with_value_zero &&
+                lreg_value_is_numeric(kv_lv) &&
+                LREG_VALUE_TO_OUT_SIGNED_INT(kv_lv) == 0)
+            {
+                DBG_LREG_NODE(LL_DEBUG, lrn, "skip zero-value entry (key=%s)",
+                              LREG_VALUE_TO_KEY_STR(kv_lv));
+                continue;
+            }
+
             ctlic_scan_registry_cb_output_writer(&kv_citer);
 
             if (cmt->cmt_num_depth_segments > depth &&

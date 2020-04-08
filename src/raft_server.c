@@ -212,7 +212,6 @@ enum raft_peer_stats_items
 #endif
     RAFT_PEER_STATS_PREV_LOG_IDX,
     RAFT_PEER_STATS_PREV_LOG_TERM,
-    RAFT_PEER_STATS_MS_UNTIL_RETRY,
     RAFT_PEER_STATS_MAX,
 };
 
@@ -265,11 +264,7 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         lreg_value_fill_unsigned(lv, "next-idx", rfi->rfi_next_idx);
         break;
     case RAFT_PEER_STATS_PREV_LOG_TERM:
-        lreg_value_fill_unsigned(lv, "prev-idx-term", rfi->rfi_prev_idx_term);
-        break;
-    case RAFT_PEER_STATS_MS_UNTIL_RETRY:
-        lreg_value_fill_unsigned(lv, "retry-again-at",
-                                 rfi->rfi_ae_sends_wait_until);
+        lreg_value_fill_signed(lv, "prev-idx-term", rfi->rfi_prev_idx_term);
         break;
     default:
         break;
@@ -3386,6 +3381,8 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
         lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
                        raft_server_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i], false);
+
+        ri->ri_rihs[i].rihs_lrn.lrn_ignore_items_with_value_zero = 1;
 
         rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
         if (rc)

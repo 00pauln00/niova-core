@@ -1366,6 +1366,8 @@ raft_client_test_lreg_init(struct raft_instance *ri)
                        raft_client_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i], false);
 
+        ri->ri_rihs[i].rihs_lrn.lrn_ignore_items_with_value_zero = 1;
+
         rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
         if (rc)
             return rc;

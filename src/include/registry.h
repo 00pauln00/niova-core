@@ -180,7 +180,8 @@ struct lreg_node
                               lrn_root_node:1,
                               lrn_monitor:1,
                               lrn_may_destroy:1,
-                              lrn_array_element:1;
+                              lrn_array_element:1,
+                              lrn_ignore_items_with_value_zero:1;
     void                     *lrn_cb_arg;
     lrn_cb_t                  lrn_cb;
     CIRCLEQ_ENTRY(lreg_node)  lrn_lentry;
@@ -442,6 +443,17 @@ lreg_value_fill_string_uuid(struct lreg_value *lv, const char *key,
 
         lreg_value_fill_string(lv, key, uuid_str);
     }
+}
+
+static inline bool
+lreg_value_is_numeric(const struct lreg_value *lv)
+{
+    if (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_SIGNED_VAL ||
+        LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_UNSIGNED_VAL ||
+        LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_FLOAT_VAL)
+        return true;
+
+    return false;
 }
 
 static inline void

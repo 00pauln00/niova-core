@@ -22,7 +22,7 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
-#define RAFT_NET_BINARY_HIST_SIZE 18
+#define RAFT_NET_BINARY_HIST_SIZE 20
 
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
 #define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
