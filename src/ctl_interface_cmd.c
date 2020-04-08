@@ -618,14 +618,14 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
     return rc >= 0 ? 0 : -errno;
 }
 
-static bool // return 'false' to terminate scan
-ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
+static bool
+ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth);
+
+static bool
+ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
+                                 struct ctlic_iterator *parent_citer,
+                                 const int depth)
 {
-    if (!lrn)
-        return false;
-
-    struct ctlic_iterator *parent_citer = arg;
-
     NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
 
     struct ctlic_request *cr = parent_citer->citer_cr;
@@ -637,114 +637,133 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
         .citer_tab_depth = parent_citer->citer_tab_depth + 1,
         .citer_sibling_num = parent_citer->citer_sibling_num,
         .citer_parents_sibling_num = parent_citer->citer_sibling_num,
-        .citer_open_stanza = true,
+	.citer_open_stanza = true,
     };
+
+    /* Do not exceed the depth specified in the GET request.
+     */
+    if (depth - 1 >= cmt->cmt_num_depth_segments)
+        return false;
+
+    /* Subtract '1' from depth since depth '0' is the root ('/')
+     */
+    struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[depth - 1];
+
+    struct lreg_value *lv = &my_citer.citer_lv;
+
+    int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NODE_INFO, lrn, lv);
+    if (rc)
+        return false;
+
+    int depth_add = 1;
+    if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
+        LREG_VAL_TYPE_ARRAY)
+    {
+        /* If the parent is an array then "I" must be an anonymous
+         * sort (otherwise lreg_node_walk() would not have been called.
+         * NOTE: this likely means that 'arrays of arrays' are not
+         *       supported yet.
+         */
+        LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
+        ctlic_scan_registry_cb_output_writer(&my_citer);
+        depth_add++;
+    }
+
+    const unsigned int nkeys = lv->get.lrv_num_keys_out;
+    bool sibling_was_printed = false;
+
+    for (unsigned int i = 0; i < nkeys; i++)
+    {
+        struct ctlic_iterator kv_citer = {
+            .citer_cr = cr,
+            .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
+            .citer_tab_depth = parent_citer->citer_tab_depth + depth_add,
+            .citer_sibling_num = i,
+            .citer_parents_sibling_num = parent_citer->citer_sibling_num,
+            .citer_open_stanza = true,
+            .citer_lv = {.lrv_value_idx_in = i},
+            .citer_prev_sibling_has_been_printed = sibling_was_printed,
+        };
+
+        struct lreg_value *kv_lv = &kv_citer.citer_lv;
+
+        rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, lrn, kv_lv);
+
+        DBG_LREG_NODE(LL_DEBUG, lrn, "rc=%d", rc);
+        if (rc)
+            return false;
+
+        int regex_rc = regexec(&cds->cds_regex,
+                               LREG_VALUE_TO_KEY_STR(kv_lv), 0, NULL, 0);
+#if 0  // Not specifying these seems to be OK
+//                         REG_NOTBOL | REG_NOTEOL);
+#endif
+
+        DBG_LREG_NODE(
+            LL_DEBUG, lrn,
+            "matched: %s (depth=%d, sib-num=%zd) (cds=%s) lv=%s nseg=%zu",
+            regex_rc ? "no" : "yes", depth,
+            parent_citer->citer_sibling_num, cds->cds_str,
+            LREG_VALUE_TO_KEY_STR(lv), cmt->cmt_num_depth_segments);
+
+        if (regex_rc ||
+            (lrn->lrn_ignore_items_with_value_zero &&
+             lreg_value_is_numeric(kv_lv) &&
+             LREG_VALUE_TO_OUT_SIGNED_INT(kv_lv) == 0))
+        {
+            if (!regex_rc)
+                DBG_LREG_NODE(LL_DEBUG, lrn, "skip zero-value entry (key=%s)",
+                              LREG_VALUE_TO_KEY_STR(kv_lv));
+            continue;
+        }
+
+        sibling_was_printed = true;
+        ctlic_scan_registry_cb_output_writer(&kv_citer);
+
+        if (cmt->cmt_num_depth_segments > depth &&
+            (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
+             LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
+             LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
+        {
+            struct ctlic_iterator sub_obj_kv_citer = kv_citer;
+            sub_obj_kv_citer.citer_sibling_num = 0;
+
+            lreg_node_walk(lrn, ctlic_scan_registry_cb,
+                           (void *)&sub_obj_kv_citer,
+                           depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+        }
+
+        ctlic_scan_registry_cb_output_writer(&kv_citer);
+    }
+
+    if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
+        LREG_VAL_TYPE_ARRAY)
+    {
+        LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
+        ctlic_scan_registry_cb_output_writer(&my_citer);
+    }
+
+    return true;
+}
+
+static bool // return 'false' to terminate scan
+ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
+{
+    if (!lrn)
+        return false;
+
+    struct ctlic_iterator *parent_citer = arg;
+
+    NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
+
+    const struct ctlic_matched_token *cmt =
+        ctlic_get_current_matched_token(parent_citer->citer_cr);
 
     if (cmt->cmt_token->ct_id == CT_ID_GET)
     {
-        /* Do not exceed the depth specified in the GET request.
-         */
-        if (depth - 1 >= cmt->cmt_num_depth_segments)
-            return false;
-
-        /* Subtract '1' from depth since depth '0' is the root ('/')
-         */
-        struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[depth - 1];
-
-        struct lreg_value *lv = &my_citer.citer_lv;
-
-// XXx this all needs to be changed so that any member of an object or array
-// can be matched
-        int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NODE_INFO, lrn, lv);
-        if (rc)
-            return false;
-
-        rc = regexec(&cds->cds_regex, LREG_VALUE_TO_KEY_STR(lv), 0, NULL,
-                     REG_NOTBOL | REG_NOTEOL);
-
-//Xxx this log installation should not post an event on the pipe
-// since it's the util thread (it doesn't need synchro)
-        DBG_LREG_NODE(LL_DEBUG, lrn,
-                      "matched: %s (depth=%d, sib-num=%zd) (cds=%s) lv=%s nseg=%zu",
-                      rc ? "no" : "yes", depth,
-                      parent_citer->citer_sibling_num, cds->cds_str,
-                      LREG_VALUE_TO_KEY_STR(lv), cmt->cmt_num_depth_segments);
-
-        if (rc)
-            return true;
-
-        int depth_add = 1;
-        if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
-            LREG_VAL_TYPE_ARRAY)
-        {
-            /* If the parent is an array then "I" must be an anonymous
-             * sort (otherwise lreg_node_walk() would not have been called.
-             * NOTE: this likely means that 'arrays of arrays' are not
-             *       supported yet.
-             */
-            LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
-            ctlic_scan_registry_cb_output_writer(&my_citer);
-            depth_add++;
-        }
-
-        const unsigned int nkeys = lv->get.lrv_num_keys_out;
-        bool sibling_was_printed = false;
-
-        for (unsigned int i = 0; i < nkeys; i++)
-        {
-            struct ctlic_iterator kv_citer = {
-                .citer_cr = cr,
-                .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
-                .citer_tab_depth = parent_citer->citer_tab_depth + depth_add,
-                .citer_sibling_num = i,
-                .citer_parents_sibling_num = parent_citer->citer_sibling_num,
-                .citer_open_stanza = true,
-                .citer_lv = {.lrv_value_idx_in = i},
-                .citer_prev_sibling_has_been_printed = sibling_was_printed,
-            };
-
-            struct lreg_value *kv_lv = &kv_citer.citer_lv;
-
-            rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, lrn, kv_lv);
-
-            DBG_LREG_NODE(LL_DEBUG, lrn, "rc=%d", rc);
-            if (rc)
-                return false;
-
-            if (lrn->lrn_ignore_items_with_value_zero &&
-                lreg_value_is_numeric(kv_lv) &&
-                LREG_VALUE_TO_OUT_SIGNED_INT(kv_lv) == 0)
-            {
-                DBG_LREG_NODE(LL_DEBUG, lrn, "skip zero-value entry (key=%s)",
-                              LREG_VALUE_TO_KEY_STR(kv_lv));
-                continue;
-            }
-
-            sibling_was_printed = true;
-            ctlic_scan_registry_cb_output_writer(&kv_citer);
-
-            if (cmt->cmt_num_depth_segments > depth &&
-                (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
-                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
-                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
-            {
-                struct ctlic_iterator sub_obj_kv_citer = kv_citer;
-                sub_obj_kv_citer.citer_sibling_num = 0;
-
-                lreg_node_walk(lrn, ctlic_scan_registry_cb,
-                               (void *)&sub_obj_kv_citer,
-                               depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
-            }
-
-            ctlic_scan_registry_cb_output_writer(&kv_citer);
-        }
-
-        if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
-            LREG_VAL_TYPE_ARRAY)
-        {
-            LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
-            ctlic_scan_registry_cb_output_writer(&my_citer);
-        }
+        bool rc = ctlic_scan_registry_cb_CT_ID_GET(lrn, parent_citer, depth);
+        if (!rc)
+            return rc;
     }
 
     parent_citer->citer_sibling_num++;
