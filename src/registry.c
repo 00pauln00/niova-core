@@ -465,18 +465,19 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
  */
 void
 lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
-               lrn_cb_t cb, void *cb_arg, bool statically_allocated)
+               lrn_cb_t cb, void *cb_arg, enum lreg_init_options opts)
 {
     if (!lrn)
         return;
 
-    if (!statically_allocated)
+    if (!(opts & LREG_INIT_OPT_STATIC))
         memset(lrn, 0, sizeof(*lrn));
 
     lrn->lrn_user_type = user_type;
 
-    lrn->lrn_statically_allocated = !!statically_allocated;
-
+    lrn->lrn_statically_allocated = !!(opts & LREG_INIT_OPT_STATIC);
+    lrn->lrn_ignore_items_with_value_zero =
+        !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
     lrn->lrn_cb = cb;
     lrn->lrn_cb_arg = cb_arg;
 
@@ -562,7 +563,7 @@ lreg_subsystem_init(void)
     lRegRootNode.lrn_root_node = 1;
 
     lreg_node_init(&lRegRootNode, LREG_USER_TYPE_ROOT, lreg_root_node_cb,
-                   NULL, true);
+                   NULL, LREG_INIT_OPT_STATIC);
 
     lRegInitialized = true;
 

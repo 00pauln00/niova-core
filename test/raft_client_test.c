@@ -1351,7 +1351,7 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     LREG_ROOT_ENTRY_INSTALL(raft_client_root_entry);
 
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT_CLIENT,
-                   raft_client_instance_lreg_cb, ri, false);
+                   raft_client_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
 
     int rc =
         lreg_node_install_prepare(&ri->ri_lreg,
@@ -1364,9 +1364,8 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     {
         lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
                        raft_client_instance_hist_lreg_cb,
-                       (void *)&ri->ri_rihs[i], false);
-
-        ri->ri_rihs[i].rihs_lrn.lrn_ignore_items_with_value_zero = 1;
+                       (void *)&ri->ri_rihs[i],
+                       LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
 
         rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
         if (rc)
@@ -1374,7 +1373,8 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     }
 
     lreg_node_init(rsc_get_lreg_node(), LREG_USER_TYPE_RAFT_CLIENT_APP,
-                   rsc_app_lreg_cb, rsc_get_raft_test_info(), false);
+                   rsc_app_lreg_cb, rsc_get_raft_test_info(),
+                   LREG_INIT_OPT_NONE);
 
     rc = lreg_node_install_prepare(rsc_get_lreg_node(),
                                    lreg_root_node_get());

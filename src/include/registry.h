@@ -96,6 +96,13 @@ struct lreg_value_data
     };
 };
 
+enum lreg_init_options
+{
+    LREG_INIT_OPT_NONE                = 0,
+    LREG_INIT_OPT_STATIC              = 1 << 0,
+    LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO = 1 << 1,
+};
+
 /**
  * -- struct lreg_value --
  * Complex value structure used for obtained multi-faceted object values from
@@ -329,7 +336,7 @@ lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
 
 void
 lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
-               bool);
+               enum lreg_init_options);
 
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);

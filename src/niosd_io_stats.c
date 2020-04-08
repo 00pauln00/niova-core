@@ -251,7 +251,8 @@ nioctx_stats_init_internal_stats(struct niosd_io_ctx *nioctx)
 
         lreg_node_init(&niocs->niocs_lrn,
                        (NIOCTX_LREG_INIT_HIST_START_VAL + i),
-                       nioctx_stats_hist_lreg_cb, (void *)niocs, false);
+                       nioctx_stats_hist_lreg_cb, (void *)niocs,
+                       LREG_INIT_OPT_NONE);
 
         rc = lreg_node_install_prepare(&niocs->niocs_lrn,
                                        &nioctx->nioctx_lreg_node);
@@ -271,7 +272,7 @@ nioctx_stats_init(struct niosd_io_ctx *nioctx)
     struct niosd_device *ndev = niosd_ctx_to_device(nioctx);
 
     lreg_node_init(&nioctx->nioctx_lreg_node, LREG_USER_TYPE_NIOSD_IO_CTX,
-                   nioctx_stats_lreg_cb, nioctx, false);
+                   nioctx_stats_lreg_cb, nioctx, LREG_INIT_OPT_NONE);
 
     int rc = lreg_node_install_prepare(&nioctx->nioctx_lreg_node,
                                        &ndev->ndev_lreg_node);
@@ -384,7 +385,7 @@ niosd_io_stats_init(struct niosd_device *ndev)
         return;
 
     lreg_node_init(&ndev->ndev_lreg_node, LREG_USER_TYPE_NIOSD_IO,
-                   niosd_io_stats_lreg_cb, ndev, false);
+                   niosd_io_stats_lreg_cb, ndev, LREG_INIT_OPT_NONE);
 
     struct lreg_node *root = LREG_ROOT_ENTRY_PTR(niosd_io_stats_root_entry);
 
