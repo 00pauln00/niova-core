@@ -94,6 +94,7 @@ struct ctlic_iterator
     size_t                citer_sibling_num;
     size_t                citer_parents_sibling_num;
     bool                  citer_open_stanza;
+    bool                  citer_prev_sibling_has_been_printed;
 };
 
 static void
@@ -462,7 +463,7 @@ ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
      * outgoing JSON stream.  Otherwise, if our parent's sibling count is
      * positive and we're object or array, then print a comma.
      */
-    if ((citer->citer_sibling_num > 0) ||
+    if (citer->citer_prev_sibling_has_been_printed ||
         (citer->citer_parents_sibling_num > 0 &&
          (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY ||
@@ -687,6 +688,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
         }
 
         const unsigned int nkeys = lv->get.lrv_num_keys_out;
+        bool sibling_was_printed = false;
 
         for (unsigned int i = 0; i < nkeys; i++)
         {
@@ -698,6 +700,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
                 .citer_parents_sibling_num = parent_citer->citer_sibling_num,
                 .citer_open_stanza = true,
                 .citer_lv = {.lrv_value_idx_in = i},
+                .citer_prev_sibling_has_been_printed = sibling_was_printed,
             };
 
             struct lreg_value *kv_lv = &kv_citer.citer_lv;
@@ -717,6 +720,7 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
                 continue;
             }
 
+            sibling_was_printed = true;
             ctlic_scan_registry_cb_output_writer(&kv_citer);
 
             if (cmt->cmt_num_depth_segments > depth &&
