@@ -20,6 +20,7 @@
 #include "io.h"
 #include "file_util.h"
 #include "config_token.h"
+#include "random.h"
 
 //REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -87,15 +88,34 @@ struct ctlic_request
 
 struct ctlic_iterator
 {
-    struct ctlic_request *citer_cr;
-    struct lreg_value     citer_lv;
-    size_t                citer_starting_byte_cnt;
-    size_t                citer_tab_depth;
-    size_t                citer_sibling_num;
-    size_t                citer_parents_sibling_num;
-    bool                  citer_open_stanza;
-    bool                  citer_prev_sibling_has_been_printed;
+    struct ctlic_request        *citer_cr;
+    const struct ctlic_iterator *citer_parent;
+    struct lreg_value            citer_lv;
+    size_t                       citer_starting_byte_cnt;
+    size_t                       citer_tab_depth;
+    size_t                       citer_sibling_num;
+    size_t                       citer_sibling_printed_cnt;
+    bool                         citer_open_stanza;
+    uint32_t                     citer_rand_id;
 };
+
+#define DBG_CITER(log_level, citer, fmt, ...)                           \
+{                                                                       \
+    SIMPLE_LOG_MSG(                                                     \
+        log_level,                                                      \
+        "citer@%p-%08x p@%p-%08x lv=%s depth=%zu sib-num:nprint=%zu:%zu p-nprint=%zu pdepth=%zu o=%d "fmt, \
+        citer, (citer)->citer_rand_id, (citer)->citer_parent,           \
+        (citer)->citer_parent ? (citer)->citer_parent->citer_rand_id : 0, \
+        LREG_VALUE_TO_KEY_STR(&(citer)->citer_lv),                      \
+        (citer)->citer_tab_depth, (citer)->citer_sibling_num,           \
+        (citer)->citer_sibling_printed_cnt,                             \
+        (citer)->citer_parent ?                                         \
+            (citer)->citer_parent->citer_sibling_printed_cnt : 0,       \
+        (citer)->citer_parent ?                                         \
+            (citer)->citer_parent->citer_tab_depth : 0,                 \
+        (citer)->citer_open_stanza,                                     \
+        ##__VA_ARGS__);                                                 \
+}
 
 static void
 ctlic_matched_token_init(struct ctlic_matched_token *cmt)
@@ -459,18 +479,23 @@ ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
 {
     const struct lreg_value *lv = &citer->citer_lv;
 
+    const char *ret = "";
+
     /* If our sibling number is greater than 0 then always apply a comma to the
      * outgoing JSON stream.  Otherwise, if our parent's sibling count is
      * positive and we're object or array, then print a comma.
      */
-    if (citer->citer_prev_sibling_has_been_printed ||
-        (citer->citer_parents_sibling_num > 0 &&
+    if (citer->citer_sibling_printed_cnt ||
+        (citer->citer_parent &&
+         citer->citer_parent->citer_sibling_printed_cnt > 0 &&
          (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ANON_OBJECT)))
-        return ",";
+        ret = ",";
 
-    return "";
+    DBG_CITER(LL_DEBUG, citer, "ret=%s", ret);
+
+    return ret;
 }
 
 static const char *
@@ -631,59 +656,69 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
     struct ctlic_request *cr = parent_citer->citer_cr;
     struct ctlic_matched_token *cmt = ctlic_get_current_matched_token(cr);
 
-    struct ctlic_iterator my_citer = {
-        .citer_cr = cr,
-        .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
-        .citer_tab_depth = parent_citer->citer_tab_depth + 1,
-        .citer_sibling_num = parent_citer->citer_sibling_num,
-        .citer_parents_sibling_num = parent_citer->citer_sibling_num,
-	.citer_open_stanza = true,
-    };
-
     /* Do not exceed the depth specified in the GET request.
      */
     if (depth - 1 >= cmt->cmt_num_depth_segments)
         return false;
 
+    bool parent_is_anon_object = false;
+    struct ctlic_iterator anon_object_citer = {
+        .citer_cr = cr,
+        .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
+        .citer_tab_depth = parent_citer->citer_tab_depth + 1,
+        .citer_sibling_num = parent_citer->citer_sibling_num,
+	.citer_open_stanza = true,
+        .citer_sibling_printed_cnt = 0,
+        .citer_rand_id = random_get(),
+        .citer_parent = parent_citer,
+    };
+
+    DBG_CITER(LL_DEBUG, &anon_object_citer, "");
+
     /* Subtract '1' from depth since depth '0' is the root ('/')
      */
     struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[depth - 1];
 
-    struct lreg_value *lv = &my_citer.citer_lv;
+    struct lreg_value *lv = &anon_object_citer.citer_lv;
 
     int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NODE_INFO, lrn, lv);
     if (rc)
         return false;
 
-    int depth_add = 1;
     if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
         LREG_VAL_TYPE_ARRAY)
     {
         /* If the parent is an array then "I" must be an anonymous
-         * sort (otherwise lreg_node_walk() would not have been called.
+         * object (otherwise lreg_node_walk() would not have been called.
          * NOTE: this likely means that 'arrays of arrays' are not
          *       supported yet.
          */
         LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
-        ctlic_scan_registry_cb_output_writer(&my_citer);
-        depth_add++;
+        ctlic_scan_registry_cb_output_writer(&anon_object_citer);
+        parent_is_anon_object = true;
     }
 
     const unsigned int nkeys = lv->get.lrv_num_keys_out;
-    bool sibling_was_printed = false;
+    size_t sibling_print_cnt = 0;
 
     for (unsigned int i = 0; i < nkeys; i++)
     {
+        const struct ctlic_iterator *my_parent = parent_is_anon_object ?
+            &anon_object_citer : parent_citer;
+
         struct ctlic_iterator kv_citer = {
             .citer_cr = cr,
             .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
-            .citer_tab_depth = parent_citer->citer_tab_depth + depth_add,
+            .citer_tab_depth = my_parent->citer_tab_depth + 1,
             .citer_sibling_num = i,
-            .citer_parents_sibling_num = parent_citer->citer_sibling_num,
             .citer_open_stanza = true,
             .citer_lv = {.lrv_value_idx_in = i},
-            .citer_prev_sibling_has_been_printed = sibling_was_printed,
+            .citer_sibling_printed_cnt = sibling_print_cnt,
+            .citer_rand_id = random_get(),
+            .citer_parent = my_parent,
         };
+
+        DBG_CITER(LL_DEBUG, &kv_citer, "kv-citer");
 
         struct lreg_value *kv_lv = &kv_citer.citer_lv;
 
@@ -717,7 +752,7 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
             continue;
         }
 
-        sibling_was_printed = true;
+        sibling_print_cnt++;
         ctlic_scan_registry_cb_output_writer(&kv_citer);
 
         if (cmt->cmt_num_depth_segments > depth &&
@@ -727,6 +762,11 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         {
             struct ctlic_iterator sub_obj_kv_citer = kv_citer;
             sub_obj_kv_citer.citer_sibling_num = 0;
+            sub_obj_kv_citer.citer_sibling_printed_cnt = 0;
+            sub_obj_kv_citer.citer_rand_id = random_get();
+            sub_obj_kv_citer.citer_parent = &kv_citer;
+
+            DBG_CITER(LL_DEBUG, &sub_obj_kv_citer, "sub-obj");
 
             lreg_node_walk(lrn, ctlic_scan_registry_cb,
                            (void *)&sub_obj_kv_citer,
@@ -736,12 +776,14 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         ctlic_scan_registry_cb_output_writer(&kv_citer);
     }
 
-    if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
-        LREG_VAL_TYPE_ARRAY)
+    if (parent_is_anon_object)
     {
+        // Close the anon object stanza
         LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_ANON_OBJECT;
-        ctlic_scan_registry_cb_output_writer(&my_citer);
+        ctlic_scan_registry_cb_output_writer(&anon_object_citer);
     }
+
+    parent_citer->citer_sibling_printed_cnt += sibling_print_cnt;
 
     return true;
 }
@@ -755,6 +797,8 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
     struct ctlic_iterator *parent_citer = arg;
 
     NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
+
+    DBG_CITER(LL_DEBUG, parent_citer, "parent-citer");
 
     const struct ctlic_matched_token *cmt =
         ctlic_get_current_matched_token(parent_citer->citer_cr);
@@ -786,8 +830,13 @@ ctlic_scan_registry(struct ctlic_request *cr)
         .citer_starting_byte_cnt = 0,
         .citer_tab_depth = 0,
         .citer_sibling_num = 0,
+        .citer_sibling_printed_cnt = 0,
         .citer_open_stanza = true,
+        .citer_rand_id = random_get(),
+        .citer_parent = NULL,
     };
+
+    DBG_CITER(LL_DEBUG, &citer, "start");
 
     int rc =
         lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn_root,
