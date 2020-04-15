@@ -976,10 +976,12 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
 
     NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
 
-    DBG_CITER(LL_DEBUG, parent_citer, "parent-citer");
-
     const struct ctlic_matched_token *cmt =
         ctlic_get_current_matched_token(parent_citer->citer_cr);
+
+    DBG_CITER(LL_DEBUG, parent_citer,
+              "parent-citer cmt_num_depth_segments=%zu depth=%d",
+              cmt->cmt_num_depth_segments, depth);
 
     bool keep_going = true;
 

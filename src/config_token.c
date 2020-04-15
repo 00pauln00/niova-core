@@ -19,11 +19,11 @@ struct conf_token confTokens[CT_ID__MAX] =
         .ct_val_regex = NULL, // checked by internal user
         .ct_id = CT_ID_APPLY,
     },
-    [CT_ID_TO] {
-        .ct_name = "TO",
-        .ct_name_len = 2,
+    [CT_ID_WHERE] {
+        .ct_name = "WHERE",
+        .ct_name_len = 5,
         .ct_val_regex = NULL, //todo - same as GET
-        .ct_id = CT_ID_TO,
+        .ct_id = CT_ID_WHERE,
     },
     [CT_ID_GET] {
         .ct_name = "GET",

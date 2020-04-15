@@ -26,8 +26,8 @@ enum conf_token_id
     CT_ID_RAFT,
     CT_ID_RESET,  // special 'modify' which restores default value
     CT_ID_STORE,
-    CT_ID_TO,
     CT_ID_UUID,
+    CT_ID_WHERE,
     CT_ID__MAX
 };
 
