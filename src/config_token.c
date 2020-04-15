@@ -13,11 +13,29 @@
 static
 struct conf_token confTokens[CT_ID__MAX] =
 {
+    [CT_ID_APPLY] {
+        .ct_name = "APPLY",
+        .ct_name_len = 5,
+        .ct_val_regex = NULL, // checked by internal user
+        .ct_id = CT_ID_APPLY,
+    },
+    [CT_ID_TO] {
+        .ct_name = "TO",
+        .ct_name_len = 2,
+        .ct_val_regex = NULL, //todo - same as GET
+        .ct_id = CT_ID_TO,
+    },
     [CT_ID_GET] {
         .ct_name = "GET",
         .ct_name_len = 3,
-        .ct_val_regex = NULL, //todo
+        .ct_val_regex = NULL, //todo - same as TO
         .ct_id = CT_ID_GET,
+    },
+    [CT_ID_RESET] {
+        .ct_name = "RESET",
+        .ct_name_len = 5,
+        .ct_val_regex = NULL,
+        .ct_id = CT_ID_RESET,
     },
     [CT_ID_OUTFILE] {
         .ct_name = "OUTFILE",
@@ -341,7 +359,7 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
             else
             {
                 if (value_buf_idx == ctsp->ctsp_value_buf_size - 1)
-                    return -EBADMSG; // Value length check
+                    return -E2BIG; // Value length check
 
                 ctsp->ctsp_value_buf[value_buf_idx++] = c;
             }

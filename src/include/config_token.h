@@ -14,17 +14,20 @@
 enum conf_token_id
 {
     CT_ID__MIN = 0,
-    CT_ID_GET,
-    CT_ID_OUTFILE,
-    CT_ID_HOSTNAME,
-    CT_ID_PORT,
+    CT_ID_APPLY,
     CT_ID_CLIENT_PORT,
-    CT_ID_STORE,
-    CT_ID_UUID,
-    CT_ID_IPADDR,
     CT_ID_CTL_SVC_FILENAME,
-    CT_ID_RAFT,
+    CT_ID_GET,
+    CT_ID_HOSTNAME,
+    CT_ID_IPADDR,
+    CT_ID_OUTFILE,
     CT_ID_PEER,
+    CT_ID_PORT,
+    CT_ID_RAFT,
+    CT_ID_RESET,  // special 'modify' which restores default value
+    CT_ID_STORE,
+    CT_ID_TO,
+    CT_ID_UUID,
     CT_ID__MAX
 };
 

@@ -154,6 +154,12 @@ struct ctt_item cttTestItems[NUM_TEST_ITEMS] =
         .ctti_tokens = {CT_ID_HOSTNAME, CT_ID_PORT, CT_ID_STORE, CT_ID_UUID},
         .ctti_should_fail = false,
     },
+    {
+        .ctti_test_name = "apply_to",
+        .ctti_conf_name = "test/registry-test-inputs/apply_to.conf",
+        .ctti_tokens = {CT_ID_TO, CT_ID_APPLY},
+        .ctti_should_fail = false,
+    },
 };
 
 static int

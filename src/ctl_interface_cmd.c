@@ -26,7 +26,7 @@
 
 #define CTLIC_BUFFER_SIZE        4096
 #define CTLIC_MAX_TOKENS_PER_REQ 8
-#define CTLIC_MAX_VALUE_SIZE     80
+#define CTLIC_MAX_VALUE_SIZE     128
 #define CTLIC_MAX_VALUE_DEPTH    32 // Max 'tree' depth which can be queried
 #define CTLIC_MAX_REQ_NAME_LEN   32
 #define CTLIC_MAX_TAB_DEPTH      (CTLIC_MAX_VALUE_DEPTH * 2)
@@ -45,15 +45,25 @@ enum ctlic_cmd_input_output_files
 static util_thread_ctx_ctli_char_t
 ctlicBuffer[CTLIC_NUM_FILES][CTLIC_BUFFER_SIZE];
 
+struct ctlic_path_regex_segment
+{
+    bool         cprs_regex_is_allocated;
+    const char  *cprs_str;
+    regex_t      cprs_regex;
+};
+
+enum ctlic_depth_segment_type
+{
+    CTLIC_DEPTH_SEGMENT_TYPE__MIN = 0,
+    CTLIC_DEPTH_SEGMENT_TYPE_KEY  = 0,
+    CTLIC_DEPTH_SEGMENT_TYPE_VAL  = 1,
+    CTLIC_DEPTH_SEGMENT_TYPE__MAX = 2,
+};
+
 struct ctlic_depth_segment
 {
-    unsigned int cds_free_regex:1,
-                 cds_free_regex_value:1,
-                 cds_tab_depth:6;
-    const char  *cds_str;
-    const char  *cds_str_value;
-    regex_t      cds_regex;
-    regex_t      cds_regex_value;
+    unsigned int                    cds_tab_depth:6;
+    struct ctlic_path_regex_segment cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE__MAX];
 };
 
 struct ctlic_matched_token
@@ -151,6 +161,13 @@ ctlic_request_prepare(struct ctlic_request *cr)
 }
 
 static void
+ctlic_regex_free(struct ctlic_path_regex_segment *cprs)
+{
+    if (cprs && cprs->cprs_regex_is_allocated)
+        regfree(&cprs->cprs_regex);
+}
+
+static void
 ctlic_request_done(struct ctlic_request *cr)
 {
     if (!cr)
@@ -173,8 +190,8 @@ ctlic_request_done(struct ctlic_request *cr)
         {
             struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[j];
 
-            if (cds->cds_free_regex)
-                regfree(&cds->cds_regex);
+            for (int k = 0; k < CTLIC_DEPTH_SEGMENT_TYPE__MAX; k++)
+                ctlic_regex_free(&cds->cds_cprs[k]);
         }
     }
 }
@@ -232,10 +249,10 @@ ctlic_open_output_file(int out_dirfd, struct ctlic_request *cr)
     }
 
     if (!found || cmt->cmt_num_depth_segments != 1 ||
-        !cmt->cmt_depth_segments[0].cds_str)
+        !cmt->cmt_depth_segments[0].cds_cprs[0].cprs_str)
         return -EBADMSG;
 
-    cf->cf_file_name = cmt->cmt_depth_segments[0].cds_str;
+    cf->cf_file_name = cmt->cmt_depth_segments[0].cds_cprs[0].cprs_str;
 
     /* See macro definition above (the function may return from here).
      */
@@ -277,6 +294,32 @@ ctlic_open_and_read_input_file(const struct ctli_cmd_handle *cch,
 }
 
 static int
+ctlic_regex_compile(struct ctlic_path_regex_segment *cprs)
+{
+    if (!cprs)
+        return -EINVAL;
+
+    else if (!cprs->cprs_str)
+        return 0;
+
+    int rc = regcomp(&cprs->cprs_regex, cprs->cprs_str, REG_NOSUB);
+    if (rc)
+    {
+        char err_str[64] = {0};
+        regerror(rc, &cprs->cprs_regex, err_str, 63);
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "regcomp(`%s'): %s", cprs->cprs_str, err_str);
+
+        return -EBADMSG;
+    }
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "%s regcomp():  OK", cprs->cprs_str);
+    cprs->cprs_regex_is_allocated = true;
+
+    return 0;
+}
+
+static int
 ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
 {
     if (!cmt)
@@ -286,23 +329,13 @@ ctlic_prepare_token_values(struct ctlic_matched_token *cmt)
     {
         struct ctlic_depth_segment *cds = &cmt->cmt_depth_segments[i];
 
-        int rc = regcomp(&cds->cds_regex, cds->cds_str, REG_NOSUB);
-        if (rc)
+        for (int j = 0; j < CTLIC_DEPTH_SEGMENT_TYPE__MAX; j++)
         {
-            char err_str[64] = {0};
-            regerror(rc, &cds->cds_regex, err_str, 63);
+            struct ctlic_path_regex_segment *cprs = &cds->cds_cprs[j];
 
-            SIMPLE_LOG_MSG(LL_DEBUG, "regcomp(`%s'): %s",
-                           cmt->cmt_depth_segments[i].cds_str, err_str);
-
-            return -EBADMSG;
-        }
-        else
-        {
-            cds->cds_free_regex = 1;
-
-            SIMPLE_LOG_MSG(LL_DEBUG, "%s regcomp():  OK",
-                           cmt->cmt_depth_segments[i].cds_str);
+            int rc = ctlic_regex_compile(cprs);
+            if (rc)
+                return rc;
         }
     }
 
@@ -321,6 +354,7 @@ ctlic_parse_token_value(struct ctlic_matched_token *cmt)
 
     bool escape_char = false;
     bool prev_char_was_solidus = false;
+    bool prev_char_was_at_sign = false;
 
     for (size_t i = 0; i < cmt->cmt_value_len; i++)
     {
@@ -331,8 +365,18 @@ ctlic_parse_token_value(struct ctlic_matched_token *cmt)
         }
         else if (cmt->cmt_value[i] == '/' && !escape_char)
         {
+            if (prev_char_was_at_sign)
+                return -EBADMSG;
+
             cmt->cmt_value[i] = '\0';
             prev_char_was_solidus = true;
+            escape_char = false;
+            continue;
+        }
+        else if (cmt->cmt_value[i] == '@' && !escape_char)
+        {
+            cmt->cmt_value[i] = '\0';
+            prev_char_was_at_sign = true;
             escape_char = false;
             continue;
         }
@@ -344,9 +388,27 @@ ctlic_parse_token_value(struct ctlic_matched_token *cmt)
             struct ctlic_depth_segment *cds =
                 &cmt->cmt_depth_segments[cmt->cmt_num_depth_segments++];
 
-            cds->cds_str = &cmt->cmt_value[i];
+            cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str =
+                &cmt->cmt_value[i];
+        }
+        else if (prev_char_was_at_sign)
+        {
+            if (prev_char_was_solidus ||
+                cmt->cmt_num_depth_segments == 0 ||
+                cmt->cmt_num_depth_segments >= CTLIC_MAX_VALUE_DEPTH)
+                return -EBADMSG;
+
+            struct ctlic_depth_segment *cds =
+                &cmt->cmt_depth_segments[cmt->cmt_num_depth_segments - 1];
+
+            if (!cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str)
+                return -EBADMSG;
+
+            cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str =
+                &cmt->cmt_value[i];
         }
 
+        prev_char_was_at_sign = false;
         prev_char_was_solidus = false;
         escape_char = false;
     }
@@ -393,7 +455,7 @@ ctlic_parse_request_values(struct ctlic_request *cr)
  * ctlic_ctsp_cb - config token parsing callback for the ctl_interface_cmd
  *   handler subsystem.  This callback doesn't do much other than
  */
-static int
+static util_thread_ctx_ctli_int_t
 ctlic_ctsp_cb(const struct conf_token *ct, const char *val_buf,
               size_t val_buf_sz, void *cb_arg, int error)
 {
@@ -643,6 +705,131 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
     return rc >= 0 ? 0 : -errno;
 }
 
+static const char *
+ctlic_regex_get_compare_string_from_lv(const struct lreg_value *lv,
+                                       enum ctlic_depth_segment_type cds_type,
+                                       char *outbuf, size_t outbuf_len,
+                                       int *error)
+{
+    NIOVA_ASSERT(error);
+
+    if (!lv || !outbuf || !outbuf_len ||
+        (cds_type != CTLIC_DEPTH_SEGMENT_TYPE_KEY &&
+         cds_type != CTLIC_DEPTH_SEGMENT_TYPE_VAL))
+    {
+        *error = -EINVAL;
+        return NULL;
+    }
+
+    *error = 0;
+
+    if (cds_type == CTLIC_DEPTH_SEGMENT_TYPE_KEY)
+        return LREG_VALUE_TO_KEY_STR(lv);
+
+    // type == CTLIC_DEPTH_SEGMENT_TYPE_VAL
+    switch (LREG_VALUE_TO_REQ_TYPE(lv))
+    {
+    case LREG_VAL_TYPE_STRING:
+        return LREG_VALUE_TO_OUT_STR(lv);
+
+    // The rest need string conversions
+    case LREG_VAL_TYPE_BOOL:
+        snprintf(outbuf, outbuf_len, "%s",
+                 LREG_VALUE_TO_BOOL(lv) ? "true" : "false");
+        return outbuf;
+
+    case LREG_VAL_TYPE_SIGNED_VAL:
+        snprintf(outbuf, outbuf_len, "%ld", LREG_VALUE_TO_OUT_SIGNED_INT(lv));
+        return outbuf;
+
+    case LREG_VAL_TYPE_UNSIGNED_VAL:
+        snprintf(outbuf, outbuf_len, "%lu",
+                 LREG_VALUE_TO_OUT_UNSIGNED_INT(lv));
+        return outbuf;
+
+    case LREG_VAL_TYPE_FLOAT_VAL:
+        snprintf(outbuf, outbuf_len, "%f", LREG_VALUE_TO_OUT_FLOAT(lv));
+        return outbuf;
+
+    default:
+        /* keys types such as LREG_VAL_TYPE_ARRAY and LREG_VAL_TYPE_OBJECT
+         * do not hold regex-able string values.
+         */
+        *error = -EINVAL;
+        break;
+    }
+
+    return NULL;
+}
+
+static int
+ctlic_regex_test_depth_segment(struct lreg_node *lrn,
+                               struct ctlic_depth_segment *cds,
+                               const struct lreg_value *lv, const int depth,
+                               bool *regex_matches)
+{
+    if (!lrn || !cds || !lv || !regex_matches)
+        return false;
+
+    *regex_matches = true;
+
+    int rc = 0;
+
+    const bool has_value_regex =
+        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_regex_is_allocated;
+
+    for (enum ctlic_depth_segment_type i = CTLIC_DEPTH_SEGMENT_TYPE__MIN;
+         i < CTLIC_DEPTH_SEGMENT_TYPE__MAX; i++)
+    {
+        struct ctlic_path_regex_segment *cprs = &cds->cds_cprs[i];
+
+        if (!cprs->cprs_str || !cprs->cprs_regex_is_allocated)
+        {
+            if (i == CTLIC_DEPTH_SEGMENT_TYPE_KEY)
+            {
+                *regex_matches = false; // this shouldn't happen
+                rc = -EINVAL;
+
+                DBG_LREG_NODE(
+                    LL_NOTIFY, lrn,
+                    "key segment is NULL (depth=%d) (lv-key=%s)",
+                    depth, LREG_VALUE_TO_KEY_STR(lv));
+            }
+            break;
+        }
+
+        int regex_rc = 0;
+        char outbuf[LREG_VALUE_STRING_MAX + 1];
+        const char *compare_str =
+            ctlic_regex_get_compare_string_from_lv(lv, i, outbuf,
+                                                   LREG_VALUE_STRING_MAX + 1,
+                                                   &rc);
+        if (!rc && compare_str)
+            regex_rc = regexec(&cprs->cprs_regex, compare_str, 0, NULL, 0);
+
+        DBG_LREG_NODE(
+            LL_DEBUG, lrn,
+            "rc=%d matched: %s (depth=%d, cds-type=%d) (cds=%s) compare=%s",
+            rc, (rc || regex_rc) ? "no" : "yes", depth, i,
+            cprs->cprs_str, compare_str);
+
+        if ((rc || regex_rc) ||
+            (!has_value_regex &&
+             (lrn->lrn_ignore_items_with_value_zero &&
+              lreg_value_is_numeric(lv) &&
+              LREG_VALUE_TO_OUT_SIGNED_INT(lv) == 0)))
+        {
+            if (!rc && !LREG_VALUE_TO_OUT_SIGNED_INT(lv))
+                DBG_LREG_NODE(LL_DEBUG, lrn, "skip zero-value entry (key=%s)",
+                              LREG_VALUE_TO_KEY_STR(lv));
+            *regex_matches = false;
+            break;
+        }
+    }
+
+    return rc;
+}
+
 static bool
 ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth);
 
@@ -728,27 +915,18 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         if (rc)
             return false;
 
-        int regex_rc = regexec(&cds->cds_regex,
-                               LREG_VALUE_TO_KEY_STR(kv_lv), 0, NULL, 0);
-#if 0  // Not specifying these seems to be OK
-//                         REG_NOTBOL | REG_NOTEOL);
-#endif
-
-        DBG_LREG_NODE(
-            LL_DEBUG, lrn,
-            "matched: %s (depth=%d, sib-num=%zd) (cds=%s) lv=%s nseg=%zu",
-            regex_rc ? "no" : "yes", depth,
-            parent_citer->citer_sibling_num, cds->cds_str,
-            LREG_VALUE_TO_KEY_STR(lv), cmt->cmt_num_depth_segments);
-
-        if (regex_rc ||
-            (lrn->lrn_ignore_items_with_value_zero &&
-             lreg_value_is_numeric(kv_lv) &&
-             LREG_VALUE_TO_OUT_SIGNED_INT(kv_lv) == 0))
+        bool should_print = false;
+        rc = ctlic_regex_test_depth_segment(lrn, cds, kv_lv, depth,
+                                            &should_print);
+        if (rc)
         {
-            if (!regex_rc)
-                DBG_LREG_NODE(LL_DEBUG, lrn, "skip zero-value entry (key=%s)",
-                              LREG_VALUE_TO_KEY_STR(kv_lv));
+            DBG_LREG_NODE(LL_DEBUG, lrn,
+                          "ctlic_regex_test_depth_segment(): %s",
+                          strerror(-rc));
+            return false;
+        }
+        else if (!should_print)
+        {
             continue;
         }
 
@@ -803,16 +981,25 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth)
     const struct ctlic_matched_token *cmt =
         ctlic_get_current_matched_token(parent_citer->citer_cr);
 
+    bool keep_going = true;
+
     if (cmt->cmt_token->ct_id == CT_ID_GET)
     {
-        bool rc = ctlic_scan_registry_cb_CT_ID_GET(lrn, parent_citer, depth);
-        if (!rc)
-            return rc;
+        keep_going =
+            ctlic_scan_registry_cb_CT_ID_GET(lrn, parent_citer, depth);
+
+        if (keep_going)
+            parent_citer->citer_sibling_num++;
     }
+#if 0
+    else if (cmt->cmt_token->ct_id == CT_ID_APPLY)
+    {
+        // Stash the 'apply' value into the cmt / cr
+    }
+#endif
 
-    parent_citer->citer_sibling_num++;
 
-    return true;
+    return keep_going;
 }
 
 static void
