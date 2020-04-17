@@ -34,13 +34,18 @@ enum log_level
     LL_ANY    = LL_MAX,
 };
 
-extern enum log_level dbgLevel;
+enum log_level
+log_level_get(void);
+
+#define LL_STRING_LEN_MAX 8
 
 static inline const char *
 ll_to_string(enum log_level ll)
 {
     switch (ll)
     {
+    case LL_ANY:
+        return "default";
     case LL_FATAL:
         return "fatal";
     case LL_ERROR:
@@ -57,7 +62,17 @@ ll_to_string(enum log_level ll)
         break;
     }
 
-    return "default";
+    return "unknown";
+}
+
+static inline enum log_level
+ll_from_string(const char *log_level_string)
+{
+    for (enum log_level lvl = 0; lvl < LL_MAX; lvl++)
+        if (!strncmp(log_level_string, ll_to_string(lvl), LL_STRING_LEN_MAX))
+            return lvl;
+
+    return LL_ANY;
 }
 
 struct log_entry_info
@@ -65,6 +80,10 @@ struct log_entry_info
     enum log_level  lei_level;
     int             lei_lineno;
     size_t          lei_exec_cnt;
+#if 0
+    size_t          lei_exec_cnt_since_last_reset;
+    time_t          lei_exec_cnt_last_reset;
+#endif
     union
     {
         const char *lei_func;
@@ -118,7 +137,7 @@ struct log_entry_info
 
 #define SIMPLE_LOG_MSG(level, message, ...)                             \
 {                                                                       \
-    if ((level) <= dbgLevel)                                            \
+    if ((level) <= log_level_get())                                     \
     {                                                                   \
         struct timespec ts;                                             \
         niova_unstable_clock(&ts);                                      \
@@ -148,24 +167,23 @@ struct log_entry_info
  *    registry entry's level, and next from the file's level.  If neither are
  *    set, then use the level provided by the caller.
  */
-#define LOG_MSG(lvl, message, ...)                                      \
+#define LOG_MSG(user_lvl, message, ...)                                 \
 {                                                                       \
+    enum log_level lvl = user_lvl;                                      \
+                                                                        \
     if (!init_ctx())                                                    \
     {                                                                   \
         REGISTY_ENTRY_FUNCTION_GENERATE;                                \
                                                                         \
         logEntryInfo.lei_exec_cnt++;                                    \
                                                                         \
-        enum log_level my_lvl = logEntryInfo.lei_level != LL_ANY ?      \
-            logEntryInfo.lei_level : logEntryFileInfo.lei_level;        \
+        if (logEntryInfo.lei_level != LL_ANY)                           \
+            lvl = logEntryInfo.lei_level;                               \
                                                                         \
-        SIMPLE_LOG_MSG(my_lvl == LL_ANY ? lvl : logEntryInfo.lei_level, \
-                       message, ##__VA_ARGS__);                         \
+        else if (logEntryFileInfo.lei_level != LL_ANY)                  \
+            lvl = logEntryFileInfo.lei_level;                           \
     }                                                                   \
-    else                                                                \
-    {                                                                   \
-        SIMPLE_LOG_MSG(lvl, message, ##__VA_ARGS__);                    \
-    }                                                                   \
+    SIMPLE_LOG_MSG(lvl, message, ##__VA_ARGS__);                        \
 }
 
 #define FATAL_MSG(message, ...)                         \
@@ -206,7 +224,7 @@ struct log_entry_info
 }
 
 #define DEBUG_BLOCK(lvl)                        \
-    if (lvl <= dbgLevel)
+    if (lvl <= log_level_get())
 
 #define log_msg LOG_MSG
 

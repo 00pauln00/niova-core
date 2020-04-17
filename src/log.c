@@ -12,7 +12,9 @@
 #include "ctor.h"
 #include "log.h"
 
-enum log_level dbgLevel = LL_WARN;
+REGISTRY_ENTRY_FILE_GENERATE;
+
+static enum log_level masterLogLevel = LL_WARN;
 
 LREG_ROOT_ENTRY_GENERATE(log_entry_map, LREG_USER_TYPE_LOG_file);
 
@@ -34,6 +36,39 @@ enum log_lreg_file_entry_values
 };
 
 static void
+log_lreg_check_and_assign_log_level(struct log_entry_info *lei,
+                                    const struct lreg_value *lreg_val)
+{
+    if (!lei || !lreg_val ||
+        (lreg_val->lrv_value_idx_in != LOG_LREG_ENTRY_LEVEL &&
+         lreg_val->lrv_value_idx_in != LOG_LREG_FILE_LEVEL))
+        return;
+
+    enum log_level lvl = LL_ANY;
+
+    if (lreg_in_value_is_numeric(lreg_val))
+        lvl = lreg_val->put.lrv_value_in.lrv_unsigned_val;
+
+    else if (LREG_VALUE_TO_REQ_TYPE_IN(lreg_val) == LREG_VAL_TYPE_STRING)
+        lvl = ll_from_string(LREG_VALUE_TO_IN_STR(lreg_val));
+
+    if ((log_level_is_valid(lvl) && lvl > LL_FATAL) ||
+        lvl == LL_ANY) // LL_ANY restores to 'default' user-supplied value
+    {
+        LOG_MSG(LL_DEBUG, "%s log level from %s to %s",
+                lei->lei_func, ll_to_string(lei->lei_level),
+                ll_to_string(lvl));
+        lei->lei_level = lvl;
+    }
+    else
+    {
+        LOG_MSG(LL_DEBUG, "failed to %s log level from %s to %s",
+                lei->lei_func, ll_to_string(lei->lei_level),
+                ll_to_string(lvl));
+    }
+}
+
+static void
 log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
                                          struct log_entry_info *lei,
                                          struct lreg_value *lreg_val)
@@ -43,13 +78,7 @@ log_lreg_file_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
 
     if (op == LREG_NODE_CB_OP_WRITE_VAL)
     {
-        if (lreg_val->lrv_value_idx_in == LOG_LREG_FILE_LEVEL &&
-            log_level_is_valid(lreg_val->put.lrv_value_in.lrv_unsigned_val))
-        {
-            enum log_level lvl = lreg_val->put.lrv_value_in.lrv_unsigned_val;
-
-            lei->lei_level = lvl;
-        }
+        log_lreg_check_and_assign_log_level(lei, lreg_val);
     }
     else if (op == LREG_NODE_CB_OP_READ_VAL)
     {
@@ -87,13 +116,7 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
 
     if (op == LREG_NODE_CB_OP_WRITE_VAL)
     {
-        if (lreg_val->lrv_value_idx_in == LOG_LREG_ENTRY_LEVEL &&
-            log_level_is_valid(lreg_val->put.lrv_value_in.lrv_unsigned_val))
-        {
-            enum log_level lvl = lreg_val->put.lrv_value_in.lrv_unsigned_val;
-
-            lei->lei_level = lvl;
-        }
+        log_lreg_check_and_assign_log_level(lei, lreg_val);
     }
     else if (op == LREG_NODE_CB_OP_READ_VAL)
     {
@@ -128,10 +151,9 @@ log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 {
     struct log_entry_info *lei = lrn->lrn_cb_arg;
 
-    if (lreg_val)
-    {
+    // Don't modify lreg_val if the op is a write
+    if (lreg_val && op == LREG_NODE_CB_OP_GET_NODE_INFO)
         lreg_val->get.lrv_num_keys_out = LOG_LREG_ENTRY_MAX;
-    }
 
     switch (op)
     {
@@ -187,7 +209,8 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_READ_VAL:  //fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lreg_val)
             return -EINVAL;
 
@@ -220,7 +243,13 @@ log_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 void
 log_level_set(enum log_level ll)
 {
-    dbgLevel = ll;
+    masterLogLevel = ll;
+}
+
+enum log_level
+log_level_get(void)
+{
+    return masterLogLevel;
 }
 
 init_ctx_t

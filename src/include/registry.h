@@ -32,6 +32,7 @@ typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
                                  const bool);
 
 #define LREG_VALUE_STRING_MAX 255
+#define LREG_NODE_KEYS_MAX 65536
 
 enum lreg_value_types
 {
@@ -134,6 +135,7 @@ struct lreg_value
 
         struct
         {
+            enum lreg_value_types  lrv_value_type_in;
             struct lreg_value_data lrv_value_in;
         } put;
     };
@@ -164,6 +166,9 @@ struct lreg_value
 
 #define LREG_VALUE_TO_REQ_TYPE(lrv)             \
     (lrv)->get.lrv_value_type_out
+
+#define LREG_VALUE_TO_REQ_TYPE_IN(lrv)             \
+    (lrv)->put.lrv_value_type_in
 
 #define LREG_VALUE_TO_USER_TYPE(lrv)             \
     (lrv)->get.lrv_user_type_out
@@ -294,6 +299,7 @@ lreg_statically_allocated_node_check(const struct lreg_node *lrn)
     return (lrn->lrn_statically_allocated && !lrn->lrn_may_destroy) ?
         true : false;
 }
+
 
 static inline bool
 lreg_node_needs_installation(const struct lreg_node *lrn)
@@ -455,9 +461,34 @@ lreg_value_fill_string_uuid(struct lreg_value *lv, const char *key,
 static inline bool
 lreg_value_is_numeric(const struct lreg_value *lv)
 {
-    if (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_SIGNED_VAL ||
-        LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_UNSIGNED_VAL ||
-        LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_FLOAT_VAL)
+    if (lv &&
+        (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_SIGNED_VAL ||
+         LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_UNSIGNED_VAL ||
+         LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_FLOAT_VAL))
+        return true;
+
+    return false;
+}
+
+static inline bool
+lreg_in_value_is_numeric(const struct lreg_value *lv)
+{
+    if (lv &&
+        (LREG_VALUE_TO_REQ_TYPE_IN(lv) == LREG_VAL_TYPE_SIGNED_VAL ||
+         LREG_VALUE_TO_REQ_TYPE_IN(lv) == LREG_VAL_TYPE_UNSIGNED_VAL ||
+         LREG_VALUE_TO_REQ_TYPE_IN(lv) == LREG_VAL_TYPE_FLOAT_VAL))
+        return true;
+
+    return false;
+}
+
+static inline bool
+lreg_value_is_array_or_object(const struct lreg_value *lv)
+{
+    if (lv &&
+        (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
+         LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ANON_OBJECT ||
+         LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY))
         return true;
 
     return false;
@@ -539,6 +570,43 @@ lreg_value_fill_object(struct lreg_value *lv, const char *key,
     lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_OBJECT);
 
     lv->get.lrv_user_type_out = user_type;
+}
+
+/**
+ * lreg_node_key_lookup - lreg tooling function which helps users perform
+ *    lookups of a key name on a given lreg_node.  The function does a sanity
+ *    check on the number of 'keys' the node claims to hold and will bypass
+ *    the loop if that value exceeds the max.  The loop is terminated when
+ *    the first string match is found and the contents of that k/v are returned
+ *    to the caller through the provided lreg_value.
+ */
+static inline int
+lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
+                     const char *key_name, size_t key_name_len)
+{
+    if (!lrn || !lv)
+        return -EINVAL;
+
+    int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NODE_INFO, lrn, lv);
+    if (rc)
+        return rc;
+
+    else if (lv->get.lrv_num_keys_out > LREG_NODE_KEYS_MAX)
+        return -E2BIG;
+
+    for (unsigned int i = 0; i < lv->get.lrv_num_keys_out; i++)
+    {
+        lv->lrv_value_idx_in = i;
+        rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, lrn, lv);
+        if (rc)
+            return rc;
+
+        else if (!strncmp(key_name, LREG_VALUE_TO_KEY_STR(lv),
+                          MIN(key_name_len, LREG_VALUE_STRING_MAX)))
+            return 0;
+    }
+
+    return -ENOENT;
 }
 
 #endif //_REGISTRY_H

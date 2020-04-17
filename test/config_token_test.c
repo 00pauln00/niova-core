@@ -155,9 +155,9 @@ struct ctt_item cttTestItems[NUM_TEST_ITEMS] =
         .ctti_should_fail = false,
     },
     {
-        .ctti_test_name = "apply_to",
+        .ctti_test_name = "apply_where",
         .ctti_conf_name = "test/registry-test-inputs/apply_to.conf",
-        .ctti_tokens = {CT_ID_TO, CT_ID_APPLY},
+        .ctti_tokens = {CT_ID_WHERE, CT_ID_APPLY},
         .ctti_should_fail = false,
     },
 };
