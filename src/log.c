@@ -14,9 +14,16 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static enum log_level masterLogLevel = LL_WARN;
+static const enum log_level defaultMasterLogLevel = LL_WARN;
+static enum log_level masterLogLevel = defaultMasterLogLevel;
 
-LREG_ROOT_ENTRY_GENERATE(log_entry_map, LREG_USER_TYPE_LOG_file);
+enum log_subsystem_keys
+{
+    LOG_SUBSYS_KEY__MIN             = 0,
+    LOG_SUBSYS_KEY_MASTER_LOG_LEVEL = 0,
+    LOG_SUBSYS_KEY_DATE_FORMAT      = 1,
+    LOG_SUBSYS_KEY__MAX             = 2,
+};
 
 enum log_lreg_function_entry_values
 {
@@ -34,6 +41,18 @@ enum log_lreg_file_entry_values
     LOG_LREG_FILE_LOG_ENTRIES,
     LOG_LREG_FILE_MAX,
 };
+
+// Forward declaration for log_subsystem lreg entry.
+static void
+log_subsys_lreg_multi_facet_cb(enum lreg_node_cb_ops,
+                               struct lreg_value *, void *);
+
+// LREG array for file entries (functions are children of their file)
+LREG_ROOT_ENTRY_GENERATE(log_entry_map, LREG_USER_TYPE_LOG_file);
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(log_subsystem, LREG_USER_TYPE_LOG_subsys,
+                                LOG_SUBSYS_KEY__MAX,
+                                log_subsys_lreg_multi_facet_cb, NULL);
 
 static void
 log_lreg_check_and_assign_log_level(struct log_entry_info *lei,
@@ -65,6 +84,43 @@ log_lreg_check_and_assign_log_level(struct log_entry_info *lei,
         LOG_MSG(LL_DEBUG, "failed to %s log level from %s to %s",
                 lei->lei_func, ll_to_string(lei->lei_level),
                 ll_to_string(lvl));
+    }
+}
+
+static void
+log_subsys_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                               struct lreg_value *lv, void *unused_arg)
+{
+    if ((op != LREG_NODE_CB_OP_READ_VAL && op != LREG_NODE_CB_OP_WRITE_VAL) ||
+        !lv || unused_arg)  //'unused_arg' should be NULL
+        return;
+
+    if (op == LREG_NODE_CB_OP_WRITE_VAL)
+    {
+        if (lv->lrv_value_idx_in == LOG_SUBSYS_KEY_MASTER_LOG_LEVEL)
+        {
+            struct log_entry_info lei = {.lei_level = log_level_get(),
+                                         .lei_func = __func__};
+
+            log_lreg_check_and_assign_log_level(&lei, lv);
+
+            if (lei.lei_level != log_level_get())
+            {
+                if (log_level_is_valid(lei.lei_level))
+                    log_level_set(lei.lei_level);
+
+                else if (lei.lei_level == LL_ANY) // reset to default
+                    log_level_set(defaultMasterLogLevel);
+            }
+        }
+    }
+    else if (op == LREG_NODE_CB_OP_READ_VAL)
+    {
+        if (lv->lrv_value_idx_in == LOG_SUBSYS_KEY_MASTER_LOG_LEVEL)
+            lreg_value_fill_string(lv, "master_log_level",
+                                   ll_to_string(log_level_get()));
+        else if (lv->lrv_value_idx_in == LOG_SUBSYS_KEY_DATE_FORMAT)
+            lreg_value_fill_string(lv, "log_msg_date_format", "%blah");
     }
 }
 
@@ -243,7 +299,13 @@ log_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 void
 log_level_set(enum log_level ll)
 {
-    masterLogLevel = ll;
+    if (ll != masterLogLevel)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "master log-level changing from %s to %s",
+                       ll_to_string(masterLogLevel), ll_to_string(ll));
+
+        masterLogLevel = ll;
+    }
 }
 
 enum log_level
@@ -261,6 +323,7 @@ log_subsys_init(void)
         log_level_set(ev->nev_long_value);
 
     LREG_ROOT_ENTRY_INSTALL(log_entry_map);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(log_subsystem);
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 };
 
