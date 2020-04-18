@@ -19,39 +19,6 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define SUCCESSFUL_PING_UNTIL_VIABLE 10
 
-LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
-
-const char *raft_uuid_str;
-const char *my_uuid_str;
-
-static const struct ctl_svc_node *leaderCsn;
-static size_t                     leaderAliveCount;
-
-static struct random_data         randData;
-static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
-
-#define RSC_TIMERFD_EXPIRE_MS 1U
-#define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 5U)
-
-struct rsc_raft_test_info
-{
-    struct lreg_node            rtti_lreg;
-    bool                        rtti_leader_is_viable;
-    bool                        rtti_initialized;
-    const uint32_t              rtti_random_seed;
-    struct timespec             rtti_last_request_sent;
-    struct timespec             rtti_last_request_ackd; // by leader
-    struct timespec             rtti_last_msg_recvd;
-    struct raft_test_values     rrti_committed;
-    struct raft_test_values     rrti_last_retried;
-    struct raft_test_values     rrti_last_validated;
-    size_t                      rrti_num_write_retries;
-    // <---- Keep the below members intact ---->
-    struct raft_client_rpc_msg  rtti_rcrm;
-    struct raft_test_data_block rtti_rtdb;
-    char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
-};
-
 enum raft_client_instance_lreg_values
 {
     RAFT_CLIENT_LREG_RAFT_UUID,
@@ -83,6 +50,24 @@ enum raft_client_app_lreg_values
     RAFT_CLIENT_APP_LREG_MAX,
 };
 
+struct rsc_raft_test_info
+{
+    bool                        rtti_leader_is_viable;
+    bool                        rtti_initialized;
+    const uint32_t              rtti_random_seed;
+    struct timespec             rtti_last_request_sent;
+    struct timespec             rtti_last_request_ackd; // by leader
+    struct timespec             rtti_last_msg_recvd;
+    struct raft_test_values     rrti_committed;
+    struct raft_test_values     rrti_last_retried;
+    struct raft_test_values     rrti_last_validated;
+    size_t                      rrti_num_write_retries;
+    // <---- Keep the below members intact ---->
+    struct raft_client_rpc_msg  rtti_rcrm;
+    struct raft_test_data_block rtti_rtdb;
+    char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+};
+
 /**
  * The raft_client_test maintains only a single instance of
  * rsc_raft_test_info - including the RPC request contents for read and write
@@ -90,6 +75,37 @@ enum raft_client_app_lreg_values
  * however, may run concurrently with read / write requests.
  */
 static struct rsc_raft_test_info rRTI;
+
+static util_thread_ctx_reg_t
+raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
+                                    void *);
+
+LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_client_app,
+                                LREG_USER_TYPE_RAFT_CLIENT_APP,
+                                RAFT_CLIENT_APP_LREG_MAX,
+                                raft_client_app_lreg_multi_facet_cb, NULL);
+
+const char *raft_uuid_str;
+const char *my_uuid_str;
+
+static const struct ctl_svc_node *leaderCsn;
+static size_t                     leaderAliveCount;
+
+static struct random_data         randData;
+static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
+
+#define RSC_TIMERFD_EXPIRE_MS 1U
+#define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 5U)
+
+#if 0
+static struct rsc_raft_test_info *
+rsc_get_raft_test_info(void)
+{
+    return &rRTI;
+}
+#endif
 
 static void
 rsc_set_initialized(void)
@@ -115,18 +131,6 @@ static uint64_t
 rsc_get_last_validated_xor_sum(void)
 {
     return rRTI.rrti_last_validated.rtv_reply_xor_all_values;
-}
-
-static struct rsc_raft_test_info *
-rsc_get_raft_test_info(void)
-{
-    return &rRTI;
-}
-
-static struct lreg_node *
-rsc_get_lreg_node(void)
-{
-    return &rRTI.rtti_lreg;
 }
 
 static bool
@@ -1228,12 +1232,12 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+
 static util_thread_ctx_reg_t
 raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
-                                    const struct raft_instance *ri,
-                                    struct lreg_value *lv)
+                                    struct lreg_value *lv, void *arg)
 {
-    if (!lv || !ri ||
+    if (!lv || arg /* arg is not used here */ ||
         lv->lrv_value_idx_in >= RAFT_CLIENT_APP_LREG_MAX ||
         op != LREG_NODE_CB_OP_READ_VAL)
         return;
@@ -1304,47 +1308,6 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     }
 }
 
-static util_thread_ctx_reg_int_t
-rsc_app_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
-                struct lreg_value *lv)
-{
-    const struct raft_instance *ri = lrn->lrn_cb_arg;
-    if (!ri)
-        return -EINVAL;
-
-    if (lv)
-        lv->get.lrv_num_keys_out = RAFT_CLIENT_APP_LREG_MAX;
-
-    switch (op)
-    {
-    case LREG_NODE_CB_OP_GET_NAME:
-        if (!lv)
-            return -EINVAL;
-        strncpy(lv->lrv_key_string, "raft_client_app",
-                LREG_VALUE_STRING_MAX);
-        strncpy(LREG_VALUE_TO_OUT_STR(lv), my_uuid_str,
-                LREG_VALUE_STRING_MAX);
-        break;
-
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
-        if (!lv)
-            return -EINVAL;
-
-        raft_client_app_lreg_multi_facet_cb(op, ri, lv);
-        break;
-
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
-        break;
-
-    default:
-        return -ENOENT;
-    }
-
-    return 0;
-}
-
 static int
 raft_client_test_lreg_init(struct raft_instance *ri)
 {
@@ -1372,12 +1335,7 @@ raft_client_test_lreg_init(struct raft_instance *ri)
             return rc;
     }
 
-    lreg_node_init(rsc_get_lreg_node(), LREG_USER_TYPE_RAFT_CLIENT_APP,
-                   rsc_app_lreg_cb, rsc_get_raft_test_info(),
-                   LREG_INIT_OPT_NONE);
-
-    rc = lreg_node_install_prepare(rsc_get_lreg_node(),
-                                   lreg_root_node_get());
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_client_app);
 
     return rc;
 }
