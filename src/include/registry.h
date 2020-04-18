@@ -500,6 +500,12 @@ lreg_subsystem_destroy(void)
                                    LREG_ROOT_ENTRY_PTR(name)));         \
 }
 
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ARG(name, arg)                   \
+{                                                                       \
+    &childEntry##name.lrn_cb_arg = (arg);                               \
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(name);                               \
+}
+
 
 #if 0 // LREG_ROOT_ENTRY_INSTALL variant
     NIOVA_ASSERT(
