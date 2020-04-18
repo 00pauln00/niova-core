@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <linux/limits.h>
 
+
 #include "log.h"
 #include "ctl_interface_cmd.h"
 #include "ctl_interface.h"
@@ -22,7 +23,7 @@
 #include "config_token.h"
 #include "random.h"
 
-//REGISTRY_ENTRY_FILE_GENERATE;
+REGISTRY_ENTRY_FILE_GENERATE;
 
 #define CTLIC_BUFFER_SIZE        4096
 #define CTLIC_MAX_TOKENS_PER_REQ 8
@@ -110,7 +111,7 @@ struct ctlic_iterator
 
 #define DBG_CITER(log_level, citer, fmt, ...)                           \
 {                                                                       \
-    SIMPLE_LOG_MSG(                                                     \
+    LOG_MSG(                                                            \
         log_level,                                                      \
         "citer@%p-%08x p@%p-%08x lv=%s depth=%zu sib-num:nprint=%zu:%zu p-nprint=%zu pdepth=%zu o=%d "fmt, \
         citer, (citer)->citer_rand_id, (citer)->citer_parent,           \
@@ -307,12 +308,12 @@ ctlic_regex_compile(struct ctlic_path_regex_segment *cprs)
         char err_str[64] = {0};
         regerror(rc, &cprs->cprs_regex, err_str, 63);
 
-        SIMPLE_LOG_MSG(LL_DEBUG, "regcomp(`%s'): %s", cprs->cprs_str, err_str);
+        LOG_MSG(LL_DEBUG, "regcomp(`%s'): %s", cprs->cprs_str, err_str);
 
         return -EBADMSG;
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "%s regcomp():  OK", cprs->cprs_str);
+    LOG_MSG(LL_DEBUG, "%s regcomp():  OK", cprs->cprs_str);
     cprs->cprs_regex_is_allocated = true;
 
     return 0;
@@ -507,10 +508,10 @@ ctlic_dump_request_items(const struct ctlic_request *cr)
     {
         if (cr->cr_matched_token[i].cmt_token)
         {
-            SIMPLE_LOG_MSG(LL_DEBUG, "(%s) %s -> `%s'",
-                           cr->cr_file[CTLIC_INPUT_FILE].cf_file_name,
-                           cr->cr_matched_token[i].cmt_token->ct_name,
-                           cr->cr_matched_token[i].cmt_value);
+            LOG_MSG(LL_DEBUG, "(%s) %s -> `%s'",
+                    cr->cr_file[CTLIC_INPUT_FILE].cf_file_name,
+                    cr->cr_matched_token[i].cmt_token->ct_name,
+                    cr->cr_matched_token[i].cmt_value);
         }
     }
 }
@@ -561,8 +562,8 @@ ctlic_ctsp_cb(const struct conf_token *ct, const char *val_buf,
 
     strncpy(cmt->cmt_value, val_buf, val_buf_sz);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "token-name %10s val_sz %02zu err %01d %s",
-                   ct->ct_name, val_buf_sz, error, val_buf);
+    LOG_MSG(LL_DEBUG, "token-name %10s val_sz %02zu err %01d %s",
+            ct->ct_name, val_buf_sz, error, val_buf);
 
     return 0;
 }
@@ -689,8 +690,8 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
     const size_t starting_byte_cnt = citer->citer_starting_byte_cnt;
     const char *value_string = ctlic_citer_2_value_string(citer);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "key=`%s' depth=%zu sib-num=%zu open=%d",
-                   lv->lrv_key_string, tab_depth, sibling_number, open_stanza);
+    LOG_MSG(LL_DEBUG, "key=`%s' depth=%zu sib-num=%zu open=%d",
+            lv->lrv_key_string, tab_depth, sibling_number, open_stanza);
 
     DECL_AND_INIT_STRING(tab_array, CTLIC_MAX_TAB_DEPTH, '\t', tab_depth);
 
@@ -1027,7 +1028,7 @@ ctlic_scan_registry_cb_CT_ID_WHERE(struct lreg_node *lrn,
 
         rc = ctlic_regex_test_depth_segment(lrn, cds, &lv, depth, &match);
 
-        SIMPLE_LOG_MSG(
+        LOG_MSG(
             LL_DEBUG,
             "regex_rc=%d match=%d key=%s cds[%d]=%s:%s num_depth_segments=%zu",
             rc, match, LREG_VALUE_TO_KEY_STR(&lv), depth,
@@ -1301,30 +1302,30 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
 
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "ctlic_open_and_read_input_file(`%s'): %s",
-                       cch->ctlih_input_file_name, strerror(-rc));
+        LOG_MSG(LL_NOTIFY, "ctlic_open_and_read_input_file(`%s'): %s",
+                cch->ctlih_input_file_name, strerror(-rc));
         return;
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "file=%s\ncontents=\n%s",
-                   cch->ctlih_input_file_name,
-                   (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
+    LOG_MSG(LL_DEBUG, "file=%s\ncontents=\n%s",
+            cch->ctlih_input_file_name,
+            (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
 
     rc = ctlic_parse_request(&cr);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY,
-                       "ctlic_parse_request() %s :: file=%s\ncontents=\n%s",
-                       strerror(-rc), cch->ctlih_input_file_name,
-                       (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
+        LOG_MSG(LL_NOTIFY,
+                "ctlic_parse_request() %s :: file=%s\ncontents=\n%s",
+                strerror(-rc), cch->ctlih_input_file_name,
+                (const char *)cr.cr_file[CTLIC_INPUT_FILE].cf_buffer);
         goto done;
     }
 
     rc = ctlic_open_output_file(cch->ctlih_output_dirfd, &cr);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "ctlic_open_output_file(): %s",
-                       strerror(-rc));
+        LOG_MSG(LL_NOTIFY, "ctlic_open_output_file(): %s",
+                strerror(-rc));
         goto done;
     }
 
