@@ -29,6 +29,7 @@ SYS_CORE_INCLUDES = \
 	src/include/ref_tree_proto.h \
 	src/include/regex_defines.h \
 	src/include/registry.h \
+	src/include/system_info.h \
 	src/include/thread.h \
 	src/include/udp.h \
 	src/include/util.h \
@@ -51,6 +52,7 @@ SYS_CORE_OBJFILES = \
 	src/log.o \
 	src/random.o \
 	src/registry.o \
+	src/system_info.o \
 	src/thread.o \
 	src/udp.o \
 	src/util_thread.o \

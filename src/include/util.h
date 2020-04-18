@@ -190,6 +190,12 @@ timespec_2_float(const struct timespec *ts)
     return (float)ts->tv_sec + (.000000001 * (float)ts->tv_nsec);
 }
 
+static inline float
+timeval_2_float(const struct timeval *tv)
+{
+    return (float)tv->tv_sec + (.000001 * (float)tv->tv_usec);
+}
+
 static inline unsigned long long
 niova_unstable_coarse_clock_get_msec(void)
 {

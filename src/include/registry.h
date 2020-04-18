@@ -52,6 +52,7 @@ enum lreg_user_types
 {
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_FAULT,
+    LREG_USER_TYPE_SYS_INFO,
     LREG_USER_TYPE_LOG_file,
     LREG_USER_TYPE_LOG_func,
     LREG_USER_TYPE_LOG_subsys,
@@ -656,6 +657,14 @@ lreg_value_fill_unsigned(struct lreg_value *lv, const char *key,
     union lreg_value_data_numeric lvdu = {.lrvdn_unsigned_val = value};
 
     lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_UNSIGNED_VAL);
+}
+
+static inline void
+lreg_value_fill_float(struct lreg_value *lv, const char *key, float value)
+{
+    union lreg_value_data_numeric lvdu = {.lrvdn_float_val = value};
+
+    lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_FLOAT_VAL);
 }
 
 static inline void
