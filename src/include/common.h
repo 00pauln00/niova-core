@@ -22,6 +22,10 @@
 #undef _STDIO_H
 #endif
 
+#ifndef UUID_STR_LEN
+#define UUID_STR_LEN 37
+#endif
+
 /* No NIOVA includes may be added here!
  */
 

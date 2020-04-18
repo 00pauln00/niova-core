@@ -15,7 +15,7 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static const enum log_level defaultMasterLogLevel = LL_WARN;
-static enum log_level masterLogLevel = defaultMasterLogLevel;
+static enum log_level masterLogLevel = LL_WARN;
 
 enum log_subsystem_keys
 {
@@ -317,6 +317,8 @@ log_level_get(void)
 init_ctx_t
 log_subsys_init(void)
 {
+    masterLogLevel = defaultMasterLogLevel;
+
     const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_log_level);
 
     if (ev && ev->nev_present)
