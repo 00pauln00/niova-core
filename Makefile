@@ -23,6 +23,7 @@ SYS_CORE_INCLUDES = \
 	src/include/init.h \
 	src/include/lock.h \
 	src/include/log.h \
+	src/include/net_ctl.h \
 	src/include/raft.h \
 	src/include/raft_net.h \
 	src/include/random.h \

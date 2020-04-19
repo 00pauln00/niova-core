@@ -688,7 +688,8 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
     if (!in)
         return NULL;
 
-    struct ctl_svc_node *csn = niova_malloc(sizeof(struct ctl_svc_node));
+    struct ctl_svc_node *csn = niova_calloc((size_t)1,
+                                            sizeof(struct ctl_svc_node));
     if (!csn)
         return NULL;
 

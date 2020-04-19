@@ -15,6 +15,7 @@
 #include "ctor.h"
 #include "env.h"
 #include "ref_tree_proto.h"
+#include "net_ctl.h"
 
 #define CTL_SVC_DEFAULT_LOCAL_DIR "/etc/niova/ctl-svc/local"
 #define CTL_SVC_MAX_RAFT_PEERS 11
@@ -55,12 +56,13 @@ struct ctl_svc_node_raft_peer
  */
 struct ctl_svc_node_peer
 {
-    char         csnp_hostname[HOST_NAME_MAX];
-    char         csnp_ipv4[IPV4_STRLEN];
-    char        *csnp_store;
-    uint16_t     csnp_port;
-    uint16_t     csnp_client_port;
-    uint16_t     csnp__pad[2];
+    char           csnp_hostname[HOST_NAME_MAX];
+    char           csnp_ipv4[IPV4_STRLEN];
+    char          *csnp_store;
+    uint16_t       csnp_port;
+    uint16_t       csnp_client_port;
+    struct net_ctl csnp_net_ctl;
+    uint16_t       csnp__pad[1];
     union {
         struct ctl_svc_node_raft_peer csnp_raft_info;
         struct ctl_svc_node_niosd     csnp_niosd_info;
