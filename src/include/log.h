@@ -22,7 +22,7 @@
 
 LREG_ROOT_ENTRY_EXPORT(log_entry_map);
 
-enum log_level
+enum PACKED log_level
 {
     LL_FATAL  = 0,
     LL_ERROR  = 1,
@@ -78,7 +78,7 @@ ll_from_string(const char *log_level_string)
 struct log_entry_info
 {
     enum log_level  lei_level;
-    int             lei_lineno;
+    unsigned int    lei_lineno:18;
     size_t          lei_exec_cnt;
 #if 0
     size_t          lei_exec_cnt_since_last_reset;

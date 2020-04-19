@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <linux/limits.h>
 
-
 #include "log.h"
 #include "ctl_interface_cmd.h"
 #include "ctl_interface.h"

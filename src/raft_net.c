@@ -747,7 +747,7 @@ raft_net_udp_identify_socket(const struct raft_instance *ri, const int fd)
 /**
  * raft_net_udp_cb - this is the receive handler for all incoming UDP
  *    requests and replies.  The program is single threaded so the msg sink
- *    buffers are allocated statically here.  Operations than can be handled
+ *    buffers are allocated statically here.  Operations that can be handled
  *    from this callback are:  client RPC requests, vote requests (if
  *    peer is candidate), vote replies (if self is candidate).
  */

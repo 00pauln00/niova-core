@@ -23,7 +23,7 @@
 /* Xxx In the case where suffixes are partially conflicting, place the longer
  *     ones at lower values in the enum (this needs to be simplified).
  */
-enum ctl_svc_node_type
+enum PACKED ctl_svc_node_type
 {
     CTL_SVC_NODE_TYPE_NIOSD,
     CTL_SVC_NODE_TYPE_RAFT_PEER,   // ".peer"

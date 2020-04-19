@@ -11,7 +11,7 @@
 
 #include "common.h"
 
-enum conf_token_id
+enum PACKED conf_token_id
 {
     CT_ID__MIN = 0,
     CT_ID_APPLY,

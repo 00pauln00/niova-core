@@ -34,7 +34,7 @@ typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
 #define LREG_VALUE_STRING_MAX 255
 #define LREG_NODE_KEYS_MAX 65536
 
-enum lreg_value_types
+enum PACKED lreg_value_types
 {
     LREG_VAL_TYPE_NONE,
     LREG_VAL_TYPE_ARRAY,
@@ -48,7 +48,7 @@ enum lreg_value_types
     LREG_VAL_TYPE_ANY,
 };
 
-enum lreg_user_types
+enum PACKED lreg_user_types
 {
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_FAULT,
@@ -68,7 +68,7 @@ enum lreg_user_types
     LREG_USER_TYPE_ANY,
 };
 
-enum lreg_node_cb_ops
+enum PACKED lreg_node_cb_ops
 {
     LREG_NODE_CB_OP_GET_NODE_INFO,
     LREG_NODE_CB_OP_WRITE_VAL,

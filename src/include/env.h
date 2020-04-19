@@ -8,7 +8,7 @@
 
 #include "init.h"
 
-enum niova_env_var_type
+enum PACKED niova_env_var_type
 {
     NIOVA_ENV_VAR_TYPE_NONE,
     NIOVA_ENV_VAR_TYPE_STRING,
@@ -16,7 +16,7 @@ enum niova_env_var_type
     NIOVA_ENV_VAR_TYPE_OTHER,
 };
 
-enum niova_env_subsystem
+enum PACKED niova_env_subsystem
 {
     NIOVA_ENV_SUBSYSTEM_LOG,
     NIOVA_ENV_SUBSYSTEM_AIO,
@@ -25,7 +25,7 @@ enum niova_env_subsystem
     NIOVA_ENV_SUBSYSTEM_CTL_SVC,
 };
 
-enum niova_env_var_num
+enum PACKED niova_env_var_num
 {
     NIOVA_ENV_VAR_MIN                = 0,
     NIOVA_ENV_VAR_log_level          = 0,
@@ -44,14 +44,14 @@ struct niova_env_var
 {
     const char              *nev_name;
     const char              *nev_string;
-    enum niova_env_var_type  nev_type;
-    enum niova_env_subsystem nev_subsystem;
-    enum niova_env_var_num   nev_var_num;
     long long                nev_min;
     long long                nev_default;
     long long                nev_max;
     long long                nev_long_value;
     bool                     nev_present;
+    enum niova_env_var_type  nev_type;
+    enum niova_env_subsystem nev_subsystem;
+    enum niova_env_var_num   nev_var_num;
     int                      nev_rc;
     void                   (*nev_cb)(const struct niova_env_var *);
 };
