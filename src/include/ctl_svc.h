@@ -16,6 +16,7 @@
 #include "env.h"
 #include "ref_tree_proto.h"
 #include "net_ctl.h"
+#include "registry.h"
 
 #define CTL_SVC_DEFAULT_LOCAL_DIR "/etc/niova/ctl-svc/local"
 #define CTL_SVC_MAX_RAFT_PEERS 11
@@ -80,6 +81,7 @@ struct ctl_svc_node
     uuid_t                       csn_uuid;
     REF_TREE_ENTRY(ctl_svc_node) csn_rtentry;
     enum ctl_svc_node_type       csn_type;
+    struct lreg_node             csn_lrn;
     union
     {
         struct ctl_svc_node_peer csn_peer;
@@ -191,6 +193,28 @@ ctl_svc_node_type(const struct ctl_svc_node *csn)
         }
     }
     return 'u';
+}
+
+static inline char *
+ctl_svc_node_to_string(const struct ctl_svc_node *csn)
+{
+    if (csn)
+    {
+        switch (csn->csn_type)
+        {
+        case CTL_SVC_NODE_TYPE_NIOSD:
+            return "niova-osd";
+        case CTL_SVC_NODE_TYPE_RAFT:
+            return "raft-config";
+        case CTL_SVC_NODE_TYPE_RAFT_PEER:
+            return "raft-server";
+        case CTL_SVC_NODE_TYPE_RAFT_CLIENT:
+            return "raft-client";
+        default:
+            break;
+        }
+    }
+    return "unknown";
 }
 
 #define DBG_CTL_SVC_NODE(log_level, csn, fmt, ...)                      \

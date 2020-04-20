@@ -18,6 +18,9 @@
 #undef MY_FATAL_IF
 #endif
 
+#define OFFSET_CAST(type, member, src_ptr)       \
+    (struct type *)(((char *)(src_ptr)) - offsetof(struct type, member))
+
 #define MY_FATAL_IF(cond, msg, ...)                     \
     if (cond)                                           \
     {                                                   \
@@ -221,6 +224,19 @@ niova_unstable_coarse_clock_get_usec(void)
     niova_unstable_coarse_clock(&now);
 
     return timespec_2_usec(&now);
+}
+
+static inline int
+niova_string_to_bool(const char *string, bool *ret_bool)
+{
+    if (!strncmp(string, "true", 4))
+        *ret_bool = true;
+    else if (!strncmp(string, "false", 5))
+        *ret_bool = false;
+    else
+        return -EINVAL;
+
+    return 0;
 }
 
 #endif

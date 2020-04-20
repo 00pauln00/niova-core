@@ -21,22 +21,21 @@ enum nctl_ops
     NET_CTL_ENABLE_RECV_DISABLE_SEND,
 };
 
+
 struct net_ctl
 {
-    union
-    {
-        uint16_t net_ctl_disable_recv:1,
-                 net_ctl_disable_send:1,
-                 net_ctl_recv_drop_percent:7,
-                 net_ctl_send_drop_percent:7;
-        uint16_t net_ctl_uint16;
-    };
+    uint16_t net_ctl_disable_recv:1,
+        net_ctl_disable_send:1,
+        net_ctl_recv_drop_percent:7,
+        net_ctl_send_drop_percent:7;
 } PACKED;
+
 
 static inline void
 net_ctl_init(struct net_ctl *nc)
 {
-    nc->net_ctl_uint16 = 0;
+    if (nc)
+        memset(nc, 0, sizeof(*nc));
 }
 
 static inline void

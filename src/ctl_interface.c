@@ -285,7 +285,7 @@ lctli_subsystem_init(void)
         ev->nev_string : DEFAULT_INOTIFY_PATH;
 
     int rc = lctli_prepare(lctli, inotify_path);
-    FATAL_IF(rc, "lctli_prepare(): %s", strerror(-rc));
+    FATAL_IF(rc, "lctli_prepare(): %s (path=%s)", strerror(-rc), inotify_path);
 
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
                                        lctli_epoll_mgr_cb, (void *)lctli);

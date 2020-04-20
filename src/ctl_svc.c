@@ -11,20 +11,42 @@
 #include <sys/types.h>
 #include <dirent.h>
 
-#include "ctl_svc.h"
-#include "init.h"
-#include "env.h"
-#include "config_token.h"
-#include "regex_defines.h"
-#include "log.h"
-#include "file_util.h"
 #include "alloc.h"
+#include "config_token.h"
+#include "ctl_svc.h"
+#include "env.h"
+#include "file_util.h"
+#include "init.h"
+#include "log.h"
 #include "ref_tree_proto.h"
+#include "regex_defines.h"
+#include "registry.h"
+#include "util_thread.h"
 
 #define CTL_SVC_CONF_FILE_MAX_SIZE 1024UL
 #define CTL_SVC_NUM_CONF_TOKENS 9
 
 REGISTRY_ENTRY_FILE_GENERATE;
+
+/* UUID and TYPE must be first, otherwise the RAFT node type will break.
+ */
+enum ctl_svc_node_keys
+{
+    CTL_SVC_NODE_UUID,              //string
+    CTL_SVC_NODE_TYPE,              //string
+    CTL_SVC_NODE_HOSTNAME,          //string
+    CTL_SVC_NODE_IPADDR,            //string
+    CTL_SVC_NODE_PORT,              //string
+    CTL_SVC_NODE_CLIENT_PORT,       //unsigned
+    CTL_SVC_NODE_NET_SEND_ENABLED, //bool
+    CTL_SVC_NODE_NET_RECV_ENABLED, //bool
+    CTL_SVC_NODE_STORE,             //string (pathname)
+    CTL_SVC_NODE__MAX,
+    CTL_SVC_NODE__MIN = 0,
+    CTL_SVC_NODE__MAX_RAFT = CTL_SVC_NODE_HOSTNAME,
+};
+
+LREG_ROOT_ENTRY_GENERATE(ctl_svc_nodes, LREG_USER_TYPE_CTL_SVC_NODE);
 
 REF_TREE_HEAD(ctl_svc_node_tree, ctl_svc_node);
 
@@ -502,6 +524,115 @@ ctl_svc_node_release_internal_members(struct ctl_svc_node *destroy)
     }
 }
 
+static util_thread_ctx_reg_int_t
+ctl_svc_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                struct lreg_value *lrv)
+{
+    if (!lrn || (!lrv && (op == LREG_NODE_CB_OP_GET_NODE_INFO ||
+                          op == LREG_NODE_CB_OP_READ_VAL ||
+                          op == LREG_NODE_CB_OP_WRITE_VAL)))
+        return -EINVAL;
+
+    struct ctl_svc_node *csn = OFFSET_CAST(ctl_svc_node, csn_lrn, lrn);
+
+    DBG_CTL_SVC_NODE(LL_DEBUG, csn, "");
+
+    bool tmp_bool;
+    int tmp_rc;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
+    case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+        break; // These may require implementation later..
+
+    case LREG_NODE_CB_OP_GET_NODE_INFO:
+        lrv->get.lrv_num_keys_out = ctl_svc_node_is_raft(csn) ?
+            CTL_SVC_NODE__MAX_RAFT : CTL_SVC_NODE__MAX;
+        strncpy(lrv->lrv_key_string, ctl_svc_node_to_string(csn),
+                LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lrv->lrv_value_idx_in)
+        {
+        case CTL_SVC_NODE_UUID:
+            lreg_value_fill_string_uuid(lrv, "uuid", csn->csn_uuid);
+            break;
+        case CTL_SVC_NODE_TYPE:
+            lreg_value_fill_string(lrv, "type",
+                                   ctl_svc_node_to_string(csn));
+            break;
+        case CTL_SVC_NODE_HOSTNAME:
+            lreg_value_fill_string(lrv, "hostname",
+                                   csn->csn_peer.csnp_hostname);
+            break;
+        case CTL_SVC_NODE_IPADDR:
+            lreg_value_fill_string(lrv, "ip_address",
+                                   csn->csn_peer.csnp_ipv4);
+            break;
+        case CTL_SVC_NODE_PORT:
+            lreg_value_fill_unsigned(lrv, "server_port",
+                                     csn->csn_peer.csnp_port);
+            break;
+        case CTL_SVC_NODE_CLIENT_PORT:
+            lreg_value_fill_unsigned(lrv, "client_port",
+                                     csn->csn_peer.csnp_client_port);
+            break;
+        case CTL_SVC_NODE_NET_SEND_ENABLED:
+            lreg_value_fill_bool(
+                lrv, "net_send_enabled",
+                net_ctl_can_send(&csn->csn_peer.csnp_net_ctl));
+            break;
+        case CTL_SVC_NODE_NET_RECV_ENABLED:
+            lreg_value_fill_bool(
+                lrv, "net_recv_enabled",
+                net_ctl_can_recv(&csn->csn_peer.csnp_net_ctl));
+            break;
+        case CTL_SVC_NODE_STORE:
+            lreg_value_fill_string(
+                lrv, "data_store",
+                (csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER ?
+                 csn->csn_peer.csnp_store : "none"));
+            break;
+        default:
+            return -EOPNOTSUPP;
+        }
+        break;
+
+    case LREG_NODE_CB_OP_WRITE_VAL:
+        if (lrv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
+            return -EINVAL;
+
+        tmp_rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lrv), &tmp_bool);
+        if (tmp_rc)
+            return tmp_rc;
+
+        switch (lrv->lrv_value_idx_in)
+        {
+        case CTL_SVC_NODE_NET_SEND_ENABLED:
+            net_ctl_send_recv(&csn->csn_peer.csnp_net_ctl,
+                              (tmp_bool ?
+                               NET_CTL_ENABLE_SEND : NET_CTL_DISABLE_SEND));
+            break;
+        case CTL_SVC_NODE_NET_RECV_ENABLED:
+            net_ctl_send_recv(&csn->csn_peer.csnp_net_ctl,
+                              (tmp_bool ?
+                               NET_CTL_ENABLE_RECV : NET_CTL_DISABLE_RECV));
+            break;
+        default:
+            return -EOPNOTSUPP;
+        };
+
+        break;
+
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 static int
 ctl_svc_node_tree_add(const struct ctl_svc_node *csn_from_caller_stack,
                       int *rt_ret)
@@ -695,7 +826,13 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
 
     *csn = *in;
 
-    DBG_CTL_SVC_NODE(LL_DEBUG, csn, "");
+    lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
+                   ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
+
+    int rc = lreg_node_install_prepare(&csn->csn_lrn,
+                                       LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
+
+    DBG_CTL_SVC_NODE((rc ? LL_FATAL : LL_DEBUG), csn, "%s", strerror(-rc));
 
     return csn;
 }
@@ -788,6 +925,8 @@ ctl_svc_nodes_release(void)
 init_ctx_t
 ctl_svc_init(void)
 {
+    LREG_ROOT_ENTRY_INSTALL(ctl_svc_nodes);
+
     /* Use an initial ref count of "2" so that entries don't require additional
      * dependencies to remain in the tree after creation.
      */
