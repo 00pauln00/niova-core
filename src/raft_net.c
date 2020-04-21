@@ -526,6 +526,9 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
 
     struct ctl_svc_node *csn = ri->ri_csn_raft_peers[sender_idx];
 
+    if (!ctl_svc_node_is_peer(csn))
+        DBG_SIMPLE_CTL_SVC_NODE(LL_FATAL, csn, "csn is not a peer");
+
     const uint16_t expected_port = (raft_instance_is_client(ri) ?
                                     ctl_svc_node_peer_2_client_port(csn) :
                                     ctl_svc_node_peer_2_port(csn));
@@ -534,9 +537,15 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
         strncmp(ctl_svc_node_peer_2_ipaddr(csn),
                 inet_ntoa(sender_addr->sin_addr), IPV4_STRLEN))
     {
-        SIMPLE_LOG_MSG(LL_WARN, "uuid (%s) on unexpected IP:port (%s:%hu)",
-                       sender_uuid, inet_ntoa(sender_addr->sin_addr),
-                       expected_port);
+        LOG_MSG(LL_NOTIFY, "uuid (%s) on unexpected IP:port (%s:%hu)",
+                sender_uuid, inet_ntoa(sender_addr->sin_addr), expected_port);
+
+        csn = NULL;
+    }
+    else if (!net_ctl_can_recv(&csn->csn_peer.csnp_net_ctl))
+    {
+        // Receive functionality is disabled in the ctl_svc layer.
+        DBG_CTL_SVC_NODE(LL_DEBUG, csn, "net_ctl_can_recv() is false");
         csn = NULL;
     }
 
@@ -578,7 +587,16 @@ raft_net_send_client_msg(struct raft_instance *ri,
         [0].iov_base = (void *)rcrm,
     };
 
-    ssize_t size_rc = udp_socket_send(ush, iov, 1, &dest);
+    ssize_t size_rc;
+    if (!net_ctl_can_send(&csn->csn_peer.csnp_net_ctl))
+    {
+        DBG_CTL_SVC_NODE(LL_DEBUG, csn, "net_ctl_can_send() is false");
+        size_rc = msg_size;
+    }
+    else
+    {
+        size_rc = udp_socket_send(ush, iov, 1, &dest);
+    }
 
     DBG_RAFT_CLIENT_RPC(LL_DEBUG, rcrm, &dest, "size-rc=%zd", size_rc);
 

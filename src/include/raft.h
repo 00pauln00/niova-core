@@ -13,10 +13,11 @@
 
 #include "binary_hist.h"
 #include "common.h"
-#include "util.h"
 #include "ctl_svc.h"
-#include "raft_net.h"
 #include "ev_pipe.h"
+#include "raft_net.h"
+#include "udp.h"
+#include "util.h"
 
 #define NUM_RAFT_LOG_HEADERS 2
 #define RAFT_ENTRY_PAD_SIZE 63

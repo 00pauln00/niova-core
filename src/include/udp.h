@@ -4,6 +4,9 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
+#ifndef _UDP_H
+#define _UDP_H 1
+
 #include <sys/types.h>          /* See NOTES */
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -73,3 +76,5 @@ udp_socket_recv_fd(int fd, struct iovec *iov, size_t iovlen,
 ssize_t
 udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
                 const size_t iovlen, const struct sockaddr_in *to);
+
+#endif

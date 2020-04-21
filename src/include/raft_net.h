@@ -12,8 +12,9 @@
 #include <netinet/in.h>
 #include <netinet/udp.h>
 
-#include "log.h"
 #include "common.h"
+#include "log.h"
+#include "net_ctl.h"
 
 #define RAFT_NET_SEQNO_ANY -1ULL
 
@@ -29,6 +30,7 @@ struct sockaddr_in;
 
 typedef void raft_net_udp_cb_ctx_t;
 typedef int  raft_net_udp_cb_ctx_int_t;
+typedef bool raft_net_udp_cb_ctx_bool_t;
 typedef void raft_net_timerfd_cb_ctx_t;
 typedef int  raft_net_timerfd_cb_ctx_int_t;
 
@@ -110,6 +112,7 @@ struct raft_net_client_request
     enum raft_net_client_request_type rncr_type; // may be set by sm callback
     bool                              rncr_write_raft_entry;
     bool                              rncr_is_leader;
+    struct net_ctl                    rncr_nc;
     int                               rncr_op_error;
     int64_t                           rncr_entry_term;
     int64_t                           rncr_current_term;
