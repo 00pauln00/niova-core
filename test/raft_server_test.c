@@ -541,7 +541,7 @@ static void
 rst_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s -r UUID -n UUID\n", argv[0]);
+            "Usage: %s -r <UUID> -u <UUID>\n", argv[0]);
 
     exit(error);
 }
