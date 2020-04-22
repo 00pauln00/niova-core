@@ -7,74 +7,20 @@
 #include <stdlib.h>
 
 #include "ctor.h"
-#include "env.h"
 
-#include "log.h"
-#include "niosd_io.h"
-#include "watchdog.h"
-#include "epoll_mgr.h"
 #include "alloc.h"
 #include "ctl_svc.h"
-#include "udp.h"
+#include "env.h"
+#include "epoll_mgr.h"
+#include "log.h"
+#include "niosd_io.h"
+#include "system_info.h"
+#include "watchdog.h"
 
 static bool niovaEnvVarsSubsysInit = false;
 
 static struct niova_env_var niovaEnvVars[] = {
-    {
-        .nev_name      = "NIOVA_LOG_LEVEL",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_LOG,
-        .nev_var_num   = NIOVA_ENV_VAR_log_level,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
-        .nev_default   = LL_WARN,
-        .nev_min       = 0,
-        .nev_max       = LL_MAX,
-        .nev_present   = false,
-    },
-    {
-        .nev_name      = "NIOVA_NUM_AIO_EVENTS",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
-        .nev_var_num   = NIOVA_ENV_VAR_num_aio_events,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
-        .nev_default   = NIOSD_DEFAULT_AIO_EVENTS,
-        .nev_min       = NIOSD_MIN_AIO_EVENTS,
-        .nev_max       = NIOSD_MAX_AIO_EVENTS,
-        .nev_present   = false,
-    },
-    {
-        .nev_name      = "NIOVA_INOTIFY_PATH",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_INOTIFY,
-        .nev_var_num   = NIOVA_ENV_VAR_inotify_path,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
-        .nev_present   = false,
-    },
-    {
-        .nev_name      = "NIOVA_WATCHDOG_DISABLE",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
-        .nev_var_num   = NIOVA_ENV_VAR_watchdog_disable,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_NONE,
-        .nev_present   = false,
-    },
-    {
-        .nev_name      = "NIOVA_WATCHDOG_FREQUENCY",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
-        .nev_var_num   = NIOVA_ENV_VAR_watchdog_frequency,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
-        .nev_default   = WATCHDOG_DEFAULT_FREQUENCY,
-        .nev_min       = WATCHDOG_MIN_FREQUENCY,
-        .nev_max       = WATCHDOG_MAX_FREQUENCY,
-        .nev_present   = false,
-    },
-    {
-        .nev_name      = "NIOVA_WATCHDOG_STALL_CNT",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
-        .nev_var_num   = NIOVA_ENV_VAR_watchdog_stall_cnt,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
-        .nev_default   = WATCHDOG_DEFAULT_STALL_CNT,
-        .nev_min       = WATCHDOG_MIN_STALL_CNT,
-        .nev_max       = WATCHDOG_MAX_STALL_CNT,
-        .nev_present   = false,
-    },
-    {
+    [NIOVA_ENV_VAR_alloc_log_level] {
         .nev_name      = "NIOVA_ALLOC_LOG_LEVEL",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_LOG,
         .nev_var_num   = NIOVA_ENV_VAR_alloc_log_level,
@@ -85,7 +31,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = alloc_env_var_cb,
     },
-    {
+    [NIOVA_ENV_VAR_epoll_mgr_nevents] {
         .nev_name      = "NIOVA_EPOLL_MGR_NEVENTS",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
         .nev_var_num   = NIOVA_ENV_VAR_epoll_mgr_nevents,
@@ -96,7 +42,14 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = epoll_mgr_env_var_cb,
     },
-    {
+    [NIOVA_ENV_VAR_inotify_path] {
+        .nev_name      = "NIOVA_INOTIFY_PATH",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_INOTIFY,
+        .nev_var_num   = NIOVA_ENV_VAR_inotify_path,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+    },
+    [NIOVA_ENV_VAR_local_ctl_svc_dir] {
         .nev_name      = "NIOVA_LOCAL_CTL_SVC_DIR",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
         .nev_var_num   = NIOVA_ENV_VAR_local_ctl_svc_dir,
@@ -104,16 +57,60 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = ctl_svc_set_local_dir,
     },
-    {
-        .nev_name      = "NIOVA_UDP_PORT",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
-        .nev_var_num   = NIOVA_ENV_VAR_local_ctl_svc_dir,
+    [NIOVA_ENV_VAR_log_level] {
+        .nev_name      = "NIOVA_LOG_LEVEL",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_LOG,
+        .nev_var_num   = NIOVA_ENV_VAR_log_level,
         .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = LL_WARN,
+        .nev_min       = 0,
+        .nev_max       = LL_MAX,
         .nev_present   = false,
-        .nev_min       = NIOVA_MIN_UDP_PORT,
-        .nev_max       = NIOVA_MAX_UDP_PORT,
-        .nev_default   = NIOVA_DEFAULT_UDP_PORT,
-        .nev_cb        = udp_env_set_default_port,
+    },
+    [NIOVA_ENV_VAR_num_aio_events] {
+        .nev_name      = "NIOVA_NUM_AIO_EVENTS",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
+        .nev_var_num   = NIOVA_ENV_VAR_num_aio_events,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = NIOSD_DEFAULT_AIO_EVENTS,
+        .nev_min       = NIOSD_MIN_AIO_EVENTS,
+        .nev_max       = NIOSD_MAX_AIO_EVENTS,
+        .nev_present   = false,
+    },
+    [NIOVA_ENV_VAR_uuid] {
+        .nev_name      = "NIOVA_UUID",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
+        .nev_var_num   = NIOVA_ENV_VAR_uuid,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+        .nev_cb        = system_info_apply_uuid_env_cb,
+    },
+    [NIOVA_ENV_VAR_watchdog_disable] {
+        .nev_name      = "NIOVA_WATCHDOG_DISABLE",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
+        .nev_var_num   = NIOVA_ENV_VAR_watchdog_disable,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_NONE,
+        .nev_present   = false,
+    },
+    [NIOVA_ENV_VAR_watchdog_frequency] {
+        .nev_name      = "NIOVA_WATCHDOG_FREQUENCY",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
+        .nev_var_num   = NIOVA_ENV_VAR_watchdog_frequency,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = WATCHDOG_DEFAULT_FREQUENCY,
+        .nev_min       = WATCHDOG_MIN_FREQUENCY,
+        .nev_max       = WATCHDOG_MAX_FREQUENCY,
+        .nev_present   = false,
+    },
+    [NIOVA_ENV_VAR_watchdog_stall_cnt] {
+        .nev_name      = "NIOVA_WATCHDOG_STALL_CNT",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
+        .nev_var_num   = NIOVA_ENV_VAR_watchdog_stall_cnt,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = WATCHDOG_DEFAULT_STALL_CNT,
+        .nev_min       = WATCHDOG_MIN_STALL_CNT,
+        .nev_max       = WATCHDOG_MAX_STALL_CNT,
+        .nev_present   = false,
     },
 };
 
@@ -201,8 +198,8 @@ env_parse(const char *ev_string, struct niova_env_var *nev)
 static init_ctx_t
 env_load(void)
 {
-    for (enum niova_env_var_num i = NIOVA_ENV_VAR_MIN;
-         i < NIOVA_ENV_VAR_MAX; i++)
+    for (enum niova_env_var_num i = NIOVA_ENV_VAR__MIN;
+         i < NIOVA_ENV_VAR__MAX; i++)
     {
         struct niova_env_var *nev = &niovaEnvVars[i];
 

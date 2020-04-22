@@ -9,6 +9,13 @@
 
 #include "init.h"
 #include "ctor.h"
+#include "env.h"
+
+int
+system_info_apply_uuid_by_str(const char *uuid_str);
+
+env_cb_ctx_t
+system_info_apply_uuid_env_cb(const struct niova_env_var *ev);
 
 init_ctx_t
 system_info_subsystem_init(void)

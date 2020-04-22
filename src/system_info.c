@@ -9,13 +9,16 @@
 #include <sys/utsname.h>
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <uuid/uuid.h>
 
 #include "common.h"
+
+#include "env.h"
 #include "init.h"
-#include "util_thread.h"
-#include "registry.h"
 #include "log.h"
+#include "registry.h"
 #include "system_info.h"
+#include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -23,6 +26,7 @@ enum system_info_keys
 {
     SYS_INFO_KEY_CTIME,
     SYS_INFO_KEY_PID,
+    SYS_INFO_KEY_UUID,
     SYS_INFO_KEY_PROCESS_NAME,
     SYS_INFO_KEY_PROCESS_ARGS,
     SYS_INFO_KEY_HOSTNAME,
@@ -43,8 +47,9 @@ enum system_info_keys
     SYS_INFO_KEY__MIN = SYS_INFO_KEY_CTIME,
 };
 
-static char system_info_process_name[256];
-static char system_info_process_args[256];
+static char   systemInfoProcessName[256];
+static char   systemInfoProcessArgs[256];
+static uuid_t systemInfoUuid;
 
 static util_thread_ctx_reg_t
 system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
@@ -115,14 +120,17 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 	niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
         lreg_value_fill_string(lv, "current_time", ctime_buf);
         break;
+    case SYS_INFO_KEY_UUID:
+        lreg_value_fill_string_uuid(lv, "uuid", systemInfoUuid);
+        break;
     case SYS_INFO_KEY_PID:
         lreg_value_fill_unsigned(lv, "pid", getpid());
         break;
     case SYS_INFO_KEY_PROCESS_NAME:
-        lreg_value_fill_string(lv, "process_name", system_info_process_name);
+        lreg_value_fill_string(lv, "process_name", systemInfoProcessName);
         break;
     case SYS_INFO_KEY_PROCESS_ARGS:
-        lreg_value_fill_string(lv, "process_args", system_info_process_args);
+        lreg_value_fill_string(lv, "process_args", systemInfoProcessArgs);
         break;
     case SYS_INFO_KEY_HOSTNAME:
         lreg_value_fill_string(lv, "uts.nodename", uts_current.nodename);
@@ -180,6 +188,36 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     }
 
     time_of_previous_call = now;
+}
+
+int
+system_info_apply_uuid_by_str(const char *uuid_str)
+{
+    if (!uuid_is_null(systemInfoUuid))
+        return -EALREADY;
+
+    uuid_t tmp;
+
+    if (!uuid_str ||
+        (strnlen(uuid_str, UUID_STR_LEN) != UUID_STR_LEN - 1) ||
+        uuid_parse(uuid_str, tmp))
+        return -EINVAL;
+
+    uuid_copy(systemInfoUuid, tmp);
+
+    return 0;
+}
+
+env_cb_ctx_t
+system_info_apply_uuid_env_cb(const struct niova_env_var *ev)
+{
+    if (!ev)
+        return;
+
+    int rc = system_info_apply_uuid_by_str(ev->nev_string);
+    if (rc)
+        SIMPLE_LOG_MSG(LL_WARN, "system_info_apply_uuid_by_str('%s'): %s",
+                       ev->nev_name, strerror(-rc));
 }
 
 init_ctx_t

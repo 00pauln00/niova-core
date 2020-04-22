@@ -8,37 +8,40 @@
 
 #include "init.h"
 
-enum PACKED niova_env_var_type
+typedef void env_cb_ctx_t;
+
+enum niova_env_var_type
 {
     NIOVA_ENV_VAR_TYPE_NONE,
     NIOVA_ENV_VAR_TYPE_STRING,
     NIOVA_ENV_VAR_TYPE_LONG,
     NIOVA_ENV_VAR_TYPE_OTHER,
-};
+} PACKED;
 
-enum PACKED niova_env_subsystem
+enum niova_env_subsystem
 {
     NIOVA_ENV_SUBSYSTEM_LOG,
     NIOVA_ENV_SUBSYSTEM_AIO,
     NIOVA_ENV_SUBSYSTEM_INOTIFY,
     NIOVA_ENV_SUBSYSTEM_WATCHDOG,
     NIOVA_ENV_SUBSYSTEM_CTL_SVC,
-};
+} PACKED;
 
-enum PACKED niova_env_var_num
+enum niova_env_var_num
 {
-    NIOVA_ENV_VAR_MIN                = 0,
-    NIOVA_ENV_VAR_log_level          = 0,
-    NIOVA_ENV_VAR_num_aio_events     = 1,
-    NIOVA_ENV_VAR_inotify_path       = 2,
-    NIOVA_ENV_VAR_watchdog_disable   = 3,
-    NIOVA_ENV_VAR_watchdog_frequency = 4,
-    NIOVA_ENV_VAR_watchdog_stall_cnt = 5,
-    NIOVA_ENV_VAR_alloc_log_level    = 6,
-    NIOVA_ENV_VAR_epoll_mgr_nevents  = 7,
-    NIOVA_ENV_VAR_local_ctl_svc_dir  = 8,
-    NIOVA_ENV_VAR_MAX                = 9,
-};
+    NIOVA_ENV_VAR_alloc_log_level,
+    NIOVA_ENV_VAR_epoll_mgr_nevents,
+    NIOVA_ENV_VAR_inotify_path,
+    NIOVA_ENV_VAR_local_ctl_svc_dir,
+    NIOVA_ENV_VAR_log_level,
+    NIOVA_ENV_VAR_num_aio_events,
+    NIOVA_ENV_VAR_uuid,
+    NIOVA_ENV_VAR_watchdog_disable,
+    NIOVA_ENV_VAR_watchdog_frequency,
+    NIOVA_ENV_VAR_watchdog_stall_cnt,
+    NIOVA_ENV_VAR__MAX,
+    NIOVA_ENV_VAR__MIN = NIOVA_ENV_VAR_alloc_log_level,
+} PACKED;
 
 struct niova_env_var
 {
