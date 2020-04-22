@@ -8,6 +8,7 @@
 
 #include <stdio.h>
 #include <uuid/uuid.h>
+#include <ctype.h>
 
 // Do not include "log.h" here!
 #include "common.h"
@@ -59,9 +60,16 @@ niova_uuid_2_uint64(const uuid_t uuid_in, uint64_t *high, uint64_t *low)
         *low = *(const unsigned long long *)((const char *)&uuid_in[8]);
 }
 
+/**
+ * niova_newline_to_string_terminator - chomps newlines from the end of the
+ *   supplied string.
+ */
 static inline void
 niova_newline_to_string_terminator(char *string, const size_t max_len)
 {
+    if (!string || !max_len)
+        return;
+
     ssize_t len = strnlen(string, max_len);
 
     for (ssize_t i = len - 1; i >=0; i--)
@@ -71,6 +79,26 @@ niova_newline_to_string_terminator(char *string, const size_t max_len)
             string[i] = '\0';
             break;
         }
+    }
+}
+
+/**
+ * niova_clear_whitespace_from_end_of_string - chomps whitespace from the end
+ *   of the supplied string.
+ */
+static inline void
+niova_clear_whitespace_from_end_of_string(char *string, const size_t max_len)
+{
+    if (!string || !max_len)
+        return;
+
+    ssize_t pos = strnlen(string, max_len) - 1;
+    for (; pos >= 0; pos--)
+    {
+        if (!isspace(string[pos]))
+            break;
+
+        string[pos] = '\0';
     }
 }
 

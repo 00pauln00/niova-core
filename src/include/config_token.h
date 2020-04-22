@@ -11,7 +11,7 @@
 
 #include "common.h"
 
-enum PACKED conf_token_id
+enum conf_token_id
 {
     CT_ID__MIN = 0,
     CT_ID_APPLY,
@@ -29,7 +29,7 @@ enum PACKED conf_token_id
     CT_ID_UUID,
     CT_ID_WHERE,
     CT_ID__MAX
-};
+} PACKED;
 
 struct conf_token
 {
@@ -37,8 +37,9 @@ struct conf_token
     const char        *ct_val_regex;
     regex_t            ct_regex;
     enum conf_token_id ct_id;
-    unsigned int       ct_name_len:31;
+    unsigned int       ct_name_len:30;
     unsigned int       ct_regex_allocated:1;
+    unsigned int       ct_keep_trailing_whitespace:1;
 };
 
 struct conf_token_set

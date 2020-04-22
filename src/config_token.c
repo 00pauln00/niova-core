@@ -266,19 +266,45 @@ conf_token_set_parse_match_token(const char *input_buf, size_t input_buf_size,
     return found ? ct : NULL;
 }
 
-static int
-conf_token_value_check_regex(const struct conf_token *ct,
-                             const char *value_buf)
-
+static ssize_t
+conf_token_value_check_and_clear_ws(const struct conf_token *ct,
+                                    struct conf_token_set_parser *ctsp)
 {
-    if (!ct || !value_buf)
+    if (!ct || !ctsp || !ctsp->ctsp_value_buf || !ctsp->ctsp_value_buf_size)
         return -EINVAL;
 
-    SIMPLE_LOG_MSG(LL_TRACE, "value-buf=%s", value_buf);
+    const ssize_t original_value_str_len =
+        strnlen(ctsp->ctsp_value_buf, ctsp->ctsp_value_buf_size);
+
+    if (original_value_str_len == ctsp->ctsp_value_buf_size)
+        return -E2BIG;
+
+    if (ct->ct_keep_trailing_whitespace)
+        return original_value_str_len;
+
+    niova_clear_whitespace_from_end_of_string(ctsp->ctsp_value_buf,
+                                              ctsp->ctsp_value_buf_size);
+
+    // Recheck the string len.
+    const ssize_t new_value_str_len =
+        strnlen(ctsp->ctsp_value_buf, ctsp->ctsp_value_buf_size);
+
+    NIOVA_ASSERT(new_value_str_len <= original_value_str_len);
+
+    return new_value_str_len;
+}
+
+static int
+conf_token_value_check_regex(const struct conf_token *ct,
+                             struct conf_token_set_parser *ctsp)
+{
+    if (!ct || !ctsp || !ctsp->ctsp_value_buf || !ctsp->ctsp_value_buf_size)
+        return -EINVAL;
+
+    SIMPLE_LOG_MSG(LL_TRACE, "value-buf='%s'", ctsp->ctsp_value_buf);
 
     return (ct->ct_name && ct->ct_val_regex && ct->ct_regex_allocated) ?
-        regexec(&ct->ct_regex, value_buf, 0, NULL, 0) :
-        0;
+        regexec(&ct->ct_regex, ctsp->ctsp_value_buf, 0, NULL, 0) : 0;
 }
 
 int
@@ -338,7 +364,19 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
             {
                 ctsp->ctsp_value_buf[value_buf_idx] = '\0';
 
-                if (conf_token_value_check_regex(ct, ctsp->ctsp_value_buf))
+                const ssize_t value_len =
+                    conf_token_value_check_and_clear_ws(ct, ctsp);
+                if (value_len < 0)
+                {
+                    SIMPLE_LOG_MSG(
+                        LL_NOTIFY,
+                        "conf_token_value_check_and_clear_ws(`%s'): %s",
+                        ctsp->ctsp_value_buf, strerror(-value_len));
+
+                    return -EBADMSG;
+                }
+
+                if (conf_token_value_check_regex(ct, ctsp))
                 {
                     SIMPLE_LOG_MSG(LL_NOTIFY,
                                    "value-buf=%s failed regex(`%s')",
@@ -347,8 +385,8 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
                 }
 
                 int cb_rc =
-                    ctsp->ctsp_cb(ct, ctsp->ctsp_value_buf,
-                                  value_buf_idx, ctsp->ctsp_cb_arg, 0);
+                    ctsp->ctsp_cb(ct, ctsp->ctsp_value_buf, value_len,
+                                  ctsp->ctsp_cb_arg, 0);
 
                 if (cb_rc)
                     return cb_rc;
