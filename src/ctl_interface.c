@@ -10,16 +10,18 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <limits.h>
+#include <regex.h>
 
 #define _GNU_SOURCE
 #include <pthread.h>
 
-#include "log.h"
-#include "thread.h"
-#include "registry.h"
 #include "ctl_interface.h"
 #include "ctl_interface_cmd.h"
 #include "env.h"
+#include "log.h"
+#include "registry.h"
+#include "system_info.h"
+#include "thread.h"
 #include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -63,6 +65,12 @@ const char *lctliSubdirs[LCTLI_SUBDIR_MAX] =
 static struct ctl_interface localCtlIf[LCTLI_MAX];
 static pthread_mutex_t lctlMutex = PTHREAD_MUTEX_INITIALIZER;
 static int numLocalCtlIfs;
+
+const char *
+lctli_get_inotify_path(void)
+{
+    return localCtlIf[0].lctli_path;
+}
 
 static struct ctl_interface *
 lctli_new(void)

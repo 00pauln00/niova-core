@@ -36,6 +36,10 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
         return -EINVAL;
 
     struct stat stb;
+    bool proc_file = false;
+
+    if (!strncmp("/proc/", file_name, 6))
+        proc_file = true;
 
     /* Lookup the file, check the type and file size.
      */
@@ -46,7 +50,7 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
     else if (!S_ISREG(stb.st_mode))
         return -ENOTSUP;
 
-    else if (stb.st_size > output_size)
+    else if (!proc_file && stb.st_size > output_size)
 	return -E2BIG;
 
     int fd = openat(dirfd, file_name, O_RDONLY);
@@ -55,13 +59,15 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
 
     bool close_fd = ret_fd ? false : true;
 
-    ssize_t io_rc = io_read(fd, output_buf, stb.st_size);
+    ssize_t io_rc = io_read(fd, output_buf,
+                            proc_file ? output_size : stb.st_size);
     if (io_rc < 0)
     {
         io_rc = -errno;
         close_fd = true;
     }
-    else if (io_rc != stb.st_size)
+    else if ((!proc_file && io_rc != stb.st_size) ||
+             (proc_file && io_rc == output_size))
     {
         io_rc = -EMSGSIZE;
         close_fd = true;

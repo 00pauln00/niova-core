@@ -17,6 +17,9 @@ struct ctli_cmd_handle
     const char *ctlih_input_file_name;
 };
 
+const char *
+lctli_get_inotify_path(void);
+
 void
 lctli_subsystem_init(void)
     __attribute__ ((constructor (LCTLI_SUBSYS_PRIORITY)));

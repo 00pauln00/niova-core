@@ -16,6 +16,10 @@
 #define UUID_REGEX                              \
     "^"UUID_REGEX_BASE"$"
 
+// Match '-u UUID' on the process's command line
+#define UUID_REGEX_PROC_CMDLINE                 \
+    "-u[ \t]\\+"UUID_REGEX_BASE
+
 #define IPADDR_REGEX                                                    \
     "^\\(\\([0-9]\\|[1-9][0-9]\\|1[0-9]\\{2\\}\\|2[0-4][0-9]\\|25[0-5]\\)\\.\\)\\{3\\}\\([0-9]\\|[1-9][0-9]\\|1[0-9]\\{2\\}\\|2[0-4][0-9]\\|25[0-5]\\)$"
 

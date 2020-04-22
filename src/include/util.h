@@ -102,6 +102,17 @@ niova_clear_whitespace_from_end_of_string(char *string, const size_t max_len)
     }
 }
 
+static inline void
+niova_string_convert_null_to_space(char *string, const size_t max_len)
+{
+    if (!string || !max_len)
+	return;
+
+    for (size_t pos = 0; pos < (max_len - 1); pos++)
+        if (string[pos] == '\0')
+            string[pos] = ' ';
+}
+
 /**
  * clock_gettime() wrappers
  */

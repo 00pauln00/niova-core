@@ -7,6 +7,8 @@
 #ifndef __FILE_UTIL_H
 #define __FILE_UTIL_H 1
 
+#include <fcntl.h>
+
 ssize_t
 file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
                         size_t output_size, int *ret_fd);

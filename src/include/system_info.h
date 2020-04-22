@@ -7,9 +7,14 @@
 #ifndef _SYSTEM_INFO_H
 #define _SYSTEM_INFO_H 1
 
+#include <uuid/uuid.h>
+
 #include "init.h"
 #include "ctor.h"
 #include "env.h"
+
+void
+system_info_get_uuid(uuid_t);
 
 int
 system_info_apply_uuid_by_str(const char *uuid_str);

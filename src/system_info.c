@@ -10,12 +10,17 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <uuid/uuid.h>
+#include <regex.h>
+#include <limits.h>
 
 #include "common.h"
 
+#include "ctl_interface.h"
 #include "env.h"
 #include "init.h"
+#include "file_util.h"
 #include "log.h"
+#include "regex_defines.h"
 #include "registry.h"
 #include "system_info.h"
 #include "util_thread.h"
@@ -27,6 +32,7 @@ enum system_info_keys
     SYS_INFO_KEY_CTIME,
     SYS_INFO_KEY_PID,
     SYS_INFO_KEY_UUID,
+    SYS_INFO_KEY_CTL_INTERFACE_PATH,
     SYS_INFO_KEY_PROCESS_NAME,
     SYS_INFO_KEY_PROCESS_ARGS,
     SYS_INFO_KEY_HOSTNAME,
@@ -50,6 +56,12 @@ enum system_info_keys
 static char   systemInfoProcessName[256];
 static char   systemInfoProcessArgs[256];
 static uuid_t systemInfoUuid;
+
+void
+system_info_get_uuid(uuid_t sys_info_uuid_copy)
+{
+    uuid_copy(sys_info_uuid_copy, systemInfoUuid);
+}
 
 static util_thread_ctx_reg_t
 system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
@@ -122,6 +134,9 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         break;
     case SYS_INFO_KEY_UUID:
         lreg_value_fill_string_uuid(lv, "uuid", systemInfoUuid);
+        break;
+    case SYS_INFO_KEY_CTL_INTERFACE_PATH:
+        lreg_value_fill_string(lv, "ctl_interface_path", lctli_get_inotify_path());
         break;
     case SYS_INFO_KEY_PID:
         lreg_value_fill_unsigned(lv, "pid", getpid());
@@ -220,11 +235,81 @@ system_info_apply_uuid_env_cb(const struct niova_env_var *ev)
                        ev->nev_name, strerror(-rc));
 }
 
+static int
+system_info_auto_detect_uuid(void)
+{
+    char proc_cmdline_path[PATH_MAX];
+    char buf[PATH_MAX] = {0};
+
+    int rc = snprintf(proc_cmdline_path, PATH_MAX, "/proc/%u/cmdline",
+                      getpid());
+    if (rc >= PATH_MAX)
+        return -ENAMETOOLONG;
+
+    ssize_t rrc = file_util_open_and_read(AT_FDCWD, proc_cmdline_path, buf,
+                                          PATH_MAX, NULL);
+    if (rrc < 0) // Xxx this may happen if our buffer is too small
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "file_util_open_and_read(): %s",
+                       strerror((int)-rrc));
+        return -rrc;
+    }
+
+    niova_string_convert_null_to_space(buf, (size_t)rrc);
+
+    regex_t regex;
+
+    rc = regcomp(&regex, UUID_REGEX_PROC_CMDLINE, 0);
+    if (rc)
+    {
+        char err_str[64] = {0};
+        regerror(rc, &regex, err_str, 63);
+
+        SIMPLE_LOG_MSG(LL_ERROR, "regcomp(): %s", err_str);
+
+        return -EINVAL;
+    }
+
+    regmatch_t pmatch[1] = {0};
+    rc = regexec(&regex, buf, 1, pmatch, 0);
+    if (rc || pmatch[0].rm_so == -1 || pmatch[0].rm_eo <= pmatch[0].rm_so)
+    {
+        LOG_MSG(LL_NOTIFY, "regexec(): %d so:eo=%d:%d ",
+                rc, pmatch[0].rm_so, pmatch[0].rm_eo);
+    }
+    else
+    {
+        const int match_len = pmatch[0].rm_eo - pmatch[0].rm_so;
+        const char *match = &buf[pmatch[0].rm_so];
+
+        int pos; // See the UUID_REGEX_PROC_CMDLINE for where '2' comes from
+
+        // -u  <UUID>
+        for (pos = 2; pos < match_len; pos++)
+            if (!isspace(match[pos]))
+                break;
+
+        LOG_MSG(LL_NOTIFY, "uuid=%s", &match[pos]);
+
+        rc = (pos < match_len) ?
+            system_info_apply_uuid_by_str(&match[pos]) : -EFBIG;
+    }
+
+    regfree(&regex);
+
+    return rc;
+}
+
 init_ctx_t
 system_info_subsystem_init(void)
 {
     FUNC_ENTRY(LL_DEBUG);
     LREG_ROOT_OBJECT_ENTRY_INSTALL(system_info);
+
+    int rc = system_info_auto_detect_uuid();
+    if (rc)
+        SIMPLE_LOG_MSG(LL_WARN, "system_info_auto_detect_system_uuid(): %s",
+                       strerror(-rc));
 }
 
 destroy_ctx_t
