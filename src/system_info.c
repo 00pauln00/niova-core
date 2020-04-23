@@ -33,8 +33,7 @@ enum system_info_keys
     SYS_INFO_KEY_PID,
     SYS_INFO_KEY_UUID,
     SYS_INFO_KEY_CTL_INTERFACE_PATH,
-    SYS_INFO_KEY_PROCESS_NAME,
-    SYS_INFO_KEY_PROCESS_ARGS,
+    SYS_INFO_KEY_PROCESS_CMDLINE,
     SYS_INFO_KEY_HOSTNAME,
     SYS_INFO_KEY_UTS_SYSNAME,
     SYS_INFO_KEY_UTS_RELEASE,
@@ -53,8 +52,9 @@ enum system_info_keys
     SYS_INFO_KEY__MIN = SYS_INFO_KEY_CTIME,
 };
 
-static char   systemInfoProcessName[256];
-static char   systemInfoProcessArgs[256];
+#define SYS_INFO_PROCESS_CMDLINE_LEN 255
+
+static char   systemInfoProcessCmdLine[SYS_INFO_PROCESS_CMDLINE_LEN + 1];
 static uuid_t systemInfoUuid;
 
 void
@@ -147,11 +147,8 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     case SYS_INFO_KEY_PID:
         lreg_value_fill_unsigned(lv, "pid", getpid());
         break;
-    case SYS_INFO_KEY_PROCESS_NAME:
-        lreg_value_fill_string(lv, "process_name", systemInfoProcessName);
-        break;
-    case SYS_INFO_KEY_PROCESS_ARGS:
-        lreg_value_fill_string(lv, "process_args", systemInfoProcessArgs);
+    case SYS_INFO_KEY_PROCESS_CMDLINE:
+        lreg_value_fill_string(lv, "command_line", systemInfoProcessCmdLine);
         break;
     case SYS_INFO_KEY_HOSTNAME:
         lreg_value_fill_string(lv, "uts.nodename", uts_current.nodename);
@@ -262,6 +259,9 @@ system_info_auto_detect_uuid(void)
     }
 
     niova_string_convert_null_to_space(buf, (size_t)rrc);
+
+    // Set the cmd line here
+    strncpy(systemInfoProcessCmdLine, buf, SYS_INFO_PROCESS_CMDLINE_LEN);
 
     regex_t regex;
 
