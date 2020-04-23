@@ -308,7 +308,7 @@ system_info_subsystem_init(void)
 
     int rc = system_info_auto_detect_uuid();
     if (rc)
-        SIMPLE_LOG_MSG(LL_WARN, "system_info_auto_detect_system_uuid(): %s",
+        SIMPLE_LOG_MSG(LL_NOTIFY, "system_info_auto_detect_system_uuid(): %s",
                        strerror(-rc));
 }
 
