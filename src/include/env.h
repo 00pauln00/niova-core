@@ -16,6 +16,8 @@ enum niova_env_var_type
     NIOVA_ENV_VAR_TYPE_STRING,
     NIOVA_ENV_VAR_TYPE_LONG,
     NIOVA_ENV_VAR_TYPE_OTHER,
+    //NIOVA_ENV_VAR_TYPE_PATHNAME
+    //XXx needed for checking inotify paths for absoluteness
 } PACKED;
 
 enum niova_env_subsystem
@@ -31,6 +33,7 @@ enum niova_env_var_num
 {
     NIOVA_ENV_VAR_alloc_log_level,
     NIOVA_ENV_VAR_epoll_mgr_nevents,
+    NIOVA_ENV_VAR_inotify_base_path,
     NIOVA_ENV_VAR_inotify_path,
     NIOVA_ENV_VAR_local_ctl_svc_dir,
     NIOVA_ENV_VAR_log_level,

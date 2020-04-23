@@ -42,6 +42,13 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = epoll_mgr_env_var_cb,
     },
+    [NIOVA_ENV_VAR_inotify_base_path] {
+        .nev_name      = "NIOVA_INOTIFY_BASE_PATH",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_INOTIFY,
+        .nev_var_num   = NIOVA_ENV_VAR_inotify_base_path,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+    },
     [NIOVA_ENV_VAR_inotify_path] {
         .nev_name      = "NIOVA_INOTIFY_PATH",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_INOTIFY,

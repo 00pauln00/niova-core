@@ -1,7 +1,7 @@
 /* Copyright (C) NIOVA Systems, Inc - All Rights Reserved
  * Unauthorized copying of this file, via any medium is strictly prohibited
  * Proprietary and confidential
- * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
+ * Written by Paul Nowoczynski <00pauln00@gmail.com> 2020
  */
 #include <sys/inotify.h>
 #include <poll.h>
@@ -18,6 +18,7 @@
 #include "ctl_interface.h"
 #include "ctl_interface_cmd.h"
 #include "env.h"
+#include "file_util.h"
 #include "log.h"
 #include "registry.h"
 #include "system_info.h"
@@ -40,7 +41,7 @@ typedef int  lctli_inotify_thread_int_t;
 
 struct ctl_interface
 {
-    const char       *lctli_path;
+    const char        lctli_path[PATH_MAX];
     bool              lctli_init;
     int               lctli_inotify_fd;
     int               lctli_inotify_watch_fd;
@@ -69,7 +70,7 @@ static int numLocalCtlIfs;
 const char *
 lctli_get_inotify_path(void)
 {
-    return localCtlIf[0].lctli_path;
+    return localCtlIf[LCTLI_DEFAULT_IDX].lctli_path;
 }
 
 static struct ctl_interface *
@@ -178,31 +179,15 @@ lctli_epoll_mgr_cb(const struct epoll_handle *eph)
 }
 
 static int
-lctli_check_and_mk_inotify_path(const char *path)
+lctli_prepare(struct ctl_interface *lctli)
 {
-    if (!path)
-        return -EINVAL;
-
-    struct stat stb;
-
-    int rc = stat(path, &stb);
-
-    if (rc && errno == ENOENT)
-        rc = mkdir(path, 0755);
-
-    return rc ? -errno : 0;
-}
-
-static int
-lctli_prepare(struct ctl_interface *lctli, const char *path)
-{
-    if (!lctli || !path)
+    if (!lctli)
         return -EINVAL;
 
     else if (lctli->lctli_init)
         return -EALREADY;
 
-    int rc = lctli_check_and_mk_inotify_path(path);
+    int rc = file_util_pathname_build(lctli->lctli_path);
     if (rc)
         return rc;
 
@@ -211,12 +196,12 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
         char subdir_path[PATH_MAX];
 
         int rc = snprintf(subdir_path, PATH_MAX, "%s/%s",
-                          path, lctliSubdirs[i]);
+                          lctli->lctli_path, lctliSubdirs[i]);
 
         if (rc >= PATH_MAX)
             return -ENAMETOOLONG;
 
-        rc = lctli_check_and_mk_inotify_path(subdir_path);
+        rc = file_util_pathname_build(subdir_path);
         if (rc)
             return rc;
 
@@ -238,8 +223,6 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
         }
     }
 
-    lctli->lctli_path = path;
-
     lctli->lctli_inotify_fd = inotify_init1(IN_NONBLOCK);
 
     if (lctli->lctli_inotify_fd < 0)
@@ -254,7 +237,7 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
     char input_path[PATH_MAX];
 
     rc = snprintf(input_path, PATH_MAX, "%s/%s",
-                  path, lctliSubdirs[LCTLI_SUBDIR_INPUT]);
+                  lctli->lctli_path, lctliSubdirs[LCTLI_SUBDIR_INPUT]);
     if (rc >= PATH_MAX)
         return -ENAMETOOLONG;
 
@@ -274,7 +257,50 @@ lctli_prepare(struct ctl_interface *lctli, const char *path)
 
     lctli->lctli_init = true;
 
-    LOG_MSG(LL_DEBUG, "path=%s", path);
+    LOG_MSG(LL_DEBUG, "path=%s", lctli->lctli_path);
+
+    return 0;
+}
+
+static int
+lctli_setup_inotify_path(struct ctl_interface *lctli)
+{
+    // Presence of the env variable overrides all
+    const struct niova_env_var *full_path_ev =
+        env_get(NIOVA_ENV_VAR_inotify_path);
+
+    if (full_path_ev && full_path_ev->nev_present)
+    {
+        strncpy((char *)lctli->lctli_path, full_path_ev->nev_string, PATH_MAX);
+        return 0;
+    }
+
+    const struct niova_env_var *base_path_ev =
+        env_get(NIOVA_ENV_VAR_inotify_base_path);
+
+    const char *base_path =
+        (base_path_ev && base_path_ev->nev_present) ?
+        base_path_ev->nev_string : DEFAULT_INOTIFY_PATH;
+
+    if (system_info_uuid_is_present())
+    {
+        uuid_t sys_uuid;
+        system_info_get_uuid(sys_uuid);
+
+        DECLARE_AND_INIT_UUID_STR(sys_uuid_str, sys_uuid);
+
+        int rc = snprintf((char *)lctli->lctli_path, PATH_MAX, "/%s/%s/",
+                          base_path, sys_uuid_str);
+        if (rc < PATH_MAX)
+            return 0;
+    }
+
+    int rc = snprintf((char *)lctli->lctli_path, PATH_MAX, "/%s/%d/",
+                      base_path, getpid());
+    if (rc < PATH_MAX)
+        return -ENAMETOOLONG;
+
+    LOG_MSG(LL_NOTIFY, "path defaulting to %s", lctli->lctli_path);
 
     return 0;
 }
@@ -287,13 +313,12 @@ lctli_subsystem_init(void)
     NIOVA_ASSERT(lctli);
     NIOVA_ASSERT(numLocalCtlIfs == 1);
 
-    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_inotify_path);
+    int rc = lctli_setup_inotify_path(lctli);
+    FATAL_IF(rc, "lctli_setup_inotify_path(): %s", strerror(-rc));
 
-    const char *inotify_path = (ev && ev->nev_present) ?
-        ev->nev_string : DEFAULT_INOTIFY_PATH;
-
-    int rc = lctli_prepare(lctli, inotify_path);
-    FATAL_IF(rc, "lctli_prepare(): %s (path=%s)", strerror(-rc), inotify_path);
+    rc = lctli_prepare(lctli);
+    FATAL_IF(rc, "lctli_prepare(): %s (path=%s)",
+             strerror(-rc), lctli->lctli_path);
 
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
                                        lctli_epoll_mgr_cb, (void *)lctli);

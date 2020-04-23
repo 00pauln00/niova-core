@@ -63,6 +63,12 @@ system_info_get_uuid(uuid_t sys_info_uuid_copy)
     uuid_copy(sys_info_uuid_copy, systemInfoUuid);
 }
 
+bool
+system_info_uuid_is_present(void)
+{
+    return uuid_is_null(systemInfoUuid) ? false : true;
+}
+
 static util_thread_ctx_reg_t
 system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
                            void *arg);

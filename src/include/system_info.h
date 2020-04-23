@@ -16,6 +16,9 @@
 void
 system_info_get_uuid(uuid_t);
 
+bool
+system_info_uuid_is_present(void);
+
 int
 system_info_apply_uuid_by_str(const char *uuid_str);
 
