@@ -748,7 +748,13 @@ ctl_svc_process_conf_file(int ctl_svc_dir_fd, const char *input_file,
         ctl_svc_read_and_prep_conf_file(ctl_svc_dir_fd, input_file, file_buf,
                                         file_buf_sz);
 
-    NIOVA_ASSERT(read_rc <= file_buf_sz);
+    if (read_rc < 0)
+    {
+        rc = read_rc;
+        return rc;
+    }
+
+    NIOVA_ASSERT(read_rc <= (ssize_t)file_buf_sz);
 
     conf_token_set_parser_init(&ctsp, file_buf, read_rc, value_buf,
                                value_buf_sz, ctl_svc_ctsp_cb, &csn);
@@ -917,9 +923,16 @@ ctl_svc_init_scan_entries(void)
                                            CTL_SVC_CONF_FILE_MAX_SIZE,
                                            &line_number);
         if (rc)
-            ctl_svc_init_scan_entries_dump_invalid_file(
-                dent->d_name, file_buf, CTL_SVC_CONF_FILE_MAX_SIZE,
-                line_number, rc);
+        {
+            if (line_number)
+                ctl_svc_init_scan_entries_dump_invalid_file(
+                    dent->d_name, file_buf, CTL_SVC_CONF_FILE_MAX_SIZE,
+                    line_number, rc);
+            else
+                LOG_MSG(LL_WARN,
+                        "Processing failed for ctl-svc-file %s: %s",
+                        dent->d_name, strerror(-rc));
+        }
     }
 
     niova_free(value_buf);
