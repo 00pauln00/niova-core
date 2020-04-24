@@ -10,6 +10,8 @@
 #include "config_token.h"
 #include "regex_defines.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 static
 struct conf_token confTokens[CT_ID__MAX] =
 {
@@ -378,9 +380,10 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
 
                 if (conf_token_value_check_regex(ct, ctsp))
                 {
-                    SIMPLE_LOG_MSG(LL_NOTIFY,
-                                   "value-buf=%s failed regex(`%s')",
-                                   ctsp->ctsp_value_buf, ct->ct_val_regex);
+                    LOG_MSG(LL_NOTIFY,
+                            "token='%s' value='%s' failed regex(`%s')",
+                            ct->ct_name, ctsp->ctsp_value_buf,
+                            ct->ct_val_regex);
                     return -EBADMSG;
                 }
 
@@ -389,7 +392,13 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
                                   ctsp->ctsp_cb_arg, 0);
 
                 if (cb_rc)
+                {
+                    LOG_MSG(LL_NOTIFY, "token='%s' value='%s': %s",
+                            ct->ct_name, ctsp->ctsp_value_buf,
+                            strerror(-cb_rc));
+
                     return cb_rc;
+                }
 
                 ct = NULL;
                 value_buf_idx = 0;

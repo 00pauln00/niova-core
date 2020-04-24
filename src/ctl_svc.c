@@ -354,7 +354,7 @@ ctl_svc_node_token_hndlr_PORT(struct ctl_svc_node *csn,
         return -ENAMETOOLONG;
 
     const long int port = strtol(val_buf, NULL, 10);
-    if ((port < 0 || port == 0 || port > 65536))
+    if ((port < 0 || port == 0 || port >= 65536))
         return -ERANGE;
 
     if (ct->ct_id == CT_ID_CLIENT_PORT)
@@ -796,8 +796,13 @@ ctl_svc_init_scan_entries(void)
                                            value_buf,
                                            CTL_SVC_CONF_FILE_MAX_SIZE);
         if (rc)
-            LOG_MSG(LL_WARN, "Processing failed for ctl-svc-file %s: %s",
-                    dent->d_name, strerror(-rc));
+        {
+            LOG_MSG(LL_WARN,
+                    "Processing failed for ctl-svc-file %s: %s"
+                    "\n-----------------------------------------------------\n"
+                    "%s-----------------------------------------------------",
+                    dent->d_name, strerror(-rc), file_buf);
+        }
     }
 
     niova_free(value_buf);

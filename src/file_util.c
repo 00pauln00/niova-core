@@ -58,6 +58,9 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
     else if (!proc_file && stb.st_size > output_size)
 	return -E2BIG;
 
+    else if (!proc_file && !stb.st_size) // nothing to read
+        return -ENODATA;
+
     int fd = openat(dirfd, file_name, O_RDONLY);
     if (fd < 0)
         return -errno;
@@ -71,6 +74,11 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
         io_rc = -errno;
         close_fd = true;
     }
+    else if (!io_rc)
+    {
+        io_rc = -ENODATA;
+        close_fd = true;
+    }
     else if ((!proc_file && io_rc != stb.st_size) ||
              (proc_file && io_rc == output_size))
     {
@@ -81,6 +89,9 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
     {
         *ret_fd = fd;
     }
+
+    if (io_rc > 0 && io_rc < output_size)
+        output_buf[io_rc] = '\0';  // terminate the output buffer
 
     if (close_fd)
     {
