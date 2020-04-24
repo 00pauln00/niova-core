@@ -82,6 +82,21 @@ niova_newline_to_string_terminator(char *string, const size_t max_len)
     }
 }
 
+static inline ssize_t
+niova_string_find_next_instance_of_char(const char *string, char char_to_find,
+                                        const size_t max_len)
+{
+    if (!string || !max_len)
+        return (ssize_t)-EINVAL;
+
+    ssize_t pos;
+    for (pos = 0; pos < (ssize_t)max_len; pos++)
+        if (string[pos] == char_to_find)
+            break;
+
+    return pos < max_len ? pos : (ssize_t)-ENOENT;
+}
+
 /**
  * niova_clear_whitespace_from_end_of_string - chomps whitespace from the end
  *   of the supplied string.
@@ -100,6 +115,24 @@ niova_clear_whitespace_from_end_of_string(char *string, const size_t max_len)
 
         string[pos] = '\0';
     }
+}
+
+static inline size_t
+niova_count_nulls_from_end_of_buffer(const char *buf, const size_t len)
+{
+    if (!buf || !len)
+        return 0;
+
+    ssize_t cnt = 0;
+    for (ssize_t pos = len - 1; pos > 0; pos--)
+    {
+        if (buf[pos] != '\0')
+            break;
+
+        cnt++;
+    }
+
+    return cnt;
 }
 
 static inline void

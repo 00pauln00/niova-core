@@ -275,13 +275,27 @@ raft_net_conf_init(struct raft_instance *ri)
     int rc = ctl_svc_node_lookup_by_string(ri->ri_this_peer_uuid_str,
                                            &ri->ri_csn_this_peer);
     if (rc)
+    {
+        LOG_MSG(LL_ERROR,
+                "ctl_svc_node_lookup() failed to find self UUID=%s\n"
+                "Please check the local-control-service directory: %s",
+                ri->ri_this_peer_uuid_str, ctl_svc_get_local_dir());
+
         goto cleanup;
+    }
 
     /* Lookup the raft ctl-svc object.
      */
     rc = ctl_svc_node_lookup_by_string(ri->ri_raft_uuid_str, &ri->ri_csn_raft);
     if (rc)
+    {
+        LOG_MSG(LL_ERROR,
+                "ctl_svc_node_lookup() failed to find raft UUID=%s\n"
+                "Please check the local-control-service directory: %s",
+                ri->ri_raft_uuid_str, ctl_svc_get_local_dir());
+
         goto cleanup;
+    }
 
     DBG_CTL_SVC_NODE(LL_NOTIFY, ri->ri_csn_this_peer, "self");
     DBG_CTL_SVC_NODE(LL_NOTIFY, ri->ri_csn_raft, "raft");
@@ -306,7 +320,17 @@ raft_net_conf_init(struct raft_instance *ri)
         rc = ctl_svc_node_lookup(csn_raft->csnr_members[i].csrm_peer,
                                  &ri->ri_csn_raft_peers[i]);
         if (rc)
+        {
+            DECLARE_AND_INIT_UUID_STR(peer_uuid,
+                                      csn_raft->csnr_members[i].csrm_peer);
+
+            LOG_MSG(LL_ERROR,
+                    "ctl_svc_node_lookup() failed to find raft-peer UUID=%s\n"
+                    "Please check the local-control-service directory: %s",
+                    peer_uuid, ctl_svc_get_local_dir());
+
             goto cleanup;
+        }
 
         DECLARE_AND_INIT_UUID_STR(uuid_str,
                                   csn_raft->csnr_members[i].csrm_peer);

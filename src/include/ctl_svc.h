@@ -246,6 +246,9 @@ struct niova_env_var;
 void
 ctl_svc_set_local_dir(const struct niova_env_var *nev);
 
+const char *
+ctl_svc_get_local_dir(void);
+
 int
 ctl_svc_node_lookup(const uuid_t lookup_uuid, struct ctl_svc_node **ret_csn);
 

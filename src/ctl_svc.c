@@ -26,6 +26,9 @@
 #define CTL_SVC_CONF_FILE_MAX_SIZE 1024UL
 #define CTL_SVC_NUM_CONF_TOKENS 9
 
+#define CTL_SVC_INVALID_LINE_MARKER " <---\n"
+#define CTL_SVC_INVALID_LINE_MARKER_LEN 8
+
 REGISTRY_ENTRY_FILE_GENERATE;
 
 /* UUID and TYPE must be first, otherwise the RAFT node type will break.
@@ -654,6 +657,56 @@ ctl_svc_node_tree_add(const struct ctl_svc_node *csn_from_caller_stack,
 }
 
 /**
+ * ctl_svc_read_and_prep_conf_file - this is a helper function for
+ *    ctl_svc_process_conf_file which reads in the specified input file and
+ *    performs post-read tasks such as detecting trailing null characters
+ *    and ensuring that the file ends with a newline.
+ */
+static ssize_t
+ctl_svc_read_and_prep_conf_file(int ctl_svc_dir_fd, const char *input_file,
+                                char *file_buf, const size_t file_buf_sz)
+{
+    // Read the file contents into 'file_buf'.
+    ssize_t read_rc =
+        file_util_open_and_read(ctl_svc_dir_fd, input_file, file_buf,
+                                file_buf_sz, NULL);
+    if (read_rc < 0)
+    {
+        LOG_MSG(LL_NOTIFY, "file_util_open_and_read(`%s'): %s",
+                input_file, strerror(-read_rc));
+        return read_rc;
+    }
+
+    const size_t null_cnt_end_of_buf =
+        niova_count_nulls_from_end_of_buffer(file_buf, read_rc);
+
+    NIOVA_ASSERT(read_rc >= null_cnt_end_of_buf);
+
+    if (null_cnt_end_of_buf)
+    {
+        read_rc -= null_cnt_end_of_buf;
+
+        LOG_MSG(LL_NOTIFY, "null_cnt_end_of_buf=%zu new-read_rc=%zd",
+                null_cnt_end_of_buf, read_rc);
+    }
+
+    // Workaround for files which do not have a newline at the end.
+    if (read_rc && file_buf[read_rc - 1] != '\n' && read_rc < file_buf_sz)
+    {
+        file_buf[read_rc] = '\n';
+        read_rc += 1;
+
+        LOG_MSG(LL_NOTIFY,
+                "setting newline @pos=%zd"
+                "\n-----------------------------------------------------\n"
+                "%s-----------------------------------------------------",
+                read_rc, file_buf);
+    }
+
+    return read_rc;
+}
+
+/**
  * ctl_svc_process_conf_file - Function which reads and parses the contents of
  *    the input_file.  It first checks the file suffix to find the right
  *    parsing handler.
@@ -665,11 +718,13 @@ ctl_svc_node_tree_add(const struct ctl_svc_node *csn_from_caller_stack,
  * @file_buf_sz:   Size of the file buffer.
  * @value_buf:  Value for the individual line entries in the file.
  * @value_buf_sz:  Value buffer size.
+ * @last_line_number:  Used to track parsing errors.
  */
 static int
 ctl_svc_process_conf_file(int ctl_svc_dir_fd, const char *input_file,
                           char *file_buf, size_t file_buf_sz, char *value_buf,
-                          size_t value_buf_sz)
+                          size_t value_buf_sz,
+                          unsigned int *last_line_number)
 {
     struct conf_token_set_parser ctsp = {0};
     struct ctl_svc_node csn = {0};
@@ -689,15 +744,11 @@ ctl_svc_process_conf_file(int ctl_svc_dir_fd, const char *input_file,
     }
 
     // Read the file contents into 'file_buf'.
-    ssize_t read_rc =
-        file_util_open_and_read(ctl_svc_dir_fd, input_file, file_buf,
-                                file_buf_sz, NULL);
-    if (read_rc < 0)
-    {
-        LOG_MSG(LL_NOTIFY, "file_util_open_and_read(`%s'): %s",
-                input_file, strerror(-read_rc));
-        return rc;
-    }
+    const ssize_t read_rc =
+        ctl_svc_read_and_prep_conf_file(ctl_svc_dir_fd, input_file, file_buf,
+                                        file_buf_sz);
+
+    NIOVA_ASSERT(read_rc <= file_buf_sz);
 
     conf_token_set_parser_init(&ctsp, file_buf, read_rc, value_buf,
                                value_buf_sz, ctl_svc_ctsp_cb, &csn);
@@ -707,6 +758,9 @@ ctl_svc_process_conf_file(int ctl_svc_dir_fd, const char *input_file,
     {
         LOG_MSG(LL_NOTIFY, "conf_token_set_parse(`%s'): %s",
                 input_file, strerror(-rc));
+
+        if (last_line_number)
+            *last_line_number = ctsp.ctsp_parse_line_num;
 
         return rc;
     }
@@ -731,6 +785,67 @@ ctl_svc_process_conf_file(int ctl_svc_dir_fd, const char *input_file,
         ctl_svc_node_release_internal_members(&csn);
 
     return rc;
+}
+
+static init_ctx_t
+ctl_svc_init_scan_entries_dump_invalid_file(const char *file_name,
+                                            const char *file_buf,
+                                            const size_t len,
+                                            const unsigned int invalid_line,
+                                            const int error)
+{
+    if (!file_name || !file_buf || !len)
+        return;
+
+    bool dump_whole_file = true;
+    size_t my_len = len + CTL_SVC_INVALID_LINE_MARKER_LEN;
+
+    char *stage_buffer = niova_calloc_can_fail(1UL, my_len);
+
+    if (stage_buffer)
+    {
+        bool inside_comment = false;
+        unsigned int current_line = 1;
+        size_t idx = 0;
+        size_t valid_chars_on_line = 0;
+
+        for (size_t i = 0; i < len; i++)
+        {
+            if (file_buf[i] == '\n')
+            {
+                if (current_line++ == invalid_line)
+                {
+                    dump_whole_file = false;
+                    snprintf(&stage_buffer[idx],
+                             CTL_SVC_INVALID_LINE_MARKER_LEN + (len - i),
+                             CTL_SVC_INVALID_LINE_MARKER"%s",
+                             &file_buf[i + 1]);
+                    break;
+                }
+                stage_buffer[idx++] = file_buf[i];
+                valid_chars_on_line = 0;
+
+                if (inside_comment)
+                    inside_comment = false;
+            }
+            else
+            {
+                stage_buffer[idx++] = file_buf[i];
+                valid_chars_on_line++;
+            }
+        }
+    }
+
+    LOG_MSG(
+        LL_WARN,
+        "Processing failed for ctl-svc-file %s (line=%u): %s"
+        "\n-------------------------------------------------------------\n"
+        "%s-------------------------------------------------------------",
+        file_name, invalid_line, strerror(-error),
+        dump_whole_file ? file_buf : stage_buffer);
+
+    if (stage_buffer)
+        niova_free(stage_buffer);
 }
 
 /**
@@ -764,14 +879,14 @@ ctl_svc_init_scan_entries(void)
         return rc;
     }
 
-    char *file_buf = niova_calloc_can_fail(1UL, CTL_SVC_CONF_FILE_MAX_SIZE);
+    char *file_buf = niova_malloc_can_fail(CTL_SVC_CONF_FILE_MAX_SIZE);
     if (!file_buf)
     {
         rc = -ENOMEM;
         goto out_close_dir;
     }
 
-    char *value_buf = niova_calloc_can_fail(1UL, CTL_SVC_CONF_FILE_MAX_SIZE);
+    char *value_buf = niova_malloc_can_fail(CTL_SVC_CONF_FILE_MAX_SIZE);
     if (!value_buf)
     {
         rc = -ENOMEM;
@@ -790,19 +905,21 @@ ctl_svc_init_scan_entries(void)
         if (regex_rc)
             continue;
 
+        unsigned int line_number = 0;
+
+        memset(file_buf, 0, CTL_SVC_CONF_FILE_MAX_SIZE);
+        memset(value_buf, 0, CTL_SVC_CONF_FILE_MAX_SIZE);
+
         int rc = ctl_svc_process_conf_file(ctl_svc_dir_fd, dent->d_name,
                                            file_buf,
                                            CTL_SVC_CONF_FILE_MAX_SIZE,
                                            value_buf,
-                                           CTL_SVC_CONF_FILE_MAX_SIZE);
+                                           CTL_SVC_CONF_FILE_MAX_SIZE,
+                                           &line_number);
         if (rc)
-        {
-            LOG_MSG(LL_WARN,
-                    "Processing failed for ctl-svc-file %s: %s"
-                    "\n-----------------------------------------------------\n"
-                    "%s-----------------------------------------------------",
-                    dent->d_name, strerror(-rc), file_buf);
-        }
+            ctl_svc_init_scan_entries_dump_invalid_file(
+                dent->d_name, file_buf, CTL_SVC_CONF_FILE_MAX_SIZE,
+                line_number, rc);
     }
 
     niova_free(value_buf);
@@ -901,6 +1018,12 @@ ctl_svc_set_local_dir(const struct niova_env_var *nev)
 {
     if (nev && nev->nev_string)
         ctlSvcLocalDir = nev->nev_string;
+}
+
+const char *
+ctl_svc_get_local_dir(void)
+{
+    return ctlSvcLocalDir;
 }
 
 static destroy_ctx_t

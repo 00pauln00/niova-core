@@ -50,13 +50,12 @@ struct conf_token_set
 struct conf_token_set_parser
 {
     struct conf_token_set ctsp_cts;
-//    uint8_t               ctsp_cts_item_has_error;
     const char           *ctsp_input_buf;
     size_t                ctsp_input_buf_size;
     size_t                ctsp_input_buf_off;
     char                 *ctsp_value_buf;
     size_t                ctsp_value_buf_size;
-    int                   ctsp_parse_err;
+    unsigned int          ctsp_parse_line_num;
     int                 (*ctsp_cb)(const struct conf_token *,
                                    const char *, size_t, void *, int);
     void                 *ctsp_cb_arg;

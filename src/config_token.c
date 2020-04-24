@@ -316,6 +316,8 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
         !ctsp->ctsp_value_buf || !ctsp->ctsp_value_buf_size || !ctsp->ctsp_cb)
         return -EINVAL;
 
+    ctsp->ctsp_parse_line_num = 1;
+
     const struct conf_token *ct = NULL;
     size_t value_buf_idx = 0;
     bool inside_comment = false;
@@ -324,6 +326,12 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
          i < ctsp->ctsp_input_buf_size; i++, ctsp->ctsp_input_buf_off++)
     {
         const char c = ctsp->ctsp_input_buf[i];
+
+        if (c == '\0')
+        {
+            LOG_MSG(LL_NOTIFY, "null character found in mid-file @pos=%zd", i);
+            break;
+        }
 
         if (!ct) // Try to find a token at the current buffer offset
         {
@@ -337,7 +345,11 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
             else if (inside_comment)
             {
                 if (c == '\n')
+                {
                     inside_comment = false;
+                    ctsp->ctsp_parse_line_num++;
+                }
+
                 continue;
             }
             else if (isspace(c))
@@ -362,12 +374,14 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
             if (!value_buf_idx && isspace(c))
                 continue; // Filter out leading whitespace
 
-            if (c == '\n') // Token values must be terminated with newlines
+            // Token values must be terminated with newlines
+            if (c == '\n')
             {
                 ctsp->ctsp_value_buf[value_buf_idx] = '\0';
 
                 const ssize_t value_len =
                     conf_token_value_check_and_clear_ws(ct, ctsp);
+
                 if (value_len < 0)
                 {
                     SIMPLE_LOG_MSG(
@@ -381,9 +395,9 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
                 if (conf_token_value_check_regex(ct, ctsp))
                 {
                     LOG_MSG(LL_NOTIFY,
-                            "token='%s' value='%s' failed regex(`%s')",
+                            "token='%s' value='%s' line=%u failed regex(`%s')",
                             ct->ct_name, ctsp->ctsp_value_buf,
-                            ct->ct_val_regex);
+                            ctsp->ctsp_parse_line_num, ct->ct_val_regex);
                     return -EBADMSG;
                 }
 
@@ -393,9 +407,9 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
 
                 if (cb_rc)
                 {
-                    LOG_MSG(LL_NOTIFY, "token='%s' value='%s': %s",
+                    LOG_MSG(LL_NOTIFY, "token='%s' value='%s' line=%u: %s",
                             ct->ct_name, ctsp->ctsp_value_buf,
-                            strerror(-cb_rc));
+                            ctsp->ctsp_parse_line_num, strerror(-cb_rc));
 
                     return cb_rc;
                 }
@@ -411,9 +425,16 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
                 ctsp->ctsp_value_buf[value_buf_idx++] = c;
             }
         }
+
+        if (c == '\n')
+            ctsp->ctsp_parse_line_num++;
     }
 
-    return 0;
+    if (value_buf_idx)
+        LOG_MSG(LL_WARN, "token='%s' value='%s': No newline found",
+                ct->ct_name, ctsp->ctsp_value_buf);
+
+    return value_buf_idx ? -EBADMSG : 0;
 }
 
 init_ctx_t

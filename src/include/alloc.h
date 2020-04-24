@@ -20,10 +20,10 @@ extern enum log_level allocLogLevel;
     ptr;                                                             \
 })
 
-#define niova_malloc_can_fail(nmemb, size)                                \
+#define niova_malloc_can_fail(size)                                       \
 ({                                                                        \
-    void *ptr = malloc(nmemb, size);                                      \
-    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu %zu", ptr, nmemb, size); \
+    void *ptr = malloc(size);                                             \
+    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu", ptr, size);            \
     ptr;                                                                  \
 })
 
