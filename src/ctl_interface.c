@@ -97,6 +97,12 @@ lctli_new(void)
 // query of the respective value is made.
 
 // need a max number of start-time config options that can be present
+// Apr 25, 2020 - this will be done by having an init/ directory at the same
+//                level of input and output.  ctl-files placed here will be
+//                either immeidately applied or staged for later application.
+//                delayed application items will be picked from a list or tree
+//                as their real entry is installed (ie a log entry or fault
+//                injection entry).
 
 static util_thread_ctx_t
 lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,

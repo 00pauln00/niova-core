@@ -1,0 +1,2 @@
+- ctl-svc files which have been 'truncated' past 1024 bytes will fail to load
+even if the contents are valid and below the 1024 byte limit.
