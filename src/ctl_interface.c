@@ -320,10 +320,15 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
     if (!lctli)
         return -EINVAL;
 
-    char subdir_path[PATH_MAX];
+    char subdir_path[PATH_MAX] = {0};
 
-    int rc = snprintf(subdir_path, PATH_MAX, "%s/%s",
-                      lctli->lctli_path, lctliSubdirs[LCTLI_SUBDIR_INIT]);
+    const struct niova_env_var *ev =
+        env_get(NIOVA_ENV_VAR_ctl_interface_init_path);
+
+    int rc = (ev && ev->nev_present) ?
+        snprintf(subdir_path, PATH_MAX, "%s", ev->nev_string) :
+        snprintf(subdir_path, PATH_MAX, "%s/%s",
+                 lctli->lctli_path, lctliSubdirs[LCTLI_SUBDIR_INIT]);
 
     if (rc >= PATH_MAX)
         return -ENAMETOOLONG;

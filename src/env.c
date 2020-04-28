@@ -31,6 +31,13 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = alloc_env_var_cb,
     },
+    [NIOVA_ENV_VAR_ctl_interface_init_path] {
+        .nev_name      = "NIOVA_CTL_INTERFACE_INIT_PATH",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
+        .nev_var_num   = NIOVA_ENV_VAR_ctl_interface_init_path,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+    },
     [NIOVA_ENV_VAR_epoll_mgr_nevents] {
         .nev_name      = "NIOVA_EPOLL_MGR_NEVENTS",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
@@ -44,14 +51,14 @@ static struct niova_env_var niovaEnvVars[] = {
     },
     [NIOVA_ENV_VAR_inotify_base_path] {
         .nev_name      = "NIOVA_INOTIFY_BASE_PATH",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_INOTIFY,
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
         .nev_var_num   = NIOVA_ENV_VAR_inotify_base_path,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
     },
     [NIOVA_ENV_VAR_inotify_path] {
         .nev_name      = "NIOVA_INOTIFY_PATH",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_INOTIFY,
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
         .nev_var_num   = NIOVA_ENV_VAR_inotify_path,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,

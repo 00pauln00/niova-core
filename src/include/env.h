@@ -24,7 +24,7 @@ enum niova_env_subsystem
 {
     NIOVA_ENV_SUBSYSTEM_LOG,
     NIOVA_ENV_SUBSYSTEM_AIO,
-    NIOVA_ENV_SUBSYSTEM_INOTIFY,
+    NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
     NIOVA_ENV_SUBSYSTEM_WATCHDOG,
     NIOVA_ENV_SUBSYSTEM_CTL_SVC,
 } PACKED;
@@ -32,6 +32,7 @@ enum niova_env_subsystem
 enum niova_env_var_num
 {
     NIOVA_ENV_VAR_alloc_log_level,
+    NIOVA_ENV_VAR_ctl_interface_init_path,
     NIOVA_ENV_VAR_epoll_mgr_nevents,
     NIOVA_ENV_VAR_inotify_base_path,
     NIOVA_ENV_VAR_inotify_path,
