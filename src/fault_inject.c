@@ -1,0 +1,191 @@
+/* Copyright (C) NIOVA Systems, Inc - All Rights Reserved
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ * Written by Paul Nowoczynski <00pauln00@gmail.com> 2020
+ */
+
+#include "ctor.h"
+#include "fault_inject.h"
+#include "log.h"
+#include "registry.h"
+#include "util_thread.h"
+
+#ifdef NIOVA_FAULT_INJECTION_ENABLED
+static const bool faultInjectionEnabled = true;
+#else
+static const bool faultInjectionEnabled = false;
+#endif
+
+LREG_ROOT_ENTRY_GENERATE(fault_injection_points, LREG_USER_TYPE_FAULT_INJECT);
+
+enum fault_inject_reg_keys
+{
+    FAULT_INJECT_REG_KEY_NAME,          //string
+    FAULT_INJECT_REG_KEY_ENABLED,       //bool
+    FAULT_INJECT_REG_KEY_FILE,          //string
+    FAULT_INJECT_REG_KEY_FUNCTION,      //string
+    FAULT_INJECT_REG_KEY_LINENO,        //unsigned
+    FAULT_INJECT_REG_KEY_WHEN,          //string
+    FAULT_INJECT_REG_KEY_LAST_INJECTED, //string
+    FAULT_INJECT_REG_KEY_INJECTED_CNT,  //unsigned
+    FAULT_INJECT_REG_KEY_FREQ_SECONDS,  //unsigned (short)
+    FAULT_INJECT_REG_KEY_NUM_REMAINING, //unsigned
+    FAULT_INJECT_REG_KEY_COND_EXEC_CNT, //unsigned
+    FAULT_INJECT_REG_KEY__MAX,
+};
+
+static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
+{
+    [FAULT_INJECT_any] {
+        .flti_name = "any injection",
+        .flti_when = FAULT_INJECT_PERIOD_every_time,
+        .flti_enabled = 1,
+    },
+    [FAULT_INJECT_disabled] {
+        .flti_name = "disabled injection",
+        .flti_when = FAULT_INJECT_PERIOD_one_time_only,
+        .flti_enabled = 0,
+    },
+};
+
+struct fault_injection *
+fault_injection_lookup(const enum fault_inject_entries id)
+{
+    if (id >= FAULT_INJECT__MAX || faultInjections[id].flti_file)
+        return NULL;               /* already installed        */
+
+    return &faultInjections[id];
+}
+
+static util_thread_ctx_reg_int_t
+fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                     struct lreg_value *lrv)
+{
+    if (!lrn || (!lrv && (op == LREG_NODE_CB_OP_GET_NODE_INFO ||
+                          op == LREG_NODE_CB_OP_READ_VAL ||
+                          op == LREG_NODE_CB_OP_WRITE_VAL)))
+        return -EINVAL;
+
+    struct fault_injection *flti = OFFSET_CAST(fault_injection, flti_lrn, lrn);
+
+    char ctime_buf[CTIME_R_STR_LEN];
+    bool tmp_bool;
+    int tmp_rc;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
+    case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+        break; // No-ops since these entries are effectively static
+    case LREG_NODE_CB_OP_GET_NODE_INFO:
+        lrv->get.lrv_num_keys_out = FAULT_INJECT_REG_KEY__MAX;
+        break;
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lrv->lrv_value_idx_in)
+        {
+        case FAULT_INJECT_REG_KEY_NAME:
+            lreg_value_fill_string(lrv, "name", flti->flti_name);
+            break;
+        case FAULT_INJECT_REG_KEY_ENABLED:
+            lreg_value_fill_bool(lrv, "enabled",
+                                 flti->flti_enabled ? true : false);
+            break;
+        case FAULT_INJECT_REG_KEY_FILE:
+            lreg_value_fill_string(lrv, "file", flti->flti_file);
+            break;
+        case FAULT_INJECT_REG_KEY_FUNCTION:
+            lreg_value_fill_string(lrv, "function", flti->flti_func);
+            break;
+        case FAULT_INJECT_REG_KEY_LINENO:
+            lreg_value_fill_unsigned(lrv, "line_number", flti->flti_lineno);
+            break;
+        case FAULT_INJECT_REG_KEY_WHEN:
+            lreg_value_fill_string(lrv, "when_to_inject",
+                                   fault_injection_when_2_str(flti));
+            break;
+        case FAULT_INJECT_REG_KEY_LAST_INJECTED:
+            ctime_r((const time_t *)&flti->flti_last, ctime_buf);
+            niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
+            lreg_value_fill_string(lrv, "last_injected_at", ctime_buf);
+            break;
+        case FAULT_INJECT_REG_KEY_INJECTED_CNT:
+            lreg_value_fill_unsigned(lrv, "injection_count",
+                                     flti->flti_inject_cnt);
+            break;
+        case FAULT_INJECT_REG_KEY_FREQ_SECONDS:
+            lreg_value_fill_unsigned(lrv, "frequency_seconds",
+                                     flti->flti_freq_seconds);
+            break;
+        case FAULT_INJECT_REG_KEY_NUM_REMAINING:
+            lreg_value_fill_unsigned(lrv, "num_remaining",
+                                     flti->flti_num_remaining);
+            break;
+        case FAULT_INJECT_REG_KEY_COND_EXEC_CNT:
+            lreg_value_fill_unsigned(lrv, "cond_exec_count",
+                                     flti->flti_cond_exec_cnt);
+            break;
+        default:
+            return -EOPNOTSUPP;
+        }
+        break;
+    case LREG_NODE_CB_OP_WRITE_VAL:
+        switch (lrv->lrv_value_idx_in)
+        {
+        case FAULT_INJECT_REG_KEY_ENABLED:
+            if (lrv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
+                return -EINVAL;
+
+            tmp_rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lrv),
+                                          &tmp_bool);
+            if (tmp_rc)
+                return tmp_rc;
+
+            flti->flti_enabled = tmp_bool;
+            break;
+#if 0
+        case FAULT_INJECT_REG_KEY_WHEN:
+            lreg_value_fill_string(lrv, "when_to_inject",
+                                   fault_injection_when_2_str(flti));
+            break;
+        case FAULT_INJECT_REG_KEY_FREQ_SECONDS:
+            lreg_value_fill_unsigned(lrv, "frequency_seconds",
+                                     flti->flti_freq_seconds);
+            break;
+        case FAULT_INJECT_REG_KEY_NUM_REMAINING:
+            lreg_value_fill_unsigned(lrv, "num_remaining",
+                                     flti->flti_num_remaining);
+            break;
+#endif
+        default:
+            return -EOPNOTSUPP;
+        }
+        break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+init_ctx_t
+fault_injection_init(void)
+{
+    if (!faultInjectionEnabled)
+        return;
+
+    LREG_ROOT_ENTRY_INSTALL(fault_injection_points);
+
+    for (enum fault_inject_entries i = FAULT_INJECT__MIN;
+         i < FAULT_INJECT__MAX; i++)
+    {
+        struct lreg_node *lrn = &faultInjections[i].flti_lrn;
+
+        lreg_node_init(lrn, LREG_USER_TYPE_FAULT_INJECT,
+                       fault_injection_lreg_cb, NULL, LREG_INIT_OPT_NONE);
+
+        int rc = lreg_node_install_prepare(
+            lrn, LREG_ROOT_ENTRY_PTR(fault_injection_points));
+
+        FATAL_IF(rc, "lreg_node_install_prepare() %s", strerror(-rc));
+    }
+}

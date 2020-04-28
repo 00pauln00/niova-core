@@ -18,6 +18,7 @@ SYS_CORE_INCLUDES = \
 	src/include/env.h \
 	src/include/epoll_mgr.h \
 	src/include/ev_pipe.h \
+	src/include/fault_inject.h \
 	src/include/file_util.h \
 	src/include/io.h \
 	src/include/init.h \
@@ -47,6 +48,7 @@ SYS_CORE_OBJFILES = \
 	src/env.o \
 	src/epoll_mgr.o \
 	src/ev_pipe.o \
+	src/fault_inject.o \
 	src/file_util.o \
 	src/init.o \
 	src/io.o \
@@ -136,7 +138,8 @@ raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
-raft-dbg: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+raft-dbg: CFLAGS = $(DEBUG_CFLAGS) -DNIOVA_FAULT_INJECTION_ENABLED \
+	-fsanitize=address
 raft-dbg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS)

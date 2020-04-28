@@ -15,6 +15,7 @@
 #include "crc32.h"
 #include "ctl_svc.h"
 #include "epoll_mgr.h"
+#include "fault_inject.h"
 #include "io.h"
 #include "log.h"
 #include "net_ctl.h"
@@ -3557,6 +3558,9 @@ raft_server_main_loop(struct raft_instance *ri)
 
     do
     {
+        // Xxx these are just examples..
+        FAULT_INJECT(disabled);
+        FAULT_INJECT(any);
         rc = epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);
         if (rc == -EINTR)
             rc = 0;

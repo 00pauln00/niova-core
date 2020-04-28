@@ -289,6 +289,15 @@ niova_realtime_coarse_clock_get_msec(void)
     return timespec_2_msec(&now);
 }
 
+static inline time_t
+niova_realtime_coarse_clock_get_sec(void)
+{
+    struct timespec now;
+    niova_realtime_coarse_clock(&now);
+
+    return now.tv_sec;
+}
+
 static inline unsigned long long
 niova_unstable_coarse_clock_get_usec(void)
 {
