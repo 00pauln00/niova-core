@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <regex.h>
+#include <dirent.h>
 
 #define _GNU_SOURCE
 #include <pthread.h>
@@ -52,13 +53,15 @@ struct ctl_interface
 
 enum lctli_subdirs
 {
-    LCTLI_SUBDIR_INPUT,
+    LCTLI_SUBDIR_INIT,   // processed only during startup
+    LCTLI_SUBDIR_INPUT,  // processed during runtime
     LCTLI_SUBDIR_OUTPUT,
     LCTLI_SUBDIR_MAX,
 };
 
 const char *lctliSubdirs[LCTLI_SUBDIR_MAX] =
 {
+    [LCTLI_SUBDIR_INIT] = "init",
     [LCTLI_SUBDIR_INPUT] = "input",
     [LCTLI_SUBDIR_OUTPUT] = "output"
 };
@@ -311,6 +314,67 @@ lctli_setup_inotify_path(struct ctl_interface *lctli)
     return 0;
 }
 
+static init_ctx_int_t
+lctli_process_init_subdir(struct ctl_interface *lctli)
+{
+    if (!lctli)
+        return -EINVAL;
+
+    char subdir_path[PATH_MAX];
+
+    int rc = snprintf(subdir_path, PATH_MAX, "%s/%s",
+                      lctli->lctli_path, lctliSubdirs[LCTLI_SUBDIR_INIT]);
+
+    if (rc >= PATH_MAX)
+        return -ENAMETOOLONG;
+
+    int init_subdir_fd = open(subdir_path, O_RDONLY | O_DIRECTORY);
+    if (init_subdir_fd < 0)
+        return -errno;
+
+    int close_rc = 0;
+
+    DIR *init_subdir = fdopendir(init_subdir_fd);
+    if (!init_subdir)
+    {
+        rc = -errno;
+        close_rc = close(init_subdir_fd);
+        if (close_rc)
+            SIMPLE_LOG_MSG(LL_ERROR, "close():  %s", strerror(errno));
+
+        return rc;
+    }
+
+    for (struct dirent *dent = readdir(init_subdir); dent != NULL;
+         dent = readdir(init_subdir))
+    {
+        struct stat stb;
+
+        int rc = lstat(dent->d_name, &stb);
+        if (rc || !S_ISREG(stb.st_mode))
+        {
+            SIMPLE_LOG_MSG(LL_NOTIFY, "bypass dentry=%s", dent->d_name);
+            continue;
+        }
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "processing dentry=%s", dent->d_name);
+
+        struct ctli_cmd_handle cch = {
+            .ctlih_input_dirfd = init_subdir_fd,
+            .ctlih_output_dirfd = lctli->lctli_output_dirfd,
+            .ctlih_input_file_name = dent->d_name,
+        };
+
+        ctlic_process_request(&cch);
+    }
+
+    close_rc = closedir(init_subdir);
+    if (close_rc)
+        SIMPLE_LOG_MSG(LL_ERROR, "closedir():  %s", strerror(errno));
+
+    return close_rc;
+}
+
 init_ctx_t
 lctli_subsystem_init(void)
 {
@@ -324,6 +388,10 @@ lctli_subsystem_init(void)
 
     rc = lctli_prepare(lctli);
     FATAL_IF(rc, "lctli_prepare(): %s (path=%s)",
+             strerror(-rc), lctli->lctli_path);
+
+    rc = lctli_process_init_subdir(lctli);
+    FATAL_IF(rc, "lctli_process_init_subdir(): %s (path=%s)",
              strerror(-rc), lctli->lctli_path);
 
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
