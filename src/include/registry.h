@@ -34,7 +34,7 @@ typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
 #define LREG_VALUE_STRING_MAX 255
 #define LREG_NODE_KEYS_MAX 65536
 
-enum PACKED lreg_value_types
+enum lreg_value_types
 {
     LREG_VAL_TYPE_NONE,
     LREG_VAL_TYPE_ARRAY,
@@ -46,13 +46,13 @@ enum PACKED lreg_value_types
     LREG_VAL_TYPE_UNSIGNED_VAL,
     LREG_VAL_TYPE_FLOAT_VAL,
     LREG_VAL_TYPE_ANY,
-};
+} PACKED;
 
-enum PACKED lreg_user_types
+enum lreg_user_types
 {
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_CTL_SVC_NODE,
-    LREG_USER_TYPE_FAULT,
+    LREG_USER_TYPE_FAULT_INJECT,
     LREG_USER_TYPE_HISTOGRAM,
     LREG_USER_TYPE_LOG_file,
     LREG_USER_TYPE_LOG_func,
@@ -67,16 +67,16 @@ enum PACKED lreg_user_types
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_SYS_INFO,
     LREG_USER_TYPE_ANY,
-};
+} PACKED;
 
-enum PACKED lreg_node_cb_ops
+enum lreg_node_cb_ops
 {
     LREG_NODE_CB_OP_GET_NODE_INFO,
     LREG_NODE_CB_OP_WRITE_VAL,
     LREG_NODE_CB_OP_READ_VAL,
     LREG_NODE_CB_OP_INSTALL_NODE,
     LREG_NODE_CB_OP_DESTROY_NODE,
-};
+} PACKED;
 
 #define LREG_NODE_CB_OP_GET_NAME LREG_NODE_CB_OP_GET_NODE_INFO
 
@@ -239,7 +239,7 @@ lreg_node_to_user_type(const struct lreg_node *lrn)
     {
     case LREG_USER_TYPE_NONE:
         return 'n';
-    case LREG_USER_TYPE_FAULT:
+    case LREG_USER_TYPE_FAULT_INJECT:
         return 'f';
     case LREG_USER_TYPE_LOG_file:
         return 'L';
