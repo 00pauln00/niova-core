@@ -106,6 +106,7 @@ struct ctlic_iterator
     size_t                       citer_sibling_printed_cnt;
     bool                         citer_open_stanza;
     uint32_t                     citer_rand_id;
+    uint32_t                     citer_error_cnt;
 };
 
 #define DBG_CITER(log_level, citer, fmt, ...)                           \
@@ -838,7 +839,7 @@ ctlic_regex_get_compare_string_from_lv(const struct lreg_value *lv,
         /* keys types such as LREG_VAL_TYPE_ARRAY and LREG_VAL_TYPE_OBJECT
          * do not hold regex-able string values.
          */
-        *error = -EINVAL;
+        *error = -ENOSYS;
         break;
     }
 
@@ -967,8 +968,7 @@ ctlic_try_apply_here(struct lreg_node *lrn, const struct ctlic_request *cr)
                                   CTLIC_MAX_VALUE_SIZE);
     if (rc)
     {
-        DBG_LREG_NODE(LL_DEBUG, lrn,
-                      "lreg_node_key_lookup(`%s'): %s",
+        DBG_LREG_NODE(LL_DEBUG, lrn, "lreg_node_key_lookup(`%s'): %s",
                       cprs_key->cprs_str, strerror(-rc));
     }
     else
@@ -982,12 +982,10 @@ ctlic_try_apply_here(struct lreg_node *lrn, const struct ctlic_request *cr)
 
         DBG_LREG_NODE((rc ? LL_NOTIFY : LL_DEBUG), lrn,
                       "OP_WRITE_VAL lreg_node_exec_lrn_cb(`%s:%s'): %s",
-                      cprs_key->cprs_str, cprs_key->cprs_str, strerror(-rc));
+                      cprs_key->cprs_str, cprs_val->cprs_str, strerror(-rc));
     }
 
-    return 0; /* XXx at some point the error should be returned and printed
-               *     in the OUTIFLE if it was specified
-               */
+    return rc;
 }
 
 static bool
@@ -1053,7 +1051,48 @@ ctlic_scan_registry_cb_CT_ID_WHERE(struct lreg_node *lrn,
         }
 
         if (rc)
+        {
+            struct ctlic_iterator err_citer = *parent_citer;
+            err_citer.citer_tab_depth += 1;
+            err_citer.citer_open_stanza = true;
+            err_citer.citer_parent = parent_citer;
+
+            struct lreg_value *lv = &err_citer.citer_lv;
+            LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_STRING;
+            snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "error");
+
+            if (rc == -ENOSYS)
+            {
+                snprintf(
+                    lv->get.lrv_value_out.lrv_string,
+                    LREG_VALUE_STRING_MAX,
+                    "May not apply value filter (`%s') to array or object (`%s')",
+                    cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str,
+                    cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
+            }
+            else if (rc == -EPERM)
+            {
+                const struct ctlic_matched_token *apply_token =
+                    ctlic_get_next_apply_token(cr);
+
+                if (apply_token && apply_token->cmt_num_depth_segments == 1)
+                {
+                    const struct ctlic_depth_segment *cds =
+                        &apply_token->cmt_depth_segments[0];
+
+                    snprintf(
+                        lv->get.lrv_value_out.lrv_string,
+                        LREG_VALUE_STRING_MAX,
+                        "Key (`%s') is read-only",
+                        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
+                }
+            }
+
+            ctlic_scan_registry_cb_output_writer(&err_citer);
+            parent_citer->citer_sibling_printed_cnt++;
+
             return false;
+        }
     }
 
     return true;
@@ -1114,6 +1153,7 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
     const unsigned int nkeys = lv->get.lrv_num_keys_out;
     size_t sibling_print_cnt = 0;
 
+
     for (unsigned int i = 0; i < nkeys; i++)
     {
         const struct ctlic_iterator *my_parent = parent_is_anon_object ?
@@ -1144,22 +1184,36 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         bool should_print = false;
         rc = ctlic_regex_test_depth_segment(lrn, cds, kv_lv, depth,
                                             &should_print);
-        if (rc)
-        {
+        if (!rc && !should_print) // successful but unmatched regex
+            continue;
+
+        else if (rc)
             DBG_LREG_NODE(LL_DEBUG, lrn,
                           "ctlic_regex_test_depth_segment(): %s",
                           strerror(-rc));
-            return false;
-        }
-        else if (!should_print)
+
+        if (rc == -ENOSYS) // This is a user error type
         {
-            continue;
+            kv_lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
+
+            snprintf(kv_lv->lrv_key_string, LREG_VALUE_STRING_MAX, "error");
+
+            snprintf(
+                kv_lv->get.lrv_value_out.lrv_string,
+                LREG_VALUE_STRING_MAX,
+                "May not apply value filter (`%s') to array or object (`%s')",
+                cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str,
+                cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
+        }
+        else if (rc)
+        {
+            return false;
         }
 
         sibling_print_cnt++;
         ctlic_scan_registry_cb_output_writer(&kv_citer);
 
-        if (cmt->cmt_num_depth_segments > depth &&
+        if (!rc && cmt->cmt_num_depth_segments > depth &&
             (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
              LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
              LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
@@ -1178,6 +1232,9 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         }
 
         ctlic_scan_registry_cb_output_writer(&kv_citer);
+
+        if (rc)
+            break;
     }
 
     if (parent_is_anon_object)
@@ -1189,7 +1246,7 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
 
     parent_citer->citer_sibling_printed_cnt += sibling_print_cnt;
 
-    return true;
+    return rc ? false : true;
 }
 
 static bool // return 'false' to terminate scan

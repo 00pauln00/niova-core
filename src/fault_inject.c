@@ -142,20 +142,10 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
             flti->flti_enabled = tmp_bool;
             break;
-#if 0
-        case FAULT_INJECT_REG_KEY_WHEN:
-            lreg_value_fill_string(lrv, "when_to_inject",
-                                   fault_injection_when_2_str(flti));
-            break;
-        case FAULT_INJECT_REG_KEY_FREQ_SECONDS:
-            lreg_value_fill_unsigned(lrv, "frequency_seconds",
-                                     flti->flti_freq_seconds);
-            break;
-        case FAULT_INJECT_REG_KEY_NUM_REMAINING:
-            lreg_value_fill_unsigned(lrv, "num_remaining",
-                                     flti->flti_num_remaining);
-            break;
-#endif
+        case FAULT_INJECT_REG_KEY_WHEN:          // fall through
+        case FAULT_INJECT_REG_KEY_FREQ_SECONDS:  // fall through
+        case FAULT_INJECT_REG_KEY_NUM_REMAINING: // fall through
+            return -EPERM;
         default:
             return -EOPNOTSUPP;
         }
