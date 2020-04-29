@@ -91,22 +91,6 @@ lctli_new(void)
     return new_lctli;
 }
 
-// how do we deal with start-time config parameters which should be applied
-// before the service completes startup?
-// one example could be the number of memory buffers, etc.
-// the method which returns the number of memory buffers, should itself
-// install an lreg object.  In the case of a preconfigured option, this thread
-// would install a temporary node which would be found at the time the initial
-// query of the respective value is made.
-
-// need a max number of start-time config options that can be present
-// Apr 25, 2020 - this will be done by having an init/ directory at the same
-//                level of input and output.  ctl-files placed here will be
-//                either immeidately applied or staged for later application.
-//                delayed application items will be picked from a list or tree
-//                as their real entry is installed (ie a log entry or fault
-//                injection entry).
-
 static util_thread_ctx_t
 lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
                                        char *buf, const ssize_t len)
