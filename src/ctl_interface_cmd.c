@@ -789,6 +789,117 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
     return rc >= 0 ? 0 : -errno;
 }
 
+static void
+ctlic_insert_error_kv_lrv_init(struct lreg_value *lv)
+{
+    NIOVA_ASSERT(lv);
+
+    LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_STRING;
+    snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "error");
+}
+
+static int
+ctlic_insert_error_kv_init_EISDIR(struct ctlic_iterator *err_citer, int depth)
+{
+    if (!err_citer || depth <= 0)
+        return -EINVAL;
+
+    ctlic_insert_error_kv_lrv_init(&err_citer->citer_lv);
+
+    const struct ctlic_matched_token *cmt =
+        ctlic_get_current_matched_token(err_citer->citer_cr);
+
+    const struct ctlic_depth_segment *cds =
+        &cmt->cmt_depth_segments[depth - 1];
+
+    int rc = snprintf(
+        err_citer->citer_lv.get.lrv_value_out.lrv_string,
+        LREG_VALUE_STRING_MAX,
+        "May not apply value filter `%s' to array or object `%s'",
+        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str,
+        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
+
+    (void)rc; // For now, err msg truncation is ignored
+
+    return 0;
+}
+
+static const struct ctlic_matched_token *
+ctlic_get_next_apply_token(const struct ctlic_request *cr);
+
+/**
+ * ctlic_insert_error_kv_init_EPERM - called when an APPLY operation has
+ *    failed.  It is implied that an 'apply' token is present.
+ */
+static int
+ctlic_insert_error_kv_init_EPERM(struct ctlic_iterator *err_citer, int depth)
+{
+    if (!err_citer || !err_citer->citer_cr || depth <= 0)
+        return -EINVAL;
+
+    const struct ctlic_matched_token *apply_token =
+        ctlic_get_next_apply_token(err_citer->citer_cr);
+
+    if (!apply_token || apply_token->cmt_num_depth_segments != 1)
+        return -EBADMSG;
+
+    ctlic_insert_error_kv_lrv_init(&err_citer->citer_lv);
+
+    const struct ctlic_depth_segment *cds =
+        &apply_token->cmt_depth_segments[0];
+
+    int rc = snprintf(err_citer->citer_lv.get.lrv_value_out.lrv_string,
+                      LREG_VALUE_STRING_MAX, "Key `%s' is read-only",
+                      cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
+
+    (void)rc; // For now, err msg truncation is ignored
+
+    return 0;
+}
+
+static int
+ctlic_insert_error_kv_into_outfile(struct ctlic_iterator *in_citer,
+                                   const int depth, const int error)
+{
+    if (!in_citer || depth <= 0 || !error)
+        return -EINVAL;
+
+    struct ctlic_iterator tmp_citer = {0};
+    bool citer_is_root = false;
+
+    // Create a level-1 citer, don't use the root
+    if (in_citer->citer_parent == NULL)
+    {
+        citer_is_root = true;
+
+        tmp_citer = *in_citer;
+        tmp_citer.citer_tab_depth += 1;
+        tmp_citer.citer_open_stanza = true;
+        tmp_citer.citer_parent = in_citer;
+    }
+
+    struct ctlic_iterator *citer = citer_is_root ? &tmp_citer : in_citer;
+    int rc;
+
+    switch (error)
+    {
+    case -EISDIR:
+        rc = ctlic_insert_error_kv_init_EISDIR(citer, depth);
+        break;
+    case -EPERM:
+        rc = ctlic_insert_error_kv_init_EPERM(citer, depth);
+        break;
+    default:
+        rc = -ENOENT;
+        break;
+    }
+
+    if (!rc)
+        ctlic_scan_registry_cb_output_writer(citer);
+
+    return rc;
+}
+
 static const char *
 ctlic_regex_get_compare_string_from_lv(const struct lreg_value *lv,
                                        enum ctlic_depth_segment_type cds_type,
@@ -807,6 +918,7 @@ ctlic_regex_get_compare_string_from_lv(const struct lreg_value *lv,
 
     *error = 0;
 
+    // Keys are always strings
     if (cds_type == CTLIC_DEPTH_SEGMENT_TYPE_KEY)
         return LREG_VALUE_TO_KEY_STR(lv);
 
@@ -839,7 +951,7 @@ ctlic_regex_get_compare_string_from_lv(const struct lreg_value *lv,
         /* keys types such as LREG_VAL_TYPE_ARRAY and LREG_VAL_TYPE_OBJECT
          * do not hold regex-able string values.
          */
-        *error = -ENOSYS;
+        *error = -EISDIR;
         break;
     }
 
@@ -1052,44 +1164,9 @@ ctlic_scan_registry_cb_CT_ID_WHERE(struct lreg_node *lrn,
 
         if (rc)
         {
-            struct ctlic_iterator err_citer = *parent_citer;
-            err_citer.citer_tab_depth += 1;
-            err_citer.citer_open_stanza = true;
-            err_citer.citer_parent = parent_citer;
-
-            struct lreg_value *lv = &err_citer.citer_lv;
-            LREG_VALUE_TO_REQ_TYPE(lv) = LREG_VAL_TYPE_STRING;
-            snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "error");
-
-            if (rc == -ENOSYS)
-            {
-                snprintf(
-                    lv->get.lrv_value_out.lrv_string,
-                    LREG_VALUE_STRING_MAX,
-                    "May not apply value filter (`%s') to array or object (`%s')",
-                    cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str,
-                    cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
-            }
-            else if (rc == -EPERM)
-            {
-                const struct ctlic_matched_token *apply_token =
-                    ctlic_get_next_apply_token(cr);
-
-                if (apply_token && apply_token->cmt_num_depth_segments == 1)
-                {
-                    const struct ctlic_depth_segment *cds =
-                        &apply_token->cmt_depth_segments[0];
-
-                    snprintf(
-                        lv->get.lrv_value_out.lrv_string,
-                        LREG_VALUE_STRING_MAX,
-                        "Key (`%s') is read-only",
-                        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
-                }
-            }
-
-            ctlic_scan_registry_cb_output_writer(&err_citer);
-            parent_citer->citer_sibling_printed_cnt++;
+            // Update the printed count only if an error string was emitted.
+            if (!ctlic_insert_error_kv_into_outfile(parent_citer, depth, rc))
+                parent_citer->citer_sibling_printed_cnt++;
 
             return false;
         }
@@ -1177,58 +1254,50 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
 
         rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_READ_VAL, lrn, kv_lv);
 
-        DBG_LREG_NODE(LL_DEBUG, lrn, "rc=%d", rc);
-        if (rc)
+        if (rc) // This is an internal error which a user should not see
+        {
+            DBG_LREG_NODE(LL_DEBUG, lrn, "rc=%d", rc);
             return false;
+        }
 
         bool should_print = false;
         rc = ctlic_regex_test_depth_segment(lrn, cds, kv_lv, depth,
                                             &should_print);
-        if (!rc && !should_print) // successful but unmatched regex
-            continue;
 
-        else if (rc)
+        if (rc) // Attempt to print an error to the user
+        {
             DBG_LREG_NODE(LL_DEBUG, lrn,
                           "ctlic_regex_test_depth_segment(): %s",
                           strerror(-rc));
 
-        if (rc == -ENOSYS) // This is a user error type
-        {
-            kv_lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
-
-            snprintf(kv_lv->lrv_key_string, LREG_VALUE_STRING_MAX, "error");
-
-            snprintf(
-                kv_lv->get.lrv_value_out.lrv_string,
-                LREG_VALUE_STRING_MAX,
-                "May not apply value filter (`%s') to array or object (`%s')",
-                cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str,
-                cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str);
+            if (!ctlic_insert_error_kv_into_outfile(&kv_citer, depth, rc))
+                sibling_print_cnt++;
         }
-        else if (rc)
+        else
         {
-            return false;
-        }
+            if (!should_print) // successful but unmatched regex
+                continue;
 
-        sibling_print_cnt++;
-        ctlic_scan_registry_cb_output_writer(&kv_citer);
+            sibling_print_cnt++;
+            ctlic_scan_registry_cb_output_writer(&kv_citer);
 
-        if (!rc && cmt->cmt_num_depth_segments > depth &&
-            (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
-             LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
-             LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
-        {
-            struct ctlic_iterator sub_obj_kv_citer = kv_citer;
-            sub_obj_kv_citer.citer_sibling_num = 0;
-            sub_obj_kv_citer.citer_sibling_printed_cnt = 0;
-            sub_obj_kv_citer.citer_rand_id = random_get();
-            sub_obj_kv_citer.citer_parent = &kv_citer;
+            if (cmt->cmt_num_depth_segments > depth &&
+                (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
+            {
+                struct ctlic_iterator sub_obj_kv_citer = kv_citer;
+                sub_obj_kv_citer.citer_sibling_num = 0;
+                sub_obj_kv_citer.citer_sibling_printed_cnt = 0;
+                sub_obj_kv_citer.citer_rand_id = random_get();
+                sub_obj_kv_citer.citer_parent = &kv_citer;
 
-            DBG_CITER(LL_DEBUG, &sub_obj_kv_citer, "sub-obj");
+                DBG_CITER(LL_DEBUG, &sub_obj_kv_citer, "sub-obj");
 
-            lreg_node_walk(lrn, ctlic_scan_registry_cb,
-                           (void *)&sub_obj_kv_citer,
-                           depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+                lreg_node_walk(lrn, ctlic_scan_registry_cb,
+                               (void *)&sub_obj_kv_citer,
+                               depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+            }
         }
 
         ctlic_scan_registry_cb_output_writer(&kv_citer);

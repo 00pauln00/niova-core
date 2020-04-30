@@ -43,7 +43,7 @@ enum log_lreg_file_entry_values
 };
 
 // Forward declaration for log_subsystem lreg entry.
-static void
+static int //util_thread_ctx_reg_int_t
 log_subsys_lreg_multi_facet_cb(enum lreg_node_cb_ops,
                                struct lreg_value *, void *);
 
@@ -87,13 +87,20 @@ log_lreg_check_and_assign_log_level(struct log_entry_info *lei,
     }
 }
 
-static void
+static int //util_thread_ctx_reg_int_t
 log_subsys_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                struct lreg_value *lv, void *unused_arg)
 {
-    if ((op != LREG_NODE_CB_OP_READ_VAL && op != LREG_NODE_CB_OP_WRITE_VAL) ||
-        !lv || unused_arg)  //'unused_arg' should be NULL
-        return;
+    if (!lv || unused_arg)  //'unused_arg' should be NULL
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= LOG_SUBSYS_KEY__MAX)
+        return -ERANGE;
+
+    else if (op != LREG_NODE_CB_OP_READ_VAL && op != LREG_NODE_CB_OP_WRITE_VAL)
+        return -EOPNOTSUPP;
+
+    int rc = 0;
 
     if (op == LREG_NODE_CB_OP_WRITE_VAL)
     {
@@ -113,6 +120,10 @@ log_subsys_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                     log_level_set(defaultMasterLogLevel);
             }
         }
+        else
+        {
+            rc = -EPERM;
+        }
     }
     else if (op == LREG_NODE_CB_OP_READ_VAL)
     {
@@ -122,6 +133,8 @@ log_subsys_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         else if (lv->lrv_value_idx_in == LOG_SUBSYS_KEY_DATE_FORMAT)
             lreg_value_fill_string(lv, "log_msg_date_format", "%blah");
     }
+
+    return rc;
 }
 
 static void

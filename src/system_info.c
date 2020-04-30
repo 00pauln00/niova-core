@@ -69,7 +69,7 @@ system_info_uuid_is_present(void)
     return uuid_is_null(systemInfoUuid) ? false : true;
 }
 
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
                            void *arg);
 
@@ -106,14 +106,18 @@ system_info_get(struct rusage *r, struct utsname *u)
     return 0;
 }
 
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
                            void *arg)
 {
-    if (!lv || arg /* arg is not used here */ ||
-        lv->lrv_value_idx_in >= SYS_INFO_KEY__MAX ||
-        op != LREG_NODE_CB_OP_READ_VAL)
-        return;
+    if (!lv || arg /* arg is not used here */)
+        return -EINVAL;
+    else if (lv->lrv_value_idx_in >= SYS_INFO_KEY__MAX)
+        return -ERANGE;
+    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
+        return -EPERM;
+    else if (op != LREG_NODE_CB_OP_READ_VAL)
+        return -EOPNOTSUPP;
 
     static struct timespec time_of_previous_call;
     static struct rusage  rusage_current;
@@ -127,8 +131,9 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     if ((timespec_2_msec(&now) - timespec_2_msec(&time_of_previous_call)) >
         RUSAGE_CACHE_TIME_MS)
     {
-        if (system_info_get(&rusage_current, &uts_current))
-            return;
+        int rc = system_info_get(&rusage_current, &uts_current);
+        if (rc)
+            return rc;
     }
 
     switch (lv->lrv_value_idx_in)
@@ -142,7 +147,8 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         lreg_value_fill_string_uuid(lv, "uuid", systemInfoUuid);
         break;
     case SYS_INFO_KEY_CTL_INTERFACE_PATH:
-        lreg_value_fill_string(lv, "ctl_interface_path", lctli_get_inotify_path());
+        lreg_value_fill_string(lv, "ctl_interface_path",
+                               lctli_get_inotify_path());
         break;
     case SYS_INFO_KEY_PID:
         lreg_value_fill_unsigned(lv, "pid", getpid());
@@ -206,6 +212,8 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     }
 
     time_of_previous_call = now;
+
+    return 0;
 }
 
 int

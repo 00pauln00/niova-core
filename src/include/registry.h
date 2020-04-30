@@ -408,6 +408,7 @@ lreg_subsystem_destroy(void)
                              struct lreg_node *lrn,                     \
                              struct lreg_value *lreg_val)               \
     {                                                                   \
+        int rc = 0;                                                     \
         switch (op)                                                     \
         {                                                               \
         case LREG_NODE_CB_OP_GET_NODE_INFO:                             \
@@ -423,7 +424,7 @@ lreg_subsystem_destroy(void)
                 return -EINVAL;                                         \
             if (lreg_val->lrv_value_idx_in >= num_keys)                 \
                 return -ERANGE;                                         \
-            read_write_op_cb(op, lreg_val, (lrn)->lrn_cb_arg);          \
+            rc = read_write_op_cb(op, lreg_val, (lrn)->lrn_cb_arg);     \
             break;                                                      \
         case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */           \
         case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */           \
@@ -431,7 +432,7 @@ lreg_subsystem_destroy(void)
         default:                                                        \
             return -EOPNOTSUPP;                                         \
         }                                                               \
-        return 0;                                                       \
+        return rc;                                                       \
     }                                                                   \
     static lreg_install_int_ctx_t                                       \
     lreg_root_cb_parent##name(enum lreg_node_cb_ops op,                 \

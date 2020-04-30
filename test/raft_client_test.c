@@ -76,7 +76,7 @@ struct rsc_raft_test_info
  */
 static struct rsc_raft_test_info rRTI;
 
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
                                     void *);
 
@@ -1088,16 +1088,21 @@ rsc_main_loop(struct raft_instance *ri)
 
     return rc;
 }
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 raft_client_instance_hist_lreg_multi_facet_handler(
     enum lreg_node_cb_ops op,
     struct raft_instance_hist_stats *rihs,
     struct lreg_value *lv)
 {
     if (!lv ||
-        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh) ||
-        op != LREG_NODE_CB_OP_READ_VAL)
-        return;
+        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh))
+        return -EINVAL;
+
+    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
+        return -EPERM;
+
+    else if (op != LREG_NODE_CB_OP_READ_VAL)
+        return -EOPNOTSUPP;
 
     snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "%lld",
              binary_hist_lower_bucket_range(&rihs->rihs_bh,
@@ -1107,6 +1112,8 @@ raft_client_instance_hist_lreg_multi_facet_handler(
         binary_hist_get_cnt(&rihs->rihs_bh, lv->lrv_value_idx_in);
 
     lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+
+    return 0;
 }
 
 static util_thread_ctx_reg_int_t
@@ -1118,6 +1125,8 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
 
     if (lv)
         lv->get.lrv_num_keys_out = binary_hist_size(&rihs->rihs_bh);
+
+    int rc = 0;
 
     switch (op)
     {
@@ -1135,7 +1144,7 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
         if (!lv)
             return -EINVAL;
 
-        raft_client_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
+        rc = raft_client_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE:
@@ -1146,18 +1155,25 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
         return -ENOENT;
     }
 
-    return 0;
+    return rc;
 }
 
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                          const struct raft_instance *ri,
                                          struct lreg_value *lv)
 {
-    if (!lv || !ri ||
-        lv->lrv_value_idx_in >= RAFT_CLIENT_LREG_MAX ||
-        op != LREG_NODE_CB_OP_READ_VAL)
-        return;
+    if (!lv || !ri)
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= RAFT_CLIENT_LREG_MAX)
+        return -ERANGE;
+
+    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
+        return -EPERM;
+
+    else if (op != LREG_NODE_CB_OP_READ_VAL)
+        return -EOPNOTSUPP;
 
     switch (lv->lrv_value_idx_in)
     {
@@ -1189,6 +1205,8 @@ raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     default:
         break;
     }
+
+    return 0;
 }
 
 static util_thread_ctx_reg_int_t
@@ -1201,6 +1219,8 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     if (lv)
         lv->get.lrv_num_keys_out = RAFT_CLIENT_LREG_MAX;
+
+    int rc = 0;
 
     switch (op)
     {
@@ -1215,10 +1235,8 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     case LREG_NODE_CB_OP_READ_VAL:
     case LREG_NODE_CB_OP_WRITE_VAL: //fall through
-        if (!lv)
-            return -EINVAL;
-
-        raft_client_instance_lreg_multi_facet_cb(op, ri, lv);
+        rc = lv ?
+            raft_client_instance_lreg_multi_facet_cb(op, ri, lv) : -EINVAL;
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
@@ -1226,21 +1244,29 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         break;
 
     default:
-        return -ENOENT;
+        rc = -ENOENT;
+        break;
     }
 
-    return 0;
+    return rc;
 }
 
 
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                     struct lreg_value *lv, void *arg)
 {
-    if (!lv || arg /* arg is not used here */ ||
-        lv->lrv_value_idx_in >= RAFT_CLIENT_APP_LREG_MAX ||
-        op != LREG_NODE_CB_OP_READ_VAL)
-        return;
+    if (!lv || arg /* arg is not used here */)
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= RAFT_CLIENT_APP_LREG_MAX)
+        return -ERANGE;
+
+    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
+        return -EPERM;
+
+    else if (op != LREG_NODE_CB_OP_READ_VAL)
+        return -EOPNOTSUPP;
 
     char ctime_buf[CTIME_R_STR_LEN];
 
@@ -1306,6 +1332,8 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     default:
         break;
     }
+
+    return 0;
 }
 
 static int
