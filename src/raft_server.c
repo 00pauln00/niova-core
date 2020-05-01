@@ -95,111 +95,159 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_STATS,
 };
 
-static util_thread_ctx_reg_t
+static util_thread_ctx_reg_int_t
 raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
-                                  const struct raft_instance *ri,
+                                  struct raft_instance *ri,
                                   struct lreg_value *lv)
 {
-    if (!lv || !ri ||
-	lv->lrv_value_idx_in >= RAFT_LREG_MAX ||
-        op != LREG_NODE_CB_OP_READ_VAL)
-        return;
+    if (!lv || !ri)
+        return -EINVAL;
 
-    switch (lv->lrv_value_idx_in)
+    else if (lv->lrv_value_idx_in >= RAFT_LREG_MAX)
+        return -ERANGE;
+
+    int rc = 0;
+#if 0
+    bool tmp_bool = false;
+#endif
+
+    switch (op)
     {
-    case RAFT_LREG_RAFT_UUID:
-        lreg_value_fill_string(lv, "raft-uuid", ri->ri_raft_uuid_str);
+    case LREG_NODE_CB_OP_GET_NODE_INFO: // fall through
+    case LREG_NODE_CB_OP_INSTALL_NODE:  // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        rc = -EOPNOTSUPP;
         break;
-    case RAFT_LREG_PEER_UUID:
-        lreg_value_fill_string(lv, "peer-uuid", ri->ri_this_peer_uuid_str);
+
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_LREG_RAFT_UUID:
+            lreg_value_fill_string(lv, "raft-uuid", ri->ri_raft_uuid_str);
+            break;
+        case RAFT_LREG_PEER_UUID:
+            lreg_value_fill_string(lv, "peer-uuid", ri->ri_this_peer_uuid_str);
+            break;
+        case RAFT_LREG_VOTED_FOR_UUID:
+            lreg_value_fill_string_uuid(lv, "voted-for-uuid",
+                                        ri->ri_log_hdr.rlh_voted_for);
+            break;
+        case RAFT_LREG_LEADER_UUID:
+            if (ri->ri_csn_leader)
+                lreg_value_fill_string_uuid(lv, "leader-uuid",
+                                            ri->ri_csn_leader->csn_uuid);
+            else
+                lreg_value_fill_string(lv, "leader-uuid", NULL);
+            break;
+        case RAFT_LREG_PEER_STATE:
+            lreg_value_fill_string(lv, "state",
+                                   raft_server_state_to_string(ri->ri_state));
+            break;
+        case RAFT_LREG_FOLLOWER_REASON:
+            lreg_value_fill_string(
+                lv, "follower-reason",
+                (raft_instance_is_candidate(ri) ||
+                 raft_instance_is_leader(ri)) ? "none" :
+                raft_follower_reason_2_str(ri->ri_follower_reason));
+            break;
+        case RAFT_LREG_CLIENT_REQUESTS:
+            lreg_value_fill_string(
+                lv, "client-requests",
+                raft_server_may_accept_client_request_reason(ri));
+            break;
+        case RAFT_LREG_TERM:
+            lreg_value_fill_signed(lv, "term", ri->ri_log_hdr.rlh_term);
+            break;
+        case RAFT_LREG_COMMIT_IDX:
+            lreg_value_fill_signed(lv, "commit-idx", ri->ri_commit_idx);
+            break;
+        case RAFT_LREG_LAST_APPLIED:
+            lreg_value_fill_signed(lv, "last-applied",
+                                   ri->ri_last_applied_idx);
+            break;
+        case RAFT_LREG_LAST_APPLIED_CCRC:
+            lreg_value_fill_signed(lv, "last-applied-cumulative-crc",
+                                   ri->ri_last_applied_cumulative_crc);
+            break;
+        case RAFT_LREG_NEWEST_ENTRY_IDX:
+            lreg_value_fill_signed(
+                lv, "newest-entry-idx",
+                raft_server_get_current_raft_entry_index(ri));
+            break;
+        case RAFT_LREG_NEWEST_ENTRY_TERM:
+            lreg_value_fill_signed(
+                lv, "newest-entry-term",
+                raft_server_get_current_raft_entry_term(ri));
+            break;
+        case RAFT_LREG_NEWEST_ENTRY_SIZE:
+            lreg_value_fill_unsigned(lv, "newest-entry-data-size",
+                                     ri->ri_newest_entry_hdr.reh_data_size);
+            break;
+        case RAFT_LREG_NEWEST_ENTRY_CRC:
+            lreg_value_fill_unsigned(lv, "newest-entry-crc",
+                                     ri->ri_newest_entry_hdr.reh_crc);
+            break;
+#if 0
+        case RAFT_LREG_IGNORE_TIMER_EVENTS:
+            lreg_value_fill_bool(lv, "ignore_timer_events",
+                                 ri->ri_ignore_timerfd ? true : false);
+            break;
+#endif
+        case RAFT_LREG_HIST_COMMIT_LAT:
+            lreg_value_fill_object(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC),
+                RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+            break;
+        case RAFT_LREG_HIST_READ_LAT:
+            lreg_value_fill_object(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_READ_LAT_MSEC),
+                RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+            break;
+        case RAFT_LREG_HIST_DEV_READ_LAT:
+            lreg_value_fill_object(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC),
+                RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC);
+            break;
+        case RAFT_LREG_HIST_DEV_WRITE_LAT:
+            lreg_value_fill_object(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC),
+                RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
+            break;
+        case RAFT_LREG_FOLLOWER_STATS:
+            lreg_value_fill_array(lv, "follower-stats",
+                                  LREG_USER_TYPE_RAFT_PEER_STATS);
+            break;
+        default:
+            break;
+        }
         break;
-    case RAFT_LREG_VOTED_FOR_UUID:
-        lreg_value_fill_string_uuid(lv, "voted-for-uuid",
-                                    ri->ri_log_hdr.rlh_voted_for);
-        break;
-    case RAFT_LREG_LEADER_UUID:
-        if (ri->ri_csn_leader)
-            lreg_value_fill_string_uuid(lv, "leader-uuid",
-                                        ri->ri_csn_leader->csn_uuid);
-        else
-            lreg_value_fill_string(lv, "leader-uuid", NULL);
-        break;
-    case RAFT_LREG_PEER_STATE:
-        lreg_value_fill_string(lv, "state",
-                               raft_server_state_to_string(ri->ri_state));
-        break;
-    case RAFT_LREG_FOLLOWER_REASON:
-        lreg_value_fill_string(
-            lv, "follower-reason",
-            (raft_instance_is_candidate(ri) ||
-             raft_instance_is_leader(ri)) ? "none" :
-            raft_follower_reason_2_str(ri->ri_follower_reason));
-        break;
-    case RAFT_LREG_CLIENT_REQUESTS:
-        lreg_value_fill_string(
-            lv, "client-requests",
-            raft_server_may_accept_client_request_reason(ri));
-        break;
-    case RAFT_LREG_TERM:
-        lreg_value_fill_signed(lv, "term", ri->ri_log_hdr.rlh_term);
-        break;
-    case RAFT_LREG_COMMIT_IDX:
-        lreg_value_fill_signed(lv, "commit-idx", ri->ri_commit_idx);
-        break;
-    case RAFT_LREG_LAST_APPLIED:
-        lreg_value_fill_signed(lv, "last-applied", ri->ri_last_applied_idx);
-        break;
-    case RAFT_LREG_LAST_APPLIED_CCRC:
-        lreg_value_fill_signed(lv, "last-applied-cumulative-crc",
-                               ri->ri_last_applied_cumulative_crc);
-        break;
-    case RAFT_LREG_NEWEST_ENTRY_IDX:
-        lreg_value_fill_signed(lv, "newest-entry-idx",
-                               raft_server_get_current_raft_entry_index(ri));
-        break;
-    case RAFT_LREG_NEWEST_ENTRY_TERM:
-        lreg_value_fill_signed(lv, "newest-entry-term",
-                               raft_server_get_current_raft_entry_term(ri));
-        break;
-    case RAFT_LREG_NEWEST_ENTRY_SIZE:
-        lreg_value_fill_unsigned(lv, "newest-entry-data-size",
-                                 ri->ri_newest_entry_hdr.reh_data_size);
-        break;
-    case RAFT_LREG_NEWEST_ENTRY_CRC:
-        lreg_value_fill_unsigned(lv, "newest-entry-crc",
-                                 ri->ri_newest_entry_hdr.reh_crc);
-        break;
-    case RAFT_LREG_HIST_COMMIT_LAT:
-        lreg_value_fill_object(
-            lv,
-            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC),
-            RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
-        break;
-    case RAFT_LREG_HIST_READ_LAT:
-        lreg_value_fill_object(
-            lv,
-            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_READ_LAT_MSEC),
-            RAFT_INSTANCE_HIST_READ_LAT_MSEC);
-        break;
-    case RAFT_LREG_HIST_DEV_READ_LAT:
-        lreg_value_fill_object(
-            lv,
-            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC),
-            RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC);
-        break;
-    case RAFT_LREG_HIST_DEV_WRITE_LAT:
-        lreg_value_fill_object(
-            lv,
-            raft_instance_hist_stat_2_name(RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC),
-            RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
-        break;
-    case RAFT_LREG_FOLLOWER_STATS:
-        lreg_value_fill_array(lv, "follower-stats",
-                              LREG_USER_TYPE_RAFT_PEER_STATS);
-        break;
-    default:
-        break;
+
+    case LREG_NODE_CB_OP_WRITE_VAL:
+#if 0
+        if (lv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
+            return -EINVAL;
+
+        rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
+        if (rc)
+            return rc;
+#endif
+        switch (lv->lrv_value_idx_in)
+        {
+        default:
+            rc = -EPERM;
+            break;
+        }
     }
+
+    return rc;
 }
 
 enum raft_peer_stats_items
@@ -327,20 +375,21 @@ static util_thread_ctx_reg_int_t
 raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                       struct lreg_value *lv)
 {
-    const struct raft_instance *ri = lrn->lrn_cb_arg;
+    struct raft_instance *ri = lrn->lrn_cb_arg;
     if (!ri)
         return -EINVAL;
 
-    if (lv)
-        lv->get.lrv_num_keys_out =
-            (raft_instance_is_leader(ri) ?
-             RAFT_LREG_MAX : RAFT_LREG_MAX_FOLLOWER);
+    int rc = 0;
 
     switch (op)
     {
     case LREG_NODE_CB_OP_GET_NAME:
         if (!lv)
             return -EINVAL;
+
+        lv->get.lrv_num_keys_out = (raft_instance_is_leader(ri) ?
+                                    RAFT_LREG_MAX : RAFT_LREG_MAX_FOLLOWER);
+
         strncpy(lv->lrv_key_string, "raft_instance", LREG_VALUE_STRING_MAX);
         strncpy(LREG_VALUE_TO_OUT_STR(lv), ri->ri_raft_uuid_str,
                 LREG_VALUE_STRING_MAX);
@@ -348,10 +397,7 @@ raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     case LREG_NODE_CB_OP_READ_VAL:
     case LREG_NODE_CB_OP_WRITE_VAL: //fall through
-        if (!lv)
-            return -EINVAL;
-
-        raft_instance_lreg_multi_facet_cb(op, ri, lv);
+        rc = lv ? raft_instance_lreg_multi_facet_cb(op, ri, lv) : -EINVAL;
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
@@ -359,10 +405,11 @@ raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         break;
 
     default:
-        return -ENOENT;
+        rc = -ENOENT;
+        break;
     }
 
-    return 0;
+    return rc;
 }
 
 /**
@@ -3431,7 +3478,6 @@ raft_server_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
     return 0;
 }
 
-
 static int
 raft_server_instance_lreg_init(struct raft_instance *ri)
 {
@@ -3499,6 +3545,16 @@ raft_server_instance_startup(struct raft_instance *ri)
         return rc;
     }
 
+    rc = raft_server_instance_lreg_init(ri);
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_instance_lreg_init(): %s",
+                          strerror(-rc));
+
+        raft_server_instance_shutdown(ri);
+        return rc;
+    }
+
     rc = raft_server_log_load(ri);
     if (rc)
     {
@@ -3513,16 +3569,6 @@ raft_server_instance_startup(struct raft_instance *ri)
     if (rc)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "ev_pipe_setup(): %s",
-                          strerror(-rc));
-
-        raft_server_instance_shutdown(ri);
-        return rc;
-    }
-
-    rc = raft_server_instance_lreg_init(ri);
-    if (rc)
-    {
-        DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_instance_lreg_init(): %s",
                           strerror(-rc));
 
         raft_server_instance_shutdown(ri);

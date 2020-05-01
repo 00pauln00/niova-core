@@ -226,6 +226,12 @@ msec_2_nsec(unsigned long long msec)
 }
 
 static inline unsigned long long
+usec_2_nsec(unsigned long long msec)
+{
+    return (msec * 1000);
+}
+
+static inline unsigned long long
 nsec_2_msec(unsigned long long nsec)
 {
     return (nsec / 1000000);
@@ -239,6 +245,16 @@ msec_2_timespec(struct timespec *ts, unsigned long long msec)
 
     ts->tv_sec = msec / 1000;
     ts->tv_nsec	= msec_2_nsec(msec % 1000);
+}
+
+static inline void
+usec_2_timespec(struct timespec *ts, unsigned long long usec)
+{
+    if (!ts)
+        return;
+
+    ts->tv_sec = usec / 1000000;
+    ts->tv_nsec	= usec_2_nsec(usec % 1000000);
 }
 
 static inline unsigned long long

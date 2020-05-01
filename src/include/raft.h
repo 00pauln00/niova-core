@@ -183,7 +183,7 @@ enum raft_state
     RAFT_STATE_FOLLOWER,
     RAFT_STATE_CANDIDATE,
     RAFT_STATE_CLIENT,
-};
+} PACKED;
 
 #define RAFT_LOG_SUFFIX_MAX_LEN 8
 
@@ -195,14 +195,14 @@ enum raft_epoll_handles
     RAFT_EPOLL_HANDLE_EVP_AE_SEND,
     RAFT_EPOLL_HANDLE_EVP_SM_APPLY,
     RAFT_EPOLL_NUM_HANDLES,
-};
+} PACKED;
 
 enum raft_vote_result
 {
     RATE_VOTE_RESULT_UNKNOWN,
     RATE_VOTE_RESULT_YES,
     RATE_VOTE_RESULT_NO,
-};
+} PACKED;
 
 struct raft_candidate_state
 {
@@ -279,6 +279,7 @@ struct raft_instance
     struct raft_candidate_state ri_candidate;
     struct raft_leader_state    ri_leader;
     enum raft_state             ri_state;
+    bool                        ri_ignore_timerfd;
     enum raft_follower_reasons  ri_follower_reason;
     int                         ri_timer_fd;
     int                         ri_log_fd;
@@ -297,6 +298,7 @@ struct raft_instance
     raft_sm_request_handler_t   ri_server_sm_request_cb;
     struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
     struct lreg_node            ri_lreg;
+    struct lreg_node            ri_net_lreg;
     struct lreg_node            ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
     struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
 };

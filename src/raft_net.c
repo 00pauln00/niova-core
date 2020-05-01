@@ -11,17 +11,100 @@
 #include <sys/timerfd.h>
 #include <linux/limits.h>
 
-#include "log.h"
-#include "udp.h"
-#include "epoll_mgr.h"
-#include "crc32.h"
 #include "alloc.h"
-#include "io.h"
-#include "random.h"
+#include "crc32.h"
 #include "ctl_svc.h"
+#include "ctor.h"
+#include "epoll_mgr.h"
+#include "init.h"
+#include "io.h"
+#include "log.h"
 #include "raft.h"
+#include "random.h"
+#include "udp.h"
+#include "util_thread.h"
+
+enum raft_net_lreg_values
+{
+    RAFT_NET_LREG_IGNORE_TIMER_EVENTS,
+    RAFT_NET_LREG__MAX,
+};
+
+struct raft_instance raftInstance = {.ri_log_fd = -1};
 
 REGISTRY_ENTRY_FILE_GENERATE;
+
+static util_thread_ctx_reg_int_t
+raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
+                             void *);
+
+LREG_ROOT_ENTRY_GENERATE(raft_net, LREG_USER_TYPE_RAFT_NET);
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
+                                RAFT_NET_LREG__MAX,
+                                raft_net_lreg_multi_facet_cb, NULL);
+
+struct raft_instance *
+raft_net_get_instance(void)
+{
+    return &raftInstance;
+}
+
+static util_thread_ctx_reg_int_t
+raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
+                             void *arg)
+{
+    if (arg)
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= RAFT_NET_LREG__MAX)
+        return -ERANGE;
+
+    struct raft_instance *ri = raft_net_get_instance();
+    NIOVA_ASSERT(ri);
+
+    int rc = 0;
+    bool tmp_bool = false;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_NET_LREG_IGNORE_TIMER_EVENTS:
+            lreg_value_fill_bool(lv, "ignore_timer_events",
+                                 ri->ri_ignore_timerfd ? true : false);
+            break;
+        default:
+            rc = -ENOENT;
+            break;
+        }
+        break;
+    case LREG_NODE_CB_OP_WRITE_VAL:
+        if (lv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
+            return -EINVAL;
+
+        rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
+        if (rc)
+            return rc;
+
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_NET_LREG_IGNORE_TIMER_EVENTS:
+            ri->ri_ignore_timerfd = tmp_bool;
+            break;
+        default:
+            rc = -EPERM;
+            break;
+        }
+        break;
+    default:
+        rc = -EOPNOTSUPP;
+        break;
+    }
+
+    return rc;
+}
 
 static int
 raft_net_udp_sockets_close(struct raft_instance *ri)
@@ -472,20 +555,20 @@ raft_net_server_instance_run(const char *raft_uuid_str,
     if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
         return -EINVAL;
 
-    struct raft_instance ri = {0};
+    struct raft_instance *ri = raft_net_get_instance();
 
-    ri.ri_raft_uuid_str = raft_uuid_str;
-    ri.ri_this_peer_uuid_str = this_peer_uuid_str;
-    ri.ri_server_sm_request_cb = sm_request_handler;
-    ri.ri_log_fd = -1;
+    ri->ri_raft_uuid_str = raft_uuid_str;
+    ri->ri_this_peer_uuid_str = this_peer_uuid_str;
+    ri->ri_server_sm_request_cb = sm_request_handler;
+    ri->ri_log_fd = -1;
 
-    int rc = raft_net_instance_startup(&ri, false);
+    int rc = raft_net_instance_startup(ri, false);
     if (rc)
         return rc;
 
-    rc = raft_server_main_loop(&ri);
+    rc = raft_server_main_loop(ri);
 
-    raft_net_instance_shutdown(&ri);
+    raft_net_instance_shutdown(ri);
 
     return rc;
 }
@@ -758,6 +841,18 @@ raft_net_get_most_recently_responsive_server(const struct raft_instance *ri)
     return best_peer;
 }
 
+void
+raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs)
+{
+    struct itimerspec its = {0};
+
+    msec_2_timespec(&its.it_value, msecs);
+
+    int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
+
+    FATAL_IF((rc), "timerfd_settime(): %s", strerror(errno));
+}
+
 raft_net_timerfd_cb_ctx_t
 raft_net_timerfd_cb(const struct epoll_handle *eph)
 {
@@ -771,7 +866,10 @@ raft_net_timerfd_cb(const struct epoll_handle *eph)
         return;
     }
 
-    if (ri->ri_timer_fd_cb)
+    if (ri->ri_ignore_timerfd)
+        raft_net_timerfd_settime(ri, 1);
+
+    else if (ri->ri_timer_fd_cb)
         ri->ri_timer_fd_cb(ri);
 }
 
@@ -852,4 +950,12 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_timer_fd_cb = timer_fd_cb;
     ri->ri_udp_client_recv_cb = udp_client_recv_cb;
     ri->ri_udp_server_recv_cb = udp_server_recv_cb;
+}
+
+static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+raft_net_init(void)
+{
+    FUNC_ENTRY(LL_NOTIFY);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_info);
+    return;
 }

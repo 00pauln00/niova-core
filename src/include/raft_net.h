@@ -215,6 +215,9 @@ raft_net_client_rpc_sys_error_2_string(const int rc)
     return "unknown";
 }
 
+struct raft_instance *
+raft_net_get_instance(void);
+
 int
 raft_net_instance_startup(struct raft_instance *ri, bool client_mode);
 
@@ -274,5 +277,8 @@ raft_net_sockaddr_is_valid(const struct sockaddr_in *sockaddr)
 int
 raft_net_send_client_msg(struct raft_instance *ri,
                          struct raft_client_rpc_msg *rcrm);
+
+void
+raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 
 #endif

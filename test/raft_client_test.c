@@ -864,13 +864,7 @@ rsc_ping_raft_service(struct raft_instance *ri)
 static void
 rsc_timerfd_settime(struct raft_instance *ri)
 {
-    struct itimerspec its = {0};
-
-    msec_2_timespec(&its.it_value, RSC_TIMERFD_EXPIRE_MS);
-
-    int rc = timerfd_settime(ri->ri_timer_fd, 0, &its, NULL);
-
-    FATAL_IF((rc), "timerfd_settime(): %s", strerror(errno));
+    raft_net_timerfd_settime(ri, RSC_TIMERFD_EXPIRE_MS);
 }
 
 static raft_net_timerfd_cb_ctx_t
