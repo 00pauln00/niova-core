@@ -290,7 +290,7 @@ lctli_setup_inotify_path(struct ctl_interface *lctli)
 
     int rc = snprintf((char *)lctli->lctli_path, PATH_MAX, "/%s/%d/",
                       base_path, getpid());
-    if (rc < PATH_MAX)
+    if (rc >= PATH_MAX)
         return -ENAMETOOLONG;
 
     LOG_MSG(LL_NOTIFY, "path defaulting to %s", lctli->lctli_path);
