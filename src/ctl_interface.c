@@ -364,7 +364,7 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
     return close_rc;
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(LCTLI_SUBSYS_CTOR_PRIORITY)
 lctli_subsystem_init(void)
 {
     struct ctl_interface *lctli = lctli_new();
@@ -379,17 +379,28 @@ lctli_subsystem_init(void)
     FATAL_IF(rc, "lctli_prepare(): %s (path=%s)",
              strerror(-rc), lctli->lctli_path);
 
-    rc = lctli_process_init_subdir(lctli);
-    FATAL_IF(rc, "lctli_process_init_subdir(): %s (path=%s)",
-             strerror(-rc), lctli->lctli_path);
-
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
                                        lctli_epoll_mgr_cb, (void *)lctli);
 
     FATAL_IF(rc, "util_thread_install_event_src(): %s", strerror(-rc));
 }
 
-destroy_ctx_t
+/**
+ * lctli_subsystem_enable - this scans the init/ subdir towards the end of the
+ *    init context.  This is to give an opportunity for subsystem to have
+ *    installed their registry hooks before the init/ scan is run.
+ */
+static init_ctx_t NIOVA_CONSTRUCTOR(LCTLI_SUBSYS_ENABLE_CTOR_PRIORITY)
+lctli_subsystem_enable(void)
+{
+    struct ctl_interface *lctli = &localCtlIf[LCTLI_DEFAULT_IDX];
+
+    int rc = lctli_process_init_subdir(lctli);
+    FATAL_IF(rc, "lctli_process_init_subdir(): %s (path=%s)",
+             strerror(-rc), lctli->lctli_path);
+}
+
+static destroy_ctx_t NIOVA_DESTRUCTOR(LCTLI_SUBSYS_CTOR_PRIORITY)
 lctli_subsystem_destroy(void)
 {
     struct ctl_interface *lctli = &localCtlIf[LCTLI_DEFAULT_IDX];

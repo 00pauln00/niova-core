@@ -250,7 +250,7 @@ watchdog_subsystem_init_env_var_apply(struct watchdog_instance *wdi)
     return 0;
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(WATCHDOG_SUBSYS_CTOR_PRIORITY)
 watchdog_subsystem_init(void)
 {
     struct watchdog_instance *wdi = &defaultWdi;
@@ -267,7 +267,7 @@ watchdog_subsystem_init(void)
     thread_ctl_run(&wdi->wdi_thread_ctl);
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(WATCHDOG_SUBSYS_CTOR_PRIORITY)
 watchdog_subsystem_destroy(void)
 {
     struct watchdog_instance *wdi = &defaultWdi;

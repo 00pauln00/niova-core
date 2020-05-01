@@ -259,12 +259,4 @@ ctl_svc_node_lookup_by_string(const char *uuid_str,
 void
 ctl_svc_node_put(struct ctl_svc_node *csn);
 
-init_ctx_t
-ctl_svc_init(void)
-    __attribute__ ((constructor (CTL_SVC_CTOR_PRIORITY)));
-
-destroy_ctx_t
-ctl_svc_destroy(void)
-    __attribute__ ((destructor (CTL_SVC_CTOR_PRIORITY)));
-
 #endif

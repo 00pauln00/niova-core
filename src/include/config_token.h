@@ -90,13 +90,4 @@ conf_token_set_token_is_enabled(const struct conf_token_set *cts,
 int
 conf_token_set_parse(struct conf_token_set_parser *ctsp);
 
-init_ctx_t
-conf_token_svc_init(void)
-    __attribute__ ((constructor (CONFIG_TOKEN_CTOR_PRIORITY)));
-
-destroy_ctx_t
-conf_token_svc_destroy(void)
-    __attribute__ ((destructor (CONFIG_TOKEN_CTOR_PRIORITY)));
-
-
 #endif

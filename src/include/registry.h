@@ -61,6 +61,7 @@ enum lreg_user_types
     LREG_USER_TYPE_NIOSD_IO_CTX,
     LREG_USER_TYPE_NIOSD_IO_STATS,
     LREG_USER_TYPE_RAFT,
+    LREG_USER_TYPE_RAFT_NET,
     LREG_USER_TYPE_RAFT_CLIENT,
     LREG_USER_TYPE_RAFT_CLIENT_APP,
     LREG_USER_TYPE_RAFT_PEER_STATS,
@@ -349,14 +350,6 @@ lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
 
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
-
-init_ctx_t
-lreg_subsystem_init(void)
-    __attribute__ ((constructor (LREG_SUBSYS_CTOR_PRIORITY)));
-
-destroy_ctx_t
-lreg_subsystem_destroy(void)
-    __attribute__ ((destructor (LREG_SUBSYS_CTOR_PRIORITY)));
 
 #define LREG_ROOT_ENTRY_GENERATE(name, user_type)                       \
     static lreg_install_int_ctx_t                                       \

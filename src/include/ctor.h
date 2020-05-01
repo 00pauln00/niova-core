@@ -6,6 +6,12 @@
 #ifndef _CTOR_H
 #define _CTOR_H 1
 
+#define NIOVA_CONSTRUCTOR(priority)             \
+    __attribute__ ((constructor (priority)))
+
+#define NIOVA_DESTRUCTOR(priority)              \
+    __attribute__ ((destructor (priority)))
+
 /* -- constructor_priorities --
  * Startup (and shutdown) order for NIOVA subsystems.
  */
@@ -17,12 +23,14 @@ enum constructor_priorities {
     FAULT_INJECT_CTOR_PRIORITY,
     LOG_SUBSYS_CTOR_PRIORITY,
     SYSTEM_INFO_CTOR_PRIORITY,
-    LCTLI_SUBSYS_PRIORITY,
+    LCTLI_SUBSYS_CTOR_PRIORITY,
     UTIL_THREAD_SUBSYS_CTOR_PRIORITY,
-    VBLKDEV_HANDLE_CTOR_PRIORITY,
-    NIOSD_IO_CTX_STATS_CTOR_PRIORITY,
     CONFIG_TOKEN_CTOR_PRIORITY,
     CTL_SVC_CTOR_PRIORITY,
+    VBLKDEV_HANDLE_CTOR_PRIORITY,
+    NIOSD_IO_CTX_STATS_CTOR_PRIORITY,
+    RAFT_SYS_CTOR_PRIORITY,
+    LCTLI_SUBSYS_ENABLE_CTOR_PRIORITY,
     INIT_COMPLETE_CTOR_PRIORITY,
 };
 

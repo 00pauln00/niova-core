@@ -158,8 +158,4 @@ fault_injection_evaluate(struct fault_injection *flti)
 
 #define FAULT_INJECT(id) FAULT_INJECT_CB(id, )
 
-init_ctx_t
-fault_injection_init(void)  __attribute__
-    ((constructor (FAULT_INJECT_CTOR_PRIORITY)));
-
 #endif

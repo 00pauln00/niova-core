@@ -550,7 +550,7 @@ lreg_util_thread_cb(const struct epoll_handle *eph)
     evp_increment_reader_cnt(&lRegEVP);
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_init(void)
 {
     NIOVA_ASSERT(!lRegInitialized);
@@ -580,7 +580,7 @@ lreg_subsystem_init(void)
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_destroy(void)
 {
     //Remove from util thread?

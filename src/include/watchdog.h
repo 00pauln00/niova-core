@@ -50,12 +50,4 @@ watchdog_get_exec_cnt(const struct watchdog_handle *wdh)
     return wdh ? wdh->wdh_thread_exec_cnt : 0;
 }
 
-init_ctx_t
-watchdog_subsystem_init(void)
-    __attribute__ ((constructor (WATCHDOG_SUBSYS_CTOR_PRIORITY)));
-
-destroy_ctx_t
-watchdog_subsystem_destroy(void)
-    __attribute__ ((destructor (WATCHDOG_SUBSYS_CTOR_PRIORITY)));
-
 #endif

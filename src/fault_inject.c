@@ -157,7 +157,7 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(FAULT_INJECT_CTOR_PRIORITY)
 fault_injection_init(void)
 {
     if (!faultInjectionEnabled)

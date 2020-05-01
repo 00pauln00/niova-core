@@ -25,12 +25,4 @@ system_info_apply_uuid_by_str(const char *uuid_str);
 env_cb_ctx_t
 system_info_apply_uuid_env_cb(const struct niova_env_var *ev);
 
-init_ctx_t
-system_info_subsystem_init(void)
-    __attribute__ ((constructor (SYSTEM_INFO_CTOR_PRIORITY)));
-
-destroy_ctx_t
-system_info_subsystem_destroy(void)
-    __attribute__ ((destructor (SYSTEM_INFO_CTOR_PRIORITY)));
-
 #endif

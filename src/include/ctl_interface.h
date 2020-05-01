@@ -20,12 +20,4 @@ struct ctli_cmd_handle
 const char *
 lctli_get_inotify_path(void);
 
-void
-lctli_subsystem_init(void)
-    __attribute__ ((constructor (LCTLI_SUBSYS_PRIORITY)));
-
-void
-lctli_subsystem_destroy(void)
-    __attribute__ ((destructor (LCTLI_SUBSYS_PRIORITY)));
-
 #endif //_CTL_INTERFACE_

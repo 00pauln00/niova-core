@@ -241,14 +241,14 @@ env_get(enum niova_env_var_num ev)
     return &niovaEnvVars[ev];
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(ENV_VAR_SUBSYS_CTOR_PRIORITY)
 env_init(void)
 {
     env_load();
     niovaEnvVarsSubsysInit = true;
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(ENV_VAR_SUBSYS_CTOR_PRIORITY)
 env_destroy(void)
 {
     return;

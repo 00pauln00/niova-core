@@ -66,12 +66,4 @@ struct niova_env_var
 const struct niova_env_var *
 env_get(enum niova_env_var_num ev);
 
-init_ctx_t
-env_init(void)
-    __attribute__ ((constructor (ENV_VAR_SUBSYS_CTOR_PRIORITY)));
-
-destroy_ctx_t
-env_destroy(void)
-    __attribute__ ((destructor (ENV_VAR_SUBSYS_CTOR_PRIORITY)));
-
 #endif

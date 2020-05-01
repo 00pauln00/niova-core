@@ -1063,7 +1063,7 @@ ctl_svc_nodes_release(void)
     }
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(CTL_SVC_CTOR_PRIORITY)
 ctl_svc_init(void)
 {
     LREG_ROOT_ENTRY_INSTALL(ctl_svc_nodes);
@@ -1081,7 +1081,7 @@ ctl_svc_init(void)
                        strerror(-rc));
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(CTL_SVC_CTOR_PRIORITY)
 ctl_svc_destroy(void)
 {
     FUNC_ENTRY(LL_NOTIFY);

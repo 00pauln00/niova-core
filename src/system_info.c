@@ -314,7 +314,7 @@ system_info_auto_detect_uuid(void)
     return rc;
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(SYSTEM_INFO_CTOR_PRIORITY)
 system_info_subsystem_init(void)
 {
     FUNC_ENTRY(LL_DEBUG);
@@ -326,7 +326,7 @@ system_info_subsystem_init(void)
                        strerror(-rc));
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(SYSTEM_INFO_CTOR_PRIORITY)
 system_info_subsystem_destroy(void)
 {
     FUNC_ENTRY(LL_DEBUG);

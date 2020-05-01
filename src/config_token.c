@@ -437,7 +437,7 @@ conf_token_set_parse(struct conf_token_set_parser *ctsp)
     return value_buf_idx ? -EBADMSG : 0;
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(CONFIG_TOKEN_CTOR_PRIORITY)
 conf_token_svc_init(void)
 {
     for (enum conf_token_id i = CT_ID__MIN; i < CT_ID__MAX; i++)
@@ -449,7 +449,7 @@ conf_token_svc_init(void)
     }
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(CONFIG_TOKEN_CTOR_PRIORITY)
 conf_token_svc_destroy(void)
 {
     for (enum conf_token_id i = CT_ID__MIN; i < CT_ID__MAX; i++)
