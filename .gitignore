@@ -40,3 +40,4 @@ raft_server
 raft-server
 test/random-test
 raft-client
+test/queue_test

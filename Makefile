@@ -131,6 +131,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/random-test \
 		test/random-test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/queue_test \
+		test/queue_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \

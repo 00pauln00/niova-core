@@ -684,4 +684,23 @@ struct {								\
 	_Q_INVALIDATE((elm)->field.cqe_next);				\
 } while (0)
 
+#define CIRCLEQ_SPLICE_TAIL(src_head, dst_head, field) do {             \
+        if (CIRCLEQ_EMPTY((src_head)))                                  \
+            break;  /* nothing to do */                                 \
+                                                                        \
+        (src_head)->cqh_first->field.cqe_prev = (dst_head)->cqh_last;   \
+        (src_head)->cqh_last->field.cqe_next = (void *)(dst_head);      \
+                                                                        \
+        if (CIRCLEQ_EMPTY((dst_head)))                                  \
+        {                                                               \
+            *(dst_head) = *(src_head);                                  \
+        }                                                               \
+        else                                                            \
+        {                                                               \
+            (dst_head)->cqh_last->field.cqe_next = (src_head)->cqh_first; \
+            (dst_head)->cqh_last = (src_head)->cqh_last;                \
+        }                                                               \
+        CIRCLEQ_INIT((src_head));                                       \
+    } while (0)
+
 #endif	/* !_SYS_QUEUE_H_ */
