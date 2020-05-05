@@ -540,7 +540,10 @@ raft_num_members_validate_and_get(const struct raft_instance *ri)
     const raft_peer_t num_peers =
 	ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
 
-    NIOVA_ASSERT(raft_num_members_is_valid(num_peers));
+    FATAL_IF((!raft_num_members_is_valid(num_peers)),
+             "raft-instance %s num-peers(%hhu) is not >= %u and <= %u",
+             ri->ri_raft_uuid_str, num_peers, CTL_SVC_MIN_RAFT_PEERS,
+             CTL_SVC_MAX_RAFT_PEERS);
 
     return num_peers;
 }
