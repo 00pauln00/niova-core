@@ -56,6 +56,9 @@
 #define CONST_OVERRIDE(type, var, value)         \
     *(type *)&(var) = value;
 
+#define NUM_HEX_CHARS(type)                     \
+    sizeof(type) * 2
+
 typedef uint8_t raft_peer_t;
 
 typedef uint32_t pblk_id_t;
