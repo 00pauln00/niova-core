@@ -2,7 +2,7 @@
 
 export UUID=${1}
 
-NIOVA_INOTIFY_PATH=/tmp/.niova/${UUID} \
+#NIOVA_INOTIFY_PATH=/tmp/.niova/${UUID} \
 NIOVA_LOCAL_CTL_SVC_DIR=test/ctl-svr-test-inputs/ \
 NIOVA_LOG_LEVEL=${NIOVA_LOG_LEVEL:-2} \
 gdb -ex=r --args \

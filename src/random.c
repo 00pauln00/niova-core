@@ -5,10 +5,12 @@
  */
 
 #include <syscall.h>
+#include <uuid/uuid.h>
 
-#include "random.h"
 #include "common.h"
 #include "log.h"
+#include "random.h"
+#include "util.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -22,6 +24,20 @@ pid_t gettid(void)
     pid_t tid = syscall(SYS_gettid);
 
     return tid;
+}
+
+uint32_t
+random_create_seed_from_uuid(const uuid_t uuid)
+{
+    // Generate the msg-id using our UUID as a base.
+    uint64_t uuid_int[2];
+    niova_uuid_2_uint64(uuid, &uuid_int[0], &uuid_int[1]);
+
+    const uint32_t *ptr = (const uint32_t *)&uuid_int;
+
+    uint32_t seed = ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];
+
+    return seed;
 }
 
 int

@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <uuid/uuid.h>
 
 #define RANDOM_STATE_BUF_LEN 256
 
@@ -21,5 +22,7 @@ random_get(void);
 int
 random_init(unsigned int seed);
 
+unsigned int
+random_create_seed_from_uuid(const uuid_t uuid);
 
 #endif
