@@ -198,12 +198,12 @@ ctlic_request_done(struct ctlic_request *cr)
 
 #define CTLIC_OUTPUT_TMP_FILE(tmp_str, file_name)                       \
     const size_t CTLIC_OUTPUT_TMP_FILE_file_name_len =                  \
-        strnlen((file_name), PATH_MAX);                                 \
+        NUM_HEX_CHARS(pid_t) + strnlen((file_name), PATH_MAX);          \
     if (CTLIC_OUTPUT_TMP_FILE_file_name_len >= PATH_MAX - 2)            \
         return -ENAMETOOLONG;                                           \
     DECL_AND_FMT_STRING((tmp_str),                                      \
                         CTLIC_OUTPUT_TMP_FILE_file_name_len + 2,        \
-                        ".%s", file_name);
+                        ".%s.%x", file_name, getpid());
 
 static int
 ctlic_rename_output_file(int out_dirfd, struct ctlic_request *cr)
