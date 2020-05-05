@@ -14,6 +14,7 @@
 #include "common.h"
 
 #define CTIME_R_STR_LEN 26
+#define MK_TIME_STR_LEN 65
 
 #if defined MY_FATAL_IF
 #undef MY_FATAL_IF
@@ -334,6 +335,28 @@ niova_string_to_bool(const char *string, bool *ret_bool)
         return -EINVAL;
 
     return 0;
+}
+
+static inline void
+niova_set_tz(const char *tz_value, bool overwrite)
+{
+    if (tz_value)
+    {
+        setenv("TZ", tz_value, overwrite);
+        tzset();
+    }
+}
+
+static inline int
+niova_mk_time_string(time_t time, char *out_str, size_t out_str_len)
+{
+    struct tm tm = {0};
+
+    localtime_r(&time, &tm);
+
+    size_t rc = strftime(out_str, out_str_len, "%a %b %d %H:%M:%S %Z %Y", &tm);
+
+    return rc == 0 ? -ENOSPC : 0;
 }
 
 #endif

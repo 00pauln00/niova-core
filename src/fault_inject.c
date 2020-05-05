@@ -68,7 +68,6 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     struct fault_injection *flti = OFFSET_CAST(fault_injection, flti_lrn, lrn);
 
-    char ctime_buf[CTIME_R_STR_LEN];
     bool tmp_bool;
     int tmp_rc;
 
@@ -104,9 +103,8 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                                    fault_injection_when_2_str(flti));
             break;
         case FAULT_INJECT_REG_KEY_LAST_INJECTED:
-            ctime_r((const time_t *)&flti->flti_last, ctime_buf);
-            niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
-            lreg_value_fill_string(lrv, "last_injected_at", ctime_buf);
+            lreg_value_fill_string_time(lrv, "last_injected_at",
+                                        flti->flti_last);
             break;
         case FAULT_INJECT_REG_KEY_INJECTED_CNT:
             lreg_value_fill_unsigned(lrv, "injection_count",

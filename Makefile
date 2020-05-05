@@ -137,7 +137,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/rocksdb-test \
 		test/rocksdb-test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS) -lrocksdb
-
+	$(CC) $(CFLAGS) -o test/util-test \
+		test/util-test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
@@ -169,6 +171,7 @@ test_build:
 	test/udp_test
 	test/niosd_io_test -t 1
 	test/work_dispatch_test
+	test/util-test
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
 

@@ -7,10 +7,11 @@
 #ifndef _REGISTRY_H
 #define _REGISTRY_H 1
 
-#include "init.h"
-#include "ctor.h"
-#include "queue.h"
 #include "atomic.h"
+#include "ctor.h"
+#include "init.h"
+#include "queue.h"
+#include "util.h"
 
 /* "Install context" is designated for threads other than the glreg service
  * thread which may add new registry objects.
@@ -557,6 +558,20 @@ lreg_value_fill_string_uuid(struct lreg_value *lv, const char *key,
         uuid_unparse(uuid, uuid_str);
 
         lreg_value_fill_string(lv, key, uuid_str);
+    }
+}
+
+static inline void
+lreg_value_fill_string_time(struct lreg_value *lv, const char *key,
+                            const time_t time)
+{
+    if (lv)
+    {
+        char time_buf[MK_TIME_STR_LEN];
+        int rc = niova_mk_time_string(time, time_buf, MK_TIME_STR_LEN);
+
+        if (!rc)
+            lreg_value_fill_string(lv, key, time_buf);
     }
 }
 

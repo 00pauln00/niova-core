@@ -123,7 +123,6 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     static struct rusage  rusage_current;
     static struct utsname uts_current;
 
-    char ctime_buf[CTIME_R_STR_LEN];
     struct timespec now;
 
     niova_realtime_coarse_clock(&now);
@@ -139,9 +138,7 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     switch (lv->lrv_value_idx_in)
     {
     case SYS_INFO_KEY_CTIME:
-        ctime_r((const time_t *)&now.tv_sec, ctime_buf);
-	niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
-        lreg_value_fill_string(lv, "current_time", ctime_buf);
+        lreg_value_fill_string_time(lv, "current_time", now.tv_sec);
         break;
     case SYS_INFO_KEY_UUID:
         lreg_value_fill_string_uuid(lv, "uuid", systemInfoUuid);

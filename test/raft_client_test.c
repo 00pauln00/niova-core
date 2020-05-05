@@ -350,14 +350,8 @@ rsc_init_random_seed(const uuid_t self_uuid)
 {
     NIOVA_ASSERT(!rRTI.rtti_random_seed);
 
-    // Generate the msg-id using our UUID as a base.
-    uint64_t uuid_int[2];
-    niova_uuid_2_uint64(self_uuid, &uuid_int[0], &uuid_int[1]);
-
-    const uint32_t *ptr = (const uint32_t *)&uuid_int;
-
     CONST_OVERRIDE(uint32_t, rRTI.rtti_random_seed,
-                   (ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3]));
+                   random_create_seed_from_uuid(self_uuid));
 
     NIOVA_ASSERT(rRTI.rtti_random_seed);
 }
@@ -1262,8 +1256,6 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     else if (op != LREG_NODE_CB_OP_READ_VAL)
         return -EOPNOTSUPP;
 
-    char ctime_buf[CTIME_R_STR_LEN];
-
     switch (lv->lrv_value_idx_in)
     {
     case RAFT_CLIENT_APP_LREG_UUID:
@@ -1314,14 +1306,12 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         lreg_value_fill_bool(lv, "leader-is-viable", rsc_leader_is_viable());
         break;
     case RAFT_CLIENT_APP_LREG_LAST_MSG_RECVD:
-        ctime_r((const time_t *)rsc_get_last_msg_recvd(), ctime_buf);
-        niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
-        lreg_value_fill_string(lv, "last-msg-recvd", ctime_buf);
+        lreg_value_fill_string_time(lv, "last-msg-recvd",
+                                    rsc_get_last_msg_recvd()->tv_sec);
         break;
     case RAFT_CLIENT_APP_LREG_LAST_REQUEST_ACKD:
-        ctime_r((const time_t *)rsc_get_last_request_ackd(), ctime_buf);
-        niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
-        lreg_value_fill_string(lv, "last-request-ack", ctime_buf);
+        lreg_value_fill_string_time(lv, "last-request-ack",
+                                    rsc_get_last_request_ackd()->tv_sec);
         break;
     default:
         break;

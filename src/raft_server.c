@@ -276,8 +276,6 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         op != LREG_NODE_CB_OP_READ_VAL)
         return;
 
-    char ctime_buf[CTIME_R_STR_LEN];
-
     const struct raft_follower_info *rfi =
         raft_server_get_follower_info((struct raft_instance *)ri, peer);
 
@@ -297,11 +295,7 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         break;
 #endif
     case RAFT_PEER_STATS_LAST_ACK:
-        ctime_r((const time_t *)&rfi->rfi_last_ack.tv_sec, ctime_buf);
-        niova_newline_to_string_terminator(ctime_buf, CTIME_R_STR_LEN);
-
-        lreg_value_fill_string(lv, "last-ack", ctime_buf);
-
+        lreg_value_fill_string_time(lv, "last-ack", rfi->rfi_last_ack.tv_sec);
         break;
 #if 0
     case RAFT_PEER_STATS_BYTES_SENT:

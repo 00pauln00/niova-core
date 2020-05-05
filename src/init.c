@@ -5,6 +5,7 @@
  */
 #include "common.h"
 #include "log.h"
+#include "util.h"
 
 static bool initCtx;
 static bool destroyCtx;
@@ -36,6 +37,8 @@ init_start(void)
     NIOVA_ASSERT(!destroyCtx);
 
     initCtx = true;
+
+    niova_set_tz("UTC", false);
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }
