@@ -1,10 +1,36 @@
 #!/bin/sh
 
-export UUID=${1}
+if [ $# -ne 2 ]
+then
+    echo "Usage:  $0 <Raft-UUID> <Peer-UUID>"
+    exit 1
+fi
 
-NIOVA_INOTIFY_PATH=/tmp/.niova/${UUID} \
-NIOVA_LOCAL_CTL_SVC_DIR=test/ctl-svr-test-inputs/ \
-NIOVA_LOG_LEVEL=${NIOVA_LOG_LEVEL:-2} \
+export NIOVA_LOCAL_CTL_SVC_DIR=${NIOVA_LOCAL_CTL_SVC_DIR:-test/ctl-svr-test-inputs/}
+export NIOVA_LOG_LEVEL=${NIOVA_LOG_LEVEL:-2}
+
+RAFT_UUID=${1}
+PEER_UUID=${2}
+
+echo $RAFT_UUID \
+    | egrep ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ \
+            > /dev/null
+
+if [ $? -ne 0 ]
+then
+    echo "Parameter '$RAFT_UUID' is not a valid UUID"
+    exit 1
+fi
+
+echo $PEER_UUID \
+    | egrep ^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$ \
+            > /dev/null
+
+if [ $? -ne 0 ]
+then
+    echo "Parameter '$PEER_UUID' is not a valid UUID"
+    exit 1
+fi
+
 gdb -ex=r --args \
-./raft-server -r ae3f4a60-2038-11ea-ae5f-90324b2d1e85 \
--u ${UUID}  2> /tmp/${UUID}.peer
+./raft-server -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${UUID}.peer

@@ -1355,17 +1355,17 @@ raft_client_test_lreg_init(struct raft_instance *ri)
 int
 main(int argc, char **argv)
 {
-    struct raft_instance raft_client_instance = {0};
+    struct raft_instance *ri = raft_net_get_instance();
 
     rsc_getopt(argc, argv);
 
-    raft_client_instance.ri_raft_uuid_str = raft_uuid_str;
-    raft_client_instance.ri_this_peer_uuid_str = my_uuid_str;
+    ri->ri_raft_uuid_str = raft_uuid_str;
+    ri->ri_this_peer_uuid_str = my_uuid_str;
 
-    raft_net_instance_apply_callbacks(&raft_client_instance, rsc_timerfd_cb,
-                                      rsc_udp_recv_handler, NULL);
+    raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb, rsc_udp_recv_handler,
+                                      NULL);
 
-    int rc = raft_net_instance_startup(&raft_client_instance, true);
+    int rc = raft_net_instance_startup(ri, true);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
@@ -1373,7 +1373,7 @@ main(int argc, char **argv)
         exit(-rc);
     }
 
-    rc = raft_client_test_lreg_init(&raft_client_instance);
+    rc = raft_client_test_lreg_init(ri);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_client_test_lreg_init(): %s",
@@ -1381,11 +1381,11 @@ main(int argc, char **argv)
         exit(-rc);
     }
 
-    rsc_init_random_seed(raft_client_instance.ri_csn_this_peer->csn_uuid);
+    rsc_init_random_seed(ri->ri_csn_this_peer->csn_uuid);
 
     rsc_random_init(&randData, randStateBuf);
 
-    rc = rsc_main_loop(&raft_client_instance);
+    rc = rsc_main_loop(ri);
 
     exit(rc);
 }

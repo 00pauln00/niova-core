@@ -41,3 +41,5 @@ raft-server
 test/random-test
 raft-client
 test/queue_test
+test/rocksdb-test
+test/util-test
