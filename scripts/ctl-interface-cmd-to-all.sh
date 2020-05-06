@@ -6,7 +6,14 @@ VERBOSE=""
 WATCH=0
 EDIT=0
 
-while getopts ":vd:i:we" opt; do
+function print_help()
+{
+    echo \
+        "Usage:  $0 [-d ctl-dir (${CTL_DIR})] [-i iterations (${ITERATIONS})] [-e (launch edit terminal)] [-w (launch watch terminal)] <cmd-file>"
+    exit
+}
+
+while getopts ":vd:i:weh" opt; do
   case ${opt} in
     d )
         CTL_DIR=$OPTARG
@@ -18,6 +25,9 @@ while getopts ":vd:i:we" opt; do
         ;;
     e )
         EDIT=1
+        ;;
+    h )
+        print_help
         ;;
     i )
         ITERATIONS=$OPTARG
@@ -37,8 +47,7 @@ while getopts ":vd:i:we" opt; do
     \? )
         echo "Invalid option: '$OPTARG'" 1>&2
         echo ""
-        echo \
-            "Usage:  $0 [-d ctl-dir (${CTL_DIR})] [-i iterations (${ITERATIONS})] [-e (launch edit terminal)] [-w (launch watch terminal)] <cmd-file>"
+        print_help
       ;;
     : )
       echo "Invalid option: '$OPTARG' requires an argument" 1>&2
@@ -51,9 +60,7 @@ shift $((OPTIND -1))
 
 if [ $# -lt 1 ]
 then
-    echo \
-        "Usage:  $0 [-d ctl-dir (${CTL_DIR})] [-i iterations (${ITERATIONS})] <cmd-file>"
-    exit 1
+    print_help
 fi
 
 CMD_FILE=$1
