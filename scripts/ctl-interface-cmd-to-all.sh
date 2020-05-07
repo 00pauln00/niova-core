@@ -90,12 +90,12 @@ if [ $WATCH -eq 1 ]
 then
     REGEX_PATH=${CTL_DIR}[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/output/$OUT_FILE
     CMD="watch -n 1 find ${CTL_DIR} -regextype posix-egrep -regex \"${REGEX_PATH}\" -exec cat {} \\;"
-    gnome-terminal -- $CMD
+    gnome-terminal --zoom .75 -- $CMD > /dev/null
 fi
 
 if [ $EDIT -eq 1 ]
 then
-    gnome-terminal -- vim $CMD_FILE
+    gnome-terminal -- vim $CMD_FILE > /dev/null
 fi
 
 while [ $ITERATIONS -gt 0 ]
