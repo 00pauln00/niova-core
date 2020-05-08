@@ -151,7 +151,7 @@ done
 
 if [ $WATCH -ne 0 ]
 then
-    echo "GET /raft_root_entry/.*
+    echo "GET /raft_root_entry/.*/.*/.*
 GET /system_info/current_time
 OUTFILE /raft-$$-${RANDOM}.out" >> /tmp/raft-$$.cmd
     `dirname $0`/ctl-interface-cmd-to-all.sh -e -w -i 100000 /tmp/raft-$$.cmd
