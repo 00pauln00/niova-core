@@ -30,6 +30,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 enum system_info_keys
 {
     SYS_INFO_KEY_CTIME,
+    SYS_INFO_KEY_STARTUP_CTIME,
     SYS_INFO_KEY_PID,
     SYS_INFO_KEY_UUID,
     SYS_INFO_KEY_CTL_INTERFACE_PATH,
@@ -56,6 +57,7 @@ enum system_info_keys
 
 static char   systemInfoProcessCmdLine[SYS_INFO_PROCESS_CMDLINE_LEN + 1];
 static uuid_t systemInfoUuid;
+static struct timespec systemInfoStartTime;
 
 void
 system_info_get_uuid(uuid_t sys_info_uuid_copy)
@@ -139,6 +141,10 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     {
     case SYS_INFO_KEY_CTIME:
         lreg_value_fill_string_time(lv, "current_time", now.tv_sec);
+        break;
+    case SYS_INFO_KEY_STARTUP_CTIME:
+        lreg_value_fill_string_time(lv, "start_time",
+                                    systemInfoStartTime.tv_sec);
         break;
     case SYS_INFO_KEY_UUID:
         lreg_value_fill_string_uuid(lv, "uuid", systemInfoUuid);
@@ -316,6 +322,8 @@ system_info_subsystem_init(void)
 {
     FUNC_ENTRY(LL_DEBUG);
     LREG_ROOT_OBJECT_ENTRY_INSTALL(system_info);
+
+    niova_realtime_coarse_clock(&systemInfoStartTime);
 
     int rc = system_info_auto_detect_uuid();
     if (rc)
