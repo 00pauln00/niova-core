@@ -30,7 +30,10 @@ enum raft_net_lreg_values
     RAFT_NET_LREG__MAX,
 };
 
-struct raft_instance raftInstance = {.ri_log_fd = -1};
+struct raft_instance raftInstance = {
+    .ri_log_fd = -1,
+    .ri_store_type = RAFT_INSTANCE_STORE_ROCKSDB,
+};
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

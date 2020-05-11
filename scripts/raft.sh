@@ -32,5 +32,6 @@ then
     exit 1
 fi
 
+#gdb --args
 gdb -ex=r --args \
-./raft-server -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${UUID}.peer
+./raft-server -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer

@@ -35,7 +35,15 @@
 char name[len + 1];                                             \
 {                                                               \
     int rc = snprintf(name, len, fmt, ##__VA_ARGS__);           \
-    MY_FATAL_IF((rc > len), "rc=%d, requested len=%zu", rc, len);  \
+    MY_FATAL_IF((rc < 0 || rc > len), "rc=%d, requested len=%zu", rc, len);  \
+}
+
+#define	DECL_AND_FMT_STRING_RET_LEN(name, len, ret_len, fmt, ...)       \
+char name[len + 1];                                                     \
+{                                                                       \
+    ssize_t rc = snprintf(name, len, fmt, ##__VA_ARGS__);               \
+    MY_FATAL_IF((rc < 0 || rc > len), "rc=%zd, requested len=%zu", rc, len); \
+    *(ret_len) = rc;                                                     \
 }
 
 #define DECL_AND_INIT_STRING(name, str_len, init_char, init_char_len)   \

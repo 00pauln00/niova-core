@@ -11,6 +11,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <rocksdb/c.h>
+
 #include "binary_hist.h"
 #include "common.h"
 #include "ctl_svc.h"
@@ -43,6 +45,31 @@
 
 #define RAFT_INSTANCE_2_RAFT_UUID(ri)           \
     (ri)->ri_csn_raft->csn_uuid
+
+#define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
+
+#define RAFT_LOG_HEADER_ROCKSDB "a0_hdr."
+#define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
+#define RAFT_LOG_HEADER_FMT                     \
+    RAFT_LOG_HEADER_ROCKSDB"%s_%s"
+
+#define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
+#define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
+#define RAFT_LOG_LASTENTRY_FMT                     \
+    RAFT_LOG_LASTENTRY_ROCKSDB"%s_%s"
+
+
+#define RAFT_ENTRY_KEY_FMT "%s%016zu"
+
+#define RAFT_ENTRY_KEY_PREFIX_ROCKSDB "e0."
+#define RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN 3
+#define RAFT_ENTRY_KEY_PRINTF                           \
+    RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_FMT
+
+#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB "h0."
+#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB_STRLEN 3
+#define RAFT_ENTRY_HEADER_KEY_PRINTF                            \
+    RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_FMT
 
 typedef void    raft_server_udp_cb_ctx_t;
 typedef int     raft_server_udp_cb_ctx_int_t;
@@ -265,41 +292,58 @@ struct raft_instance_hist_stats
     struct lreg_node              rihs_lrn;
 };
 
+enum raft_instance_store_type
+{
+    RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
+    RAFT_INSTANCE_STORE_ROCKSDB,
+};
+
+struct raft_instance_rocks_db
+{
+    rocksdb_t              *rir_db;
+    rocksdb_options_t      *rir_options;
+    rocksdb_writeoptions_t *rir_writeoptions;
+    rocksdb_readoptions_t  *rir_readoptions;
+    rocksdb_writebatch_t   *rir_writebatch;
+};
+
 struct raft_instance
 {
-    struct udp_socket_handle    ri_ush[RAFT_UDP_LISTEN_MAX];
-    struct ctl_svc_node        *ri_csn_raft;
-    struct ctl_svc_node        *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
-    struct ctl_svc_node        *ri_csn_this_peer;
-    struct ctl_svc_node        *ri_csn_leader;
-    struct timespec             ri_last_send[CTL_SVC_MAX_RAFT_PEERS];
-    struct timespec             ri_last_recv[CTL_SVC_MAX_RAFT_PEERS];
-    const char                 *ri_raft_uuid_str;
-    const char                 *ri_this_peer_uuid_str;
-    struct raft_candidate_state ri_candidate;
-    struct raft_leader_state    ri_leader;
-    enum raft_state             ri_state;
-    bool                        ri_ignore_timerfd;
-    enum raft_follower_reasons  ri_follower_reason;
-    int                         ri_timer_fd;
-    int                         ri_log_fd;
-    char                        ri_log[PATH_MAX + 1];
-    struct stat                 ri_log_stb;
-    struct raft_log_header      ri_log_hdr;
-    int64_t                     ri_commit_idx;
-    int64_t                     ri_last_applied_idx;
-    crc32_t                     ri_last_applied_cumulative_crc;
-    struct raft_entry_header    ri_newest_entry_hdr;
-    struct epoll_mgr            ri_epoll_mgr;
-    struct epoll_handle         ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
-    raft_net_timer_cb_t         ri_timer_fd_cb;
-    raft_net_udp_cb_t           ri_udp_client_recv_cb;
-    raft_net_udp_cb_t           ri_udp_server_recv_cb;
-    raft_sm_request_handler_t   ri_server_sm_request_cb;
-    struct ev_pipe              ri_evps[RAFT_SERVER_EVP_ANY];
-    struct lreg_node            ri_lreg;
-    struct lreg_node            ri_net_lreg;
-    struct lreg_node            ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
+    struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
+    struct ctl_svc_node            *ri_csn_raft;
+    struct ctl_svc_node            *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
+    struct ctl_svc_node            *ri_csn_this_peer;
+    struct ctl_svc_node            *ri_csn_leader;
+    struct timespec                 ri_last_send[CTL_SVC_MAX_RAFT_PEERS];
+    struct timespec                 ri_last_recv[CTL_SVC_MAX_RAFT_PEERS];
+    const char                     *ri_raft_uuid_str;
+    const char                     *ri_this_peer_uuid_str;
+    struct raft_candidate_state     ri_candidate;
+    struct raft_leader_state        ri_leader;
+    enum raft_state                 ri_state;
+    enum raft_instance_store_type   ri_store_type;
+    bool                            ri_ignore_timerfd;
+    enum raft_follower_reasons      ri_follower_reason;
+    int                             ri_timer_fd;
+    struct raft_instance_rocks_db   ri_rocksdb;
+    int                             ri_log_fd;
+    char                            ri_log[PATH_MAX + 1];
+    struct stat                     ri_log_stb;
+    struct raft_log_header          ri_log_hdr;
+    int64_t                         ri_commit_idx;
+    int64_t                         ri_last_applied_idx;
+    crc32_t                         ri_last_applied_cumulative_crc;
+    struct raft_entry_header        ri_newest_entry_hdr;
+    struct epoll_mgr                ri_epoll_mgr;
+    struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
+    raft_net_timer_cb_t             ri_timer_fd_cb;
+    raft_net_udp_cb_t               ri_udp_client_recv_cb;
+    raft_net_udp_cb_t               ri_udp_server_recv_cb;
+    raft_sm_request_handler_t       ri_server_sm_request_cb;
+    struct ev_pipe                  ri_evps[RAFT_SERVER_EVP_ANY];
+    struct lreg_node                ri_lreg;
+    struct lreg_node                ri_net_lreg;
+    struct lreg_node                ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
     struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
 };
 
@@ -586,7 +630,20 @@ raft_server_instance_get_num_log_headers(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri->ri_log_hdr.rlh_version == 0);
 
-    return NUM_RAFT_LOG_HEADERS;
+    switch (ri->ri_store_type)
+    {
+    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
+	return NUM_RAFT_LOG_HEADERS;
+
+    case RAFT_INSTANCE_STORE_ROCKSDB:
+        break;
+
+    default:
+        SIMPLE_LOG_MSG(LL_FATAL, "invalid store type %d", ri->ri_store_type);
+        break;
+    }
+
+    return 0;
 }
 
 static inline size_t
