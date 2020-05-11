@@ -16,9 +16,10 @@
 #include "log.h"
 #include "random.h"
 
-#define OPTS "hi:sp:Dd"
+#define OPTS "hi:sp:DdW"
 static size_t testIterations = 10000;
 static const char *niovaRocksDbPathRoot = "./rocksdb__test_dir";
+static bool useWriteBatch = false;
 
 struct niova_rocksdb_instance
 {
@@ -167,6 +168,14 @@ nri_put_some_items(struct niova_rocksdb_instance *nri, char **err)
     char key[MAX_KEY_LEN];
     char value[MAX_KEY_LEN];
 
+    char key_header[MAX_KEY_LEN];
+
+    const size_t key_header_len =
+        snprintf(key_header, MAX_KEY_LEN, "HEADER_%s", uuid_str);
+
+    rocksdb_put(nri->nri_db, nri->nri_writeoptions, key_header,
+                key_header_len, "X", 1, err);
+
     for (size_t i = 0; i < testIterations; i++)
     {
         *err = NULL;
@@ -189,6 +198,66 @@ nri_put_some_items(struct niova_rocksdb_instance *nri, char **err)
 }
 
 static int
+nri_put_some_items_wbatch(struct niova_rocksdb_instance *nri, char **err)
+{
+    if (!nri || !err)
+        return -EINVAL;
+
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(nri->nri_uuid, uuid_str);
+
+    char key[MAX_KEY_LEN];
+    char value[MAX_KEY_LEN];
+
+    char key_header[MAX_KEY_LEN];
+    char value_header[MAX_KEY_LEN];
+
+    const size_t key_header_len =
+        snprintf(key_header, MAX_KEY_LEN, "HEADER_%s", uuid_str);
+
+    size_t value_header_state = 0;
+
+    rocksdb_writebatch_t *wb = rocksdb_writebatch_create();
+
+    for (size_t i = 0; i < testIterations; i++)
+    {
+        *err = NULL;
+
+        const size_t key_len =
+           snprintf(key, MAX_KEY_LEN, "%s.%zu", uuid_str, i);
+
+        const uint32_t rand = nri_random_get(nri);
+
+        const size_t value_len = snprintf(value, MAX_KEY_LEN, "%zu.%u", i,
+                                          rand);
+
+        rocksdb_writebatch_put(wb, key, key_len, value, value_len);
+
+        value_header_state += rand;
+
+        const size_t value_header_len =
+            snprintf(value_header, MAX_KEY_LEN, "%zu.%zx", i,
+                     value_header_state);
+
+        rocksdb_writebatch_put(wb, key_header, key_header_len, value_header,
+                               value_header_len);
+
+        rocksdb_write(nri->nri_db, nri->nri_writeoptions, wb, err);
+
+        if (*err)
+            return -1;
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "key=%s val=%s: error=%s", key, value, *err);
+
+        rocksdb_writebatch_clear(wb);
+    }
+
+    rocksdb_writebatch_destroy(wb);
+
+    return 0;
+}
+
+static int
 nri_get_some_items(struct niova_rocksdb_instance *nri, const size_t *key_array,
                    char **err)
 {
@@ -199,6 +268,18 @@ nri_get_some_items(struct niova_rocksdb_instance *nri, const size_t *key_array,
     uuid_unparse(nri->nri_uuid, uuid_str);
 
     char key[MAX_KEY_LEN];
+
+    char key_header[MAX_KEY_LEN];
+    const size_t key_header_len =
+        snprintf(key_header, MAX_KEY_LEN, "HEADER_%s", uuid_str);
+
+    size_t value_len = 0;
+    char *value = rocksdb_get(nri->nri_db, nri->nri_readoptions, key_header,
+                              key_header_len, &value_len, err);
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "key-header=%s val-header=%s: error=%s",
+                   key_header, value, *err);
+    free(value);
 
     for (size_t i = 0; i < testIterations; i++)
     {
@@ -249,7 +330,7 @@ rocksdb_test_print_help(const int error, char **argv)
 {
     fprintf(
         error ? stderr : stdout,
-        "Usage: %s [-D direct-io-flush-compaction] [-d direct-io-reads]\n",
+        "Usage: %s [-D (direct-io-flush-compaction)] [-d (direct-io-reads)] [-W (use write batch)] [-i iterations] [-s (sync-write)] [-p path] [-h] \n",
         argv[0]);
 
     exit(error);
@@ -284,6 +365,9 @@ rocksdb_test_getopt(int argc, char **argv, struct niova_rocksdb_instance *nri)
             break;
         case 'p':
             niovaRocksDbPathRoot = optarg;
+            break;
+        case 'W':
+            useWriteBatch = true;
             break;
         default:
             rocksdb_test_print_help(EINVAL, argv);
@@ -341,7 +425,8 @@ main(int argc, char *argv[])
     niova_unstable_clock(&ts[0]);
 
     char *err;
-    rc = nri_put_some_items(&nri, &err);
+    rc = useWriteBatch ?
+        nri_put_some_items_wbatch(&nri, &err) : nri_put_some_items(&nri, &err);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "nri_put_some_items(): %s", err);
@@ -352,9 +437,11 @@ main(int argc, char *argv[])
     timespecsub(&ts[1], &ts[0], &ts[0]);
     num_nsecs = timespec_2_nsec(&ts[0]);
 
-    fprintf(stdout, "%13.3f\t\t%s\n",
+    fprintf(stdout, "%13.3f\t\t%s",
             (float)num_nsecs / (float)testIterations,
             nri.nri_sync_write ? "rocksdb_put_sync" : "rocksdb_put");
+
+    fprintf(stdout, "%s\n", useWriteBatch ? "_with_batch" : "");
 
     // DB Read
     niova_unstable_clock(&ts[0]);
@@ -374,7 +461,7 @@ main(int argc, char *argv[])
             (float)num_nsecs / (float)testIterations, "rocksdb_get");
 
 
-    // DB Read
+    // DB Random Read
     size_t *rand_key = rocksdb_test_generate_random_key_array();
     if (!rand_key)
     {
