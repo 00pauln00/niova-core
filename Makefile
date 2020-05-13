@@ -174,16 +174,20 @@ test_build:
 	test/util-test
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
+	test/rocksdb-test
 
 check: test_build
 
 check-noopt: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 check-noopt: test_build
 
-asan: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+asan: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address -fsanitize=leak
 asan: tests
 asan: niova
 asan: niova-ctl
+
+asan-check: CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address -fsanitize=leak
+asan-check: check
 
 debug: CFLAGS = $(DEBUG_CFLAGS)
 debug: tests

@@ -21,6 +21,15 @@ static size_t testIterations = 10000;
 static const char *niovaRocksDbPathRoot = "./rocksdb__test_dir";
 static bool useWriteBatch = false;
 
+#define HEADER_PREFIX  "a_"
+#define LASTKEY_PREFIX "z_"
+#define ENTRY_PREFIX   "e_"
+
+#define HEADER_PRINTF  HEADER_PREFIX"HEADER_%s"
+#define LASTKEY_PRINTF LASTKEY_PREFIX"LAST_%s"
+#define ENTRY_PRINTF   ENTRY_PREFIX"%s.%016zu" // string is UUID
+#define VALUE_PRINTF   "%zu.%08x"
+
 struct niova_rocksdb_instance
 {
     uuid_t                  nri_uuid;
@@ -157,10 +166,43 @@ nri_random_init(struct niova_rocksdb_instance *nri)
 #define MAX_KEY_LEN 1024
 
 static int
+nri_put_header_and_lastkey(struct niova_rocksdb_instance *nri, char **err)
+{
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(nri->nri_uuid, uuid_str);
+
+    char key_header[MAX_KEY_LEN];
+    size_t key_header_len =
+        snprintf(key_header, MAX_KEY_LEN, HEADER_PRINTF, uuid_str);
+
+    // Put the header
+    rocksdb_put(nri->nri_db, nri->nri_writeoptions, key_header,
+                key_header_len, "X", 1, err);
+    if (*err)
+        return -1;
+
+    // Put the last-key
+    key_header_len =
+        snprintf(key_header, MAX_KEY_LEN, LASTKEY_PRINTF, uuid_str);
+
+    rocksdb_put(nri->nri_db, nri->nri_writeoptions, key_header,
+                key_header_len, "X", 1, err);
+    if (*err)
+        return -1;
+
+    return 0;
+}
+
+
+static int
 nri_put_some_items(struct niova_rocksdb_instance *nri, char **err)
 {
     if (!nri || !err)
         return -EINVAL;
+
+    int rc = nri_put_header_and_lastkey(nri, err);
+    if (rc)
+        return rc;
 
     char uuid_str[UUID_STR_LEN];
     uuid_unparse(nri->nri_uuid, uuid_str);
@@ -168,22 +210,14 @@ nri_put_some_items(struct niova_rocksdb_instance *nri, char **err)
     char key[MAX_KEY_LEN];
     char value[MAX_KEY_LEN];
 
-    char key_header[MAX_KEY_LEN];
-
-    const size_t key_header_len =
-        snprintf(key_header, MAX_KEY_LEN, "HEADER_%s", uuid_str);
-
-    rocksdb_put(nri->nri_db, nri->nri_writeoptions, key_header,
-                key_header_len, "X", 1, err);
-
     for (size_t i = 0; i < testIterations; i++)
     {
         *err = NULL;
 
         const size_t key_len =
-            snprintf(key, MAX_KEY_LEN, "%s.%zu", uuid_str, i);
+            snprintf(key, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str, i);
 
-        const size_t value_len = snprintf(value, MAX_KEY_LEN, "%zu.%u", i,
+        const size_t value_len = snprintf(value, MAX_KEY_LEN, VALUE_PRINTF, i,
                                           nri_random_get(nri));
         rocksdb_put(nri->nri_db, nri->nri_writeoptions, key, key_len, value,
                     value_len, err);
@@ -203,6 +237,10 @@ nri_put_some_items_wbatch(struct niova_rocksdb_instance *nri, char **err)
     if (!nri || !err)
         return -EINVAL;
 
+    int rc = nri_put_header_and_lastkey(nri, err);
+    if (rc)
+        return rc;
+
     char uuid_str[UUID_STR_LEN];
     uuid_unparse(nri->nri_uuid, uuid_str);
 
@@ -213,7 +251,7 @@ nri_put_some_items_wbatch(struct niova_rocksdb_instance *nri, char **err)
     char value_header[MAX_KEY_LEN];
 
     const size_t key_header_len =
-        snprintf(key_header, MAX_KEY_LEN, "HEADER_%s", uuid_str);
+        snprintf(key_header, MAX_KEY_LEN, HEADER_PRINTF, uuid_str);
 
     size_t value_header_state = 0;
 
@@ -224,11 +262,11 @@ nri_put_some_items_wbatch(struct niova_rocksdb_instance *nri, char **err)
         *err = NULL;
 
         const size_t key_len =
-           snprintf(key, MAX_KEY_LEN, "%s.%zu", uuid_str, i);
+           snprintf(key, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str, i);
 
         const uint32_t rand = nri_random_get(nri);
 
-        const size_t value_len = snprintf(value, MAX_KEY_LEN, "%zu.%u", i,
+        const size_t value_len = snprintf(value, MAX_KEY_LEN, VALUE_PRINTF, i,
                                           rand);
 
         rocksdb_writebatch_put(wb, key, key_len, value, value_len);
@@ -271,7 +309,7 @@ nri_get_some_items(struct niova_rocksdb_instance *nri, const size_t *key_array,
 
     char key_header[MAX_KEY_LEN];
     const size_t key_header_len =
-        snprintf(key_header, MAX_KEY_LEN, "HEADER_%s", uuid_str);
+        snprintf(key_header, MAX_KEY_LEN, HEADER_PRINTF, uuid_str);
 
     size_t value_len = 0;
     char *value = rocksdb_get(nri->nri_db, nri->nri_readoptions, key_header,
@@ -279,14 +317,18 @@ nri_get_some_items(struct niova_rocksdb_instance *nri, const size_t *key_array,
 
     SIMPLE_LOG_MSG(LL_DEBUG, "key-header=%s val-header=%s: error=%s",
                    key_header, value, *err);
-    free(value);
+
+    if (*err)
+        return -1;
+    else
+        free(value);
 
     for (size_t i = 0; i < testIterations; i++)
     {
         *err = NULL;
 
         const size_t key_len =
-            snprintf(key, MAX_KEY_LEN, "%s.%zu", uuid_str,
+            snprintf(key, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str,
                      key_array ? key_array[i] : i);
 
         size_t value_len = 0;
@@ -294,15 +336,202 @@ nri_get_some_items(struct niova_rocksdb_instance *nri, const size_t *key_array,
         char *value = rocksdb_get(nri->nri_db, nri->nri_readoptions, key,
                                   key_len, &value_len, err);
 
-        if (*err)
-            return -1;
-
         SIMPLE_LOG_MSG(LL_DEBUG, "key=%s val=%s: error=%s", key, value, *err);
 
-        free(value);
+        if (*err)
+            return -1;
+        else
+            free(value);
     }
 
     return 0;
+}
+
+static int
+nri_iter_check_error(rocksdb_iterator_t *iter, bool expect_valid, char **err)
+{
+    rocksdb_iter_get_error(iter, err);
+    if (*err)
+        return -EIO;
+
+    if (!!rocksdb_iter_valid(iter) == !!expect_valid)
+        return 0;
+
+    return expect_valid ? -ENOENT : -EEXIST;
+}
+
+static int
+nri_iter_seek(rocksdb_iterator_t *iter, const char *seek_str,
+              size_t seek_strlen, bool expect_valid, char **err)
+{
+    if (!iter || !seek_str || !seek_strlen || !err)
+        return -EINVAL;
+
+    *err = NULL;
+
+    rocksdb_iter_seek(iter, seek_str, seek_strlen);
+
+    return nri_iter_check_error(iter, expect_valid, err);
+}
+
+static int
+nri_iter_next_or_prev(rocksdb_iterator_t *iter, bool expect_valid, char **err,
+                      bool next_or_prev)
+{
+    if (!iter || !err)
+        return -EINVAL;
+
+    *err = NULL;
+
+    next_or_prev ? rocksdb_iter_next(iter) : rocksdb_iter_prev(iter);
+
+    return nri_iter_check_error(iter, expect_valid, err);
+}
+
+static bool
+nri_string_matches_iter_key(const char *str, size_t str_len,
+                            rocksdb_iterator_t *iter)
+{
+    size_t iter_key_len = 0;
+    const char *iter_key = rocksdb_iter_key(iter, &iter_key_len);
+    if (!iter_key)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_iter_key(): returns NULL");
+        return false;
+    }
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "match key='%s', found key='%.*s'",
+                   str, (int)iter_key_len, iter_key);
+
+    if (str_len != iter_key_len || strncmp(str, iter_key, str_len))
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "expected key='%s', got key='%.*s'",
+                       str, (int)iter_key_len, iter_key);
+
+        return false;
+    }
+
+    return true;
+}
+
+static int
+rockdsdb_iterate_pre_check(struct niova_rocksdb_instance *nri, char **err)
+{
+    if (!nri || !err)
+        return -EINVAL;
+
+    *err = NULL;
+
+    rocksdb_iterator_t *iter =
+        rocksdb_create_iterator(nri->nri_db, nri->nri_readoptions);
+
+    if (!iter)
+        return -ENOMEM;
+
+    char key_str[MAX_KEY_LEN];
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(nri->nri_uuid, uuid_str);
+
+    // Check for the HEADER key
+    size_t key_len = snprintf(key_str, MAX_KEY_LEN, HEADER_PRINTF, uuid_str);
+
+    int rc;
+    if ((rc = nri_iter_seek(iter, HEADER_PREFIX, 2, true, err)) ||
+        !nri_string_matches_iter_key(key_str, key_len, iter))
+    {
+        rocksdb_iter_destroy(iter);
+        return rc ? rc : ENOMSG;
+    }
+
+    // Check for the first entry key
+    key_len = snprintf(key_str, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str, 0UL);
+    if ((rc = nri_iter_next_or_prev(iter, true, err, true)) ||
+        !nri_string_matches_iter_key(key_str, key_len, iter))
+    {
+        rocksdb_iter_destroy(iter);
+        return rc ? rc : -ENOMSG;
+    }
+
+    // Check for the LAST key
+    key_len = snprintf(key_str, MAX_KEY_LEN, LASTKEY_PRINTF, uuid_str);
+    if ((rc = nri_iter_seek(iter, LASTKEY_PREFIX, 2, true, err)) ||
+        !nri_string_matches_iter_key(key_str, key_len, iter))
+    {
+        rocksdb_iter_destroy(iter);
+        return rc ? rc : -ENOMSG;
+    }
+
+    // Now check for the last entry key
+    key_len = snprintf(key_str, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str,
+                       testIterations - 1);
+
+    if ((rc = nri_iter_next_or_prev(iter, true, err, false)) ||
+        !nri_string_matches_iter_key(key_str, key_len, iter))
+    {
+        rocksdb_iter_destroy(iter);
+        return rc ? rc : -ENOMSG;
+    }
+
+    rocksdb_iter_destroy(iter);
+    return 0;
+}
+
+static int
+rockdsdb_iterate_items(struct niova_rocksdb_instance *nri, char **err)
+{
+    if (!nri || !err)
+        return -EINVAL;
+
+    int rc = rockdsdb_iterate_pre_check(nri, err);
+    if (rc)
+        return rc;
+
+    *err = NULL;
+
+    rocksdb_iterator_t *iter =
+        rocksdb_create_iterator(nri->nri_db, nri->nri_readoptions);
+
+    if (!iter)
+        return -ENOMEM;
+
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(nri->nri_uuid, uuid_str);
+
+    rc = nri_iter_seek(iter, ENTRY_PREFIX, 2, true, err);
+    if (rc)
+    {
+        rocksdb_iter_destroy(iter);
+        return rc;
+    }
+
+    char expected_key_str[MAX_KEY_LEN];
+    size_t expected_seq = 0;
+
+    while (!*err && rocksdb_iter_valid(iter) && expected_seq < testIterations)
+    {
+        // Check for the first entry key
+        size_t expected_key_len =
+            snprintf(expected_key_str, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str,
+                     expected_seq++);
+
+        {
+            size_t len[2] = {0};
+            SIMPLE_LOG_MSG(LL_NOTIFY, "iterate: key=%.*s val=%.*s",
+                           (int)len[0], rocksdb_iter_key(iter, &len[0]),
+                           (int)len[1], rocksdb_iter_value(iter, &len[1]));
+        }
+
+        if (!nri_string_matches_iter_key(expected_key_str, expected_key_len,
+                                         iter))
+            break;
+
+        rocksdb_iter_next(iter);
+        rocksdb_iter_get_error(iter, err);
+    }
+
+    rocksdb_iter_destroy(iter);
+
+    return expected_seq == testIterations ? 0 : -1;
 }
 
 static size_t *
@@ -424,7 +653,7 @@ main(int argc, char *argv[])
     // DB Write
     niova_unstable_clock(&ts[0]);
 
-    char *err;
+    char *err = NULL;
     rc = useWriteBatch ?
         nri_put_some_items_wbatch(&nri, &err) : nri_put_some_items(&nri, &err);
     if (rc)
@@ -487,7 +716,23 @@ main(int argc, char *argv[])
 
     free(rand_key);
 
-// DB Close
+    niova_unstable_clock(&ts[0]);
+    rc = rockdsdb_iterate_items(&nri, &err);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rockdsdb_iterate_items(): %s (rc=%d)",
+                       err, rc);
+        exit(rc);
+    }
+    niova_unstable_clock(&ts[1]);
+    timespecsub(&ts[1], &ts[0], &ts[0]);
+    num_nsecs = timespec_2_nsec(&ts[0]);
+
+    fprintf(stdout, "%13.3f\t\t%s\n",
+            (float)num_nsecs / (float)testIterations, "rocksdb_iterate");
+
+
+    // DB Close
     niova_unstable_clock(&ts[0]);
 
     rc = nri_db_close(&nri);
