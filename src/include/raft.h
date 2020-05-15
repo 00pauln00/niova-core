@@ -51,15 +51,15 @@
 #define RAFT_LOG_HEADER_ROCKSDB "a0_hdr."
 #define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
 #define RAFT_LOG_HEADER_FMT                     \
-    RAFT_LOG_HEADER_ROCKSDB"%s_%s"
+    RAFT_LOG_HEADER_ROCKSDB"%s__%s"
 
 #define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
 #define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
 #define RAFT_LOG_LASTENTRY_FMT                     \
-    RAFT_LOG_LASTENTRY_ROCKSDB"%s_%s"
+    RAFT_LOG_LASTENTRY_ROCKSDB"%s__%s"
 
 
-#define RAFT_ENTRY_KEY_FMT "%s%016zu"
+#define RAFT_ENTRY_KEY_FMT "%016zu"
 
 #define RAFT_ENTRY_KEY_PREFIX_ROCKSDB "e0."
 #define RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN 3
@@ -652,9 +652,12 @@ raft_server_entry_idx_to_phys_idx(const struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri);
 
-    entry_idx += raft_server_instance_get_num_log_headers(ri);
+    const size_t num_log_headers =
+        raft_server_instance_get_num_log_headers(ri);
 
-    NIOVA_ASSERT(entry_idx > 0);
+    entry_idx += num_log_headers;
+
+    NIOVA_ASSERT(entry_idx >= num_log_headers);
 
     return entry_idx;
 }

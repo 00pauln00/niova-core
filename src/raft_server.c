@@ -554,9 +554,7 @@ raft_server_entry_write_rocksdb(struct raft_instance *ri,
     size_t entry_header_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
-                                RAFT_ENTRY_KEY_FMT,
-                                RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB,
-                                phys_idx);
+                                RAFT_ENTRY_KEY_FMT, phys_idx);
 
     rocksdb_writebatch_put(rir->rir_writebatch, entry_header_key,
                            entry_header_key_len, (const char *)&re->re_header,
@@ -569,8 +567,7 @@ raft_server_entry_write_rocksdb(struct raft_instance *ri,
     size_t entry_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_key_len,
-                                RAFT_ENTRY_KEY_FMT,
-                                RAFT_ENTRY_KEY_PREFIX_ROCKSDB, phys_idx);
+                                RAFT_ENTRY_KEY_FMT, phys_idx);
 
     // Store an entry for every header, even if the entry is empty.
     const char x = '\0';
@@ -802,8 +799,7 @@ raft_server_entry_header_read_rocksdb(struct raft_instance *ri,
   size_t entry_header_key_len = 0;
   DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                               (ssize_t *)&entry_header_key_len,
-                              RAFT_ENTRY_HEADER_KEY_PRINTF,
-                              RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB, phys_idx);
+                              RAFT_ENTRY_HEADER_KEY_PRINTF, phys_idx);
 
   int rc =
       raft_server_rocksdb_get_exact_val_size(rir, entry_header_key,
@@ -849,8 +845,7 @@ raft_server_entry_read_rocksdb(struct raft_instance *ri,
     size_t entry_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_key_len,
-                                RAFT_ENTRY_KEY_PRINTF,
-                                RAFT_ENTRY_KEY_PREFIX_ROCKSDB, phys_entry_idx);
+                                RAFT_ENTRY_KEY_PRINTF, phys_entry_idx);
 
     rc = raft_server_rocksdb_get_exact_val_size(rir, entry_key, entry_key_len,
                                                 (void *)re->re_data,
@@ -1790,8 +1785,8 @@ raft_server_entries_scan(struct raft_instance *ri)
     {
         const size_t phys_entry_idx = raft_server_entry_idx_to_phys_idx(ri, i);
 
-        int rc = raft_server_entry_header_read_by_store(ri, phys_entry_idx,
-                                                        &reh);
+        int rc =
+            raft_server_entry_header_read_by_store(ri, phys_entry_idx, &reh);
 
         DBG_RAFT_ENTRY(LL_DEBUG, &reh, "i=%lx rc=%d", i, rc);
 
@@ -1844,9 +1839,7 @@ raft_server_log_truncate_rocksdb(struct raft_instance *ri,
     size_t entry_header_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
-                                RAFT_ENTRY_KEY_FMT,
-                                RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB,
-                                trunc_phys_entry_idx);
+                                RAFT_ENTRY_KEY_FMT, trunc_phys_entry_idx);
 
     rocksdb_writebatch_delete_range(rir->rir_writebatch,
                                     entry_header_key, entry_header_key_len,
@@ -2646,9 +2639,9 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         NIOVA_ASSERT(follower_prev_phys_entry_idx <=
                      raft_server_get_current_phys_entry_index(ri));
 
-        int rc =
-            raft_server_entry_header_read_by_store(ri, follower_prev_phys_entry_idx,
-                                          &reh);
+        int rc = raft_server_entry_header_read_by_store(
+            ri, follower_prev_phys_entry_idx, &reh);
+
         if (rc < 0)
             return rc;
 
@@ -2667,9 +2660,9 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
             raft_server_entry_idx_to_phys_idx(ri, rfi->rfi_next_idx);
 
         int rc = raft_server_entry_header_read_by_store(ri, phys_idx, &reh);
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                   "raft_server_entry_header_read_by_store(%ld): %s",
-                                   rfi->rfi_next_idx, strerror(-rc));
+        DBG_RAFT_INSTANCE_FATAL_IF(
+            (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
+            rfi->rfi_next_idx, strerror(-rc));
 
         rfi->rfi_current_idx_term = reh.reh_term;
         rfi->rfi_current_idx_crc = reh.reh_crc;
