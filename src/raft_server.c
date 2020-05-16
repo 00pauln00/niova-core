@@ -1053,7 +1053,7 @@ raft_server_log_header_write_posix(struct raft_instance *ri,
     raft_server_log_header_write_prep(ri, candidate, candidate_term);
 
     const size_t block_num = ri->ri_log_hdr.rlh_seqno %
-        MIN(1, raft_server_instance_get_num_log_headers(ri));
+        MAX(1, raft_server_instance_get_num_log_headers(ri));
 
     return raft_server_entry_write(ri, block_num, ri->ri_log_hdr.rlh_term,
                                    (const char *)&ri->ri_log_hdr,
