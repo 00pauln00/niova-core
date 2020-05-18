@@ -59,17 +59,20 @@
     RAFT_LOG_LASTENTRY_ROCKSDB"%s__%s"
 
 
-#define RAFT_ENTRY_KEY_FMT "%016zu"
+#define RAFT_HEADER_ENTRY_KEY_FMT "%016zuh"
+#define RAFT_ENTRY_KEY_FMT        "%016zue"
 
 #define RAFT_ENTRY_KEY_PREFIX_ROCKSDB "e0."
 #define RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN 3
 #define RAFT_ENTRY_KEY_PRINTF                           \
     RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_FMT
 
-#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB "h0."
-#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB_STRLEN 3
+#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB \
+    RAFT_ENTRY_KEY_PREFIX_ROCKSDB
+#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB_STRLEN \
+    RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN
 #define RAFT_ENTRY_HEADER_KEY_PRINTF                            \
-    RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_FMT
+    RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_HEADER_ENTRY_KEY_FMT
 
 typedef void    raft_server_udp_cb_ctx_t;
 typedef int     raft_server_udp_cb_ctx_int_t;
@@ -298,13 +301,23 @@ enum raft_instance_store_type
     RAFT_INSTANCE_STORE_ROCKSDB,
 };
 
-struct raft_instance_rocks_db
+struct raft_instance_backend
 {
-    rocksdb_t              *rir_db;
-    rocksdb_options_t      *rir_options;
-    rocksdb_writeoptions_t *rir_writeoptions;
-    rocksdb_readoptions_t  *rir_readoptions;
-    rocksdb_writebatch_t   *rir_writebatch;
+    void (*rib_entry_write)(struct raft_instance *, const size_t,
+                            const struct raft_entry *, const size_t);
+    void (*rib_entry_read)(struct raft_instance *, struct raft_entry *,
+                           const size_t, const size_t);
+    int (*rib_entry_header_read)(struct raft_instance *, const size_t,
+                                 struct raft_entry_header *);
+    void (*rib_log_truncate)(struct raft_instance *ri, const int64_t);
+    int (*rib_header_read)(struct raft_instance *);
+    int (*rib_header_write)(struct raft_instance *ri, const uuid_t, int64_t);
+//    int (*rib_header_init)(struct raft_instance *);
+    // - Create DB file if it doesn't already exist
+    // - Init header if it doesn't exist
+    // - Determine the raft_server_num_entries_calc() if it does exist
+    int (*rib_backend_setup)(struct raft_instance *);
+    int (*rib_backend_shutdown)(struct raft_instance *);
 };
 
 struct raft_instance
@@ -325,7 +338,6 @@ struct raft_instance
     bool                            ri_ignore_timerfd;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
-    struct raft_instance_rocks_db   ri_rocksdb;
     int                             ri_log_fd;
     char                            ri_log[PATH_MAX + 1];
     struct stat                     ri_log_stb;
@@ -345,6 +357,9 @@ struct raft_instance
     struct lreg_node                ri_net_lreg;
     struct lreg_node                ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
     struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
+    struct raft_instance_backend   *ri_backend;
+    void                           *ri_backend_arg;
+    ssize_t                         ri_entries_detected_at_startup;
 };
 
 static inline void
@@ -754,5 +769,10 @@ raft_server_instance_shutdown(struct raft_instance *ri);
 
 int
 raft_server_main_loop(struct raft_instance *ri);
+
+void
+raft_server_log_header_write_prep(struct raft_instance *ri,
+                                  const uuid_t candidate,
+                                  const int64_t candidate_term);
 
 #endif
