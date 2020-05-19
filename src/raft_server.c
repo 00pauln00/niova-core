@@ -448,7 +448,7 @@ raft_server_entry_check_crc(const struct raft_entry *re)
  * raft_server_entry_init - initialize a raft_entry in preparation for writing
  *    it into the raft log file.
  * @re:  raft_entry to be intialized
- * @phys_idx:  the physical index at which the block will be stored
+ * @re_idx:  the raft-entry index at which the block will be stored
  * @current_term:  the term to which this pending write operation belongs
  * @self_uuid:  UUID is this node instance, written into the entry for safety
  * @raft_uuid:  UUID of the raft instance, also written for safety
@@ -457,7 +457,7 @@ raft_server_entry_check_crc(const struct raft_entry *re)
  */
 static void
 raft_server_entry_init(const struct raft_instance *ri,
-                       struct raft_entry *re, const size_t phys_idx,
+                       struct raft_entry *re, const raft_entry_idx_t re_idx,
                        const uint64_t current_term,
                        const uuid_t self_uuid, const uuid_t raft_uuid,
                        const char *data, const size_t len,
@@ -470,13 +470,11 @@ raft_server_entry_init(const struct raft_instance *ri,
     // Should have been checked already
     NIOVA_ASSERT(len <= RAFT_ENTRY_MAX_DATA_SIZE);
 
-    const size_t num_log_hdrs = raft_server_instance_get_num_log_headers(ri);
-
     struct raft_entry_header *reh = &re->re_header;
 
     reh->reh_magic = RAFT_ENTRY_MAGIC;
     reh->reh_data_size = len;
-    reh->reh_index = phys_idx - num_log_hdrs; //negative for log header blocks
+    reh->reh_index = re_idx;
     reh->reh_term = current_term;
     reh->reh_leader_change_marker =
         (opts == RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER) ? 1 : 0;
@@ -518,25 +516,24 @@ raft_instance_update_newest_entry_hdr(struct raft_instance *ri,
 
 static void
 raft_server_entry_write_by_store(struct raft_instance *ri,
-                                 const size_t phys_idx,
-                                 const struct raft_entry *re,
-                                 const size_t total_entry_size)
+                                 const struct raft_entry *re)
 {
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        return raft_server_entry_write_posix(ri, phys_idx, re,
-                                             total_entry_size);
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        return raft_server_entry_write_rocksdb(ri, phys_idx, re,
-                                               total_entry_size);
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-}
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
 
+    ri->ri_backend->rib_entry_write(ri, re);
+
+    niova_unstable_clock(&io_op[1]);
+
+    struct binary_hist *bh =
+        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC].rihs_bh;
+
+    const long long elapsed_usec =
+        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
+
+    if (elapsed_usec > 0)
+        binary_hist_incorporate_val(bh, elapsed_usec);
+}
 
 /**
  * raft_server_entry_write - safely store an entry into the raft log at the
@@ -545,12 +542,12 @@ raft_server_entry_write_by_store(struct raft_instance *ri,
  *    the ri_log_hdr is up-to-date with the correct term prior to calling
  *    this function.
  * @ri:  raft instance
- * @phys_idx:  the physical index at which the block will be written
+ * @re_idx:  the raft_entry index at which the block will be written
  * @data:  the application data buffer
  * @len:  length of the application data buffer.
  */
 static int
-raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
+raft_server_entry_write(struct raft_instance *ri, const raft_entry_idx_t re_idx,
                         const int64_t term, const char *data, size_t len,
                         enum raft_write_entry_opts opts)
 {
@@ -567,7 +564,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
     if (!re)
         return -ENOMEM;
 
-    raft_server_entry_init(ri, re, phys_idx, term,
+    raft_server_entry_init(ri, re, re_idx, term,
                            RAFT_INSTANCE_2_SELF_UUID(ri),
                            RAFT_INSTANCE_2_RAFT_UUID(ri), data, len, opts);
 
@@ -582,21 +579,7 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
         (!raft_server_entry_next_entry_is_valid(ri, &re->re_header)), ri,
         "raft_server_entry_next_entry_is_valid() failed");
 
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
-
-    raft_server_entry_write_by_store(ri, phys_idx, re, total_entry_size);
-
-    niova_unstable_clock(&io_op[1]);
-
-    struct binary_hist *bh =
-        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC].rihs_bh;
-
-    const long long elapsed_usec =
-        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
-
-    if (elapsed_usec > 0)
-        binary_hist_incorporate_val(bh, elapsed_usec);
+    raft_server_entry_write_by_store(ri, re);
 
     /* Following the successful writing and sync of the entry, copy the
      * header contents into the raft instance.   Note, this is a noop if the
@@ -618,19 +601,16 @@ raft_server_entry_write(struct raft_instance *ri, const size_t phys_idx,
 static int
 read_server_entry_validate(const struct raft_instance *ri,
                            const struct raft_entry_header *rh,
-                           const size_t phys_entry_idx)
+                           const raft_entry_idx_t expected_reh_index)
 {
     NIOVA_ASSERT(ri && rh && ri->ri_csn_this_peer && ri->ri_csn_raft);
-
-    const int64_t expected_reh_idx =
-        phys_entry_idx - raft_server_instance_get_num_log_headers(ri);
 
     // Validate magic and data size.
     if (rh->reh_magic != RAFT_ENTRY_MAGIC ||
         rh->reh_data_size > RAFT_ENTRY_MAX_DATA_SIZE)
         return -EINVAL;
 
-    // reh_index should be the same as the phys index.
+    // reh_index should be the same as the expected index.
     if (rh->reh_index != expected_reh_idx)
         return -EBADSLT;
 
@@ -643,69 +623,19 @@ read_server_entry_validate(const struct raft_instance *ri,
 }
 
 static void
-raft_server_entry_read_by_store(struct raft_instance *ri,
-                                struct raft_entry *re,
-                                const size_t phys_idx,
-                                const size_t total_entry_size)
+raft_server_entry_read_by_store(struct raft_instance *ri, struct raft_entry *re)
 {
     NIOVA_ASSERT(ri && re && total_entry_size > 0);
 
-    ssize_t read_sz = -1;
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
 
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        read_sz =
-            raft_server_entry_read_posix(ri, re, phys_idx, total_entry_size);
-        break;
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        read_sz =
-            raft_server_entry_read_rocksdb(ri, re, phys_idx, total_entry_size);
-        break;
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
+    ssize_t read_sz = ri->ri_backend->rsbp_entry_read(ri, re);
 
     DBG_RAFT_ENTRY_FATAL_IF((read_sz != total_entry_size),
                             &re->re_header,
                             "invalid read size rrc=%zu, expected %zu",
                             read_sz, total_entry_size);
-}
-
-/**
- * raft_server_entry_read - request a read of a raft log entry.
- * @ri:  raft instance pointer
- * @phys_entry_index:  the physical index of the log block to be read.  Note,
- *     the first NUM_RAFT_LOG_HEADERS blocks are for the log header and the
- *     blocks which follow are for application data.  Also note that the
- *     raft_entry::reh_index is the "raft" index NOT the physical index
- *     represented by this parameter.  To obtain the physical index from
- *     raft_entry::reh_index, the NUM_RAFT_LOG_HEADERS value must be added.
- * @data:  sink buffer
- * @len:  size of the sink buffer
- * @rc_len:  the data size of this entry
- */
-static int
-raft_server_entry_read(struct raft_instance *ri, const size_t phys_entry_idx,
-                       char *data, const size_t len, size_t *rc_len)
-{
-    if (!ri || !data || len > RAFT_ENTRY_SIZE)
-        return -EINVAL;
-
-    const size_t total_entry_size = sizeof(struct raft_entry) + len;
-
-    struct raft_entry *re = niova_malloc(total_entry_size);
-    if (!re)
-        return -ENOMEM;
-
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
-
-    raft_server_entry_read_by_store(ri, re, phys_entry_idx, total_entry_size);
 
     niova_unstable_clock(&io_op[1]);
 
@@ -720,10 +650,39 @@ raft_server_entry_read(struct raft_instance *ri, const size_t phys_entry_idx,
 
     DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "sz=%zu usec=%lld",
                    total_entry_size, elapsed_usec);
+}
 
-    const struct raft_entry_header *rh = &re->re_header;
+/**
+ * raft_server_entry_read - request a read of a raft log entry.
+ * @ri:  raft instance pointer
+ * @re_idx: raft entry index
+ * @data:  sink buffer
+ * @len:  size of the sink buffer
+ * @rc_len:  the data size of this entry
+ */
+static int
+raft_server_entry_read(struct raft_instance *ri, const raft_entry_idx_t re_idx,
+                       char *data, const size_t len, size_t *rc_len)
+{
+    if (!ri || !data || len > RAFT_ENTRY_SIZE)
+        return -EINVAL;
 
-    int rc = read_server_entry_validate(ri, rh, phys_entry_idx);
+    const size_t total_entry_size = sizeof(struct raft_entry) + len;
+
+    struct raft_entry *re = niova_malloc(total_entry_size);
+    if (!re)
+        return -ENOMEM;
+
+    struct raft_entry_header *rh = &re->re_header;
+
+    // Set the necessary header fields -- Xxx this should allow for a previously
+    //                                        read header to be supplied as an arg
+    rh->reh_data_size = len;
+    rh->reh_index = re_idx;
+
+    raft_server_entry_read_by_store(ri, re);
+
+    int rc = read_server_entry_validate(ri, rh, re_idx);
     if (!rc)
     {
         if (rc_len)
@@ -737,10 +696,14 @@ raft_server_entry_read(struct raft_instance *ri, const size_t phys_entry_idx,
         {
             rc = raft_server_entry_check_crc(re);
             if (!rc)
+                /* Xxx at some point this can be removed if the CRC is managed
+                 *     separately for the header and entry
+                 */
                 memcpy(data, re->re_data, len);
         }
     }
 
+    //Xxx this malloc can be removed as well..
     niova_free(re);
 
     return rc;
@@ -750,55 +713,39 @@ raft_server_entry_read(struct raft_instance *ri, const size_t phys_entry_idx,
  * raft_server_entry_header_read - read only a raft log entry's header, the
  *    application contents of the entry are ignored and the crc is not taken.
  * @ri:  raft instance pointer
- * @phys_entry_idx:  physical entry to read (includes header blocks)
  * @reh:  the destination entry header buffer
+ * @reh_index:  logical raft entry to read
  */
 static int
 raft_server_entry_header_read_by_store(struct raft_instance *ri,
-                                       const size_t phys_entry_idx,
-                                       struct raft_entry_header *reh)
+                                       struct raft_entry_header *reh,
+                                       raft_entry_idx_t reh_index)
 {
-    if (!ri || !reh)
+    if (!ri || !reh || reh_index < 0)
         return -EINVAL;
 
     else if (!raft_instance_is_booting(ri) &&
-             raft_server_get_current_phys_entry_index(ri) < phys_entry_idx)
+             raft_server_get_current_raft_entry_index(ri) < reh_index)
         return -ERANGE;
 
-    const ssize_t expected_size = sizeof(struct raft_entry_header);
-    ssize_t read_sz = 0;
-    int rc = 0;
+    reh->reh_index = reh_index;
 
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        read_sz = raft_server_entry_read_posix(ri, (struct raft_entry *)reh,
-                                               phys_entry_idx,
-                                               (size_t)expected_size);
+    int rc = ri->ri_backend->rib_entry_header_read(ri, reh);
 
-        DBG_RAFT_ENTRY_FATAL_IF((read_sz != expected_size),
-                                reh, "invalid read size rrc=%zd, expected %zd",
-                                read_sz, expected_size);
-	break;
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        rc = raft_server_entry_header_read_rocksdb(ri, phys_entry_idx, reh);
-        FATAL_IF((rc), "raft_server_entry_header_read_rocksdb(): %s",
-                 strerror(-rc));
-        break;
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
+    FATAL_IF((rc), "rib_entry_header_read(): %s", strerror(-rc));
 
     DBG_RAFT_ENTRY(LL_DEBUG, reh, "rrc=%zd", read_sz);
 
-    return read_server_entry_validate(ri, reh, phys_entry_idx);
+    return read_server_entry_validate(ri, reh, reh_index);
 }
 
-void
+static int
+raft_server_header_load(struct raft_instance *ri)
+{
+    return ri->ri_backend->rib_header_load(ri);
+}
+
+static void
 raft_server_log_header_write_prep(struct raft_instance *ri,
                                   const uuid_t candidate,
                                   const int64_t candidate_term)
@@ -819,82 +766,15 @@ raft_server_log_header_write_prep(struct raft_instance *ri,
 }
 
 static int
-raft_server_header_load(struct raft_instance *ri)
-{
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        return raft_server_header_load_posix(ri);
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        return raft_server_header_load_rocksdb(ri);
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-
-    return -ENOENT;
-}
-
-static int
 raft_server_log_header_write(struct raft_instance *ri,
                              const uuid_t candidate, int64_t candidate_term)
 {
     if (!ri || !ri->ri_csn_raft)
         return -EINVAL;
 
-    struct raft_log_header *rlh = &ri->ri_log_hdr;
+    raft_server_log_header_write_prep(ri, candidate, candidate_term);
 
-    memset(rlh, 0, sizeof(struct raft_log_header));
-
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        return
-            raft_server_log_header_write_posix(ri, candidate, candidate_term);
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        return raft_server_log_header_write_rocksdb(ri, candidate,
-                                                    candidate_term);
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-
-    return -ENOENT;
-}
-
-//XXx will go into rib_backend_setup()
-static int
-raft_server_log_file_setup_init_header(struct raft_instance *ri)
-{
-    if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft)
-        return -EINVAL;
-
-    struct raft_log_header *rlh = &ri->ri_log_hdr;
-
-
-    memset(rlh, 0, sizeof(struct raft_log_header));
-
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        if (ri->ri_log_fd < 0 || ri->ri_log_stb.st_size != 0)
-            return -EINVAL;
-        return raft_server_log_file_setup_init_header_posix(ri);
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        return raft_server_log_file_setup_init_header_rocksdb(ri);
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-
-    return -ENOENT;
+    return ri->ri_backend->rsbp_entry_write(ri);
 }
 
 /**
@@ -923,62 +803,28 @@ raft_server_backend_setup(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
+    switch (ri->ri_store_type)
+    {
+    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
+        raft_server_backend_use_posix(ri);
+        break;
+
+    case RAFT_INSTANCE_STORE_ROCKSDB:
+        raft_server_backend_use_rocksdb(ri);
+        break;
+
+    default:
+        SIMPLE_LOG_MSG(LL_FATAL, "invalid store type %d", ri->ri_store_type);
+        break;
+    }
+
     int rc = raft_server_log_file_name_setup(ri);
     if (rc)
         return rc;
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "log-file=%s", ri->ri_log);
 
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        return raft_server_log_file_setup_posix(ri);
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        return raft_server_rocksdb_setup(ri);
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-
-    return -ENOENT;
-}
-
-//Xxx will go into rib_backend_setup()
-static ssize_t
-raft_server_num_entries_calc(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-
-    ssize_t num_entries = -1;
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        num_entries = raft_server_num_entries_calc_posix(ri);
-        break;
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        num_entries = raft_server_num_entries_calc_rocksdb(ri);
-        break;
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "num-block-entries=%zd", num_entries);
-
-    return num_entries;
-}
-
-static bool
-raft_phys_idx_is_log_header(const struct raft_instance *ri, size_t phys_idx)
-{
-    return phys_idx < raft_server_instance_get_num_log_headers(ri) ?
-        true : false;
+    return ri->ri_backend->rib_backend_setup(ri);
 }
 
 static void
@@ -1037,18 +883,18 @@ raft_server_entries_scan(struct raft_instance *ri)
 
     raft_instance_initialize_newest_entry_hdr(ri);
 
-    const ssize_t num_entries = raft_server_num_entries_calc(ri);
+    const raft_entry_idx_t num_entries = ri->ri_entries_detected_at_startup;
     if (!num_entries)
         return 0;
 
+    else if (num_entries < 0)
+        return (int)num_entries;
+
     struct raft_entry_header reh;
 
-    for (int64_t i = 0; i < num_entries; i++)
+    for (raft_entry_idx_t i = 0; i < num_entries; i++)
     {
-        const size_t phys_entry_idx = raft_server_entry_idx_to_phys_idx(ri, i);
-
-        int rc =
-            raft_server_entry_header_read_by_store(ri, phys_entry_idx, &reh);
+        int rc = raft_server_entry_header_read_by_store(ri, &reh, i);
 
         DBG_RAFT_ENTRY(LL_DEBUG, &reh, "i=%lx rc=%d", i, rc);
 
@@ -1083,35 +929,16 @@ raft_server_log_truncate(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    int64_t trunc_phys_entry_idx =
-        raft_server_get_current_phys_entry_index(ri);
+    const raft_entry_idx_t trunc_entry_idx =
+        raft_server_get_current_raft_entry_index(ri) + 1;
 
-    if (trunc_phys_entry_idx < 0)
-        trunc_phys_entry_idx = raft_server_instance_get_num_log_headers(ri);
-    else
-        trunc_phys_entry_idx++;
+    NIOVA_ASSERT(trunc_entry_idx >= 0);
 
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-        raft_server_log_truncate_posix(ri, trunc_phys_entry_idx);
-        break;
+    ri->ri_backend->rib_log_truncate(ri, trunc_entry_idx);
 
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        raft_server_log_truncate_rocksdb(ri, trunc_phys_entry_idx);
-        break;
-
-    default:
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "invalid store type %d",
-                          ri->ri_store_type);
-        break;
-    }
-
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-phys-idx=%ld",
-                      MAX(raft_server_instance_get_num_log_headers(ri),
-                          raft_server_get_current_phys_entry_index(ri)));
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-raft-idx=%ld",
+                      raft_server_get_current_raft_entry_index(ri));
 }
-
 
 /**
  * raft_server_log_load - read in the header blocks and scan the entry blocks
@@ -1653,20 +1480,19 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              const char *data, const size_t len,
                              enum raft_write_entry_opts opts)
 {
-     NIOVA_ASSERT(term >= raft_server_get_current_raft_entry_term(ri));
+    NIOVA_ASSERT(term >= raft_server_get_current_raft_entry_term(ri));
 
-    int64_t next_entry_phys_idx = raft_server_get_current_phys_entry_index(ri);
-    if (next_entry_phys_idx < 0)
-        next_entry_phys_idx = raft_server_instance_get_num_log_headers(ri);
-    else
-        next_entry_phys_idx += 1;
+    const raft_entry_idx_t next_entry_idx =
+        raft_server_get_current_raft_entry_index(ri) + 1;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                      "phys-entry-idx=%ld term=%ld len=%zd opts=%d",
-                      next_entry_phys_idx, term, len, opts);
+                      "next-entry-idx=%ld term=%ld len=%zd opts=%d",
+                      next_entry_idx, term, len, opts);
 
-    int rc = raft_server_entry_write(ri, next_entry_phys_idx, term, data, len,
-                                     opts);
+    DBG_RAFT_INSTANCE_FATAL_IF((next_entry_idx < 0), ri,
+                               "negative next-entry-idx=%ld", next_entry_idx);
+
+    int rc = raft_server_entry_write(ri, next_entry_idx, term, data, len, opts);
     if (rc)
         DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
                           strerror(-rc));
@@ -1831,18 +1657,16 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
 
     if (refresh_prev)
     {
-        const int64_t follower_prev_phys_entry_idx =
-            raft_server_entry_idx_to_phys_idx(ri, rfi->rfi_next_idx - 1);
+        const int64_t follower_prev_entry_idx = rfi->rfi_next_idx - 1;
 
-        NIOVA_ASSERT(follower_prev_phys_entry_idx >=
-                     raft_server_instance_get_num_log_headers(ri));
+        NIOVA_ASSERT(follower_prev_entry_idx >= -1);
 
         // Test that the follower's prev-idx is not ahead of this leader's idx
-        NIOVA_ASSERT(follower_prev_phys_entry_idx <=
-                     raft_server_get_current_phys_entry_index(ri));
+        NIOVA_ASSERT(follower_prev_entry_idx <=
+                     raft_server_get_current_raft_entry_index(ri));
 
-        int rc = raft_server_entry_header_read_by_store(
-            ri, follower_prev_phys_entry_idx, &reh);
+        int rc =
+            raft_server_entry_header_read_by_store(ri, &reh, follower_prev_entry_idx);
 
         if (rc < 0)
             return rc;
@@ -1858,10 +1682,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     {
         NIOVA_ASSERT(my_raft_idx >= rfi->rfi_next_idx);
 
-        const size_t phys_idx =
-            raft_server_entry_idx_to_phys_idx(ri, rfi->rfi_next_idx);
-
-        int rc = raft_server_entry_header_read_by_store(ri, phys_idx, &reh);
+        int rc = raft_server_entry_header_read_by_store(ri, &reh, rfi->rfi_next_idx);
         DBG_RAFT_INSTANCE_FATAL_IF(
             (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
             rfi->rfi_next_idx, strerror(-rc));
@@ -2069,19 +1890,13 @@ raft_server_append_entry_check_already_stored(
     // raerqm_prev_log_index can be -1 if no writes have ever been done.
     NIOVA_ASSERT(raerq->raerqm_prev_log_index >= RAFT_MIN_APPEND_ENTRY_IDX);
 
-    const int64_t raft_current_idx =
+    const raft_entry_idx_t raft_current_idx =
         raft_server_get_current_raft_entry_index(ri);
 
-    const int64_t leaders_next_idx_for_me = raerq->raerqm_prev_log_index + 1;
+    const raft_entry_idx_t leaders_next_idx_for_me = raerq->raerqm_prev_log_index + 1;
 
     // The condition for entering this function should have been checked prior.
     NIOVA_ASSERT(raft_current_idx >= leaders_next_idx_for_me);
-
-    // Read the previous block as specified in the AE request.
-    size_t phys_idx =
-        raft_server_entry_idx_to_phys_idx(ri, leaders_next_idx_for_me);
-
-    NIOVA_ASSERT(!raft_phys_idx_is_log_header(ri, phys_idx));
 
     struct raft_entry_header reh = {0};
 
@@ -2092,15 +1907,16 @@ raft_server_append_entry_check_already_stored(
      */
     if (raerq->raerqm_log_term > 0)
     {
-        int rc = raft_server_entry_header_read_by_store(ri, phys_idx, &reh);
-        FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        leaders_next_idx_for_me);
+        FATAL_IF((rc), "raft_server_header_entry_read(): %s", strerror(-rc));
 
         if (reh.reh_term != raerq->raerqm_log_term)
             return false;
 
         FATAL_IF((raerq->raerqm_this_idx_crc != reh.reh_crc),
-                 "crc (%u) does not match leader (%u) for phys-idx=%ld",
-                 reh.reh_crc, raerq->raerqm_this_idx_crc, phys_idx);
+                 "crc (%u) does not match leader (%u) for idx=%ld",
+                 reh.reh_crc, raerq->raerqm_this_idx_crc, leaders_next_idx_for_me);
     }
     else
     {
@@ -2114,20 +1930,19 @@ raft_server_append_entry_check_already_stored(
      * ensure that the verified idx, leaders_next_idx_for_me, proceeds a valid
      * term of the prev-idx.
      */
-    phys_idx =
-        raft_server_entry_idx_to_phys_idx(ri, raerq->raerqm_prev_log_index);
-
-    if (!raft_phys_idx_is_log_header(ri, phys_idx))
+    if (raerq->raerqm_prev_log_index >= 0)
     {
-        int rc = raft_server_entry_header_read_by_store(ri, phys_idx, &reh);
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        raerq->raerqm_prev_log_index);
 
         FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
         FATAL_IF((reh.reh_term != raerq->raerqm_prev_log_term),
                  "raerq->raerqm_prev_log_term=%ld != reh.reh_term=%ld",
                  raerq->raerqm_prev_log_term, reh.reh_term);
         FATAL_IF((raerq->raerqm_prev_idx_crc != reh.reh_crc),
-                 "crc (%u) does not match leader (%u) for phys-idx=%ld",
-                 reh.reh_crc, raerq->raerqm_this_idx_crc, phys_idx);
+                 "crc (%u) does not match leader (%u) for idx=%ld",
+                 reh.reh_crc, raerq->raerqm_this_idx_crc,
+                 raerq->raerqm_prev_log_index);
     }
 
     DBG_RAFT_INSTANCE(
@@ -2169,19 +1984,14 @@ raft_server_append_entry_log_prune_if_needed(
     }
     else
     {
-        const size_t phys_idx =
-            raft_server_entry_idx_to_phys_idx(ri,
-                                              raerq->raerqm_prev_log_index);
-
-        NIOVA_ASSERT(!raft_phys_idx_is_log_header(ri, phys_idx));
-
         struct raft_entry_header reh;
 
         /* Read the block at the leader's index and apply it to our header.
          * We don't call raft_server_entry_next_entry_is_valid() since the log
          * sequence had been verified already at startup.
          */
-        int rc = raft_server_entry_header_read_by_store(ri, phys_idx, &reh);
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        raerq->raerqm_prev_log_index);
         FATAL_IF((rc), "raft_server_entry_header_read_by_store(): %s", strerror(-rc));
 
         raft_instance_update_newest_entry_hdr(ri, &reh);
@@ -3180,26 +2990,23 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 
          if (!heartbeat && peer_next_raft_idx <= my_raft_idx)
          {
-             const size_t phys_idx =
-                 raft_server_entry_idx_to_phys_idx(ri, peer_next_raft_idx);
-
              struct raft_entry_header *reh =
                  (struct raft_entry_header *)sink_buf;
 
-             int rc = raft_server_entry_header_read_by_store(ri, phys_idx, reh);
+             int rc = raft_server_entry_header_read_by_store(ri, reh,
+                                                             peer_next_raft_idx);
              DBG_RAFT_INSTANCE_FATAL_IF(
                  (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
                  peer_next_raft_idx, strerror(-rc));
 
              raerq->raerqm_entries_sz = reh->reh_data_size;
-             raerq->raerqm_leader_change_marker =
-                 reh->reh_leader_change_marker;
+             raerq->raerqm_leader_change_marker = reh->reh_leader_change_marker;
 
              NIOVA_ASSERT(reh->reh_index == peer_next_raft_idx);
 
              if (raerq->raerqm_entries_sz)
              {
-                 rc = raft_server_entry_read(ri, phys_idx,
+                 rc = raft_server_entry_read(ri, peer_next_raft_idx,
                                              raerq->raerqm_entries,
                                              raerq->raerqm_entries_sz, NULL);
                  DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
@@ -3245,12 +3052,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     struct raft_client_rpc_msg *reply =
         (struct raft_client_rpc_msg *)reply_buf;
 
-    const size_t phys_idx =
-        raft_server_entry_idx_to_phys_idx(ri, ri->ri_last_applied_idx + 1);
+    const size_t apply_idx = ri->ri_last_applied_idx + 1;
 
     struct raft_entry_header reh;
 
-    int rc = raft_server_entry_header_read_by_store(ri, phys_idx, &reh);
+    int rc = raft_server_entry_header_read_by_store(ri, &reh, apply_idx);
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
                                "raft_server_entry_header_read_by_store(): %s",
                                strerror(-rc));
@@ -3272,7 +3078,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
     {
-        rc = raft_server_entry_read(ri, phys_idx, sink_buf, reh.reh_data_size,
+        rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
                                     NULL);
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));

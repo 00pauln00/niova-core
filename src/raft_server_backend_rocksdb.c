@@ -24,6 +24,8 @@
 #include "registry.h"
 #include "util_thread.h"
 
+REGISTRY_ENTRY_FILE_GENERATE;
+
 struct raft_instance_rocks_db
 {
     rocksdb_t              *rir_db;
@@ -34,19 +36,19 @@ struct raft_instance_rocks_db
 };
 
 static void
-rsbr_entry_write(struct raft_instance *, const size_t,
-                 const struct raft_entry *, const size_t);
+rsbr_entry_write(struct raft_instance *, const struct raft_entry *);
+
 static ssize_t
-rsbr_entry_read(struct raft_instance *, struct raft_entry *,
-                const size_t, const size_t);
+rsbr_entry_read(struct raft_instance *, struct raft_entry *);
+
 static int
 rsbr_entry_header_read(struct raft_instance *, const size_t,
                        struct raft_entry_header *);
 static void
-rsbr_log_truncate(struct raft_instance *, const int64_t);
+rsbr_log_truncate(struct raft_instance *, const raft_entry_idx_t);
 
 static int
-rsbr_header_read(struct raft_instance *);
+rsbr_header_load(struct raft_instance *);
 
 static int
 rsbr_header_write(struct raft_instance *, const uuid_t, const int64_t);
@@ -63,12 +65,10 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_entry_header_read = rsbr_entry_header_read,
     .rib_log_truncate      = rsbr_log_truncate,
     .rib_header_write      = rsbr_header_write,
-    .rib_header_read       = rsbr_header_read,
+    .rib_header_load       = rsbr_header_load,
     .rib_backend_setup     = rsbr_setup,
     .rib_backend_destroy   = rsbr_destroy,
 };
-
-REGISTRY_ENTRY_FILE_GENERATE;
 
 static inline struct raft_instance_rocks_db *
 rsbr_ri_to_rirdb(struct raft_instance *ri)
@@ -173,10 +173,12 @@ rsbr_string_matches_iter_key(const char *str, size_t str_len,
 }
 
 static void
-rsbr_entry_write(struct raft_instance *ri, const size_t phys_idx,
-                 const struct raft_entry *re, const size_t total_entry_size)
+rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re)
 {
-    NIOVA_ASSERT(ri && total_entry_size >= sizeof(struct raft_entry_header));
+    NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
+
+    size_t entry_size = re->re_header.reh_data_size;
+    raft_entry_idx_t entry_idx = re->re_header.reh_index;
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
@@ -189,20 +191,16 @@ rsbr_entry_write(struct raft_instance *ri, const size_t phys_idx,
     size_t entry_header_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
-                                RAFT_ENTRY_HEADER_KEY_PRINTF, phys_idx);
+                                RAFT_ENTRY_HEADER_KEY_PRINTF, entry_idx);
 
     rocksdb_writebatch_put(rir->rir_writebatch, entry_header_key,
                            entry_header_key_len, (const char *)&re->re_header,
                            sizeof(struct raft_entry_header));
 
-    size_t entry_size = total_entry_size - sizeof(struct raft_entry_header);
-
-    NIOVA_ASSERT(entry_size == re->re_header.reh_data_size);
-
     size_t entry_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_key_len,
-                                RAFT_ENTRY_KEY_PRINTF, phys_idx);
+                                RAFT_ENTRY_KEY_PRINTF, entry_idx);
 
     // Store an entry for every header, even if the entry is empty.
     const char x = '\0';
@@ -281,28 +279,21 @@ rsbr_get_exact_val_size(struct raft_instance_rocks_db *rir,
 }
 
 static int
-rsbr_entry_header_read(struct raft_instance *ri, const size_t phys_idx,
-                       struct raft_entry_header *reh)
+rsbr_entry_header_read(struct raft_instance *ri, struct raft_entry_header *reh)
 {
-  if (!ri || !reh)
-	return -EINVAL;
-
-  else if (!raft_instance_is_booting(ri) &&
-           raft_server_get_current_phys_entry_index(ri) < phys_idx)
-      return -ERANGE;
+  if (!ri || !reh || reh->reh_index < 0)
+      return -EINVAL;
 
   struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
   size_t entry_header_key_len = 0;
   DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                               (ssize_t *)&entry_header_key_len,
-                              RAFT_ENTRY_HEADER_KEY_PRINTF, phys_idx);
+                              RAFT_ENTRY_HEADER_KEY_PRINTF, reh->reh_index);
 
-  int rc =
-      rsbr_get_exact_val_size(rir, entry_header_key,
-                                             entry_header_key_len,
-                                             (void *)reh,
-                                             sizeof(struct raft_entry_header));
+  int rc = rsbr_get_exact_val_size(rir, entry_header_key, entry_header_key_len,
+                                   (void *)reh,
+                                   sizeof(struct raft_entry_header));
   if (rc)
   {
       LOG_MSG(LL_ERROR, "rsbr_get_exact_val_size('%s'): %s",
@@ -313,49 +304,39 @@ rsbr_entry_header_read(struct raft_instance *ri, const size_t phys_idx,
 }
 
 static ssize_t
-rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re,
-                const size_t phys_entry_idx,
-/* Xxx  param should be removed */  const size_t total_entry_size)
+rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re)
 {
-    if (!ri || !re || total_entry_size <= sizeof(struct raft_entry_header))
+    if (!ri || !re)
 	return -EINVAL;
 
-    int rc = rsbr_entry_header_read_rocksdb(ri, phys_entry_idx,
-                                                   &re->re_header);
+    int rc = rsbr_entry_header_read(ri, &re->re_header);
     if (rc)
         return rc;
-
-    const size_t entry_size =
-        total_entry_size - sizeof(struct raft_entry_header);
-
-    if (re->re_header.reh_data_size != entry_size)
-    {
-        LOG_MSG(LL_ERROR, "entry_size (%zu) != reh_data_size (%u)",
-                entry_size, re->re_header.reh_data_size);
-        return -EBADR;
-    }
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     size_t entry_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_key_len,
-                                RAFT_ENTRY_KEY_PRINTF, phys_entry_idx);
+                                RAFT_ENTRY_KEY_PRINTF,
+                                re->re_header.reh_index);
 
     rc = rsbr_get_exact_val_size(rir, entry_key, entry_key_len,
-                                                (void *)re->re_data,
-                                                entry_size);
+                                 (void *)re->re_data,
+                                 re->re_header.reh_data_size);
     if (rc)
     {
         LOG_MSG(LL_ERROR, "rsbr_get_exact_val_size('%s'): %s",
                 entry_key, strerror(rc));
     }
 
-    return rc < 0 ? rc : total_entry_size; //Xxx this is wonky
+    return rc < 0 ? rc :
+        re->re_header.reh_data_size + sizeof(struct raft_entry_header);
+//Xxx this is wonky
 }
 
 static int
-rsbr_header_read(struct raft_instance *ri)
+rsbr_header_load(struct raft_instance *ri)
 {
     if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
         return -EINVAL;
@@ -368,10 +349,10 @@ rsbr_header_read(struct raft_instance *ri)
                                 RAFT_LOG_HEADER_FMT,
                                 ri->ri_raft_uuid_str,
                                 ri->ri_this_peer_uuid_str);
-    int rc =
-        rsbr_get_exact_val_size(rir, header_key, header_key_len,
-                                               (void *)&ri->ri_log_hdr,
-                                               sizeof(struct raft_log_header));
+
+    int rc = rsbr_get_exact_val_size(rir, header_key, header_key_len,
+                                     (void *)&ri->ri_log_hdr,
+                                     sizeof(struct raft_log_header));
     if (!rc)
     {
         if (ri->ri_log_hdr.rlh_magic != RAFT_HEADER_MAGIC)
@@ -387,13 +368,10 @@ rsbr_header_read(struct raft_instance *ri)
 }
 
 static int
-rsbr_header_write(struct raft_instance *ri, const uuid_t candidate,
-                  const int64_t candidate_term)
+rsbr_header_write(struct raft_instance *ri)
 {
     if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
         return -EINVAL;
-
-    raft_server_log_header_write_prep(ri, candidate, candidate_term);
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
@@ -523,7 +501,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 }
 
 static void
-rsbr_log_truncate(struct raft_instance *ri, const int64_t trunc_phys_entry_idx)
+rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 {
     NIOVA_ASSERT(ri && ri->ri_rocksdb.rir_db);
 
@@ -536,7 +514,7 @@ rsbr_log_truncate(struct raft_instance *ri, const int64_t trunc_phys_entry_idx)
     size_t entry_header_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
-                                RAFT_ENTRY_KEY_PRINTF, trunc_phys_entry_idx);
+                                RAFT_ENTRY_KEY_PRINTF, entry_idx);
 
     rocksdb_writebatch_delete_range(rir->rir_writebatch,
                                     entry_header_key, entry_header_key_len,
@@ -686,10 +664,10 @@ out:
 }
 
 /**
- * raft_server_backend_rocksdb_apply - selects the rocksDB raft driver.
+ * raft_server_backend_use_rocksdb - selects the rocksDB raft driver.
  */
 void
-raft_server_backend_rocksdb_apply(struct raft_instance *ri)
+raft_server_backend_use_rocksdb(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && !ri->ri_backend);
 

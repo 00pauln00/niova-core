@@ -80,7 +80,7 @@ CORE_OBJFILES   = \
 
 RAFT_OBJFILES	= \
 	src/raft_server.o	\
-	src/raft_net.o
+	src/raft_net.o	\
 
 ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
 ALL_INCLUDES      = $(CORE_INCLUDES) $(SYS_CORE_INCLUDES)

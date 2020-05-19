@@ -21,7 +21,7 @@
 #include "udp.h"
 #include "util.h"
 
-#define NUM_RAFT_LOG_HEADERS 2
+
 #define RAFT_ENTRY_PAD_SIZE 63
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
@@ -45,34 +45,6 @@
 
 #define RAFT_INSTANCE_2_RAFT_UUID(ri)           \
     (ri)->ri_csn_raft->csn_uuid
-
-#define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
-
-#define RAFT_LOG_HEADER_ROCKSDB "a0_hdr."
-#define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
-#define RAFT_LOG_HEADER_FMT                     \
-    RAFT_LOG_HEADER_ROCKSDB"%s__%s"
-
-#define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
-#define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
-#define RAFT_LOG_LASTENTRY_FMT                     \
-    RAFT_LOG_LASTENTRY_ROCKSDB"%s__%s"
-
-
-#define RAFT_HEADER_ENTRY_KEY_FMT "%016zuh"
-#define RAFT_ENTRY_KEY_FMT        "%016zue"
-
-#define RAFT_ENTRY_KEY_PREFIX_ROCKSDB "e0."
-#define RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN 3
-#define RAFT_ENTRY_KEY_PRINTF                           \
-    RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_FMT
-
-#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB \
-    RAFT_ENTRY_KEY_PREFIX_ROCKSDB
-#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB_STRLEN \
-    RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN
-#define RAFT_ENTRY_HEADER_KEY_PRINTF                            \
-    RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_HEADER_ENTRY_KEY_FMT
 
 typedef void    raft_server_udp_cb_ctx_t;
 typedef int     raft_server_udp_cb_ctx_int_t;
@@ -174,7 +146,7 @@ struct raft_entry_header
     crc32_t  reh_crc;       // Crc is after the magic and uuid's (all are constant).
     uint32_t reh_data_size; // The size of the log entry data - must be below reh_crc!
                             //    see raft_server_entry_calc_crc() before changing.
-    int64_t  reh_index;     // Add NUM_RAFT_LOG_HEADERS to get phys offset
+    raft_entry_idx_t reh_index;
     int64_t  reh_term;      // Term in which entry was originally written
     uuid_t   reh_raft_uuid; // UUID of raft instance
     uint8_t  reh_leader_change_marker; // noop
@@ -303,19 +275,13 @@ enum raft_instance_store_type
 
 struct raft_instance_backend
 {
-    void (*rib_entry_write)(struct raft_instance *, const size_t,
-                            const struct raft_entry *, const size_t);
-    void (*rib_entry_read)(struct raft_instance *, struct raft_entry *,
-                           const size_t, const size_t);
-    int (*rib_entry_header_read)(struct raft_instance *, const size_t,
+    void (*rib_entry_write)(struct raft_instance *, const struct raft_entry *);
+    void (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
+    int (*rib_entry_header_read)(struct raft_instance *,
                                  struct raft_entry_header *);
-    void (*rib_log_truncate)(struct raft_instance *ri, const int64_t);
-    int (*rib_header_read)(struct raft_instance *);
-    int (*rib_header_write)(struct raft_instance *ri, const uuid_t, int64_t);
-//    int (*rib_header_init)(struct raft_instance *);
-    // - Create DB file if it doesn't already exist
-    // - Init header if it doesn't exist
-    // - Determine the raft_server_num_entries_calc() if it does exist
+    void (*rib_log_truncate)(struct raft_instance *, const raft_entry_idx_t);
+    int (*rib_header_load)(struct raft_instance *);
+    int (*rib_header_write)(struct raft_instance *, const uuid_t, int64_t);
     int (*rib_backend_setup)(struct raft_instance *);
     int (*rib_backend_shutdown)(struct raft_instance *);
 };
@@ -640,43 +606,6 @@ raft_server_entry_header_is_null(const struct raft_entry_header *reh)
     return true;
 }
 
-static inline size_t
-raft_server_instance_get_num_log_headers(const struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri->ri_log_hdr.rlh_version == 0);
-
-    switch (ri->ri_store_type)
-    {
-    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
-	return NUM_RAFT_LOG_HEADERS;
-
-    case RAFT_INSTANCE_STORE_ROCKSDB:
-        break;
-
-    default:
-        SIMPLE_LOG_MSG(LL_FATAL, "invalid store type %d", ri->ri_store_type);
-        break;
-    }
-
-    return 0;
-}
-
-static inline size_t
-raft_server_entry_idx_to_phys_idx(const struct raft_instance *ri,
-                                  int64_t entry_idx)
-{
-    NIOVA_ASSERT(ri);
-
-    const size_t num_log_headers =
-        raft_server_instance_get_num_log_headers(ri);
-
-    entry_idx += num_log_headers;
-
-    NIOVA_ASSERT(entry_idx >= num_log_headers);
-
-    return entry_idx;
-}
-
 /**
  * raft_server_get_current_raft_entry_term - returns the term value from the
  *    most recent raft entry to have been written to the log.  Note that
@@ -699,46 +628,15 @@ raft_server_get_current_raft_entry_crc(const struct raft_instance *ri)
 }
 
 /**
- * raft_server_get_current_phys_entry_index - obtains the physical position
- *   of the most recent entry.  This physical value is typically used for
- *   I/O.
- */
-static inline int64_t
-raft_server_get_current_phys_entry_index(const struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-
-    int64_t current_phys_index = -1;
-
-    if (!raft_server_entry_header_is_null(&ri->ri_newest_entry_hdr))
-    {
-        current_phys_index = ri->ri_newest_entry_hdr.reh_index;
-
-        // ri_newest_entry_hdr should never have a log hdr block idx value.
-        NIOVA_ASSERT(current_phys_index >= 0);
-
-        current_phys_index += raft_server_instance_get_num_log_headers(ri);
-    }
-
-    return current_phys_index;
-}
-
-/**
  * raft_server_get_current_raft_entry_index - given a raft instance, returns
- *    the logical position of the last written application log entry.  The
- *    logical position is the physical index minus the number of
- *    NUM_RAFT_LOG_HEADERS blocks.  The values processed by this function
- *    are based on the ri_newest_entry_hdr data, which stores a copy of the
- *    most recently written log entry.  If ri_newest_entry_hdr is null, this
- *    means the log has no entries.  Otherwise, a non-negative value is
- *    adjusted to subtract NUM_RAFT_LOG_HEADERS and returned.
+ *    the logical position of the last written application log entry.
  */
-static inline int64_t
+static inline raft_entry_idx_t
 raft_server_get_current_raft_entry_index(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    int64_t current_reh_index = -1;
+    raft_entry_idx_t current_reh_index = -1;
 
     if (!raft_server_entry_header_is_null(&ri->ri_newest_entry_hdr))
     {
@@ -771,8 +669,9 @@ int
 raft_server_main_loop(struct raft_instance *ri);
 
 void
-raft_server_log_header_write_prep(struct raft_instance *ri,
-                                  const uuid_t candidate,
-                                  const int64_t candidate_term);
+raft_server_backend_use_posix(struct raft_instance *ri);
+
+void
+raft_server_backend_use_rocksdb(struct raft_instance *ri)
 
 #endif

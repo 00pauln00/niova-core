@@ -22,61 +22,177 @@
 #include "registry.h"
 #include "util_thread.h"
 
+#define NUM_RAFT_LOG_HEADERS 2
+
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static int
-raft_server_log_file_setup_init_header_posix(struct raft_instance *ri)
+struct raft_instance_posix
 {
-    if (!ri)
-        return -EINVAL;
-
-    uuid_t null_uuid;
-    uuid_clear(null_uuid);
-
-    for (int i = 0; i < raft_server_instance_get_num_log_headers(ri); i++)
-    {
-        int rc = raft_server_log_header_write_posix(ri, null_uuid, 0);
-        if (rc)
-            return rc;
-    }
-
-    return 0;
-}
-
+    struct stat rip_stb;
+    int         rip_fd;
+};
 
 static void
-rsbp_entry_write(struct raft_instance *ri, const size_t phys_idx,
-                 const struct raft_entry *re, const size_t total_entry_size)
-{
-    const ssize_t write_sz =
-        io_pwrite(ri->ri_log_fd, (const char *)re, total_entry_size,
-                  (phys_idx * RAFT_ENTRY_SIZE));
+rsbp_entry_write(struct raft_instance *, const struct raft_entry *);
 
-    NIOVA_ASSERT(write_sz == total_entry_size);
+static ssize_t
+rsbp_entry_read(struct raft_instance *, struct raft_entry *);
+
+static int
+rsbp_entry_header_read(struct raft_instance *, const size_t,
+                       struct raft_entry_header *)
+
+static int
+rsbp_header_write(struct raft_instance *, const uuid_t, const int64_t);
+
+static void
+rsbp_log_truncate(struct raft_instance *, const int64_t);
+
+static int
+rsbp_header_load(struct raft_instance *);
+
+static struct raft_instance_backend ribPosix = {
+    .rib_entry_write       = rsbp_entry_write,
+    .rib_entry_read        = rsbp_entry_read,
+    .rib_entry_header_read = rsbp_entry_header_read,
+    .rib_log_truncate      = rsbp_log_truncate,
+    .rib_header_write      = rsbp_header_write,
+    .rib_header_load       = rsbp_header_load,
+    .rib_backend_setup     = rsbp_setup,
+    .rib_backend_destroy   = rsbp_destroy,
+};
+
+static inline struct raft_instance_posix *
+rsbp_ri_to_rip(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_backend == &ribPosix && ri->ri_backend_arg);
+
+    struct raft_instance_posix *rip =
+        (struct raft_instance_posix *)ri->ri_backend_arg;
+
+    return rip;
+}
+
+static inline size_t
+rsbp_ri_to_log_sz(struct raft_instance *ri)
+{
+    return rsbp_ri_to_rip(ri)->rip_stb.st_size;
+}
+
+static inline raft_entry_idx_t
+rsbr_get_num_log_headers(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri->ri_log_hdr.rlh_version == 0 &&
+                 ri->ri_store_type == RAFT_INSTANCE_STORE_POSIX_FLAT_FILE);
+
+    return NUM_RAFT_LOG_HEADERS;
+}
+
+static inline bool
+rsbr_phys_idx_is_log_header(const struct raft_instance *ri, size_t phys_idx)
+{
+    return phys_idx < rsbr_get_num_log_headers(ri) ? true : false;
+}
+
+static inline raft_entry_idx_t
+rsbr_entry_idx_to_phys_idx(const struct raft_instance *ri,
+                           raft_entry_idx_t entry_idx)
+{
+    NIOVA_ASSERT(ri);
+
+    const raft_entry_idx_t num_log_headers = rsbr_get_num_log_headers(ri);
+        raft_server_instance_get_num_log_headers(ri);
+
+    entry_idx += num_log_headers;
+
+    NIOVA_ASSERT(entry_idx >= num_log_headers);
+
+    return entry_idx;
+}
+
+static raft_entry_idx_t
+rsbr_raft_entry_to_phys_idx(const struct raft_instance *ri,
+                            const struct raft_entry *re)
+{
+    return rsbr_entry_idx_to_phys_idx(ri, re->re_header.reh_index);
+}
+
+static off_t
+rsbr_raft_entry_to_phys_offset(const struct raft_instance *ri,
+                               const struct raft_entry *re)
+{
+    return (off_t)(rsbr_raft_entry_to_phys_idx(ri, re) * RAFT_ENTRY_SIZE);
+}
+
+static size_t
+rsbr_raft_entry_to_total_size(const struct raft_entry *re)
+{
+    return (size_t)(sizeof(struct raft_entry_header) +
+                    re->re_header.reh_data_size);
+}
+
+static void
+rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re)
+{
+    if (!ri || !re)
+        return -EINVAL;
+
+    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
+
+    const ssize_t write_sz =
+        io_pwrite(rip->rip_fd, (const char *)re,
+                  rsbr_raft_entry_to_total_size(re),
+                  rsbr_raft_entry_to_phys_offset(ri, re));
+
+    NIOVA_ASSERT(write_sz == rsbr_raft_entry_to_total_size(re));
 
     //Xxxx pwritev2 can do a sync write with a single syscall.
-    int rc = io_fsync(ri->ri_log_fd);
+    int rc = io_fsync(rip->rip_fd);
     NIOVA_ASSERT(!rc);
 }
 
 static ssize_t
-rsbp_entry_read(struct raft_instance *ri, struct raft_entry *re,
-                const size_t phys_entry_idx, const size_t total_entry_size)
+rsbp_entry_read(struct raft_instance *ri, struct raft_entry *re)
 {
-    return io_pread(ri->ri_log_fd, (char *)re, total_entry_size,
-                    (phys_entry_idx * RAFT_ENTRY_SIZE));
+    if (!ri || !re)
+        return -EINVAL;
+
+    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
+
+    return io_pread(rip->rip_fd, (char *)re, rsbr_raft_entry_to_total_size(re),
+                    rsbr_raft_entry_to_phys_offset(ri, re));
 }
 
-static void //raft_server_udp_cb_ctx_int_t
-rsbp_log_truncate(struct raft_instance *ri, const int64_t trunc_phys_entry_idx)
+static int
+rsbp_entry_header_read(struct raft_instance *ri, struct raft_entry_header *reh)
+{
+    if (!ri || !reh || reh->reh_index < 0)
+        return -EINVAL;
+
+    const ssize_t expected_size = sizeof(struct raft_entry_header);
+
+    ssize_t read_sz = rsbp_entry_read(ri, (struct raft_entry *)reh,
+                                      reh->reh_index, (size_t)expected_size);
+
+    if (read_sz < 0)
+        return (int)read_sz;
+
+    return read_sz == expected_size ? 0 : -EIO;
+}
+
+static void
+rsbp_log_truncate(struct raft_instance *ri,
+                  const raft_entry_idx_t entry_idx)
 {
     NIOVA_ASSERT(ri);
 
-    int rc = io_ftruncate(ri->ri_log_fd,
-                          (trunc_phys_entry_idx * RAFT_ENTRY_SIZE));
+    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
+    const off_t trunc_off = rsbr_raft_entry_to_phys_offset(ri, entry_idx);
+
+    int rc = io_ftruncate(rip->rip_fd, trunc_off);
     FATAL_IF((rc), "io_ftruncate(): %s", strerror(-rc));
 
-    rc = io_fsync(ri->ri_log_fd);
+    rc = io_fsync(rip->rip_fd);
     FATAL_IF((rc), "io_fsync(): %s", strerror(-rc));
 }
 
@@ -86,34 +202,42 @@ rsbp_header_load(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
-    const size_t num_headers = raft_server_instance_get_num_log_headers(ri);
+    const size_t num_headers = rsbr_get_num_log_headers(ri);
     NIOVA_ASSERT(num_headers > 0);
 
-    struct raft_log_header rlh[num_headers];
-    struct raft_log_header *most_recent_rlh = NULL;
+    struct raft_log_header most_recent_rlh = {0};
 
-    for (size_t i = 0; i < num_headers; i++)
+    struct
     {
-        memset(&rlh[i], 0, sizeof(struct raft_log_header));
+        struct raft_entry re;
+        struct raft_log_header rlh;
+    } entry_and_header;
+
+
+    for (raft_entry_idx_t i = 0; i < num_headers; i++)
+    {
+        memset(&entry_and_header, 0, sizeof(entry_and_header));
 
         size_t rc_len = 0;
         char *buf = (char *)((struct raft_log_header *)&rlh[i]);
 
-        int rc = rsbp_entry_read(ri, i, buf, sizeof(struct raft_log_header),
-                                 &rc_len);
+        entry_and_header.re.re_header.reh_index = i;
+        entry_and_header.re.re_header.reh_data_size =
+            sizeof(struct raft_log_header);
 
-        if (!rc && rc_len == sizeof(struct raft_log_header))
+        ssize_t rrc = rsbp_entry_read(ri, &entry_and_header.re);
+        if (rrc == sizeof(entry_and_header))
         {
-            if (!most_recent_rlh ||
-                rlh[i].rlh_seqno > most_recent_rlh->rlh_seqno)
-                most_recent_rlh = &rlh[i];
+            if (most_recent_rlh.rlh_magic != RAFT_HEADER_MAGIC ||
+                entry_and_header.rlh_seqno > most_recent_rlh.rlh_seqno)
+                most_recent_rlh = entry_and_header.rlh;
         }
     }
 
-    if (!most_recent_rlh) // No valid header entries were found
-        return -EBADMSG;
+    if (most_recent_rlh.rlh_magic != RAFT_HEADER_MAGIC)
+        return -EBADMSG; // No valid header entries were found
 
-    ri->ri_log_hdr = *most_recent_rlh;
+    ri->ri_log_hdr = most_recent_rlh;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 
@@ -121,7 +245,7 @@ rsbp_header_load(struct raft_instance *ri)
 }
 
 /**
- * raft_server_log_header_write_posix - store the current raft state into the
+ * rsbp_header_write - store the current raft state into the
  *     log header. This function is typically called while casting a vote for a
  *     candidate.
  * @ri:  this raft instance
@@ -130,13 +254,10 @@ rsbp_header_load(struct raft_instance *ri)
  * @candidate_term:  term presented by the candidate
  */
 static int
-rsbp_header_write(struct raft_instance *ri, const uuid_t candidate,
-                  const int64_t candidate_term)
+rsbp_header_write(struct raft_instance *ri)
 {
     if (!ri)
         return -EINVAL;
-
-    raft_server_log_header_write_prep(ri, candidate, candidate_term);
 
     const size_t block_num = ri->ri_log_hdr.rlh_seqno %
         MAX(1, raft_server_instance_get_num_log_headers(ri));
@@ -148,12 +269,14 @@ rsbp_header_write(struct raft_instance *ri, const uuid_t candidate,
 }
 
 static int
-raft_server_stat_log_fd(struct raft_instance *ri)
+rsbp_stat_log_fd(struct raft_instance *ri)
 {
     if (!ri)
         return -EINVAL;
 
-    int rc = fstat(ri->ri_log_fd, &ri->ri_log_stb);
+    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
+
+    int rc = fstat(rip->rip_fd, &rip->rip_stb);
     if (rc < 0)
     {
         rc = -errno;
@@ -163,77 +286,157 @@ raft_server_stat_log_fd(struct raft_instance *ri)
     return rc;
 }
 
-/**
- * raft_server_log_file_setup - open the log file and initialize it if it's
- *    newly created.
- */
-static int
-raft_server_log_file_setup_posix(struct raft_instance *ri)
-{
-    if (!ri)
-        return -EINVAL;
-
-    int rc = 0;
-    ri->ri_log_fd = open(ri->ri_log, O_CREAT | O_RDWR | O_SYNC, 0600);
-    if (ri->ri_log_fd < 0)
-    {
-        rc = -errno;
-        SIMPLE_LOG_MSG(LL_ERROR, "open(`%s'): %s", ri->ri_log, strerror(-rc));
-        return rc;
-    }
-
-    rc = raft_server_stat_log_fd(ri);
-    if (rc)
-        return rc;
-
-    /* Initialize the log header if the file was just created.
-     */
-    if (!ri->ri_log_stb.st_size)
-    {
-        rc = raft_server_log_file_setup_init_header(ri);
-        if (rc)
-            SIMPLE_LOG_MSG(LL_ERROR,
-                           "raft_server_log_file_setup_init_header(): %s",
-                           strerror(-rc));
-    }
-
-    return rc;
-}
-
 static ssize_t
-raft_server_num_entries_calc_posix(struct raft_instance *ri)
+rsbr_num_entries_calc(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    int rc = raft_server_stat_log_fd(ri);
+    int rc = rsbp_stat_log_fd(ri);
     if (rc)
         return rc;
+
+    const size_t log_sz = rsbp_ri_to_log_sz(ri);
 
     /* Calculate the number of entries based on the size of the log file
      * deducting the number of log header blocks.
      */
     ssize_t num_entries =
-        MAX(0, ((ri->ri_log_stb.st_size / RAFT_ENTRY_SIZE) +
-                ((ri->ri_log_stb.st_size % RAFT_ENTRY_SIZE) ? 1 : 0)
-                - raft_server_instance_get_num_log_headers(ri)));
+        MAX(0, ((log_sz / RAFT_ENTRY_SIZE) +
+                ((log_sz % RAFT_ENTRY_SIZE) ? 1 : 0) -
+                rsbr_get_num_log_headers(ri)));
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "num-block-entries=%zd", num_entries);
 
     return num_entries;
 }
 
-// Part of rib_backend_shutdown
 static int
-raft_server_log_file_close(struct raft_instance *ri)
+rsbr_setup_initialize_headers(struct raft_instance *ri)
 {
     if (!ri)
         return -EINVAL;
 
-    else if (ri->ri_log_fd < 0)
+    uuid_t null_uuid;
+    uuid_clear(null_uuid);
+
+    for (int i = 0; i < rsbr_get_num_log_headers(ri); i++)
+    {
+        int rc = rsbp_header_write(ri, null_uuid, 0);
+        if (rc)
+            return rc;
+    }
+
+    return 0;
+}
+
+/**
+ * rsbp_log_file_setup - open the log file and initialize it if it's
+ *    newly created.
+ */
+static int
+rsbp_log_file_setup(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
+
+    int rc = 0;
+    rip->rip_fd = open(ri->ri_log, O_CREAT | O_RDWR | O_SYNC, 0600);
+    if (rip->rip_fd < 0)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "open(`%s'): %s", ri->ri_log, strerror(-rc));
+        return rc;
+    }
+
+    rc = rsbp_stat_log_fd(ri);
+    if (rc)
+        return rc;
+
+    /* Initialize the log header if the file was just created.
+     */
+    if (!rip->rip_stb.st_size)
+    {
+        rc = rsbr_setup_initialize_headers(ri);
+        if (rc)
+            SIMPLE_LOG_MSG(LL_ERROR,
+                           "raft_server_log_file_setup_init_header(): %s",
+                           strerror(-rc));
+    }
+
+    if (!rc)
+    {
+        ri->ri_entries_detected_at_startup = rsbr_num_entries_calc(ri);
+
+        if (ri->ri_entries_detected_at_startup < 0)
+            rc = ri->ri_entries_detected_at_startup;
+    }
+
+    return rc;
+}
+
+// Part of rib_backend_shutdown
+static int
+rsbp_log_file_close(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
+
+    if (rip->rip_fd < 0)
         return 0;
 
-    int rc = close(ri->ri_log_fd);
-    ri->ri_log_fd = -1;
+    int rc = close(rip->rip_fd);
+    rip->rip_fd = -1;
 
     return rc;
 };
+
+static int
+rsbr_destroy(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    rsbp_log_file_close(ri);
+
+    niova_free(ri->ri_backend_arg);
+    ri->ri_backend = NULL;
+}
+
+static int
+rsbr_setup(struct raft_instance *ri)
+{
+    if (!ri || ri->ri_backend != &ribPosix)
+	return -EINVAL;
+
+    else if (ri->ri_backend_arg)
+        return -EALREADY;
+
+    ri->ri_backend_arg = niova_calloc(1, sizeof(struct raft_instance_posix));
+
+    if (!ri->ri_backend_arg)
+	return -ENOMEM;
+
+    int rc = rsbp_log_file_setup(ri);
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, "rsbp_log_file_setup(): %s", strerror(rc));
+
+        rsbr_destroy(ri);
+        return rc;
+    }
+
+    // Open and/or create the DB file
+    //rsbr_destroy(ri);
+}
+
+void
+raft_server_backend_use_posix(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && !ri->ri_backend);
+
+    ri->ri_backend = &ribPosix;
+}

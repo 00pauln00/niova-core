@@ -68,7 +68,7 @@ typedef uint32_t mb_version_t;
 typedef uint32_t mb_crc32_t;
 typedef uint64_t vblkdev_chunk_id_t;
 typedef uint64_t txn_id_t;
-
+typedef int64_t  raft_entry_idx_t;
 /* Thread context defines
  */
 typedef pthread_t thread_id_t;
