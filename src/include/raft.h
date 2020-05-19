@@ -16,6 +16,7 @@
 #include "binary_hist.h"
 #include "common.h"
 #include "ctl_svc.h"
+#include "epoll_mgr.h"
 #include "ev_pipe.h"
 #include "raft_net.h"
 #include "udp.h"
@@ -153,19 +154,18 @@ struct raft_entry_header
     uint8_t  reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
 
-static inline bool
-raft_entry_is_header_block(const struct raft_entry_header *reh)
-{
-    NIOVA_ASSERT(reh);
-
-    return reh->reh_index < 0 ? true : false;
-}
-
 struct raft_entry
 {
     struct raft_entry_header re_header;
     char                     re_data[];
 };
+
+static inline size_t
+raft_server_entry_to_total_size(const struct raft_entry *re)
+{
+    return (size_t)(sizeof(struct raft_entry_header) +
+                    re->re_header.reh_data_size);
+}
 
 struct raft_log_header
 {
@@ -276,12 +276,12 @@ enum raft_instance_store_type
 struct raft_instance_backend
 {
     void (*rib_entry_write)(struct raft_instance *, const struct raft_entry *);
-    void (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
+    ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
     int (*rib_entry_header_read)(struct raft_instance *,
                                  struct raft_entry_header *);
     void (*rib_log_truncate)(struct raft_instance *, const raft_entry_idx_t);
     int (*rib_header_load)(struct raft_instance *);
-    int (*rib_header_write)(struct raft_instance *, const uuid_t, int64_t);
+    int (*rib_header_write)(struct raft_instance *);
     int (*rib_backend_setup)(struct raft_instance *);
     int (*rib_backend_shutdown)(struct raft_instance *);
 };
@@ -656,6 +656,17 @@ raft_server_get_follower_info(struct raft_instance *ri,
     return &ri->ri_leader.rls_rfi[member];
 }
 
+int
+raft_server_entry_check_crc(const struct raft_entry *re);
+
+// May be used by backends to prepare a header block
+void
+raft_server_entry_init_for_log_header(const struct raft_instance *ri,
+                                      struct raft_entry *re,
+                                      const raft_entry_idx_t re_idx,
+                                      const uint64_t current_term,
+                                      const char *data, const size_t len);
+
 void
 raft_server_instance_init(struct raft_instance *ri);
 
@@ -672,6 +683,6 @@ void
 raft_server_backend_use_posix(struct raft_instance *ri);
 
 void
-raft_server_backend_use_rocksdb(struct raft_instance *ri)
+raft_server_backend_use_rocksdb(struct raft_instance *ri);
 
 #endif

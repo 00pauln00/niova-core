@@ -24,6 +24,30 @@
 #include "registry.h"
 #include "util_thread.h"
 
+#define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
+
+#define RAFT_LOG_HEADER_ROCKSDB "a0_hdr."
+#define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
+#define RAFT_LOG_HEADER_FMT RAFT_LOG_HEADER_ROCKSDB"%s__%s"
+
+#define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
+#define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
+#define RAFT_LOG_LASTENTRY_FMT RAFT_LOG_LASTENTRY_ROCKSDB"%s__%s"
+
+#define RAFT_HEADER_ENTRY_KEY_FMT "%016zuh"
+#define RAFT_ENTRY_KEY_FMT        "%016zue"
+
+#define RAFT_ENTRY_KEY_PREFIX_ROCKSDB "e0."
+#define RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN 3
+#define RAFT_ENTRY_KEY_PRINTF RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_FMT
+
+#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_PREFIX_ROCKSDB
+#define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB_STRLEN \
+    RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN
+#define RAFT_ENTRY_HEADER_KEY_PRINTF                            \
+    RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_HEADER_ENTRY_KEY_FMT
+
+
 REGISTRY_ENTRY_FILE_GENERATE;
 
 struct raft_instance_rocks_db
@@ -42,8 +66,8 @@ static ssize_t
 rsbr_entry_read(struct raft_instance *, struct raft_entry *);
 
 static int
-rsbr_entry_header_read(struct raft_instance *, const size_t,
-                       struct raft_entry_header *);
+rsbr_entry_header_read(struct raft_instance *, struct raft_entry_header *);
+
 static void
 rsbr_log_truncate(struct raft_instance *, const raft_entry_idx_t);
 
@@ -51,7 +75,7 @@ static int
 rsbr_header_load(struct raft_instance *);
 
 static int
-rsbr_header_write(struct raft_instance *, const uuid_t, const int64_t);
+rsbr_header_write(struct raft_instance *);
 
 static int
 rsbr_setup(struct raft_instance *);
@@ -67,7 +91,7 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_header_write      = rsbr_header_write,
     .rib_header_load       = rsbr_header_load,
     .rib_backend_setup     = rsbr_setup,
-    .rib_backend_destroy   = rsbr_destroy,
+    .rib_backend_shutdown  = rsbr_destroy,
 };
 
 static inline struct raft_instance_rocks_db *
@@ -414,10 +438,9 @@ rsbr_init_header(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
-    uuid_t null_uuid;
-    uuid_clear(null_uuid);
+    memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
 
-    return rsbr_header_write(ri, null_uuid, 0);
+    return rsbr_header_write(ri);
 }
 
 static ssize_t
@@ -503,9 +526,9 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 static void
 rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 {
-    NIOVA_ASSERT(ri && ri->ri_rocksdb.rir_db);
+    NIOVA_ASSERT(ri);
 
-    struct raft_instance_rocks_db *rir = &ri->ri_rocksdb;
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     NIOVA_ASSERT(rir->rir_writeoptions && rir->rir_writebatch);
 
@@ -525,7 +548,7 @@ rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
     rocksdb_write(rir->rir_db, rir->rir_writeoptions, rir->rir_writebatch,
                   &err);
 
-    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
+    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write(): %s", err);
 
     rocksdb_writebatch_clear(rir->rir_writebatch);
 }
@@ -539,7 +562,7 @@ rsbr_destroy(struct raft_instance *ri)
     else if (!ri->ri_backend_arg)
         return -EALREADY;
 
-    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     rocksdb_close(rir->rir_db);
 
@@ -570,7 +593,7 @@ rsbr_setup(struct raft_instance *ri)
         return -EALREADY;
 
     ri->ri_backend_arg =
-        niova_calloc(1, sizeof(struct raft_instance_rocks_db));
+        niova_calloc(1UL, sizeof(struct raft_instance_rocks_db));
 
     if (!ri->ri_backend_arg)
         return -ENOMEM;
@@ -581,7 +604,7 @@ rsbr_setup(struct raft_instance *ri)
     rir->rir_options = rocksdb_options_create();
     if (!rir->rir_options)
     {
-        rsbr_destroy(rir);
+        rsbr_destroy(ri);
         return -ENOMEM;
     }
 
@@ -596,7 +619,7 @@ rsbr_setup(struct raft_instance *ri)
     rir->rir_writeoptions = rocksdb_writeoptions_create();
     if (!rir->rir_writeoptions)
     {
-        rsbr_destroy(rir);
+        rsbr_destroy(ri);
         return -ENOMEM;
     }
 
@@ -658,7 +681,7 @@ rsbr_setup(struct raft_instance *ri)
     }
 out:
     if (rc || err)
-        rsbr_destroy(rir);
+        rsbr_destroy(ri);
 
     return rc;
 }
