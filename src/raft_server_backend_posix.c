@@ -147,12 +147,20 @@ rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re)
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
 
-    const ssize_t write_sz =
-        io_pwrite(rip->rip_fd, (const char *)re,
-                  raft_server_entry_to_total_size(re),
-                  rsbr_raft_entry_to_phys_offset(ri, re));
+    const size_t expected_size = raft_server_entry_to_total_size(re);
+    const off_t offset = rsbr_raft_entry_to_phys_offset(ri, re);
 
-    NIOVA_ASSERT(write_sz == raft_server_entry_to_total_size(re));
+    const ssize_t rrc =
+        io_pwrite(rip->rip_fd, (const char *)re, expected_size, offset);
+
+    const bool write_ok = (rrc == (ssize_t)expected_size) ? true : false;
+
+    DBG_RAFT_ENTRY((write_ok ? LL_DEBUG : LL_ERROR), &re->re_header,
+                   "io_pwrite() %s (rrc=%zd expected-size=%zu offset=%ld)",
+                   rrc < 0 ? strerror(-rrc) : "Success", rrc, expected_size,
+                   offset);
+
+    NIOVA_ASSERT(rrc == expected_size);
 
     //Xxxx pwritev2 can do a sync write with a single syscall.
     int rc = io_fsync(rip->rip_fd);
@@ -180,13 +188,32 @@ rsbp_entry_header_read(struct raft_instance *ri, struct raft_entry_header *reh)
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
     const ssize_t expected_size = sizeof(struct raft_entry_header);
+    const raft_entry_idx_t idx = reh->reh_index;
+
+    LOG_MSG(LL_DEBUG, "reh=%p reh-idx=%ld reh-data-size=%u",
+            reh, reh->reh_index, reh->reh_data_size);
 
     ssize_t read_sz = io_pread(rip->rip_fd, (char *)reh, expected_size,
                                rsbr_raft_entry_header_to_phys_offset(ri, reh));
-    if (read_sz < 0)
-        return (int)read_sz;
 
-    return read_sz == expected_size ? 0 : -EIO;
+    int rc = read_sz < 0 ?
+        (int)read_sz : (read_sz == expected_size ? 0 : -EIO);
+
+    if (rc)
+    {
+        LOG_MSG(LL_ERROR,
+                "io_pread(): %s (rrc=%zd reh-idx=%ld offset=%ld)",
+                strerror(-rc), read_sz, idx,
+                rsbr_raft_entry_header_to_phys_offset(ri, reh));
+    }
+    else
+    {
+        DBG_RAFT_ENTRY(LL_DEBUG, reh, "entry-sz=%zd offset=%ld",
+                       expected_size,
+                       rsbr_raft_entry_header_to_phys_offset(ri, reh));
+    }
+
+    return rc;
 }
 
 static void
@@ -197,6 +224,9 @@ rsbp_log_truncate(struct raft_instance *ri,
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
     const off_t trunc_off = rsbr_raft_index_to_phys_offset(ri, entry_idx);
+
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "trunc-off=%ld entry-idx=%ld",
+                      trunc_off, entry_idx);
 
     int rc = io_ftruncate(rip->rip_fd, trunc_off);
     FATAL_IF((rc), "io_ftruncate(): %s", strerror(-rc));
@@ -303,10 +333,15 @@ rsbp_header_write(struct raft_instance *ri)
                   raft_server_entry_to_total_size(re),
                   rsbr_raft_entry_to_phys_offset(ri, re));
 
-    if (write_sz != raft_server_entry_to_total_size(re))
-        return -EIO;
+    int rc = (write_sz == raft_server_entry_to_total_size(re)) ? 0 : -EIO;
 
-    return 0;
+    DBG_RAFT_ENTRY((rc ? LL_ERROR : LL_DEBUG), &re->re_header,
+                   "io_pwrite(): %s (rrc=%zd expected-size=%zu offset=%ld)",
+                   strerror(-rc), write_sz,
+                   raft_server_entry_to_total_size(re),
+                   rsbr_raft_entry_to_phys_offset(ri, re));
+
+    return rc;
 }
 
 static int
@@ -371,7 +406,8 @@ rsbr_setup_initialize_headers(struct raft_instance *ri)
 
 /**
  * rsbp_log_file_setup - open the log file and initialize it if it's
- *    newly created.
+ *    newly created.  This function also has the role of determining the
+ *    number of found raft entries setting ri->ri_entries_detected_at_startup.
  */
 static int
 rsbp_log_file_setup(struct raft_instance *ri)
