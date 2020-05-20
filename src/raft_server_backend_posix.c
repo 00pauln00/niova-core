@@ -143,7 +143,7 @@ rsbr_raft_entry_header_to_phys_offset(const struct raft_instance *ri,
 static void
 rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re)
 {
-    NIOVA_ASSERT(!ri || !re);
+    NIOVA_ASSERT(ri && re);
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
 
@@ -168,16 +168,58 @@ rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re)
 }
 
 static ssize_t
-rsbp_entry_read(struct raft_instance *ri, struct raft_entry *re)
+rsbp_read_common(struct raft_instance *ri, struct raft_entry *re,
+                 struct raft_entry_header *reh)
 {
-    if (!ri || !re)
+    const bool header_only_read = (reh == NULL) ? false : true;
+
+    if (!ri || (header_only_read && !reh) || (!header_only_read && !re))
         return -EINVAL;
+
+    if (!header_only_read)
+        reh = &re->re_header;
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
 
-    return io_pread(rip->rip_fd, (char *)re,
-                    raft_server_entry_to_total_size(re),
-                    rsbr_raft_entry_to_phys_offset(ri, re));
+    const ssize_t expected_sz = header_only_read ?
+        sizeof(struct raft_entry_header) :
+        raft_server_entry_to_total_size(re);
+
+    const raft_entry_idx_t idx = reh->reh_index;
+
+    LOG_MSG(LL_DEBUG, "reh=%p reh-idx=%ld reh-data-size=%u total-sz=%zd",
+            reh, reh->reh_index, reh->reh_data_size, expected_sz);
+
+    ssize_t read_sz = io_pread(rip->rip_fd, (char *)reh, expected_sz,
+                               rsbr_raft_entry_header_to_phys_offset(ri, reh));
+
+    if (read_sz != expected_sz)
+    {
+        LOG_MSG(
+            LL_ERROR,
+            "io_pread(): %s (rrc=%zd != %zd idx=%ld off=%ld hdr-only=%s)",
+            read_sz < 0 ? strerror((int)-read_sz) : "Success",
+            read_sz, expected_sz, idx,
+            rsbr_raft_entry_header_to_phys_offset(ri, reh),
+            header_only_read ? "true" : "false");
+    }
+    else
+    {
+        DBG_RAFT_ENTRY(LL_DEBUG, reh,
+                       "entry-sz=%zd idx=%zd offset=%ld hdr-only=%s",
+                       expected_sz, idx,
+                       rsbr_raft_entry_header_to_phys_offset(ri, reh),
+                       header_only_read ? "true" : "false");
+    }
+
+    return read_sz;
+}
+
+
+static ssize_t
+rsbp_entry_read(struct raft_instance *ri, struct raft_entry *re)
+{
+    return rsbp_read_common(ri, re, NULL);
 }
 
 static int
@@ -186,34 +228,15 @@ rsbp_entry_header_read(struct raft_instance *ri, struct raft_entry_header *reh)
     if (!ri || !reh || reh->reh_index < 0)
         return -EINVAL;
 
-    struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
-    const ssize_t expected_size = sizeof(struct raft_entry_header);
-    const raft_entry_idx_t idx = reh->reh_index;
+    const ssize_t rrc = rsbp_read_common(ri, NULL, reh);
 
-    LOG_MSG(LL_DEBUG, "reh=%p reh-idx=%ld reh-data-size=%u",
-            reh, reh->reh_index, reh->reh_data_size);
+    if (rrc < 0)
+        return (int)rrc;
 
-    ssize_t read_sz = io_pread(rip->rip_fd, (char *)reh, expected_size,
-                               rsbr_raft_entry_header_to_phys_offset(ri, reh));
+    else if (rrc != sizeof(*reh))
+        return -EIO;
 
-    int rc = read_sz < 0 ?
-        (int)read_sz : (read_sz == expected_size ? 0 : -EIO);
-
-    if (rc)
-    {
-        LOG_MSG(LL_ERROR,
-                "io_pread(): %s (rrc=%zd reh-idx=%ld offset=%ld)",
-                strerror(-rc), read_sz, idx,
-                rsbr_raft_entry_header_to_phys_offset(ri, reh));
-    }
-    else
-    {
-        DBG_RAFT_ENTRY(LL_DEBUG, reh, "entry-sz=%zd offset=%ld",
-                       expected_size,
-                       rsbr_raft_entry_header_to_phys_offset(ri, reh));
-    }
-
-    return rc;
+    return 0;
 }
 
 static void
@@ -256,7 +279,7 @@ rsbp_header_load(struct raft_instance *ri)
     {
         memset(&entry_and_header, 0, sizeof(entry_and_header));
 
-        entry_and_header.re.re_header.reh_index = i;
+        entry_and_header.re.re_header.reh_index = i - num_headers;
         entry_and_header.re.re_header.reh_data_size =
             sizeof(struct raft_log_header);
 
@@ -363,7 +386,7 @@ rsbp_stat_log_fd(struct raft_instance *ri)
 }
 
 static ssize_t
-rsbr_num_entries_calc(struct raft_instance *ri)
+rsbp_num_entries_calc(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
@@ -371,7 +394,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
     if (rc)
         return rc;
 
-    const size_t log_sz = rsbp_ri_to_log_sz(ri);
+    const ssize_t log_sz = rsbp_ri_to_log_sz(ri);
 
     /* Calculate the number of entries based on the size of the log file
      * deducting the number of log header blocks.
@@ -387,18 +410,26 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 }
 
 static int
-rsbr_setup_initialize_headers(struct raft_instance *ri)
+rsbp_setup_initialize_headers(struct raft_instance *ri)
 {
     if (!ri)
         return -EINVAL;
 
     memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
 
+    // Since we're initializing the header block this is ok
+    ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
+
     for (int i = 0; i < rsbr_get_num_log_headers(ri); i++)
     {
         int rc = rsbp_header_write(ri);
         if (rc)
             return rc;
+
+        /* Force the seqno increment here.  Typically, this is done through
+         *   raft_server_log_header_write_prep().
+         */
+        ri->ri_log_hdr.rlh_seqno++;
     }
 
     return 0;
@@ -434,7 +465,7 @@ rsbp_log_file_setup(struct raft_instance *ri)
      */
     if (!rip->rip_stb.st_size)
     {
-        rc = rsbr_setup_initialize_headers(ri);
+        rc = rsbp_setup_initialize_headers(ri);
         if (rc)
             SIMPLE_LOG_MSG(LL_ERROR,
                            "raft_server_log_file_setup_init_header(): %s",
@@ -443,7 +474,7 @@ rsbp_log_file_setup(struct raft_instance *ri)
 
     if (!rc)
     {
-        ri->ri_entries_detected_at_startup = rsbr_num_entries_calc(ri);
+        ri->ri_entries_detected_at_startup = rsbp_num_entries_calc(ri);
 
         if (ri->ri_entries_detected_at_startup < 0)
             rc = ri->ri_entries_detected_at_startup;

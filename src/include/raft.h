@@ -154,7 +154,7 @@ struct raft_entry_header
 
 struct raft_entry
 {
-    struct raft_entry_header re_header;
+    struct raft_entry_header re_header; // Must directly precede re_data
     char                     re_data[];
 };
 
