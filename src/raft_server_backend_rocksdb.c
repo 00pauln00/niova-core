@@ -4,25 +4,13 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/timerfd.h>
-#include <linux/limits.h>
-
 #include <rocksdb/c.h>
 
 #include "alloc.h"
-#include "crc32.h"
-#include "ctl_svc.h"
-#include "io.h"
+#include "common.h"
 #include "log.h"
 #include "raft.h"
-#include "raft_net.h"
-#include "random.h"
 #include "registry.h"
-#include "util_thread.h"
 
 #define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
 

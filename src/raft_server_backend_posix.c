@@ -8,19 +8,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <sys/timerfd.h>
-#include <linux/limits.h>
 
 #include "alloc.h"
-#include "crc32.h"
-#include "ctl_svc.h"
+#include "common.h"
 #include "io.h"
 #include "log.h"
 #include "raft.h"
-#include "raft_net.h"
-#include "random.h"
 #include "registry.h"
-#include "util_thread.h"
 
 #define NUM_RAFT_LOG_HEADERS 2
 

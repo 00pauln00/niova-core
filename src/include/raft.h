@@ -11,17 +11,15 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include <rocksdb/c.h>
-
 #include "binary_hist.h"
 #include "common.h"
+#include "crc32.h"
 #include "ctl_svc.h"
 #include "epoll_mgr.h"
 #include "ev_pipe.h"
 #include "raft_net.h"
 #include "udp.h"
 #include "util.h"
-
 
 #define RAFT_ENTRY_PAD_SIZE 63
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
