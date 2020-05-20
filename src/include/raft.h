@@ -265,12 +265,6 @@ struct raft_instance_hist_stats
     struct lreg_node              rihs_lrn;
 };
 
-enum raft_instance_store_type
-{
-    RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
-    RAFT_INSTANCE_STORE_ROCKSDB,
-};
-
 struct raft_instance_backend
 {
     void (*rib_entry_write)(struct raft_instance *, const struct raft_entry *);
@@ -509,6 +503,14 @@ raft_server_state_to_string(enum raft_state state)
     }
 
     return "unknown";
+}
+
+static inline void
+raft_instance_backend_type_specify(struct raft_instance *ri,
+                                   enum raft_instance_store_type type)
+{
+    if (ri)
+        ri->ri_store_type = type;
 }
 
 static inline bool

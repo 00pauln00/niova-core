@@ -428,6 +428,9 @@ rsbr_init_header(struct raft_instance *ri)
 
     memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
 
+    // Since we're initializing the header block this is ok
+    ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
+
     return rsbr_header_write(ri);
 }
 
@@ -567,6 +570,8 @@ rsbr_destroy(struct raft_instance *ri)
     rir->rir_db = NULL;
 
     niova_free(ri->ri_backend_arg);
+
+    ri->ri_backend_arg = NULL;
 
     return 0;
 }

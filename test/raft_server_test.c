@@ -17,10 +17,12 @@
 #include "ref_tree_proto.h"
 #include "alloc.h"
 
-#define OPTS "u:r:h"
+#define OPTS "u:r:hR"
 
 const char *raft_uuid_str;
 const char *my_uuid_str;
+
+bool use_rocksdb_backend = false;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -541,7 +543,8 @@ static void
 rst_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s -r <UUID> -u <UUID>\n", argv[0]);
+            "Usage: %s [-R (use-rocksDB-backend) -r <UUID> -u <UUID>\n",
+            argv[0]);
 
     exit(error);
 }
@@ -566,6 +569,9 @@ rst_getopt(int argc, char **argv)
             break;
         case 'h':
             rst_print_help(0, argv);
+            break;
+        case 'R':
+            use_rocksdb_backend = true;
             break;
         default:
             rst_print_help(EINVAL, argv);
@@ -613,6 +619,9 @@ main(int argc, char **argv)
     REF_TREE_INIT_ALT_REF(&smNodeTree, rst_sm_node_construct,
                           rst_sm_node_destruct, 2);
 
-    return raft_net_server_instance_run(raft_uuid_str, my_uuid_str,
-                                        raft_server_test_rst_sm_handler);
+    return raft_net_server_instance_run(
+        raft_uuid_str, my_uuid_str,
+        raft_server_test_rst_sm_handler,
+        use_rocksdb_backend ? RAFT_INSTANCE_STORE_ROCKSDB :
+        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE);
 }

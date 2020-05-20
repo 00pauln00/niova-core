@@ -61,6 +61,12 @@ typedef raft_net_udp_cb_ctx_int_t
 #define RAFT_NET_MAX_RETRY_MS 30000
 #define RAFT_NET_MIN_RETRY_MS 100
 
+enum raft_instance_store_type
+{
+    RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
+    RAFT_INSTANCE_STORE_ROCKSDB,
+};
+
 enum raft_udp_listen_sockets
 {
     RAFT_UDP_LISTEN_MIN    = 0,
@@ -227,7 +233,8 @@ raft_net_instance_shutdown(struct raft_instance *ri);
 int
 raft_net_server_instance_run(const char *raft_uuid_str,
                              const char *my_uuid_str,
-                             raft_sm_request_handler_t sm_request_handler);
+                             raft_sm_request_handler_t sm_request_handler,
+                             enum raft_instance_store_type type);
 
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
