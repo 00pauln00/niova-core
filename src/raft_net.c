@@ -31,7 +31,6 @@ enum raft_net_lreg_values
 };
 
 struct raft_instance raftInstance = {
-    .ri_log_fd = -1,
     .ri_store_type = RAFT_INSTANCE_STORE_ROCKSDB,
 //    .ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
 };
@@ -564,7 +563,6 @@ raft_net_server_instance_run(const char *raft_uuid_str,
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
-    ri->ri_log_fd = -1;
 
     int rc = raft_net_instance_startup(ri, false);
     if (rc)

@@ -304,9 +304,7 @@ struct raft_instance
     bool                            ri_ignore_timerfd;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
-    int                             ri_log_fd;
     char                            ri_log[PATH_MAX + 1];
-    struct stat                     ri_log_stb;
     struct raft_log_header          ri_log_hdr;
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
