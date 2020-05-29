@@ -39,6 +39,23 @@ type epContainer struct {
 //	return err
 //}
 
+func (epc *epContainer) tryAdd(uuid uuid.UUID) {
+	lns := epc.EpMap[uuid]
+	if lns == nil {
+		newlns := ctlsvcEP {
+			uuid, epc.Path + "/" + uuid.String(), "r-a4e1",
+				"raft", 6666, time.Now(), true,
+			}
+
+		// serialize with readers in httpd context, this is the only
+		// writer thread so the lookup above does not require a lock
+		epc.Mutex.Lock()
+		epc.EpMap[uuid] = &newlns
+		epc.Mutex.Unlock()
+		log.Printf("added: %+v\n", newlns)
+	}
+}
+
 func (epc *epContainer) Scan() {
 	files, err := ioutil.ReadDir(epc.Path)
 	if err != nil {
@@ -49,27 +66,13 @@ func (epc *epContainer) Scan() {
 		// Need to support removal of stale items
 		uuid, err := uuid.Parse(file.Name())
 
-		if err != nil {
-			continue
-		}
-
-		lns := epc.EpMap[uuid]
-		if lns == nil {
-			newlns := ctlsvcEP {
-				uuid, epc.Path + "/" + file.Name(), "r-a4e1",
-				"raft", 6666, time.Now(), true,
-			}
-			epc.Mutex.Lock()
-			epc.EpMap[uuid] = &newlns
-			epc.Mutex.Unlock()
-
-			log.Printf("added: %+v\n", newlns)
+		if err == nil {
+			epc.tryAdd(uuid)
 		}
 	}
 }
 
 func (epc *epContainer) Monitor() error {
-
 	var err error = nil
 
 	for epc.run == true {
