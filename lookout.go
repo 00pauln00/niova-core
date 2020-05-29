@@ -13,20 +13,11 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	"io/ioutil"
+	//	"nctliface"
 )
 
-type ctlsvcEP struct {
-	Uuid         uuid.UUID `json:"-"` // Field is ignored by json
-	Path         string    `json:"-"`
-	Name         string    `json:"name"`
-	NiovaSvcType string    `json:"type"`
-	Port         int       `json:"port"`
-	LastReport   time.Time `json:"-"`
-	Alive        bool      `json:"responsive"`
-}
-
 type epContainer struct {
-	EpMap map[uuid.UUID]*ctlsvcEP
+	EpMap map[uuid.UUID]*NcsiEP
 	Mutex sync.Mutex
 	Path  string
 	run   bool
@@ -41,7 +32,7 @@ type epContainer struct {
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
 	if lns == nil {
-		newlns := ctlsvcEP{
+		newlns := NcsiEP{
 			uuid, epc.Path + "/" + uuid.String(), "r-a4e1",
 			"raft", 6666, time.Now(), true,
 		}
@@ -89,9 +80,9 @@ func (epc *epContainer) Monitor() error {
 		}
 
 		// Query for liveness
-		//		for _, ep := range ncsEPs {
-		//		ep.Update()
-		//}
+		for _, ep := range epc.EpMap {
+			ep.Detect()
+		}
 
 		// replace with inotify
 		time.Sleep(500 * time.Millisecond)
@@ -125,7 +116,7 @@ func (epc *epContainer) Init(path string) error {
 	epc.Path = path
 
 	// Create the map
-	epc.EpMap = make(map[uuid.UUID]*ctlsvcEP)
+	epc.EpMap = make(map[uuid.UUID]*NcsiEP)
 	if epc.EpMap == nil {
 		return syscall.ENOMEM
 	}
