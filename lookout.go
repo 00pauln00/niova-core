@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"io/ioutil"
 	"encoding/json"
 	"github.com/google/uuid"
+	"io/ioutil"
 )
 
 type ctlsvcEP struct {
-	Uuid         uuid.UUID `json:"-"`    // Field is ignored by json
+	Uuid         uuid.UUID `json:"-"` // Field is ignored by json
 	Path         string    `json:"-"`
 	Name         string    `json:"name"`
 	NiovaSvcType string    `json:"type"`
@@ -26,13 +26,12 @@ type ctlsvcEP struct {
 }
 
 type epContainer struct {
-	EpMap   map[uuid.UUID]*ctlsvcEP
-	Mutex   sync.Mutex
-	Path    string
-	run     bool
-	Statb   syscall.Stat_t
+	EpMap map[uuid.UUID]*ctlsvcEP
+	Mutex sync.Mutex
+	Path  string
+	run   bool
+	Statb syscall.Stat_t
 }
-
 
 //func (ep *ctlsvcEP) Update() int {
 //	err, sys_info := CtlSvcSysInfoQuery(ncsEpDir, ep.Uuid)
@@ -42,10 +41,10 @@ type epContainer struct {
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
 	if lns == nil {
-		newlns := ctlsvcEP {
+		newlns := ctlsvcEP{
 			uuid, epc.Path + "/" + uuid.String(), "r-a4e1",
-				"raft", 6666, time.Now(), true,
-			}
+			"raft", 6666, time.Now(), true,
+		}
 
 		// serialize with readers in httpd context, this is the only
 		// writer thread so the lookup above does not require a lock
@@ -95,7 +94,7 @@ func (epc *epContainer) Monitor() error {
 		//}
 
 		// replace with inotify
- 		time.Sleep(500 * time.Millisecond)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	return err
