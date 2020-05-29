@@ -22,28 +22,25 @@ type ctlsvcEP struct {
 	NiovaSvcType string    `json:"type"`
 	Port         int       `json:"port"`
 	LastReport   time.Time `json:"-"`
-	Alive        bool      `json:responsive"`
+	Alive        bool      `json:"responsive"`
 }
 
 type epContainer struct {
-	EpMap map[uuid.UUID]*ctlsvcEP
-	Mutex sync.Mutex
-	Path string
-	Monitor bool
+	EpMap   map[uuid.UUID]*ctlsvcEP
+	Mutex   sync.Mutex
+	Path    string
+	run     bool
+	Statb   syscall.Stat_t
 }
 
 
-var (
-	ncsEPs = make(map[uuid.UUID]*ctlsvcEP)
-	ncsEpMutex sync.Mutex
-	ncsEpCont bool = true
-	ncsEpDir string = "/tmp/.niova"
-)
+//func (ep *ctlsvcEP) Update() int {
+//	err, sys_info := CtlSvcSysInfoQuery(ncsEpDir, ep.Uuid)
+//	return err
+//}
 
-
-
-func ctlsvcScan(m map[uuid.UUID]*ctlsvcEP) {
-	files, err := ioutil.ReadDir(ncsEpDir)
+func (epc *epContainer) Scan() {
+	files, err := ioutil.ReadDir(epc.Path)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -56,81 +53,104 @@ func ctlsvcScan(m map[uuid.UUID]*ctlsvcEP) {
 			continue
 		}
 
-		lns := m[uuid]
+		lns := epc.EpMap[uuid]
 		if lns == nil {
 			newlns := ctlsvcEP {
-				uuid, ncsEpDir + "/" + file.Name(), "r-a4e1",
+				uuid, epc.Path + "/" + file.Name(), "r-a4e1",
 				"raft", 6666, time.Now(), true,
 			}
-			ncsEpMutex.Lock()
-			m[uuid] = &newlns
-			ncsEpMutex.Unlock()
+			epc.Mutex.Lock()
+			epc.EpMap[uuid] = &newlns
+			epc.Mutex.Unlock()
 
 			log.Printf("added: %+v\n", newlns)
 		}
 	}
 }
 
-func (ep *ctlsvcEP) Update() int {
-	err, sys_info := CtlSvcSysInfoQuery(ncsEpDir, ep.Uuid)
-	return err
-}
+func (epc *epContainer) Monitor() error {
 
-func niovaCtlSvcMonitor() {
-	var stb syscall.Stat_t // niovaSvcDetect() only when dir mtime changes
+	var err error = nil
 
-	for ncsEpCont == true {
+	for epc.run == true {
 		var tmp_stb syscall.Stat_t
-		err := syscall.Stat(ncsEpDir, &tmp_stb)
+
+		err = syscall.Stat(epc.Path, &tmp_stb)
 		if err != nil {
-			log.Printf("syscall.Stat('%s'): %s", ncsEpDir, err)
+			log.Printf("syscall.Stat('%s'): %s", epc.Path, err)
 			break
 		}
 
-		if tmp_stb.Mtim != stb.Mtim {
-			stb = tmp_stb
-			niovaCtlSvcScan(ncsEPs)
+		if tmp_stb.Mtim != epc.Statb.Mtim {
+			epc.Statb = tmp_stb
+			epc.Scan()
 		}
 
 		// Query for liveness
-		for _, ep := range ncsEPs {
-			ep.Update()
-		}
+		//		for _, ep := range ncsEPs {
+		//		ep.Update()
+		//}
 
 		// replace with inotify
  		time.Sleep(500 * time.Millisecond)
 	}
+
+	return err
 }
 
-//func niovaURLParse(url *url.URL) {
-//	log.Print(url)
-//	urlcomponents := strings.Split(url.String(), "/")
-//
-//	log.Print(urlcomponents)
-//}
-
-func niovaHandlerMap(w http.ResponseWriter, r *http.Request) {
+func (epc *epContainer) JsonMarshal() []byte {
 	var jsonData []byte
 
-	ncsEpMutex.Lock()
-	jsonData, err := json.MarshalIndent(ncsEPs, "", "\t")
-	ncsEpMutex.Unlock()
+	epc.Mutex.Lock()
+	jsonData, err := json.MarshalIndent(epc.EpMap, "", "\t")
+	epc.Mutex.Unlock()
 
 	if err != nil {
-		log.Println(err)
+		return nil
 	}
-	fmt.Fprintf(w, "%s\n", string(jsonData))
+
+	return jsonData
+}
+
+func (epc *epContainer) Init(path string) error {
+	// Check the provided endpoint root path
+	err := syscall.Stat(path, &epc.Statb)
+	if err != nil {
+		return err
+	}
+
+	// Set path (Xxx still need to check if this is a directory or not)
+	epc.Path = path
+
+	// Create the map
+	epc.EpMap = make(map[uuid.UUID]*ctlsvcEP)
+	if epc.EpMap == nil {
+		return syscall.ENOMEM
+	}
+
+	epc.run = true
+
+	return nil
+}
+
+func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "%s\n", string(epc.JsonMarshal()))
 }
 
 func main() {
-	var eps epContainer
+	var epc epContainer
 
+	err := epc.Init("/tmp/.niova")
+	if err != nil {
+		log.Fatal("epc.Init(): %d", err)
+	}
 
-	niovaCtlSvcScan(ncsEPs)
+	epc.Scan()
 
-	go niovaCtlSvcMonitor()
+	// monitor in another thread
+	go epc.Monitor()
 
-	http.HandleFunc("/v0/", niovaHandlerMap)
+	http.HandleFunc("/v0/", epc.HttpHandle)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
