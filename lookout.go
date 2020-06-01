@@ -13,7 +13,6 @@ import (
 	"encoding/json"
 	"github.com/google/uuid"
 	"io/ioutil"
-	//	"nctliface"
 )
 
 type epContainer struct {
@@ -24,17 +23,13 @@ type epContainer struct {
 	Statb syscall.Stat_t
 }
 
-//func (ep *ctlsvcEP) Update() int {
-//	err, sys_info := CtlSvcSysInfoQuery(ncsEpDir, ep.Uuid)
-//	return err
-//}
-
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
 	if lns == nil {
 		newlns := NcsiEP{
-			uuid, epc.Path + "/" + uuid.String(), "r-a4e1",
-			"raft", 6666, time.Now(), true,
+			Uuid: uuid, Path: epc.Path + "/" + uuid.String(),
+			Name: "r-a4e1", NiovaSvcType: "raft", Port: 6666,
+			LastReport: time.Now(), Alive: true,
 		}
 
 		// serialize with readers in httpd context, this is the only
@@ -81,7 +76,7 @@ func (epc *epContainer) Monitor() error {
 
 		// Query for liveness
 		for _, ep := range epc.EpMap {
-			ep.Detect()
+			go ep.Detect()
 		}
 
 		// replace with inotify
