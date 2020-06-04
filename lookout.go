@@ -1,12 +1,15 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	//	"net/url"
 	"syscall"
 	//	"strings"
+	"os"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,6 +17,49 @@ import (
 	"github.com/google/uuid"
 	"io/ioutil"
 )
+
+// #include <unistd.h>
+// //#include <errno.h>
+// //int usleep(useconds_t usec);
+import "C"
+
+func mlongsleep() {
+	C.usleep(500000)
+}
+
+var (
+	endpointRoot  *string // flag
+	httpPort      *int    // flag
+	showHelp      *bool   //flag
+	showHelpShort *bool   //flag
+)
+
+func usage(rc int) {
+	fmt.Printf("Usage: [OPTIONS] %s\n", os.Args[0])
+	flag.PrintDefaults()
+	os.Exit(rc)
+}
+
+func init() {
+	endpointRoot =
+		flag.String("dir", "/tmp/.niova", "endpoint directory root")
+
+	httpPort = flag.Int("port", 8080, "http listen port")
+	showHelpShort = flag.Bool("h", false, "")
+	showHelp = flag.Bool("help", false, "print help")
+
+	flag.Parse()
+
+	nonParsed := flag.Args()
+	if len(nonParsed) > 0 {
+		fmt.Println("Unexpected argument found:", nonParsed[1])
+		usage(1)
+	}
+
+	if *showHelpShort == true || *showHelp == true {
+		usage(0)
+	}
+}
 
 type epContainer struct {
 	EpMap map[uuid.UUID]*NcsiEP
@@ -27,9 +73,13 @@ func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
 	if lns == nil {
 		newlns := NcsiEP{
-			Uuid: uuid, Path: epc.Path + "/" + uuid.String(),
-			Name: "r-a4e1", NiovaSvcType: "raft", Port: 6666,
-			LastReport: time.Now(), Alive: true,
+			Uuid:         uuid,
+			Path:         epc.Path + "/" + uuid.String(),
+			Name:         "r-a4e1",
+			NiovaSvcType: "raft",
+			Port:         6666,
+			LastReport:   time.Now(),
+			Alive:        true,
 		}
 
 		// serialize with readers in httpd context, this is the only
@@ -77,10 +127,12 @@ func (epc *epContainer) Monitor() error {
 		// Query for liveness
 		for _, ep := range epc.EpMap {
 			go ep.Detect()
+			//	ep.Detect()
 		}
 
 		// replace with inotify
-		time.Sleep(500 * time.Millisecond)
+		//		time.Sleep(500 * time.Millisecond)
+		mlongsleep()
 	}
 
 	return err
@@ -128,9 +180,8 @@ func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 func main() {
 	var epc epContainer
 
-	err := epc.Init("/tmp/.niova")
-	if err != nil {
-		log.Fatal("epc.Init(): %d", err)
+	if err := epc.Init(*endpointRoot); err != nil {
+		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
 	}
 
 	epc.Scan()
@@ -140,5 +191,5 @@ func main() {
 
 	http.HandleFunc("/v0/", epc.HttpHandle)
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
 }

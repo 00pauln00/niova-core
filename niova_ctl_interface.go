@@ -14,6 +14,11 @@ import (
 	"time"
 )
 
+// #include <unistd.h>
+// //#include <errno.h>
+// //int usleep(useconds_t usec);
+import "C"
+
 const (
 	maxPendingCmdsEP  = 32
 	maxOutFileSize    = 4*1024 ^ 2
@@ -49,12 +54,65 @@ type SystemInfo struct {
 	RusageInvolCtsw         int       `json:"rusage.invol_ctsw"`
 }
 
+type Histogram struct {
+	Num1       int `json:"1,omitempty"`
+	Num2       int `json:"2,omitempty"`
+	Num4       int `json:"4,omitempty"`
+	Num8       int `json:"8,omitempty"`
+	Num16      int `json:"16,omitempty"`
+	Num32      int `json:"32,omitempty"`
+	Num64      int `json:"64,omitempty"`
+	Num128     int `json:"128,omitempty"`
+	Num256     int `json:"256,omitempty"`
+	Num512     int `json:"512,omitempty"`
+	Num1024    int `json:"1024,omitempty"`
+	Num2048    int `json:"2048,omitempty"`
+	Num4096    int `json:"4096,omitempty"`
+	Num8192    int `json:"8192,omitempty"`
+	Num16384   int `json:"16384,omitempty"`
+	Num32768   int `json:"32768,omitempty"`
+	Num65536   int `json:"65536,omitempty"`
+	Num131072  int `json:"131072,omitempty"`
+	Num262144  int `json:"262144,omitempty"`
+	Num524288  int `json:"524288,omitempty"`
+	Num1048576 int `json:"1048576,omitempty"`
+}
+
+type RaftInfo struct {
+	RaftUUID                 string    `json:"raft-uuid"`
+	PeerUUID                 string    `json:"peer-uuid"`
+	VotedForUUID             string    `json:"voted-for-uuid"`
+	LeaderUUID               string    `json:"leader-uuid"`
+	State                    string    `json:"state"`
+	FollowerReason           string    `json:"follower-reason"`
+	ClientRequests           string    `json:"client-requests"`
+	Term                     int       `json:"term"`
+	CommitIdx                int       `json:"commit-idx"`
+	LastApplied              int       `json:"last-applied"`
+	LastAppliedCumulativeCrc int64     `json:"last-applied-cumulative-crc"`
+	NewestEntryIdx           int       `json:"newest-entry-idx"`
+	NewestEntryTerm          int       `json:"newest-entry-term"`
+	NewestEntryDataSize      int       `json:"newest-entry-data-size"`
+	NewestEntryCrc           int64     `json:"newest-entry-crc"`
+	DevReadLatencyUsec       Histogram `json:"dev-read-latency-usec"`
+	DevWriteLatencyUsec      Histogram `json:"dev-write-latency-usec"`
+	FollowerStats            []struct {
+		PeerUUID    string `json:"peer-uuid"`
+		LastAck     Time   `json:"last-ack"`
+		NextIdx     int    `json:"next-idx"`
+		PrevIdxTerm int    `json:"prev-idx-term"`
+	} `json:"follower-stats,omitempty"`
+	CommitLatencyMsec Histogram `json:"commit-latency-msec"`
+	ReadLatencyMsec   Histogram `json:"read-latency-msec"`
+}
+
 type CtlIfOut struct {
-	SysInfo SystemInfo `json:"system_info"`
+	SysInfo       SystemInfo `json:"system_info,omitempty"`
+	RaftRootEntry []RaftInfo `json:"raft_root_entry,omitempty"`
 }
 
 type NcsiEP struct {
-	Uuid         uuid.UUID `json:"-"` // Field is ignored by json
+	Uuid         uuid.UUID `json:"-"`
 	Path         string    `json:"-"`
 	Name         string    `json:"name"`
 	NiovaSvcType string    `json:"type"`
@@ -62,7 +120,7 @@ type NcsiEP struct {
 	LastReport   time.Time `json:"-"`
 	Alive        bool      `json:"responsive"`
 	EPInfo       CtlIfOut  `json:"ep_info"`
-	pending      uint64
+	pendingOpCnt uint64
 }
 
 type epCommand struct {
@@ -106,11 +164,11 @@ func (t *Time) UnmarshalJSON(data []byte) error {
 }
 
 func (cmd *epCommand) getOutFnam() string {
-	return cmd.ep.EProot() + "/output/" + cmd.fn
+	return cmd.ep.epRoot() + "/output/" + cmd.fn
 }
 
 func (cmd *epCommand) getInFnam() string {
-	return cmd.ep.EProot() + "/input/" + cmd.fn
+	return cmd.ep.epRoot() + "/input/" + cmd.fn
 }
 
 func (cmd *epCommand) getCmdBuf() []byte {
@@ -121,6 +179,10 @@ func (cmd *epCommand) getOutJSON() []byte {
 	return []byte(cmd.outJSON)
 }
 
+func msleep() {
+	C.usleep(1000)
+}
+
 func (cmd *epCommand) pollOutFile() error {
 	for i := outFileTimeoutSec * 1000; i > 0; i-- {
 
@@ -128,7 +190,8 @@ func (cmd *epCommand) pollOutFile() error {
 		err := syscall.Stat(cmd.getOutFnam(), &tmp_stb)
 
 		if err == syscall.ENOENT {
-			time.Sleep(outFilePollMsec * time.Millisecond)
+			//			msleep(outFilePollMsec)
+			msleep()
 			continue
 
 		} else if err != nil {
@@ -172,8 +235,8 @@ func (cmd *epCommand) write() {
 	}
 }
 
-func (cmd *epCommand) issue() {
-	if cmd.err = cmd.ep.incPending(); cmd.err != nil {
+func (cmd *epCommand) submit() {
+	if cmd.err = cmd.ep.incPendingOpCnt(); cmd.err != nil {
 		return
 	}
 	cmd.prep()
@@ -184,35 +247,37 @@ func (cmd *epCommand) issue() {
 		cmd.complete()
 	}
 
-	cmd.ep.decPending()
+	cmd.ep.decPendingOpCnt()
 }
 
-func (ep *NcsiEP) incPending() error {
-	if atomic.LoadUint64(&ep.pending) > maxPendingCmdsEP {
+// incPendingOpCnt() is used to limit the number of outstanding requests to
+// an endpoint.
+func (ep *NcsiEP) incPendingOpCnt() error {
+	if atomic.LoadUint64(&ep.pendingOpCnt) > maxPendingCmdsEP {
 		return syscall.EAGAIN
 	}
 
 	var tmp uint64 = 1
-	atomic.AddUint64(&ep.pending, tmp)
+	atomic.AddUint64(&ep.pendingOpCnt, tmp)
 	return nil
 }
 
-func (ep *NcsiEP) decPending() {
+func (ep *NcsiEP) decPendingOpCnt() {
 	var tmp uint64 = 1
-	atomic.AddUint64(&ep.pending, -tmp)
+	atomic.AddUint64(&ep.pendingOpCnt, -tmp)
 
-	if atomic.LoadUint64(&ep.pending) < 0 {
-		panic("ep.pending is negative")
+	if atomic.LoadUint64(&ep.pendingOpCnt) < 0 {
+		panic("ep.pendingOpCnt is negative")
 	}
 }
 
-func (ep *NcsiEP) EProot() string {
+func (ep *NcsiEP) epRoot() string {
 	return ep.Path
 }
 
 func (ep *NcsiEP) getSysinfo() error {
 	cmd := epCommand{ep, "GET /system_info/.*", "", nil, nil}
-	cmd.issue()
+	cmd.submit()
 	if cmd.err != nil {
 		return cmd.err
 	}
@@ -229,8 +294,37 @@ func (ep *NcsiEP) getSysinfo() error {
 		}
 
 	} else {
-		ep.EPInfo = ctlifout
+		ep.EPInfo.SysInfo = ctlifout.SysInfo
 		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
+	}
+
+	//	log.Printf("%+v \n", ep)
+
+	return err
+}
+
+func (ep *NcsiEP) getRaftinfo() error {
+	cmd := epCommand{ep, "GET /raft_root_entry/.*/.*", "", nil, nil}
+	cmd.submit()
+	if cmd.err != nil {
+		return cmd.err
+	}
+
+	var err error
+	var ctlifout CtlIfOut
+	if err = json.Unmarshal(cmd.getOutJSON(), &ctlifout); err != nil {
+		if ute, ok := err.(*json.UnmarshalTypeError); ok {
+			log.Printf("UnmarshalTypeError %v - %v - %v\n",
+				ute.Value, ute.Type, ute.Offset)
+		} else {
+			log.Printf("Other error: %s\n", err)
+			log.Printf("Contents: %s\n", string(cmd.getOutJSON()))
+		}
+
+	} else {
+		ep.EPInfo.RaftRootEntry = ctlifout.RaftRootEntry
+
+		//		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
 	}
 
 	//	log.Printf("%+v \n", ep)
@@ -240,7 +334,13 @@ func (ep *NcsiEP) getSysinfo() error {
 
 func (ep *NcsiEP) Detect() error {
 	err := ep.getSysinfo()
+	if err == nil {
+		err = ep.getRaftinfo()
+	}
 
+	//	log.Printf("Detect %+v \n", ep)
+
+	// Alive state should be maintained regardless of the error code
 	if time.Since(ep.LastReport) > time.Second*EPtimeoutSec {
 		ep.Alive = false
 	} else if !ep.Alive {
