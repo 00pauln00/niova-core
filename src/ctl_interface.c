@@ -42,7 +42,7 @@ typedef int  lctli_inotify_thread_int_t;
 
 struct ctl_interface
 {
-    const char        lctli_path[PATH_MAX];
+    const char        lctli_path[PATH_MAX + 1];
     bool              lctli_init;
     int               lctli_inotify_fd;
     int               lctli_inotify_watch_fd;
@@ -339,7 +339,7 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
     {
         struct stat stb;
 
-        int rc = lstat(dent->d_name, &stb);
+        int rc = fstatat(init_subdir_fd, dent->d_name, &stb, AT_SYMLINK_NOFOLLOW);
         if (rc || !S_ISREG(stb.st_mode))
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "bypass dentry=%s", dent->d_name);
