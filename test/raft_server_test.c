@@ -543,7 +543,7 @@ static void
 rst_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s [-R (use-rocksDB-backend) -r <UUID> -u <UUID>\n",
+            "Usage: %s [-R (use-rocksDB-backend)] -r <UUID> -u <UUID>\n",
             argv[0]);
 
     exit(error);
