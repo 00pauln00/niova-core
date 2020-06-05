@@ -1,21 +1,22 @@
 package main
 
 import (
+	//	"net/url"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
-	//	"net/url"
-	"syscall"
-	//	"strings"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
-	"encoding/json"
+	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
-	"io/ioutil"
 )
 
 // #include <unistd.h>
@@ -62,11 +63,12 @@ func init() {
 }
 
 type epContainer struct {
-	EpMap map[uuid.UUID]*NcsiEP
-	Mutex sync.Mutex
-	Path  string
-	run   bool
-	Statb syscall.Stat_t
+	EpMap     map[uuid.UUID]*NcsiEP
+	Mutex     sync.Mutex
+	Path      string
+	run       bool
+	Statb     syscall.Stat_t
+	EpWatcher *fsnotify.Watcher
 }
 
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
@@ -80,6 +82,11 @@ func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 			Port:         6666,
 			LastReport:   time.Now(),
 			Alive:        true,
+			pendingCmds:  make(map[string]*epCommand),
+		}
+
+		if err := epc.EpWatcher.Add(newlns.Path + "/output"); err != nil {
+			log.Fatalln("Watcher.Add() failed:", err)
 		}
 
 		// serialize with readers in httpd context, this is the only
@@ -99,9 +106,7 @@ func (epc *epContainer) Scan() {
 
 	for _, file := range files {
 		// Need to support removal of stale items
-		uuid, err := uuid.Parse(file.Name())
-
-		if err == nil {
+		if uuid, err := uuid.Parse(file.Name()); err == nil {
 			epc.tryAdd(uuid)
 		}
 	}
@@ -126,8 +131,7 @@ func (epc *epContainer) Monitor() error {
 
 		// Query for liveness
 		for _, ep := range epc.EpMap {
-			go ep.Detect()
-			//	ep.Detect()
+			ep.Detect()
 		}
 
 		// replace with inotify
@@ -152,6 +156,45 @@ func (epc *epContainer) JsonMarshal() []byte {
 	return jsonData
 }
 
+func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
+	splitPath := strings.Split(event.Name, "/")
+
+	templ := "ncsiep_"
+	cmpstr := splitPath[len(splitPath)-1]
+
+	if err := strings.Compare(cmpstr[0:len(templ)], templ); err != 0 {
+		return
+	}
+
+	uuid, err := uuid.Parse(splitPath[len(splitPath)-3])
+	if err != nil {
+		return
+	}
+
+	if ep := epc.EpMap[uuid]; ep != nil {
+		ep.Complete(cmpstr)
+	}
+
+	fmt.Println("event on", uuid)
+}
+
+func (epc *epContainer) epOutputWatcher() {
+	for {
+		select {
+		case event := <-epc.EpWatcher.Events:
+			//fmt.Printf("EVENT! %#v\n", event)
+
+			if event.Op == fsnotify.Create {
+				epc.processInotifyEvent(&event)
+			}
+
+			// watch for errors
+		case err := <-epc.EpWatcher.Errors:
+			fmt.Println("ERROR", err)
+		}
+	}
+}
+
 func (epc *epContainer) Init(path string) error {
 	// Check the provided endpoint root path
 	err := syscall.Stat(path, &epc.Statb)
@@ -168,13 +211,25 @@ func (epc *epContainer) Init(path string) error {
 		return syscall.ENOMEM
 	}
 
+	epc.EpWatcher, err = fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+
 	epc.run = true
+
+	go epc.epOutputWatcher()
 
 	return nil
 }
 
 func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s\n", string(epc.JsonMarshal()))
+}
+
+func (epc *epContainer) serveHttp() {
+	http.HandleFunc("/v0/", epc.HttpHandle)
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
 }
 
 func main() {
@@ -186,10 +241,7 @@ func main() {
 
 	epc.Scan()
 
-	// monitor in another thread
-	go epc.Monitor()
+	go epc.serveHttp()
 
-	http.HandleFunc("/v0/", epc.HttpHandle)
-
-	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
+	epc.Monitor()
 }

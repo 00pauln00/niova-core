@@ -1,17 +1,18 @@
 package main // niova control interface
 
 import (
-	"encoding/json"
 	//	"fmt"
-	"github.com/google/uuid"
+	//	"math/rand"
+	"encoding/json"
 	"io/ioutil"
 	"log"
-	//	"math/rand"
 	"os"
 	"strconv"
-	"sync/atomic"
+	"sync"
 	"syscall"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // #include <unistd.h>
@@ -112,16 +113,24 @@ type CtlIfOut struct {
 }
 
 type NcsiEP struct {
-	Uuid         uuid.UUID `json:"-"`
-	Path         string    `json:"-"`
-	Name         string    `json:"name"`
-	NiovaSvcType string    `json:"type"`
-	Port         int       `json:"port"`
-	LastReport   time.Time `json:"-"`
-	Alive        bool      `json:"responsive"`
-	EPInfo       CtlIfOut  `json:"ep_info"`
-	pendingOpCnt uint64
+	Uuid         uuid.UUID             `json:"-"`
+	Path         string                `json:"-"`
+	Name         string                `json:"name"`
+	NiovaSvcType string                `json:"type"`
+	Port         int                   `json:"port"`
+	LastReport   time.Time             `json:"-"`
+	Alive        bool                  `json:"responsive"`
+	EPInfo       CtlIfOut              `json:"ep_info"`
+	pendingCmds  map[string]*epCommand `json:"-"`
+	Mutex        sync.Mutex
 }
+
+type EPcmdType uint32
+
+const (
+	RaftInfoOp   EPcmdType = 1
+	SystemInfoOp EPcmdType = 2
+)
 
 type epCommand struct {
 	ep      *NcsiEP
@@ -129,8 +138,10 @@ type epCommand struct {
 	fn      string
 	outJSON []byte
 	err     error
+	op      EPcmdType
 }
 
+// XXX this can be replaced with: func Trim(s string, cutset string) string
 func chompQuotes(data []byte) []byte {
 	s := string(data)
 
@@ -183,34 +194,21 @@ func msleep() {
 	C.usleep(1000)
 }
 
-func (cmd *epCommand) pollOutFile() error {
-	for i := outFileTimeoutSec * 1000; i > 0; i-- {
-
-		var tmp_stb syscall.Stat_t
-		err := syscall.Stat(cmd.getOutFnam(), &tmp_stb)
-
-		if err == syscall.ENOENT {
-			//			msleep(outFilePollMsec)
-			msleep()
-			continue
-
-		} else if err != nil {
-			log.Printf("syscall.Stat('%s'): %s\n",
-				cmd.getOutFnam(), err)
-			return err
-
-		} else if tmp_stb.Size > maxOutFileSize {
-			return syscall.E2BIG
-		}
-		// Success
-		return nil
+func (cmd *epCommand) checkOutFile() error {
+	var tmp_stb syscall.Stat_t
+	if err := syscall.Stat(cmd.getOutFnam(), &tmp_stb); err != nil {
+		return err
 	}
 
-	return syscall.ETIMEDOUT
+	if tmp_stb.Size > maxOutFileSize {
+		return syscall.E2BIG
+	}
+
+	return nil
 }
 
-func (cmd *epCommand) complete() {
-	if cmd.err = cmd.pollOutFile(); cmd.err != nil {
+func (cmd *epCommand) loadOutfile() {
+	if cmd.err = cmd.checkOutFile(); cmd.err != nil {
 		return
 	}
 
@@ -220,11 +218,15 @@ func (cmd *epCommand) complete() {
 	return
 }
 
+// Makes a 'unique' filename for the command and adds it to the map
 func (cmd *epCommand) prep() {
 	cmd.fn = "ncsiep_" + strconv.FormatInt(int64(os.Getpid()), 10) +
 		"_" + strconv.FormatInt(int64(time.Now().Nanosecond()), 10)
 
 	cmd.cmd = cmd.cmd + "\nOUTFILE /" + cmd.fn + "\n"
+
+	// Add the cmd into the endpoint's pending cmd map
+	cmd.ep.addCmd(cmd)
 }
 
 func (cmd *epCommand) write() {
@@ -236,76 +238,85 @@ func (cmd *epCommand) write() {
 }
 
 func (cmd *epCommand) submit() {
-	if cmd.err = cmd.ep.incPendingOpCnt(); cmd.err != nil {
+	if err := cmd.ep.mayQueueCmd(); err == false {
 		return
 	}
+
 	cmd.prep()
-
 	cmd.write()
-
-	if cmd.err == nil {
-		cmd.complete()
-	}
-
-	cmd.ep.decPendingOpCnt()
 }
 
-// incPendingOpCnt() is used to limit the number of outstanding requests to
-// an endpoint.
-func (ep *NcsiEP) incPendingOpCnt() error {
-	if atomic.LoadUint64(&ep.pendingOpCnt) > maxPendingCmdsEP {
-		return syscall.EAGAIN
+func (ep *NcsiEP) mayQueueCmd() bool {
+	if len(ep.pendingCmds) < maxPendingCmdsEP {
+		return true
+	}
+	return false
+}
+
+func (ep *NcsiEP) addCmd(cmd *epCommand) error {
+	// Add the cmd into the endpoint's pending cmd map
+	cmd.ep.Mutex.Lock()
+	_, exists := cmd.ep.pendingCmds[cmd.fn]
+	if exists == false {
+		cmd.ep.pendingCmds[cmd.fn] = cmd
+	}
+	cmd.ep.Mutex.Unlock()
+
+	if exists == true {
+		return syscall.EEXIST
 	}
 
-	var tmp uint64 = 1
-	atomic.AddUint64(&ep.pendingOpCnt, tmp)
 	return nil
 }
 
-func (ep *NcsiEP) decPendingOpCnt() {
-	var tmp uint64 = 1
-	atomic.AddUint64(&ep.pendingOpCnt, -tmp)
+func (ep *NcsiEP) removeCmd(cmdName string) *epCommand {
+	ep.Mutex.Lock()
+	cmd := ep.pendingCmds[cmdName]
+	delete(ep.pendingCmds, cmdName)
+	cmd.ep.Mutex.Unlock()
 
-	if atomic.LoadUint64(&ep.pendingOpCnt) < 0 {
-		panic("ep.pendingOpCnt is negative")
-	}
+	return cmd
 }
 
 func (ep *NcsiEP) epRoot() string {
 	return ep.Path
 }
 
-func (ep *NcsiEP) getSysinfo() error {
-	cmd := epCommand{ep, "GET /system_info/.*", "", nil, nil}
+func (ep *NcsiEP) getRaftinfo() error {
+	cmd := epCommand{ep: ep, cmd: "GET /raft_root_entry/.*/.*",
+		op: RaftInfoOp}
 	cmd.submit()
-	if cmd.err != nil {
-		return cmd.err
-	}
 
-	var err error
-	var ctlifout CtlIfOut
-	if err = json.Unmarshal(cmd.getOutJSON(), &ctlifout); err != nil {
-		if ute, ok := err.(*json.UnmarshalTypeError); ok {
-			log.Printf("UnmarshalTypeError %v - %v - %v\n",
-				ute.Value, ute.Type, ute.Offset)
-		} else {
-			log.Printf("Other error: %s\n", err)
-			log.Printf("Contents: %s\n", string(cmd.getOutJSON()))
-		}
-
-	} else {
-		ep.EPInfo.SysInfo = ctlifout.SysInfo
-		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
-	}
-
-	//	log.Printf("%+v \n", ep)
-
-	return err
+	return cmd.err
 }
 
-func (ep *NcsiEP) getRaftinfo() error {
-	cmd := epCommand{ep, "GET /raft_root_entry/.*/.*", "", nil, nil}
+func (ep *NcsiEP) getSysinfo() error {
+	cmd := epCommand{ep: ep, cmd: "GET /system_info/.*", op: SystemInfoOp}
 	cmd.submit()
+	return cmd.err
+}
+
+func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
+	switch op {
+	case RaftInfoOp:
+		ep.EPInfo.RaftRootEntry = ctlData.RaftRootEntry
+		//		log.Printf("update-raft %+v \n", ctlData.RaftRootEntry)
+	case SystemInfoOp:
+		ep.EPInfo.SysInfo = ctlData.SysInfo
+		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
+		//		log.Printf("update-sys %+v \n", ctlData.SysInfo)
+	default:
+		log.Printf("invalid op=%d \n", op)
+	}
+}
+
+func (ep *NcsiEP) Complete(cmdName string) error {
+	cmd := ep.removeCmd(cmdName)
+	if cmd == nil {
+		return syscall.ENOENT
+	}
+
+	cmd.loadOutfile()
 	if cmd.err != nil {
 		return cmd.err
 	}
@@ -321,15 +332,12 @@ func (ep *NcsiEP) getRaftinfo() error {
 			log.Printf("Contents: %s\n", string(cmd.getOutJSON()))
 		}
 
-	} else {
-		ep.EPInfo.RaftRootEntry = ctlifout.RaftRootEntry
-
-		//		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
+		return err
 	}
 
-	//	log.Printf("%+v \n", ep)
+	ep.update(&ctlifout, cmd.op)
 
-	return err
+	return nil
 }
 
 func (ep *NcsiEP) Detect() error {
@@ -337,8 +345,6 @@ func (ep *NcsiEP) Detect() error {
 	if err == nil {
 		err = ep.getRaftinfo()
 	}
-
-	//	log.Printf("Detect %+v \n", ep)
 
 	// Alive state should be maintained regardless of the error code
 	if time.Since(ep.LastReport) > time.Second*EPtimeoutSec {
