@@ -17,6 +17,8 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
+	"github.com/hashicorp/serf/client"
+	//	"github.com/hashicorp/serf/coordinate"
 )
 
 // #include <unistd.h>
@@ -62,6 +64,12 @@ func init() {
 	}
 }
 
+type serfConn struct {
+	client   *client.RPCClient
+	err      error
+	lastConn time.Time
+}
+
 type epContainer struct {
 	EpMap     map[uuid.UUID]*NcsiEP
 	Mutex     sync.Mutex
@@ -69,6 +77,7 @@ type epContainer struct {
 	run       bool
 	Statb     syscall.Stat_t
 	EpWatcher *fsnotify.Watcher
+	sconn     serfConn
 }
 
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
@@ -117,6 +126,8 @@ func (epc *epContainer) Monitor() error {
 
 	for epc.run == true {
 		var tmp_stb syscall.Stat_t
+
+		epc.sconn.serfConnect()
 
 		err = syscall.Stat(epc.Path, &tmp_stb)
 		if err != nil {
@@ -230,6 +241,32 @@ func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 func (epc *epContainer) serveHttp() {
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
+}
+
+func (sconn *serfConn) serfConnect() {
+	if sconn.client != nil {
+		if sconn.err == nil {
+			return
+		} else {
+			sconn.client.Close()
+			sconn.client = nil
+		}
+	}
+
+	serfConf := client.Config{Addr: "127.0.0.1:7373"}
+	//	serfCli := client.RPCClient
+
+	sconn.client, sconn.err = client.ClientFromConfig(&serfConf)
+	if sconn.err != nil {
+		log.Println("client.ClientFromConfig():", sconn.err)
+		return
+	} else {
+		sconn.lastConn = time.Now()
+	}
+
+	members, err := sconn.client.Members()
+	log.Printf("%+v err=%s\n", members, err)
+	mlongsleep()
 }
 
 func main() {
