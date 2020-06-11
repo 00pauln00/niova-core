@@ -1,14 +1,17 @@
 package main
 
+//import _ "net/http/pprof"
+
 import (
-	//	"net/url"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	//	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -153,6 +156,28 @@ func (epc *epContainer) Monitor() error {
 	return err
 }
 
+func (epc *epContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
+	var jsonData []byte
+	var err error
+
+	epc.Mutex.Lock()
+	ep := epc.EpMap[uuid]
+	if ep != nil {
+		jsonData, err = json.MarshalIndent(epc.EpMap[uuid], "", "\t")
+	} else {
+		// Return an empty set if the item does not exist
+		jsonData = []byte("{}") //XXx should we return an enoent err?
+	}
+
+	epc.Mutex.Unlock()
+
+	if err != nil {
+		return nil
+	}
+
+	return jsonData
+}
+
 func (epc *epContainer) JsonMarshal() []byte {
 	var jsonData []byte
 
@@ -185,8 +210,6 @@ func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 	if ep := epc.EpMap[uuid]; ep != nil {
 		ep.Complete(cmpstr)
 	}
-
-	fmt.Println("event on", uuid)
 }
 
 func (epc *epContainer) epOutputWatcher() {
@@ -234,8 +257,40 @@ func (epc *epContainer) Init(path string) error {
 	return nil
 }
 
-func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
+func (epc *epContainer) httpHandleRootRequest(w http.ResponseWriter) {
 	fmt.Fprintf(w, "%s\n", string(epc.JsonMarshal()))
+}
+
+func (epc *epContainer) httpHandleUUIDRequest(w http.ResponseWriter,
+	uuid uuid.UUID) {
+
+	fmt.Fprintf(w, "%s\n", string(epc.JsonMarshalUUID(uuid)))
+}
+
+func (epc *epContainer) httpHandleRoute(w http.ResponseWriter, r *url.URL) {
+	// Splitting '/vX/' results in a length of 2
+	splitURL := strings.Split(r.String(), "/v0/")
+
+	//log.Printf("%+v (url-path-len=%d str=%s)\n", splitURL, len(splitURL),
+	//	r.String())
+
+	// Root level request
+	if len(splitURL) == 2 && len(splitURL[1]) == 0 {
+		epc.httpHandleRootRequest(w)
+		return
+	}
+
+	if uuid, err := uuid.Parse(splitURL[1]); err == nil {
+		epc.httpHandleUUIDRequest(w, uuid)
+
+	} else {
+		fmt.Fprintln(w, "Invalid request: url", splitURL[1])
+	}
+
+}
+
+func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
+	epc.httpHandleRoute(w, r.URL)
 }
 
 func (epc *epContainer) serveHttp() {

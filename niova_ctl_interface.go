@@ -122,7 +122,7 @@ type NcsiEP struct {
 	Alive        bool                  `json:"responsive"`
 	EPInfo       CtlIfOut              `json:"ep_info"`
 	pendingCmds  map[string]*epCommand `json:"-"`
-	Mutex        sync.Mutex
+	Mutex        sync.Mutex            `json:"-"`
 }
 
 type EPcmdType uint32
