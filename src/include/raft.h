@@ -683,4 +683,8 @@ raft_server_backend_use_posix(struct raft_instance *ri);
 void
 raft_server_backend_use_rocksdb(struct raft_instance *ri);
 
+struct rocksdb_t;
+struct rocksdb_t *
+raft_server_get_rocksdb_instance(struct raft_instance *ri);
+
 #endif

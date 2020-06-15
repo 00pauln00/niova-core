@@ -43,6 +43,7 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_READ,   // read previously committed data
     RAFT_NET_CLIENT_REQ_TYPE_WRITE,  // stage a new write
     RAFT_NET_CLIENT_REQ_TYPE_COMMIT, // complete a pending write
+    RAFT_NET_CLIENT_REQ_TYPE_ANY,
 };
 
 typedef raft_net_udp_cb_ctx_t
