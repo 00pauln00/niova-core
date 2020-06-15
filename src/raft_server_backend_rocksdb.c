@@ -689,3 +689,17 @@ raft_server_backend_use_rocksdb(struct raft_instance *ri)
 
     ri->ri_backend = &ribRocksDB;
 }
+
+/**
+ * raft_server_get_rocksdb_instance - public function used by pumiceDB to
+ *    obtain the rocksDB pointer from the raft_instance.
+ */
+rocksdb_t *
+raft_server_get_rocksdb_instance(struct raft_instance *ri)
+{
+    if (ri && ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB &&
+	ri->ri_backend && ri->ri_backend_arg)
+	return ri->ri_backend_arg;
+
+    return NULL;
+}

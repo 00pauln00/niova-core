@@ -284,7 +284,7 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
         goto out;
     }
 
-    /* The pending info this in this item was written by self in the current
+    /* The pending info in this item was written by self in the current
      * term.  These checks are only valid if this info is on / for the current
      * leader and this node is the current leader (which it should be since
      * this is a write request).  Note that it's possible that several leader
