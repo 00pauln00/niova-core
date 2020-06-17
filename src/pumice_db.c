@@ -21,17 +21,62 @@
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
 static const struct PmdbAPI *pmdbApi;
-static rocksdb_column_family_handle_t *pmdbRocksdbCFH = NULL;
+static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
+static rocksdb_readoptions_t *pmdbRocksdbReadOpts;
 
 struct pmdb_rpc_msg
 {
     uuid_t   pmrbrm_uuid; // must match rcrm_sender_id
-    uint64_t pmdbrm_write_op_seqno; // op seqno stored in rocksdb + 1
-    uint8_t  pmdbrm__pad[3];
-    uint8_t  pmdbrm_assumed_op_type; // read or write
+    int64_t  pmdbrm_write_seqno; // request::next, reply::committed
+    uint8_t  pmdbrm_op;
+    uint8_t  pmdbrm_write_pending;  // reply context only
+    uint8_t  pmdbrm__pad[2];
     uint32_t pmdbrm_data_size; // size of application payload
     char     pmdbrm_data[];
 };
+
+struct pmdb_value_obj_v0
+{
+    uint64_t pmdb_oextra_commit_term;
+    uuid_t   pmdb_oextra_commit_uuid; // UUID of leader at the time
+};
+
+/**
+ * pmdb_object - object which is stored in the value contents of a RocksDB KV
+ */
+struct pmdb_object
+{
+    uint32_t pmdb_obj_crc;
+    uint32_t pmdb_obj_version;
+    int64_t  pmdb_obj_commit_seqno;
+    int64_t  pmdb_obj_pending_term;
+    union
+    {
+        struct pmdb_obj_extras_v0 v0;
+pmdb_sm_handler_client_op    };
+};
+
+
+#define PMDB_OBJ_DEBUG(log_level, pmdb_obj_str, pmdb_obj, fmt, ...)     \
+{                                                                       \
+    LOG_MSG(log_level, "%s: v=%d cmt-seqno=%ld pndg-term=%ld",          \
+            (pmdb_obj_str), (pmdb_obj) ? (pmdb_obj)->pmdb_obj_version : -1U, \
+            (pmdb_obj) ? (pmdb_obj)->pmdb_obj_commit_seqno : -1ULL,     \
+            (pmdb_obj) ? (pmdb_obj)->pmdb_obj_pending_term : -1ULL);    \
+}
+
+static void
+pmdb_object_init(struct pmdb_object *pmdb_obj, uint32_t version,
+                 int64_t current_raft_term)
+{
+    NIOVA_ASSERT(pmdb_obj);
+
+    memset(0, sizeof(*pmdb_obj));
+
+    pmdb_obj->pmdb_obj_version = version;
+    pmdb_obj->pmdb_obj_commit_seqno = ID_ANY_64bit;
+    pmdb_obj->pmdb_obj_pending_term = current_raft_term;
+}
 
 static rocksdb_t *
 pmdb_get_rocksdb_instance(void)
@@ -42,30 +87,62 @@ pmdb_get_rocksdb_instance(void)
     return db;
 }
 
+static rocksdb_readoptions_t *
+pmdb_get_rocksdb_readopts(void)
+{
+    NIOVA_ASSERT(pmdbRocksdbReadOpts)
+    return pmdbRocksdbReadOpts;
+}
+
+static int
+pmdb_init_rocksdb(void)
+{
+    if (pmdbRocksdbCFH)
+        return 0;
+
+    pmdbRocksdbReadOpts = rocksdb_readoptions_create();
+    if (!pmdbRocksdbReadOpts)
+        return -ENOMEM;
+
+    rocksdb_options_t *opts = rocksdb_options_create();
+    if (!wopts)
+    {
+        rocksdb_readoptions_destroy(pmdbRocksdbReadOpts);
+        pmdbRocksdbReadOpts = NULL;
+        return -ENOMEM;
+    }
+
+    char *err = NULL;
+    rocksdb_options_set_create_if_missing(opts, 1);
+
+    pmdbRocksdbCFH =
+        rocksdb_create_column_family(pmdb_get_rocksdb_instance(), opts,
+                                     PMDB_COLUMN_FAMILY_NAME, &err);
+
+    rocksdb_options_destroy(opts);
+
+    if (err)
+    {
+        rocksdb_readoptions_destroy(pmdbRocksdbReadOpts);
+        pmdbRocksdbReadOpts = NULL;
+
+        pmdbRocksdbCFH = NULL;
+
+        SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_create_column_family(): %s",
+                       err);
+    }
+
+    return 0;
+}
+
 static rocksdb_column_family_handle_t *
 pmdb_get_rocksdb_column_family_handle(void)
 {
     if (!pmdbRocksdbCFH)
     {
-        rocksdb_options_t *opts = rocksdb_options_create();
-        if (!wopts)
+        int rc = pmdb_init_rocksdb();
+        if (rc)
             return NULL;
-
-        char *err = NULL;
-        rocksdb_options_set_create_if_missing(opts, 1);
-
-        pmdbRocksdbCFH =
-            rocksdb_create_column_family(pmdb_get_rocksdb_instance(), opts,
-                                         PMDB_COLUMN_FAMILY_NAME, &err);
-
-        rocksdb_options_destroy(opts);
-
-        if (err)
-        {
-            pmdbRocksdbCFH = NULL;
-            SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_create_column_family(): %s",
-                           err);
-        }
     }
 
     return pmdbRocksdbCFH;
@@ -77,7 +154,7 @@ pmdb_compile_time_asserts(void)
     COMPILE_TIME_ASSERT(sizeof(struct pmdb_rpc_msg) <=
                         PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP);
 
-    // enum PmdbOpType must fit into 'uint8_t pmdbrm_assumed_op_type'
+    // enum PmdbOpType must fit into 'uint8_t pmdbrm_op'
     COMPILE_TIME_ASSERT(pmdb_op_any < (1 << sizeof(uint8_t)));
 }
 
@@ -87,30 +164,196 @@ pmdb_compile_time_asserts(void)
         (rncr)->rncr_request && (rncr)->rncr_reply &&                   \
         (rncr)->rncr_reply_data_max_size >= sizeof(struct pmdb_rpc_msg))
 
-static int
-pmdb_sm_handler_client_write_op(struct raft_net_client_request *rncr)
+#define PMDB_CFH_MUST_GET()
+({                                                      \
+    rocksdb_column_family_handle_t *cfh =          \
+        pmdb_get_rocksdb_column_family_handle();        \
+
+    NIOVA_ASSERT(cfh);
+    cfh;
+})
+
+#define PMDB_ENTRY_KEY_PREFIX "P0."
+#define PMDB_ENTRY_KEY_PREFIX_LEN 3
+#define PMDB_ENTRY_KEY_STRBUF_LEN (PMDB_ENTRY_KEY_PREFIX_LEN + UUID_STR_LEN)
+#define PMDB_ENTRY_KEY_LEN (PMDB_ENTRY_KEY_STRBUF_LEN - 1) //excludes null byte
+
+typedef char pmdb_obj_str_t[PMDB_ENTRY_KEY_PREFIX_LEN];
+
+static void
+pmdb_object_fmt_key(const uuid_t obj_uuid, pmdb_obj_str_t obj_str)
 {
-    PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_WRITE, rncr);
+    NIOVA_ASSERT(obj_str)
 
-    const struct raft_client_rpc_msg *req = rncr->rncr_request;
-    const struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
-
-    rocksdb_column_family_handle_t *pmdb_cfh =
-        pmdb_get_rocksdb_column_family_handle();
-
-    NIOVA_ASSERT(pmdb_cfh);
+    strncpy(&obj_str[0], PMDB_ENTRY_KEY_PREFIX, PMDB_ENTRY_KEY_PREFIX_LEN);
+    uuid_unparse(obj_uuid, &key_str[PMDB_ENTRY_KEY_PREFIX_LEN]);
 }
 
 static int
-pmdb_sm_handler_client_read_op(struct raft_net_client_request *rncr)
+pmdb_object_lookup(const uuid_t obj_uuid, struct pmdb_object *obj)
+{
+    NIOVA_ASSERT(obj && !uuid_is_null(obj_uuid));
+
+    rocksdb_column_family_handle_t *pmdb_cfh = PMDB_CFH_MUST_GET();
+    pmdb_obj_str_t pmdb_obj_str;
+
+    pmdb_object_fmt_key(obj_uuid, pmdb_obj_str);
+
+    size_t val_len = 0;
+    char *err = NULL;
+    int rc = -ENOENT;
+
+    char *get_value =
+        rocksdb_get(pmdb_get_rocksdb_instance(), pmdb_get_rocksdb_readopts(),
+                    &pmdb_obj_str, PMDB_ENTRY_KEY_LEN, &val_len, &err);
+
+    PMDB_OBJ_DEBUG(LL_NOTIFY, pmdb_obj_str, NULL, "err=%s val=%p",
+                   err, get_value);
+
+    if (err || !get_value)
+        return rc; //Xxx need a proper error code intepreter
+
+    if (val_len != sizeof(struct pmdb_object))
+    {
+        PMDB_OBJ_DEBUG(LL_WARN, pmdb_obj_str, NULL,
+                       "invalid len (%zu), expected %zu", val_len,
+                       sizeof(struct pmdb_object));
+
+        rc = -EUCLEAN;
+    }
+    else
+    {
+        memcpy((void *)obj, get_value, sizeof(struct pmdb_object));
+        rc = 0;
+    }
+
+    // Release buffer allocated by rocksdb C interface
+    free(get_value);
+
+    PMDB_OBJ_DEBUG(LL_DEBUG, pmdb_obj_str, obj, "")
+
+    return rc;
+}
+
+static void
+pmdb_obj_to_reply(const struct pmdb_object *obj, struct pmdb_rpc_msg *reply,
+                  const int64_t current_raft_term)
+{
+    NIOVA_ASSERT(obj && reply);
+
+    reply->pmdbrm_write_seqno = obj->pmdb_obj_commit_seqno;
+    reply->pmdbrm_write_pending =
+        obj->pmdb_obj_pending_term == current_raft_term ? 1 : 0;
+}
+
+/**
+ * pmdb_sm_handler_client_lookup - perform a key lookup in the PMDB column-
+ *    family.  Return the seqno if found.
+ */
+static int
+pmdb_sm_handler_client_lookup(struct pmdb_rpc_msg *pmdb_reply,
+                              const int64_t current_raft_term)
+{
+    NIOVA_ASSERT(pmdb_reply && !uuid_is_null(pmdb_reply->pmrbrm_uuid));
+
+    struct pmdb_object pmdb_obj = {0};
+
+    int rc = pmdb_object_lookup(pmdb_reply->pmrbrm_uuid, &pmdb_obj);
+
+    raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply), rc, rc);
+
+    if (!rc)
+    {
+        pmdb_obj_to_reply(&pmdb_obj, pmdb_reply, current_raft_term);
+
+        if (obj->pmdb_obj_pending_term > current_raft_term)
+        {
+            raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply),
+                                      -ERANGE, -ERANGE);
+
+            //XXX need to do the same check in client write
+            PMDB_OBJ_DEBUG(LL_ERROR, pmdb_obj_str, obj,
+                           "obj term is > raft term (%ld)", current_raft_term);
+        }
+    }
+
+    return 0;
+}
+
+static uint32_t
+pmdb_get_current_version(void)
+{
+    return 0;
+}
+
+static int
+pmdb_sm_handler_client_write(struct raft_net_client_request *rncr)
 {
     PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_READ, rncr);
 
+    rncr->rncr_write_raft_entry = false; // default to not writing raft log
+
     const struct raft_client_rpc_msg *req = rncr->rncr_request;
-    const struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
+    struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
     struct pmdb_rpc_msg *pmdb_reply = reply->rcrm_data;
+
+    struct pmdb_object obj = {0};
+
+    int rc = pmdb_object_lookup(pmdb_reply->pmrbrm_uuid, &obj);
+    if (rc == -ENOENT)
+    {
+        pmdb_object_init(&obj, pmdb_get_current_version(),
+                         rncr->rncr_current_term);
+    }
+    else if (rc)
+    {
+        rncr->rncr_op_error = rc;
+    }
+    else
+    {
+        if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno)
+        {
+            // Client will see 'OK' since this request was already completed
+            rc = rncr->rncr_op_error = -EALREADY;
+        }
+        else
+        {
+            if (pmdb_req->pmdbrm_write_seqno ==
+                (obj.pmdb_obj_commit_seqno + 1)) // Reqest sequence is OK
+            {
+                if (obj.pmdb_obj_pending_term == rncr->rncr_current_term)
+                { // Request has already been placed into the log.
+                    rc = rncr->rncr_op_error = -EINPROGRESS;
+
+                    raft_client_msg_error_set(
+                        raft_net_data_to_rpc_msg(pmdb_reply), 0, -EINPROGRESS);
+
+                }
+            }
+            else // Request sequence is too far ahead
+            {
+                rc = rncr->rncr_op_error = -ERANGE;
+                raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply),
+                                          0, -ERANGE);
+            }
+        }
+    }
+
+    // XXX need to place KV items int rncr to be written with the raft log
+    //     entry
+
+    // Fixme XXX
+    PMDB_OBJ_DEBUG((rc ? LL_NOTIFY : LL_DEBUG), pmdb_obj_str, obj, "");
+    return rc;
+}
+
+static int
+pmdb_sm_handler_client_read(struct raft_net_client_request *rncr)
+{
+    PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_READ, rncr);
+
 
     NIOVA_ASSERT(pmdb_req->pmdbrm_data_size <= PMDB_MAX_APP_RPC_PAYLOAD_SIZE);
 
@@ -151,6 +394,17 @@ pmdb_sm_handler_client_read_op(struct raft_net_client_request *rncr)
     return 0;
 }
 
+static void
+pmdb_reply_init(const struct pmdb_rpc_msg *req, struct pmdb_rpc_msg *reply)
+{
+    NIOVA_ASSERT(req && reply);
+
+    reply->pmdbrm_data_size = 0;
+
+    uuid_copy(reply->pmrbrm_uuid, req->pmrbrm_uuid);
+    reply->pmdbrm_op = reply->pmdbrm_op;
+}
+
 static int
 pmdb_sm_handler_client_op(struct raft_net_client_request *rncr)
 {
@@ -158,10 +412,13 @@ pmdb_sm_handler_client_op(struct raft_net_client_request *rncr)
                  rncr->rncr_request && rncr->rncr_reply);
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
-    const struct raft_client_rpc_msg *req = rncr->rncr_request;
+    const struct pmdb_rpc_msg *pmdb_reply = req->rcrm_data;
 
+    const struct raft_client_rpc_msg *req = rncr->rncr_request;
     const struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
-    const enum PmdbOpType op = pmdb_req->pmdbrm_assumed_op_type;
+    const enum PmdbOpType op = pmdb_req->pmdbrm_op;
+
+    pmdb_reply_init(pmdb_req, pmdb_reply);
 
     DBG_RAFT_CLIENT_RPC(LL_DEBUG, req, rncr->rncr_remote_addr, "op=%u", op);
 
@@ -172,11 +429,14 @@ pmdb_sm_handler_client_op(struct raft_net_client_request *rncr)
 
     case pmdb_op_read:
         rncr->rncr_type = RAFT_NET_CLIENT_REQ_TYPE_READ;
-        return pmdb_sm_handler_client_read_op(rncr);
+        return pmdb_sm_handler_client_read(rncr);
 
     case pmdb_op_write:
         rncr->rncr_type = RAFT_NET_CLIENT_REQ_TYPE_WRITE;
-        return pmdb_sm_handler_client_write_op(rncr);
+        return pmdb_sm_handler_client_write(rncr);
+
+    case pmdb_op_lookup: // type of "read" which does not enter the app API
+        return pmdb_sm_handler_client_lookup(rncr);
 
     default:
         break;

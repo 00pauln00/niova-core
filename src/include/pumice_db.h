@@ -21,11 +21,12 @@
 enum PmdbOpType
 {
     pmdb_op_noop = 0,
-    pmdb_op_read = 1,
-    pmdb_op_write = 2,
-    pmdb_op_apply = 3,
-    pmdb_op_none = 4,
-    pmdb_op_any = 5,
+    pmdb_op_lookup = 1,
+    pmdb_op_read = 2,
+    pmdb_op_write = 3,
+    pmdb_op_apply = 4,
+    pmdb_op_none = 5,
+    pmdb_op_any = 6,
 };
 
 /**
