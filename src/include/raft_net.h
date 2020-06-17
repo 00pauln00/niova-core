@@ -290,7 +290,24 @@ raft_net_send_client_msg(struct raft_instance *ri,
 void
 raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 
+
 int
 raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
+
+static inline void
+raft_client_msg_error_set(struct raft_client_rpc_msg *rcm, int sys, int app)
+{
+    if (rcm)
+    {
+        rcm->rcrm_sys_error = sys;
+        rcm->rcrm_app_error = app;
+    }
+}
+
+static inline struct raft_client_rpc_msg *
+raft_net_data_to_rpc_msg(void *data)
+{
+    return OFFSET_CAST(raft_client_rpc_msg, rcrm_data, data);
+}
 
 #endif
