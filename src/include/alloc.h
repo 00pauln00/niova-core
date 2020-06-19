@@ -6,6 +6,9 @@
 #ifndef NIOVA_ALLOC_H
 #define NIOVA_ALLOC_H 1
 
+#ifndef __USE_GNU // reallocarray
+#define __USE_GNU
+#endif
 #include <stdlib.h>
 
 #include "log.h"
@@ -50,9 +53,11 @@ extern enum log_level allocLogLevel;
 
 #define niova_reallocarray(ptr, type, nmemb)                            \
 ({                                                                      \
-    type *tmp = reallocarray((ptr), nmemb, sizeof(type)); \
+    type *tmp = reallocarray((ptr), nmemb, sizeof(type));               \
+                                                                        \
     LOG_MSG(allocLogLevel, "niova_reallocarray: src=%p dst=%p sz=%zu",  \
-            ptr, tmp, (size_t)(sizeof(type) * nmemb));           \
+            ptr, tmp, (size_t)(sizeof(type) * nmemb));                  \
+                                                                        \
     if (tmp)                                                            \
         (ptr) = tmp;                                                    \
                                                                         \
