@@ -39,7 +39,7 @@ enum PmdbOpType
 typedef void
 (*pmdb_apply_sm_handler_t)(uuid_t app_uuid, const char *input_buf,
                            size_t input_bufsz, const char **keys,
-                           const char **values[], const size_t *sizes,
+                           const char **values, const size_t *sizes,
                            const size_t num_kvs);
 
 /**

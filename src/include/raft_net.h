@@ -87,7 +87,7 @@ enum raft_client_rpc_msg_type
     RAFT_CLIENT_RPC_MSG_TYPE_PING       = 4,
     RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 5,
     RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 6,
-};
+} PACKED;
 
 enum raft_net_comm_recency_type
 {
@@ -115,25 +115,49 @@ struct raft_client_rpc_msg
     char     rcrm_data[];
 };
 
+/**
+ * raft_net_sm_write_supplements - structure holding KV items which the state machine
+ *    can provide to the underlying Raft API.  These extra items are then written
+ *    transactionally alongside any raft write or apply operation.  Note, this
+ *    for use with flexible backend providers, such as RocksDB.
+ */
+struct raft_net_wr_supp
+{
+    size_t   rnws_nkv;
+    void    *rnws_handle; //rocksdb cfh
+    void   (*rnws_comp_cb)(struct raft_net_wr_supp *);
+    char   **rnws_keys;
+    size_t  *rnws_key_sizes;
+    char   **rnws_values;
+    size_t  *rnws_value_sizes;
+};
+
+struct raft_net_sm_write_supplements
+{
+    size_t                   rnsws_nitems;
+    struct raft_net_wr_supp *rnsws_ws;
+};
+
 struct raft_net_client_request
 {
-    enum raft_net_client_request_type rncr_type; // may be set by sm callback
-    bool                              rncr_write_raft_entry;
-    bool                              rncr_is_leader;
-    struct net_ctl                    rncr_nc;
-    int                               rncr_op_error;
-    int64_t                           rncr_entry_term;
-    int64_t                           rncr_current_term;
-    long long                         rncr_commit_duration_msec;
+    enum raft_net_client_request_type     rncr_type; // may be set by sm callback
+    bool                                  rncr_write_raft_entry;
+    bool                                  rncr_is_leader;
+    struct net_ctl                        rncr_nc;
+    int                                   rncr_op_error;
+    int64_t                               rncr_entry_term;
+    int64_t                               rncr_current_term;
+    long long                             rncr_commit_duration_msec;
     union
     {
         const struct raft_client_rpc_msg *rncr_request;
         const char                       *rncr_commit_data;
     };
-    struct raft_client_rpc_msg       *rncr_reply;
-    const size_t                      rncr_reply_data_max_size;
-    struct sockaddr_in                rncr_remote_addr;
-    uint64_t                          rncr_msg_id;
+    struct raft_client_rpc_msg           *rncr_reply;
+    const size_t                          rncr_reply_data_max_size;
+    struct sockaddr_in                    rncr_remote_addr;
+    uint64_t                              rncr_msg_id;
+    struct raft_net_sm_write_supplements  rncr_sm_write_supp;
 };
 
 #define DBG_RAFT_CLIENT_RPC(log_level, rcm, from, fmt, ...)             \
@@ -301,6 +325,20 @@ raft_client_msg_error_set(struct raft_client_rpc_msg *rcm, int sys, int app)
     {
         rcm->rcrm_sys_error = sys;
         rcm->rcrm_app_error = app;
+    }
+}
+
+static inline void
+raft_client_net_request_error_set(struct raft_net_client_request *rncr,
+                                  int rncr_op_err, int reply_sys,
+                                  int reply_app)
+{
+    if (rncr)
+    {
+        rncr->rncr_op_error = rncr_op_err;
+
+        if (rncr->rncr_reply)
+            raft_client_msg_error_set(rncr->rncr_reply, reply_sys, reply_app);
     }
 }
 
