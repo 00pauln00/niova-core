@@ -946,11 +946,16 @@ raft_net_udp_cb(const struct epoll_handle *eph)
 
 static struct raft_net_wr_supp *
 raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
-                           void *handle)
+                        void *handle)
 {
+    NIOVA_ASSERT(rnsws->rnsws_nitems < RAFT_NET_WR_SUPP_MAX);
+
     for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
         if (handle == rnsws->rnsws_ws[i].rnws_handle)
             return &rnsws->rnsws_ws[i];
+
+    if (rnsws->rnsws_nitems == RAFT_NET_WR_SUPP_MAX)
+        return NULL;
 
     int rc = niova_reallocarray(rnsws->rnsws_ws, struct raft_net_wr_supp,
                                 rnsws->rnsws_nitems + 1UL);
@@ -958,9 +963,32 @@ raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
         return NULL;
 
     rnsws->rnsws_nitems++;
+
+    // Initialize pointers to NULL
+    memset(&rnsws->rnsws_ws[rnsws->rnsws_nitems], 0,
+           sizeof(struct raft_net_wr_supp));
+
     rnsws->rnsws_ws[rnsws->rnsws_nitems].rnws_handle = handle;
 
     return &rnsws->rnsws_ws[rnsws->rnsws_nitems];
+}
+
+static void
+raft_net_write_supp_destroy(struct raft_net_wr_supp *ws)
+{
+    if (!ws || !ws->rnws_nkv)
+        return;
+
+    for (size_t i = 0; i < ws->rnws_nkv; i++)
+    {
+        niova_free(ws->rnws_keys[i]);
+        niova_free(ws->rnws_values[i]);
+    }
+
+    niova_free(ws->rnws_keys);
+    niova_free(ws->rnws_values);
+    niova_free(ws->rnws_key_sizes);
+    niova_free(ws->rnws_value_sizes);
 }
 
 static int
@@ -968,46 +996,64 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
                         const size_t key_size, const char *value,
                         const size_t value_size)
 {
-    size_t n = rnsws->rnsws_nkv;
+    if (!ws || !key || !key_size)
+        return -EINVAL;
 
-    int rc = niova_reallocarray(rnsws->rnsws_keys, char *, n + 1UL);
+    else if (ws->rnws_nkv == RAFT_NET_WR_SUPP_MAX)
+        return -ENOSPC;
+
+    NIOVA_ASSERT(ws->rnws_nkv < RAFT_NET_WR_SUPP_MAX);
+
+    size_t n = ws->rnws_nkv;
+
+    int rc = niova_reallocarray(ws->rnws_keys, char *, n + 1UL);
     if (rc)
         return rc;
 
-    rc = niova_reallocarray(rnsws->rnsws_key_sizes, size_t, n + 1UL);
+    rc = niova_reallocarray(ws->rnws_key_sizes, size_t, n + 1UL);
     if (rc)
         return rc;
 
-    rc = niova_reallocarray(rnsws->rnsws_values, char *, n + 1UL);
+    rc = niova_reallocarray(ws->rnws_values, char *, n + 1UL);
     if (rc)
         return rc;
 
-    rc = niova_reallocarray(rnsws->rnsws_value_sizes, size_t, n + 1UL);
+    rc = niova_reallocarray(ws->rnws_value_sizes, size_t, n + 1UL);
     if (rc)
         return rc;
 
-    rnsws->rnsws_keys[n] = niova_malloc(key_size);
-    if (!rnsws->rnsws_keys[n])
+    ws->rnws_keys[n] = niova_malloc(key_size);
+    if (!ws->rnws_keys[n])
         return -ENOMEM;
 
-    rnsws->rnsws_values[n] = niova_malloc(value_size);
-    if (!rnsws->rnsws_values[n])
+    ws->rnws_values[n] = niova_malloc(value_size);
+    if (!ws->rnws_values[n])
     {
-        niova_free(rnsws->rnsws_keys[n]);
+        niova_free(ws->rnws_keys[n]);
         return -ENOMEM;
     }
 
-    memcpy(rnsws->rnsws_keys[n], key, key_size);
-    memcpy(rnsws->rnsws_values[n], value, value_size);
+    memcpy(ws->rnws_keys[n], key, key_size);
+    memcpy(ws->rnws_values[n], value, value_size);
 
-    rnsws->rnsws_key_sizes[n] = key_size;
-    rnsws->rnsws_value_sizes[n] = value_size;
+    ws->rnws_key_sizes[n] = key_size;
+    ws->rnws_value_sizes[n] = value_size;
 
-    rnsws->rnsws_nkv++;
+    ws->rnws_nkv++;
 
     return 0;
 }
 
+/**
+ * raft_net_sm_write_supplement_add - 'write supplements' are KVs which
+ *    accompany a backend write operation and are atomically applied to the
+ *    backend with that write operation.  There are 2 cases where supplements
+ *    are used.  First, is the writing of a raft-log-entry, here, the state-
+ *    machine (SM) may require that certain KVs are emplaced at the time of the
+ *    log entry write.  The second case occurs when a raft instance calls out
+ *    to the SM to apply a committed raft-log-entry.  Here raft itself may wish
+ *    to update its state reflecting the SM apply operation.
+ */
 int
 raft_net_sm_write_supplement_add(
     struct raft_net_sm_write_supplements *rnsws, void *handle,
@@ -1018,7 +1064,7 @@ raft_net_sm_write_supplement_add(
     if (!rnsws || !key || !key_size)
         return -EINVAL;
 
-    struct raft_net_wr_supp *ws = raft_net_sm_write_supp_get(rnsws, handle);
+    struct raft_net_wr_supp *ws = raft_net_write_supp_get(rnsws, handle);
     if (!ws)
         return -ENOMEM;
 
@@ -1026,6 +1072,28 @@ raft_net_sm_write_supplement_add(
         ws->rnws_comp_cb = rnws_comp_cb;
 
     return raft_net_write_supp_add(ws, key, key_size, value, value_size);
+}
+
+void
+raft_net_sm_write_supplement_destroy(
+    struct raft_net_sm_write_supplements *rnsws)
+{
+    if (!rnsws || !rnsws->rnsws_nitems)
+        return;
+
+    for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
+        raft_net_write_supp_destroy(&rnsws->rnsws_ws[i]);
+
+    niova_free(rnsws->rnsws_ws);
+
+    rnsws->rnsws_ws = NULL;
+}
+
+void
+raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws)
+{
+    if (rnsws)
+        rnsws->rnsws_nitems = 0;
 }
 
 void

@@ -2849,7 +2849,7 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
         .rncr_remote_addr = *from,
         .rncr_reply_data_max_size =
             (RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_client_rpc_msg)),
-        .rncr_sm_write_supp.rnsws_cnt = 0,
+        .rncr_sm_write_supp = {0},
     };
 
     raft_server_udp_client_reply_init(ri, &rncr);
@@ -2863,6 +2863,12 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
 
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
         return raft_server_reply_to_client(ri, &rncr);
+
+    /* May used by state machine, note that
+     * raft_net_sm_write_supplement_destroy() must be called before exiting
+     * this function.
+     */
+    raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
@@ -2887,29 +2893,41 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
                         write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
                         strerror(-rncr.rncr_op_error), strerror(-cb_rc));
 
-    if (cb_rc) // Other than logging this issue, nothing can be done here
-        return;
-
-    /* cb's may run for a long time and the server may have been deposed
-     * Xxx note that SM write requests left in this state may require
-     *   cleanup.
+    /* Callback's with error are only logged.  There are no client replies
+     * or raft operations which will occur.
      */
-    rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-        return raft_server_udp_client_deny_request(ri, &rncr, rc);
 
-    /* Store the request as an entry in the Raft log.  Do not reply to the
-     * client until the write is committed and applied!
-     */
-    if (rncr.rncr_write_raft_entry)
-        raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
-                                           rcm->rcrm_data_size,
-                                           RAFT_WR_ENTRY_OPT_NONE);
+    if (!cb_rc)
+    {
+        /* cb's may run for a long time and the server may have been deposed
+         * Xxx note that SM write requests left in this state may require
+         *   cleanup.
+         */
+        rc = raft_server_may_accept_client_request(ri);
+        if (rc)
+        {
+            raft_server_udp_client_deny_request(ri, &rncr, rc);
+        }
+        else
+        {
 
-    /* Read operation or an already committed + applied write operation.
-     */
-    else
-        raft_server_reply_to_client(ri, &rncr);
+            /* Store the request as an entry in the Raft log.  Do not reply to
+             * the client until the write is committed and applied!
+             */
+            if (rncr.rncr_write_raft_entry)
+                raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
+                                                   rcm->rcrm_data_size,
+                                                   RAFT_WR_ENTRY_OPT_NONE);
+
+            /* Read operation or an already committed + applied write
+             * operation.
+             */
+            else
+                raft_server_reply_to_client(ri, &rncr);
+        }
+    }
+
+    raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
 }
 
 /**
@@ -3057,6 +3075,21 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     }
 }
 
+static raft_server_epoll_sm_apply_t
+raft_server_sm_apply_opt(struct raft_instance *ri,
+                         struct raft_net_client_request *rncr)
+{
+    NIOVA_ASSERT(ri && rncr);
+
+    if (!ri->ri_backend->rib_sm_apply_opt)
+        return;
+
+    int rc = ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
+                               "rib_sm_apply_opt(): %s", strerror(errno));
+}
+
 static raft_server_epoll_sm_apply_bool_t
 raft_server_state_machine_apply(struct raft_instance *ri)
 {
@@ -3097,6 +3130,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         .rncr_remote_addr = {0},
         .rncr_reply = reply,
         .rncr_reply_data_max_size = RAFT_NET_MAX_RPC_SIZE,
+        .rncr_sm_write_supp = {0},
     };
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
@@ -3106,9 +3140,14 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));
 
+        // Initialize supplement handle for possible use by SM callback
+        raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+
         int rc = ri->ri_server_sm_request_cb(&rncr);
         if (!rc)
         {
+            raft_server_sm_apply_opt(ri, &rncr);
+
             struct binary_hist *bh =
                 &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
 
@@ -3120,6 +3159,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
             raft_server_udp_client_reply_init(ri, &rncr);
             reply_to_client = true;
         }
+
+        // The destructor may issue a callback into the SM.
+        raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
     }
 
     if (!reh.reh_leader_change_marker && !reh.reh_data_size)

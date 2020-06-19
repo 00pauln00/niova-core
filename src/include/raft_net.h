@@ -114,11 +114,13 @@ struct raft_client_rpc_msg
     char     rcrm_data[];
 };
 
+#define RAFT_NET_WR_SUPP_MAX 1024 // arbitrary limit..
+
 /**
- * raft_net_sm_write_supplements - structure holding KV items which the state machine
- *    can provide to the underlying Raft API.  These extra items are then written
- *    transactionally alongside any raft write or apply operation.  Note, this
- *    for use with flexible backend providers, such as RocksDB.
+ * raft_net_sm_write_supplements - structure holding KV items which the state
+ *    machine can provide to the underlying Raft API.  These extra items are
+ *    then written transactionally alongside any raft write or apply operation.
+ *    Note, this for use with flexible backend providers, such as RocksDB.
  */
 struct raft_net_wr_supp
 {
@@ -342,5 +344,19 @@ raft_net_data_to_rpc_msg(void *data)
 {
     return OFFSET_CAST(raft_client_rpc_msg, rcrm_data, data);
 }
+
+void
+raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws);
+
+void
+raft_net_sm_write_supplement_destroy(
+    struct raft_net_sm_write_supplements *rnsws);
+
+int
+raft_net_sm_write_supplement_add(
+    struct raft_net_sm_write_supplements *rnsws, void *handle,
+    void (*rnws_comp_cb)(struct raft_net_wr_supp *),
+    const char *key, const size_t key_size, const char *value,
+    const size_t value_size);
 
 #endif
