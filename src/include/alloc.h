@@ -48,6 +48,17 @@ extern enum log_level allocLogLevel;
     LOG_MSG(allocLogLevel, "niova_free: %p", ptr);      \
 }
 
+#define niova_reallocarray(ptr, type, nmemb)                            \
+({                                                                      \
+    type *tmp = reallocarray((ptr), nmemb, sizeof(type)); \
+    LOG_MSG(allocLogLevel, "niova_reallocarray: src=%p dst=%p sz=%zu",  \
+            ptr, tmp, (size_t)(sizeof(type) * nmemb));           \
+    if (tmp)                                                            \
+        (ptr) = tmp;                                                    \
+                                                                        \
+    tmp ? 0 : -ENOMEM;                                                  \
+})
+
 void
 alloc_log_level_set(enum log_level ll);
 

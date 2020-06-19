@@ -229,8 +229,9 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
 
 /**
  * rst_sm_handler_write -
- *    NOTE:  returning with an error will cause an immediate reply to the
- *    client.
+ * RETURN:  Returning without an error and with rncr_write_raft_entry=false
+ *   will cause an immediate reply to the client.  Returning any non-zero value
+ *   causes the request to terminate immediately without any reply being issued.
  */
 static int
 rst_sm_handler_write(struct raft_net_client_request *rncr)

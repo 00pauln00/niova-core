@@ -53,7 +53,7 @@ struct pmdb_object
     union
     {
         struct pmdb_obj_extras_v0 v0;
-pmdb_sm_handler_client_op    };
+    };
 };
 
 
@@ -166,11 +166,11 @@ pmdb_compile_time_asserts(void)
 
 #define PMDB_CFH_MUST_GET()
 ({                                                      \
-    rocksdb_column_family_handle_t *cfh =          \
+    rocksdb_column_family_handle_t *cfh =               \
         pmdb_get_rocksdb_column_family_handle();        \
-
-    NIOVA_ASSERT(cfh);
-    cfh;
+                                                        \
+    NIOVA_ASSERT(cfh);                                  \
+    cfh;                                                \
 })
 
 #define PMDB_ENTRY_KEY_PREFIX "P0."
@@ -190,7 +190,8 @@ pmdb_object_fmt_key(const uuid_t obj_uuid, pmdb_obj_str_t obj_str)
 }
 
 static int
-pmdb_object_lookup(const uuid_t obj_uuid, struct pmdb_object *obj)
+pmdb_object_lookup(const uuid_t obj_uuid, struct pmdb_object *obj,
+                   const int64_t current_raft_term)
 {
     NIOVA_ASSERT(obj && !uuid_is_null(obj_uuid));
 
@@ -230,7 +231,10 @@ pmdb_object_lookup(const uuid_t obj_uuid, struct pmdb_object *obj)
     // Release buffer allocated by rocksdb C interface
     free(get_value);
 
-    PMDB_OBJ_DEBUG(LL_DEBUG, pmdb_obj_str, obj, "")
+    if (obj->pmdb_obj_pending_term >= current_raft_term)
+        rc = -ELNRANGE;
+
+    PMDB_OBJ_DEBUG((rc ? LL_WARN : LL_DEBUG), pmdb_obj_str, obj, "")
 
     return rc;
 }
@@ -242,13 +246,15 @@ pmdb_obj_to_reply(const struct pmdb_object *obj, struct pmdb_rpc_msg *reply,
     NIOVA_ASSERT(obj && reply);
 
     reply->pmdbrm_write_seqno = obj->pmdb_obj_commit_seqno;
+
     reply->pmdbrm_write_pending =
         obj->pmdb_obj_pending_term == current_raft_term ? 1 : 0;
 }
 
 /**
  * pmdb_sm_handler_client_lookup - perform a key lookup in the PMDB column-
- *    family.  Return the seqno if found.
+ *    family.
+ * RETURN: 0 is always returned so that a reply will be delivered to the client.
  */
 static int
 pmdb_sm_handler_client_lookup(struct pmdb_rpc_msg *pmdb_reply,
@@ -258,24 +264,12 @@ pmdb_sm_handler_client_lookup(struct pmdb_rpc_msg *pmdb_reply,
 
     struct pmdb_object pmdb_obj = {0};
 
-    int rc = pmdb_object_lookup(pmdb_reply->pmrbrm_uuid, &pmdb_obj);
-
-    raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply), rc, rc);
+    int rc = pmdb_object_lookup(pmdb_reply->pmrbrm_uuid, &pmdb_obj, current_raft_term);
 
     if (!rc)
-    {
         pmdb_obj_to_reply(&pmdb_obj, pmdb_reply, current_raft_term);
-
-        if (obj->pmdb_obj_pending_term > current_raft_term)
-        {
-            raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply),
-                                      -ERANGE, -ERANGE);
-
-            //XXX need to do the same check in client write
-            PMDB_OBJ_DEBUG(LL_ERROR, pmdb_obj_str, obj,
-                           "obj term is > raft term (%ld)", current_raft_term);
-        }
-    }
+    else
+        raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply), rc, 0);
 
     return 0;
 }
@@ -286,12 +280,28 @@ pmdb_get_current_version(void)
     return 0;
 }
 
+static void
+pmdb_prep_raft_entry_write(struct raft_net_client_request *rncr,
+                           pmdb_obj_str_t pmdb_obj_str, const struct pmdb_object *obj)
+{
+    NIOVA_ASSERT(rncr && obj);
+
+    rncr->rncr_write_raft_entry = true;
+
+}
+
+/**
+ * pmdb_sm_handler_client_write - lookup the object and ensure that the requested
+ *     write sequence number is consistent with the pmdb-object.
+ *
+ * RETURN:  Returning without an error and with rncr_write_raft_entry=false
+ *   will cause an immediate reply to the client.  Returning any non-zero value
+ *   causes the request to terminate immediately without any reply being issued.
+ */
 static int
 pmdb_sm_handler_client_write(struct raft_net_client_request *rncr)
 {
     PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_READ, rncr);
-
-    rncr->rncr_write_raft_entry = false; // default to not writing raft log
 
     const struct raft_client_rpc_msg *req = rncr->rncr_request;
     struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
@@ -301,52 +311,58 @@ pmdb_sm_handler_client_write(struct raft_net_client_request *rncr)
 
     struct pmdb_object obj = {0};
 
-    int rc = pmdb_object_lookup(pmdb_reply->pmrbrm_uuid, &obj);
-    if (rc == -ENOENT)
+    pmdb_object_fmt_key(pmdb_reply->pmrbrm_uuid, pmdb_obj_str);
+
+    int rc = pmdb_object_lookup(pmdb_reply->pmrbrm_uuid, &obj,
+                                rncr->rncr_current_term);
+    if (rc)
     {
-        pmdb_object_init(&obj, pmdb_get_current_version(),
-                         rncr->rncr_current_term);
-    }
-    else if (rc)
-    {
-        rncr->rncr_op_error = rc;
-    }
-    else
-    {
-        if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno)
+        if (rc == -ENOENT)
         {
-            // Client will see 'OK' since this request was already completed
-            rc = rncr->rncr_op_error = -EALREADY;
+            pmdb_object_init(&obj, pmdb_get_current_version(),
+                             rncr->rncr_current_term);
+
+            rc = 0;
         }
         else
         {
-            if (pmdb_req->pmdbrm_write_seqno ==
-                (obj.pmdb_obj_commit_seqno + 1)) // Reqest sequence is OK
-            {
-                if (obj.pmdb_obj_pending_term == rncr->rncr_current_term)
-                { // Request has already been placed into the log.
-                    rc = rncr->rncr_op_error = -EINPROGRESS;
+            PMDB_OBJ_DEBUG(LL_NOTIFY, pmdb_obj_str, NULL, "pmdb_object_lookup(): %s",
+                           strerror(-rc));
 
-                    raft_client_msg_error_set(
-                        raft_net_data_to_rpc_msg(pmdb_reply), 0, -EINPROGRESS);
+            // This appears to be a system error.  Mark it and reply to the client.
+            raft_client_net_request_error_set(rncr, rc, rc, 0);
 
-                }
-            }
-            else // Request sequence is too far ahead
-            {
-                rc = rncr->rncr_op_error = -ERANGE;
-                raft_client_msg_error_set(raft_net_data_to_rpc_msg(pmdb_reply),
-                                          0, -ERANGE);
-            }
+            return 0;
         }
+    }
+
+    // Check if the request was already completed
+    if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno)
+    {
+        raft_client_net_request_error_set(rncr, -EALREADY, 0, 0);
+    }
+
+    else if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
+    {
+        // Check if request has already been placed into the log.
+        if (obj.pmdb_obj_pending_term == rncr->rncr_current_term)
+            raft_client_net_request_error_set(rncr, -EINPROGRESS, 0, -EINPROGRESS);
+
+        else // Request sequence is OK and will enter the raft log.
+            pmdb_prep_raft_entry_write(rncr, pmdb_obj_str, &obj);
+    }
+
+    else // Request sequence is too far ahead
+    {
+        raft_client_net_request_error_set(rncr, -EBADE, 0, -EBADE);
     }
 
     // XXX need to place KV items int rncr to be written with the raft log
     //     entry
 
-    // Fixme XXX
-    PMDB_OBJ_DEBUG((rc ? LL_NOTIFY : LL_DEBUG), pmdb_obj_str, obj, "");
-    return rc;
+    PMDB_OBJ_DEBUG(LL_NOTIFY, pmdb_obj_str, obj, "");
+
+    return 0;
 }
 
 static int
@@ -468,6 +484,8 @@ pmdb_sm_handler(struct raft_net_client_request *rncr)
     else if (rncr->rncr_request->rcrm_data_size < sizeof(struct pmdb_rpc_msg))
         return -EBAMSG;
 
+    rncr->rncr_write_raft_entry = false; // default is to not write the raft log
+
     const struct raft_client_rpc_msg *req = rncr->rncr_request;
     const struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
@@ -489,7 +507,7 @@ pmdb_sm_handler(struct raft_net_client_request *rncr)
 
         return pmdb_sm_handler_client_op(rncr);
     }
-
+    // Still need the commit handler XXX
 }
 
 int

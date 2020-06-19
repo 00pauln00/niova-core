@@ -944,6 +944,90 @@ raft_net_udp_cb(const struct epoll_handle *eph)
     }
 }
 
+static struct raft_net_wr_supp *
+raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
+                           void *handle)
+{
+    for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
+        if (handle == rnsws->rnsws_ws[i].rnws_handle)
+            return &rnsws->rnsws_ws[i];
+
+    int rc = niova_reallocarray(rnsws->rnsws_ws, struct raft_net_wr_supp,
+                                rnsws->rnsws_nitems + 1UL);
+    if (rc)
+        return NULL;
+
+    rnsws->rnsws_nitems++;
+    rnsws->rnsws_ws[rnsws->rnsws_nitems].rnws_handle = handle;
+
+    return &rnsws->rnsws_ws[rnsws->rnsws_nitems];
+}
+
+static int
+raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
+                        const size_t key_size, const char *value,
+                        const size_t value_size)
+{
+    size_t n = rnsws->rnsws_nkv;
+
+    int rc = niova_reallocarray(rnsws->rnsws_keys, char *, n + 1UL);
+    if (rc)
+        return rc;
+
+    rc = niova_reallocarray(rnsws->rnsws_key_sizes, size_t, n + 1UL);
+    if (rc)
+        return rc;
+
+    rc = niova_reallocarray(rnsws->rnsws_values, char *, n + 1UL);
+    if (rc)
+        return rc;
+
+    rc = niova_reallocarray(rnsws->rnsws_value_sizes, size_t, n + 1UL);
+    if (rc)
+        return rc;
+
+    rnsws->rnsws_keys[n] = niova_malloc(key_size);
+    if (!rnsws->rnsws_keys[n])
+        return -ENOMEM;
+
+    rnsws->rnsws_values[n] = niova_malloc(value_size);
+    if (!rnsws->rnsws_values[n])
+    {
+        niova_free(rnsws->rnsws_keys[n]);
+        return -ENOMEM;
+    }
+
+    memcpy(rnsws->rnsws_keys[n], key, key_size);
+    memcpy(rnsws->rnsws_values[n], value, value_size);
+
+    rnsws->rnsws_key_sizes[n] = key_size;
+    rnsws->rnsws_value_sizes[n] = value_size;
+
+    rnsws->rnsws_nkv++;
+
+    return 0;
+}
+
+int
+raft_net_sm_write_supplement_add(
+    struct raft_net_sm_write_supplements *rnsws, void *handle,
+    void (*rnws_comp_cb)(struct raft_net_wr_supp *),
+    const char *key, const size_t key_size, const char *value,
+    const size_t value_size)
+{
+    if (!rnsws || !key || !key_size)
+        return -EINVAL;
+
+    struct raft_net_wr_supp *ws = raft_net_sm_write_supp_get(rnsws, handle);
+    if (!ws)
+        return -ENOMEM;
+
+    if (rnws_comp_cb) // Apply the callback if it was specified
+        ws->rnws_comp_cb = rnws_comp_cb;
+
+    return raft_net_write_supp_add(ws, key, key_size, value, value_size);
+}
+
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
                                   raft_net_timer_cb_t timer_fd_cb,

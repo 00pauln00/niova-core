@@ -2849,6 +2849,7 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
         .rncr_remote_addr = *from,
         .rncr_reply_data_max_size =
             (RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_client_rpc_msg)),
+        .rncr_sm_write_supp.rnsws_cnt = 0,
     };
 
     raft_server_udp_client_reply_init(ri, &rncr);
