@@ -396,15 +396,15 @@ pmdb_sm_handler_client_read(struct raft_net_client_request *rncr)
     if (rrc < 0)
     {
         pmdb_reply->pmdbrm_data_size = 0;
-        reply->rcrm_app_error = reply->rcrm_sys_error = (int16_t)rrc;
+        raft_client_net_request_error_set(rncr, rrc, rrc, rrc);
 
         DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req, rncr->rncr_remote_addr,
                             "pmdbApi::read(): %s", strerror(rrc));
     }
     else if (rrc > (ssize_t)max_reply_size)
     {
+        raft_client_net_request_error_set(rncr, , 0, -E2BIG);
         pmdb_reply->pmdbrm_data_size = (uint32_t)rrc;
-        reply->rcrm_app_error = -E2BIG;
 
         DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req, rncr->rncr_remote_addr,
                             "pmdbApi::read(): reply too large (%zd)", rrc);
@@ -508,13 +508,15 @@ pmdb_sm_handler(struct raft_net_client_request *rncr)
         if (rncr->rncr_reply_data_max_size < sizeof(struct pmdb_rpc_msg))
             return -ENOSPC;
 
-        reply->rcrm_app_error = pmdb_sm_handler_pmdb_req_check(pmdb_req);
-        if (reply->rcrm_app_error)
+        int rc = pmdb_sm_handler_pmdb_req_check(pmdb_req);
+        if (rc)
         {
+            raft_client_net_request_error_set(rncr, rc, 0, rc);
+
             // There's a problem with the application RPC request
             DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req, rncr->rncr_remote_addr,
                                 "pmdb_sm_handler_pmdb_req_check(): %s",
-                                strerror(reply->rcrm_app_error));
+                                strerror(-rc));
             return 0;
         }
 
