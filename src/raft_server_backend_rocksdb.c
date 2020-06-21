@@ -43,6 +43,7 @@ struct raft_instance_rocks_db
     rocksdb_t              *rir_db;
     rocksdb_options_t      *rir_options;
     rocksdb_writeoptions_t *rir_writeoptions;
+    rocksdb_writeoptions_t *rir_writeoptions_no_sync;
     rocksdb_readoptions_t  *rir_readoptions;
     rocksdb_writebatch_t   *rir_writebatch;
 };
@@ -72,6 +73,10 @@ rsbr_setup(struct raft_instance *);
 static int
 rsbr_destroy(struct raft_instance *);
 
+static void
+rsbr_sm_apply_opt(struct raft_instance *,
+                  const struct raft_net_sm_write_supplements *);
+
 static struct raft_instance_backend ribRocksDB = {
     .rib_entry_write       = rsbr_entry_write,
     .rib_entry_read        = rsbr_entry_read,
@@ -81,6 +86,7 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_header_load       = rsbr_header_load,
     .rib_backend_setup     = rsbr_setup,
     .rib_backend_shutdown  = rsbr_destroy,
+    .rib_sm_apply_opt      = rsbr_sm_apply_opt,
 };
 
 static inline struct raft_instance_rocks_db *
@@ -186,12 +192,66 @@ rsbr_string_matches_iter_key(const char *str, size_t str_len,
 }
 
 static void
+rsbr_write_supplements_put(const struct raft_net_sm_write_supplements *ws,
+                           rocksdb_writebatch_t *wb)
+{
+    if (!ws || !wb)
+        return;
+
+    for (size_t i = 0; i < ws->rnsws_nitems;  i++)
+    {
+        const struct raft_net_wr_supp *supp = &ws->rnsws_ws[i];
+        supp->rnws_handle ?
+            rocksdb_writebatch_putv_cf(
+                wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,
+                supp->rnws_nkv, (const char * const *)supp->rnws_keys,
+                supp->rnws_key_sizes, supp->rnws_nkv,
+                (const char * const *)supp->rnws_values,
+                supp->rnws_value_sizes)
+            :
+            rocksdb_writebatch_putv(wb, supp->rnws_nkv,
+                                    (const char * const *)supp->rnws_keys,
+                                    supp->rnws_key_sizes, supp->rnws_nkv,
+                                    (const char * const *)supp->rnws_values,
+                                    supp->rnws_value_sizes);
+    }
+}
+
+static void
+rsbr_sm_apply_opt(struct raft_instance *ri,
+                  const struct raft_net_sm_write_supplements *ws)
+{
+    NIOVA_ASSERT(ri);
+    if (!ws)
+        return;
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    rocksdb_writebatch_clear(rir->rir_writebatch);
+
+    // Attach any supplemental writes to the rocksdb-writebatch
+    rsbr_write_supplements_put(ws, rir->rir_writebatch);
+
+    char *err = NULL;
+
+    /* Apply_opt does not force a sync of the WAL, this is because in the case
+     * of a failure, the raft entry will be re-applied.
+     * The api may need to accept the write options from the SM at some point,
+     * however, the sync WAL option generally be avoided here.
+     */
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_no_sync,
+                  rir->rir_writebatch, &err);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
+
+    rocksdb_writebatch_clear(rir->rir_writebatch);
+}
+
+static void
 rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
                  const struct raft_net_sm_write_supplements *ws)
 {
     NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
-
-    (void)ws;
 
     size_t entry_size = re->re_header.reh_data_size;
     raft_entry_idx_t entry_idx = re->re_header.reh_index;
@@ -226,6 +286,9 @@ rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
 
     rocksdb_writebatch_put(rir->rir_writebatch, entry_key, entry_key_len,
                            entry_val, entry_size);
+
+    // Attach any supplemental writes to the rocksdb-writebatch
+    rsbr_write_supplements_put(ws, rir->rir_writebatch);
 
     char *err = NULL;
     rocksdb_write(rir->rir_db, rir->rir_writeoptions, rir->rir_writebatch,
@@ -562,6 +625,7 @@ rsbr_destroy(struct raft_instance *ri)
     rocksdb_close(rir->rir_db);
 
     rocksdb_writeoptions_destroy(rir->rir_writeoptions);
+    rocksdb_writeoptions_destroy(rir->rir_writeoptions_no_sync);
     rocksdb_readoptions_destroy(rir->rir_readoptions);
     rocksdb_options_destroy(rir->rir_options);
     rocksdb_writebatch_destroy(rir->rir_writebatch);
@@ -569,6 +633,7 @@ rsbr_destroy(struct raft_instance *ri)
     rir->rir_options = NULL;
     rir->rir_readoptions = NULL;
     rir->rir_writeoptions = NULL;
+    rir->rir_writeoptions_no_sync = NULL;
     rir->rir_writebatch = NULL;
 
     rir->rir_db = NULL;
@@ -621,6 +686,14 @@ rsbr_setup(struct raft_instance *ri)
     }
 
     rocksdb_writeoptions_set_sync(rir->rir_writeoptions, 1);
+
+    // Make a non-sync option as well.
+    rir->rir_writeoptions_no_sync = rocksdb_writeoptions_create();
+    if (!rir->rir_writeoptions_no_sync)
+    {
+        rsbr_destroy(ri);
+        return -ENOMEM;
+    }
 
     rir->rir_readoptions = rocksdb_readoptions_create();
     if (!rir->rir_readoptions)

@@ -3098,13 +3098,8 @@ raft_server_sm_apply_opt(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri && rncr);
 
-    if (!ri->ri_backend->rib_sm_apply_opt)
-        return;
-
-    int rc = ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
-
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                               "rib_sm_apply_opt(): %s", strerror(errno));
+    if (ri->ri_backend->rib_sm_apply_opt)
+        ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
 }
 
 static raft_server_epoll_sm_apply_bool_t

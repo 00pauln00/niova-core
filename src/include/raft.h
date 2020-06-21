@@ -307,8 +307,8 @@ struct raft_instance_backend
     int (*rib_header_write)(struct raft_instance *);
     int (*rib_backend_setup)(struct raft_instance *);
     int (*rib_backend_shutdown)(struct raft_instance *);
-    int (*rib_sm_apply_opt)(struct raft_instance *,
-                            const struct raft_net_sm_write_supplements *);
+    void (*rib_sm_apply_opt)(struct raft_instance *,
+                             const struct raft_net_sm_write_supplements *);
 };
 
 struct raft_instance

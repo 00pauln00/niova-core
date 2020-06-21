@@ -983,6 +983,10 @@ raft_net_udp_cb(const struct epoll_handle *eph)
     }
 }
 
+/**
+ * raft_net_write_supp_get - looks up a supplment pointer base on the value
+ *    of the provided handle.  Note, that a NULL handle is permitted.
+ */
 static struct raft_net_wr_supp *
 raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
                         void *handle)
@@ -1079,6 +1083,9 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
     ws->rnws_value_sizes[n] = value_size;
 
     ws->rnws_nkv++;
+
+    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s val=%p", ws, ws->rnws_nkv, key,
+            value);
 
     return 0;
 }
