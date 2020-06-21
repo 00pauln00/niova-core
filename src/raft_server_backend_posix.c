@@ -27,7 +27,8 @@ struct raft_instance_posix
 };
 
 static void
-rsbp_entry_write(struct raft_instance *, const struct raft_entry *);
+rsbp_entry_write(struct raft_instance *, const struct raft_entry *,
+                 const struct raft_net_sm_write_supplements *);
 
 static ssize_t
 rsbp_entry_read(struct raft_instance *, struct raft_entry *);
@@ -141,9 +142,13 @@ rsbr_raft_entry_header_to_phys_offset(const struct raft_instance *ri,
 }
 
 static void
-rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re)
+rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re,
+                 const struct raft_net_sm_write_supplements *unused)
 {
     NIOVA_ASSERT(ri && re);
+    NIOVA_ASSERT(!unused); // posix-backend does not support wr-supp
+
+    (void)unused;
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
 
