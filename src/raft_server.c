@@ -32,6 +32,7 @@ enum raft_write_entry_opts
     RAFT_WR_ENTRY_OPT_NONE                 = 0,
     RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER = 1,
     RAFT_WR_ENTRY_OPT_LOG_HEADER           = 2,
+    RAFT_WR_ENTRY_OPT_FOLLOWER_WRITE       = 3,
     RAFT_WR_ENTRY_OPT_ANY                  = 255,
 };
 
@@ -524,13 +525,14 @@ raft_instance_update_newest_entry_hdr(struct raft_instance *ri,
 }
 
 static void
-raft_server_entry_write_by_store(struct raft_instance *ri,
-                                 const struct raft_entry *re)
+raft_server_entry_write_by_store(
+    struct raft_instance *ri, const struct raft_entry *re,
+    const struct raft_net_sm_write_supplements *ws)
 {
     struct timespec io_op[2];
     niova_unstable_clock(&io_op[0]);
 
-    ri->ri_backend->rib_entry_write(ri, re);
+    ri->ri_backend->rib_entry_write(ri, re, ws);
 
     niova_unstable_clock(&io_op[1]);
 
@@ -559,7 +561,8 @@ static int
 raft_server_entry_write(struct raft_instance *ri,
                         const raft_entry_idx_t re_idx,
                         const int64_t term, const char *data, size_t len,
-                        enum raft_write_entry_opts opts)
+                        enum raft_write_entry_opts opts,
+                        const struct raft_net_sm_write_supplements *ws)
 {
     if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft ||
         (opts != RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER && (!data || !len)))
@@ -574,20 +577,7 @@ raft_server_entry_write(struct raft_instance *ri,
     if (!re)
         return -ENOMEM;
 
-    raft_server_entry_init(ri, re, re_idx, term, data, len, opts);
-
-    DBG_RAFT_ENTRY(LL_NOTIFY, &re->re_header, "");
-
-    /* Failues of the next set of operations will be fatal:
-     * - Ensuring that the index increases by one and term is not decreasing
-     * - The entire block was written without error
-     * - The block log fd was sync'd without error.
-     */
-    DBG_RAFT_INSTANCE_FATAL_IF(
-        (!raft_server_entry_next_entry_is_valid(ri, &re->re_header)), ri,
-        "raft_server_entry_next_entry_is_valid() failed");
-
-    raft_server_entry_write_by_store(ri, re);
+    raft_server_entry_write_by_store(ri, re, ws);
 
     /* Following the successful writing and sync of the entry, copy the
      * header contents into the raft instance.   Note, this is a noop if the
@@ -1497,10 +1487,25 @@ raft_server_leader_init_state(struct raft_instance *ri)
     }
 }
 
+/**
+ * raft_server_write_next_entry - called from leader and follower context.
+ *    Leader writes differ from follower writes in that they always are current
+ *    and they may provide a write-supplement set.
+ * @ri:  raft-instance pointer
+ * @term:  term in which the entry was originally written - which may not be
+ *    the current term.
+ * @data:  raft-entry data
+ * @len:  length of the raft-entry data
+ * @opts:  options flags
+ * @ws:  write supplements - currently, only used on the leader in entry_write
+ *    context, however, both leaders and followers may make use of write-supp
+ *    when performing SM applies.
+ */
 static raft_net_udp_cb_ctx_t
 raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              const char *data, const size_t len,
-                             enum raft_write_entry_opts opts)
+                             enum raft_write_entry_opts opts,
+                             const struct raft_net_sm_write_supplements *ws)
 {
     NIOVA_ASSERT(term >= raft_server_get_current_raft_entry_term(ri));
 
@@ -1514,17 +1519,18 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
     DBG_RAFT_INSTANCE_FATAL_IF((next_entry_idx < 0), ri,
                                "negative next-entry-idx=%ld", next_entry_idx);
 
-    int rc = raft_server_entry_write(ri, next_entry_idx, term, data, len, opts);
+    int rc = raft_server_entry_write(ri, next_entry_idx, term, data, len, opts,
+                                     ws);
     if (rc)
         DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
                           strerror(-rc));
 }
 
 static raft_net_udp_cb_ctx_t
-raft_server_leader_write_new_entry(struct raft_instance *ri,
-                                   const char *data,
-                                   const size_t len,
-                                   enum raft_write_entry_opts opts)
+raft_server_leader_write_new_entry(
+    struct raft_instance *ri, const char *data, const size_t len,
+    enum raft_write_entry_opts opts,
+    const struct raft_net_sm_write_supplements *ws)
 {
 #if 1
     NIOVA_ASSERT(raft_instance_is_leader(ri));
@@ -1538,7 +1544,8 @@ raft_server_leader_write_new_entry(struct raft_instance *ri,
      * followers which may not always be able to use the current term when
      * rebuilding their log.
      */
-    raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len, opts);
+    raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len, opts,
+                                 ws);
 
     // Schedule ourselves to send this entry to the other members.
     ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
@@ -1550,7 +1557,8 @@ raft_server_write_leader_change_marker(struct raft_instance *ri)
     NIOVA_ASSERT(ri && raft_instance_is_leader(ri));
 
     raft_server_leader_write_new_entry(ri, NULL, 0,
-                                       RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER);
+                                       RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER,
+                                       NULL);
 }
 
 static void
@@ -2173,7 +2181,8 @@ raft_server_write_new_entry_from_leader(
         RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER : RAFT_WR_ENTRY_OPT_NONE;
 
     raft_server_write_next_entry(ri, raerq->raerqm_log_term,
-                                 raerq->raerqm_entries, entry_size, opts);
+                                 raerq->raerqm_entries, entry_size, opts,
+                                 NULL);
 }
 
 /**
@@ -2917,7 +2926,8 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
             if (rncr.rncr_write_raft_entry)
                 raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
                                                    rcm->rcrm_data_size,
-                                                   RAFT_WR_ENTRY_OPT_NONE);
+                                                   RAFT_WR_ENTRY_OPT_NONE,
+                                                   &rncr.rncr_sm_write_supp);
 
             /* Read operation or an already committed + applied write
              * operation.

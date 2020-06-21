@@ -48,7 +48,8 @@ struct raft_instance_rocks_db
 };
 
 static void
-rsbr_entry_write(struct raft_instance *, const struct raft_entry *);
+rsbr_entry_write(struct raft_instance *, const struct raft_entry *,
+                 const struct raft_net_sm_write_supplements *);
 
 static ssize_t
 rsbr_entry_read(struct raft_instance *, struct raft_entry *);
@@ -185,9 +186,12 @@ rsbr_string_matches_iter_key(const char *str, size_t str_len,
 }
 
 static void
-rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re)
+rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
+                 const struct raft_net_sm_write_supplements *ws)
 {
     NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
+
+    (void)ws;
 
     size_t entry_size = re->re_header.reh_data_size;
     raft_entry_idx_t entry_idx = re->re_header.reh_index;
