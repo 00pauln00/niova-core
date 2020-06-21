@@ -9,14 +9,13 @@
 
 #include <rocksdb/c.h>
 
-#include "registry.h"
+#include "alloc.h"
+#include "crc32.h"
 #include "log.h"
+#include "pumice_db.h"
 #include "raft.h"
 #include "raft_net.h"
-#include "pumice_db.h"
-#include "ref_tree_proto.h"
-#include "alloc.h"
-#include "pumice_db.h"
+#include "registry.h"
 
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
@@ -46,7 +45,7 @@ struct pmdb_value_obj_v0
  */
 struct pmdb_object
 {
-    uint32_t pmdb_obj_crc;
+    crc32_t  pmdb_obj_crc;
     uint32_t pmdb_obj_version;
     int64_t  pmdb_obj_commit_seqno;
     int64_t  pmdb_obj_pending_term;
@@ -56,13 +55,26 @@ struct pmdb_object
     };
 };
 
-
 #define PMDB_OBJ_DEBUG(log_level, pmdb_obj_str, pmdb_obj, fmt, ...)     \
 {                                                                       \
-    LOG_MSG(log_level, "%s: v=%d cmt-seqno=%ld pndg-term=%ld",          \
+    LOG_MSG(log_level, "%s: v=%d crc=%x cs=%ld pt=%ld",                 \
             (pmdb_obj_str), (pmdb_obj) ? (pmdb_obj)->pmdb_obj_version : -1U, \
+            (pmdb_obj) ? (pmdb_obj)->pmdb_obj_crc : 0,                  \
             (pmdb_obj) ? (pmdb_obj)->pmdb_obj_commit_seqno : -1ULL,     \
             (pmdb_obj) ? (pmdb_obj)->pmdb_obj_pending_term : -1ULL);    \
+}
+
+static void
+pmdb_obj_crc(struct pmdb_object *obj)
+{
+    const size_t offset =
+        offsetof(struct pmdb_object, pmdb_obj_crc) + sizeof(crc32_t);
+
+    const unsigned char *buf = (const unsigned char *)obj + offset;
+    const int crc_len = sizeof(struct pmdb_object) - offset;
+    NIOVA_ASSERT(crc_len >= 0);
+
+    obj->pmdb_obj_crc = crc_pcl(buf, crc_len, 0);
 }
 
 static void
@@ -75,7 +87,7 @@ pmdb_object_init(struct pmdb_object *pmdb_obj, uint32_t version,
 
     pmdb_obj->pmdb_obj_version = version;
     pmdb_obj->pmdb_obj_commit_seqno = ID_ANY_64bit;
-    pmdb_obj->pmdb_obj_pending_term = current_raft_term;
+    pmdb_obj->pmdb_obj_pending_term = ID_ANY_64bit;
 }
 
 static rocksdb_t *
@@ -283,14 +295,33 @@ pmdb_get_current_version(void)
 }
 
 static void
+pmdb_prep_raft_entry_write_obj(struct pmdb_object *obj, int64_t current_term)
+{
+    obj->pmdb_obj_version = pmdb_get_current_version();
+    obj->pmdb_obj_pending_term = current_term;
+
+    pmdb_obj_crc(obj);
+}
+
+static void
 pmdb_prep_raft_entry_write(struct raft_net_client_request *rncr,
                            pmdb_obj_str_t pmdb_obj_str,
-                           const struct pmdb_object *obj)
+                           struct pmdb_object *obj)
 {
     NIOVA_ASSERT(rncr && obj);
 
     rncr->rncr_write_raft_entry = true;
 
+    // Mark that the object is pending a write in this leader's term.
+    pmdb_prep_raft_entry_write_obj(obj, rncr->rncr_current_term);
+
+    raft_net_sm_write_supplement_add(
+        &rncr->rncr_sm_write_supp,
+        (void *)pmdb_get_rocksdb_column_family_handle(),
+        NULL /* no callback needed yet */, (const char *)pmdb_obj_str,
+        PMDB_ENTRY_KEY_PREFIX_LEN, (const char *)obj, sizeof(*obj));
+
+    PMDB_OBJ_DEBUG(LL_DEBUG, pmdb_obj_str, obj, "");
 }
 
 /**
