@@ -23,6 +23,17 @@ static const struct PmdbAPI *pmdbApi;
 static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
 static rocksdb_readoptions_t *pmdbRocksdbReadOpts;
 
+enum PmdbOpType
+{
+    pmdb_op_noop = 0,
+    pmdb_op_lookup = 1,
+    pmdb_op_read = 2,
+    pmdb_op_write = 3,
+    pmdb_op_apply = 4,
+    pmdb_op_none = 5,
+    pmdb_op_any = 6,
+};
+
 struct pmdb_rpc_msg
 {
     uuid_t   pmrbrm_uuid; // must match rcrm_sender_id
@@ -53,6 +64,12 @@ struct pmdb_object
     {
         struct pmdb_obj_extras_v0 v0;
     };
+};
+
+struct pmdb_apply_handle
+{
+    const struct pmdb_rpc_msg *pah_msg;
+    struct raft_net_sm_write_supplements *pah_ws;
 };
 
 #define PMDB_OBJ_DEBUG(log_level, pmdb_obj_str, pmdb_obj, fmt, ...)     \
@@ -396,9 +413,6 @@ pmdb_sm_handler_client_write(struct raft_net_client_request *rncr)
         raft_client_net_request_error_set(rncr, -EBADE, 0, -EBADE);
     }
 
-    // XXX need to place KV items int rncr to be written with the raft log
-    //     entry
-
     PMDB_OBJ_DEBUG((rncr->rncr_op_error == -EBADE ? LL_NOTIFY : LL_DEBUG),
                    pmdb_obj_str, obj, "op-err=%s",
                    strerror(rncr->rncr_op_error));
@@ -462,8 +476,14 @@ pmdb_reply_init(const struct pmdb_rpc_msg *req, struct pmdb_rpc_msg *reply)
     reply->pmdbrm_op = reply->pmdbrm_op;
 }
 
+/**
+ * pmdb_sm_handler_client_rw_op - interprets and executes the command provided in the
+ *    raft net client request.  Note that this function must set rncr_type so that the
+ *    caller, which does not have the ability to interpret the request, can be
+ *    informed of the request type.
+ */
 static int
-pmdb_sm_handler_client_op(struct raft_net_client_request *rncr)
+pmdb_sm_handler_client_rw_op(struct raft_net_client_request *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_NONE &&
                  rncr->rncr_request && rncr->rncr_reply);
@@ -516,6 +536,19 @@ pmdb_sm_handler_pmdb_req_check(const struct pmdb_rpc_msg *pmdb_req)
     return 0;
 }
 
+/**
+ * pmdb_sm_handler_pmdb_sm_apply - this call is ma
+ */
+static void
+pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_rpc_msg *pmdb_req,
+                              struct raft_net_sm_write_supplements *ws)
+{
+    struct pmdb_apply_handle pah = {.pah_msg = pmdb_req, .pah_ws = ws};
+
+    pmdbApi->pmdb_apply(pmdb_req->pmrbrm_uuid, pmdb_req->pmdbrm_data,
+                        pmdb_req->pmdbrm_data_size, (void *)&pah);
+}
+
 static int
 pmdb_sm_handler(struct raft_net_client_request *rncr)
 {
@@ -533,13 +566,20 @@ pmdb_sm_handler(struct raft_net_client_request *rncr)
     const struct raft_client_rpc_msg *req = rncr->rncr_request;
     const struct pmdb_rpc_msg *pmdb_req = req->rcrm_data;
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
+    int rc = 0;
 
-    if (rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_NONE)
+    switch (rncr->rncr_type)
+    {
+    case RAFT_NET_CLIENT_REQ_TYPE_READ:  // fall through
+    case RAFT_NET_CLIENT_REQ_TYPE_WRITE:
+        rncr->rncr_type = RAFT_NET_CLIENT_REQ_TYPE_NONE; // fall through
+
+    case RAFT_NET_CLIENT_REQ_TYPE_NONE:
     {
         if (rncr->rncr_reply_data_max_size < sizeof(struct pmdb_rpc_msg))
             return -ENOSPC;
 
-        int rc = pmdb_sm_handler_pmdb_req_check(pmdb_req);
+        rc = pmdb_sm_handler_pmdb_req_check(pmdb_req);
         if (rc)
         {
             raft_client_net_request_error_set(rncr, rc, 0, rc);
@@ -551,15 +591,73 @@ pmdb_sm_handler(struct raft_net_client_request *rncr)
             return 0;
         }
 
-        return pmdb_sm_handler_client_op(rncr);
+        return pmdb_sm_handler_client_rw_op(rncr);
     }
-    // Still need the commit handler XXX
+
+    case RAFT_NET_CLIENT_REQ_TYPE_COMMIT:
+        return pmdb_sm_handler_pmdb_sm_apply(pmdb_req,
+                                             &rncr->rncr_sm_write_supp);
+
+    default:
+        break;
+    }
+
+    return -EOPNOTSUPP;
 }
 
+static int
+pmdb_handle_verify(const uuid_t app_uuid, const struct pmdb_apply_handle *pah)
+{
+    if (uuid_is_null(app_uuid) || !pah || !pah->pah_msg || !pah->pah_ws ||
+        uuid_compare(app_uuid, pah->pah_msg->pmrbrm_uuid))
+        return -EINVAL;
+}
+
+/**
+ * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'
+ *    context only.  This call is used by the application to stage KVs for
+ *    writing into rocksDB.  KVs added within a single instance of the 'apply'
+ *    callback are atomically written to rocksDB.
+ * @app_uuid:  UUID of the application instance
+ * @pmdb_handle:  the handle which was provided from pumice_db to the apply
+ *    callback.
+ * @key:  name of the key
+ * @key_len:  length of the key
+ * @value:  value contents
+ * @value_len:  length of value contents
+ * @comp_cb:  optional callback which is issued following the rocksDB write
+ *    operation.
+ * @app_handle:  a handle pointer which belongs to the application.  This same
+ *    pointer is returned via comp_cb().  Note, that at this time, PMDB assumes
+ *    this handle is a pointer to a column family.
+ */
+int
+PmdbWriteKV(const uuid_t app_uuid, void *pmdb_handle, const char *key,
+            size_t key_len, const char *value, size_t value_len,
+            void (*comp_cb)(void *), void *app_handle)
+{
+    struct pmdb_apply_handle *pah = (struct pmdb_apply_handle *)pmdb_handle;
+
+    if (!key || !key_len || pmdb_handle_verify(app_uuid, pah))
+        return -EINVAL;
+
+    NIOVA_ASSERT(pah);
+
+    return raft_net_sm_write_supplement_add(pah->pah_ws, app_handle, comp_cb,
+                                            key, key_size, value, value_size);
+}
+
+/**
+ * PmdbExec - blocking API call used by a pumice-enabled application which
+ *    starts the underlying raft process and waits for incoming requests.
+ * @raft_uuid_str:  UUID of raft
+ * @raft_instance_uuid_str:  UUID of this specific raft peer
+ * @pmdb_api:  Function callbacks for read and apply.
+ */
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api)
-{
+
     if (!raft_uuid_str || !raft_instance_uuid_str || !pmdb_api ||
         !pmdb_api->pmdb_apply || !pmdb_api->pmdb_read)
         return -EINVAL;

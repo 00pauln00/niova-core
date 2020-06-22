@@ -993,6 +993,9 @@ raft_net_write_supp_destroy(struct raft_net_wr_supp *ws)
     niova_free(ws->rnws_values);
     niova_free(ws->rnws_key_sizes);
     niova_free(ws->rnws_value_sizes);
+
+    if (ws->rnws_comp_cb)
+        ws->rnws_comp_cb(ws->rnws_handle);
 }
 
 static int
@@ -1064,7 +1067,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 int
 raft_net_sm_write_supplement_add(
     struct raft_net_sm_write_supplements *rnsws, void *handle,
-    void (*rnws_comp_cb)(struct raft_net_wr_supp *),
+    void (*rnws_comp_cb)(void *),
     const char *key, const size_t key_size, const char *value,
     const size_t value_size)
 {

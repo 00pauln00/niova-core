@@ -3092,7 +3092,8 @@ raft_server_sm_apply_opt(struct raft_instance *ri,
     NIOVA_ASSERT(ri && rncr);
 
     if (ri->ri_backend->rib_sm_apply_opt)
-        ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
+        ri->ri_backend->rib_sm_apply_opt(ri, rncr->rncr_pending_apply_idx,
+                                         &rncr->rncr_sm_write_supp);
 }
 
 static raft_server_epoll_sm_apply_bool_t
@@ -3113,7 +3114,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     struct raft_client_rpc_msg *reply =
         (struct raft_client_rpc_msg *)reply_buf;
 
-    const size_t apply_idx = ri->ri_last_applied_idx + 1;
+    const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
 
     struct raft_entry_header reh;
 
@@ -3136,6 +3137,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         .rncr_reply = reply,
         .rncr_reply_data_max_size = RAFT_NET_MAX_RPC_SIZE,
         .rncr_sm_write_supp = {0},
+        .rncr_pending_apply_idx = apply_idx,
     };
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
