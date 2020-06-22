@@ -3,7 +3,8 @@ INCLUDE 	= -Isrc/include -Isrc/contrib/include
 DEBUG_CFLAGS 	= -Wall -g -O0 $(INCLUDE)
 #DEBUG_CFLAGS 	= -Wall -g -O2 $(INCLUDE)
 COVERAGE_FLAGS  = -Wall -g -O0 -fprofile-arcs -ftest-coverage --coverage $(INCLUDE)
-CFLAGS 		= -O2 -Wall $(INCLUDE)
+DEF_CFLAGS	= -O2 -Wall $(INCLUDE)
+CFLAGS 		= $(DEF_CFLAGS)
 LDFLAGS		= -lpthread -laio -luuid -lssl -lcrypto
 NIOVA_LCOV      = niova-lcov
 
@@ -84,6 +85,10 @@ RAFT_OBJFILES	= \
 	src/raft_server_backend_posix.o \
 	src/raft_server_backend_rocksdb.o
 
+PUMICEDB_OBJFILES = $(RAFT_OBJFILES)	\
+	src/pumice_db.o
+
+
 ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
 ALL_INCLUDES      = $(CORE_INCLUDES) $(SYS_CORE_INCLUDES)
 ALL_OBJFILES      = src/niova.o $(ALL_CORE_OBJFILES)
@@ -148,6 +153,14 @@ raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS) -lrocksdb
 	$(CC) $(CFLAGS) -o raft-client test/raft_client_test.c \
 	$(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(INCLUDE) $(LDFLAGS) -lrocksdb
+
+pumicedb: CFLAGS = $(DEF_CFLAGS) -fPIC -c
+pumicedb: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) $(ALL_INCLUDES)
+	$(CC) -shared -Wl,-soname,libpumicedb.so.1 -o libpumice.so.1.0.1 $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) -lc
+
+pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) -DNIOVA_FAULT_INJECTION_ENABLED \
+	-fsanitize=address
+pumicedb-dbg: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) $(ALL_INCLUDES)
 
 raft-dbg: CFLAGS = $(DEBUG_CFLAGS) -DNIOVA_FAULT_INJECTION_ENABLED \
 	-fsanitize=address
@@ -216,7 +229,7 @@ pahole : tests
 clean :
 	rm -fv test/simple_test test/niosd_io_test test/ref_test_test \
 	$(ALL_OBJFILES) $(CTL_OBJFILES) $(TARGET) $(CTL_TARGET) \
-	$(RAFT_OBJFILES) \
+	$(RAFT_OBJFILES) $(PUMICEDB_OBJFILES) \
 	*~ src/*.gcno src/*.gcda *.gcno *.gcda *.expand src/*.expand \
 	$(NIOVA_LCOV).out
 
