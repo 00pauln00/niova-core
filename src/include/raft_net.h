@@ -127,7 +127,7 @@ struct raft_net_wr_supp
 {
     size_t   rnws_nkv;
     void    *rnws_handle; //rocksdb cfh
-    void   (*rnws_comp_cb)(struct raft_net_wr_supp *);
+    void   (*rnws_comp_cb)(void *);
     char   **rnws_keys;
     size_t  *rnws_key_sizes;
     char   **rnws_values;
@@ -149,6 +149,7 @@ struct raft_net_client_request
     int                                   rncr_op_error;
     int64_t                               rncr_entry_term;
     int64_t                               rncr_current_term;
+    raft_entry_idx_t                      rncr_pending_apply_idx;
     long long                             rncr_commit_duration_msec;
     union
     {
@@ -360,7 +361,7 @@ raft_net_sm_write_supplement_destroy(
 int
 raft_net_sm_write_supplement_add(
     struct raft_net_sm_write_supplements *rnsws, void *handle,
-    void (*rnws_comp_cb)(struct raft_net_wr_supp *),
+    void (*rnws_comp_cb)(void *),
     const char *key, const size_t key_size, const char *value,
     const size_t value_size);
 

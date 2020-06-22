@@ -18,6 +18,9 @@
 #define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
 #define RAFT_LOG_HEADER_FMT RAFT_LOG_HEADER_ROCKSDB"%s__%s"
 
+#define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB "a1_hdr.last_applied"
+#define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB_STRLEN 19
+
 #define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
 #define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
 #define RAFT_LOG_LASTENTRY_FMT RAFT_LOG_LASTENTRY_ROCKSDB"%s__%s"
@@ -74,7 +77,7 @@ static int
 rsbr_destroy(struct raft_instance *);
 
 static void
-rsbr_sm_apply_opt(struct raft_instance *,
+rsbr_sm_apply_opt(struct raft_instance *, const raft_entry_idx_t,
                   const struct raft_net_sm_write_supplements *);
 
 static struct raft_instance_backend ribRocksDB = {
@@ -218,16 +221,33 @@ rsbr_write_supplements_put(const struct raft_net_sm_write_supplements *ws,
 }
 
 static void
+rsb_sm_apply_add_last_applied_kv(struct raft_instance_rocks_db *rir,
+                                 const raft_entry_idx_t apply_idx)
+{
+    NIOVA_ASSERT(rir);
+
+    rocksdb_writebatch_put(rir->rir_writebatch,
+                           RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB,
+                           RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB_STRLEN,
+                           (const char *)&apply_idx, sizeof(raft_entry_idx_t));
+}
+
+static void
 rsbr_sm_apply_opt(struct raft_instance *ri,
+                  const raft_entry_idx_t apply_idx,
                   const struct raft_net_sm_write_supplements *ws)
 {
     NIOVA_ASSERT(ri);
     if (!ws)
         return;
 
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "pndg_apply_idx=%ld", apply_idx);
+
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     rocksdb_writebatch_clear(rir->rir_writebatch);
+
+    rsb_sm_apply_add_last_applied_kv(rir, apply_idx);
 
     // Attach any supplemental writes to the rocksdb-writebatch
     rsbr_write_supplements_put(ws, rir->rir_writebatch);
@@ -515,7 +535,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 
     ssize_t rrc =
         rsbr_iter_seek(iter, RAFT_LOG_LASTENTRY_ROCKSDB,
-                                      RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN, true);
+                       RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN, true);
     if (rrc)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri,
@@ -547,8 +567,8 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 
     // There's no key entry or header key here.
     if (rsbr_string_matches_iter_key(RAFT_LOG_HEADER_ROCKSDB,
-                                            RAFT_LOG_HEADER_ROCKSDB_STRLEN,
-                                            iter, false))
+                                     RAFT_LOG_HEADER_ROCKSDB_STRLEN,
+                                     iter, false))
     {
          rocksdb_iter_destroy(iter);
          return 0;
