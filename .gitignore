@@ -43,3 +43,4 @@ raft-client
 test/queue_test
 test/rocksdb-test
 test/util-test
+libpumice.so.1.0.1
