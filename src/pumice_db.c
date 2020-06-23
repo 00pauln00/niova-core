@@ -167,7 +167,7 @@ pmdb_init_rocksdb(void)
                        err);
     }
 
-    return 0;
+    return err ? -EINVAL : 0;
 }
 
 static rocksdb_column_family_handle_t *
@@ -747,4 +747,10 @@ PmdbClose(void)
         pmdb_get_rocksdb_column_family_handle());
 
     return raft_server_instance_shutdown(raft_net_get_instance());
+}
+
+rocksdb_t *
+PmdbGetRocksDB(void)
+{
+    return pmdb_get_rocksdb_instance();
 }

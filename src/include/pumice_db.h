@@ -13,6 +13,9 @@
 #include "raft_net.h"
 #include "common.h"
 
+typedef void pumicedb_apply_ctx_t;
+typedef ssize_t pumicedb_read_ctx_ssize_t;
+
 #define PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP 1024
 #define PMDB_MAX_APP_RPC_PAYLOAD_SIZE_UDP \
     RAFT_NET_MAX_RPC_SIZE - RAFT_NET_MAX_RPC_SIZE
@@ -30,7 +33,7 @@
  *    The updates staged via PmdbWriteKV() are written atomically into rocksDB
  *    along with other pumiceDB and raft internal metadata.
  */
-typedef void
+typedef pumicedb_apply_ctx_t
 (*pmdb_apply_sm_handler_t)(const uuid_t app_uuid, const char *input_buf,
                            size_t input_bufsz, void *pmdb_handle);
 
@@ -39,7 +42,7 @@ typedef void
  *    the requisite buffers are provided.  The implementation must provide the
  *    the number of bytes used in reply_buf.
  */
-typedef ssize_t
+typedef pumicedb_read_ctx_ssize_t
 (*pmdb_read_sm_handler_t)(const uuid_t app_uuid, const char *request_buf,
                           size_t request_bufsz, char *reply_buf,
                           size_t reply_bufsz);
@@ -90,5 +93,8 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
  */
 int
 PmdbClose(void);
+
+rocksdb_t *
+PmdbGetRocksDB(void);
 
 #endif
