@@ -86,6 +86,18 @@ raft_test_compile_time_checks(void)
     COMPILE_TIME_ASSERT(RAFT_TEST_VALUES_MAX > 0);
 }
 
+static inline ssize_t
+raft_test_data_block_total_size(const struct raft_test_data_block *rtdb)
+{
+    if (!rtdb)
+        return (ssize_t)-EINVAL;
+    else if (rtdb->rtdb_num_values > RAFT_TEST_VALUES_MAX)
+        return (ssize_t)-EOVERFLOW;
+
+    return (sizeof(struct raft_test_data_block) +
+            (rtdb->rtdb_num_values * sizeof(struct raft_test_values)));
+}
+
 #define DBG_RAFT_TEST_DATA_BLOCK(log_level, rtdb, fmt, ...)             \
 {                                                                       \
     char __uuid_str[UUID_STR_LEN];                                      \
