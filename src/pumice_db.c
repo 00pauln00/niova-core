@@ -87,7 +87,6 @@ struct pmdb_apply_handle
 #define PMDB_STR_DEBUG(log_level, pmdb_obj_str, fmt, ...)               \
     LOG_MSG(log_level, "%s: "fmt, (pmdb_obj_str), ##__VA_ARGS__)
 
-
 static void
 pmdb_obj_crc(struct pmdb_object *obj)
 {
@@ -327,6 +326,21 @@ pmdb_prep_raft_entry_write_obj(struct pmdb_object *obj, int64_t current_term)
 }
 
 static void
+pmdb_prep_obj_write(struct raft_net_sm_write_supplements *ws,
+                    pmdb_obj_str_t pmdb_obj_str, struct pmdb_object *obj,
+                    const int64_t term)
+{
+    NIOVA_ASSERT(ws && obj);
+
+    pmdb_prep_raft_entry_write_obj(obj, term);
+
+    raft_net_sm_write_supplement_add(
+        ws, (void *)pmdb_get_rocksdb_column_family_handle(),
+        NULL /* no callback needed yet */, (const char *)pmdb_obj_str,
+        PMDB_ENTRY_KEY_PREFIX_LEN, (const char *)obj, sizeof(*obj));
+}
+
+static void
 pmdb_prep_raft_entry_write(struct raft_net_client_request *rncr,
                            pmdb_obj_str_t pmdb_obj_str,
                            struct pmdb_object *obj)
@@ -336,13 +350,21 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request *rncr,
     rncr->rncr_write_raft_entry = true;
 
     // Mark that the object is pending a write in this leader's term.
-    pmdb_prep_raft_entry_write_obj(obj, rncr->rncr_current_term);
+    pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, pmdb_obj_str, obj,
+                        rncr->rncr_current_term);
 
-    raft_net_sm_write_supplement_add(
-        &rncr->rncr_sm_write_supp,
-        (void *)pmdb_get_rocksdb_column_family_handle(),
-        NULL /* no callback needed yet */, (const char *)pmdb_obj_str,
-        PMDB_ENTRY_KEY_PREFIX_LEN, (const char *)obj, sizeof(*obj));
+    PMDB_OBJ_DEBUG(LL_DEBUG, pmdb_obj_str, obj, "");
+}
+
+static void
+pmdb_prep_sm_apply_write(struct raft_net_client_request *rncr,
+                         pmdb_obj_str_t pmdb_obj_str, struct pmdb_object *obj)
+{
+    NIOVA_ASSERT(rncr && obj);
+
+    // Reset the pending term value with -1
+    pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, pmdb_obj_str, obj,
+                        ID_ANY_64bit);
 
     PMDB_OBJ_DEBUG(LL_DEBUG, pmdb_obj_str, obj, "");
 }
@@ -539,12 +561,40 @@ pmdb_sm_handler_client_rw_op(struct raft_net_client_request *rncr)
 }
 
 /**
- * pmdb_sm_handler_pmdb_sm_apply - this call is ma
+ * pmdb_sm_handler_pmdb_sm_apply -
  */
 static void
 pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_rpc_msg *pmdb_req,
-                              struct raft_net_sm_write_supplements *ws)
+                              struct raft_net_client_request *rncr)
 {
+    if (!pmdb_req || !rncr)
+        return;
+
+    pmdb_obj_str_t pmdb_obj_str;
+
+    pmdb_object_fmt_key(pmdb_req->pmrbrm_uuid, pmdb_obj_str);
+
+    struct pmdb_object obj = {0};
+
+    int rc = pmdb_object_lookup(pmdb_req->pmrbrm_uuid, &obj,
+                                rncr->rncr_current_term);
+
+    // A failure here means that somehow the DB has become "corrupted".
+    if (rc)
+    {
+        /* Xxx This is probably too aggressive and we should allow for an error
+         *     to be passed into pmdb_apply() and returned to the client.
+         */
+        PMDB_OBJ_DEBUG(LL_FATAL, pmdb_obj_str, &obj,
+                       "pmdb_object_lookup(): %s", strerror(-rc));
+    }
+
+    // The object receiving the apply must have its pending_term value reset.
+    pmdb_prep_sm_apply_write(rncr, pmdb_obj_str, &obj);
+
+    // Call into the application so it may emplace its own KVs.
+
+    struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
     struct pmdb_apply_handle pah = {.pah_msg = pmdb_req, .pah_ws = ws};
 
     pmdbApi->pmdb_apply(pmdb_req->pmrbrm_uuid, pmdb_req->pmdbrm_data,
@@ -613,8 +663,7 @@ pmdb_sm_handler(struct raft_net_client_request *rncr)
     }
 
     case RAFT_NET_CLIENT_REQ_TYPE_COMMIT:
-        pmdb_sm_handler_pmdb_sm_apply(pmdb_req,
-                                      &rncr->rncr_sm_write_supp);
+        pmdb_sm_handler_pmdb_sm_apply(pmdb_req, rncr);
         return 0;
 
     default:
@@ -687,11 +736,15 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
                                         RAFT_INSTANCE_STORE_ROCKSDB);
 }
 
+/**
+ * PmdbClose - called from application context to shutdown the pumicedb exec
+ *   thread.
+ */
+int
+PmdbClose(void)
+{
+    rocksdb_column_family_handle_destroy(
+        pmdb_get_rocksdb_column_family_handle());
 
-//XXX todo
-/* int */
-/* PmdbClose(void) */
-/* { */
-//pmdb_get_rocksdb_column_family_handle()
-/*     raft_net_get_instance(); */
-/* } */
+    return raft_server_instance_shutdown(raft_net_get_instance());
+}
