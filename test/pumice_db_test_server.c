@@ -4,9 +4,11 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
-#include <stdio.h>
-#include <unistd.h>
+#include <uuid/uuid.h>
 
+#include <rocksdb/c.h>
+
+#include "common.h"
 #include "registry.h"
 #include "raft_net.h"
 #include "raft_test.h"
@@ -74,9 +76,8 @@ pmdbts_lookup(const uuid_t app_uuid, struct raft_test_values *rtv)
     size_t value_len = 0;
 
     char *value =
-        rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdb_get_rocksdb_readopts(),
-                       pmdbst_get_cfh(), key, UUID_STR_LEN - 1, &value_len,
-                       &err);
+        rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbst_get_cfh(), key,
+                       UUID_STR_LEN - 1, &value_len, &err);
 
     rocksdb_readoptions_destroy(ropts);
 
@@ -114,7 +115,7 @@ pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)input_buf;
 
-    if (!rdtb || (ssize_t)input_bufsz != raft_test_data_block_total_size(rtdb))
+    if (!rtdb || (ssize_t)input_bufsz != raft_test_data_block_total_size(rtdb))
     {
         SIMPLE_LOG_MSG(LL_ERROR,
                        "null input buf or invalid size (%zu) "
@@ -131,7 +132,7 @@ pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
                                  app_uuid_str);
         return -EBADMSG;
     }
-    else if (rdtb->rtdb_num_values == 0)
+    else if (rtdb->rtdb_num_values == 0)
     {
         DBG_RAFT_TEST_DATA_BLOCK(LL_ERROR, rtdb, "num_values == 0");
         return -ENOMSG;
@@ -150,6 +151,7 @@ pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
     {
         DBG_RAFT_TEST_DATA_BLOCK(LL_ERROR, rtdb, "pmdbts_lookup(): %s",
                                  strerror(-rc));
+        // There was some other problem with the DB read - return here
         return rc;
     }
 
@@ -161,7 +163,7 @@ pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
     // Check the sequence is correct and the contents are valid.
     for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
     {
-        const struct raft_test_values *prov_rtv = &rtbd->rtdb_values[i];
+        const struct raft_test_values *prov_rtv = &rtdb->rtdb_values[i];
 
         if ((current_rtv.rtv_seqno + i + 1) != prov_rtv->rtv_seqno)
         {
@@ -185,7 +187,7 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
 {
     for (uint16_t i = 0; i < rtdb_src->rtdb_num_values; i++)
     {
-        const struct raft_test_values *src_rtv = &rtbd_src->rtdb_values[i];
+        const struct raft_test_values *src_rtv = &rtdb_src->rtdb_values[i];
 
         // These sequences should have already been checked!
         NIOVA_ASSERT((dest_rtv->rtv_seqno + 1) == src_rtv->rtv_seqno);
@@ -219,9 +221,9 @@ pmdbts_apply(const uuid_t app_uuid, const char *input_buf, size_t input_bufsz,
     DECLARE_AND_INIT_UUID_STR(app_uuid_str, app_uuid);
 
     // Stage the KV back through pumiceDB.
-    PmdbWriteKV(app_uuid, pmdb_handle, app_uuid_str, (const char *)&stored_rtv,
-                sizeof(struct raft_test_values), NULL,
-                (void *)pmdbst_get_cfh());
+    PmdbWriteKV(app_uuid, pmdb_handle, app_uuid_str, UUID_STR_LEN - 1,
+                (const char *)&stored_rtv, sizeof(struct raft_test_values),
+                NULL, (void *)pmdbst_get_cfh());
 
 }
 

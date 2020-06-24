@@ -156,11 +156,21 @@ raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 
 pumicedb: CFLAGS = $(DEF_CFLAGS) -fPIC -c
 pumicedb: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) $(ALL_INCLUDES)
-	$(CC) -shared -Wl,-soname,libpumicedb.so.1 -o libpumice.so.1.0.1 $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) -lc
+	$(CC) -shared -Wl,-soname,libpumicedb.so.1 -o libpumicedb.so.1.0.1 $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) -lc
+	ln -sf libpumicedb.so.1.0.1 libpumicedb.so
+	ln -sf libpumicedb.so.1.0.1 libpumicedb.so.1
+	$(CC) $(DEF_CFLAGS) -o pumicedb-server-test test/pumice_db_test_server.c \
+        -lrocksdb -L. -lpumicedb $(LDFLAGS)
 
-pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) -DNIOVA_FAULT_INJECTION_ENABLED \
+pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) -fPIC -c -DNIOVA_FAULT_INJECTION_ENABLED \
 	-fsanitize=address
 pumicedb-dbg: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) $(ALL_INCLUDES)
+	$(CC) -shared -Wl,-soname,libpumicedb.so.1 -o libpumicedb.so.1.0.1 $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) -lc
+	ln -sf libpumicedb.so.1.0.1 libpumicedb.so
+	ln -sf libpumicedb.so.1.0.1 libpumicedb.so.1
+	$(CC) $(DEBUG_CFLAGS) -DNIOVA_FAULT_INJECTION_ENABLED -fsanitize=address \
+	-o pumicedb-server-test test/pumice_db_test_server.c \
+        -lrocksdb -L. -lpumicedb $(LDFLAGS)
 
 raft-dbg: CFLAGS = $(DEBUG_CFLAGS) -DNIOVA_FAULT_INJECTION_ENABLED \
 	-fsanitize=address
