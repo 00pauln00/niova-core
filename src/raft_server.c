@@ -584,6 +584,19 @@ raft_server_entry_write(struct raft_instance *ri,
     if (!re)
         return -ENOMEM;
 
+    raft_server_entry_init(ri, re, re_idx, term, data, len, opts);
+
+    DBG_RAFT_ENTRY(LL_NOTIFY, &re->re_header, "");
+
+    /* Failues of the next set of operations will be fatal:
+     * - Ensuring that the index increases by one and term is not decreasing
+     * - The entire block was written without error
+     * - The block log fd was sync'd without error.
+     */
+    DBG_RAFT_INSTANCE_FATAL_IF(
+        (!raft_server_entry_next_entry_is_valid(ri, &re->re_header)), ri,
+        "raft_server_entry_next_entry_is_valid() failed");
+
     raft_server_entry_write_by_store(ri, re, ws);
 
     /* Following the successful writing and sync of the entry, copy the
