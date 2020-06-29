@@ -41,4 +41,15 @@ typedef struct pmdb_rpc_msg
     char                           pmdbrm_data[];
 } PmdbRpcMsg_t;
 
+static inline size_t
+pmdb_net_calc_rpc_msg_size(const struct pmdb_rpc_msg *pmdb_rpc_msg)
+{
+    size_t size = 0;
+
+    if (pmdb_rpc_msg)
+        size = (sizeof(struct pmdb_rpc_msg) + pmdb_rpc_msg->pmdbrm_data_size);
+
+    return size;
+}
+
 #endif
