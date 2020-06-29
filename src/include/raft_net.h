@@ -96,24 +96,69 @@ enum raft_net_comm_recency_type
     RAFT_COMM_RECENCY_UNACKED_SEND,
 };
 
-struct raft_client_rpc_msg
+#define RAFT_NET_CLIENT_USER_ID_V0_SZ 48
+#define RAFT_NET_CLIENT_USER_ID_V0_NUINT64 \
+    (RAFT_NET_CLIENT_USER_ID_V0_SZ / sizeof(uint64_t))
+#define RAFT_NET_CLIENT_USER_ID_V0_NUUID \
+    (RAFT_NET_CLIENT_USER_ID_V0_SZ / sizeof(uuid_t))
+
+struct raft_net_client_user_key_v0
 {
-    uint32_t rcrm_type;  // enum raft_client_rpc_msg_type
-    uint16_t rcrm_version;
-    uint16_t rcrm_data_size;
-    uint64_t rcrm_msg_id;
-    uuid_t   rcrm_raft_id;
-    uuid_t   rcrm_sender_id;
     union
     {
-        uuid_t rcrm_dest_id;
-        uuid_t rcrm_redirect_id;
+        uint64_t rncui_v0_uint64[RAFT_NET_CLIENT_USER_ID_V0_NUINT64];
+        uuid_t   rncui_v0_uuid[RAFT_NET_CLIENT_USER_ID_V0_NUUID];
     };
-    int16_t  rcrm_app_error;
-    int16_t  rcrm_sys_error;
-    uint8_t  rcrm_pad[4];
-    char     rcrm_data[];
 };
+
+struct raft_net_client_user_key
+{
+    union
+    {
+        struct raft_net_client_user_key_v0 v0;
+    };
+};
+
+// Used by raft client sub-"applications"
+struct raft_net_client_user_id
+{
+    struct raft_net_client_user_key rncui_key;
+    version_t                       rncui_version;
+    uint32_t                        rncui__unused;
+};
+
+struct raft_client_rpc_msg
+{
+    uint32_t                       rcrm_type;  // enum raft_client_rpc_msg_type
+    uint16_t                       rcrm_version;
+    uint16_t                       rcrm_data_size;
+    uint64_t                       rcrm_msg_id;
+    uuid_t                         rcrm_raft_id;
+    uuid_t                         rcrm_sender_id;
+    union
+    {
+        uuid_t                     rcrm_dest_id;
+        uuid_t                     rcrm_redirect_id;
+    };
+    struct raft_net_client_user_id rcrm_user;
+    int16_t                        rcrm_app_error;
+    int16_t                        rcrm_sys_error;
+    uint8_t                        rcrm_pad[4];
+    char                           rcrm_data[];
+};
+
+#define _RAFT_NET_MAP_RPC(type, rcrm)                           \
+    ({                                                          \
+        (sizeof(struct type) >= (rcrm)->rcrm_data_size) ?       \
+            (rcrm)->rcrm_data : NULL;                           \
+    })
+
+#define RAFT_NET_MAP_RPC(type, rcrm)                    \
+    (struct type *)_RAFT_NET_MAP_RPC(type, rcrm)
+
+#define RAFT_NET_MAP_RPC_CONST(type, rcrm)              \
+    (const struct type *)_RAFT_NET_MAP_RPC(type, rcrm)
+
 
 #define RAFT_NET_WR_SUPP_MAX 1024 // arbitrary limit..
 
@@ -161,6 +206,8 @@ struct raft_net_client_request
     struct sockaddr_in                    rncr_remote_addr;
     uint64_t                              rncr_msg_id;
     struct raft_net_sm_write_supplements  rncr_sm_write_supp;
+    uuid_t                                rncr_client_uuid;
+    struct raft_net_client_user_id        rncr_user_id;
 };
 
 #define DBG_RAFT_CLIENT_RPC(log_level, rcm, from, fmt, ...)             \
@@ -351,6 +398,7 @@ raft_net_data_to_rpc_msg(void *data)
     return OFFSET_CAST(raft_client_rpc_msg, rcrm_data, data);
 }
 
+// Raft Net State Machine Write Supplment API
 void
 raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws);
 
@@ -364,5 +412,67 @@ raft_net_sm_write_supplement_add(
     void (*rnws_comp_cb)(void *),
     const char *key, const size_t key_size, const char *value,
     const size_t value_size);
+
+// Raft Net User ID API
+static inline void
+raft_net_client_user_id_init(struct raft_net_client_user_id *rncui)
+{
+    if (rncui)
+        memset(rncui, 0, sizeof(*rncui));
+}
+
+#define RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, version, index)           \
+    (rncui)->rncui_key.v ## version .rncui_v ## version ## _uuid[index]
+
+#define RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, index)           \
+    (rncui)->rncui_key.v ## version .rncui_v ## version ## _uint64[index]
+
+
+static inline int
+raft_net_client_user_id_cmp(const struct raft_net_client_user_id *a,
+                            const struct raft_net_client_user_id *b)
+{
+    NIOVA_ASSERT(a->rncui_version == 0 && b->rncui_version == 0);
+
+    for (size_t i = 0; i < RAFT_NET_CLIENT_USER_ID_V0_NUINT64; i++)
+        if (RAFT_NET_CLIENT_USER_ID_2_UINT64(a, 0, i) !=
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(b, 0, i))
+            return RAFT_NET_CLIENT_USER_ID_2_UINT64(a, 0, i) <
+                RAFT_NET_CLIENT_USER_ID_2_UINT64(b, 0, i) ?
+                -1 : 1;
+
+    return 0;
+}
+
+static inline void
+raft_net_client_user_id_copy(struct raft_net_client_user_id *dest,
+                             const struct raft_net_client_user_id *src)
+{
+    memcpy(dest, src, sizeof(struct raft_net_client_user_id));
+}
+
+static inline int
+raft_net_client_user_id_2_uuid(const struct raft_net_client_user_id *rncui,
+                               const version_t version, const size_t index,
+                               uuid_t dst_uuid)
+{
+    if (!rncui)
+        return -EINVAL;
+
+    switch (version)
+    {
+    case 0:
+        if (index > RAFT_NET_CLIENT_USER_ID_V0_NUUID)
+            return -EBADSLT;
+
+        uuid_copy(dst_uuid, RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, 0, 0));
+        break;
+
+    default:
+        return -ERANGE;
+    }
+
+    return 0;
+}
 
 #endif

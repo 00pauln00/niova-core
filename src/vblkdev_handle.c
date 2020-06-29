@@ -46,8 +46,8 @@ static struct vblkdev_handle_tree vbhTree;
 static ssize_t                    vbhNumHandles;
 static bool                       vbhInitialized = false;
 
-#define VBH_LOCK   spinlock_lock(&vbhTree.lock)
-#define VBH_UNLOCK spinlock_unlock(&vbhTree.lock)
+#define VBH_LOCK   pthread_mutex_lock(&vbhTree.mutex)
+#define VBH_UNLOCK pthread_mutex_unlock(&vbhTree.mutex)
 
 /**
  * vbh_compare - export the compare function for external users.

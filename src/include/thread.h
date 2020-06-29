@@ -56,6 +56,13 @@ struct thread_ctl
     for (thread_ctl_set_self(tc); thread_ctl_loop_test(tc);             \
          thread_ctl_pause_if_should(tc))
 
+static inline void *
+thread_ctl_get_arg(struct thread_ctl *tc)
+{
+    if (tc)
+        return tc->tc_arg;
+}
+
 thread_exec_ctx_bool_t
 thread_ctl_loop_test(struct thread_ctl *);
 

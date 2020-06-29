@@ -5,22 +5,17 @@
  */
 
 #ifndef __NIOVA_PUMICE_DB_H_
-#define __NIOVA_PUMICE_H_ 1
+#define __NIOVA_PUMICE_DB_H_ 1
 
 #include <uuid/uuid.h>
 #include <rocksdb/c.h>
 
+#include "pumice_db_net.h"
 #include "raft_net.h"
 #include "common.h"
 
 typedef void pumicedb_apply_ctx_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
-
-#define PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP 1024
-#define PMDB_MAX_APP_RPC_PAYLOAD_SIZE_UDP \
-    RAFT_NET_MAX_RPC_SIZE - RAFT_NET_MAX_RPC_SIZE
-
-#define PMDB_MAX_APP_RPC_PAYLOAD_SIZE PMDB_MAX_APP_RPC_PAYLOAD_SIZE_UDP
 
 /**
  * pmdb_apply_sm_handler_t - The apply handler is called from raft after the
@@ -34,8 +29,9 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  *    along with other pumiceDB and raft internal metadata.
  */
 typedef pumicedb_apply_ctx_t
-(*pmdb_apply_sm_handler_t)(const uuid_t app_uuid, const char *input_buf,
-                           size_t input_bufsz, void *pmdb_handle);
+(*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
+                           const char *input_buf, size_t input_bufsz,
+                           void *pmdb_handle);
 
 /**
  * pmdb_read_sm_handler_t - performs a general read operation. The app-uuid and
@@ -43,9 +39,9 @@ typedef pumicedb_apply_ctx_t
  *    the number of bytes used in reply_buf.
  */
 typedef pumicedb_read_ctx_ssize_t
-(*pmdb_read_sm_handler_t)(const uuid_t app_uuid, const char *request_buf,
-                          size_t request_bufsz, char *reply_buf,
-                          size_t reply_bufsz);
+(*pmdb_read_sm_handler_t)(const struct raft_net_client_user_id *,
+                          const char *request_buf, size_t request_bufsz,
+                          char *reply_buf, size_t reply_bufsz);
 
 struct PmdbAPI
 {
@@ -72,9 +68,9 @@ struct PmdbAPI
  *    this handle is a pointer to a column family.
  */
 int
-PmdbWriteKV(const uuid_t app_uuid, void *pmdb_handle, const char *key,
-            size_t key_len, const char *value, size_t value_len,
-            void (*comp_cb)(void *), void *app_handle);
+PmdbWriteKV(const struct raft_net_client_user_id *, void *pmdb_handle,
+            const char *key, size_t key_len, const char *value,
+            size_t value_len, void (*comp_cb)(void *), void *app_handle);
 
 /**
  * PmdbExec - blocking API call used by a pumice-enabled application which

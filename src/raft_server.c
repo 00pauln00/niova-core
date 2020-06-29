@@ -2762,6 +2762,10 @@ raft_server_udp_client_deny_request(struct raft_instance *ri,
     return raft_server_reply_to_client(ri, rncr);
 }
 
+/**
+ * raft_server_udp_client_reply_init - prepares a reply RPC by copying the
+ *    relevant items from the original request.
+ */
 static raft_net_udp_cb_ctx_t
 raft_server_udp_client_reply_init(const struct raft_instance *ri,
                                   struct raft_net_client_request *rncr)
@@ -2773,6 +2777,16 @@ raft_server_udp_client_reply_init(const struct raft_instance *ri,
 
     uuid_copy(reply->rcrm_raft_id, ri->ri_csn_raft->csn_uuid);
     uuid_copy(reply->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
+
+    /* XXX this needs to happen in the application space if the application
+     *     expects the reply to contain the rcrm_user from the original
+     *     request.
+     * XXX note that pumiceDB is broken at this time since it does not store
+     *     the rcrm_msg_id in memory like raft_Server_test.c does.
+     * XXX see rst_sm_handler_commit() for how to set the rncr_user_id (it's
+     *     the same process as setting `rncr->rncr_msg_id`
+     */
+    raft_net_client_user_id_copy(&reply->rcrm_user, &rncr->rncr_user_id);
 
     reply->rcrm_type = (rncr->rncr_request->rcrm_type ==
                         RAFT_CLIENT_RPC_MSG_TYPE_PING) ?
@@ -2873,12 +2887,14 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
         .rncr_is_leader = raft_instance_is_leader(ri) ? true : false,
         .rncr_entry_term = ri->ri_log_hdr.rlh_term,
         .rncr_current_term = ri->ri_log_hdr.rlh_term,
+        .rncr_msg_id = rcm->rcrm_msg_id,
         .rncr_request = rcm,
         .rncr_reply = (struct raft_client_rpc_msg *)reply_buf,
         .rncr_remote_addr = *from,
         .rncr_reply_data_max_size =
             (RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_client_rpc_msg)),
         .rncr_sm_write_supp = {0},
+        .rncr_user_id = rcm->rcrm_user, // take the user info from the request
     };
 
     raft_server_udp_client_reply_init(ri, &rncr);
@@ -3156,9 +3172,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         .rncr_remote_addr = {0},
         .rncr_reply = reply,
         .rncr_reply_data_max_size = RAFT_NET_MAX_RPC_SIZE,
-        .rncr_sm_write_supp = {0},
         .rncr_pending_apply_idx = apply_idx,
+        .rncr_sm_write_supp = {0},
     };
+
+    raft_net_client_user_id_init(&rncr.rncr_user_id);
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
     {
@@ -3169,6 +3187,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
         // Initialize supplement handle for possible use by SM callback
         raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+
 
         int rc = ri->ri_server_sm_request_cb(&rncr);
         if (!rc)

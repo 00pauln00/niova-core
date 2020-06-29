@@ -7,7 +7,8 @@
 #ifndef REF_TREE_H
 #define REF_TREE_H 1
 
-#include "lock.h"
+#include <pthread.h>
+
 #include "log.h"
 #include "tree.h"
 
@@ -18,7 +19,7 @@
  */
 #define REF_TREE_INIT_ALT_REF(rt, constructor_fn, destructor_fn, ref)   \
     {                                                                   \
-        spinlock_init(&(rt)->lock);                                     \
+        pthread_mutex_init(&(rt)->mutex, NULL);                         \
         (rt)->initial_ref_cnt = ref;                                    \
         RB_INIT(&(rt)->rt_head);                                        \
         (rt)->constructor = constructor_fn;                             \
@@ -30,29 +31,34 @@
 #define REF_TREE_INIT(rt, constructor_fn, destructor_fn)                \
     REF_TREE_INIT_ALT_REF(rt, constructor_fn, destructor_fn, 1);
 
-#define REF_TREE_HEAD(name, type)                               \
-    RB_HEAD(_RT_##name, type);                                  \
-    struct name                                                 \
-    {                                                           \
-        struct _RT_##name rt_head;                              \
-        unsigned int   initial_ref_cnt;                         \
-        spinlock_t     lock;                                    \
-        struct type *(*constructor)(const struct type *);       \
-        int          (*destructor)(struct type *);              \
+#define REF_TREE_DESTROY(rt)                    \
+    {                                           \
+        pthread_mutex_destroy(&(rt)->mutex);    \
+    }
+
+#define REF_TREE_HEAD(name, type)                                \
+    RB_HEAD(_RT_##name, type);                                   \
+    struct name                                                  \
+    {                                                            \
+        struct _RT_##name rt_head;                               \
+        unsigned int    initial_ref_cnt;                         \
+        pthread_mutex_t mutex;                                   \
+        struct type  *(*constructor)(const struct type *);       \
+        int           (*destructor)(struct type *);              \
     }
 
 
 #define REF_TREE_MIN(name, head, type, field)         \
     ({                                                \
         struct type *elm = NULL;                      \
-        spinlock_lock(&(head)->lock);                 \
+        pthread_mutex_lock(&(head)->mutex);           \
         elm = RB_MIN(_RT_##name, &(head)->rt_head);   \
         if (elm)                                      \
         {                                             \
             NIOVA_ASSERT(elm->field.rbe_ref_cnt > 0); \
             elm->field.rbe_ref_cnt++;                 \
         }                                             \
-        spinlock_unlock(&(head)->lock);               \
+        pthread_mutex_unlock(&(head)->mutex);         \
         elm;                                          \
     })
 
@@ -65,7 +71,7 @@
     name##_PUT(struct name *head, struct type *elm)                     \
     {                                                                   \
         bool removed = false;                                           \
-        spinlock_lock(&head->lock);                                     \
+        pthread_mutex_lock(&head->mutex);                               \
         elm->field.rbe_ref_cnt--;                                       \
         NIOVA_ASSERT(elm->field.rbe_ref_cnt >= 0);                      \
         if (!elm->field.rbe_ref_cnt)                                    \
@@ -73,7 +79,7 @@
             RB_REMOVE(_RT_##name, &head->rt_head, elm);                 \
             removed = true;                                             \
         }                                                               \
-        spinlock_unlock(&head->lock);                                   \
+        pthread_mutex_unlock(&head->mutex);                             \
         if (removed)                                                    \
             head->destructor(elm);                                      \
         return removed;                                                 \
@@ -100,9 +106,9 @@
         if (ret)                                                        \
             *ret = 0;                                                   \
                                                                         \
-        spinlock_lock(&head->lock);                                     \
+        pthread_mutex_lock(&head->mutex);                               \
         struct type *elm = name##_LOOKUP_LOCKED(head, lookup_elm);      \
-        spinlock_unlock(&head->lock);                                   \
+        pthread_mutex_unlock(&head->mutex);                             \
                                                                         \
         if (elm || !add)                                                \
         {                                                               \
@@ -121,11 +127,11 @@
             return NULL;                                                \
         }                                                               \
                                                                         \
-        spinlock_lock(&head->lock);                                     \
+        pthread_mutex_lock(&head->mutex);                               \
         elm->field.rbe_ref_cnt = head->initial_ref_cnt;                 \
         struct type *already = RB_INSERT(_RT_##name, &head->rt_head,    \
                                          elm);                          \
-        spinlock_unlock(&head->lock);                                   \
+        pthread_mutex_unlock(&head->mutex);                             \
                                                                         \
         if (already)                                                    \
         {                                                               \

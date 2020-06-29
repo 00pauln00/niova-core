@@ -24,6 +24,9 @@ static rocksdb_column_family_handle_t *pmdbts_cfh;
 const char *raft_uuid_str;
 const char *my_uuid_str;
 
+#define PMDTS_ENTRY_KEY_LEN sizeof(struct raft_net_client_user_key_v0)
+#define PMDTS_RNCUI_2_KEY(rncui) (const char *)&(rncui)->rncui_key.v0
+
 static rocksdb_column_family_handle_t *
 pmdbst_get_cfh(void)
 {
@@ -61,12 +64,12 @@ pmdbst_init_rocksdb(void)
 }
 
 static int
-pmdbts_lookup(const uuid_t app_uuid, struct raft_test_values *rtv)
+pmdbts_lookup(const struct raft_net_client_user_id *app_id,
+              struct raft_test_values *rtv)
 {
-    if (!rtv || uuid_is_null(app_uuid))
+    if (!app_id || !rtv)
         return -EINVAL;
 
-    DECLARE_AND_INIT_UUID_STR(key, app_uuid);
     char *err = NULL;
 
     rocksdb_readoptions_t *ropts = rocksdb_readoptions_create();
@@ -75,9 +78,9 @@ pmdbts_lookup(const uuid_t app_uuid, struct raft_test_values *rtv)
 
     size_t value_len = 0;
 
-    char *value =
-        rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbst_get_cfh(), key,
-                       UUID_STR_LEN - 1, &value_len, &err);
+    char *value = rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbst_get_cfh(),
+                                 PMDTS_RNCUI_2_KEY(app_id),
+                                 PMDTS_ENTRY_KEY_LEN, &value_len, &err);
 
     rocksdb_readoptions_destroy(ropts);
 
@@ -89,7 +92,10 @@ pmdbts_lookup(const uuid_t app_uuid, struct raft_test_values *rtv)
     }
     else if (err)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_get_cf(`%s`): %s", key, err);
+        DECLARE_AND_INIT_UUID_STR(key, app_id->rncui_key.v0.rncui_v0_uuid[0]);
+        SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_get_cf(`%s.%lx.%lx`): %s",
+                       key, app_id->rncui_key.v0.rncui_v0_uint64[2],
+                       app_id->rncui_key.v0.rncui_v0_uint64[3], err);
         rc = -EINVAL;
     }
     else if (value_len != sizeof(struct raft_test_values))
@@ -108,8 +114,8 @@ pmdbts_lookup(const uuid_t app_uuid, struct raft_test_values *rtv)
 }
 
 static int
-pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
-                              size_t input_bufsz,
+pmdbts_apply_lookup_and_check(const struct raft_net_client_user_id *app_id,
+                              const char *input_buf, size_t input_bufsz,
                               struct raft_test_values *ret_rtv)
 {
     const struct raft_test_data_block *rtdb =
@@ -124,9 +130,11 @@ pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
 
         return -EINVAL;
     }
-    else if (uuid_compare(app_uuid, rtdb->rtdb_client_uuid))
+    else if (uuid_compare(RAFT_NET_CLIENT_USER_ID_2_UUID(app_id, 0, 0),
+                          rtdb->rtdb_client_uuid))
     {
-        DECLARE_AND_INIT_UUID_STR(app_uuid_str, app_uuid);
+        DECLARE_AND_INIT_UUID_STR(
+            app_uuid_str, RAFT_NET_CLIENT_USER_ID_2_UUID(app_id, 0, 0));
 
         DBG_RAFT_TEST_DATA_BLOCK(LL_ERROR, rtdb, "mismatched UUID=%s",
                                  app_uuid_str);
@@ -140,7 +148,7 @@ pmdbts_apply_lookup_and_check(const uuid_t app_uuid, const char *input_buf,
 
     // Lookup the app uuid in the DB.
     struct raft_test_values current_rtv;
-    int rc = pmdbts_lookup(app_uuid, &current_rtv);
+    int rc = pmdbts_lookup(app_id, &current_rtv);
 
     if (rc == -ENOENT)
     {
@@ -198,8 +206,8 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
 }
 
 static pumicedb_apply_ctx_t
-pmdbts_apply(const uuid_t app_uuid, const char *input_buf, size_t input_bufsz,
-             void *pmdb_handle)
+pmdbts_apply(const struct raft_net_client_user_id *app_id,
+             const char *input_buf, size_t input_bufsz, void *pmdb_handle)
 {
     NIOVA_ASSERT(!pmdbst_init_rocksdb());
 
@@ -207,7 +215,7 @@ pmdbts_apply(const uuid_t app_uuid, const char *input_buf, size_t input_bufsz,
         (const struct raft_test_data_block *)input_buf;
 
     struct raft_test_values stored_rtv;
-    int rc = pmdbts_apply_lookup_and_check(app_uuid, input_buf, input_bufsz,
+    int rc = pmdbts_apply_lookup_and_check(app_id, input_buf, input_bufsz,
                                            &stored_rtv);
     if (rc)
         return;
@@ -218,18 +226,17 @@ pmdbts_apply(const uuid_t app_uuid, const char *input_buf, size_t input_bufsz,
                              stored_rtv.rtv_seqno,
                              stored_rtv.rtv_reply_xor_all_values);
 
-    DECLARE_AND_INIT_UUID_STR(app_uuid_str, app_uuid);
-
     // Stage the KV back through pumiceDB.
-    PmdbWriteKV(app_uuid, pmdb_handle, app_uuid_str, UUID_STR_LEN - 1,
-                (const char *)&stored_rtv, sizeof(struct raft_test_values),
-                NULL, (void *)pmdbst_get_cfh());
-
+    PmdbWriteKV(app_id, pmdb_handle, PMDTS_RNCUI_2_KEY(app_id),
+                PMDTS_ENTRY_KEY_LEN, (const char *)&stored_rtv,
+                sizeof(struct raft_test_values), NULL,
+                (void *)pmdbst_get_cfh());
 }
 
 static pumicedb_read_ctx_ssize_t
-pmdbts_read(const uuid_t app_uuid, const char *request_buf,
-            size_t request_bufsz, char *reply_buf, size_t reply_bufsz)
+pmdbts_read(const struct raft_net_client_user_id *app_id,
+            const char *request_buf, size_t request_bufsz, char *reply_buf,
+            size_t reply_bufsz)
 {
     if (!request_buf || !request_bufsz || !reply_buf || !reply_bufsz)
         return (ssize_t)-EINVAL;
@@ -262,8 +269,7 @@ pmdbts_read(const uuid_t app_uuid, const char *request_buf,
     uuid_copy(reply_rtdb->rtdb_client_uuid, req_rtdb->rtdb_client_uuid);
     reply_rtdb->rtdb_op = RAFT_TEST_DATA_OP_READ;
 
-    int rc = pmdbts_lookup(reply_rtdb->rtdb_client_uuid,
-                           &reply_rtdb->rtdb_values[0]);
+    int rc = pmdbts_lookup(app_id, &reply_rtdb->rtdb_values[0]);
 
     if (rc == -ENOENT)
         reply_rtdb->rtdb_num_values = 0;

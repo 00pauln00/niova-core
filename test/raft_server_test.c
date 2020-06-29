@@ -344,7 +344,7 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
         rncr->rncr_write_raft_entry = true;
 
         // Store some context for the reply (which will happen later)
-        sma->smna_pending_msg_id = request->rcrm_msg_id;
+        sma->smna_pending_msg_id = rncr->rncr_msg_id;
         sma->smna_pending_entry_term = rncr->rncr_current_term;
         sma->smna_pending_client_addr = rncr->rncr_remote_addr;
         sma->smna_pending = *last_rtv;
