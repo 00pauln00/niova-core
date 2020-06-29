@@ -63,6 +63,8 @@ typedef void    raft_server_epoll_ae_sender_t;
 typedef void    raft_server_epoll_sm_apply_t;
 typedef void    raft_server_epoll_sm_apply_bool_t;
 
+typedef raft_server_epoll_sm_apply_t raft_server_sm_apply_cb_t;
+
 enum raft_rpc_msg_type
 {
     RAFT_RPC_MSG_TYPE_INVALID                = 0,

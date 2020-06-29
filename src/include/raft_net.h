@@ -140,7 +140,6 @@ struct raft_client_rpc_msg
         uuid_t                     rcrm_dest_id;
         uuid_t                     rcrm_redirect_id;
     };
-    struct raft_net_client_user_id rcrm_user;
     int16_t                        rcrm_app_error;
     int16_t                        rcrm_sys_error;
     uint8_t                        rcrm_pad[4];
@@ -196,18 +195,15 @@ struct raft_net_client_request
     int64_t                               rncr_current_term;
     raft_entry_idx_t                      rncr_pending_apply_idx;
     long long                             rncr_commit_duration_msec;
-    union
-    {
-        const struct raft_client_rpc_msg *rncr_request;
-        const char                       *rncr_commit_data;
-    };
+    const struct raft_client_rpc_msg     *rncr_request;
+    const char                           *rncr_request_or_commit_data;
+    const size_t                          rncr_request_or_commit_data_size;
     struct raft_client_rpc_msg           *rncr_reply;
     const size_t                          rncr_reply_data_max_size;
     struct sockaddr_in                    rncr_remote_addr;
     uint64_t                              rncr_msg_id;
     struct raft_net_sm_write_supplements  rncr_sm_write_supp;
     uuid_t                                rncr_client_uuid;
-    struct raft_net_client_user_id        rncr_user_id;
 };
 
 #define DBG_RAFT_CLIENT_RPC(log_level, rcm, from, fmt, ...)             \
@@ -390,6 +386,15 @@ raft_client_net_request_error_set(struct raft_net_client_request *rncr,
         if (rncr->rncr_reply)
             raft_client_msg_error_set(rncr->rncr_reply, reply_sys, reply_app);
     }
+}
+
+static inline bool
+raft_client_net_request_instance_is_leader(
+    const struct raft_net_client_request *rncr)
+{
+    NIOVA_ASSERT(rncr);
+
+    return rncr->rncr_is_leader;
 }
 
 static inline struct raft_client_rpc_msg *

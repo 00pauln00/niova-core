@@ -31,6 +31,7 @@ enum PmdbOpType
 
 typedef struct pmdb_rpc_msg
 {
+    struct raft_net_client_user_id pmdbrm_user_id;
     int64_t                        pmdbrm_write_seqno; // request::next,
                                                    //  reply::committed
     uint8_t                        pmdbrm_op;

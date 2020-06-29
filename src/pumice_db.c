@@ -41,7 +41,7 @@ problem is that these objects are only built on the leader and are not
 replicated to the followers.   This means that the set of pmdb_object held by
 each raft peer will be incomplete - each peer only accumulates entries which
 were written during its term as leader.  Therefore, the
-
+XXX
  */
 
 /**
@@ -68,6 +68,14 @@ were written during its term as leader.  Therefore, the
  *   raft.  This is used to detect stale write requests (ie ones which were
  *   accepted into the local raft log but were not committed due to a leader
  *   change).
+ * @pmdb_obj_client_uuid:  Client instance which issued the RPC request.  This
+ *   client may be a proxy for more than one application user id (rncui).
+ * @pmdb_obj_rncui:  User / application identifier.  This is a rich structure
+ *   which may encode several levels of nested identifiers.
+ * @pmdb_obj_remote_addr:  The IP information taken from the original request.
+ *   This is used to direct the reply, assuming that the term which handled the
+ *   write is current.
+ * @pmdb_obj_msg_id:  The RPC identifier used by the client's RPC.
  */
 struct pmdb_object
 {
@@ -78,7 +86,7 @@ struct pmdb_object
     uuid_t                         pmdb_obj_client_uuid;
     struct raft_net_client_user_id pmdb_obj_rncui;
     struct sockaddr_in             pmdb_obj_remote_addr;
-    uint64_t                       pmdb_obj_msg_id;
+    int64_t                        pmdb_obj_msg_id;
     union
     {
         struct pmdb_obj_extras_v0 v0;
@@ -137,7 +145,7 @@ pmdb_obj_crc(struct pmdb_object *obj)
 }
 
 static void
-pmdb_object_init(struct pmdb_object *pmdb_obj, uint32_t version,
+pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
                  int64_t current_raft_term)
 {
     NIOVA_ASSERT(pmdb_obj);
@@ -146,7 +154,7 @@ pmdb_object_init(struct pmdb_object *pmdb_obj, uint32_t version,
 
     pmdb_obj->pmdb_obj_version = version;
     pmdb_obj->pmdb_obj_commit_seqno = ID_ANY_64bit;
-    pmdb_obj->pmdb_obj_pending_term = ID_ANY_64bit;
+    pmdb_obj->pmdb_obj_pending_term = current_raft_term;
 }
 
 static rocksdb_t *
@@ -572,9 +580,15 @@ pmdb_sm_handler_client_rw_op(struct raft_net_client_request *rncr)
 }
 
 /**
- * pmdb_sm_handler_pmdb_sm_apply -
+ * pmdb_sm_handler_pmdb_sm_apply - ri_server_sm_request apply cb for pumiceDB.
+ *   This function has 2 primary roles:  1) updating (if leader), or creating
+ *   (if follower), the pmdb_object for this request.  2) calling into the
+ *   pmdb app layer to obtain any KVs that it would like to have written.
+ *   The underlying raft layer, via raft_server_state_machine_apply(), is
+ *   reponsible for writing these KVs into rocksDB through the function,
+ *   raft_server_sm_apply_opt().
  */
-static void
+static raft_server_sm_apply_cb_t
 pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_rpc_msg *pmdb_req,
                               struct raft_net_client_request *rncr)
 {
@@ -587,26 +601,32 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_rpc_msg *pmdb_req,
 
     int rc = pmdb_object_lookup(rncui, &obj, rncr->rncr_current_term);
 
-    // A failure here means that somehow the DB has become "corrupted".
     if (rc)
     {
-        // XXX actually, no -- this is only the case on the leader!
+        if (raft_client_net_request_instance_is_leader(rncr))
+        {
+            // A failure here means that somehow the DB has become "corrupted".
+            /* Xxx This is probably too aggressive and we should allow for an
+             *     error to be passed into pmdb_apply() and returned to the
+             *     client.
+             */
+            PMDB_OBJ_DEBUG(LL_FATAL, rncui, &obj, "pmdb_object_lookup(): %s",
+                           strerror(-rc));
+        }
 
-        /* Xxx This is probably too aggressive and we should allow for an error
-         *     to be passed into pmdb_apply() and returned to the client.
-         */
-        PMDB_OBJ_DEBUG(LL_FATAL, rncui, &obj, "pmdb_object_lookup(): %s",
-                       strerror(-rc));
+        PMDB_OBJ_DEBUG(((rc == -ENOENT) ? LL_DEBUG : LL_WARN), rncui, &obj,
+                       "pmdb_object_lookup(): %s", strerror(-rc));
+
+        rc = 0;
     }
 
     // The object receiving the apply must have its pending_term value reset.
     pmdb_prep_sm_apply_write(rncr, &obj);
 
-    // Call into the application so it may emplace its own KVs.
-
     struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
     struct pmdb_apply_handle pah = {.pah_rncui = rncui, .pah_ws = ws};
 
+    // Call into the application so it may emplace its own KVs.
     pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
                         pmdb_req->pmdbrm_data_size, (void *)&pah);
 }

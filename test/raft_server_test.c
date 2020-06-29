@@ -165,12 +165,13 @@ rst_sm_reply_init(struct raft_client_rpc_msg *reply,
 static int
 rst_sm_handler_commit(struct raft_net_client_request *rncr)
 {
-    NIOVA_ASSERT(rncr && rncr->rncr_commit_data && rncr->rncr_reply &&
+    NIOVA_ASSERT(rncr && rncr->rncr_request_or_commit_data &&
+                 rncr->rncr_reply &&
                  rncr->rncr_reply_data_max_size <= RAFT_NET_MAX_RPC_SIZE &&
                  !rncr->rncr_write_raft_entry);
 
     const struct raft_test_data_block *rtdb =
-        (const struct raft_test_data_block *)rncr->rncr_commit_data;
+        (const struct raft_test_data_block *)rncr->rncr_request_or_commit_data;
 
     NIOVA_ASSERT(rtdb->rtdb_op == RAFT_TEST_DATA_OP_WRITE);
     NIOVA_ASSERT(rtdb->rtdb_num_values > 0);
