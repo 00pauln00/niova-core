@@ -62,8 +62,10 @@ typedef int64_t raft_server_leader_mode_int64_t;
 typedef void    raft_server_epoll_ae_sender_t;
 typedef void    raft_server_epoll_sm_apply_t;
 typedef void    raft_server_epoll_sm_apply_bool_t;
+typedef int     raft_server_epoll_sm_apply_int_t;
 
-typedef raft_server_epoll_sm_apply_t raft_server_sm_apply_cb_t;
+typedef raft_server_epoll_sm_apply_t     raft_server_sm_apply_cb_t;
+typedef raft_server_epoll_sm_apply_int_t raft_server_sm_apply_cb_int_t;
 
 enum raft_rpc_msg_type
 {

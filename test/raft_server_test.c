@@ -163,12 +163,12 @@ rst_sm_reply_init(struct raft_client_rpc_msg *reply,
 }
 
 static int
-rst_sm_handler_commit(struct raft_net_client_request *rncr)
+rst_sm_handler_commit(struct raft_net_client_request_handle *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_request_or_commit_data &&
                  rncr->rncr_reply &&
                  rncr->rncr_reply_data_max_size <= RAFT_NET_MAX_RPC_SIZE &&
-                 !rncr->rncr_write_raft_entry);
+                 !raft_net_client_request_handle_writes_raft_entry(rncr));
 
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)rncr->rncr_request_or_commit_data;
@@ -197,9 +197,12 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
                  sma->smna_pending.rtv_reply_xor_all_values,
                  rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
 
-        // Entry was written by this leader.
-        rncr->rncr_remote_addr = sma->smna_pending_client_addr;
-        rncr->rncr_msg_id = sma->smna_pending_msg_id;
+        /* Entry was written by this leader - populate the remainder of the
+         * reply information into the request handle.
+         */
+        raft_net_client_request_handle_set_reply_info(
+            rncr, &sma->smna_pending_client_addr, sm->smn_uuid,
+            sma->smna_pending_msg_id);
 
         struct timespec ts;
         niova_realtime_coarse_clock(&ts);
@@ -235,13 +238,11 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
  *   causes the request to terminate immediately without any reply being issued.
  */
 static int
-rst_sm_handler_write(struct raft_net_client_request *rncr)
+rst_sm_handler_write(struct raft_net_client_request_handle *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_request && rncr->rncr_is_leader &&
-                 rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE);
-
-    // Defaut to 'false'
-    rncr->rncr_write_raft_entry = false;
+                 rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE &&
+                 raft_net_client_request_handle_writes_raft_entry(rncr));
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
@@ -342,7 +343,7 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
     else
     {
         // Success, entry may go into the raft log.
-        rncr->rncr_write_raft_entry = true;
+        raft_net_client_request_handle_set_write_raft_entry(rncr);
 
         // Store some context for the reply (which will happen later)
         sma->smna_pending_msg_id = rncr->rncr_msg_id;
@@ -363,11 +364,11 @@ out:
 }
 
 static int
-rst_sm_handler_read(struct raft_net_client_request *rncr)
+rst_sm_handler_read(struct raft_net_client_request_handle *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_request &&
                  rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_READ &&
-                 !rncr->rncr_write_raft_entry);
+                 !raft_net_client_request_handle_writes_raft_entry(rncr));
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
@@ -415,7 +416,7 @@ rst_sm_handler_read(struct raft_net_client_request *rncr)
  */
 static int
 rst_sm_handler_verify_request_and_set_type(
-    struct raft_net_client_request *rncr)
+    struct raft_net_client_request_handle *rncr)
 {
     if (!rncr || !rncr->rncr_request || !rncr->rncr_reply ||
         rncr->rncr_type != RAFT_NET_CLIENT_REQ_TYPE_NONE)
@@ -487,7 +488,7 @@ rst_sm_handler_verify_request_and_set_type(
  *    raft test app.
  */
 static int
-raft_server_test_rst_sm_handler(struct raft_net_client_request *rncr)
+raft_server_test_rst_sm_handler(struct raft_net_client_request_handle *rncr)
 {
     if (!rncr || !rncr->rncr_request)
         return -EINVAL;

@@ -36,7 +36,7 @@ typedef void raft_net_timerfd_cb_ctx_t;
 typedef int  raft_net_timerfd_cb_ctx_int_t;
 
 struct raft_client_rpc_msg;
-struct raft_net_client_request;
+struct raft_net_client_request_handle;
 
 enum raft_net_client_request_type
 {
@@ -57,7 +57,7 @@ typedef raft_net_timerfd_cb_ctx_t
 
 // State machine request handler - reads, writes, and commits
 typedef raft_net_udp_cb_ctx_int_t
-    (*raft_sm_request_handler_t)(struct raft_net_client_request *);
+    (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
 
 #define RAFT_NET_MAX_RPC_SIZE 65000
 #define RAFT_NET_MAX_RETRY_MS 30000
@@ -184,7 +184,7 @@ struct raft_net_sm_write_supplements
     struct raft_net_wr_supp *rnsws_ws;
 };
 
-struct raft_net_client_request
+struct raft_net_client_request_handle
 {
     enum raft_net_client_request_type     rncr_type; // may be set by sm callback
     bool                                  rncr_write_raft_entry;
@@ -375,9 +375,9 @@ raft_client_msg_error_set(struct raft_client_rpc_msg *rcm, int sys, int app)
 }
 
 static inline void
-raft_client_net_request_error_set(struct raft_net_client_request *rncr,
-                                  int rncr_op_err, int reply_sys,
-                                  int reply_app)
+raft_client_net_request_handle_error_set(
+    struct raft_net_client_request_handle *rncr,
+    int rncr_op_err, int reply_sys, int reply_app)
 {
     if (rncr)
     {
@@ -389,8 +389,8 @@ raft_client_net_request_error_set(struct raft_net_client_request *rncr,
 }
 
 static inline bool
-raft_client_net_request_instance_is_leader(
-    const struct raft_net_client_request *rncr)
+raft_client_net_request_handle_instance_is_leader(
+    const struct raft_net_client_request_handle *rncr)
 {
     NIOVA_ASSERT(rncr);
 
@@ -401,6 +401,54 @@ static inline struct raft_client_rpc_msg *
 raft_net_data_to_rpc_msg(void *data)
 {
     return OFFSET_CAST(raft_client_rpc_msg, rcrm_data, data);
+}
+
+static inline void
+raft_net_client_request_handle_set_write_raft_entry(
+    struct raft_net_client_request_handle *rncr)
+{
+    if (rncr)
+        rncr->rncr_write_raft_entry = true;
+}
+
+static inline bool
+raft_net_client_request_handle_writes_raft_entry(
+    const struct raft_net_client_request_handle *rncr)
+{
+    return rncr ? rncr->rncr_write_raft_entry : false;
+}
+
+static inline void
+raft_net_client_request_handle_set_reply_info(
+    struct raft_net_client_request_handle *rncr,
+    const struct sockaddr_in *from, const uuid_t client_uuid, uint64_t msg_id)
+{
+    if (rncr)
+    {
+        if (from)
+            rncr->rncr_remote_addr = *from;
+
+        // Caller may supply a null-uuid string
+        uuid_copy(rncr->rncr_client_uuid, client_uuid);
+
+        rncr->rncr_msg_id = msg_id;
+    }
+}
+
+static inline bool
+raft_net_client_request_handle_has_reply_info(
+    const struct raft_net_client_request_handle *rncr)
+{
+    const struct sockaddr_in empty = {0};
+
+    return (!rncr ||
+            !memcmp(&rncr->rncr_remote_addr, &empty,
+                    sizeof(struct sockaddr_in)) ||
+            uuid_is_null(rncr->rncr_client_uuid) ||
+            rncr->rncr_msg_id == ID_ANY_64bit ||
+            rncr->rncr_msg_id == 0 ||
+            rncr->rncr_reply_data_max_size == 0 ||
+            rncr->rncr_reply == NULL) ? false : true;
 }
 
 // Raft Net State Machine Write Supplment API
