@@ -353,6 +353,7 @@ struct raft_instance
     struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
     struct raft_instance_backend   *ri_backend;
     void                           *ri_backend_arg;
+    void                           *ri_client_arg;
     raft_entry_idx_t                ri_entries_detected_at_startup;
 };
 

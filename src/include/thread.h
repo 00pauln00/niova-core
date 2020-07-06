@@ -34,7 +34,8 @@ struct thread_ctl
                               tc_watchdog:1,
                               tc_is_utility_thread:1,
                               tc_is_watchdog_thread:1,
-                              tc_caught_stop_signal:1;
+                              tc_caught_stop_signal:1,
+                              tc_has_reached_ctl_loop:1;
     int                       tc_ret; // thread return code
     pthread_t                 tc_thread_id;
     useconds_t                tc_user_pause_usecs;
@@ -43,13 +44,14 @@ struct thread_ctl
     struct watchdog_handle    tc_watchdog_handle;
 };
 
-#define DBG_THREAD_CTL(log_level, tc, fmt, ...)                \
-    log_msg(log_level, "tc@%p %s:%lx icnt=%lx %c%c%c %p "fmt,  \
-            (tc), (tc)->tc_thr_name, (tc)->tc_thread_id,       \
-            watchdog_get_exec_cnt(&(tc)->tc_watchdog_handle),  \
-            (tc)->tc_run      ? 'r' : '-',                     \
-            (tc)->tc_halt     ? 'h' : '-',                     \
-            (tc)->tc_watchdog ? 'w' : '-',                     \
+#define DBG_THREAD_CTL(log_level, tc, fmt, ...)                         \
+    log_msg(log_level, "tc@%p %s:%lx icnt=%lx %c%c%c%c %p "fmt,          \
+            (tc), (tc)->tc_thr_name, (tc)->tc_thread_id,                \
+            watchdog_get_exec_cnt(&(tc)->tc_watchdog_handle),           \
+            (tc)->tc_run                     ? 'r' : '-',               \
+            (tc)->tc_halt                    ? 'h' : '-',               \
+            (tc)->tc_watchdog                ? 'w' : '-',               \
+            (tc)->tc_has_reached_ctl_loop    ? 'l' : '-',               \
             (tc)->tc_arg, ##__VA_ARGS__)
 
 #define THREAD_LOOP_WITH_CTL(tc)                                        \
@@ -59,8 +61,7 @@ struct thread_ctl
 static inline void *
 thread_ctl_get_arg(struct thread_ctl *tc)
 {
-    if (tc)
-        return tc->tc_arg;
+    return tc ? tc->tc_arg : NULL;
 }
 
 thread_exec_ctx_bool_t
@@ -134,7 +135,14 @@ thread_ctl_remove_from_watchdog(struct thread_ctl *tc);
 static inline void
 thread_ctl_set_self(struct thread_ctl *tc)
 {
+    tc->tc_has_reached_ctl_loop = 1;
     thrCtl = tc;
+}
+
+static inline bool
+thread_ctl_thread_has_reached_ctl_loop(const struct thread_ctl *tc)
+{
+    return tc->tc_has_reached_ctl_loop ? true : false;
 }
 
 thread_exec_ctx_bool_t
@@ -151,5 +159,8 @@ thread_ctl_is_watchdog_thread(void)
 {
     return (thrCtl && thrCtl->tc_is_watchdog_thread) ? true : false;
 }
+
+void
+thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc);
 
 #endif

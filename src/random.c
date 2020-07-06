@@ -26,7 +26,7 @@ pid_t gettid(void)
     return tid;
 }
 
-uint32_t
+unsigned int
 random_create_seed_from_uuid(const uuid_t uuid)
 {
     // Generate the msg-id using our UUID as a base.
@@ -38,6 +38,12 @@ random_create_seed_from_uuid(const uuid_t uuid)
     uint32_t seed = ptr[0] ^ ptr[1] ^ ptr[2] ^ ptr[3];
 
     return seed;
+}
+
+unsigned int
+random_create_seed_from_uuid_and_tid(const uuid_t uuid)
+{
+    return (unsigned int)(random_create_seed_from_uuid(uuid) ^ gettid());
 }
 
 int

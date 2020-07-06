@@ -50,6 +50,8 @@ LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
 struct raft_instance *
 raft_net_get_instance(void)
 {
+    // Xxx this needs to become more flexible so that more than 1 instance
+    //      may be serviced by a single process
     return &raftInstance;
 }
 
@@ -667,11 +669,12 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
         DECLARE_AND_INIT_UUID_STR(raft_uuid, ri->ri_csn_raft->csn_uuid);
         DECLARE_AND_INIT_UUID_STR(peer_raft_uuid, sender_raft_uuid);
 
-        SIMPLE_LOG_MSG(LL_NOTIFY, "peer not found in my config %hhx %hhx",
-                       sender_idx,
-                       ctl_svc_node_raft_2_num_members(ri->ri_csn_raft));
-        SIMPLE_LOG_MSG(LL_NOTIFY, "my-raft=%s peer-raft=%s",
-                       raft_uuid, peer_raft_uuid);
+        LOG_MSG(
+            LL_NOTIFY,
+            "peer not found in my config %hhx %hhx, UUIDs (self=%s, peer=%s)",
+            sender_idx, ctl_svc_node_raft_2_num_members(ri->ri_csn_raft),
+            raft_uuid, peer_raft_uuid);
+
         return NULL;
     }
 
@@ -883,6 +886,61 @@ raft_net_get_most_recently_responsive_server(const struct raft_instance *ri)
     }
 
     return best_peer;
+}
+
+static int
+raft_net_server_target_check_by_idx(const struct raft_instance *ri,
+                                    const raft_peer_t idx,
+                                    const unsigned long long stale_timeout_ms)
+{
+    unsigned long long recency_ms = 0;
+
+    int rc = raft_net_comm_recency(ri, idx, RAFT_COMM_RECENCY_UNACKED_SEND,
+                                   &recency_ms);
+
+    if (!rc)
+        return (recency_ms > stale_timeout_ms) ? -ETIMEDOUT : 0;
+
+    return rc;
+
+}
+
+int
+raft_net_server_target_check(const struct raft_instance *ri,
+                             const uuid_t server_uuid,
+                             const unsigned long long stale_timeout_ms)
+{
+    return raft_net_server_target_check_by_idx(
+        ri, raft_peer_2_idx(ri, server_uuid), stale_timeout_ms);
+}
+
+int
+raft_net_apply_leader_redirect(struct raft_instance *ri,
+                               const uuid_t redirect_target,
+                               const unsigned long long stale_timeout_ms)
+{
+    if (!ri || uuid_is_null(redirect_target))
+        return -EINVAL;
+
+    raft_peer_t leader_idx = raft_peer_2_idx(ri, rcrm->rcrm_redirect_id);
+    if (leader_idx == RAFT_PEER_ANY)
+        return -ENOENT;
+
+    // raft_peer_2_idx() should not return an out-of-bounds value.
+    NIOVA_ASSERT(leader_idx < CTL_SVC_MAX_RAFT_PEERS);
+
+    ri->ri_csn_leader = ri->ri_csn_raft_peers[leader_idx];
+
+    int rc = raft_net_server_target_check_by_idx(ri, leader_idx,
+                                                 stale_timeout_ms);
+
+    if (rc == -ETIMEDOUT)
+        timespec_clear(&ri->ri_last_send[leader_idx]); // "unstale" the leader
+
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new leader via redirect (idx=%hhu)",
+                      leader_idx);
+
+    return 0;
 }
 
 void

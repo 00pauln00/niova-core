@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <uuid/uuid.h>
 #include <ctype.h>
+#include <pthread.h>
 
 // Do not include "log.h" here!
 #include "common.h"
@@ -366,5 +367,34 @@ niova_mk_time_string(time_t time, char *out_str, size_t out_str_len)
 
     return rc == 0 ? -ENOSPC : 0;
 }
+
+static inline void
+niova_mutex_lock(pthread_mutex_t *mutex)
+{
+    MY_FATAL_IF(pthread_mutex_lock(mutex), "pthread_mutex_lock(): %s",
+                strerror(errno));
+}
+
+static inline void
+niova_mutex_unlock(pthread_mutex_t *mutex)
+{
+    MY_FATAL_IF(pthread_mutex_unlock(mutex), "pthread_mutex_unlock(): %s",
+                strerror(errno));
+}
+
+#define NIOVA_WAIT_COND(cond, mutex, cond_var, timeout)                 \
+({                                                                      \
+    int _wc_rc = 0;                                                     \
+    niova_mutex_lock(mutex);                                            \
+    while (!_wc_rc && (cond))                                           \
+    {                                                                   \
+        _wc_rc = (timeout && ((timeout)->tv_sec || (timeout)->tv_nsec)) ? \
+            pthread_cond_timedwait(cond_var, mutex, timeout) :          \
+            pthread_cond_wait(cond_var, mutex);                         \
+    }                                                                   \
+    niova_mutex_unlock(mutex);                                          \
+    _wc_rc;                                                             \
+})
+
 
 #endif

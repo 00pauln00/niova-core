@@ -127,11 +127,32 @@ struct raft_net_client_user_id
     uint32_t                        rncui__unused;
 };
 
+/* raft_client_rpc_raft_entry_data - Used by raft_client.c as the outermost
+ *    encapsulation layer of data stored in a raft log entry.  This structure
+ *    is presented to the raft server write and apply callbacks (via
+ *    raft_client_rpc_msg::rcrm_data), whereas raft_client_rpc_msg itself is
+ *    not.
+ */
+struct raft_client_rpc_raft_entry_data
+{
+    uint32_t                       rcrred_version;
+    uint32_t                       rcrred_crc;
+    uint32_t                       rcrred_data_size;
+    uint32_t                       rcrred__pad;
+    struct raft_net_client_user_id rcrred_rncui;
+    char                           rcrred_data[];
+};
+
+#define RAFT_NET_CLIENT_MAX_RPC_SIZE                                    \
+    (RAFT_NET_MAX_RPC_SIZE -                                            \
+     (sizeof(struct raft_client_rpc_msg) +                              \
+      sizeof(struct raft_client_rpc_raft_entry_data)))
+
 struct raft_client_rpc_msg
 {
     uint32_t                       rcrm_type;  // enum raft_client_rpc_msg_type
-    uint16_t                       rcrm_version;
-    uint16_t                       rcrm_data_size;
+    uint32_t                       rcrm_version;
+    uint32_t                       rcrm_data_size;
     uint64_t                       rcrm_msg_id;
     uuid_t                         rcrm_raft_id;
     uuid_t                         rcrm_sender_id;
@@ -142,7 +163,9 @@ struct raft_client_rpc_msg
     };
     int16_t                        rcrm_app_error;
     int16_t                        rcrm_sys_error;
-    uint8_t                        rcrm_pad[4];
+//int16_t                        rcrm_raft_error; for these error type: raft_net_client_rpc_sys_error_2_string()
+    uint8_t                        rcrm_uses_raft_client_entry_data;
+    uint8_t                        rcrm_pad[3];
     char                           rcrm_data[];
 };
 
@@ -158,6 +181,33 @@ struct raft_client_rpc_msg
 #define RAFT_NET_MAP_RPC_CONST(type, rcrm)              \
     (const struct type *)_RAFT_NET_MAP_RPC(type, rcrm)
 
+static inline size_t
+raft_client_rpc_msg_size(const size_t app_payload_size,
+                         const bool uses_client_entry_data)
+{
+    return (sizeof(struct raft_client_rpc_msg) +
+            (uses_client_entry_data ?
+             sizeof(struct raft_client_rpc_raft_entry_data) : 0) +
+            app_payload_size);
+}
+
+static inline size_t
+raft_client_rpc_payload_size(const size_t app_payload_size,
+                             const bool uses_client_entry_data)
+{
+    return ((uses_client_entry_data ?
+             sizeof(struct raft_client_rpc_raft_entry_data) : 0) +
+            app_payload_size);
+}
+
+static inline bool
+raft_client_rpc_msg_size_is_valid(const size_t app_payload_size,
+                                  const bool uses_client_entry_data)
+{
+    return raft_client_rpc_msg_size(app_payload_size,
+                                    uses_client_entry_data) <=
+        RAFT_NET_CLIENT_MAX_RPC_SIZE ? true : false;
+}
 
 #define RAFT_NET_WR_SUPP_MAX 1024 // arbitrary limit..
 
@@ -215,7 +265,7 @@ struct raft_net_client_request_handle
     {                                                                   \
     case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                              \
         LOG_MSG(log_level,                                              \
-                "CLI-REQ   %s %s:%u id=%lx sz=%hu "fmt,                 \
+                "CLI-REQ   %s %s:%u id=%lx sz=%u "fmt,                  \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
@@ -224,7 +274,7 @@ struct raft_net_client_request_handle
     case RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT:                             \
         uuid_unparse((rcm)->rcrm_redirect_id, __redir_uuid_str);        \
         LOG_MSG(log_level,                                              \
-                "CLI-RDIR  %s %s:%u id=%lx sz=%hu redir-to=%s "fmt,     \
+                "CLI-RDIR  %s %s:%u id=%lx sz=%u redir-to=%s "fmt,      \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
@@ -232,7 +282,7 @@ struct raft_net_client_request_handle
         break;                                                          \
     case RAFT_CLIENT_RPC_MSG_TYPE_REPLY:                                \
         LOG_MSG(log_level,                                              \
-                "CLI-REPL  %s %s:%u id=%lx sz=%hu err=%hd:%hd "fmt,     \
+                "CLI-REPL  %s %s:%u id=%lx sz=%u err=%hd:%hd "fmt,      \
                 __uuid_str,                                             \
                 inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),   \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,              \
@@ -293,6 +343,14 @@ raft_net_client_rpc_sys_error_2_string(const int rc)
     return "unknown";
 }
 
+static inline void
+raft_net_compile_time_assert(void)
+{
+    COMPILE_TIME_ASSERT(RAFT_NET_MAX_RPC_SIZE >
+                        (sizeof(struct raft_client_rpc_msg) +
+                         sizeof(struct raft_client_rpc_raft_entry_data)));
+}
+
 struct raft_instance *
 raft_net_get_instance(void);
 
@@ -343,6 +401,15 @@ raft_net_comm_recency(const struct raft_instance *ri,
                       raft_peer_t raft_peer_idx,
                       enum raft_net_comm_recency_type type,
                       unsigned long long *ret_ms);
+
+int
+raft_net_server_target_check(const struct raft_instance *ri,
+                             const uuid_t server_uuid,
+                             const unsigned long long stale_timeout_ms);
+
+int
+raft_net_apply_leader_redirect(struct raft_instance *ri,
+                               const uuid_t redirect_target);
 
 static inline bool
 raft_net_sockaddr_is_valid(const struct sockaddr_in *sockaddr)

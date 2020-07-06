@@ -82,6 +82,7 @@ CORE_OBJFILES   = \
 RAFT_OBJFILES	= \
 	src/raft_server.o	\
 	src/raft_net.o	\
+	src/raft_client.o	\
 	src/raft_server_backend_posix.o \
 	src/raft_server_backend_rocksdb.o
 

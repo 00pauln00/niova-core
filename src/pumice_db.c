@@ -353,7 +353,7 @@ pmdb_sm_handler_client_lookup(struct raft_net_client_request_handle *rncr)
                           RAFT_NET_MAP_RPC(pmdb_rpc_msg, rncr->rncr_reply),
                           rncr->rncr_current_term);
     else
-        raft_client_msg_error_set(rncr->rncr_reply, rc, 0);
+        raft_client_net_request_handle_error_set(rncr, 0, 0, rc);
 
     return 0;
 }
@@ -471,7 +471,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             /* This appears to be a system error.  Mark it and reply to the
              * client.
              */
-            raft_client_net_request_handle_error_set(rncr, rc, rc, 0);
+            raft_client_net_request_handle_error_set(rncr, rc, 0, rc);
 
             return 0;
         }
@@ -531,7 +531,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     if (rrc < 0)
     {
         pmdb_reply->pmdbrm_data_size = 0;
-        raft_client_net_request_handle_error_set(rncr, rrc, rrc, rrc);
+        raft_client_net_request_handle_error_set(rncr, rrc, 0, rrc);
 
         DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req, &rncr->rncr_remote_addr,
                             "pmdbApi::read(): %s", strerror(rrc));

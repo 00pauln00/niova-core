@@ -238,6 +238,14 @@ thread_create_watched(void *(*start_routine)(void *), struct thread_ctl *tc,
 }
 
 void
+thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc)
+{
+    if (tc)
+        while (thread_ctl_thread_has_reached_ctl_loop(tc))
+            usleep(100);
+}
+
+void
 thread_ctl_remove_from_watchdog(struct thread_ctl *tc)
 {
     if (tc && tc->tc_watchdog)

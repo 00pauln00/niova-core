@@ -16,4 +16,17 @@ extern uint32_t
 crc_pcl(const unsigned char *buffer, int len, unsigned int crc_init);
 #endif
 
+#define niova_crc crc_pcl
+
+#define NIOVA_CRC_OBJ(obj, type, crc32_memb, extra_contents)            \
+({                                                                      \
+    const size_t _offset =                                              \
+        (offsetof(struct type, crc32_memb) + sizeof(crc32_t));          \
+    const unsigned char *_buf = (const unsigned char *)(obj) + _offset; \
+    const int _crc_len = sizeof(struct type) - offset + extra_contents; \
+                                                                        \
+    (obj)->crc32_memb = niova_crc(_buf, _crc_len, 0);                   \
+    (obj)->crc32_memb;                                                  \
+})
+
 #endif
