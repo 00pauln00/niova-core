@@ -8,6 +8,7 @@
 #include "common.h"
 #include "log.h"
 #include "thread.h"
+#include "util.h"
 
 #include <pthread.h>
 #include <unistd.h>
@@ -42,10 +43,8 @@ pthread_cond_worker(void *arg)
 
     THREAD_LOOP_WITH_CTL(tc)
     {
-        NIOVA_ASSERT(!pthread_mutex_lock(&mutex));
-        NIOVA_ASSERT(niova_atomic_inc(&waiters) >= 0);
-        NIOVA_ASSERT(!pthread_cond_wait(&cond, &mutex));
-        NIOVA_ASSERT(!pthread_mutex_unlock(&mutex));
+        niova_atomic_inc(&waiters);
+        NIOVA_WAIT_COND((niova_atomic_read(&waiters) != 0), &mutex, &cond);
 
         num_wakeups++;
     }
@@ -62,10 +61,10 @@ pthread_cond_dispatcher(void *arg)
     {
         if (niova_atomic_read(&waiters))
         {
-            NIOVA_ASSERT(niova_atomic_dec(&waiters) >= 0);
-            NIOVA_ASSERT(!pthread_mutex_lock(&mutex));
-            NIOVA_ASSERT(!pthread_cond_signal(&cond));
-            NIOVA_ASSERT(!pthread_mutex_unlock(&mutex));
+            NIOVA_SET_COND_AND_WAKE(
+                signal,
+                { NIOVA_ASSERT(niova_atomic_dec(&waiters) >= 0); },
+                &mutex, &cond);
         }
     }
 
