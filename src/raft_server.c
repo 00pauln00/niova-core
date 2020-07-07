@@ -3356,6 +3356,7 @@ raft_server_evp_2_cb_fn(enum raft_server_event_pipes evps)
     return NULL;
 }
 
+//xxx port to raft_net_evp_add()
 static int
 raft_server_evp_setup(struct raft_instance *ri)
 {

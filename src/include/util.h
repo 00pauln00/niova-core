@@ -292,6 +292,12 @@ timespec_2_float(const struct timespec *ts)
     return (float)ts->tv_sec + (.000000001 * (float)ts->tv_nsec);
 }
 
+static inline bool
+timespec_has_value(const struct timespec *ts)
+{
+    return (ts->tv_sec || ts->tv_nsec) ? true : false;
+}
+
 static inline float
 timeval_2_float(const struct timeval *tv)
 {
@@ -395,21 +401,26 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     _wc_rc;                                                             \
 })
 
+#define NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var)   \
+    while ((cond)) pthread_cond_wait(cond_var, mutex)
+
 #define NIOVA_WAIT_COND(cond, mutex, cond_var)                          \
 {                                                                       \
     niova_mutex_lock(mutex);                                            \
-                                                                        \
-    while ((cond))                                                      \
-        pthread_cond_wait(cond_var, mutex);                             \
-                                                                        \
+    NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var);                      \
     niova_mutex_unlock(mutex);                                          \
+}
+
+#define NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var)   \
+{                                                                       \
+    set_code_block;                                                     \
+    pthread_cond_## how (cond_var);                                     \
 }
 
 #define NIOVA_SET_COND_AND_WAKE(how, set_code_block, mutex, cond_var)   \
 {                                                                       \
     niova_mutex_lock(mutex);                                            \
-    set_code_block;                                                     \
-    pthread_cond_## how (cond_var);                                     \
+    NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var);      \
     niova_mutex_unlock(mutex);                                          \
 }
 

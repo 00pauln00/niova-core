@@ -202,6 +202,8 @@ enum raft_epoll_handles
     RAFT_EPOLL_HANDLE_EVP_AE_SEND,
     RAFT_EPOLL_HANDLE_EVP_SM_APPLY,
     RAFT_EPOLL_NUM_HANDLES,
+    RAFT_EPOLL_HANDLE_EVP_ANY, // purposely out of range
+    RAFT_EPOLL_HANDLE_NONE,
 } PACKED;
 
 enum raft_vote_result
