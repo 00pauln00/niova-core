@@ -345,6 +345,10 @@ raft_net_evp_add(struct raft_instance *ri, const epoll_mgr_cb_t callbacks[],
             return -EINVAL;
     }
 
+//XXX this is all wrong because the evp idx is the same as the eph idx
+// XXX need two indices I think, one for the evp idx and one for eph in the
+    //  raft instance.
+
     for (size_t i = 0; i < num_cbs; i++)
     {
         int idx = indices[i];

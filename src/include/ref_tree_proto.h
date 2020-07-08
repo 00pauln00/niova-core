@@ -62,6 +62,12 @@
         elm;                                          \
     })
 
+#define REF_TREE_REF_GET_ELEM_LOCKED(elm, field)        \
+    do {                                                \
+        NIOVA_ASSERT((elm)->field.rbe_ref_cnt > 0);     \
+        (elm)->field.rbe_ref_cnt++;                     \
+    } while (0);
+
 #define REF_TREE_ENTRY(type) REF_RB_ENTRY_PACKED(type)
 
 #define REF_TREE_GENERATE(name, type, field, cmp)                       \

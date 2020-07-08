@@ -41,6 +41,9 @@ static size_t raftClientSubAppMax = RAFT_CLIENT_MAX_SUB_APP_INSTANCES;
 static unsigned long long raftClientTimerFDExpireMS =
     RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
+#define RAFT_CLIENT_REQUEST_RATE_PER_SEC 1000
+static size_t raftClientRequestRatePerSec = RAFT_CLIENT_REQUEST_RATE_PER_SEC;
+
 #define RAFT_CLIENT_STALE_SERVER_TIME_MS        \
     (RAFT_CLIENT_TIMERFD_EXPIRE_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS)
 static unsigned long long raftClientStaleServerTimeMS =
@@ -95,7 +98,7 @@ struct raft_client_request_handle
     size_t                rcrh_reply_used_size;
     struct timespec       CACHE_ALIGN_MEMBER(rcrh_submitted);
     uint8_t               rcrh_blocking:1,
-                          rcrh_retryq:1,
+                          rcrh_sendq:1,
                           rcrh_cancel:1;
     void                 *rcrh_arg;
     const struct timespec rcrh_timeout;
@@ -145,7 +148,7 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
         RAFT_NET_CLIENT_USER_ID_2_UUID(&(sa)->rcsa_rncui, 0, 0),        \
         __uuid_str);                                                    \
     LOG_MSG(                                                            \
-    log_level,                                                          \
+        log_level,                                                      \
         "sa@%p %s.%lx.%lx msgid=%lx sub:la=%llu:%llu nr=%zu r=%d %c%c%c e=%d " \
         fmt,                                                            \
         sa,  __uuid_str,                                                \
@@ -174,7 +177,7 @@ REF_TREE_HEAD(raft_client_sub_app_tree, raft_client_sub_app);
 REF_TREE_GENERATE(raft_client_sub_app_tree, raft_client_sub_app, rcsa_rtentry,
                   raft_client_sub_app_cmp);
 
-STAILQ_HEAD(raft_client_sub_app_retry_list, raft_client_sub_app);
+STAILQ_HEAD(raft_client_sub_app_send_queue, raft_client_sub_app);
 
 struct raft_client_instance
 {
@@ -182,7 +185,7 @@ struct raft_client_instance
     struct raft_client_sub_app_tree       rci_sub_apps;
     pthread_cond_t                        rci_cond;
     struct raft_instance                 *rci_ri;
-    struct raft_client_sub_app_retry_list rci_retry_list;
+    struct raft_client_sub_app_send_queue rci_sendq;
     bool                                  rci_leader_is_viable;
     struct timespec                       rci_last_request_sent;
     struct timespec                       rci_last_request_ackd; // by leader
@@ -233,7 +236,7 @@ raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
     if (!destroy)
 	return -EINVAL;
 
-    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
+    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, 0, "");
 
     raft_client_sub_app_rpc_request_release(destroy);
 
@@ -250,7 +253,7 @@ raft_client_sub_app_put(struct raft_client_instance *rci,
                         struct raft_client_sub_app *sa,
                         const char *caller_func, const int caller_lineno)
 {
-    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "%s:%d",
+    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, 0, "%s:%d",
                               caller_func, caller_lineno);
 
     RT_PUT(raft_client_sub_app_tree, &rci->rci_sub_apps, sa);
@@ -266,7 +269,7 @@ raft_client_sub_app_done(struct raft_client_instance *rci,
                          struct raft_client_sub_app *sa,
                          const char *caller_func, const int caller_lineno)
 {
-    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "%s:%d",
+    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, 0, "%s:%d",
                               caller_func, caller_lineno);
 
     raft_client_sub_app_put(rci, sa, caller_func, caller_lineno);
@@ -482,6 +485,54 @@ raft_client_raft_instance_to_client_instance(struct raft_instance *ri)
     return rci;
 }
 
+static void
+raft_client_request_send_queue_add_locked(struct raft_client_instance *rci,
+                                          struct raft_client_sub_app *sa,
+                                          const struct timespec *now,
+                                          const char *caller_func,
+                                          const int caller_lineno)
+{
+    NIOVA_ASSERT(!sa->rcsa_msgh.rcsamh_req_handle.rcrh_sendq);
+    sa->rcsa_msgh.rcsamh_req_handle.rcrh_sendq = 1;
+
+    // Take a ref on the 'sa'.
+    REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
+
+    DEBUG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, now, "%s:%d",
+                              caller_func, caller_lineno);
+
+    STAILQ_INSERT_TAIL(&rci->rci_sendq, sa, sa->rcsa_lentry);
+}
+
+static int
+raft_client_request_send_queue_remove_prep_locked(
+    struct raft_client_instance *rci, struct raft_client_sub_app *sa,
+    const struct timespec *now, const char *caller_func,
+    const int caller_lineno)
+{
+    NIOVA_ASSERT(sa->rcsa_msgh.rcsamh_req_handle.rcrh_sendq);
+    sa->rcsa_msgh.rcsamh_req_handle.rcrh_sendq = 0;
+
+    STAILQ_REMOVE(&rci->rci_sendq, sa, sa->rcsa_lentry);
+
+    int rc = (sa->rcsa_msgh.rcsamh_req_handle.rcrh_cancel ||
+              sa->rcsa_msgh.rcsamh_req_handle.rcrh_ready) ? -ESTALE : 0;
+
+    DEBUG_RAFT_CLIENT_SUB_APP((rc ? LL_NOTIFY : LL_DEBUG), sa, now, "%s:%d %s",
+                              caller_func, caller_lineno, strerror(-rc));
+
+    return rc;
+}
+
+static void
+raft_client_request_send_queue_remove_done(struct raft_client_instance *rci,
+                                           struct raft_client_sub_app *sa,
+                                           const char *caller_func,
+                                           const int caller_lineno)
+{
+    raft_client_sub_app_put(rci, sa, caller_func, caller_lineno);
+}
+
 static raft_net_timerfd_cb_ctx_t
 raft_client_check_pending_requests(struct raft_client_instance *rci)
 {
@@ -494,13 +545,13 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     RB_FOREACH(sa, raft_client_sub_app_tree, &rci->rci_sub_apps.rt_head)
     {
-        if (!sa->rcsamh_req_handle.rcrh_retryq &&
+        if (!sa->rcsa_msgh.rcsamh_req_handle.rcrh_sendq &&
             (timespec_2_msec(&now) -
              timespec_2_msec(&sa->rcsamh_last_attempt) >=
              raftClientRetryTimeoutMS))
         {
-            sa->rcsamh_req_handle.rcrh_retryq = 1;
-            STAILQ_INSERT_TAIL(&rci->rci_retry_list, sa, sa->rcsa_lentry);
+            raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
+                                                      __LINE__);
 
             DEBUG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, timespec_2_msec(&now),
                                       "");
@@ -1130,10 +1181,121 @@ raft_client_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
         raft_client_udp_recv_handler_process_reply(ri, rcrm, sender_csn, from);
 }
 
-static void
+static raft_client_epoll_t
+raft_client_rpc_launch(struct raft_client_instance *rci,
+                       struct raft_client_sub_app *sa)
+{
+    NIOVA_ASSERT(rci && sa);
+    NIOVA_ASSERT(sa->rcsa_msgh.rcsamh_pending_rpc);
+    NIOVA_ASSERT(!sa->rcsa_msgh.rcsamh_req_handle.rcrh_sendq);
+
+    // Launch the udp msg.
+    int rc = raft_net_send_client_msg(rci->rcr_ri,
+                                      sa->rcsa_msgh.rcsamh_pending_rpc);
+    if (rc)
+    {
+        DEBUG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
+                                  "raft_net_send_client_msg(): %s",
+                                  strerror(-rc));
+
+        DBG_RAFT_CLIENT_RPC_LEADER(LL_DEBUG, rci->rci_ri,
+                                   &sa->rcsa_msgh.rcsamh_pending_rpc,
+                                   "raft_net_send_client_msg(): %s",
+                                   strerror(-rc));
+    }
+}
+
+typedef void raft_client_epoll_t;
+
+static raft_client_epoll_t
+raft_client_rpc_sender(struct raft_client_instance *rci, struct ev_pipe *evp)
+{
+    static struct timespec interval_start;
+    static size_t interval_rpc_cnt;
+
+    NIOVA_ASSERT(rci && evp);
+
+    struct timespec now;
+
+    niova_unstable_coarse_clock(&now);
+
+    if (now.tv_sec > interval_start.tv_sec)
+    {
+        start = now;
+        interval_rpc_cnt = 0;
+    }
+
+    ssize_t remaining_rpcs_this_interval =
+        raftClientRequestRatePerSec - interval_rpc_cnt;
+
+    LOG_MSG(LL_DEBUG, "remaining_rpcs_this_interval=%zd",
+            remaining_rpcs_this_interval);
+
+    if (remaining_rpcs_this_interval <= 0)
+        return;
+
+#define MAX_SEND 8
+
+    size_t remaining_sends = MIN(MAX_SEND, remaining_rpcs_this_interval);
+
+    struct raft_client_sub_app *sa;
+    int rc;
+
+    while (remaining_sends)
+    {
+        rc = 0;
+
+        RCI_LOCK(rci);
+        sa = STAILQ_FIRST(&rci->rci_sendq);
+
+        if (sa)
+            rc = raft_client_request_send_queue_remove_prep_locked(
+                rci, sa, &now, __func__, __LINE__);
+
+        RCI_UNLOCK(rci);
+
+        if (!sa)
+            break;
+
+        if (!rc)
+        {
+            remaining_sends--;
+            raft_client_rpc_launch(rci, sa);
+        }
+
+        // Drop the sendq reference
+        raft_client_request_send_queue_remove_done(rci, sa, __func__,
+                                                   __LINE__);
+    }
+
+    if (!STAILQ_EMPTY(&rci->rci_sendq))
+        ev_pipe_notify(evp); /* Reschedule ourselves if there's remaining
+                              * slots in this interval */
+}
+
+static raft_client_epoll_t
 raft_client_evp_cb(const struct epoll_handle *eph)
 {
-    ; //XXX write me
+    NIOVA_ASSERT(eph && eph->eph_arg);
+
+    FUNC_ENTRY(LL_DEBUG);
+
+    struct raft_instance *ri = eph->eph_arg;
+
+    struct ev_pipe *evp = &ri->ri_evps[0]; //XXX revisit
+
+    NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
+
+    struct raft_client_instance *rci =
+        (struct raft_client_instance *)ri->ri_client_arg;
+
+    NIOVA_ASSERT(rci);
+
+    ev_pipe_drain(evp);
+    evp_increment_reader_cnt(evp);//Xxx this is a mess
+    // should be inside ev_pipe.c!
+
+
 }
 
 static raft_client_thread_t
@@ -1189,6 +1351,8 @@ raft_client_instance_init(struct raft_client_instance *rci,
 {
     REF_TREE_INIT(&rci->rci_sub_apps, raft_client_sub_app_construct,
                   raft_client_sub_app_destruct);
+
+    STAILQ_INIT(&rci->rci_sendq);
 
     rci->rci_ri = ri;
 
