@@ -539,9 +539,6 @@ raft_client_request_send_queue_add_locked(struct raft_client_instance *rci,
                                "%s:%d", caller_func, caller_lineno);
 
     STAILQ_INSERT_TAIL(&rci->rci_sendq, sa, sa->rcsa_lentry);
-
-    // Signal that a request has been queued.
-    ev_pipe_notify(rci->rci_ri->ri_evps[0]); //XXX revisit index!
 }
 
 /**
@@ -620,6 +617,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     RCI_LOCK(rci);
 
     struct raft_client_sub_app *sa;
+    size_t cnt = 0;
 
     RB_FOREACH(sa, raft_client_sub_app_tree, &rci->rci_sub_apps.rt_head)
     {
@@ -633,11 +631,14 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                                                       __LINE__);
 
             DBG_RAFT_CLIENT_SUB_APP_TS(LL_NOTIFY, sa, timespec_2_msec(&now),
-                                       "");
+                                       "cnt=%zu", cnt);
         }
     }
 
     RCI_UNLOCK(rci);
+
+    if (cnt) // Signal that a request has been queued.
+        ev_pipe_notify(rci->rci_ri->ri_evps[0]); //XXX revisit index!
 }
 
 /**
@@ -1012,6 +1013,9 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
     raft_client_request_send_queue_add_locked(rci, sa, now, __func__,
                                               __LINE__);
     RCI_UNLOCK(rci);
+
+    // Done after the lock is released.
+    ev_pipe_notify(rci->rci_ri->ri_evps[0]); //XXX revisit index!
 }
 
 static void
