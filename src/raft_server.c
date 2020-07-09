@@ -3202,39 +3202,9 @@ raft_server_evp_setup(struct raft_instance *ri)
 
     for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
     {
-        enum raft_epoll_handles eph_type = raft_server_evp_2_epoll_handle(i);
-        NIOVA_ASSERT(eph_type < RAFT_EPOLL_NUM_HANDLES);
-
-        int rc = ev_pipe_setup(&ri->ri_evps[i]);
+        int rc = raft_net_evp_add(ri, raft_server_evp_2_cb_fn(i));
         if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_setup(%d): %s", eph_type,
-                           strerror(rc));
             return rc;
-        }
-
-        struct epoll_handle *eph = &ri->ri_epoll_handles[eph_type];
-        int eph_fd = evp_read_fd_get(&ri->ri_evps[i]);
-
-        rc = epoll_handle_init(eph, eph_fd, EPOLLIN,
-                               raft_server_evp_2_cb_fn(i), ri);
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "epoll_handle_init(%d): %s", eph_type,
-                           strerror(rc));
-            return rc;
-        }
-
-        evp_increment_reader_cnt(&ri->ri_evps[i]); //Xxx this is a mess
-                                                   // should be inside ev_pipe.c!
-
-        rc = epoll_handle_add(&ri->ri_epoll_mgr, eph);
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "epoll_handle_add(%d): %s", eph_type,
-                           strerror(rc));
-            return rc;
-        }
     }
 
     return 0;

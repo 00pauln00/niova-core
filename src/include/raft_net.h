@@ -13,6 +13,7 @@
 #include <netinet/udp.h>
 
 #include "common.h"
+#include "epoll_mgr.h"
 #include "log.h"
 #include "net_ctl.h"
 
@@ -287,5 +288,8 @@ raft_net_send_client_msg(struct raft_instance *ri,
 
 void
 raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
+
+int
+raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
 
 #endif

@@ -226,7 +226,7 @@ raft_net_timerfd_close(struct raft_instance *ri)
 static int
 raft_net_epoll_cleanup(struct raft_instance *ri)
 {
-    for (enum raft_epoll_handles i = 0; i < RAFT_EPOLL_NUM_HANDLES; i++)
+    for (enum raft_epoll_handles i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
         epoll_handle_del(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[i]);
 
     return epoll_mgr_close(&ri->ri_epoll_mgr);
@@ -239,23 +239,66 @@ static raft_net_udp_cb_ctx_t
 raft_net_udp_cb(const struct epoll_handle *);
 
 static int
-raft_epoll_setup_udp(struct raft_instance *ri, enum raft_epoll_handles reh)
+raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
 {
-    if (!ri ||
-        (reh != RAFT_EPOLL_HANDLE_PEER_UDP &&
-         reh != RAFT_EPOLL_HANDLE_CLIENT_UDP))
+    if (!ri || fd < 0 || !cb)
         return -EINVAL;
 
-    enum raft_udp_listen_sockets ruls =
-        (reh == RAFT_EPOLL_HANDLE_PEER_UDP) ?
-        RAFT_UDP_LISTEN_SERVER : RAFT_UDP_LISTEN_CLIENT;
+    else if (ri->ri_epoll_handles_in_use >= RAFT_EPOLL_HANDLES_MAX)
+        return -ENOSPC;
 
-    int rc = epoll_handle_init(&ri->ri_epoll_handles[reh],
-                               ri->ri_ush[ruls].ush_socket,
-                               EPOLLIN, raft_net_udp_cb, ri);
+    size_t idx = ri->ri_epoll_handles_in_use++;
 
-    return rc ? rc : epoll_handle_add(&ri->ri_epoll_mgr,
-                                      &ri->ri_epoll_handles[reh]);
+    int rc =
+        epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri);
+
+    return rc ? rc :
+	epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
+}
+
+static int
+raft_epoll_setup_udp(struct raft_instance *ri,
+                     enum raft_udp_listen_sockets ruls)
+{
+    if (!ri ||
+        (ruls != RAFT_UDP_LISTEN_SERVER && ruls != RAFT_UDP_LISTEN_CLIENT))
+        return -EINVAL;
+
+    return raft_net_epoll_handle_add(ri, ri->ri_ush[ruls].ush_socket,
+                                     raft_net_udp_cb);
+}
+
+int
+raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
+{
+    if (!ri || !cb)
+        return -EINVAL;
+
+    else if (ri->ri_epoll_handles_in_use >= RAFT_EPOLL_HANDLES_MAX ||
+             ri->ri_evps_in_use >= RAFT_EVP_HANDLES_MAX)
+        return -ENOSPC;
+
+    struct ev_pipe *evp = &ri->ri_evps[ri->ri_evps_in_use++];
+
+    int rc = ev_pipe_setup(evp);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_setup(): %s", strerror(-rc));
+        return rc;
+    }
+
+    rc = raft_net_epoll_handle_add(ri, evp_read_fd_get(evp), cb);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_handle_add(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    evp_increment_reader_cnt(evp); //Xxx this is a mess
+    // should be inside ev_pipe.c!
+
+    return 0;
 }
 
 raft_net_timerfd_cb_ctx_t
@@ -271,13 +314,7 @@ raft_net_epoll_setup_timerfd(struct raft_instance *ri)
     else if (!ri->ri_timer_fd_cb)
         return 0;
 
-    int rc =
-        epoll_handle_init(&ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD],
-                          ri->ri_timer_fd, EPOLLIN, raft_net_timerfd_cb, ri);
-
-    return rc ? rc :
-        epoll_handle_add(&ri->ri_epoll_mgr,
-                         &ri->ri_epoll_handles[RAFT_EPOLL_HANDLE_TIMERFD]);
+    return raft_net_epoll_handle_add(ri, ri->ri_timer_fd, raft_net_timerfd_cb);
 }
 
 static int

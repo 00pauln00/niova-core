@@ -187,6 +187,9 @@ enum raft_state
 
 #define RAFT_LOG_SUFFIX_MAX_LEN 8
 
+#define RAFT_EPOLL_HANDLES_MAX 8
+#define RAFT_EVP_HANDLES_MAX 4
+
 enum raft_epoll_handles
 {
     RAFT_EPOLL_HANDLE_PEER_UDP,
@@ -303,12 +306,14 @@ struct raft_instance
     crc32_t                         ri_last_applied_cumulative_crc;
     struct raft_entry_header        ri_newest_entry_hdr;
     struct epoll_mgr                ri_epoll_mgr;
-    struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_NUM_HANDLES];
+    struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
+    size_t                          ri_epoll_handles_in_use;
     raft_net_timer_cb_t             ri_timer_fd_cb;
     raft_net_udp_cb_t               ri_udp_client_recv_cb;
     raft_net_udp_cb_t               ri_udp_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;
-    struct ev_pipe                  ri_evps[RAFT_SERVER_EVP_ANY];
+    struct ev_pipe                  ri_evps[RAFT_EVP_HANDLES_MAX];
+    size_t                          ri_evps_in_use;
     struct lreg_node                ri_lreg;
     struct lreg_node                ri_net_lreg;
     struct lreg_node                ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
