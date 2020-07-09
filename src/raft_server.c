@@ -3200,10 +3200,14 @@ raft_server_evp_setup(struct raft_instance *ri)
     if (!ri || raft_instance_is_client(ri))
         return -EINVAL;
 
-    for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
+    for (enum raft_server_event_pipes i = 0; i < RAFT_SERVER_EVP_ANY; i++)
     {
         int rc = raft_net_evp_add(ri, raft_server_evp_2_cb_fn(i));
-        if (rc)
+        NIOVA_ASSERT(rc == i); /* rc should equal the pipe value Xxx
+                                * since the code currently accesses the evp
+                                * array directly.
+                                */
+        if (rc < 0)
             return rc;
     }
 

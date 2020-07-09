@@ -278,7 +278,9 @@ raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
              ri->ri_evps_in_use >= RAFT_EVP_HANDLES_MAX)
         return -ENOSPC;
 
-    struct ev_pipe *evp = &ri->ri_evps[ri->ri_evps_in_use++];
+    int idx = ri->ri_evps_in_use++;
+
+    struct ev_pipe *evp = &ri->ri_evps[idx];
 
     int rc = ev_pipe_setup(evp);
     if (rc)
@@ -298,7 +300,7 @@ raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
     evp_increment_reader_cnt(evp); //Xxx this is a mess
     // should be inside ev_pipe.c!
 
-    return 0;
+    return idx;
 }
 
 raft_net_timerfd_cb_ctx_t
