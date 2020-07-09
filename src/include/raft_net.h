@@ -409,7 +409,8 @@ raft_net_server_target_check(const struct raft_instance *ri,
 
 int
 raft_net_apply_leader_redirect(struct raft_instance *ri,
-                               const uuid_t redirect_target);
+                               const uuid_t redirect_target,
+                               unsigned long long stale_timeout_ms);
 
 static inline bool
 raft_net_sockaddr_is_valid(const struct sockaddr_in *sockaddr)

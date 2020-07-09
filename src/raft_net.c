@@ -321,71 +321,6 @@ raft_net_epoll_setup_timerfd(struct raft_instance *ri)
     return raft_net_epoll_handle_add(ri, ri->ri_timer_fd, raft_net_timerfd_cb);
 }
 
-int
-raft_net_evp_add(struct raft_instance *ri, const epoll_mgr_cb_t callbacks[],
-                 const int *event_types, const int *indices,
-                 size_t num_cbs)
-{
-    if (!ri || !callbacks || !event_types || !indices || !num_cbs)
-        return -EINVAL;
-
-    // First pass - check that the parameters can be handled.
-    for (size_t i = 0; i < num_cbs; i++)
-    {
-        int idx = indices[i];
-
-        if (idx < 0 || idx >= RAFT_EPOLL_NUM_HANDLES)
-            return -ERANGE;
-
-        struct epoll_handle *eph = &ri->ri_epoll_handles[idx];
-        if (eph->eph_installed)
-            return -EADDRINUSE;
-
-        if (!callbacks[i] || !event_types[i])
-            return -EINVAL;
-    }
-
-//XXX this is all wrong because the evp idx is the same as the eph idx
-// XXX need two indices I think, one for the evp idx and one for eph in the
-    //  raft instance.
-
-    for (size_t i = 0; i < num_cbs; i++)
-    {
-        int idx = indices[i];
-
-        int rc = ev_pipe_setup(&ri->ri_evps[idx]);
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_setup(%d): %s", idx,
-                           strerror(rc));
-            return rc;
-        }
-
-        struct epoll_handle *eph = &ri->ri_epoll_handles[idx];
-        int eph_fd = evp_read_fd_get(&ri->ri_evps[idx]);
-
-        rc = epoll_handle_init(eph, eph_fd, event_types[i], callbacks[i], ri);
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "epoll_handle_init(%d): %s", idx,
-                           strerror(rc));
-            return rc;
-        }
-
-        evp_increment_reader_cnt(&ri->ri_evps[idx]); //Xxx this is a mess
-                                                 // should be inside ev_pipe.c!
-
-        rc = epoll_handle_add(&ri->ri_epoll_mgr, eph);
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "epoll_handle_add(%d): %s", eph_type,
-                           strerror(rc));
-            return rc;
-        }
-    }
-    return 0;
-}
-
 static int
 raft_net_epoll_setup(struct raft_instance *ri)
 {
@@ -987,7 +922,7 @@ raft_net_apply_leader_redirect(struct raft_instance *ri,
     if (!ri || uuid_is_null(redirect_target))
         return -EINVAL;
 
-    raft_peer_t leader_idx = raft_peer_2_idx(ri, rcrm->rcrm_redirect_id);
+    raft_peer_t leader_idx = raft_peer_2_idx(ri, redirect_target);
     if (leader_idx == RAFT_PEER_ANY)
         return -ENOENT;
 
