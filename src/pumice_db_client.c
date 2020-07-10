@@ -27,7 +27,7 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
     pmdb_t pmdb = NULL;
 
     int rc = raft_client_init(raft_uuid_str, raft_client_uuid_str, &pmdb);
-    if (!rc)
+    if (rc)
     {
         errno = -rc;
         return NULL;

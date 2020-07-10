@@ -1614,7 +1614,7 @@ raft_client_thread(void *arg)
 	if (rc == -EINTR)
             rc = 0;
 
-        else if (rc)
+        else if (rc < 0)
             break;
     }
 
@@ -1703,6 +1703,8 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
 
     int rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
                                    "raft_client", (void *)rci, NULL);
+    // Start the thread
+    thread_ctl_run(&rci->rci_thr_ctl);
 
     /* raft_client_thread() does some initializations - wait for these to
      * complete before proceeding.
