@@ -127,6 +127,7 @@ fi
 
 # Set the ctl-svc dir based on the location of the raft conf file
 export NIOVA_LOCAL_CTL_SVC_DIR=`dirname ${CFG_FILE}`
+echo NIOVA_LOCAL_CTL_SVC_DIR=`dirname ${CFG_FILE}`
 
 IDX=0
 
@@ -139,15 +140,16 @@ do
         echo "Launch peer $i"
         if [ $DRY_RUN -ne 0 ]
         then
-            echo "gnome-terminal -- ${RAFT_SCRIPT} ${RAFT_UUID} ${i}"
+            echo "urxvt -e ${RAFT_SCRIPT} ${RAFT_UUID} ${i}"
         else
-            gnome-terminal -- ${RAFT_SCRIPT} ${RAFT_UUID} ${i} > /dev/null
+            urxvt -e ${RAFT_SCRIPT} ${RAFT_UUID} ${i} > /dev/null &
         fi
     fi
 
     let IDX=$IDX+1
 done
 
+echo WATCH=$WATCH
 
 if [ $WATCH -ne 0 ]
 then

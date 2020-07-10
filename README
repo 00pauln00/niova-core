@@ -1,0 +1,5 @@
+Raft testing:
+NIOVA_LOG_LEVEL=2 scripts/raft-launch-servers-in-terminal.sh -w -s 0 -e 2 `scripts/raft-mk-configs.sh /tmp`
+
+Usage: ./raft-server [-R (use-rocksDB-backend)] -r <UUID> -u <UUID>
+
