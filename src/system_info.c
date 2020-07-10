@@ -222,14 +222,21 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 int
 system_info_apply_uuid_by_str(const char *uuid_str)
 {
-    if (!uuid_is_null(systemInfoUuid))
+    if (!uuid_str)
+        return -EINVAL;
+
+    else if (!uuid_is_null(systemInfoUuid))
         return -EALREADY;
+
+    char my_uuid_str[UUID_STR_LEN] = {0};
+    if (strnlen(uuid_str, UUID_STR_LEN) < (UUID_STR_LEN - 1))
+        return -EINVAL;
+
+    strncpy(my_uuid_str, uuid_str, UUID_STR_LEN - 1);
 
     uuid_t tmp;
 
-    if (!uuid_str ||
-        (strnlen(uuid_str, UUID_STR_LEN) != UUID_STR_LEN - 1) ||
-        uuid_parse(uuid_str, tmp))
+    if (uuid_parse(my_uuid_str, tmp))
         return -EINVAL;
 
     uuid_copy(systemInfoUuid, tmp);
