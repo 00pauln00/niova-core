@@ -619,10 +619,12 @@ main(int argc, char **argv)
 {
     rst_getopt(argc, argv);
 
+    raft_server_instance_init(raft_net_get_instance());
+
     REF_TREE_INIT_ALT_REF(&smNodeTree, rst_sm_node_construct,
                           rst_sm_node_destruct, 2);
 
-    return raft_net_server_instance_run(
+    return raft_server_instance_run(
         raft_uuid_str, my_uuid_str,
         raft_server_test_rst_sm_handler,
         use_rocksdb_backend ? RAFT_INSTANCE_STORE_ROCKSDB :

@@ -182,7 +182,7 @@ struct raft_log_header
 
 enum raft_state
 {
-    RAFT_STATE_BOOTING,
+    RAFT_STATE_BOOTING = 0,
     RAFT_STATE_LEADER,
     RAFT_STATE_FOLLOWER,
     RAFT_STATE_CANDIDATE,
@@ -348,6 +348,8 @@ struct raft_instance
     raft_net_udp_cb_t               ri_udp_client_recv_cb;
     raft_net_udp_cb_t               ri_udp_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;
+    raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
+    raft_net_shutdown_cb_t          ri_shutdown_cb;
     struct ev_pipe                  ri_evps[RAFT_EVP_HANDLES_MAX];
     size_t                          ri_evps_in_use;
     struct lreg_node                ri_lreg;
@@ -709,15 +711,6 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
 void
 raft_server_instance_init(struct raft_instance *ri);
 
-int
-raft_server_instance_startup(struct raft_instance *ri);
-
-int
-raft_server_instance_shutdown(struct raft_instance *ri);
-
-int
-raft_server_main_loop(struct raft_instance *ri);
-
 void
 raft_server_backend_use_posix(struct raft_instance *ri);
 
@@ -727,5 +720,11 @@ raft_server_backend_use_rocksdb(struct raft_instance *ri);
 struct rocksdb_t;
 struct rocksdb_t *
 raft_server_get_rocksdb_instance(struct raft_instance *ri);
+
+int
+raft_server_instance_run(const char *raft_uuid_str,
+                         const char *this_peer_uuid_str,
+                         raft_sm_request_handler_t sm_request_handler,
+                         enum raft_instance_store_type type);
 
 #endif

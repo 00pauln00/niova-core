@@ -59,6 +59,9 @@ typedef raft_net_timerfd_cb_ctx_t
 typedef raft_net_udp_cb_ctx_int_t
     (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
 
+typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
+typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
+
 #define RAFT_NET_MAX_RPC_SIZE 65000
 #define RAFT_NET_MAX_RETRY_MS 30000
 #define RAFT_NET_MIN_RETRY_MS 100
@@ -360,12 +363,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode);
 
 int
 raft_net_instance_shutdown(struct raft_instance *ri);
-
-int
-raft_net_server_instance_run(const char *raft_uuid_str,
-                             const char *my_uuid_str,
-                             raft_sm_request_handler_t sm_request_handler,
-                             enum raft_instance_store_type type);
 
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,

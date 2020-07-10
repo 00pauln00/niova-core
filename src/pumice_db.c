@@ -832,9 +832,9 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
         !pmdb_api->pmdb_apply || !pmdb_api->pmdb_read)
         return -EINVAL;
 
-    return raft_net_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
-                                        pmdb_sm_handler,
-                                        RAFT_INSTANCE_STORE_ROCKSDB);
+    return raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
+                                    pmdb_sm_handler,
+                                    RAFT_INSTANCE_STORE_ROCKSDB);
 }
 
 /**
@@ -847,7 +847,7 @@ PmdbClose(void)
     rocksdb_column_family_handle_destroy(
         pmdb_get_rocksdb_column_family_handle());
 
-    return raft_server_instance_shutdown(raft_net_get_instance());
+    return raft_net_instance_shutdown(raft_net_get_instance());
 }
 
 rocksdb_t *

@@ -4,6 +4,7 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
+#include <errno.h>
 #include <stdlib.h>
 #include <uuid/uuid.h>
 
@@ -11,24 +12,26 @@
 #include "crc32.h"
 #include "log.h"
 #include "pumice_db_net.h"
+#include "pumice_db_client.h"
 #include "registry.h"
 
-int
-pmdbClientExec(const char *raft_uuid_str, const char *raft_client_uuid_str)
+pmdb_t
+PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
 {
     if (!raft_uuid_str || !raft_client_uuid_str)
-        return -EINVAL;
+    {
+        errno = -EINVAL;
+        return NULL;
+    }
 
-    struct raft_instance *ri = raft_net_get_instance();
-    if (!ri)
-        return -EINVAL;
+    pmdb_t pmdb = NULL;
 
-    ri->ri_raft_uuid_str = raft_uuid_str;
-    ri->ri_this_peer_uuid_str = my_uuid_str;
+    int rc = raft_client_init(raft_uuid_str, raft_client_uuid_str, &pmdb);
+    if (!rc)
+    {
+        errno = -rc;
+        return NULL;
+    }
 
-    raft_net_instance_apply_callbacks(ri, pmdb_client_timerfd_cb,
-                                      raft_client_udp_recv_handler,
-                                      NULL);
-
-
+    return pmdb;
 }

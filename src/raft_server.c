@@ -3397,6 +3397,12 @@ raft_server_evp_cleanup(struct raft_instance *ri)
     return 0;
 }
 
+static int
+raft_server_instance_startup(struct raft_instance *ri);
+
+static int
+raft_server_instance_shutdown(struct raft_instance *ri);
+
 void
 raft_server_instance_init(struct raft_instance *ri)
 {
@@ -3404,6 +3410,9 @@ raft_server_instance_init(struct raft_instance *ri)
 
     ri->ri_commit_idx = -1; //Xxx this needs to go into a more general init fn
     ri->ri_last_applied_idx = -1;
+
+    ri->ri_startup_pre_net_bind_cb = raft_server_instance_startup;
+    ri->ri_shutdown_cb = raft_server_instance_shutdown;
 
     /* Assign the timer_fd and udp_recv callbacks.
      */
@@ -3502,7 +3511,7 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
     return 0;
 }
 
-int
+static int
 raft_server_instance_startup(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -3561,7 +3570,7 @@ raft_server_backend_close(struct raft_instance *ri)
     return ri->ri_backend->rib_backend_shutdown(ri);
 }
 
-int
+static int
 raft_server_instance_shutdown(struct raft_instance *ri)
 {
     raft_server_backend_close(ri);
@@ -3574,7 +3583,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
     return 0;
 }
 
-int
+static int
 raft_server_main_loop(struct raft_instance *ri)
 {
     NIOVA_ASSERT(raft_instance_is_booting(ri));
@@ -3597,6 +3606,34 @@ raft_server_main_loop(struct raft_instance *ri)
 
     SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
                    strerror(-rc));
+
+    return rc;
+}
+
+int
+raft_server_instance_run(const char *raft_uuid_str,
+                         const char *this_peer_uuid_str,
+                         raft_sm_request_handler_t sm_request_handler,
+                         enum raft_instance_store_type type)
+{
+    if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
+        return -EINVAL;
+
+    struct raft_instance *ri = raft_net_get_instance();
+
+    ri->ri_raft_uuid_str = raft_uuid_str;
+    ri->ri_this_peer_uuid_str = this_peer_uuid_str;
+    ri->ri_server_sm_request_cb = sm_request_handler;
+
+    raft_instance_backend_type_specify(ri, type);
+
+    int rc = raft_net_instance_startup(ri, false);
+    if (rc)
+        return rc;
+
+    rc = raft_server_main_loop(ri);
+
+    raft_net_instance_shutdown(ri);
 
     return rc;
 }

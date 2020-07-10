@@ -1216,8 +1216,8 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     if (rc)
     {
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
-                                  "raft_client_sub_app_rpc_request_new() %s",
-                                  strerror(-rc));
+                                "raft_client_sub_app_rpc_request_new() %s",
+                                strerror(-rc));
 
         raft_client_sub_app_put(rci, sa, __func__, __LINE__);
         return -ENOMEM;

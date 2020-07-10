@@ -4,6 +4,7 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
+#include <unistd.h>
 #include <uuid/uuid.h>
 
 #include <rocksdb/c.h>

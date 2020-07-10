@@ -490,8 +490,8 @@ raft_net_instance_shutdown(struct raft_instance *ri)
 
     int epoll_close_rc = raft_net_epoll_cleanup(ri);
 
-    if (!raft_instance_is_client(ri))
-        raft_server_instance_shutdown(ri);
+    if (ri->ri_shutdown_cb)
+        ri->ri_shutdown_cb(ri);
 
     int udp_sockets_close = raft_net_udp_sockets_close(ri);
 
@@ -551,9 +551,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return rc;
     }
 
-    if (!client_mode)
-        raft_server_instance_init(ri);
-
     rc = raft_net_epoll_setup(ri);
     if (rc)
     {
@@ -563,15 +560,16 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return rc;
     }
 
-    if (!client_mode)
+    if (ri->ri_startup_pre_net_bind_cb)
     {
-        rc = raft_server_instance_startup(ri);
+        rc = ri->ri_startup_pre_net_bind_cb(ri);
         if (rc)
         {
-            SIMPLE_LOG_MSG(LL_WARN, "raft_server_instance_startup(): %s",
+            SIMPLE_LOG_MSG(LL_WARN, "ri_startup_pre_net_bind_cb(): %s",
                            strerror(-rc));
 
-            raft_server_instance_shutdown(ri);
+            if (ri->ri_shutdown_cb)
+                ri->ri_shutdown_cb(ri);
 
             return rc;
         }
@@ -584,39 +582,14 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     {
         SIMPLE_LOG_MSG(LL_WARN, "raft_net_udp_sockets_bind(): %s",
                        strerror(-rc));
-        raft_net_instance_shutdown(ri);
+
+        if (ri->ri_shutdown_cb)
+            ri->ri_shutdown_cb(ri);
+
         return rc;
     }
 
     return 0;
-}
-
-int
-raft_net_server_instance_run(const char *raft_uuid_str,
-                             const char *this_peer_uuid_str,
-                             raft_sm_request_handler_t sm_request_handler,
-                             enum raft_instance_store_type type)
-{
-    if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
-        return -EINVAL;
-
-    struct raft_instance *ri = raft_net_get_instance();
-
-    ri->ri_raft_uuid_str = raft_uuid_str;
-    ri->ri_this_peer_uuid_str = this_peer_uuid_str;
-    ri->ri_server_sm_request_cb = sm_request_handler;
-
-    raft_instance_backend_type_specify(ri, type);
-
-    int rc = raft_net_instance_startup(ri, false);
-    if (rc)
-        return rc;
-
-    rc = raft_server_main_loop(ri);
-
-    raft_net_instance_shutdown(ri);
-
-    return rc;
 }
 
 /**
