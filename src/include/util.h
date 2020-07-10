@@ -429,7 +429,7 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     const size_t _offset =                                              \
         (offsetof(struct type, crc32_memb) + sizeof(crc32_t));          \
     const unsigned char *_buf = (const unsigned char *)(obj) + _offset; \
-    const int _crc_len = sizeof(struct type) - offset + extra_contents; \
+    const int _crc_len = sizeof(struct type) - _offset + extra_contents; \
                                                                         \
     (obj)->crc32_memb = niova_crc(_buf, _crc_len, 0);                   \
     (obj)->crc32_memb;                                                  \

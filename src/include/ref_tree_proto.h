@@ -162,4 +162,16 @@
 #define RT_PUT(name, head, elm)                 \
     name##_PUT(head, elm)
 
+#define RT_FOREACH_LOCKED(x, name, head)        \
+    RB_FOREACH(x, _RT_##name, &(head)->rt_head)
+
+#define RT_FOREACH_SAFE_LOCKED(x, name, head, y)  \
+    RB_FOREACH(x, _RT_##name, &(head)->rt_head)
+
+#define RT_FOREACH_REVERSE_LOCKED(x, name, head)        \
+    RB_FOREACH_REVERSE(x, _RT_##name, &(head)->rt_head)
+
+#define RT_FOREACH_REVERSE_SAFE_LOCKED(x, name, head, y)  \
+    RB_FOREACH_REVERSE(x, _RT_##name, &(head)->rt_head, y)
+
 #endif //REF_TREE_H

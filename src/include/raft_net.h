@@ -200,6 +200,7 @@ raft_client_rpc_payload_size(const size_t app_payload_size,
             app_payload_size);
 }
 
+// XXx does this need to check for messages which are too small?
 static inline bool
 raft_client_rpc_msg_size_is_valid(const size_t app_payload_size,
                                   const bool uses_client_entry_data)
