@@ -64,6 +64,6 @@ main(int argc, char **argv)
     if (!pmdb)
         exit(-errno);
 
-    sleep(120);
+    sleep(12000);
     return 0;
 }

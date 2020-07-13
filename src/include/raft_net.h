@@ -268,6 +268,7 @@ struct raft_net_client_request_handle
     switch ((rcm)->rcrm_type)                                           \
     {                                                                   \
     case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                              \
+        uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);                    \
         LOG_MSG(log_level,                                              \
                 "CLI-REQ   %s %s:%u id=%lx sz=%u "fmt,                  \
                 __uuid_str,                                             \
@@ -294,6 +295,7 @@ struct raft_net_client_request_handle
                 ##__VA_ARGS__);                                         \
         break;                                                          \
     case RAFT_CLIENT_RPC_MSG_TYPE_PING:        /* fall through */       \
+        uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);                  \
     case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                           \
         LOG_MSG(log_level,                                              \
                 "CLI-%s %s %s:%u id=%lx err=%hd:%hd "fmt,               \

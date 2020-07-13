@@ -49,8 +49,12 @@ static size_t raftClientRequestRatePerSec = RAFT_CLIENT_REQUEST_RATE_PER_SEC;
 
 #define RAFT_CLIENT_STALE_SERVER_TIME_MS        \
     (RAFT_CLIENT_TIMERFD_EXPIRE_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS)
+
 static unsigned long long raftClientStaleServerTimeMS =
     RAFT_CLIENT_STALE_SERVER_TIME_MS;
+
+static unsigned long long raftClientIdlePingServerTimeMS =
+    RAFT_CLIENT_STALE_SERVER_TIME_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
 static unsigned long long raftClientRetryTimeoutMS =
     (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 2);
@@ -220,7 +224,6 @@ struct raft_client_instance
     pthread_cond_t                        rci_cond;
     struct raft_instance                 *rci_ri;
     struct raft_client_sub_app_send_queue rci_sendq;
-    bool                                  rci_leader_is_viable;
     struct timespec                       rci_last_request_sent;
     struct timespec                       rci_last_request_ackd; // by leader
     struct timespec                       rci_last_msg_recvd;
@@ -464,6 +467,25 @@ raft_client_timerfd_settime(struct raft_instance *ri)
     raft_net_timerfd_settime(ri, raftClientTimerFDExpireMS);
 }
 
+/**
+ * raft_client_server_target_needs_ping - tests the last recv time against
+ *    the configurable raftClientIdlePingServerTimeMS value.  This function
+ *    is used to determine if a refresh ping should be issued to a server
+ *    which has not been contacted recently.
+ */
+static bool
+raft_client_server_target_needs_ping(const struct raft_instance *ri,
+                                     const uuid_t server_uuid)
+{
+    unsigned long long recency_ms = 0;
+
+    int rc = raft_net_comm_recency(ri, raft_peer_2_idx(ri, server_uuid),
+                                   RAFT_COMM_RECENCY_RECV,
+                                   &recency_ms);
+
+    return (rc || recency_ms > raftClientIdlePingServerTimeMS) ? true : false;
+}
+
 static bool
 raft_client_server_target_is_stale(const struct raft_instance *ri,
                                    const uuid_t server_uuid)
@@ -478,26 +500,25 @@ raft_client_server_target_is_stale(const struct raft_instance *ri,
 }
 
 static bool
-raft_client_ping_target_is_stale(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-
-    return (!ri->ri_csn_leader ||
-            raft_client_server_target_is_stale(ri,
-                                               ri->ri_csn_leader->csn_uuid)) ?
-        true : false;
-}
-
-static void
-raft_client_set_leader_viability(struct raft_client_instance *rci, bool viable)
-{
-    rci->rci_leader_is_viable = viable;
-}
-
-static bool
 raft_client_leader_is_viable(const struct raft_client_instance *rci)
 {
-    return rci->rci_leader_is_viable;
+    bool viable = (rci &&
+                   rci->rci_leader_alive_cnt > raftClientNpingsUntilViable &&
+                   rci->rci_leader_csn &&
+                   rci->rci_leader_csn == RCI_2_RI(rci)->ri_csn_leader &&
+                   !raft_client_server_target_is_stale(
+                       RCI_2_RI(rci), rci->rci_leader_csn->csn_uuid)) ?
+        true : false;
+
+    if (rci && RCI_2_RI(rci))
+    {
+        DBG_RAFT_INSTANCE(LL_TRACE, RCI_2_RI(rci),
+                          "leader_csn(rci:ri)=%p:%p cnt=%zu viable=%d",
+                          rci->rci_leader_csn, RCI_2_RI(rci)->ri_csn_leader,
+                          rci->rci_leader_alive_cnt, viable);
+    }
+
+    return viable;
 }
 
 static void
@@ -595,10 +616,9 @@ raft_client_set_ping_target(struct raft_client_instance *rci)
 
     struct raft_instance *ri = RCI_2_RI(rci);
 
-    if (raft_client_ping_target_is_stale(ri))
+    if (!ri->ri_csn_leader ||
+        raft_client_server_target_is_stale(ri, ri->ri_csn_leader->csn_uuid))
     {
-        raft_client_set_leader_viability(rci, false);
-
         const raft_peer_t tgt =
             raft_net_get_most_recently_responsive_server(ri);
 
@@ -769,18 +789,41 @@ raft_client_timerfd_cb(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
+    // Used for ping frequency backoff
+    static size_t unviable_iterations = 0;
+    static size_t unviable_next_ping_iteration = 1;
+
     struct raft_client_instance *rci =
         raft_client_raft_instance_to_client_instance(ri);
 
     if (raft_client_leader_is_viable(rci))
     {
+        unviable_iterations = 0;
+        unviable_next_ping_iteration = 1;
+
+        if (raft_client_server_target_needs_ping(
+                ri, ri->ri_csn_leader->csn_uuid))
+            raft_client_ping_raft_service(rci);
+
         raft_client_check_pending_requests(rci);
     }
     else
     {
-        raft_client_set_ping_target(rci);
-        raft_client_ping_raft_service(rci);
+        if (rci->rci_leader_alive_cnt > 0 ||
+            unviable_iterations++ >= unviable_next_ping_iteration)
+        {
+            raft_client_set_ping_target(rci);
+            raft_client_ping_raft_service(rci);
+
+            unviable_next_ping_iteration +=
+                MIN(50, (2 * unviable_iterations - 1));
+        }
     }
+
+    DBG_RAFT_INSTANCE(LL_TRACE, ri,
+                      "uvi=%zu uvnpi=%zu lca=%zu",
+                      unviable_iterations, unviable_next_ping_iteration,
+                      rci->rci_leader_alive_cnt);
 
     raft_client_timerfd_settime(ri);
 }
@@ -809,7 +852,6 @@ raft_client_instance_reset_leader_info(struct raft_client_instance *rci,
         rci->rci_leader_csn = NULL;
 
     rci->rci_leader_alive_cnt = 0;
-    rci->rci_leader_is_viable = false;
 }
 
 static void
@@ -820,12 +862,9 @@ raft_client_instance_progress_leader_info(
         return;
 
     rci->rci_leader_alive_cnt++;
+
     if (!rci->rci_leader_csn)
         rci->rci_leader_csn = sender_csn;
-
-    if (!rci->rci_leader_is_viable &&
-        rci->rci_leader_alive_cnt > raftClientNpingsUntilViable)
-        rci->rci_leader_is_viable = true;
 }
 
 static raft_net_udp_cb_ctx_t
@@ -864,6 +903,9 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
 {
     if (!rci || !RCI_2_RI(rci) || !rcrm)
         return;
+
+    // Redirect implies a different leader - clear the leader info from the rci
+    raft_client_instance_reset_leader_info(rci, true);
 
     int rc = raft_net_apply_leader_redirect(RCI_2_RI(rci),
                                             rcrm->rcrm_redirect_id,
