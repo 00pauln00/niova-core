@@ -77,6 +77,9 @@ static unsigned long long raftClientIdlePingServerTimeMS =
 static unsigned long long raftClientRetryTimeoutMS =
     (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 2);
 
+#define RAFT_CLIENT_OP_HISTORY_SIZE 100
+static size_t raftClientOpHistorySize = RAFT_CLIENT_OP_HISTORY_SIZE;
+
 static pthread_mutex_t raftClientMutex = PTHREAD_MUTEX_INITIALIZER;
 
 static struct raft_client_instance
@@ -238,22 +241,38 @@ REF_TREE_GENERATE(raft_client_sub_app_tree, raft_client_sub_app, rcsa_rtentry,
 
 STAILQ_HEAD(raft_client_sub_app_send_queue, raft_client_sub_app);
 
+struct raft_client_sub_app_req_history
+{
+    const size_t                 rcsarh_size;
+    size_t                       rcsarh_cnt;
+    struct raft_client_sub_app **rcsarh_sa;
+};
+
+enum raft_client_recent_op_types
+{
+    RAFT_CLIENT_RECENT_OP_TYPE_MIN = 0,
+    RAFT_CLIENT_RECENT_OP_TYPE_READ = RAFT_CLIENT_RECENT_OP_TYPE_MIN,
+    RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
+    RAFT_CLIENT_RECENT_OP_TYPE_MAX,
+};
+
 struct raft_client_instance
 {
-    struct thread_ctl                     rci_thr_ctl;
-    struct raft_client_sub_app_tree       rci_sub_apps;
-    pthread_cond_t                        rci_cond;
-    struct raft_instance                 *rci_ri;
-    struct raft_client_sub_app_send_queue rci_sendq;
-    struct timespec                       rci_last_request_sent;
-    struct timespec                       rci_last_request_ackd; // by leader
-    struct timespec                       rci_last_msg_recvd;
-    niova_atomic32_t                      rci_sub_app_cnt;
-    niova_atomic32_t                      rci_msg_id_counter;
-    unsigned int                          rci_msg_id_prefix;
-    const struct ctl_svc_node            *rci_leader_csn;
-    size_t                                rci_leader_alive_cnt;
-    struct lreg_node                      rci_lreg;
+    struct thread_ctl                      rci_thr_ctl;
+    struct raft_client_sub_app_tree        rci_sub_apps;
+    pthread_cond_t                         rci_cond;
+    struct raft_instance                  *rci_ri;
+    struct raft_client_sub_app_send_queue  rci_sendq;
+    struct timespec                        rci_last_request_sent;
+    struct timespec                        rci_last_request_ackd; // by leader
+    struct timespec                        rci_last_msg_recvd;
+    niova_atomic32_t                       rci_sub_app_cnt;
+    niova_atomic32_t                       rci_msg_id_counter;
+    unsigned int                           rci_msg_id_prefix;
+    const struct ctl_svc_node             *rci_leader_csn;
+    size_t                                 rci_leader_alive_cnt;
+    struct lreg_node                       rci_lreg;
+    struct raft_client_sub_app_req_history rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_MAX];
 };
 
 #define RCI_2_MUTEX(rci) &(rci)->rci_sub_apps.mutex
@@ -306,10 +325,16 @@ raft_client_instance_lookup(raft_client_instance_t instance)
     return rci;
 }
 
+static void
+raft_client_op_history_destroy(struct raft_client_instance *rci);
+
 static int
 raft_client_instance_release(struct raft_client_instance *rci)
 {
     int rc = -ENOENT;
+
+    if (!rci)
+        return -EINVAL;
 
     pthread_mutex_lock(&raftClientMutex);
 
@@ -317,7 +342,6 @@ raft_client_instance_release(struct raft_client_instance *rci)
     {
         if (rci == raftClientInstances[i])
         {
-            niova_free(rci);
             raftClientInstances[i] = NULL;
             rc = 0;
             break;
@@ -325,6 +349,14 @@ raft_client_instance_release(struct raft_client_instance *rci)
     }
 
     pthread_mutex_unlock(&raftClientMutex);
+
+    if (!rc) // raft_client_op_history_destroy() will also take the lock.
+    {
+        raft_client_op_history_destroy(rci);
+
+        niova_free(rci);
+    }
+
     return rc;
 }
 
@@ -481,6 +513,87 @@ raft_client_sub_app_add(struct raft_client_instance *rci,
     DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
 
     return sa;
+}
+
+static void
+raft_client_op_history_add_item_locked(struct raft_client_instance *rci,
+                                       enum raft_client_recent_op_types type,
+                                       struct raft_client_sub_app *item,
+                                       struct raft_client_sub_app **put_item)
+{
+    NIOVA_ASSERT(rci && item && put_item);
+
+    struct raft_client_sub_app_req_history *rh = &rci->rci_recent_ops[type];
+
+    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, item, "history-type=%d", type);
+
+    // Take a ref on the 'sa'.
+    REF_TREE_REF_GET_ELEM_LOCKED(item, rcsa_rtentry);
+
+    // Caller must call raft_client_sub_app_put() after releasing the mutex
+    *put_item = rh->rcsarh_sa[rh->rcsarh_cnt];
+
+    rh->rcsarh_sa[rh->rcsarh_cnt++] = item;
+}
+
+static void
+raft_client_op_history_release_items(struct raft_client_instance *rci,
+                                     enum raft_client_recent_op_types type)
+{
+    struct raft_client_sub_app_req_history *rh = &rci->rci_recent_ops[type];
+
+    for (size_t i = 0; i < rh->rcsarh_size; i++)
+        if (rh->rcsarh_sa[i])
+            raft_client_sub_app_put(rci, rh->rcsarh_sa[i], __func__,
+                                    __LINE__);
+}
+
+static void
+raft_client_op_history_destroy(struct raft_client_instance *rci)
+{
+    for (enum raft_client_recent_op_types i = RAFT_CLIENT_RECENT_OP_TYPE_MIN;
+         i < RAFT_CLIENT_RECENT_OP_TYPE_MAX; i++)
+    {
+        raft_client_op_history_release_items(rci, i);
+
+        if (rci->rci_recent_ops[i].rcsarh_size &&
+            rci->rci_recent_ops[i].rcsarh_sa)
+            niova_free(rci->rci_recent_ops[i].rcsarh_sa);
+
+        CONST_OVERRIDE(size_t, rci->rci_recent_ops[i].rcsarh_size, 0);
+    }
+}
+
+static int
+raft_client_op_history_create(struct raft_client_instance *rci)
+{
+    if (!rci)
+        return -EINVAL;
+
+    for (enum raft_client_recent_op_types i = RAFT_CLIENT_RECENT_OP_TYPE_MIN;
+         i < RAFT_CLIENT_RECENT_OP_TYPE_MAX; i++)
+    {
+        if (rci->rci_recent_ops[i].rcsarh_size ||
+            rci->rci_recent_ops[i].rcsarh_sa)
+            return -EALREADY;
+
+        CONST_OVERRIDE(size_t, rci->rci_recent_ops[i].rcsarh_size,
+                       raftClientOpHistorySize);
+
+        rci->rci_recent_ops[i].rcsarh_cnt = 0;
+
+        rci->rci_recent_ops[i].rcsarh_sa =
+            niova_calloc_can_fail(raftClientOpHistorySize,
+                                  sizeof(struct raft_client_sub_app **));
+
+        if (!rci->rci_recent_ops[i].rcsarh_sa)
+        {
+            raft_client_op_history_destroy(rci);
+            return -ENOMEM;
+        }
+    }
+
+    return 0;
 }
 
 static void
@@ -1396,6 +1509,7 @@ raft_client_reply_complete(
     }
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
+    struct raft_client_sub_app *history_cleanup_sa;
 
     RCI_LOCK(rci);
     if (rcrh->rcrh_ready)
@@ -1447,9 +1561,19 @@ raft_client_reply_complete(
         RCI_LOCK(rci);
         rcrh->rcrh_completing = 0;
         rcrh->rcrh_ready = 1;
+
+        raft_client_op_history_add_item_locked(
+            rci,
+            rcrh->rcrh_op_rw ?
+            RAFT_CLIENT_RECENT_OP_TYPE_READ : RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
+            sa, &history_cleanup_sa);
     }
 
     RCI_UNLOCK(rci);
+
+    // release item from raft_client_op_history_add_item_locked() if present
+    if (history_cleanup_sa)
+        raft_client_sub_app_done(rci, history_cleanup_sa, __func__, __LINE__);
 
     if (rcrh->rcrh_blocking)
         raft_client_sub_app_wake(rci, sa);
@@ -1978,7 +2102,18 @@ raft_client_instance_assign(void)
         {
             int rc = errno;
             LOG_MSG(LL_WARN, "calloc failure: %s", strerror(rc));
-            return NULL;
+            break;
+        }
+
+        int rc = raft_client_op_history_create(rci);
+        if (rc)
+        {
+            LOG_MSG(LL_WARN, "raft_client_op_history_create(): %s",
+                    strerror(-rc));
+            raft_client_op_history_destroy(rci);
+            niova_free(rci);
+            rci = raftClientInstances[i] = NULL;
+            break;
         }
     }
 
