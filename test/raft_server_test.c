@@ -12,6 +12,7 @@
 
 #include "registry.h"
 #include "log.h"
+#include "raft.h"
 #include "raft_net.h"
 #include "raft_test.h"
 #include "ref_tree_proto.h"
@@ -618,8 +619,6 @@ int
 main(int argc, char **argv)
 {
     rst_getopt(argc, argv);
-
-    raft_server_instance_init(raft_net_get_instance());
 
     REF_TREE_INIT_ALT_REF(&smNodeTree, rst_sm_node_construct,
                           rst_sm_node_destruct, 2);

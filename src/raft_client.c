@@ -18,8 +18,26 @@
 #include "random.h"
 #include "ref_tree_proto.h"
 #include "registry.h"
+#include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
+
+enum raft_client_instance_lreg_values
+{
+    RAFT_CLIENT_LREG_RAFT_UUID,
+    RAFT_CLIENT_LREG_PEER_UUID,
+    RAFT_CLIENT_LREG_LEADER_UUID,
+    RAFT_CLIENT_LREG_PEER_STATE,
+    RAFT_CLIENT_LREG_COMMIT_LATENCY,
+    RAFT_CLIENT_LREG_READ_LATENCY,
+    RAFT_CLIENT_LREG_LEADER_VIABLE,
+    RAFT_CLIENT_LREG_LEADER_ALIVE_CNT,
+    RAFT_CLIENT_LREG_LAST_MSG_RECVD,         //string
+    RAFT_CLIENT_LREG_LAST_REQUEST_ACKD,      //string
+    RAFT_CLIENT_LREG__MAX,
+};
+
+LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
 
 #define RAFT_CLIENT_MAX_INSTANCES 8
 #define RAFT_CLIENT_RPC_SENDER_MAX 8
@@ -81,6 +99,7 @@ static struct raft_client_instance
  *    request is in the completing state.
  * @rcrh_cb_exec:  set when the application callback is issued or bypassed
  *    (when the cb pointer is null).
+ * @rcrh_op_rw:  operation type:  read or write.
  * @rcrh_error:  Request error.  Typically this should be the rcrm_app_error
  *    from the raft client RPC.
  * @rcrh_sin_reply_addr:  IP address of the server which made the reply.
@@ -115,6 +134,7 @@ struct raft_client_request_handle
     uint8_t                     rcrh_sendq:1;
     uint8_t                     rcrh_cancel:1;
     uint8_t                     rcrh_cb_exec:1;
+    uint8_t                     rcrh_op_rw:1;
     int16_t                     rcrh_error;
     uint16_t                    rcrh_sin_reply_port;
     struct in_addr              rcrh_sin_reply_addr;
@@ -168,7 +188,7 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
         __uuid_str);                                                    \
     LOG_MSG(                                                            \
         log_level,                                                      \
-        "sa@%p %s.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c e=%d "     \
+        "sa@%p %s.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c e=%d "   \
         fmt,                                                            \
         sa,  __uuid_str,                                                \
         RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 2),      \
@@ -179,6 +199,7 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
         (sa)->rcsa_rh.rcrh_cancel        ? 'c' : '-',                   \
         (sa)->rcsa_rh.rcrh_cb_exec       ? 'e' : '-',                   \
         (sa)->rcsa_rh.rcrh_initializing  ? 'i' : '-',                   \
+        (sa)->rcsa_rh.rcrh_op_rw         ? 'w' : 'r',                   \
         (sa)->rcsa_rh.rcrh_ready         ? 'r' : '-',                   \
         (sa)->rcsa_rh.rcrh_sendq         ? 's' : '-',                   \
         (sa)->rcsa_rh.rcrh_error,                                       \
@@ -232,6 +253,7 @@ struct raft_client_instance
     unsigned int                          rci_msg_id_prefix;
     const struct ctl_svc_node            *rci_leader_csn;
     size_t                                rci_leader_alive_cnt;
+    struct lreg_node                      rci_lreg;
 };
 
 #define RCI_2_MUTEX(rci) &(rci)->rci_sub_apps.mutex
@@ -1307,6 +1329,45 @@ raft_client_request_submit(raft_client_instance_t client_instance,
 }
 
 static raft_net_udp_cb_ctx_t
+raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
+                                        const struct raft_client_sub_app *sa,
+                                        const struct sockaddr_in *from)
+{
+    if (!rci || !from || !RCI_2_RI(rci) || !sa)
+        return;
+
+    const struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
+
+    const long long elapsed_msec =
+        (long long)(timespec_2_msec(&rci->rci_last_msg_recvd) -
+                    timespec_2_msec(&rcrh->rcrh_last_send));
+
+    if (elapsed_msec < 0 || elapsed_msec > (3600 * 1000 * 24))
+    {
+        DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa,
+                                "unreasonable elapsed time %lld (%s:%u)",
+                                elapsed_msec, inet_ntoa(from->sin_addr),
+                                ntohs(from->sin_port));
+    }
+    else
+    {
+        enum raft_instance_hist_types type =
+            (rcrh->rcrh_op_rw ? RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC :
+             RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+
+        struct binary_hist *bh = &RCI_2_RI(rci)->ri_rihs[type].rihs_bh;
+
+        binary_hist_incorporate_val(bh, elapsed_msec);
+
+        DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa,
+                                "op=%s elapsed time %lld (%s:%u)",
+                                rcrh->rcrh_op_rw ? "write" : "read",
+                                elapsed_msec,  inet_ntoa(from->sin_addr),
+                                ntohs(from->sin_port));
+    }
+}
+
+static raft_net_udp_cb_ctx_t
 raft_client_reply_complete(
     struct raft_client_instance *rci, const uint64_t msg_id, int16_t app_err,
     const struct raft_client_rpc_raft_entry_data *rcrred,
@@ -1371,13 +1432,17 @@ raft_client_reply_complete(
             rcrh->rcrh_error = -E2BIG;
 
         if (!rcrh->rcrh_error && rcrh->rcrh_reply_used_size)
-            rcrh->rcrh_completing = 1;
+            rcrh->rcrh_completing = 1; // request may no longer be canceled
 
         RCI_UNLOCK(rci);
+        // Drop the lock and copy contents into the user's reply buffer.
 
         if (!rcrh->rcrh_error && rcrh->rcrh_completing)
             memcpy(rcrh->rcrh_reply_buf, rcrred->rcrred_data,
                    rcrh->rcrh_reply_used_size);
+
+        // Mark the elapsed time of the operation.
+        raft_client_incorporate_ack_measurement(rci, sa,  from);
 
         RCI_LOCK(rci);
         rcrh->rcrh_completing = 0;
@@ -1666,6 +1731,217 @@ raft_client_thread(void *arg)
     return (void *)0;
 }
 
+static util_thread_ctx_reg_int_t
+raft_client_instance_hist_lreg_multi_facet_handler(
+    enum lreg_node_cb_ops op,
+    struct raft_instance_hist_stats *rihs,
+    struct lreg_value *lv)
+{
+    if (!lv ||
+        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh))
+        return -EINVAL;
+
+    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
+        return -EPERM;
+
+    else if (op != LREG_NODE_CB_OP_READ_VAL)
+        return -EOPNOTSUPP;
+
+    snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "%lld",
+             binary_hist_lower_bucket_range(&rihs->rihs_bh,
+                                            lv->lrv_value_idx_in));
+
+    LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
+        binary_hist_get_cnt(&rihs->rihs_bh, lv->lrv_value_idx_in);
+
+    lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
+
+    return 0;
+}
+
+static util_thread_ctx_reg_int_t
+raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
+                                  struct lreg_node *lrn,
+                                  struct lreg_value *lv)
+{
+    struct raft_instance_hist_stats *rihs = lrn->lrn_cb_arg;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = binary_hist_size(&rihs->rihs_bh);
+
+    int rc = 0;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+
+        lreg_value_fill_key_and_type(
+            lv, raft_instance_hist_stat_2_name(rihs->rihs_type),
+            LREG_VAL_TYPE_OBJECT);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        if (!lv)
+            return -EINVAL;
+
+        rc = raft_client_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE:
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        return -ENOENT;
+    }
+
+    return rc;
+}
+
+static util_thread_ctx_reg_int_t
+raft_client_instance_lreg_multi_facet_cb(
+    enum lreg_node_cb_ops op,
+    const struct raft_client_instance *rci,
+    struct lreg_value *lv)
+{
+    if (!lv || !rci || !RCI_2_RI(rci))
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= RAFT_CLIENT_LREG__MAX)
+        return -ERANGE;
+
+    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
+        return -EPERM;
+
+    else if (op != LREG_NODE_CB_OP_READ_VAL)
+        return -EOPNOTSUPP;
+
+    switch (lv->lrv_value_idx_in)
+    {
+    case RAFT_CLIENT_LREG_RAFT_UUID:
+        lreg_value_fill_string(lv, "raft-uuid",
+                               RCI_2_RI(rci)->ri_raft_uuid_str);
+        break;
+    case RAFT_CLIENT_LREG_PEER_UUID:
+        lreg_value_fill_string(lv, "client-uuid",
+                               RCI_2_RI(rci)->ri_this_peer_uuid_str);
+        break;
+    case RAFT_CLIENT_LREG_LEADER_UUID:
+        if (RCI_2_RI(rci)->ri_csn_leader)
+            lreg_value_fill_string_uuid(
+                lv, "leader-uuid", RCI_2_RI(rci)->ri_csn_leader->csn_uuid);
+        else
+            lreg_value_fill_string(lv, "leader-uuid", NULL);
+        break;
+    case RAFT_CLIENT_LREG_PEER_STATE:
+        lreg_value_fill_string(
+            lv, "state", raft_server_state_to_string(RCI_2_RI(rci)->ri_state));
+        break;
+    case RAFT_CLIENT_LREG_COMMIT_LATENCY:
+        lreg_value_fill_object(lv, "commit-latency-msec",
+                               RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+        break;
+    case RAFT_CLIENT_LREG_READ_LATENCY:
+        lreg_value_fill_object(lv, "read-latency-msec",
+                               RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+        break;
+    case RAFT_CLIENT_LREG_LEADER_VIABLE:
+        lreg_value_fill_bool(lv, "leader-viable",
+                             raft_client_leader_is_viable(rci));
+        break;
+    case RAFT_CLIENT_LREG_LEADER_ALIVE_CNT:
+        lreg_value_fill_unsigned(lv, "leader-alive-cnt",
+                                 rci->rci_leader_alive_cnt);
+        break;
+    case RAFT_CLIENT_LREG_LAST_MSG_RECVD:
+        lreg_value_fill_string_time(lv, "last-request-sent",
+                                    rci->rci_last_request_sent.tv_sec);
+        break;
+    case RAFT_CLIENT_LREG_LAST_REQUEST_ACKD:
+        lreg_value_fill_string_time(lv, "last-request-ack",
+                                    rci->rci_last_request_ackd.tv_sec);
+	break;
+    default:
+        break;
+    }
+
+    return 0;
+}
+
+static util_thread_ctx_reg_int_t
+raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                             struct lreg_value *lv)
+{
+    const struct raft_client_instance *rci = lrn->lrn_cb_arg;
+    if (!rci)
+        return -EINVAL;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = RAFT_CLIENT_LREG__MAX;
+
+    int rc = 0;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+        strncpy(lv->lrv_key_string, "raft_client_root_entry",
+                LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lv),
+                RCI_2_RI(rci)->ri_this_peer_uuid_str, LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        rc = lv ?
+            raft_client_instance_lreg_multi_facet_cb(op, rci, lv) : -EINVAL;
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        rc = -ENOENT;
+        break;
+    }
+
+    return rc;
+}
+
+static void
+raft_client_instance_lreg_init(struct raft_client_instance *rci,
+                               struct raft_instance *ri)
+{
+    NIOVA_ASSERT(rci && ri);
+
+    lreg_node_init(&rci->rci_lreg, LREG_USER_TYPE_RAFT_CLIENT,
+                   raft_client_instance_lreg_cb, rci, LREG_INIT_OPT_NONE);
+
+    int rc =
+        lreg_node_install_prepare(&rci->rci_lreg,
+                                  LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
+
+    FATAL_IF((rc), "lreg_node_install_prepare(): %s", strerror(-rc));
+
+    for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
+         i < RAFT_INSTANCE_HIST_MAX; i++)
+    {
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+                       raft_client_instance_hist_lreg_cb,
+                       (void *)&ri->ri_rihs[i],
+                       LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
+
+	rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn,
+                                       &rci->rci_lreg);
+        FATAL_IF((rc), "lreg_node_install_prepare(): %s", strerror(-rc));
+    }
+}
+
 static void
 raft_client_instance_init(struct raft_client_instance *rci,
                           struct raft_instance *ri)
@@ -1679,6 +1955,8 @@ raft_client_instance_init(struct raft_client_instance *rci,
 
     FATAL_IF((pthread_cond_init(&rci->rci_cond, NULL)),
               "pthread_cond_init() failed: %s", strerror(errno));
+
+    raft_client_instance_lreg_init(rci, ri);
 }
 
 static struct raft_client_instance *
@@ -1776,4 +2054,13 @@ raft_client_destroy(raft_client_instance_t client_instance)
 
     // Don't reuse the instance slot if the thread destruction has failed.
     return rc ? rc : raft_client_instance_release(rci);
+}
+
+static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_CLIENT_CTOR_PRIORITY)
+raft_client_ctor_init(void)
+{
+    FUNC_ENTRY(LL_NOTIFY);
+    LREG_ROOT_ENTRY_INSTALL(raft_client_root_entry);
+
+    return;
 }

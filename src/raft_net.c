@@ -41,7 +41,7 @@ static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
                              void *);
 
-LREG_ROOT_ENTRY_GENERATE(raft_net, LREG_USER_TYPE_RAFT_NET);
+//LREG_ROOT_ENTRY_GENERATE(raft_net, LREG_USER_TYPE_RAFT_NET);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
                                 RAFT_NET_LREG__MAX,

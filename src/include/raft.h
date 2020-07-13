@@ -709,9 +709,6 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
                                       const char *data, const size_t len);
 
 void
-raft_server_instance_init(struct raft_instance *ri);
-
-void
 raft_server_backend_use_posix(struct raft_instance *ri);
 
 void

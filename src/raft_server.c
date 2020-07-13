@@ -3403,7 +3403,7 @@ raft_server_instance_startup(struct raft_instance *ri);
 static int
 raft_server_instance_shutdown(struct raft_instance *ri);
 
-void
+static void
 raft_server_instance_init(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -3620,6 +3620,8 @@ raft_server_instance_run(const char *raft_uuid_str,
         return -EINVAL;
 
     struct raft_instance *ri = raft_net_get_instance();
+
+    raft_server_instance_init(ri);
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;

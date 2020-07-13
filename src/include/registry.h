@@ -438,8 +438,14 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         .lrn_cb = lreg_root_cb##name                                    \
     }                                                                   \
 
-#define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys,      \
-                                        read_write_op_cb, arg)          \
+#define LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,        \
+                                      read_write_op_cb, arg, type)      \
+    static inline void                                                  \
+    lreg_compile_time_assert(enum lreg_value_types type)                \
+    {                                                                   \
+        COMPILE_TIME_ASSERT(type == LREG_VAL_TYPE_ARRAY ||              \
+                            type == LREG_VAL_TYPE_OBJECT);              \
+    }                                                                   \
     static lreg_install_int_ctx_t                                       \
     lreg_root_cb_child##name(enum lreg_node_cb_ops op,                  \
                              struct lreg_node *lrn,                     \
@@ -491,7 +497,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                 return -EINVAL;                                         \
             if (lreg_val->lrv_value_idx_in != 0)                        \
                 return -ERANGE;                                         \
-            lreg_val->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;    \
+            lreg_val->get.lrv_value_type_out = type;                    \
             lreg_val->get.lrv_user_type_out = user_type;                \
             snprintf(lreg_val->lrv_key_string,                          \
                      LREG_VALUE_STRING_MAX, #name);                     \
@@ -520,6 +526,12 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         .lrn_cb = lreg_root_cb_child##name,                             \
         .lrn_cb_arg = arg,                                              \
     };                                                                  \
+
+#define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys,      \
+                                        read_write_op_cb, arg)          \
+    LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,            \
+                                  read_write_op_cb, arg,                \
+                                  LREG_VAL_TYPE_OBJECT)
 
 #define LREG_ROOT_ENTRY_EXPORT(name)            \
     extern struct lreg_node rootEntry##name

@@ -77,15 +77,16 @@ struct rsc_raft_test_info
 static struct rsc_raft_test_info rRTI;
 
 static util_thread_ctx_reg_int_t
-raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
-                                    void *);
+raft_client_test_app_lreg_multi_facet_cb(enum lreg_node_cb_ops,
+                                         struct lreg_value *, void *);
 
-LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
+LREG_ROOT_ENTRY_GENERATE(raft_client_test_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_client_app,
                                 LREG_USER_TYPE_RAFT_CLIENT_APP,
                                 RAFT_CLIENT_APP_LREG_MAX,
-                                raft_client_app_lreg_multi_facet_cb, NULL);
+                                raft_client_test_app_lreg_multi_facet_cb,
+                                NULL);
 
 const char *raft_uuid_str;
 const char *my_uuid_str;
@@ -1077,7 +1078,7 @@ rsc_main_loop(struct raft_instance *ri)
     return rc;
 }
 static util_thread_ctx_reg_int_t
-raft_client_instance_hist_lreg_multi_facet_handler(
+raft_client_test_instance_hist_lreg_multi_facet_handler(
     enum lreg_node_cb_ops op,
     struct raft_instance_hist_stats *rihs,
     struct lreg_value *lv)
@@ -1105,9 +1106,9 @@ raft_client_instance_hist_lreg_multi_facet_handler(
 }
 
 static util_thread_ctx_reg_int_t
-raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
-                                  struct lreg_node *lrn,
-                                  struct lreg_value *lv)
+raft_client_test_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
+                                       struct lreg_node *lrn,
+                                       struct lreg_value *lv)
 {
     struct raft_instance_hist_stats *rihs = lrn->lrn_cb_arg;
 
@@ -1132,7 +1133,8 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
         if (!lv)
             return -EINVAL;
 
-        rc = raft_client_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
+        rc = raft_client_test_instance_hist_lreg_multi_facet_handler(op, rihs,
+                                                                     lv);
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE:
@@ -1147,9 +1149,9 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
 }
 
 static util_thread_ctx_reg_int_t
-raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
-                                         const struct raft_instance *ri,
-                                         struct lreg_value *lv)
+raft_client_test_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                                              const struct raft_instance *ri,
+                                              struct lreg_value *lv)
 {
     if (!lv || !ri)
         return -EINVAL;
@@ -1198,8 +1200,9 @@ raft_client_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
 }
 
 static util_thread_ctx_reg_int_t
-raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
-                             struct lreg_value *lv)
+raft_client_test_instance_lreg_cb(enum lreg_node_cb_ops op,
+                                  struct lreg_node *lrn,
+                                  struct lreg_value *lv)
 {
     const struct raft_instance *ri = lrn->lrn_cb_arg;
     if (!ri)
@@ -1224,7 +1227,8 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     case LREG_NODE_CB_OP_READ_VAL:
     case LREG_NODE_CB_OP_WRITE_VAL: //fall through
         rc = lv ?
-            raft_client_instance_lreg_multi_facet_cb(op, ri, lv) : -EINVAL;
+            raft_client_test_instance_lreg_multi_facet_cb(op, ri, lv) :
+        -EINVAL;
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
@@ -1241,8 +1245,8 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
 
 static util_thread_ctx_reg_int_t
-raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
-                                    struct lreg_value *lv, void *arg)
+raft_client_test_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                                         struct lreg_value *lv, void *arg)
 {
     if (!lv || arg /* arg is not used here */)
         return -EINVAL;
@@ -1323,14 +1327,14 @@ raft_client_app_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
 static int
 raft_client_test_lreg_init(struct raft_instance *ri)
 {
-    LREG_ROOT_ENTRY_INSTALL(raft_client_root_entry);
+    LREG_ROOT_ENTRY_INSTALL(raft_client_test_root_entry);
 
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT_CLIENT,
-                   raft_client_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
+                   raft_client_test_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
 
-    int rc =
-        lreg_node_install_prepare(&ri->ri_lreg,
-                                  LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
+    int rc = lreg_node_install_prepare(
+        &ri->ri_lreg, LREG_ROOT_ENTRY_PTR(raft_client_test_root_entry));
+
     if (rc)
         return rc;
 
@@ -1338,7 +1342,7 @@ raft_client_test_lreg_init(struct raft_instance *ri)
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
         lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
-                       raft_client_instance_hist_lreg_cb,
+                       raft_client_test_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i],
                        LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
 
