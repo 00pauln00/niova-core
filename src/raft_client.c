@@ -447,6 +447,8 @@ raft_client_sub_app_done(struct raft_client_instance *rci,
                          struct raft_client_sub_app *sa,
                          const char *caller_func, const int caller_lineno)
 {
+    NIOVA_ASSERT(rci && sa);
+
     DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "%s:%d",
                             caller_func, caller_lineno);
 
@@ -516,24 +518,29 @@ raft_client_sub_app_add(struct raft_client_instance *rci,
 }
 
 static void
-raft_client_op_history_add_item_locked(struct raft_client_instance *rci,
-                                       enum raft_client_recent_op_types type,
-                                       struct raft_client_sub_app *item,
-                                       struct raft_client_sub_app **put_item)
+raft_client_op_history_add_item(struct raft_client_instance *rci,
+                                enum raft_client_recent_op_types type,
+                                struct raft_client_sub_app *item)
 {
-    NIOVA_ASSERT(rci && item && put_item);
+    NIOVA_ASSERT(rci && item);
 
     struct raft_client_sub_app_req_history *rh = &rci->rci_recent_ops[type];
 
     DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, item, "history-type=%d", type);
 
+    RCI_LOCK(rci);
     // Take a ref on the 'sa'.
     REF_TREE_REF_GET_ELEM_LOCKED(item, rcsa_rtentry);
 
-    // Caller must call raft_client_sub_app_put() after releasing the mutex
-    *put_item = rh->rcsarh_sa[rh->rcsarh_cnt];
+    const size_t idx = rh->rcsarh_cnt++ % rh->rcsarh_size;
 
-    rh->rcsarh_sa[rh->rcsarh_cnt++] = item;
+    struct raft_client_sub_app *release_item = rh->rcsarh_sa[idx];
+
+    rh->rcsarh_sa[idx] = item;
+    RCI_UNLOCK(rci);
+
+    if (release_item)
+        raft_client_sub_app_done(rci, release_item, __func__, __LINE__);
 }
 
 static void
@@ -1509,7 +1516,6 @@ raft_client_reply_complete(
     }
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
-    struct raft_client_sub_app *history_cleanup_sa;
 
     RCI_LOCK(rci);
     if (rcrh->rcrh_ready)
@@ -1561,19 +1567,16 @@ raft_client_reply_complete(
         RCI_LOCK(rci);
         rcrh->rcrh_completing = 0;
         rcrh->rcrh_ready = 1;
-
-        raft_client_op_history_add_item_locked(
-            rci,
-            rcrh->rcrh_op_rw ?
-            RAFT_CLIENT_RECENT_OP_TYPE_READ : RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
-            sa, &history_cleanup_sa);
     }
 
     RCI_UNLOCK(rci);
 
-    // release item from raft_client_op_history_add_item_locked() if present
-    if (history_cleanup_sa)
-        raft_client_sub_app_done(rci, history_cleanup_sa, __func__, __LINE__);
+    if (rcrh->rcrh_ready) // Add sa to 'completed op' cache
+        raft_client_op_history_add_item(
+            rci,
+            rcrh->rcrh_op_rw ?
+            RAFT_CLIENT_RECENT_OP_TYPE_READ : RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
+            sa);
 
     if (rcrh->rcrh_blocking)
         raft_client_sub_app_wake(rci, sa);
