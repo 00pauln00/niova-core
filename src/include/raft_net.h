@@ -151,10 +151,34 @@ struct raft_client_rpc_raft_entry_data
      (sizeof(struct raft_client_rpc_msg) +                              \
       sizeof(struct raft_client_rpc_raft_entry_data)))
 
+/**
+ * @rcrm_type:  The type of RPC which is one of enum raft_client_rpc_msg_type
+ * @rcrm_version:  Version number of this RPC.  This with the type composes
+ *    a logical 8-byte header.  At this time, the version numbering isn't
+ *    utilized.
+ * @rcrm_data_size:  Size of the contents attached to rcrm_data.
+ * @rcrm_msg_id:  64-bit unique ID for this msg.  Typically, this is derived
+ *    from the client's UUID and a counter.
+ * @rcrm_raft_id:  UUID of the raft instance.
+ * @rcrm_sender_id:  UUID of the sender.  At this time, all client and server
+ *    UUIDs are checked via the ctl-service.
+ * @rcrm_dest_id:  UUID of the RPC's destination.
+ * @rcrm_redirect_id:  Used in reply context to notify a client of the raft
+ *    leader's UUID.
+ * @rcrm_app_error:  Error info passed to the application.
+ * @rcrm_sys_error:  System level error.
+ * @rcrm_uses_raft_client_entry_data:  The contents of rcrm_data begin with
+ *    the raft_client_rpc_raft_entry_data structure.
+ * @rcrm_raft_client_app_seqno:  Optional 64-bit value for application use
+ *    which resides here to assist raft applications whose writes are sequence
+ *    based.  This removes the need to place the seqno in their own RPC layer.
+ * @rcrm_data:  Application information.
+ */
 struct raft_client_rpc_msg
 {
-    uint32_t                       rcrm_type;  // enum raft_client_rpc_msg_type
+    uint32_t                       rcrm_type;
     uint32_t                       rcrm_version;
+    uint32_t                       rcrm__pad0;
     uint32_t                       rcrm_data_size;
     uint64_t                       rcrm_msg_id;
     uuid_t                         rcrm_raft_id;
@@ -168,7 +192,8 @@ struct raft_client_rpc_msg
     int16_t                        rcrm_sys_error;
 //int16_t                        rcrm_raft_error; for these error type: raft_net_client_rpc_sys_error_2_string()
     uint8_t                        rcrm_uses_raft_client_entry_data;
-    uint8_t                        rcrm_pad[3];
+    uint8_t                        rcrm__pad1[3];
+    uint64_t                       rcrm_raft_client_app_seqno;
     char                           rcrm_data[];
 };
 
@@ -548,6 +573,15 @@ raft_net_client_user_id_init(struct raft_net_client_user_id *rncui)
 #define RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, index)           \
     (rncui)->rncui_key.v ## version .rncui_v ## version ## _uint64[index]
 
+#define RAFT_NET_CLIENT_USER_ID_FMT "%s:%x:%x:%x:%x"
+#define RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, version)        \
+    RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, version, 0),          \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 2),    \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 3),    \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 4),    \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 5)
+
+
 
 static inline int
 raft_net_client_user_id_cmp(const struct raft_net_client_user_id *a,
@@ -594,6 +628,25 @@ raft_net_client_user_id_2_uuid(const struct raft_net_client_user_id *rncui,
     }
 
     return 0;
+}
+
+static inline int
+raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
+                                  char *out_string, const size_t out_string_len)
+{
+    if (!rncui || !out_string || !out_string_len)
+        return -EINVAL;
+
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(&rncui, 0, 0), uuid_str);
+
+    int rc = snprintf(out_string, out_string_len, RAFT_NET_CLIENT_USER_ID_FMT,
+                      RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, 0));
+
+    if (rc > out_string_len - 1)
+        return -ENOSPC;
+
+    return (rc > out_string_len - 1) ? -ENOSPC : 0;
 }
 
 #endif
