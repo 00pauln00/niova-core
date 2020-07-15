@@ -316,7 +316,6 @@ struct raft_instance
     size_t                          ri_evps_in_use;
     struct lreg_node                ri_lreg;
     struct lreg_node                ri_net_lreg;
-    struct lreg_node                ri_lreg_peer_stats[CTL_SVC_MAX_RAFT_PEERS];
     struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
     struct raft_instance_backend   *ri_backend;
     void                           *ri_backend_arg;

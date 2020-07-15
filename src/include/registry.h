@@ -39,6 +39,7 @@ enum lreg_value_types
 {
     LREG_VAL_TYPE_NONE,
     LREG_VAL_TYPE_ARRAY,
+    LREG_VAL_TYPE_VARRAY, // virtual array (not attached to an lreg_node)
     LREG_VAL_TYPE_BOOL,
     LREG_VAL_TYPE_OBJECT,
     LREG_VAL_TYPE_ANON_OBJECT,
@@ -109,6 +110,18 @@ enum lreg_init_options
     LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO = 1 << 1,
 };
 
+struct lreg_node;
+struct lreg_value;
+typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
+                        struct lreg_value *);
+
+struct lreg_value_vnode_data
+{
+    unsigned int lvvd_num_keys_out;
+    uint8_t      lvvd_vobject:1; // if '0', the it's a varray
+    lrn_cb_t     lvvd_cb;
+};
+
 /**
  * -- struct lreg_value --
  * Complex value structure used for obtained multi-faceted object values from
@@ -125,9 +138,9 @@ enum lreg_init_options
  */
 struct lreg_value
 {
-    char                            lrv_key_string[LREG_VALUE_STRING_MAX + 1];
-    unsigned int                    lrv_value_idx_in;
-    enum lreg_node_cb_ops           lrv_op_in;
+    char                           lrv_key_string[LREG_VALUE_STRING_MAX + 1];
+    unsigned int                   lrv_value_idx_in;
+    enum lreg_node_cb_ops          lrv_op_in;
     union
     {
         struct
@@ -135,7 +148,11 @@ struct lreg_value
             unsigned int           lrv_num_keys_out;
             enum lreg_value_types  lrv_value_type_out;
             enum lreg_user_types   lrv_user_type_out;
-            struct lreg_value_data lrv_value_out;
+            union
+            {
+                struct lreg_value_data       lrv_value_out;
+                struct lreg_value_vnode_data lrv_varray_out;
+            };
         } get;
 
         struct
@@ -178,12 +195,20 @@ struct lreg_value
 #define LREG_VALUE_TO_USER_TYPE(lrv)             \
     (lrv)->get.lrv_user_type_out
 
+struct lreg_vnode_data
+{
+    enum lreg_user_types lvd_user_type;
+    uint8_t              lvd_varray:1;
+    uint8_t              lvd_vobject:1;
+    union
+    {
+        uint32_t         lvd_index;
+        uint32_t         lvd_num_entries;
+    };
+};
+
 struct lreg_node;
-
 CIRCLEQ_HEAD(lreg_node_list, lreg_node);
-
-typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
-                        struct lreg_value *);
 
 /**
  * -- struct lreg_node --
@@ -198,7 +223,9 @@ struct lreg_node
                               lrn_monitor:1,
                               lrn_may_destroy:1,
                               lrn_array_element:1,
-                              lrn_ignore_items_with_value_zero:1;
+                              lrn_ignore_items_with_value_zero:1,
+                              lrn_vnode_child:1;
+    struct lreg_vnode_data    lrn_lvd;
     void                     *lrn_cb_arg;
     lrn_cb_t                  lrn_cb;
     CIRCLEQ_ENTRY(lreg_node)  lrn_lentry;
@@ -208,6 +235,22 @@ struct lreg_node
         struct lreg_node     *lrn_parent_for_install_only;
     };
 };
+
+static inline void
+lreg_value_vnode_data_to_lreg_node(const struct lreg_value *lrv,
+                                   struct lreg_node *lrn)
+
+{
+    if (!lrv || !lrn)
+        return;
+
+    lrn->lrn_vnode_child = 1;
+    lrn->lrn_cb = lrv->get.lrv_varray_out.lvvd_cb;
+
+    lrn->lrn_lvd.lvd_user_type = LREG_VALUE_TO_USER_TYPE(lrv);
+    lrn->lrn_lvd.lvd_num_entries = lrv->get.lrv_varray_out.lvvd_num_keys_out;
+    lrn->lrn_lvd.lvd_vobject = lrv->get.lrv_varray_out.lvvd_vobject;
+}
 
 static inline char
 lreg_val_to_type(enum lreg_value_types type)
@@ -685,6 +728,18 @@ lreg_value_fill_array(struct lreg_value *lv, const char *key,
     lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_ARRAY);
 
     lv->get.lrv_user_type_out = user_type;
+}
+
+static inline void
+lreg_value_fill_varray(struct lreg_value *lv, const char *key,
+                       enum lreg_user_types user_type,
+                       unsigned int num_entries, lrn_cb_t cb)
+{
+    lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_VARRAY);
+
+    lv->get.lrv_user_type_out = user_type;
+    lv->get.lrv_varray_out.lvvd_num_keys_out = num_entries;
+    lv->get.lrv_varray_out.lvvd_cb = cb;
 }
 
 static inline void

@@ -47,20 +47,34 @@ lreg_root_node_get(void)
     return &lRegRootNode;
 }
 
-/**
- * lreg_node_walk - with the lock held and starting with the parent,
- *   walk the tree executing the provided callback function.  @parent:
- *   root for the walk.  @lrn_wcb: walk call back function.  @cb_arg:
- *   opaque argument supplied to the callback.
- */
-void
-lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
-               void *cb_arg, const int depth,
-               const enum lreg_user_types user_type)
+static void
+lreg_node_walk_vnode(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
+                     void *cb_arg, const int depth,
+                     const enum lreg_user_types user_type)
 {
-    struct lreg_node *child;
+    NIOVA_ASSERT(parent->lrn_vnode_child);
 
-    DBG_LREG_NODE(LL_DEBUG, (struct lreg_node *)parent, "parent");
+    unsigned int max_idx = parent->lrn_lvd.lvd_num_entries;
+
+    for (unsigned int i = 0; i < max_idx; i++)
+    {
+        struct lreg_node parent_copy = *parent;
+
+        parent_copy.lrn_lvd.lvd_user_type = user_type;
+        parent_copy.lrn_lvd.lvd_index = i;
+
+        if (!lrn_wcb(&parent_copy, cb_arg, depth))
+            break;
+    }
+}
+
+static void
+lreg_node_walk_attached_nodes(const struct lreg_node *parent,
+                              lrn_walk_cb_t lrn_wcb, void *cb_arg,
+                              const int depth,
+                              const enum lreg_user_types user_type)
+{
+    struct lreg_node *child = NULL;
 
     CIRCLEQ_FOREACH(child, &parent->lrn_head, lrn_lentry)
     {
@@ -76,6 +90,24 @@ lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
         if (!lrn_wcb(child, cb_arg, depth))
             break;
     }
+}
+
+/**
+ * lreg_node_walk - with the lock held and starting with the parent,
+ *   walk the tree executing the provided callback function.  @parent:
+ *   root for the walk.  @lrn_wcb: walk call back function.  @cb_arg:
+ *   opaque argument supplied to the callback.
+ */
+void
+lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
+               void *cb_arg, const int depth,
+               const enum lreg_user_types user_type)
+{
+    DBG_LREG_NODE(LL_DEBUG, (struct lreg_node *)parent, "parent");
+
+    return parent->lrn_vnode_child ?
+        lreg_node_walk_vnode(parent, lrn_wcb, cb_arg, depth, user_type) :
+        lreg_node_walk_attached_nodes(parent, lrn_wcb, cb_arg, depth, user_type);
 }
 
 /**
@@ -198,8 +230,21 @@ lreg_node_recurse_from_parent(struct lreg_node *parent,
                     SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth + 1, 0,
                                    indent, "", ',');
             }
-
         }
+        else if (lrv.get.lrv_value_type_out == LREG_VAL_TYPE_VARRAY)
+        {
+            struct lreg_node varray_child = *parent;
+            lreg_value_vnode_data_to_lreg_node(&lrv, &varray_child);
+
+            for (unsigned int j = 0;
+                 j < lrv.get.lrv_varray_out.lvvd_num_keys_out; j++)
+            {
+                varray_child.lrn_lvd.lvd_index = j;
+                lreg_node_recurse_from_parent(&varray_child, lrn_rcb,
+                                              depth + 1);
+            }
+        }
+
         lrn_rcb(&lrv, depth, i, true);
         if (i < num_keys - 1)
             SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, 0, indent, "", ',');

@@ -89,12 +89,17 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_NEWEST_ENTRY_CRC,   // uint32
     RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
-    RAFT_LREG_FOLLOWER_STATS,     // array - last follower node
+    RAFT_LREG_FOLLOWER_VSTATS,    // varray - last follower node
     RAFT_LREG_HIST_COMMIT_LAT,    // hist object
     RAFT_LREG_HIST_READ_LAT,      // hist object
     RAFT_LREG_MAX,
-    RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_STATS,
+    RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_VSTATS,
 };
+
+static util_thread_ctx_reg_int_t
+raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
+                                  struct lreg_node *lrn,
+                                  struct lreg_value *lv);
 
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
@@ -222,9 +227,11 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC),
                 RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
             break;
-        case RAFT_LREG_FOLLOWER_STATS:
-            lreg_value_fill_array(lv, "follower-stats",
-                                  LREG_USER_TYPE_RAFT_PEER_STATS);
+        case RAFT_LREG_FOLLOWER_VSTATS:
+            lreg_value_fill_varray(lv, "follower-vstats",
+                                   LREG_USER_TYPE_RAFT_PEER_STATS,
+                                   raft_num_members_validate_and_get(ri) - 1,
+                                   raft_instance_lreg_peer_vstats_cb);
             break;
         default:
             break;
@@ -316,23 +323,23 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
 }
 
 static util_thread_ctx_reg_int_t
-raft_instance_lreg_peer_stats_cb(enum lreg_node_cb_ops op,
-                                 struct lreg_node *lrn,
-                                 struct lreg_value *lv)
+raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
+                                  struct lreg_node *lrn,
+                                  struct lreg_value *lv)
 {
     const struct raft_instance *ri = lrn->lrn_cb_arg;
     if (!ri || !ri->ri_csn_raft)
         return -EINVAL;
 
+    NIOVA_ASSERT(lrn->lrn_vnode_child);
+
     if (lv)
         lv->get.lrv_num_keys_out =
             raft_instance_is_leader(ri) ? RAFT_PEER_STATS_MAX : 0;
 
-    const raft_peer_t peer =
-        ((const char *)lrn -
-         ((const char *)ri +
-          offsetof(struct raft_instance, ri_lreg_peer_stats))) /
-         sizeof(struct lreg_node);
+    // This peer is not listed in the follower output.
+    const raft_peer_t peer = lrn->lrn_lvd.lvd_index +
+        (lrn->lrn_lvd.lvd_index >= raft_server_instance_self_idx(ri) ? 1 : 0);
 
     NIOVA_ASSERT(raft_member_idx_is_valid(ri, peer));
 
@@ -3323,26 +3330,6 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
     if (rc)
         return rc;
 
-    const raft_peer_t this_peer_num = raft_server_instance_self_idx(ri);
-    const raft_peer_t num_members = raft_num_members_validate_and_get(ri);
-
-    for (raft_peer_t i = 0; i < num_members; i++)
-    {
-        if (i == this_peer_num) // Don't install object for ourselves.
-            continue;
-
-        SIMPLE_LOG_MSG(LL_DEBUG, "i=%hhx", i);
-        lreg_node_init(&ri->ri_lreg_peer_stats[i],
-                       LREG_USER_TYPE_RAFT_PEER_STATS,
-                       raft_instance_lreg_peer_stats_cb, ri,
-                       LREG_INIT_OPT_NONE);
-
-        rc = lreg_node_install_prepare(&ri->ri_lreg_peer_stats[i],
-                                       &ri->ri_lreg);
-        if (rc)
-            return rc;
-    }
-
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
@@ -3355,7 +3342,6 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
         if (rc)
             return rc;
     }
-
 
     return 0;
 }

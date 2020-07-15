@@ -637,6 +637,7 @@ ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
          citer->citer_parent->citer_sibling_printed_cnt > 0 &&
          (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY ||
+          LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_VARRAY ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ANON_OBJECT)))
         ret = ",";
 
@@ -660,6 +661,7 @@ ctlic_citer_2_value_string(const struct ctlic_iterator *citer)
         value_string = citer->citer_open_stanza ? "{" : "}";
         break;
     case LREG_VAL_TYPE_ARRAY:
+    case LREG_VAL_TYPE_VARRAY:
         value_string = citer->citer_open_stanza ? "[" : "]";
         break;
     default:
@@ -714,6 +716,7 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
                              value_string);
                 break;
             case LREG_VAL_TYPE_ARRAY:
+            case LREG_VAL_TYPE_VARRAY:
             case LREG_VAL_TYPE_OBJECT:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %s",
@@ -1216,7 +1219,9 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         return false;
 
     if (LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
-        LREG_VAL_TYPE_ARRAY)
+        LREG_VAL_TYPE_ARRAY ||
+        LREG_VALUE_TO_REQ_TYPE(&parent_citer->citer_lv) ==
+        LREG_VAL_TYPE_VARRAY)
     {
         /* If the parent is an array then "I" must be an anonymous
          * object (otherwise lreg_node_walk() would not have been called.
@@ -1285,7 +1290,8 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
             if (cmt->cmt_num_depth_segments > depth &&
                 (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
                  LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
-                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY))
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_VARRAY))
             {
                 struct ctlic_iterator sub_obj_kv_citer = kv_citer;
                 sub_obj_kv_citer.citer_sibling_num = 0;
@@ -1295,9 +1301,22 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
 
                 DBG_CITER(LL_DEBUG, &sub_obj_kv_citer, "sub-obj");
 
-                lreg_node_walk(lrn, ctlic_scan_registry_cb,
-                               (void *)&sub_obj_kv_citer,
-                               depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+                if (LREG_VALUE_TO_REQ_TYPE(kv_lv) != LREG_VAL_TYPE_VARRAY)
+                {
+                    lreg_node_walk(lrn, ctlic_scan_registry_cb,
+                                   (void *)&sub_obj_kv_citer,
+                                   depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+                }
+                else
+                {
+                     struct lreg_node varray_child = *lrn;
+
+                     lreg_value_vnode_data_to_lreg_node(kv_lv, &varray_child);
+
+                     lreg_node_walk(&varray_child, ctlic_scan_registry_cb,
+                                    (void *)&sub_obj_kv_citer,
+                                    depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+                }
             }
         }
 
