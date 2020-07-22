@@ -83,7 +83,7 @@ raft_client_test_app_lreg_multi_facet_cb(enum lreg_node_cb_ops,
 LREG_ROOT_ENTRY_GENERATE(raft_client_test_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_client_app,
-                                LREG_USER_TYPE_RAFT_CLIENT_APP,
+                                LREG_USER_TYPE_RAFT_CLIENT,
                                 RAFT_CLIENT_APP_LREG_MAX,
                                 raft_client_test_app_lreg_multi_facet_cb,
                                 NULL);

@@ -573,15 +573,13 @@ raft_net_client_user_id_init(struct raft_net_client_user_id *rncui)
 #define RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, index)           \
     (rncui)->rncui_key.v ## version .rncui_v ## version ## _uint64[index]
 
-#define RAFT_NET_CLIENT_USER_ID_FMT "%s:%x:%x:%x:%x"
-#define RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, version)        \
-    RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, version, 0),          \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 2),    \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 3),    \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 4),    \
+#define RAFT_NET_CLIENT_USER_ID_FMT "%s:%lx:%lx:%lx:%lx"
+#define RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, version)      \
+        uuid_str,                                                       \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 2),            \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 3),            \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 4),            \
         RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, version, 5)
-
-
 
 static inline int
 raft_net_client_user_id_cmp(const struct raft_net_client_user_id *a,
@@ -638,10 +636,10 @@ raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
         return -EINVAL;
 
     char uuid_str[UUID_STR_LEN];
-    uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(&rncui, 0, 0), uuid_str);
+    uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, 0, 0), uuid_str);
 
     int rc = snprintf(out_string, out_string_len, RAFT_NET_CLIENT_USER_ID_FMT,
-                      RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, 0));
+                      RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
 
     if (rc > out_string_len - 1)
         return -ENOSPC;

@@ -252,7 +252,6 @@ struct raft_client_sub_app_req_history
     const size_t                rcsarh_size;
     niova_atomic64_t            rcsarh_cnt;
     struct raft_client_sub_app *rcsarh_sa;
-    struct lreg_node           *rcsarh_lreg;
 };
 
 enum raft_client_recent_op_types
@@ -357,7 +356,7 @@ raft_client_instance_release(struct raft_client_instance *rci)
 
     pthread_mutex_unlock(&raftClientMutex);
 
-    if (!rc) // raft_client_op_history_destroy() will also take the lock.
+    if (!rc)
     {
         raft_client_op_history_destroy(rci);
 
@@ -444,6 +443,11 @@ raft_client_sub_app_put(struct raft_client_instance *rci,
     RT_PUT(raft_client_sub_app_tree, &rci->rci_sub_apps, sa);
 }
 
+static void
+raft_client_op_history_add_item(struct raft_client_instance *rci,
+                                enum raft_client_recent_op_types type,
+                                struct raft_client_sub_app *item);
+
 /**
  * raft_client_sub_app_done - called when the sub app processing is no longer
  *    required.  The object may exist after this call until all of if refs
@@ -463,7 +467,7 @@ raft_client_sub_app_done(struct raft_client_instance *rci,
 
     raft_client_op_history_add_item(
         rci,
-        rcrh->rcrh_op_rw ?
+        sa->rcsa_rh.rcrh_op_rw ?
         RAFT_CLIENT_RECENT_OP_TYPE_READ : RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
         sa);
 
@@ -546,10 +550,10 @@ raft_client_op_history_add_item(struct raft_client_instance *rci,
 
     memcpy(&rh->rcsarh_sa[idx], item, sizeof(*item));
 
-    rh->rcsarh_sa[idx].rcrh_rpc = NULL;
-    rh->rcsarh_sa[idx].rcrh_reply_buf = NULL;
-    rh->rcsarh_sa[idx].rcrh_async_cb = NULL;
-    rh->rcsarh_sa[idx].rcrh_arg = NULL;
+    rh->rcsarh_sa[idx].rcsa_rh.rcrh_rpc = NULL;
+    rh->rcsarh_sa[idx].rcsa_rh.rcrh_reply_buf = NULL;
+    rh->rcsarh_sa[idx].rcsa_rh.rcrh_async_cb = NULL;
+    rh->rcsarh_sa[idx].rcsa_rh.rcrh_arg = NULL;
 
     rh->rcsarh_sa[idx].rcsa_rh.rcrh_history_cache = 1;
 }
@@ -562,10 +566,7 @@ raft_client_op_history_destroy(struct raft_client_instance *rci)
     {
         if (rci->rci_recent_ops[i].rcsarh_size &&
             rci->rci_recent_ops[i].rcsarh_sa)
-        {
             niova_free(rci->rci_recent_ops[i].rcsarh_sa);
-            niova_free(rci->rci_recent_ops[i].rcsarh_lreg);
-        }
 
         CONST_OVERRIDE(size_t, rci->rci_recent_ops[i].rcsarh_size, 0);
     }
@@ -593,12 +594,7 @@ raft_client_op_history_create(struct raft_client_instance *rci)
             niova_calloc_can_fail(raftClientOpHistorySize,
                                   sizeof(struct raft_client_sub_app));
 
-        rci->rci_recent_ops[i].rcsarh_lreg =
-            niova_calloc_can_fail(raftClientOpHistorySize,
-                                  sizeof(struct lreg_node));
-
-        if (!rci->rci_recent_ops[i].rcsarh_sa ||
-            !rci->rci_recent_ops[i].rcsarh_lreg
+        if (!rci->rci_recent_ops[i].rcsarh_sa)
         {
             raft_client_op_history_destroy(rci);
             return -ENOMEM;
@@ -1940,45 +1936,19 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ__MAX,
 };
 
-static util_thread_ctx_reg_t
-raft_client_sub_app_req_history_multi_facet_handler(
-    enum lreg_node_cb_ops op,
-    const struct raft_client_sub_app_req_history *rh,
-    struct lreg_value *lv, const struct lreg_node *lrn)
+static util_thread_ctx_reg_int_t
+raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
+                                        const struct raft_client_sub_app *sa,
+                                        struct lreg_value *lv)
 {
-    if (!lv || !rh || !lrn)
+    if (!sa || !lv)
 	return -EINVAL;
 
     else if (lv->lrv_value_idx_in >= RAFT_CLIENT_SUB_APP_REQ__MAX)
         return -ERANGE;
 
-    /* Calculate the logical index from the lrn address.
-     * An idx value of '0' signifies that the oldest item should be obtained.
-     */
-    ssize_t idx =
-        ((const uint8_t *)lrn - (const uint8_t *)rh->rcsarh_lreg) /
-        sizeof(struct lreg_node);
-
-    NIOVA_ASSERT(idx >= 0 && idx < rh->rcsarh_size);
-
-    const int64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
-    int64_t oldest_entry = cnt > rh->rcsarh_size ? cnt % rh->rcsarh_size : 0;
-
-    idx = (idx + oldest_entry) % rh->rcsarh_size;
-
-    const struct raft_client_sub_app *sa = &rh->rcsarh_sa[idx];
-
-    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "idx=%zd oldest=%ld",
-                            idx, oldest_entry);
-
     switch (op)
     {
-    case LREG_NODE_CB_OP_GET_NODE_INFO: // fall through
-    case LREG_NODE_CB_OP_INSTALL_NODE:  // fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
-        rc = -EOPNOTSUPP;
-        break;
-
     case LREG_NODE_CB_OP_READ_VAL:
         switch (lv->lrv_value_idx_in)
         {
@@ -1995,7 +1965,7 @@ raft_client_sub_app_req_history_multi_facet_handler(
                                      sa->rcsa_rh.rcrh_rpc_msd_id);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SEQNO:
-            lreg_value_fill_unsigned(lv, "rpc-id",
+            lreg_value_fill_unsigned(lv, "app-seqno",
                                      sa->rcsa_rh.rcrh_rpc_app_seqno);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_STATS_BLOCKING:
@@ -2006,11 +1976,11 @@ raft_client_sub_app_req_history_multi_facet_handler(
             lreg_value_fill_key_and_type(lv, "server", LREG_VAL_TYPE_STRING);
             snprintf(LREG_VALUE_TO_OUT_STR(lv), LREG_VAL_TYPE_STRING,
                      "%s:%d", inet_ntoa(sa->rcsa_rh.rcrh_sin_reply_addr),
-                     ntohs(sa->rcsa_rh.sin_port));
+                     ntohs(sa->rcsa_rh.rcrh_sin_reply_port));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME:
             lreg_value_fill_string_time(lv, "submitted",
-                                        &sa->rcsa_rh.rcrh_submitted);
+                                        sa->rcsa_rh.rcrh_submitted.tv_sec);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS:
             lreg_value_fill_unsigned(lv, "attempts",
@@ -2023,8 +1993,11 @@ raft_client_sub_app_req_history_multi_facet_handler(
         default:
 	    break;
         }
+    default:
         break;
     }
+
+    return 0;
 }
 
 static util_thread_ctx_reg_int_t
@@ -2032,14 +2005,40 @@ raft_client_sub_app_req_history_lreg_cb(enum lreg_node_cb_ops op,
                                         struct lreg_node *lrn,
                                         struct lreg_value *lv)
 {
-    const struct raft_client_sub_app_req_history *rh = lrn->lrn_cb_arg;
-    if (!rh)
+    const struct raft_client_instance *rci = lrn->lrn_cb_arg;
+    if (!rci)
         return -EINVAL;
 
     if (lv)
         lv->get.lrv_num_keys_out = RAFT_CLIENT_SUB_APP_REQ__MAX;
 
-     switch (op)
+    NIOVA_ASSERT(lrn->lrn_vnode_child);
+
+    struct lreg_vnode_data *vd = &lrn->lrn_lvd;
+
+    const struct raft_client_sub_app_req_history *rh;
+
+    if (vd->lvd_user_type == LREG_USER_TYPE_RAFT_CLIENT_ROP_RD)
+        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_READ];
+    else
+        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_WRITE];
+
+    if (vd->lvd_index >= rh->rcsarh_size)
+        return -ERANGE;
+
+    size_t idx = vd->lvd_index;
+
+    const int64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
+    int64_t oldest_entry = cnt > rh->rcsarh_size ? (cnt % rh->rcsarh_size) : 0;
+
+    idx = (idx + oldest_entry) % rh->rcsarh_size;
+
+    const struct raft_client_sub_app *sa = &rh->rcsarh_sa[idx];
+
+    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "idx=%zd oldest=%ld",
+                            idx, oldest_entry);
+
+    switch (op)
     {
     case LREG_NODE_CB_OP_GET_NAME:
         if (!lv)
@@ -2053,7 +2052,7 @@ raft_client_sub_app_req_history_lreg_cb(enum lreg_node_cb_ops op,
         if (!lv)
 	    return -EINVAL;
 
-	raft_instance_lreg_peer_stats_multi_facet_handler(op, rh, lv, lrn);
+        return raft_client_sub_app_multi_facet_handler(op, sa, lv);
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
@@ -2065,7 +2064,15 @@ raft_client_sub_app_req_history_lreg_cb(enum lreg_node_cb_ops op,
     }
 
     return 0;
+}
 
+static size_t
+raft_client_sub_app_req_history_size(
+    const struct raft_client_sub_app_req_history *rh)
+{
+    const int64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
+
+    return cnt > rh->rcsarh_size ? rh->rcsarh_size : cnt;
 }
 
 static util_thread_ctx_reg_int_t
@@ -2085,6 +2092,8 @@ raft_client_instance_lreg_multi_facet_cb(
 
     else if (op != LREG_NODE_CB_OP_READ_VAL)
         return -EOPNOTSUPP;
+
+    const struct raft_client_sub_app_req_history *rh;
 
     switch (lv->lrv_value_idx_in)
     {
@@ -2132,12 +2141,19 @@ raft_client_instance_lreg_multi_facet_cb(
                                     rci->rci_last_request_ackd.tv_sec);
 	break;
     case RAFT_CLIENT_LREG_RECENT_RD_OPS:
-        lreg_value_fill_array(lv, "recent-ops-rd",
-                              LREG_USER_TYPE_RAFT_CLIENT_APP);
+        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_READ];
+        lreg_value_fill_varray(lv, "recent-ops-rd",
+                               LREG_USER_TYPE_RAFT_CLIENT_ROP_RD,
+                               raft_client_sub_app_req_history_size(rh),
+                               raft_client_sub_app_req_history_lreg_cb);
+
         break;
     case RAFT_CLIENT_LREG_RECENT_WR_OPS:
-        lreg_value_fill_array(lv, "recent-ops-wr",
-                              LREG_USER_TYPE_RAFT_CLIENT_APP);
+        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_WRITE];
+        lreg_value_fill_varray(lv, "recent-ops-wr",
+                               LREG_USER_TYPE_RAFT_CLIENT_ROP_WR,
+                               raft_client_sub_app_req_history_size(rh),
+                               raft_client_sub_app_req_history_lreg_cb);
         break;
     default:
         break;
@@ -2213,21 +2229,6 @@ raft_client_instance_lreg_init(struct raft_client_instance *rci,
 
 	rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn,
                                        &rci->rci_lreg);
-        FATAL_IF((rc), "lreg_node_install_prepare(): %s", strerror(-rc));
-    }
-
-    for (enum raft_client_recent_op_types i = RAFT_CLIENT_RECENT_OP_TYPE_MIN;
-         i < RAFT_CLIENT_RECENT_OP_TYPE_MAX; i++)
-    {
-        lreg_node_init(&rci->rci_recent_ops[i].rcsarh_lreg,
-                       LREG_USER_TYPE_RAFT_CLIENT_APP + i,
-                       raft_client_sub_app_req_history_lreg_cb,
-                       (void *)&rcr->rci_recent_ops[i],
-                       LREG_INIT_OPT_NONE);
-
-            rc = lreg_node_install_prepare(
-                &rci->rci_recent_ops[i].rcsarh_lreg[j], &rci->rci_lreg);
-        }
         FATAL_IF((rc), "lreg_node_install_prepare(): %s", strerror(-rc));
     }
 }
