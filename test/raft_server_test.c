@@ -243,7 +243,7 @@ rst_sm_handler_write(struct raft_net_client_request_handle *rncr)
 {
     NIOVA_ASSERT(rncr && rncr->rncr_request && rncr->rncr_is_leader &&
                  rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE &&
-                 raft_net_client_request_handle_writes_raft_entry(rncr));
+                 !raft_net_client_request_handle_writes_raft_entry(rncr));
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
