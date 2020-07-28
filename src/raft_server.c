@@ -229,7 +229,7 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                 RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
             break;
         case RAFT_LREG_FOLLOWER_VSTATS:
-            lreg_value_fill_varray(lv, "follower-vstats",
+            lreg_value_fill_varray(lv, "follower-stats",
                                    LREG_USER_TYPE_RAFT_PEER_STATS,
                                    raft_num_members_validate_and_get(ri) - 1,
                                    raft_instance_lreg_peer_vstats_cb);
