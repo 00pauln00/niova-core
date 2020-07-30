@@ -53,9 +53,9 @@ enum system_info_keys
     SYS_INFO_KEY__MIN = SYS_INFO_KEY_CTIME,
 };
 
-#define SYS_INFO_PROCESS_CMDLINE_LEN 255
+#define SYS_INFO_PROCESS_CMDLINE_LEN 4096
 
-static char   systemInfoProcessCmdLine[SYS_INFO_PROCESS_CMDLINE_LEN + 1];
+static char   systemInfoProcessCmdLine[SYS_INFO_PROCESS_CMDLINE_LEN];
 static uuid_t systemInfoUuid;
 static struct timespec systemInfoStartTime;
 
@@ -260,7 +260,7 @@ static int
 system_info_auto_detect_uuid(void)
 {
     char proc_cmdline_path[PATH_MAX];
-    char buf[PATH_MAX] = {0};
+    char buf[SYS_INFO_PROCESS_CMDLINE_LEN] = {0};
 
     int rc = snprintf(proc_cmdline_path, PATH_MAX, "/proc/%u/cmdline",
                       getpid());
@@ -268,7 +268,7 @@ system_info_auto_detect_uuid(void)
         return -ENAMETOOLONG;
 
     ssize_t rrc = file_util_open_and_read(AT_FDCWD, proc_cmdline_path, buf,
-                                          PATH_MAX, NULL);
+                                          SYS_INFO_PROCESS_CMDLINE_LEN, NULL);
     if (rrc < 0) // Xxx this may happen if our buffer is too small
     {
         SIMPLE_LOG_MSG(LL_ERROR, "file_util_open_and_read(): %s",
