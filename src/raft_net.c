@@ -4,12 +4,13 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <sys/timerfd.h>
 #include <linux/limits.h>
+#include <regex.h>
+#include <sys/stat.h>
+#include <sys/timerfd.h>
+#include <sys/types.h>
+#include <unistd.h>
 
 #include "alloc.h"
 #include "crc32.h"
@@ -21,6 +22,7 @@
 #include "log.h"
 #include "raft.h"
 #include "random.h"
+#include "regex_defines.h"
 #include "udp.h"
 #include "util_thread.h"
 
@@ -34,6 +36,8 @@ struct raft_instance raftInstance = {
 //    .ri_store_type = RAFT_INSTANCE_STORE_ROCKSDB,
     .ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
 };
+
+static regex_t raftNetRncuiRegex;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -1124,6 +1128,75 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
     return 0;
 }
 
+int
+raft_net_client_user_id_parse(const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version)
+{
+    if (!in || !rncui)
+        return -EINVAL;
+
+    else if (version != 0)
+        return -EOPNOTSUPP;
+
+    // An otherwise invalid string could appear valid after the below strncpy
+    else if (strnlen(in, RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE) ==
+        RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE)
+        return -ENAMETOOLONG;
+
+    char local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE];
+    strncpy(local_str, in, RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1);
+    local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1] = '\0';
+
+    const char *uuid_str = NULL;
+
+    int rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
+    if (!rc)
+    {
+        const char *sep = RAFT_NET_CLIENT_USER_ID_V0_STR_SEP;
+        char *sp = NULL;
+        char *sub;
+
+        size_t pos = 0;
+        for (sub = strtok_r(local_str, sep, &sp);
+             sub != NULL;
+             sub = strtok_r(NULL, sep, &sp), pos++)
+        {
+            if (!pos)
+            {
+                rc = uuid_parse(sub, RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, 0,
+                                                                    0));
+                if (rc)
+                {
+                    rc = -EINVAL;
+                    break;
+                }
+
+                uuid_str = sub;
+            }
+            else
+            {
+                NIOVA_ASSERT((1 + pos) < RAFT_NET_CLIENT_USER_ID_V0_NUINT64);
+
+                RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, 0, 1 + pos) =
+                    strtoull(sub, NULL, 16);
+            }
+        }
+    }
+
+    if (!rc)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, RAFT_NET_CLIENT_USER_ID_FMT,
+                       RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
+    }
+    else
+    {
+        LOG_MSG(LL_NOTIFY, "parse failed for `%s'", local_str);
+    }
+
+    return rc;
+}
+
 /**
  * raft_net_sm_write_supplement_add - 'write supplements' are KVs which
  *    accompany a backend write operation and are atomically applied to the
@@ -1194,5 +1267,15 @@ raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
     LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_info);
+
+    int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
+    NIOVA_ASSERT(!rc);
+
     return;
+}
+
+static destroy_ctx_t NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+raft_net_destroy(void)
+{
+    regfree(&raftNetRncuiRegex);
 }

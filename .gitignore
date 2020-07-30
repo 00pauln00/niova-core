@@ -47,3 +47,4 @@ libpumice.so.1.0.1
 libpumicedb.*
 libpumicedb_client.*
 test/regex-test
+test/raft_net_test

@@ -36,17 +36,20 @@ static const struct regex_item rncuiTests[] = {
     {"1a636bd0-d27d-11ea-8cad-90324b2d1e89:2341523123:32452300123:1:0", true},
     {"0d6ac28e-d278-11ea-9638-90324b2d1e89:01:0:0:0", false},
     {"0d6ac28e-d278-11ea-9638-90324b2d1e8:122:0:0:1", false},
-    {"0d6ac28e-d278-11ea-9638-90324b2d1e89:9b:0:0:1", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89:9b:0:0:1", true},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89:ffee:aadd:a341345e:1", true},
     {"1a636bd0-d27d-11ea-8cad-90324b2d1e89::2341523123:32452300123:1", false},
+    {"1a636bd0-d27d-11ea-8cad-90324b2d1e89:2341523123:32452300123:0f:1e", false},
 };
 
 static const struct regex_item pmdbApplyCmdTests[] = {
     {"0d6ac28e-d278-11ea-9638-90324b2d1e89:0:0:0:0.read", true},
     {"79551132-d289-11ea-b67c-90324b2d1e89:0:31:3:0.read", true},
-    {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.write.0", true},
-    {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.write.1", true},
+    {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:ef:0.write.0", true},
+    {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:ac53.write.1", true},
     {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.write.01", false},
     {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.write.123425", true},
+    {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.write.ef1232", false},
     {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.rw.01", false},
     {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.read.0fe", false},
 };

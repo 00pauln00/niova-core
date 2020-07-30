@@ -109,7 +109,7 @@ $(TARGET): $(ALL_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 
-tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
+tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/ref_tree_test test/ref_tree_test.c \
@@ -152,6 +152,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/regex-test \
 		test/regex-tests.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/raft_net_test \
+		test/raft_net_test.c \
+		$(ALL_CORE_OBJFILES) src/raft_net.o $(INCLUDE) $(LDFLAGS)
 
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \

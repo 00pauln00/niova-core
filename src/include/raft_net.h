@@ -105,6 +105,9 @@ enum raft_net_comm_recency_type
 #define RAFT_NET_CLIENT_USER_ID_V0_NUUID \
     (RAFT_NET_CLIENT_USER_ID_V0_SZ / sizeof(uuid_t))
 
+#define RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE 101 // includes NULL terminator
+#define RAFT_NET_CLIENT_USER_ID_V0_STR_SEP ":"
+
 struct raft_net_client_user_key_v0
 {
     union
@@ -647,4 +650,10 @@ raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
     return (rc > out_string_len - 1) ? -ENOSPC : 0;
 }
 
+#define raft_net_client_user_id_unparse raft_net_client_user_id_to_string
+
+int
+raft_net_client_user_id_parse(const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version);
 #endif

@@ -32,7 +32,7 @@
 #define CTL_SVC_REGEX_STR UUID_REGEX_CTL_SVC_FILE_NAME
 
 #define RNCUI_V0_REGEX_BASE \
-    UUID_REGEX_BASE"\\(:\\([0-9]\\{1\\}\\|[1-9][0-9]\\+\\)\\)\\{4\\}"
+    UUID_REGEX_BASE"\\(:\\([0-9a-f]\\{1\\}\\|[1-9a-f][0-9a-f]\\+\\)\\)\\{4\\}"
 
 #define PMDB_APPLY_CMD_REGEX                    \
     "^"RNCUI_V0_REGEX_BASE"\\.read$\\|\\.write.\\([0-9]\\{1\\}\\|[1-9][0-9]\\+\\)$"
