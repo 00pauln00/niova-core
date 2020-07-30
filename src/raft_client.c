@@ -152,7 +152,7 @@ struct raft_client_request_handle
     size_t                      rcrh_num_sends;
     size_t                      rcrh_reply_used_size;
     const size_t                rcrh_reply_size;
-    uint64_t                    rcrh_rpc_msd_id;
+    uint64_t                    rcrh_rpc_msg_id;
     uint64_t                    rcrh_rpc_app_seqno;
     struct raft_client_rpc_msg *rcrh_rpc;
     char                       *rcrh_reply_buf;
@@ -1161,10 +1161,15 @@ raft_client_sub_app_rpc_request_new(
     raft_client_rpc_msg_raft_entry_data_init(rcrred, rncui, request,
                                              request_size);
 
+    sa->rcsa_rh.rcrh_rpc = rcrm;
+
+    // Copy the msg back to the sub app
+    sa->rcsa_rh.rcrh_rpc_msg_id = rcrm->rcrm_msg_id;
+
     DBG_RAFT_CLIENT_RPC_LEADER(LL_DEBUG, RCI_2_RI(rci), rcrm, "rcrred crc=%x",
                                rcrred->rcrred_crc);
 
-    sa->rcsa_rh.rcrh_rpc = rcrm;
+    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
 
     return 0;
 }
@@ -1353,12 +1358,9 @@ raft_client_async_cb_issue(struct raft_client_instance *rci,
 
     // Issue the callback if it was specified
     if (should_exec && rcrh->rcrh_async_cb)
-    {
         rcrh->rcrh_async_cb(&sa->rcsa_rncui, rcrh->rcrh_arg,
-                            rcrh->rcrh_reply_buf,
-                            rcrh->rcrh_reply_used_size,
+                            rcrh->rcrh_reply_buf, rcrh->rcrh_reply_used_size,
                             rcrh->rcrh_error);
-    }
 }
 
 raft_client_app_ctx_int_t
@@ -1497,16 +1499,14 @@ raft_client_reply_complete(
     NIOVA_ASSERT(rci && rcrred && from);
 
     struct raft_client_sub_app *sa =
-        raft_client_sub_app_lookup(rci, &rcrred->rcrred_rncui,
-                                   __func__, __LINE__);
-
+        raft_client_sub_app_lookup(rci, &rcrred->rcrred_rncui, __func__,
+                                   __LINE__);
     if (!sa)
         return;
 
     DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
 
-    if (!sa->rcsa_rh.rcrh_rpc ||
-        msg_id != raft_client_sub_app_2_msg_id(sa))
+    if (!sa->rcsa_rh.rcrh_rpc || msg_id != raft_client_sub_app_2_msg_id(sa))
     {
         DBG_RAFT_CLIENT_SUB_APP(
             (sa->rcsa_rh.rcrh_rpc ? LL_NOTIFY : LL_WARN),
@@ -1962,7 +1962,7 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             break;
         case RAFT_CLIENT_SUB_APP_REQ_RPC_ID:
             lreg_value_fill_unsigned(lv, "rpc-id",
-                                     sa->rcsa_rh.rcrh_rpc_msd_id);
+                                     sa->rcsa_rh.rcrh_rpc_msg_id);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",
