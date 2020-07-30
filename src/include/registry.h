@@ -65,6 +65,8 @@ enum lreg_user_types
     LREG_USER_TYPE_RAFT,
     LREG_USER_TYPE_RAFT_NET,
     LREG_USER_TYPE_RAFT_CLIENT,
+    LREG_USER_TYPE_RAFT_CLIENT_APP,
+    LREG_USER_TYPE_RAFT_CLIENT_APP_DATA,
     LREG_USER_TYPE_RAFT_CLIENT_ROP_RD,
     LREG_USER_TYPE_RAFT_CLIENT_ROP_WR,
     LREG_USER_TYPE_RAFT_PEER_STATS,
@@ -119,7 +121,7 @@ typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
 struct lreg_value_vnode_data
 {
     unsigned int lvvd_num_keys_out;
-    uint8_t      lvvd_vobject:1; // if '0', the it's a varray
+    uint8_t      lvvd_vobject:1; // if '0', it's a varray
     lrn_cb_t     lvvd_cb;
 };
 
