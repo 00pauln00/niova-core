@@ -149,6 +149,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/util-test \
 		test/util-test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/regex-test \
+		test/regex-tests.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
@@ -197,6 +200,7 @@ raft-cg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 test_build: tests
 test_build:
 	mkdir -p /tmp/.niova
+	test/regex-test
 	test/config_token_test
 	test/micro_test
 	test/binary_hist_test

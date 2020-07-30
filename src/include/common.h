@@ -41,6 +41,12 @@
 
 #define TYPE_SZ_BITS(type) (sizeof(type) * NBBY)
 
+#define ARRAY_SIZE(arr)                                \
+    (sizeof(arr) / sizeof((arr)[0])                    \
+     + sizeof(typeof(int[1 - 2 *                                        \
+                         !!__builtin_types_compatible_p(typeof(arr),    \
+                                                        typeof(&arr[0]))])) * 0)
+
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
