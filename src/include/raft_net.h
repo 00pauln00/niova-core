@@ -133,6 +133,9 @@ struct raft_net_client_user_id
     uint32_t                        rncui__unused;
 };
 
+// Encapsulation sanity check
+#define RAFT_CLIENT_RPC_ENTRY_DATA_MAGIC 0x1a2b3c4
+
 /* raft_client_rpc_raft_entry_data - Used by raft_client.c as the outermost
  *    encapsulation layer of data stored in a raft log entry.  This structure
  *    is presented to the raft server write and apply callbacks (via
@@ -142,9 +145,9 @@ struct raft_net_client_user_id
 struct raft_client_rpc_raft_entry_data
 {
     uint32_t                       rcrred_version;
+    uint32_t                       rcrred_magic;
     uint32_t                       rcrred_crc;
     uint32_t                       rcrred_data_size;
-    uint32_t                       rcrred__pad;
     struct raft_net_client_user_id rcrred_rncui;
     char                           rcrred_data[];
 };
@@ -202,7 +205,7 @@ struct raft_client_rpc_msg
 
 #define _RAFT_NET_MAP_RPC(type, rcrm)                           \
     ({                                                          \
-        (sizeof(struct type) >= (rcrm)->rcrm_data_size) ?       \
+        (sizeof(struct type) <= (rcrm)->rcrm_data_size) ?       \
             (rcrm)->rcrm_data : NULL;                           \
     })
 

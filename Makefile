@@ -171,27 +171,35 @@ raft-dbg: raft
 # PumiceDB
 pumicedb-common: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) \
 	$(PUMICEDB_CLIENT_OBJFILES) $(ALL_INCLUDES)
-	$(CC) -shared -Wl,-soname,libpumicedb.so.1 -o libpumicedb.so.1.0.1 \
-		$(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) -lc
-	$(CC) -shared -Wl,-soname,libpumicedb_client.so.1 \
-		-o libpumicedb_client.so.1.0.1 $(ALL_CORE_OBJFILES) \
-		$(PUMICEDB_CLIENT_OBJFILES) -lc
-	ln -sf libpumicedb.so.1.0.1 libpumicedb.so
-	ln -sf libpumicedb.so.1.0.1 libpumicedb.so.1
-	ln -sf libpumicedb_client.so.1.0.1 libpumicedb_client.so
-	ln -sf libpumicedb_client.so.1.0.1 libpumicedb_client.so.1
+	# $(CC) -shared -Wl,-soname,libpumicedb.so.1 -o libpumicedb.so.1.0.1 \
+	# 	$(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) -lc
+	# $(CC) -shared -Wl,-soname,libpumicedb_client.so.1 \
+	# 	-o libpumicedb_client.so.1.0.1 $(ALL_CORE_OBJFILES) \
+	# 	$(PUMICEDB_CLIENT_OBJFILES) -lc
+	# ln -sf libpumicedb.so.1.0.1 libpumicedb.so
+	# ln -sf libpumicedb.so.1.0.1 libpumicedb.so.1
+	# ln -sf libpumicedb_client.so.1.0.1 libpumicedb_client.so
+	# ln -sf libpumicedb_client.so.1.0.1 libpumicedb_client.so.1
+	# $(CC) $(PMDB_CFLAGS) -o pumicedb-server-test \
+	# 	test/pumice_db_test_server.c -lrocksdb -L. -lpumicedb \
+	# $(LDFLAGS)
+	# $(CC) $(PMDB_CFLAGS) -o pumicedb-client-test \
+	# 	test/pumice_db_test_client.c -L. -lpumicedb_client $(LDFLAGS)
 	$(CC) $(PMDB_CFLAGS) -o pumicedb-server-test \
-		test/pumice_db_test_server.c -lrocksdb -L. -lpumicedb \
-	$(LDFLAGS)
+		test/pumice_db_test_server.c $(ALL_CORE_OBJFILES) \
+		$(PUMICEDB_OBJFILES) -lrocksdb $(LDFLAGS)
 	$(CC) $(PMDB_CFLAGS) -o pumicedb-client-test \
-		test/pumice_db_test_client.c -L. -lpumicedb_client $(LDFLAGS)
+		test/pumice_db_test_client.c $(ALL_CORE_OBJFILES) \
+		$(PUMICEDB_CLIENT_OBJFILES) $(LDFLAGS)
 
 pumicedb: CFLAGS = $(DEF_CFLAGS) -fPIC -c
 pumicedb: PMDB_CFLAGS = $(DEF_CFLAGS)
 pumicedb: pumicedb-common
 
-pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) -fPIC -c \
+pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) \
 	-DNIOVA_FAULT_INJECTION_ENABLED -fsanitize=address
+#pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) -fPIC -c \
+#	-DNIOVA_FAULT_INJECTION_ENABLED -fsanitize=address
 pumicedb-dbg: PMDB_CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
 pumicedb-dbg: pumicedb-common
 
@@ -255,7 +263,7 @@ pahole : tests
 clean :
 	rm -fv test/simple_test test/niosd_io_test test/ref_test_test \
 	$(ALL_OBJFILES) $(CTL_OBJFILES) $(TARGET) $(CTL_TARGET) \
-	$(RAFT_OBJFILES) $(PUMICEDB_OBJFILES) \
+	$(RAFT_OBJFILES) $(PUMICEDB_OBJFILES) $(PUMICEDB_CLIENT_OBJFILES) \
 	*~ src/*.gcno src/*.gcda *.gcno *.gcda *.expand src/*.expand \
 	$(NIOVA_LCOV).out
 

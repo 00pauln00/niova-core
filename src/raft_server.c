@@ -338,11 +338,7 @@ raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
         lv->get.lrv_num_keys_out =
             raft_instance_is_leader(ri) ? RAFT_PEER_STATS_MAX : 0;
 
-    // This peer is not listed in the follower output.
-    const raft_peer_t peer = lrn->lrn_lvd.lvd_index +
-        (lrn->lrn_lvd.lvd_index >= raft_server_instance_self_idx(ri) ? 1 : 0);
-
-    NIOVA_ASSERT(raft_member_idx_is_valid(ri, peer));
+    raft_peer_t peer;
 
     switch (op)
     {
@@ -359,6 +355,13 @@ raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
     case LREG_NODE_CB_OP_WRITE_VAL: //fall through
         if (!lv)
             return -EINVAL;
+
+        // This peer is not listed in the follower output.
+        peer = lrn->lrn_lvd.lvd_index +
+            (lrn->lrn_lvd.lvd_index >= raft_server_instance_self_idx(ri) ?
+             1 : 0);
+
+        NIOVA_ASSERT(raft_member_idx_is_valid(ri, peer));
 
         raft_instance_lreg_peer_stats_multi_facet_handler(op, ri, peer, lv);
         break;

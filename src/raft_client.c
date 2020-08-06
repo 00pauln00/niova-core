@@ -1105,6 +1105,7 @@ raft_client_rpc_msg_raft_entry_data_init(
     NIOVA_ASSERT(rcrred && rncui && request_size);
     NIOVA_ASSERT(raft_client_rpc_msg_size_is_valid(request_size, true));
 
+    rcrred->rcrred_magic = RAFT_CLIENT_RPC_ENTRY_DATA_MAGIC;
     rcrred->rcrred_version = 0;
     rcrred->rcrred_data_size = request_size;
 
@@ -1121,18 +1122,21 @@ raft_client_sub_app_rpc_request_new(
     struct raft_client_instance *rci, struct raft_client_sub_app *sa,
     const char *request, const size_t request_size)
 {
+    const bool use_client_entry_data = true; // must always be true
+
     if (!rci || !sa || !request || !request_size)
         return -EINVAL;
 
-    else if (!raft_client_rpc_msg_size_is_valid(request_size, true))
+    else if (!raft_client_rpc_msg_size_is_valid(request_size,
+                                                use_client_entry_data))
         return -E2BIG;
 
     const struct raft_net_client_user_id *rncui = &sa->rcsa_rncui;
-    const bool use_client_entry_data = true;
 
     struct raft_client_rpc_msg *rcrm =
         niova_calloc_can_fail(1UL,
-                              raft_client_rpc_msg_size(request_size, true));
+                              raft_client_rpc_msg_size(request_size,
+                                                       use_client_entry_data));
 
     if (!rcrm)
         return -ENOMEM;
@@ -1184,14 +1188,13 @@ raft_client_request_handle_init(
 {
     NIOVA_ASSERT(rcrh && rcrh->rcrh_initializing);
 
-    memset(rcrh, 0, sizeof(struct raft_client_request_handle));
-
     rcrh->rcrh_arg = arg;
     rcrh->rcrh_blocking = block ? 1 : 0;
     rcrh->rcrh_reply_buf = reply;
     CONST_OVERRIDE(size_t, rcrh->rcrh_reply_size, reply_size);
     rcrh->rcrh_async_cb = cb;
     rcrh->rcrh_submitted = now;
+    rcrh->rcrh_initializing = 1;
 
     if (timespec_has_value(&timeout))
     {
@@ -2257,7 +2260,7 @@ raft_client_instance_assign(void)
 
     pthread_mutex_lock(&raftClientMutex);
 
-    for (size_t i = 0; i < RAFT_CLIENT_MAX_INSTANCES; i++)
+    for (size_t i = 0; i < RAFT_CLIENT_MAX_INSTANCES && !rci; i++)
     {
         if (raftClientInstances[i] != NULL)
             continue;

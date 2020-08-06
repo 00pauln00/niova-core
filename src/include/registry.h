@@ -324,7 +324,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 
 #define DBG_LREG_NODE(log_level, lrn, fmt, ...)                         \
 {                                                                       \
-    struct lreg_value lrv;                                              \
+    struct lreg_value lrv = {0};                                        \
     SIMPLE_LOG_MSG(log_level,                                           \
                    "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,             \
                    (lrn),                                               \

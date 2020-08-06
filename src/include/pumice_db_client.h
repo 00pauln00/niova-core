@@ -7,11 +7,12 @@
 #ifndef __NIOVA_PUMICE_DB_CLIENT_H_
 #define __NIOVA_PUMICE_DB_CLIENT_H_ 1
 
-#include "raft_client.h"
-
-typedef raft_client_instance_t pmdb_t;
+#include "pumice_db_net.h"
 
 pmdb_t
 PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
+
+int
+PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id);
 
 #endif

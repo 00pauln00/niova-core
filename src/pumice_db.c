@@ -291,7 +291,7 @@ pmdb_object_lookup(const struct raft_net_client_user_id *rncui,
     PMDB_STR_DEBUG(LL_NOTIFY, rncui, "err=%s val=%p", err, get_value);
 
     if (err || !get_value)
-        return rc; //Xxx need a proper error code intepreter
+        return rc; //XXX need a proper error code intepreter
 
     if (val_len != sizeof(struct pmdb_object))
     {
@@ -319,12 +319,14 @@ pmdb_object_lookup(const struct raft_net_client_user_id *rncui,
 
 static void
 pmdb_obj_to_reply(const struct pmdb_object *obj, struct pmdb_rpc_msg *reply,
-                  const int64_t current_raft_term)
+                  const int64_t current_raft_term, const int32_t err)
 {
     NIOVA_ASSERT(obj && reply);
 
+    reply->pmdbrm_err = err;
+    reply->pmdbrm_user_id = obj->pmdb_obj_rncui;
+    reply->pmdbrm_op = pmdb_op_reply;
     reply->pmdbrm_write_seqno = obj->pmdb_obj_commit_seqno;
-
     reply->pmdbrm_write_pending =
         obj->pmdb_obj_pending_term == current_raft_term ? 1 : 0;
 }
@@ -345,15 +347,14 @@ pmdb_sm_handler_client_lookup(struct raft_net_client_request_handle *rncr)
 
     struct pmdb_object pmdb_obj = {0};
 
+    struct pmdb_rpc_msg *pmdb_reply =
+        RAFT_NET_MAP_RPC(pmdb_rpc_msg, rncr->rncr_reply);
+
     int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &pmdb_obj,
                                 rncr->rncr_current_term);
 
-    if (!rc)
-        pmdb_obj_to_reply(&pmdb_obj,
-                          RAFT_NET_MAP_RPC(pmdb_rpc_msg, rncr->rncr_reply),
-                          rncr->rncr_current_term);
-    else
-        raft_client_net_request_handle_error_set(rncr, 0, 0, rc);
+    //XXX the 'rc' here may be for a system error from rocksDB
+    pmdb_obj_to_reply(&pmdb_obj, pmdb_reply, rncr->rncr_current_term, rc);
 
     return 0;
 }
@@ -722,6 +723,13 @@ pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
 
     const struct pmdb_rpc_msg *pmdb_req =
         (const struct pmdb_rpc_msg *)rncr->rncr_request_or_commit_data;
+
+    const struct raft_client_rpc_raft_entry_data *rcrred =
+        (const struct raft_client_rpc_raft_entry_data *)
+        rncr->rncr_request_or_commit_data;
+
+    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request, &rncr->rncr_remote_addr,
+                        "rcrred=%p", rcrred);
 
     if (pmdb_net_calc_rpc_msg_size(pmdb_req) !=
         rncr->rncr_request_or_commit_data_size)
