@@ -423,7 +423,7 @@ rsc_bootstrap_committed_seqno(const struct raft_test_values *rtv)
     return rsc_commit_seqno_validate(rtv, true);
 }
 
-static raft_net_udp_cb_ctx_int_t
+static raft_net_cb_ctx_int_t
 rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
 {
     if (!rcrm)
@@ -455,7 +455,7 @@ rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
     return 0;
 }
 
-static raft_net_udp_cb_ctx_int_t
+static raft_net_cb_ctx_int_t
 rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
 {
     if (!rcrm)
@@ -493,7 +493,7 @@ rsc_process_read_reply(const struct raft_client_rpc_msg *rcrm)
     return 0;
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 rsc_incorporate_ack_measurement(struct raft_instance *ri,
                                 const struct raft_client_rpc_msg *rcrm,
                                 const struct sockaddr_in *from,
@@ -530,7 +530,7 @@ rsc_incorporate_ack_measurement(struct raft_instance *ri,
     }
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
                                    const struct raft_client_rpc_msg *rcrm,
                                    const struct ctl_svc_node *sender_csn,
@@ -640,7 +640,7 @@ rsc_server_target_is_stale(const struct raft_instance *ri,
     return (rc || recency_ms > RSC_STALE_SERVER_TIME_MS) ? true : false;
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 rsc_update_leader_from_redirect(struct raft_instance *ri,
                                 const struct sockaddr_in *from,
                                 const struct raft_client_rpc_msg *rcrm)
@@ -664,7 +664,7 @@ rsc_update_leader_from_redirect(struct raft_instance *ri,
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 rsc_process_ping_reply(const struct raft_client_rpc_msg *rcrm,
                        const struct ctl_svc_node *sender_csn)
 {
@@ -705,7 +705,7 @@ rsc_process_ping_reply(const struct raft_client_rpc_msg *rcrm,
     }
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
                      ssize_t recv_bytes, const struct sockaddr_in *from)
 {

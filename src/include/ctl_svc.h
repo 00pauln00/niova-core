@@ -68,6 +68,7 @@ struct ctl_svc_node_peer
         struct ctl_svc_node_raft_peer csnp_raft_info;
         struct ctl_svc_node_niosd     csnp_niosd_info;
     };
+    struct raft_net_connection *csnp_net_data;
 };
 
 struct ctl_svc_node_raft

@@ -84,15 +84,17 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
-    if (!rc)
+    if (rc < 0)
     {
-        const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
-        NIOVA_ASSERT(num_handles > 0);
-
-        eph->eph_installed = 1;
+        return -errno;
     }
 
-    return rc;
+    const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
+    NIOVA_ASSERT(num_handles > 0);
+
+    eph->eph_installed = 1;
+
+    return 0;
 }
 
 int
@@ -134,6 +136,8 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
+
+    SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): %d", nevents);
 
     if (nevents < 0)
         return -errno;

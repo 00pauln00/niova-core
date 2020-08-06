@@ -61,4 +61,10 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph);
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
 
+static inline void
+epoll_handle_set_cb(struct epoll_handle *eph, void (*cb)(const struct epoll_handle *))
+{
+    eph->eph_cb = cb;
+}
+
 #endif

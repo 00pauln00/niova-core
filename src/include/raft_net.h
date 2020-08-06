@@ -16,6 +16,7 @@
 #include "epoll_mgr.h"
 #include "log.h"
 #include "net_ctl.h"
+#include "tcp.h"
 
 #define RAFT_NET_SEQNO_ANY -1ULL
 
@@ -29,9 +30,9 @@ struct sockaddr_in;
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
 #define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
 
-typedef void raft_net_udp_cb_ctx_t;
-typedef int  raft_net_udp_cb_ctx_int_t;
-typedef bool raft_net_udp_cb_ctx_bool_t;
+typedef void raft_net_cb_ctx_t;
+typedef int  raft_net_cb_ctx_int_t;
+typedef bool raft_net_cb_ctx_bool_t;
 typedef void raft_net_timerfd_cb_ctx_t;
 typedef int  raft_net_timerfd_cb_ctx_int_t;
 
@@ -46,8 +47,8 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_COMMIT, // complete a pending write
 };
 
-typedef raft_net_udp_cb_ctx_t
-    (*raft_net_udp_cb_t)(struct raft_instance *,
+typedef raft_net_cb_ctx_t
+    (*raft_net_cb_t)(struct raft_instance *,
                          const char *, ssize_t,
                          const struct sockaddr_in *);
 
@@ -55,10 +56,11 @@ typedef raft_net_timerfd_cb_ctx_t
     (*raft_net_timer_cb_t)(struct raft_instance *);
 
 // State machine request handler - reads, writes, and commits
-typedef raft_net_udp_cb_ctx_int_t
+typedef raft_net_cb_ctx_int_t
     (*raft_sm_request_handler_t)(struct raft_net_client_request *);
 
 #define RAFT_NET_MAX_RPC_SIZE 65000
+#define RAFT_NET_MAX_TCP_RPC_SIZE 1024*1000
 #define RAFT_NET_MAX_RETRY_MS 30000
 #define RAFT_NET_MIN_RETRY_MS 100
 
@@ -66,6 +68,12 @@ enum raft_instance_store_type
 {
     RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
     RAFT_INSTANCE_STORE_ROCKSDB,
+};
+
+enum raft_instance_net_type
+{
+    RAFT_INSTANCE_NET_UDP,
+    RAFT_INSTANCE_NET_TCP,
 };
 
 enum raft_udp_listen_sockets
@@ -93,6 +101,19 @@ enum raft_net_comm_recency_type
     RAFT_COMM_RECENCY_RECV,
     RAFT_COMM_RECENCY_SEND,
     RAFT_COMM_RECENCY_UNACKED_SEND,
+};
+
+struct raft_net_connection
+{
+    struct raft_instance       *rnc_ri;
+    struct tcp_socket_handle    rnc_tsh;
+    uuid_t                      rnc_remote;
+    struct epoll_handle         rnc_eph;
+};
+
+struct raft_net_tcp_handshake
+{
+    uuid_t  rnth_remote;
 };
 
 struct raft_client_rpc_msg
@@ -240,8 +261,8 @@ raft_net_server_instance_run(const char *raft_uuid_str,
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
                                   raft_net_timer_cb_t timer_fd_cb,
-                                  raft_net_udp_cb_t udp_client_recv_cb,
-                                  raft_net_udp_cb_t udp_server_recv_cb);
+                                  raft_net_cb_t client_recv_cb,
+                                  raft_net_cb_t server_recv_cb);
 
 raft_peer_t
 raft_peer_2_idx(const struct raft_instance *ri, const uuid_t peer_uuid);
@@ -292,4 +313,6 @@ raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 int
 raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
 
+struct raft_net_connection *
+raft_net_remote_connect(struct raft_instance *ri, struct ctl_svc_node *rp);
 #endif
