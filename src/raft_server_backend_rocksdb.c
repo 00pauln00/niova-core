@@ -10,6 +10,7 @@
 #include "common.h"
 #include "log.h"
 #include "raft.h"
+#include "raft_server_backend_rocksdb.h"
 #include "registry.h"
 
 #define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
@@ -43,12 +44,13 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 struct raft_instance_rocks_db
 {
-    rocksdb_t              *rir_db;
-    rocksdb_options_t      *rir_options;
-    rocksdb_writeoptions_t *rir_writeoptions;
-    rocksdb_writeoptions_t *rir_writeoptions_no_sync;
-    rocksdb_readoptions_t  *rir_readoptions;
-    rocksdb_writebatch_t   *rir_writebatch;
+    rocksdb_t                           *rir_db;
+    rocksdb_options_t                   *rir_options;
+    rocksdb_writeoptions_t              *rir_writeoptions;
+    rocksdb_writeoptions_t              *rir_writeoptions_no_sync;
+    rocksdb_readoptions_t               *rir_readoptions;
+    rocksdb_writebatch_t                *rir_writebatch;
+    struct raft_server_rocksdb_cf_table *rir_cf_table;
 };
 
 static void
@@ -104,6 +106,12 @@ rsbr_ri_to_rirdb(struct raft_instance *ri)
                  rir->rir_readoptions);
 
     return rir;
+}
+
+static inline struct rocksdb_t *
+rsbr_ri_to_rocksdb(struct raft_instance *ri)
+{
+    return rsbr_ri_to_rirdb(ri)->rir_db;
 }
 
 static rocksdb_iterator_t *
@@ -642,21 +650,26 @@ rsbr_destroy(struct raft_instance *ri)
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
-    rocksdb_close(rir->rir_db);
+    if (rir->rir_db)
+        rocksdb_close(rir->rir_db);
 
-    rocksdb_writeoptions_destroy(rir->rir_writeoptions);
-    rocksdb_writeoptions_destroy(rir->rir_writeoptions_no_sync);
-    rocksdb_readoptions_destroy(rir->rir_readoptions);
-    rocksdb_options_destroy(rir->rir_options);
-    rocksdb_writebatch_destroy(rir->rir_writebatch);
+    if (rir->rir_writeoptions)
+        rocksdb_writeoptions_destroy(rir->rir_writeoptions);
 
-    rir->rir_options = NULL;
-    rir->rir_readoptions = NULL;
-    rir->rir_writeoptions = NULL;
-    rir->rir_writeoptions_no_sync = NULL;
-    rir->rir_writebatch = NULL;
+    if (rir->rir_writeoptions_no_sync)
+        rocksdb_writeoptions_destroy(rir->rir_writeoptions_no_sync);
 
-    rir->rir_db = NULL;
+    if (rir->rir_readoptions)
+        rocksdb_readoptions_destroy(rir->rir_readoptions);
+
+    if (rir->rir_options)
+        rocksdb_options_destroy(rir->rir_options);
+
+    if (rir->rir_writebatch)
+        rocksdb_writebatch_destroy(rir->rir_writebatch);
+
+    if (rir->rir_cf_table)
+        raft_server_rocksdb_release_cf_table(rir->rir_cf_table);
 
     niova_free(ri->ri_backend_arg);
 
@@ -689,6 +702,14 @@ rsbr_setup(struct raft_instance *ri)
         rsbr_destroy(ri);
         return -ENOMEM;
     }
+
+    /* The user may have passed in a list of column family names which are to
+     * be opened.  These must be specified at db-open() time.
+     */
+    if (ri->ri_backend_init_arg)
+        rir->rir_cf_table =
+            (struct raft_server_rocksdb_cf_table *)ri->ri_backend_init_arg;
+
 
 //     const long int cpus = sysconf(_SC_NPROCESSORS_ONLN);
 //    rocksdb_options_increase_parallelism(rir->rir_options, (int)(cpus));
@@ -732,15 +753,39 @@ rsbr_setup(struct raft_instance *ri)
     char *err = NULL;
 
     rocksdb_options_set_create_if_missing(rir->rir_options, 0);
+    rocksdb_options_set_create_missing_column_families(rir->rir_options, 1);
 
-    rir->rir_db = rocksdb_open(rir->rir_options, ri->ri_log, &err);
+    struct raft_server_rocksdb_cf_table *cft = rir->rir_cf_table;
+
+    const rocksdb_options_t *cft_opts[RAFT_ROCKSDB_MAX_CF];
+    if (cft && cft->rsrcfe_num_cf)
+    {
+        NIOVA_ASSERT(cft->rsrcfe_num_cf <= RAFT_ROCKSDB_MAX_CF);
+        for (int i = 0; i < cft->rsrcfe_num_cf; i++)
+            cft_opts[i] = rir->rir_options;
+    }
+
+    rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
+        rocksdb_open_column_families(rir->rir_options, ri->ri_log,
+                                     cft->rsrcfe_num_cf, cft->rsrcfe_cf_names,
+                                     cft_opts, cft->rsrcfe_cf_handles, &err) :
+        rocksdb_open(rir->rir_options, ri->ri_log, &err);
     if (!rir->rir_db || err)
     {
         // DB may not be created
         err = NULL;
 
         rocksdb_options_set_create_if_missing(rir->rir_options, 1);
-        rir->rir_db = rocksdb_open(rir->rir_options, ri->ri_log, &err);
+//        rir->rir_db = rocksdb_open(rir->rir_options, ri->ri_log, &err);
+
+        rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
+            rocksdb_open_column_families(rir->rir_options, ri->ri_log,
+                                         cft->rsrcfe_num_cf,
+                                         cft->rsrcfe_cf_names,
+                                         cft_opts, cft->rsrcfe_cf_handles,
+                                         &err) :
+            rocksdb_open(rir->rir_options, ri->ri_log, &err);
+
         if (rir->rir_db && !err)
         {
             rc = rsbr_init_header(ri);
@@ -796,7 +841,63 @@ raft_server_get_rocksdb_instance(struct raft_instance *ri)
 {
     if (ri && ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB &&
 	ri->ri_backend && ri->ri_backend_arg)
-	return ri->ri_backend_arg;
+	return rsbr_ri_to_rocksdb(ri);
 
     return NULL;
+}
+
+void
+raft_server_rocksdb_release_cf_table(struct raft_server_rocksdb_cf_table *cft)
+{
+    if (!cft)
+        return;
+
+    for (size_t i = 0; i < cft->rsrcfe_num_cf; i++)
+    {
+        if (cft->rsrcfe_cf_names[i])
+        {
+            free((char *)cft->rsrcfe_cf_names[i]);
+            cft->rsrcfe_cf_names[i] = NULL;
+        }
+        if (cft->rsrcfe_cf_handles[i])
+        {
+            rocksdb_column_family_handle_destroy(cft->rsrcfe_cf_handles[i]);
+            cft->rsrcfe_cf_handles[i] = NULL;
+        }
+    }
+
+    cft->rsrcfe_num_cf = 0;
+}
+
+int
+raft_server_rocksdb_add_cf_name(struct raft_server_rocksdb_cf_table *cft,
+                                const char *cf_name, const size_t cf_name_len)
+{
+    if (!cft || !cf_name || !cf_name_len ||
+        cf_name_len > RAFT_ROCKSDB_MAX_CF_NAME_LEN)
+        return -EINVAL;
+
+    if (!cft->rsrcfe_num_cf)
+    {
+        cft->rsrcfe_cf_names[0] = strndup("default", 7);
+        if (!cft->rsrcfe_cf_names[0])
+            return -ENOMEM;
+
+        cft->rsrcfe_num_cf = 1;
+    }
+
+    if (cft->rsrcfe_num_cf >= RAFT_ROCKSDB_MAX_CF)
+        return -ENOSPC;
+
+    for (size_t i = 1; i < cft->rsrcfe_num_cf; i++)
+        if (!strncmp(cf_name, cft->rsrcfe_cf_names[i], RAFT_ROCKSDB_MAX_CF))
+            return -EALREADY;
+
+    cft->rsrcfe_cf_names[cft->rsrcfe_num_cf] = strndup(cf_name, cf_name_len);
+    if (!cft->rsrcfe_cf_names[cft->rsrcfe_num_cf])
+        return -ENOMEM;
+
+    cft->rsrcfe_num_cf++;
+
+    return 0;
 }

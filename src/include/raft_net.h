@@ -133,29 +133,8 @@ struct raft_net_client_user_id
     uint32_t                        rncui__unused;
 };
 
-// Encapsulation sanity check
-#define RAFT_CLIENT_RPC_ENTRY_DATA_MAGIC 0x1a2b3c4
-
-/* raft_client_rpc_raft_entry_data - Used by raft_client.c as the outermost
- *    encapsulation layer of data stored in a raft log entry.  This structure
- *    is presented to the raft server write and apply callbacks (via
- *    raft_client_rpc_msg::rcrm_data), whereas raft_client_rpc_msg itself is
- *    not.
- */
-struct raft_client_rpc_raft_entry_data
-{
-    uint32_t                       rcrred_version;
-    uint32_t                       rcrred_magic;
-    uint32_t                       rcrred_crc;
-    uint32_t                       rcrred_data_size;
-    struct raft_net_client_user_id rcrred_rncui;
-    char                           rcrred_data[];
-};
-
-#define RAFT_NET_CLIENT_MAX_RPC_SIZE                                    \
-    (RAFT_NET_MAX_RPC_SIZE -                                            \
-     (sizeof(struct raft_client_rpc_msg) +                              \
-      sizeof(struct raft_client_rpc_raft_entry_data)))
+#define RAFT_NET_CLIENT_MAX_RPC_SIZE                            \
+    (RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_client_rpc_msg))
 
 /**
  * @rcrm_type:  The type of RPC which is one of enum raft_client_rpc_msg_type
@@ -173,8 +152,6 @@ struct raft_client_rpc_raft_entry_data
  *    leader's UUID.
  * @rcrm_app_error:  Error info passed to the application.
  * @rcrm_sys_error:  System level error.
- * @rcrm_uses_raft_client_entry_data:  The contents of rcrm_data begin with
- *    the raft_client_rpc_raft_entry_data structure.
  * @rcrm_raft_client_app_seqno:  Optional 64-bit value for application use
  *    which resides here to assist raft applications whose writes are sequence
  *    based.  This removes the need to place the seqno in their own RPC layer.
@@ -197,7 +174,6 @@ struct raft_client_rpc_msg
     int16_t                        rcrm_app_error;
     int16_t                        rcrm_sys_error;
 //int16_t                        rcrm_raft_error; for these error type: raft_net_client_rpc_sys_error_2_string()
-    uint8_t                        rcrm_uses_raft_client_entry_data;
     uint8_t                        rcrm__pad1[3];
     uint64_t                       rcrm_raft_client_app_seqno;
     char                           rcrm_data[];
@@ -216,31 +192,17 @@ struct raft_client_rpc_msg
     (const struct type *)_RAFT_NET_MAP_RPC(type, rcrm)
 
 static inline size_t
-raft_client_rpc_msg_size(const size_t app_payload_size,
-                         const bool uses_client_entry_data)
+raft_client_rpc_msg_size(const size_t app_payload_size)
 {
-    return (sizeof(struct raft_client_rpc_msg) +
-            (uses_client_entry_data ?
-             sizeof(struct raft_client_rpc_raft_entry_data) : 0) +
-            app_payload_size);
-}
-
-static inline size_t
-raft_client_rpc_payload_size(const size_t app_payload_size,
-                             const bool uses_client_entry_data)
-{
-    return ((uses_client_entry_data ?
-             sizeof(struct raft_client_rpc_raft_entry_data) : 0) +
-            app_payload_size);
+    return (sizeof(struct raft_client_rpc_msg) + app_payload_size);
 }
 
 // XXx does this need to check for messages which are too small?
 static inline bool
-raft_client_rpc_msg_size_is_valid(const size_t app_payload_size,
-                                  const bool uses_client_entry_data)
+raft_client_rpc_msg_size_is_valid(const size_t app_payload_size)
+
 {
-    return raft_client_rpc_msg_size(app_payload_size,
-                                    uses_client_entry_data) <=
+    return raft_client_rpc_msg_size(app_payload_size) <=
         RAFT_NET_CLIENT_MAX_RPC_SIZE ? true : false;
 }
 
@@ -384,8 +346,7 @@ static inline void
 raft_net_compile_time_assert(void)
 {
     COMPILE_TIME_ASSERT(RAFT_NET_MAX_RPC_SIZE >
-                        (sizeof(struct raft_client_rpc_msg) +
-                         sizeof(struct raft_client_rpc_raft_entry_data)));
+                        (sizeof(struct raft_client_rpc_msg)));
 }
 
 struct raft_instance *
@@ -548,6 +509,27 @@ raft_net_client_request_handle_has_reply_info(
             rncr->rncr_msg_id == 0 ||
             rncr->rncr_reply_data_max_size == 0 ||
             rncr->rncr_reply == NULL) ? false : true;
+}
+
+static inline char *
+raft_net_client_request_handle_reply_data_map(
+    struct raft_net_client_request_handle *rncr, const size_t size)
+{
+    if (!rncr || !size || !rncr->rncr_reply)
+        return NULL;
+
+    struct raft_client_rpc_msg *reply = rncr->rncr_reply;
+
+    NIOVA_ASSERT(reply->rcrm_data_size <= rncr->rncr_reply_data_max_size);
+
+    if ((reply->rcrm_data_size + size) > rncr->rncr_reply_data_max_size)
+        return NULL;
+
+    char *buf = &reply->rcrm_data[reply->rcrm_data_size];
+
+    reply->rcrm_data_size += size;
+
+    return buf;
 }
 
 // Raft Net State Machine Write Supplment API

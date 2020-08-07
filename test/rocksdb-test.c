@@ -43,6 +43,7 @@ struct niova_rocksdb_instance
     bool                    nri_sync_write;
     bool                    nri_direct_io_flush_compaction;
     bool                    nri_direct_reads;
+    rocksdb_column_family_handle_t *nri_cf;
 };
 
 static int
@@ -100,6 +101,28 @@ nri_db_close(struct niova_rocksdb_instance *nri)
 
     nri->nri_db = NULL;
     nri_options_destroy(nri);
+
+    return 0;
+}
+
+static int
+nri_cf_open(struct niova_rocksdb_instance *nri)
+{
+    if (!nri || !nri->nri_options || !nri->nri_db)
+        return -EINVAL;
+    else if (nri->nri_cf)
+        return -EALREADY;
+
+    char *err = NULL;
+
+    nri->nri_cf = rocksdb_create_column_family(nri->nri_db, nri->nri_options,
+                                               "test-cf", &err);
+
+    if (!nri->nri_cf)
+    {
+         SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_create_column_family(): %s", err);
+         return -EIO;
+    }
 
     return 0;
 }
@@ -639,7 +662,7 @@ main(int argc, char *argv[])
     rc = nri_db_open(&nri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "nri_options_open(): %s", strerror(-rc));
+        SIMPLE_LOG_MSG(LL_ERROR, "nri_db_open(): %s", strerror(-rc));
         exit(rc);
     }
 
@@ -649,6 +672,23 @@ main(int argc, char *argv[])
 
     fprintf(stdout, "%13.3f\t\t%s\n",
             (float)num_nsecs / (float)1, "rocksdb_open");
+
+    // DB CF Open
+    niova_unstable_clock(&ts[0]);
+
+    rc = nri_cf_open(&nri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "nri_cf_open(): %s", strerror(-rc));
+        exit(rc);
+    }
+
+    niova_unstable_clock(&ts[1]);
+    timespecsub(&ts[1], &ts[0], &ts[0]);
+    num_nsecs = timespec_2_nsec(&ts[0]);
+
+    fprintf(stdout, "%13.3f\t\t%s\n",
+            (float)num_nsecs / (float)1, "rocksdb_create_column_family");
 
     // DB Write
     niova_unstable_clock(&ts[0]);

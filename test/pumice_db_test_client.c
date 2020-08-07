@@ -238,6 +238,11 @@ main(int argc, char **argv)
     if (!pmdbtcPMDB)
         exit(-errno);
 
+    /* Install after PmdbClientStart() so that requests cannot arrive via the
+     * ctl-interface prior to initializaton.
+     */
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(pumice_db_test_client);
+
     sleep(12000);
     return 0;
 }
@@ -246,8 +251,6 @@ static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_CLIENT_CTOR_PRIORITY)
 pmdbtc_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
-
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(pumice_db_test_client);
 
     int rc = regcomp(&pmdbtcCmdRegex, PMDB_TEST_CLIENT_APPLY_CMD_REGEX, 0);
     NIOVA_ASSERT(!rc);

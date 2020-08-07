@@ -627,5 +627,5 @@ main(int argc, char **argv)
         raft_uuid_str, my_uuid_str,
         raft_server_test_rst_sm_handler,
         use_rocksdb_backend ? RAFT_INSTANCE_STORE_ROCKSDB :
-        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE);
+        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE, NULL);
 }

@@ -15,8 +15,12 @@ typedef int    raft_client_app_ctx_int_t; // raft client app thread
 typedef void   raft_client_app_ctx_t;
 typedef void * raft_client_instance_t;
 
+typedef int (*raft_client_data_2_obj_id_t)(const char *, const size_t,
+                                           struct raft_net_client_user_id *);
+
 int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
+                 raft_client_data_2_obj_id_t obj_id_cb,
                  raft_client_instance_t *client_instance);
 
 int

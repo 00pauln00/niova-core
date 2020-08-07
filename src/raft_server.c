@@ -3617,7 +3617,7 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         enum raft_instance_store_type type)
+                         enum raft_instance_store_type type, void *arg)
 {
     if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
         return -EINVAL;
@@ -3629,6 +3629,7 @@ raft_server_instance_run(const char *raft_uuid_str,
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
+    ri->ri_backend_init_arg = arg;
 
     raft_instance_backend_type_specify(ri, type);
 

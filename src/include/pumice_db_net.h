@@ -34,8 +34,12 @@ enum PmdbOpType
     pmdb_op_any    = 7,
 };
 
-typedef struct pmdb_rpc_msg
+#define PMDB_MSG_MAGIC 0x1a2b3c4
+
+typedef struct pmdb_msg
 {
+    uint32_t                       pmdbrm_magic;
+    uint32_t                       pmdbrm_crc;
     struct raft_net_client_user_id pmdbrm_user_id;
     int64_t                        pmdbrm_write_seqno; // request::next,
                                                    //  reply::committed
@@ -45,15 +49,15 @@ typedef struct pmdb_rpc_msg
     int32_t                        pmdbrm_err; // reply ctx error
     uint32_t                       pmdbrm_data_size; // size of data payload
     char                           pmdbrm_data[];
-} PmdbRpcMsg_t;
+} PmdbMsg_t;
 
 static inline size_t
-pmdb_net_calc_rpc_msg_size(const struct pmdb_rpc_msg *pmdb_rpc_msg)
+pmdb_net_calc_rpc_msg_size(const PmdbMsg_t *pmdb_msg)
 {
     size_t size = 0;
 
-    if (pmdb_rpc_msg)
-        size = (sizeof(struct pmdb_rpc_msg) + pmdb_rpc_msg->pmdbrm_data_size);
+    if (pmdb_msg)
+        size = (sizeof(PmdbMsg_t) + pmdb_msg->pmdbrm_data_size);
 
     return size;
 }

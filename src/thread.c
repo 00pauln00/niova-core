@@ -241,7 +241,7 @@ void
 thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc)
 {
     if (tc)
-        while (thread_ctl_thread_has_reached_ctl_loop(tc))
+        while (!thread_ctl_thread_has_reached_ctl_loop(tc))
             usleep(100);
 }
 

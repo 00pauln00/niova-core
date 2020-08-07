@@ -357,6 +357,7 @@ struct raft_instance
     struct raft_instance_hist_stats ri_rihs[RAFT_INSTANCE_HIST_MAX];
     struct raft_instance_backend   *ri_backend;
     void                           *ri_backend_arg;
+    void                           *ri_backend_init_arg;
     void                           *ri_client_arg;
     raft_entry_idx_t                ri_entries_detected_at_startup;
 };
@@ -714,14 +715,10 @@ raft_server_backend_use_posix(struct raft_instance *ri);
 void
 raft_server_backend_use_rocksdb(struct raft_instance *ri);
 
-struct rocksdb_t;
-struct rocksdb_t *
-raft_server_get_rocksdb_instance(struct raft_instance *ri);
-
 int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         enum raft_instance_store_type type);
+                         enum raft_instance_store_type type, void *arg);
 
 #endif

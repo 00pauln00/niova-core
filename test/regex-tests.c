@@ -57,7 +57,8 @@ static const struct regex_item pmdbApplyCmdTests[] = {
 static const struct regex_test regexTests[] = {
     {RNCUI_V0_REGEX_BASE, rncuiTests, ARRAY_SIZE(rncuiTests)},
     {IPADDR_REGEX, ipTests, ARRAY_SIZE(ipTests)},
-    {PMDB_APPLY_CMD_REGEX, pmdbApplyCmdTests, ARRAY_SIZE(pmdbApplyCmdTests)},
+    {PMDB_TEST_CLIENT_APPLY_CMD_REGEX, pmdbApplyCmdTests,
+     ARRAY_SIZE(pmdbApplyCmdTests)},
 };
 
 static int
