@@ -841,10 +841,9 @@ raft_client_request_send_queue_add_locked(struct raft_client_instance *rci,
 static int
 raft_client_request_send_queue_remove_prep_locked(
     struct raft_client_instance *rci, struct raft_client_sub_app *sa,
-    const struct timespec *now, const char *caller_func,
-    const int caller_lineno)
+    const char *caller_func, const int caller_lineno)
 {
-    NIOVA_ASSERT(rci && sa && now && sa->rcsa_rh.rcrh_sendq);
+    NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_sendq);
 
     struct raft_client_request_handle *rh = &sa->rcsa_rh;
 
@@ -854,12 +853,6 @@ raft_client_request_send_queue_remove_prep_locked(
 
     int rc = (rh->rcrh_cancel || rh->rcrh_ready  || rh->rcrh_completing) ?
         -ESTALE : 0;
-
-    if (!rc) // RPC will be sent
-    {
-        rh->rcrh_last_send = *now;
-        rh->rcrh_num_sends++;
-    }
 
     DBG_RAFT_CLIENT_SUB_APP((rc ? LL_NOTIFY : LL_DEBUG), sa, "%s:%d %s",
                             caller_func, caller_lineno, strerror(-rc));
@@ -1175,9 +1168,9 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
     NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_rpc);
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
+    bool canceled = false;
 
     // Notifies the app layer and the timercb thread that the req was canceled.
-
 
     RCI_LOCK(rci);
     if (rcrh->rcrh_completing) // reply buffer is being accessed, wait
@@ -1189,6 +1182,7 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
     if (!rcrh->rcrh_ready)
     {
         rcrh->rcrh_cancel = 1;
+        canceled = true;
         if (wakeup)
         {
             NIOVA_SET_COND_AND_WAKE_LOCKED(broadcast, {}, &rci->rci_cond);
@@ -1198,6 +1192,9 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
     RCI_UNLOCK(rci);
 
     DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "");
+
+    if (canceled)
+        raft_client_sub_app_done(rci, sa, __func__, __LINE__);
 }
 
 /**
@@ -1241,7 +1238,6 @@ raft_client_request_cancel(raft_client_instance_t client_instance,
     raft_client_sub_app_cancel_pending_req(rci, sa, true);
 
     raft_client_sub_app_put(rci, sa, __func__, __LINE__);
-    raft_client_sub_app_done(rci, sa, __func__, __LINE__);
 
     return 0;
 }
@@ -1549,6 +1545,8 @@ raft_client_udp_recv_handler_process_reply(
         return;
     }
 
+    niova_realtime_coarse_clock(&rci->rci_last_request_ackd);
+
     raft_client_reply_complete(rci, rcrm, from);
 }
 
@@ -1636,6 +1634,13 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
                                    "raft_net_send_client_msg(): %s",
                                    strerror(-rc));
     }
+    else // Capture current timestamp in rci and sa
+    {
+        niova_realtime_coarse_clock(&rci->rci_last_request_sent);
+
+        sa->rcsa_rh.rcrh_last_send = rci->rci_last_request_sent;
+        sa->rcsa_rh.rcrh_num_sends++;
+    }
 }
 
 /**
@@ -1644,10 +1649,9 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
  *    requires an RPC operation.
  */
 static raft_client_epoll_int_t
-raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci,
-                                            const struct timespec *now)
+raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci)
 {
-    NIOVA_ASSERT(rci && now);
+    NIOVA_ASSERT(rci);
 
     int rc = 0;
 
@@ -1656,7 +1660,7 @@ raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci,
 
     if (sa)
         rc = raft_client_request_send_queue_remove_prep_locked(
-            rci, sa, now, __func__, __LINE__);
+            rci, sa, __func__, __LINE__);
 
     RCI_UNLOCK(rci);
 
@@ -1714,7 +1718,7 @@ raft_client_rpc_sender(struct raft_client_instance *rci, struct ev_pipe *evp)
 
     while (remaining_sends)
     {
-        int rc = raft_client_rpc_sendq_dequeue_head_and_send(rci, &now);
+        int rc = raft_client_rpc_sendq_dequeue_head_and_send(rci);
         if (!rc)
         {
             interval_rpc_cnt++;
