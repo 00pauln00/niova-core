@@ -1661,7 +1661,7 @@ raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci,
     RCI_UNLOCK(rci);
 
     if (!sa)
-        return 0;
+        return -ENOENT;
 
     else if (!rc)
         raft_client_rpc_launch(rci, sa);
@@ -1716,7 +1716,14 @@ raft_client_rpc_sender(struct raft_client_instance *rci, struct ev_pipe *evp)
     {
         int rc = raft_client_rpc_sendq_dequeue_head_and_send(rci, &now);
         if (!rc)
+        {
+            interval_rpc_cnt++;
             remaining_sends--;
+        }
+        else if (rc == -ENOENT)
+        {
+            break;
+        }
     }
 
     if (!STAILQ_EMPTY(&rci->rci_sendq))
