@@ -1923,7 +1923,7 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SERVER:
             lreg_value_fill_key_and_type(lv, "server", LREG_VAL_TYPE_STRING);
-            snprintf(LREG_VALUE_TO_OUT_STR(lv), LREG_VAL_TYPE_STRING,
+            snprintf(LREG_VALUE_TO_OUT_STR(lv), LREG_VALUE_STRING_MAX,
                      "%s:%d", inet_ntoa(sa->rcsa_rh.rcrh_sin_reply_addr),
                      ntohs(sa->rcsa_rh.rcrh_sin_reply_port));
             break;
