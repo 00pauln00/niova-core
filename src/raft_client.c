@@ -104,7 +104,7 @@ static struct raft_client_instance
  *    request is in the completing state.
  * @rcrh_cb_exec:  set when the application callback is issued or bypassed
  *    (when the cb pointer is null).
- * @rcrh_op_rw:  operation type:  read or write.
+ * @rcrh_op_wr:  operation is a write.
  * @rcrh_history_cache:  object is on the history LRU and is not managed by the
  *    ref tree.
  * @rcrh_error:  Request error.  Typically this should be the rcrm_app_error
@@ -141,7 +141,7 @@ struct raft_client_request_handle
     uint8_t                     rcrh_sendq:1;
     uint8_t                     rcrh_cancel:1;
     uint8_t                     rcrh_cb_exec:1;
-    uint8_t                     rcrh_op_rw:1;
+    uint8_t                     rcrh_op_wr:1;
     uint8_t                     rcrh_history_cache:1;
     int16_t                     rcrh_error;
     uint16_t                    rcrh_sin_reply_port;
@@ -209,7 +209,7 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
         (sa)->rcsa_rh.rcrh_cancel        ? 'c' : '-',                   \
         (sa)->rcsa_rh.rcrh_cb_exec       ? 'e' : '-',                   \
         (sa)->rcsa_rh.rcrh_initializing  ? 'i' : '-',                   \
-        (sa)->rcsa_rh.rcrh_op_rw         ? 'W' : 'R',                   \
+        (sa)->rcsa_rh.rcrh_op_wr         ? 'W' : 'R',                   \
         (sa)->rcsa_rh.rcrh_ready         ? 'r' : '-',                   \
         (sa)->rcsa_rh.rcrh_sendq         ? 's' : '-',                   \
         (sa)->rcsa_rh.rcrh_error,                                       \
@@ -468,8 +468,8 @@ raft_client_sub_app_done(struct raft_client_instance *rci,
 
     raft_client_op_history_add_item(
         rci,
-        sa->rcsa_rh.rcrh_op_rw ?
-        RAFT_CLIENT_RECENT_OP_TYPE_READ : RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
+        sa->rcsa_rh.rcrh_op_wr ?
+        RAFT_CLIENT_RECENT_OP_TYPE_WRITE : RAFT_CLIENT_RECENT_OP_TYPE_READ,
         sa);
 
     raft_client_sub_app_put(rci, sa, caller_func, caller_lineno);
@@ -1373,7 +1373,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
          * been marked as canceled, however, there may be some delay in the
          * timercb thread releasing its reference.
          */
-        raft_client_sub_app_done(rci, sa, __func__, __LINE__);
+        raft_client_sub_app_put(rci, sa, __func__, __LINE__);
     }
 
     return rc;
@@ -1403,7 +1403,7 @@ raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
     else
     {
         enum raft_instance_hist_types type =
-            (rcrh->rcrh_op_rw ? RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC :
+            (rcrh->rcrh_op_wr ? RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC :
              RAFT_INSTANCE_HIST_READ_LAT_MSEC);
 
         struct binary_hist *bh = &RCI_2_RI(rci)->ri_rihs[type].rihs_bh;
@@ -1412,7 +1412,7 @@ raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
 
         DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa,
                                 "op=%s elapsed time %lld (%s:%u)",
-                                rcrh->rcrh_op_rw ? "write" : "read",
+                                rcrh->rcrh_op_wr ? "write" : "read",
                                 elapsed_msec,  inet_ntoa(from->sin_addr),
                                 ntohs(from->sin_port));
     }
