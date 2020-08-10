@@ -197,8 +197,8 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
         tcp_setup_sockaddr_in(tsh->tsh_ipaddr, tsh->tsh_port, from);
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "src=%s:%u nb=%zd flags=%x",
-                   tsh->tsh_ipaddr, tsh->tsh_port, rc,
+    SIMPLE_LOG_MSG(LL_DEBUG, "fd=%d src=%s:%u nb=%zd flags=%x",
+                   tsh->tsh_socket, tsh->tsh_ipaddr, tsh->tsh_port, rc,
                    msg.msg_flags);
 
     if (msg.msg_flags & MSG_TRUNC)

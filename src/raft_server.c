@@ -341,7 +341,11 @@ raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
     const raft_peer_t peer = lrn->lrn_lvd.lvd_index +
         (lrn->lrn_lvd.lvd_index >= raft_server_instance_self_idx(ri) ? 1 : 0);
 
-    NIOVA_ASSERT(raft_member_idx_is_valid(ri, peer));
+    if (!raft_member_idx_is_valid(ri, peer))
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "invalid peer index passed to raft_instance_lreg_peer_vstats_cb: %d", peer)
+        return -EINVAL;
+    }
 
     switch (op)
     {
@@ -3094,6 +3098,10 @@ raft_server_append_entry_should_send_to_follower(
     int rc = raft_net_comm_recency(ri, raft_peer_idx,
                                    RAFT_COMM_RECENCY_UNACKED_SEND,
                                    &since_last_unacked);
+    if (rc == -ENOTCONN) {
+        // XXX will this prevent the server from ever trying to connect?
+        return false;
+    }
     NIOVA_ASSERT(!rc);
 
     bool send_msg = true;

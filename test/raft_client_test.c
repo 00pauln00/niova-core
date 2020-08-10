@@ -706,9 +706,10 @@ rsc_process_ping_reply(const struct raft_client_rpc_msg *rcrm,
 }
 
 static raft_net_cb_ctx_t
-rsc_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
-                     ssize_t recv_bytes, const struct sockaddr_in *from)
+rsc_recv_handler(struct raft_instance *ri, const char *recv_buffer,
+                 ssize_t recv_bytes, const struct sockaddr_in *from)
 {
+    SIMPLE_FUNC_ENTRY(LL_NOTIFY);
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
         recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
         return;
@@ -763,6 +764,7 @@ rsc_set_ping_target(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
+    SIMPLE_LOG_MSG(LL_NOTIFY, "rsc_ping_target_is_stale(): %s", rsc_ping_target_is_stale(ri) ? "yes" : "no");
     if (rsc_ping_target_is_stale(ri))
     {
         rsc_set_leader_viability(false);
@@ -1362,8 +1364,8 @@ main(int argc, char **argv)
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = my_uuid_str;
 
-    raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb, rsc_udp_recv_handler,
-                                      NULL);
+    raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb, rsc_recv_handler,
+                                      rsc_recv_handler);
 
     int rc = raft_net_instance_startup(ri, true);
     if (rc)
