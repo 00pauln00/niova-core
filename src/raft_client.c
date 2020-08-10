@@ -148,6 +148,7 @@ struct raft_client_request_handle
     struct in_addr              rcrh_sin_reply_addr;
     struct timespec             rcrh_submitted;
     struct timespec             rcrh_last_send;
+    unsigned long long          rcrh_completion_latency_ms;
     const struct timespec       rcrh_timeout;
     size_t                      rcrh_num_sends;
     size_t                      rcrh_reply_used_size;
@@ -1505,8 +1506,13 @@ raft_client_reply_complete(struct raft_client_instance *rci,
             memcpy(rcrh->rcrh_reply_buf, rcrm->rcrm_data,
                    rcrh->rcrh_reply_used_size);
 
-        // Mark the elapsed time of the operation.
-        raft_client_incorporate_ack_measurement(rci, sa,  from);
+        // Mark the elapsed time of this RPC
+        raft_client_incorporate_ack_measurement(rci, sa, from);
+
+        // Calculate the total operation time (including retries)
+        rcrh->rcrh_completion_latency_ms =
+            (long long)(timespec_2_msec(&rci->rci_last_msg_recvd) -
+                        timespec_2_msec(&rcrh->rcrh_submitted));
 
         RCI_LOCK(rci);
         rcrh->rcrh_completing = 0;
@@ -1881,6 +1887,7 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ_SERVER,         // string (IP:port)
     RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME, //
     RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS,       // unsigned
+    RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS, // unsigned
     RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ__MAX,
 };
@@ -1930,6 +1937,10 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
         case RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME:
             lreg_value_fill_string_time(lv, "submitted",
                                         sa->rcsa_rh.rcrh_submitted.tv_sec);
+            break;
+        case RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS:
+            lreg_value_fill_unsigned(lv, "completion-time-ms",
+                                     sa->rcsa_rh.rcrh_completion_latency_ms);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS:
             lreg_value_fill_unsigned(lv, "attempts",
