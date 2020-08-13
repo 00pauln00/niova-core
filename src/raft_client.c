@@ -11,6 +11,7 @@
 #include "common.h"
 #include "crc32.h"
 #include "epoll_mgr.h"
+#include "fault_inject.h"
 #include "log.h"
 #include "raft_net.h"
 #include "raft.h"
@@ -247,7 +248,7 @@ REF_TREE_HEAD(raft_client_sub_app_tree, raft_client_sub_app);
 REF_TREE_GENERATE(raft_client_sub_app_tree, raft_client_sub_app, rcsa_rtentry,
                   raft_client_sub_app_cmp);
 
-STAILQ_HEAD(raft_client_sub_app_send_queue, raft_client_sub_app);
+STAILQ_HEAD(raft_client_sub_app_queue, raft_client_sub_app);
 
 struct raft_client_sub_app_req_history
 {
@@ -270,7 +271,7 @@ struct raft_client_instance
     struct raft_client_sub_app_tree        rci_sub_apps;
     pthread_cond_t                         rci_cond;
     struct raft_instance                  *rci_ri;
-    struct raft_client_sub_app_send_queue  rci_sendq;
+    struct raft_client_sub_app_queue       rci_sendq;
     struct timespec                        rci_last_request_sent;
     struct timespec                        rci_last_request_ackd; // by leader
     struct timespec                        rci_last_msg_recvd;
@@ -457,8 +458,9 @@ raft_client_op_history_add_item(struct raft_client_instance *rci,
  *    have been put.  This function is called from 2 places:
  *    raft_client_sub_app_cancel_pending_req() - in the case that the request
  *    has timed out or been explicitly canceled.  The contexts are application
- *    thread context, either a blocking request thread OR an external tool
- *    which requests explicit cancelation.
+ *    thread context, either a blocking request thread, an external tool
+ *    which requests explicit cancelation, or the timercb thread (via
+ *    raft_client_check_pending_requests()).
  *    raft_client_reply_try_complete() - RPC recv context when a reply is
  *    matched to a pending request.
  * @rci:  raft client instance pointer
@@ -948,6 +950,11 @@ raft_client_request_send_queue_remove_done(struct raft_client_instance *rci,
     raft_client_sub_app_put(rci, sa, caller_func, caller_lineno);
 }
 
+static raft_client_app_ctx_int_t
+raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
+                                       struct raft_client_sub_app *sa,
+                                       bool wakeup, const int error,
+                                       const char *func, const int lineno);
 
 /**
  * raft_client_check_pending_requests - called in timercb context, walks the
@@ -960,18 +967,38 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     struct timespec now;
     niova_realtime_coarse_clock(&now);
 
-    RCI_LOCK(rci);
+    RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
 
     struct raft_client_sub_app *sa;
     size_t cnt = 0;
 
+    struct raft_client_sub_app_queue expiredq =
+        STAILQ_HEAD_INITIALIZER(expiredq);
+
+    const bool leader_viable = raft_client_leader_is_viable(rci);
+
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
     {
-        if (!sa->rcsa_rh.rcrh_sendq &&
-            !sa->rcsa_rh.rcrh_initializing &&
-            (timespec_2_msec(&now) -
-             timespec_2_msec(&sa->rcsa_rh.rcrh_last_send) >=
-             raftClientRetryTimeoutMS))
+        if (sa->rcsa_rh.rcrh_cancel ||     // already being canceled
+            sa->rcsa_rh.rcrh_sendq ||      // the list entry is already in use
+            sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
+            continue;
+
+        const long long queued_ms =
+            timespec_2_msec(&now) -
+            timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
+
+        if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
+            FAULT_INJECT(async_raft_client_request_expire))
+        {
+            // Detect and stash expired requests
+            STAILQ_INSERT_HEAD(&expiredq, sa, rcsa_lentry);
+
+            // Take ref to protect against concurrent cancel operations
+            REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
+        }
+        else if (leader_viable &&  // non-expired requests are queued for send
+                 queued_ms > raftClientRetryTimeoutMS)
         {
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
@@ -983,6 +1010,18 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     if (cnt) // Signal that a request has been queued.
         ev_pipe_notify(&RCI_2_RI(rci)->ri_evps[RAFT_CLIENT_EVP_IDX]);
+
+    // Cleanup expiredq
+    while ((sa = STAILQ_FIRST(&expiredq)))
+    {
+        STAILQ_REMOVE_HEAD(&expiredq, rcsa_lentry);
+        int rc = raft_client_sub_app_cancel_pending_req(rci, sa, true,
+                                                        -ETIMEDOUT,
+                                                        __func__, __LINE__);
+
+        if (rc != -ECANCELED)
+            raft_client_sub_app_put(rci, sa, __func__, __LINE__);
+    }
 }
 
 /**
@@ -1012,8 +1051,6 @@ raft_client_timerfd_cb(struct raft_instance *ri)
         if (raft_client_server_target_needs_ping(
                 ri, ri->ri_csn_leader->csn_uuid))
             raft_client_ping_raft_service(rci);
-
-        raft_client_check_pending_requests(rci);
     }
     else
     {
@@ -1027,6 +1064,8 @@ raft_client_timerfd_cb(struct raft_instance *ri)
                 MIN(50, (2 * unviable_iterations - 1));
         }
     }
+
+    raft_client_check_pending_requests(rci);
 
     DBG_RAFT_INSTANCE(LL_TRACE, ri,
                       "uvi=%zu uvnpi=%zu lca=%zu",
@@ -1227,7 +1266,8 @@ raft_client_sub_app_wait(struct raft_client_instance *rci,
 static raft_client_app_ctx_int_t
 raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
                                        struct raft_client_sub_app *sa,
-                                       bool wakeup, const int error)
+                                       bool wakeup, const int error,
+                                       const char *func, const int lineno)
 {
     NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_rpc);
 
@@ -1241,14 +1281,19 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
         rcrh->rcrh_cancel = 1;
         rc = -ECANCELED;
     }
+    else if (rcrh->rcrh_cancel)
+    {
+        rc = -EALREADY;
+    }
 
     RCI_UNLOCK(rci);
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "canceled=%s (err=%d)",
-                            rc ? "yes" : "no", error);
+    DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "%s:%d canceled=%s (err=%d)",
+                            func, lineno, rc == -ECANCELED ? "yes" : "no",
+                            error);
 
-    if (rc)
-        raft_client_sub_app_done(rci, sa, __func__, __LINE__, wakeup, error);
+    if (rc == -ECANCELED)
+        raft_client_sub_app_done(rci, sa, func, lineno, wakeup, error);
 
     return rc;
 }
@@ -1292,7 +1337,8 @@ raft_client_request_cancel(raft_client_instance_t client_instance,
     /* Error code can be ignored here since this function has it's own
      * reference.
      */
-    (int)raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED);
+    (int)raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED,
+                                                __func__, __LINE__);
 
     raft_client_sub_app_put(rci, sa, __func__, __LINE__);
 
@@ -1394,7 +1440,8 @@ raft_client_request_submit(raft_client_instance_t client_instance,
         {
             NIOVA_ASSERT(rc == -ETIMEDOUT);
             rc = raft_client_sub_app_cancel_pending_req(rci, sa, false,
-                                                        -ETIMEDOUT);
+                                                        -ETIMEDOUT, __func__,
+                                                        __LINE__);
 
             /* There's a small chance the request completed while the
              * cancelation was in progress.  In this case, the reference
@@ -1402,7 +1449,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
              * constructor ref has been released and the sa pointer is no
              * longer valid.
              */
-            if (!rc)
+            if (rc != -ECANCELED)
                 raft_client_sub_app_put(rci, sa, __func__, __LINE__);
         }
     }

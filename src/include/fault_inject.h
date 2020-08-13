@@ -16,6 +16,7 @@ enum fault_inject_entries
 {
     FAULT_INJECT_any,
     FAULT_INJECT_disabled,
+    FAULT_INJECT_async_raft_client_request_expire,
     FAULT_INJECT__MAX,
     FAULT_INJECT__MIN = FAULT_INJECT_any,
 } PACKED;

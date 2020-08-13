@@ -16,7 +16,8 @@
 #include "registry.h"
 
 #define PMDB_MIN_REQUEST_TIMEOUT_SECS 10
-static unsigned long pmdbClientDefaultTimeoutSecs = 60;
+static unsigned long pmdbClientDefaultTimeoutSecs =
+    PMDB_MIN_REQUEST_TIMEOUT_SECS;
 
 int
 PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id)
