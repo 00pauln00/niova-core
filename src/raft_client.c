@@ -454,25 +454,92 @@ raft_client_op_history_add_item(struct raft_client_instance *rci,
 /**
  * raft_client_sub_app_done - called when the sub app processing is no longer
  *    required.  The object may exist after this call until all of if refs
- *    have been put.
+ *    have been put.  This function is called from 2 places:
+ *    raft_client_sub_app_cancel_pending_req() - in the case that the request
+ *    has timed out or been explicitly canceled.  The contexts are application
+ *    thread context, either a blocking request thread OR an external tool
+ *    which requests explicit cancelation.
+ *    raft_client_reply_try_complete() - RPC recv context when a reply is
+ *    matched to a pending request.
+ * @rci:  raft client instance pointer
+ * @sa:  sub-app instance pointer
+ * @caller_func:  caller name
+ * @caller_lineno:  caller line number
+ * @wakeup:  called pthread_cond_wake on the condition variable, false if the
+ *    calling thread was the blocked thread.
+ * @error:  error to be reported to the app via the callback
  */
 static void
 raft_client_sub_app_done(struct raft_client_instance *rci,
                          struct raft_client_sub_app *sa,
-                         const char *caller_func, const int caller_lineno)
+                         const char *caller_func, const int caller_lineno,
+                         const bool wakeup, const int error)
 {
     NIOVA_ASSERT(rci && sa);
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "%s:%d", caller_func, caller_lineno);
+    DBG_RAFT_CLIENT_SUB_APP((error ? LL_NOTIFY : LL_DEBUG),
+                            sa, "%s:%d err=%s",
+                            caller_func, caller_lineno, strerror(-error));
 
     NIOVA_ASSERT(rci == sa->rcsa_rci);
 
+    struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
+
+    RCI_LOCK(rci);
+
+    /* Xxx at this time it's assumed that this function is only to be issued
+     *     one time per 'sa', therefore, cb-exec essentially marks that this
+     *     function has been called.  In the future this may change.
+     */
+    NIOVA_ASSERT(!rcrh->rcrh_cb_exec && !rcrh->rcrh_ready);
+
+    rcrh->rcrh_cb_exec = 1;
+    rcrh->rcrh_error = error;
+
+    const bool should_exec = rcrh->rcrh_async_cb ? true : false;
+
+    /* Cancel and ready are mutually exclusive, however, cancel is set prior
+     * to entering this function.  Completing preludes ready and is also mut ex
+     * w/ cancel.
+     */
+    if (!rcrh->rcrh_cancel)
+    {
+        NIOVA_ASSERT(rcrh->rcrh_completing);
+        rcrh->rcrh_completing = 0;
+        rcrh->rcrh_ready = 1;
+    }
+    else
+    {
+        NIOVA_ASSERT(!rcrh->rcrh_completing);
+    }
+
+    // Small optimization for the case where the cb was not specified
+    if (!should_exec && wakeup && rcrh->rcrh_blocking)
+        NIOVA_SET_COND_AND_WAKE_LOCKED(broadcast, {}, &rci->rci_cond);
+
+    RCI_UNLOCK(rci);
+
+    /* Issue the callback if it was specified.  This must be done without
+     * holding the mutex.
+     */
+    if (should_exec)
+    {
+        rcrh->rcrh_async_cb(&sa->rcsa_rncui, rcrh->rcrh_arg,
+                            rcrh->rcrh_reply_buf, rcrh->rcrh_reply_used_size,
+                            rcrh->rcrh_error);
+
+        if (wakeup && rcrh->rcrh_blocking)
+            NIOVA_SET_COND_AND_WAKE(broadcast, {}, RCI_2_MUTEX(rci),
+                                    &rci->rci_cond);
+    }
+
     raft_client_op_history_add_item(
         rci,
-        sa->rcsa_rh.rcrh_op_wr ?
+        rcrh->rcrh_op_wr ?
         RAFT_CLIENT_RECENT_OP_TYPE_WRITE : RAFT_CLIENT_RECENT_OP_TYPE_READ,
         sa);
 
+    // Typically, this will be the initial constructor reference.
     raft_client_sub_app_put(rci, sa, caller_func, caller_lineno);
 }
 
@@ -852,7 +919,7 @@ raft_client_request_send_queue_remove_prep_locked(
 
     rh->rcrh_sendq = 0;
 
-    int rc = (rh->rcrh_cancel || rh->rcrh_ready  || rh->rcrh_completing) ?
+    int rc = (rh->rcrh_cancel || rh->rcrh_ready || rh->rcrh_completing) ?
         -ESTALE : 0;
 
     DBG_RAFT_CLIENT_SUB_APP((rc ? LL_NOTIFY : LL_DEBUG), sa, "%s:%d %s",
@@ -1148,54 +1215,42 @@ raft_client_sub_app_wait(struct raft_client_instance *rci,
     return -rc;
 }
 
-static void
-raft_client_sub_app_wake(struct raft_client_instance *rci,
-                         struct raft_client_sub_app *sa)
-{
-    NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_rpc &&
-                 sa->rcsa_rh.rcrh_blocking);
-
-    struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
-
-    NIOVA_SET_COND_AND_WAKE(broadcast, {rcrh->rcrh_ready = 1;},
-                            RCI_2_MUTEX(rci), &rci->rci_cond);
-}
-
-static raft_client_app_ctx_t
+/**
+ * raft_client_sub_app_cancel_pending_req - Notifies the app layer and the
+ *    timercb thread that the req was canceled.  This function returns 0 if
+ *    the cancelation request is bypassed.  Otherwise, -ECANCELED will be
+ *    returned after releasing the constructor reference via
+ *    raft_client_sub_app_done().  Callers of this function should not access
+ *    the 'sa' pointer following the return of -ECANCELED unless they hold
+ *    their own reference.
+ */
+static raft_client_app_ctx_int_t
 raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
                                        struct raft_client_sub_app *sa,
-                                       bool wakeup)
+                                       bool wakeup, const int error)
 {
     NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_rpc);
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
-    bool canceled = false;
-
-    // Notifies the app layer and the timercb thread that the req was canceled.
+    int rc = 0;
 
     RCI_LOCK(rci);
-    if (rcrh->rcrh_completing) // reply buffer is being accessed, wait
-        NIOVA_WAIT_COND_LOCKED((!rcrh->rcrh_completing), RCI_2_MUTEX(rci),
-                               &rci->rci_cond);
-
-    NIOVA_ASSERT(!rcrh->rcrh_completing);
-
-    if (!rcrh->rcrh_ready)
+    if (!rcrh->rcrh_completing && // Request finishing, bypass cancelation
+        !rcrh->rcrh_ready)        // Request already done
     {
         rcrh->rcrh_cancel = 1;
-        canceled = true;
-        if (wakeup)
-        {
-            NIOVA_SET_COND_AND_WAKE_LOCKED(broadcast, {}, &rci->rci_cond);
-        }
+        rc = -ECANCELED;
     }
 
     RCI_UNLOCK(rci);
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "");
+    DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "canceled=%s (err=%d)",
+                            rc ? "yes" : "no", error);
 
-    if (canceled)
-        raft_client_sub_app_done(rci, sa, __func__, __LINE__);
+    if (rc)
+        raft_client_sub_app_done(rci, sa, __func__, __LINE__, wakeup, error);
+
+    return rc;
 }
 
 /**
@@ -1207,8 +1262,6 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
  * @rncui:  unique identifier object
  * @reply_buf:  the user buffer pointer which should be attached to the pending
  *    request.
- * NOTES:  raft_client_sub_app_cancel_pending_req() may block briefly if the
- *    buffer is currently being accessed by raft_net_udp_cb_ctx_t.
  */
 raft_client_app_ctx_int_t
 raft_client_request_cancel(raft_client_instance_t client_instance,
@@ -1230,13 +1283,16 @@ raft_client_request_cancel(raft_client_instance_t client_instance,
     if (!sa)
         return -ENOENT;
 
-    if (!sa->rcsa_rh.rcrh_rpc)
-        return -EINPROGRESS;
+    else if (!sa->rcsa_rh.rcrh_rpc) // Request is still being initialized
+        return -EINPROGRESS;        // inside of raft_client_request_submit()
 
-    if (sa->rcsa_rh.rcrh_reply_buf != reply_buf)
+    else if (sa->rcsa_rh.rcrh_reply_buf != reply_buf)
         return -ESTALE;
 
-    raft_client_sub_app_cancel_pending_req(rci, sa, true);
+    /* Error code can be ignored here since this function has it's own
+     * reference.
+     */
+    (int)raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED);
 
     raft_client_sub_app_put(rci, sa, __func__, __LINE__);
 
@@ -1260,31 +1316,6 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
 
     // Done after the lock is released.
     ev_pipe_notify(&RCI_2_RI(rci)->ri_evps[RAFT_CLIENT_EVP_IDX]);
-}
-
-static void
-raft_client_async_cb_issue(struct raft_client_instance *rci,
-                           struct raft_client_sub_app *sa)
-{
-    NIOVA_ASSERT(rci && sa);
-
-    struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
-
-    bool should_exec = false;
-
-    RCI_LOCK(rci);
-    if (!rcrh->rcrh_cb_exec)
-    {
-        should_exec = true;
-        rcrh->rcrh_cb_exec = 1;
-    }
-    RCI_UNLOCK(rci);
-
-    // Issue the callback if it was specified
-    if (should_exec && rcrh->rcrh_async_cb)
-        rcrh->rcrh_async_cb(&sa->rcsa_rncui, rcrh->rcrh_arg,
-                            rcrh->rcrh_reply_buf, rcrh->rcrh_reply_used_size,
-                            rcrh->rcrh_error);
 }
 
 raft_client_app_ctx_int_t
@@ -1349,28 +1380,31 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     {
         rc = raft_client_sub_app_wait(rci, sa);
 
-        if (rc)
+        if (!rc)
+        {
+            /* Important!  This put may not free the 'sa'.  It's possible that
+             * the sa is in the process of being retried and the timercb
+             * thread has taken a ref on it.  The sa will not be retried again
+             * (since it has been marked as canceled, however, there may be
+             * some delay in the timercb thread releasing its reference.
+             */
+            raft_client_sub_app_put(rci, sa, __func__, __LINE__);
+        }
+        else
         {
             NIOVA_ASSERT(rc == -ETIMEDOUT);
-            raft_client_sub_app_cancel_pending_req(rci, sa, false);
+            rc = raft_client_sub_app_cancel_pending_req(rci, sa, false,
+                                                        -ETIMEDOUT);
 
-            // If the msg completed after the timeout, unset the rc.
-            rc = rcrh->rcrh_cancel ? rc : 0;
-
-            if (!rcrh->rcrh_error)
-                rcrh->rcrh_error = -ETIMEDOUT;
+            /* There's a small chance the request completed while the
+             * cancelation was in progress.  In this case, the reference
+             * taken in the constructor is still intact.  Otherwise, the
+             * constructor ref has been released and the sa pointer is no
+             * longer valid.
+             */
+            if (!rc)
+                raft_client_sub_app_put(rci, sa, __func__, __LINE__);
         }
-
-        // Issue the callback if it was specified
-        raft_client_async_cb_issue(rci, sa);
-
-        /* Important!  This put may not free the 'sa'.  It's possible that the
-         * sa is in the process of being retried and the timercb thread has
-         * taken a ref on it.  The sa will not be retried again (since it has
-         * been marked as canceled, however, there may be some delay in the
-         * timercb thread releasing its reference.
-         */
-        raft_client_sub_app_put(rci, sa, __func__, __LINE__);
     }
 
     return rc;
@@ -1416,15 +1450,15 @@ raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
 }
 
 static raft_net_udp_cb_ctx_t
-raft_client_reply_complete(struct raft_client_instance *rci,
-                           const struct raft_client_rpc_msg *rcrm,
-                           const struct sockaddr_in *from)
+raft_client_reply_try_complete(struct raft_client_instance *rci,
+                               const struct raft_client_rpc_msg *rcrm,
+                               const struct sockaddr_in *from)
 {
     if (!rci || !from || !rcrm)
         return;
 
     const uint64_t msg_id = rcrm->rcrm_msg_id;
-    int16_t app_err = rcrm->rcrm_app_error;
+    int app_rpc_err = rcrm->rcrm_app_error;
 
     struct raft_net_client_user_id rncui;
     int rc = rci->rci_obj_id_cb(rcrm->rcrm_data, rcrm->rcrm_data_size, &rncui);
@@ -1467,42 +1501,46 @@ raft_client_reply_complete(struct raft_client_instance *rci,
     {
         RCI_UNLOCK(rci);
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "rcrh_ready is already set");
+
+        raft_client_sub_app_put(rci, sa, __func__, __LINE__);
         return;
     }
     else if (rcrh->rcrh_completing)
     {
         RCI_UNLOCK(rci);
         DBG_RAFT_CLIENT_SUB_APP(LL_FATAL, sa,
-                                  "rcrh_completing may not be set here");
+                                "rcrh_completing may not be set here");
+        raft_client_sub_app_put(rci, sa, __func__, __LINE__);
         return;
     }
-    // if the request is canceled then we no longer own the reply buffer
     else if (rcrh->rcrh_cancel)
     {
-        if (!rcrh->rcrh_error)
-            rcrh->rcrh_error = -ECANCELED;
+        // if the request is canceled then we no longer own the reply buffer
+        RCI_UNLOCK(rci);
+        DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "request was canceled");
+
+        raft_client_sub_app_put(rci, sa, __func__, __LINE__);
     }
     else
     {
+        rcrh->rcrh_reply_used_size = rcrm->rcrm_data_size;
+
+        // Buffer size error takes precedence over app_rpc error
+        int error = (rcrh->rcrh_reply_used_size > rcrh->rcrh_reply_size) ?
+            -E2BIG : app_rpc_err;
+
         if (from)
         {
             rcrh->rcrh_sin_reply_addr = from->sin_addr;
             rcrh->rcrh_sin_reply_port = from->sin_port;
         }
-        rcrh->rcrh_reply_used_size = rcrm->rcrm_data_size;
-        rcrh->rcrh_error = app_err;
 
-        if (!rcrh->rcrh_error &&
-            (rcrh->rcrh_reply_used_size > rcrh->rcrh_reply_size))
-            rcrh->rcrh_error = -E2BIG;
-
-        if (!rcrh->rcrh_error && rcrh->rcrh_reply_used_size)
-            rcrh->rcrh_completing = 1; // request may no longer be canceled
+        rcrh->rcrh_completing = 1; // request may no longer be canceled
 
         RCI_UNLOCK(rci);
         // Drop the lock and copy contents into the user's reply buffer.
 
-        if (!rcrh->rcrh_error && rcrh->rcrh_completing)
+        if (!error && rcrh->rcrh_reply_used_size)
             memcpy(rcrh->rcrh_reply_buf, rcrm->rcrm_data,
                    rcrh->rcrh_reply_used_size);
 
@@ -1514,19 +1552,8 @@ raft_client_reply_complete(struct raft_client_instance *rci,
             (long long)(timespec_2_msec(&rci->rci_last_msg_recvd) -
                         timespec_2_msec(&rcrh->rcrh_submitted));
 
-        RCI_LOCK(rci);
-        rcrh->rcrh_completing = 0;
-        rcrh->rcrh_ready = 1;
+        raft_client_sub_app_done(rci, sa, __func__, __LINE__, true, error);
     }
-
-    RCI_UNLOCK(rci);
-
-    if (rcrh->rcrh_blocking)
-        raft_client_sub_app_wake(rci, sa);
-    else
-        raft_client_async_cb_issue(rci, sa);
-
-    raft_client_sub_app_done(rci, sa, __func__, __LINE__);
 }
 
 /**
@@ -1553,7 +1580,7 @@ raft_client_udp_recv_handler_process_reply(
 
     niova_realtime_coarse_clock(&rci->rci_last_request_ackd);
 
-    raft_client_reply_complete(rci, rcrm, from);
+    raft_client_reply_try_complete(rci, rcrm, from);
 }
 
 /**
@@ -1949,6 +1976,10 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
         case RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ:
             lreg_value_fill_unsigned(lv, "reply-size",
                                      sa->rcsa_rh.rcrh_reply_size);
+            break;
+        case RAFT_CLIENT_SUB_APP_REQ_ERROR:
+            lreg_value_fill_string(lv, "status",
+                                   strerror(-sa->rcsa_rh.rcrh_error));
             break;
         default:
 	    break;
