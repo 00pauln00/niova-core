@@ -862,6 +862,47 @@ ctlic_insert_error_kv_init_EPERM(struct ctlic_iterator *err_citer, int depth)
 }
 
 static int
+ctlic_insert_error_kv_init_generic(struct ctlic_iterator *err_citer, int depth,
+                                   const int error)
+{
+    if (!err_citer || depth <= 0)
+        return -EINVAL;
+
+    ctlic_insert_error_kv_lrv_init(&err_citer->citer_lv);
+
+    const struct ctlic_depth_segment *cds;
+
+    const struct ctlic_matched_token *cmt =
+        ctlic_get_next_apply_token(err_citer->citer_cr);
+
+    if (cmt)
+    {
+        cds = &cmt->cmt_depth_segments[0];
+    }
+    else
+    {
+        cmt = ctlic_get_current_matched_token(err_citer->citer_cr);
+        if (cmt)
+            cds = &cmt->cmt_depth_segments[depth - 1];
+    }
+
+    if (!cds)
+        return -EINVAL;
+
+    int rc = snprintf(
+        err_citer->citer_lv.get.lrv_value_out.lrv_string,
+        LREG_VALUE_STRING_MAX,
+        "command `%s' with value `%s' failed: %s",
+        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_KEY].cprs_str,
+        cds->cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE_VAL].cprs_str,
+        strerror(-error));
+
+    (void)rc; // For now, err msg truncation is ignored
+
+    return 0;
+}
+
+static int
 ctlic_insert_error_kv_into_outfile(struct ctlic_iterator *in_citer,
                                    const int depth, const int error)
 {
@@ -894,7 +935,7 @@ ctlic_insert_error_kv_into_outfile(struct ctlic_iterator *in_citer,
         rc = ctlic_insert_error_kv_init_EPERM(citer, depth);
         break;
     default:
-        rc = -ENOENT;
+        rc = ctlic_insert_error_kv_init_generic(citer, depth, error);
         break;
     }
 
