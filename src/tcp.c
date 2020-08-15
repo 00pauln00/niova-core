@@ -73,6 +73,14 @@ tcp_socket_setup(struct tcp_socket_handle *tsh)
     return rc;
 }
 
+static int
+tcp_socket_set_nonblocking(struct tcp_socket_handle *tsh)
+{
+    NIOVA_ASSERT(tsh && tsh->tsh_socket > 0);
+
+    return fcntl(tsh->tsh_socket, F_SETFL, O_NONBLOCK);
+}
+
 /**
  * tcp_socket_bind - called at some point after tcp_socket_setup() to complete
  *    the setup of the UDP socket.
@@ -107,7 +115,7 @@ tcp_socket_bind(struct tcp_socket_handle *tsh)
         goto out;
     }
 
-    fcntl(tsh->tsh_socket, F_SETFL, O_NONBLOCK);
+    tcp_socket_set_nonblocking(tsh);
 
     rc = listen(tsh->tsh_socket, NIOVA_TCP_LISTEN_DEPTH);
     if (rc)
@@ -261,7 +269,7 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
 
         total_sent += sendmsg_rc;
 
-        SIMPLE_LOG_MSG(LL_DEBUG, "%s:%u rc=%zd total=(%zd:%zd)",
+        SIMPLE_LOG_MSG(LL_DEBUG, "sendmsg() %s:%u rc=%zd total=(%zd:%zd)",
                        tsh->tsh_ipaddr, tsh->tsh_port,
                        sendmsg_rc, total_sent, total_size);
     }
@@ -276,21 +284,24 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
 
 
 int
-tcp_socket_connect(struct tcp_socket_handle *tsh, const char *ipaddr, int port)
+tcp_socket_connect(struct tcp_socket_handle *tsh)
 {
     if (!tsh || tsh->tsh_socket < 0)
         return -EINVAL;
 
     struct sockaddr_in addr_in = {0};
-    tcp_setup_sockaddr_in(ipaddr, port, &addr_in);
+    tcp_setup_sockaddr_in(tsh->tsh_ipaddr, tsh->tsh_port, &addr_in);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect() fd:%d host: %s:%d", tsh->tsh_socket, ipaddr, port);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect() fd:%d host: %s:%d", tsh->tsh_socket, tsh->tsh_ipaddr, tsh->tsh_port);
 
-    // XXX should this be async?
+    tcp_socket_set_nonblocking(tsh);
+
     int rc = connect(tsh->tsh_socket, (struct sockaddr *)&addr_in, sizeof(struct sockaddr_in));
     if (rc < 0) {
         rc = -errno;
-        SIMPLE_LOG_MSG(LL_NOTIFY, "connect():%d", rc);
+        if (rc != -EINPROGRESS)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "connect():%d", rc);
+
         return rc;
     }
 

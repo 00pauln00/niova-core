@@ -103,12 +103,21 @@ enum raft_net_comm_recency_type
     RAFT_COMM_RECENCY_UNACKED_SEND,
 };
 
+enum raft_net_connection_status
+{
+    RNCS_NEEDS_SETUP,
+    RNCS_DISCONNECTED,
+    RNCS_CONNECTING,
+    RNCS_CONNECTED,
+};
+
+// XXX redo as tcp_connection with tc_data instead of rnc_ri?
 struct raft_net_connection
 {
-    struct raft_instance       *rnc_ri;
-    struct tcp_socket_handle    rnc_tsh;
-    uuid_t                      rnc_remote;
-    struct epoll_handle         rnc_eph;
+    enum raft_net_connection_status rnc_status;
+    struct raft_instance           *rnc_ri;
+    struct tcp_socket_handle        rnc_tsh;
+    struct epoll_handle             rnc_eph;
 };
 
 struct raft_net_tcp_handshake

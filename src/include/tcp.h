@@ -86,6 +86,6 @@ int
 tcp_socket_handle_accept(int fd, struct tcp_socket_handle *tsh);
 
 int
-tcp_socket_connect(struct tcp_socket_handle *tsh, const char *ipaddr, int port);
+tcp_socket_connect(struct tcp_socket_handle *tsh);
 
 #endif

@@ -1084,7 +1084,7 @@ raft_server_send_msg_to_client_tcp(struct raft_instance *ri,
         return -E2BIG;
     }
 
-    struct raft_net_connection *rnc = csn->csn_peer.csnp_net_data;
+    struct raft_net_connection *rnc = &csn->csn_peer.csnp_net_data;
     NIOVA_ASSERT(rnc);
 
     struct iovec iov[1] = {

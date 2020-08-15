@@ -962,7 +962,7 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
     *csn = *in;
     if (ctl_svc_node_is_peer(csn))
     {
-        csn->csn_peer.csnp_net_data = NULL;
+        csn->csn_peer.csnp_net_data.rnc_ri = NULL;
     }
 
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
