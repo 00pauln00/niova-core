@@ -12,20 +12,26 @@
 #include "log.h"
 #include "pumice_db_client.h"
 #include "regex_defines.h"
+#include "thread.h"
 #include "util_thread.h"
 
-#define OPTS "u:r:h"
+#define OPTS "au:r:h"
 
 #define PMDB_TEST_CLIENT_MAX_RNCUI 128
-//static struct raft_net_client_user_id pmdbtcRncui[PMDB_TEST_CLIENT_MAX_RNCUI];
+static struct raft_net_client_user_id pmdbtcRncui[PMDB_TEST_CLIENT_MAX_RNCUI];
 static unsigned int pmdbtcNumRncui;
 
 static regex_t pmdbtcCmdRegex;
 
 static const char *raft_uuid_str;
 static const char *my_uuid_str;
+static bool  use_async_requests = false;
+
 
 static pmdb_t pmdbtcPMDB;
+
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 enum pmdb_lreg_values
 {
@@ -35,6 +41,21 @@ enum pmdb_lreg_values
 };
 
 REGISTRY_ENTRY_FILE_GENERATE;
+
+struct pmdbtc_request
+{
+    struct raft_net_client_user_id preq_rncui;
+    enum PmdbOpType                preq_op;
+    size_t                         preq_op_cnt;
+    int64_t                        preq_write_seqno;
+    STAILQ_ENTRY(pmdbtc_request)   preq_lentry;
+    size_t                         preq_reply_data_size;
+    PmdbMsg_t                      preq_reply; // must be last
+};
+
+STAILQ_HEAD(pmdbtc_request_queue, pmdbtc_request);
+static struct pmdbtc_request_queue preq_queue =
+    STAILQ_HEAD_INITIALIZER(preq_queue);
 
 static util_thread_ctx_reg_int_t
 pmdbtc_lreg_cb(enum lreg_node_cb_ops, struct lreg_value *, void *);
@@ -49,6 +70,52 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
                                 struct lreg_node *lrn, struct lreg_value *lv)
 {
     return 0;
+}
+
+
+static util_thread_ctx_reg_int_t
+pmdbtc_queue_request(const struct pmdbtc_request *preq)
+{
+    if (!preq)
+        return -EINVAL;
+
+    else if (preq->preq_op != pmdb_op_lookup ||
+             preq->preq_op != pmdb_op_read   ||
+             preq->preq_op != pmdb_op_write)
+        return -EOPNOTSUPP;
+
+    struct pmdbtc_request *new_preq =
+        niova_malloc_can_fail(sizeof(struct pmdbtc_request) +
+                              preq->preq_reply_data_size);
+
+    if (!new_preq)
+        return -ENOMEM;
+
+    memcpy(new_preq, preq, sizeof(struct pmdbtc_request));
+
+    new_preq->preq_reply.pmdbrm_data_size = preq->preq_reply_data_size;
+
+    int rc = 0;
+
+    if (!use_async_requests)
+    {
+        // Move request to the worker thread
+        NIOVA_SET_COND_AND_WAKE(
+            signal,
+            {STAILQ_INSERT_TAIL(&preq_queue, new_preq, preq_lentry);},
+            &mutex, &cond);
+    }
+    else
+    {
+        switch (preq->preq_op)
+        {
+        case pmdb_op_lookup:
+
+        }
+    }
+
+
+    return rc;
 }
 
 static util_thread_ctx_reg_int_t
@@ -66,12 +133,16 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
 
     struct raft_net_client_user_id rncui = {0};
 
+    struct pmdbtc_request pr = {0};
+
     char local_str[LREG_VALUE_STRING_MAX + 1] = {0};
     strncpy(local_str, input_cmd_str, LREG_VALUE_STRING_MAX);
 
     int64_t write_seqno = -1ULL;
     bool write_op = false;
     char *uuid_str = NULL;
+
+    enum PmdbOpType op = pmdb_op_any;
 
     /* Cmd string formats:
      * <RNCUI_V0_REGEX_BASE>.<read>|(<write>.<seqno>)
@@ -86,7 +157,7 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
         switch (pos)
         {
         case 0:
-            rc = raft_net_client_user_id_parse(sub, &rncui, 0);
+            rc = raft_net_client_user_id_parse(sub, &pr.preq_rncui, 0);
             if (rc)
                 return -EBADMSG;
 
@@ -95,32 +166,32 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
 
             break;
         case 1:
-            if (!strncmp("read", sub, 4) || !strncmp("lookup", sub, 6))
-                write_op = false;
+            if (!strncmp("read", sub, 4))
+                pr.preq_op = pmdb_op_read;
+            else if (!strncmp("lookup", sub, 6))
+                pr.preq_op = pmdb_op_lookup;
             else if (!strncmp("write", sub, 5))
-                write_op = true;
+                pr.preq_op = pmdb_op_write;
             else
-                return -EBADMSG; // this should never happen
+                return -EBADMSG; // this should never happen (regex failed..)
             break;
         case 2:
-            NIOVA_ASSERT(write_op);
-            write_seqno = strtoull(sub, NULL, 10);
+            NIOVA_ASSERT(pr.preq_op == pmdb_op_write);
+            pr.preq_write_seqno = strtoull(sub, NULL, 10);
             break;
         default:
             break;
         }
     }
 
-    rc = PmdbObjLookup(pmdbtcPMDB, &rncui.rncui_key);
-
     SIMPLE_LOG_MSG(LL_DEBUG,
                    RAFT_NET_CLIENT_USER_ID_FMT" op=%s seqno=%ld rc=%d",
-                   RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&rncui, uuid_str, 0),
-                   write_op ? "write" : "read", write_seqno, rc);
+                   RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&pr.preq_rncui, uuid_str,
+                                                    0),
+                   pmdp_op_2_string(pr.preq_op, pr.preq_write_seqno, rc);
 
-//    pmdbtc_try_add_rncui(&rncui);
-
-    return 0;
+    // Return errors here so they may be placed into the ctl-interface OUTFILE.
+    return pmdbtc_queue_request(&pr);
 }
 
 static util_thread_ctx_reg_int_t
@@ -193,7 +264,8 @@ static void
 pmdbtc_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s -r <UUID> -u <UUID>\n", argv[0]);
+            "Usage: %s [-a (use async requests)] -r <UUID> -u <UUID>\n",
+            argv[0]);
 
     exit(error);
 }
@@ -210,6 +282,9 @@ pmdbtc_getopt(int argc, char **argv)
     {
         switch (opt)
         {
+        case 'a':
+            use_async_requests = true;
+            break;
         case 'r':
             raft_uuid_str = optarg;
             break;

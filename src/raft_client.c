@@ -157,6 +157,7 @@ struct raft_client_request_handle
     uint64_t                    rcrh_rpc_msg_id;
     uint64_t                    rcrh_rpc_app_seqno;
     struct raft_client_rpc_msg *rcrh_rpc;
+    const struct raft_client_rpc_msg *rcrh_rpc_reply;
     char                       *rcrh_reply_buf;
     void                      (*rcrh_async_cb)(
         const struct raft_net_client_user_id *, void *, char *, size_t, int);
@@ -526,9 +527,12 @@ raft_client_sub_app_done(struct raft_client_instance *rci,
      */
     if (should_exec)
     {
-        rcrh->rcrh_async_cb(&sa->rcsa_rncui, rcrh->rcrh_arg,
-                            rcrh->rcrh_reply_buf, rcrh->rcrh_reply_used_size,
-                            rcrh->rcrh_error);
+//        rcrh->rcrh_async_cb(&sa->rcsa_rncui, rcrh->rcrh_arg,
+//                            rcrh->rcrh_reply_buf, rcrh->rcrh_reply_used_size,
+//                            rcrh->rcrh_error);
+        rcrh->rcrh_async_cb(rcrh->rcrh_arg,
+                            rcrh->rcrh_error ? -ABS(rcrh->rcrh_error) :
+                            rcrh->rcrh_reply_used_size);
 
         if (wakeup && rcrh->rcrh_blocking)
             NIOVA_SET_COND_AND_WAKE(broadcast, {}, RCI_2_MUTEX(rci),

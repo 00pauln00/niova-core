@@ -50,6 +50,9 @@
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 
+#define ABS(v) ((v < 0) ? (-v) : (v))
+
+
 #define PACKED __attribute__((packed))
 
 #define L2_CACHELINE_SIZE_BYTES 64

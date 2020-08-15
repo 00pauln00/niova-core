@@ -34,9 +34,24 @@ enum PmdbOpType
     pmdb_op_any    = 7,
 };
 
+static inline const char *pmdp_op_2_string(enum PmdbOpType op)
+{
+    switch (op)
+    {
+    case pmdb_op_noop:   return "noop";
+    case pmdb_op_lookup: return "lookup";
+    case pmdb_op_read:   return "read";
+    case pmdb_op_write:  return "write";
+    case pmdb_op_apply:  return "apply";
+    case pmdb_op_reply:  return "reply";
+    default: break;
+    }
+    return "unknown";
+}
+
 #define PMDB_MSG_MAGIC 0x1a2b3c4
 
-typedef struct pmdb_msg
+struct pmdb_msg
 {
     uint32_t                       pmdbrm_magic;
     uint32_t                       pmdbrm_crc;
@@ -49,7 +64,14 @@ typedef struct pmdb_msg
     int32_t                        pmdbrm_err; // reply ctx error
     uint32_t                       pmdbrm_data_size; // size of data payload
     char                           pmdbrm_data[];
-} PmdbMsg_t;
+};
+
+struct pmdb_obj_stat
+{
+    pmdb_obj_id_t obj_id;
+    int64_t       write_sequence_num;
+    uint8_t       write_op_pending:1;
+};
 
 static inline size_t
 pmdb_net_calc_rpc_msg_size(const PmdbMsg_t *pmdb_msg)
