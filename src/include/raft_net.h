@@ -417,6 +417,11 @@ int
 raft_net_send_client_msg(struct raft_instance *ri,
                          struct raft_client_rpc_msg *rcrm);
 
+int
+raft_net_send_client_msgv(struct raft_instance *ri,
+                          struct raft_client_rpc_msg *rcrm,
+                          const struct iovec *iov, size_t niovs);
+
 void
 raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 

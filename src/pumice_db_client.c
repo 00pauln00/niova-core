@@ -6,6 +6,7 @@
 
 #include <errno.h>
 #include <stdlib.h>
+#include <sys/uio.h>
 #include <uuid/uuid.h>
 
 #include "alloc.h"
@@ -37,11 +38,10 @@ struct pmdb_client_request
 };
 
 static void
-pmdb_client_request_lookup_cb(struct pmdb_client_request *pcreq,
-                              ssize_t status)
+pmdb_client_request_lookup_completion(struct pmdb_client_request *pcreq,
+                                      ssize_t status)
 {
-    NIOVA_ASSERT(pcreq && pcreq->pcreq_op == pmdb_op_lookup &&
-                 pcreq->pcreq_user_cb);
+    NIOVA_ASSERT(pcreq && pcreq->pcreq_op == pmdb_op_lookup);
 
     ssize_t ret_status;
 
@@ -66,7 +66,11 @@ pmdb_client_request_lookup_cb(struct pmdb_client_request *pcreq,
         pst->write_op_pending = !!reply->pcreq_msg_reply.pmdbrm_write_pending;
     }
 
-    pcreq->pcreq_lookup_cb(pcreq->pcreq_user_arg, ret_status);
+    /* This function may be called from blocking request context as well.
+     * In that case, there will be no user cb.
+     */
+    if (pcreq->pcreq_user_cb)
+        pcreq->pcreq_user_cb(pcreq->pcreq_user_arg, ret_status);
 }
 
 static void
@@ -79,7 +83,7 @@ pmdb_client_request_cb(void *arg, ssize_t status)
     switch (pcreq->pcreq_op)
     {
     case pmdb_op_lookup:
-        pmdb_client_request_lookup_cb(pcreq, status);
+        pmdb_client_request_lookup_completion(pcreq, status);
         break;
     case pmdb_op_read:
     case pmdb_op_write:
@@ -89,31 +93,64 @@ pmdb_client_request_cb(void *arg, ssize_t status)
         break;
     }
 
+    // Release the pcreq which was allocated in pmdb_client_request_new()
     niova_free(pcreq);
 }
 
-
-static void
-pmdb_client_request_msg_init(struct pmdb_client_request *pcreq,
-                             const pmdb_obj_id_t *obj_id,
-                             enum PmdbOpType op, const char *req_buf,
-                             const size_t req_buf_size, char *reply_buf,
-                             const size_t reply_buf_size,
-                             const struct timespec ts,
-                             void (*user_cb)(void *, ssize_t),
-                             void *user_arg)
+/**
+ * pmdb_client_request_init - internal client request initialization.
+ * @pcreq - pointer to the client request
+ * @obj_id - object indentifier of the request
+ * @op - operation type which is copied into the rpc msg and the pcreq.
+ * @req_buf - additional user request data which is to be appended in the
+ *   pmdbrm_data section of the PmdbMsg_t
+ * @req_buf_size - size of the req_buf
+ * @reply_buf - user reply data buffer, this data which may arrive in the
+ *   PmdbMsg_t reply message attached to pmdbrm_data.  Reply_buf may also be
+ *   used for reply context which are not bulk oriented, such as elements
+ *   contained directly in the reply PmdbMsg_t.  This is the case for the
+ *   pmdb_op_lookup command.
+ * @ts - timeout
+ * @user_cb - user callback to be issued on completion or timeout.
+ * @user_arg - user argument which is supplied as the first parameter to the
+ *   user_cb.
+ */
+static struct pmdb_client_request *
+pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
+                        enum PmdbOpType op, const char *req_buf,
+                        const size_t req_buf_size, char *reply_buf,
+                        const size_t reply_buf_size,
+                        const struct timespec ts,
+                        void (*user_cb)(void *, ssize_t),
+                        void *user_arg, int *status)
 {
-    NIOVA_ASSERT(pcreq && obj_id);
+    if (!obj_id)
+    {
+        if (status)
+            *status = -EINVAL;
+        return NULL;
+    }
 
+    struct pmdb_client_request *pcreq =
+        niova_malloc_can_fail(sizeof(struct pmdb_client_request));
+
+    if (!pcreq)
+    {
+        if (status)
+            *status = -ENOMEM;
+        return NULL;
+    }
+
+    // Convert obj_id to to rncui
+    struct raft_net_client_user_id rncui;
+    NIOVA_ASSERT(pmdb_obj_id_2_rncui(obj_id, &rncui) == &rncui);
+
+    // Initialize client request
     memset(pcreq, 0, sizeof(struct pmdb_client_request));
 
     pcreq->pcreq_msg_request.pmdbrm_magic = PMDB_MSG_MAGIC;
     raft_net_client_user_id_copy(&pcreq->pcreq_msg_request.pmdbrm_user_id,
                                  &rncui);
-    pcreq->pcreq_msg_request.pmdbrm_write_seqno = -1;
-    pcreq->pcreq_msg_request.pmdbrm_op = pmdb_op_lookup;
-    pcreq->pcreq_msg_request.pmdbrm_write_pending = 0;
-    pcreq->pcreq_msg_request.pmdbrm_data_size = 0;
 
     NIOVA_CRC_OBJ(&pcreq->pcreq_msg_request, struct pmdb_msg, pmdbrm_crc, 0);
 
@@ -127,60 +164,58 @@ pmdb_client_request_msg_init(struct pmdb_client_request *pcreq,
     pcreq->pcreq_timeout = timeout;
     pcreq->pcreq_user_cb = user_cb;
     pcreq->pcreq_user_arg = user_arg;
+
+    return pcreq;
 }
 
-
-
-//XXX the cb arg should be replaced with a
-/* XX this is what the cb should look like:
-   void (*cb)(const PmdbRet_t *, void *arg) and use a wrapper cb for
-       the cb-arg to raft_client_request_submit()
- */
 static int
 pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                         char *reply, const size_t reply_size, bool blocking,
-                         void(*cb)(const struct raft_net_client_user_id *,
-                                   void *, char *, size_t, int),
-                         void *arg, const struct timespec timeout)
+                         struct pmdb_obj_stat *user_stat, const bool blocking,
+                         const struct timespec timeout,
+                         void (*user_cb)(void *, ssize_t), void *user_arg)
 {
-    if (!pmdb || !obj_id || !reply || !reply_size || (blocking && !cb))
+    if (!pmdb || !obj_id || !user_stat || (blocking && !cb))
         return -EINVAL;
 
-    struct pmdb_client_request *pcreq =
-        niova_malloc_can_fail(sizeof(struct pmdb_client_request));
+    int rc = 0;
 
+    struct pmdb_client_request *pcreq =
+        pmdb_client_request_new(obj_id, pmdb_op_lookup, NULL, 0,
+                                (void *)user_stat,
+                                sizeof(struct pmdb_obj_stat),
+                                timeout, user_cb, user_arg, &rc);
     if (!pcreq)
-        return -ENOMEM;
+        return rc;
 
     struct raft_net_client_user_id rncui;
     NIOVA_ASSERT(pmdb_obj_id_2_rncui(obj_id, &rncui) == &rncui);
 
-
-
-// The reply args should be removed and handled in the cb, furthermore
-    // there should be 2 callbacks, one for this file and one for the caller
+    // XXX this needs to be converted to IOVs
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui,
-                                      (void *)&request, sizeof(request),
-                                      (void *)reply, reply_size, timeout,
-                                      blocking, cb, arg);
+                                      &pcreq->pcreq_msg_request,
+                                      sizeof(struct pmdb_msg),
+                                      &pcreq->pcreq_msg_reply,
+                                      sizeof(struct pmdb_msg),
+                                      timeout, blocking,
+                                      pmdb_client_request_cb, pcreq);
 }
 
-/*XXX What's the return data situation here?
-  - we need the write_seqno, write pending, and the existence rc??
+/**
+ * PmdbObjLookup - blocking object lookup public routine.
  */
 int
 PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-              pmdb_ret_t *lookup_ret)
+              pmdb_obj_stat_t *ret_stat)
 {
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
-    struct pmdb_msg reply = {0};
-
-    return pmdb_obj_lookup_internal(pmdb, obj_id, &reply,
-                                    sizeof(struct pmdb_msg), true, NULL, NULL,
-                                    timeout);
+    return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, true, timeout,
+                                    NULL, NULL);
 }
 
+/**
+ * PmdbObjLookupNB - non-blocking public lookup routine.
+ */
 int
 PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                 struct pmdb_obj_stat *ret_stat, void (*cb)(void *, ssize_t),
@@ -191,7 +226,72 @@ PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
-    return pmdb_obj_lookup_internal(pmdb, obj_id, false, cb, arg, timeout);
+    return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, false, timeout, cb,
+                                    arg);
+}
+
+/**
+ * PmdbObjGetNB - non-blocking public read call.
+ */
+int
+PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, char *buf,
+             size_t buf_size, void (*cb)(void *, ssize_t), void *arg)
+{
+    if (!cb)
+        return -EINVAL;
+
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
+
+    return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, false, timeout, cb,
+                                    arg);
+}
+
+static int
+pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
+                      const char *user_buf, size_t user_buf_size,
+                      const bool blocking, const struct timespec timeout,
+                      void (*user_cb)(void *, ssize_t), void *user_arg)
+{
+    // NULL user_buf or buf_size of 0 is OK
+    if (!pmdb || !obj_id || (blocking && !cb))
+        return -EINVAL;
+
+    int rc = 0;
+
+    struct pmdb_client_request *pcreq =
+        pmdb_client_request_new(obj_id, pmdb_op_write, user_buf, user_buf_size,
+                                NULL, 0, timeout, user_cb, user_arg, &rc);
+    if (!pcreq)
+        return rc;
+
+    struct raft_net_client_user_id rncui;
+    NIOVA_ASSERT(pmdb_obj_id_2_rncui(obj_id, &rncui) == &rncui);
+
+    // XXX this needs to be converted to IOVs
+    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui,
+                                      &pcreq->pcreq_msg_request,
+                                      sizeof(struct pmdb_msg),
+                                      &pcreq->pcreq_msg_reply,
+                                      sizeof(struct pmdb_msg),
+                                      timeout, blocking,
+                                      pmdb_client_request_cb, pcreq);
+}
+
+
+/**
+ * PmdbObjLookupNB - non-blocking public lookup routine.
+ */
+int
+PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *buf,
+             size_t buf_size, void (*cb)(void *, ssize_t), void *arg)
+{
+    if (!cb)
+        return -EINVAL;
+
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
+
+    return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, false, timeout, cb,
+                                    arg);
 }
 
 static int
@@ -200,8 +300,6 @@ pmdb_obj_id_cb(const char *data, const size_t data_size,
 {
     if (!data || data_size < sizeof(struct pmdb_msg) || !out_rncui)
         return -EINVAL;
-
-
 
     const struct pmdb_msg *msg = (const struct pmdb_msg *)data;
 

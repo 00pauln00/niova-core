@@ -683,12 +683,16 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     return csn;
 }
 
-int
-raft_net_send_client_msg(struct raft_instance *ri,
-                         struct raft_client_rpc_msg *rcrm)
+static int
+raft_net_send_client_msgv_internal(struct raft_instance *ri,
+                                   struct raft_client_rpc_msg *rcrm,
+                                   const struct iovec *iov, size_t niovs)
 {
-    if (!ri || !ri->ri_csn_leader || !rcrm)
+    if (!ri || !ri->ri_csn_leader || !rcrm || !iov || !niovs)
         return -EINVAL;
+
+    else if (niovs > 256)
+        return -EMSGSIZE;
 
     const ssize_t msg_size =
         sizeof(struct raft_client_rpc_msg) + rcrm->rcrm_data_size;
@@ -713,11 +717,6 @@ raft_net_send_client_msg(struct raft_instance *ri,
 
     struct udp_socket_handle *ush = &ri->ri_ush[RAFT_UDP_LISTEN_CLIENT];
 
-    struct iovec iov[1] = {
-        [0].iov_len = msg_size,
-        [0].iov_base = (void *)rcrm,
-    };
-
     ssize_t size_rc;
     if (!net_ctl_can_send(&csn->csn_peer.csnp_net_ctl))
     {
@@ -726,7 +725,7 @@ raft_net_send_client_msg(struct raft_instance *ri,
     }
     else
     {
-        size_rc = udp_socket_send(ush, iov, 1, &dest);
+        size_rc = udp_socket_send(ush, iov, niovs, &dest);
     }
 
     DBG_RAFT_CLIENT_RPC(LL_DEBUG, rcrm, &dest, "size-rc=%zd", size_rc);
@@ -735,6 +734,45 @@ raft_net_send_client_msg(struct raft_instance *ri,
         raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
     return size_rc == msg_size ? 0 : -ECOMM;
+}
+
+int
+raft_net_send_client_msg(struct raft_instance *ri,
+                         struct raft_client_rpc_msg *rcrm)
+{
+    if (!ri || !ri->ri_csn_leader || !rcrm)
+        return -EINVAL;
+
+    struct iovec iov[1] = {
+        [0].iov_len = (sizeof(struct raft_client_rpc_msg) +
+                       rcrm->rcrm_data_size),
+        [0].iov_base = (void *)rcrm,
+    };
+
+    return raft_net_send_client_msgv_internal(ri, rcrm, &iov, 1);
+}
+
+int
+raft_net_send_client_msgv(struct raft_instance *ri,
+                          struct raft_client_rpc_msg *rcrm,
+                          const struct iovec *iov, size_t niovs)
+{
+    if (!ri || !ri->ri_csn_leader || !rcrm)
+        return -EINVAL;
+
+    else if (niovs > 255 ||
+             io_iovs_total_size_get(iovs, niovs) != rcrm->rcrm_data_size)
+        return -EMSGSIZE;
+
+    struct iovec my_iovs[niovs + 1] = {
+        [0].iov_len = sizeof(struct raft_client_rpc_msg),
+        [0].iov_base = (void *)rcrm,
+    };
+
+    // Copy the remaining IOVs into the local iov array
+    memcpy(&my_iovs[1], iov, (sizeof(struct iovec) * niovs));
+
+    return raft_net_send_client_msgv_internal(ri, rcrm, my_iovs, niovs + 1);
 }
 
 int

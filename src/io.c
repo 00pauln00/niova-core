@@ -175,3 +175,22 @@ io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
 
     return dest_num_iovs;
 }
+
+ssize_t
+io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
+                const size_t num_iovs)
+{
+    if (!src || !src_size || !dest_iovs || !num_iovs)
+        return -EINVAL;
+
+    size_t bytes_copied = 0;
+
+    for (size_t i = 0; ((bytes_copied < src_size) && (i < num_iovs)); i++)
+    {
+        size_t n = MIN(dest_iovs[i].iov_len, (src_size - bytes_copied));
+        memcpy(dest_iovs[i], &src, n);
+        bytes_copied += n;
+    }
+
+    return bytes_copied;
+}
