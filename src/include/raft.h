@@ -284,7 +284,6 @@ struct raft_instance_backend
 
 struct raft_instance
 {
-    enum raft_instance_net_type     ri_net_type;
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
     struct tcp_socket_handle        ri_listen_socket;
     struct ctl_svc_node            *ri_csn_raft;
@@ -518,14 +517,6 @@ raft_instance_backend_type_specify(struct raft_instance *ri,
 {
     if (ri)
         ri->ri_store_type = type;
-}
-
-static inline void
-raft_instance_net_type_specify(struct raft_instance *ri,
-                               enum raft_instance_net_type type)
-{
-    if (ri)
-        ri->ri_net_type = type;
 }
 
 static inline bool

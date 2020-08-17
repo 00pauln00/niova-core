@@ -1120,7 +1120,7 @@ raft_server_send_msg_to_client_udp(struct raft_instance *ri,
     const ssize_t msg_size = (sizeof(struct raft_client_rpc_msg) +
                               rncr->rncr_reply->rcrm_data_size);
 
-    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
+    if (msg_size > NIOVA_MAX_UDP_SIZE)
         return -E2BIG;
 
     struct udp_socket_handle *ush = &ri->ri_ush[RAFT_UDP_LISTEN_CLIENT];
@@ -1150,10 +1150,11 @@ static int
 raft_server_send_msg_to_client(struct raft_instance *ri,
                                struct raft_net_client_request *rncr)
 {
-    if (ri->ri_net_type == RAFT_INSTANCE_NET_UDP)
-        return raft_server_send_msg_to_client_udp(ri, rncr);
-    else
+    int rc = raft_server_send_msg_to_client_udp(ri, rncr);
+    if (rc == -E2BIG)
         return raft_server_send_msg_to_client_tcp(ri, rncr);
+
+    return rc;
 }
 
 static int
@@ -1238,7 +1239,7 @@ raft_server_send_msg_udp(struct raft_instance *ri,
         msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
 
 #endif
-    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
+    if (msg_size > NIOVA_MAX_UDP_SIZE)
         return -E2BIG;
 
     struct udp_socket_handle *ush = &ri->ri_ush[sock_src];
@@ -1297,10 +1298,11 @@ raft_server_send_msg(struct raft_instance *ri,
         NIOVA_ASSERT(sock_src == RAFT_UDP_LISTEN_CLIENT);
     }
 
-    if (ri->ri_net_type == RAFT_INSTANCE_NET_UDP)
-        return raft_server_send_msg_udp(ri, sock_src, rp, rrm);
-    else
+    int rc = raft_server_send_msg_udp(ri, sock_src, rp, rrm);
+    if (rc == -E2BIG)
         return raft_server_send_msg_tcp(ri, rp, rrm);
+
+    return rc;
 }
 
 
@@ -2908,7 +2910,7 @@ raft_server_udp_client_reply_init(const struct raft_instance *ri,
 }
 
 static raft_net_cb_ctx_bool_t
-raft_server_udp_client_recv_ignore_request(
+raft_server_client_recv_ignore_request(
     struct raft_instance *ri, const struct raft_client_rpc_msg *rcm,
     const struct sockaddr_in *from, struct net_ctl *nc_out)
 {
@@ -2962,9 +2964,10 @@ raft_server_udp_client_recv_ignore_request(
 
             ctl_svc_node_put(client_csn);
         }
-        else if (ri->ri_net_type == RAFT_INSTANCE_NET_TCP)
+        else
         {
-            cause = "CSN required for TCP mode clients";
+            // XXX can we determine if it was a TCP request?
+            cause = "CSN required";
             ignore_request = true;
         }
     }
@@ -2981,6 +2984,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                                     ssize_t recv_bytes,
                                     const struct sockaddr_in *from)
 {
+    // XXX should this change depending on UDP or TCP?
     static char reply_buf[RAFT_NET_MAX_RPC_SIZE];
 
     NIOVA_ASSERT(ri && from);
@@ -2997,7 +3001,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     /* First set of request checks which are configuration based.
      */
-    if (raft_server_udp_client_recv_ignore_request(ri, rcm, from, &nc))
+    if (raft_server_client_recv_ignore_request(ri, rcm, from, &nc))
         return;
 
     struct raft_net_client_request rncr = {
@@ -3098,7 +3102,7 @@ raft_server_append_entry_should_send_to_follower(
     int rc = raft_net_comm_recency(ri, raft_peer_idx,
                                    RAFT_COMM_RECENCY_UNACKED_SEND,
                                    &since_last_unacked);
-    if (rc == -ENOTCONN) {
+    if (rc == -EALREADY) {
         // XXX will this prevent the server from ever trying to connect?
         return false;
     }

@@ -70,12 +70,6 @@ enum raft_instance_store_type
     RAFT_INSTANCE_STORE_ROCKSDB,
 };
 
-enum raft_instance_net_type
-{
-    RAFT_INSTANCE_NET_UDP,
-    RAFT_INSTANCE_NET_TCP,
-};
-
 enum raft_udp_listen_sockets
 {
     RAFT_UDP_LISTEN_MIN    = 0,

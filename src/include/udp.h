@@ -18,7 +18,7 @@
 #define NIOVA_MIN_UDP_PORT     1
 #define NIOVA_MAX_UDP_PORT     65535
 #define NIOVA_DEFAULT_UDP_PORT 6667
-#define NIOVA_MAX_UDP_SIZE     65500
+#define NIOVA_MAX_UDP_SIZE     50
 
 struct udp_socket_handle
 {
