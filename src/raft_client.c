@@ -141,6 +141,7 @@ struct raft_client_request_handle
     uint8_t                     rcrh_initializing:1;
     uint8_t                     rcrh_blocking:1;
     uint8_t                     rcrh_sendq:1;
+    uint8_t                     rcrh_send_failed:1;
     uint8_t                     rcrh_cancel:1;
     uint8_t                     rcrh_cb_exec:1;
     uint8_t                     rcrh_op_wr:1;
@@ -199,7 +200,7 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
         __uuid_str);                                                    \
     LOG_MSG(                                                            \
         log_level,                                                      \
-        "sa@%p %s.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c e=%d "   \
+        "sa@%p %s.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c e=%d "   \
         fmt,                                                            \
         sa,  __uuid_str,                                                \
         RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 2),      \
@@ -214,6 +215,7 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
         (sa)->rcsa_rh.rcrh_op_wr         ? 'W' : 'R',                   \
         (sa)->rcsa_rh.rcrh_ready         ? 'r' : '-',                   \
         (sa)->rcsa_rh.rcrh_sendq         ? 's' : '-',                   \
+        (sa)->rcsa_rh.rcrh_send_failed   ? 'f' : '-',                   \
         (sa)->rcsa_rh.rcrh_error,                                       \
         ##__VA_ARGS__);                                                 \
 }
@@ -1666,7 +1668,7 @@ raft_client_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
  *    rci->rci_sendq, to the raft service.  This call is always performed from
  *    epoll context.
  */
-static raft_client_epoll_t
+static raft_client_epoll_int_t
 raft_client_rpc_launch(struct raft_client_instance *rci,
                        struct raft_client_sub_app *sa)
 {
@@ -1681,12 +1683,12 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
     if (rc)
     {
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
-                                "raft_net_send_client_msg(): %s",
+                                "raft_net_send_client_msgv(): %s",
                                 strerror(-rc));
 
-        DBG_RAFT_CLIENT_RPC_LEADER(LL_DEBUG, RCI_2_RI(rci),
+        DBG_RAFT_CLIENT_RPC_LEADER(LL_NOTIFY, RCI_2_RI(rci),
                                    &sa->rcsa_rh.rcrh_rpc_request,
-                                   "raft_net_send_client_msg(): %s",
+                                   "raft_net_send_client_msgv(): %s",
                                    strerror(-rc));
     }
     else // Capture current timestamp in rci and sa
@@ -1696,6 +1698,8 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
         sa->rcsa_rh.rcrh_last_send = rci->rci_last_request_sent;
         sa->rcsa_rh.rcrh_num_sends++;
     }
+
+    return rc;
 }
 
 /**
@@ -1709,6 +1713,7 @@ raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci)
     NIOVA_ASSERT(rci);
 
     int rc = 0;
+    bool cancel = false;
 
     RCI_LOCK(rci);
     struct raft_client_sub_app *sa = STAILQ_FIRST(&rci->rci_sendq);
@@ -1720,13 +1725,33 @@ raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci)
     RCI_UNLOCK(rci);
 
     if (!sa)
+    {
         return -ENOENT;
-
+    }
     else if (!rc)
-        raft_client_rpc_launch(rci, sa);
+    {
+        rc = raft_client_rpc_launch(rci, sa);
 
-    // Drop the sendq reference
-    raft_client_request_send_queue_remove_done(rci, sa, __func__, __LINE__);
+        if (rc)
+        {
+            cancel = true;
+            /* msg failed to send - notify the app layer.  Use the RCI_LOCK on
+             * the off chance that the timercb thread tries to requeue this
+             * request.
+             */
+            RCI_LOCK(rci);
+            sa->rcsa_rh.rcrh_cancel = 1;
+            sa->rcsa_rh.rcrh_send_failed = 1;
+            RCI_UNLOCK(rci);
+        }
+    }
+
+    if (cancel)
+        raft_client_sub_app_done(rci, sa, __func__, __LINE__, true, rc);
+
+    else // Drop the sendq reference
+        raft_client_request_send_queue_remove_done(rci, sa, __func__,
+                                                   __LINE__);
 
     return rc;
 }
