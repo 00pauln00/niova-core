@@ -743,10 +743,10 @@ raft_net_send_client_msg(struct raft_instance *ri,
     if (!ri || !ri->ri_csn_leader || !rcrm)
         return -EINVAL;
 
-    struct iovec iov[1] = {
-        [0].iov_len = (sizeof(struct raft_client_rpc_msg) +
+    struct iovec iov = {
+        .iov_len = (sizeof(struct raft_client_rpc_msg) +
                        rcrm->rcrm_data_size),
-        [0].iov_base = (void *)rcrm,
+        .iov_base = (void *)rcrm,
     };
 
     return raft_net_send_client_msgv_internal(ri, rcrm, &iov, 1);
@@ -761,13 +761,12 @@ raft_net_send_client_msgv(struct raft_instance *ri,
         return -EINVAL;
 
     else if (niovs > 255 ||
-             io_iovs_total_size_get(iovs, niovs) != rcrm->rcrm_data_size)
+             io_iovs_total_size_get(iov, niovs) != rcrm->rcrm_data_size)
         return -EMSGSIZE;
 
-    struct iovec my_iovs[niovs + 1] = {
-        [0].iov_len = sizeof(struct raft_client_rpc_msg),
-        [0].iov_base = (void *)rcrm,
-    };
+    struct iovec my_iovs[niovs + 1];
+    my_iovs[0].iov_len = sizeof(struct raft_client_rpc_msg);
+    my_iovs[0].iov_base = (void *)rcrm;
 
     // Copy the remaining IOVs into the local iov array
     memcpy(&my_iovs[1], iov, (sizeof(struct iovec) * niovs));

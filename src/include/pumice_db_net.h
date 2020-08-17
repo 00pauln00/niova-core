@@ -18,6 +18,7 @@
     RAFT_NET_MAX_RPC_SIZE - RAFT_NET_MAX_RPC_SIZE
 
 #define PMDB_MAX_APP_RPC_PAYLOAD_SIZE PMDB_MAX_APP_RPC_PAYLOAD_SIZE_UDP
+#define PMDB_MAX_REQUEST_IOVS RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS
 
 typedef raft_client_instance_t          pmdb_t;
 typedef struct raft_net_client_user_key pmdb_obj_id_t;
@@ -66,20 +67,23 @@ struct pmdb_msg
     char                           pmdbrm_data[];
 };
 
-struct pmdb_obj_stat
+typedef struct pmdb_obj_stat
 {
     pmdb_obj_id_t obj_id;
-    int64_t       write_sequence_num;
+    int64_t       sequence_num;
+    int           status;
     uint8_t       write_op_pending:1;
-};
+} pmdb_obj_stat_t;
+
+typedef void (*pmdb_user_cb_t)(void *, ssize_t);
 
 static inline size_t
-pmdb_net_calc_rpc_msg_size(const PmdbMsg_t *pmdb_msg)
+pmdb_net_calc_rpc_msg_size(const struct pmdb_msg *pmdb_msg)
 {
     size_t size = 0;
 
     if (pmdb_msg)
-        size = (sizeof(PmdbMsg_t) + pmdb_msg->pmdbrm_data_size);
+        size = (sizeof(struct pmdb_msg) + pmdb_msg->pmdbrm_data_size);
 
     return size;
 }

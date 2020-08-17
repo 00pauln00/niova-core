@@ -9,10 +9,32 @@
 
 #include "pumice_db_net.h"
 
-pmdb_t
-PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
+int
+PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
+              pmdb_obj_stat_t *ret_stat);
 
 int
-PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id);
+PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+           size_t kv_size);
+
+int
+PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+           size_t key_size, char *value, size_t value_size);
+
+int
+PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
+                pmdb_obj_stat_t *ret_stat, pmdb_user_cb_t cb, void *arg);
+
+int
+PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+             size_t kv_size, pmdb_user_cb_t user_cb, void *user_arg);
+
+int
+PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+             size_t key_size, char *value, size_t value_size,
+             pmdb_user_cb_t user_cb, void *user_arg);
+
+pmdb_t
+PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
 
 #endif

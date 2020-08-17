@@ -12,6 +12,7 @@
 #include "crc32.h"
 #include "epoll_mgr.h"
 #include "fault_inject.h"
+#include "io.h"
 #include "log.h"
 #include "raft_net.h"
 #include "raft.h"
@@ -48,8 +49,6 @@ LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
 
 // This is the same as the number of total pending requests per RCI
 #define RAFT_CLIENT_MAX_SUB_APP_INSTANCES 4096
-
-#define RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS 8
 
 typedef void * raft_client_thread_t;
 typedef int    raft_client_app_ctx_int_t; // raft client app thread
@@ -161,12 +160,10 @@ struct raft_client_request_handle
     uint8_t                     rcrh_send_niovs;
     uint8_t                     rcrh_recv_niovs;
     struct iovec                rcrh_iovs[RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS];
-    void                      (*rcrh_async_cb)(
-        const struct raft_net_client_user_id *, void *, char *, size_t, int);
+    raft_client_user_cb_t       rcrh_async_cb;
     void                       *rcrh_arg;
 };
 
-#define SA_2_RPC(sa) (sa)->rcsa_rh.rcrh_rpc
 #define RCI_2_RI(rci) (rci)->rci_ri
 
 struct raft_client_instance;
@@ -191,7 +188,7 @@ struct raft_client_sub_app
 static uint64_t
 raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
 {
-    return (sa && SA_2_RPC(sa)) ? SA_2_RPC(sa)->rcrm_msg_id : 0;
+    return (sa) ? sa->rcsa_rh.rcrh_rpc_request.rcrm_msg_id : 0;
 }
 
 #define DBG_RAFT_CLIENT_SUB_APP(log_level, sa, fmt, ...)                \
@@ -402,16 +399,6 @@ raft_client_sub_app_construct(const struct raft_client_sub_app *in)
     return sa;
 }
 
-static void
-raft_client_sub_app_rpc_request_release(struct raft_client_sub_app *sa)
-{
-    if (SA_2_RPC(sa))
-    {
-        niova_free(SA_2_RPC(sa));
-        SA_2_RPC(sa) = NULL;
-    }
-}
-
 static int
 raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
 {
@@ -425,11 +412,6 @@ raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
     RAFT_CLIENT_SUB_APP_FATAL_IF((destroy->rcsa_rh.rcrh_async_cb &&
                                   !destroy->rcsa_rh.rcrh_cb_exec), destroy,
                                  "callback was not issued");
-
-    raft_client_sub_app_rpc_request_release(destroy);
-
-    // RPCs must have been freed by raft_client_sub_app_rpc_request_release()
-    NIOVA_ASSERT(SA_2_RPC(destroy) == NULL);
 
     raft_client_sub_app_total_dec(destroy->rcsa_rci);
 
@@ -627,11 +609,6 @@ raft_client_op_history_add_item(struct raft_client_instance *rci,
 
     memcpy(&rh->rcsarh_sa[idx], item, sizeof(*item));
 
-    rh->rcsarh_sa[idx].rcsa_rh.rcrh_rpc = NULL;
-    rh->rcsarh_sa[idx].rcsa_rh.rcrh_reply_buf = NULL;
-    rh->rcsarh_sa[idx].rcsa_rh.rcrh_async_cb = NULL;
-    rh->rcsarh_sa[idx].rcsa_rh.rcrh_arg = NULL;
-
     rh->rcsarh_sa[idx].rcsa_rh.rcrh_history_cache = 1;
 }
 
@@ -795,7 +772,7 @@ raft_client_rpc_ping_init(struct raft_client_instance *rci,
                           struct raft_client_rpc_msg *rcrm)
 {
     return raft_client_rpc_msg_init(rci, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_PING,
-                                    NULL, 0UL, RCI_2_RI(rci)->ri_csn_leader);
+                                    0UL, RCI_2_RI(rci)->ri_csn_leader);
 }
 
 /**
@@ -1161,58 +1138,15 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
 }
 
 static int
-raft_client_sub_app_rpc_request_new(
-    struct raft_client_instance *rci, struct raft_client_sub_app *sa,
-    const char *request, const size_t request_size)
-{
-    if (!rci || !sa || !request || !request_size)
-        return -EINVAL;
-
-    else if (!raft_client_rpc_msg_size_is_valid(request_size))
-        return -E2BIG;
-
-    struct raft_client_rpc_msg *rcrm =
-        niova_malloc_can_fail(raft_client_rpc_msg_size(request_size));
-
-    if (!rcrm)
-        return -ENOMEM;
-
-    int rc = raft_client_rpc_msg_init(rci, rcrm,
-                                      RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
-                                      request, request_size,
-                                      RCI_2_RI(rci)->ri_csn_leader);
-    if (rc)
-    {
-        niova_free(rcrm);
-        LOG_MSG(LL_NOTIFY, "raft_client_rpc_msg_new(): %s", strerror(-rc));
-
-        return rc;
-    }
-
-    sa->rcsa_rh.rcrh_rpc = rcrm;
-
-    // Copy the msg back to the sub app
-    sa->rcsa_rh.rcrh_rpc_msg_id = rcrm->rcrm_msg_id;
-
-    DBG_RAFT_CLIENT_RPC_LEADER(LL_DEBUG, RCI_2_RI(rci), rcrm, "");
-    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
-
-    return 0;
-}
-
-static int
 raft_client_request_handle_init(
-    struct raft_client_instance *rci,
-    struct raft_client_request_handle *rcrh,
-    const iovec *src_iovs, size_t nsrc_iovs,
-    iovec *dest_iovs, size_t ndest_iovs,
-    const struct timespec now,
+    struct raft_client_instance *rci, struct raft_client_request_handle *rcrh,
+    const struct iovec *src_iovs, size_t nsrc_iovs, struct iovec *dest_iovs,
+    size_t ndest_iovs, const struct timespec now,
     const struct timespec timeout, const bool block,
-    void(*cb)(const struct raft_net_client_user_id *,
-              void *, char *, size_t, int), void *arg)
+    raft_client_user_cb_t user_cb, void *user_arg)
 {
     NIOVA_ASSERT(rcrh && rcrh->rcrh_initializing);
-    NIOVA_ASSERT(rci && !RCI_2_RI(rci));
+    NIOVA_ASSERT(rci && RCI_2_RI(rci));
     NIOVA_ASSERT((nsrc_iovs + ndest_iovs) <=
                  RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS);
     NIOVA_ASSERT(nsrc_iovs < 256);
@@ -1231,17 +1165,16 @@ raft_client_request_handle_init(
     if (rc)
         return rc;
 
-    rcrh->rcrh_arg = arg;
+    rcrh->rcrh_arg = user_arg;
     rcrh->rcrh_blocking = block ? 1 : 0;
-    CONST_OVERRIDE(size_t, rcrh->rcrh_reply_size, reply_size);
-    rcrh->rcrh_async_cb = cb;
+    rcrh->rcrh_async_cb = user_cb;
     rcrh->rcrh_submitted = now;
     rcrh->rcrh_initializing = 1;
     rcrh->rcrh_send_niovs = nsrc_iovs;
     rcrh->rcrh_recv_niovs = ndest_iovs;
 
-    memcpy(&rcrh->rcrh_iovs[0], rcrh->rcrh_send_niovs, nsrc_iovs);
-    memcpy(&rcrh->rcrh_iovs[nsrc_iovs], rcrh->rcrh_recv_niovs, ndest_iovs);
+    memcpy(&rcrh->rcrh_iovs[0], src_iovs, nsrc_iovs);
+    memcpy(&rcrh->rcrh_iovs[nsrc_iovs], dest_iovs, ndest_iovs);
 
     if (timespec_has_value(&timeout))
     {
@@ -1258,8 +1191,7 @@ static int
 raft_client_sub_app_wait(struct raft_client_instance *rci,
                          struct raft_client_sub_app *sa)
 {
-    NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_rpc &&
-                 sa->rcsa_rh.rcrh_blocking);
+    NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_blocking);
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
 
@@ -1294,7 +1226,7 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
                                        bool wakeup, const int error,
                                        const char *func, const int lineno)
 {
-    NIOVA_ASSERT(rci && sa && sa->rcsa_rh.rcrh_rpc);
+    NIOVA_ASSERT(rci && sa);
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
     int rc = 0;
@@ -1353,11 +1285,12 @@ raft_client_request_cancel(raft_client_instance_t client_instance,
     if (!sa)
         return -ENOENT;
 
-    else if (!sa->rcsa_rh.rcrh_rpc) // Request is still being initialized
+    else if (!sa->rcsa_rh.rcrh_initializing) // still being initialized
         return -EINPROGRESS;        // inside of raft_client_request_submit()
 
-    else if (sa->rcsa_rh.rcrh_reply_buf != reply_buf)
-        return -ESTALE;
+//XXX need a check for estale - this should perhaps use the msg-id?
+//    else if (sa->rcsa_rh.rcrh_reply_buf != reply_buf)
+    //      return -ESTALE;
 
     /* Error code can be ignored here since this function has it's own
      * reference.
@@ -1392,20 +1325,20 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
 raft_client_app_ctx_int_t
 raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct raft_net_client_user_id *rncui,
-                           const iovec *src_iovs, size_t nsrc_iovs,
-                           iovec *dest_iovs, size_t ndest_iovs,
-                           const struct timespec timeout,
-                           const bool block,
-                           void(*cb)(const struct raft_net_client_user_id *,
-                                     void *, char *, size_t, int),
-                           void *arg)
+                           const struct iovec *src_iovs, size_t nsrc_iovs,
+                           struct iovec *dest_iovs, size_t ndest_iovs,
+                           const struct timespec timeout, const bool block,
+                           raft_client_user_cb_t user_cb, void *user_arg)
 {
-    if (!client_instance || !rncui || (!block && cb == NULL))
+    if (!client_instance || !rncui || (!block && user_cb == NULL))
         return -EINVAL;
 
-    else if (raft_client_rpc_msg_size_is_valid(
+    else if ((nsrc_iovs + ndest_iovs) > RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS)
+        return -EFBIG;
+
+    else if (!raft_client_rpc_msg_size_is_valid(
                  io_iovs_total_size_get(src_iovs, nsrc_iovs)) ||
-             raft_client_rpc_msg_size_is_valid(
+             !raft_client_rpc_msg_size_is_valid(
                  io_iovs_total_size_get(dest_iovs, ndest_iovs)))
         return -E2BIG;
 
@@ -1437,8 +1370,9 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     niova_realtime_coarse_clock(&now);
 
     int rc =
-        raft_client_request_handle_init(rcrh, reply, reply_size, now, timeout,
-                                        block, cb, arg);
+        raft_client_request_handle_init(rci, rcrh, src_iovs, nsrc_iovs,
+                                        dest_iovs, ndest_iovs, now, timeout,
+                                        block, user_cb, user_arg);
     if (rc)
     {
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
@@ -1561,10 +1495,11 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
 
     DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
 
-    if (!sa->rcsa_rh.rcrh_rpc || msg_id != raft_client_sub_app_2_msg_id(sa))
+    if (!sa->rcsa_rh.rcrh_initializing ||
+        msg_id != raft_client_sub_app_2_msg_id(sa))
     {
         DBG_RAFT_CLIENT_SUB_APP(
-            (sa->rcsa_rh.rcrh_rpc ? LL_NOTIFY : LL_WARN),
+            (sa->rcsa_rh.rcrh_initializing ? LL_NOTIFY : LL_WARN),
             sa, "non matching msg_id=%lx", msg_id);
 
         raft_client_sub_app_put(rci, sa, __func__, __LINE__);
@@ -1736,22 +1671,21 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
                        struct raft_client_sub_app *sa)
 {
     NIOVA_ASSERT(rci && RCI_2_RI(rci) && sa);
-    NIOVA_ASSERT(sa->rcsa_rh.rcrh_rpc);
     NIOVA_ASSERT(!sa->rcsa_rh.rcrh_sendq);
 
     // Launch the udp msg.
     int rc = raft_net_send_client_msgv(RCI_2_RI(rci),
-                                       sa->rcsa_rh.rcrh_rpc,
-                                       &sa->rcsa_rh.rcrh_iovs[0],
+                                       &sa->rcsa_rh.rcrh_rpc_request,
+                                       sa->rcsa_rh.rcrh_iovs,
                                        sa->rcsa_rh.rcrh_send_niovs);
     if (rc)
     {
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
-                                  "raft_net_send_client_msg(): %s",
-                                  strerror(-rc));
+                                "raft_net_send_client_msg(): %s",
+                                strerror(-rc));
 
         DBG_RAFT_CLIENT_RPC_LEADER(LL_DEBUG, RCI_2_RI(rci),
-                                   sa->rcsa_rh.rcrh_rpc,
+                                   &sa->rcsa_rh.rcrh_rpc_request,
                                    "raft_net_send_client_msg(): %s",
                                    strerror(-rc));
     }
@@ -2033,7 +1967,7 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             break;
         case RAFT_CLIENT_SUB_APP_REQ_RPC_ID:
             lreg_value_fill_unsigned(lv, "rpc-id",
-                                     sa->rcsa_rh.rcrh_rpc_msg_id);
+                                     raft_client_sub_app_2_msg_id(sa));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",

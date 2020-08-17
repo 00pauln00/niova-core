@@ -188,7 +188,7 @@ io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
     for (size_t i = 0; ((bytes_copied < src_size) && (i < num_iovs)); i++)
     {
         size_t n = MIN(dest_iovs[i].iov_len, (src_size - bytes_copied));
-        memcpy(dest_iovs[i], &src, n);
+        memcpy(&dest_iovs[i], &src[bytes_copied], n);
         bytes_copied += n;
     }
 
