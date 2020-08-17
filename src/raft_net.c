@@ -1255,15 +1255,22 @@ err1:
 static int
 raft_net_tcp_handshake_send(struct raft_net_connection *rnc)
 {
-    static struct raft_net_tcp_handshake handshake;
+    static struct raft_rpc_msg handshake = {
+        // XXX should there be a new type?
+        .rrm_type = RAFT_RPC_MSG_TYPE_ANY,
+        .rrm_version = 0,
+        .rrm__pad = 0,
+    };
+
     static struct iovec iov = {
         .iov_base = (void *)&handshake,
-        .iov_len  = sizeof(struct raft_net_tcp_handshake),
+        .iov_len  = sizeof(handshake),
     };
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_handshake_send()");
 
-    uuid_copy(handshake.rnth_remote, rnc->rnc_ri->ri_csn_this_peer->csn_uuid);
+    uuid_copy(handshake.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(rnc->rnc_ri));
+    uuid_copy(handshake.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(rnc->rnc_ri));
 
     size_t size_rc = tcp_socket_send(&rnc->rnc_tsh, &iov, 1);
 
@@ -1456,10 +1463,10 @@ raft_net_tcp_handshake_cb(const struct epoll_handle *eph)
 {
     SIMPLE_FUNC_ENTRY(LL_NOTIFY);
 
-    static struct raft_net_tcp_handshake handshake;
+    static struct raft_rpc_msg handshake;
     static struct iovec iov = {
         .iov_base = (void *)&handshake,
-        .iov_len  = sizeof(struct raft_net_tcp_handshake),
+        .iov_len  = sizeof(handshake),
     };
 
     NIOVA_ASSERT(eph && eph->eph_arg);
@@ -1477,13 +1484,23 @@ raft_net_tcp_handshake_cb(const struct epoll_handle *eph)
         return;
     }
 
+    if (
+        uuid_compare(handshake.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(rnc->rnc_ri)) ||
+        handshake.rrm_type != RAFT_RPC_MSG_TYPE_ANY ||
+        handshake.rrm_version != 0
+    )
+    {
+        DBG_RAFT_MSG(LL_ERROR, &handshake, "invalid raft handshake");
+        raft_net_tcp_incoming_fini(rnc);
+
+        return;
+    }
+
     struct ctl_svc_node *csn = NULL;
-    ctl_svc_node_lookup(handshake.rnth_remote, &csn);
+    ctl_svc_node_lookup(handshake.rrm_sender_id, &csn);
     if (!csn)
     {
-        char uuid_str[UUID_STR_LEN];
-        uuid_unparse(handshake.rnth_remote, uuid_str);
-        SIMPLE_LOG_MSG(LL_ERROR, "invalid connection from %s:%d, uuid %s", rnc->rnc_tsh.tsh_ipaddr, rnc->rnc_tsh.tsh_port, uuid_str);
+        DBG_RAFT_MSG(LL_ERROR, &handshake, "invalid connection om %s:%d", rnc->rnc_tsh.tsh_ipaddr, rnc->rnc_tsh.tsh_port);
         raft_net_tcp_incoming_fini(rnc);
 
         return;
