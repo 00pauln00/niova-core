@@ -1175,8 +1175,9 @@ raft_client_request_handle_init(
     rcrh->rcrh_send_niovs = nsrc_iovs;
     rcrh->rcrh_recv_niovs = ndest_iovs;
 
-    memcpy(&rcrh->rcrh_iovs[0], src_iovs, nsrc_iovs);
-    memcpy(&rcrh->rcrh_iovs[nsrc_iovs], dest_iovs, ndest_iovs);
+    memcpy(&rcrh->rcrh_iovs[0], src_iovs, nsrc_iovs * sizeof(struct iovec));
+    memcpy(&rcrh->rcrh_iovs[nsrc_iovs], dest_iovs,
+           ndest_iovs * sizeof(struct iovec));
 
     if (timespec_has_value(&timeout))
     {
