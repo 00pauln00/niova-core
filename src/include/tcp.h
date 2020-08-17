@@ -1,7 +1,7 @@
 /* Copyright (C) NIOVA Systems, Inc - All Rights Reserved
  * Unauthorized copying of this file, via any medium is strictly prohibited
  * Proprietary and confidential
- * Written by Paul Nowoczynski <pauln@niova.io> 2020
+ * Written by Kit Westneat <kit@niova.io> 2020
  */
 
 #ifndef _TCP_H

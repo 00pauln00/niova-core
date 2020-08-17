@@ -1619,7 +1619,7 @@ raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
 /**
  * raft_server_leader_init_state - setup the raft instance for leader duties.
  */
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_leader_init_state(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -1700,7 +1700,7 @@ raft_server_leader_write_new_entry(struct raft_instance *ri,
     ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
 }
 
-static raft_server_cb_leader_t
+static raft_server_net_cb_leader_t
 raft_server_write_leader_change_marker(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_leader(ri));
@@ -1713,7 +1713,7 @@ static void
 raft_server_set_leader_csn(struct raft_instance *ri,
                            struct ctl_svc_node *leader_csn);
 
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_candidate_becomes_leader(struct raft_instance *ri)
 {
     DBG_RAFT_INSTANCE_FATAL_IF((!raft_server_candidate_is_viable(ri)), ri,
@@ -1739,7 +1739,7 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
  * raft_server_process_vote_reply - handle a peer's response to our vote
  *    request.
  */
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_vote_reply(struct raft_instance *ri,
                                struct ctl_svc_node *sender_csn,
                                const struct raft_rpc_msg *rrm)
@@ -1996,7 +1996,7 @@ raft_server_process_vote_request_decide(const struct raft_instance *ri,
  * raft_server_process_vote_request - peer has requested that we vote for
  *    them.
  */
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_vote_request(struct raft_instance *ri,
                                  struct ctl_svc_node *sender_csn,
                                  const struct raft_rpc_msg *rrm)
@@ -2057,7 +2057,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
  *    or secondly, an old / retried / stale AE request arrives at this follower
  *    for an index which had already been written.
  */
-static raft_server_cb_follower_ctx_bool_t
+static raft_server_net_cb_follower_ctx_bool_t
 raft_server_append_entry_check_already_stored(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2137,7 +2137,7 @@ raft_server_append_entry_check_already_stored(
  *    log may need to be pruned if it extends beyond the prev_log_index
   *    presented by our leader.  Follower-ctx is assert here.
  */
-static raft_server_cb_follower_ctx_t
+static raft_server_net_cb_follower_ctx_t
 raft_server_append_entry_log_prune_if_needed(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2188,7 +2188,7 @@ raft_server_append_entry_log_prune_if_needed(
  *    follower and retry.  NOTE:  this function will truncate / prune the log
  *    according to the index value presented in the raerq.
  */
-static raft_server_cb_follower_ctx_int_t
+static raft_server_net_cb_follower_ctx_int_t
 raft_server_append_entry_log_prepare_and_check(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2269,7 +2269,7 @@ raft_server_set_leader_csn(struct raft_instance *ri,
  * @sender_csn:  the ctl-svc-node for sender of the AE request.
  * @raerq:  contents of the AE message.
  */
-static raft_server_cb_ctx_int_t
+static raft_server_net_cb_ctx_int_t
 raft_server_process_append_entries_term_check_ops(
     struct raft_instance *ri,
     struct ctl_svc_node *sender_csn,
@@ -2300,7 +2300,7 @@ raft_server_process_append_entries_term_check_ops(
  *    AE operation.  The log index is derived from the raft-instance which
  *    must match the index provided by the leader in raerq,
  */
-static raft_server_cb_follower_ctx_t
+static raft_server_net_cb_follower_ctx_t
 raft_server_write_new_entry_from_leader(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2337,7 +2337,7 @@ raft_server_write_new_entry_from_leader(
  *    raft_server_process_append_entries_request() which does some general
  *    AE reply setup.
  */
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request_prep_reply(
     struct raft_instance *ri,
     struct raft_rpc_msg *reply,
@@ -2355,7 +2355,7 @@ raft_server_process_append_entries_request_prep_reply(
     uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
 }
 
-static raft_server_cb_ctx_int_t
+static raft_server_net_cb_ctx_int_t
 raft_server_process_append_entries_request_validity_check(
     const struct raft_append_entries_request_msg *raerq)
 {
@@ -2369,7 +2369,7 @@ raft_server_process_append_entries_request_validity_check(
     return 0;
 }
 
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_advance_commit_idx(struct raft_instance *ri,
                                int64_t new_commit_idx)
 {
@@ -2389,7 +2389,7 @@ raft_server_advance_commit_idx(struct raft_instance *ri,
     }
 }
 
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request(struct raft_instance *ri,
                                            struct ctl_svc_node *sender_csn,
                                            const struct raft_rpc_msg *rrm)
@@ -2466,7 +2466,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
                                strerror(rc));
 }
 
-static raft_server_cb_leader_ctx_int64_t
+static raft_server_net_cb_leader_ctx_int64_t
 raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_raft);
@@ -2551,7 +2551,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
  *     data used by it must first be updated through a commit + apply
  *     operation.
  */
-static raft_server_cb_leader_ctx_t
+static raft_server_net_cb_leader_ctx_t
 raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -2575,7 +2575,7 @@ raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
     }
 }
 
-static raft_server_cb_leader_ctx_t
+static raft_server_net_cb_leader_ctx_t
 raft_server_apply_append_entries_reply_result(
     struct raft_instance *ri,
     const uuid_t follower_uuid,
@@ -2652,7 +2652,7 @@ raft_server_apply_append_entries_reply_result(
     }
 }
 
-static raft_server_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_reply(struct raft_instance *ri,
                                          struct ctl_svc_node *sender_csn,
                                          const struct raft_rpc_msg *rrm)
@@ -2767,7 +2767,7 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
     raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
-static raft_server_cb_ctx_bool_t
+static raft_server_net_cb_ctx_bool_t
 raft_leader_instance_is_fresh(const struct raft_instance *ri)
 {
     if (!raft_instance_is_leader(ri))
@@ -2978,13 +2978,14 @@ raft_server_client_recv_ignore_request(
     return ignore_request;
 }
 
+// warning: buffers are statically allocated, so code is not multi-thread safe
 static raft_net_cb_ctx_t
 raft_server_client_recv_handler(struct raft_instance *ri,
                                     const char *recv_buffer,
                                     ssize_t recv_bytes,
                                     const struct sockaddr_in *from)
 {
-    // XXX should this change depending on UDP or TCP?
+    // XXX should this size change depending on UDP or TCP?
     static char reply_buf[RAFT_NET_MAX_RPC_SIZE];
 
     NIOVA_ASSERT(ri && from);

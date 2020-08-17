@@ -46,15 +46,15 @@
 #define RAFT_INSTANCE_2_RAFT_UUID(ri)           \
     (ri)->ri_csn_raft->csn_uuid
 
-typedef void    raft_server_cb_ctx_t;
-typedef int     raft_server_cb_ctx_int_t;
-typedef bool    raft_server_cb_ctx_bool_t;
-typedef bool    raft_server_cb_follower_ctx_bool_t;
-typedef int     raft_server_cb_follower_ctx_int_t;
-typedef void    raft_server_cb_follower_ctx_t;
-typedef void    raft_server_cb_leader_t;
-typedef void    raft_server_cb_leader_ctx_t;
-typedef int64_t raft_server_cb_leader_ctx_int64_t;
+typedef void    raft_server_net_cb_ctx_t;
+typedef int     raft_server_net_cb_ctx_int_t;
+typedef bool    raft_server_net_cb_ctx_bool_t;
+typedef bool    raft_server_net_cb_follower_ctx_bool_t;
+typedef int     raft_server_net_cb_follower_ctx_int_t;
+typedef void    raft_server_net_cb_follower_ctx_t;
+typedef void    raft_server_net_cb_leader_t;
+typedef void    raft_server_net_cb_leader_ctx_t;
+typedef int64_t raft_server_net_cb_leader_ctx_int64_t;
 typedef void    raft_server_timerfd_cb_ctx_t;
 typedef int     raft_server_timerfd_cb_ctx_int_t;
 typedef void    raft_server_leader_mode_t;
