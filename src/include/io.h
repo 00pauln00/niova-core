@@ -43,7 +43,7 @@ io_iovs_total_size_get(const struct iovec *iovs, const size_t iovlen)
 
 ssize_t
 io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
-                     const size_t num_iovs, ssize_t bytes_already_consumed);
+                     const size_t num_iovs, size_t bytes_already_consumed);
 
 ssize_t
 io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,

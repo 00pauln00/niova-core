@@ -138,6 +138,7 @@ io_fd_drain(int fd, size_t *ret_data)
     return (rrc == -EAGAIN || rrc == -EWOULDBLOCK) ? 0 : rrc;
 }
 
+#if 0
 /**
  * io_iovs_map_consumed - given a set of source iov's, map them to the set of
  *   destination iov's based on the number of bytes which have already been
@@ -163,14 +164,55 @@ io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
     for (size_t i = 0; i < num_iovs; bytes_already_consumed -= src[i].iov_len,
              i++)
     {
-        if (bytes_already_consumed < src[i].iov_len)
+        if (bytes_already_consumed <= 0 ||
+            bytes_already_consumed < src[i].iov_len)
         {
             const size_t idx = dest_num_iovs++;
-            const size_t adjust = MAX(0, bytes_already_consumed);
+            const size_t adjust = MAX(0LL, bytes_already_consumed);
 
             dest[idx].iov_len = src[i].iov_len - adjust;
             dest[idx].iov_base = (char *)src[i].iov_base + adjust;
         }
+    }
+
+    return dest_num_iovs;
+}
+#endif
+
+/**
+ * io_iovs_map_consumed - given a set of source iov's, map them to the set of
+ *   destination iov's based on the number of bytes which have already been
+ *   processed.
+ * @src:  array of input iov's
+ * @dest:  array of output iov's which should be the same size as the 'src'
+ *    array.
+ * @num_iovs:  number of iov's in both 'src' and 'dest'.
+ * @bytes_already_consumed:  the total number of bytes from the 'src' iov
+ *    array which have been processed.
+ * Returns:  a positive number <= num_iovs which represents the number of
+ *    iov's which map unconsumed data.
+ */
+ssize_t
+io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
+                     const size_t num_iovs, size_t bytes_already_consumed)
+{
+    if (!src || !dest || !num_iovs)
+        return -EINVAL;
+
+    ssize_t dest_num_iovs = 0;
+
+    for (size_t i = 0; i < num_iovs; i++)
+    {
+        if (bytes_already_consumed < src[i].iov_len)
+        {
+            const size_t idx = dest_num_iovs++;
+
+            dest[idx].iov_len = src[i].iov_len - bytes_already_consumed;
+            dest[idx].iov_base =
+                (char *)src[i].iov_base + bytes_already_consumed;
+        }
+
+        bytes_already_consumed -= MIN(bytes_already_consumed, src[i].iov_len);
     }
 
     return dest_num_iovs;

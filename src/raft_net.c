@@ -741,8 +741,7 @@ raft_net_send_client_msg(struct raft_instance *ri,
         return -EINVAL;
 
     struct iovec iov = {
-        .iov_len = (sizeof(struct raft_client_rpc_msg) +
-                       rcrm->rcrm_data_size),
+        .iov_len = sizeof(struct raft_client_rpc_msg) + rcrm->rcrm_data_size,
         .iov_base = (void *)rcrm,
     };
 

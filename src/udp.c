@@ -215,7 +215,7 @@ udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
     /* sendmsg() should not perform partial sends but it's better to be safe
      * than sorry.
      */
-    ssize_t total_sent = 0;
+    size_t total_sent = 0;
     ssize_t rc = 0;
     for (ssize_t sendmsg_rc = 0; total_sent < total_size;)
     {

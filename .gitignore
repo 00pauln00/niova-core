@@ -48,3 +48,4 @@ libpumicedb.*
 libpumicedb_client.*
 test/regex-test
 test/raft_net_test
+test/ev_pipe_test
