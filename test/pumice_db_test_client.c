@@ -20,16 +20,15 @@
 
 #define OPTS "au:r:h"
 
-#define PMDB_TEST_CLIENT_MAX_RNCUI 128
-static struct raft_net_client_user_id pmdbtcRncui[PMDB_TEST_CLIENT_MAX_RNCUI];
-static unsigned int pmdbtcNumRncui;
+#define PMDB_TEST_CLIENT_MAX_APPS 128
+#define PMDB_TEST_CLIENT_REQ_HIST_SZ 128
+
 static struct thread_ctl pmdbtcThrCtl;
 static regex_t pmdbtcCmdRegex;
 
 static const char *raft_uuid_str;
 static const char *my_uuid_str;
 static bool  use_async_requests = false;
-
 
 static pmdb_t pmdbtcPMDB;
 
@@ -39,13 +38,51 @@ static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 enum pmdb_lreg_values
 {
     PMDB_TEST_CLIENT_LREG_SUB_APP,
+    PMDB_TEST_CLIENT_LREG_REQ_HISTORY,
     PMDB_TEST_CLIENT_LREG_CMD_INPUT,
     PMDB_TEST_CLIENT_LREG__MAX,
+};
+
+enum pmdb_test_app_lreg_values
+{
+    PMDB_TEST_APP_LREG_RNCUI,
+    PMDB_TEST_APP_LREG_STATUS,
+    PMDB_TEST_APP_LREG_PMDB_SEQNO,
+    PMDB_TEST_APP_LREG_WRITE_PENDING,
+    PMDB_TEST_APP_LREG_LAST_REQUEST_TIME,
+    PMDB_TEST_APP_LREG_LAST_REQUEST_TAG,
+    PMDB_TEST_APP_LREG_APP_SEQNO,
+    PMDB_TEST_APP_LREG_APP_VALUE,
+    PMDB_TEST_APP_LREG_APP__MAX,
+};
+
+enum pmdb_test_req_lreg_values
+{
+    PMDB_TEST_REQ_LREG_RNCUI,
+    PMDB_TEST_REQ_LREG_PMDB_OP,
+    PMDB_TEST_REQ_LREG_STATUS,
+    PMDB_TEST_REQ_LREG_PMDB_REQ_SEQNO,
+    PMDB_TEST_REQ_LREG_PMDB_SEQNO,
+    PMDB_TEST_REQ_LREG_WRITE_PENDING,
+    PMDB_TEST_REQ_LREG_LAST_REQUEST_TIME,
+    PMDB_TEST_REQ_LREG_LAST_REQUEST_TAG,
+    PMDB_TEST_REQ_LREG_APP_SEQNO,
+    PMDB_TEST_REQ_LREG_APP_VALUE,
+    PMDB_TEST_REQ_LREG_APP__MAX,
 };
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
 #define PMDB_RTV_MAX 1
+
+struct pmdbtc_app
+{
+    struct raft_net_client_user_id papp_rncui;
+    pmdb_obj_stat_t                papp_obj_stat;
+    raft_net_request_tag_t         papp_last_tag;
+    struct timespec                papp_last_request;
+    struct raft_test_values        papp_rtv;
+};
 
 struct pmdbtc_request
 {
@@ -54,10 +91,17 @@ struct pmdbtc_request
     size_t                         preq_op_cnt;
     int64_t                        preq_write_seqno;
     STAILQ_ENTRY(pmdbtc_request)   preq_lentry;
+    raft_net_request_tag_t         preq_last_tag;
     pmdb_obj_stat_t                preq_obj_stat;
+    struct timespec                preq_submitted;
     struct raft_test_data_block    preq_rtdb; // preq_rtv must follow!
     struct raft_test_values        preq_rtv[PMDB_RTV_MAX];
 };
+
+static util_thread_ctx_ctli_int_t pmdbtcNumApps;
+static util_thread_ctx_ctli_int_t pmdbtcHistoryCnt;
+static struct pmdbtc_app pmdbtcApps[PMDB_TEST_CLIENT_MAX_APPS];
+static struct pmdbtc_request pmdbtcReqHistory[PMDB_TEST_CLIENT_REQ_HIST_SZ];
 
 STAILQ_HEAD(pmdbtc_request_queue, pmdbtc_request);
 static struct pmdbtc_request_queue preqQueue =
@@ -75,11 +119,206 @@ static util_thread_ctx_reg_int_t
 pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
                                 struct lreg_node *lrn, struct lreg_value *lv)
 {
+    if (!lv)
+        return -EINVAL;
+
+    lv->get.lrv_num_keys_out = PMDB_TEST_APP_LREG_APP__MAX;
+
+    NIOVA_ASSERT(lrn->lrn_vnode_child);
+
+    struct lreg_vnode_data *vd = &lrn->lrn_lvd;
+    if (vd->lvd_index >= pmdbtcNumApps)
+        return -ERANGE;
+
+    const struct pmdbtc_app *papp = &pmdbtcApps[vd->lvd_index];
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+        strncpy(lv->lrv_key_string, "pmdbtc-apps", LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lv), "none", LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_WRITE_VAL:
+        break;
+    case LREG_NODE_CB_OP_READ_VAL:
+
+        switch (lv->lrv_value_idx_in)
+        {
+        case PMDB_TEST_APP_LREG_RNCUI:
+            lreg_value_fill_key_and_type(lv, "app-user-id",
+                                         LREG_VAL_TYPE_STRING);
+
+            raft_net_client_user_id_to_string(&papp->papp_rncui,
+                                              LREG_VALUE_TO_OUT_STR(lv),
+                                              LREG_VALUE_STRING_MAX);
+            break;
+        case PMDB_TEST_APP_LREG_STATUS:
+            lreg_value_fill_string(lv, "status",
+                                   strerror(-papp->papp_obj_stat.status));
+            break;
+        case PMDB_TEST_APP_LREG_PMDB_SEQNO:
+            lreg_value_fill_signed(lv, "pmdb-seqno",
+                                   papp->papp_obj_stat.sequence_num);
+            break;
+        case PMDB_TEST_APP_LREG_WRITE_PENDING:
+            lreg_value_fill_bool(lv, "pmdb-write-pending",
+                                 papp->papp_obj_stat.write_op_pending ?
+                                 true : false);
+            break;
+        case PMDB_TEST_APP_LREG_LAST_REQUEST_TAG:
+            lreg_value_fill_unsigned(lv, "last-request-tag",
+                                     papp->papp_last_tag);
+            break;
+        case PMDB_TEST_APP_LREG_LAST_REQUEST_TIME:
+            lreg_value_fill_string_time(lv, "last-request",
+                                        papp->papp_last_request.tv_sec);
+            break;
+        case PMDB_TEST_APP_LREG_APP_SEQNO:
+            lreg_value_fill_unsigned(lv, "app-seqno",
+                                     papp->papp_rtv.rtv_seqno);
+            break;
+        case PMDB_TEST_APP_LREG_APP_VALUE:
+            lreg_value_fill_unsigned(lv, "app-value",
+                                     papp->papp_rtv.rtv_reply_xor_all_values);
+            break;
+        default:
+            break;
+        }
+        break;
+    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        return -ENOENT;
+    }
     return 0;
 }
 
-
 static util_thread_ctx_reg_int_t
+pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
+                                      struct lreg_node *lrn,
+                                      struct lreg_value *lv)
+{
+    if (!lv)
+        return -EINVAL;
+
+    lv->get.lrv_num_keys_out = PMDB_TEST_REQ_LREG_APP__MAX;
+
+    NIOVA_ASSERT(lrn->lrn_vnode_child);
+
+    struct lreg_vnode_data *vd = &lrn->lrn_lvd;
+    if (vd->lvd_index >= pmdbtcHistoryCnt)
+        return -ERANGE;
+
+    const struct pmdbtc_request *preq = &pmdbtcReqHistory[vd->lvd_index];
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+        strncpy(lv->lrv_key_string, "pmdbtc-completed-req",
+                LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lv), "none", LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_WRITE_VAL:
+        break;
+    case LREG_NODE_CB_OP_READ_VAL:
+
+        switch (lv->lrv_value_idx_in)
+        {
+        case PMDB_TEST_REQ_LREG_RNCUI:
+            lreg_value_fill_key_and_type(lv, "app-user-id",
+                                         LREG_VAL_TYPE_STRING);
+
+            raft_net_client_user_id_to_string(&preq->preq_rncui,
+                                              LREG_VALUE_TO_OUT_STR(lv),
+                                              LREG_VALUE_STRING_MAX);
+            break;
+        case PMDB_TEST_REQ_LREG_PMDB_OP:
+            lreg_value_fill_string(lv, "op", pmdp_op_2_string(preq->preq_op));
+            break;
+        case PMDB_TEST_REQ_LREG_STATUS:
+            lreg_value_fill_string(lv, "status",
+                                   strerror(-preq->preq_obj_stat.status));
+            break;
+        case PMDB_TEST_REQ_LREG_PMDB_REQ_SEQNO:
+            lreg_value_fill_signed(lv, "pmdb-req-seqno",
+                                   preq->preq_write_seqno);
+            break;
+        case PMDB_TEST_REQ_LREG_PMDB_SEQNO:
+            lreg_value_fill_signed(lv, "pmdb-seqno",
+                                   preq->preq_obj_stat.sequence_num);
+            break;
+        case PMDB_TEST_REQ_LREG_WRITE_PENDING:
+            lreg_value_fill_bool(lv, "pmdb-write-pending",
+                                 preq->preq_obj_stat.write_op_pending ?
+                                 true : false);
+            break;
+        case PMDB_TEST_REQ_LREG_LAST_REQUEST_TAG:
+            lreg_value_fill_unsigned(lv, "last-request-tag",
+                                     preq->preq_last_tag);
+            break;
+        case PMDB_TEST_REQ_LREG_LAST_REQUEST_TIME:
+            lreg_value_fill_string_time(lv, "submitted-time",
+                                        preq->preq_submitted.tv_sec);
+            break;
+        case PMDB_TEST_REQ_LREG_APP_SEQNO:
+            lreg_value_fill_unsigned(lv, "app-seqno",
+                                     preq->preq_rtv[0].rtv_seqno);
+            break;
+        case PMDB_TEST_REQ_LREG_APP_VALUE:
+            lreg_value_fill_unsigned(lv, "app-value",
+                                     preq->preq_rtv[0].rtv_request_value);
+            break;
+        default:
+            break;
+        }
+        break;
+    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        break;
+
+    default:
+        return -ENOENT;
+    }
+    return 0;
+}
+
+static struct pmdbtc_app *
+pmdbtc_app_lookup(const struct raft_net_client_user_id *rncui, bool add)
+{
+    for (size_t i = 0; i < PMDB_TEST_CLIENT_MAX_APPS; i++)
+        if (!raft_net_client_user_id_cmp(rncui, &pmdbtcApps[i].papp_rncui))
+            return &pmdbtcApps[i];
+
+    if (add && (pmdbtcNumApps < PMDB_TEST_CLIENT_MAX_APPS))
+    {
+        const size_t idx = pmdbtcNumApps++;
+        raft_net_client_user_id_copy(&pmdbtcApps[idx].papp_rncui, rncui);
+
+        return &pmdbtcApps[idx];
+    }
+
+    return NULL;
+}
+
+static void
+pmdbtc_app_history_add(const struct pmdbtc_request *preq)
+{
+    if (preq)
+    {
+        const size_t idx = pmdbtcHistoryCnt++ % PMDB_TEST_CLIENT_REQ_HIST_SZ;
+        pmdbtcReqHistory[idx] = *preq;
+    }
+}
+
+static util_thread_ctx_ctli_int_t
 pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
                      enum PmdbOpType op, size_t op_cnt,
                      const int64_t write_seqno)
@@ -91,6 +330,10 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
                op == pmdb_op_write))
         return -EOPNOTSUPP;
 
+    struct pmdbtc_app *papp = pmdbtc_app_lookup(rncui, true);
+    if (!papp)
+        return -ENOSPC;
+
     struct pmdbtc_request *preq =
         niova_calloc_can_fail(1UL, sizeof(struct pmdbtc_request));
 
@@ -101,6 +344,9 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     preq->preq_op = op;
     preq->preq_op_cnt = op_cnt;
     preq->preq_write_seqno = write_seqno;
+    niova_realtime_coarse_clock(&preq->preq_submitted);
+
+
     raft_net_client_user_id_copy(&preq->preq_rncui, rncui);
 
     if (!use_async_requests)
@@ -124,7 +370,7 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     return 0;
 }
 
-static util_thread_ctx_reg_int_t
+static util_thread_ctx_ctli_int_t
 pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
 {
     if (!input_cmd_str)
@@ -228,8 +474,15 @@ pmdbtc_lreg_cb(enum lreg_node_cb_ops op, struct lreg_value *lv, void *arg)
         case PMDB_TEST_CLIENT_LREG_SUB_APP:
             lreg_value_fill_varray(lv, "pmdb-test-apps",
                                    LREG_USER_TYPE_RAFT_CLIENT_APP_DATA,
-                                   pmdbtcNumRncui,
+                                   pmdbtcNumApps,
                                    pmdbtc_test_apps_varray_lreg_cb);
+            break;
+        case PMDB_TEST_CLIENT_LREG_REQ_HISTORY:
+            lreg_value_fill_varray(lv, "pmdb-request-history",
+                                   LREG_USER_TYPE_RAFT_CLIENT_APP_DATA,
+                                   (pmdbtcHistoryCnt %
+                                    PMDB_TEST_CLIENT_REQ_HIST_SZ),
+                                   pmdbtc_request_history_varray_lreg_cb);
             break;
         case PMDB_TEST_CLIENT_LREG_CMD_INPUT:
             lreg_value_fill_string(lv, "input",
@@ -338,6 +591,7 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
 
     // Underhanded way to set rpc-user-tag in raft-client-rpc msg
     preq->preq_obj_stat.sequence_num = random_get();
+    preq->preq_last_tag = preq->preq_obj_stat.sequence_num;
 
     switch (preq->preq_op)
     {
@@ -377,9 +631,12 @@ pmdbtc_dequeue_request(void)
         return;
 
     int rc = pmdbtc_execute_blocking_request(preq);
-    SIMPLE_LOG_MSG(LL_WARN, "rc=%d status=%d", rc, preq->preq_obj_stat.status);
 
-    // XXX Place result into history
+    SIMPLE_LOG_MSG(LL_DEBUG, "rc=%d status=%d",
+                   rc, preq->preq_obj_stat.status);
+
+    pmdbtc_app_history_add(preq);
+
     niova_free(preq);
 }
 
