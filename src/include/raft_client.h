@@ -42,5 +42,6 @@ raft_client_request_submit(raft_client_instance_t rci,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
                            const struct timespec timeout, const bool block,
-                           raft_client_user_cb_t user_cb, void *user_arg);
+                           raft_client_user_cb_t user_cb, void *user_arg,
+                           const raft_net_request_tag_t tag);
 #endif

@@ -24,19 +24,20 @@ static unsigned long pmdbClientDefaultTimeoutSecs =
 
 struct pmdb_client_request
 {
-    pmdb_obj_id_t         pcreq_obj_id;
-    struct pmdb_msg       pcreq_msg_request;
-    struct pmdb_msg       pcreq_msg_reply;
-    enum PmdbOpType       pcreq_op;
-    const char           *pcreq_user_request;
-    const size_t          pcreq_user_request_size;
-    char                 *pcreq_user_reply;
-    const size_t          pcreq_user_reply_size;
-    off_t                 pcreq_user_reply_offset;
-    struct pmdb_obj_stat *pcreq_user_pmdb_stat;
-    struct timespec       pcreq_timeout;
-    pmdb_user_cb_t        pcreq_user_cb;
-    void                 *pcreq_user_arg;
+    pmdb_obj_id_t          pcreq_obj_id;
+    struct pmdb_msg        pcreq_msg_request;
+    struct pmdb_msg        pcreq_msg_reply;
+    enum PmdbOpType        pcreq_op;
+    const char            *pcreq_user_request;
+    const size_t           pcreq_user_request_size;
+    char                  *pcreq_user_reply;
+    const size_t           pcreq_user_reply_size;
+    off_t                  pcreq_user_reply_offset;
+    struct pmdb_obj_stat  *pcreq_user_pmdb_stat;
+    raft_net_request_tag_t pcreq_tag;
+    struct timespec        pcreq_timeout;
+    pmdb_user_cb_t         pcreq_user_cb;
+    void                  *pcreq_user_arg;
 };
 
 static void
@@ -195,6 +196,15 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
 
     CONST_OVERRIDE(size_t, pcreq->pcreq_user_reply_size, reply_buf_size);
 
+    /* Allow the application to provide a tag through the provided user_stat
+     * structure.  This is not a general purpose "feature" - it is intended for
+     * testing.
+     */
+    pcreq->pcreq_tag =
+        (raft_net_request_tag_t)(user_pmdb_stat ?
+                                 user_pmdb_stat->sequence_num :
+                                 RAFT_NET_TAG_NONE);
+
     pcreq->pcreq_user_pmdb_stat = user_pmdb_stat;
 
     pcreq->pcreq_timeout = ts;
@@ -236,7 +246,9 @@ pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, &req_iov, 1,
                                       &reply_iov, 1, timeout, blocking,
-                                      pmdb_client_request_cb, pcreq);
+                                      pmdb_client_request_cb, pcreq,
+                                      pcreq->pcreq_tag);
+
 }
 
 /**
@@ -304,7 +316,8 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
                                       &reply_iov, 1, timeout, blocking,
-                                      pmdb_client_request_cb, pcreq);
+                                      pmdb_client_request_cb, pcreq,
+                                      pcreq->pcreq_tag);
 }
 
 /**
@@ -375,7 +388,8 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
                                       reply_iovs, 2, timeout, blocking,
-                                      pmdb_client_request_cb, pcreq);
+                                      pmdb_client_request_cb, pcreq,
+                                      pcreq->pcreq_tag);
 }
 
 /**

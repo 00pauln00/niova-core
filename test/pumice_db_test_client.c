@@ -13,6 +13,7 @@
 #include "alloc.h"
 #include "pumice_db_client.h"
 #include "raft_test.h"
+#include "random.h"
 #include "regex_defines.h"
 #include "thread.h"
 #include "util_thread.h"
@@ -335,6 +336,9 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
     pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&preq->preq_rncui.rncui_key;
     int rc = -EOPNOTSUPP;
 
+    // Underhanded way to set rpc-user-tag in raft-client-rpc msg
+    preq->preq_obj_stat.sequence_num = random_get();
+
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
@@ -372,7 +376,8 @@ pmdbtc_dequeue_request(void)
     if (!preq)
         return;
 
-    (int)pmdbtc_execute_blocking_request(preq);
+    int rc = pmdbtc_execute_blocking_request(preq);
+    SIMPLE_LOG_MSG(LL_WARN, "rc=%d status=%d", rc, preq->preq_obj_stat.status);
 
     // XXX Place result into history
     niova_free(preq);

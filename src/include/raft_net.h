@@ -35,6 +35,9 @@ typedef bool raft_net_udp_cb_ctx_bool_t;
 typedef void raft_net_timerfd_cb_ctx_t;
 typedef int  raft_net_timerfd_cb_ctx_int_t;
 
+typedef uint64_t raft_net_request_tag_t;
+#define RAFT_NET_TAG_NONE 0UL
+
 struct raft_client_rpc_msg;
 struct raft_net_client_request_handle;
 
@@ -173,9 +176,8 @@ struct raft_client_rpc_msg
     };
     int16_t                        rcrm_app_error;
     int16_t                        rcrm_sys_error;
-//int16_t                        rcrm_raft_error; for these error type: raft_net_client_rpc_sys_error_2_string()
-    uint8_t                        rcrm__pad1[3];
-    uint64_t                       rcrm_raft_client_app_seqno;
+    uint16_t                       rcrm__pad1[2];
+    uint64_t                       rcrm_user_tag;
     char                           rcrm_data[];
 };
 
@@ -347,6 +349,10 @@ raft_net_compile_time_assert(void)
 {
     COMPILE_TIME_ASSERT(RAFT_NET_MAX_RPC_SIZE >
                         (sizeof(struct raft_client_rpc_msg)));
+
+    COMPILE_TIME_ASSERT(
+        sizeof(raft_net_request_tag_t) <=
+        sizeof((struct raft_client_rpc_msg *)0)->rcrm_user_tag);
 }
 
 struct raft_instance *

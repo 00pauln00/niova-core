@@ -194,6 +194,12 @@ raft_client_sub_app_2_msg_id(const struct raft_client_sub_app *sa)
     return (sa) ? sa->rcsa_rh.rcrh_rpc_request.rcrm_msg_id : 0;
 }
 
+static uint64_t
+raft_client_sub_app_2_msg_tag(const struct raft_client_sub_app *sa)
+{
+    return (sa) ? sa->rcsa_rh.rcrh_rpc_request.rcrm_user_tag : 0;
+}
+
 #define DBG_RAFT_CLIENT_SUB_APP(log_level, sa, fmt, ...)                \
 {                                                                       \
     char __uuid_str[UUID_STR_LEN];                                      \
@@ -741,7 +747,8 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
                          struct raft_client_rpc_msg *rcrm,
                          const enum raft_client_rpc_msg_type msg_type,
                          const size_t data_size,
-                         const struct ctl_svc_node *dest_csn)
+                         const struct ctl_svc_node *dest_csn,
+                         const raft_net_request_tag_t tag)
 
 {
     if (!rci || !RCI_2_RI(rci) || !RCI_2_RI(rci)->ri_csn_raft || !rcrm ||
@@ -761,6 +768,7 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
     rcrm->rcrm_type = msg_type;
     rcrm->rcrm_version = 0;
     rcrm->rcrm_data_size = data_size;
+    rcrm->rcrm_user_tag = tag;
 
     struct raft_instance *ri = RCI_2_RI(rci);
 
@@ -778,7 +786,8 @@ raft_client_rpc_ping_init(struct raft_client_instance *rci,
                           struct raft_client_rpc_msg *rcrm)
 {
     return raft_client_rpc_msg_init(rci, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_PING,
-                                    0UL, RCI_2_RI(rci)->ri_csn_leader);
+                                    0UL, RCI_2_RI(rci)->ri_csn_leader,
+                                    RAFT_NET_TAG_NONE);
 }
 
 /**
@@ -1154,7 +1163,8 @@ raft_client_request_handle_init(
     const struct iovec *src_iovs, size_t nsrc_iovs, struct iovec *dest_iovs,
     size_t ndest_iovs, const struct timespec now,
     const struct timespec timeout, const bool block,
-    raft_client_user_cb_t user_cb, void *user_arg)
+    raft_client_user_cb_t user_cb, void *user_arg,
+    const raft_net_request_tag_t tag)
 {
     NIOVA_ASSERT(rcrh && rcrh->rcrh_initializing);
     NIOVA_ASSERT(rci && RCI_2_RI(rci));
@@ -1172,7 +1182,7 @@ raft_client_request_handle_init(
                                       RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
                                       io_iovs_total_size_get(src_iovs,
                                                              nsrc_iovs),
-                                      leader);
+                                      leader, tag);
     if (rc)
         return rc;
 
@@ -1355,7 +1365,8 @@ raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
                            const struct timespec timeout, const bool block,
-                           raft_client_user_cb_t user_cb, void *user_arg)
+                           raft_client_user_cb_t user_cb, void *user_arg,
+                           const raft_net_request_tag_t tag)
 {
     if (!client_instance || !rncui || (!block && user_cb == NULL))
         return -EINVAL;
@@ -1399,7 +1410,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     int rc =
         raft_client_request_handle_init(rci, rcrh, src_iovs, nsrc_iovs,
                                         dest_iovs, ndest_iovs, now, timeout,
-                                        block, user_cb, user_arg);
+                                        block, user_cb, user_arg, tag);
     if (rc)
     {
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
@@ -1987,8 +1998,8 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
                                      raft_client_sub_app_2_msg_id(sa));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SEQNO:
-            lreg_value_fill_unsigned(lv, "app-seqno",
-                                     sa->rcsa_rh.rcrh_rpc_app_seqno);
+            lreg_value_fill_unsigned(lv, "rpc-user-tag",
+                                     raft_client_sub_app_2_msg_tag(sa));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_STATS_BLOCKING:
             lreg_value_fill_bool(lv, "blocking", sa->rcsa_rh.rcrh_blocking ?
