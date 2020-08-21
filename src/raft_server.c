@@ -3317,12 +3317,9 @@ raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
 
     NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
 
-    ev_pipe_drain(evp);
+    EV_PIPE_RESET(evp); // reset prior to dequeuing work
 
     raft_server_append_entry_sender(ri, false);
-
-    evp_increment_reader_cnt(evp); //Xxx this is a mess
-    // should be inside ev_pipe.c!
 }
 
 static raft_server_epoll_sm_apply_t
@@ -3337,9 +3334,7 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph)
     struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY];
     NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
 
-    ev_pipe_drain(evp);
-    evp_increment_reader_cnt(evp); //Xxx this is a mess
-    // should be inside ev_pipe.c!
+    EV_PIPE_RESET(evp);
 
     raft_server_state_machine_apply(ri);
 }

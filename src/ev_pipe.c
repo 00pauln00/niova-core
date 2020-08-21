@@ -34,25 +34,28 @@ ev_pipe_notify(struct ev_pipe *evp)
 
     int rc = 0;
 
-    while (evp->evp_writer_cnt < evp->evp_reader_cnt)
+    int64_t old_write_cnt = niova_atomic_read(&evp->evp_writer_cnt);
+
+    if (old_write_cnt < evp->evp_reader_cnt)
     {
+        niova_atomic_inc(&evp->evp_writer_cnt);
+
         char c[EV_PIPE_WRITE_SZ] = {'x'};
 
         rc = write(evp->evp_pipe[WRITE_PIPE_IDX], c, EV_PIPE_WRITE_SZ);
 
         if (rc == EV_PIPE_WRITE_SZ)
         {
-            uint64_t old_val = evp->evp_writer_cnt;
-            evp->evp_writer_cnt++;
             rc = 0;
 
-            SIMPLE_LOG_MSG(LL_DEBUG, "%ld old=%ld", evp->evp_writer_cnt,
-                           old_val);
+            SIMPLE_LOG_MSG(LL_DEBUG, "%lld old=%ld",
+                           niova_atomic_read(&evp->evp_writer_cnt),
+                           old_write_cnt);
         }
         else
         {
+            niova_atomic_dec(&evp->evp_writer_cnt);
             rc = -errno;
-            break;
         }
     }
 
@@ -82,7 +85,7 @@ ev_pipe_cleanup(struct ev_pipe *evp)
     return save_errno[0] ? save_errno[0] : save_errno[1];
 }
 
-ssize_t
+static ssize_t
 ev_pipe_drain(struct ev_pipe *evp)
 {
     char sink_buf[PIPE_DRAIN_SIZE];
@@ -105,6 +108,23 @@ ev_pipe_drain(struct ev_pipe *evp)
     return num_bytes;
 }
 
+ev_pipe_reader_t
+ev_pipe_reset(struct ev_pipe *evp, const char *function, const int lineno)
+{
+    if (evp)
+    {
+        ssize_t rrc = ev_pipe_drain(evp);
+
+        // Enable wakeup to occur
+        evp->evp_reader_cnt = niova_atomic_read(&evp->evp_writer_cnt) + 1;
+
+        SIMPLE_LOG_MSG(LL_DEBUG,
+                       "%s:%d ev_pipe_drain()=%zd reader_cnt=%zd wcnt=%lld",
+                       function, lineno, rrc, evp->evp_reader_cnt,
+                       niova_atomic_read(&evp->evp_writer_cnt));
+    }
+}
+
 /**
  * ev_pipe_setup - prepares the ev_pipe for usage.
  */
@@ -113,6 +133,9 @@ ev_pipe_setup(struct ev_pipe *evp)
 {
     if (!evp)
         return -EINVAL;
+
+    niova_atomic_init(&evp->evp_writer_cnt, 0);
+    evp->evp_reader_cnt = 1;
 
     int rc = pipe(evp->evp_pipe);
 

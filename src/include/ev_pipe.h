@@ -7,6 +7,7 @@
 #ifndef _EV_PIPE_
 #define _EV_PIPE_ 1
 
+#include "atomic.h"
 #include "common.h"
 
 #define EV_PIPE_WRITE_SZ 1
@@ -18,8 +19,8 @@ typedef void     ev_pipe_writer_t;
 typedef int      ev_pipe_reader_int_t;
 typedef int      ev_pipe_writer_int_t;
 
-typedef uint64_t ev_pipe_reader_uint64_t;
-typedef uint64_t ev_pipe_writer_uint64_t;
+typedef uint64_t         ev_pipe_reader_uint64_t;
+typedef niova_atomic64_t ev_pipe_writer_uint64_t;
 
 struct ev_pipe
 {
@@ -40,14 +41,10 @@ ev_pipe_setup(struct ev_pipe *evp);
 ev_pipe_reader_int_t
 evp_read_fd_get(const struct ev_pipe *evp);
 
-static inline ev_pipe_reader_t
-evp_increment_reader_cnt(struct ev_pipe *evp)
-{
-    if (evp)
-        evp->evp_reader_cnt++;
-}
+void
+ev_pipe_reset(struct ev_pipe *evp, const char *function, const int lineno);
 
-ssize_t
-ev_pipe_drain(struct ev_pipe *evp);
+#define EV_PIPE_RESET(evp)                      \
+    ev_pipe_reset(evp, __func__, __LINE__);
 
 #endif

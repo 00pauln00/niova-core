@@ -596,19 +596,31 @@ struct {								\
 #define CIRCLEQ_ENTRY_INIT(entry)               \
     { (entry)->cqe_next = NULL; (entry)->cqe_prev = NULL; }
 
-#define CIRCLEQ_FOREACH(var, head, field)				\
-	for((var) = CIRCLEQ_FIRST(head);				\
-	    (var) != CIRCLEQ_END(head);					\
-	    (var) = CIRCLEQ_NEXT(var, field))
-
-#define CIRCLEQ_FOREACH_REVERSE(var, head, field)			\
-	for((var) = CIRCLEQ_LAST(head);					\
-	    (var) != CIRCLEQ_END(head);					\
-	    (var) = CIRCLEQ_PREV(var, field))
-
 /*
  * Circular queue functions.
  */
+#define CIRCLEQ_FOREACH(var, head, field)				\
+    for((var) = CIRCLEQ_FIRST(head);                                    \
+        (var) != CIRCLEQ_END(head);					\
+        (var) = CIRCLEQ_NEXT(var, field))
+
+#define CIRCLEQ_FOREACH_REVERSE(var, head, field)			\
+    for((var) = CIRCLEQ_LAST(head);					\
+        (var) != CIRCLEQ_END(head);					\
+        (var) = CIRCLEQ_PREV(var, field))
+
+#define CIRCLEQ_FOREACH_SAFE(var, head, field, tvar)    \
+    for ((var) = CIRCLEQ_FIRST(head);                   \
+         (var) != CIRCLEQ_END(head) &&                  \
+             ((tvar) = CIRCLEQ_NEXT(var, field), 1);    \
+         (var) = (tvar))
+
+#define CIRCLEQ_FOREACH_REVERSE_SAFE(var, head, field, tvar)    \
+    for ((var) = CIRCLEQ_LAST(head);                            \
+         (var) != CIRCLEQ_END(head) &&                          \
+             ((tvar) = CIRCLEQ_PREV(var, field), 1);            \
+         (var) = (tvar))
+
 #define	CIRCLEQ_INIT(head) do {						\
 	(head)->cqh_first = CIRCLEQ_END(head);				\
 	(head)->cqh_last = CIRCLEQ_END(head);				\

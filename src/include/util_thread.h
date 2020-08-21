@@ -22,14 +22,6 @@ typedef char util_thread_ctx_ctli_char_t;
 int
 util_thread_install_event_src(int fd, int events,
                               void (*ut_cb)(const struct epoll_handle *),
-                              void *arg);
-
-init_ctx_t
-util_thread_subsystem_init(void)
-    __attribute__ ((constructor (UTIL_THREAD_SUBSYS_CTOR_PRIORITY)));
-
-destroy_ctx_t
-util_thread_subsystem_destroy(void)
-    __attribute__ ((destructor (UTIL_THREAD_SUBSYS_CTOR_PRIORITY)));
+                              void *arg, struct epoll_handle **ret_eph);
 
 #endif

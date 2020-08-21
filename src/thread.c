@@ -252,6 +252,24 @@ thread_ctl_remove_from_watchdog(struct thread_ctl *tc)
         watchdog_remove_thread(&tc->tc_watchdog_handle);
 }
 
+long int
+thread_join(struct thread_ctl *tc)
+{
+    if (!tc)
+        return -EINVAL;
+
+    void *retval;
+    int rc = pthread_join(tc->tc_thread_id, &retval);
+
+    if (rc)
+        return -errno;
+
+    else if ((long int *)retval)
+        return *(long int *)retval;
+
+    return 0;
+}
+
 int
 thread_halt_and_destroy(struct thread_ctl *tc)
 {
@@ -280,6 +298,7 @@ thread_halt_and_destroy(struct thread_ctl *tc)
 
     return rc;
 }
+
 
 void
 thread_abort(void)

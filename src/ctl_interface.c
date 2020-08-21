@@ -380,7 +380,8 @@ lctli_subsystem_init(void)
              strerror(-rc), lctli->lctli_path);
 
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
-                                       lctli_epoll_mgr_cb, (void *)lctli);
+                                       lctli_epoll_mgr_cb, (void *)lctli,
+                                       NULL);
 
     FATAL_IF(rc, "util_thread_install_event_src(): %s", strerror(-rc));
 }

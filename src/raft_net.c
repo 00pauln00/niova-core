@@ -303,9 +303,6 @@ raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
         return rc;
     }
 
-    evp_increment_reader_cnt(evp); //Xxx this is a mess
-    // should be inside ev_pipe.c!
-
     return idx;
 }
 

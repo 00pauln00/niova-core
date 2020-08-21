@@ -4,12 +4,15 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2019
  */
 
-#include "util_thread.h"
+#include <pthread.h>
+
 #include "common.h"
-#include "thread.h"
-#include "epoll_mgr.h"
-#include "log.h"
 #include "ctor.h"
+#include "epoll_mgr.h"
+#include "init.h"
+#include "log.h"
+#include "thread.h"
+#include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -25,27 +28,46 @@ struct util_thread
 static struct util_thread  utilThread;
 static struct epoll_handle utilThreadEpollHandles[MAX_UT_EPOLL_HANDLES];
 static size_t              utilThreadNumEpollHandles;
+static pthread_mutex_t     utilThreadMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int
 util_thread_install_event_src(int fd, int events,
                               void (*ut_cb)(const struct epoll_handle *),
-                              void *arg)
+                              void *arg, struct epoll_handle **ret_eph)
 {
-    if (utilThread.ut_started)
-        return -EALREADY;
-
-    else if (fd < 0 || !ut_cb)
+    if (fd < 0 || !ut_cb)
         return -EINVAL;
 
-    else if (utilThreadNumEpollHandles >= MAX_UT_EPOLL_HANDLES)
+    pthread_mutex_lock(&utilThreadMutex);
+    if (utilThreadNumEpollHandles >= MAX_UT_EPOLL_HANDLES)
+    {
+        pthread_mutex_unlock(&utilThreadMutex);
         return -ENOSPC;
+    }
 
     struct epoll_handle *eph =
         &utilThreadEpollHandles[utilThreadNumEpollHandles];
 
     int rc = epoll_handle_init(eph, fd, events, ut_cb, arg);
     if (!rc)
+    {
+        if (utilThread.ut_started)
+            rc = epoll_handle_add(&utilThread.ut_epm, eph);
+    }
+
+    if (rc) // Failure, reset the handle
+    {
+        memset(eph, 0, sizeof(*eph));
+    }
+    else // Success
+    {
         utilThreadNumEpollHandles++;
+
+        if (ret_eph)
+            *ret_eph = eph;
+    }
+
+    pthread_mutex_unlock(&utilThreadMutex);
 
     return rc;
 }
@@ -76,7 +98,7 @@ util_thread_main(void *arg)
     return NULL;
 }
 
-init_ctx_t
+static init_ctx_t NIOVA_CONSTRUCTOR(UTIL_THREAD_SUBSYS_CTOR_PRIORITY)
 util_thread_subsystem_init(void)
 {
     FUNC_ENTRY(LL_DEBUG);
@@ -86,6 +108,7 @@ util_thread_subsystem_init(void)
     int rc = epoll_mgr_setup(&utilThread.ut_epm);
     FATAL_IF(rc, "epoll_mgr_setup(): %s", strerror(-rc));
 
+    //init_ctx_t is always single threaded
     utilThread.ut_started = 1;
 
     for (size_t i = 0; i < utilThreadNumEpollHandles; i++)
@@ -104,7 +127,7 @@ util_thread_subsystem_init(void)
     thread_ctl_run(&utilThread.ut_tc);
 }
 
-destroy_ctx_t
+static destroy_ctx_t NIOVA_DESTRUCTOR(UTIL_THREAD_SUBSYS_CTOR_PRIORITY)
 util_thread_subsystem_destroy(void)
 {
     FUNC_ENTRY(LL_DEBUG);

@@ -163,4 +163,7 @@ thread_ctl_is_watchdog_thread(void)
 void
 thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc);
 
+long int
+thread_join(struct thread_ctl *tc);
+
 #endif

@@ -70,16 +70,10 @@ epollCb(const struct epoll_handle *eph)
 
     struct niosd_io_ctx *nioctx = eph->eph_arg;
     NIOVA_ASSERT(nioctx);
+
+    EV_PIPE_RESET(&nioctx->nioctx_evp);
+
     epollCbExecCnt++;
-
-    ssize_t rc = ev_pipe_drain(&nioctx->nioctx_evp);
-    if (rc == -1 && (errno != EWOULDBLOCK || errno != EAGAIN))
-    {
-        EXIT_ERROR_MSG(errno, "read() returned %zd: %s",
-                       rc, strerror(errno));
-    }
-
-    SIMPLE_LOG_MSG(LL_DEBUG, "ev_pipe_drain=%zd", rc);
 
     size_t num_complete = 0;
     for (;;)
@@ -93,10 +87,8 @@ epollCb(const struct epoll_handle *eph)
     }
 
     SIMPLE_LOG_MSG(LL_DEBUG,
-                   "epollCbExecCnt=%zu drain-bytes=%zd ncomp-here=%zd",
-                   epollCbExecCnt, rc, num_complete);
-
-    evp_increment_reader_cnt(&nioctx->nioctx_evp);
+                   "epollCbExecCnt=%zu ncomp-here=%zd",
+                   epollCbExecCnt, num_complete);
 }
 
 static enum niosd_io_request_type
@@ -486,8 +478,6 @@ prepare_epoll(struct niosd_device *ndev)
 
     rc = epoll_handle_init(&epollHandle, fd, EPOLLIN, epollCb, nioctx);
     FATAL_IF((rc), "epoll_handle_init(): %s", strerror(-rc));
-
-    evp_increment_reader_cnt(&nioctx->nioctx_evp);
 
     rc = epoll_handle_add(&epollMgr, &epollHandle);
     FATAL_IF((rc), "epoll_handle_add(): %s", strerror(-rc));

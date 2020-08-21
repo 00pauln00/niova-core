@@ -584,15 +584,9 @@ lreg_util_thread_cb(const struct epoll_handle *eph)
         return;
     }
 
-    ssize_t rc = ev_pipe_drain(&lRegEVP);
-    if (rc < 0 && (rc != -EWOULDBLOCK || rc != -EAGAIN))
-        LOG_MSG(LL_WARN, "ev_pipe_drain() %s", strerror(-rc));
-
-    SIMPLE_LOG_MSG(LL_DEBUG, "ev_pipe_drain()=%zd", rc);
+    EV_PIPE_RESET(&lRegEVP);
 
     lreg_install_queued_nodes();
-
-    evp_increment_reader_cnt(&lRegEVP);
 }
 
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
@@ -615,10 +609,8 @@ lreg_subsystem_init(void)
     int rc = ev_pipe_setup(&lRegEVP);
     FATAL_IF((rc), "ev_pipe_setup(): %s", strerror(-rc));
 
-    evp_increment_reader_cnt(&lRegEVP);
-
     rc = util_thread_install_event_src(evp_read_fd_get(&lRegEVP), EPOLLIN,
-                                       lreg_util_thread_cb, NULL);
+                                       lreg_util_thread_cb, NULL, NULL);
 
     FATAL_IF((rc), "util_thread_install_event_src(): %s", strerror(-rc));
 

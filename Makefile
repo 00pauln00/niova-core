@@ -112,7 +112,11 @@ $(TARGET): $(ALL_OBJFILES) $(ALL_INCLUDES)
 tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/client_mmap test/client_mmap.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/ref_tree_test test/ref_tree_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/ev_pipe_test test/ev_pipe_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/niosd_io_test test/niosd_io_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
@@ -217,10 +221,11 @@ test_build:
 	test/binary_hist_test
 	test/simple_test
 	test/ref_tree_test
+	test/ev_pipe_test
+	test/util-test
 	test/udp_test
 	test/niosd_io_test -t 1
 	test/work_dispatch_test
-	test/util-test
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
 	test/rocksdb-test
