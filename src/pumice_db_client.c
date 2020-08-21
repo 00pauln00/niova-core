@@ -74,13 +74,14 @@ pmdb_client_request_lookup_completion(struct pmdb_client_request *pcreq,
     {
         ret_status = -EMSGSIZE;
     }
-    else if (pcreq->pcreq_user_reply_size != sizeof(struct pmdb_obj_stat))
+    else if (!pcreq->pcreq_user_pmdb_stat)
     {
         ret_status = -EINVAL;
     }
     else
     {
-        ret_status = 0;
+        // Copy the error from the pmdb msg
+        ret_status = pcreq->pcreq_msg_reply.pmdbrm_err;
 
         pmdb_client_completion_fill_pmdb_stat(pcreq, ret_status);
     }
@@ -192,6 +193,7 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
     CONST_OVERRIDE(size_t, pcreq->pcreq_user_request_size, req_buf_size);
 
     pcreq->pcreq_user_reply = reply_buf;
+    pcreq->pcreq_obj_id = *obj_id;
 
 
     CONST_OVERRIDE(size_t, pcreq->pcreq_user_reply_size, reply_buf_size);
@@ -248,7 +250,6 @@ pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                                       &reply_iov, 1, timeout, blocking,
                                       pmdb_client_request_cb, pcreq,
                                       pcreq->pcreq_tag);
-
 }
 
 /**

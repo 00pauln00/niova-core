@@ -1566,6 +1566,8 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
                          MIN(rcrm->rcrm_data_size,
                              io_iovs_total_size_get(recv_iovs,
                                                     rcrh->rcrh_recv_niovs)));
+
+            rcrh->rcrh_reply_used_size = (size_t)rrc;
         }
 
         // Mark the elapsed time of this RPC
