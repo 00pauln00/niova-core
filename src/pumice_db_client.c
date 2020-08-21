@@ -180,6 +180,7 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
     memset(pcreq, 0, sizeof(struct pmdb_client_request));
 
     pcreq->pcreq_msg_request.pmdbrm_magic = PMDB_MSG_MAGIC;
+    pcreq->pcreq_msg_request.pmdbrm_op = op;
     raft_net_client_user_id_copy(&pcreq->pcreq_msg_request.pmdbrm_user_id,
                                  &rncui);
 
