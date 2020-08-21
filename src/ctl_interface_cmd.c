@@ -870,7 +870,7 @@ ctlic_insert_error_kv_init_generic(struct ctlic_iterator *err_citer, int depth,
 
     ctlic_insert_error_kv_lrv_init(&err_citer->citer_lv);
 
-    const struct ctlic_depth_segment *cds;
+    const struct ctlic_depth_segment *cds = NULL;
 
     const struct ctlic_matched_token *cmt =
         ctlic_get_next_apply_token(err_citer->citer_cr);
