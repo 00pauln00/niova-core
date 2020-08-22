@@ -1411,24 +1411,24 @@ raft_net_tcp_connect(struct ctl_svc_node *rp)
     }
 
     raft_net_csn_init_socket(rp, rnc);
-    rc = tcp_socket_connect(&rnc->rnc_tsh);
-    if (rc < 0 && rc != -EINPROGRESS)
-    {
-        tcp_socket_close(&rnc->rnc_tsh);
-        SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect(): %d", rc );
-        return rc;
-    }
 
     epoll_handle_init(&rnc->rnc_eph, rnc->rnc_tsh.tsh_socket, EPOLLOUT,
         raft_net_tcp_connect_cb, rnc);
     epoll_handle_add(&rnc->rnc_ri->ri_epoll_mgr, &rnc->rnc_eph);
 
-    if (rc == -EINPROGRESS) {
+    rc = tcp_socket_connect(&rnc->rnc_tsh);
+    if (rc < 0 && rc != -EINPROGRESS)
+    {
+        tcp_socket_close(&rnc->rnc_tsh);
+        SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect(): %d", rc );
+    }
+    else if (rc == -EINPROGRESS)
+    {
         rnc->rnc_status = RNCS_CONNECTING;
         SIMPLE_LOG_MSG(LL_NOTIFY, "waiting for connect callback, fd = %d", rnc->rnc_tsh.tsh_socket);
     }
-    else
-    { // rc = 0
+    else // rc == 0
+    {
         raft_net_tcp_connect_cb(&rnc->rnc_eph, 0);
     }
 
