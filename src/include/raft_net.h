@@ -322,5 +322,5 @@ int
 raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
 
 struct raft_net_connection *
-raft_net_remote_connect(struct raft_instance *ri, struct ctl_svc_node *rp);
+raft_net_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp, bool do_connect);
 #endif

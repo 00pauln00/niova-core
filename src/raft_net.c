@@ -841,7 +841,7 @@ int
 raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov)
 {
-    struct raft_net_connection *rnc = raft_net_remote_connect(ri, csn);
+    struct raft_net_connection *rnc = raft_net_connection_get(ri, csn, 1);
     if (!rnc)
     {
         return -ENOTCONN;
@@ -1558,14 +1558,17 @@ raft_net_init(void)
 }
 
 struct raft_net_connection *
-raft_net_remote_connect(struct raft_instance *ri, struct ctl_svc_node *rp)
+raft_net_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp, bool do_connect)
 {
     NIOVA_ASSERT(ri && rp && ctl_svc_node_is_peer(rp));
 
     struct raft_net_connection *rnc = &rp->csn_peer.csnp_net_data;
-    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_remote_connect() - existing rnc %p", rnc);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_remote_connect() - existing rnc status %d", rnc->rnc_status);
+
     if (rnc->rnc_status == RNCS_CONNECTED)
         return rnc;
+    if (!do_connect)
+        return NULL;
 
     if (rnc->rnc_status == RNCS_NEEDS_SETUP)
         raft_net_connection_setup(ri, rnc);
