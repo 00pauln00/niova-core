@@ -97,7 +97,7 @@ enum raft_net_comm_recency_type
     RAFT_COMM_RECENCY_UNACKED_SEND,
 };
 
-enum raft_net_connection_status
+enum raft_net_tcp_connection_status
 {
     RNCS_NEEDS_SETUP,
     RNCS_DISCONNECTED,
@@ -106,12 +106,12 @@ enum raft_net_connection_status
 };
 
 // XXX redo as tcp_connection with tc_data instead of rnc_ri?
-struct raft_net_connection
+struct raft_net_tcp_connection
 {
-    enum raft_net_connection_status rnc_status;
-    struct raft_instance           *rnc_ri;
-    struct tcp_socket_handle        rnc_tsh;
-    struct epoll_handle             rnc_eph;
+    enum raft_net_tcp_connection_status rntc_status;
+    struct raft_instance               *rntc_ri;
+    struct tcp_socket_handle            rntc_tsh;
+    struct epoll_handle                 rntc_eph;
 };
 
 struct raft_net_tcp_handshake
@@ -321,6 +321,6 @@ raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 int
 raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
 
-struct raft_net_connection *
-raft_net_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp, bool do_connect);
+struct raft_net_tcp_connection *
+raft_net_tcp_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp, bool do_connect);
 #endif
