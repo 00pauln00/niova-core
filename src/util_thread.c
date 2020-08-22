@@ -28,7 +28,7 @@ static size_t              utilThreadNumEpollHandles;
 
 int
 util_thread_install_event_src(int fd, int events,
-                              void (*ut_cb)(const struct epoll_handle *),
+                              epoll_mgr_cb_t ut_cb,
                               void *arg)
 {
     if (utilThread.ut_started)

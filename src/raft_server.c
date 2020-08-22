@@ -3314,7 +3314,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 }
 
 static raft_server_epoll_ae_sender_t
-raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
+raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 
@@ -3334,7 +3334,7 @@ raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
 }
 
 static raft_server_epoll_sm_apply_t
-raft_server_sm_apply_evp_cb(const struct epoll_handle *eph)
+raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 

@@ -52,7 +52,7 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *), void *arg)
+                  void (*cb)(const struct epoll_handle *, uint32_t events), void *arg)
 {
     if (!eph || !cb)
         return -EINVAL;
@@ -149,8 +149,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
         if (eph->eph_installed && eph->eph_cb)
         {
-            eph->eph_events = evs[i].events;
-            eph->eph_cb(eph);
+            eph->eph_cb(eph, evs[i].events);
         }
     }
 

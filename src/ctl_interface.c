@@ -154,7 +154,7 @@ lctli_inotify_thread_poll_handle_event(struct ctl_interface *lctli)
 }
 
 static util_thread_ctx_t
-lctli_epoll_mgr_cb(const struct epoll_handle *eph)
+lctli_epoll_mgr_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 
