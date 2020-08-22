@@ -10,7 +10,22 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+static ssize_t maxTcpSize = NIOVA_MAX_TCP_SIZE;
+
 static int tcpDefaultPort = NIOVA_DEFAULT_TCP_PORT;
+
+ssize_t
+tcp_get_max_size()
+{
+    return maxTcpSize;
+}
+
+void
+tcp_set_max_size(ssize_t new_size)
+{
+    maxTcpSize = new_size;
+}
+
 
 bool
 tcp_iov_size_ok(ssize_t sz)

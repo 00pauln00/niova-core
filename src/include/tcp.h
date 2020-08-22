@@ -88,4 +88,6 @@ tcp_socket_handle_accept(int fd, struct tcp_socket_handle *tsh);
 int
 tcp_socket_connect(struct tcp_socket_handle *tsh);
 
+ssize_t
+tcp_get_max_size();
 #endif

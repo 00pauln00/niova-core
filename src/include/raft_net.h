@@ -307,6 +307,11 @@ raft_net_sockaddr_is_valid(const struct sockaddr_in *sockaddr)
 }
 
 int
+raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
+                  struct iovec *iov,
+                  const enum raft_udp_listen_sockets sock_src);
+
+int
 raft_net_send_client_msg(struct raft_instance *ri,
                          struct raft_client_rpc_msg *rcrm);
 

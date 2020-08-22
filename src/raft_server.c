@@ -1063,13 +1063,15 @@ raft_server_send_msg_to_client_tcp(struct raft_instance *ri,
                                    struct raft_net_client_request *rncr)
 {
     if (!ri || !rncr || !rncr->rncr_reply ||
-        raft_net_sockaddr_is_valid(&rncr->rncr_remote_addr)) {
+        // commit type requests don't have rncr_request
+        rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_COMMIT ||
+        uuid_is_null(rncr->rncr_request->rcrm_sender_id))
+    {
         SIMPLE_LOG_MSG(LL_NOTIFY, "invalid rncr");
         return -EINVAL;
     }
 
     struct ctl_svc_node *csn;
-    // XXX commit type doesn't have rncr_request, but only user of this fn references rncr_request so is ok?
     int rc = ctl_svc_node_lookup(rncr->rncr_request->rcrm_sender_id, &csn);
     if (rc || !csn) {
         SIMPLE_LOG_MSG(LL_NOTIFY, "csn not found");
@@ -1078,35 +1080,12 @@ raft_server_send_msg_to_client_tcp(struct raft_instance *ri,
 
     const ssize_t msg_size = (sizeof(struct raft_client_rpc_msg) +
                               rncr->rncr_reply->rcrm_data_size);
-
-    if (msg_size > RAFT_NET_MAX_TCP_RPC_SIZE) {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "msg too big");
-        return -E2BIG;
-    }
-
-    struct raft_net_connection *rnc = &csn->csn_peer.csnp_net_data;
-    NIOVA_ASSERT(rnc);
-
     struct iovec iov[1] = {
         [0].iov_len = msg_size,
         [0].iov_base = rncr->rncr_reply,
     };
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_server_send_msg_to_client_tcp()");
-    ssize_t size_rc;
-    if (net_ctl_can_send(&rncr->rncr_nc))
-    {
-        size_rc = tcp_socket_send(&rnc->rnc_tsh, iov, 1);
-    }
-    else
-    {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rncr->rncr_reply,
-                            &rncr->rncr_remote_addr,
-                            "send to this client UUID is disabled");
-        size_rc = msg_size;
-    }
-
-    return size_rc == msg_size ? 0 : -ECOMM;
+    return raft_net_send_msg(ri, csn, iov, RAFT_UDP_LISTEN_CLIENT);
 }
 
 static int
@@ -1150,139 +1129,14 @@ static int
 raft_server_send_msg_to_client(struct raft_instance *ri,
                                struct raft_net_client_request *rncr)
 {
+    NIOVA_ASSERT(ri && rncr);
+
+    // XXX we can move everything to raft_net_send_msg if we always look up csn
     int rc = raft_server_send_msg_to_client_udp(ri, rncr);
-    if (rc == -E2BIG)
+    if (rc == -E2BIG && rncr->rncr_type != RAFT_NET_CLIENT_REQ_TYPE_COMMIT)
         return raft_server_send_msg_to_client_tcp(ri, rncr);
 
     return rc;
-}
-
-static int
-raft_server_send_msg_tcp(struct raft_instance *ri,
-                         struct ctl_svc_node *rp, const struct raft_rpc_msg *rrm)
-{
-    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_server_send_msg_tcp()");
-    if (!ri || !rp || !rrm || !ctl_svc_node_is_peer(rp))
-        return -EINVAL;
-
-    /* For now, there's no use of multiple-IOVs since the only msg type
-     * requiring a payload is RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST.
-     */
-#if 0 //XXX reinvestigate!
-    const size_t msg_size = sizeof(struct raft_rpc_msg) +
-        (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ?
-         rrm->rrm_append_entries_request.raerqm_entries_sz : 0);
-#else
-    size_t msg_size = sizeof(struct raft_rpc_msg);
-    if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
-        msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
-
-#endif
-    if (msg_size > RAFT_NET_MAX_TCP_RPC_SIZE)
-        return -E2BIG;
-
-    struct raft_net_connection *rnc = raft_net_remote_connect(ri, rp);
-    if (!rnc)
-    {
-        return -ECOMM;
-    }
-
-    struct iovec iov = {
-        .iov_len = msg_size,
-        .iov_base = (void *)rrm
-    };
-
-    // The csn is checked to determine if send has been disabled for testing.
-    ssize_t size_rc;
-    if (!net_ctl_can_send(&rp->csn_peer.csnp_net_ctl))
-    {
-        DBG_CTL_SVC_NODE(LL_DEBUG, rp, "net_ctl_can_send() is false");
-        size_rc = msg_size;
-    }
-    else
-    {
-        size_rc = tcp_socket_send(&rnc->rnc_tsh, &iov, 1);
-    }
-
-    if (size_rc < 0) // Return with system error here
-        return size_rc;
-
-    DBG_RAFT_MSG(LL_DEBUG, rrm, "");
-
-    if (rp->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER)
-        raft_net_update_last_comm_time(ri, rp->csn_uuid, true);
-
-    // Error if expected size was not produced
-    return size_rc == msg_size ? 0 : -ECOMM;
-}
-
-static int
-raft_server_send_msg_udp(struct raft_instance *ri,
-                         const enum raft_udp_listen_sockets sock_src,
-                         struct ctl_svc_node *rp, const struct raft_rpc_msg *rrm)
-{
-    if (!ri || !rp || !rrm || !ctl_svc_node_is_peer(rp) ||
-        (sock_src != RAFT_UDP_LISTEN_SERVER &&
-         sock_src != RAFT_UDP_LISTEN_CLIENT))
-        return -EINVAL;
-
-    /* For now, there's no use of multiple-IOVs since the only msg type
-     * requiring a payload is RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST.
-     */
-#if 0 //XXX reinvestigate!
-    const size_t msg_size = sizeof(struct raft_rpc_msg) +
-        (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ?
-         rrm->rrm_append_entries_request.raerqm_entries_sz : 0);
-#else
-    size_t msg_size = sizeof(struct raft_rpc_msg);
-    if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
-        msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
-
-#endif
-    if (msg_size > NIOVA_MAX_UDP_SIZE)
-        return -E2BIG;
-
-    struct udp_socket_handle *ush = &ri->ri_ush[sock_src];
-
-    struct sockaddr_in dest;
-    int rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(rp),
-                                   ctl_svc_node_peer_2_port(rp), &dest);
-    if (rc)
-    {
-        LOG_MSG(LL_NOTIFY, "udp_setup_sockaddr_in(): %s (peer=%s:%hu)",
-                strerror(-rc), ctl_svc_node_peer_2_ipaddr(rp),
-                ctl_svc_node_peer_2_port(rp));
-
-        return rc;
-    }
-
-    struct iovec iov = {
-        .iov_len = msg_size,
-        .iov_base = (void *)rrm
-    };
-
-    // The csn is checked to determine if send has been disabled for testing.
-    ssize_t size_rc;
-    if (!net_ctl_can_send(&rp->csn_peer.csnp_net_ctl))
-    {
-        DBG_CTL_SVC_NODE(LL_DEBUG, rp, "net_ctl_can_send() is false");
-        size_rc = msg_size;
-    }
-    else
-    {
-        size_rc = udp_socket_send(ush, &iov, 1, &dest);
-    }
-
-    if (size_rc < 0) // Return with system error here
-        return size_rc;
-
-    DBG_RAFT_MSG(LL_DEBUG, rrm, "");
-
-    if (sock_src == RAFT_UDP_LISTEN_SERVER)
-        raft_net_update_last_comm_time(ri, rp->csn_uuid, true);
-
-    // Error if expected size was not produced
-    return size_rc == msg_size ? 0 : -ECOMM;
 }
 
 static int
@@ -1298,11 +1152,16 @@ raft_server_send_msg(struct raft_instance *ri,
         NIOVA_ASSERT(sock_src == RAFT_UDP_LISTEN_CLIENT);
     }
 
-    int rc = raft_server_send_msg_udp(ri, sock_src, rp, rrm);
-    if (rc == -E2BIG)
-        return raft_server_send_msg_tcp(ri, rp, rrm);
+    size_t msg_size = sizeof(struct raft_rpc_msg);
+    if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
+        msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
 
-    return rc;
+    struct iovec iov = {
+        .iov_len = msg_size,
+        .iov_base = (void *)rrm
+    };
+
+    return raft_net_send_msg(ri, rp, &iov, sock_src);
 }
 
 

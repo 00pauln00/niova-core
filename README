@@ -3,3 +3,4 @@ make raft-dbg; rm /tmp/*.peer; killall gnome-terminal-server; killall -9 gdb; NI
 
 Usage: ./raft-server [-R (use-rocksDB-backend)] -r <UUID> -u <UUID>
 
+NIOVA_LOCAL_CTL_SVC_DIR=<dir> bash ./scripts/start_client.sh
