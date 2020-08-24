@@ -285,7 +285,8 @@ static int
 pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                       const char *user_buf, size_t user_buf_size,
                       const bool blocking, const struct timespec timeout,
-                      pmdb_user_cb_t user_cb, void *user_arg)
+                      pmdb_user_cb_t user_cb, void *user_arg,
+                      struct pmdb_obj_stat *user_pmdb_stat)
 {
     // NULL user_buf or buf_size of 0 is OK
     if (!pmdb || !obj_id || (!blocking && !user_cb))
@@ -295,8 +296,8 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_write, user_buf, user_buf_size,
-                                NULL, 0, NULL, timeout, user_cb, user_arg,
-                                &rc);
+                                NULL, 0, user_pmdb_stat, timeout, user_cb,
+                                user_arg, &rc);
     if (!pcreq)
         return rc;
 
@@ -322,6 +323,20 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 }
 
 /**
+ * PmdbObjPutX - blocking public put (write) routine which returns the pmdb
+ *   stat info for the object.
+ */
+int
+PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
+{
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
+
+    return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
+                                 NULL, NULL, user_pmdb_stat);
+}
+
+/**
  * PmdbObjPut - blocking public put (write) routine.
  */
 int
@@ -331,7 +346,7 @@ PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
-                                 NULL, NULL);
+                                 NULL, NULL, NULL);
 }
 
 /**
@@ -347,7 +362,7 @@ PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, false, timeout,
-                                 user_cb, user_arg);
+                                 user_cb, user_arg, NULL);
 }
 
 static int
@@ -355,7 +370,8 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                       const char *key, size_t key_size,
                       char *value, size_t value_size,
                       const bool blocking, const struct timespec timeout,
-                      pmdb_user_cb_t user_cb, void *user_arg)
+                      pmdb_user_cb_t user_cb, void *user_arg,
+                      struct pmdb_obj_stat *user_pmdb_stat)
 {
     // NULL user_buf or buf_size of 0 is OK
     if (!pmdb || !obj_id || (!blocking && !user_cb))
@@ -365,8 +381,8 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_read, key, key_size,
-                                value, value_size, NULL, timeout, user_cb,
-                                user_arg, &rc);
+                                value, value_size, user_pmdb_stat, timeout,
+                                user_cb, user_arg, &rc);
     if (!pcreq)
         return rc;
 
@@ -397,13 +413,28 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  * PmdbObjGet - blocking public get (read) routine.
  */
 int
+PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+            size_t key_size, char *value, size_t value_size,
+            struct pmdb_obj_stat *user_pmdb_stat)
+{
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
+
+    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
+                                 value_size, true, timeout, NULL, NULL,
+                                 user_pmdb_stat);
+}
+
+/**
+ * PmdbObjGet - blocking public get (read) routine.
+ */
+int
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
            size_t key_size, char *value, size_t value_size)
 {
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
-                                 value_size, true, timeout, NULL, NULL);
+                                 value_size, true, timeout, NULL, NULL, NULL);
 }
 
 /**
@@ -421,7 +452,7 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
                                  value_size, false, timeout, user_cb,
-                                 user_arg);
+                                 user_arg, NULL);
 }
 
 /**

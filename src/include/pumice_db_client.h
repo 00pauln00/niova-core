@@ -10,6 +10,15 @@
 #include "pumice_db_net.h"
 
 int
+PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+            size_t key_size, char *value, size_t value_size,
+            struct pmdb_obj_stat *user_pmdb_stat);
+
+int
+PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat);
+
+int
 PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
               pmdb_obj_stat_t *ret_stat);
 

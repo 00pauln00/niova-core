@@ -52,7 +52,7 @@ enum pmdb_test_app_lreg_values
     PMDB_TEST_APP_LREG_LAST_REQUEST_TIME,
     PMDB_TEST_APP_LREG_LAST_REQUEST_TAG,
     PMDB_TEST_APP_LREG_APP_SEQNO,
-    PMDB_TEST_APP_LREG_APP_VALUE,
+   PMDB_TEST_APP_LREG_APP_VALUE,
     PMDB_TEST_APP_LREG_APP__MAX,
 };
 
@@ -346,7 +346,6 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     preq->preq_write_seqno = write_seqno;
     niova_realtime_coarse_clock(&preq->preq_submitted);
 
-
     raft_net_client_user_id_copy(&preq->preq_rncui, rncui);
 
     if (!use_async_requests)
@@ -599,14 +598,16 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
         rc = PmdbObjLookup(pmdbtcPMDB, obj_id, &preq->preq_obj_stat);
         break;
     case pmdb_op_read:
-        rc = PmdbObjGet(pmdbtcPMDB, obj_id, NULL, 0, (char *)&preq->preq_rtdb,
-                        (sizeof(struct raft_test_data_block) +
-                         sizeof(struct raft_test_values)));
+        rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, (char *)&preq->preq_rtdb,
+                         (sizeof(struct raft_test_data_block) +
+                          sizeof(struct raft_test_values)),
+                         &preq->preq_obj_stat);
         break;
     case pmdb_op_write:
-        rc = PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                        (sizeof(struct raft_test_data_block) +
-                         sizeof(struct raft_test_values)));
+        rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
+                         (sizeof(struct raft_test_data_block) +
+                          sizeof(struct raft_test_values)),
+                         &preq->preq_obj_stat);
         break;
     default:
         break;
@@ -653,8 +654,8 @@ pmdb_test_client_worker(void *arg)
         niova_realtime_coarse_clock(&ts);
         ts.tv_sec += nsecs_wait;
 
-        int rc = NIOVA_TIMEDWAIT_COND(!STAILQ_EMPTY(&preqQueue),
-                                      &mutex, &cond, &ts);
+        int rc = NIOVA_TIMEDWAIT_COND(!STAILQ_EMPTY(&preqQueue), &mutex, &cond,
+                                      &ts);
         if (!rc)
             pmdbtc_dequeue_request();
     }
