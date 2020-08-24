@@ -158,7 +158,7 @@ main(void)
     for (int i = 0; i < (NUM_THREADS + 1); i++)
     {
         NIOVA_ASSERT(item_sets[i].exec_cnt == NITEMS);
-        free(set->items);
+        free(item_sets[i].items);
     }
 
     return 0;
