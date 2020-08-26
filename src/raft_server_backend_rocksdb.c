@@ -877,7 +877,7 @@ raft_server_rocksdb_add_cf_name(struct raft_server_rocksdb_cf_table *cft,
         cf_name_len > RAFT_ROCKSDB_MAX_CF_NAME_LEN)
         return -EINVAL;
 
-    if (!cft->rsrcfe_num_cf)
+    if (!cft->rsrcfe_num_cf) // First, add the 'default' CF
     {
         cft->rsrcfe_cf_names[0] = strndup("default", 7);
         if (!cft->rsrcfe_cf_names[0])

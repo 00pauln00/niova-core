@@ -52,7 +52,7 @@ enum pmdb_test_app_lreg_values
     PMDB_TEST_APP_LREG_LAST_REQUEST_TIME,
     PMDB_TEST_APP_LREG_LAST_REQUEST_TAG,
     PMDB_TEST_APP_LREG_APP_SEQNO,
-   PMDB_TEST_APP_LREG_APP_VALUE,
+    PMDB_TEST_APP_LREG_APP_VALUE,
     PMDB_TEST_APP_LREG_APP__MAX,
 };
 
@@ -86,6 +86,7 @@ struct pmdbtc_app
 
 struct pmdbtc_request
 {
+    struct pmdbtc_app             *preq_papp;
     struct raft_net_client_user_id preq_rncui;
     enum PmdbOpType                preq_op;
     size_t                         preq_op_cnt;
@@ -341,6 +342,7 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
         return -ENOMEM;
 
     // Initialize the preq with the provided info
+    preq->preq_papp = papp;
     preq->preq_op = op;
     preq->preq_op_cnt = op_cnt;
     preq->preq_write_seqno = write_seqno;
@@ -579,18 +581,31 @@ main(int argc, char **argv)
     return 0;
 }
 
+static void
+pmdbtc_write_prep(struct pmdbtc_request *preq)
+{
+    NIOVA_ASSERT(preq && preq->preq_papp);
+
+    const struct pmdbtc_app *papp = preq->preq_papp;
+
+    NIOVA_ASSERT(!raft_net_client_user_id_cmp(&papp->papp_rncui,
+                                              &preq->preq_rncui));
+}
+
 static int
 pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
 {
-    if (!preq)
+    if (!preq || !preq->preq_papp)
         return -EINVAL;
 
     pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&preq->preq_rncui.rncui_key;
     int rc = -EOPNOTSUPP;
 
+    preq->preq_obj_stat.sequence_num = preq->preq_write_seqno;
+
     // Underhanded way to set rpc-user-tag in raft-client-rpc msg
-    preq->preq_obj_stat.sequence_num = random_get();
-    preq->preq_last_tag = preq->preq_obj_stat.sequence_num;
+    preq->preq_obj_stat.status = random_get();
+    preq->preq_last_tag = preq->preq_obj_stat.status;
 
     switch (preq->preq_op)
     {
@@ -604,6 +619,7 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
                          &preq->preq_obj_stat);
         break;
     case pmdb_op_write:
+//        pmdbtc_write_prep();
         rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
                          (sizeof(struct raft_test_data_block) +
                           sizeof(struct raft_test_values)),

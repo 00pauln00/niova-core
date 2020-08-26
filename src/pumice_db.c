@@ -28,7 +28,7 @@ static const struct PmdbAPI           *pmdbApi;
 static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
 static rocksdb_readoptions_t          *pmdbRocksdbReadOpts;
 
-struct raft_server_rocksdb_cf_table    pmdbCFT = {0};
+static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
 struct pmdb_obj_extras_v0
 {
@@ -141,7 +141,7 @@ pmdb_obj_crc_calc(struct pmdb_object *obj)
 
 static void
 pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
-                 const int64_t current_raft_term, const uuid_t client_uuid,
+                 const uuid_t client_uuid,
                  const struct raft_net_client_user_id *pmdbrm_user_id,
                  const struct sockaddr_in *remote_addr, const int64_t msg_id)
 {
@@ -151,8 +151,7 @@ pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
 
     pmdb_obj->pmdb_obj_version = version;
     pmdb_obj->pmdb_obj_commit_seqno = ID_ANY_64bit;
-    pmdb_obj->pmdb_obj_pending_term = current_raft_term;
-
+    pmdb_obj->pmdb_obj_pending_term = ID_ANY_64bit;
     uuid_copy(pmdb_obj->pmdb_obj_client_uuid, client_uuid);
 
     raft_net_client_user_id_copy(&pmdb_obj->pmdb_obj_rncui, pmdbrm_user_id);
@@ -183,30 +182,31 @@ pmdb_get_rocksdb_readopts(void)
     return pmdbRocksdbReadOpts;
 }
 
+rocksdb_column_family_handle_t *
+PmdbCfHandleLookup(const char *cf_name)
+{
+    if (cf_name)
+    {
+        for (size_t i = 0; i < pmdbCFT.rsrcfe_num_cf; i++)
+            if (!strncmp(cf_name, pmdbCFT.rsrcfe_cf_names[i],
+                         RAFT_ROCKSDB_MAX_CF_NAME_LEN))
+                return pmdbCFT.rsrcfe_cf_handles[i];
+    }
+
+    return NULL;
+}
+
 static int
 pmdb_init_rocksdb(void)
 {
     if (pmdbRocksdbCFH)
         return 0;
 
-    bool found = false;
-
     /* Find the handle for our column family which should have been opened
      * at rocksDB initialization time.
      */
-    for (size_t i = 0; i < pmdbCFT.rsrcfe_num_cf; i++)
-    {
-        if (!strncmp(PMDB_COLUMN_FAMILY_NAME, pmdbCFT.rsrcfe_cf_names[i],
-                     RAFT_ROCKSDB_MAX_CF_NAME_LEN) &&
-            pmdbCFT.rsrcfe_cf_handles[i])
-        {
-            found = true;
-            pmdbRocksdbCFH = pmdbCFT.rsrcfe_cf_handles[i];
-            break;
-        }
-    }
-
-    if (!found)
+    pmdbRocksdbCFH = PmdbCfHandleLookup(PMDB_COLUMN_FAMILY_NAME);
+    if (!pmdbRocksdbCFH)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "No handle found for column family: %s",
                        PMDB_COLUMN_FAMILY_NAME);
@@ -308,10 +308,11 @@ pmdb_object_lookup(const struct raft_net_client_user_id *rncui,
     // Release buffer allocated by rocksdb C interface
     free(get_value);
 
-    if (obj->pmdb_obj_pending_term >= current_raft_term)
+    if (obj->pmdb_obj_pending_term > current_raft_term)
         rc = -EOVERFLOW;
 
-    PMDB_OBJ_DEBUG((rc ? LL_WARN : LL_DEBUG), obj, "");
+    PMDB_OBJ_DEBUG((rc ? LL_WARN : LL_DEBUG), obj, "current_raft_term=%ld %s",
+                   current_raft_term, strerror(-rc));
 
     return rc;
 }
@@ -369,7 +370,15 @@ static void
 pmdb_prep_raft_entry_write_obj(struct pmdb_object *obj, int64_t current_term)
 {
     NIOVA_ASSERT(obj->pmdb_obj_version == pmdb_get_current_version());
-    NIOVA_ASSERT(obj->pmdb_obj_pending_term == current_term);
+
+    /* current-term of -1 means pmdb_prep_raft_entry_write_obj() is called in
+     * apply context.  Otherwise, when called in write context, the object's
+     * pending-term must be less than the current-term.
+     */
+    if (current_term != ID_ANY_64bit)
+        NIOVA_ASSERT(obj->pmdb_obj_pending_term < current_term);
+
+    obj->pmdb_obj_pending_term = current_term;
 
     pmdb_obj_crc_calc(obj);
 }
@@ -445,12 +454,13 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
 static int
 pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
 {
-    PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_READ, rncr);
+    PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_WRITE, rncr);
 
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
     struct pmdb_object obj = {0};
+    bool new_object = false;
 
     int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                 rncr->rncr_current_term);
@@ -459,10 +469,10 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
         if (rc == -ENOENT)
         {
             pmdb_object_init(&obj, pmdb_get_current_version(),
-                             rncr->rncr_current_term, rncr->rncr_client_uuid,
-                             &pmdb_req->pmdbrm_user_id,
+                             rncr->rncr_client_uuid, &pmdb_req->pmdbrm_user_id,
                              &rncr->rncr_remote_addr, rncr->rncr_msg_id);
             rc = 0;
+            new_object = true;
         }
         else
         {
@@ -478,8 +488,12 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
         }
     }
 
-    // Check if the request was already committed and applied
-    if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno)
+    /* Check if the request was already committed and applied.  A commit-seqno
+     * of ID_ANY_64bit means the object has previously attempted a write but
+     * that write did not yet (or ever) commit.
+     */
+    if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno &&
+        obj.pmdb_obj_commit_seqno != ID_ANY_64bit)
     {
         raft_client_net_request_handle_error_set(rncr, -EALREADY, 0, 0);
     }
@@ -490,8 +504,8 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
          * yet completed and the client has retried the request.
          */
         if (obj.pmdb_obj_pending_term == rncr->rncr_current_term)
-            raft_client_net_request_handle_error_set(rncr, -EINPROGRESS, 0,
-                                              -EINPROGRESS);
+            raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
+                                                     -EINPROGRESS, 0);
 
         else // Request sequence test passes, request will enter the raft log.
             pmdb_prep_raft_entry_write(rncr, &obj);
@@ -502,7 +516,8 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     }
 
     PMDB_OBJ_DEBUG((rncr->rncr_op_error == -EBADE ? LL_NOTIFY : LL_DEBUG),
-                   &obj, "op-err=%s", strerror(rncr->rncr_op_error));
+                   &obj, "op-err=%s new-object=%s",
+                   strerror(-rncr->rncr_op_error), new_object ? "yes" : "no");
 
     return 0;
 }
@@ -653,17 +668,6 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     if (rc)
     {
-        if (raft_client_net_request_handle_instance_is_leader(rncr))
-        {
-            // A failure here means that somehow the DB has become "corrupted".
-            /* Xxx This is probably too aggressive and we should allow for an
-             *     error to be passed into pmdb_apply() and returned to the
-             *     client.
-             */
-            PMDB_OBJ_DEBUG(LL_FATAL, &obj, "pmdb_object_lookup(): %s",
-                           strerror(-rc));
-        }
-
         PMDB_STR_DEBUG(((rc == -ENOENT) ? LL_DEBUG : LL_WARN), rncui,
                        "pmdb_object_lookup(): %s", strerror(-rc));
 
@@ -674,12 +678,11 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
         const uuid_t null_uuid = {0};
 
-        /* Initialize the object as best we can given that  Reply information
+        /* Initialize the object as best we can given that reply information
          * is not present since this raft instance did not accept the initial
          * write.
          */
-        pmdb_object_init(&obj, pmdb_get_current_version(),
-                         rncr->rncr_current_term, null_uuid,
+        pmdb_object_init(&obj, pmdb_get_current_version(), null_uuid,
                          &pmdb_req->pmdbrm_user_id, NULL, ID_ANY_64bit);
     }
 
@@ -713,7 +716,7 @@ pmdb_sm_handler_pmdb_req_check(const struct pmdb_msg *pmdb_req)
 static int
 pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
 {
-    if (!rncr || !rncr->rncr_request ||
+    if (!rncr || !rncr->rncr_request_or_commit_data ||
         raft_net_client_request_handle_writes_raft_entry(rncr))
         return -EINVAL;
 
@@ -723,12 +726,13 @@ pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
-    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request, &rncr->rncr_remote_addr,
-                        "");
+    if (rncr->rncr_request) // otherwise, this is an apply operation
+        DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request,
+                            &rncr->rncr_remote_addr, "");
 
     if (pmdb_net_calc_rpc_msg_size(pmdb_req) !=
         rncr->rncr_request_or_commit_data_size)
-        return -EBADMSG;
+        return -EMSGSIZE;
 
     struct pmdb_msg *pmdb_reply =
         (struct pmdb_msg *)
@@ -736,10 +740,11 @@ pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
                                                       sizeof(struct pmdb_msg));
     if (!pmdb_reply)
     {
-        DBG_RAFT_CLIENT_RPC(
-            LL_ERROR, rncr->rncr_request,
-            &rncr->rncr_remote_addr,
-            "raft_net_client_request_handle_reply_data_map() failed");
+        if (rncr->rncr_request)
+            DBG_RAFT_CLIENT_RPC(
+                LL_ERROR, rncr->rncr_request,
+                &rncr->rncr_remote_addr,
+                "raft_net_client_request_handle_reply_data_map() failed");
         return -ENOMEM;
     }
 
@@ -839,7 +844,8 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
  */
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
-         const struct PmdbAPI *pmdb_api)
+         const struct PmdbAPI *pmdb_api, const char *cf_names[],
+         int num_cf_names)
 {
     pmdbApi = pmdb_api;
 
@@ -853,6 +859,14 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     FATAL_IF((rc), "raft_server_rocksdb_add_cf_name() %s", strerror(-rc));
 
+    for (int i = 0; i < num_cf_names; i++)
+    {
+        rc = raft_server_rocksdb_add_cf_name(
+            &pmdbCFT, cf_names[i],
+            strnlen(cf_names[i], RAFT_ROCKSDB_MAX_CF_NAME_LEN));
+        if (rc)
+            return rc;
+    }
     return raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                     pmdb_sm_handler,
                                     RAFT_INSTANCE_STORE_ROCKSDB, &pmdbCFT);

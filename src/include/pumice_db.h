@@ -78,10 +78,12 @@ PmdbWriteKV(const struct raft_net_client_user_id *, void *pmdb_handle,
  * @raft_uuid_str:  UUID of raft
  * @raft_instance_uuid_str:  UUID of this specific raft peer
  * @pmdb_api:  Function callbacks for read and apply.
+ * @cf_names:  Array of RocksDB column family names to be used by application
+ * @num_cf_names:  Size of cf_names[] array,
  */
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
-         const struct PmdbAPI *pmdb_api);
+         const struct PmdbAPI *pmdb_api, const char *cf_names[], int num_cf);
 
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec
@@ -92,5 +94,8 @@ PmdbClose(void);
 
 rocksdb_t *
 PmdbGetRocksDB(void);
+
+rocksdb_column_family_handle_t *
+PmdbCfHandleLookup(const char *cf_name);
 
 #endif

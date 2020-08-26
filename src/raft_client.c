@@ -1499,7 +1499,8 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         return;
     }
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "");
+    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "app-err=%s",
+                            strerror(-app_rpc_err));
 
     if (sa->rcsa_rh.rcrh_initializing ||
         msg_id != raft_client_sub_app_2_msg_id(sa))

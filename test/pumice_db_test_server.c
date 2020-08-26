@@ -31,11 +31,15 @@ const char *my_uuid_str;
 static rocksdb_column_family_handle_t *
 pmdbst_get_cfh(void)
 {
+    if (!pmdbts_cfh)
+        pmdbts_cfh = PmdbCfHandleLookup(pmdbts_column_family_name);
+
     NIOVA_ASSERT(pmdbts_cfh);
 
     return pmdbts_cfh;
 }
 
+#if 0
 static int
 pmdbst_init_rocksdb(void)
 {
@@ -54,7 +58,7 @@ pmdbst_init_rocksdb(void)
 
     rocksdb_options_destroy(opts);
 
-    if (!err)
+    if (err)
     {
         pmdbts_cfh = NULL;
         SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_create_column_family(): %s",
@@ -63,6 +67,7 @@ pmdbst_init_rocksdb(void)
 
     return err ? -EINVAL : 0;;
 }
+#endif
 
 static int
 pmdbts_lookup(const struct raft_net_client_user_id *app_id,
@@ -210,7 +215,7 @@ static pumicedb_apply_ctx_t
 pmdbts_apply(const struct raft_net_client_user_id *app_id,
              const char *input_buf, size_t input_bufsz, void *pmdb_handle)
 {
-    NIOVA_ASSERT(!pmdbst_init_rocksdb());
+//    NIOVA_ASSERT(!pmdbst_init_rocksdb());
 
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)input_buf;
@@ -334,5 +339,7 @@ main(int argc, char **argv)
         .pmdb_read = pmdbts_read,
     };
 
-    return PmdbExec(raft_uuid_str, my_uuid_str, &api);
+    const char *cf_names[1] = {pmdbts_column_family_name};
+
+    return PmdbExec(raft_uuid_str, my_uuid_str, &api, cf_names, 1);
 }

@@ -1068,20 +1068,21 @@ raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
     if (rnsws->rnsws_nitems == RAFT_NET_WR_SUPP_MAX)
         return NULL;
 
+    const size_t idx = rnsws->rnsws_nitems;
+
     int rc = niova_reallocarray(rnsws->rnsws_ws, struct raft_net_wr_supp,
-                                rnsws->rnsws_nitems + 1UL);
+                                idx + 1UL);
     if (rc)
         return NULL;
 
     rnsws->rnsws_nitems++;
 
     // Initialize pointers to NULL
-    memset(&rnsws->rnsws_ws[rnsws->rnsws_nitems], 0,
-           sizeof(struct raft_net_wr_supp));
+    memset(&rnsws->rnsws_ws[idx], 0, sizeof(struct raft_net_wr_supp));
 
-    rnsws->rnsws_ws[rnsws->rnsws_nitems].rnws_handle = handle;
+    rnsws->rnsws_ws[idx].rnws_handle = handle;
 
-    return &rnsws->rnsws_ws[rnsws->rnsws_nitems];
+    return &rnsws->rnsws_ws[idx];
 }
 
 static void

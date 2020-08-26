@@ -3282,6 +3282,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                     ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
         }
 
+        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rc));
+
         // The destructor may issue a callback into the SM.
         raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
     }

@@ -157,7 +157,8 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
                         const struct timespec ts,
                         pmdb_user_cb_t user_cb, void *user_arg, int *status)
 {
-    if (!obj_id)
+    if (!obj_id ||
+        ((op == pmdb_op_write || op == pmdb_op_lookup) && !user_pmdb_stat))
     {
         if (status)
             *status = -EINVAL;
@@ -183,6 +184,11 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
 
     pcreq->pcreq_msg_request.pmdbrm_magic = PMDB_MSG_MAGIC;
     pcreq->pcreq_msg_request.pmdbrm_op = op;
+    pcreq->pcreq_msg_request.pmdbrm_data_size = req_buf_size;
+    if (op == pmdb_op_write)
+        pcreq->pcreq_msg_request.pmdbrm_write_seqno =
+            user_pmdb_stat->sequence_num;
+
     raft_net_client_user_id_copy(&pcreq->pcreq_msg_request.pmdbrm_user_id,
                                  &rncui);
 
@@ -204,7 +210,7 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
      */
     pcreq->pcreq_tag =
         (raft_net_request_tag_t)(user_pmdb_stat ?
-                                 user_pmdb_stat->sequence_num :
+                                 user_pmdb_stat->status :
                                  RAFT_NET_TAG_NONE);
 
     pcreq->pcreq_user_pmdb_stat = user_pmdb_stat;
@@ -289,7 +295,7 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                       struct pmdb_obj_stat *user_pmdb_stat)
 {
     // NULL user_buf or buf_size of 0 is OK
-    if (!pmdb || !obj_id || (!blocking && !user_cb))
+    if (!pmdb || !user_pmdb_stat || !obj_id || (!blocking && !user_cb))
         return -EINVAL;
 
     int rc = 0;
@@ -306,14 +312,14 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct iovec req_iovs[2] = {
         [0].iov_base = (void *)&pcreq->pcreq_msg_request,
-        [0].iov_len = sizeof(sizeof(struct pmdb_msg)),
+        [0].iov_len = sizeof(struct pmdb_msg),
         [1].iov_base = (void *)user_buf,
         [1].iov_len = user_buf_size,
     };
 
     struct iovec reply_iov = {
         .iov_base = (void *)&pcreq->pcreq_msg_reply,
-	.iov_len = sizeof(sizeof(struct pmdb_msg)),
+	.iov_len = sizeof(struct pmdb_msg),
     };
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
@@ -341,12 +347,12 @@ PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
  */
 int
 PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-           size_t kv_size)
+           size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
-                                 NULL, NULL, NULL);
+                                 NULL, NULL, user_pmdb_stat);
 }
 
 /**
@@ -354,7 +360,8 @@ PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
  */
 int
 PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-             size_t kv_size, pmdb_user_cb_t user_cb, void *user_arg)
+             size_t kv_size, pmdb_user_cb_t user_cb, void *user_arg,
+             struct pmdb_obj_stat *user_pmdb_stat)
 {
     if (!user_cb)
         return -EINVAL;
@@ -362,7 +369,7 @@ PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
     const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, false, timeout,
-                                 user_cb, user_arg, NULL);
+                                 user_cb, user_arg, user_pmdb_stat);
 }
 
 static int
