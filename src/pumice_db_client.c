@@ -106,12 +106,36 @@ pmdb_client_request_rw_completion(struct pmdb_client_request *pcreq,
         pcreq->pcreq_user_cb(pcreq->pcreq_user_arg, status);
 }
 
+/**
+ * pmdb_client_request_cb - called from 'sa' destructor context.
+ * @arg:  opaque pointer to pmdb_client_request
+ * @status:  operation status.  A positive value represents the amount of data
+ *    copied into our reply buffer.  Otherwise, it's the error code.
+ * NOTE:  the 'status' may be translated to a "system" or "app" error code
+ *    prior to calling the application callback.  A positive code is an
+ *    application error - negative is for system.
+ */
 static void
 pmdb_client_request_cb(void *arg, ssize_t status)
 {
     NIOVA_ASSERT(arg);
 
     struct pmdb_client_request *pcreq = (struct pmdb_client_request *)arg;
+
+    if (status > 0) // status represents reply data size
+    {
+        const struct pmdb_msg *reply = &pcreq->pcreq_msg_reply;
+
+        // Incorrect size is translated to be a system error.
+        if (status != (sizeof(struct pmdb_msg) + reply->pmdbrm_data_size))
+            status = -EMSGSIZE;
+
+        else if (reply->pmdbrm_err)
+            status = ABS(reply->pmdbrm_err);
+
+        else
+            status = 0; // success
+    }
 
     switch (pcreq->pcreq_op)
     {
