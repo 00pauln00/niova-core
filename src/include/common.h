@@ -59,6 +59,9 @@
 #define CACHE_ALIGN_MEMBER(memb)                                \
     __attribute__((aligned(L2_CACHELINE_SIZE_BYTES))) memb
 
+#define WORD_ALIGN_MEMBER(memb)                                \
+    __attribute__((aligned(8))) memb
+
 #define COMPILE_TIME_ASSERT(cond)               \
     ((void)sizeof(char[1 - 2*!(cond)]))
 
