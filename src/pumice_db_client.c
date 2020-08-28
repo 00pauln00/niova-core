@@ -18,7 +18,7 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define PMDB_MIN_REQUEST_TIMEOUT_SECS 10
+#define PMDB_MIN_REQUEST_TIMEOUT_SECS 1
 static unsigned long pmdbClientDefaultTimeoutSecs =
     PMDB_MIN_REQUEST_TIMEOUT_SECS;
 
@@ -326,20 +326,6 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                                       &reply_iov, 1, timeout, blocking,
                                       pmdb_client_request_cb, pcreq,
                                       pcreq->pcreq_tag);
-}
-
-/**
- * PmdbObjPutX - blocking public put (write) routine which returns the pmdb
- *   stat info for the object.
- */
-int
-PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
-{
-    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
-
-    return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
-                                 NULL, NULL, user_pmdb_stat);
 }
 
 /**
