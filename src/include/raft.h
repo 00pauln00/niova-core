@@ -313,7 +313,7 @@ struct raft_instance_backend
     int (*rib_header_write)(struct raft_instance *);
     int (*rib_backend_setup)(struct raft_instance *);
     int (*rib_backend_shutdown)(struct raft_instance *);
-    void (*rib_sm_apply_opt)(struct raft_instance *, const raft_entry_idx_t,
+    void (*rib_sm_apply_opt)(struct raft_instance *,
                              const struct raft_net_sm_write_supplements *);
 };
 
@@ -720,5 +720,10 @@ raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
                          enum raft_instance_store_type type, void *arg);
+
+void
+raft_server_backend_setup_last_applied(struct raft_instance *ri,
+                                       raft_entry_idx_t last_applied_idx,
+                                       crc32_t last_applied_cumulative_crc);
 
 #endif

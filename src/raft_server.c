@@ -2780,7 +2780,8 @@ raft_server_udp_client_reply_init(const struct raft_instance *ri,
     NIOVA_ASSERT(ri && rncr && rncr->rncr_reply &&
                  (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY ||
                   msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY) &&
-                 raft_net_client_request_handle_has_reply_info(rncr));
+                 raft_net_client_request_handle_has_reply_info(rncr) &&
+                 rncr->rncr_reply_data_size < rncr->rncr_reply_data_max_size);
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
     memset(reply, 0, sizeof(struct raft_client_rpc_msg));
@@ -2791,6 +2792,7 @@ raft_server_udp_client_reply_init(const struct raft_instance *ri,
 
     reply->rcrm_type = msg_type;
     reply->rcrm_msg_id = rncr->rncr_msg_id;
+    reply->rcrm_data_size = rncr->rncr_reply_data_size;
 }
 
 static raft_net_udp_cb_ctx_bool_t
@@ -3203,8 +3205,7 @@ raft_server_sm_apply_opt(struct raft_instance *ri,
     NIOVA_ASSERT(ri && rncr);
 
     if (ri->ri_backend->rib_sm_apply_opt)
-        ri->ri_backend->rib_sm_apply_opt(ri, rncr->rncr_pending_apply_idx,
-                                         &rncr->rncr_sm_write_supp);
+        ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
 }
 
 static raft_server_epoll_sm_apply_bool_t
@@ -3221,6 +3222,41 @@ raft_server_net_client_request_init_sm_apply(
                                         RAFT_NET_CLIENT_REQ_TYPE_COMMIT, nc,
                                         NULL, commit_data, commit_data_size,
                                         NULL, reply_buf, reply_buf_size);
+}
+
+/**
+ * raft_server_backend_setup_last_applied - called in setup context to provide
+ *    the last-applied info from a stateful backend, such as RocksDB.
+ */
+void
+raft_server_backend_setup_last_applied(struct raft_instance *ri,
+                                       raft_entry_idx_t last_applied_idx,
+                                       crc32_t last_applied_cumulative_crc)
+{
+    // Assert some setup / bootup context items.
+    NIOVA_ASSERT(ri && ri->ri_last_applied_idx == -1 &&
+                 ri->ri_commit_idx == -1 &&
+                 ri->ri_last_applied_cumulative_crc == 0 &&
+                 ri->ri_state == RAFT_STATE_BOOTING);
+
+    ri->ri_last_applied_idx = last_applied_idx;
+    ri->ri_last_applied_cumulative_crc = last_applied_cumulative_crc;
+
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+}
+
+static raft_server_epoll_sm_apply_t
+raft_server_last_applied_increment(struct raft_instance *ri,
+                                   const struct raft_entry_header *reh)
+{
+    NIOVA_ASSERT(ri && reh &&
+                 (reh->reh_index == (ri->ri_last_applied_idx + 1)));
+
+    ri->ri_last_applied_idx++;
+    ri->ri_last_applied_cumulative_crc ^= reh->reh_crc;
+
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "idx=%ld crc=%x",
+                      ri->ri_last_applied_idx, reh->reh_crc);
 }
 
 static raft_server_epoll_sm_apply_bool_t
@@ -3245,6 +3281,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
                                "raft_server_entry_header_read_by_store(): %s",
                                strerror(-rc));
+
+    /* Signify that the entry will be applied.  Prepare the last-applied values
+     * prior to entering raft_server_sm_apply_opt().
+     */
+    raft_server_last_applied_increment(ri, &reh);
 
     struct raft_net_client_request_handle rncr;
     raft_server_net_client_request_init_sm_apply(ri, &rncr, sink_buf,
@@ -3290,11 +3331,6 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     if (!reh.reh_leader_change_marker && !reh.reh_data_size)
         DBG_RAFT_ENTRY(LL_WARN, &reh, "application entry contains no data!");
-
-    // Signify that the entry has been applied!
-    ri->ri_last_applied_idx++;
-
-    ri->ri_last_applied_cumulative_crc ^= reh.reh_crc;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "ri_last_applied_idx was incremented");
 

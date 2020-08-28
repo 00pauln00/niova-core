@@ -178,7 +178,7 @@ struct raft_client_rpc_msg
     int16_t                        rcrm_sys_error;
     uint16_t                       rcrm__pad1[2];
     uint64_t                       rcrm_user_tag;
-    char                           rcrm_data[];
+    char                           WORD_ALIGN_MEMBER(rcrm_data[]);
 };
 
 #define _RAFT_NET_MAP_RPC(type, rcrm)                           \
@@ -249,6 +249,7 @@ struct raft_net_client_request_handle
     const size_t                          rncr_request_or_commit_data_size;
     struct raft_client_rpc_msg           *rncr_reply;
     const size_t                          rncr_reply_data_max_size;
+    size_t                                rncr_reply_data_size;
     struct sockaddr_in                    rncr_remote_addr;
     uint64_t                              rncr_msg_id;
     struct raft_net_sm_write_supplements  rncr_sm_write_supp;
@@ -330,7 +331,7 @@ raft_net_client_rpc_sys_error_2_string(const int rc)
     case -ENOENT:
         return "deny-leader-not-established";
     case -EINPROGRESS:
-        return "deny-boot-in-progress";
+        return "deny-operation-in-progress";
     case -ENOSYS:
         return "redirect-to-leader";
     case -EAGAIN:
@@ -533,12 +534,14 @@ raft_net_client_request_handle_reply_data_map(
 
     NIOVA_ASSERT(reply->rcrm_data_size <= rncr->rncr_reply_data_max_size);
 
-    if ((reply->rcrm_data_size + size) > rncr->rncr_reply_data_max_size)
+    if ((reply->rcrm_data_size + size) > rncr->rncr_reply_data_max_size ||
+        (rncr->rncr_reply_data_size + size) > rncr->rncr_reply_data_max_size)
         return NULL;
 
-    char *buf = &reply->rcrm_data[reply->rcrm_data_size];
+    char *buf = &reply->rcrm_data[rncr->rncr_reply_data_size];
 
     reply->rcrm_data_size += size;
+    rncr->rncr_reply_data_size += size;
 
     return buf;
 }
