@@ -51,6 +51,7 @@ enum pmdb_test_app_lreg_values
     PMDB_TEST_APP_LREG_WRITE_PENDING,
     PMDB_TEST_APP_LREG_LAST_REQUEST_TIME,
     PMDB_TEST_APP_LREG_LAST_REQUEST_TAG,
+    PMDB_TEST_APP_LREG_APP_SYNC,
     PMDB_TEST_APP_LREG_APP_SEQNO,
     PMDB_TEST_APP_LREG_APP_VALUE,
     PMDB_TEST_APP_LREG_APP__MAX,
@@ -81,6 +82,11 @@ struct pmdbtc_app
     pmdb_obj_stat_t                papp_obj_stat;
     raft_net_request_tag_t         papp_last_tag;
     struct timespec                papp_last_request;
+    raft_net_request_tag_t         papp_pending_tag;
+    struct random_data             papp_random_data;
+    uint8_t                        papp_sync:1;
+    bool                           papp_validated;
+    char                           papp_random_state_buf[RANDOM_STATE_BUF_LEN];
     struct raft_test_values        papp_rtv;
 };
 
@@ -158,7 +164,7 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         case PMDB_TEST_APP_LREG_STATUS:
             lreg_value_fill_string(lv, "status",
-                                   strerror(-papp->papp_obj_stat.status));
+                                   strerror(ABS(papp->papp_obj_stat.status)));
             break;
         case PMDB_TEST_APP_LREG_PMDB_SEQNO:
             lreg_value_fill_signed(lv, "pmdb-seqno",
@@ -176,6 +182,10 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
         case PMDB_TEST_APP_LREG_LAST_REQUEST_TIME:
             lreg_value_fill_string_time(lv, "last-request",
                                         papp->papp_last_request.tv_sec);
+            break;
+        case PMDB_TEST_APP_LREG_APP_SYNC:
+            lreg_value_fill_bool(lv, "app-sync",
+                                 papp->papp_sync ? "true" : "false");
             break;
         case PMDB_TEST_APP_LREG_APP_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",
@@ -246,7 +256,7 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         case PMDB_TEST_REQ_LREG_STATUS:
             lreg_value_fill_string(lv, "status",
-                                   strerror(-preq->preq_obj_stat.status));
+                                   strerror(ABS(preq->preq_obj_stat.status)));
             break;
         case PMDB_TEST_REQ_LREG_PMDB_REQ_SEQNO:
             lreg_value_fill_signed(lv, "pmdb-req-seqno",
@@ -291,6 +301,34 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
     return 0;
 }
 
+static void
+pmdbtc_app_rand_init(struct pmdbtc_app *papp)
+{
+    NIOVA_ASSERT(papp);
+
+    papp->papp_rtv.rtv_seqno = 0;
+    papp->papp_rtv.rtv_reply_xor_all_values = 0;
+
+    uint32_t seed = random_create_seed_from_uuid(
+        RAFT_NET_CLIENT_USER_ID_2_UUID(&papp->papp_rncui, 0, 0));
+
+    int rc = initstate_r(seed, papp->papp_random_state_buf,
+                         RANDOM_STATE_BUF_LEN, &papp->papp_random_data);
+
+    FATAL_IF((rc), "initstate_r(): %s", strerror(-rc));
+}
+
+static void
+pmdbtc_app_init(const struct raft_net_client_user_id *rncui,
+                struct pmdbtc_app *papp)
+{
+    NIOVA_ASSERT(rncui && papp);
+    memset(papp, 0, sizeof(struct pmdbtc_app));
+
+    raft_net_client_user_id_copy(&papp->papp_rncui, rncui);
+    pmdbtc_app_rand_init(papp);
+}
+
 static struct pmdbtc_app *
 pmdbtc_app_lookup(const struct raft_net_client_user_id *rncui, bool add)
 {
@@ -301,7 +339,7 @@ pmdbtc_app_lookup(const struct raft_net_client_user_id *rncui, bool add)
     if (add && (pmdbtcNumApps < PMDB_TEST_CLIENT_MAX_APPS))
     {
         const size_t idx = pmdbtcNumApps++;
-        raft_net_client_user_id_copy(&pmdbtcApps[idx].papp_rncui, rncui);
+        pmdbtc_app_init(rncui, &pmdbtcApps[idx]);
 
         return &pmdbtcApps[idx];
     }
@@ -581,15 +619,68 @@ main(int argc, char **argv)
     return 0;
 }
 
+static unsigned int
+pmdbtc_app_random_get(struct pmdbtc_app *papp)
+{
+    unsigned result;
+
+    if (random_r(&papp->papp_random_data, (int *)&result))
+        SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
+
+    return result;
+}
+
+static void
+pmdbtc_app_rtv_increment(struct pmdbtc_app *papp)
+{
+    NIOVA_ASSERT(papp);
+
+    papp->papp_sync = 0;
+
+    uint32_t tmp = pmdbtc_app_random_get(papp);
+    uint64_t new_seq = papp->papp_rtv.rtv_reply_xor_all_values ^ tmp;
+
+    SIMPLE_LOG_MSG(LL_TRACE, "old-seqno=%lu val=%u sum[old:new]=%lu:%lu",
+                   papp->papp_rtv.rtv_seqno, tmp,
+                   papp->papp_rtv.rtv_reply_xor_all_values, new_seq);
+
+    papp->papp_rtv.rtv_seqno++;
+    papp->papp_rtv.rtv_reply_xor_all_values = new_seq;
+}
+
+static void
+pmdbtc_app_rtv_fast_forward(struct pmdbtc_app *papp, int64_t write_seqno)
+{
+    NIOVA_ASSERT(papp && write_seqno >= 0);
+    papp->papp_sync = 0;
+
+    pmdbtc_app_rand_init(papp);
+
+    for (int64_t i = -1UL; i < write_seqno; i++)
+        pmdbtc_app_rtv_increment(papp);
+}
+
 static void
 pmdbtc_write_prep(struct pmdbtc_request *preq)
 {
     NIOVA_ASSERT(preq && preq->preq_papp);
 
-    const struct pmdbtc_app *papp = preq->preq_papp;
+    struct pmdbtc_app *papp = preq->preq_papp;
 
     NIOVA_ASSERT(!raft_net_client_user_id_cmp(&papp->papp_rncui,
                                               &preq->preq_rncui));
+
+    uuid_copy(preq->preq_rtdb.rtdb_client_uuid,
+              RAFT_NET_CLIENT_USER_ID_2_UUID(&papp->papp_rncui, 0, 0));
+
+    preq->preq_rtdb.rtdb_op = RAFT_TEST_DATA_OP_WRITE;
+    preq->preq_rtdb.rtdb_num_values = 1;
+
+    preq->preq_write_seqno == papp->papp_rtv.rtv_seqno ?
+        pmdbtc_app_rtv_increment(papp) :
+        pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
+
+    preq->preq_rtv[0] = papp->papp_rtv;
 }
 
 static int
@@ -619,11 +710,11 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
                          &preq->preq_obj_stat);
         break;
     case pmdb_op_write:
-//        pmdbtc_write_prep();
-        rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                         (sizeof(struct raft_test_data_block) +
-                          sizeof(struct raft_test_values)),
-                         &preq->preq_obj_stat);
+        pmdbtc_write_prep(preq);
+        rc = PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
+                        (sizeof(struct raft_test_data_block) +
+                         sizeof(struct raft_test_values)),
+                        &preq->preq_obj_stat);
         break;
     default:
         break;
@@ -649,7 +740,7 @@ pmdbtc_dequeue_request(void)
 
     int rc = pmdbtc_execute_blocking_request(preq);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "rc=%d status=%d",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "rc=%d status=%d",
                    rc, preq->preq_obj_stat.status);
 
     pmdbtc_app_history_add(preq);
