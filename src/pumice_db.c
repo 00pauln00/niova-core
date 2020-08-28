@@ -141,9 +141,7 @@ pmdb_obj_crc_calc(struct pmdb_object *obj)
 
 static void
 pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
-                 const uuid_t client_uuid,
-                 const struct raft_net_client_user_id *pmdbrm_user_id,
-                 const struct sockaddr_in *remote_addr, const int64_t msg_id)
+                 const struct raft_net_client_user_id *pmdbrm_user_id)
 {
     NIOVA_ASSERT(pmdb_obj && pmdbrm_user_id);
 
@@ -152,9 +150,21 @@ pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
     pmdb_obj->pmdb_obj_version = version;
     pmdb_obj->pmdb_obj_commit_seqno = ID_ANY_64bit;
     pmdb_obj->pmdb_obj_pending_term = ID_ANY_64bit;
-    uuid_copy(pmdb_obj->pmdb_obj_client_uuid, client_uuid);
 
     raft_net_client_user_id_copy(&pmdb_obj->pmdb_obj_rncui, pmdbrm_user_id);
+
+    PMDB_OBJ_DEBUG(LL_DEBUG, pmdb_obj, "");
+}
+
+static void
+pmdb_object_net_init(struct pmdb_object *pmdb_obj,
+                     const uuid_t client_uuid,
+                     const struct sockaddr_in *remote_addr,
+                     const int64_t msg_id)
+{
+    NIOVA_ASSERT(pmdb_obj);
+
+    uuid_copy(pmdb_obj->pmdb_obj_client_uuid, client_uuid);
 
     if (remote_addr)
         pmdb_obj->pmdb_obj_remote_addr = *remote_addr;
@@ -407,6 +417,9 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     const struct pmdb_msg *pmdb_req =
          (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
+    pmdb_object_net_init(obj, rncr->rncr_client_uuid,
+                         &rncr->rncr_remote_addr, rncr->rncr_msg_id);
+
     raft_net_client_request_handle_set_write_raft_entry(rncr);
 
     // Mark that the object is pending a write in this leader's term.
@@ -470,8 +483,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
         if (rc == -ENOENT)
         {
             pmdb_object_init(&obj, pmdb_get_current_version(),
-                             rncr->rncr_client_uuid, &pmdb_req->pmdbrm_user_id,
-                             &rncr->rncr_remote_addr, rncr->rncr_msg_id);
+                             &pmdb_req->pmdbrm_user_id);
             rc = 0;
             new_object = true;
         }
@@ -684,14 +696,12 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
          */
         rc = -ESTALE;
 
-        const uuid_t null_uuid = {0};
-
         /* Initialize the object as best we can given that reply information
          * is not present since this raft instance did not accept the initial
          * write.
          */
-        pmdb_object_init(&obj, pmdb_get_current_version(), null_uuid,
-                         &pmdb_req->pmdbrm_user_id, NULL, ID_ANY_64bit);
+        pmdb_object_init(&obj, pmdb_get_current_version(),
+                         &pmdb_req->pmdbrm_user_id);
     }
 
     pmdb_init_net_client_request_from_obj(rncr, &obj);
