@@ -3316,9 +3316,16 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                                             rncr.rncr_commit_duration_msec);
 
             /* Perform basic initialization on the reply buffer if the SM has
-             * provided the necessary info for completing the reply.
+             * provided the necessary info for completing the reply.  The SM
+             * would have called
+             * raft_net_client_request_handle_set_reply_info() if the necessary
+             * info was provided.  Note that the SM may not check for leader
+             * status, so the reply info may be provided even when this node
+             * is a follower.  Therefore, udp init should be bypassed if this
+             * node is not the leader.
              */
-            if (raft_net_client_request_handle_has_reply_info(&rncr))
+            if (raft_instance_is_leader(ri) &&
+                raft_net_client_request_handle_has_reply_info(&rncr))
                 raft_server_udp_client_reply_init(
                     ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
         }
@@ -3333,13 +3340,13 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         DBG_RAFT_ENTRY(LL_WARN, &reh, "application entry contains no data!");
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "ri_last_applied_idx was incremented");
-
     DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "");
 
     if (ri->ri_last_applied_idx < ri->ri_commit_idx)
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
 
-    if (raft_net_client_request_handle_has_reply_info(&rncr))
+    if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
+        raft_net_client_request_handle_has_reply_info(&rncr))
         raft_server_reply_to_client(ri, &rncr);
 }
 
