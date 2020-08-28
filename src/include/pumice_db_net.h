@@ -64,7 +64,8 @@ struct pmdb_msg
     uint8_t                        pmdbrm__pad[2];
     int32_t                        pmdbrm_err; // reply ctx error
     uint32_t                       pmdbrm_data_size; // size of data payload
-    char                           pmdbrm_data[];
+    uint32_t                       pmdbrm_pad2;
+    char                           WORD_ALIGN_MEMBER(pmdbrm_data[]);
 };
 
 typedef struct pmdb_obj_stat
