@@ -461,6 +461,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
 
     struct pmdb_object obj = {0};
     bool new_object = false;
+    int64_t prev_pending_term = -1;
 
     int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                 rncr->rncr_current_term);
@@ -487,6 +488,10 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             return 0;
         }
     }
+    else
+    {
+        PMDB_OBJ_DEBUG(LL_DEBUG, &obj, "obj exists");
+    }
 
     /* Check if the request was already committed and applied.  A commit-seqno
      * of ID_ANY_64bit means the object has previously attempted a write but
@@ -503,6 +508,8 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
          * applied.  Here, the client's request has been accepted but not
          * yet completed and the client has retried the request.
          */
+        prev_pending_term = obj.pmdb_obj_pending_term;
+
         if (obj.pmdb_obj_pending_term == rncr->rncr_current_term)
             raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
                                                      -EINPROGRESS, 0);
@@ -516,8 +523,9 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     }
 
     PMDB_OBJ_DEBUG((rncr->rncr_op_error == -EBADE ? LL_NOTIFY : LL_DEBUG),
-                   &obj, "op-err=%s new-object=%s",
-                   strerror(-rncr->rncr_op_error), new_object ? "yes" : "no");
+                   &obj, "op-err=%s new-object=%s (ppt=%ld)",
+                   strerror(-rncr->rncr_op_error), new_object ? "yes" : "no",
+                   prev_pending_term);
 
     return 0;
 }
@@ -698,8 +706,18 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     struct pmdb_apply_handle pah = {.pah_rncui = rncui, .pah_ws = ws};
 
     // Call into the application so it may emplace its own KVs.
-    pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
-                        pmdb_req->pmdbrm_data_size, (void *)&pah);
+    int apply_rc =
+        pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
+                            pmdb_req->pmdbrm_data_size, (void *)&pah);
+
+    // rc of 0 means the client will get a reply
+    if (!rc)
+    {
+        struct pmdb_msg *pmdb_reply =
+            RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+
+        pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+    }
 
     return rc;
 }
@@ -734,24 +752,16 @@ pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
         rncr->rncr_request_or_commit_data_size)
         return -EMSGSIZE;
 
+    /* Mapping of the reply buffer should not fail but it's ok if a reply
+     * is not issued.
+     */
     struct pmdb_msg *pmdb_reply =
         (struct pmdb_msg *)
-        raft_net_client_request_handle_reply_data_map(rncr,
-                                                      sizeof(struct pmdb_msg));
-    if (!pmdb_reply)
-    {
-        if (rncr->rncr_request)
-            DBG_RAFT_CLIENT_RPC(
-                LL_ERROR, rncr->rncr_request,
-                &rncr->rncr_remote_addr,
-                "raft_net_client_request_handle_reply_data_map() failed");
-        return -ENOMEM;
-    }
+        raft_net_client_request_handle_reply_data_map(
+            rncr, sizeof(struct pmdb_msg));
 
-    /* Copy some content from the request to the reply for the individual
-     * handlers.
-     */
-    pmdb_reply_init(pmdb_req, pmdb_reply);
+    if (pmdb_reply)
+        pmdb_reply_init(pmdb_req, pmdb_reply);
 
     int rc = 0;
 

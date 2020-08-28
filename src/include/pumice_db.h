@@ -15,6 +15,7 @@
 #include "common.h"
 
 typedef void pumicedb_apply_ctx_t;
+typedef int  pumicedb_apply_ctx_int_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
 
 /**
@@ -28,7 +29,7 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  *    The updates staged via PmdbWriteKV() are written atomically into rocksDB
  *    along with other pumiceDB and raft internal metadata.
  */
-typedef pumicedb_apply_ctx_t
+typedef pumicedb_apply_ctx_int_t
 (*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
                            const char *input_buf, size_t input_bufsz,
                            void *pmdb_handle);

@@ -211,7 +211,7 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
     }
 }
 
-static pumicedb_apply_ctx_t
+static pumicedb_apply_ctx_int_t
 pmdbts_apply(const struct raft_net_client_user_id *app_id,
              const char *input_buf, size_t input_bufsz, void *pmdb_handle)
 {
@@ -224,7 +224,7 @@ pmdbts_apply(const struct raft_net_client_user_id *app_id,
     int rc = pmdbts_apply_lookup_and_check(app_id, input_buf, input_bufsz,
                                            &stored_rtv);
     if (rc)
-        return;
+        return rc;
 
     pmdbts_sum_incoming_rtv(rtdb, &stored_rtv);
 
@@ -237,6 +237,8 @@ pmdbts_apply(const struct raft_net_client_user_id *app_id,
                 PMDTS_ENTRY_KEY_LEN, (const char *)&stored_rtv,
                 sizeof(struct raft_test_values), NULL,
                 (void *)pmdbst_get_cfh());
+
+    return 0;
 }
 
 static pumicedb_read_ctx_ssize_t
