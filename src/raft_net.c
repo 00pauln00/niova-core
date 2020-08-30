@@ -290,7 +290,7 @@ static int
 raft_net_timerfd_close(struct raft_instance *ri)
 {
     if (!ri)
-	return -EINVAL;
+        return -EINVAL;
 
     if (ri->ri_timer_fd >= 0)
     {
@@ -334,7 +334,7 @@ raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
         epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri);
 
     return rc ? rc :
-	epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
+        epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
 }
 
 static int
@@ -794,8 +794,8 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     // XXX this check only works on UDP
     if (false &&
         ((sender_addr->sin_port) != expected_port ||
-        strncmp(ctl_svc_node_peer_2_ipaddr(csn),
-                inet_ntoa(sender_addr->sin_addr), IPV4_STRLEN)))
+         strncmp(ctl_svc_node_peer_2_ipaddr(csn),
+                 inet_ntoa(sender_addr->sin_addr), IPV4_STRLEN)))
     {
         LOG_MSG(LL_NOTIFY, "uuid (%s) on unexpected IP:port (%s:%hu)",
                 sender_uuid, inet_ntoa(sender_addr->sin_addr), expected_port);
@@ -843,9 +843,7 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
 {
     struct raft_net_tcp_connection *rntc = raft_net_tcp_connection_get(ri, csn, 1);
     if (!rntc)
-    {
         return -ENOTCONN;
-    }
 
     return tcp_socket_send(&rntc->rntc_tsh, iov, 1);
 }
@@ -926,15 +924,16 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
     if (peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
         return;
 
-    struct timespec *ts = send_or_recv ?
-        &ri->ri_last_send[peer_idx] : &ri->ri_last_recv[peer_idx];
+    struct timespec *ts = send_or_recv
+        ? &ri->ri_last_send[peer_idx]
+        : &ri->ri_last_recv[peer_idx];
 
     const long long unsigned msec = timespec_2_msec(ts);
 
     // ~1 ms granularity which should be fine for this app.
     niova_realtime_coarse_clock(ts);
     SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_update_last_comm_time(): update %s with ts %llu",
-        send_or_recv  ? "send" : "recv", msec);
+                   send_or_recv  ? "send" : "recv", msec);
 }
 
 int
@@ -947,7 +946,7 @@ raft_net_comm_get_last_recv(struct raft_instance *ri, const uuid_t peer_uuid,
     const raft_peer_t peer_idx = raft_peer_2_idx(ri, peer_uuid);
 
     if (peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
-	return -ERANGE;
+        return -ERANGE;
 
     *ts = ri->ri_last_recv[peer_idx];
 
@@ -969,9 +968,7 @@ raft_net_comm_recency(const struct raft_instance *ri,
     const unsigned long long last_recv =
         timespec_2_msec(&ri->ri_last_recv[raft_peer_idx]);
     if (!last_send)
-    {
         return -EALREADY;
-    }
 
     unsigned long long now = niova_realtime_coarse_clock_get_msec();
 
@@ -1024,9 +1021,7 @@ raft_net_get_most_recently_responsive_server(const struct raft_instance *ri)
         int rc = raft_net_comm_recency(ri, idx, RAFT_COMM_RECENCY_RECV,
                                        &since_last_recv);
         if (rc == -EALREADY)
-        {
             continue;
-        }
 
         SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): idx=%d since_last_recv=%llu", idx, since_last_recv);
 
@@ -1171,9 +1166,7 @@ raft_net_tcp_incoming_new(struct raft_instance *ri)
 {
     struct raft_net_tcp_connection *rntc = niova_malloc(sizeof(struct raft_net_tcp_connection));
     if (!rntc)
-    {
         return NULL;
-    }
 
     raft_net_connection_setup(ri, rntc);
 
@@ -1320,13 +1313,9 @@ raft_net_tcp_cb(const struct epoll_handle *eph, uint32_t events, bool from_peer)
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "from_peer")
     if (from_peer && ri->ri_server_recv_cb)
-    {
         ri->ri_server_recv_cb(ri, sink_buf, recv_bytes, &from);
-    }
     else if (!from_peer && ri->ri_client_recv_cb)
-    {
         ri->ri_client_recv_cb(ri, sink_buf, recv_bytes, &from);
-    }
 }
 
 static raft_net_cb_ctx_t
@@ -1378,13 +1367,9 @@ raft_net_tcp_connect_cb(const struct epoll_handle *eph, uint32_t events)
     struct ctl_svc_node *rp;
     raft_net_connection_lookup_csn(rntc, &rp);
     if (rp->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT)
-    {
         epoll_handle_init(&rntc->rntc_eph, rntc->rntc_tsh.tsh_socket, EPOLLIN, raft_net_tcp_recv_client_cb, rntc);
-    }
     else
-    {
         epoll_handle_init(&rntc->rntc_eph, rntc->rntc_tsh.tsh_socket, EPOLLIN, raft_net_tcp_recv_server_cb, rntc);
-    }
     epoll_handle_add(&rntc->rntc_ri->ri_epoll_mgr, &rntc->rntc_eph);
 
     DBG_CTL_SVC_NODE(LL_NOTIFY, rp, "outgoing connection established");
@@ -1413,7 +1398,7 @@ raft_net_tcp_connect(struct ctl_svc_node *rp)
     raft_net_csn_init_socket(rp, rntc);
 
     epoll_handle_init(&rntc->rntc_eph, rntc->rntc_tsh.tsh_socket, EPOLLOUT,
-        raft_net_tcp_connect_cb, rntc);
+                      raft_net_tcp_connect_cb, rntc);
     epoll_handle_add(&rntc->rntc_ri->ri_epoll_mgr, &rntc->rntc_eph);
 
     rc = tcp_socket_connect(&rntc->rntc_tsh);
@@ -1465,7 +1450,7 @@ raft_net_tcp_handshake_cb(const struct epoll_handle *eph, uint32_t events)
         uuid_compare(handshake.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(rntc->rntc_ri)) ||
         handshake.rrm_type != RAFT_RPC_MSG_TYPE_ANY ||
         handshake.rrm_version != 0
-    )
+        )
     {
         DBG_RAFT_MSG(LL_ERROR, &handshake, "invalid raft handshake");
         raft_net_tcp_incoming_fini(rntc);
@@ -1505,13 +1490,9 @@ raft_net_tcp_handshake_cb(const struct epoll_handle *eph, uint32_t events)
     csn_rntc->rntc_status = RNCS_CONNECTED;
 
     if (csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT)
-    {
         epoll_handle_init(&csn_rntc->rntc_eph, csn_rntc->rntc_tsh.tsh_socket, EPOLLIN, raft_net_tcp_recv_client_cb, csn_rntc);
-    }
     else
-    {
         epoll_handle_init(&csn_rntc->rntc_eph, csn_rntc->rntc_tsh.tsh_socket, EPOLLIN, raft_net_tcp_recv_server_cb, csn_rntc);
-    }
     epoll_handle_add(&csn_rntc->rntc_ri->ri_epoll_mgr, &csn_rntc->rntc_eph);
 
     DBG_CTL_SVC_NODE(LL_NOTIFY, csn, "incoming connection established");
@@ -1531,9 +1512,8 @@ raft_net_tcp_listen_cb(const struct epoll_handle *eph, uint32_t events)
 
     // adds epoll handler
     int rc = raft_net_tcp_accept(ri, eph->eph_fd);
-    if (rc < 0) {
+    if (rc < 0)
         SIMPLE_LOG_MSG(LL_ERROR, "raft_net_tcp_accept(): %d", rc);
-    }
 }
 
 void
@@ -1577,9 +1557,8 @@ raft_net_tcp_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp, b
     raft_net_update_last_comm_time(ri, rp->csn_uuid, 1);
 
     int rc = raft_net_tcp_connect(rp);
-    if (rc < 0) {
+    if (rc < 0)
         return NULL;
-    }
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_remote_connect() - new connection %p", rntc);
 
