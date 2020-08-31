@@ -35,8 +35,10 @@ struct epoll_handle
 struct epoll_mgr
 {
     int              epm_epfd;
+    pthread_mutex_t  epm_handle_delete_mutex;
     niova_atomic32_t epm_num_handles;
-    unsigned int     epm_ready:1;
+    unsigned int     epm_ready:1,
+                     epm_processing:1;
 };
 
 struct niova_env_var;

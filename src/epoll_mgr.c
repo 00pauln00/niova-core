@@ -13,6 +13,7 @@
 #include "epoll_mgr.h"
 #include "env.h"
 #include "ctor.h"
+#include "util.h"
 
 static size_t epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
 
@@ -31,6 +32,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     if (epm->epm_epfd < 0)
         return -errno;
 
+    epm->epm_processing = 0;
     epm->epm_ready = 1;
 
     return 0;
@@ -120,6 +122,14 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_installed = 0;
     }
 
+    struct timespec ts;
+    msec_2_timespec(&ts, 100);
+
+    // ensure all handle events have been processed before returning
+    // XXX could potentially wait a long time
+    while (epm->epm_processing)
+        nanosleep(&ts, NULL);
+
     return rc;
 }
 
@@ -134,6 +144,8 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     struct epoll_event evs[maxevents];
 
+    epm->epm_processing = 1;
+
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
 
@@ -142,6 +154,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     if (nevents < 0)
         return -errno;
 
+    // XXX could loop first to get locks on epoll handle owners and set processing 0 then
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
@@ -152,6 +165,8 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
             eph->eph_cb(eph, evs[i].events);
         }
     }
+
+    epm->epm_processing = 0;
 
     return nevents;
 }
