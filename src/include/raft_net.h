@@ -100,6 +100,7 @@ enum raft_net_comm_recency_type
 enum raft_net_tcp_connection_status
 {
     RNCS_NEEDS_SETUP,
+    RNCS_DISCONNECTING,
     RNCS_DISCONNECTED,
     RNCS_CONNECTING,
     RNCS_CONNECTED,
