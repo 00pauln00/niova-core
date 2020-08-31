@@ -3304,10 +3304,12 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
 
         int rc = ri->ri_server_sm_request_cb(&rncr);
-        if (!rc)
-        {
-            raft_server_sm_apply_opt(ri, &rncr);
 
+        // Called regardless of ri_server_sm_request_cb() error
+        raft_server_sm_apply_opt(ri, &rncr);
+
+        if (!rc && raft_instance_is_leader(ri))
+        {
             struct binary_hist *bh =
                 &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
 
@@ -3324,8 +3326,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
              * is a follower.  Therefore, udp init should be bypassed if this
              * node is not the leader.
              */
-            if (raft_instance_is_leader(ri) &&
-                raft_net_client_request_handle_has_reply_info(&rncr))
+            if (raft_net_client_request_handle_has_reply_info(&rncr))
                 raft_server_udp_client_reply_init(
                     ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
         }
