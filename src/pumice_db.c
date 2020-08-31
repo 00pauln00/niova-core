@@ -45,7 +45,7 @@ struct pmdb_obj_extras_v0
  * @pmdb_obj_crc:  checksum for the object
  * @pmdb_obj_version:  versioner for the object (currently not used)
  * @pmdb_obj_commit_seqno:  the pumicedb sequence number of this request.
- *   PumiceDB stipulate that each "application" (as determined by the contents
+ *   PumiceDB stipulates that each "application" (as determined by the contents
  *   pmdb_obj_rncui) may have only a single pending request.  Values less than
  *   pmdb_obj_commit_seqno have already been committed into raft and have had
  *   contents 'splayed' into RocksDB.  A value equal to
@@ -99,19 +99,24 @@ struct pmdb_apply_handle
             RAFT_NET_CLIENT_USER_ID_2_UUID(&(pmdbo)->pmdb_obj_rncui, 0, 0), \
             __uuid_str);                                                \
         LOG_MSG(log_level,                                              \
-                "%s.%lx.%lx v=%d crc=%x cs=%ld pt=%ld %s msg-id=%lx "fmt, \
-                __uuid_str,                                             \
-                RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui, \
-                                                 0, 2),                 \
-                RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui, \
-                                                 0, 3),                 \
-                (pmdbo)->pmdb_obj_version,                           \
-                (pmdbo)->pmdb_obj_crc,                               \
-                (pmdbo)->pmdb_obj_commit_seqno,                      \
-                (pmdbo)->pmdb_obj_pending_term,                      \
-                inet_ntoa((pmdbo)->pmdb_obj_remote_addr.sin_addr),      \
-                (pmdbo)->pmdb_obj_msg_id,                               \
-                ##__VA_ARGS__);                                         \
+            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld %s msg-id=%lx " \
+            fmt,                                                        \
+            __uuid_str,                                                 \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
+                                             0, 2),                     \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
+                                             0, 3),                     \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
+                                             0, 4),                     \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
+                                             0, 5),                     \
+            (pmdbo)->pmdb_obj_version,                                  \
+            (pmdbo)->pmdb_obj_crc,                                      \
+            (pmdbo)->pmdb_obj_commit_seqno,                             \
+            (pmdbo)->pmdb_obj_pending_term,                             \
+            inet_ntoa((pmdbo)->pmdb_obj_remote_addr.sin_addr),          \
+            (pmdbo)->pmdb_obj_msg_id,                                   \
+            ##__VA_ARGS__);                                             \
     }
 
 #define PMDB_STR_DEBUG(log_level, pmdb_rncui, fmt, ...)                 \
@@ -402,6 +407,8 @@ pmdb_prep_obj_write(struct raft_net_sm_write_supplements *ws,
 
     pmdb_prep_raft_entry_write_obj(obj, term);
 
+    PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
+
     raft_net_sm_write_supplement_add(
         ws, (void *)pmdb_get_rocksdb_column_family_handle(),
         NULL /* no callback needed yet */, PMDB_RNCUI_2_KEY(rncui),
@@ -437,6 +444,9 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
 
     const struct pmdb_msg *pmdb_req =
          (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
+
+    // Increment the commit sequence by 1.
+    obj->pmdb_obj_commit_seqno++;
 
     // Reset the pending term value with -1
     pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
