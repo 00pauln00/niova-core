@@ -1538,14 +1538,10 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         rcrh->rcrh_reply_size = rcrm->rcrm_data_size;
 
         // XXX Need a fault injection here!
-        int error = app_rpc_err ? app_rpc_err : 0;
-        // Buffer size error takes precedence over app_rpc error
-        if (rcrh->rcrh_reply_size >
-            io_iovs_total_size_get(&rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
-                                   rcrh->rcrh_recv_niovs))
-        {
-            error = -E2BIG;
-        }
+        int reply_size_error =
+            (rcrh->rcrh_reply_size >
+             io_iovs_total_size_get(&rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
+                                    rcrh->rcrh_recv_niovs)) ? -E2BIG : 0;
         if (from)
         {
             rcrh->rcrh_sin_reply_addr = from->sin_addr;
@@ -1557,7 +1553,7 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         RCI_UNLOCK(rci);
         // Drop the lock and copy contents into the user's reply buffer.
 
-        if (!error && rcrh->rcrh_recv_niovs)
+        if (!reply_size_error && rcrh->rcrh_recv_niovs)
         {
             struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
             ssize_t rrc =
@@ -1579,7 +1575,8 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
             (long long)(timespec_2_msec(&rci->rci_last_msg_recvd) -
                         timespec_2_msec(&rcrh->rcrh_submitted));
 
-        raft_client_sub_app_done(rci, sa, __func__, __LINE__, true, error);
+        raft_client_sub_app_done(rci, sa, __func__, __LINE__, true,
+                                 reply_size_error);
     }
 
     // Put the ref taken by our lookup

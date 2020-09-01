@@ -532,6 +532,11 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
          */
         prev_pending_term = obj.pmdb_obj_pending_term;
 
+        /* -EINPROGRESS is treated as 'system error' at this time and this
+         * error does not reach the client's application layer.  The client
+         * will retry the operation until it succeeds (due to the condition
+         * above) or times out.
+         */
         if (obj.pmdb_obj_pending_term == rncr->rncr_current_term)
             raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
                                                      -EINPROGRESS, 0);
@@ -541,8 +546,13 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     }
     else // Request sequence is too far ahead
     {
-        raft_client_net_request_handle_error_set(rncr, -EBADE, 0, -EBADE);
+        rc = -EBADE;
+        raft_client_net_request_handle_error_set(rncr, rc, 0, 0);
     }
+
+    // Stash the obj metadata into the reply
+    struct pmdb_msg *pmdb_reply = RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+    pmdb_obj_to_reply(&obj, pmdb_reply, rncr->rncr_current_term, rc);
 
     PMDB_OBJ_DEBUG((rncr->rncr_op_error == -EBADE ? LL_NOTIFY : LL_DEBUG),
                    &obj, "op-err=%s new-object=%s (ppt=%ld)",
@@ -569,11 +579,18 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     const size_t max_reply_size =
         rncr->rncr_reply_data_max_size - PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
 
-    const ssize_t rrc =
-        pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id, pmdb_req->pmdbrm_data,
-                           pmdb_req->pmdbrm_data_size, pmdb_reply->pmdbrm_data,
-                           max_reply_size);
+    // Lookup the 'root' object
+    struct pmdb_object obj = {0};
+    size_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
+                                    rncr->rncr_current_term);
 
+    if (!rrc) // Ok.  Continue to read operation
+        rrc =
+            pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
+                               pmdb_req->pmdbrm_data,
+                               pmdb_req->pmdbrm_data_size,
+                               pmdb_reply->pmdbrm_data, max_reply_size);
+    //XXX fault injection needed
     if (rrc < 0)
     {
         pmdb_reply->pmdbrm_data_size = 0;
@@ -600,6 +617,9 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
         DBG_RAFT_CLIENT_RPC(LL_DEBUG, req, &rncr->rncr_remote_addr,
                             "pmdbApi::read(): reply-size=%zd", rrc);
     }
+
+    pmdb_obj_to_reply(&obj, pmdb_reply, rncr->rncr_current_term,
+                      rncr->rncr_op_error);
 
     return 0;
 }
