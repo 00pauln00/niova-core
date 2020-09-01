@@ -408,14 +408,14 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct iovec req_iovs[2] = {
         [0].iov_base = (void *)&pcreq->pcreq_msg_request,
-        [0].iov_len = sizeof(sizeof(struct pmdb_msg)),
+        [0].iov_len = sizeof(struct pmdb_msg),
         [1].iov_base = (void *)key,
         [1].iov_len = key_size,
     };
 
     struct iovec reply_iovs[2] = {
         [0].iov_base = (void *)&pcreq->pcreq_msg_reply,
-	[0].iov_len = sizeof(sizeof(struct pmdb_msg)),
+	[0].iov_len = sizeof(struct pmdb_msg),
         [1].iov_base = (void *)value,
         [1].iov_len = value_size,
     };
