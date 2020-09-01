@@ -32,7 +32,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     if (epm->epm_epfd < 0)
         return -errno;
 
-    epm->epm_processing = 0;
+    epm->epm_waiting = 0;
     epm->epm_ready = 1;
 
     return 0;
@@ -54,7 +54,7 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *, uint32_t events), void *arg)
+                  epoll_mgr_cb_t cb, epoll_mgr_cb_t getput, void *arg)
 {
     if (!eph || !cb)
         return -EINVAL;
@@ -62,11 +62,12 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     else if (fd < 0)
         return -EBADF;
 
-    eph->eph_installed = 0;
-    eph->eph_fd        = fd;
-    eph->eph_events    = events;
-    eph->eph_cb        = cb;
-    eph->eph_arg       = arg;
+    eph->eph_installed    = 0;
+    eph->eph_fd           = fd;
+    eph->eph_events       = events;
+    eph->eph_cb           = cb;
+    eph->eph_owner_getput = getput;
+    eph->eph_arg          = arg;
 
     return 0;
 }
@@ -122,15 +123,27 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_installed = 0;
     }
 
+    return rc;
+}
+
+/* This version of epoll_handle_del should be used in destructors that
+ * destroy the eph. Waits until epoll is guaranteed to be done with eph.
+ */
+int
+epoll_handle_del_wait(struct epoll_mgr *epm, struct epoll_handle *eph)
+{
+    int rc = epoll_handle_del(epm, eph);
+    if (rc)
+        return rc;
+
     struct timespec ts;
     msec_2_timespec(&ts, 100);
 
     // ensure all handle events have been processed before returning
-    // XXX could potentially wait a long time
-    while (epm->epm_processing)
+    while (epm->epm_waiting)
         nanosleep(&ts, NULL);
 
-    return rc;
+    return 0;
 }
 
 int
@@ -144,7 +157,8 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     struct epoll_event evs[maxevents];
 
-    epm->epm_processing = 1;
+    // epoll_wait may return epoll handles, so don't remove attached objects
+    epm->epm_waiting = 1;
 
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
@@ -154,19 +168,29 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     if (nevents < 0)
         return -errno;
 
-    // XXX could loop first to get locks on epoll handle owners and set processing 0 then
+    for (int i = 0; i < nevents; i++)
+    {
+        struct epoll_handle *eph = evs[i].data.ptr;
+        if (eph->eph_installed && eph->eph_owner_getput)
+            eph->eph_owner_getput(eph, 0);
+    }
+    epm->epm_waiting = 0;
+
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
         SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
 
         if (eph->eph_installed && eph->eph_cb)
-        {
             eph->eph_cb(eph, evs[i].events);
-        }
+
+        /*
+        if (eph->eph_installed && eph->eph_owner_getput)
+            eph->eph_owner_getput(eph, 1);
+            */
     }
 
-    epm->epm_processing = 0;
+    epm->epm_waiting = 0;
 
     return nevents;
 }

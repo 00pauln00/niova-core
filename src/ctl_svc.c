@@ -1022,6 +1022,13 @@ ctl_svc_node_lookup_by_string(const char *uuid_str,
 }
 
 void
+ctl_svc_node_get(struct ctl_svc_node *csn)
+{
+    DBG_CTL_SVC_NODE(LL_TRACE, csn, "");
+    RT_GET(ctl_svc_node_tree, &ctlSvcNodeTree, csn, 0, NULL);
+}
+
+void
 ctl_svc_node_put(struct ctl_svc_node *csn)
 {
     DBG_CTL_SVC_NODE(LL_TRACE, csn, "");

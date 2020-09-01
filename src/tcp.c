@@ -186,6 +186,8 @@ ssize_t
 tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
                 size_t iovlen, struct sockaddr_in *from, bool block)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!tsh || !iov || !iovlen)
         return -EINVAL;
     else if (iovlen > IO_MAX_IOVS)
@@ -202,7 +204,7 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
         .msg_namelen = 0,
         .msg_iov = iov,
         .msg_iovlen = iovlen,
-        .msg_flags = 0,
+        .msg_flags = MSG_WAITALL,
     };
 
     ssize_t rc = recvmsg(socket, &msg, block ? 0 : MSG_DONTWAIT);
@@ -221,7 +223,7 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
     }
 
     SIMPLE_LOG_MSG(LL_DEBUG, "fd=%d src=%s:%u nb=%zd flags=%x",
-                   tsh->tsh_socket, tsh->tsh_ipaddr, tsh->tsh_port, rc,
+                   socket, tsh->tsh_ipaddr, tsh->tsh_port, rc,
                    msg.msg_flags);
 
     if (msg.msg_flags & MSG_TRUNC)
@@ -240,7 +242,8 @@ ssize_t
 tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
                 const size_t iovlen)
 {
-    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_send()");
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!tsh || !iov || !iovlen)
         return -EINVAL;
 

@@ -259,6 +259,9 @@ ctl_svc_node_lookup_by_string(const char *uuid_str,
                               struct ctl_svc_node **ret_csn);
 
 void
+ctl_svc_node_get(struct ctl_svc_node *csn);
+
+void
 ctl_svc_node_put(struct ctl_svc_node *csn);
 
 #endif

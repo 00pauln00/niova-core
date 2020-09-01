@@ -512,7 +512,7 @@ rsc_incorporate_ack_measurement(struct raft_instance *ri,
 
     if (elapsed_msec < 0 || elapsed_msec > (3600 * 1000 * 24))
     {
-        DBG_RAFT_CLIENT_RPC(LL_WARN, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_WARN, rcrm, from,
                             "unreasonable elapsed time %lld", elapsed_msec);
     }
     else
@@ -525,7 +525,7 @@ rsc_incorporate_ack_measurement(struct raft_instance *ri,
         struct binary_hist *bh = &ri->ri_rihs[type].rihs_bh;
 
         binary_hist_incorporate_val(bh, elapsed_msec);
-        DBG_RAFT_CLIENT_RPC(LL_WARN, rcrm, from, "op=%s elapsed time %lld",
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_WARN, rcrm, from, "op=%s elapsed time %lld",
                             raft_test_data_op_2_string(op), elapsed_msec);
     }
 }
@@ -540,25 +540,25 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
 
     if (sender_csn != ri->ri_csn_leader)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
                             "reply is not from leader");
         return;
     }
     else if (rcrm->rcrm_data_size < sizeof(struct raft_test_data_block))
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "invalid reply size %hu",
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from, "invalid reply size %hu",
                             rcrm->rcrm_data_size);
         return;
     }
     else if (!rsc_get_pending_msg_id())
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
                             "reply received but no outstanding requests");
         return;
     }
     else if (rcrm->rcrm_msg_id != rsc_get_pending_msg_id())
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
                             "wrong msg-id, expected %lx",
                             rsc_get_pending_msg_id());
         return;
@@ -572,7 +572,7 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     {
         char wrong_uuid[UUID_STR_LEN] = {0};
 
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
                             "wrong rtdb_client_uuid %s", wrong_uuid);
         return;
     }
@@ -581,7 +581,7 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     if (rtdb->rtdb_op != RAFT_TEST_DATA_OP_READ &&
         rtdb->rtdb_op != RAFT_TEST_DATA_OP_WRITE)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "invalid rtdb_op=%hu",
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from, "invalid rtdb_op=%hu",
                             rtdb->rtdb_op);
         return;
     }
@@ -600,7 +600,7 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
 
     if (rtdb->rtdb_num_values != expected_num_values)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
                             "rtdb %s has invalid rtdb_num_values %hu",
                             raft_test_data_op_2_string(rtdb->rtdb_op),
                             rtdb->rtdb_num_values);
@@ -608,7 +608,7 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     }
     else if (rcrm->rcrm_data_size != expected_size)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from,
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
                             "incorrect rcrm_data_size %s op, expected %zd",
                             raft_test_data_op_2_string(rtdb->rtdb_op),
                             expected_size);
@@ -650,7 +650,7 @@ rsc_update_leader_from_redirect(struct raft_instance *ri,
 
     raft_peer_t leader_idx = raft_peer_2_idx(ri, rcrm->rcrm_redirect_id);
 
-    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rcrm, from,
+    DBG_RAFT_CLIENT_RPC_SOCK(LL_DEBUG, rcrm, from,
                         "redirect to new leader idx=%hhu", leader_idx);
 
     if (leader_idx > CTL_SVC_MAX_RAFT_PEERS)
@@ -722,9 +722,12 @@ rsc_recv_handler(struct raft_instance *ri, const char *recv_buffer,
         raft_net_verify_sender_server_msg(ri, rcrm->rcrm_sender_id,
                                           rcrm->rcrm_raft_id, from);
     if (!sender_csn)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "cannot verify sender");
         return;
+    }
 
-    DBG_RAFT_CLIENT_RPC(
+    DBG_RAFT_CLIENT_RPC_SOCK(
         (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG), rcrm, from, "%s",
         rcrm->rcrm_sys_error ?
         raft_net_client_rpc_sys_error_2_string(rcrm->rcrm_sys_error) : "");

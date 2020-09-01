@@ -10,6 +10,7 @@
 #include <netinet/in.h>
 #include <netinet/udp.h>
 
+#include "ctl_svc.h"
 #include "registry.h"
 #include "log.h"
 #include "raft_net.h"
@@ -31,7 +32,7 @@ struct rst_sm_node_app
     struct raft_test_values smna_committed;
     struct raft_test_values smna_pending;
     uint64_t                smna_pending_msg_id;
-    struct sockaddr_in      smna_pending_client_addr;
+    struct ctl_svc_node    *smna_pending_client_csn;
     int64_t                 smna_pending_entry_term;
     struct timespec         smna_pending_time_stamp;
 };
@@ -197,7 +198,13 @@ rst_sm_handler_commit(struct raft_net_client_request *rncr)
                  rtv->rtv_seqno, rtv->rtv_reply_xor_all_values);
 
         // Entry was written by this leader.
-        rncr->rncr_remote_addr = sma->smna_pending_client_addr;
+        if (rncr->rncr_remote_csn)
+        {
+            ctl_svc_node_put(rncr->rncr_remote_csn);
+        }
+        rncr->rncr_remote_csn = sma->smna_pending_client_csn;
+        ctl_svc_node_get(rncr->rncr_remote_csn);
+
         rncr->rncr_msg_id = sma->smna_pending_msg_id;
 
         struct timespec ts;
@@ -345,7 +352,14 @@ rst_sm_handler_write(struct raft_net_client_request *rncr)
         // Store some context for the reply (which will happen later)
         sma->smna_pending_msg_id = request->rcrm_msg_id;
         sma->smna_pending_entry_term = rncr->rncr_current_term;
-        sma->smna_pending_client_addr = rncr->rncr_remote_addr;
+
+        if (sma->smna_pending_client_csn)
+        {
+            ctl_svc_node_put(sma->smna_pending_client_csn);
+        }
+        sma->smna_pending_client_csn = rncr->rncr_remote_csn;
+        ctl_svc_node_get(sma->smna_pending_client_csn);
+
         sma->smna_pending = *last_rtv;
 
         niova_realtime_coarse_clock(&sma->smna_pending_time_stamp);
@@ -512,8 +526,8 @@ raft_server_test_rst_sm_handler(struct raft_net_client_request *rncr)
 
         if (rc)
         {
-            DBG_RAFT_CLIENT_RPC(
-                LL_NOTIFY, rncr->rncr_request, &rncr->rncr_remote_addr,
+            DBG_RAFT_CLIENT_RPC_CSN(
+                LL_NOTIFY, rncr->rncr_request, rncr->rncr_remote_csn,
                 "rst_sm_handler_verify_request_and_set_type(): %s",
                 strerror(-rc));
 
@@ -606,6 +620,10 @@ rst_sm_node_destruct(struct rst_sm_node *destroy)
     if (!destroy)
         return -EINVAL;
 
+    if (destroy->smn_app.smna_pending_client_csn)
+    {
+        ctl_svc_node_put(destroy->smn_app.smna_pending_client_csn);
+    }
     niova_free(destroy);
 
     return 0;

@@ -14,7 +14,7 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static int udpDefaultPort = NIOVA_DEFAULT_UDP_PORT;
-static ssize_t maxUdpSize = NIOVA_MAX_UDP_SIZE;
+static ssize_t maxUdpSize = 50; // NIOVA_MAX_UDP_SIZE;
 
 int
 udp_get_default_port(void)
@@ -93,6 +93,8 @@ udp_socket_bind(struct udp_socket_handle *ush)
 
     struct sockaddr_in addr_in = {0};
 
+    SIMPLE_LOG_MSG(LL_NOTIFY, "udp_socket_bind(): %s:%d", ush->ush_ipaddr, ush->ush_port);
+
     int rc = udp_setup_sockaddr_in(ush->ush_ipaddr, ush->ush_port, &addr_in);
     if (!rc)
     {
@@ -141,6 +143,8 @@ ssize_t
 udp_socket_recv(const struct udp_socket_handle *ush, struct iovec *iov,
                 size_t iovlen, struct sockaddr_in *from, bool block)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!ush || !iov || !iovlen)
         return -EINVAL;
     else if (iovlen > IO_MAX_IOVS)
@@ -215,6 +219,8 @@ ssize_t
 udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
                 const size_t iovlen, const struct sockaddr_in *to)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!ush || !iov || !iovlen || !to)
         return -EINVAL;
 
