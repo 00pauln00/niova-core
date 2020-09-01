@@ -88,6 +88,7 @@ struct pmdbtc_app
     bool                           papp_validated;
     char                           papp_random_state_buf[RANDOM_STATE_BUF_LEN];
     struct raft_test_values        papp_rtv;
+    struct raft_test_values        papp_last_rtv_request;
 };
 
 struct pmdbtc_request
@@ -185,7 +186,7 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         case PMDB_TEST_APP_LREG_APP_SYNC:
             lreg_value_fill_bool(lv, "app-sync",
-                                 papp->papp_sync ? "true" : "false");
+                                 papp->papp_sync ? true : false);
             break;
         case PMDB_TEST_APP_LREG_APP_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",
@@ -637,15 +638,20 @@ pmdbtc_app_rtv_increment(struct pmdbtc_app *papp)
 
     papp->papp_sync = 0;
 
-    uint32_t tmp = pmdbtc_app_random_get(papp);
-    uint64_t new_seq = papp->papp_rtv.rtv_reply_xor_all_values ^ tmp;
+    const uint32_t next_seq = pmdbtc_app_random_get(papp);
+    const uint64_t new_sum =
+        papp->papp_rtv.rtv_reply_xor_all_values ^ next_seq;
 
-    SIMPLE_LOG_MSG(LL_TRACE, "old-seqno=%lu val=%u sum[old:new]=%lu:%lu",
-                   papp->papp_rtv.rtv_seqno, tmp,
-                   papp->papp_rtv.rtv_reply_xor_all_values, new_seq);
+    SIMPLE_LOG_MSG(LL_DEBUG, "old-seqno=%lu val=%u sum[old:new]=%lu:%lu",
+                   papp->papp_rtv.rtv_seqno, next_seq,
+                   papp->papp_rtv.rtv_reply_xor_all_values, new_sum);
 
     papp->papp_rtv.rtv_seqno++;
-    papp->papp_rtv.rtv_reply_xor_all_values = new_seq;
+    papp->papp_rtv.rtv_reply_xor_all_values = new_sum;
+
+    // Store the value for this seqno so it may be used in a future request
+    papp->papp_last_rtv_request.rtv_seqno = papp->papp_rtv.rtv_seqno;
+    papp->papp_last_rtv_request.rtv_request_value = next_seq;
 }
 
 static void
@@ -680,7 +686,37 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
         pmdbtc_app_rtv_increment(papp) :
         pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
 
-    preq->preq_rtv[0] = papp->papp_rtv;
+    preq->preq_rtv[0] = papp->papp_last_rtv_request;
+}
+
+static void
+pmdbtc_read_result_capture(struct pmdbtc_request *preq)
+{
+    if (!preq || !preq->preq_papp ||
+        preq->preq_rtdb.rtdb_values[0].rtv_seqno < 0)
+        return;
+
+    struct pmdbtc_app *papp = preq->preq_papp;
+    struct pmdbtc_app tmp_papp = *papp;
+
+    papp->papp_last_tag = preq->preq_last_tag;
+    papp->papp_last_request = preq->preq_submitted;
+    papp->papp_obj_stat = preq->preq_obj_stat;
+
+    struct raft_test_values result_rtv = preq->preq_rtdb.rtdb_values[0];
+
+    pmdbtc_app_rtv_fast_forward(&tmp_papp, result_rtv.rtv_seqno - 1);
+
+    if (tmp_papp.papp_rtv.rtv_reply_xor_all_values ==
+        result_rtv.rtv_reply_xor_all_values)
+    {
+        papp->papp_sync = 1;
+    }
+    else
+    {
+        papp->papp_sync = 0;
+        papp->papp_obj_stat.status = -EBADF;
+    }
 }
 
 static int
@@ -708,6 +744,8 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
                          (sizeof(struct raft_test_data_block) +
                           sizeof(struct raft_test_values)),
                          &preq->preq_obj_stat);
+        if (!rc)
+            pmdbtc_read_result_capture(preq);
         break;
     case pmdb_op_write:
         pmdbtc_write_prep(preq);
