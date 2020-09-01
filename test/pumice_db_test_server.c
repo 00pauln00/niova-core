@@ -246,12 +246,17 @@ pmdbts_read(const struct raft_net_client_user_id *app_id,
             const char *request_buf, size_t request_bufsz, char *reply_buf,
             size_t reply_bufsz)
 {
-    if (!request_buf || !request_bufsz || !reply_buf || !reply_bufsz)
+    (void)request_buf;
+    (void)request_bufsz;
+
+    if (!reply_buf || !reply_bufsz)
         return (ssize_t)-EINVAL;
 
+#if 0 /* This code does not require a raft_test_data_block structure in the
+       * request.
+       */
     const struct raft_test_data_block *req_rtdb =
         (const struct raft_test_data_block *)request_buf;
-
     const ssize_t rrc = raft_test_data_block_total_size(req_rtdb);
     if (rrc != (ssize_t)request_bufsz)
     {
@@ -262,19 +267,19 @@ pmdbts_read(const struct raft_net_client_user_id *app_id,
 
         return rrc < 0 ? rrc : -EBADMSG;
     }
-    else if (reply_bufsz !=
-             (sizeof(struct raft_test_data_block) +
-              sizeof(struct raft_test_values)))
-    {
-        DBG_RAFT_TEST_DATA_BLOCK(LL_NOTIFY, req_rtdb,
-                                 "reply_bufsz=%zd is too small", reply_bufsz);
+#endif
+
+    if (reply_bufsz <
+        (sizeof(struct raft_test_data_block) +
+         sizeof(struct raft_test_values)))
         return -ENOSPC;
-    }
 
     struct raft_test_data_block *reply_rtdb =
         (struct raft_test_data_block *)reply_buf;
 
-    uuid_copy(reply_rtdb->rtdb_client_uuid, req_rtdb->rtdb_client_uuid);
+    uuid_copy(reply_rtdb->rtdb_client_uuid,
+              RAFT_NET_CLIENT_USER_ID_2_UUID(app_id, 0, 0));
+
     reply_rtdb->rtdb_op = RAFT_TEST_DATA_OP_READ;
 
     int rc = pmdbts_lookup(app_id, &reply_rtdb->rtdb_values[0]);
