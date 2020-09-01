@@ -592,6 +592,9 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     }
     else
     {
+        // Add the reply size to the RPC reply
+        reply->rcrm_data_size += (uint32_t)rrc;
+
         pmdb_reply->pmdbrm_data_size = (uint32_t)rrc;
 
         DBG_RAFT_CLIENT_RPC(LL_DEBUG, req, &rncr->rncr_remote_addr,
