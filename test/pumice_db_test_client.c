@@ -695,7 +695,7 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
 }
 
 static void
-pmdbtc_result_capture(struct pmdbtc_request *preq)
+pmdbtc_result_capture(struct pmdbtc_request *preq, int rc)
 {
     NIOVA_ASSERT(preq && preq->preq_papp);
 
@@ -704,8 +704,8 @@ pmdbtc_result_capture(struct pmdbtc_request *preq)
     papp->papp_last_tag = preq->preq_last_tag;
     papp->papp_last_request = preq->preq_submitted;
     papp->papp_obj_stat = preq->preq_obj_stat;
+    papp->papp_obj_stat.status = -ABS(rc);
 }
-
 
 static void
 pmdbtc_read_result_capture(struct pmdbtc_request *preq, int rc)
@@ -717,12 +717,9 @@ pmdbtc_read_result_capture(struct pmdbtc_request *preq, int rc)
     struct pmdbtc_app *papp = preq->preq_papp;
     struct pmdbtc_app tmp_papp = *papp;
 
-    pmdbtc_result_capture(preq);
+    pmdbtc_result_capture(preq, rc);
     if (rc)
-    {
-        papp->papp_obj_stat.status = -ABS(rc);
         return;
-    }
 
     struct raft_test_values result_rtv = preq->preq_rtdb.rtdb_values[0];
 
@@ -744,7 +741,7 @@ pmdbtc_write_result_capture(struct pmdbtc_request *preq, int rc)
 
     struct pmdbtc_app *papp = preq->preq_papp;
 
-    pmdbtc_result_capture(preq);
+    pmdbtc_result_capture(preq, rc);
 
     if (papp->papp_obj_stat.status)
     {
@@ -753,7 +750,6 @@ pmdbtc_write_result_capture(struct pmdbtc_request *preq, int rc)
     else if (rc)
     {
         papp->papp_sync = 0;
-        papp->papp_obj_stat.status = -ABS(rc);
     }
     else
     {
@@ -780,6 +776,7 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
     {
     case pmdb_op_lookup:
         rc = PmdbObjLookup(pmdbtcPMDB, obj_id, &preq->preq_obj_stat);
+        pmdbtc_result_capture(preq, rc);
         break;
     case pmdb_op_read:
         rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, (char *)&preq->preq_rtdb,

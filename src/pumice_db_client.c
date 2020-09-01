@@ -70,10 +70,6 @@ pmdb_client_request_lookup_completion(struct pmdb_client_request *pcreq,
     {
         ret_status = status;
     }
-    else if (status != sizeof(struct pmdb_msg))
-    {
-        ret_status = -EMSGSIZE;
-    }
     else if (!pcreq->pcreq_user_pmdb_stat)
     {
         ret_status = -EINVAL;
