@@ -54,6 +54,7 @@ enum pmdb_test_app_lreg_values
     PMDB_TEST_APP_LREG_APP_SYNC,
     PMDB_TEST_APP_LREG_APP_SEQNO,
     PMDB_TEST_APP_LREG_APP_VALUE,
+    PMDB_TEST_APP_LREG_APP_VALIDATED,
     PMDB_TEST_APP_LREG_APP__MAX,
 };
 
@@ -85,10 +86,10 @@ struct pmdbtc_app
     raft_net_request_tag_t         papp_pending_tag;
     struct random_data             papp_random_data;
     uint8_t                        papp_sync:1;
-    bool                           papp_validated;
     char                           papp_random_state_buf[RANDOM_STATE_BUF_LEN];
     struct raft_test_values        papp_rtv;
     struct raft_test_values        papp_last_rtv_request;
+    struct raft_test_values        papp_last_rtv_validated;
 };
 
 struct pmdbtc_request
@@ -195,6 +196,10 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
         case PMDB_TEST_APP_LREG_APP_VALUE:
             lreg_value_fill_unsigned(lv, "app-value",
                                      papp->papp_rtv.rtv_reply_xor_all_values);
+            break;
+        case PMDB_TEST_APP_LREG_APP_VALIDATED:
+            lreg_value_fill_unsigned(lv, "app-validated-seqno",
+                                     papp->papp_last_rtv_validated.rtv_seqno);
             break;
         default:
             break;
@@ -690,7 +695,20 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
 }
 
 static void
-pmdbtc_read_result_capture(struct pmdbtc_request *preq)
+pmdbtc_result_capture(struct pmdbtc_request *preq)
+{
+    NIOVA_ASSERT(preq && preq->preq_papp);
+
+    struct pmdbtc_app *papp = preq->preq_papp;
+
+    papp->papp_last_tag = preq->preq_last_tag;
+    papp->papp_last_request = preq->preq_submitted;
+    papp->papp_obj_stat = preq->preq_obj_stat;
+}
+
+
+static void
+pmdbtc_read_result_capture(struct pmdbtc_request *preq, int rc)
 {
     if (!preq || !preq->preq_papp ||
         preq->preq_rtdb.rtdb_values[0].rtv_seqno < 0)
@@ -699,9 +717,12 @@ pmdbtc_read_result_capture(struct pmdbtc_request *preq)
     struct pmdbtc_app *papp = preq->preq_papp;
     struct pmdbtc_app tmp_papp = *papp;
 
-    papp->papp_last_tag = preq->preq_last_tag;
-    papp->papp_last_request = preq->preq_submitted;
-    papp->papp_obj_stat = preq->preq_obj_stat;
+    pmdbtc_result_capture(preq);
+    if (rc)
+    {
+        papp->papp_obj_stat.status = -ABS(rc);
+        return;
+    }
 
     struct raft_test_values result_rtv = preq->preq_rtdb.rtdb_values[0];
 
@@ -709,13 +730,34 @@ pmdbtc_read_result_capture(struct pmdbtc_request *preq)
 
     if (tmp_papp.papp_rtv.rtv_reply_xor_all_values ==
         result_rtv.rtv_reply_xor_all_values)
+        papp->papp_last_rtv_validated = result_rtv;
+    else
+        papp->papp_obj_stat.status = -EBADF;
+}
+
+static void
+pmdbtc_write_result_capture(struct pmdbtc_request *preq, int rc)
+{
+    if (!preq || !preq->preq_papp ||
+        preq->preq_rtdb.rtdb_values[0].rtv_seqno < 0)
+        return;
+
+    struct pmdbtc_app *papp = preq->preq_papp;
+
+    pmdbtc_result_capture(preq);
+
+    if (papp->papp_obj_stat.status)
     {
-        papp->papp_sync = 1;
+        papp->papp_sync = 0;
+    }
+    else if (rc)
+    {
+        papp->papp_sync = 0;
+        papp->papp_obj_stat.status = -ABS(rc);
     }
     else
     {
-        papp->papp_sync = 0;
-        papp->papp_obj_stat.status = -EBADF;
+        papp->papp_sync = 1;
     }
 }
 
@@ -744,8 +786,7 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
                          (sizeof(struct raft_test_data_block) +
                           sizeof(struct raft_test_values)),
                          &preq->preq_obj_stat);
-        if (!rc)
-            pmdbtc_read_result_capture(preq);
+        pmdbtc_read_result_capture(preq, rc);
         break;
     case pmdb_op_write:
         pmdbtc_write_prep(preq);
@@ -753,6 +794,7 @@ pmdbtc_execute_blocking_request(struct pmdbtc_request *preq)
                         (sizeof(struct raft_test_data_block) +
                          sizeof(struct raft_test_values)),
                         &preq->preq_obj_stat);
+        pmdbtc_write_result_capture(preq, rc);
         break;
     default:
         break;
