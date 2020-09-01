@@ -127,7 +127,7 @@ fi
 
 # Set the ctl-svc dir based on the location of the raft conf file
 export NIOVA_LOCAL_CTL_SVC_DIR=`dirname ${CFG_FILE}`
-echo NIOVA_LOCAL_CTL_SVC_DIR=`dirname ${CFG_FILE}`
+echo NIOVA_LOCAL_CTL_SVC_DIR=`dirname ${CFG_FILE}` > /tmp/.raft_dir
 
 IDX=0
 
