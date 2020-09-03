@@ -205,13 +205,6 @@ rst_sm_handler_commit(struct raft_net_client_request_handle *rncr)
             rncr, &sma->smna_pending_client_addr, sm->smn_uuid,
             sma->smna_pending_msg_id);
 
-        struct timespec ts;
-        niova_realtime_coarse_clock(&ts);
-
-        rncr->rncr_commit_duration_msec =
-            (long long)(timespec_2_msec(&ts) -
-                        timespec_2_msec(&sma->smna_pending_time_stamp));
-
         int rc = rst_sm_reply_init(rncr->rncr_reply, sm->smn_uuid,
                                    RAFT_TEST_DATA_OP_WRITE, NULL, 0);
         FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
