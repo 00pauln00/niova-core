@@ -49,3 +49,8 @@ libpumicedb_client.*
 test/regex-test
 test/raft_net_test
 test/ev_pipe_test
+pumicedb-client-test
+pumicedb-server-test
+rocksdb__test*
+.*.swo
+.*.swn
