@@ -55,7 +55,7 @@ enum system_info_keys
 
 #define SYS_INFO_PROCESS_CMDLINE_LEN 4096
 
-static char   systemInfoProcessCmdLine[SYS_INFO_PROCESS_CMDLINE_LEN];
+static char systemInfoProcessCmdLine[SYS_INFO_PROCESS_CMDLINE_LEN];
 static uuid_t systemInfoUuid;
 static struct timespec systemInfoStartTime;
 
@@ -122,7 +122,7 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         return -EOPNOTSUPP;
 
     static struct timespec time_of_previous_call;
-    static struct rusage  rusage_current;
+    static struct rusage rusage_current;
     static struct utsname uts_current;
 
     struct timespec now;
@@ -161,19 +161,19 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         break;
     case SYS_INFO_KEY_HOSTNAME:
         lreg_value_fill_string(lv, "uts.nodename", uts_current.nodename);
-	break;
+        break;
     case SYS_INFO_KEY_UTS_SYSNAME:
         lreg_value_fill_string(lv, "uts.sysname", uts_current.sysname);
-	break;
+        break;
     case SYS_INFO_KEY_UTS_RELEASE:
         lreg_value_fill_string(lv, "uts.release", uts_current.release);
-	break;
+        break;
     case SYS_INFO_KEY_UTS_VERSION:
         lreg_value_fill_string(lv, "uts.version", uts_current.version);
-	break;
+        break;
     case SYS_INFO_KEY_UTS_MACHINE_HW:
         lreg_value_fill_string(lv, "uts.machine", uts_current.machine);
-	break;
+        break;
     case SYS_INFO_KEY_RUSAGE_USER_CPU:
         lreg_value_fill_float(lv, "rusage.user_cpu_time_used",
                               timeval_2_float(&rusage_current.ru_utime));

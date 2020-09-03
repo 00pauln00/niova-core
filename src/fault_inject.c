@@ -64,7 +64,7 @@ fault_injection_lookup(const enum fault_inject_entries id)
 
 static util_thread_ctx_reg_int_t
 fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
-                     struct lreg_value *lrv)
+                        struct lreg_value *lrv)
 {
     if (!lrn || (!lrv && (op == LREG_NODE_CB_OP_GET_NODE_INFO ||
                           op == LREG_NODE_CB_OP_READ_VAL ||

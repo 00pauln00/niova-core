@@ -24,9 +24,9 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
-static const struct PmdbAPI           *pmdbApi;
+static const struct PmdbAPI *pmdbApi;
 static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
-static rocksdb_readoptions_t          *pmdbRocksdbReadOpts;
+static rocksdb_readoptions_t *pmdbRocksdbReadOpts;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -92,44 +92,44 @@ struct pmdb_apply_handle
 };
 
 
-#define PMDB_OBJ_DEBUG(log_level, pmdbo, fmt, ...)                      \
-    {                                                                   \
-        char __uuid_str[UUID_STR_LEN];                                  \
-        uuid_unparse(                                                   \
+#define PMDB_OBJ_DEBUG(log_level, pmdbo, fmt, ...)                          \
+    {                                                                       \
+        char __uuid_str[UUID_STR_LEN];                                      \
+        uuid_unparse(                                                       \
             RAFT_NET_CLIENT_USER_ID_2_UUID(&(pmdbo)->pmdb_obj_rncui, 0, 0), \
-            __uuid_str);                                                \
-        LOG_MSG(log_level,                                              \
-            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld %s msg-id=%lx " \
-            fmt,                                                        \
-            __uuid_str,                                                 \
-            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
-                                             0, 2),                     \
-            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
-                                             0, 3),                     \
-            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
-                                             0, 4),                     \
-            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,  \
-                                             0, 5),                     \
-            (pmdbo)->pmdb_obj_version,                                  \
-            (pmdbo)->pmdb_obj_crc,                                      \
-            (pmdbo)->pmdb_obj_commit_seqno,                             \
-            (pmdbo)->pmdb_obj_pending_term,                             \
-            inet_ntoa((pmdbo)->pmdb_obj_remote_addr.sin_addr),          \
-            (pmdbo)->pmdb_obj_msg_id,                                   \
-            ##__VA_ARGS__);                                             \
+            __uuid_str);                                                    \
+        LOG_MSG(log_level,                                                  \
+            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld %s msg-id=%lx "   \
+            fmt,                                                            \
+            __uuid_str,                                                     \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,      \
+                                             0, 2),                         \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,      \
+                                             0, 3),                         \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,      \
+                                             0, 4),                         \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,      \
+                                             0, 5),                         \
+            (pmdbo)->pmdb_obj_version,                                      \
+            (pmdbo)->pmdb_obj_crc,                                          \
+            (pmdbo)->pmdb_obj_commit_seqno,                                 \
+            (pmdbo)->pmdb_obj_pending_term,                                 \
+            inet_ntoa((pmdbo)->pmdb_obj_remote_addr.sin_addr),              \
+            (pmdbo)->pmdb_obj_msg_id,                                       \
+            ##__VA_ARGS__);                                                 \
     }
 
-#define PMDB_STR_DEBUG(log_level, pmdb_rncui, fmt, ...)                 \
-    {                                                                   \
-        char __uuid_str[UUID_STR_LEN];                                  \
-        uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(pmdb_rncui, 0, 0),  \
-                     __uuid_str);                                       \
-        LOG_MSG(log_level, "%s.%lx.%lx: "fmt,                           \
-                __uuid_str,                                             \
-            RAFT_NET_CLIENT_USER_ID_2_UINT64(pmdb_rncui, 0, 2),         \
-            RAFT_NET_CLIENT_USER_ID_2_UINT64(pmdb_rncui, 0, 3),         \
-            ##__VA_ARGS__);                                             \
-    }                                                                   \
+#define PMDB_STR_DEBUG(log_level, pmdb_rncui, fmt, ...)                \
+    {                                                                  \
+        char __uuid_str[UUID_STR_LEN];                                 \
+        uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(pmdb_rncui, 0, 0), \
+                     __uuid_str);                                      \
+        LOG_MSG(log_level, "%s.%lx.%lx: "fmt,                          \
+                __uuid_str,                                            \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(pmdb_rncui, 0, 2),        \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(pmdb_rncui, 0, 3),        \
+            ##__VA_ARGS__);                                            \
+    }                                                                  \
 
 static void
 pmdb_obj_crc_calc(struct pmdb_object *obj)
@@ -258,28 +258,28 @@ pmdb_compile_time_asserts(void)
     COMPILE_TIME_ASSERT(pmdb_op_any < (1 << sizeof(uint8_t)) * NBBY);
 }
 
-#define PMDB_ARG_CHECK(op, rncr)                                        \
-    NIOVA_ASSERT(                                                       \
-        (rncr) &&                                                       \
-        (rncr)->rncr_type == op &&                                      \
-        ((rncr)->rncr_request ||                                        \
-         op == RAFT_NET_CLIENT_REQ_TYPE_COMMIT) &&                      \
-        (rncr)->rncr_reply &&                                           \
-        (rncr)->rncr_request_or_commit_data &&                          \
-        ((rncr)->rncr_request_or_commit_data_size >=                    \
-         sizeof(struct pmdb_msg)) &&                                    \
-        (((char *)(rncr)->rncr_request->rcrm_data ==                    \
-          (rncr)->rncr_request_or_commit_data) ||                       \
-         op == RAFT_NET_CLIENT_REQ_TYPE_COMMIT) &&                      \
+#define PMDB_ARG_CHECK(op, rncr)                     \
+    NIOVA_ASSERT(                                    \
+        (rncr) &&                                    \
+        (rncr)->rncr_type == op &&                   \
+        ((rncr)->rncr_request ||                     \
+         op == RAFT_NET_CLIENT_REQ_TYPE_COMMIT) &&   \
+        (rncr)->rncr_reply &&                        \
+        (rncr)->rncr_request_or_commit_data &&       \
+        ((rncr)->rncr_request_or_commit_data_size >= \
+         sizeof(struct pmdb_msg)) &&                 \
+        (((char *)(rncr)->rncr_request->rcrm_data == \
+          (rncr)->rncr_request_or_commit_data) ||    \
+         op == RAFT_NET_CLIENT_REQ_TYPE_COMMIT) &&   \
         (rncr)->rncr_reply_data_max_size >= sizeof(struct pmdb_msg))
 
-#define PMDB_CFH_MUST_GET()                             \
-({                                                      \
-    rocksdb_column_family_handle_t *cfh =               \
-        pmdb_get_rocksdb_column_family_handle();        \
-                                                        \
-    NIOVA_ASSERT(cfh);                                  \
-    cfh;                                                \
+#define PMDB_CFH_MUST_GET()                      \
+({                                               \
+    rocksdb_column_family_handle_t *cfh =        \
+        pmdb_get_rocksdb_column_family_handle(); \
+                                                 \
+    NIOVA_ASSERT(cfh);                           \
+    cfh;                                         \
 })
 
 // For now, PMDB is using key-version 0.
@@ -359,7 +359,7 @@ pmdb_sm_handler_client_lookup(struct raft_net_client_request_handle *rncr)
     PMDB_ARG_CHECK(RAFT_NET_CLIENT_REQ_TYPE_READ, rncr);
 
     const struct pmdb_msg *pmdb_req =
-         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
+        (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
     struct pmdb_object pmdb_obj = {0};
 
@@ -422,7 +422,7 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     NIOVA_ASSERT(rncr && obj);
 
     const struct pmdb_msg *pmdb_req =
-         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
+        (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
     pmdb_object_net_init(obj, rncr->rncr_client_uuid,
                          &rncr->rncr_remote_addr, rncr->rncr_msg_id);
@@ -443,7 +443,7 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
     NIOVA_ASSERT(rncr && obj);
 
     const struct pmdb_msg *pmdb_req =
-         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
+        (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
     // Increment the commit sequence by 1.
     obj->pmdb_obj_commit_seqno++;
@@ -584,12 +584,13 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     size_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
-    if (!rrc) // Ok.  Continue to read operation
+    if (!rrc) { // Ok.  Continue to read operation
         rrc =
             pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                pmdb_req->pmdbrm_data,
                                pmdb_req->pmdbrm_data_size,
                                pmdb_reply->pmdbrm_data, max_reply_size);
+    }
     //XXX fault injection needed
     if (rrc < 0)
     {

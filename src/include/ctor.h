@@ -6,10 +6,10 @@
 #ifndef _CTOR_H
 #define _CTOR_H 1
 
-#define NIOVA_CONSTRUCTOR(priority)             \
+#define NIOVA_CONSTRUCTOR(priority) \
     __attribute__ ((constructor (priority)))
 
-#define NIOVA_DESTRUCTOR(priority)              \
+#define NIOVA_DESTRUCTOR(priority) \
     __attribute__ ((destructor (priority)))
 
 /* -- constructor_priorities --

@@ -43,10 +43,10 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define VERIFY_DEPTH IC_IO_SIZE_IN_WORDS
 #define VERIFY_DEEP 0
 
-#define IC_FIFO_READ(ic, buffer, len)                                   \
+#define IC_FIFO_READ(ic, buffer, len) \
     read((ic)->ic_fifo_fd[(ic)->ic_server ? 0 : 1], buffer, len)
 
-#define IC_FIFO_WRITE(ic, buffer, len)                                  \
+#define IC_FIFO_WRITE(ic, buffer, len) \
     write((ic)->ic_fifo_fd[(ic)->ic_server ? 1 : 0], buffer, len)
 
 static txn_id_t clientTxn;
@@ -69,8 +69,8 @@ struct ipcmmap_op
 {
     txn_id_t io_txn;
     size_t   io_len;
-    uint32_t io_idx:31,
-             io_pending:1;
+    uint32_t io_idx     : 31,
+             io_pending : 1;
 } PACKED;
 
 static struct ipcmmap_op ioOps[IC_NUM_IOs];
@@ -293,7 +293,7 @@ ipc_mmap_client_io_complete(struct ipcmmap_config *ic, const int ncompletions)
         SIMPLE_LOG_MSG(lvl, "read() rc=%d: %s",
                        rc, rc != sizeof(io_op) ? strerror(errno) : "");
 
-        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending)
+        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_txn == io_op.io_txn);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_len == io_op.io_len);
 
@@ -351,7 +351,7 @@ ipc_mmap_client_bw_reporter(void)
     int rc = pthread_create(&bwReporter, NULL,
                             ipc_mmap_client_bw_reporter_thread, NULL);
     if (rc)
-        log_msg(LL_FATAL, "rc=%d: %s", rc, strerror(errno))
+        log_msg(LL_FATAL, "rc=%d: %s", rc, strerror(errno));
 }
 
 
@@ -370,7 +370,7 @@ ipc_mmap_client_recv_thread(void *arg)
         SIMPLE_LOG_MSG(lvl, "read() rc=%d: %s",
                        rc, rc != sizeof(io_op) ? strerror(errno) : "");
 
-        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending)
+        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_txn == io_op.io_txn);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_len == io_op.io_len);
 
@@ -399,7 +399,7 @@ ipc_mmap_client(struct ipcmmap_config *ic)
     ipc_mmap_client_bw_reporter();
     ipc_mmap_client_recv(ic);
 
-    for (; ;)
+    for (;;)
     {
         int idx = ipc_mmap_client_get_buffer_idx(clientTxn, IC_IO_SIZE);
         if (idx < 0)
@@ -465,7 +465,7 @@ ipc_mmap_server(struct ipcmmap_config *ic)
     char sink_buffer[IC_IO_SIZE];
     struct ipcmmap_op io_op;
 
-    for (; ;)
+    for (;;)
     {
         int rc = IC_FIFO_READ(ic, &io_op, sizeof(struct ipcmmap_op));
         if (!rc)

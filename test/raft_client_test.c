@@ -80,7 +80,8 @@ static util_thread_ctx_reg_int_t
 raft_client_test_app_lreg_multi_facet_cb(enum lreg_node_cb_ops,
                                          struct lreg_value *, void *);
 
-LREG_ROOT_ENTRY_GENERATE(raft_client_test_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
+LREG_ROOT_ENTRY_GENERATE(raft_client_test_root_entry,
+                         LREG_USER_TYPE_RAFT_CLIENT);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_client_app,
                                 LREG_USER_TYPE_RAFT_CLIENT,
@@ -92,10 +93,10 @@ const char *raft_uuid_str;
 const char *my_uuid_str;
 
 static const struct ctl_svc_node *leaderCsn;
-static size_t                     leaderAliveCount;
+static size_t leaderAliveCount;
 
-static struct random_data         randData;
-static char                       randStateBuf[RANDOM_STATE_BUF_LEN];
+static struct random_data randData;
+static char randStateBuf[RANDOM_STATE_BUF_LEN];
 
 #define RSC_TIMERFD_EXPIRE_MS 1U
 #define RSC_STALE_SERVER_TIME_MS (RSC_TIMERFD_EXPIRE_MS * 5U)
@@ -294,7 +295,7 @@ rsc_random_get(struct random_data *rand_data)
     unsigned int result;
 
     if (random_r(rand_data, (int *)&result))
-	SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
+        SIMPLE_LOG_MSG(LL_FATAL, "random_r() failed: %s", strerror(errno));
 
     return result;
 }
@@ -428,7 +429,7 @@ static raft_net_udp_cb_ctx_int_t
 rsc_process_write_reply(const struct raft_client_rpc_msg *rcrm)
 {
     if (!rcrm)
-	return -EINVAL;
+        return -EINVAL;
 
     // This rtdb contains the original request contents
     const struct raft_test_data_block *rtdb = rsc_get_app_rtdb();
@@ -967,11 +968,9 @@ rsc_schedule_next_request(struct raft_instance *ri, enum raft_test_data_op op)
 
     int rc = raft_net_send_client_msg(ri, rcrm);
     if (rc)
-    {
         DBG_RAFT_CLIENT_RPC_LEADER(LL_NOTIFY, ri, rcrm,
                                    "raft_net_send_client_msg() %s",
                                    strerror(-rc));
-    }
 }
 
 /**
@@ -1042,16 +1041,16 @@ rsc_getopt(int argc, char **argv)
         case 'r':
             raft_uuid_str = optarg;
             break;
-	case 'u':
+        case 'u':
             my_uuid_str = optarg;
             break;
         case 'h':
             rsc_print_help(0, argv);
             break;
-	default:
+        default:
             rsc_print_help(EINVAL, argv);
             break;
-	}
+        }
     }
 
     if (!raft_uuid_str || !my_uuid_str)
@@ -1228,7 +1227,7 @@ raft_client_test_instance_lreg_cb(enum lreg_node_cb_ops op,
     case LREG_NODE_CB_OP_WRITE_VAL: //fall through
         rc = lv ?
             raft_client_test_instance_lreg_multi_facet_cb(op, ri, lv) :
-        -EINVAL;
+            -EINVAL;
         break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through

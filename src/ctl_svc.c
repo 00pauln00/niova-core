@@ -59,10 +59,10 @@ REF_TREE_GENERATE(ctl_svc_node_tree, ctl_svc_node, csn_rtentry,
 static struct ctl_svc_node_tree ctlSvcNodeTree;
 static const char *ctlSvcLocalDir = CTL_SVC_DEFAULT_LOCAL_DIR;
 
-#define CTL_SVR_NODE_TOKEN_HNDLR(name)                                  \
-    static int                                                          \
-    ctl_svc_node_token_hndlr_ ##name (struct ctl_svc_node *,            \
-                                      const struct conf_token *,        \
+#define CTL_SVR_NODE_TOKEN_HNDLR(name)                           \
+    static int                                                   \
+    ctl_svc_node_token_hndlr_ ##name (struct ctl_svc_node *,     \
+                                      const struct conf_token *, \
                                       const char *, size_t)
 
 struct ctl_svc_node_type_suffix
@@ -115,7 +115,7 @@ struct ctl_svc_node_type_suffix ctlSvcNodeTypes[CTL_SVC_NODE_TYPE_MAX] =
  *    enumerated types.
  */
 static const unsigned int
-ctlSvcNodeTypeTokens[CTL_SVC_NODE_TYPE_MAX][CT_ID__MAX] =
+    ctlSvcNodeTypeTokens[CTL_SVC_NODE_TYPE_MAX][CT_ID__MAX] =
 {
     [CTL_SVC_NODE_TYPE_NIOSD] = {
         CT_ID_HOSTNAME,
@@ -212,7 +212,7 @@ ctl_svr_node_type_accepts_token(enum ctl_svc_node_type csn_type,
     {
         for (int i = 0;
              i < CT_ID__MAX &&
-                 ctlSvcNodeTypeTokens[csn_type][i] != CT_ID__MIN; i++)
+             ctlSvcNodeTypeTokens[csn_type][i] != CT_ID__MIN; i++)
             if (token_id == ctlSvcNodeTypeTokens[csn_type][i])
                 return true;
     }
@@ -260,11 +260,9 @@ ctl_svc_detect_node_type(const char *input_file_ext)
     {
         for (enum ctl_svc_node_type j = CTL_SVC_NODE_TYPE_NIOSD;
              j < CTL_SVC_NODE_TYPE_MAX; j++)
-        {
             if (!strncmp(ctlSvcNodeTypes[j].csnts_file_suffix, input_file_ext,
                          ctlSvcNodeTypes[j].csnts_file_suffix_len))
                 return ctlSvcNodeTypes[j].csnts_type;
-        }
     }
 
     return CTL_SVC_NODE_TYPE_ANY;
@@ -824,7 +822,7 @@ ctl_svc_init_scan_entries_dump_invalid_file(const char *file_name,
                     dump_whole_file = false;
                     snprintf(&stage_buffer[idx],
                              CTL_SVC_INVALID_LINE_MARKER_LEN + (len - i),
-                             CTL_SVC_INVALID_LINE_MARKER"%s",
+                             CTL_SVC_INVALID_LINE_MARKER "%s",
                              &file_buf[i + 1]);
                     break;
                 }
@@ -1051,10 +1049,8 @@ ctl_svc_nodes_release(void)
         for (; csn != NULL;
              csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree,
                                 ctl_svc_node, csn_rtentry))
-        {
             for (int i = 0; i < REF_TREE_INITIAL_REF_CNT(&ctlSvcNodeTree); i++)
                 RT_PUT(ctl_svc_node_tree, &ctlSvcNodeTree, csn);
-        }
 
         csn = REF_TREE_MIN(ctl_svc_node_tree, &ctlSvcNodeTree, ctl_svc_node,
                            csn_rtentry);

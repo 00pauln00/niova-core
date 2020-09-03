@@ -23,7 +23,7 @@ struct thread_ctl workerThrCtl[NUM_THREADS];
 
 struct item
 {
-    size_t              num;
+    size_t num;
     CIRCLEQ_ENTRY(item) lentry;
 };
 
@@ -31,11 +31,11 @@ CIRCLEQ_HEAD(itemq, item);
 
 struct item_set
 {
-    struct item *items;
-    struct itemq pending;
-    struct itemq completed;
+    struct item    *items;
+    struct itemq    pending;
+    struct itemq    completed;
     pthread_mutex_t mutex;
-    size_t exec_cnt;
+    size_t          exec_cnt;
 };
 
 static struct item_set item_sets[NUM_THREADS + 1];

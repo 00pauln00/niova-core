@@ -32,17 +32,17 @@ static bool useWriteBatch = false;
 
 struct niova_rocksdb_instance
 {
-    uuid_t                  nri_uuid;
-    char                    nri_path[PATH_MAX];
-    struct random_data      nri_rand_data;
-    char                    nri_rand_state_buf[RANDOM_STATE_BUF_LEN];
-    rocksdb_t              *nri_db;
-    rocksdb_options_t      *nri_options;
-    rocksdb_writeoptions_t *nri_writeoptions;
-    rocksdb_readoptions_t  *nri_readoptions;
-    bool                    nri_sync_write;
-    bool                    nri_direct_io_flush_compaction;
-    bool                    nri_direct_reads;
+    uuid_t                          nri_uuid;
+    char                            nri_path[PATH_MAX];
+    struct random_data              nri_rand_data;
+    char                            nri_rand_state_buf[RANDOM_STATE_BUF_LEN];
+    rocksdb_t                      *nri_db;
+    rocksdb_options_t              *nri_options;
+    rocksdb_writeoptions_t         *nri_writeoptions;
+    rocksdb_readoptions_t          *nri_readoptions;
+    bool                            nri_sync_write;
+    bool                            nri_direct_io_flush_compaction;
+    bool                            nri_direct_reads;
     rocksdb_column_family_handle_t *nri_cf;
 };
 
@@ -95,7 +95,7 @@ nri_db_close(struct niova_rocksdb_instance *nri)
     if (!nri)
         return -EINVAL;
     else if (!nri->nri_db)
-	return -EALREADY;
+        return -EALREADY;
 
     rocksdb_close(nri->nri_db);
 
@@ -120,8 +120,8 @@ nri_cf_open(struct niova_rocksdb_instance *nri)
 
     if (!nri->nri_cf)
     {
-         SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_create_column_family(): %s", err);
-         return -EIO;
+        SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_create_column_family(): %s", err);
+        return -EIO;
     }
 
     return 0;
@@ -285,7 +285,7 @@ nri_put_some_items_wbatch(struct niova_rocksdb_instance *nri, char **err)
         *err = NULL;
 
         const size_t key_len =
-           snprintf(key, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str, i);
+            snprintf(key, MAX_KEY_LEN, ENTRY_PRINTF, uuid_str, i);
 
         const uint32_t rand = nri_random_get(nri);
 
@@ -599,7 +599,7 @@ rocksdb_test_getopt(int argc, char **argv, struct niova_rocksdb_instance *nri)
     while ((opt = getopt(argc, argv, OPTS)) != -1)
     {
         switch (opt)
-	{
+        {
         case 'D':
             nri->nri_direct_io_flush_compaction = true;
             break;
@@ -654,7 +654,7 @@ main(int argc, char *argv[])
     struct timespec ts[2];
 
     fprintf(stdout, "    NS/OP\t\tTest Name\n"
-            "--------------------------------------------------\n");
+                    "--------------------------------------------------\n");
 
     // DB Open
     niova_unstable_clock(&ts[0]);

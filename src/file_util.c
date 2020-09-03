@@ -50,13 +50,13 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
      */
     int rc = fstatat(dirfd, file_name, &stb, AT_SYMLINK_NOFOLLOW);
     if (rc < 0)
-	return -errno;
+        return -errno;
 
     else if (!S_ISREG(stb.st_mode))
         return -ENOTSUP;
 
     else if (!proc_file && stb.st_size > output_size)
-	return -E2BIG;
+        return -E2BIG;
 
     else if (!proc_file && !stb.st_size) // nothing to read
         return -ENODATA;

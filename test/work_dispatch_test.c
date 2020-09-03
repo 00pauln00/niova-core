@@ -402,7 +402,7 @@ int
 main(void)
 {
     fprintf(stdout, "NS/OP\t\tTest Name\n"
-            "---------------------------------------------\n");
+                    "---------------------------------------------\n");
 
     epoll_test();
     pthread_cond_test();

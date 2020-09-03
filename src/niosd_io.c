@@ -29,7 +29,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define NIOSD_LINUX_PROC_AIO_MAX "/proc/sys/fs/aio-max-nr"
 #define NIOSD_IO_OPEN_FLAGS (O_DIRECT | O_RDWR | O_EXCL)
 #define NIOSD_MIN_DEVICE_SZ_IN_PBLKS 8192UL
-#define NIOSD_MIN_DEVICE_SZ_IN_BYTES                    \
+#define NIOSD_MIN_DEVICE_SZ_IN_BYTES \
     (NIOSD_MIN_DEVICE_SZ_IN_PBLKS * PBLK_SIZE_BYTES)
 
 #define NIOSD_IO_GETEVENTS_WAIT_TS {.tv_sec = 10, .tv_nsec = 0};
@@ -399,10 +399,10 @@ niosd_io_completion_event_ring_destroy(struct niosd_io_compl_event_ring *cer)
 static int
 nioctx_blocking_mode_setup(struct niosd_io_ctx *nioctx)
 {
-     if (!nioctx || !nioctx->nioctx_use_blocking_mode)
-         return -EINVAL;
+    if (!nioctx || !nioctx->nioctx_use_blocking_mode)
+        return -EINVAL;
 
-     return ev_pipe_setup(&nioctx->nioctx_evp);
+    return ev_pipe_setup(&nioctx->nioctx_evp);
 }
 
 static int
@@ -722,15 +722,11 @@ niosd_io_submit_requests_prep(struct niosd_io_request **niorqs,
     for (i = 0; i < nreqs; i++)
     {
         if (i > 0)
-        {
             NIOVA_ASSERT(first_nioctx == niorqs[i]->niorq_ctx);
-        }
         else if (niorqs[i]->niorq_type == NIOSD_REQ_TYPE_UNINIT ||
                  niorqs[i]->niorq_type == NIOSD_REQ_TYPE_FSYNC ||
                  niorqs[i]->niorq_type == NIOSD_REQ_TYPE_DISCARD)
-        {
             return -EOPNOTSUPP;
-        }
 
         iocb_ptrs[i] = &niorqs[i]->niorq_iocb;
 

@@ -20,15 +20,15 @@ struct util_thread
 {
     struct thread_ctl ut_tc;
     struct epoll_mgr  ut_epm;
-    unsigned int      ut_started:1;
+    unsigned int      ut_started : 1;
 };
 
 #define MAX_UT_EPOLL_HANDLES 32
 
-static struct util_thread  utilThread;
+static struct util_thread utilThread;
 static struct epoll_handle utilThreadEpollHandles[MAX_UT_EPOLL_HANDLES];
-static size_t              utilThreadNumEpollHandles;
-static pthread_mutex_t     utilThreadMutex = PTHREAD_MUTEX_INITIALIZER;
+static size_t utilThreadNumEpollHandles;
+static pthread_mutex_t utilThreadMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int
 util_thread_install_event_src(int fd, int events,
@@ -50,10 +50,8 @@ util_thread_install_event_src(int fd, int events,
 
     int rc = epoll_handle_init(eph, fd, events, ut_cb, arg);
     if (!rc)
-    {
         if (utilThread.ut_started)
             rc = epoll_handle_add(&utilThread.ut_epm, eph);
-    }
 
     if (rc) // Failure, reset the handle
     {

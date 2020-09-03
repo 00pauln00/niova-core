@@ -16,15 +16,15 @@
 /* "Install context" is designated for threads other than the glreg service
  * thread which may add new registry objects.
  */
-typedef void lreg_install_ctx_t;
-typedef int  lreg_install_int_ctx_t;
-typedef bool lreg_install_bool_ctx_t;
-typedef	void lreg_svc_ctx_t;
-typedef void * lreg_svc_thread_t;
-typedef	struct lreg_node * lreg_svc_lrn_ctx_t;
-typedef	int  lreg_svc_int_ctx_t;
-typedef	void lreg_user_ctx_t;
-typedef	int lreg_user_int_ctx_t;
+typedef void             lreg_install_ctx_t;
+typedef int              lreg_install_int_ctx_t;
+typedef bool             lreg_install_bool_ctx_t;
+typedef void             lreg_svc_ctx_t;
+typedef void             * lreg_svc_thread_t;
+typedef struct lreg_node * lreg_svc_lrn_ctx_t;
+typedef int              lreg_svc_int_ctx_t;
+typedef void             lreg_user_ctx_t;
+typedef int              lreg_user_int_ctx_t;
 
 typedef bool (*lrn_walk_cb_t)(struct lreg_node *, void *, const int);
 
@@ -121,7 +121,7 @@ typedef int (*lrn_cb_t)(enum lreg_node_cb_ops, struct lreg_node *,
 struct lreg_value_vnode_data
 {
     unsigned int lvvd_num_keys_out;
-    uint8_t      lvvd_vobject:1; // if '0', it's a varray
+    uint8_t      lvvd_vobject : 1; // if '0', it's a varray
     lrn_cb_t     lvvd_cb;
 };
 
@@ -141,16 +141,16 @@ struct lreg_value_vnode_data
  */
 struct lreg_value
 {
-    char                           lrv_key_string[LREG_VALUE_STRING_MAX + 1];
-    unsigned int                   lrv_value_idx_in;
-    enum lreg_node_cb_ops          lrv_op_in;
+    char                  lrv_key_string[LREG_VALUE_STRING_MAX + 1];
+    unsigned int          lrv_value_idx_in;
+    enum lreg_node_cb_ops lrv_op_in;
     union
     {
         struct
         {
-            unsigned int           lrv_num_keys_out;
-            enum lreg_value_types  lrv_value_type_out;
-            enum lreg_user_types   lrv_user_type_out;
+            unsigned int          lrv_num_keys_out;
+            enum lreg_value_types lrv_value_type_out;
+            enum lreg_user_types  lrv_user_type_out;
             union
             {
                 struct lreg_value_data       lrv_value_out;
@@ -168,45 +168,45 @@ struct lreg_value
 
 #define lrv_node_type_out lrv_value_type_out //xxx to be removed
 
-#define LREG_VALUE_TO_OUT_STR(lrv)              \
+#define LREG_VALUE_TO_OUT_STR(lrv) \
     (lrv)->get.lrv_value_out.lrv_string
 
-#define LREG_VALUE_TO_KEY_STR(lrv)              \
+#define LREG_VALUE_TO_KEY_STR(lrv) \
     (lrv)->lrv_key_string
 
-#define LREG_VALUE_TO_BOOL(lrv)                 \
+#define LREG_VALUE_TO_BOOL(lrv) \
     (lrv)->get.lrv_value_out.lrv_bool
 
-#define LREG_VALUE_TO_IN_STR(lrv)               \
+#define LREG_VALUE_TO_IN_STR(lrv) \
     (lrv)->put.lrv_value_in.lrv_string
 
-#define LREG_VALUE_TO_OUT_SIGNED_INT(lrv)       \
+#define LREG_VALUE_TO_OUT_SIGNED_INT(lrv) \
     (lrv)->get.lrv_value_out.lrv_signed_val
 
-#define LREG_VALUE_TO_OUT_UNSIGNED_INT(lrv)     \
+#define LREG_VALUE_TO_OUT_UNSIGNED_INT(lrv) \
     (lrv)->get.lrv_value_out.lrv_unsigned_val
 
-#define LREG_VALUE_TO_OUT_FLOAT(lrv)            \
+#define LREG_VALUE_TO_OUT_FLOAT(lrv) \
     (lrv)->get.lrv_value_out.lrv_float
 
-#define LREG_VALUE_TO_REQ_TYPE(lrv)             \
+#define LREG_VALUE_TO_REQ_TYPE(lrv) \
     (lrv)->get.lrv_value_type_out
 
-#define LREG_VALUE_TO_REQ_TYPE_IN(lrv)             \
+#define LREG_VALUE_TO_REQ_TYPE_IN(lrv) \
     (lrv)->put.lrv_value_type_in
 
-#define LREG_VALUE_TO_USER_TYPE(lrv)             \
+#define LREG_VALUE_TO_USER_TYPE(lrv) \
     (lrv)->get.lrv_user_type_out
 
 struct lreg_vnode_data
 {
     enum lreg_user_types lvd_user_type;
-    uint8_t              lvd_varray:1;
-    uint8_t              lvd_vobject:1;
+    uint8_t              lvd_varray  : 1;
+    uint8_t              lvd_vobject : 1;
     union
     {
-        uint32_t         lvd_index;
-        uint32_t         lvd_num_entries;
+        uint32_t lvd_index;
+        uint32_t lvd_num_entries;
     };
 };
 
@@ -218,19 +218,19 @@ CIRCLEQ_HEAD(lreg_node_list, lreg_node);
  */
 struct lreg_node
 {
-    enum lreg_user_types      lrn_user_type;
-    uint8_t                   lrn_install_state;
-    uint8_t                   lrn_tmp_node:1,
-                              lrn_statically_allocated:1,
-                              lrn_root_node:1,
-                              lrn_monitor:1,
-                              lrn_may_destroy:1,
-                              lrn_array_element:1,
-                              lrn_ignore_items_with_value_zero:1,
-                              lrn_vnode_child:1;
-    struct lreg_vnode_data    lrn_lvd;
-    void                     *lrn_cb_arg;
-    lrn_cb_t                  lrn_cb;
+    enum lreg_user_types lrn_user_type;
+    uint8_t              lrn_install_state;
+    uint8_t              lrn_tmp_node                     : 1,
+                         lrn_statically_allocated         : 1,
+                         lrn_root_node                    : 1,
+                         lrn_monitor                      : 1,
+                         lrn_may_destroy                  : 1,
+                         lrn_array_element                : 1,
+                         lrn_ignore_items_with_value_zero : 1,
+                         lrn_vnode_child                  : 1;
+    struct lreg_vnode_data lrn_lvd;
+    void                  *lrn_cb_arg;
+    lrn_cb_t               lrn_cb;
     CIRCLEQ_ENTRY(lreg_node)  lrn_lentry;
     union
     {
@@ -322,27 +322,27 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
     return '?';
 }
 
-#define DBG_LREG_NODE(log_level, lrn, fmt, ...)                         \
-{                                                                       \
-    struct lreg_value lrv = {0};                                        \
-    SIMPLE_LOG_MSG(log_level,                                           \
-                   "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,             \
-                   (lrn),                                               \
-                   (const char *)({                                     \
-                           (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME,      \
-                                         (lrn), &lrv);                  \
-                           LREG_VALUE_TO_KEY_STR(&lrv);                 \
-                       }),                                              \
-                   lreg_node_to_user_type(lrn),                         \
-                   lreg_node_to_install_state(lrn),                     \
-                   (lrn)->lrn_statically_allocated  ? 's' : '-',        \
-                   (lrn)->lrn_tmp_node              ? 't' : '-',        \
-                   (lrn)->lrn_root_node             ? 'r' : '-',        \
-                   (lrn)->lrn_may_destroy           ? 'd' : '-',        \
-                   (lrn)->lrn_monitor               ? 'm' : '-',        \
-                   (lrn)->lrn_array_element         ? 'a' : '-',        \
-                   (lrn)->lrn_cb_arg, ##__VA_ARGS__);                   \
-}
+#define DBG_LREG_NODE(log_level, lrn, fmt, ...)                    \
+    do {                                                           \
+    struct lreg_value lrv = {0};                                   \
+    SIMPLE_LOG_MSG(log_level,                                      \
+                   "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,        \
+                   (lrn),                                          \
+                   (const char *)({                                \
+                           (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, \
+                                         (lrn), &lrv);             \
+                           LREG_VALUE_TO_KEY_STR(&lrv);            \
+                       }),                                         \
+                   lreg_node_to_user_type(lrn),                    \
+                   lreg_node_to_install_state(lrn),                \
+                   (lrn)->lrn_statically_allocated  ? 's' : '-',   \
+                   (lrn)->lrn_tmp_node              ? 't' : '-',   \
+                   (lrn)->lrn_root_node             ? 'r' : '-',   \
+                   (lrn)->lrn_may_destroy           ? 'd' : '-',   \
+                   (lrn)->lrn_monitor               ? 'm' : '-',   \
+                   (lrn)->lrn_array_element         ? 'a' : '-',   \
+                   (lrn)->lrn_cb_arg, ##__VA_ARGS__);              \
+    } while (0)
 
 static inline bool
 lreg_statically_allocated_node_check(const struct lreg_node *lrn)
@@ -392,8 +392,8 @@ lreg_install_int_ctx_t
 lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
 
 void
-lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
-               enum lreg_init_options);
+    lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
+                   enum lreg_init_options);
 
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
@@ -441,131 +441,131 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         .lrn_cb = lreg_root_cb##name                                    \
     }                                                                   \
 
-#define LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,        \
-                                      read_write_op_cb, arg, type)      \
-    static inline void                                                  \
-    lreg_compile_time_assert(enum lreg_value_types type)                \
-    {                                                                   \
-        COMPILE_TIME_ASSERT(type == LREG_VAL_TYPE_ARRAY ||              \
-                            type == LREG_VAL_TYPE_OBJECT);              \
-    }                                                                   \
-    static lreg_install_int_ctx_t                                       \
-    lreg_root_cb_child##name(enum lreg_node_cb_ops op,                  \
-                             struct lreg_node *lrn,                     \
-                             struct lreg_value *lreg_val)               \
-    {                                                                   \
-        int rc = 0;                                                     \
-        switch (op)                                                     \
-        {                                                               \
-        case LREG_NODE_CB_OP_GET_NODE_INFO:                             \
-            if (!(lreg_val))                                            \
-                return -EINVAL;                                         \
-            lreg_val->get.lrv_num_keys_out = num_keys;                  \
-            snprintf(lreg_val->lrv_key_string,                          \
-                     LREG_VALUE_STRING_MAX, #name);                     \
-            break;                                                      \
-        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */           \
-        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */           \
-            if (!(lreg_val))                                            \
-                return -EINVAL;                                         \
-            if (lreg_val->lrv_value_idx_in >= num_keys)                 \
-                return -ERANGE;                                         \
-            rc = read_write_op_cb(op, lreg_val, (lrn)->lrn_cb_arg);     \
-            break;                                                      \
-        case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */           \
-        case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */           \
-            break;                                                      \
-        default:                                                        \
-            return -EOPNOTSUPP;                                         \
-        }                                                               \
-        return rc;                                                       \
-    }                                                                   \
-    static lreg_install_int_ctx_t                                       \
-    lreg_root_cb_parent##name(enum lreg_node_cb_ops op,                 \
-                              struct lreg_node *lrn,                    \
-                              struct lreg_value *lreg_val)              \
-    {                                                                   \
-        switch (op)                                                     \
-        {                                                               \
-        case LREG_NODE_CB_OP_GET_NODE_INFO:                             \
-            if (!lreg_val)                                              \
-                return -EINVAL;                                         \
-                                                                        \
-            lreg_val->get.lrv_num_keys_out = 1;                         \
-            snprintf(lreg_val->lrv_key_string,                          \
-                     LREG_VALUE_STRING_MAX, #name);                     \
-            break;                                                      \
-        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */           \
-            if (!lreg_val)                                              \
-                return -EINVAL;                                         \
-            if (lreg_val->lrv_value_idx_in != 0)                        \
-                return -ERANGE;                                         \
-            lreg_val->get.lrv_value_type_out = type;                    \
-            lreg_val->get.lrv_user_type_out = user_type;                \
-            snprintf(lreg_val->lrv_key_string,                          \
-                     LREG_VALUE_STRING_MAX, #name);                     \
-            break;                                                      \
-        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */           \
-            return -EOPNOTSUPP;                                         \
-        case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */           \
-        case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */           \
-            break;                                                      \
-        default:                                                        \
-            return -ENOENT;                                             \
-        }                                                               \
-        return 0;                                                       \
-    }                                                                   \
-                                                                        \
-    struct lreg_node rootEntry##name = {                                \
-        .lrn_cb_arg = (void *)1,                                        \
-        .lrn_user_type = user_type,                                     \
-        .lrn_statically_allocated = 1,                                  \
-        .lrn_cb = lreg_root_cb_parent##name,                            \
-    };                                                                  \
-    struct lreg_node childEntry##name = {                               \
-        .lrn_cb_arg = (void *)1,                                        \
-        .lrn_user_type = user_type,                                     \
-        .lrn_statically_allocated = 1,                                  \
-        .lrn_cb = lreg_root_cb_child##name,                             \
-        .lrn_cb_arg = arg,                                              \
-    };                                                                  \
+#define LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,    \
+                                      read_write_op_cb, arg, type)  \
+    static inline void                                              \
+    lreg_compile_time_assert(enum lreg_value_types type)            \
+    {                                                               \
+        COMPILE_TIME_ASSERT(type == LREG_VAL_TYPE_ARRAY ||          \
+                            type == LREG_VAL_TYPE_OBJECT);          \
+    }                                                               \
+    static lreg_install_int_ctx_t                                   \
+    lreg_root_cb_child##name(enum lreg_node_cb_ops op,              \
+                             struct lreg_node *lrn,                 \
+                             struct lreg_value *lreg_val)           \
+    {                                                               \
+        int rc = 0;                                                 \
+        switch (op)                                                 \
+        {                                                           \
+        case LREG_NODE_CB_OP_GET_NODE_INFO:                         \
+            if (!(lreg_val))                                        \
+                return -EINVAL;                                     \
+            lreg_val->get.lrv_num_keys_out = num_keys;              \
+            snprintf(lreg_val->lrv_key_string,                      \
+                     LREG_VALUE_STRING_MAX, #name);                 \
+            break;                                                  \
+        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */       \
+        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */       \
+            if (!(lreg_val))                                        \
+                return -EINVAL;                                     \
+            if (lreg_val->lrv_value_idx_in >= num_keys)             \
+                return -ERANGE;                                     \
+            rc = read_write_op_cb(op, lreg_val, (lrn)->lrn_cb_arg); \
+            break;                                                  \
+        case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */       \
+        case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */       \
+            break;                                                  \
+        default:                                                    \
+            return -EOPNOTSUPP;                                     \
+        }                                                           \
+        return rc;                                                  \
+    }                                                               \
+    static lreg_install_int_ctx_t                                   \
+    lreg_root_cb_parent##name(enum lreg_node_cb_ops op,             \
+                              struct lreg_node *lrn,                \
+                              struct lreg_value *lreg_val)          \
+    {                                                               \
+        switch (op)                                                 \
+        {                                                           \
+        case LREG_NODE_CB_OP_GET_NODE_INFO:                         \
+            if (!lreg_val)                                          \
+                return -EINVAL;                                     \
+                                                                    \
+            lreg_val->get.lrv_num_keys_out = 1;                     \
+            snprintf(lreg_val->lrv_key_string,                      \
+                     LREG_VALUE_STRING_MAX, #name);                 \
+            break;                                                  \
+        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */       \
+            if (!lreg_val)                                          \
+                return -EINVAL;                                     \
+            if (lreg_val->lrv_value_idx_in != 0)                    \
+                return -ERANGE;                                     \
+            lreg_val->get.lrv_value_type_out = type;                \
+            lreg_val->get.lrv_user_type_out = user_type;            \
+            snprintf(lreg_val->lrv_key_string,                      \
+                     LREG_VALUE_STRING_MAX, #name);                 \
+            break;                                                  \
+        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */       \
+            return -EOPNOTSUPP;                                     \
+        case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */       \
+        case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */       \
+            break;                                                  \
+        default:                                                    \
+            return -ENOENT;                                         \
+        }                                                           \
+        return 0;                                                   \
+    }                                                               \
+                                                                    \
+    struct lreg_node rootEntry##name = {                            \
+        .lrn_cb_arg = (void *)1,                                    \
+        .lrn_user_type = user_type,                                 \
+        .lrn_statically_allocated = 1,                              \
+        .lrn_cb = lreg_root_cb_parent##name,                        \
+    };                                                              \
+    struct lreg_node childEntry##name = {                           \
+        .lrn_cb_arg = (void *)1,                                    \
+        .lrn_user_type = user_type,                                 \
+        .lrn_statically_allocated = 1,                              \
+        .lrn_cb = lreg_root_cb_child##name,                         \
+        .lrn_cb_arg = arg,                                          \
+    };                                                              \
 
-#define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys,      \
-                                        read_write_op_cb, arg)          \
-    LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,            \
-                                  read_write_op_cb, arg,                \
+#define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys, \
+                                        read_write_op_cb, arg)     \
+    LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,       \
+                                  read_write_op_cb, arg,           \
                                   LREG_VAL_TYPE_OBJECT)
 
-#define LREG_ROOT_ENTRY_EXPORT(name)            \
+#define LREG_ROOT_ENTRY_EXPORT(name) \
     extern struct lreg_node rootEntry##name
 
-#define LREG_ROOT_ENTRY_PTR(name)                                       \
+#define LREG_ROOT_ENTRY_PTR(name) \
     &rootEntry##name
 
-#define LREG_ROOT_ENTRY_INSTALL(name)                                   \
-    NIOVA_ASSERT(!lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name),  \
+#define LREG_ROOT_ENTRY_INSTALL(name)                                  \
+    NIOVA_ASSERT(!lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name), \
                                             lreg_root_node_get()))
 
-#define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                            \
-{                                                                       \
-    LREG_ROOT_ENTRY_INSTALL(name);                                      \
-                                                                        \
-    NIOVA_ASSERT(                                                       \
-        !lreg_node_install_prepare(&childEntry##name,                   \
-                                   LREG_ROOT_ENTRY_PTR(name)));         \
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                    \
+{                                                               \
+    LREG_ROOT_ENTRY_INSTALL(name);                              \
+                                                                \
+    NIOVA_ASSERT(                                               \
+        !lreg_node_install_prepare(&childEntry##name,           \
+                                   LREG_ROOT_ENTRY_PTR(name))); \
 }
 
-#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ARG(name, arg)                   \
-{                                                                       \
-    &childEntry##name.lrn_cb_arg = (arg);                               \
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(name);                               \
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ARG(name, arg) \
+{                                                     \
+    &childEntry##name.lrn_cb_arg = (arg);             \
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(name);             \
 }
 
 
 #if 0 // LREG_ROOT_ENTRY_INSTALL variant
-    NIOVA_ASSERT(
-        !lreg_node_install_prepare(&childEntry##name,
-                                   &rootEntry##name));
+NIOVA_ASSERT(
+    !lreg_node_install_prepare(&childEntry ## name,
+                               &rootEntry ## name));
 LREG_ROOT_ENTRY_INSTALL(name);
 #endif
 

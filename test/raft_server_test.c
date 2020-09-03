@@ -39,9 +39,9 @@ struct rst_sm_node_app
 
 struct rst_sm_node
 {
-    uuid_t                      smn_uuid;
+    uuid_t                 smn_uuid;
     REF_TREE_ENTRY(rst_sm_node) smn_rtentry;
-    struct rst_sm_node_app      smn_app;
+    struct rst_sm_node_app smn_app;
 };
 
 static inline int

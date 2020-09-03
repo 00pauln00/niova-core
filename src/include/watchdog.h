@@ -11,7 +11,7 @@
 #include "ctor.h"
 #include "queue.h"
 
-#define	WATCHDOG_DEFAULT_FREQUENCY 60
+#define WATCHDOG_DEFAULT_FREQUENCY 60
 #define WATCHDOG_MAX_FREQUENCY     1000
 #define WATCHDOG_MIN_FREQUENCY     10
 
@@ -20,14 +20,14 @@
 #define WATCHDOG_MIN_STALL_CNT     2
 
 typedef thread_exec_ctx_u64_t watchdog_exec_ctx_u64_t;
-typedef void watchdog_exec_ctx_t;
-typedef int watchdog_exec_ctx_int_t;
+typedef void                  watchdog_exec_ctx_t;
+typedef int                   watchdog_exec_ctx_int_t;
 
 struct watchdog_handle
 {
-    watchdog_exec_ctx_u64_t        CACHE_ALIGN_MEMBER(wdh_exec_cnt_tracker);
-    watchdog_exec_ctx_u64_t        wdh_current_stalls;
-    thread_exec_ctx_u64_t          CACHE_ALIGN_MEMBER(wdh_thread_exec_cnt);
+    watchdog_exec_ctx_u64_t CACHE_ALIGN_MEMBER(wdh_exec_cnt_tracker);
+    watchdog_exec_ctx_u64_t wdh_current_stalls;
+    thread_exec_ctx_u64_t   CACHE_ALIGN_MEMBER(wdh_thread_exec_cnt);
     CIRCLEQ_ENTRY(watchdog_handle) wdh_lentry;
 };
 

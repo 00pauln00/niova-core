@@ -49,15 +49,15 @@ struct fault_injection
     uint32_t               flti_num_remaining;
     uint32_t               flti_inject_cnt;
     time_t                 flti_last;
-    uint64_t               flti_cond_exec_cnt:62,
-                           flti_enabled:1;
+    uint64_t               flti_cond_exec_cnt : 62,
+                           flti_enabled       : 1;
     struct lreg_node       flti_lrn;
 };
 
 struct fault_injection_stub
 {
-    struct fault_injection   *fis_flti;
-    niova_atomic8_t           fis_atomic;
+    struct fault_injection *fis_flti;
+    niova_atomic8_t         fis_atomic;
 };
 
 static inline const char *
@@ -133,28 +133,28 @@ fault_injection_evaluate(struct fault_injection *flti)
 }
 
 #if defined NIOVA_FAULT_INJECTION_ENABLED
-#define FAULT_INJECT_CB(id, callback)                                   \
-    ({                                                                  \
-        static struct fault_injection_stub fis;                         \
-        if (!fis.fis_atomic && niova_atomic_cas(&fis.fis_atomic, 0, 1)) \
-        {                                                               \
-            NIOVA_ASSERT(!fis.fis_flti);                                \
-            fis.fis_flti = fault_injection_lookup(FAULT_INJECT_##id);   \
-            NIOVA_ASSERT(fis.fis_flti);                                 \
+#define FAULT_INJECT_CB(id, callback)                                    \
+    ({                                                                   \
+        static struct fault_injection_stub fis;                          \
+        if (!fis.fis_atomic && niova_atomic_cas(&fis.fis_atomic, 0, 1))  \
+        {                                                                \
+            NIOVA_ASSERT(!fis.fis_flti);                                 \
+            fis.fis_flti = fault_injection_lookup(FAULT_INJECT_##id);    \
+            NIOVA_ASSERT(fis.fis_flti);                                  \
             fault_injection_apply_info(fis.fis_flti, __FILE__, __func__, \
-                                       __LINE__);                       \
-        }                                                               \
-        fis.fis_flti->flti_cond_exec_cnt++;                             \
-        bool fire = fault_injection_evaluate(fis.fis_flti);             \
-        if (fire)                                                       \
-        {                                                               \
-            fis.fis_flti->flti_inject_cnt++;                            \
-            callback;                                                   \
-        }                                                               \
-        fire;                                                           \
+                                       __LINE__);                        \
+        }                                                                \
+        fis.fis_flti->flti_cond_exec_cnt++;                              \
+        bool fire = fault_injection_evaluate(fis.fis_flti);              \
+        if (fire)                                                        \
+        {                                                                \
+            fis.fis_flti->flti_inject_cnt++;                             \
+            callback;                                                    \
+        }                                                                \
+        fire;                                                            \
     })
 #else
-#define	FAULT_INJECT_CB(id, callback) false
+#define FAULT_INJECT_CB(id, callback) false
 #endif
 
 #define FAULT_INJECT(id) FAULT_INJECT_CB(id, )

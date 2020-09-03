@@ -24,10 +24,10 @@
  */
 struct mb_dpblk_entry
 {
-    uint64_t  mdpbe_txnid:NIOVA_TXN_BITS,
-              mdpbe_ec_ndata:EC_DATA_BITS,
-              mdpbe_ec_nparity:EC_PARITY_BITS,
-              mdpbe_ec_pos:EC_POS_BITS;
+    uint64_t mdpbe_txnid      : NIOVA_TXN_BITS,
+             mdpbe_ec_ndata   : EC_DATA_BITS,
+             mdpbe_ec_nparity : EC_PARITY_BITS,
+             mdpbe_ec_pos     : EC_POS_BITS;
     pblk_id_t mdpbe_pblk_id;
 } PACKED;
 
@@ -47,12 +47,12 @@ struct mb_dpblk_entry
  */
 struct mb_vblk_entry
 {
-    uint64_t mvbe_blk:VBLK_BITS,
-             mvbe_nblks:VBLK_RUN_LEN_BITS,
-             mvbe_dpblk_idx:VBLK_PBLK_IDX,
-             mvbe_dpblk_info_idx:MB_DPBLK_IDX_BITS,
-             mvbe_type:VBLK_ENTRY_TYPE_BITS,
-             mvbe__pad:VBLK_ENTRY_PAD_SIZE;
+    uint64_t mvbe_blk            : VBLK_BITS,
+             mvbe_nblks          : VBLK_RUN_LEN_BITS,
+             mvbe_dpblk_idx      : VBLK_PBLK_IDX,
+             mvbe_dpblk_info_idx : MB_DPBLK_IDX_BITS,
+             mvbe_type           : VBLK_ENTRY_TYPE_BITS,
+             mvbe__pad           : VBLK_ENTRY_PAD_SIZE;
 } PACKED;
 
 /**
@@ -63,8 +63,8 @@ struct mb_vblk_entry
  */
 struct mb_hash
 {
-    mb_digest_type_t  mh_type;
-    uint32_t          mh__pad;
+    mb_digest_type_t mh_type;
+    uint32_t         mh__pad;
     union
     {
         unsigned char mh_bytes[MB_CHAIN_LINK_HASH_BYTES];
@@ -165,8 +165,8 @@ struct mb_header_persistent
     };
     union
     {
-        struct mb_header_data       mbhp_mb;
-        unsigned char               mbhp_data_back[MB_HDR_DATA_IO_SIZE];
+        struct mb_header_data mbhp_mb;
+        unsigned char         mbhp_data_back[MB_HDR_DATA_IO_SIZE];
     };
 } PACKED;
 

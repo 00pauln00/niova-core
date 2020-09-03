@@ -173,12 +173,12 @@ struct niosd_io_compl_event_ring
 #define niosd_ctx_decrement_cer_counter(nioctx, counter, value) \
     (nioctx)->nioctx_cer.niocer_##counter -= value
 
-#define niosd_ctx_to_cer_counter(nioctx, counter)       \
+#define niosd_ctx_to_cer_counter(nioctx, counter) \
     (nioctx)->nioctx_cer.niocer_##counter
 
 #define niosd_ctx_to_cer_memb niosd_ctx_to_cer_counter
 
-#define niosd_ctx_to_cer_event(nioctx, event_slot)      \
+#define niosd_ctx_to_cer_event(nioctx, event_slot) \
     &(nioctx)->nioctx_cer.niocer_events[event_slot]
 
 
@@ -236,7 +236,7 @@ struct niosd_io_ctx_stats
 
 struct niosd_io_ctx
 {
-    uint32_t                         nioctx_use_blocking_mode:1;
+    uint32_t                         nioctx_use_blocking_mode : 1;
     struct ev_pipe                   nioctx_evp;
     enum niosd_io_ctx_type           nioctx_type;
     io_context_t                     nioctx_ctx;
@@ -259,13 +259,13 @@ struct sb_header_data;
 
 struct niosd_device
 {
-    char                             ndev_name[MAX_NIOSD_DEVICE_NAME + 1];
-    struct sb_header_data           *ndev_sb;
-    struct stat                      ndev_stb;
-    int                              ndev_fd;
-    enum niosd_dev_status            ndev_status;
-    struct niosd_io_ctx              ndev_ctxs[NIOSD_IO_CTX_TYPE_MAX];
-    struct lreg_node                 ndev_lreg_node;
+    char                   ndev_name[MAX_NIOSD_DEVICE_NAME + 1];
+    struct sb_header_data *ndev_sb;
+    struct stat            ndev_stb;
+    int                    ndev_fd;
+    enum niosd_dev_status  ndev_status;
+    struct niosd_io_ctx    ndev_ctxs[NIOSD_IO_CTX_TYPE_MAX];
+    struct lreg_node       ndev_lreg_node;
 };
 
 static inline void
@@ -361,36 +361,36 @@ struct niosd_io_request
     struct iocb                niorq_iocb;
     pblk_id_t                  niorq_pblk_id;
     uint16_t                   niorq_nsectors;
-    uint16_t                   niorq_compl_ev_done:1;
+    uint16_t                   niorq_compl_ev_done : 1;
     enum niosd_io_request_type niorq_type;
     union
     {
-        void                  *niorq_sink_buf;
-        const void            *niorq_src_buf;
+        void       *niorq_sink_buf;
+        const void *niorq_src_buf;
     };
-    long                       niorq_res; // from linux aio
-    long                       niorq_res2;
-    niosd_io_callback_t        niorq_cb;
-    void                      *niorq_cb_data;
-    struct timespec            niorq_timers[NIOSD_IO_REQ_TIMER_ALL];
+    long                niorq_res;        // from linux aio
+    long                niorq_res2;
+    niosd_io_callback_t niorq_cb;
+    void               *niorq_cb_data;
+    struct timespec     niorq_timers[NIOSD_IO_REQ_TIMER_ALL];
 };
 
-#define DBG_NIOSD_REQ(log_level, iorq, fmt, ...)                        \
-    log_msg(log_level,                                                  \
-            "iorq@%p %s(%zu:%zu) pblk:%x ns:%u t:%d ev=%u buf:%p "      \
-            "res:%ld,%ld "fmt,                                          \
-            (iorq), niosd_ctx_to_device((iorq)->niorq_ctx)->ndev_name,  \
-            niosd_ctx_pending_io_ops((iorq)->niorq_ctx),                \
-            niosd_ctx_pending_completion_ops((iorq)->niorq_ctx),        \
-            (iorq)->niorq_pblk_id, (iorq)->niorq_nsectors,              \
-            (iorq)->niorq_type, (iorq)->niorq_compl_ev_done,            \
-            (iorq)->niorq_src_buf, (iorq)->niorq_res,                   \
+#define DBG_NIOSD_REQ(log_level, iorq, fmt, ...)                       \
+    log_msg(log_level,                                                 \
+            "iorq@%p %s(%zu:%zu) pblk:%x ns:%u t:%d ev=%u buf:%p "     \
+            "res:%ld,%ld "fmt,                                         \
+            (iorq), niosd_ctx_to_device((iorq)->niorq_ctx)->ndev_name, \
+            niosd_ctx_pending_io_ops((iorq)->niorq_ctx),               \
+            niosd_ctx_pending_completion_ops((iorq)->niorq_ctx),       \
+            (iorq)->niorq_pblk_id, (iorq)->niorq_nsectors,             \
+            (iorq)->niorq_type, (iorq)->niorq_compl_ev_done,           \
+            (iorq)->niorq_src_buf, (iorq)->niorq_res,                  \
             (iorq)->niorq_res2, ##__VA_ARGS__)
 
-#define NIOSD_REQ_FATAL_IF(cond, iorq, message, ...)                   \
-    if ((cond))                                                        \
-    {                                                                  \
-        DBG_NIOSD_REQ(LL_FATAL, iorq, message, ##__VA_ARGS__);         \
+#define NIOSD_REQ_FATAL_IF(cond, iorq, message, ...)           \
+    if ((cond))                                                \
+    {                                                          \
+        DBG_NIOSD_REQ(LL_FATAL, iorq, message, ##__VA_ARGS__); \
     }
 
 static inline bool
@@ -443,7 +443,7 @@ niosd_io_request_time_stamp_apply(struct niosd_io_request *niorq,
 
 static inline long long
 niosd_io_request_time_stamp_to_usec(struct niosd_io_request *niorq,
-                                     enum niosd_io_request_timers ts)
+                                    enum niosd_io_request_timers ts)
 {
     return timespec_2_usec(&niorq->niorq_timers[ts]);
 }
@@ -476,9 +476,10 @@ void
 niosd_io_request_destroy(struct niosd_io_request *);
 
 niosd_io_submitter_ctx_int_t
-niosd_io_request_init(struct niosd_io_request *, struct niosd_io_ctx *,
-                      pblk_id_t, enum niosd_io_request_type, uint32_t, void *,
-                      niosd_io_callback_t, void *);
+    niosd_io_request_init(struct niosd_io_request *, struct niosd_io_ctx *,
+                          pblk_id_t, enum niosd_io_request_type, uint32_t,
+                          void *,
+                          niosd_io_callback_t, void *);
 
 niosd_io_submitter_ctx_int_t
 niosd_io_submit(struct niosd_io_request **, long int);

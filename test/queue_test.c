@@ -10,8 +10,8 @@
 
 struct circleq_entry
 {
-    unsigned int                 ce_value;
-    unsigned int                 ce_version;
+    unsigned int ce_value;
+    unsigned int ce_version;
     CIRCLEQ_ENTRY(circleq_entry) ce_lentry;
 };
 
@@ -47,10 +47,10 @@ circleq_splice_tail_test(void)
     // Foreach in both directions
     int j = NUM_CES;
     CIRCLEQ_FOREACH(tmp, &qx, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == --j);
+    NIOVA_ASSERT(tmp->ce_value == --j);
 
     CIRCLEQ_FOREACH_REVERSE(tmp, &qx, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == j++);
+    NIOVA_ASSERT(tmp->ce_value == j++);
 
     // Try noop splice
     CIRCLEQ_SPLICE_TAIL(&qy, &qx, ce_lentry);
@@ -59,7 +59,7 @@ circleq_splice_tail_test(void)
     // Recheck the order
     j = NUM_CES;
     CIRCLEQ_FOREACH(tmp, &qx, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == --j);
+    NIOVA_ASSERT(tmp->ce_value == --j);
 
 
     // Splice the list to an empty list - 'qy'
@@ -70,10 +70,10 @@ circleq_splice_tail_test(void)
     // Ensure the slice destination has the correctly ordered entries
     j = NUM_CES;
     CIRCLEQ_FOREACH(tmp, &qy, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == --j);
+    NIOVA_ASSERT(tmp->ce_value == --j);
 
     CIRCLEQ_FOREACH_REVERSE(tmp, &qy, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == j++);
+    NIOVA_ASSERT(tmp->ce_value == j++);
 
     // Add more entries to the original list
     struct circleq_entry ce2[NUM_CES] = {0};
@@ -96,10 +96,10 @@ circleq_splice_tail_test(void)
     // Verify the ordering of all entries.
     j = NUM_CES * 2;
     CIRCLEQ_FOREACH(tmp, &qx, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == --j && tmp->ce_version == 0);
+    NIOVA_ASSERT(tmp->ce_value == --j && tmp->ce_version == 0);
 
     CIRCLEQ_FOREACH_REVERSE(tmp, &qx, ce_lentry)
-        NIOVA_ASSERT(tmp->ce_value == j++ && tmp->ce_version == 0);
+    NIOVA_ASSERT(tmp->ce_value == j++ && tmp->ce_version == 0);
 }
 
 int

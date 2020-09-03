@@ -43,8 +43,8 @@ static struct vblkdev_handle_tree vbhTree;
 
 /* vbhNumHandles tracks the number of allocated handles in the system.
  */
-static ssize_t                    vbhNumHandles;
-static bool                       vbhInitialized = false;
+static ssize_t vbhNumHandles;
+static bool vbhInitialized = false;
 
 #define VBH_LOCK   pthread_mutex_lock(&vbhTree.mutex)
 #define VBH_UNLOCK pthread_mutex_unlock(&vbhTree.mutex)
@@ -78,7 +78,7 @@ vbh_ref_cnt_inc(struct vblkdev_handle *vbh)
 static void
 vbh_num_handles_inc_locked(void)
 {
-    NIOVA_ASSERT(vbhNumHandles >= 0)
+    NIOVA_ASSERT(vbhNumHandles >= 0);
     vbhNumHandles++;
 }
 
@@ -88,7 +88,7 @@ vbh_num_handles_inc_locked(void)
 static void
 vbh_num_handles_dec_locked(void)
 {
-    NIOVA_ASSERT(vbhNumHandles > 0)
+    NIOVA_ASSERT(vbhNumHandles > 0);
     vbhNumHandles--;
 }
 

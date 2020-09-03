@@ -13,11 +13,11 @@
 #define EV_PIPE_WRITE_SZ 1
 #define EV_PIPE_SZ       4096
 
-typedef void     ev_pipe_reader_t;
-typedef void     ev_pipe_writer_t;
+typedef void             ev_pipe_reader_t;
+typedef void             ev_pipe_writer_t;
 
-typedef int      ev_pipe_reader_int_t;
-typedef int      ev_pipe_writer_int_t;
+typedef int              ev_pipe_reader_int_t;
+typedef int              ev_pipe_writer_int_t;
 
 typedef uint64_t         ev_pipe_reader_uint64_t;
 typedef niova_atomic64_t ev_pipe_writer_uint64_t;
@@ -44,7 +44,7 @@ evp_read_fd_get(const struct ev_pipe *evp);
 void
 ev_pipe_reset(struct ev_pipe *evp, const char *function, const int lineno);
 
-#define EV_PIPE_RESET(evp)                      \
+#define EV_PIPE_RESET(evp) \
     ev_pipe_reset(evp, __func__, __LINE__);
 
 #endif

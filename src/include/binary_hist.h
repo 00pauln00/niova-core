@@ -14,9 +14,9 @@
 
 struct binary_hist
 {
-    const int  bh_start_bit;
-    const int  bh_num_buckets;
-    size_t     bh_values[BIN_HIST_BUCKETS_MAX];
+    const int bh_start_bit;
+    const int bh_num_buckets;
+    size_t    bh_values[BIN_HIST_BUCKETS_MAX];
 };
 
 static inline int

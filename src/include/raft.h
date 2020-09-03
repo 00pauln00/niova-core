@@ -32,37 +32,37 @@
 
 #define RAFT_ELECTION_MAX_TIME_MS   3000 // XXX increased by 10x for now
 #define RAFT_ELECTION_MIN_TIME_MS   1500
-#define RAFT_ELECTION_RANGE_MS                                  \
+#define RAFT_ELECTION_RANGE_MS \
     (RAFT_ELECTION_MAX_TIME_MS - RAFT_ELECTION_MIN_TIME_MS)
 
 #define RAFT_HEARTBEAT_TIME_MS      50
 
 #define RAFT_MIN_APPEND_ENTRY_IDX -1
 
-#define RAFT_INSTANCE_2_SELF_UUID(ri)          \
+#define RAFT_INSTANCE_2_SELF_UUID(ri) \
     (ri)->ri_csn_this_peer->csn_uuid
 
-#define RAFT_INSTANCE_2_RAFT_UUID(ri)           \
+#define RAFT_INSTANCE_2_RAFT_UUID(ri) \
     (ri)->ri_csn_raft->csn_uuid
 
-typedef void    raft_server_udp_cb_ctx_t;
-typedef int     raft_server_udp_cb_ctx_int_t;
-typedef bool    raft_server_udp_cb_ctx_bool_t;
-typedef bool    raft_server_udp_cb_follower_ctx_bool_t;
-typedef int     raft_server_udp_cb_follower_ctx_int_t;
-typedef void    raft_server_udp_cb_follower_ctx_t;
-typedef void    raft_server_udp_cb_leader_t;
-typedef void    raft_server_udp_cb_leader_ctx_t;
-typedef int64_t raft_server_udp_cb_leader_ctx_int64_t;
-typedef void    raft_server_timerfd_cb_ctx_t;
-typedef int     raft_server_timerfd_cb_ctx_int_t;
-typedef void    raft_server_leader_mode_t;
-typedef int     raft_server_leader_mode_int_t;
-typedef int64_t raft_server_leader_mode_int64_t;
-typedef void    raft_server_epoll_ae_sender_t;
-typedef void    raft_server_epoll_sm_apply_t;
-typedef void    raft_server_epoll_sm_apply_bool_t;
-typedef int     raft_server_epoll_sm_apply_int_t;
+typedef void                             raft_server_udp_cb_ctx_t;
+typedef int                              raft_server_udp_cb_ctx_int_t;
+typedef bool                             raft_server_udp_cb_ctx_bool_t;
+typedef bool                             raft_server_udp_cb_follower_ctx_bool_t;
+typedef int                              raft_server_udp_cb_follower_ctx_int_t;
+typedef void                             raft_server_udp_cb_follower_ctx_t;
+typedef void                             raft_server_udp_cb_leader_t;
+typedef void                             raft_server_udp_cb_leader_ctx_t;
+typedef int64_t                          raft_server_udp_cb_leader_ctx_int64_t;
+typedef void                             raft_server_timerfd_cb_ctx_t;
+typedef int                              raft_server_timerfd_cb_ctx_int_t;
+typedef void                             raft_server_leader_mode_t;
+typedef int                              raft_server_leader_mode_int_t;
+typedef int64_t                          raft_server_leader_mode_int64_t;
+typedef void                             raft_server_epoll_ae_sender_t;
+typedef void                             raft_server_epoll_sm_apply_t;
+typedef void                             raft_server_epoll_sm_apply_bool_t;
+typedef int                              raft_server_epoll_sm_apply_int_t;
 
 typedef raft_server_epoll_sm_apply_t     raft_server_sm_apply_cb_t;
 typedef raft_server_epoll_sm_apply_int_t raft_server_sm_apply_cb_int_t;
@@ -144,16 +144,16 @@ struct raft_rpc_msg
 
 struct raft_entry_header
 {
-    uint64_t reh_magic;     // Magic is not included in the crc
-    uuid_t   reh_self_uuid; // UUID of this peer
-    crc32_t  reh_crc;       // Crc is after the magic and uuid's (all are constant).
-    uint32_t reh_data_size; // The size of the log entry data - must be below reh_crc!
-                            //    see raft_server_entry_calc_crc() before changing.
+    uint64_t         reh_magic; // Magic is not included in the crc
+    uuid_t           reh_self_uuid; // UUID of this peer
+    crc32_t          reh_crc; // Crc is after the magic and uuid's (all are constant).
+    uint32_t         reh_data_size; // The size of the log entry data - must be below reh_crc!
+                                    //    see raft_server_entry_calc_crc() before changing.
     raft_entry_idx_t reh_index;
-    int64_t  reh_term;      // Term in which entry was originally written
-    uuid_t   reh_raft_uuid; // UUID of raft instance
-    uint8_t  reh_leader_change_marker; // noop
-    uint8_t  reh_pad[RAFT_ENTRY_PAD_SIZE];
+    int64_t          reh_term; // Term in which entry was originally written
+    uuid_t           reh_raft_uuid; // UUID of raft instance
+    uint8_t          reh_leader_change_marker; // noop
+    uint8_t          reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
 
 struct raft_entry
@@ -303,18 +303,19 @@ struct raft_instance_hist_stats
  */
 struct raft_instance_backend
 {
-    void (*rib_entry_write)(struct raft_instance *, const struct raft_entry *,
+    void (*rib_entry_write)(struct raft_instance *,
+                            const struct raft_entry *,
                             const struct raft_net_sm_write_supplements *);
-    int (*rib_entry_header_read)(struct raft_instance *,
-                                 struct raft_entry_header *);
+    int     (*rib_entry_header_read)(struct raft_instance *,
+                                     struct raft_entry_header *);
     ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
-    void (*rib_log_truncate)(struct raft_instance *, const raft_entry_idx_t);
-    int (*rib_header_load)(struct raft_instance *);
-    int (*rib_header_write)(struct raft_instance *);
-    int (*rib_backend_setup)(struct raft_instance *);
-    int (*rib_backend_shutdown)(struct raft_instance *);
-    void (*rib_sm_apply_opt)(struct raft_instance *,
-                             const struct raft_net_sm_write_supplements *);
+    void    (*rib_log_truncate)(struct raft_instance *, const raft_entry_idx_t);
+    int     (*rib_header_load)(struct raft_instance *);
+    int     (*rib_header_write)(struct raft_instance *);
+    int     (*rib_backend_setup)(struct raft_instance *);
+    int     (*rib_backend_shutdown)(struct raft_instance *);
+    void    (*rib_sm_apply_opt)(struct raft_instance *,
+                                const struct raft_net_sm_write_supplements *);
 };
 
 struct raft_instance
@@ -371,104 +372,104 @@ raft_compile_time_checks(void)
     COMPILE_TIME_ASSERT(RAFT_ENTRY_SIZE > RAFT_NET_MAX_RPC_SIZE);
 }
 
-#define DBG_RAFT_MSG(log_level, rm, fmt, ...)                           \
-{                                                                       \
-    char __uuid_str[UUID_STR_LEN];                                      \
-    uuid_unparse((rm)->rrm_sender_id, __uuid_str);                      \
-    switch ((rm)->rrm_type)                                             \
-    {                                                                   \
-    case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                                \
-        LOG_MSG(log_level,                                              \
-                "VREQ nterm=%ld last=%ld:%ld %s "fmt,                   \
-                (rm)->rrm_vote_request.rvrqm_proposed_term,             \
-                (rm)->rrm_vote_request.rvrqm_last_log_term,             \
-                (rm)->rrm_vote_request.rvrqm_last_log_index,            \
-                __uuid_str,                                             \
-                ##__VA_ARGS__);                                         \
-        break;                                                          \
-    case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                                  \
-        LOG_MSG(log_level,                                              \
-                "VREPLY term=%ld granted=%s %s "fmt,                    \
-                (rm)->rrm_vote_reply.rvrpm_term,                        \
-                ((rm)->rrm_vote_reply.rvrpm_voted_granted ?             \
-                 "yes" : "no"),                                         \
-                __uuid_str,                                             \
-                ##__VA_ARGS__);                                         \
-        break;                                                          \
-    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                      \
-        LOG_MSG(log_level,                                              \
+#define DBG_RAFT_MSG(log_level, rm, fmt, ...)                                                     \
+{                                                                                                 \
+    char __uuid_str[UUID_STR_LEN];                                                                \
+    uuid_unparse((rm)->rrm_sender_id, __uuid_str);                                                \
+    switch ((rm)->rrm_type)                                                                       \
+    {                                                                                             \
+    case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                                                          \
+        LOG_MSG(log_level,                                                                        \
+                "VREQ nterm=%ld last=%ld:%ld %s "fmt,                                             \
+                (rm)->rrm_vote_request.rvrqm_proposed_term,                                       \
+                (rm)->rrm_vote_request.rvrqm_last_log_term,                                       \
+                (rm)->rrm_vote_request.rvrqm_last_log_index,                                      \
+                __uuid_str,                                                                       \
+                ##__VA_ARGS__);                                                                   \
+        break;                                                                                    \
+    case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                                                            \
+        LOG_MSG(log_level,                                                                        \
+                "VREPLY term=%ld granted=%s %s "fmt,                                              \
+                (rm)->rrm_vote_reply.rvrpm_term,                                                  \
+                ((rm)->rrm_vote_reply.rvrpm_voted_granted ?                                       \
+                 "yes" : "no"),                                                                   \
+                __uuid_str,                                                                       \
+                ##__VA_ARGS__);                                                                   \
+        break;                                                                                    \
+    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                                                \
+        LOG_MSG(log_level,                                                                        \
                 "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx crc=%u:%u %s "fmt, \
-                (rm)->rrm_append_entries_request.raerqm_leader_term,    \
-                (rm)->rrm_append_entries_request.raerqm_log_term,       \
-                (rm)->rrm_append_entries_request.raerqm_commit_index,   \
-                (rm)->rrm_append_entries_request.raerqm_prev_log_term,  \
-                (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
-                (rm)->rrm_append_entries_request.raerqm_entries_sz,     \
-                (rm)->rrm_append_entries_request.raerqm_heartbeat_msg,  \
-                (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
-                (rm)->rrm_append_entries_request.raerqm_prev_idx_crc,   \
-                (rm)->rrm_append_entries_request.raerqm_this_idx_crc,   \
-                __uuid_str,                                             \
-                ##__VA_ARGS__);                                         \
-        break;                                                          \
-    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                        \
-        LOG_MSG(log_level,                                              \
-                "AE_REPLY t=%ld pli=%ld hb=%hhx err=%hhx:%hhx %s "fmt,  \
-                (rm)->rrm_append_entries_reply.raerpm_leader_term,      \
-                (rm)->rrm_append_entries_reply.raerpm_prev_log_index,   \
-                (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg,    \
-                (rm)->rrm_append_entries_reply.raerpm_err_stale_term,   \
-                (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
-                __uuid_str,                                             \
-                ##__VA_ARGS__);                                         \
-        break;                                                          \
-    default:                                                            \
-        break;                                                          \
-    }                                                                   \
+                (rm)->rrm_append_entries_request.raerqm_leader_term,                              \
+                (rm)->rrm_append_entries_request.raerqm_log_term,                                 \
+                (rm)->rrm_append_entries_request.raerqm_commit_index,                             \
+                (rm)->rrm_append_entries_request.raerqm_prev_log_term,                            \
+                (rm)->rrm_append_entries_request.raerqm_prev_log_index,                           \
+                (rm)->rrm_append_entries_request.raerqm_entries_sz,                               \
+                (rm)->rrm_append_entries_request.raerqm_heartbeat_msg,                            \
+                (rm)->rrm_append_entries_request.raerqm_leader_change_marker,                     \
+                (rm)->rrm_append_entries_request.raerqm_prev_idx_crc,                             \
+                (rm)->rrm_append_entries_request.raerqm_this_idx_crc,                             \
+                __uuid_str,                                                                       \
+                ##__VA_ARGS__);                                                                   \
+        break;                                                                                    \
+    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                                                  \
+        LOG_MSG(log_level,                                                                        \
+                "AE_REPLY t=%ld pli=%ld hb=%hhx err=%hhx:%hhx %s "fmt,                            \
+                (rm)->rrm_append_entries_reply.raerpm_leader_term,                                \
+                (rm)->rrm_append_entries_reply.raerpm_prev_log_index,                             \
+                (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg,                              \
+                (rm)->rrm_append_entries_reply.raerpm_err_stale_term,                             \
+                (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term,                 \
+                __uuid_str,                                                                       \
+                ##__VA_ARGS__);                                                                   \
+        break;                                                                                    \
+    default:                                                                                      \
+        break;                                                                                    \
+    }                                                                                             \
 }
 
-#define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                         \
-    LOG_MSG(log_level,                                                  \
-            "re@%p crc=%u size=%u idx=%ld term=%ld lcm=%hhx "fmt,       \
-            (re), (re)->reh_crc, (re)->reh_data_size,                   \
-            (re)->reh_index, (re)->reh_term,                            \
+#define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                   \
+    LOG_MSG(log_level,                                            \
+            "re@%p crc=%u size=%u idx=%ld term=%ld lcm=%hhx "fmt, \
+            (re), (re)->reh_crc, (re)->reh_data_size,             \
+            (re)->reh_index, (re)->reh_term,                      \
             (re)->reh_leader_change_marker , ##__VA_ARGS__)
 
-#define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)                 \
-{                                                                       \
-    if ((cond))                                                         \
-    {                                                                   \
-        DBG_RAFT_ENTRY(LL_FATAL, re, message, ##__VA_ARGS__);           \
-    }                                                                   \
+#define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)       \
+{                                                             \
+    if ((cond))                                               \
+    {                                                         \
+        DBG_RAFT_ENTRY(LL_FATAL, re, message, ##__VA_ARGS__); \
+    }                                                         \
 }
 
-#define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                      \
-{                                                                       \
-    char __uuid_str[UUID_STR_LEN];                                      \
-    uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);           \
-    char __leader_uuid_str[UUID_STR_LEN] = {0};                         \
-    if (ri->ri_csn_leader && !raft_instance_is_leader((ri)))            \
-        uuid_unparse((ri)->ri_csn_leader->csn_uuid,                     \
-                     __leader_uuid_str);                                \
-                                                                        \
-    LOG_MSG(log_level,                                                  \
-            "%c et=%ld ei=%ld ht=%ld hs=%ld ci=%ld:%ld v=%s l=%s "      \
-            fmt,                                                        \
-            raft_server_state_to_char((ri)->ri_state),                  \
-            raft_server_get_current_raft_entry_term((ri)),              \
-            raft_server_get_current_raft_entry_index((ri)),             \
-            (ri)->ri_log_hdr.rlh_term,                                  \
-            (ri)->ri_log_hdr.rlh_seqno,                                 \
-            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,             \
-            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);              \
+#define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                 \
+{                                                                  \
+    char __uuid_str[UUID_STR_LEN];                                 \
+    uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);      \
+    char __leader_uuid_str[UUID_STR_LEN] = {0};                    \
+    if (ri->ri_csn_leader && !raft_instance_is_leader((ri)))       \
+        uuid_unparse((ri)->ri_csn_leader->csn_uuid,                \
+                     __leader_uuid_str);                           \
+                                                                   \
+    LOG_MSG(log_level,                                             \
+            "%c et=%ld ei=%ld ht=%ld hs=%ld ci=%ld:%ld v=%s l=%s " \
+            fmt,                                                   \
+            raft_server_state_to_char((ri)->ri_state),             \
+            raft_server_get_current_raft_entry_term((ri)),         \
+            raft_server_get_current_raft_entry_index((ri)),        \
+            (ri)->ri_log_hdr.rlh_term,                             \
+            (ri)->ri_log_hdr.rlh_seqno,                            \
+            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,        \
+            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);         \
 }
 
-#define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)              \
-{                                                                       \
-    if ((cond))                                                         \
-    {                                                                   \
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, message, ##__VA_ARGS__);        \
-    }                                                                   \
+#define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)       \
+{                                                                \
+    if ((cond))                                                  \
+    {                                                            \
+        DBG_RAFT_INSTANCE(LL_FATAL, ri, message, ##__VA_ARGS__); \
+    }                                                            \
 }
 
 static inline enum raft_epoll_handles
@@ -605,7 +606,7 @@ raft_num_members_validate_and_get(const struct raft_instance *ri)
     NIOVA_ASSERT(ri && ri->ri_csn_raft);
 
     const raft_peer_t num_peers =
-	ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
+        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
 
     FATAL_IF((!raft_num_members_is_valid(num_peers)),
              "raft-instance %s num-peers(%hhu) is not >= %u and <= %u",

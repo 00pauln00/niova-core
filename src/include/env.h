@@ -60,7 +60,7 @@ struct niova_env_var
     enum niova_env_subsystem nev_subsystem;
     enum niova_env_var_num   nev_var_num;
     int                      nev_rc;
-    void                   (*nev_cb)(const struct niova_env_var *);
+    void                     (*nev_cb)(const struct niova_env_var *);
 };
 
 const struct niova_env_var *

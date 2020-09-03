@@ -38,27 +38,27 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define IO_DEPTH     (TEST_BULK_BUFFER_SIZE / NIOVA_BLOCK_SIZE)
 #define DEF_NUM_SECTORS 8
 
-static char                    *testDevName = TEST_DEVICE_NAME;
-static struct stat              testDeviceStat;
-static size_t                   testDevSize = DEF_DEV_SIZE;
-static size_t                   numOps = 10000;
-static size_t                   ioNumSectors = DEF_NUM_SECTORS;
-static unsigned int             rwRatio = 50;
-static char                    *ioBuffer;
+static char *testDevName = TEST_DEVICE_NAME;
+static struct stat testDeviceStat;
+static size_t testDevSize = DEF_DEV_SIZE;
+static size_t numOps = 10000;
+static size_t ioNumSectors = DEF_NUM_SECTORS;
+static unsigned int rwRatio = 50;
+static char *ioBuffer;
 static struct niosd_io_request *niorqArray;
-static size_t                   niorqsDone;
-static size_t                   niorqsSubmitted;
-static size_t                   ioDepth =
+static size_t niorqsDone;
+static size_t niorqsSubmitted;
+static size_t ioDepth =
     (TEST_BULK_BUFFER_SIZE / (DEF_NUM_SECTORS * NIOVA_SECTOR_SIZE));
 
-static useconds_t               pollSleepUsecs;
-static struct timespec          runTime;
-static int                      sleepBeforeExit;
-static bool                     useEpoll = false;
-struct epoll_mgr                epollMgr;
-struct epoll_handle             epollHandle;
-static struct niosd_device      ndev;
-static bool                     sequentialIO = false;
+static useconds_t pollSleepUsecs;
+static struct timespec runTime;
+static int sleepBeforeExit;
+static bool useEpoll = false;
+struct epoll_mgr epollMgr;
+struct epoll_handle epollHandle;
+static struct niosd_device ndev;
+static bool sequentialIO = false;
 
 static size_t epollCbExecCnt;
 
@@ -315,10 +315,8 @@ niot_spin_niorq_completion(struct niosd_device *ndev,
         {
             int rc = epoll_mgr_wait_and_process_events(&epollMgr, 100);
             if (rc < 0)
-            {
                 STDERR_MSG("epoll_mgr_wait_and_process_events(): %s",
-                            strerror(errno));
-            }
+                           strerror(errno));
         }
         else
         {
@@ -383,7 +381,7 @@ niot_getopt(int argc, char **argv)
             {
                 fprintf(stderr, "invalid io-depth: min=%u, max=%u\n",
                         1, MAX_IO_DEPTH);
-		exit(1);
+                exit(1);
             }
             break;
         case 'r':
@@ -391,8 +389,8 @@ niot_getopt(int argc, char **argv)
             if (rwRatio > 100)
             {
                 fprintf(stderr, "invalid read-ratio, "
-                        "please specify value between 0 and 100\n");
-		exit(1);
+                                "please specify value between 0 and 100\n");
+                exit(1);
             }
             break;
         case 'u':
@@ -537,8 +535,8 @@ main(int argc, char **argv)
     niova_unstable_clock(&ts[1]);
     timespecsub(&ts[1], &ts[0], &ts[0]);
 
-  lreg_node_recurse("log_entry_map");
-  lreg_node_recurse("nioctx_stats_root_entry");
+    lreg_node_recurse("log_entry_map");
+    lreg_node_recurse("nioctx_stats_root_entry");
 
     niot_print_stats(&ts[0]);
 
