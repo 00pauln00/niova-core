@@ -16,10 +16,7 @@ jobs:
 #    - name: configure
 #      run: ./configure
     - name: dpkg / rpm prep
-      run: |
-      sudo -E apt-get install -y \
-           uuid-dev \
-           uuid \
+      run: sudo -E apt-get install -y uuid-dev uuid \
            libuuid1 \
            libaio-dev \
            libaio1 \
