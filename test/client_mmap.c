@@ -293,7 +293,7 @@ ipc_mmap_client_io_complete(struct ipcmmap_config *ic, const int ncompletions)
         SIMPLE_LOG_MSG(lvl, "read() rc=%d: %s",
                        rc, rc != sizeof(io_op) ? strerror(errno) : "");
 
-        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending)
+        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_txn == io_op.io_txn);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_len == io_op.io_len);
 
@@ -370,7 +370,7 @@ ipc_mmap_client_recv_thread(void *arg)
         SIMPLE_LOG_MSG(lvl, "read() rc=%d: %s",
                        rc, rc != sizeof(io_op) ? strerror(errno) : "");
 
-        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending)
+        NIOVA_ASSERT(ioOps[io_op.io_idx].io_pending);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_txn == io_op.io_txn);
         NIOVA_ASSERT(ioOps[io_op.io_idx].io_len == io_op.io_len);
 

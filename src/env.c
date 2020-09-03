@@ -186,7 +186,7 @@ env_parse(const char *ev_string, struct niova_env_var *nev)
     switch (nev->nev_type)
     {
     case NIOVA_ENV_VAR_TYPE_NONE:
-        SIMPLE_LOG_MSG(LL_WARN, "env-var %s detected", nev->nev_name)
+        SIMPLE_LOG_MSG(LL_WARN, "env-var %s detected", nev->nev_name);
         break;
 
     case NIOVA_ENV_VAR_TYPE_STRING:

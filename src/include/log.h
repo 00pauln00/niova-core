@@ -136,7 +136,7 @@ struct log_entry_info
     }                                                                      \
 
 #define SIMPLE_LOG_MSG(level, message, ...)                       \
-{                                                                 \
+do {                                                              \
     if ((level) <= log_level_get())                               \
     {                                                             \
         struct timespec ts;                                       \
@@ -148,7 +148,7 @@ struct log_entry_info
         if ((level) == LL_FATAL)                                  \
             thread_abort();                                       \
     }                                                             \
-}
+} while (0)
 
 #define FUNC_ENTRY(level) \
     LOG_MSG(level, "enter")
@@ -168,7 +168,7 @@ struct log_entry_info
  *    set, then use the level provided by the caller.
  */
 #define LOG_MSG(user_lvl, message, ...)                \
-{                                                      \
+do {                                                   \
     enum log_level lvl = user_lvl;                     \
                                                        \
     if (!init_ctx())                                   \
@@ -184,44 +184,56 @@ struct log_entry_info
             lvl = logEntryFileInfo.lei_level;          \
     }                                                  \
     SIMPLE_LOG_MSG(lvl, message, ##__VA_ARGS__);       \
-}
+} while (0)
 
 #define FATAL_MSG(message, ...) \
     SIMPLE_LOG_MSG(LL_FATAL, message, ##__VA_ARGS__)
 
 #define FATAL_IF(cond, message, ...)       \
-{                                          \
+do {                                       \
     if ((cond))                            \
     {                                      \
         FATAL_MSG(message, ##__VA_ARGS__); \
     }                                      \
-}
+} while (0)
 
 #define FATAL_IF_strerror(cond, message, ...)                     \
-{                                                                 \
+do {                                                              \
     if ((cond))                                                   \
     {                                                             \
         FATAL_MSG(message": %s", ##__VA_ARGS__, strerror(errno)); \
     }                                                             \
-}
-
-#define EXIT_ERROR_MSG(exit_val, message, ...)        \
-{                                                     \
-    SIMPLE_LOG_MSG(LL_ERROR, message, ##__VA_ARGS__); \
-    exit(exit_val);                                   \
-}
+} while (0)
 
 #define NIOVA_ASSERT(cond)                    \
-{                                             \
+do {                                             \
     if (!(cond))                              \
         FATAL_MSG("failed assertion: "#cond); \
-}
+} while (0)
 
 #define NIOVA_ASSERT_strerror(cond)                                  \
-{                                                                    \
+do {                                                                 \
     if (!(cond))                                                     \
         FATAL_MSG("failed assertion: "#cond", %s", strerror(errno)); \
-}
+} while (0)
+
+#define EXIT_ERROR_MSG(exit_val, message, ...)        \
+do {                                                  \
+    SIMPLE_LOG_MSG(LL_ERROR, message, ##__VA_ARGS__); \
+    exit(exit_val);                                   \
+} while (0)
+
+#define NIOVA_ASSERT(cond)                    \
+do {                                          \
+    if (!(cond))                              \
+        FATAL_MSG("failed assertion: "#cond); \
+} while (0)
+
+#define NIOVA_ASSERT_strerror(cond)                                  \
+do {                                                                 \
+    if (!(cond))                                                     \
+        FATAL_MSG("failed assertion: "#cond", %s", strerror(errno)); \
+} while (0)
 
 #define DEBUG_BLOCK(lvl) \
     if (lvl <= log_level_get())
@@ -229,18 +241,18 @@ struct log_entry_info
 #define log_msg LOG_MSG
 
 #define STDOUT_MSG(message, ...)                 \
-{                                                \
+do {                                             \
     fprintf(stdout, "<%lx:%s@%d> " message "\n", \
             thread_id_get(), __func__,           \
             __LINE__,##__VA_ARGS__);             \
-}
+} while (0)
 
 #define STDERR_MSG(message, ...)                 \
-{                                                \
+do {                                             \
     fprintf(stderr, "<%lx:%s@%d> " message "\n", \
             thread_id_get(), __func__,           \
             __LINE__,##__VA_ARGS__);             \
-}
+} while (0)
 
 static inline bool
 log_level_is_valid(unsigned int level)
