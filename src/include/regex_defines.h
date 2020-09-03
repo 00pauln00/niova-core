@@ -34,7 +34,10 @@
 #define RNCUI_V0_REGEX_BASE \
     UUID_REGEX_BASE"\\(:\\([0-9a-f]\\{1\\}\\|[1-9a-f][0-9a-f]\\+\\)\\)\\{4\\}"
 
+#define POS_INT "[1-9]\\{1\\}\\|[1-9][0-9]\\+"
+#define ZERO_or_POS_INT "[0-9]\\{1\\}\\|[1-9][0-9]\\+"
+
 #define PMDB_TEST_CLIENT_APPLY_CMD_REGEX \
-    "^"RNCUI_V0_REGEX_BASE"\\.lookup$\\|\\.read$\\|\\.write.\\([0-9]\\{1\\}\\|[1-9][0-9]\\+\\)$"
+    "^"RNCUI_V0_REGEX_BASE"\\(\\.lookup\\|\\.read\\|\\.write:\\("ZERO_or_POS_INT"\\)\\)\\($\\|.\\("POS_INT"\\)$\\)"
 
 #endif

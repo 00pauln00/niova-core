@@ -27,3 +27,9 @@ jobs:
       run: uncrustify -v
     - name: make autofmt-check
       run: make autofmt-check
+    - name: net
+      run: ip a
+    - name: disk
+      run: df -h
+    - name: process
+      run: ps auxfw
