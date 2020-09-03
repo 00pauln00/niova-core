@@ -162,7 +162,7 @@ io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
     ssize_t dest_num_iovs = 0;
 
     for (size_t i = 0; i < num_iovs; bytes_already_consumed -= src[i].iov_len,
-             i++)
+         i++)
     {
         if (bytes_already_consumed <= 0 ||
             bytes_already_consumed < src[i].iov_len)

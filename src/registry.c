@@ -19,11 +19,11 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static struct lreg_node_list lRegInstallingNodes;
-static struct lreg_node      lRegRootNode;
-static bool                  lRegInitialized = false;
-static spinlock_t            lRegLock;
-static pthread_rwlock_t      lRegRwLock;
-static struct ev_pipe        lRegEVP;
+static struct lreg_node lRegRootNode;
+static bool lRegInitialized = false;
+static spinlock_t lRegLock;
+static pthread_rwlock_t lRegRwLock;
+static struct ev_pipe lRegEVP;
 
 const char *lRegSeparatorString = "::";
 
@@ -107,7 +107,8 @@ lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
 
     return parent->lrn_vnode_child ?
         lreg_node_walk_vnode(parent, lrn_wcb, cb_arg, depth, user_type) :
-        lreg_node_walk_attached_nodes(parent, lrn_wcb, cb_arg, depth, user_type);
+        lreg_node_walk_attached_nodes(parent, lrn_wcb, cb_arg, depth,
+                                      user_type);
 }
 
 /**
@@ -530,13 +531,9 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
     CIRCLEQ_INIT(&lrn->lrn_head);
 
     if (user_type != LREG_USER_TYPE_ROOT)
-    {
         DBG_LREG_NODE(LL_DEBUG, lrn, "");
-    }
     else
-    {
         lrn->lrn_install_state = LREG_NODE_INSTALLED;
-    }
 }
 
 static util_thread_ctx_reg_int_t

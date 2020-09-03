@@ -14,7 +14,7 @@
 #include "env.h"
 
 void
-system_info_get_uuid(uuid_t);
+    system_info_get_uuid(uuid_t);
 
 bool
 system_info_uuid_is_present(void);

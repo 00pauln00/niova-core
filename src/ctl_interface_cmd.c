@@ -43,13 +43,13 @@ enum ctlic_cmd_input_output_files
  * This means that only a single set of buffers are needed
  */
 static util_thread_ctx_ctli_char_t
-ctlicBuffer[CTLIC_NUM_FILES][CTLIC_BUFFER_SIZE];
+    ctlicBuffer[CTLIC_NUM_FILES][CTLIC_BUFFER_SIZE];
 
 struct ctlic_path_regex_segment
 {
-    bool         cprs_regex_is_allocated;
-    const char  *cprs_str;
-    regex_t      cprs_regex;
+    bool        cprs_regex_is_allocated;
+    const char *cprs_str;
+    regex_t     cprs_regex;
 };
 
 enum ctlic_depth_segment_type
@@ -62,7 +62,7 @@ enum ctlic_depth_segment_type
 
 struct ctlic_depth_segment
 {
-    unsigned int                    cds_tab_depth:6;
+    unsigned int                    cds_tab_depth : 6;
     struct ctlic_path_regex_segment cds_cprs[CTLIC_DEPTH_SEGMENT_TYPE__MAX];
 };
 
@@ -110,22 +110,22 @@ struct ctlic_iterator
     uint32_t                     citer_error_cnt;
 };
 
-#define DBG_CITER(log_level, citer, fmt, ...)                           \
-{                                                                       \
-    LOG_MSG(                                                            \
-        log_level,                                                      \
+#define DBG_CITER(log_level, citer, fmt, ...)                                                              \
+{                                                                                                          \
+    LOG_MSG(                                                                                               \
+        log_level,                                                                                         \
         "citer@%p-%08x p@%p-%08x lv=%s depth=%zu sib-num:nprint=%zu:%zu p-nprint=%zu pdepth=%zu o=%d "fmt, \
-        citer, (citer)->citer_rand_id, (citer)->citer_parent,           \
-        (citer)->citer_parent ? (citer)->citer_parent->citer_rand_id : 0, \
-        LREG_VALUE_TO_KEY_STR(&(citer)->citer_lv),                      \
-        (citer)->citer_tab_depth, (citer)->citer_sibling_num,           \
-        (citer)->citer_sibling_printed_cnt,                             \
-        (citer)->citer_parent ?                                         \
-            (citer)->citer_parent->citer_sibling_printed_cnt : 0,       \
-        (citer)->citer_parent ?                                         \
-            (citer)->citer_parent->citer_tab_depth : 0,                 \
-        (citer)->citer_open_stanza,                                     \
-        ##__VA_ARGS__);                                                 \
+        citer, (citer)->citer_rand_id, (citer)->citer_parent,                                              \
+        (citer)->citer_parent ? (citer)->citer_parent->citer_rand_id : 0,                                  \
+        LREG_VALUE_TO_KEY_STR(&(citer)->citer_lv),                                                         \
+        (citer)->citer_tab_depth, (citer)->citer_sibling_num,                                              \
+        (citer)->citer_sibling_printed_cnt,                                                                \
+        (citer)->citer_parent ?                                                                            \
+            (citer)->citer_parent->citer_sibling_printed_cnt : 0,                                          \
+        (citer)->citer_parent ?                                                                            \
+            (citer)->citer_parent->citer_tab_depth : 0,                                                    \
+        (citer)->citer_open_stanza,                                                                        \
+        ##__VA_ARGS__);                                                                                    \
 }
 
 static void
@@ -197,13 +197,13 @@ ctlic_request_done(struct ctlic_request *cr)
     }
 }
 
-#define CTLIC_OUTPUT_TMP_FILE(tmp_str, file_name)                       \
-    const size_t CTLIC_OUTPUT_TMP_FILE_file_name_len =                  \
-        NUM_HEX_CHARS(pid_t) + strnlen((file_name), PATH_MAX);          \
-    if (CTLIC_OUTPUT_TMP_FILE_file_name_len >= PATH_MAX - 2)            \
-        return -ENAMETOOLONG;                                           \
-    DECL_AND_FMT_STRING((tmp_str),                                      \
-                        CTLIC_OUTPUT_TMP_FILE_file_name_len + 2,        \
+#define CTLIC_OUTPUT_TMP_FILE(tmp_str, file_name)                \
+    const size_t CTLIC_OUTPUT_TMP_FILE_file_name_len =           \
+        NUM_HEX_CHARS(pid_t) + strnlen((file_name), PATH_MAX);   \
+    if (CTLIC_OUTPUT_TMP_FILE_file_name_len >= PATH_MAX - 2)     \
+        return -ENAMETOOLONG;                                    \
+    DECL_AND_FMT_STRING((tmp_str),                               \
+                        CTLIC_OUTPUT_TMP_FILE_file_name_len + 2, \
                         ".%s.%x", file_name, getpid());
 
 static int
@@ -773,15 +773,15 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
     }
     else if (value_string) // Close stanza
     {
-            rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
-                         "%s%s%s%s",
-                         cr->cr_output_byte_cnt > starting_byte_cnt ?
-                         "\n" : "",
-                         cr->cr_output_byte_cnt > starting_byte_cnt ?
-                         tab_array : "",
-                         value_string,
-                         // Add a newline if this closes the final stanza
-                         !tab_depth ? "\n" : "");
+        rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                     "%s%s%s%s",
+                     cr->cr_output_byte_cnt > starting_byte_cnt ?
+                     "\n" : "",
+                     cr->cr_output_byte_cnt > starting_byte_cnt ?
+                     tab_array : "",
+                     value_string,
+                     // Add a newline if this closes the final stanza
+                     !tab_depth ? "\n" : "");
     }
 
     if (rc > 0)
@@ -1241,7 +1241,7 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
         .citer_starting_byte_cnt = cr->cr_output_byte_cnt,
         .citer_tab_depth = parent_citer->citer_tab_depth + 1,
         .citer_sibling_num = parent_citer->citer_sibling_num,
-	.citer_open_stanza = true,
+        .citer_open_stanza = true,
         .citer_sibling_printed_cnt = 0,
         .citer_rand_id = random_get(),
         .citer_parent = parent_citer,
@@ -1350,13 +1350,13 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
                 }
                 else
                 {
-                     struct lreg_node varray_child = *lrn;
+                    struct lreg_node varray_child = *lrn;
 
-                     lreg_value_vnode_data_to_lreg_node(kv_lv, &varray_child);
+                    lreg_value_vnode_data_to_lreg_node(kv_lv, &varray_child);
 
-                     lreg_node_walk(&varray_child, ctlic_scan_registry_cb,
-                                    (void *)&sub_obj_kv_citer,
-                                    depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
+                    lreg_node_walk(&varray_child, ctlic_scan_registry_cb,
+                                   (void *)&sub_obj_kv_citer,
+                                   depth + 1, LREG_VALUE_TO_USER_TYPE(kv_lv));
                 }
             }
         }

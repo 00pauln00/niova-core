@@ -58,7 +58,7 @@ struct pmdb_msg
     uint32_t                       pmdbrm_crc;
     struct raft_net_client_user_id pmdbrm_user_id;
     int64_t                        pmdbrm_write_seqno; // request::next,
-                                                   //  reply::committed
+    //  reply::committed
     uint8_t                        pmdbrm_op;
     uint8_t                        pmdbrm_write_pending;  // reply context only
     uint8_t                        pmdbrm__pad[2];
@@ -73,7 +73,7 @@ typedef struct pmdb_obj_stat
     pmdb_obj_id_t obj_id;
     int64_t       sequence_num;
     int           status;
-    uint8_t       write_op_pending:1;
+    uint8_t       write_op_pending : 1;
 } pmdb_obj_stat_t;
 
 typedef void (*pmdb_user_cb_t)(void *, ssize_t);

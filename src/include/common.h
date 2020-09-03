@@ -41,10 +41,10 @@
 
 #define TYPE_SZ_BITS(type) (sizeof(type) * NBBY)
 
-#define ARRAY_SIZE(arr)                                \
-    (sizeof(arr) / sizeof((arr)[0])                    \
-     + sizeof(typeof(int[1 - 2 *                                        \
-                         !!__builtin_types_compatible_p(typeof(arr),    \
+#define ARRAY_SIZE(arr)                                              \
+    (sizeof(arr) / sizeof((arr)[0])                                  \
+     + sizeof(typeof(int[1 - 2 *                                     \
+                         !!__builtin_types_compatible_p(typeof(arr), \
                                                         typeof(&arr[0]))])) * 0)
 
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -56,22 +56,22 @@
 #define PACKED __attribute__((packed))
 
 #define L2_CACHELINE_SIZE_BYTES 64
-#define CACHE_ALIGN_MEMBER(memb)                                \
+#define CACHE_ALIGN_MEMBER(memb) \
     __attribute__((aligned(L2_CACHELINE_SIZE_BYTES))) memb
 
-#define WORD_ALIGN_MEMBER(memb)                                \
+#define WORD_ALIGN_MEMBER(memb) \
     __attribute__((aligned(8))) memb
 
-#define COMPILE_TIME_ASSERT(cond)               \
+#define COMPILE_TIME_ASSERT(cond) \
     ((void)sizeof(char[1 - 2*!(cond)]))
 
-#define CONST_OVERRIDE(type, var, value)         \
+#define CONST_OVERRIDE(type, var, value) \
     *(type *)&(var) = value;
 
-#define NUM_HEX_CHARS(type)                     \
+#define NUM_HEX_CHARS(type) \
     sizeof(type) * 2
 
-typedef uint8_t raft_peer_t;
+typedef uint8_t  raft_peer_t;
 
 typedef uint32_t pblk_id_t;
 typedef uint64_t mb_magic_t;
@@ -237,7 +237,7 @@ struct vblkdev_chunk
 /**
  * Max number of data pblks which can be housed in a metablock.
  */
-#define MB_MAX_DPBLKS \
+#define MB_MAX_DPBLKS                           \
     ((PBLK_SIZE_BYTES - MB_HEADER_SIZE_BYTES) / \
      (MB_VBLK_ENTRY_SIZE_BYTES + MB_DPBLK_ENTRY_SIZE_BYTES))
 
@@ -250,8 +250,8 @@ struct vblkdev_chunk
  * Maximum number of checksum physical blocks which can be referenced by a
  * metablock.
  */
-#define MB_MAX_CPBLKS                                   \
-    ((MB_MAX_DPBLKS / MB_DPBLKS_PER_CPBLK) +            \
+#define MB_MAX_CPBLKS                        \
+    ((MB_MAX_DPBLKS / MB_DPBLKS_PER_CPBLK) + \
      (MB_MAX_DPBLKS % MB_DPBLKS_PER_CPBLK ? 1 : 0))
 
 #define MB_MAX_CPBLKS_HARDCODED 7

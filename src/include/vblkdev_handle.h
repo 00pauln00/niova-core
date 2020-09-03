@@ -19,8 +19,8 @@
  */
 REF_TREE_HEAD(chunk_handle_tree, chunk_handle);
 
-#define DBG_VBLKDEV_CHUNK_HNDL(log_level, vbch, fmt, ...)               \
-    LOG_MSG(log_level, "vbch@%p %zx ref=%d "fmt, (vbch),                \
+#define DBG_VBLKDEV_CHUNK_HNDL(log_level, vbch, fmt, ...) \
+    LOG_MSG(log_level, "vbch@%p %zx ref=%d "fmt, (vbch),  \
             (vbch)->ch_id, (vbh)->ch_ref,  ##__VA_ARGS__)
 
 /**
@@ -36,17 +36,17 @@ REF_TREE_HEAD(chunk_handle_tree, chunk_handle);
  */
 struct vblkdev_handle
 {
-    vblkdev_id_t                   vbh_id; // Must be first entry
+    vblkdev_id_t             vbh_id;       // Must be first entry
     REF_TREE_ENTRY(vblkdev_handle) vbh_tentry;
-    struct chunk_handle_tree       vbh_chunk_handle_tree;
-    spinlock_t                     vbh_lock;
+    struct chunk_handle_tree vbh_chunk_handle_tree;
+    spinlock_t               vbh_lock;
 };
 
 #define VBH_TO_REF_CNT(vbh) (vbh)->vbh_tentry.rbe_ref_cnt
 
-#define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)                      \
-    LOG_MSG(log_level, "vbh@%p %zx:%zx ref=%d "fmt, (vbh),              \
-        (vbh)->vbh_id.vdb_id[0], (vbh)->vbh_id.vdb_id[1],               \
+#define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)         \
+    LOG_MSG(log_level, "vbh@%p %zx:%zx ref=%d "fmt, (vbh), \
+        (vbh)->vbh_id.vdb_id[0], (vbh)->vbh_id.vdb_id[1],  \
             VBH_TO_REF_CNT((vbh)), ##__VA_ARGS__)
 
 struct vblkdev_handle *
@@ -63,10 +63,10 @@ vbh_ref_cnt_inc(struct vblkdev_handle *);
 
 void
 vbh_subsystem_init(void)
-     __attribute__ ((constructor (VBLKDEV_HANDLE_CTOR_PRIORITY)));
+__attribute__ ((constructor (VBLKDEV_HANDLE_CTOR_PRIORITY)));
 
 void
 vbh_subsystem_destroy(void)
-    __attribute__ ((destructor (VBLKDEV_HANDLE_CTOR_PRIORITY)));
+__attribute__ ((destructor (VBLKDEV_HANDLE_CTOR_PRIORITY)));
 
 #endif //VBLKDEV_HANDLE_H

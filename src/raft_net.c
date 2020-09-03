@@ -218,7 +218,7 @@ static int
 raft_net_timerfd_close(struct raft_instance *ri)
 {
     if (!ri)
-	return -EINVAL;
+        return -EINVAL;
 
     if (ri->ri_timer_fd >= 0)
     {
@@ -259,7 +259,7 @@ raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
         epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri);
 
     return rc ? rc :
-	epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
+        epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
 }
 
 static int
@@ -817,7 +817,7 @@ raft_net_comm_get_last_recv(struct raft_instance *ri, const uuid_t peer_uuid,
     const raft_peer_t peer_idx = raft_peer_2_idx(ri, peer_uuid);
 
     if (peer_idx >= ctl_svc_node_raft_2_num_members(ri->ri_csn_raft))
-	return -ERANGE;
+        return -ERANGE;
 
     *ts = ri->ri_last_recv[peer_idx];
 
@@ -1175,7 +1175,7 @@ raft_net_client_user_id_parse(const char *in,
 
     // An otherwise invalid string could appear valid after the below strncpy
     else if (strnlen(in, RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE) ==
-        RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE)
+             RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE)
         return -ENAMETOOLONG;
 
     char local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE];
@@ -1219,14 +1219,10 @@ raft_net_client_user_id_parse(const char *in,
     }
 
     if (!rc)
-    {
         SIMPLE_LOG_MSG(LL_DEBUG, RAFT_NET_CLIENT_USER_ID_FMT,
                        RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
-    }
     else
-    {
         LOG_MSG(LL_NOTIFY, "parse failed for `%s'", local_str);
-    }
 
     return rc;
 }

@@ -46,7 +46,7 @@ raft_server_instance_self_idx(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
 
-    return  raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
+    return raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
 }
 
 static const char *
@@ -479,13 +479,9 @@ raft_server_entry_init(const struct raft_instance *ri,
                  (data && len));
 
     if (opts == RAFT_WR_ENTRY_OPT_LOG_HEADER)
-    {
         NIOVA_ASSERT(re_idx < 0);
-    }
     else
-    {
         NIOVA_ASSERT(re_idx >= 0);
-    }
 
     // Should have been checked already
     NIOVA_ASSERT(len <= RAFT_ENTRY_MAX_DATA_SIZE);
@@ -1345,7 +1341,7 @@ raft_server_become_candidate(struct raft_instance *ri)
                           strerror(-rc));
 
     struct raft_rpc_msg rrm = {
-      //.rrm_rrm_sender_id = ri->ri_csn_this_peer.csn_uuid,
+        //.rrm_rrm_sender_id = ri->ri_csn_this_peer.csn_uuid,
         .rrm_type = RAFT_RPC_MSG_TYPE_VOTE_REQUEST,
         .rrm_version = 0,
         .rrm_vote_request.rvrqm_proposed_term = ri->ri_log_hdr.rlh_term,
@@ -1419,13 +1415,9 @@ raft_server_becomes_follower(struct raft_instance *ri,
      * when it recv's a AE RPC.
      */
     if (reason == RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE)
-    {
         NIOVA_ASSERT(new_term >= ri->ri_log_hdr.rlh_term);
-    }
     else
-    {
         NIOVA_ASSERT(new_term > ri->ri_log_hdr.rlh_term);
-    }
 
     DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
 
@@ -1703,7 +1695,8 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         (my_raft_idx >= rfi->rfi_next_idx &&
          (refresh_prev || rfi->rfi_current_idx_term < 0)) ? true : false;
 #else
-    const bool refresh_current = my_raft_idx >= rfi->rfi_next_idx ? true : false;
+    const bool refresh_current = my_raft_idx >=
+        rfi->rfi_next_idx ? true : false;
 #endif
 
     struct raft_entry_header reh = {0};
@@ -1719,7 +1712,8 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
                      raft_server_get_current_raft_entry_index(ri));
 
         int rc =
-            raft_server_entry_header_read_by_store(ri, &reh, follower_prev_entry_idx);
+            raft_server_entry_header_read_by_store(ri, &reh,
+                                                   follower_prev_entry_idx);
 
         if (rc < 0)
             return rc;
@@ -1735,7 +1729,8 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     {
         NIOVA_ASSERT(my_raft_idx >= rfi->rfi_next_idx);
 
-        int rc = raft_server_entry_header_read_by_store(ri, &reh, rfi->rfi_next_idx);
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        rfi->rfi_next_idx);
         DBG_RAFT_INSTANCE_FATAL_IF(
             (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
             rfi->rfi_next_idx, strerror(-rc));
@@ -1787,7 +1782,7 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     int rc = raft_server_refresh_follower_prev_log_term(ri, follower);
 
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                             "raft_server_refresh_follower_prev_log_term() %s",
+                               "raft_server_refresh_follower_prev_log_term() %s",
                                strerror(-rc));
 
     raerq->raerqm_heartbeat_msg = heartbeat ? 1 : 0;
@@ -1848,7 +1843,7 @@ raft_server_timerfd_cb(struct raft_instance *ri)
  */
 static bool
 raft_server_process_vote_request_decide(const struct raft_instance *ri,
-                                      const struct raft_vote_request_msg *vreq)
+                                        const struct raft_vote_request_msg *vreq)
 {
     NIOVA_ASSERT(ri && vreq);
 
@@ -1915,7 +1910,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
     /* Inform the candidate of our vote.
      */
     int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
-                         &rreply_msg);
+                                  &rreply_msg);
 
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
                                strerror(rc));
@@ -1946,7 +1941,8 @@ raft_server_append_entry_check_already_stored(
     const raft_entry_idx_t raft_current_idx =
         raft_server_get_current_raft_entry_index(ri);
 
-    const raft_entry_idx_t leaders_next_idx_for_me = raerq->raerqm_prev_log_index + 1;
+    const raft_entry_idx_t leaders_next_idx_for_me =
+        raerq->raerqm_prev_log_index + 1;
 
     // The condition for entering this function should have been checked prior.
     NIOVA_ASSERT(raft_current_idx >= leaders_next_idx_for_me);
@@ -1969,7 +1965,8 @@ raft_server_append_entry_check_already_stored(
 
         FATAL_IF((raerq->raerqm_this_idx_crc != reh.reh_crc),
                  "crc (%u) does not match leader (%u) for idx=%ld",
-                 reh.reh_crc, raerq->raerqm_this_idx_crc, leaders_next_idx_for_me);
+                 reh.reh_crc, raerq->raerqm_this_idx_crc,
+                 leaders_next_idx_for_me);
     }
     else
     {
@@ -2010,7 +2007,7 @@ raft_server_append_entry_check_already_stored(
 /**
  * raft_server_append_entry_log_prune_if_needed - the local raft instance's
  *    log may need to be pruned if it extends beyond the prev_log_index
-  *    presented by our leader.  Follower-ctx is assert here.
+ *    presented by our leader.  Follower-ctx is assert here.
  */
 static raft_server_udp_cb_follower_ctx_t
 raft_server_append_entry_log_prune_if_needed(
@@ -2045,7 +2042,8 @@ raft_server_append_entry_log_prune_if_needed(
          */
         int rc = raft_server_entry_header_read_by_store(ri, &reh,
                                                         raerq->raerqm_prev_log_index);
-        FATAL_IF((rc), "raft_server_entry_header_read_by_store(): %s", strerror(-rc));
+        FATAL_IF((rc), "raft_server_entry_header_read_by_store(): %s",
+                 strerror(-rc));
 
         raft_instance_update_newest_entry_hdr(ri, &reh);
     }
@@ -2240,7 +2238,7 @@ raft_server_process_append_entries_request_validity_check(
     // Do some basic verification of the AE msg contents.
     if (raerq->raerqm_prev_log_index < RAFT_MIN_APPEND_ENTRY_IDX ||
         raerq->raerqm_entries_sz > RAFT_ENTRY_MAX_DATA_SIZE)
-	return -EINVAL;
+        return -EINVAL;
 
     return 0;
 }
@@ -2289,7 +2287,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     if (raft_server_process_append_entries_request_validity_check(raerq))
     {
         DBG_RAFT_MSG(LL_WARN, rrm,
-          "raft_server_process_append_entries_request_validity_check() fails");
+                     "raft_server_process_append_entries_request_validity_check() fails");
         return;
     }
 
@@ -2357,7 +2355,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
 
     uint8_t done_peers[CTL_SVC_MAX_RAFT_PEERS] = {0};
     int64_t sorted_indexes[CTL_SVC_MAX_RAFT_PEERS] =
-        {[0 ... (CTL_SVC_MAX_RAFT_PEERS - 1)] = RAFT_MIN_APPEND_ENTRY_IDX};
+    {[0 ... (CTL_SVC_MAX_RAFT_PEERS - 1)] = RAFT_MIN_APPEND_ENTRY_IDX};
 
     /* The leader doesn't update its own rfi_next_idx slot so do that here
      */
@@ -2566,7 +2564,7 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
  */
 static raft_net_udp_cb_ctx_t
 raft_server_process_received_server_msg(struct raft_instance *ri,
-	                                const struct raft_rpc_msg *rrm,
+                                        const struct raft_rpc_msg *rrm,
                                         struct ctl_svc_node *sender_csn)
 {
     NIOVA_ASSERT(ri && rrm && sender_csn);
@@ -2586,7 +2584,7 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
         return raft_server_process_vote_reply(ri, sender_csn, rrm);
 
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:
-	return raft_server_process_append_entries_request(ri, sender_csn, rrm);
+        return raft_server_process_append_entries_request(ri, sender_csn, rrm);
 
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:
         return raft_server_process_append_entries_reply(ri, sender_csn, rrm);
@@ -2866,19 +2864,13 @@ raft_server_net_client_request_init(
                  reply_buf_size >= sizeof(struct raft_client_rpc_msg));
 
     if (type == RAFT_NET_CLIENT_REQ_TYPE_NONE)
-    {
         FATAL_IF((!rpc_request || commit_data),
                  "invalid argument:  rpc_request may only be specified");
-    }
     else if (type == RAFT_NET_CLIENT_REQ_TYPE_COMMIT)
-    {
         FATAL_IF((rpc_request || !commit_data),
                  "invalid argument:  commit_data may only be specified");
-    }
     else
-    {
         FATAL_MSG("invalid request type (%d)", type);
-    }
 
     memset(rncr, 0, sizeof(struct raft_net_client_request_handle));
 
@@ -3129,72 +3121,72 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     //     subroutines.
     for (raft_peer_t i = 0; i < num_raft_members; i++)
     {
-         struct ctl_svc_node *rp = ri->ri_csn_raft_peers[i];
+        struct ctl_svc_node *rp = ri->ri_csn_raft_peers[i];
 
-         if (rp == ri->ri_csn_this_peer ||
-             (!raft_server_append_entry_should_send_to_follower(ri, i) &&
-              !heartbeat))
-             continue;
+        if (rp == ri->ri_csn_this_peer ||
+            (!raft_server_append_entry_should_send_to_follower(ri, i) &&
+             !heartbeat))
+            continue;
 
-         memset(src_buf, 0, RAFT_NET_MAX_RPC_SIZE);
-         memset(sink_buf, 0, RAFT_ENTRY_SIZE);
+        memset(src_buf, 0, RAFT_NET_MAX_RPC_SIZE);
+        memset(sink_buf, 0, RAFT_ENTRY_SIZE);
 
-         raft_server_leader_init_append_entry_msg(ri, rrm, i, heartbeat);
+        raft_server_leader_init_append_entry_msg(ri, rrm, i, heartbeat);
 
-         struct raft_append_entries_request_msg *raerq =
-             &rrm->rrm_append_entries_request;
+        struct raft_append_entries_request_msg *raerq =
+            &rrm->rrm_append_entries_request;
 
-         const int64_t peer_next_raft_idx = raerq->raerqm_prev_log_index + 1;
-         const int64_t my_raft_idx =
-             raft_server_get_current_raft_entry_index(ri);
+        const int64_t peer_next_raft_idx = raerq->raerqm_prev_log_index + 1;
+        const int64_t my_raft_idx =
+            raft_server_get_current_raft_entry_index(ri);
 
-         DBG_RAFT_INSTANCE_FATAL_IF((peer_next_raft_idx - 1 > my_raft_idx), ri,
-                                    "follower's idx > leader's (%ld > %ld)",
-                                    peer_next_raft_idx, my_raft_idx);
+        DBG_RAFT_INSTANCE_FATAL_IF((peer_next_raft_idx - 1 > my_raft_idx), ri,
+                                   "follower's idx > leader's (%ld > %ld)",
+                                   peer_next_raft_idx, my_raft_idx);
 
-         if (!heartbeat && peer_next_raft_idx <= my_raft_idx)
-         {
-             struct raft_entry_header *reh =
-                 (struct raft_entry_header *)sink_buf;
+        if (!heartbeat && peer_next_raft_idx <= my_raft_idx)
+        {
+            struct raft_entry_header *reh =
+                (struct raft_entry_header *)sink_buf;
 
-             int rc = raft_server_entry_header_read_by_store(ri, reh,
-                                                             peer_next_raft_idx);
-             DBG_RAFT_INSTANCE_FATAL_IF(
-                 (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
-                 peer_next_raft_idx, strerror(-rc));
+            int rc = raft_server_entry_header_read_by_store(ri, reh,
+                                                            peer_next_raft_idx);
+            DBG_RAFT_INSTANCE_FATAL_IF(
+                (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
+                peer_next_raft_idx, strerror(-rc));
 
-             raerq->raerqm_entries_sz = reh->reh_data_size;
-             raerq->raerqm_leader_change_marker = reh->reh_leader_change_marker;
+            raerq->raerqm_entries_sz = reh->reh_data_size;
+            raerq->raerqm_leader_change_marker = reh->reh_leader_change_marker;
 
-             NIOVA_ASSERT(reh->reh_index == peer_next_raft_idx);
+            NIOVA_ASSERT(reh->reh_index == peer_next_raft_idx);
 
-             if (raerq->raerqm_entries_sz)
-             {
-                 rc = raft_server_entry_read(ri, peer_next_raft_idx,
-                                             raerq->raerqm_entries,
-                                             raerq->raerqm_entries_sz, NULL);
-                 DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                            "raft_server_entry_read(): %s",
-                                            strerror(-rc));
-             }
-         }
-         else
-         {
-             raerq->raerqm_entries_sz = 0;
-             raerq->raerqm_leader_change_marker = 0;
-             raerq->raerqm_heartbeat_msg = 1;
-         }
+            if (raerq->raerqm_entries_sz)
+            {
+                rc = raft_server_entry_read(ri, peer_next_raft_idx,
+                                            raerq->raerqm_entries,
+                                            raerq->raerqm_entries_sz, NULL);
+                DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
+                                           "raft_server_entry_read(): %s",
+                                           strerror(-rc));
+            }
+        }
+        else
+        {
+            raerq->raerqm_entries_sz = 0;
+            raerq->raerqm_leader_change_marker = 0;
+            raerq->raerqm_heartbeat_msg = 1;
+        }
 
-         DBG_SIMPLE_CTL_SVC_NODE(
-             (heartbeat ? LL_DEBUG : LL_NOTIFY), rp,
-             "idx=%hhx pli=%ld lt=%ld", i,
-             rrm->rrm_append_entries_request.raerqm_prev_log_index,
-             rrm->rrm_append_entries_request.raerqm_log_term);
+        DBG_SIMPLE_CTL_SVC_NODE(
+            (heartbeat ? LL_DEBUG : LL_NOTIFY), rp,
+            "idx=%hhx pli=%ld lt=%ld", i,
+            rrm->rrm_append_entries_request.raerqm_prev_log_index,
+            rrm->rrm_append_entries_request.raerqm_log_term);
 
-         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
+        int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
 
-         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
-                                    strerror(rc));
+        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
+                                   strerror(rc));
     }
 }
 
@@ -3472,8 +3464,8 @@ raft_server_instance_hist_lreg_multi_facet_handler(
     struct lreg_value *lv)
 {
     if (!lv ||
-	lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh) ||
-	op != LREG_NODE_CB_OP_READ_VAL)
+        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh) ||
+        op != LREG_NODE_CB_OP_READ_VAL)
         return;
 
     snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "%lld",
@@ -3481,7 +3473,7 @@ raft_server_instance_hist_lreg_multi_facet_handler(
                                             lv->lrv_value_idx_in));
 
     LREG_VALUE_TO_OUT_SIGNED_INT(lv) =
-	binary_hist_get_cnt(&rihs->rihs_bh, lv->lrv_value_idx_in);
+        binary_hist_get_cnt(&rihs->rihs_bh, lv->lrv_value_idx_in);
 
     lv->get.lrv_value_type_out = LREG_VAL_TYPE_UNSIGNED_VAL;
 }
@@ -3513,14 +3505,14 @@ raft_server_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
             return -EINVAL;
 
         raft_server_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
-	break;
+        break;
 
     case LREG_NODE_CB_OP_INSTALL_NODE:
     case LREG_NODE_CB_OP_DESTROY_NODE:
         break;
 
     default:
-	return -ENOENT;
+        return -ENOENT;
     }
 
     return 0;

@@ -39,7 +39,8 @@ static const struct regex_item rncuiTests[] = {
     {"0d6ac28e-d278-11ea-9638-90324b2d1e89:9b:0:0:1", true},
     {"0d6ac28e-d278-11ea-9638-90324b2d1e89:ffee:aadd:a341345e:1", true},
     {"1a636bd0-d27d-11ea-8cad-90324b2d1e89::2341523123:32452300123:1", false},
-    {"1a636bd0-d27d-11ea-8cad-90324b2d1e89:2341523123:32452300123:0f:1e", false},
+    {"1a636bd0-d27d-11ea-8cad-90324b2d1e89:2341523123:32452300123:0f:1e",
+     false},
 };
 
 static const struct regex_item pmdbApplyCmdTests[] = {
@@ -73,7 +74,7 @@ regex_tester(const struct regex_test *rt)
     if (rc)
     {
         char err_str[64] = {0};
-	regerror(rc, &regex, err_str, 63);
+        regerror(rc, &regex, err_str, 63);
 
         SIMPLE_LOG_MSG(LL_ERROR, "regcomp(): %s (regex=%s)",
                        err_str, rt->rt_regex);

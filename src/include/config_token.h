@@ -37,9 +37,9 @@ struct conf_token
     const char        *ct_val_regex;
     regex_t            ct_regex;
     enum conf_token_id ct_id;
-    unsigned int       ct_name_len:30;
-    unsigned int       ct_regex_allocated:1;
-    unsigned int       ct_keep_trailing_whitespace:1;
+    unsigned int       ct_name_len                 : 30;
+    unsigned int       ct_regex_allocated          : 1;
+    unsigned int       ct_keep_trailing_whitespace : 1;
 };
 
 struct conf_token_set
@@ -56,8 +56,8 @@ struct conf_token_set_parser
     char                 *ctsp_value_buf;
     size_t                ctsp_value_buf_size;
     unsigned int          ctsp_parse_line_num;
-    int                 (*ctsp_cb)(const struct conf_token *,
-                                   const char *, size_t, void *, int);
+    int                   (*ctsp_cb)(const struct conf_token *,
+                                     const char *, size_t, void *, int);
     void                 *ctsp_cb_arg;
 };
 

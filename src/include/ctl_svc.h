@@ -47,7 +47,7 @@ struct ctl_svc_raft_member
 
 struct ctl_svc_node_raft_peer
 {
-    uint16_t                   csnrp_is_leader:1;
+    uint16_t                   csnrp_is_leader : 1;
     uint16_t                   csnrp__pad[3];
     struct ctl_svc_raft_member csnrp_member;
 };
@@ -78,10 +78,10 @@ struct ctl_svc_node_raft
 
 struct ctl_svc_node
 {
-    uuid_t                       csn_uuid;
+    uuid_t                 csn_uuid;
     REF_TREE_ENTRY(ctl_svc_node) csn_rtentry;
-    enum ctl_svc_node_type       csn_type;
-    struct lreg_node             csn_lrn;
+    enum ctl_svc_node_type csn_type;
+    struct lreg_node       csn_lrn;
     union
     {
         struct ctl_svc_node_peer csn_peer;
@@ -217,28 +217,28 @@ ctl_svc_node_to_string(const struct ctl_svc_node *csn)
     return "unknown";
 }
 
-#define DBG_CTL_SVC_NODE(log_level, csn, fmt, ...)                      \
-{                                                                       \
-    char __uuid_str[UUID_STR_LEN];                                      \
-    uuid_unparse((csn)->csn_uuid, __uuid_str);                          \
-    LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt,              \
-            (csn), ctl_svc_node_type((csn)), __uuid_str,                \
-            (csn)->csn_rtentry.rbe_ref_cnt,                             \
-            (ctl_svc_node_is_peer((csn)) ?                              \
-             (csn)->csn_peer.csnp_store : NULL),                        \
-            ##__VA_ARGS__);                                             \
+#define DBG_CTL_SVC_NODE(log_level, csn, fmt, ...)         \
+{                                                          \
+    char __uuid_str[UUID_STR_LEN];                         \
+    uuid_unparse((csn)->csn_uuid, __uuid_str);             \
+    LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt, \
+            (csn), ctl_svc_node_type((csn)), __uuid_str,   \
+            (csn)->csn_rtentry.rbe_ref_cnt,                \
+            (ctl_svc_node_is_peer((csn)) ?                 \
+             (csn)->csn_peer.csnp_store : NULL),           \
+            ##__VA_ARGS__);                                \
 }
 
-#define DBG_SIMPLE_CTL_SVC_NODE(log_level, csn, fmt, ...)               \
-{                                                                       \
-    char __uuid_str[UUID_STR_LEN];                                      \
-    uuid_unparse((csn)->csn_uuid, __uuid_str);                          \
-    SIMPLE_LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt,       \
-                   (csn), ctl_svc_node_type((csn)), __uuid_str,         \
-                   (csn)->csn_rtentry.rbe_ref_cnt,                      \
-                   (ctl_svc_node_is_peer((csn)) ?                       \
-                    (csn)->csn_peer.csnp_store : NULL),                 \
-                   ##__VA_ARGS__);                                      \
+#define DBG_SIMPLE_CTL_SVC_NODE(log_level, csn, fmt, ...)         \
+{                                                                 \
+    char __uuid_str[UUID_STR_LEN];                                \
+    uuid_unparse((csn)->csn_uuid, __uuid_str);                    \
+    SIMPLE_LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt, \
+                   (csn), ctl_svc_node_type((csn)), __uuid_str,   \
+                   (csn)->csn_rtentry.rbe_ref_cnt,                \
+                   (ctl_svc_node_is_peer((csn)) ?                 \
+                    (csn)->csn_peer.csnp_store : NULL),           \
+                   ##__VA_ARGS__);                                \
 }
 
 struct niova_env_var;

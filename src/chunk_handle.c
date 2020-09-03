@@ -22,7 +22,7 @@ static int
 ch_cmp(const struct chunk_handle *a, const struct chunk_handle *b)
 {
     if (a->ch_id < b->ch_id)
-	return -1;
+        return -1;
     else if (a->ch_id > b->ch_id)
         return 1;
 

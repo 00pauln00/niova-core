@@ -131,14 +131,14 @@ void
 conf_token_set_enable(struct conf_token_set *cts, enum conf_token_id token_id)
 {
     if (conf_token_set_args_valid(cts, token_id))
-	cts->cts_tokens[token_id] = &confTokens[token_id];
+        cts->cts_tokens[token_id] = &confTokens[token_id];
 }
 
 void
 conf_token_set_disable(struct conf_token_set *cts, enum conf_token_id token_id)
 {
     if (conf_token_set_args_valid(cts, token_id))
-	cts->cts_tokens[token_id] = NULL;
+        cts->cts_tokens[token_id] = NULL;
 }
 
 bool
@@ -191,13 +191,13 @@ conf_token_set_parser_init(struct conf_token_set_parser *ctsp,
     {
         ctsp->ctsp_input_buf = input_buf;
         ctsp->ctsp_input_buf_size = input_buf_size;
-	ctsp->ctsp_value_buf = value_buf;
-	ctsp->ctsp_value_buf_size = value_buf_size;
+        ctsp->ctsp_value_buf = value_buf;
+        ctsp->ctsp_value_buf_size = value_buf_size;
         ctsp->ctsp_cb = ctsp_cb;
         ctsp->ctsp_cb_arg = cb_arg;
         ctsp->ctsp_input_buf_off = 0;
 
-	return 0;
+        return 0;
     }
 
     return -EINVAL;
@@ -213,7 +213,7 @@ conf_token_regex_compile(struct conf_token *ct)
     if (rc)
     {
         char err_str[64] = {0};
-	regerror(rc, &ct->ct_regex, err_str, 63);
+        regerror(rc, &ct->ct_regex, err_str, 63);
 
         SIMPLE_LOG_MSG(LL_ERROR,
                        "conf-token=`%s' has invalid regex=`%s': %s",

@@ -27,10 +27,10 @@ niosd_io_stats_init(struct niosd_device *ndev);
 
 init_ctx_t
 niosd_io_stats_subsys_init(void)
-     __attribute__ ((constructor (NIOSD_IO_CTX_STATS_CTOR_PRIORITY)));
+__attribute__ ((constructor (NIOSD_IO_CTX_STATS_CTOR_PRIORITY)));
 
 destroy_ctx_t
 niosd_io_stats_subsys_destroy(void)
-    __attribute__ ((destructor (NIOSD_IO_CTX_STATS_CTOR_PRIORITY)));
+__attribute__ ((destructor (NIOSD_IO_CTX_STATS_CTOR_PRIORITY)));
 
 #endif

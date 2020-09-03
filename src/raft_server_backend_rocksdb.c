@@ -36,7 +36,7 @@
 #define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB RAFT_ENTRY_KEY_PREFIX_ROCKSDB
 #define RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB_STRLEN \
     RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN
-#define RAFT_ENTRY_HEADER_KEY_PRINTF                            \
+#define RAFT_ENTRY_HEADER_KEY_PRINTF \
     RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_HEADER_ENTRY_KEY_FMT
 
 
@@ -167,7 +167,7 @@ rsbr_iter_next_or_prev(rocksdb_iterator_t *iter, bool expect_valid,
                        bool next_or_prev)
 {
     if (!iter)
-	return -EINVAL;
+        return -EINVAL;
 
     next_or_prev ? rocksdb_iter_next(iter) : rocksdb_iter_prev(iter);
 
@@ -176,7 +176,7 @@ rsbr_iter_next_or_prev(rocksdb_iterator_t *iter, bool expect_valid,
 
 static bool
 rsbr_string_matches_iter_key(const char *str, size_t str_len,
-                                    rocksdb_iterator_t *iter, bool exact_len)
+                             rocksdb_iterator_t *iter, bool exact_len)
 {
     size_t iter_key_len = 0;
     const char *iter_key = rocksdb_iter_key(iter, &iter_key_len);
@@ -209,22 +209,22 @@ rsbr_write_supplements_put(const struct raft_net_sm_write_supplements *ws,
     if (!ws || !wb)
         return;
 
-    for (size_t i = 0; i < ws->rnsws_nitems;  i++)
+    for (size_t i = 0; i < ws->rnsws_nitems; i++)
     {
         const struct raft_net_wr_supp *supp = &ws->rnsws_ws[i];
         supp->rnws_handle ?
-            rocksdb_writebatch_putv_cf(
-                wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,
-                supp->rnws_nkv, (const char * const *)supp->rnws_keys,
-                supp->rnws_key_sizes, supp->rnws_nkv,
-                (const char * const *)supp->rnws_values,
-                supp->rnws_value_sizes)
-            :
-            rocksdb_writebatch_putv(wb, supp->rnws_nkv,
-                                    (const char * const *)supp->rnws_keys,
-                                    supp->rnws_key_sizes, supp->rnws_nkv,
-                                    (const char * const *)supp->rnws_values,
-                                    supp->rnws_value_sizes);
+        rocksdb_writebatch_putv_cf(
+            wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,
+            supp->rnws_nkv, (const char * const *)supp->rnws_keys,
+            supp->rnws_key_sizes, supp->rnws_nkv,
+            (const char * const *)supp->rnws_values,
+            supp->rnws_value_sizes)
+        :
+        rocksdb_writebatch_putv(wb, supp->rnws_nkv,
+                                (const char * const *)supp->rnws_keys,
+                                supp->rnws_key_sizes, supp->rnws_nkv,
+                                (const char * const *)supp->rnws_values,
+                                supp->rnws_value_sizes);
     }
 }
 
@@ -389,7 +389,7 @@ rsbr_get(struct raft_instance_rocks_db *rir, const char *key, size_t key_len,
     free(get_value);
 
     if (ret_value_len)
-	*ret_value_len = val_len;
+        *ret_value_len = val_len;
 
     return 0;
 }
@@ -404,7 +404,7 @@ rsbr_get_exact_val_size(struct raft_instance_rocks_db *rir,
 
     size_t ret_value_len = 0;
     int rc = rsbr_get(rir, key, key_len, value,
-                                     expected_value_len, &ret_value_len);
+                      expected_value_len, &ret_value_len);
     if (rc)
     {
         return rc;
@@ -425,33 +425,32 @@ rsbr_get_exact_val_size(struct raft_instance_rocks_db *rir,
 static int
 rsbr_entry_header_read(struct raft_instance *ri, struct raft_entry_header *reh)
 {
-  if (!ri || !reh || reh->reh_index < 0)
-      return -EINVAL;
+    if (!ri || !reh || reh->reh_index < 0)
+        return -EINVAL;
 
-  struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
-  size_t entry_header_key_len = 0;
-  DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
-                              (ssize_t *)&entry_header_key_len,
-                              RAFT_ENTRY_HEADER_KEY_PRINTF, reh->reh_index);
+    size_t entry_header_key_len = 0;
+    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+                                (ssize_t *)&entry_header_key_len,
+                                RAFT_ENTRY_HEADER_KEY_PRINTF, reh->reh_index);
 
-  int rc = rsbr_get_exact_val_size(rir, entry_header_key, entry_header_key_len,
-                                   (void *)reh,
-                                   sizeof(struct raft_entry_header));
-  if (rc)
-  {
-      LOG_MSG(LL_ERROR, "rsbr_get_exact_val_size('%s'): %s",
-              entry_header_key, strerror(rc));
-  }
+    int rc = rsbr_get_exact_val_size(rir, entry_header_key,
+                                     entry_header_key_len,
+                                     (void *)reh,
+                                     sizeof(struct raft_entry_header));
+    if (rc)
+        LOG_MSG(LL_ERROR, "rsbr_get_exact_val_size('%s'): %s",
+                entry_header_key, strerror(rc));
 
-  return rc;
+    return rc;
 }
 
 static ssize_t
 rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re)
 {
     if (!ri || !re)
-	return -EINVAL;
+        return -EINVAL;
 
     int rc = rsbr_entry_header_read(ri, &re->re_header);
     if (rc)
@@ -469,10 +468,8 @@ rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re)
                                  (void *)re->re_data,
                                  re->re_header.reh_data_size);
     if (rc)
-    {
         LOG_MSG(LL_ERROR, "rsbr_get_exact_val_size('%s'): %s",
                 entry_key, strerror(rc));
-    }
 
     return rc < 0 ? rc :
         re->re_header.reh_data_size + sizeof(struct raft_entry_header);
@@ -500,13 +497,9 @@ rsbr_header_load(struct raft_instance *ri)
     if (!rc)
     {
         if (ri->ri_log_hdr.rlh_magic != RAFT_HEADER_MAGIC)
-        {
             rc = -EBADMSG;
-        }
         else
-        {
             DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
-        }
     }
     return rc;
 }
@@ -615,8 +608,8 @@ rsbr_num_entries_calc(struct raft_instance *ri)
                                      RAFT_LOG_HEADER_ROCKSDB_STRLEN,
                                      iter, false))
     {
-         rocksdb_iter_destroy(iter);
-         return 0;
+        rocksdb_iter_destroy(iter);
+        return 0;
     }
     else if (!rsbr_string_matches_iter_key(
                  RAFT_ENTRY_HEADER_KEY_PREFIX_ROCKSDB,
@@ -719,7 +712,7 @@ static int
 rsbr_setup(struct raft_instance *ri)
 {
     if (!ri || ri->ri_backend != &ribRocksDB)
-	return -EINVAL;
+        return -EINVAL;
 
     else if (ri->ri_backend_arg)
         return -EALREADY;
@@ -879,8 +872,8 @@ rocksdb_t *
 raft_server_get_rocksdb_instance(struct raft_instance *ri)
 {
     if (ri && ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB &&
-	ri->ri_backend && ri->ri_backend_arg)
-	return rsbr_ri_to_rocksdb(ri);
+        ri->ri_backend && ri->ri_backend_arg)
+        return rsbr_ri_to_rocksdb(ri);
 
     return NULL;
 }

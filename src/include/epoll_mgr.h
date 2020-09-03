@@ -23,9 +23,9 @@ struct epoll_handle
 {
     int          eph_fd;
     int          eph_events;
-    unsigned int eph_installed:1;
+    unsigned int eph_installed : 1;
     void        *eph_arg;
-    void       (*eph_cb)(const struct epoll_handle *);
+    void         (*eph_cb)(const struct epoll_handle *);
 };
 
 typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *);
@@ -34,7 +34,7 @@ struct epoll_mgr
 {
     int              epm_epfd;
     niova_atomic32_t epm_num_handles;
-    unsigned int     epm_ready:1;
+    unsigned int     epm_ready : 1;
 };
 
 struct niova_env_var;
