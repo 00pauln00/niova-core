@@ -206,7 +206,7 @@ do {                                                              \
 } while (0)
 
 #define NIOVA_ASSERT(cond)                    \
-do {                                             \
+do {                                          \
     if (!(cond))                              \
         FATAL_MSG("failed assertion: "#cond); \
 } while (0)
