@@ -15,19 +15,19 @@
 
 extern enum log_level allocLogLevel;
 
-#define niova_malloc(size)                                           \
-({                                                                   \
-    void *ptr = malloc(size);                                        \
-    FATAL_IF_strerror((!ptr), "niova_malloc: ");                     \
-    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu", ptr, size);       \
-    ptr;                                                             \
+#define niova_malloc(size)                                     \
+({                                                             \
+    void *ptr = malloc(size);                                  \
+    FATAL_IF_strerror((!ptr), "niova_malloc: ");               \
+    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu", ptr, size); \
+    ptr;                                                       \
 })
 
-#define niova_malloc_can_fail(size)                                       \
-({                                                                        \
-    void *ptr = malloc(size);                                             \
-    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu", ptr, size);            \
-    ptr;                                                                  \
+#define niova_malloc_can_fail(size)                            \
+({                                                             \
+    void *ptr = malloc(size);                                  \
+    LOG_MSG(allocLogLevel, "niova_malloc: %p %zu", ptr, size); \
+    ptr;                                                       \
 })
 
 #define niova_calloc(nmemb, size)                                         \
@@ -45,23 +45,23 @@ extern enum log_level allocLogLevel;
     ptr;                                                                  \
 })
 
-#define niova_free(ptr)                                 \
-{                                                       \
-    free(ptr);                                          \
-    LOG_MSG(allocLogLevel, "niova_free: %p", ptr);      \
+#define niova_free(ptr)                            \
+{                                                  \
+    free(ptr);                                     \
+    LOG_MSG(allocLogLevel, "niova_free: %p", ptr); \
 }
 
-#define niova_reallocarray(ptr, type, nmemb)                            \
-({                                                                      \
-    type *tmp = reallocarray((ptr), nmemb, sizeof(type));               \
-                                                                        \
-    LOG_MSG(allocLogLevel, "niova_reallocarray: src=%p dst=%p sz=%zu",  \
-            ptr, tmp, (size_t)(sizeof(type) * nmemb));                  \
-                                                                        \
-    if (tmp)                                                            \
-        (ptr) = tmp;                                                    \
-                                                                        \
-    tmp ? 0 : -ENOMEM;                                                  \
+#define niova_reallocarray(ptr, type, nmemb)                           \
+({                                                                     \
+    type *tmp = reallocarray((ptr), nmemb, sizeof(type));              \
+                                                                       \
+    LOG_MSG(allocLogLevel, "niova_reallocarray: src=%p dst=%p sz=%zu", \
+            ptr, tmp, (size_t)(sizeof(type) * nmemb));                 \
+                                                                       \
+    if (tmp)                                                           \
+        (ptr) = tmp;                                                   \
+                                                                       \
+    tmp ? 0 : -ENOMEM;                                                 \
 })
 
 void

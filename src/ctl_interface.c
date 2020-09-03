@@ -131,7 +131,7 @@ static util_thread_ctx_t
 lctli_inotify_thread_poll_handle_event(struct ctl_interface *lctli)
 {
     char buf[INOTIFY_BUFFER_SIZE]
-        __attribute__ ((aligned(__alignof__(struct inotify_event))));
+    __attribute__ ((aligned(__alignof__(struct inotify_event))));
 
     for (;;)
     {
@@ -339,7 +339,8 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
     {
         struct stat stb;
 
-        int rc = fstatat(init_subdir_fd, dent->d_name, &stb, AT_SYMLINK_NOFOLLOW);
+        int rc =
+            fstatat(init_subdir_fd, dent->d_name, &stb, AT_SYMLINK_NOFOLLOW);
         if (rc || !S_ISREG(stb.st_mode))
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "bypass dentry=%s", dent->d_name);

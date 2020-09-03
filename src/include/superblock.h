@@ -67,8 +67,8 @@ struct sb_contents_v0
  */
 struct sb_header_data
 {
-    mb_magic_t       sbh_magic;
-    struct mb_hash   sbh_hash;
+    mb_magic_t     sbh_magic;
+    struct mb_hash sbh_hash;
     struct { // <-- START: sbh_hash coverage -->
         mb_version_t sbh_version;
         union
@@ -214,14 +214,14 @@ sb_2_num_pblks(const struct sb_header_data *sb)
     return -1;
 }
 
-#define DBG_SB(log_level, sb, fmt, ...)                                 \
-    log_msg(log_level,                                                  \
-            "sb@%p vers=%x pblk=%x uuid=%lx:%lx n=%hhx phys-sz=%zd "     \
-            "prov-sz=%zd npblks=%ld "fmt,                               \
-            (sb), sb_2_version((sb)), sb_2_pblk_id((sb), 0),            \
-            sb_2_niosd_id((sb), true), sb_2_niosd_id((sb), false),      \
-            sb_2_replica_num((sb)), sb_2_phys_size_bytes((sb)),         \
-            sb_2_prov_size_bytes((sb)), sb_2_num_pblks((sb)),           \
+#define DBG_SB(log_level, sb, fmt, ...)                              \
+    log_msg(log_level,                                               \
+            "sb@%p vers=%x pblk=%x uuid=%lx:%lx n=%hhx phys-sz=%zd " \
+            "prov-sz=%zd npblks=%ld "fmt,                            \
+            (sb), sb_2_version((sb)), sb_2_pblk_id((sb), 0),         \
+            sb_2_niosd_id((sb), true), sb_2_niosd_id((sb), false),   \
+            sb_2_replica_num((sb)), sb_2_phys_size_bytes((sb)),      \
+            sb_2_prov_size_bytes((sb)), sb_2_num_pblks((sb)),        \
             ##__VA_ARGS__)
 
 /**
@@ -239,8 +239,8 @@ struct sb_header_persistent
     };
     union
     {
-        struct sb_header_data       sbhp_header;
-        unsigned char               sbhp_data_back[MB_HDR_DATA_IO_SIZE];
+        struct sb_header_data sbhp_header;
+        unsigned char         sbhp_data_back[MB_HDR_DATA_IO_SIZE];
     };
 } PACKED;
 

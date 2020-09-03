@@ -22,43 +22,43 @@
 #undef MY_FATAL_IF
 #endif
 
-#define OFFSET_CAST(type, member, src_ptr)       \
+#define OFFSET_CAST(type, member, src_ptr) \
     (struct type *)(((char *)(src_ptr)) - offsetof(struct type, member))
 
-#define MY_FATAL_IF(cond, msg, ...)                     \
-    if (cond)                                           \
-    {                                                   \
-        fprintf(stderr, "<%s@%d>" msg"\n",              \
-                __func__, __LINE__, ##__VA_ARGS__);     \
-        abort();                                        \
+#define MY_FATAL_IF(cond, msg, ...)                 \
+    if (cond)                                       \
+    {                                               \
+        fprintf(stderr, "<%s@%d>" msg"\n",          \
+                __func__, __LINE__, ##__VA_ARGS__); \
+        abort();                                    \
     }
 
-#define	DECL_AND_FMT_STRING(name, len, fmt, ...)                \
-char name[len + 1];                                             \
-{                                                               \
-    int rc = snprintf(name, len, fmt, ##__VA_ARGS__);           \
-    MY_FATAL_IF((rc < 0 || rc > len), "rc=%d, requested len=%zu", rc, len);  \
+#define DECL_AND_FMT_STRING(name, len, fmt, ...)                            \
+char name[len + 1];                                                         \
+{                                                                           \
+    int rc = snprintf(name, len, fmt, ##__VA_ARGS__);                       \
+    MY_FATAL_IF((rc < 0 || rc > len), "rc=%d, requested len=%zu", rc, len); \
 }
 
-#define	DECL_AND_FMT_STRING_RET_LEN(name, len, ret_len, fmt, ...)       \
-char name[len + 1];                                                     \
-{                                                                       \
-    ssize_t rc = snprintf(name, len, fmt, ##__VA_ARGS__);               \
+#define DECL_AND_FMT_STRING_RET_LEN(name, len, ret_len, fmt, ...)            \
+char name[len + 1];                                                          \
+{                                                                            \
+    ssize_t rc = snprintf(name, len, fmt, ##__VA_ARGS__);                    \
     MY_FATAL_IF((rc < 0 || rc > len), "rc=%zd, requested len=%zu", rc, len); \
-    *(ret_len) = rc;                                                     \
+    *(ret_len) = rc;                                                         \
 }
 
-#define DECL_AND_INIT_STRING(name, str_len, init_char, init_char_len)   \
-char name[str_len + 1] = {0};                                           \
-{                                                                       \
-    for (int i = 0; i < MIN(str_len, init_char_len); i++)               \
-        name[i] = init_char;                                            \
+#define DECL_AND_INIT_STRING(name, str_len, init_char, init_char_len) \
+char name[str_len + 1] = {0};                                         \
+{                                                                     \
+    for (int i = 0; i < MIN(str_len, init_char_len); i++)             \
+        name[i] = init_char;                                          \
 }
 
-#define DECLARE_AND_INIT_UUID_STR(name, uuid)   \
-char name[UUID_STR_LEN];                        \
-{                                               \
-    uuid_unparse(uuid, name);                   \
+#define DECLARE_AND_INIT_UUID_STR(name, uuid) \
+char name[UUID_STR_LEN];                      \
+{                                             \
+    uuid_unparse(uuid, name);                 \
 }
 
 static inline void
@@ -150,7 +150,7 @@ static inline void
 niova_string_convert_null_to_space(char *string, const size_t max_len)
 {
     if (!string || !max_len)
-	return;
+        return;
 
     for (size_t pos = 0; pos < (max_len - 1); pos++)
         if (string[pos] == '\0')
@@ -160,24 +160,24 @@ niova_string_convert_null_to_space(char *string, const size_t max_len)
 /**
  * clock_gettime() wrappers
  */
-#define niova_unstable_clock(dest)                              \
-    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC, (dest)),         \
+#define niova_unstable_clock(dest)                      \
+    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC, (dest)), \
                 "clock_gettime() %s", strerror(errno))
 
-#define niova_unstable_coarse_clock(dest)                       \
-    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC_COARSE, (dest)),  \
+#define niova_unstable_coarse_clock(dest)                      \
+    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC_COARSE, (dest)), \
                 "clock_gettime() %s", strerror(errno))
 
-#define niova_stable_clock(dest)                                \
-    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC_RAW, (dest)),     \
+#define niova_stable_clock(dest)                            \
+    MY_FATAL_IF(clock_gettime(CLOCK_MONOTONIC_RAW, (dest)), \
                 "clock_gettime() %s", strerror(errno))
 
-#define niova_realtime_clock(dest)                              \
-    MY_FATAL_IF(clock_gettime(CLOCK_REALTIME, (dest)),          \
+#define niova_realtime_clock(dest)                     \
+    MY_FATAL_IF(clock_gettime(CLOCK_REALTIME, (dest)), \
                 "clock_gettime() %s", strerror(errno))
 
-#define niova_realtime_coarse_clock(dest)                       \
-    MY_FATAL_IF(clock_gettime(CLOCK_REALTIME_COARSE, (dest)),   \
+#define niova_realtime_coarse_clock(dest)                     \
+    MY_FATAL_IF(clock_gettime(CLOCK_REALTIME_COARSE, (dest)), \
                 "clock_gettime() %s", strerror(errno))
 
 
@@ -185,41 +185,41 @@ niova_string_convert_null_to_space(char *string, const size_t max_len)
  * BSD timespec macros
  */
 #ifndef timespecclear
-#define timespecclear(tsp)		((tsp)->tv_sec = (tsp)->tv_nsec = 0)
+#define timespecclear(tsp)              ((tsp)->tv_sec = (tsp)->tv_nsec = 0)
 #endif
 
 #ifndef timespecisset
-#define timespecisset(tsp)		((tsp)->tv_sec || (tsp)->tv_nsec)
+#define timespecisset(tsp)              ((tsp)->tv_sec || (tsp)->tv_nsec)
 #endif
 
 #ifndef timespeccmp
-#define timespeccmp(tsp, usp, cmp)					\
-    (((tsp)->tv_sec == (usp)->tv_sec) ?                                 \
-     ((tsp)->tv_nsec cmp (usp)->tv_nsec) :				\
+#define timespeccmp(tsp, usp, cmp)         \
+    (((tsp)->tv_sec == (usp)->tv_sec) ?    \
+     ((tsp)->tv_nsec cmp (usp)->tv_nsec) : \
      ((tsp)->tv_sec cmp (usp)->tv_sec))
 #endif
 
 #ifndef timespecadd
-#define timespecadd(tsp, usp, vsp)					\
-    do {								\
-        (vsp)->tv_sec = (tsp)->tv_sec + (usp)->tv_sec;                  \
-        (vsp)->tv_nsec = (tsp)->tv_nsec + (usp)->tv_nsec;               \
-        if ((vsp)->tv_nsec >= 1000000000L) {                            \
-            (vsp)->tv_sec++;                                            \
-            (vsp)->tv_nsec -= 1000000000L;                              \
-        }                                                               \
+#define timespecadd(tsp, usp, vsp)                        \
+    do {                                                  \
+        (vsp)->tv_sec = (tsp)->tv_sec + (usp)->tv_sec;    \
+        (vsp)->tv_nsec = (tsp)->tv_nsec + (usp)->tv_nsec; \
+        if ((vsp)->tv_nsec >= 1000000000L) {              \
+            (vsp)->tv_sec++;                              \
+            (vsp)->tv_nsec -= 1000000000L;                \
+        }                                                 \
     } while (0)
 #endif
 
 #ifndef timespecsub
-#define timespecsub(tsp, usp, vsp)					\
-    do {								\
-        (vsp)->tv_sec = (tsp)->tv_sec - (usp)->tv_sec;                  \
-        (vsp)->tv_nsec = (tsp)->tv_nsec - (usp)->tv_nsec;               \
-        if ((vsp)->tv_nsec < 0) {                                       \
-            (vsp)->tv_sec--;                                            \
-            (vsp)->tv_nsec += 1000000000L;                              \
-        }                                                               \
+#define timespecsub(tsp, usp, vsp)                        \
+    do {                                                  \
+        (vsp)->tv_sec = (tsp)->tv_sec - (usp)->tv_sec;    \
+        (vsp)->tv_nsec = (tsp)->tv_nsec - (usp)->tv_nsec; \
+        if ((vsp)->tv_nsec < 0) {                         \
+            (vsp)->tv_sec--;                              \
+            (vsp)->tv_nsec += 1000000000L;                \
+        }                                                 \
     } while (0)
 #endif
 
@@ -255,7 +255,7 @@ msec_2_timespec(struct timespec *ts, unsigned long long msec)
         return;
 
     ts->tv_sec = msec / 1000;
-    ts->tv_nsec	= msec_2_nsec(msec % 1000);
+    ts->tv_nsec = msec_2_nsec(msec % 1000);
 }
 
 static inline void
@@ -265,7 +265,7 @@ usec_2_timespec(struct timespec *ts, unsigned long long usec)
         return;
 
     ts->tv_sec = usec / 1000000;
-    ts->tv_nsec	= usec_2_nsec(usec % 1000000);
+    ts->tv_nsec = usec_2_nsec(usec % 1000000);
 }
 
 static inline unsigned long long
@@ -389,39 +389,39 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
                 strerror(errno));
 }
 
-#define NIOVA_TIMEDWAIT_COND(cond, mutex, cond_var, timeout)            \
-({                                                                      \
-    int _wc_rc = 0;                                                     \
-    niova_mutex_lock(mutex);                                            \
-                                                                        \
-    while (!_wc_rc && (!cond))                                           \
-        _wc_rc = pthread_cond_timedwait(cond_var, mutex, timeout);      \
-                                                                        \
-    niova_mutex_unlock(mutex);                                          \
-    _wc_rc;                                                             \
+#define NIOVA_TIMEDWAIT_COND(cond, mutex, cond_var, timeout)       \
+({                                                                 \
+    int _wc_rc = 0;                                                \
+    niova_mutex_lock(mutex);                                       \
+                                                                   \
+    while (!_wc_rc && (!cond))                                     \
+        _wc_rc = pthread_cond_timedwait(cond_var, mutex, timeout); \
+                                                                   \
+    niova_mutex_unlock(mutex);                                     \
+    _wc_rc;                                                        \
 })
 
-#define NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var)   \
+#define NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var) \
     while ((!cond)) pthread_cond_wait(cond_var, mutex)
 
-#define NIOVA_WAIT_COND(cond, mutex, cond_var)                          \
-{                                                                       \
-    niova_mutex_lock(mutex);                                            \
-    NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var);                      \
-    niova_mutex_unlock(mutex);                                          \
+#define NIOVA_WAIT_COND(cond, mutex, cond_var)     \
+{                                                  \
+    niova_mutex_lock(mutex);                       \
+    NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var); \
+    niova_mutex_unlock(mutex);                     \
 }
 
-#define NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var)   \
-{                                                                       \
-    set_code_block;                                                     \
-    pthread_cond_## how (cond_var);                                     \
+#define NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var) \
+{                                                                     \
+    set_code_block;                                                   \
+    pthread_cond_## how (cond_var);                                   \
 }
 
-#define NIOVA_SET_COND_AND_WAKE(how, set_code_block, mutex, cond_var)   \
-{                                                                       \
-    niova_mutex_lock(mutex);                                            \
-    NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var);      \
-    niova_mutex_unlock(mutex);                                          \
+#define NIOVA_SET_COND_AND_WAKE(how, set_code_block, mutex, cond_var) \
+{                                                                     \
+    niova_mutex_lock(mutex);                                          \
+    NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var);    \
+    niova_mutex_unlock(mutex);                                        \
 }
 
 #define NIOVA_CRC_OBJ(obj, type, crc32_memb, extra_contents)            \

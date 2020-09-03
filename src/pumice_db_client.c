@@ -339,7 +339,7 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct iovec reply_iov = {
         .iov_base = (void *)&pcreq->pcreq_msg_reply,
-	.iov_len = sizeof(struct pmdb_msg),
+        .iov_len = sizeof(struct pmdb_msg),
     };
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
@@ -411,7 +411,7 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct iovec reply_iovs[2] = {
         [0].iov_base = (void *)&pcreq->pcreq_msg_reply,
-	[0].iov_len = sizeof(struct pmdb_msg),
+        [0].iov_len = sizeof(struct pmdb_msg),
         [1].iov_base = (void *)value,
         [1].iov_len = value_size,
     };

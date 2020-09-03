@@ -14,8 +14,8 @@
 struct niova_ctl
 {
     const char         *nc_dev_name;
-    unsigned int        nc_dev_mkosd:1,
-                        nc_dev_dump_info:1;
+    unsigned int        nc_dev_mkosd     : 1,
+                        nc_dev_dump_info : 1;
     struct niosd_device nc_ndev;
 };
 

@@ -15,8 +15,8 @@
 #define RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS 8
 
 typedef void * raft_client_thread_t;
-typedef int    raft_client_app_ctx_int_t; // raft client app thread
-typedef void   raft_client_app_ctx_t;
+typedef int  raft_client_app_ctx_int_t;   // raft client app thread
+typedef void raft_client_app_ctx_t;
 typedef void * raft_client_instance_t;
 
 typedef int (*raft_client_data_2_obj_id_t)(const char *, const size_t,

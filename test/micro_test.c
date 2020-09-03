@@ -211,7 +211,7 @@ int
 main(void)
 {
     fprintf(stdout, "    NS/OP\t\tTest Name\n"
-            "--------------------------------------------------\n");
+                    "--------------------------------------------------\n");
 
     run_micro(simple_noop, DEF_ITER, "simple_noop");
     run_micro(simple_addition, DEF_ITER, "simple_addition");

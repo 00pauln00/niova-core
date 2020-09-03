@@ -24,10 +24,10 @@ enum nctl_ops
 
 struct net_ctl
 {
-    uint16_t net_ctl_disable_recv:1,
-        net_ctl_disable_send:1,
-        net_ctl_recv_drop_percent:7,
-        net_ctl_send_drop_percent:7;
+    uint16_t net_ctl_disable_recv      : 1,
+             net_ctl_disable_send      : 1,
+             net_ctl_recv_drop_percent : 7,
+             net_ctl_send_drop_percent : 7;
 } PACKED;
 
 

@@ -14,8 +14,8 @@
 #include "raft_net.h"
 #include "common.h"
 
-typedef void pumicedb_apply_ctx_t;
-typedef int  pumicedb_apply_ctx_int_t;
+typedef void    pumicedb_apply_ctx_t;
+typedef int     pumicedb_apply_ctx_int_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
 
 /**

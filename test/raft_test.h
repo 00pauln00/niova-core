@@ -10,10 +10,10 @@
 #include "common.h"
 #include "raft_net.h"
 
-#define RAFT_TEST_VALUES_MAX                                            \
-    ((RAFT_NET_MAX_RPC_SIZE -                                           \
-      (offsetof(struct raft_test_data_block, rtdb_values) +             \
-       sizeof(struct raft_client_rpc_msg))) /                           \
+#define RAFT_TEST_VALUES_MAX                                \
+    ((RAFT_NET_MAX_RPC_SIZE -                               \
+      (offsetof(struct raft_test_data_block, rtdb_values) + \
+       sizeof(struct raft_client_rpc_msg))) /               \
      sizeof(struct raft_test_values))
 
 /**
@@ -98,18 +98,18 @@ raft_test_data_block_total_size(const struct raft_test_data_block *rtdb)
             (rtdb->rtdb_num_values * sizeof(struct raft_test_values)));
 }
 
-#define DBG_RAFT_TEST_DATA_BLOCK(log_level, rtdb, fmt, ...)             \
-{                                                                       \
-    char __uuid_str[UUID_STR_LEN];                                      \
-    uuid_unparse((rtdb)->rtdb_client_uuid, __uuid_str);                 \
-    LOG_MSG(log_level, "%s op=%s nv=%hu seqno=%ld val=%ld "fmt,         \
-            __uuid_str, raft_test_data_op_2_string((rtdb)->rtdb_op),    \
-            (rtdb)->rtdb_num_values,                                    \
-            ((rtdb)->rtdb_num_values > 0 ?                              \
-             (rtdb)->rtdb_values[0].rtv_seqno : -1),                    \
-            ((rtdb)->rtdb_num_values > 0 ?                              \
-             (rtdb)->rtdb_values[0].rtv_request_value : -1),            \
-            ##__VA_ARGS__);                                             \
+#define DBG_RAFT_TEST_DATA_BLOCK(log_level, rtdb, fmt, ...)          \
+{                                                                    \
+    char __uuid_str[UUID_STR_LEN];                                   \
+    uuid_unparse((rtdb)->rtdb_client_uuid, __uuid_str);              \
+    LOG_MSG(log_level, "%s op=%s nv=%hu seqno=%ld val=%ld "fmt,      \
+            __uuid_str, raft_test_data_op_2_string((rtdb)->rtdb_op), \
+            (rtdb)->rtdb_num_values,                                 \
+            ((rtdb)->rtdb_num_values > 0 ?                           \
+             (rtdb)->rtdb_values[0].rtv_seqno : -1),                 \
+            ((rtdb)->rtdb_num_values > 0 ?                           \
+             (rtdb)->rtdb_values[0].rtv_request_value : -1),         \
+            ##__VA_ARGS__);                                          \
 }
 
 #endif

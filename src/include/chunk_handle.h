@@ -25,19 +25,19 @@ struct vblkdev_handle;
  */
 struct chunk_handle
 {
-    struct vblkdev_handle       *ch_vbh;
-    vblkdev_chunk_id_t           ch_id;
+    struct vblkdev_handle *ch_vbh;
+    vblkdev_chunk_id_t     ch_id;
     REF_TREE_ENTRY(chunk_handle) ch_tentry;
-    int                          ch_ref;
-    bool                         ch_has_dirty_dpblks;
+    int                    ch_ref;
+    bool                   ch_has_dirty_dpblks;
     //doubly linked list of metablock handles
     //pointers to metablk-content-index-blocks (2)
     //  - vblk caching
     //  - promoted tier physical data
 };
 
-#define DBG_CHUNK_HNDL(log_level, ch, fmt, ...)                        \
-    log_msg(log_level, "ch@%p %zx ref:%d "fmt, (ch),                   \
+#define DBG_CHUNK_HNDL(log_level, ch, fmt, ...)      \
+    log_msg(log_level, "ch@%p %zx ref:%d "fmt, (ch), \
             (ch)->ch_id, (ch)->ch_ref,  ##__VA_ARGS__)
 
 struct chunk_handle *

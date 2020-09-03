@@ -26,7 +26,7 @@ struct gen_header
             uint32_t       gh__pad;
             pblk_id_t      gh_self_pblk_id;
         };
-        unsigned char      gh_data[GEN_HEADER_SIZE_IN_BYTES];
+        unsigned char gh_data[GEN_HEADER_SIZE_IN_BYTES];
     };
 };
 

@@ -28,7 +28,7 @@ static regex_t pmdbtcCmdRegex;
 
 static const char *raft_uuid_str;
 static const char *my_uuid_str;
-static bool  use_async_requests = false;
+static bool use_async_requests = false;
 
 static pmdb_t pmdbtcPMDB;
 
@@ -85,7 +85,7 @@ struct pmdbtc_app
     struct timespec                papp_last_request;
     raft_net_request_tag_t         papp_pending_tag;
     struct random_data             papp_random_data;
-    uint8_t                        papp_sync:1;
+    uint8_t                        papp_sync : 1;
     char                           papp_random_state_buf[RANDOM_STATE_BUF_LEN];
     struct raft_test_values        papp_rtv;
     struct raft_test_values        papp_last_rtv_request;
@@ -480,7 +480,7 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
     }
 
     SIMPLE_LOG_MSG(LL_DEBUG,
-                   RAFT_NET_CLIENT_USER_ID_FMT" op=%s seqno=%ld rc=%d",
+                   RAFT_NET_CLIENT_USER_ID_FMT " op=%s seqno=%ld rc=%d",
                    RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&rncui, uuid_str, 0),
                    pmdp_op_2_string(op), write_seqno, rc);
 
@@ -589,20 +589,20 @@ pmdbtc_getopt(int argc, char **argv)
         case 'r':
             raft_uuid_str = optarg;
             break;
-	case 'u':
+        case 'u':
             my_uuid_str = optarg;
-	    break;
-	case 'h':
+            break;
+        case 'h':
             pmdbtc_print_help(0, argv);
-	    break;
+            break;
         default:
             pmdbtc_print_help(EINVAL, argv);
             break;
-	}
+        }
     }
 
     if (!raft_uuid_str || !my_uuid_str)
-	pmdbtc_print_help(EINVAL, argv);
+        pmdbtc_print_help(EINVAL, argv);
 }
 
 int
@@ -688,8 +688,8 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
     preq->preq_rtdb.rtdb_num_values = 1;
 
     preq->preq_write_seqno == papp->papp_rtv.rtv_seqno ?
-        pmdbtc_app_rtv_increment(papp) :
-        pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
+    pmdbtc_app_rtv_increment(papp) :
+    pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
 
     preq->preq_rtv[0] = papp->papp_last_rtv_request;
 }
@@ -744,17 +744,11 @@ pmdbtc_write_result_capture(struct pmdbtc_request *preq, int rc)
     pmdbtc_result_capture(preq, rc);
 
     if (papp->papp_obj_stat.status)
-    {
         papp->papp_sync = 0;
-    }
     else if (rc)
-    {
         papp->papp_sync = 0;
-    }
     else
-    {
         papp->papp_sync = 1;
-    }
 }
 
 static int

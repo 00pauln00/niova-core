@@ -26,12 +26,12 @@ struct watchdog_instance
     pthread_mutex_t       wdi_mutex;
     pthread_cond_t        wdi_cond;
     struct wt_thread_list wdi_thread_list;
-    unsigned int          wdi_init:1,
-                          wdi_is_default:1,
-                          wdi_halt:1,
-                          wdi_timeout_sec:10,
-                          wdi_num_stalls_allowed:10;
-    struct thread_ctl     wdi_thread_ctl;
+    unsigned int          wdi_init               : 1,
+                          wdi_is_default         : 1,
+                          wdi_halt               : 1,
+                          wdi_timeout_sec        : 10,
+                          wdi_num_stalls_allowed : 10;
+    struct thread_ctl wdi_thread_ctl;
 };
 
 static struct watchdog_instance defaultWdi = {
@@ -42,11 +42,11 @@ static struct watchdog_instance defaultWdi = {
     .wdi_is_default         = 1,
 };
 
-#define WDI_LOCK(wdi)                                           \
+#define WDI_LOCK(wdi)                                          \
     FATAL_IF_strerror((pthread_mutex_lock(&(wdi)->wdi_mutex)), \
                       "pthread_mutex_lock(): ")
 
-#define WDI_UNLOCK(wdi)                                            \
+#define WDI_UNLOCK(wdi)                                          \
     FATAL_IF_strerror((pthread_mutex_unlock(&(wdi)->wdi_mutex)), \
                       "pthread_mutex_unlock(): ")
 
@@ -54,7 +54,7 @@ static struct watchdog_instance defaultWdi = {
 {                                                              \
     FATAL_IF_strerror((pthread_cond_signal(&(wdi)->wdi_cond)), \
                       "pthread_mutex_unlock(): ");             \
-    SIMPLE_LOG_MSG(LL_DEBUG, "here");                           \
+    SIMPLE_LOG_MSG(LL_DEBUG, "here");                          \
 }
 
 static const struct thread_ctl *

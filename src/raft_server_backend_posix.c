@@ -276,7 +276,7 @@ rsbp_header_load(struct raft_instance *ri)
 
     struct
     {
-        struct raft_entry re;
+        struct raft_entry      re;
         struct raft_log_header rlh;
     } entry_and_header;
 
@@ -345,7 +345,7 @@ rsbp_header_write(struct raft_instance *ri)
 
     struct
     {
-        struct raft_entry re;
+        struct raft_entry      re;
         struct raft_log_header rlh;
     } entry_and_header;
 
@@ -524,7 +524,7 @@ static int
 rsbp_setup(struct raft_instance *ri)
 {
     if (!ri || ri->ri_backend != &ribPosix)
-	return -EINVAL;
+        return -EINVAL;
 
     else if (ri->ri_backend_arg)
         return -EALREADY;
@@ -532,7 +532,7 @@ rsbp_setup(struct raft_instance *ri)
     ri->ri_backend_arg = niova_calloc(1UL, sizeof(struct raft_instance_posix));
 
     if (!ri->ri_backend_arg)
-	return -ENOMEM;
+        return -ENOMEM;
 
     int rc = rsbp_log_file_setup(ri);
     if (rc)

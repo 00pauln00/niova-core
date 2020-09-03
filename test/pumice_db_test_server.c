@@ -320,20 +320,20 @@ pmdbts_getopt(int argc, char **argv)
         case 'r':
             raft_uuid_str = optarg;
             break;
-	case 'u':
+        case 'u':
             my_uuid_str = optarg;
-	    break;
-	case 'h':
+            break;
+        case 'h':
             pmdbts_print_help(0, argv);
-	    break;
+            break;
         default:
             pmdbts_print_help(EINVAL, argv);
             break;
-	}
+        }
     }
 
     if (!raft_uuid_str || !my_uuid_str)
-	pmdbts_print_help(EINVAL, argv);
+        pmdbts_print_help(EINVAL, argv);
 }
 
 int
