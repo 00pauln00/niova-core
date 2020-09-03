@@ -16,15 +16,7 @@ jobs:
 #    - name: configure
 #      run: ./configure
     - name: dpkg / rpm prep
-      run: sudo -E apt-get install -y uuid-dev uuid \
-           libuuid1 \
-           libaio-dev \
-           libaio1 \
-           libgcrypt20 \
-           openssl \
-           libssl-dev \
-           `apt-cache search librocksdb | awk '{print $1}'` \
-           uncrustify
+      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify
     - name: make
       run: make -j 4
     - name: make check
