@@ -243,7 +243,6 @@ struct raft_net_client_request_handle
     int64_t                              rncr_entry_term;
     int64_t                              rncr_current_term;
     raft_entry_idx_t                     rncr_pending_apply_idx;
-    long long                            rncr_commit_duration_msec;
     const struct raft_client_rpc_msg    *rncr_request;
     const char                          *rncr_request_or_commit_data;
     const size_t                         rncr_request_or_commit_data_size;

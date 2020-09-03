@@ -499,6 +499,9 @@ raft_server_entry_init(const struct raft_instance *ri,
     uuid_copy(reh->reh_self_uuid, RAFT_INSTANCE_2_SELF_UUID(ri));
     uuid_copy(reh->reh_raft_uuid, RAFT_INSTANCE_2_RAFT_UUID(ri));
 
+    // Capture the approx time this entry will be stored
+    niova_realtime_coarse_clock(&reh->reh_store_time);
+
     memset(reh->reh_pad, 0, RAFT_ENTRY_PAD_SIZE);
 
     memcpy(re->re_data, data, len);
@@ -3302,13 +3305,19 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
         if (!rc && raft_instance_is_leader(ri))
         {
-            struct binary_hist *bh =
-                &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
+            if (reh.reh_term == ri->ri_log_hdr.rlh_term)
+            {
+                struct timespec ts;
+                niova_realtime_coarse_clock(&ts);
 
-            if (rncr.rncr_commit_duration_msec > 0)
-                binary_hist_incorporate_val(bh,
-                                            rncr.rncr_commit_duration_msec);
+                timespecsub(&ts, &reh.reh_store_time, &ts);
 
+                struct binary_hist *bh =
+                    &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
+
+                if (timespec_2_msec(&ts) > 0)
+                    binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
+            }
             /* Perform basic initialization on the reply buffer if the SM has
              * provided the necessary info for completing the reply.  The SM
              * would have called
