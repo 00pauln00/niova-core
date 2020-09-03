@@ -274,3 +274,9 @@ clean :
 
 clean-cov: clean
 	rm -Rfv $(NIOVA_LCOV)
+
+autofmt:
+	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
+
+autofmt-check:
+	uncrustify -c tools/uncrustify.cfg -q --check `find . -name "*.[ch]"` | grep -c FAIL | grep ^0$ > /dev/null

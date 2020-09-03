@@ -323,7 +323,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 }
 
 #define DBG_LREG_NODE(log_level, lrn, fmt, ...)                    \
-{                                                                  \
+do {                                                               \
     struct lreg_value lrv = {0};                                   \
     SIMPLE_LOG_MSG(log_level,                                      \
                    "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,        \
@@ -342,7 +342,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
                    (lrn)->lrn_monitor               ? 'm' : '-',   \
                    (lrn)->lrn_array_element         ? 'a' : '-',   \
                    (lrn)->lrn_cb_arg, ##__VA_ARGS__);              \
-}
+} while (0)
 
 static inline bool
 lreg_statically_allocated_node_check(const struct lreg_node *lrn)

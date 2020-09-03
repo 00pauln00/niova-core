@@ -15,9 +15,15 @@ jobs:
     - uses: actions/checkout@v2
 #    - name: configure
 #      run: ./configure
-    - name: prep
-      run: apt-get install -y libuuid-devel
+    - name: dpkg / rpm prep (debug)
+      run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify"
+    - name: dpkg / rpm prep
+      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify
     - name: make
-      run: make
+      run: make -j 4
     - name: make check
       run: make check
+    - name: uncrustify version (debug)
+      run: uncrustify -v
+    - name: make autofmt-check
+      run: make autofmt-check
