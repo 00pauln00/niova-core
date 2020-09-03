@@ -21,7 +21,7 @@
 #include "udp.h"
 #include "util.h"
 
-#define RAFT_ENTRY_PAD_SIZE 63
+#define RAFT_ENTRY_PAD_SIZE 47
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
@@ -146,6 +146,7 @@ struct raft_entry_header
 {
     uint64_t         reh_magic; // Magic is not included in the crc
     uuid_t           reh_self_uuid; // UUID of this peer
+    struct timespec  reh_store_time; // Don't include in CRC - may differ across peers
     crc32_t          reh_crc; // Crc is after the magic and uuid's (all are constant).
     uint32_t         reh_data_size; // The size of the log entry data - must be below reh_crc!
                                     //    see raft_server_entry_calc_crc() before changing.
