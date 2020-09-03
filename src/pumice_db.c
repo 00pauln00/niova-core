@@ -193,7 +193,7 @@ pmdb_get_rocksdb_instance(void)
 static rocksdb_readoptions_t *
 pmdb_get_rocksdb_readopts(void)
 {
-    NIOVA_ASSERT(pmdbRocksdbReadOpts)
+    NIOVA_ASSERT(pmdbRocksdbReadOpts);
     return pmdbRocksdbReadOpts;
 }
 

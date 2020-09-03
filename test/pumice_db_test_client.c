@@ -462,27 +462,36 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
             break;
         case 1:
             if (!strncmp("read", sub, 4))
+            {
                 op = pmdb_op_read;
+            }
             else if (!strncmp("lookup", sub, 6))
+            {
                 op = pmdb_op_lookup;
-            else if (!strncmp("write", sub, 5))
+            }
+            else if (!strncmp("write:", sub, 6))
+            {
                 op = pmdb_op_write;
+                write_seqno = strtoull(&sub[6], NULL, 10);
+            }
             else
+            {
                 return -EBADMSG; // this should never happen (regex failed..)
+            }
             break;
         case 2:
-            NIOVA_ASSERT(op == pmdb_op_write);
-            write_seqno = strtoull(sub, NULL, 10);
+            op_cnt = strtoull(sub, NULL, 10);
             break;
         default:
             break;
         }
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG,
-                   RAFT_NET_CLIENT_USER_ID_FMT " op=%s seqno=%ld rc=%d",
+    SIMPLE_LOG_MSG(LL_NOTIFY,
+                   RAFT_NET_CLIENT_USER_ID_FMT
+                   " op=%s seqno=%ld rc=%d op_cnt=%zu",
                    RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&rncui, uuid_str, 0),
-                   pmdp_op_2_string(op), write_seqno, rc);
+                   pmdp_op_2_string(op), write_seqno, rc, op_cnt);
 
     // Return errors here so they may be placed into the ctl-interface OUTFILE.
     return pmdbtc_queue_request(&rncui, op, op_cnt, write_seqno);
@@ -811,12 +820,26 @@ pmdbtc_dequeue_request(void)
 
     int rc = pmdbtc_execute_blocking_request(preq);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "rc=%d status=%d",
-                   rc, preq->preq_obj_stat.status);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "rc=%d status=%d wr-seqno=%zu",
+                   rc, preq->preq_obj_stat.status, preq->preq_write_seqno);
 
+    // Makes a copy of the preq contents
     pmdbtc_app_history_add(preq);
 
-    niova_free(preq);
+    preq->preq_op_cnt--;
+    if (!rc && preq->preq_op_cnt > 0)
+    {
+        preq->preq_write_seqno++;
+
+        // Reinsert the operation onto the work queue.
+        niova_mutex_lock(&mutex);
+        STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);
+        niova_mutex_unlock(&mutex);
+    }
+    else
+    {
+        niova_free(preq);
+    }
 }
 
 static void *
