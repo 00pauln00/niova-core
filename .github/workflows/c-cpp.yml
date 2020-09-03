@@ -16,7 +16,7 @@ jobs:
 #    - name: configure
 #      run: ./configure
     - name: prep
-      run: apt-get install -y libuuid-devel
+      run: sudo -E apt-get install -y libuuid-devel
     - name: make
       run: make
     - name: make check
