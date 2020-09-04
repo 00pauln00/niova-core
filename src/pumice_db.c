@@ -888,7 +888,7 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf_names)
+         int num_cf_names, bool use_synchronous_writes)
 {
     pmdbApi = pmdb_api;
 
@@ -910,9 +910,11 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
         if (rc)
             return rc;
     }
+
     return raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                     pmdb_sm_handler,
-                                    RAFT_INSTANCE_STORE_ROCKSDB, &pmdbCFT);
+                                    RAFT_INSTANCE_STORE_ROCKSDB, &pmdbCFT,
+                                    use_synchronous_writes);
 }
 
 /**
