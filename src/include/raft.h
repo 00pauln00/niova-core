@@ -264,7 +264,8 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_READ_LAT_MSEC      = 1,
     RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC  = 2,
     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
-    RAFT_INSTANCE_HIST_MAX                = 4,
+    RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC  = 4,
+    RAFT_INSTANCE_HIST_MAX                = 5,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -298,6 +299,7 @@ struct raft_instance_hist_stats
  * @rib_backend_setup:  perform procedures necessary for preparing the backend
  *    for use.
  * @rib_backend_shutdown:  stop / close the backend.
+ * @rib_backend_sync:  force a sync of all pending items to the backing store
  * @rib_sm_apply_opt:  optional callback used for niova-raft implementations
  *    which require conjoined, atomic, persistent updates of raft metadata and
  *    state machine data.
@@ -315,8 +317,16 @@ struct raft_instance_backend
     int     (*rib_header_write)(struct raft_instance *);
     int     (*rib_backend_setup)(struct raft_instance *);
     int     (*rib_backend_shutdown)(struct raft_instance *);
+    int     (*rib_backend_sync)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
                                 const struct raft_net_sm_write_supplements *);
+};
+
+enum raft_instance_newest_entry_hdr_types
+{
+    RI_NEHDR_SYNC = 0,
+    RI_NEHDR_UNSYNC = 1,
+    RI_NEHDR_ALL = 2,
 };
 
 struct raft_instance
@@ -335,6 +345,7 @@ struct raft_instance
     enum raft_state                 ri_state;
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
+    bool                            ri_synchronous_writes;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
@@ -342,7 +353,10 @@ struct raft_instance
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
-    struct raft_entry_header        ri_newest_entry_hdr;
+    unsigned long long              ri_sync_freq_us;
+    size_t                          ri_sync_cnt;
+    struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
+    pthread_mutex_t                 ri_newest_entry_mutex;
     struct epoll_mgr                ri_epoll_mgr;
     struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
     size_t                          ri_epoll_handles_in_use;
@@ -374,7 +388,7 @@ raft_compile_time_checks(void)
 }
 
 #define DBG_RAFT_MSG(log_level, rm, fmt, ...)                                                     \
-{                                                                                                 \
+do {                                                                                                 \
     char __uuid_str[UUID_STR_LEN];                                                                \
     uuid_unparse((rm)->rrm_sender_id, __uuid_str);                                                \
     switch ((rm)->rrm_type)                                                                       \
@@ -427,7 +441,7 @@ raft_compile_time_checks(void)
     default:                                                                                      \
         break;                                                                                    \
     }                                                                                             \
-}
+} while (0)
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                   \
     LOG_MSG(log_level,                                            \
@@ -437,15 +451,15 @@ raft_compile_time_checks(void)
             (re)->reh_leader_change_marker , ##__VA_ARGS__)
 
 #define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)       \
-{                                                             \
+do {                                                          \
     if ((cond))                                               \
     {                                                         \
         DBG_RAFT_ENTRY(LL_FATAL, re, message, ##__VA_ARGS__); \
     }                                                         \
-}
+} while (0)
 
 #define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                 \
-{                                                                  \
+do {                                                               \
     char __uuid_str[UUID_STR_LEN];                                 \
     uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);      \
     char __leader_uuid_str[UUID_STR_LEN] = {0};                    \
@@ -453,25 +467,27 @@ raft_compile_time_checks(void)
         uuid_unparse((ri)->ri_csn_leader->csn_uuid,                \
                      __leader_uuid_str);                           \
                                                                    \
-    LOG_MSG(log_level,                                             \
-            "%c et=%ld ei=%ld ht=%ld hs=%ld ci=%ld:%ld v=%s l=%s " \
-            fmt,                                                   \
-            raft_server_state_to_char((ri)->ri_state),             \
-            raft_server_get_current_raft_entry_term((ri)),         \
-            raft_server_get_current_raft_entry_index((ri)),        \
-            (ri)->ri_log_hdr.rlh_term,                             \
-            (ri)->ri_log_hdr.rlh_seqno,                            \
-            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,        \
-            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);         \
-}
+    LOG_MSG(log_level,                                                      \
+            "%c et=%ld ei=%ld ht=%ld hs=%ld c[t:i]=%ld,%ld:%ld,%ld v=%s l=%s "  \
+            fmt,                                                            \
+            raft_server_state_to_char((ri)->ri_state),                      \
+            raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
+            raft_server_get_current_raft_entry_term(ri, RI_NEHDR_UNSYNC), \
+            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC), \
+            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC), \
+            (ri)->ri_log_hdr.rlh_term,                                      \
+            (ri)->ri_log_hdr.rlh_seqno,                                     \
+            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,                 \
+            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);                  \
+} while (0)
 
 #define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)       \
-{                                                                \
+do {                                                             \
     if ((cond))                                                  \
     {                                                            \
         DBG_RAFT_INSTANCE(LL_FATAL, ri, message, ##__VA_ARGS__); \
     }                                                            \
-}
+} while (0)
 
 static inline enum raft_epoll_handles
 raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
@@ -523,6 +539,8 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "dev-read-latency-usec";
     case RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC:
         return "dev-write-latency-usec";
+    case RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC:
+        return "dev-sync-latency-usec";
     default:
         break;
     }
@@ -650,25 +668,69 @@ raft_server_entry_header_is_null(const struct raft_entry_header *reh)
     return true;
 }
 
+static inline void
+raft_instance_get_newest_header(struct raft_instance *ri,
+                                struct raft_entry_header *reh,
+                                enum raft_instance_newest_entry_hdr_types type)
+{
+    NIOVA_ASSERT(ri && reh && (type == RI_NEHDR_SYNC ||
+                               type == RI_NEHDR_UNSYNC));
+
+    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
+
+    *reh = ri->ri_newest_entry_hdr[type];
+
+    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
+}
+
 /**
  * raft_server_get_current_raft_entry_term - returns the term value from the
  *    most recent raft entry to have been written to the log.  Note that
  *    ri_newest_entry_hdr never refers to a header block.
  */
 static inline int64_t
-raft_server_get_current_raft_entry_term(const struct raft_instance *ri)
+raft_server_get_current_raft_entry_term(
+    const struct raft_instance *ri,
+    enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
 
-    return ri->ri_newest_entry_hdr.reh_term;
+    struct raft_entry_header reh;
+    raft_instance_get_newest_header(ri, &reh, type);
+
+    return reh.reh_term;
+}
+
+static inline uint32_t
+raft_server_get_current_raft_entry_data_size(
+    const struct raft_instance *ri,
+    enum raft_instance_newest_entry_hdr_types type)
+{
+    NIOVA_ASSERT(ri);
+
+    struct raft_entry_header reh;
+    raft_instance_get_newest_header(ri, &reh, type);
+
+    return reh.reh_data_size;
 }
 
 static inline crc32_t
-raft_server_get_current_raft_entry_crc(const struct raft_instance *ri)
+raft_server_get_current_raft_entry_crc(
+    const struct raft_instance *ri,
+    enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
 
-    return ri->ri_newest_entry_hdr.reh_crc;
+    struct raft_entry_header reh;
+    raft_instance_get_newest_header(ri, &reh, type);
+
+    return reh.reh_crc;
+}
+
+static inline bool
+raft_server_does_synchronous_writes(const struct raft_instance *ri)
+{
+    return ri->ri_synchronous_writes;
 }
 
 /**
@@ -676,15 +738,20 @@ raft_server_get_current_raft_entry_crc(const struct raft_instance *ri)
  *    the logical position of the last written application log entry.
  */
 static inline raft_entry_idx_t
-raft_server_get_current_raft_entry_index(const struct raft_instance *ri)
+raft_server_get_current_raft_entry_index(
+    const struct raft_instance *ri,
+    enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
 
     raft_entry_idx_t current_reh_index = -1;
 
-    if (!raft_server_entry_header_is_null(&ri->ri_newest_entry_hdr))
+    struct raft_entry_header reh;
+    raft_instance_get_newest_header(ri, &reh, type);
+
+    if (!raft_server_entry_header_is_null(&reh))
     {
-        current_reh_index = ri->ri_newest_entry_hdr.reh_index;
+        current_reh_index = reh.reh_index;
         NIOVA_ASSERT(current_reh_index >= 0);
     }
 
@@ -721,7 +788,8 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         enum raft_instance_store_type type, void *arg);
+                         enum raft_instance_store_type type, bool sync_writes,
+                         void *arg);
 
 void
 raft_server_backend_setup_last_applied(struct raft_instance *ri,
