@@ -314,6 +314,7 @@ enum raft_peer_stats_items
 #endif
     RAFT_PEER_STATS_PREV_LOG_IDX,
     RAFT_PEER_STATS_PREV_LOG_TERM,
+    RAFT_PEER_STATS_SYNCED_LOG_IDX,
     RAFT_PEER_STATS_MAX,
 };
 
@@ -367,6 +368,9 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         break;
     case RAFT_PEER_STATS_PREV_LOG_TERM:
         lreg_value_fill_signed(lv, "prev-idx-term", rfi->rfi_prev_idx_term);
+        break;
+    case RAFT_PEER_STATS_SYNCED_LOG_IDX:
+        lreg_value_fill_signed(lv, "sync-idx", rfi->rfi_synced_idx);
         break;
     default:
         break;
@@ -717,7 +721,7 @@ raft_server_entry_write(struct raft_instance *ri,
     niova_free(re);
 
     if (raft_server_does_synchronous_writes(ri))
-        DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries()), ri,
+        DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries(ri)), ri,
                                    "raft_server_has_unsynced_entries() fails");
 
     return 0;
@@ -1656,8 +1660,9 @@ raft_server_leader_init_state(struct raft_instance *ri)
         rfi->rfi_next_idx = sync_hdr.reh_index + 1;
         rfi->rfi_prev_idx_term = sync_hdr.reh_term;
         rfi->rfi_prev_idx_crc = sync_hdr.reh_crc;
-        rfi->rfi_current_idx_term = -1;
+        rfi->rfi_current_idx_term = -1ULL;
         rfi->rfi_current_idx_crc = 0;
+        rfi->rfi_synced_idx = -1ULL;
     }
 }
 
@@ -1902,12 +1907,12 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         rfi->rfi_current_idx_crc = reh.reh_crc;
     }
 
-    DBG_RAFT_INSTANCE(((refresh_prev || refresh_current) ?
-                       LL_NOTIFY : LL_DEBUG), ri,
-                      "peer=%hhx refresh=%d:%d pti=%ld:%ld ct=%ld ccrc=%lu",
-                      follower, refresh_prev, refresh_current,
-                      rfi->rfi_prev_idx_term, rfi->rfi_next_idx,
-                      rfi->rfi_current_idx_term, rfi->rfi_current_idx_crc);
+    DBG_RAFT_INSTANCE(
+        ((refresh_prev || refresh_current) ? LL_NOTIFY : LL_DEBUG), ri,
+        "peer=%hhx refresh=%d:%d pti=%ld:%ld si=%ld ct=%ld ccrc=%lu",
+        follower, refresh_prev, refresh_current, rfi->rfi_prev_idx_term,
+        rfi->rfi_next_idx, rfi->rfi_synced_idx, rfi->rfi_current_idx_term,
+        rfi->rfi_current_idx_crc);
 
     return 0;
 }
@@ -2414,20 +2419,32 @@ raft_server_write_new_entry_from_leader(
  */
 static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request_prep_reply(
-    struct raft_instance *ri,
-    struct raft_rpc_msg *reply,
-    const struct raft_append_entries_request_msg *raerq)
+    struct raft_instance *ri, struct raft_rpc_msg *reply,
+    const struct raft_append_entries_request_msg *raerq,
+    bool stale_term, bool non_matching_prev_term, const int rc)
 {
     reply->rrm_type = RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY;
+
     reply->rrm_append_entries_reply.raerpm_leader_term =
         ri->ri_log_hdr.rlh_term;
+
     reply->rrm_append_entries_reply.raerpm_prev_log_index =
         raerq->raerqm_prev_log_index;
+
     reply->rrm_append_entries_reply.raerpm_heartbeat_msg =
         raerq->raerqm_heartbeat_msg;
 
+    reply->rrm_append_entries_reply.raerpm_synced_log_index = rc ?
+        -1ULL : raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+
     uuid_copy(reply->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
     uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+
+    struct raft_append_entries_reply_msg *rae_reply =
+        &reply->rrm_append_entries_reply;
+
+    rae_reply->raerpm_err_stale_term = stale_term;
+    rae_reply->raerpm_err_non_matching_prev_term = non_matching_prev_term;
 }
 
 static raft_server_net_cb_ctx_int_t
@@ -2466,6 +2483,25 @@ raft_server_advance_commit_idx(struct raft_instance *ri,
 }
 
 static raft_server_net_cb_ctx_t
+raft_server_append_entry_reply_send(
+    struct raft_instance *ri,
+    const struct raft_append_entries_request_msg *raerq,
+    struct ctl_svc_node *sender_csn, bool stale_term,
+    bool non_matching_prev_term, const int ae_rc)
+{
+    struct raft_rpc_msg rreply_msg = {0};
+
+    raft_server_process_append_entries_request_prep_reply(
+        ri, &rreply_msg, raerq, stale_term, non_matching_prev_term, ae_rc);
+
+    int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
+                                  &rreply_msg);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
+                               strerror(rc));
+}
+
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request(struct raft_instance *ri,
                                            struct ctl_svc_node *sender_csn,
                                            const struct raft_rpc_msg *rrm)
@@ -2475,21 +2511,14 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
 
     DBG_RAFT_MSG(LL_DEBUG, rrm, "");
 
-    struct raft_rpc_msg rreply_msg = {0};
-
-    struct raft_append_entries_reply_msg *rae_reply =
-        &rreply_msg.rrm_append_entries_reply;
-
     const struct raft_append_entries_request_msg *raerq =
         &rrm->rrm_append_entries_request;
 
-    raft_server_process_append_entries_request_prep_reply(ri, &rreply_msg,
-                                                          raerq);
-
     if (raft_server_process_append_entries_request_validity_check(raerq))
     {
-        DBG_RAFT_MSG(LL_WARN, rrm,
-                     "raft_server_process_append_entries_request_validity_check() fails");
+        DBG_RAFT_MSG(
+            LL_WARN, rrm,
+            "raft_server_process_append_entries_request_validity_check() err");
         return;
     }
 
@@ -2500,6 +2529,8 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     // Candidate timer - reset if this operation is valid.
     bool reset_timerfd = true;
     bool fault_inject_ignore_ae = false;
+    bool stale_term = false;
+    bool non_matching_prev_term = false;
 
     int rc =
         raft_server_process_append_entries_term_check_ops(ri, sender_csn,
@@ -2508,11 +2539,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     {
         NIOVA_ASSERT(rc == -ESTALE);
         reset_timerfd = false;
-
-        /* raerpm_term was already set by
-         * raft_server_process_append_entries_request_prep_reply().
-         */
-        rae_reply->raerpm_err_stale_term = 1;
+        stale_term = true;
     }
     else
     {
@@ -2520,7 +2547,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         if (rc)
         {
             if (rc != -EALREADY)
-                rae_reply->raerpm_err_non_matching_prev_term = 1;
+                non_matching_prev_term = true;
         }
         else
         {
@@ -2538,16 +2565,13 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         }
     }
 
+    // Issue reply
+    if (!fault_inject_ignore_ae)
+        raft_server_append_entry_reply_send(ri, raerq, sender_csn, stale_term,
+                                            non_matching_prev_term, rc);
+
     if (reset_timerfd)
         raft_server_timerfd_settime(ri);
-
-    rc = fault_inject_ignore_ae
-        ? 0
-        : raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
-                               &rreply_msg);
-
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
-                               strerror(rc));
 }
 
 static raft_server_net_cb_leader_ctx_int64_t
@@ -2576,6 +2600,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
     self->rfi_next_idx = sync_hdr.reh_index + 1;
+    self->rfi_synced_idx = sync_hdr.reh_index + 1;
     self->rfi_prev_idx_term = sync_hdr.reh_term;
 
     /* Sort the group member's next-idx values - note that these are the NEXT
@@ -2592,9 +2617,9 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
 
             if (!done_peers[j] &&
                 (sorted_indexes[i] == RAFT_MIN_APPEND_ENTRY_IDX ||
-                 rfi->rfi_next_idx < sorted_indexes[i]))
+                 rfi->rfi_synced_idx < sorted_indexes[i]))
             {
-                sorted_indexes[i] = rfi->rfi_next_idx;
+                sorted_indexes[i] = rfi->rfi_synced_idx;
                 tmp_peer = j;
             }
         }
@@ -2685,13 +2710,11 @@ raft_server_apply_append_entries_reply_result(
 
     DBG_RAFT_INSTANCE(
         (raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
-        "follower=%x next-idx=%ld err=%hhx rp-pli=%ld la-ms=%lld",
-        follower_idx, rfi->rfi_next_idx,
+        "flwr=%x next-idx=%ld si=%ld err=%hhx rp-pli=%ld rp-si=%ld la-ms=%lld",
+        follower_idx, rfi->rfi_next_idx, rfi->rfi_synced_idx,
         raerp->raerpm_err_non_matching_prev_term,
-        raerp->raerpm_prev_log_index,
+        raerp->raerpm_prev_log_index, raerp->raerpm_synced_log_index,
         (timespec_2_msec(&rfi->rfi_last_ack) - timespec_2_msec(&la)));
-
-//XXX add la time to histogram
 
     /* Do not modify the rls->rls_next_idx[follower_idx] value unless the
      * reply corresponds to it.  This is to handle cases where replies get
@@ -2713,6 +2736,7 @@ raft_server_apply_append_entries_reply_result(
         return;
     }
 
+//XXX what about synced_idx here?
     if (raerp->raerpm_err_non_matching_prev_term)
     {
         if (rfi->rfi_next_idx > 0)
@@ -2721,18 +2745,28 @@ raft_server_apply_append_entries_reply_result(
             rfi->rfi_prev_idx_term = -1; //Xxx this needs to go into a function
         }
     }
-
-    // Heartbeats don't advance the follower index
-    else if (!raerp->raerpm_heartbeat_msg)
+    else
     {
-        rfi->rfi_prev_idx_term = -1;
-        rfi->rfi_next_idx++;
+        // Heartbeats don't advance the follower index
+        if (!raerp->raerpm_heartbeat_msg)
+        {
+            rfi->rfi_prev_idx_term = -1;
+            rfi->rfi_next_idx++;
 
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x new-next-idx=%ld",
-                          follower_idx, rfi->rfi_next_idx);
+            DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x new-next-idx=%ld",
+                              follower_idx, rfi->rfi_next_idx);
+        }
 
-        // Only called if the entry append was successful.
-        raft_server_leader_try_advance_commit_idx(ri);
+        if (rfi->rfi_synced_idx < raerp->raerpm_synced_log_index)
+        {
+            DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x new-sync-idx=%ld",
+                              follower_idx, rfi->rfi_synced_idx);
+
+            rfi->rfi_synced_idx = raerp->raerpm_synced_log_index;
+
+            // Only called if the follower's sync index has increased
+            raft_server_leader_try_advance_commit_idx(ri);
+        }
     }
 
     if ((rfi->rfi_next_idx - 1) <
@@ -3834,7 +3868,8 @@ raft_server_sync_thread(void *arg)
 
     THREAD_LOOP_WITH_CTL(tc)
     {
-        DBG_RAFT_INSTANCE(LL_DEBUG, "raft_server_has_unsynced_entries(): %d",
+        DBG_RAFT_INSTANCE(LL_DEBUG, ri,
+                          "raft_server_has_unsynced_entries(): %d",
                           raft_server_has_unsynced_entries(ri));
 
         if (raft_server_has_unsynced_entries(ri))

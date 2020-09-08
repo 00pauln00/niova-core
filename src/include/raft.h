@@ -120,6 +120,7 @@ struct raft_append_entries_reply_msg
 {
     int64_t  raerpm_leader_term;
     int64_t  raerpm_prev_log_index;
+    int64_t  raerpm_synced_log_index; // highest synchronized index
     uint64_t raerpm_term_seqno; // used for read-window'ing
     uint8_t  raerpm_heartbeat_msg;
     uint8_t  raerpm_err_stale_term;
@@ -230,6 +231,7 @@ struct raft_candidate_state
 struct raft_follower_info
 {
     int64_t            rfi_next_idx;
+    int64_t            rfi_synced_idx;
     int64_t            rfi_current_idx_term;
     int64_t            rfi_current_idx_crc;
     int64_t            rfi_prev_idx_term;
