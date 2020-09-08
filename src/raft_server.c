@@ -23,6 +23,7 @@
 #include "raft_net.h"
 #include "random.h"
 #include "registry.h"
+#include "thread.h"
 #include "util_thread.h"
 
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
@@ -37,6 +38,9 @@ enum raft_write_entry_opts
 };
 
 REGISTRY_ENTRY_FILE_GENERATE;
+
+#define RAFT_SEVER_SYNC_FREQ_US 4000
+typedef void * raft_server_sync_thread_t;
 
 static const char *
 raft_server_may_accept_client_request_reason(struct raft_instance *ri);
@@ -930,8 +934,10 @@ raft_server_backend_sync(struct raft_instance *ri)
     int rc = ri->ri_backend->rib_backend_sync ? 0 :
         ri->ri_backend->rib_backend_sync(ri);
 
-    // Copy the contents of the current unsynced header to the synced
-    raft_instance_update_newest_entry_hdr(ri, &unsync_reh, RI_NEHDR_SYNC);
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "rib_backend_sync(): %s", strerror(-rc));
+
+    if (!rc) // Copy the contents of the current unsynced header to the synced
+        raft_instance_update_newest_entry_hdr(ri, &unsync_reh, RI_NEHDR_SYNC);
 
     return rc;
 }
@@ -1753,8 +1759,9 @@ raft_server_leader_write_new_entry(
     raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len, opts,
                                  ws);
 
-    // Schedule ourselves to send this entry to the other members.
-    ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
+    if (raft_server_does_synchronous_writes(ri))
+        // Schedule ourselves to send this entry to the other members
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
 }
 
 static raft_server_udp_cb_leader_t
@@ -2548,6 +2555,9 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
                 raft_server_write_new_entry_from_leader(ri, raerq);
 
             /* Update our commit-idx based on the value sent from the leader.
+             * NOTE:  if synchronous mode is set then this will account for the
+             * the write performed above, otherwise, only the sync'd writes to
+             * this point are considered.
              */
             raft_server_advance_commit_idx(ri, raerq->raerqm_commit_index);
         }
@@ -3781,6 +3791,51 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
     return 0;
 }
 
+static raft_server_sync_thread_t
+raft_server_sync_thread(void *arg)
+{
+    struct thread_ctl *tc = arg;
+    struct raft_instance *ri = (struct raft_instance *)thread_ctl_get_arg(tc);
+
+    if (!ri->ri_sync_freq_us)
+        ri->ri_sync_freq_us = RAFT_SEVER_SYNC_FREQ_US;
+
+    thread_ctl_set_user_pause_usec(tc, ri->ri_sync_freq_us);
+
+    NIOVA_ASSERT(ri);
+
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        DBG_RAFT_INSTANCE(LL_DEBUG, "raft_server_has_unsynced_entries(): %d",
+                          raft_server_has_unsynced_entries(ri));
+
+        if (raft_server_has_unsynced_entries(ri))
+        {
+            raft_server_backend_sync_pending(ri);
+            ri->ri_sync_cnt++;
+        }
+    }
+
+    return (void *)0;
+}
+
+static int
+raft_server_sync_thread_start(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+    NIOVA_ASSERT(!raft_server_does_synchronous_writes(ri));
+
+    int rc = thread_create_watched(raft_server_sync_thread,
+                                   &ri->ri_sync_thread_ctl,
+                                   "sync_thread", (void *)ri, NULL);
+     if (rc)
+	return rc;
+
+    thread_ctl_run(&ri->ri_sync_thread_ctl);
+
+    return 0;
+}
+
 static int
 raft_server_instance_startup(struct raft_instance *ri)
 {
@@ -3829,6 +3884,16 @@ raft_server_instance_startup(struct raft_instance *ri)
 
         raft_server_instance_shutdown(ri);
         return rc;
+    }
+
+    if (!raft_server_does_synchronous_writes(ri))
+    {
+        rc = raft_server_sync_thread_start(ri);
+        if (rc)
+        {
+            raft_net_instance_shutdown(ri);
+            return rc;
+        }
     }
 
     return 0;
@@ -3884,6 +3949,8 @@ raft_server_main_loop(struct raft_instance *ri)
 
     return rc;
 }
+
+
 
 int
 raft_server_instance_run(const char *raft_uuid_str,
