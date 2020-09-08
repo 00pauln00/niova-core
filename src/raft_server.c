@@ -2038,6 +2038,8 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
     }
 
+//XXX if leader and followers still have sync ops pending, wake up at a higher
+//    frequency
     raft_server_timerfd_settime(ri);
 }
 
@@ -2565,7 +2567,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     // Candidate timer - reset if this operation is valid.
     bool reset_timerfd = true;
     bool stale_term = false;
-    bool  non_matching_prev_term = false;
+    bool non_matching_prev_term = false;
 
     int rc =
         raft_server_process_append_entries_term_check_ops(ri, sender_csn,
