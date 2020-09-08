@@ -92,6 +92,7 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_backend_setup     = rsbr_setup,
     .rib_backend_shutdown  = rsbr_destroy,
     .rib_sm_apply_opt      = rsbr_sm_apply_opt,
+    .rib_backend_sync      = NULL,
 };
 
 static inline struct raft_instance_rocks_db *
