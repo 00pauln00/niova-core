@@ -710,6 +710,10 @@ raft_server_entry_write(struct raft_instance *ri,
 
     niova_free(re);
 
+    if (raft_server_does_synchronous_writes(ri))
+        DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries()), ri,
+                                   "raft_server_has_unsynced_entries() fails");
+
     return 0;
 }
 
@@ -1654,7 +1658,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
     struct raft_entry_header sync_hdr;
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
-    // The server should have synced it state prior and not accepted new AE
+    // The server should have synced its state prior and not accepted new AE
     DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries(ri)), ri,
                                "raft_server_has_unsynced_entries() is true");
 
@@ -2060,7 +2064,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
 
     struct raft_rpc_msg rreply_msg = {0};
 
-    // Seems safer to make a decision based on the synced status of the log
+    // Make a decision based on the synced status of the log
     raft_server_backend_sync_pending(ri);
 
     struct raft_entry_header sync_hdr;
@@ -2302,6 +2306,7 @@ raft_server_append_entry_log_prepare_and_check(
     struct raft_entry_header reh;
     raft_instance_get_newest_header(ri, &reh, RI_NEHDR_UNSYNC);
 
+    // raft_server_follower_index_ahead_of_leader() may update reh
     int rc = (reh.reh_index > raerq->raerqm_prev_log_index) ?
         raft_server_follower_index_ahead_of_leader(ri, raerq, &reh) : 0;
 
@@ -3315,7 +3320,7 @@ raft_server_append_entry_should_send_to_follower(
     if (rfi->rfi_next_idx > sync_idx)
     {
         // May only be ahead by '1'
-        NIOVA_ASSERT(rfi->rfi_next_idx == sync_idx);
+        NIOVA_ASSERT(rfi->rfi_next_idx == sync_idx + 1);
         send_msg = false;
     }
 
