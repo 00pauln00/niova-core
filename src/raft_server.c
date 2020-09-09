@@ -962,7 +962,7 @@ raft_server_backend_sync_pending(struct raft_instance *ri)
 
     // Schedule the main thread to issue AE requests to followers
     if (unsynced_entries && !rc)
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
 }
 
 static int
@@ -1779,7 +1779,7 @@ raft_server_leader_write_new_entry(
 
     if (raft_server_does_synchronous_writes(ri))
         // Schedule ourselves to send this entry to the other members
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
 
     // else - the sync thread calls ev_pipe_notify()
 }
@@ -2022,7 +2022,7 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     raerq->raerqm_prev_idx_crc = rfi->rfi_prev_idx_crc;
 }
 
-static raft_server_epoll_ae_sender_t
+static raft_server_epoll_remote_sender_t
 raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat);
 
 static raft_net_timerfd_cb_ctx_t
@@ -2734,6 +2734,32 @@ raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
 }
 
 static raft_server_udp_cb_leader_ctx_t
+raft_server_try_update_follower_sync_idx(struct raft_instance *ri,
+                                         const raft_peer_t follower_idx,
+                                         const int64_t sync_idx,
+                                         const char *caller)
+{
+    NIOVA_ASSERT(ri && follower_idx != RAFT_PEER_ANY);
+
+    struct raft_follower_info *rfi =
+        raft_server_get_follower_info(ri, follower_idx);
+
+    NIOVA_ASSERT(rfi && rfi->rfi_synced_idx <= rfi->rfi_next_idx);
+
+    if (rfi->rfi_synced_idx < sync_idx)
+    {
+        rfi->rfi_synced_idx = sync_idx;
+
+         DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+                           "follower=%x new-sync-idx=%ld caller=%s",
+                           follower_idx, rfi->rfi_synced_idx, caller);
+
+        // if this request increases the remote's rfi_synced_idx..
+        raft_server_leader_try_advance_commit_idx(ri);
+    }
+}
+
+static raft_server_udp_cb_leader_ctx_t
 raft_server_apply_append_entries_reply_result(
     struct raft_instance *ri,
     const uuid_t follower_uuid,
@@ -2803,16 +2829,8 @@ raft_server_apply_append_entries_reply_result(
                               follower_idx, rfi->rfi_next_idx);
         }
 
-        if (rfi->rfi_synced_idx < raerp->raerpm_synced_log_index)
-        {
-            DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x new-sync-idx=%ld",
-                              follower_idx, rfi->rfi_synced_idx);
-
-            rfi->rfi_synced_idx = raerp->raerpm_synced_log_index;
-
-            // Only called if the follower's sync index has increased
-            raft_server_leader_try_advance_commit_idx(ri);
-        }
+        raft_server_try_update_follower_sync_idx(
+            ri, follower_idx, raerp->raerpm_synced_log_index, __func__);
     }
 
     if ((rfi->rfi_next_idx - 1) <
@@ -2821,7 +2839,7 @@ raft_server_apply_append_entries_reply_result(
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x still lags next-idx=%ld",
                           follower_idx, rfi->rfi_next_idx);
 
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
     }
 }
 
@@ -2853,6 +2871,29 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
     else
         raft_server_apply_append_entries_reply_result(ri, sender_csn->csn_uuid,
                                                       raerp);
+}
+
+static raft_server_udp_cb_ctx_t
+raft_server_process_sync_idx_update(struct raft_instance *ri,
+                                    struct ctl_svc_node *sender_csn,
+                                    const struct raft_rpc_msg *rrm)
+{
+    NIOVA_ASSERT(ri && sender_csn && rrm);
+    NIOVA_ASSERT(!ctl_svc_node_compare_uuid(sender_csn, rrm->rrm_sender_id));
+
+    if (!raft_instance_is_leader(ri))
+        return;
+
+    /* Ignore the message if the term does not match.  Note that this term is
+     * not for the sync'd index - it's the remote's current term value which
+     * should match this leader's term.
+     */
+    else if (rrm->rrm_sync_index_update.rsium_term != ri->ri_log_hdr.rlh_term)
+        return;
+
+    raft_server_try_update_follower_sync_idx(
+        ri, raft_peer_2_idx(ri, sender_csn->csn_uuid),
+        rrm->rrm_sync_index_update.rsium_synced_log_index, __func__);
 }
 
 /**
@@ -2887,6 +2928,9 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
 
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:
         return raft_server_process_append_entries_reply(ri, sender_csn, rrm);
+
+    case RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE:
+        return raft_server_process_sync_idx_update(ri, sender_csn, rrm);
 
     default:
         DBG_RAFT_MSG(LL_NOTIFY, rrm, "unhandled msg type %d", rrm->rrm_type);
@@ -3400,7 +3444,7 @@ raft_server_append_entry_should_send_to_follower(
     return send_msg;
 }
 
-static raft_server_epoll_ae_sender_t
+static raft_server_epoll_remote_sender_t
 raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 {
     NIOVA_ASSERT(ri);
@@ -3650,21 +3694,54 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         raft_server_reply_to_client(ri, &rncr);
 }
 
-static raft_server_epoll_ae_sender_t
-raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
+static raft_server_epoll_remote_sender_t
+raft_server_follower_send_sync_idx(struct raft_instance *ri)
+{
+    if (!ri || !raft_instance_is_follower(ri) ||
+        !raft_server_does_synchronous_writes(ri))
+        return;
+
+    // Extra check to ensure we don't send to ourselves
+    struct ctl_svc_node *leader = ri->ri_csn_leader;
+    if (leader == ri->ri_csn_this_peer)
+        return;
+
+    struct raft_entry_header reh;
+    raft_instance_get_newest_header(ri, &reh, RI_NEHDR_SYNC);
+
+    struct raft_rpc_msg rrm = {
+        .rrm_type = RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE,
+        .rrm_version = 0,
+        .rrm_sync_index_update.rsium_synced_log_index = reh.reh_index,
+        .rrm_sync_index_update.rsium_term = reh.reh_term,
+    };
+
+    uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
+    uuid_copy(rrm.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+
+    int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, leader, &rrm);
+    if (rc)
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %s",
+                          strerror(-rc));
+}
+
+static raft_server_epoll_remote_sender_t
+raft_server_remote_send_evp_cb(const struct epoll_handle *eph)
 {
     NIOVA_ASSERT(eph);
 
     FUNC_ENTRY(LL_DEBUG);
 
     struct raft_instance *ri = eph->eph_arg;
-    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_AE_SEND];
+    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND];
 
     NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
 
     EV_PIPE_RESET(evp); // reset prior to dequeuing work
 
-    raft_server_append_entry_sender(ri, false);
+    raft_instance_is_leader(ri) ?
+        raft_server_append_entry_sender(ri, false) :
+        raft_server_follower_send_sync_idx(ri);
 }
 
 static raft_server_epoll_sm_apply_t
@@ -3689,8 +3766,8 @@ raft_server_evp_2_cb_fn(enum raft_server_event_pipes evps)
 {
     switch (evps)
     {
-    case RAFT_SERVER_EVP_AE_SEND:
-        return raft_server_append_entry_sender_evp_cb;
+    case RAFT_SERVER_EVP_REMOTE_SEND:
+        return raft_server_remote_send_evp_cb;
     case RAFT_SERVER_EVP_SM_APPLY:
         return raft_server_sm_apply_evp_cb;
     default:
