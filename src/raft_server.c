@@ -39,7 +39,7 @@ enum raft_write_entry_opts
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define RAFT_SEVER_SYNC_FREQ_US 4000
+#define RAFT_SERVER_SYNC_FREQ_US 4000
 typedef void * raft_server_sync_thread_t;
 
 static const char *
@@ -916,6 +916,22 @@ raft_server_log_header_write_prep(struct raft_instance *ri,
     uuid_copy(ri->ri_log_hdr.rlh_voted_for, candidate);
 }
 
+static void
+raft_server_incorporate_latency_measurement(struct raft_instance *ri,
+                                            struct timespec start,
+                                            struct timespec end,
+                                            enum raft_instance_hist_types ht)
+{
+    struct binary_hist *bh =
+        &ri->ri_rihs[ht].rihs_bh;
+
+    const long long elapsed_usec =
+        (long long)(timespec_2_usec(&end) - timespec_2_usec(&start));
+
+    if (elapsed_usec > 0)
+        binary_hist_incorporate_val(bh, elapsed_usec);
+}
+
 /**
  * raft_server_backend_sync - reentrant function which can be called from the
  *    main raft thread and the sync-thread.
@@ -941,7 +957,15 @@ raft_server_backend_sync(struct raft_instance *ri)
     struct raft_entry_header unsync_reh;
     raft_instance_get_newest_header(ri, &unsync_reh, RI_NEHDR_UNSYNC);
 
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
+
     int rc = ri->ri_backend->rib_backend_sync(ri);
+
+    niova_unstable_clock(&io_op[1]);
+
+    raft_server_incorporate_latency_measurement(
+        ri, io_op[0], io_op[1], RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC);
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "rib_backend_sync(): %s", strerror(-rc));
 
@@ -3599,7 +3623,7 @@ raft_server_last_applied_increment(struct raft_instance *ri,
     ri->ri_last_applied_idx++;
     ri->ri_last_applied_cumulative_crc ^= reh->reh_crc;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "idx=%ld crc=%x",
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "idx=%ld crc=%x",
                       ri->ri_last_applied_idx, reh->reh_crc);
 }
 
@@ -3954,14 +3978,16 @@ raft_server_sync_thread(void *arg)
     struct raft_instance *ri = (struct raft_instance *)thread_ctl_get_arg(tc);
 
     if (!ri->ri_sync_freq_us)
-        ri->ri_sync_freq_us = RAFT_SEVER_SYNC_FREQ_US;
+        ri->ri_sync_freq_us = RAFT_SERVER_SYNC_FREQ_US;
 
-    thread_ctl_set_user_pause_usec(tc, ri->ri_sync_freq_us);
+//    thread_ctl_set_user_pause_usec(tc, ri->ri_sync_freq_us);
 
     NIOVA_ASSERT(ri);
 
     THREAD_LOOP_WITH_CTL(tc)
     {
+        usleep(ri->ri_sync_freq_us);
+        DBG_THREAD_CTL(LL_WARN, tc, "here");
         const bool has_unsynced_entries =
             raft_server_has_unsynced_entries(ri);
 
