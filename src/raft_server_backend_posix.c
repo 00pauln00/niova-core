@@ -146,9 +146,8 @@ rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re,
                  const struct raft_net_sm_write_supplements *unused)
 {
     NIOVA_ASSERT(ri && re);
-    NIOVA_ASSERT(!unused); // posix-backend does not support wr-supp
 
-    (void)unused;
+    (void)unused; // posix-backend does not support wr-supp
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
 
