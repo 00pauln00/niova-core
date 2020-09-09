@@ -585,8 +585,8 @@ raft_instance_update_newest_entry_hdr(
 
     pthread_mutex_lock(&ri->ri_newest_entry_mutex);
 
-    for (enum raft_instance_newest_entry_hdr_types i = RI_NEHDR_SYNC;
-         i < RI_NEHDR_ALL; i++)
+    for (enum raft_instance_newest_entry_hdr_types i = RI_NEHDR__START;
+         i < RI_NEHDR__END; i++)
     {
         if (type != RI_NEHDR_ALL && i != type)
             continue;
@@ -939,7 +939,7 @@ raft_server_backend_sync(struct raft_instance *ri)
 
     // Grab the unsync'd header contents
     struct raft_entry_header unsync_reh;
-    raft_instance_get_newest_header(ri, &unsync_reh, false);
+    raft_instance_get_newest_header(ri, &unsync_reh, RI_NEHDR_UNSYNC);
 
     int rc = ri->ri_backend->rib_backend_sync(ri);
 
@@ -955,11 +955,16 @@ raft_server_backend_sync(struct raft_instance *ri)
 static void
 raft_server_backend_sync_pending(struct raft_instance *ri)
 {
-    int rc = raft_server_has_unsynced_entries(ri) ?
-        raft_server_backend_sync(ri) : 0;
+    const bool unsynced_entries = raft_server_has_unsynced_entries(ri);
+
+    int rc = unsynced_entries ? raft_server_backend_sync(ri) : 0;
 
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
                                strerror(-rc));
+
+    // Schedule the main thread to issue AE requests to followers
+    if (unsynced_entries && !rc)
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
 }
 
 static int
@@ -1739,6 +1744,8 @@ raft_server_leader_write_new_entry(
     if (raft_server_does_synchronous_writes(ri))
         // Schedule ourselves to send this entry to the other members
         ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
+
+    // else - the sync thread calls ev_pipe_notify()
 }
 
 static raft_server_net_cb_leader_t
@@ -2054,7 +2061,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
     raft_server_backend_sync_pending(ri);
 
     struct raft_entry_header sync_hdr;
-    raft_instance_get_newest_header(ri, &sync_hdr, true);
+    raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
     /* Do some initialization on the reply message.
      */
@@ -3878,11 +3885,14 @@ raft_server_sync_thread(void *arg)
 
     THREAD_LOOP_WITH_CTL(tc)
     {
-        DBG_RAFT_INSTANCE(LL_DEBUG, ri,
-                          "raft_server_has_unsynced_entries(): %d",
-                          raft_server_has_unsynced_entries(ri));
+        const bool has_unsynced_entries =
+            raft_server_has_unsynced_entries(ri);
 
-        if (raft_server_has_unsynced_entries(ri))
+        DBG_RAFT_INSTANCE((has_unsynced_entries ? LL_DEBUG : LL_TRACE), ri,
+                          "raft_server_has_unsynced_entries(): %d",
+                          has_unsynced_entries);
+
+        if (has_unsynced_entries)
         {
             raft_server_backend_sync_pending(ri);
             ri->ri_sync_cnt++;
