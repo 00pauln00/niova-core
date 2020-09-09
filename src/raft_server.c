@@ -2403,11 +2403,19 @@ raft_server_process_append_entries_term_check_ops(
 
     // -- Sender's term is greater than or equal to my own --
 
-    // Demote myself if candidate.
-    if (ri->ri_state == RAFT_STATE_CANDIDATE)
+    // Demote myself if candidate
+    if (ri->ri_log_hdr.rlh_term <= raerq->raerqm_leader_term &&
+        ri->ri_state == RAFT_STATE_CANDIDATE)
         raft_server_becomes_follower(ri, raerq->raerqm_leader_term,
                                      sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
+
+    // Demote myself if stale leader
+    else if (ri->ri_log_hdr.rlh_term < raerq->raerqm_leader_term &&
+             ri->ri_state == RAFT_STATE_LEADER)
+        raft_server_becomes_follower(ri, raerq->raerqm_leader_term,
+                                     sender_csn->csn_uuid,
+                                     RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
 
     // Apply leader csn pointer.
     raft_server_set_leader_csn(ri, sender_csn);
