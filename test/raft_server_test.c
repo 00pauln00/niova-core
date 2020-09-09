@@ -485,7 +485,7 @@ rst_sm_handler_verify_request_and_set_type(
 static int
 raft_server_test_rst_sm_handler(struct raft_net_client_request_handle *rncr)
 {
-    if (!rncr || !rncr->rncr_request)
+    if (!rncr || !rncr->rncr_request_or_commit_data)
         return -EINVAL;
 
     // Check for the minimum space requirements here.
