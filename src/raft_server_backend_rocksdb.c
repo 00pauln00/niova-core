@@ -19,6 +19,9 @@
 #define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
 #define RAFT_LOG_HEADER_FMT RAFT_LOG_HEADER_ROCKSDB"%s__%s"
 
+#define RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC "a1_hdr.last_sync"
+#define RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC_STRLEN 16
+
 #define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB "a1_hdr.last_applied"
 #define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB_STRLEN 19
 
@@ -46,8 +49,8 @@ struct raft_instance_rocks_db
 {
     rocksdb_t                           *rir_db;
     rocksdb_options_t                   *rir_options;
-    rocksdb_writeoptions_t              *rir_writeoptions;
-    rocksdb_writeoptions_t              *rir_writeoptions_no_sync;
+    rocksdb_writeoptions_t              *rir_writeoptions_sync;
+    rocksdb_writeoptions_t              *rir_writeoptions_async;
     rocksdb_readoptions_t               *rir_readoptions;
     rocksdb_writebatch_t                *rir_writebatch;
     struct raft_server_rocksdb_cf_table *rir_cf_table;
@@ -82,6 +85,9 @@ static void
 rsbr_sm_apply_opt(struct raft_instance *,
                   const struct raft_net_sm_write_supplements *);
 
+static int
+rsbr_sync(struct raft_instance *);
+
 static struct raft_instance_backend ribRocksDB = {
     .rib_entry_write       = rsbr_entry_write,
     .rib_entry_read        = rsbr_entry_read,
@@ -92,7 +98,7 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_backend_setup     = rsbr_setup,
     .rib_backend_shutdown  = rsbr_destroy,
     .rib_sm_apply_opt      = rsbr_sm_apply_opt,
-    .rib_backend_sync      = NULL,
+    .rib_backend_sync      = rsbr_sync,
 };
 
 static inline struct raft_instance_rocks_db *
@@ -103,8 +109,8 @@ rsbr_ri_to_rirdb(struct raft_instance *ri)
     struct raft_instance_rocks_db *rir =
         (struct raft_instance_rocks_db *)ri->ri_backend_arg;
 
-    NIOVA_ASSERT(rir->rir_writeoptions && rir->rir_writebatch &&
-                 rir->rir_readoptions);
+    NIOVA_ASSERT(rir->rir_writeoptions_sync && rir->rir_writeoptions_async &&
+                 rir->rir_writebatch && rir->rir_readoptions);
 
     return rir;
 }
@@ -305,7 +311,7 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
      * The api may need to accept the write options from the SM at some point,
      * however, the sync WAL option generally be avoided here.
      */
-    rocksdb_write(rir->rir_db, rir->rir_writeoptions_no_sync,
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_async,
                   rir->rir_writebatch, &err);
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
@@ -357,8 +363,10 @@ rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
     rsbr_write_supplements_put(ws, rir->rir_writebatch);
 
     char *err = NULL;
-    rocksdb_write(rir->rir_db, rir->rir_writeoptions, rir->rir_writebatch,
-                  &err);
+    rocksdb_write(rir->rir_db,
+                  (raft_server_does_synchronous_writes(ri) ?
+                   rir->rir_writeoptions_sync : rir->rir_writeoptions_async),
+                  rir->rir_writebatch, &err);
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
 
@@ -513,7 +521,7 @@ rsbr_header_write(struct raft_instance *ri)
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
-    NIOVA_ASSERT(rir->rir_writeoptions && rir->rir_writebatch);
+    NIOVA_ASSERT(rir->rir_writeoptions_sync && rir->rir_writebatch);
     rocksdb_writebatch_clear(rir->rir_writebatch);
 
     size_t key_len;
@@ -536,7 +544,8 @@ rsbr_header_write(struct raft_instance *ri)
                            sizeof(struct raft_log_header));
 
     char *err = NULL;
-    rocksdb_write(rir->rir_db, rir->rir_writeoptions, rir->rir_writebatch,
+    // Log header writes are always synchronous
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync, rir->rir_writebatch,
                   &err);
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
@@ -647,7 +656,8 @@ rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
-    NIOVA_ASSERT(rir->rir_writeoptions && rir->rir_writebatch);
+    // Log truncate ops are always synchronous
+    NIOVA_ASSERT(rir->rir_writeoptions_sync && rir->rir_writebatch);
 
     rocksdb_writebatch_clear(rir->rir_writebatch);
 
@@ -662,12 +672,43 @@ rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
                                     RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN);
 
     char *err = NULL;
-    rocksdb_write(rir->rir_db, rir->rir_writeoptions, rir->rir_writebatch,
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync, rir->rir_writebatch,
                   &err);
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write(): %s", err);
 
     rocksdb_writebatch_clear(rir->rir_writebatch);
+}
+
+static int
+rsbr_sync(struct raft_instance *ri)
+{
+    if (!ri || !rsbr_ri_to_rirdb(ri))
+        return -EINVAL;
+
+    rocksdb_writebatch_t *wb = rocksdb_writebatch_create();
+    NIOVA_ASSERT(wb);
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    NIOVA_ASSERT(rir->rir_writeoptions_sync);
+
+    struct timespec ts;
+    niova_realtime_coarse_clock(&ts);
+
+    rocksdb_writebatch_put(wb,
+                           RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC,
+                           RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC_STRLEN,
+                           (const char *)&ts, sizeof(struct timespec));
+
+    char *err = NULL;
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync, wb, &err);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write(): %s", err);
+
+    rocksdb_writebatch_destroy(wb);
+
+    return 0;
 }
 
 static int
@@ -684,11 +725,11 @@ rsbr_destroy(struct raft_instance *ri)
     if (rir->rir_db)
         rocksdb_close(rir->rir_db);
 
-    if (rir->rir_writeoptions)
-        rocksdb_writeoptions_destroy(rir->rir_writeoptions);
+    if (rir->rir_writeoptions_sync)
+        rocksdb_writeoptions_destroy(rir->rir_writeoptions_sync);
 
-    if (rir->rir_writeoptions_no_sync)
-        rocksdb_writeoptions_destroy(rir->rir_writeoptions_no_sync);
+    if (rir->rir_writeoptions_async)
+        rocksdb_writeoptions_destroy(rir->rir_writeoptions_async);
 
     if (rir->rir_readoptions)
         rocksdb_readoptions_destroy(rir->rir_readoptions);
@@ -747,21 +788,21 @@ rsbr_setup(struct raft_instance *ri)
 
 //    rocksdb_options_set_use_direct_reads(rir->rir_options, 1);
 
-    rocksdb_options_set_use_direct_io_for_flush_and_compaction(
-        rir->rir_options, 1);
+//    rocksdb_options_set_use_direct_io_for_flush_and_compaction(
+//        rir->rir_options, 1);
 
-    rir->rir_writeoptions = rocksdb_writeoptions_create();
-    if (!rir->rir_writeoptions)
+    rir->rir_writeoptions_sync = rocksdb_writeoptions_create();
+    if (!rir->rir_writeoptions_sync)
     {
         rsbr_destroy(ri);
         return -ENOMEM;
     }
 
-    rocksdb_writeoptions_set_sync(rir->rir_writeoptions, 1);
+    rocksdb_writeoptions_set_sync(rir->rir_writeoptions_sync, 1);
 
     // Make a non-sync option as well.
-    rir->rir_writeoptions_no_sync = rocksdb_writeoptions_create();
-    if (!rir->rir_writeoptions_no_sync)
+    rir->rir_writeoptions_async = rocksdb_writeoptions_create();
+    if (!rir->rir_writeoptions_async)
     {
         rsbr_destroy(ri);
         return -ENOMEM;
@@ -785,6 +826,11 @@ rsbr_setup(struct raft_instance *ri)
 
     rocksdb_options_set_create_if_missing(rir->rir_options, 0);
     rocksdb_options_set_create_missing_column_families(rir->rir_options, 1);
+
+    /* See https://github.com/facebook/rocksdb/wiki/Atomic-flush
+     * Users of this backend are expected to use column families.
+     */
+//    rocksdb_options_set_atomic_flush(rir->rir_options, 1);
 
     struct raft_server_rocksdb_cf_table *cft = rir->rir_cf_table;
 
@@ -845,7 +891,11 @@ rsbr_setup(struct raft_instance *ri)
         if (ri->ri_entries_detected_at_startup < 0)
             rc = ri->ri_entries_detected_at_startup;
 
-        rsb_sm_get_last_applied_kv_idx(ri);
+        /* Applications which store their application data in RocksDB may
+         * bypass the entries which have already been applied.
+         */
+        if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP)
+            rsb_sm_get_last_applied_kv_idx(ri);
     }
 out:
     if (rc || err)
@@ -872,7 +922,9 @@ raft_server_backend_use_rocksdb(struct raft_instance *ri)
 rocksdb_t *
 raft_server_get_rocksdb_instance(struct raft_instance *ri)
 {
-    if (ri && ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB &&
+    if (ri &&
+        (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB ||
+         ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP) &&
         ri->ri_backend && ri->ri_backend_arg)
         return rsbr_ri_to_rocksdb(ri);
 
