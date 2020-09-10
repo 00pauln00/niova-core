@@ -924,7 +924,7 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     return raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                     pmdb_sm_handler,
-                                    RAFT_INSTANCE_STORE_ROCKSDB,
+                                    RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                     use_synchronous_writes, &pmdbCFT);
 }
 
