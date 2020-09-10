@@ -954,7 +954,7 @@ raft_server_backend_sync(struct raft_instance *ri)
     }
 
     // Grab the unsync'd header contents
-    struct raft_entry_header unsync_reh;
+    struct raft_entry_header unsync_reh = {0};
     raft_instance_get_newest_header(ri, &unsync_reh, RI_NEHDR_UNSYNC);
 
     struct timespec io_op[2];
@@ -1093,7 +1093,7 @@ raft_server_entry_next_entry_is_valid(struct raft_instance *ri,
     if (next_reh->reh_index < 0)
         return true;
 
-    struct raft_entry_header unsync_hdr;
+    struct raft_entry_header unsync_hdr = {0};
     raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
 
     /* A null UUID means ri_newest_entry_hdr is uninitialized, otherwise,
@@ -1531,7 +1531,7 @@ raft_server_become_candidate(struct raft_instance *ri)
                           strerror(-rc));
 
     // Get the latest entry header following the self-vote
-    struct raft_entry_header sync_hdr;
+    struct raft_entry_header sync_hdr = {0};
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
     struct raft_rpc_msg rrm = {
@@ -1666,7 +1666,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
     NIOVA_ASSERT(ri);
 
     // Grab the current sync header
-    struct raft_entry_header sync_hdr;
+    struct raft_entry_header sync_hdr = {0};
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
     // The server should have synced its state prior and not accepted new AE
@@ -1723,7 +1723,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              enum raft_write_entry_opts opts,
                              const struct raft_net_sm_write_supplements *ws)
 {
-    struct raft_entry_header unsync_hdr;
+    struct raft_entry_header unsync_hdr = {0};
     raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
 
     NIOVA_ASSERT(term >= unsync_hdr.reh_term);
@@ -2084,7 +2084,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
     // Make a decision based on the synced status of the log
     raft_server_backend_sync_pending(ri);
 
-    struct raft_entry_header sync_hdr;
+    struct raft_entry_header sync_hdr = {0};
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
     /* Do some initialization on the reply message.
@@ -2317,7 +2317,7 @@ raft_server_append_entry_log_prepare_and_check(
 {
     NIOVA_ASSERT(ri && raerq);
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, RI_NEHDR_UNSYNC);
 
     // raft_server_follower_index_ahead_of_leader() may update reh
@@ -2427,7 +2427,7 @@ raft_server_write_new_entry_from_leader(
     if (raerq->raerqm_heartbeat_msg) // heartbeats don't enter the log
         return;
 
-    struct raft_entry_header unsync_hdr;
+    struct raft_entry_header unsync_hdr = {0};
     raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
 
     NIOVA_ASSERT(raerq->raerqm_log_term > 0);
@@ -2634,7 +2634,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     struct raft_follower_info *self =
         raft_server_get_follower_info(ri, this_peer_num);
 
-    struct raft_entry_header sync_hdr;
+    struct raft_entry_header sync_hdr = {0};
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
     self->rfi_next_idx = sync_hdr.reh_index + 1;
@@ -3737,7 +3737,7 @@ raft_server_follower_send_sync_idx(struct raft_instance *ri)
     if (leader == ri->ri_csn_this_peer)
         return;
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, RI_NEHDR_SYNC);
 
     struct raft_rpc_msg rrm = {
@@ -3987,7 +3987,7 @@ raft_server_sync_thread(void *arg)
     THREAD_LOOP_WITH_CTL(tc)
     {
         usleep(ri->ri_sync_freq_us);
-        DBG_THREAD_CTL(LL_WARN, tc, "here");
+        DBG_THREAD_CTL(LL_TRACE, tc, "here");
         const bool has_unsynced_entries =
             raft_server_has_unsynced_entries(ri);
 
