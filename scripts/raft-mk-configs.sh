@@ -1,7 +1,7 @@
-#!/bin/sh
+#!/bin/bash
 
 NUM_SERVERS=5
-NUM_CLIENTS=3
+NUM_CLIENTS=20
 
 SERVER_STARTING_PORT=6000
 CLIENT_PORT_ADD=20
@@ -140,8 +140,10 @@ do
 IPADDR      127.0.0.1
 PORT        ${SERVER_STARTING_PORT}
 CLIENT_PORT $((${SERVER_STARTING_PORT}+${CLIENT_PORT_ADD}))
-STORE       /var/tmp/${RAFT_UUID}/${SERVER_UUID[${x}]}.raftdb" \
+STORE       ${DIR}/${x}/${RAFT_UUID}/${SERVER_UUID[${x}]}.raftdb" \
     >> $RAFT_DIR/${SERVER_UUID[${x}]}.peer
+
+    mkdir -p ${DIR}/${x}/${RAFT_UUID}/
 
     let SERVER_STARTING_PORT=${SERVER_STARTING_PORT}+1
     let x=$x+1
