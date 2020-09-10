@@ -716,7 +716,7 @@ raft_server_get_current_raft_entry_term(
     if (raft_instance_is_client(ri))
         return 0;
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, type);
 
     return reh.reh_term;
@@ -732,7 +732,7 @@ raft_server_get_current_raft_entry_data_size(
     if (raft_instance_is_client(ri))
         return 0;
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, type);
 
     return reh.reh_data_size;
@@ -748,7 +748,7 @@ raft_server_get_current_raft_entry_crc(
     if (raft_instance_is_client(ri))
         return 0;
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, type);
 
     return reh.reh_crc;
@@ -776,7 +776,7 @@ raft_server_get_current_raft_entry_index(
 
     raft_entry_idx_t current_reh_index = -1;
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, type);
 
     if (!raft_server_entry_header_is_null(&reh))
