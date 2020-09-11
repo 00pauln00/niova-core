@@ -468,6 +468,19 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
                                  user_arg, NULL);
 }
 
+int
+PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+              size_t key_size, char *value, size_t value_size,
+              pmdb_user_cb_t user_cb, void *user_arg,
+              struct pmdb_obj_stat *user_pmdb_stat)
+{
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
+
+    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
+                                 value_size, true, timeout, user_cb, user_arg,
+                                 user_pmdb_stat);
+}
+
 /**
  * pmdb_obj_id_cb - essential cb function which is passed into
  *    raft_client_init().  The role of this cb is to translate the private
