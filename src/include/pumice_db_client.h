@@ -40,6 +40,12 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
              size_t key_size, char *value, size_t value_size,
              pmdb_user_cb_t user_cb, void *user_arg);
 
+int
+PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+              size_t key_size, char *value, size_t value_size,
+              pmdb_user_cb_t user_cb, void *user_arg,
+              struct pmdb_obj_stat *user_pmdb_stat);
+
 pmdb_t
 PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
 
