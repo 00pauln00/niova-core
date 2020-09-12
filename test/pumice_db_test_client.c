@@ -394,23 +394,10 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
 
     raft_net_client_user_id_copy(&preq->preq_rncui, rncui);
 
-    if (!use_async_requests)
-    {
-        // Move request to the worker thread
-        NIOVA_SET_COND_AND_WAKE(
-            signal, {STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);},
-            &mutex, &cond);
-    }
-#if 0
-    else
-    {
-        switch (preq->preq_op)
-        {
-        case pmdb_op_lookup:
-
-        }
-    }
-#endif
+    // Move request to the worker thread
+    NIOVA_SET_COND_AND_WAKE(
+        signal, {STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);},
+        &mutex, &cond);
 
     return 0;
 }
@@ -771,10 +758,20 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
     {
         preq->preq_write_seqno++;
 
-        // Reinsert the operation onto the work queue.
-        niova_mutex_lock(&mutex);
-        STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);
-        niova_mutex_unlock(&mutex);
+        if (use_async_requests)
+        {
+            // Move request to the worker thread
+            NIOVA_SET_COND_AND_WAKE(
+            signal, {STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);},
+            &mutex, &cond);
+        }
+        else
+        {
+            // Reinsert the operation onto the work queue.
+            niova_mutex_lock(&mutex);
+            STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);
+            niova_mutex_unlock(&mutex);
+        }
     }
     else
     {
