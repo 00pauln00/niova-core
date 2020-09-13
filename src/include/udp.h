@@ -77,4 +77,6 @@ ssize_t
 udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
                 const size_t iovlen, const struct sockaddr_in *to);
 
+ssize_t
+udp_get_max_size();
 #endif

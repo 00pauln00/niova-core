@@ -13,6 +13,7 @@
 #include "epoll_mgr.h"
 #include "env.h"
 #include "ctor.h"
+#include "util.h"
 
 static size_t epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
 
@@ -31,6 +32,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     if (epm->epm_epfd < 0)
         return -errno;
 
+    epm->epm_waiting = 0;
     epm->epm_ready = 1;
 
     return 0;
@@ -52,7 +54,7 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *), void *arg)
+                  epoll_mgr_cb_t cb, epoll_mgr_cb_t getput, void *arg)
 {
     if (!eph || !cb)
         return -EINVAL;
@@ -60,11 +62,12 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     else if (fd < 0)
         return -EBADF;
 
-    eph->eph_installed = 0;
-    eph->eph_fd        = fd;
-    eph->eph_events    = events;
-    eph->eph_cb        = cb;
-    eph->eph_arg       = arg;
+    eph->eph_installed    = 0;
+    eph->eph_fd           = fd;
+    eph->eph_events       = events;
+    eph->eph_cb           = cb;
+    eph->eph_owner_getput = getput;
+    eph->eph_arg          = arg;
 
     return 0;
 }
@@ -84,15 +87,17 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
-    if (!rc)
+    if (rc < 0)
     {
-        const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
-        NIOVA_ASSERT(num_handles > 0);
-
-        eph->eph_installed = 1;
+        return -errno;
     }
 
-    return rc;
+    const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
+    NIOVA_ASSERT(num_handles > 0);
+
+    eph->eph_installed = 1;
+
+    return 0;
 }
 
 int
@@ -121,6 +126,26 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
     return rc;
 }
 
+/* This version of epoll_handle_del should be used in destructors that
+ * destroy the eph. Waits until epoll is guaranteed to be done with eph.
+ */
+int
+epoll_handle_del_wait(struct epoll_mgr *epm, struct epoll_handle *eph)
+{
+    int rc = epoll_handle_del(epm, eph);
+    if (rc)
+        return rc;
+
+    struct timespec ts;
+    msec_2_timespec(&ts, 100);
+
+    // ensure all handle events have been processed before returning
+    while (epm->epm_waiting)
+        nanosleep(&ts, NULL);
+
+    return 0;
+}
+
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 {
@@ -132,8 +157,13 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     struct epoll_event evs[maxevents];
 
+    // epoll_wait may return epoll handles, so don't remove attached objects
+    epm->epm_waiting = 1;
+
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
+
+    SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): %d", nevents);
 
     if (nevents < 0)
         return -errno;
@@ -141,10 +171,26 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
+        if (eph->eph_installed && eph->eph_owner_getput)
+            eph->eph_owner_getput(eph, 0);
+    }
+    epm->epm_waiting = 0;
+
+    for (int i = 0; i < nevents; i++)
+    {
+        struct epoll_handle *eph = evs[i].data.ptr;
+        SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
 
         if (eph->eph_installed && eph->eph_cb)
-            eph->eph_cb(eph);
+            eph->eph_cb(eph, evs[i].events);
+
+        /*
+        if (eph->eph_installed && eph->eph_owner_getput)
+            eph->eph_owner_getput(eph, 1);
+            */
     }
+
+    epm->epm_waiting = 0;
 
     return nevents;
 }

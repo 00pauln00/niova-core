@@ -569,7 +569,7 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 }
 
 static util_thread_ctx_t
-lreg_util_thread_cb(const struct epoll_handle *eph)
+lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
 
