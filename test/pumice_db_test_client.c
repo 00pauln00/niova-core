@@ -762,8 +762,8 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
         {
             // Move request to the worker thread
             NIOVA_SET_COND_AND_WAKE(
-            signal, {STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);},
-            &mutex, &cond);
+                signal, {STAILQ_INSERT_TAIL(&preqQueue, preq, preq_lentry);},
+                &mutex, &cond);
         }
         else
         {
@@ -807,7 +807,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
-        if (use_async_requests)
+        if (!use_async_requests)
         {
             rc = PmdbObjLookup(pmdbtcPMDB, obj_id, &preq->preq_obj_stat);
             pmdbtc_result_capture(preq, rc);
@@ -819,7 +819,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         }
         break;
     case pmdb_op_read:
-        if (use_async_requests)
+        if (!use_async_requests)
         {
             rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
                              (char *)&preq->preq_rtdb,
@@ -839,7 +839,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         break;
     case pmdb_op_write:
         pmdbtc_write_prep(preq);
-        if (use_async_requests)
+        if (!use_async_requests)
         {
             rc = PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
                             (sizeof(struct raft_test_data_block) +
@@ -859,7 +859,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         break;
     }
 
-    if (use_async_requests)
+    if (!use_async_requests)
         pmdbtc_request_complete(preq, rc);
 
     return rc;
