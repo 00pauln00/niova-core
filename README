@@ -1,6 +1,0 @@
-Raft testing:
-make raft-dbg; rm /tmp/*.peer; killall gnome-terminal-server; killall -9 gdb; NIOVA_LOG_LEVEL=5 scripts/raft-launch-servers-in-terminal.sh -w -s 0 -e 2 `scripts/raft-mk-configs.sh /tmp
-
-Usage: ./raft-server [-R (use-rocksDB-backend)] -r <UUID> -u <UUID>
-
-NIOVA_LOCAL_CTL_SVC_DIR=<dir> bash ./scripts/start_client.sh

@@ -1121,11 +1121,6 @@ raft_server_broadcast_msg(struct raft_instance *ri,
 
         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
         SIMPLE_LOG_MSG(LL_NOTIFY, "raft_server_send_msg(): %d", rc);
-
-/*      XXX if node refuses connection, what should we do?
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                   "raft_server_send_msg(): %s", strerror(rc));
-                                   */
     }
 }
 
@@ -2799,7 +2794,6 @@ raft_server_client_recv_ignore_request(
         }
         else
         {
-            // XXX can we determine if it was a TCP request?
             cause = "CSN required";
             ignore_request = true;
         }
@@ -3049,7 +3043,6 @@ raft_server_append_entry_should_send_to_follower(
                                    RAFT_COMM_RECENCY_UNACKED_SEND,
                                    &since_last_unacked);
     if (rc == -EALREADY) {
-        // XXX will this prevent the server from ever trying to connect?
         return false;
     }
     NIOVA_ASSERT(!rc);
@@ -3192,7 +3185,6 @@ raft_server_net_client_request_init_sm_apply(
 {
     NIOVA_ASSERT(ri && rncr && commit_data);
 
-    // XXX is rncr->csn = null ok?
     raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_COMMIT, NULL,
                                         NULL, commit_data, commit_data_size,

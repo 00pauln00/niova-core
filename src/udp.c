@@ -14,7 +14,7 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static int udpDefaultPort = NIOVA_DEFAULT_UDP_PORT;
-static ssize_t maxUdpSize = 50; // NIOVA_MAX_UDP_SIZE;
+static ssize_t maxUdpSize = NIOVA_MAX_UDP_SIZE;
 
 int
 udp_get_default_port(void)
