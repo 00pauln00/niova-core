@@ -157,7 +157,7 @@ struct raft_client_request_handle
     size_t                     rcrh_reply_used_size;
     size_t                     rcrh_reply_size;
     uint64_t                   rcrh_rpc_app_seqno;
-    struct raft_client_rpc_msg rcrh_rpc_request;
+    struct raft_client_rpc_msg rcrh_rpc_request; // XXX should this be at the end of struct? rcrm_data is variable length
     uint8_t                    rcrh_send_niovs;
     uint8_t                    rcrh_recv_niovs;
     struct iovec               rcrh_iovs[RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS];
@@ -1006,9 +1006,9 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     while ((sa = STAILQ_FIRST(&expiredq)))
     {
         STAILQ_REMOVE_HEAD(&expiredq, rcsa_lentry);
-        (int)raft_client_sub_app_cancel_pending_req(rci, sa, true,
-                                                    -ETIMEDOUT,
-                                                    __func__, __LINE__);
+        raft_client_sub_app_cancel_pending_req(rci, sa, true,
+                                               -ETIMEDOUT,
+                                               __func__, __LINE__);
 
         raft_client_sub_app_put(rci, sa, __func__, __LINE__);
     }
@@ -1110,7 +1110,7 @@ raft_client_instance_progress_leader_info(
         rci->rci_leader_csn = sender_csn;
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_client_process_ping_reply(struct raft_client_instance *rci,
                                const struct raft_client_rpc_msg *rcrm,
                                const struct ctl_svc_node *sender_csn)
@@ -1139,7 +1139,7 @@ raft_client_process_ping_reply(struct raft_client_instance *rci,
     }
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
                                         const struct raft_client_rpc_msg *rcrm,
                                         const struct sockaddr_in *from)
@@ -1154,8 +1154,9 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
                                             rcrm->rcrm_redirect_id,
                                             raftClientStaleServerTimeMS);
 
-    DBG_RAFT_CLIENT_RPC((rc ? LL_NOTIFY : LL_DEBUG), rcrm, from,
-                        "raft_net_apply_leader_redirect(): %s", strerror(-rc));
+    DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_NOTIFY : LL_DEBUG), rcrm, from,
+                             "raft_net_apply_leader_redirect(): %s",
+                             strerror(-rc));
 }
 
 static int
@@ -1301,7 +1302,7 @@ raft_client_request_cancel(raft_client_instance_t client_instance,
     /* Error code can be ignored here since this function has it's own
      * reference.
      */
-    (int)raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED,
+    raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED,
                                                 __func__, __LINE__);
 
     raft_client_sub_app_put(rci, sa, __func__, __LINE__);
@@ -1428,7 +1429,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     return raft_client_request_submit_enqueue(rci, sa, &now);
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
                                         const struct raft_client_sub_app *sa,
                                         const struct sockaddr_in *from)
@@ -1467,7 +1468,7 @@ raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
     }
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_client_reply_try_complete(struct raft_client_instance *rci,
                                const struct raft_client_rpc_msg *rcrm,
                                const struct sockaddr_in *from)
@@ -1482,8 +1483,8 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
     int rc = rci->rci_obj_id_cb(rcrm->rcrm_data, rcrm->rcrm_data_size, &rncui);
     if (rc)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "rci_obj_id_cb(): %s",
-                            strerror(rc));
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from, "rci_obj_id_cb(): %s",
+                                 strerror(rc));
         return;
     }
 
@@ -1587,7 +1588,7 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
 /**
  * raft_client_udp_recv_handler_process_reply - handler for non-ping replies.
  */
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_client_udp_recv_handler_process_reply(
     struct raft_client_instance *rci, const struct raft_client_rpc_msg *rcrm,
     const struct ctl_svc_node *sender_csn, const struct sockaddr_in *from)
@@ -1596,13 +1597,14 @@ raft_client_udp_recv_handler_process_reply(
 
     if (sender_csn != RCI_2_RI(rci)->ri_csn_leader)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "reply is not from leader");
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
+                                 "reply is not from leader");
         return;
     }
     else if (rcrm->rcrm_sys_error)
     {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "sys-err=%s",
-                            strerror(-rcrm->rcrm_sys_error));
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from, "sys-err=%s",
+                                 strerror(-rcrm->rcrm_sys_error));
         return;
     }
 
@@ -1612,61 +1614,59 @@ raft_client_udp_recv_handler_process_reply(
 }
 
 /**
- * raft_client_udp_recv_handler - callback which is registered with the raft
- *    net subsystem.  It's issued each time a UDP msg arrives on this node's
- *    listener socket.  raft_client_udp_recv_handler() handles 3 types of
+ * raft_client_recv_handler - callback which is registered with the raft
+ *    net subsystem.  It's issued each time a msg arrives on this node's
+ *    listener socket.  raft_client_recv_handler() handles 3 types of
  *    messages at this time:
  *    - RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY
  *    - RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT
  *    - RAFT_CLIENT_RPC_MSG_TYPE_REPLY
  */
-static raft_net_udp_cb_ctx_t
-raft_client_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
-                             ssize_t recv_bytes,
-                             const struct sockaddr_in *from)
-{
-    if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
-        return;
+static raft_net_cb_ctx_t
+raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
+                         ssize_t recv_bytes, const struct sockaddr_in *from) {
+  if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
+      recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
+    return;
 
-    struct raft_client_instance *rci =
-        raft_client_raft_instance_to_client_instance(ri);
+  struct raft_client_instance *rci =
+      raft_client_raft_instance_to_client_instance(ri);
 
-    const struct raft_client_rpc_msg *rcrm =
-        (const struct raft_client_rpc_msg *)recv_buffer;
+  const struct raft_client_rpc_msg *rcrm =
+      (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *sender_csn =
-        raft_net_verify_sender_server_msg(ri, rcrm->rcrm_sender_id,
-                                          rcrm->rcrm_raft_id, from);
-    if (!sender_csn)
-        return;
+  struct ctl_svc_node *sender_csn = raft_net_verify_sender_server_msg(
+      ri, rcrm->rcrm_sender_id, rcrm->rcrm_raft_id, from);
+  if (!sender_csn)
+    return;
 
-    DBG_RAFT_CLIENT_RPC(
-        (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG), rcrm, from, "%s",
-        rcrm->rcrm_sys_error ?
-        // Xxx rcrm_sys_error should replaced here with rcrm_raft_error
-        raft_net_client_rpc_sys_error_2_string(rcrm->rcrm_sys_error) : "");
+  DBG_RAFT_CLIENT_RPC_SOCK(
+      (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG), rcrm, from, "%s",
+      rcrm->rcrm_sys_error
+          ?
+          // Xxx rcrm_sys_error should replaced here with rcrm_raft_error
+          raft_net_client_rpc_sys_error_2_string(rcrm->rcrm_sys_error)
+          : "");
 
-    raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
+  raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
 
-    /* Copy the last_recv timestamp taken above.  This is used to track
-     * the liveness of the raft cluster.
-     */
-    int rc = raft_net_comm_get_last_recv(ri, rcrm->rcrm_sender_id,
-                                         &rci->rci_last_msg_recvd);
+  /* Copy the last_recv timestamp taken above.  This is used to track
+   * the liveness of the raft cluster.
+   */
+  int rc = raft_net_comm_get_last_recv(ri, rcrm->rcrm_sender_id,
+                                       &rci->rci_last_msg_recvd);
 
-    FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
+  FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
 
-    if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
-        raft_client_process_ping_reply(rci, rcrm, sender_csn);
+  if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
+    raft_client_process_ping_reply(rci, rcrm, sender_csn);
 
-    else if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT)
-        raft_client_update_leader_from_redirect(rci, rcrm, from);
+  else if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT)
+    raft_client_update_leader_from_redirect(rci, rcrm, from);
 
-    else if (!rcrm->rcrm_sys_error &&
-             rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
-        raft_client_udp_recv_handler_process_reply(rci, rcrm, sender_csn,
-                                                   from);
+  else if (!rcrm->rcrm_sys_error &&
+           rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
+    raft_client_udp_recv_handler_process_reply(rci, rcrm, sender_csn, from);
 }
 
 /**
@@ -1822,7 +1822,7 @@ raft_client_rpc_sender(struct raft_client_instance *rci, struct ev_pipe *evp)
 }
 
 static raft_client_epoll_t
-raft_client_evp_cb(const struct epoll_handle *eph)
+raft_client_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph && eph->eph_arg);
 
@@ -2365,7 +2365,8 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     raft_client_instance_init(rci, ri, obj_id_cb);
 
     raft_net_instance_apply_callbacks(ri, raft_client_timerfd_cb,
-                                      raft_client_udp_recv_handler, NULL);
+                                      raft_client_recv_handler,
+                                      raft_client_recv_handler);
 
     int rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
                                    "raft_client", (void *)rci, NULL);

@@ -2621,6 +2621,10 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
             num_acked_within_window++;
     }
 
+    SIMPLE_LOG_MSG(LL_DEBUG,
+            "num_acked_within_window: %lu required: %d (%d peers)",
+            num_acked_within_window, num_raft_peers /2 + 1, num_raft_peers);
+
     return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
         true : false;
 }
@@ -2855,7 +2859,7 @@ raft_server_net_client_request_init(
          * function is called from raft_net_udp_cb_ctx_t context.
          */
         raft_net_client_request_handle_set_reply_info(
-            rncr, from, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
+            rncr, csn, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
 
         NIOVA_ASSERT(raft_net_client_request_handle_has_reply_info(rncr));
     }
@@ -2941,7 +2945,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     int rc = raft_server_may_accept_client_request(ri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message");
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message, rc=%d", rc);
         raft_server_udp_client_deny_request(ri, &rncr, rc);
         goto out;
     }

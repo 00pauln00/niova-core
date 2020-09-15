@@ -544,13 +544,16 @@ static inline bool
 raft_net_client_request_handle_has_reply_info(
     const struct raft_net_client_request_handle *rncr)
 {
-    return (!rncr ||
-            rncr->rncr_remote_csn != NULL ||
-            uuid_is_null(rncr->rncr_client_uuid) ||
-            rncr->rncr_msg_id == ID_ANY_64bit ||
-            rncr->rncr_msg_id == 0 ||
-            rncr->rncr_reply_data_max_size == 0 ||
-            rncr->rncr_reply == NULL) ? false : true;
+    bool doesnt_have_info =
+        (!rncr ||
+        rncr->rncr_remote_csn == NULL ||
+        uuid_is_null(rncr->rncr_client_uuid) ||
+        rncr->rncr_msg_id == ID_ANY_64bit ||
+        rncr->rncr_msg_id == 0 ||
+        rncr->rncr_reply_data_max_size == 0 ||
+        rncr->rncr_reply == NULL);
+
+    return !doesnt_have_info;
 }
 
 static inline char *

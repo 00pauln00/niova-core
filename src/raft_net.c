@@ -844,11 +844,15 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-    if (!ri || !ri->ri_csn_leader || !iov || !niovs)
+    if (!ri || !iov || !niovs)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "iov %p niovs %ld", iov, niovs);
         return -EINVAL;
-
+    }
     else if (niovs > 256)
+    {
         return -EMSGSIZE;
+    }
 
     struct raft_net_tcp_connection *rntc = raft_net_tcp_connection_get(ri, csn,
                                                                        1);
@@ -870,9 +874,10 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs,
                   const enum raft_udp_listen_sockets sock_src)
 {
-    size_t msg_size = 0;
-    for (struct iovec *t = iov; t; t++)
-        msg_size += iov->iov_len;
+    size_t msg_size = io_iovs_total_size_get(iov, niovs);
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "msg_size: %ld udp max: %ld tcp max: %ld",
+                   msg_size, udp_get_max_size(), tcp_get_max_size());
 
     if (msg_size > RAFT_NET_MAX_RPC_SIZE)
         return -E2BIG;
@@ -882,9 +887,6 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
         DBG_CTL_SVC_NODE(LL_DEBUG, csn, "net_ctl_can_send() is false");
         size_rc = msg_size;
     } else {
-        SIMPLE_LOG_MSG(LL_DEBUG, "msg_size: %ld udp max: %ld tcp max: %ld",
-                       msg_size, udp_get_max_size(), tcp_get_max_size());
-
         if (msg_size <= udp_get_max_size())
             size_rc = raft_net_send_udp(ri, csn, iov, niovs,
                                         sock_src);
@@ -894,7 +896,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
             size_rc = -E2BIG;
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_send_msg(): size_rc=%zu msg_size=%zu",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_send_msg(): size_rc=%ld msg_size=%zu",
                    size_rc, msg_size);
     if (size_rc == msg_size)
         raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
@@ -909,7 +911,12 @@ raft_net_send_client_msg(struct raft_instance *ri,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     if (!ri || !ri->ri_csn_leader || !rcrm)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "ri %p ldr %p rcrm %p", ri,
+                       ri ? ri->ri_csn_leader : 0, rcrm);
+
         return -EINVAL;
+    }
 
     struct iovec iov = {
         .iov_len = sizeof(struct raft_client_rpc_msg) + rcrm->rcrm_data_size,
