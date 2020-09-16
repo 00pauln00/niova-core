@@ -66,7 +66,8 @@ static int raftClientSubAppMax = RAFT_CLIENT_MAX_SUB_APP_INSTANCES;
 static unsigned long long raftClientTimerFDExpireMS =
     RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
-#define RAFT_CLIENT_REQUEST_RATE_PER_SEC 1000
+//XXX there's a bug when setting this value low enough that it hits 0
+#define RAFT_CLIENT_REQUEST_RATE_PER_SEC 10000
 static size_t raftClientRequestRatePerSec = RAFT_CLIENT_REQUEST_RATE_PER_SEC;
 
 #define RAFT_CLIENT_STALE_SERVER_TIME_MS \
@@ -208,14 +209,16 @@ raft_client_sub_app_2_msg_tag(const struct raft_client_sub_app *sa)
         __uuid_str);                                                    \
     LOG_MSG(                                                            \
         log_level,                                                      \
-        "sa@%p %s.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c e=%d " \
+        "sa@%p %s.%lx.%lx.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c e=%d " \
         fmt,                                                            \
         sa,  __uuid_str,                                                \
         RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 2),      \
         RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 3),      \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 4),      \
+        RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 5),      \
         raft_client_sub_app_2_msg_id(sa),                               \
         (sa)->rcsa_rh.rcrh_num_sends,                                   \
-        (sa)->rcsa_rtentry.rbe_ref_cnt,                                 \
+        (sa)->rcsa_rtentry.rte_ref_cnt,                                 \
         (sa)->rcsa_rh.rcrh_blocking      ? 'b' : '-',                   \
         (sa)->rcsa_rh.rcrh_cancel        ? 'c' : '-',                   \
         (sa)->rcsa_rh.rcrh_cb_exec       ? 'e' : '-',                   \
@@ -615,8 +618,6 @@ raft_client_op_history_add_item(struct raft_client_instance *rci,
 
     struct raft_client_sub_app_req_history *rh = &rci->rci_recent_ops[type];
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, item, "history-type=%d", type);
-
     const size_t idx =
         niova_atomic_fetch_and_inc(&rh->rcsarh_cnt) % rh->rcsarh_size;
 
@@ -965,7 +966,6 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         STAILQ_HEAD_INITIALIZER(expiredq);
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
-
 
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)

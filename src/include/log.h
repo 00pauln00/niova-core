@@ -141,7 +141,7 @@ do {                                                              \
     {                                                             \
         struct timespec ts;                                       \
         niova_unstable_clock(&ts);                                \
-        fprintf(stderr, "<%ld.%lu:%s:%s:%s@%d> " message "\n",    \
+        fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",    \
                 ts.tv_sec, ts.tv_nsec,                            \
                 ll_to_string(level), thread_name_get(), __func__, \
                 __LINE__, ##__VA_ARGS__);                         \

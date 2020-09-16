@@ -223,7 +223,7 @@ ctl_svc_node_to_string(const struct ctl_svc_node *csn)
     uuid_unparse((csn)->csn_uuid, __uuid_str);             \
     LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt, \
             (csn), ctl_svc_node_type((csn)), __uuid_str,   \
-            (csn)->csn_rtentry.rbe_ref_cnt,                \
+            (csn)->csn_rtentry.rte_ref_cnt,                \
             (ctl_svc_node_is_peer((csn)) ?                 \
              (csn)->csn_peer.csnp_store : NULL),           \
             ##__VA_ARGS__);                                \
@@ -235,7 +235,7 @@ ctl_svc_node_to_string(const struct ctl_svc_node *csn)
     uuid_unparse((csn)->csn_uuid, __uuid_str);                    \
     SIMPLE_LOG_MSG(log_level, "csn@%p %c %s ref=%d store=%s "fmt, \
                    (csn), ctl_svc_node_type((csn)), __uuid_str,   \
-                   (csn)->csn_rtentry.rbe_ref_cnt,                \
+                   (csn)->csn_rtentry.rte_ref_cnt,                \
                    (ctl_svc_node_is_peer((csn)) ?                 \
                     (csn)->csn_peer.csnp_store : NULL),           \
                    ##__VA_ARGS__);                                \

@@ -42,7 +42,7 @@ struct vblkdev_handle
     spinlock_t               vbh_lock;
 };
 
-#define VBH_TO_REF_CNT(vbh) (vbh)->vbh_tentry.rbe_ref_cnt
+#define VBH_TO_REF_CNT(vbh) (vbh)->vbh_tentry.rte_ref_cnt
 
 #define DBG_VBLKDEV_HNDL(log_level, vbh, fmt, ...)         \
     LOG_MSG(log_level, "vbh@%p %zx:%zx ref=%d "fmt, (vbh), \

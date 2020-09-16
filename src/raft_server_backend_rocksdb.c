@@ -784,6 +784,7 @@ rsbr_setup(struct raft_instance *ri)
 
     rocksdb_options_set_create_if_missing(rir->rir_options, 0);
     rocksdb_options_set_create_missing_column_families(rir->rir_options, 1);
+    rocksdb_options_set_atomic_flush(rir->rir_options, 1);
 
     struct raft_server_rocksdb_cf_table *cft = rir->rir_cf_table;
 
