@@ -137,6 +137,8 @@
         elm->field.rbe_ref_cnt = head->initial_ref_cnt;              \
         struct type *already = RB_INSERT(_RT_##name, &head->rt_head, \
                                          elm);                       \
+        if (already)                                                 \
+            already->field.rbe_ref_cnt++;                            \
         pthread_mutex_unlock(&head->mutex);                          \
                                                                      \
         if (already)                                                 \
