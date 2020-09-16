@@ -80,6 +80,12 @@ ref_tree_tests(void)
         }
     }
 
+    struct test_entry *te;
+    RT_FOREACH_LOCKED(te, ref_tree_test_head, &test_rt)
+    {
+        NIOVA_ASSERT(te->te_tentry.rbe_ref_cnt == N_ITERATIONS);
+    }
+
     for (i = 0; i < N_ITERATIONS; i++)
     {
         int j;
