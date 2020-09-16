@@ -181,13 +181,14 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
         struct epoll_handle *eph = evs[i].data.ptr;
         SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
 
+        // save eph_put in case eph is destroyed in cb
+        epoll_mgr_cb_t eph_put = eph ? eph->eph_owner_getput : NULL;
+
         if (eph->eph_installed && eph->eph_cb)
             eph->eph_cb(eph, evs[i].events);
 
-        /*
-        if (eph->eph_installed && eph->eph_owner_getput)
-            eph->eph_owner_getput(eph, 1);
-            */
+        if (eph_put)
+            eph_put(eph, 1);
     }
 
     epm->epm_waiting = 0;
