@@ -14,6 +14,13 @@ static ssize_t maxTcpSize = NIOVA_MAX_TCP_SIZE;
 
 static int tcpDefaultPort = NIOVA_DEFAULT_TCP_PORT;
 
+int
+tcp_get_default_port(void)
+{
+    return tcpDefaultPort;
+}
+
+
 ssize_t
 tcp_get_max_size()
 {
@@ -207,7 +214,7 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
         .msg_flags = MSG_WAITALL,
     };
 
-    ssize_t rc = recvmsg(socket, &msg, block ? 0 : MSG_DONTWAIT);
+    ssize_t rc = recvmsg(socket, &msg, block ? MSG_WAITALL : MSG_DONTWAIT);
     if (rc < 0)
     {
         rc = -errno;

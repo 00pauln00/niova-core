@@ -63,7 +63,7 @@ static bool sequentialIO = false;
 static size_t epollCbExecCnt;
 
 static void
-epollCb(const struct epoll_handle *eph)
+epollCb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
     NIOVA_ASSERT(eph == &epollHandle);
@@ -474,7 +474,7 @@ prepare_epoll(struct niosd_device *ndev)
     int fd = nioctx_blocking_mode_fd_get(nioctx);
     FATAL_IF((fd < 0), "nioctx_blocking_mode_fd_get(): %s", strerror(-fd));
 
-    rc = epoll_handle_init(&epollHandle, fd, EPOLLIN, epollCb, nioctx);
+    rc = epoll_handle_init(&epollHandle, fd, EPOLLIN, epollCb, NULL, nioctx);
     FATAL_IF((rc), "epoll_handle_init(): %s", strerror(-rc));
 
     rc = epoll_handle_add(&epollMgr, &epollHandle);

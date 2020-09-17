@@ -90,4 +90,7 @@ tcp_socket_connect(struct tcp_socket_handle *tsh);
 
 ssize_t
 tcp_get_max_size();
+
+int
+tcp_get_default_port(void);
 #endif
