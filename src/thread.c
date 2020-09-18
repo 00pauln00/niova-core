@@ -271,6 +271,12 @@ thread_join(struct thread_ctl *tc)
 }
 
 int
+thread_issue_sig_alarm_to_thread(pthread_t tid)
+{
+    return pthread_kill(tid, SIGALRM);
+}
+
+int
 thread_halt_and_destroy(struct thread_ctl *tc)
 {
     thread_ctl_halt(tc);
@@ -280,7 +286,7 @@ thread_halt_and_destroy(struct thread_ctl *tc)
     void *retval;
     int my_errno = 0;
 
-    int kill_rc = pthread_kill(tc->tc_thread_id, SIGALRM);
+    int kill_rc = thread_issue_sig_alarm_to_thread(tc->tc_thread_id);
     if (kill_rc == ESRCH) // If the thread is already gone, ignore the error.
         kill_rc = 0;
 

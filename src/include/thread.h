@@ -166,4 +166,7 @@ thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc);
 long int
 thread_join(struct thread_ctl *tc);
 
+int
+thread_issue_sig_alarm_to_thread(pthread_t tid);
+
 #endif

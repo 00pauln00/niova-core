@@ -187,6 +187,12 @@ simple_crc32_64byte_buf(void)
     return;
 }
 
+static void
+micro_pthread_self(void)
+{
+    static pthread_t val;
+    val += pthread_self();
+}
 
 static void
 run_micro(void (*func)(void), size_t iterations, const char *name)
@@ -240,5 +246,7 @@ main(void)
               "uuid_generate_random");
     run_micro(simple_uuid_generate_time, DEF_ITER / 10000,
               "uuid_generate_time");
+    run_micro(micro_pthread_self, DEF_ITER,
+              "pthread_self");
     return 0;
 }
