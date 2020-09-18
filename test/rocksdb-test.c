@@ -97,6 +97,12 @@ nri_db_close(struct niova_rocksdb_instance *nri)
     else if (!nri->nri_db)
         return -EALREADY;
 
+    if (nri->nri_cf)
+    {
+        rocksdb_column_family_handle_destroy(nri->nri_cf);
+        nri->nri_cf = NULL;
+    }
+
     rocksdb_close(nri->nri_db);
 
     nri->nri_db = NULL;
