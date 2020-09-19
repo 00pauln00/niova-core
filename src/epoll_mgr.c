@@ -53,21 +53,70 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     return 0;
 }
 
+/**
+ * epoll_mgr_tally_handles - this function counts the number of handles which
+ *   are attached to the epm's lists.  There is a small window where this
+ *   number may vary from epm_num_handles which is why there is no assert here.
+ *   epoll_mgr_tally_handles() should be used for the 'official' handle count.
+ *   epm_num_handles is primarily used an a optimized way to determine the
+ *   number of events in epoll_mgr_wait_and_process_events().
+ */
+static ssize_t
+epoll_mgr_tally_handles(struct epoll_mgr *epm)
+{
+    size_t cnt = 0;
+    struct epoll_handle *eph;
+
+    pthread_mutex_lock(&epm->epm_mutex);
+
+    CIRCLEQ_FOREACH(eph, &epm->epm_active_list, eph_lentry)
+        cnt++;
+    CIRCLEQ_FOREACH(eph, &epm->epm_destroy_list, eph_lentry)
+        cnt++;
+
+    pthread_mutex_unlock(&epm->epm_mutex);
+
+    return cnt;
+}
+
 int
 epoll_mgr_close(struct epoll_mgr *epm)
 {
-    if (!epm || !epm->epm_ready)
+    if (!epm)
         return -EINVAL;
 
-    else if (epm->epm_epfd < 0)
-        return -EBADF;
+    // epm_ready is covered by the global lock
+    pthread_mutex_lock(&epollMgrInstallLock);
+    int rc = epm->epm_ready ?
+        (epoll_mgr_tally_handles(epm) ? -EBUSY : 0) : -EALREADY;
 
-    // Xxx check for attached handles?
+    if (!rc)
+        epm->epm_ready = 0;
+
+    pthread_mutex_unlock(&epollMgrInstallLock);
+
+    if (rc)
+    {
+        LOG_MSG(LL_WARN, "epm=%p cannot be destroyed num_handles=%zu (%s)",
+                epm, epoll_mgr_tally_handles(epm), strerror(-rc));
+
+        return rc;
+    }
+
+    int close_fd = epm->epm_epfd;
+    epm->epm_epfd = -1;
+
+    rc = close(close_fd);
+    if (rc)
+    {
+        rc = -errno;
+        LOG_MSG(LL_WARN, "epm=%p close(fd=%d): %s", epm, close_fd,
+                strerror(-rc));
+    }
+
     pthread_mutex_destroy(&epm->epm_mutex);
 
-    epm->epm_ready = 0;
-
-    return close(epm->epm_epfd);
+    return rc;
 }
 
 int
@@ -80,6 +129,8 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     else if (fd < 0)
         return -EBADF;
 
+    eph->eph_installing = 0;
+    eph->eph_destroying = 0;
     eph->eph_installed = 0;
     eph->eph_fd        = fd;
     eph->eph_events    = events;
@@ -276,15 +327,12 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     const int rc = -errno;
 
-    if (nevents > 0)
+    for (int i = 0; i < nevents; i++)
     {
-        for (int i = 0; i < nevents; i++)
-        {
-            struct epoll_handle *eph = evs[i].data.ptr;
+        struct epoll_handle *eph = evs[i].data.ptr;
 
-            if (eph->eph_installed && eph->eph_cb)
-                eph->eph_cb(eph);
-        }
+        if (eph->eph_installed && eph->eph_cb)
+            eph->eph_cb(eph);
     }
 
     epoll_mgr_reap_destroy_list(epm);

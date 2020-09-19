@@ -21,6 +21,12 @@
 #define EPOLL_MGR_DEF_EVENTS 128
 #define EPOLL_MGR_MAX_EVENTS 1024
 
+enum epoll_handle_ref_op
+{
+    EPH_REF_GET,
+    EPH_REF_PUT
+};
+
 struct epoll_handle
 {
     int          eph_fd;
@@ -30,7 +36,7 @@ struct epoll_handle
     unsigned int eph_destroying : 1;
     void        *eph_arg;
     void         (*eph_cb)(const struct epoll_handle *);
-    void         (*eph_ref_cb)(void *, int);
+    void         (*eph_ref_cb)(void *, enum epoll_handle_ref_op);
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
 };
 
