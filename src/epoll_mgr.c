@@ -268,11 +268,14 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     int rc = found ? 0 : -ENOENT;
 
-    if (complete_here)
-        rc = epoll_handle_del_complete(epm, eph);
+    if (!rc)
+    {
+        if (complete_here)
+            rc = epoll_handle_del_complete(epm, eph);
 
-    else // Wake up the epoll-mgr thread blocked in epoll_wait()
-        thread_issue_sig_alarm_to_thread(tid);
+        else // Wake up the epoll-mgr thread blocked in epoll_wait()
+            thread_issue_sig_alarm_to_thread(tid);
+    }
 
     return rc;
 }
