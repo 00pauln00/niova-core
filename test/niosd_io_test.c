@@ -474,7 +474,7 @@ prepare_epoll(struct niosd_device *ndev)
     int fd = nioctx_blocking_mode_fd_get(nioctx);
     FATAL_IF((fd < 0), "nioctx_blocking_mode_fd_get(): %s", strerror(-fd));
 
-    rc = epoll_handle_init(&epollHandle, fd, EPOLLIN, epollCb, nioctx);
+    rc = epoll_handle_init(&epollHandle, fd, EPOLLIN, epollCb, nioctx, NULL);
     FATAL_IF((rc), "epoll_handle_init(): %s", strerror(-rc));
 
     rc = epoll_handle_add(&epollMgr, &epollHandle);

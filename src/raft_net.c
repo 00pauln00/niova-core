@@ -256,7 +256,8 @@ raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
     size_t idx = ri->ri_epoll_handles_in_use++;
 
     int rc =
-        epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri);
+        epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri,
+                          NULL);
 
     return rc ? rc :
         epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);

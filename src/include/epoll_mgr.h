@@ -68,7 +68,8 @@ epoll_mgr_close(struct epoll_mgr *epm);
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *), void *arg);
+                  void (*cb)(const struct epoll_handle *), void *arg,
+                  void (*ref_cb)(void *, enum epoll_handle_ref_op));
 
 int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph);

@@ -46,10 +46,10 @@ epoll_mgr_basic_tests(void)
 
     // Insert a bogus eph
     struct epoll_handle eph = {0};
-    rc = epoll_handle_init(&eph, -1, 0, NULL, NULL);
+    rc = epoll_handle_init(&eph, -1, 0, NULL, NULL, NULL);
     FATAL_IF(rc != -EINVAL, "epoll_handle_init() expected -EINVAL got %d", rc);
 
-    rc = epoll_handle_init(&eph, -1, 0, foo_cb, NULL);
+    rc = epoll_handle_init(&eph, -1, 0, foo_cb, NULL, NULL);
     FATAL_IF(rc != -EBADF, "epoll_handle_init() expected -EBADF got %d", rc);
 
     // Create a legit fd for epoll_handle_init and add
@@ -57,7 +57,8 @@ epoll_mgr_basic_tests(void)
     rc = ev_pipe_setup(&evp);
     FATAL_IF(rc, "ev_pipe_setup(): %s", strerror(-rc));
 
-    rc = epoll_handle_init(&eph, evp_read_fd_get(&evp), EPOLLIN, foo_cb, NULL);
+    rc = epoll_handle_init(&eph, evp_read_fd_get(&evp), EPOLLIN, foo_cb, NULL,
+                           NULL);
     FATAL_IF(rc, "epoll_handle_init() expected 0 got %d", rc);
 
     rc = epoll_handle_add(epm, &eph);
@@ -83,9 +84,11 @@ epoll_mgr_basic_tests(void)
     // Close should now succeed
     rc = epoll_mgr_close(epm);
     FATAL_IF(rc, "epoll_mgr_setup() expected to return 0 (rc=%d)", rc);
+    FATAL_IF(epm->epm_ready, "emp_ready is still true");
 
     // Try to add handle after the mgr has been closed
-    rc = epoll_handle_init(&eph, evp_read_fd_get(&evp), EPOLLIN, foo_cb, NULL);
+    rc = epoll_handle_init(&eph, evp_read_fd_get(&evp), EPOLLIN, foo_cb, NULL,
+                           NULL);
     FATAL_IF(rc, "epoll_handle_init() expected 0 got %d", rc);
 
     rc = epoll_handle_add(epm, &eph);

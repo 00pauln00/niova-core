@@ -48,7 +48,7 @@ util_thread_install_event_src(int fd, int events,
     struct epoll_handle *eph =
         &utilThreadEpollHandles[utilThreadNumEpollHandles];
 
-    int rc = epoll_handle_init(eph, fd, events, ut_cb, arg);
+    int rc = epoll_handle_init(eph, fd, events, ut_cb, arg, NULL);
     if (!rc)
         if (utilThread.ut_started)
             rc = epoll_handle_add(&utilThread.ut_epm, eph);

@@ -121,9 +121,10 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *), void *arg)
+                  void (*cb)(const struct epoll_handle *), void *arg,
+                  void (*ref_cb)(void *, enum epoll_handle_ref_op))
 {
-    if (!eph || !cb)
+    if (!eph || !cb || (ref_cb && !arg))
         return -EINVAL;
 
     else if (fd < 0)
@@ -136,7 +137,7 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     eph->eph_events    = events;
     eph->eph_cb        = cb;
     eph->eph_arg       = arg;
-    eph->eph_ref_cb = NULL;
+    eph->eph_ref_cb    = ref_cb;
 
     return 0;
 }
