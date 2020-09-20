@@ -24,12 +24,14 @@ __thread const struct thread_ctl *thrCtl;
 static void
 thr_ctl_basic_sighandler(int signum)
 {
-    SIMPLE_LOG_MSG(LL_NOTIFY, "caught signal=%d %p", signum, thrCtl);
+    struct thread_ctl *tc = (struct thread_ctl *)thrCtl;
 
-    if (!thrCtl)
-        return;
+    if (tc)
+        tc->tc_sig_cnt++;
 
-    ((struct thread_ctl *)thrCtl)->tc_caught_stop_signal = 1;
+    // Use 'simple log msg' in sighandler context
+    SIMPLE_LOG_MSG(LL_DEBUG, "caught signal=%d tc=%p tc->tc_sig_cnt=%zu",
+                   signum, tc, tc ? tc->tc_sig_cnt : 0);
 }
 
 static void
@@ -82,7 +84,7 @@ thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
 thread_exec_ctx_bool_t
 thread_ctl_should_continue(const struct thread_ctl *tc)
 {
-    return tc->tc_halt || tc->tc_caught_stop_signal ? false : true;
+    return tc->tc_halt ? false : true;
 }
 
 thread_exec_ctx_bool_t
@@ -304,7 +306,6 @@ thread_halt_and_destroy(struct thread_ctl *tc)
 
     return rc;
 }
-
 
 void
 thread_abort(void)
