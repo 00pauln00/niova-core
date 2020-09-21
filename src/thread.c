@@ -24,12 +24,14 @@ __thread const struct thread_ctl *thrCtl;
 static void
 thr_ctl_basic_sighandler(int signum)
 {
-    SIMPLE_LOG_MSG(LL_NOTIFY, "caught signal=%d %p", signum, thrCtl);
+    struct thread_ctl *tc = (struct thread_ctl *)thrCtl;
 
-    if (!thrCtl)
-        return;
+    if (tc)
+        tc->tc_sig_cnt++;
 
-    ((struct thread_ctl *)thrCtl)->tc_caught_stop_signal = 1;
+    // Use 'simple log msg' in sighandler context
+    SIMPLE_LOG_MSG(LL_DEBUG, "caught signal=%d tc=%p tc->tc_sig_cnt=%zu",
+                   signum, tc, tc ? tc->tc_sig_cnt : 0);
 }
 
 static void
@@ -82,7 +84,7 @@ thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
 thread_exec_ctx_bool_t
 thread_ctl_should_continue(const struct thread_ctl *tc)
 {
-    return tc->tc_halt || tc->tc_caught_stop_signal ? false : true;
+    return tc->tc_halt ? false : true;
 }
 
 thread_exec_ctx_bool_t
@@ -252,22 +254,42 @@ thread_ctl_remove_from_watchdog(struct thread_ctl *tc)
         watchdog_remove_thread(&tc->tc_watchdog_handle);
 }
 
-long int
-thread_join(struct thread_ctl *tc)
+static long int
+thread_join_internal(struct thread_ctl *tc, bool blocking)
 {
     if (!tc)
         return -EINVAL;
 
     void *retval;
-    int rc = pthread_join(tc->tc_thread_id, &retval);
+    int rc = blocking ?
+        pthread_join(tc->tc_thread_id, &retval) :
+        pthread_tryjoin_np(tc->tc_thread_id, &retval);
 
     if (rc)
-        return -errno;
+        return -rc;
 
     else if ((long int *)retval)
         return *(long int *)retval;
 
     return 0;
+}
+
+long int
+thread_join(struct thread_ctl *tc)
+{
+    return thread_join_internal(tc, true);
+}
+
+long int
+thread_join_nb(struct thread_ctl *tc)
+{
+    return thread_join_internal(tc, false);
+}
+
+int
+thread_issue_sig_alarm_to_thread(pthread_t tid)
+{
+    return tid > 0 ? pthread_kill(tid, SIGALRM) : -EINVAL;
 }
 
 int
@@ -280,7 +302,7 @@ thread_halt_and_destroy(struct thread_ctl *tc)
     void *retval;
     int my_errno = 0;
 
-    int kill_rc = pthread_kill(tc->tc_thread_id, SIGALRM);
+    int kill_rc = thread_issue_sig_alarm_to_thread(tc->tc_thread_id);
     if (kill_rc == ESRCH) // If the thread is already gone, ignore the error.
         kill_rc = 0;
 
@@ -298,7 +320,6 @@ thread_halt_and_destroy(struct thread_ctl *tc)
 
     return rc;
 }
-
 
 void
 thread_abort(void)

@@ -53,7 +53,7 @@ LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
 typedef void * raft_client_thread_t;
 typedef int  raft_client_app_ctx_int_t;   // raft client app thread
 typedef void raft_client_app_ctx_t;
-typedef void raft_client_epoll_t;
+typedef epoll_mgr_cb_ctx_t raft_client_epoll_t;
 typedef int  raft_client_epoll_int_t;
 
 #define RAFT_CLIENT_SUCCESSFUL_PING_UNTIL_VIABLE 4

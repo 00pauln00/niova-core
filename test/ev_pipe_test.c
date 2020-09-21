@@ -4,7 +4,6 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 #include "common.h"
-#include "epoll_mgr.h"
 #include "ev_pipe.h"
 #include "log.h"
 #include "queue.h"
@@ -12,7 +11,6 @@
 #include "util.h"
 #include "util_thread.h"
 
-struct epoll_mgr epollMgr;
 struct ev_pipe evPipe;
 struct epoll_handle *epollHandle;
 
