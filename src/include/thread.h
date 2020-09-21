@@ -81,7 +81,7 @@ thread_exec_ctx_t
 thread_ctl_pause(struct thread_ctl *);
 
 thread_exec_ctx_t
-    thread_ctl_set_user_pause_usec(struct thread_ctl *, uint32_t);
+thread_ctl_set_user_pause_usec(struct thread_ctl *, uint32_t);
 
 void
 thread_ctl_run(struct thread_ctl *);
@@ -166,6 +166,9 @@ thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc);
 
 long int
 thread_join(struct thread_ctl *tc);
+
+long int
+thread_join_nb(struct thread_ctl *tc);
 
 int
 thread_issue_sig_alarm_to_thread(pthread_t tid);

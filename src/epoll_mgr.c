@@ -48,6 +48,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     CIRCLEQ_INIT(&epm->epm_destroy_list);
 
     epm->epm_ready = 1;
+    niova_atomic_init(&epm->epm_epoll_wait_cnt, 0);
 
     pthread_mutex_unlock(&epollMgrInstallLock);
     return 0;
@@ -132,6 +133,7 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
 
     eph->eph_installing = 0;
     eph->eph_destroying = 0;
+    eph->eph_async_destroy = 0;
     eph->eph_installed = 0;
     eph->eph_fd        = fd;
     eph->eph_events    = events;
@@ -155,7 +157,7 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
         return -EALREADY;
 
     if (eph->eph_ref_cb) // take user ref in advance of handle install
-        eph->eph_ref_cb(eph->eph_arg, true);
+        eph->eph_ref_cb(eph->eph_arg, EPH_REF_GET);
 
     pthread_mutex_lock(&epm->epm_mutex);
     NIOVA_ASSERT(epm->epm_num_handles >= 0);
@@ -184,7 +186,7 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     pthread_mutex_unlock(&epm->epm_mutex);
 
     if (rc && eph->eph_ref_cb) // release user ref if there was a problem
-        eph->eph_ref_cb(eph->eph_arg, false);
+        eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
     return rc;
 }
@@ -202,8 +204,11 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     else if (!eph->eph_installed || !eph->eph_destroying)
         return -EAGAIN;
 
-    if (epm->epm_thread_id == pthread_self())
-        NIOVA_ASSERT(!eph->eph_ref_cb);
+    if (eph->eph_async_destroy)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "epm=%p eph=%p", epm, eph);
+        NIOVA_ASSERT(epm->epm_thread_id == pthread_self() && eph->eph_ref_cb);
+    }
 
     struct epoll_event ev = {.events = 0, .data.fd = -1};
 
@@ -223,7 +228,7 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     eph->eph_installed = 0;
 
     if (eph->eph_ref_cb)
-        eph->eph_ref_cb(eph->eph_arg, false);
+        eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
     return rc;
 }
@@ -243,7 +248,7 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
     struct epoll_handle *tmp;
     bool found = false;
     pthread_t tid = epm->epm_thread_id;
-    bool complete_here = false;
+    bool complete_here = true;
 
     pthread_mutex_lock(&epm->epm_mutex);
     CIRCLEQ_FOREACH(tmp, &epm->epm_active_list, eph_lentry)
@@ -257,12 +262,17 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     if (found)
     {
-        // Signify that the 'eph' is being placed onto the destroy list
+        // Signify that the 'eph' is being placed onto the destroyed
         eph->eph_destroying = 1;
         CIRCLEQ_REMOVE(&epm->epm_active_list, eph, eph_lentry);
 
-        if (!eph->eph_ref_cb || epm->epm_thread_id == pthread_self())
-            complete_here = true;
+        if (eph->eph_ref_cb && epm->epm_thread_id != pthread_self())
+        {
+            CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
+            // Mark that the 'eph' will be destroyed async
+            eph->eph_async_destroy = 1;
+            complete_here = false;
+        }
     }
 
     pthread_mutex_unlock(&epm->epm_mutex);
@@ -274,7 +284,7 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         if (complete_here)
             rc = epoll_handle_del_complete(epm, eph);
 
-        else // Wake up the epoll-mgr thread blocked in epoll_wait()
+        else if (tid > 0) // Wakeup epoll-mgr thread blocked in epoll_wait()
             thread_issue_sig_alarm_to_thread(tid);
     }
 
@@ -322,12 +332,17 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     else
         NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
 
+    // Try to cleanup destroying handles prior to blocking indefinitely
+    epoll_mgr_reap_destroy_list(epm);
+
     int maxevents = MAX(1, MIN(epollMgrNumEvents, epm->epm_num_handles));
 
     struct epoll_event evs[maxevents];
 
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
+
+    niova_atomic_inc(&epm->epm_epoll_wait_cnt);
 
     const int rc = -errno;
 
@@ -339,6 +354,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
             eph->eph_cb(eph);
     }
 
+    // Reap again before returning control to the caller
     epoll_mgr_reap_destroy_list(epm);
 
     return nevents < 0 ? rc : nevents;

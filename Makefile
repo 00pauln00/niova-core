@@ -232,6 +232,7 @@ test_build:
 	taskset -c 0   test/work_dispatch_test
 	taskset -c 0,1 test/work_dispatch_test
 	test/rocksdb-test
+	test/epoll_mgr_test
 
 check: test_build
 

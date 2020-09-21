@@ -53,6 +53,14 @@
         (elm)->field.rte_ref_cnt++;                 \
     } while (0)
 
+// Take a ref on an already held element
+#define REF_TREE_REF_GET_ELEM(head, elm, field)     \
+    do {                                            \
+        pthread_mutex_lock(&(head)->mutex);         \
+        REF_TREE_REF_GET_ELEM_LOCKED(elm, field);   \
+        pthread_mutex_unlock(&(head)->mutex);       \
+    } while (0)
+
 #define REF_TREE_REF_PUT_ELEM_LOCKED(elm, field)    \
     do {                                            \
         NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0); \

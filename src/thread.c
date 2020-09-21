@@ -254,17 +254,19 @@ thread_ctl_remove_from_watchdog(struct thread_ctl *tc)
         watchdog_remove_thread(&tc->tc_watchdog_handle);
 }
 
-long int
-thread_join(struct thread_ctl *tc)
+static long int
+thread_join_internal(struct thread_ctl *tc, bool blocking)
 {
     if (!tc)
         return -EINVAL;
 
     void *retval;
-    int rc = pthread_join(tc->tc_thread_id, &retval);
+    int rc = blocking ?
+        pthread_join(tc->tc_thread_id, &retval) :
+        pthread_tryjoin_np(tc->tc_thread_id, &retval);
 
     if (rc)
-        return -errno;
+        return -rc;
 
     else if ((long int *)retval)
         return *(long int *)retval;
@@ -272,10 +274,22 @@ thread_join(struct thread_ctl *tc)
     return 0;
 }
 
+long int
+thread_join(struct thread_ctl *tc)
+{
+    return thread_join_internal(tc, true);
+}
+
+long int
+thread_join_nb(struct thread_ctl *tc)
+{
+    return thread_join_internal(tc, false);
+}
+
 int
 thread_issue_sig_alarm_to_thread(pthread_t tid)
 {
-    return pthread_kill(tid, SIGALRM);
+    return tid > 0 ? pthread_kill(tid, SIGALRM) : -EINVAL;
 }
 
 int
