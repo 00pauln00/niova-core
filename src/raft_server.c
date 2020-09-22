@@ -39,7 +39,7 @@ enum raft_write_entry_opts
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static const char *
-raft_server_may_accept_client_request_reason(struct raft_instance *ri);
+raft_server_may_accept_client_request_reason(const struct raft_instance *ri);
 
 static raft_peer_t
 raft_server_instance_self_idx(const struct raft_instance *ri)
@@ -186,44 +186,42 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         case RAFT_LREG_NEWEST_ENTRY_IDX:
             lreg_value_fill_signed(
                 lv, "newest-entry-idx",
-                raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC));
+                raft_server_get_current_raft_entry_index(ri, true));
             break;
         case RAFT_LREG_NEWEST_ENTRY_TERM:
             lreg_value_fill_signed(
                 lv, "newest-entry-term",
-                raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC));
+                raft_server_get_current_raft_entry_term(ri, true));
             break;
         case RAFT_LREG_NEWEST_ENTRY_SIZE:
             lreg_value_fill_unsigned(
                 lv, "newest-entry-data-size",
-                raft_server_get_current_raft_entry_data_size(ri,
-                                                             RI_NEHDR_SYNC));
+                raft_server_get_current_raft_entry_data_size(ri, true));
             break;
         case RAFT_LREG_NEWEST_ENTRY_CRC:
             lreg_value_fill_unsigned(
                 lv, "newest-entry-crc",
-                raft_server_get_current_raft_entry_crc(ri, RI_NEHDR_SYNC));
+                raft_server_get_current_raft_entry_crc(ri, true));
             break;
         case RAFT_LREG_NEWEST_UNSYNC_ENTRY_IDX:
             lreg_value_fill_signed(
                 lv, "newest-unsync-entry-idx",
-                raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC));
+                raft_server_get_current_raft_entry_index(ri, false));
             break;
         case RAFT_LREG_NEWEST_UNSYNC_ENTRY_TERM:
             lreg_value_fill_signed(
                 lv, "newest-unsync-entry-term",
-                raft_server_get_current_raft_entry_term(ri, RI_NEHDR_UNSYNC));
+                raft_server_get_current_raft_entry_term(ri, false));
             break;
         case RAFT_LREG_NEWEST_UNSYNC_ENTRY_SIZE:
             lreg_value_fill_unsigned(
                 lv, "newest-unsync-entry-data-size",
-                raft_server_get_current_raft_entry_data_size(ri,
-                                                             RI_NEHDR_UNSYNC));
+                raft_server_get_current_raft_entry_data_size(ri, false));
             break;
         case RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC:
             lreg_value_fill_unsigned(
                 lv, "newest-unsync-entry-crc",
-                raft_server_get_current_raft_entry_crc(ri, RI_NEHDR_UNSYNC));
+                raft_server_get_current_raft_entry_crc(ri, false));
             break;
         case RAFT_LREG_SYNC_FREQ_US:
             lreg_value_fill_unsigned(lv, "sync-freq-us", ri->ri_sync_freq_us);
@@ -555,7 +553,7 @@ raft_server_entry_init(const struct raft_instance *ri,
 }
 
 static bool
-raft_server_entry_next_entry_is_valid(struct raft_instance *ri,
+raft_server_entry_next_entry_is_valid(const struct raft_instance *ri,
                                       const struct raft_entry_header *reh);
 
 /**
@@ -576,7 +574,7 @@ raft_instance_update_newest_entry_hdr(
     pthread_mutex_lock(&ri->ri_newest_entry_mutex);
 
     for (enum raft_instance_newest_entry_hdr_types i = RI_NEHDR_SYNC;
-         i < RI_NEHDR_ALL; i++)
+         i <= RI_NEHDR_ALL; i++)
     {
         if (type != RI_NEHDR_ALL && i != type)
             continue;
@@ -593,41 +591,12 @@ raft_instance_update_newest_entry_hdr(
         DBG_RAFT_ENTRY(LL_DEBUG, tgt, "dst (who=%s)", thread_name_get());
         DBG_RAFT_ENTRY(LL_DEBUG, reh, "src (updated=%s)",
                        updated ? "true" : "false");
-
-        if (raft_server_does_synchronous_writes(ri))
-            NIOVA_ASSERT(updated);
     }
 
     pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
 
     // DBG_RAFT_INSTANCE() takes the mutex, don't deadlock
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "");
-}
-
-static bool
-raft_server_has_unsynced_entries(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-    bool valid = true;
-
-    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
-
-    const bool diff = memcmp(&ri->ri_newest_entry_hdr[RI_NEHDR_SYNC],
-                             &ri->ri_newest_entry_hdr[RI_NEHDR_UNSYNC],
-                             sizeof(struct raft_entry_header)) ? true : false;
-    // Sanity check on the hdr state
-    if (diff && ((ri->ri_newest_entry_hdr[RI_NEHDR_SYNC].reh_index >
-                  ri->ri_newest_entry_hdr[RI_NEHDR_UNSYNC].reh_index) ||
-                 (ri->ri_newest_entry_hdr[RI_NEHDR_SYNC].reh_term >
-                  ri->ri_newest_entry_hdr[RI_NEHDR_UNSYNC].reh_term) ||
-                 raft_server_does_synchronous_writes(ri)))
-        valid = false;
-
-    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
-
-    DBG_RAFT_INSTANCE_FATAL_IF((!valid), ri, "invalid ri newest entries");
-
-    return diff;
 }
 
 static void
@@ -859,10 +828,8 @@ raft_server_entry_header_read_by_store(struct raft_instance *ri,
     if (!ri || !reh || reh_index < 0)
         return -EINVAL;
 
-    // Read of Unsynced entries is not allowed
-    else if (!raft_instance_is_booting(ri) &&
-             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC) <
-             reh_index)
+    else if (!raft_instance_is_booting(ri) && // Disallow unsynced entries
+             raft_server_get_current_raft_entry_index(ri, true) < reh_index)
         return -ERANGE;
 
     reh->reh_index = reh_index;
@@ -912,16 +879,9 @@ raft_server_backend_sync(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
-    if (raft_server_does_synchronous_writes(ri))
-    {
-        DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries(ri)), ri,
-                                   "raft_server_has_unsynced_entries() true");
-        return 0;
-    }
-
     // Grab the unsync'd header contents
     struct raft_entry_header unsync_reh;
-    raft_instance_get_newest_header(ri, &unsync_reh, false);
+    raft_instance_get_newest_header(ri, &reh, false);
 
     int rc = ri->ri_backend->rib_backend_sync ? 0 :
         ri->ri_backend->rib_backend_sync(ri);
@@ -930,16 +890,6 @@ raft_server_backend_sync(struct raft_instance *ri)
     raft_instance_update_newest_entry_hdr(ri, &unsync_reh, RI_NEHDR_SYNC);
 
     return rc;
-}
-
-static void
-raft_server_backend_sync_pending(struct raft_instance *ri)
-{
-    int rc = raft_server_has_unsynced_entries(ri) ?
-        raft_server_backend_sync(ri) : 0;
-
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
-                               strerror(-rc));
 }
 
 static int
@@ -1014,8 +964,9 @@ raft_instance_initialize_newest_entry_hdr(struct raft_instance *ri)
 
     pthread_mutex_lock(&ri->ri_newest_entry_mutex);
 
-    memset(&ri->ri_newest_entry_hdr, 0,
-           sizeof(struct raft_entry_header) * RI_NEHDR_ALL);
+    memset(&ri->ri_newest_entry_hdr_sync, 0, sizeof(struct raft_entry_header));
+    memset(&ri->ri_newest_entry_hdr_unsync, 0,
+           sizeof(struct raft_entry_header));
 
     pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
 }
@@ -1030,7 +981,7 @@ raft_instance_initialize_newest_entry_hdr(struct raft_instance *ri)
  * NOTES:  function considers the UNSYNCED newest value.
  */
 static bool
-raft_server_entry_next_entry_is_valid(struct raft_instance *ri,
+raft_server_entry_next_entry_is_valid(const struct raft_instance *ri,
                                       const struct raft_entry_header *next_reh)
 {
     NIOVA_ASSERT(ri && next_reh);
@@ -1038,34 +989,27 @@ raft_server_entry_next_entry_is_valid(struct raft_instance *ri,
     if (next_reh->reh_index < 0)
         return true;
 
-    struct raft_entry_header unsync_hdr;
-    raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
-
     /* A null UUID means ri_newest_entry_hdr is uninitialized, otherwise,
      * the expected index is the 'newest' + 1.
      */
-    const raft_entry_idx_t expected_raft_unsync_index =
-        unsync_hdr.reh_index + 1;
+    const int64_t expected_raft_unsync_index =
+        raft_server_get_current_raft_entry_index(ri, false) + 1;
 
     if (raft_server_does_synchronous_writes(ri))
-    {
-        /* Sync write case - there is no sync thread operating on the ri so
-         * no lock is needed to when comparing the newest sync and unsync
-         * headers.
-         */
-        const raft_entry_idx_t expected_sync_idx =
-            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC) + 1;
-
         DBG_RAFT_INSTANCE_FATAL_IF(
-            (expected_raft_unsync_index != expected_sync_idx), ri,
+            ((raft_server_get_current_raft_entry_index(ri, true) + 1) !=
+             expected_raft_unsync_index), ri,
             "sync and unsync next indices are not equal");
-    }
 
     // The index must increase by '1' and the term must never decrease.
     if (next_reh->reh_index != expected_raft_unsync_index ||
-        (next_reh->reh_term < unsync_hdr.reh_term))
+        (next_reh->reh_term <
+         raft_server_get_current_raft_entry_term(ri, false)))
     {
-        DBG_RAFT_ENTRY(LL_ERROR, &unsync_hdr, "invalid entry");
+        DBG_RAFT_ENTRY(LL_ERROR,
+                       raft_instance_get_newest_header(
+                           (struct raft_instance *)ri, false),
+                       "invalid entry");
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "");
 
         return false;
@@ -1136,13 +1080,14 @@ raft_server_log_truncate(struct raft_instance *ri)
     NIOVA_ASSERT(ri);
 
     const raft_entry_idx_t trunc_entry_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC) + 1;
+        raft_server_get_current_raft_entry_index(ri, true) + 1;
 
     NIOVA_ASSERT(trunc_entry_idx >= 0);
 
     ri->ri_backend->rib_log_truncate(ri, trunc_entry_idx);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-raft-idx=%ld", trunc_entry_idx);
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-raft-idx=%ld",
+                      raft_server_get_current_raft_entry_index(ri, true));
 }
 
 /**
@@ -1414,7 +1359,7 @@ raft_server_candidate_count_votes(struct raft_instance *ri,
 }
 
 static bool
-raft_server_candidate_is_viable(struct raft_instance *ri)
+raft_server_candidate_is_viable(const struct raft_instance *ri)
 {
     if (ri &&
         (ri->ri_state != RAFT_STATE_CANDIDATE ||
@@ -1515,17 +1460,15 @@ raft_server_become_candidate(struct raft_instance *ri)
         DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_log_header_write(): %s",
                           strerror(-rc));
 
-    // Get the latest entry header following the self-vote
-    struct raft_entry_header sync_hdr;
-    raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
-
     struct raft_rpc_msg rrm = {
         //.rrm_rrm_sender_id = ri->ri_csn_this_peer.csn_uuid,
         .rrm_type = RAFT_RPC_MSG_TYPE_VOTE_REQUEST,
         .rrm_version = 0,
         .rrm_vote_request.rvrqm_proposed_term = ri->ri_log_hdr.rlh_term,
-        .rrm_vote_request.rvrqm_last_log_term = sync_hdr.reh_term,
-        .rrm_vote_request.rvrqm_last_log_index = sync_hdr.reh_index,
+        .rrm_vote_request.rvrqm_last_log_term =
+        raft_server_get_current_raft_entry_term(ri, true),
+        .rrm_vote_request.rvrqm_last_log_index =
+        raft_server_get_current_raft_entry_index(ri, true),
     };
 
     uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
@@ -1620,7 +1563,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
 }
 
 static bool
-raft_leader_has_applied_txn_in_my_term(struct raft_instance *ri)
+raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
@@ -1650,14 +1593,6 @@ raft_server_leader_init_state(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    // Grab the current sync header
-    struct raft_entry_header sync_hdr;
-    raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
-
-    // The server should have synced it state prior and not accepted new AE
-    DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries(ri)), ri,
-                               "raft_server_has_unsynced_entries() is true");
-
     ri->ri_state = RAFT_STATE_LEADER;
 
     struct raft_leader_state *rls = &ri->ri_leader;
@@ -1673,15 +1608,15 @@ raft_server_leader_init_state(struct raft_instance *ri)
      * ri_commit_idx >= rls_initial_term_idx, then this leader can reply to
      * clients.
      */
-    rls->rls_initial_term_idx = sync_hdr.reh_index;
+    rls->rls_initial_term_idx = raft_server_get_current_raft_entry_index(ri);
 
     for (raft_peer_t i = 0; i < num_raft_peers; i++)
     {
         struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
 
-        rfi->rfi_next_idx = sync_hdr.reh_index + 1;
-        rfi->rfi_prev_idx_term = sync_hdr.reh_term;
-        rfi->rfi_prev_idx_crc = sync_hdr.reh_crc;
+        rfi->rfi_next_idx = raft_server_get_current_raft_entry_index(ri) + 1;
+        rfi->rfi_prev_idx_term = raft_server_get_current_raft_entry_term(ri);
+        rfi->rfi_prev_idx_crc = raft_server_get_current_raft_entry_crc(ri);
         rfi->rfi_current_idx_term = -1;
         rfi->rfi_current_idx_crc = 0;
     }
@@ -1707,12 +1642,10 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              enum raft_write_entry_opts opts,
                              const struct raft_net_sm_write_supplements *ws)
 {
-    struct raft_entry_header unsync_hdr;
-    raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
+    NIOVA_ASSERT(term >= raft_server_get_current_raft_entry_term(ri));
 
-    NIOVA_ASSERT(term >= unsync_hdr.reh_term);
-
-    const raft_entry_idx_t next_entry_idx = unsync_hdr.reh_index + 1;
+    const raft_entry_idx_t next_entry_idx =
+        raft_server_get_current_raft_entry_index(ri) + 1;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
                       "next-entry-idx=%ld term=%ld len=%zd opts=%d",
@@ -1872,11 +1805,9 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         rfi->rfi_current_idx_term = -1;
     }
 
-    /* Grab the current idx info if the follower is behind.  Note:  unsynced
-     * indexes have yet to be advertised to followers.
-     */
+    // Grab the current idx info if the follower is behind
     const int64_t my_raft_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+        raft_server_get_current_raft_entry_index(ri);
 
     const bool refresh_prev = rfi->rfi_prev_idx_term < 0 ? true : false;
 #if 0
@@ -1897,7 +1828,8 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         NIOVA_ASSERT(follower_prev_entry_idx >= -1);
 
         // Test that the follower's prev-idx is not ahead of this leader's idx
-        NIOVA_ASSERT(follower_prev_entry_idx <= my_raft_idx);
+        NIOVA_ASSERT(follower_prev_entry_idx <=
+                     raft_server_get_current_raft_entry_index(ri));
 
         int rc =
             raft_server_entry_header_read_by_store(ri, &reh,
@@ -2030,16 +1962,24 @@ raft_server_timerfd_cb(struct raft_instance *ri)
  *    vote for the candidate.
  */
 static bool
-raft_server_process_vote_request_decide(
-    const struct raft_instance *ri, const struct raft_vote_request_msg *vreq,
-    const struct raft_entry_header *cmp_hdr)
+raft_server_process_vote_request_decide(const struct raft_instance *ri,
+                                        const struct raft_vote_request_msg *vreq)
 {
-    NIOVA_ASSERT(ri && vreq && cmp_hdr);
+    NIOVA_ASSERT(ri && vreq);
 
     // "allow at most one winner per term"
-    return (vreq->rvrqm_proposed_term <= ri->ri_log_hdr.rlh_term ||
-            vreq->rvrqm_last_log_term < cmp_hdr->reh_term ||
-            vreq->rvrqm_last_log_index < cmp_hdr->reh_index) ? false : true;
+    if (vreq->rvrqm_proposed_term <= ri->ri_log_hdr.rlh_term)
+        return false;
+
+    else if (vreq->rvrqm_last_log_term <
+             raft_server_get_current_raft_entry_term(ri))
+        return false;
+
+    else if (vreq->rvrqm_last_log_index <
+             raft_server_get_current_raft_entry_index(ri))
+        return false;
+
+    return true;
 }
 
 /**
@@ -2060,12 +2000,6 @@ raft_server_process_vote_request(struct raft_instance *ri,
 
     struct raft_rpc_msg rreply_msg = {0};
 
-    // Seems safer to make a decision based on the synced status of the log
-    raft_server_backend_sync_pending(ri);
-
-    struct raft_entry_header sync_hdr;
-    raft_instance_get_newest_header(ri, &sync_hdr, true);
-
     /* Do some initialization on the reply message.
      */
     uuid_copy(rreply_msg.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
@@ -2077,12 +2011,13 @@ raft_server_process_vote_request(struct raft_instance *ri,
     /* Check the vote criteria - do we vote 'yes' or 'no'?
      */
     rreply_msg.rrm_vote_reply.rvrpm_voted_granted =
-        raft_server_process_vote_request_decide(ri, vreq, &sync_hdr) ? 1 : 0;
+        raft_server_process_vote_request_decide(ri, vreq) ? 1 : 0;
 
     DBG_RAFT_MSG(LL_NOTIFY, rrm, "vote=%s my term=%ld last=%ld:%ld",
                  rreply_msg.rrm_vote_reply.rvrpm_voted_granted ? "yes" : "no",
-                 ri->ri_log_hdr.rlh_term, sync_hdr.reh_term,
-                 sync_hdr.reh_index);
+                 ri->ri_log_hdr.rlh_term,
+                 raft_server_get_current_raft_entry_term(ri),
+                 raft_server_get_current_raft_entry_index(ri));
 
     /* We intend to vote 'yes' - sync the candidate's term and UUID to our
      * log header.
@@ -2123,10 +2058,8 @@ raft_server_append_entry_check_already_stored(
     // raerqm_prev_log_index can be -1 if no writes have ever been done.
     NIOVA_ASSERT(raerq->raerqm_prev_log_index >= RAFT_MIN_APPEND_ENTRY_IDX);
 
-    NIOVA_ASSERT(!raft_server_has_unsynced_entries(ri));
-
     const raft_entry_idx_t raft_current_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+        raft_server_get_current_raft_entry_index(ri);
 
     const raft_entry_idx_t leaders_next_idx_for_me =
         raerq->raerqm_prev_log_index + 1;
@@ -2214,7 +2147,7 @@ raft_server_append_entry_log_prune_if_needed(
      * we're truncating to..).
      */
     int rc = raft_server_backend_sync(ri);
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), "raft_server_backend_sync(): %s",
                                strerror(-rc));
 
     // We must not prune already committed transactions.
@@ -2248,41 +2181,6 @@ raft_server_append_entry_log_prune_if_needed(
     raft_server_log_truncate(ri);
 }
 
-static raft_server_udp_cb_follower_ctx_int_t
-raft_server_follower_index_ahead_of_leader(
-    struct raft_instance *ri,
-    const struct raft_append_entries_request_msg *raerq,
-    struct raft_entry_header *reh)
-{
-    NIOVA_ASSERT(ri && raerq && reh);
-
-    int rc = 0;
-
-    // Sync pending writes first..
-    raft_server_backend_sync_pending(ri);
-
-    /* If this follower's index is ahead of the leader's then we must check
-     * for a retried AE which has already been stored in our log.
-     * Note that this AE may have been delayed in the network or may have
-     * retried due to a dropped reply.  It's important that we try to ACK
-     * this request and not proceed with modifying our log.
-     */
-    if (raft_server_append_entry_check_already_stored(ri, raerq))
-        rc = -EALREADY;
-
-    else // Otherwise, the log needs to be pruned.
-        raft_server_append_entry_log_prune_if_needed(ri, raerq);
-
-    NIOVA_ASSERT(!raft_server_has_unsynced_entries(ri));
-    /* The log may have been synced and/or pruned - re-obtain the
-     * current_idx.
-     * Note:  if a sync occurred then the synced idx will be equivalent to
-     *        the unsynced idx.
-     */
-    raft_instance_get_newest_header(ri, reh, RI_NEHDR_SYNC);
-
-    return rc;
-}
 /**
  * raft_server_append_entry_log_prepare_and_check - determine if the current
  *    append entry command can proceed to this follower's log.  This function
@@ -2299,35 +2197,50 @@ raft_server_append_entry_log_prepare_and_check(
 {
     NIOVA_ASSERT(ri && raerq);
 
-    struct raft_entry_header reh;
-    raft_instance_get_newest_header(ri, &reh, RI_NEHDR_UNSYNC);
+    int64_t raft_current_idx = raft_server_get_current_raft_entry_index(ri);
 
-    int rc = (reh.reh_index > raerq->raerqm_prev_log_index) ?
-        raft_server_follower_index_ahead_of_leader(ri, raerq, &reh) : 0;
+    if (raft_current_idx > raerq->raerqm_prev_log_index)
+    {
+        /* If this follower's index is ahead of the leader's then we must check
+         * for a retried AE which has already been stored in our log.
+         * Note that this AE may have been delayed in the network or may have
+         * retried due to a dropped reply.  It's important that we try to ACK
+         * this request and not proceed with modifying our log.
+         */
+        if (raft_server_append_entry_check_already_stored(ri, raerq))
+            return -EALREADY;
 
-    if (rc)
-        return rc;
+        else // Otherwise, the log needs to be pruned.
+            raft_server_append_entry_log_prune_if_needed(ri, raerq);
+    }
+
+    // Re-obtain the current_idx, it may have changed if a prune occurred.
+    raft_current_idx = raft_server_get_current_raft_entry_index(ri);
 
     // At this point, current_idx should not exceed the one from the leader.
-    NIOVA_ASSERT(reh.reh_index <= raerq->raerqm_prev_log_index);
+    NIOVA_ASSERT(raft_current_idx <= raerq->raerqm_prev_log_index);
 
     /* In this case, the leader's and follower's indexes have yet to converge
      * which implies a "non_matching_prev_term" since the term isn't testable
      * until the indexes match.
      */
-    if (reh.reh_index < raerq->raerqm_prev_log_index)
+    int rc = 0;
+
+    if (raft_current_idx < raerq->raerqm_prev_log_index)
         rc = -ERANGE;
 
     /* Equivalent log indexes but the terms do not match.  Note that this cond
      * will likely lead to more pruning as the leader continues to decrement
      * its raerqm_prev_log_index value for this follower.
      */
-    else if (reh.reh_term != raerq->raerqm_prev_log_term)
+    else if (raft_server_get_current_raft_entry_term(ri) !=
+             raerq->raerqm_prev_log_term)
         rc = -EEXIST;
 
     DBG_RAFT_INSTANCE((raerq->raerqm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
                       "rci=%ld leader-prev-[idx:term]=%ld:%ld rc=%d",
-                      reh.reh_index, raerq->raerqm_prev_log_index,
+                      raft_current_idx,
+                      raerq->raerqm_prev_log_index,
                       raerq->raerqm_prev_log_term, rc);
 
     return rc;
@@ -2408,12 +2321,10 @@ raft_server_write_new_entry_from_leader(
     if (raerq->raerqm_heartbeat_msg)
         return; // This is a heartbeat msg which does not enter the log
 
-    struct raft_entry_header unsync_hdr;
-    raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
-
     NIOVA_ASSERT(raerq->raerqm_log_term > 0);
     NIOVA_ASSERT(raerq->raerqm_log_term >= raerq->raerqm_prev_log_term);
-    NIOVA_ASSERT(raerq->raerqm_log_term >= unsync_hdr.reh_term);
+    NIOVA_ASSERT(raerq->raerqm_log_term >=
+                 raft_server_get_current_raft_entry_term(ri));
 
     const size_t entry_size = raerq->raerqm_entries_sz;
 
@@ -2421,7 +2332,8 @@ raft_server_write_new_entry_from_leader(
     NIOVA_ASSERT(entry_size <= RAFT_ENTRY_MAX_DATA_SIZE);
 
     // Sanity check on the 'next' idx to be written.
-    NIOVA_ASSERT(unsync_hdr.reh_index == raerq->raerqm_prev_log_index);
+    NIOVA_ASSERT(raft_server_get_current_raft_entry_index(ri) ==
+                 raerq->raerqm_prev_log_index);
 
     enum raft_write_entry_opts opts = raerq->raerqm_leader_change_marker ?
         RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER : RAFT_WR_ENTRY_OPT_NONE;
@@ -2470,7 +2382,7 @@ raft_server_process_append_entries_request_validity_check(
 
 static raft_server_udp_cb_ctx_t
 raft_server_advance_commit_idx(struct raft_instance *ri,
-                               const int64_t new_commit_idx)
+                               int64_t new_commit_idx)
 {
     NIOVA_ASSERT(ri);
 
@@ -2478,8 +2390,7 @@ raft_server_advance_commit_idx(struct raft_instance *ri,
      * current raft index.
      */
     if (ri->ri_commit_idx < new_commit_idx &&
-        (raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC) >=
-         new_commit_idx))
+        raft_server_get_current_raft_entry_index(ri) >= new_commit_idx)
     {
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new_commit_idx=%ld", new_commit_idx);
 
@@ -2588,11 +2499,8 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     struct raft_follower_info *self =
         raft_server_get_follower_info(ri, this_peer_num);
 
-    struct raft_entry_header sync_hdr;
-    raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
-
-    self->rfi_next_idx = sync_hdr.reh_index + 1;
-    self->rfi_prev_idx_term = sync_hdr.reh_term;
+    self->rfi_next_idx = raft_server_get_current_raft_entry_index(ri) + 1;
+    self->rfi_prev_idx_term = raft_server_get_current_raft_entry_term(ri);
 
     /* Sort the group member's next-idx values - note that these are the NEXT
      * index to be written not the already written idx value.
@@ -2746,7 +2654,7 @@ raft_server_apply_append_entries_reply_result(
     }
 
     if ((rfi->rfi_next_idx - 1) <
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC))
+        raft_server_get_current_raft_entry_index(ri))
     {
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x still lags next-idx=%ld",
                           follower_idx, rfi->rfi_next_idx);
@@ -2913,7 +2821,7 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
  *    request.
  */
 static raft_net_udp_cb_ctx_int_t
-raft_server_may_accept_client_request(struct raft_instance *ri)
+raft_server_may_accept_client_request(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
@@ -2941,7 +2849,7 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
 }
 
 static const char *
-raft_server_may_accept_client_request_reason(struct raft_instance *ri)
+raft_server_may_accept_client_request_reason(const struct raft_instance *ri)
 {
     int rc = raft_server_may_accept_client_request(ri);
 
@@ -3316,14 +3224,12 @@ raft_server_append_entry_should_send_to_follower(
         rfi->rfi_ae_sends_wait_until = 0;
     }
 
-    const raft_entry_idx_t sync_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
-
     // This is not a recency check and should be in a separate function Xxx
-    if (rfi->rfi_next_idx > sync_idx)
+    if (rfi->rfi_next_idx > raft_server_get_current_raft_entry_index(ri))
     {
         // May only be ahead by '1'
-        NIOVA_ASSERT(rfi->rfi_next_idx == sync_idx);
+        NIOVA_ASSERT(rfi->rfi_next_idx ==
+                     raft_server_get_current_raft_entry_index(ri) + 1);
         send_msg = false;
     }
 
@@ -3335,10 +3241,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 {
     NIOVA_ASSERT(ri);
 
-    const int64_t my_raft_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
-
-    if (!raft_instance_is_leader(ri) || my_raft_idx < 0)
+    if (!raft_instance_is_leader(ri) ||
+        raft_server_get_current_raft_entry_index(ri) < 0)
         return;
 
     static char src_buf[RAFT_NET_MAX_RPC_SIZE];
@@ -3370,6 +3274,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
             &rrm->rrm_append_entries_request;
 
         const int64_t peer_next_raft_idx = raerq->raerqm_prev_log_index + 1;
+        const int64_t my_raft_idx =
+            raft_server_get_current_raft_entry_index(ri);
 
         DBG_RAFT_INSTANCE_FATAL_IF((peer_next_raft_idx - 1 > my_raft_idx), ri,
                                    "follower's idx > leader's (%ld > %ld)",

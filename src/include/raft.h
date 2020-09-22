@@ -690,7 +690,7 @@ raft_instance_get_newest_header(struct raft_instance *ri,
  */
 static inline int64_t
 raft_server_get_current_raft_entry_term(
-    struct raft_instance *ri,
+    const struct raft_instance *ri,
     enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
@@ -703,7 +703,7 @@ raft_server_get_current_raft_entry_term(
 
 static inline uint32_t
 raft_server_get_current_raft_entry_data_size(
-    struct raft_instance *ri,
+    const struct raft_instance *ri,
     enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
@@ -716,7 +716,7 @@ raft_server_get_current_raft_entry_data_size(
 
 static inline crc32_t
 raft_server_get_current_raft_entry_crc(
-    struct raft_instance *ri,
+    const struct raft_instance *ri,
     enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
@@ -739,7 +739,7 @@ raft_server_does_synchronous_writes(const struct raft_instance *ri)
  */
 static inline raft_entry_idx_t
 raft_server_get_current_raft_entry_index(
-    struct raft_instance *ri,
+    const struct raft_instance *ri,
     enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
