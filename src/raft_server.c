@@ -84,19 +84,12 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_COMMIT_IDX,         // int64
     RAFT_LREG_LAST_APPLIED,       // int64
     RAFT_LREG_LAST_APPLIED_CCRC,  // int64
-    RAFT_LREG_SYNC_FREQ_US,       // uint64
-    RAFT_LREG_SYNC_CNT,           // uint64
     RAFT_LREG_NEWEST_ENTRY_IDX,   // int64
     RAFT_LREG_NEWEST_ENTRY_TERM,  // int64
     RAFT_LREG_NEWEST_ENTRY_SIZE,  // uint32
     RAFT_LREG_NEWEST_ENTRY_CRC,   // uint32
-    RAFT_LREG_NEWEST_UNSYNC_ENTRY_IDX,   // int64
-    RAFT_LREG_NEWEST_UNSYNC_ENTRY_TERM,  // int64
-    RAFT_LREG_NEWEST_UNSYNC_ENTRY_SIZE,  // uint32
-    RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC,   // uint32
     RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
-    RAFT_LREG_HIST_DEV_SYNC_LAT,  // hist object
     RAFT_LREG_FOLLOWER_VSTATS,    // varray - last follower node
     RAFT_LREG_HIST_COMMIT_LAT,    // hist object
     RAFT_LREG_HIST_READ_LAT,      // hist object
@@ -186,48 +179,20 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         case RAFT_LREG_NEWEST_ENTRY_IDX:
             lreg_value_fill_signed(
                 lv, "newest-entry-idx",
-                raft_server_get_current_raft_entry_index(ri, true));
+                raft_server_get_current_raft_entry_index(ri));
             break;
         case RAFT_LREG_NEWEST_ENTRY_TERM:
             lreg_value_fill_signed(
                 lv, "newest-entry-term",
-                raft_server_get_current_raft_entry_term(ri, true));
+                raft_server_get_current_raft_entry_term(ri));
             break;
         case RAFT_LREG_NEWEST_ENTRY_SIZE:
-            lreg_value_fill_unsigned(
-                lv, "newest-entry-data-size",
-                raft_server_get_current_raft_entry_data_size(ri, true));
+            lreg_value_fill_unsigned(lv, "newest-entry-data-size",
+                                     ri->ri_newest_entry_hdr.reh_data_size);
             break;
         case RAFT_LREG_NEWEST_ENTRY_CRC:
-            lreg_value_fill_unsigned(
-                lv, "newest-entry-crc",
-                raft_server_get_current_raft_entry_crc(ri, true));
-            break;
-        case RAFT_LREG_NEWEST_UNSYNC_ENTRY_IDX:
-            lreg_value_fill_signed(
-                lv, "newest-unsync-entry-idx",
-                raft_server_get_current_raft_entry_index(ri, false));
-            break;
-        case RAFT_LREG_NEWEST_UNSYNC_ENTRY_TERM:
-            lreg_value_fill_signed(
-                lv, "newest-unsync-entry-term",
-                raft_server_get_current_raft_entry_term(ri, false));
-            break;
-        case RAFT_LREG_NEWEST_UNSYNC_ENTRY_SIZE:
-            lreg_value_fill_unsigned(
-                lv, "newest-unsync-entry-data-size",
-                raft_server_get_current_raft_entry_data_size(ri, false));
-            break;
-        case RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC:
-            lreg_value_fill_unsigned(
-                lv, "newest-unsync-entry-crc",
-                raft_server_get_current_raft_entry_crc(ri, false));
-            break;
-        case RAFT_LREG_SYNC_FREQ_US:
-            lreg_value_fill_unsigned(lv, "sync-freq-us", ri->ri_sync_freq_us);
-            break;
-        case RAFT_LREG_SYNC_CNT:
-            lreg_value_fill_unsigned(lv, "sync-cnt", ri->ri_sync_cnt);
+            lreg_value_fill_unsigned(lv, "newest-entry-crc",
+                                     ri->ri_newest_entry_hdr.reh_crc);
             break;
 #if 0
         case RAFT_LREG_IGNORE_TIMER_EVENTS:
@@ -262,13 +227,6 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC),
                 RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
-            break;
-        case RAFT_LREG_HIST_DEV_SYNC_LAT:
-            lreg_value_fill_object(
-                lv,
-                raft_instance_hist_stat_2_name(
-                    RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC),
-                RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC);
             break;
         case RAFT_LREG_FOLLOWER_VSTATS:
             lreg_value_fill_varray(lv, "follower-stats",
@@ -562,41 +520,17 @@ raft_server_entry_next_entry_is_valid(const struct raft_instance *ri,
  *    contents of the provided entry_header.
  */
 static void
-raft_instance_update_newest_entry_hdr(
-    struct raft_instance *ri,
-    const struct raft_entry_header *reh,
-    enum raft_instance_newest_entry_hdr_types type)
+raft_instance_update_newest_entry_hdr(struct raft_instance *ri,
+                                      const struct raft_entry_header *reh)
 {
     NIOVA_ASSERT(ri && reh);
-    if (reh->reh_index < 0)
+    if  (reh->reh_index < 0)
         return;  // ignore log blocks
 
-    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
+    ri->ri_newest_entry_hdr = *reh;
 
-    for (enum raft_instance_newest_entry_hdr_types i = RI_NEHDR_SYNC;
-         i <= RI_NEHDR_ALL; i++)
-    {
-        if (type != RI_NEHDR_ALL && i != type)
-            continue;
-
-        struct raft_entry_header *tgt = &ri->ri_newest_entry_hdr[i];
-        bool updated = false;
-
-        if (reh->reh_index > tgt->reh_index)
-        {
-            updated = true;
-            *tgt = *reh;
-        }
-
-        DBG_RAFT_ENTRY(LL_DEBUG, tgt, "dst (who=%s)", thread_name_get());
-        DBG_RAFT_ENTRY(LL_DEBUG, reh, "src (updated=%s)",
-                       updated ? "true" : "false");
-    }
-
-    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
-
-    // DBG_RAFT_INSTANCE() takes the mutex, don't deadlock
-    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "");
+    DBG_RAFT_ENTRY(LL_TRACE, &ri->ri_newest_entry_hdr, "");
+    DBG_RAFT_INSTANCE(LL_TRACE, ri, "");
 }
 
 static void
@@ -671,11 +605,7 @@ raft_server_entry_write(struct raft_instance *ri,
      * header contents into the raft instance.   Note, this is a noop if the
      * entry is for a log header.
      */
-    enum raft_instance_newest_entry_hdr_types type =
-        raft_server_does_synchronous_writes(ri) ?
-        RI_NEHDR_ALL : RI_NEHDR_UNSYNC;
-
-    raft_instance_update_newest_entry_hdr(ri, &re->re_header, type);
+    raft_instance_update_newest_entry_hdr(ri, &re->re_header);
 
     niova_free(re);
 
@@ -828,8 +758,8 @@ raft_server_entry_header_read_by_store(struct raft_instance *ri,
     if (!ri || !reh || reh_index < 0)
         return -EINVAL;
 
-    else if (!raft_instance_is_booting(ri) && // Disallow unsynced entries
-             raft_server_get_current_raft_entry_index(ri, true) < reh_index)
+    else if (!raft_instance_is_booting(ri) &&
+             raft_server_get_current_raft_entry_index(ri) < reh_index)
         return -ERANGE;
 
     reh->reh_index = reh_index;
@@ -869,29 +799,6 @@ raft_server_log_header_write_prep(struct raft_instance *ri,
     uuid_copy(ri->ri_log_hdr.rlh_voted_for, candidate);
 }
 
-/**
- * raft_server_backend_sync - reentrant function which can be called from the
- *    main raft thread and the sync-thread.
- */
-static int
-raft_server_backend_sync(struct raft_instance *ri)
-{
-    if (!ri)
-        return -EINVAL;
-
-    // Grab the unsync'd header contents
-    struct raft_entry_header unsync_reh;
-    raft_instance_get_newest_header(ri, &reh, false);
-
-    int rc = ri->ri_backend->rib_backend_sync ? 0 :
-        ri->ri_backend->rib_backend_sync(ri);
-
-    // Copy the contents of the current unsynced header to the synced
-    raft_instance_update_newest_entry_hdr(ri, &unsync_reh, RI_NEHDR_SYNC);
-
-    return rc;
-}
-
 static int
 raft_server_log_header_write(struct raft_instance *ri,
                              const uuid_t candidate, int64_t candidate_term)
@@ -901,10 +808,7 @@ raft_server_log_header_write(struct raft_instance *ri,
 
     raft_server_log_header_write_prep(ri, candidate, candidate_term);
 
-    // Calls to rib_header_write() must be followed by a sync
-    int rc = ri->ri_backend->rib_header_write(ri);
-
-    return rc ? rc : raft_server_backend_sync(ri);
+    return ri->ri_backend->rib_header_write(ri);
 }
 
 /**
@@ -962,23 +866,16 @@ raft_instance_initialize_newest_entry_hdr(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
-
-    memset(&ri->ri_newest_entry_hdr_sync, 0, sizeof(struct raft_entry_header));
-    memset(&ri->ri_newest_entry_hdr_unsync, 0,
-           sizeof(struct raft_entry_header));
-
-    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
+    memset(&ri->ri_newest_entry_hdr, 0, sizeof(struct raft_entry_header));
 }
 
 /**
  * raft_server_entry_next_entry_is_valid - this function is used when a caller
  *    wants to verify that an entry header correctly falls into the raft log
  *    sequence.  The function compares the prospective header with the known
- *    newest log header, ri->ri_newest_entry_hdr_unsynced.
+ *    newest log header, ri->ri_newest_entry_hdr.
  * @ri:  raft instance
  * @next_reh:  the raft entry header being validated
- * NOTES:  function considers the UNSYNCED newest value.
  */
 static bool
 raft_server_entry_next_entry_is_valid(const struct raft_instance *ri,
@@ -992,24 +889,15 @@ raft_server_entry_next_entry_is_valid(const struct raft_instance *ri,
     /* A null UUID means ri_newest_entry_hdr is uninitialized, otherwise,
      * the expected index is the 'newest' + 1.
      */
-    const int64_t expected_raft_unsync_index =
-        raft_server_get_current_raft_entry_index(ri, false) + 1;
+    const int64_t expected_raft_index =
+        raft_server_get_current_raft_entry_index(ri) + 1;
 
-    if (raft_server_does_synchronous_writes(ri))
-        DBG_RAFT_INSTANCE_FATAL_IF(
-            ((raft_server_get_current_raft_entry_index(ri, true) + 1) !=
-             expected_raft_unsync_index), ri,
-            "sync and unsync next indices are not equal");
-
-    // The index must increase by '1' and the term must never decrease.
-    if (next_reh->reh_index != expected_raft_unsync_index ||
-        (next_reh->reh_term <
-         raft_server_get_current_raft_entry_term(ri, false)))
+    /* The index must increase by '1' and the term must never decrease.
+     */
+    if (next_reh->reh_index != expected_raft_index ||
+        next_reh->reh_term < raft_server_get_current_raft_entry_term(ri))
     {
-        DBG_RAFT_ENTRY(LL_ERROR,
-                       raft_instance_get_newest_header(
-                           (struct raft_instance *)ri, false),
-                       "invalid entry");
+        DBG_RAFT_ENTRY(LL_ERROR, &ri->ri_newest_entry_hdr, "invalid entry");
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "");
 
         return false;
@@ -1058,11 +946,7 @@ raft_server_entries_scan(struct raft_instance *ri)
             break;
         }
 
-        /* During startup, sync and unsynced should be equivalent since all
-         * found entries are considered to be synced and 'synced' status for
-         * a raft instance occurs when the unsynced-idx == synced-idx.
-         */
-        raft_instance_update_newest_entry_hdr(ri, &reh, RI_NEHDR_ALL);
+        raft_instance_update_newest_entry_hdr(ri, &reh);
     }
 
     return 0;
@@ -1080,14 +964,14 @@ raft_server_log_truncate(struct raft_instance *ri)
     NIOVA_ASSERT(ri);
 
     const raft_entry_idx_t trunc_entry_idx =
-        raft_server_get_current_raft_entry_index(ri, true) + 1;
+        raft_server_get_current_raft_entry_index(ri) + 1;
 
     NIOVA_ASSERT(trunc_entry_idx >= 0);
 
     ri->ri_backend->rib_log_truncate(ri, trunc_entry_idx);
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-raft-idx=%ld",
-                      raft_server_get_current_raft_entry_index(ri, true));
+                      raft_server_get_current_raft_entry_index(ri));
 }
 
 /**
@@ -1453,7 +1337,6 @@ raft_server_become_candidate(struct raft_instance *ri)
     // Reset vote counters
     raft_server_init_candidate_state(ri);
 
-    // raft_server_vote_for_self() must sync ALL raft contents
     int rc = raft_server_vote_for_self(ri);
 
     if (rc) // Failed to sync our own log header!
@@ -1466,9 +1349,9 @@ raft_server_become_candidate(struct raft_instance *ri)
         .rrm_version = 0,
         .rrm_vote_request.rvrqm_proposed_term = ri->ri_log_hdr.rlh_term,
         .rrm_vote_request.rvrqm_last_log_term =
-        raft_server_get_current_raft_entry_term(ri, true),
+            raft_server_get_current_raft_entry_term(ri),
         .rrm_vote_request.rvrqm_last_log_index =
-        raft_server_get_current_raft_entry_index(ri, true),
+            raft_server_get_current_raft_entry_index(ri),
     };
 
     uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
@@ -2076,9 +1959,8 @@ raft_server_append_entry_check_already_stored(
      */
     if (raerq->raerqm_log_term > 0)
     {
-        int rc = raft_server_entry_header_read_by_store(
-            ri, &reh, leaders_next_idx_for_me);
-
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        leaders_next_idx_for_me);
         FATAL_IF((rc), "raft_server_header_entry_read(): %s", strerror(-rc));
 
         if (reh.reh_term != raerq->raerqm_log_term)
@@ -2103,8 +1985,8 @@ raft_server_append_entry_check_already_stored(
      */
     if (raerq->raerqm_prev_log_index >= 0)
     {
-        int rc = raft_server_entry_header_read_by_store(
-            ri, &reh, raerq->raerqm_prev_log_index);
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        raerq->raerqm_prev_log_index);
 
         FATAL_IF((rc), "raft_server_entry_read(): %s", strerror(-rc));
         FATAL_IF((reh.reh_term != raerq->raerqm_prev_log_term),
@@ -2142,14 +2024,6 @@ raft_server_append_entry_log_prune_if_needed(
 
     const int64_t raft_entry_idx_prune = raerq->raerqm_prev_log_index + 1;
 
-    /* Forcing a sync here will prevent the sync-thread from persisting new
-     * log entries which may be beyond raerqm_prev_log_index (which is where
-     * we're truncating to..).
-     */
-    int rc = raft_server_backend_sync(ri);
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), "raft_server_backend_sync(): %s",
-                               strerror(-rc));
-
     // We must not prune already committed transactions.
     DBG_RAFT_INSTANCE_FATAL_IF(
         (ri->ri_commit_idx >= raft_entry_idx_prune ||
@@ -2157,10 +2031,11 @@ raft_server_append_entry_log_prune_if_needed(
         ri, "cannot prune committed entry raerq-nli=%ld",
         raft_entry_idx_prune);
 
-    // Force reinit the header before applying an 'older' value
-    raft_instance_initialize_newest_entry_hdr(ri);
-
-    if (raerq->raerqm_prev_log_index >= 0)
+    if (raerq->raerqm_prev_log_index < 0)
+    {
+        raft_instance_initialize_newest_entry_hdr(ri);
+    }
+    else
     {
         struct raft_entry_header reh;
 
@@ -2168,13 +2043,12 @@ raft_server_append_entry_log_prune_if_needed(
          * We don't call raft_server_entry_next_entry_is_valid() since the log
          * sequence had been verified already at startup.
          */
-        int rc = raft_server_entry_header_read_by_store(
-            ri, &reh, raerq->raerqm_prev_log_index);
-
+        int rc = raft_server_entry_header_read_by_store(ri, &reh,
+                                                        raerq->raerqm_prev_log_index);
         FATAL_IF((rc), "raft_server_entry_header_read_by_store(): %s",
                  strerror(-rc));
 
-        raft_instance_update_newest_entry_hdr(ri, &reh, RI_NEHDR_ALL);
+        raft_instance_update_newest_entry_hdr(ri, &reh);
     }
 
     // truncate the log.
@@ -3695,9 +3569,6 @@ raft_server_instance_startup(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
 
-    FATAL_IF((pthread_mutex_init(&ri->ri_newest_entry_mutex, NULL)),
-             "pthread_mutex_init(): %s", strerror(errno));
-
     // raft_server_instance_init() should have been run
     if (!ri->ri_timer_fd_cb)
         return -EINVAL;
@@ -3762,8 +3633,6 @@ raft_server_instance_shutdown(struct raft_instance *ri)
     for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
         ev_pipe_cleanup(&ri->ri_evps[i]);
 
-    pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
-
     return 0;
 }
 
@@ -3798,8 +3667,7 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         enum raft_instance_store_type type,
-                         bool sync_writes, void *arg)
+                         enum raft_instance_store_type type, void *arg)
 {
     if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
         return -EINVAL;
@@ -3812,7 +3680,6 @@ raft_server_instance_run(const char *raft_uuid_str,
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
     ri->ri_backend_init_arg = arg;
-    ri->ri_synchronous_writes = sync_writes;
 
     raft_instance_backend_type_specify(ri, type);
 

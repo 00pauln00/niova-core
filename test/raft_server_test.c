@@ -18,13 +18,12 @@
 #include "ref_tree_proto.h"
 #include "alloc.h"
 
-#define OPTS "u:r:hRs"
+#define OPTS "u:r:hR"
 
 const char *raft_uuid_str;
 const char *my_uuid_str;
 
 bool use_rocksdb_backend = false;
-bool use_synchronous_writes = false;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -571,9 +570,6 @@ rst_getopt(int argc, char **argv)
         case 'R':
             use_rocksdb_backend = true;
             break;
-        case 's':
-            use_synchronous_writes = true;
-            break;
         default:
             rst_print_help(EINVAL, argv);
             break;
@@ -624,5 +620,5 @@ main(int argc, char **argv)
         raft_uuid_str, my_uuid_str,
         raft_server_test_rst_sm_handler,
         use_rocksdb_backend ? RAFT_INSTANCE_STORE_ROCKSDB :
-        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE, use_synchronous_writes, NULL);
+        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE, NULL);
 }
