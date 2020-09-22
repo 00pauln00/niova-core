@@ -772,7 +772,6 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
         pmdbtc_read_result_capture(preq, rc);
         break;
     case pmdb_op_write:
-        preq->preq_write_seqno++;
         pmdbtc_write_result_capture(preq, rc);
         break;
     default:
@@ -781,6 +780,9 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
 
     // Makes a copy of the preq contents
     pmdbtc_app_history_add(preq);
+
+    if (preq->preq_op == pmdb_op_write)
+        preq->preq_write_seqno++; // increment seqno after adding to history
 
     preq->preq_op_cnt--;
 

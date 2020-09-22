@@ -12,6 +12,14 @@
 #include "raft_net.h"
 #include "util.h"
 
+enum raft_client_request_type
+{
+    RCRT_READ,     // blocking
+    RCRT_READ_NB,  // non-blocking
+    RCRT_WRITE,
+    RCRT_WRITE_NB
+};
+
 #define RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS 8
 
 typedef void * raft_client_thread_t;
@@ -41,7 +49,8 @@ raft_client_request_submit(raft_client_instance_t rci,
                            const struct raft_net_client_user_id *rncui,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
-                           const struct timespec timeout, const bool block,
+                           const struct timespec timeout,
+                           const enum raft_client_request_type rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag);
 #endif

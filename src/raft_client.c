@@ -1163,7 +1163,7 @@ raft_client_request_handle_init(
     struct raft_client_instance *rci, struct raft_client_request_handle *rcrh,
     const struct iovec *src_iovs, size_t nsrc_iovs, struct iovec *dest_iovs,
     size_t ndest_iovs, const struct timespec now,
-    const struct timespec timeout, const bool block,
+    const struct timespec timeout, const enum raft_client_request_type rcrt,
     raft_client_user_cb_t user_cb, void *user_arg,
     const raft_net_request_tag_t tag)
 {
@@ -1188,12 +1188,17 @@ raft_client_request_handle_init(
         return rc;
 
     rcrh->rcrh_arg = user_arg;
-    rcrh->rcrh_blocking = block ? 1 : 0;
     rcrh->rcrh_async_cb = user_cb;
     rcrh->rcrh_submitted = now;
     rcrh->rcrh_initializing = 1;
     rcrh->rcrh_send_niovs = nsrc_iovs;
     rcrh->rcrh_recv_niovs = ndest_iovs;
+
+    rcrh->rcrh_blocking =
+        (rcrt == RCRT_READ_NB || rcrt == RCRT_WRITE_NB) ? 0 : 1;
+
+    rcrh->rcrh_op_wr =
+        (rcrt == RCRT_WRITE || rcrt == RCRT_WRITE_NB) ? 1 : 0;
 
     memcpy(&rcrh->rcrh_iovs[0], src_iovs, nsrc_iovs * sizeof(struct iovec));
     memcpy(&rcrh->rcrh_iovs[nsrc_iovs], dest_iovs,
@@ -1365,10 +1370,14 @@ raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct raft_net_client_user_id *rncui,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
-                           const struct timespec timeout, const bool block,
+                           const struct timespec timeout,
+                           const enum raft_client_request_type rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag)
 {
+    const bool block = (rcrt == RCRT_READ || rcrt == RCRT_WRITE) ?
+        true : false;
+
     if (!client_instance || !rncui || (!block && user_cb == NULL))
         return -EINVAL;
 
@@ -1411,7 +1420,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     int rc =
         raft_client_request_handle_init(rci, rcrh, src_iovs, nsrc_iovs,
                                         dest_iovs, ndest_iovs, now, timeout,
-                                        block, user_cb, user_arg, tag);
+                                        rcrt, user_cb, user_arg, tag);
     if (rc)
     {
         DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
