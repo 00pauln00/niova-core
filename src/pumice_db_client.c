@@ -18,7 +18,7 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define PMDB_MIN_REQUEST_TIMEOUT_SECS 1
+#define PMDB_MIN_REQUEST_TIMEOUT_SECS 60
 static unsigned long pmdbClientDefaultTimeoutSecs =
     PMDB_MIN_REQUEST_TIMEOUT_SECS;
 

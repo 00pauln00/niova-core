@@ -343,8 +343,11 @@ pmdb_obj_to_reply(const struct pmdb_object *obj, struct pmdb_msg *reply,
 //    reply->pmdbrm_user_id = obj->pmdb_obj_rncui;
     reply->pmdbrm_op = pmdb_op_reply;
     reply->pmdbrm_write_seqno = obj->pmdb_obj_commit_seqno;
+
+    // if either term value is -1 then write_pending is false;
     reply->pmdbrm_write_pending =
-        obj->pmdb_obj_pending_term == current_raft_term ? 1 : 0;
+        (obj->pmdb_obj_pending_term == current_raft_term &&
+         current_raft_term != ID_ANY_64bit) ? 1 : 0;
 }
 
 /**
@@ -760,6 +763,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
         struct pmdb_msg *pmdb_reply =
             RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
 
+        // Pass in ID_ANY_64bit since this is a reply.
         pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
     }
 
