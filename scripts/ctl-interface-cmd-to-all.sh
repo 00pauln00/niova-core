@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 CTL_DIR=/tmp/.niova/
 ITERATIONS=1

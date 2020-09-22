@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 
 WATCH=0
 DRY_RUN=0
@@ -82,8 +82,7 @@ fi
 SEARCH_PATHS[0]=.
 SEARCH_PATHS[1]=/tmp
 SEARCH_PATHS[2]=/etc
-SEARCH_PATHS[3]=/var/tmp
-SEARCH_PATHS[4]=/nvme0n1/
+SEARCH_PATHS[2]=/var/tmp
 CFG_FILE=""
 
 for i in ${SEARCH_PATHS[@]}
