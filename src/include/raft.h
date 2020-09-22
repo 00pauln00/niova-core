@@ -59,7 +59,7 @@ typedef int                              raft_server_timerfd_cb_ctx_int_t;
 typedef void                             raft_server_leader_mode_t;
 typedef int                              raft_server_leader_mode_int_t;
 typedef int64_t                          raft_server_leader_mode_int64_t;
-typedef void                             raft_server_epoll_remote_sender_t;
+typedef void                             raft_server_epoll_ae_sender_t;
 typedef void                             raft_server_epoll_sm_apply_t;
 typedef void                             raft_server_epoll_sm_apply_bool_t;
 typedef int                              raft_server_epoll_sm_apply_int_t;
@@ -74,8 +74,7 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 2,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 3,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 4,
-    RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE        = 5,
-    RAFT_RPC_MSG_TYPE_ANY                    = 6,
+    RAFT_RPC_MSG_TYPE_ANY                    = 5,
 };
 
 struct raft_vote_request_msg
@@ -122,12 +121,6 @@ struct raft_append_entries_reply_msg
     uint8_t  raerpm__pad[5];
 };
 
-struct raft_sync_idx_update_msg
-{
-    int64_t rsium_synced_log_index;
-    int64_t rsium_term;
-};
-
 //#define RAFT_RPC_MSG_TYPE_Version0_SIZE 120
 
 struct raft_rpc_msg
@@ -144,7 +137,6 @@ struct raft_rpc_msg
         struct raft_vote_reply_msg             rrm_vote_reply;
         struct raft_append_entries_request_msg rrm_append_entries_request;
         struct raft_append_entries_reply_msg   rrm_append_entries_reply;
-        struct raft_sync_idx_update_msg        rrm_sync_index_update;
     };
 /*  char rrm_payload[]; // future use if more msg types (other than
  *      rrm_append_entries_request require payload
@@ -209,7 +201,7 @@ enum raft_epoll_handles
     RAFT_EPOLL_HANDLE_PEER_UDP,
     RAFT_EPOLL_HANDLE_CLIENT_UDP,
     RAFT_EPOLL_HANDLE_TIMERFD,
-    RAFT_EPOLL_HANDLE_EVP_REMOTE_SEND,
+    RAFT_EPOLL_HANDLE_EVP_AE_SEND,
     RAFT_EPOLL_HANDLE_EVP_SM_APPLY,
     RAFT_EPOLL_NUM_HANDLES,
     RAFT_EPOLL_HANDLE_EVP_ANY, // purposely out of range
@@ -253,9 +245,9 @@ struct raft_instance;
 
 enum raft_server_event_pipes
 {
-    RAFT_SERVER_EVP_REMOTE_SEND  = 0,
-    RAFT_SERVER_EVP_SM_APPLY     = 1,
-    RAFT_SERVER_EVP_ANY          = 2,
+    RAFT_SERVER_EVP_AE_SEND  = 0,
+    RAFT_SERVER_EVP_SM_APPLY = 1,
+    RAFT_SERVER_EVP_ANY      = 2,
 };
 
 enum raft_follower_reasons
@@ -507,8 +499,8 @@ raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
 {
     switch (evps)
     {
-    case RAFT_SERVER_EVP_REMOTE_SEND:
-        return RAFT_EPOLL_HANDLE_EVP_REMOTE_SEND;
+    case RAFT_SERVER_EVP_AE_SEND:
+        return RAFT_EPOLL_HANDLE_EVP_AE_SEND;
     case RAFT_SERVER_EVP_SM_APPLY:
         return RAFT_EPOLL_HANDLE_EVP_SM_APPLY;
     default:
