@@ -73,7 +73,6 @@ enum raft_instance_store_type
 {
     RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
     RAFT_INSTANCE_STORE_ROCKSDB,
-    RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
 };
 
 enum raft_udp_listen_sockets

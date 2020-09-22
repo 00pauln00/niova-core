@@ -1036,8 +1036,7 @@ raft_server_backend_setup(struct raft_instance *ri)
         raft_server_backend_use_posix(ri);
         break;
 
-    case RAFT_INSTANCE_STORE_ROCKSDB: // fall through
-    case RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP:
+    case RAFT_INSTANCE_STORE_ROCKSDB:
         raft_server_backend_use_rocksdb(ri);
         break;
 
