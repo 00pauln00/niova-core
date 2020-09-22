@@ -18,7 +18,7 @@
 #include "ref_tree_proto.h"
 #include "alloc.h"
 
-#define OPTS "u:r:hRa"
+#define OPTS "u:r:hRs"
 
 const char *raft_uuid_str;
 const char *my_uuid_str;
@@ -541,7 +541,7 @@ static void
 rst_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s [-a (async writes)] [-R (use-rocksDB-backend)] -r <UUID> -u <UUID>\n",
+            "Usage: %s [-R (use-rocksDB-backend)] -r <UUID> -u <UUID>\n",
             argv[0]);
 
     exit(error);
@@ -571,8 +571,8 @@ rst_getopt(int argc, char **argv)
         case 'R':
             use_rocksdb_backend = true;
             break;
-        case 'a':
-            use_synchronous_writes = false;
+        case 's':
+            use_synchronous_writes = true;
             break;
         default:
             rst_print_help(EINVAL, argv);
