@@ -376,7 +376,6 @@ struct raft_instance
     void                           *ri_backend_init_arg;
     void                           *ri_client_arg;
     raft_entry_idx_t                ri_entries_detected_at_startup;
-    struct thread_ctl               ri_sync_thread_ctl;
 };
 
 static inline void
