@@ -80,7 +80,7 @@ static unsigned long long raftClientIdlePingServerTimeMS =
     RAFT_CLIENT_STALE_SERVER_TIME_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
 static unsigned long long raftClientRetryTimeoutMS =
-    (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 10);
+    (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 2);
 
 #define RAFT_CLIENT_OP_HISTORY_SIZE 64
 static const size_t raftClientOpHistorySize = RAFT_CLIENT_OP_HISTORY_SIZE;
