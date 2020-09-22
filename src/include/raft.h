@@ -326,11 +326,9 @@ struct raft_instance_backend
 
 enum raft_instance_newest_entry_hdr_types
 {
-    RI_NEHDR__START = 0,
     RI_NEHDR_SYNC = 0,
     RI_NEHDR_UNSYNC = 1,
     RI_NEHDR_ALL = 2,
-    RI_NEHDR__END = RI_NEHDR_ALL,
 };
 
 struct raft_instance
@@ -473,7 +471,7 @@ do {                                                               \
                      __leader_uuid_str);                           \
                                                                    \
     LOG_MSG(log_level,                                                      \
-            "%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld v=%s l=%s "  \
+            "%c et=%ld ei=%ld ht=%ld hs=%ld c[t:i]=%ld,%ld:%ld,%ld v=%s l=%s "  \
             fmt,                                                            \
             raft_server_state_to_char((ri)->ri_state),                      \
             raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
@@ -667,9 +665,7 @@ raft_server_entry_header_is_null(const struct raft_entry_header *reh)
     if (reh->reh_magic == RAFT_ENTRY_MAGIC)
         return false;
 
-    struct raft_entry_header null_reh = {0};
-    null_reh.reh_index = -1ULL;
-
+    const struct raft_entry_header null_reh = {0};
     NIOVA_ASSERT(!memcmp(reh, &null_reh, sizeof(struct raft_entry_header)));
 
     return true;
@@ -682,9 +678,6 @@ raft_instance_get_newest_header(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri && reh && (type == RI_NEHDR_SYNC ||
                                type == RI_NEHDR_UNSYNC));
-
-    if (raft_instance_is_client(ri))
-        return;
 
     pthread_mutex_lock(&ri->ri_newest_entry_mutex);
 
@@ -705,9 +698,6 @@ raft_server_get_current_raft_entry_term(
 {
     NIOVA_ASSERT(ri);
 
-    if (raft_instance_is_client(ri))
-        return 0;
-
     struct raft_entry_header reh;
     raft_instance_get_newest_header(ri, &reh, type);
 
@@ -721,9 +711,6 @@ raft_server_get_current_raft_entry_data_size(
 {
     NIOVA_ASSERT(ri);
 
-    if (raft_instance_is_client(ri))
-        return 0;
-
     struct raft_entry_header reh;
     raft_instance_get_newest_header(ri, &reh, type);
 
@@ -736,9 +723,6 @@ raft_server_get_current_raft_entry_crc(
     enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
-
-    if (raft_instance_is_client(ri))
-        return 0;
 
     struct raft_entry_header reh;
     raft_instance_get_newest_header(ri, &reh, type);
@@ -762,9 +746,6 @@ raft_server_get_current_raft_entry_index(
     enum raft_instance_newest_entry_hdr_types type)
 {
     NIOVA_ASSERT(ri);
-
-    if (raft_instance_is_client(ri))
-        return -1;
 
     raft_entry_idx_t current_reh_index = -1;
 

@@ -24,7 +24,7 @@ const char *raft_uuid_str;
 const char *my_uuid_str;
 
 bool use_rocksdb_backend = false;
-bool use_synchronous_writes = true;
+bool use_synchronous_writes = false;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
