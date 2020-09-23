@@ -35,6 +35,8 @@ SYS_CORE_INCLUDES = \
 	src/include/system_info.h \
 	src/include/thread.h \
 	src/include/udp.h \
+	src/include/tcp.h \
+	src/include/tcp_mgr.h \
 	src/include/util.h \
 	src/include/util_thread.h \
 	src/include/watchdog.h
@@ -59,6 +61,8 @@ SYS_CORE_OBJFILES = \
 	src/system_info.o \
 	src/thread.o \
 	src/udp.o \
+	src/tcp.o \
+	src/tcp_mgr.o \
 	src/util_thread.o \
 	src/watchdog.o
 
@@ -137,6 +141,9 @@ tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
 		$(SYS_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/config_token_test \
 		test/config_token_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/tcp_test \
+		test/tcp_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/udp_test \
 		test/udp_test.c \

@@ -37,7 +37,7 @@ struct epoll_handle
     unsigned int eph_destroying : 1;
     unsigned int eph_async_destroy : 1;
     void        *eph_arg;
-    void         (*eph_cb)(const struct epoll_handle *);
+    void         (*eph_cb)(const struct epoll_handle *, uint32_t events);
     void         (*eph_ref_cb)(void *, enum epoll_handle_ref_op);
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
 };
@@ -80,7 +80,13 @@ int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph);
 
 int
+epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph);
+
+int
 epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph);
+
+int
+epoll_handle_del_wait(struct epoll_mgr *epm, struct epoll_handle *eph);
 
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);

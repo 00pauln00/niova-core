@@ -17,6 +17,7 @@
 #include "ref_tree_proto.h"
 #include "net_ctl.h"
 #include "registry.h"
+#include "tcp_mgr.h"
 
 #define CTL_SVC_DEFAULT_LOCAL_DIR "/etc/niova/ctl-svc/local"
 #define CTL_SVC_MAX_RAFT_PEERS 11
@@ -68,6 +69,7 @@ struct ctl_svc_node_peer
         struct ctl_svc_node_raft_peer csnp_raft_info;
         struct ctl_svc_node_niosd     csnp_niosd_info;
     };
+    struct tcp_mgr_connection csnp_net_data;
 };
 
 struct ctl_svc_node_raft
@@ -255,6 +257,9 @@ ctl_svc_node_lookup(const uuid_t lookup_uuid, struct ctl_svc_node **ret_csn);
 int
 ctl_svc_node_lookup_by_string(const char *uuid_str,
                               struct ctl_svc_node **ret_csn);
+
+void
+ctl_svc_node_get(struct ctl_svc_node *csn);
 
 void
 ctl_svc_node_put(struct ctl_svc_node *csn);

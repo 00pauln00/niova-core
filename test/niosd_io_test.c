@@ -63,7 +63,7 @@ static bool sequentialIO = false;
 static size_t epollCbExecCnt;
 
 static void
-epollCb(const struct epoll_handle *eph)
+epollCb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
     NIOVA_ASSERT(eph == &epollHandle);

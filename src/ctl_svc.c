@@ -958,6 +958,8 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
         return NULL;
 
     *csn = *in;
+    if (ctl_svc_node_is_peer(csn))
+        csn->csn_peer.csnp_net_data.rntc_ri = NULL;
 
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
@@ -1015,6 +1017,13 @@ ctl_svc_node_lookup_by_string(const char *uuid_str,
         return -EBADMSG;
 
     return ctl_svc_node_lookup(lookup_uuid, ret_csn);
+}
+
+void
+ctl_svc_node_get(struct ctl_svc_node *csn)
+{
+    DBG_CTL_SVC_NODE(LL_TRACE, csn, "");
+    RT_GET(ctl_svc_node_tree, &ctlSvcNodeTree, csn, 0, NULL);
 }
 
 void
