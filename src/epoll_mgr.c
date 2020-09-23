@@ -54,7 +54,8 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  epoll_mgr_cb_t cb, epoll_mgr_cb_t getput, void *arg)
+                  epoll_mgr_cb_t cb, void *arg,
+                  void (*ref_cb)(void *, uint32_t))
 {
     if (!eph || !cb)
         return -EINVAL;
@@ -66,8 +67,29 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     eph->eph_fd           = fd;
     eph->eph_events       = events;
     eph->eph_cb           = cb;
-    eph->eph_owner_getput = getput;
+    eph->eph_ref_cb       = ref_cb;
     eph->eph_arg          = arg;
+
+    return 0;
+}
+
+int
+epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
+{
+    if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
+        return -EINVAL;
+
+    else if (eph->eph_fd < 0 || epm->epm_epfd < 0)
+        return -EBADF;
+
+    else if (!eph->eph_installed) // XXX check for deleting
+        return -EINVAL;
+
+    struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
+
+    int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
+    if (rc < 0)
+        return -errno;
 
     return 0;
 }
@@ -88,9 +110,7 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
     if (rc < 0)
-    {
         return -errno;
-    }
 
     const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
     NIOVA_ASSERT(num_handles > 0);
@@ -171,8 +191,8 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
-        if (eph->eph_installed && eph->eph_owner_getput)
-            eph->eph_owner_getput(eph, 0);
+        if (eph->eph_installed && eph->eph_ref_cb)
+            eph->eph_ref_cb(eph, 0);
     }
     epm->epm_waiting = 0;
 

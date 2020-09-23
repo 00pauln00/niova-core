@@ -37,7 +37,7 @@ tcp_set_max_size(ssize_t new_size)
 bool
 tcp_iov_size_ok(ssize_t sz)
 {
-    return sz <= NIOVA_MAX_TCP_SIZE;
+    return sz <= maxTcpSize;
 }
 
 int
@@ -56,10 +56,20 @@ tcp_setup_sockaddr_in(const char *ipaddr, int port,
 }
 
 void
-tcp_sockaddr_in_2_handle(struct sockaddr_in *addr_in, struct tcp_socket_handle *tsh)
+tcp_sockaddr_in_2_handle(struct sockaddr_in *addr_in,
+                         struct tcp_socket_handle *tsh)
 {
-    strncpy(tsh->tsh_ipaddr, inet_ntoa(addr_in->sin_addr), sizeof(tsh->tsh_ipaddr));
+    strncpy(tsh->tsh_ipaddr, inet_ntoa(addr_in->sin_addr),
+            sizeof(tsh->tsh_ipaddr));
     tsh->tsh_port = addr_in->sin_port;
+}
+
+void
+tcp_socket_handle_set_data(struct tcp_socket_handle *tsh, const char *ipaddr,
+                           int port)
+{
+    strncpy(tsh->tsh_ipaddr, ipaddr, sizeof(tsh->tsh_ipaddr));
+    tsh->tsh_port = port;
 }
 
 int
@@ -118,18 +128,20 @@ tcp_socket_bind(struct tcp_socket_handle *tsh)
         tsh->tsh_port = tcpDefaultPort;
 
     int sock_opt = 1;
-    setsockopt(tsh->tsh_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&sock_opt, sizeof(sock_opt));
+    setsockopt(tsh->tsh_socket, SOL_SOCKET, SO_REUSEADDR, (char*)&sock_opt,
+               sizeof(sock_opt));
 
     struct sockaddr_in addr_in = {0};
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_bind(): %s:%d", tsh->tsh_ipaddr, tsh->tsh_port);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_bind(): %s:%d", tsh->tsh_ipaddr,
+                   tsh->tsh_port);
 
     int rc = tcp_setup_sockaddr_in(tsh->tsh_ipaddr, tsh->tsh_port, &addr_in);
     if (rc)
         goto out;
 
     rc = bind(tsh->tsh_socket, (struct sockaddr *)&addr_in,
-                sizeof(addr_in));
+              sizeof(addr_in));
     if (rc)
     {
         rc = -errno;
@@ -225,9 +237,8 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
         return rc;
     }
 
-    if (from) {
+    if (from)
         tcp_setup_sockaddr_in(tsh->tsh_ipaddr, tsh->tsh_port, from);
-    }
 
     SIMPLE_LOG_MSG(LL_DEBUG, "fd=%d src=%s:%u nb=%zd flags=%x",
                    socket, tsh->tsh_ipaddr, tsh->tsh_port, rc,
@@ -317,11 +328,14 @@ tcp_socket_connect(struct tcp_socket_handle *tsh)
     struct sockaddr_in addr_in = {0};
     tcp_setup_sockaddr_in(tsh->tsh_ipaddr, tsh->tsh_port, &addr_in);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect() fd:%d host: %s:%d", tsh->tsh_socket, tsh->tsh_ipaddr, tsh->tsh_port);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect() fd:%d host: %s:%d",
+                   tsh->tsh_socket, tsh->tsh_ipaddr, tsh->tsh_port);
 
     tcp_socket_set_nonblocking(tsh);
 
-    int rc = connect(tsh->tsh_socket, (struct sockaddr *)&addr_in, sizeof(struct sockaddr_in));
+    int rc =
+        connect(tsh->tsh_socket, (struct sockaddr *)&addr_in,
+                sizeof(struct sockaddr_in));
     if (rc < 0) {
         rc = -errno;
         if (rc != -EINPROGRESS)

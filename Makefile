@@ -36,6 +36,7 @@ SYS_CORE_INCLUDES = \
 	src/include/thread.h \
 	src/include/udp.h \
 	src/include/tcp.h \
+	src/include/tcp_mgr.h \
 	src/include/util.h \
 	src/include/util_thread.h \
 	src/include/watchdog.h
@@ -61,6 +62,7 @@ SYS_CORE_OBJFILES = \
 	src/thread.o \
 	src/udp.o \
 	src/tcp.o \
+	src/tcp_mgr.o \
 	src/util_thread.o \
 	src/watchdog.o
 

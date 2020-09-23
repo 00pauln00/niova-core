@@ -30,7 +30,7 @@ struct epoll_handle
     unsigned int   eph_installed : 1;
     void          *eph_arg;
     epoll_mgr_cb_t eph_cb;
-    epoll_mgr_cb_t eph_owner_getput;
+    void           (*eph_ref_cb)(void *, uint32_t);
 };
 
 struct epoll_mgr
@@ -38,7 +38,7 @@ struct epoll_mgr
     int              epm_epfd;
     pthread_mutex_t  epm_handle_delete_mutex;
     niova_atomic32_t epm_num_handles;
-    unsigned int     epm_ready : 1,
+    unsigned int     epm_ready   : 1,
                      epm_waiting : 1;
 };
 
@@ -59,6 +59,9 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
 
 int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph);
+
+int
+epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph);
 
 int
 epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph);

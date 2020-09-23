@@ -93,4 +93,8 @@ tcp_get_max_size();
 
 int
 tcp_get_default_port(void);
+
+void
+tcp_socket_handle_set_data(struct tcp_socket_handle *tsh, const char *ipaddr,
+                           int port);
 #endif

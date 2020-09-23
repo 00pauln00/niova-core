@@ -19,6 +19,7 @@
 #include "ev_pipe.h"
 #include "raft_net.h"
 #include "tcp.h"
+#include "tcp_mgr.h"
 #include "udp.h"
 #include "util.h"
 
@@ -323,7 +324,7 @@ struct raft_instance_backend
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
-    struct tcp_socket_handle        ri_listen_socket;
+    struct tcp_mgr_instance         ri_tcp_mgr;
     struct ctl_svc_node            *ri_csn_raft;
     struct ctl_svc_node            *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
     struct ctl_svc_node            *ri_csn_this_peer;
