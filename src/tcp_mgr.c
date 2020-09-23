@@ -51,7 +51,7 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
     return rc;
 }
 
-static void
+void
 tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
                          struct tcp_mgr_connection *tmc)
 {
@@ -113,10 +113,10 @@ static int
 tcp_mgr_connection_epoll_add(struct tcp_mgr_connection *tmc,
                              uint32_t events,
                              epoll_mgr_cb_t cb,
-                             void (*ref_cb)(void *, uint32_t))
+                             void (*ref_cb)(void *, enum epoll_handle_ref_op))
 {
     int rc = epoll_handle_init(&tmc->tmc_eph, tmc->tmc_tsh.tsh_socket,
-                               events, cb, ref_cb, tmc);
+                               events, cb, tmc, ref_cb);
     if (rc)
         return rc;
 
@@ -142,8 +142,27 @@ tcp_mgr_handshake_iov_fini(struct iovec *iov)
     niova_free(iov->iov_base);
 }
 
+static int
+epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
+{
+    int rc = 0;
+
+    if (events & (EPOLLHUP | EPOLLERR))
+    {
+        socklen_t rc_len = sizeof(rc);
+        int rc2 = getsockopt(eph->eph_fd, SOL_SOCKET, SO_ERROR, &rc, &rc_len);
+        if (rc2)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "Error getting socket error: %d", rc2);
+            return rc2;
+        }
+    }
+
+    return -rc;
+}
+
 static void
-tcp_mgr_recv_cb (const struct epoll_handle *eph, uint32_t events)
+tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph && eph->eph_arg);
 
@@ -264,17 +283,6 @@ tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
         SIMPLE_LOG_MSG(LL_ERROR, "tcp_mgr_accept(): %d", rc);
 }
 
-// XXX update
-static void
-tcp_mgr_connection_ref_cb(const struct epoll_handle *eph, uint32_t do_put)
-{
-    NIOVA_ASSERT(eph && eph->eph_arg);
-
-    struct tcp_mgr_connection *tmc = eph->eph_arg;
-
-    tmc->tmc_tmi->tmi_connection_ref_cb(tmc, do_put);
-}
-
 int
 tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr)
 {
@@ -285,29 +293,10 @@ tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr)
 
     int rc = epoll_handle_init(&tmi->tmi_listen_eph,
                                tmi->tmi_listen_socket.tsh_socket, EPOLLIN,
-                               tcp_mgr_listen_cb, NULL, tmi);
+                               tcp_mgr_listen_cb, tmi, NULL);
 
     return rc ? rc :
         epoll_handle_add(epoll_mgr, &tmi->tmi_listen_eph);
-}
-
-static int
-epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
-{
-    int rc = 0;
-
-    if (events & (EPOLLHUP | EPOLLERR))
-    {
-        socklen_t rc_len = sizeof(rc);
-        int rc2 = getsockopt(eph->eph_fd, SOL_SOCKET, SO_ERROR, &rc, &rc_len);
-        if (rc2)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "Error getting socket error: %d", rc2);
-            return rc2;
-        }
-    }
-
-    return -rc;
 }
 
 static int

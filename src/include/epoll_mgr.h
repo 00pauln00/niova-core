@@ -28,17 +28,20 @@ enum epoll_handle_ref_op
     EPH_REF_PUT
 };
 
+struct epoll_handle;
+typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *, uint32_t events);
+
 struct epoll_handle
 {
-    int          eph_fd;
-    int          eph_events;
-    unsigned int eph_installed : 1;
-    unsigned int eph_installing : 1;
-    unsigned int eph_destroying : 1;
-    unsigned int eph_async_destroy : 1;
-    void        *eph_arg;
-    void         (*eph_cb)(const struct epoll_handle *, uint32_t events);
-    void         (*eph_ref_cb)(void *, enum epoll_handle_ref_op);
+    int            eph_fd;
+    int            eph_events;
+    unsigned int   eph_installed     : 1;
+    unsigned int   eph_installing    : 1;
+    unsigned int   eph_destroying    : 1;
+    unsigned int   eph_async_destroy : 1;
+    void          *eph_arg;
+    epoll_mgr_cb_t eph_cb;
+    void           (*eph_ref_cb)(void *, enum epoll_handle_ref_op);
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
 };
 
@@ -46,16 +49,14 @@ CIRCLEQ_HEAD(epoll_handle_list, epoll_handle);
 
 typedef void epoll_mgr_cb_ctx_t;
 
-typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *);
-
 struct epoll_mgr
 {
-    pthread_t        epm_thread_id;
-    pthread_mutex_t  epm_mutex;
-    int              epm_num_handles;
-    int              epm_epfd;
-    unsigned int     epm_ready : 1;
-    niova_atomic64_t epm_epoll_wait_cnt;
+    pthread_t                epm_thread_id;
+    pthread_mutex_t          epm_mutex;
+    int                      epm_num_handles;
+    int                      epm_epfd;
+    unsigned int             epm_ready : 1;
+    niova_atomic64_t         epm_epoll_wait_cnt;
     struct epoll_handle_list epm_active_list;
     struct epoll_handle_list epm_destroy_list;
 };
@@ -73,7 +74,7 @@ epoll_mgr_close(struct epoll_mgr *epm);
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *), void *arg,
+                  epoll_mgr_cb_t cb, void *arg,
                   void (*ref_cb)(void *, enum epoll_handle_ref_op));
 
 int

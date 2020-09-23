@@ -13,9 +13,9 @@
 struct tcp_mgr_connection;
 
 
-typedef int (*tcp_mgr_ref_cb_t)(struct tcp_mgr_connection *tmc,
-                                uint32_t do_put); //XXX enum do_put
-typedef int (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *tmc, void *data);
+typedef void (*tcp_mgr_ref_cb_t)(void *,
+                                 enum epoll_handle_ref_op op);
+typedef void (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *tmc, void *data);
 typedef struct tcp_mgr_connection *(*tcp_mgr_handshake_cb_t)(void *data,
                                                              int fd,
                                                              void *handshake,
@@ -85,5 +85,15 @@ int
 tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr);
 
 void
+tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
+                         struct tcp_mgr_connection *tmc);
+
+int
+tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
+                       struct tcp_mgr_connection *tmc, const char *ipaddr,
+                       int port);
+
+void
 tcp_mgr_connection_close(struct tcp_mgr_connection *tmc);
+
 #endif

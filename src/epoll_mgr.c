@@ -9,7 +9,6 @@
 
 #include "common.h"
 #include "ctor.h"
-<<<<<<< HEAD
 #include "env.h"
 #include "epoll_mgr.h"
 #include "log.h"
@@ -18,9 +17,6 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 typedef int epoll_mgr_thread_ctx_int_t;
-=======
-#include "util.h"
->>>>>>> tcp-mgr-draft
 
 static size_t epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
 static pthread_mutex_t epollMgrInstallLock = PTHREAD_MUTEX_INITIALIZER;
@@ -51,7 +47,6 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     CIRCLEQ_INIT(&epm->epm_active_list);
     CIRCLEQ_INIT(&epm->epm_destroy_list);
 
-    epm->epm_waiting = 0;
     epm->epm_ready = 1;
     niova_atomic_init(&epm->epm_epoll_wait_cnt, 0);
 
@@ -127,13 +122,8 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-<<<<<<< HEAD
-                  void (*cb)(const struct epoll_handle *), void *arg,
+                  void (*cb)(const struct epoll_handle *, uint32_t), void *arg,
                   void (*ref_cb)(void *, enum epoll_handle_ref_op))
-=======
-                  epoll_mgr_cb_t cb, void *arg,
-                  void (*ref_cb)(void *, uint32_t))
->>>>>>> tcp-mgr-draft
 {
     if (!eph || !cb || (ref_cb && !arg))
         return -EINVAL;
@@ -141,7 +131,6 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     else if (fd < 0)
         return -EBADF;
 
-<<<<<<< HEAD
     eph->eph_installing = 0;
     eph->eph_destroying = 0;
     eph->eph_async_destroy = 0;
@@ -151,13 +140,6 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     eph->eph_cb        = cb;
     eph->eph_arg       = arg;
     eph->eph_ref_cb    = ref_cb;
-=======
-    eph->eph_installed    = 0;
-    eph->eph_fd           = fd;
-    eph->eph_events       = events;
-    eph->eph_cb           = cb;
-    eph->eph_ref_cb       = ref_cb;
-    eph->eph_arg          = arg;
 
     return 0;
 }
@@ -179,7 +161,6 @@ epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
     if (rc < 0)
         return -errno;
->>>>>>> tcp-mgr-draft
 
     return 0;
 }
@@ -209,7 +190,6 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
-<<<<<<< HEAD
 
     pthread_mutex_lock(&epm->epm_mutex);
     eph->eph_installing = 0;
@@ -272,17 +252,6 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
     return rc;
-=======
-    if (rc < 0)
-        return -errno;
-
-    const int num_handles = niova_atomic_inc(&epm->epm_num_handles);
-    NIOVA_ASSERT(num_handles > 0);
-
-    eph->eph_installed = 1;
-
-    return 0;
->>>>>>> tcp-mgr-draft
 }
 
 int
@@ -343,7 +312,6 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
     return rc;
 }
 
-<<<<<<< HEAD
 static void
 epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 {
@@ -372,26 +340,6 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
             }
 
         } while (destroy);
-=======
-/* This version of epoll_handle_del should be used in destructors that
- * destroy the eph. Waits until epoll is guaranteed to be done with eph.
- */
-int
-epoll_handle_del_wait(struct epoll_mgr *epm, struct epoll_handle *eph)
-{
-    int rc = epoll_handle_del(epm, eph);
-    if (rc)
-        return rc;
-
-    struct timespec ts;
-    msec_2_timespec(&ts, 100);
-
-    // ensure all handle events have been processed before returning
-    while (epm->epm_waiting)
-        nanosleep(&ts, NULL);
-
-    return 0;
->>>>>>> tcp-mgr-draft
 }
 
 int
@@ -412,22 +360,12 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     struct epoll_event evs[maxevents];
 
-    // epoll_wait may return epoll handles, so don't remove attached objects
-    epm->epm_waiting = 1;
-
     const int nevents =
         epoll_wait(epm->epm_epfd, evs, maxevents, timeout);
 
-<<<<<<< HEAD
     niova_atomic_inc(&epm->epm_epoll_wait_cnt);
 
     const int rc = -errno;
-=======
-    SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): %d", nevents);
-
-    if (nevents < 0)
-        return -errno;
->>>>>>> tcp-mgr-draft
 
     for (int i = 0; i < nevents; i++)
     {
@@ -435,33 +373,21 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
         if (eph->eph_installed && eph->eph_ref_cb)
             eph->eph_ref_cb(eph, 0);
     }
-    epm->epm_waiting = 0;
 
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
         SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
 
-        // save eph_put in case eph is destroyed in cb
-        epoll_mgr_cb_t eph_put = eph ? eph->eph_owner_getput : NULL;
-
         if (eph->eph_installed && eph->eph_cb)
             eph->eph_cb(eph, evs[i].events);
 
-        if (eph_put)
-            eph_put(eph, 1);
     }
 
-<<<<<<< HEAD
     // Reap again before returning control to the caller
     epoll_mgr_reap_destroy_list(epm);
 
     return nevents < 0 ? rc : nevents;
-=======
-    epm->epm_waiting = 0;
-
-    return nevents;
->>>>>>> tcp-mgr-draft
 }
 
 void
