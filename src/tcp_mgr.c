@@ -1,3 +1,5 @@
+#include <sys/ioctl.h>
+
 #include "alloc.h"
 #include "log.h"
 #include "epoll_mgr.h"
@@ -5,7 +7,40 @@
 #include "tcp_mgr.h"
 #include "util.h"
 
+#define DEFAULT_BULK_BUFS 32
+
 REGISTRY_ENTRY_FILE_GENERATE;
+
+// XXX should this be on tcp_mgr_instance?
+static uint32_t bufsAvail = DEFAULT_BULK_BUFS;
+
+void
+set_bulk_bufs_avail(uint32_t cnt)
+{
+    bufsAvail = cnt;
+}
+
+// XXX not particularly thread safe
+void *
+tcp_mgr_bulk_malloc(size_t sz)
+{
+    if (bufsAvail <= 0)
+        return NULL;
+
+    void *buf = niova_malloc_can_fail(sz);
+    if (!buf)
+        return NULL;
+
+    bufsAvail--;
+    return buf;
+}
+
+void
+tcp_mgr_bulk_free(void *buf)
+{
+    niova_free(buf);
+    bufsAvail++;
+}
 
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
@@ -62,6 +97,8 @@ tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
 
     tmc->tmc_tmi = tmi;
     tmc->tmc_status = TMCS_DISCONNECTED;
+    tmc->tmc_async_buf = NULL;
+    tmc->tmc_async_remain = 0;
 
     pthread_mutex_init(&tmc->tmc_status_mutex, NULL);
 
@@ -161,6 +198,71 @@ epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
     return -rc;
 }
 
+static int
+tcp_mgr_async_read_helper(struct tcp_mgr_connection *tmc)
+{
+    void *bulk = tmc->tmc_async_buf + tmc->tmc_async_offset;
+
+    struct iovec iov = {
+        .iov_base = bulk,
+        .iov_len = tmc->tmc_async_remain,
+    };
+
+    ssize_t rc = tcp_socket_recv(&tmc->tmc_tsh, &iov, 1, NULL, false);
+    if (rc == -EAGAIN)
+        rc = 0;
+    else if (rc == 0)
+        return -ENOTCONN;
+    else if (rc < 0)
+        return rc;
+
+    NIOVA_ASSERT(rc <= tmc->tmc_async_remain);
+
+    tmc->tmc_async_offset += rc;
+    tmc->tmc_async_remain -= rc;
+
+    return 0;
+}
+
+int
+tcp_mgr_async_read(struct tcp_mgr_connection *tmc, size_t bulk_size,
+                   void *hdr, size_t hdr_size)
+{
+    NIOVA_ASSERT(tmc && !tmc->tmc_async_buf && !tmc->tmc_async_remain);
+    if (!bulk_size)
+        return 0;
+
+    size_t buf_size = hdr_size + bulk_size;
+
+    // buffer free'd in
+    void *buf = tcp_mgr_bulk_malloc(buf_size);
+    if (!buf)
+    {
+        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "cannot allocate bulk buf");
+
+        int bytes_avail;
+        ioctl(tmc->tmc_tsh.tsh_socket, FIONREAD, &bytes_avail);
+        if (bytes_avail == bulk_size)
+            buf = niova_malloc_can_fail(buf_size);
+
+        if (!buf)
+            return -ENOMEM;
+    }
+
+    if (hdr && hdr_size)
+        memcpy(buf, hdr, hdr_size);
+
+    tmc->tmc_async_buf = buf;
+    tmc->tmc_async_offset = hdr_size;
+    tmc->tmc_async_remain = bulk_size;
+
+    int rc = tcp_mgr_async_read_helper(tmc);
+    if (rc < 0)
+        return rc;
+
+    return 0;
+}
+
 static void
 tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 {
@@ -182,7 +284,6 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         return;
     }
 
-
     tcp_mgr_recv_cb_t recv_cb = tmc->tmc_tmi->tmi_recv_cb;
     if (!recv_cb)
     {
@@ -190,7 +291,26 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         return;
     }
 
+    if (tmc->tmc_async_remain)
+    {
+        rc = tcp_mgr_async_read_helper(tmc);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete async read, rc=%d", rc);
+            tcp_mgr_connection_close(tmc);
+            return;
+        }
+    }
+
     recv_cb(tmc, tmc->tmc_tmi->tmi_data);
+
+    if (tmc->tmc_async_buf && !tmc->tmc_async_remain)
+    {
+        tcp_mgr_bulk_free(tmc->tmc_async_buf);
+
+        tmc->tmc_async_buf = NULL;
+        tmc->tmc_async_offset = 0;
+    }
 }
 
 static void
@@ -258,7 +378,8 @@ tcp_mgr_accept(struct tcp_mgr_instance *tmi, int fd)
     }
 
     int rc = tcp_socket_handle_accept(fd, &tmc->tmc_tsh);
-    if (rc < 0) {
+    if (rc < 0)
+    {
         SIMPLE_LOG_MSG(LL_ERROR, "tcp_socket_handle_accept(): %d", rc);
         tcp_mgr_incoming_fini_err(tmc);
 

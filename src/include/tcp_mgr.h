@@ -54,6 +54,9 @@ struct tcp_mgr_connection
     struct tcp_socket_handle       tmc_tsh;
     struct epoll_handle            tmc_eph;
     struct tcp_mgr_instance       *tmc_tmi;
+    void                          *tmc_async_buf;
+    size_t                         tmc_async_offset;
+    size_t                         tmc_async_remain;
 };
 
 #define DBG_TCP_MGR_CXN(log_level, tmc, fmt, ...)                    \
@@ -95,5 +98,9 @@ tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
 
 void
 tcp_mgr_connection_close(struct tcp_mgr_connection *tmc);
+
+int
+tcp_mgr_async_read(struct tcp_mgr_connection *tmc, size_t bulk_size,
+                   void *hdr, size_t hdr_size);
 
 #endif

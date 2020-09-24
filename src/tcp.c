@@ -223,10 +223,11 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
         .msg_namelen = 0,
         .msg_iov = iov,
         .msg_iovlen = iovlen,
-        .msg_flags = MSG_WAITALL,
     };
 
-    ssize_t rc = recvmsg(socket, &msg, block ? MSG_WAITALL : MSG_DONTWAIT);
+    int flags = block ? MSG_WAITALL : MSG_DONTWAIT;
+
+    ssize_t rc = recvmsg(socket, &msg, flags);
     if (rc < 0)
     {
         rc = -errno;

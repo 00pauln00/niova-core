@@ -71,9 +71,14 @@ epoll_mgr_tally_handles(struct epoll_mgr *epm)
     pthread_mutex_lock(&epm->epm_mutex);
 
     CIRCLEQ_FOREACH(eph, &epm->epm_active_list, eph_lentry)
+    {
         cnt++;
+    }
+
     CIRCLEQ_FOREACH(eph, &epm->epm_destroy_list, eph_lentry)
+    {
         cnt++;
+    }
 
     pthread_mutex_unlock(&epm->epm_mutex);
 
@@ -122,7 +127,7 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *, uint32_t), void *arg,
+                  epoll_mgr_cb_t cb, void *arg,
                   void (*ref_cb)(void *, enum epoll_handle_ref_op))
 {
     if (!eph || !cb || (ref_cb && !arg))
@@ -140,27 +145,6 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     eph->eph_cb        = cb;
     eph->eph_arg       = arg;
     eph->eph_ref_cb    = ref_cb;
-
-    return 0;
-}
-
-int
-epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
-{
-    if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
-        return -EINVAL;
-
-    else if (eph->eph_fd < 0 || epm->epm_epfd < 0)
-        return -EBADF;
-
-    else if (!eph->eph_installed) // XXX check for deleting
-        return -EINVAL;
-
-    struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
-
-    int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
-    if (rc < 0)
-        return -errno;
 
     return 0;
 }
@@ -210,6 +194,27 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
     return rc;
+}
+
+int
+epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
+{
+    if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
+        return -EINVAL;
+
+    else if (eph->eph_fd < 0 || epm->epm_epfd < 0)
+        return -EBADF;
+
+    else if (!eph->eph_installed || eph->eph_installing || eph->eph_destroying)
+        return -EINVAL;
+
+    struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
+
+    int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
+    if (rc < 0)
+        return -errno;
+
+    return 0;
 }
 
 static epoll_mgr_thread_ctx_int_t
@@ -318,6 +323,7 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
     struct epoll_handle *destroy = NULL;
 
     if (!CIRCLEQ_EMPTY(&epm->epm_destroy_list))
+    {
         do
         {
             pthread_mutex_lock(&epm->epm_mutex);
@@ -340,6 +346,7 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
             }
 
         } while (destroy);
+    }
 }
 
 int

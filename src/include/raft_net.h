@@ -67,7 +67,6 @@ typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
 typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
 
 #define RAFT_NET_MAX_RPC_SIZE 65000
-#define RAFT_NET_MAX_TCP_RPC_SIZE 1024*1000
 #define RAFT_NET_MAX_RETRY_MS 30000
 #define RAFT_NET_MIN_RETRY_MS 100
 
@@ -103,12 +102,6 @@ enum raft_net_comm_recency_type
     RAFT_COMM_RECENCY_SEND,
     RAFT_COMM_RECENCY_UNACKED_SEND,
 };
-
-struct raft_net_tcp_handshake
-{
-    uuid_t  rnth_remote;
-};
-
 
 #define RAFT_NET_CLIENT_USER_ID_V0_SZ 48
 #define RAFT_NET_CLIENT_USER_ID_V0_NUINT64 \
