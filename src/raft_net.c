@@ -653,6 +653,7 @@ raft_net_hdr_recv(struct tcp_mgr_connection *tmc, char *sink_buf, size_t size)
     return total_bytes;
 }
 
+// XXX this feels hacky, perhaps switch to a unified RPC header in the future?
 static size_t
 raft_net_msg_bulk_size(bool is_client_msg, void *sink_buf)
 {
@@ -666,11 +667,62 @@ raft_net_msg_bulk_size(bool is_client_msg, void *sink_buf)
     return msg->rrm_append_entries_request.raerqm_entries_sz;
 }
 
-static raft_net_cb_ctx_t
-raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
+static ssize_t
+raft_net_tcp_recv_helper(struct tcp_mgr_connection *tmc, bool is_client_msg,
+                         void **buf_out)
 {
     static char sink_buf[RAFT_NET_MAX_RPC_SIZE];
 
+    size_t hdr_size = is_client_msg
+            ? sizeof(struct raft_client_rpc_msg)
+            : sizeof(struct raft_rpc_msg);
+
+    *buf_out = sink_buf;
+    ssize_t recv_bytes = raft_net_hdr_recv(tmc, sink_buf, hdr_size);
+
+    // we use EAGAIN to signal async IO
+    // if we can't read a full header, assume the connection closed
+    if (recv_bytes == -EAGAIN)
+        return 0;
+
+    if (recv_bytes <= 0)
+        return recv_bytes;
+
+    size_t bulk_size = raft_net_msg_bulk_size(is_client_msg, sink_buf);
+    if (!bulk_size)
+        return recv_bytes;
+
+    int rc = tcp_mgr_async_read(tmc, bulk_size, sink_buf, hdr_size);
+    if (rc < 0)
+    {
+        // XXX on ENOMEM close random csn connection instead?
+        // could copy header to a temporary buffer and then resize later?
+        SIMPLE_LOG_MSG(LL_NOTIFY, "error recieving bulk buffer, fd=%d",
+                       tmc->tmc_tsh.tsh_socket);
+        tcp_mgr_connection_close(tmc);
+
+        return rc;
+    }
+
+    if (tmc->tmc_async_remain)
+    {
+        // unable to get bulk data without blocking
+        // tcp mgr will callback when available
+        return -EAGAIN;
+    }
+
+    NIOVA_ASSERT(tmc->tmc_async_buf && tmc->tmc_async_offset);
+
+    // bulk data immediately available
+    *buf_out = tmc->tmc_async_buf;
+    recv_bytes = tmc->tmc_async_offset;
+
+    return recv_bytes;
+}
+
+static raft_net_cb_ctx_t
+raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
+{
     struct ctl_svc_node *csn;
     raft_net_connection_lookup_csn(tmc, &csn);
     if (!csn)
@@ -690,16 +742,6 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
     bool is_this_client_node = raft_instance_is_client(ri);
     bool is_client_msg = is_this_client_node || !from_peer;
 
-    // XXX unify the headers or have a raft_net only initial header?
-    // ideally it would also have a bulk size field or something to that effect
-    size_t hdr_size = is_client_msg
-            ? sizeof(struct raft_client_rpc_msg)
-            : sizeof(struct raft_rpc_msg);
-
-    SIMPLE_LOG_MSG(LL_DEBUG,
-                   "is_client_msg: %d from_peer: %d hdr_size: %lu sink_buf: %p",
-                   is_client_msg, from_peer, hdr_size, sink_buf);
-
     void *buf;
     ssize_t recv_bytes;
 
@@ -716,18 +758,20 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
         // new receive request
         NIOVA_ASSERT(!tmc->tmc_async_offset && !tmc->tmc_async_remain);
 
-        buf = sink_buf;
-        recv_bytes = raft_net_hdr_recv(tmc, sink_buf, hdr_size);
-
-        if (recv_bytes < 0)
+        recv_bytes = raft_net_tcp_recv_helper(tmc, is_client_msg, &buf);
+        if (recv_bytes == -EAGAIN)
+        {
+            // bulk async read
+            return;
+        }
+        else if (recv_bytes < 0)
         {
             // XXX close socket here?
-            DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "tcp_socket_recv(): %s",
+            DBG_TCP_MGR_CXN(LL_WARN, tmc, "raft_net_tcp_recv_helper(): %s",
                             strerror(-recv_bytes));
             return;
         }
-
-        if (recv_bytes == 0)
+        else if (recv_bytes == 0)
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "closing connection, fd=%d",
                            tmc->tmc_tsh.tsh_socket);
@@ -735,45 +779,7 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 
             return;
         }
-
-        DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d bytes=%zd",
-                          tmc->tmc_tsh.tsh_socket,
-                          recv_bytes);
-
-        size_t bulk_size = raft_net_msg_bulk_size(is_client_msg, sink_buf);
-        if (bulk_size)
-        {
-            int rc = tcp_mgr_async_read(tmc, bulk_size, sink_buf, hdr_size);
-            if (rc < 0)
-            {
-                // XXX on ENOMEM close random csn connection instead?
-                // could copy header to a temporary buffer and then resize later?
-                SIMPLE_LOG_MSG(LL_NOTIFY, "error recieving bulk buffer, fd=%d",
-                               tmc->tmc_tsh.tsh_socket);
-                tcp_mgr_connection_close(tmc);
-
-                return;
-            }
-
-            if (tmc->tmc_async_remain)
-            {
-                // unable to get bulk data without blocking
-                // tcp mgr will callback when available
-                return;
-            }
-            else if (tmc->tmc_async_buf)
-            {
-                // bulk data immediately available
-                buf = tmc->tmc_async_buf;
-                recv_bytes = tmc->tmc_async_offset;
-            }
-        }
     }
-
-    SIMPLE_LOG_MSG(LL_DEBUG, "2 from: %s:%d csn port %d",
-                   inet_ntoa(from.sin_addr),
-                   ntohs(from.sin_port),
-                   ctl_svc_node_peer_2_port(csn));
 
     if (from_peer && ri->ri_server_recv_cb)
         ri->ri_server_recv_cb(ri, buf, recv_bytes, &from);
