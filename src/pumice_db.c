@@ -64,9 +64,6 @@ struct pmdb_obj_extras_v0
  *   client may be a proxy for more than one application user id (rncui).
  * @pmdb_obj_rncui:  User / application identifier.  This is a rich structure
  *   which may encode several levels of nested identifiers.
- * @pmdb_obj_remote_csn:  The ctl svc node taken from the original request.
- *   This is used to direct the reply, assuming that the term which handled the
- *   write is current.
  * @pmdb_obj_msg_id:  The RPC identifier used by the client's RPC.
  */
 struct pmdb_object
@@ -77,7 +74,6 @@ struct pmdb_object
     int64_t                        pmdb_obj_pending_term;
     uuid_t                         pmdb_obj_client_uuid;
     struct raft_net_client_user_id pmdb_obj_rncui;
-    struct ctl_svc_node           *pmdb_obj_remote_csn;
     int64_t                        pmdb_obj_msg_id;
     union
     {
@@ -99,7 +95,7 @@ struct pmdb_apply_handle
             RAFT_NET_CLIENT_USER_ID_2_UUID(&(pmdbo)->pmdb_obj_rncui, 0, 0), \
             __uuid_str);                                                    \
         LOG_MSG(log_level,                                                  \
-            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld %s msg-id=%lx "   \
+            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld msg-id=%lx "      \
             fmt,                                                            \
             __uuid_str,                                                     \
             RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,      \
@@ -114,9 +110,6 @@ struct pmdb_apply_handle
             (pmdbo)->pmdb_obj_crc,                                          \
             (pmdbo)->pmdb_obj_commit_seqno,                                 \
             (pmdbo)->pmdb_obj_pending_term,                                 \
-            (pmdbo)->pmdb_obj_remote_csn                                    \
-                ? (pmdbo)->pmdb_obj_remote_csn->csn_peer.csnp_ipv4          \
-                : "null",                                                   \
             (pmdbo)->pmdb_obj_msg_id,                                       \
             ##__VA_ARGS__);                                                 \
     }
@@ -172,9 +165,6 @@ pmdb_object_net_init(struct pmdb_object *pmdb_obj,
     NIOVA_ASSERT(pmdb_obj);
 
     uuid_copy(pmdb_obj->pmdb_obj_client_uuid, client_uuid);
-
-    // XXX need to take a ref
-    pmdb_obj->pmdb_obj_remote_csn = csn;
 
     pmdb_obj->pmdb_obj_msg_id = msg_id;
 
@@ -697,8 +687,7 @@ pmdb_init_net_client_request_from_obj(
     NIOVA_ASSERT(rncr && pmdb_obj);
 
     raft_net_client_request_handle_set_reply_info(
-        rncr, pmdb_obj->pmdb_obj_remote_csn, pmdb_obj->pmdb_obj_client_uuid,
-        pmdb_obj->pmdb_obj_msg_id);
+            rncr, pmdb_obj->pmdb_obj_client_uuid, pmdb_obj->pmdb_obj_msg_id);
 }
 
 /**

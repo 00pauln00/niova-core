@@ -501,13 +501,10 @@ raft_net_client_request_handle_writes_raft_entry(
 static inline void
 raft_net_client_request_handle_set_reply_info(
     struct raft_net_client_request_handle *rncr,
-    struct ctl_svc_node *csn, const uuid_t client_uuid, uint64_t msg_id)
+    const uuid_t client_uuid, uint64_t msg_id)
 {
     if (rncr)
     {
-        if (csn)
-            rncr->rncr_remote_csn = csn;
-
         // Caller may supply a null-uuid string
         uuid_copy(rncr->rncr_client_uuid, client_uuid);
 

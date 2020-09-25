@@ -2679,9 +2679,18 @@ raft_server_reply_to_client(struct raft_instance *ri,
                             struct raft_net_client_request_handle *rncr)
 {
     if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft || !rncr ||
-        !raft_net_client_request_handle_has_reply_info(rncr) ||
-        !rncr->rncr_remote_csn)
+        !raft_net_client_request_handle_has_reply_info(rncr))
         return;
+
+    bool put_csn = false;
+    if (!rncr->rncr_remote_csn)
+    {
+        ctl_svc_node_lookup(rncr->rncr_client_uuid, &rncr->rncr_remote_csn);
+        if (!rncr->rncr_remote_csn)
+            return;
+
+        put_csn = true;
+    }
 
     /* Copy the reply info from the provided rncr pointer.  This reply info
      * fields have been written by the state_machine callback.
@@ -2697,6 +2706,12 @@ raft_server_reply_to_client(struct raft_instance *ri,
     if (rc)
         DBG_RAFT_CLIENT_RPC_CSN(LL_ERROR, reply, rncr->rncr_remote_csn,
                                 "raft_server_send_msg(): %s", strerror(rc));
+    if (put_csn)
+    {
+        struct ctl_svc_node *csn = rncr->rncr_remote_csn;
+        rncr->rncr_remote_csn = NULL;
+        ctl_svc_node_put(csn);
+    }
 }
 
 static raft_net_cb_ctx_t
@@ -2862,7 +2877,7 @@ raft_server_net_client_request_init(
          * function is called from raft_net_udp_cb_ctx_t context.
          */
         raft_net_client_request_handle_set_reply_info(
-            rncr, csn, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
+            rncr, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
 
         NIOVA_ASSERT(raft_net_client_request_handle_has_reply_info(rncr));
     }
