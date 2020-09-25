@@ -14,7 +14,6 @@
 #include "epoll_mgr.h"
 #include "log.h"
 #include "niosd_io.h"
-#include "raft_client.h"
 #include "system_info.h"
 #include "watchdog.h"
 
@@ -90,16 +89,6 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_default   = NIOSD_DEFAULT_AIO_EVENTS,
         .nev_min       = NIOSD_MIN_AIO_EVENTS,
         .nev_max       = NIOSD_MAX_AIO_EVENTS,
-        .nev_present   = false,
-    },
-    [NIOVA_ENV_VAR_raft_client_request_timeout] {
-        .nev_name      = "NIOVA_RAFT_CLIENT_REQUEST_TIMEOUT",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_RAFT_CLIENT,
-        .nev_var_num   = NIOVA_ENV_VAR_raft_client_request_timeout,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
-        .nev_default   = RAFT_CLIENT_REQUEST_TIMEOUT_SECS,
-        .nev_min       = 1,
-        .nev_max       = RAFT_CLIENT_REQUEST_TIMEOUT_MAX_SECS,
         .nev_present   = false,
     },
     [NIOVA_ENV_VAR_uuid] {

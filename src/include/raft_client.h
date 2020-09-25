@@ -9,12 +9,8 @@
 #include <sys/uio.h>
 
 #include "common.h"
-#include "env.h"
 #include "raft_net.h"
 #include "util.h"
-
-#define RAFT_CLIENT_REQUEST_TIMEOUT_MAX_SECS 0xffffffffU
-#define RAFT_CLIENT_REQUEST_TIMEOUT_SECS 60
 
 enum raft_client_request_type
 {
@@ -47,21 +43,6 @@ int
 raft_client_request_cancel(raft_client_instance_t rci,
                            const struct raft_net_client_user_id *rncui,
                            const char *reply_buf);
-
-void
-raft_client_set_default_request_timeout(unsigned int timeout);
-
-static inline void
-raft_client_set_default_request_timeout_env_cb(const struct niova_env_var *nev)
-{
-    if (nev)
-        return;
-
-    raft_client_set_default_request_timeout((unsigned int)nev->nev_long_value);
-}
-
-unsigned int
-raft_client_get_default_request_timeout(void);
 
 int
 raft_client_request_submit(raft_client_instance_t rci,

@@ -18,6 +18,10 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+#define PMDB_MIN_REQUEST_TIMEOUT_SECS 60
+static unsigned long pmdbClientDefaultTimeoutSecs =
+    PMDB_MIN_REQUEST_TIMEOUT_SECS;
+
 struct pmdb_client_request
 {
     pmdb_obj_id_t          pcreq_obj_id;
@@ -282,7 +286,7 @@ int
 PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
               pmdb_obj_stat_t *ret_stat)
 {
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, true, timeout,
                                     NULL, NULL);
@@ -298,7 +302,7 @@ PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     if (!cb)
         return -EINVAL;
 
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, false, timeout, cb,
                                     arg);
@@ -353,7 +357,7 @@ int
 PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
 {
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
                                  NULL, NULL, user_pmdb_stat);
@@ -370,7 +374,7 @@ PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
     if (!user_cb)
         return -EINVAL;
 
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, false, timeout,
                                  user_cb, user_arg, user_pmdb_stat);
@@ -429,7 +433,7 @@ PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
             size_t key_size, char *value, size_t value_size,
             struct pmdb_obj_stat *user_pmdb_stat)
 {
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
                                  value_size, true, timeout, NULL, NULL,
@@ -443,7 +447,7 @@ int
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
            size_t key_size, char *value, size_t value_size)
 {
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
                                  value_size, true, timeout, NULL, NULL, NULL);
@@ -460,7 +464,7 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
     if (!user_cb)
         return -EINVAL;
 
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
                                  value_size, false, timeout, user_cb,
@@ -473,7 +477,7 @@ PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
               pmdb_user_cb_t user_cb, void *user_arg,
               struct pmdb_obj_stat *user_pmdb_stat)
 {
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
+    const struct timespec timeout = {pmdbClientDefaultTimeoutSecs, 0};
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
                                  value_size, true, timeout, user_cb, user_arg,

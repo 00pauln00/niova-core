@@ -57,9 +57,6 @@ typedef void raft_client_app_ctx_t;
 typedef epoll_mgr_cb_ctx_t raft_client_epoll_t;
 typedef int  raft_client_epoll_int_t;
 
-static unsigned int raftClientDefaultReqTimeoutSecs =
-    RAFT_CLIENT_REQUEST_TIMEOUT_SECS;
-
 #define RAFT_CLIENT_SUCCESSFUL_PING_UNTIL_VIABLE 4
 static size_t raftClientNpingsUntilViable =
     RAFT_CLIENT_SUCCESSFUL_PING_UNTIL_VIABLE;
@@ -2429,19 +2426,6 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     *raft_client_instance = (void *)rci;
 
     return 0;
-}
-
-unsigned int
-raft_client_get_default_request_timeout(void)
-{
-    return raftClientDefaultReqTimeoutSecs;
-}
-
-void
-raft_client_set_default_request_timeout(unsigned int timeout)
-{
-    if (timeout)
-        raftClientDefaultReqTimeoutSecs = timeout;
 }
 
 int

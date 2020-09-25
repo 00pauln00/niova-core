@@ -109,10 +109,4 @@ pmdb_obj_id_2_rncui(const pmdb_obj_id_t *obj_id,
     return out;
 }
 
-static inline unsigned int
-pmdb_get_default_request_timeout(void)
-{
-    return raft_client_get_default_request_timeout();
-}
-
 #endif
