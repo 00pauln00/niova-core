@@ -29,6 +29,8 @@
 enum raft_net_lreg_values
 {
     RAFT_NET_LREG_IGNORE_TIMER_EVENTS,
+    RAFT_NET_LREG_ELECTION_TIMEOUT_MS,// uint32
+    RAFT_NET_LREG_HEARTBEAT_FREQ,     // uint32
     RAFT_NET_LREG__MAX,
 };
 
@@ -59,6 +61,95 @@ raft_net_get_instance(void)
     return &raftInstance;
 }
 
+static unsigned int
+raft_net_calc_max_heartbeat_freq(const struct raft_instance *ri)
+{
+    return ri->ri_election_timeout_max_ms / RAFT_HEARTBEAT__MIN_TIME_MS;
+}
+
+static void
+raft_net_set_heartbeat_freq(struct raft_instance *ri, unsigned int new_hb_freq)
+{
+    if (!ri || new_hb_freq < RAFT_HEARTBEAT__MIN_FREQ)
+        return;
+
+    const unsigned int election_timeout = ri->ri_election_timeout_max_ms;
+    const unsigned int max_hb_freq = raft_net_calc_max_heartbeat_freq(ri);
+
+    if (new_hb_freq > max_hb_freq)
+    {
+        SIMPLE_LOG_MSG(
+            LL_NOTIFY,
+            "raft heartbeat freq (%u) is too high for election timeout (%u), defaulting to %u",
+            new_hb_freq, election_timeout, RAFT_HEARTBEAT__MIN_TIME_MS);
+
+        new_hb_freq = max_hb_freq;
+    }
+
+    if (new_hb_freq != ri->ri_heartbeat_freq_per_election_min)
+    {
+        ri->ri_heartbeat_freq_per_election_min = new_hb_freq;
+        SIMPLE_LOG_MSG(LL_NOTIFY, "raft heartbeat freq = %u", new_hb_freq);
+    }
+}
+
+static int
+raft_net_lreg_set_heartbeat_freq(struct raft_instance *ri,
+                                 const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    unsigned int hb_freq = strtoul(LREG_VALUE_TO_IN_STR(lv), NULL, 10);
+
+    if (hb_freq == ri->ri_heartbeat_freq_per_election_min)
+        return 0; // noop return
+
+    if (hb_freq < RAFT_HEARTBEAT__MIN_FREQ)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY,
+                       "raft heartbeat freq (%u) is out of range (min=%u)",
+                       hb_freq, RAFT_HEARTBEAT__MIN_FREQ);
+        return -ERANGE;
+    }
+
+    raft_net_set_heartbeat_freq(ri, hb_freq);
+
+    return 0;
+}
+
+static int
+raft_net_lreg_set_election_timeout(struct raft_instance *ri,
+                                   const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    unsigned long long int election_timeout =
+        strtoull(LREG_VALUE_TO_IN_STR(lv), NULL, 10);
+
+    if (election_timeout > RAFT_ELECTION__MAX_TIME_MS ||
+        election_timeout < RAFT_ELECTION__MIN_TIME_MS)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "raft election timeout (%llu) out of range",
+                       election_timeout);
+        return -ERANGE;
+    }
+
+    if (election_timeout != ri->ri_election_timeout_max_ms)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "raft election timeout %u -> %llu",
+                       ri->ri_election_timeout_max_ms, election_timeout);
+
+        ri->ri_election_timeout_max_ms = election_timeout;
+        // Adjust the hb freq as needed
+        raft_net_set_heartbeat_freq(ri,
+                                    ri->ri_heartbeat_freq_per_election_min);
+    }
+
+    return 0;
+}
+
 static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
                              void *arg)
@@ -84,23 +175,38 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
             lreg_value_fill_bool(lv, "ignore_timer_events",
                                  ri->ri_ignore_timerfd ? true : false);
             break;
+        case RAFT_NET_LREG_ELECTION_TIMEOUT_MS:
+            lreg_value_fill_unsigned(lv, "election-timeout-ms",
+                                     ri->ri_election_timeout_max_ms);
+            break;
+        case RAFT_NET_LREG_HEARTBEAT_FREQ:
+            lreg_value_fill_unsigned(lv, "heartbeat-freq-per-election-timeout",
+                                     ri->ri_heartbeat_freq_per_election_min);
+            break;
         default:
             rc = -ENOENT;
             break;
         }
         break;
     case LREG_NODE_CB_OP_WRITE_VAL:
+        // Note that all WRITE_VAL inputs are strings.
         if (lv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
             return -EINVAL;
-
-        rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
-        if (rc)
-            return rc;
 
         switch (lv->lrv_value_idx_in)
         {
         case RAFT_NET_LREG_IGNORE_TIMER_EVENTS:
+            rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
+            if (rc)
+                return rc;
+
             ri->ri_ignore_timerfd = tmp_bool;
+            break;
+        case RAFT_NET_LREG_ELECTION_TIMEOUT_MS:
+            rc = raft_net_lreg_set_election_timeout(ri, lv);
+            break;
+        case RAFT_NET_LREG_HEARTBEAT_FREQ:
+            rc = raft_net_lreg_set_heartbeat_freq(ri, lv);
             break;
         default:
             rc = -EPERM;

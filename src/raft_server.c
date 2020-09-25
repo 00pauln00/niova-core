@@ -97,6 +97,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_VSTATS,
 };
 
+
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
                                   struct lreg_node *lrn,
@@ -114,9 +115,6 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         return -ERANGE;
 
     int rc = 0;
-#if 0
-    bool tmp_bool = false;
-#endif
 
     switch (op)
     {
@@ -194,12 +192,6 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_unsigned(lv, "newest-entry-crc",
                                      ri->ri_newest_entry_hdr.reh_crc);
             break;
-#if 0
-        case RAFT_LREG_IGNORE_TIMER_EVENTS:
-            lreg_value_fill_bool(lv, "ignore_timer_events",
-                                 ri->ri_ignore_timerfd ? true : false);
-            break;
-#endif
         case RAFT_LREG_HIST_COMMIT_LAT:
             lreg_value_fill_object(
                 lv,
@@ -239,21 +231,24 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         }
         break;
 
-    case LREG_NODE_CB_OP_WRITE_VAL:
 #if 0
-        if (lv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
-            return -EINVAL;
-
-        rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
-        if (rc)
-            return rc;
-#endif
+    case LREG_NODE_CB_OP_WRITE_VAL:
         switch (lv->lrv_value_idx_in)
         {
+        case RAFT_LREG_ELECTION_TIMEOUT_MS:
+            rc = raft_lreg_set_election_timeout(ri, lv);
+            break;
+        case RAFT_LREG_HEARTBEAT_FREQ:
+            rc = raft_lreg_set_heartbeat_freq(ri, lv);
+            break;
         default:
             rc = -EPERM;
             break;
         }
+#endif
+    default:
+        rc = -EOPNOTSUPP;
+        break;
     }
 
     return rc;
@@ -264,6 +259,7 @@ enum raft_peer_stats_items
     RAFT_PEER_STATS_ITEM_UUID,
 //    RAFT_PEER_STATS_LAST_SEND,
     RAFT_PEER_STATS_LAST_ACK,
+    RAFT_PEER_STATS_MS_SINCE_LAST_ACK,
 #if 0
 //    RAFT_PEER_STATS_BYTES_SENT,
 //    RAFT_PEER_STATS_BYTES_RECV,
@@ -305,6 +301,11 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
 #endif
     case RAFT_PEER_STATS_LAST_ACK:
         lreg_value_fill_string_time(lv, "last-ack", rfi->rfi_last_ack.tv_sec);
+        break;
+    case RAFT_PEER_STATS_MS_SINCE_LAST_ACK:
+        lreg_value_fill_signed(lv, "ms-since-last-ack",
+                               (niova_realtime_coarse_clock_get_msec() -
+                                timespec_2_msec(&rfi->rfi_last_ack)));
         break;
 #if 0
     case RAFT_PEER_STATS_BYTES_SENT:
@@ -1010,22 +1011,41 @@ raft_server_log_load(struct raft_instance *ri)
     return 0;
 }
 
+static unsigned int
+raft_election_timeout_lower_bound(const struct raft_instance *ri)
+{
+    return (unsigned int)(ri->ri_election_timeout_max_ms /
+                          RAFT_ELECTION_RANGE_DIVISOR);
+}
+
+static unsigned int
+raft_election_timeout_calc(const struct raft_instance *ri)
+{
+    unsigned int halved_timeout = raft_election_timeout_lower_bound(ri);
+
+    return (halved_timeout + (random_get() % halved_timeout));
+}
+
 static void
-raft_election_timeout_set(struct timespec *ts)
+raft_election_timeout_set(const struct raft_instance *ri, struct timespec *ts)
 {
     if (!ts)
         return;
 
-    unsigned long long msec =
-        RAFT_ELECTION_MIN_TIME_MS + (random_get() % RAFT_ELECTION_RANGE_MS);
+    unsigned long long msec = raft_election_timeout_calc(ri);
 
     msec_2_timespec(ts, msec);
 }
 
 static void
-raft_heartbeat_timeout_sec(struct timespec *ts)
+raft_heartbeat_timeout_sec(const struct raft_instance *ri, struct timespec *ts)
 {
-    msec_2_timespec(ts, RAFT_HEARTBEAT_TIME_MS);
+    unsigned long long msec = (ri->ri_election_timeout_max_ms /
+                               ri->ri_heartbeat_freq_per_election_min);
+
+    NIOVA_ASSERT(msec >= RAFT_HEARTBEAT__MIN_TIME_MS);
+
+    msec_2_timespec(ts, msec);
 }
 
 /**
@@ -1039,12 +1059,12 @@ raft_server_timerfd_settime(struct raft_instance *ri)
 
     if (ri->ri_state == RAFT_STATE_LEADER)
     {
-        raft_heartbeat_timeout_sec(&its.it_value);
+        raft_heartbeat_timeout_sec(ri, &its.it_value);
         its.it_interval = its.it_value;
     }
     else
     {
-        raft_election_timeout_set(&its.it_value);
+        raft_election_timeout_set(ri, &its.it_value);
     }
 
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "msec=%llu",
@@ -2476,14 +2496,20 @@ raft_server_apply_append_entries_reply_result(
     struct raft_follower_info *rfi =
         raft_server_get_follower_info(ri, follower_idx);
 
+    struct timespec la = rfi->rfi_last_ack;
+
     // Update the last ack value for this follower.
     niova_realtime_coarse_clock(&rfi->rfi_last_ack);
 
-    DBG_RAFT_INSTANCE((raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
-                      "follower=%x next-idx=%ld err=%hhx rp-pli=%ld",
-                      follower_idx, rfi->rfi_next_idx,
-                      raerp->raerpm_err_non_matching_prev_term,
-                      raerp->raerpm_prev_log_index);
+    DBG_RAFT_INSTANCE(
+        (raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
+        "follower=%x next-idx=%ld err=%hhx rp-pli=%ld la-ms=%lld",
+        follower_idx, rfi->rfi_next_idx,
+        raerp->raerpm_err_non_matching_prev_term,
+        raerp->raerpm_prev_log_index,
+        (timespec_2_msec(&rfi->rfi_last_ack) - timespec_2_msec(&la)));
+
+//XXX add la time to histogram
 
     /* Do not modify the rls->rls_next_idx[follower_idx] value unless the
      * reply corresponds to it.  This is to handle cases where replies get
@@ -2681,7 +2707,7 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
 
         timespecsub(&now, &rfi->rfi_last_ack, &diff);
 
-        if (timespec_2_msec(&diff) < RAFT_ELECTION_MIN_TIME_MS)
+        if (timespec_2_msec(&diff) <= raft_election_timeout_lower_bound(ri))
             num_acked_within_window++;
     }
 
@@ -3460,6 +3486,13 @@ static void
 raft_server_instance_init(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+
+    if (!ri->ri_election_timeout_max_ms)
+        ri->ri_election_timeout_max_ms = RAFT_ELECTION_UPPER_TIME_MS;
+
+    if (!ri->ri_heartbeat_freq_per_election_min)
+        ri->ri_heartbeat_freq_per_election_min =
+            RAFT_HEARTBEAT_FREQ_PER_ELECTION;
 
     ri->ri_commit_idx = -1; //Xxx this needs to go into a more general init fn
     ri->ri_last_applied_idx = -1;
