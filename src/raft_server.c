@@ -304,8 +304,9 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         break;
     case RAFT_PEER_STATS_MS_SINCE_LAST_ACK:
         lreg_value_fill_signed(lv, "ms-since-last-ack",
+                               timespec_2_msec(&rfi->rfi_last_ack) ?
                                (niova_realtime_coarse_clock_get_msec() -
-                                timespec_2_msec(&rfi->rfi_last_ack)));
+                                timespec_2_msec(&rfi->rfi_last_ack)) : -1ULL);
         break;
 #if 0
     case RAFT_PEER_STATS_BYTES_SENT:
