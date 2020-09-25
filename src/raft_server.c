@@ -2682,7 +2682,8 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
 static raft_server_udp_cb_ctx_bool_t
 raft_leader_instance_is_fresh(const struct raft_instance *ri)
 {
-    if (!raft_instance_is_leader(ri))
+    if (!raft_instance_is_leader(ri) ||
+        FAULT_INJECT(raft_leader_may_be_deposed))
         return false;
 
     struct timespec now;
