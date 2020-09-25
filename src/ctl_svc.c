@@ -962,7 +962,7 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
     *csn = *in;
     if (ctl_svc_node_is_peer(csn))
     {
-        // XXX layering violation?
+        // XXX is getting ri ok here?
         struct raft_instance *ri = raft_net_get_instance();
 
         tcp_mgr_connection_setup(&ri->ri_tcp_mgr, &csn->csn_peer.csnp_net_data);

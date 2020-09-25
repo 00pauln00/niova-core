@@ -617,10 +617,60 @@ raft_net_connection_lookup_csn(struct tcp_mgr_connection *tmc,
                                                    csn_peer));
 }
 
+static int
+raft_net_hdr_recv(struct tcp_mgr_connection *tmc, char *sink_buf, size_t size)
+{
+    static struct iovec iovs[1] = {0};
+
+    iovs[0].iov_base = sink_buf;
+    iovs[0].iov_len = size;
+
+    ssize_t total_bytes = 0;
+    const int MAX_ATTEMPTS = 2;
+
+    // try twice in case interrupts cause short read
+    for (int i = 0; i < MAX_ATTEMPTS && iovs[0].iov_len > 0; i++)
+    {
+        ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, iovs, 1, NULL,
+                                             false);
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_base=%p iov_len=%ld",
+                       recv_bytes, iovs[0].iov_base, iovs[0].iov_len);
+
+        if (recv_bytes == -EAGAIN)
+            recv_bytes = 0;
+
+        else if (recv_bytes <= 0)
+            return recv_bytes;
+
+        total_bytes += recv_bytes;
+
+        iovs[0].iov_base += recv_bytes;
+        iovs[0].iov_len -= recv_bytes;
+    }
+
+    return total_bytes;
+}
+
+static size_t
+raft_net_msg_bulk_size(bool is_client_msg, void *sink_buf)
+{
+    if (is_client_msg)
+    {
+        return ((struct raft_client_rpc_msg *)sink_buf)->rcrm_data_size;
+    }
+
+    struct raft_rpc_msg *msg = (struct raft_rpc_msg *)sink_buf;
+    if (msg->rrm_type != RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
+        return 0;
+
+    return msg->rrm_append_entries_request.raerqm_entries_sz;
+}
+
 static raft_net_cb_ctx_t
 raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    static char sink_buf[RAFT_NET_MAX_RPC_SIZE];
 
     struct ctl_svc_node *csn;
     raft_net_connection_lookup_csn(tmc, &csn);
@@ -632,34 +682,47 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
         return;
     }
 
-    bool from_peer = csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER;
-
-    static char sink_buf[RAFT_NET_MAX_RPC_SIZE];
     static struct sockaddr_in from;
-    static struct iovec iovs[1] = {
-        [0].iov_base = (void *)sink_buf,
-    };
+    tcp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
+                          ctl_svc_node_peer_2_port(csn), &from);
 
-    iovs[0].iov_len = from_peer
-            ? sizeof(struct raft_rpc_msg)
-            : sizeof(struct raft_client_rpc_msg);
+    bool from_peer = csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER;
+    bool is_client_node =
+        ri->ri_csn_this_peer->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT;
+    bool is_client_msg = is_client_node || !from_peer;
 
-    ssize_t total_bytes = 0;
-    const int MAX_ATTEMPTS = 2;
+    // XXX unify the headers or have a raft_net only initial header?
+    // ideally it would also have a bulk size field or something to that effect
+    size_t hdr_size = is_client_msg
+            ? sizeof(struct raft_client_rpc_msg)
+            : sizeof(struct raft_rpc_msg);
 
-    // XXX is this necessary in case of interrupts?
-    for (int i = 0; i < MAX_ATTEMPTS && iovs[0].iov_len > 0; i++)
+    SIMPLE_LOG_MSG(LL_DEBUG,
+                   "is_client_msg: %d from_peer: %d hdr_size: %lu sink_buf: %p",
+                   is_client_msg, from_peer, hdr_size, sink_buf);
+
+    void *buf;
+    ssize_t recv_bytes;
+
+    if (tmc->tmc_async_buf)
     {
-        ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, iovs, 1, &from,
-                                             false);
-        if (recv_bytes == -EAGAIN && i + 1 < MAX_ATTEMPTS)
-            continue;
+        NIOVA_ASSERT(tmc->tmc_async_offset && !tmc->tmc_async_remain);
+
+        buf = tmc->tmc_async_buf;
+        recv_bytes = tmc->tmc_async_offset;
+    }
+    else
+    {
+        NIOVA_ASSERT(!tmc->tmc_async_offset && !tmc->tmc_async_remain);
+
+        buf = sink_buf;
+        recv_bytes = raft_net_hdr_recv(tmc, sink_buf, hdr_size);
 
         if (recv_bytes < 0)
         {
             // XXX close socket here?
-            DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "tcp_socket_recv_fd():  %s",
-                              strerror(-recv_bytes));
+            DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "tcp_socket_recv(): %s",
+                            strerror(-recv_bytes));
             return;
         }
 
@@ -671,45 +734,43 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 
             return;
         }
+        DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d bytes=%zd",
+                          tmc->tmc_tsh.tsh_socket,
+                          recv_bytes);
 
-        total_bytes += recv_bytes;
-        iovs[0].iov_len -= recv_bytes;
-    }
-
-    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d bytes=%zd",
-                      tmc->tmc_tsh.tsh_socket,
-                      total_bytes);
-
-    // perform any bulk recv from clients
-    void *buf = sink_buf;
-    if (!from_peer)
-    {
-        struct raft_client_rpc_msg *msg =
-            (struct raft_client_rpc_msg *)sink_buf;
-        int rc = tcp_mgr_async_read(tmc, (size_t)msg->rcrm_data_size, msg,
-                                    sizeof(*msg));
-        if (rc < 0)
+        size_t bulk_size = raft_net_msg_bulk_size(is_client_msg, sink_buf);
+        if (bulk_size)
         {
-            // XXX on ENOMEM close random csn connection instead?
-            // would need to peek instead of read header, and then re-read
-            SIMPLE_LOG_MSG(LL_NOTIFY, "error recieving bulk buffer, fd=%d",
-                           tmc->tmc_tsh.tsh_socket);
-            tcp_mgr_connection_close(tmc);
+            int rc = tcp_mgr_async_read(tmc, bulk_size, sink_buf, hdr_size);
+            if (rc < 0)
+            {
+                // XXX on ENOMEM close random csn connection instead?
+                // could copy header to a temporary buffer and then resize later?
+                SIMPLE_LOG_MSG(LL_NOTIFY, "error recieving bulk buffer, fd=%d",
+                               tmc->tmc_tsh.tsh_socket);
+                tcp_mgr_connection_close(tmc);
 
-            return;
+                return;
+            }
+
+            if (tmc->tmc_async_remain)
+            {
+                return;
+            }
+            else if (tmc->tmc_async_buf)
+            {
+                buf = tmc->tmc_async_buf; // managed by tcp_mgr
+                recv_bytes = tmc->tmc_async_offset;
+            }
         }
-
-        if (tmc->tmc_async_remain)
-            return;
-        else
-            buf = tmc->tmc_async_buf; // managed by tcp_mgr
     }
 
+    SIMPLE_LOG_MSG(LL_DEBUG, "buf: %p recv_bytes: %ld", buf, recv_bytes);
 
     if (from_peer && ri->ri_server_recv_cb)
-        ri->ri_server_recv_cb(ri, buf, total_bytes, &from);
+        ri->ri_server_recv_cb(ri, buf, recv_bytes, &from);
     else if (!from_peer && ri->ri_client_recv_cb)
-        ri->ri_client_recv_cb(ri, buf, total_bytes, &from);
+        ri->ri_client_recv_cb(ri, buf, recv_bytes, &from);
 }
 
 
@@ -780,10 +841,10 @@ raft_net_tcp_handshake_recv(struct raft_instance *ri, int fd,
         return NULL;
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "csn loaded");
-
     const char *ipaddr = ctl_svc_node_peer_2_ipaddr(csn);
     int port = ctl_svc_node_peer_2_port(csn);
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "csn loaded %s:%d", ipaddr, port);
 
     tmc->tmc_tsh.tsh_socket = fd;
     tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
@@ -993,7 +1054,7 @@ raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     SIMPLE_LOG_MSG(LL_DEBUG, "ri: %p leader: %p iov: %p no: %lu",
-            ri, ri->ri_csn_leader, iov, niovs);
+                   ri, ri->ri_csn_leader, iov, niovs);
 
     if (!ri || !ri->ri_csn_leader || !iov || !niovs)
         return -EINVAL;

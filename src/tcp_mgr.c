@@ -90,8 +90,6 @@ void
 tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
                          struct tcp_mgr_connection *tmc)
 {
-    NIOVA_ASSERT(tmc->tmc_status == TMCS_NEEDS_SETUP);
-
     tcp_socket_handle_init(&tmc->tmc_tsh);
     tmc->tmc_eph.eph_installed = 0;
 
@@ -201,6 +199,8 @@ epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
 static int
 tcp_mgr_async_read_helper(struct tcp_mgr_connection *tmc)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     void *bulk = tmc->tmc_async_buf + tmc->tmc_async_offset;
 
     struct iovec iov = {
@@ -208,18 +208,22 @@ tcp_mgr_async_read_helper(struct tcp_mgr_connection *tmc)
         .iov_len = tmc->tmc_async_remain,
     };
 
-    ssize_t rc = tcp_socket_recv(&tmc->tmc_tsh, &iov, 1, NULL, false);
-    if (rc == -EAGAIN)
-        rc = 0;
-    else if (rc == 0)
+    ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, &iov, 1, NULL, false);
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_len=%ld", recv_bytes,
+                   iov.iov_len);
+
+    if (recv_bytes == -EAGAIN)
+        recv_bytes = 0;
+    else if (recv_bytes == 0)
         return -ENOTCONN;
-    else if (rc < 0)
-        return rc;
+    else if (recv_bytes < 0)
+        return recv_bytes;
 
-    NIOVA_ASSERT(rc <= tmc->tmc_async_remain);
+    NIOVA_ASSERT(recv_bytes <= tmc->tmc_async_remain);
 
-    tmc->tmc_async_offset += rc;
-    tmc->tmc_async_remain -= rc;
+    tmc->tmc_async_offset += recv_bytes;
+    tmc->tmc_async_remain -= recv_bytes;
 
     return 0;
 }
@@ -429,6 +433,9 @@ tcp_mgr_connection_epoll_mod(struct tcp_mgr_connection *tmc, int op,
     if (cb)
         tmc->tmc_eph.eph_cb = cb;
 
+    if (op)
+        tmc->tmc_eph.eph_events = op;
+
     return epoll_handle_mod(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
 };
 
@@ -462,6 +469,8 @@ tcp_mgr_connect_helper(struct tcp_mgr_connection *tmc)
         return rc;
     }
 
+    DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "reinstalling epoll handler");
+
     rc = tcp_mgr_connection_epoll_mod(tmc, EPOLLIN, tcp_mgr_recv_cb);
     if (rc < 0)
     {
@@ -478,11 +487,15 @@ tcp_mgr_connect_helper(struct tcp_mgr_connection *tmc)
     }
     else
     {
-        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc,
-                        "connection status changed while connecting");
         rc = -EAGAIN;
     }
     niova_mutex_unlock(&tmc->tmc_status_mutex);
+
+    if (rc)
+        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc,
+                        "connection status changed while connecting");
+    else
+        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
 
     return rc;
 }
@@ -523,6 +536,8 @@ tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
         return 0;
     if (!ipaddr || tmc->tmc_status == TMCS_DISCONNECTING)
         return -ENOTCONN;
+    if (tmc->tmc_status == TMCS_CONNECTING)
+        return -EALREADY;
 
     NIOVA_ASSERT(tmc->tmc_tsh.tsh_socket < 0);
 
@@ -550,10 +565,11 @@ tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
         tmc->tmc_status = TMCS_CONNECTING;
     niova_mutex_unlock(&tmc->tmc_status_mutex);
 
-    if (rc)
+    if (rc < 0)
     {
-        DBG_TCP_MGR_CXN(LL_WARN, tmc, "connection status changed, status: %d",
-                        tmc->tmc_status);
+        DBG_TCP_MGR_CXN(LL_WARN, tmc,
+                        "connection status changed, status: %d rc: %d",
+                        tmc->tmc_status, rc);
         return rc;
     }
 

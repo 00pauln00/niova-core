@@ -152,6 +152,8 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
 int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
         return -EINVAL;
 
@@ -211,6 +213,10 @@ epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
     struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "epoll_handle_mod: fd=%d ev=%d rc=%d",
+            eph->eph_fd, ev.events, rc);
+
     if (rc < 0)
         return -errno;
 
@@ -220,6 +226,8 @@ epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
 static epoll_mgr_thread_ctx_int_t
 epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !eph || !epm->epm_ready)
         return -EINVAL;
 
@@ -262,6 +270,8 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
 int
 epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !eph || !epm->epm_ready)
         return -EINVAL;
 
@@ -320,6 +330,8 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 static void
 epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct epoll_handle *destroy = NULL;
 
     if (!CIRCLEQ_EMPTY(&epm->epm_destroy_list))
@@ -352,6 +364,8 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !epm->epm_ready)
         return -EINVAL;
 

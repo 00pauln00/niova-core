@@ -428,6 +428,7 @@ raft_compile_time_checks(void)
                 ##__VA_ARGS__);                                                                   \
         break;                                                                                    \
     default:                                                                                      \
+        LOG_MSG(log_level, "UNKNOWN "fmt, ##__VA_ARGS__);                                         \
         break;                                                                                    \
     }                                                                                             \
 }

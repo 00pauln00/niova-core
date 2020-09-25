@@ -60,11 +60,11 @@ struct tcp_mgr_connection
 };
 
 #define DBG_TCP_MGR_CXN(log_level, tmc, fmt, ...)                    \
-{                                                                    \
+do {                                                                 \
    SIMPLE_LOG_MSG(log_level, "tmc[%p]: %s:%d " fmt, (tmc),           \
                  (tmc)->tmc_tsh.tsh_ipaddr, (tmc)->tmc_tsh.tsh_port, \
                  ##__VA_ARGS__);                                     \
-}
+} while(0)
 
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,

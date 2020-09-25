@@ -2551,6 +2551,7 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
                                   ssize_t recv_bytes,
                                   const struct sockaddr_in *from)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes)
@@ -2909,7 +2910,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-    // XXX should this size change depending on UDP or TCP?
     static char reply_buf[RAFT_NET_MAX_RPC_SIZE];
 
     NIOVA_ASSERT(ri && from);
