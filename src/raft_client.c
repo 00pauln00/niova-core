@@ -158,7 +158,7 @@ struct raft_client_request_handle
     size_t                     rcrh_reply_used_size;
     size_t                     rcrh_reply_size;
     uint64_t                   rcrh_rpc_app_seqno;
-    struct raft_client_rpc_msg rcrh_rpc_request; // XXX should this be at the end of struct? rcrm_data is variable length
+    struct raft_client_rpc_msg rcrh_rpc_request;
     uint8_t                    rcrh_send_niovs;
     uint8_t                    rcrh_recv_niovs;
     struct iovec               rcrh_iovs[RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS];

@@ -1,7 +1,7 @@
 /* Copyright (C) NIOVA Systems, Inc - All Rights Reserved
  * Unauthorized copying of this file, via any medium is strictly prohibited
  * Proprietary and confidential
- * Written by Paul Nowoczynski <pauln@niova.io> 2020
+ * Written by Kit Westneat <kit@niova.io> 2020
  */
 
 #include <poll.h>
@@ -51,6 +51,7 @@ tcp_test_basic(void)
 
     return rc;
 }
+
 static int
 tcp_test_connect_helper(struct tcp_socket_handle *tsh_listen,
                         struct tcp_socket_handle *tsh_connect,
@@ -112,7 +113,7 @@ tcp_test_connect_helper(struct tcp_socket_handle *tsh_listen,
 }
 
 static int
-tcp_test_connect() 
+tcp_test_connect()
 {
     struct tcp_socket_handle listener = {
         .tsh_port = tcp_get_default_port(),
@@ -178,10 +179,9 @@ tcp_test_pingpong_worker(void *arg)
             }
 
             size_rc = tcp_socket_recv(&tsh_incoming, &iov, 1, NULL, true);
-            if (!size_rc) {
+            if (!size_rc)
                 // remote connection closed
                 break;
-            }
 
             if (size_rc != tcpSize)
             {
@@ -195,9 +195,8 @@ tcp_test_pingpong_worker(void *arg)
         else
         {
             size_rc = tcp_socket_recv(&tsh_incoming, &iov, 1, NULL, true);
-            if (!size_rc) {
+            if (!size_rc)
                 break;
-            }
             if (size_rc != tcpSize)
             {
                 SIMPLE_LOG_MSG((size_rc != -EINTR ? LL_ERROR : LL_DEBUG),

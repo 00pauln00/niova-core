@@ -1,8 +1,9 @@
 /* Copyright (C) NIOVA Systems, Inc - All Rights Reserved
  * Unauthorized copying of this file, via any medium is strictly prohibited
  * Proprietary and confidential
- * Written by Paul Nowoczynski <pauln@niova.io> 2020
+ * Written by Kit Westneat <kit@niova.io> 2020
  */
+
 #include <fcntl.h>
 #include "io.h"
 #include "tcp.h"
@@ -20,7 +21,6 @@ tcp_get_default_port(void)
     return tcpDefaultPort;
 }
 
-
 ssize_t
 tcp_get_max_size()
 {
@@ -32,7 +32,6 @@ tcp_set_max_size(ssize_t new_size)
 {
     maxTcpSize = new_size;
 }
-
 
 bool
 tcp_iov_size_ok(ssize_t sz)
@@ -175,7 +174,8 @@ tcp_socket_handle_accept(int fd, struct tcp_socket_handle *tsh)
     SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_handle_accept()");
 
     int rc = accept(fd, (struct sockaddr *)&addr_in, &addr_size);
-    if (rc < 0) {
+    if (rc < 0)
+    {
         rc = -errno;
         SIMPLE_LOG_MSG(LL_ERROR, "accept(): %s", strerror(-rc));
 
@@ -319,7 +319,6 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
     return rc ? rc : total_sent;
 }
 
-
 int
 tcp_socket_connect(struct tcp_socket_handle *tsh)
 {
@@ -337,7 +336,8 @@ tcp_socket_connect(struct tcp_socket_handle *tsh)
     int rc =
         connect(tsh->tsh_socket, (struct sockaddr *)&addr_in,
                 sizeof(struct sockaddr_in));
-    if (rc < 0) {
+    if (rc < 0)
+    {
         rc = -errno;
         if (rc != -EINPROGRESS)
             SIMPLE_LOG_MSG(LL_NOTIFY, "connect():%d", rc);

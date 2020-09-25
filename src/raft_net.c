@@ -706,6 +706,7 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 
     if (tmc->tmc_async_buf)
     {
+        // async receive has just finished
         NIOVA_ASSERT(tmc->tmc_async_offset && !tmc->tmc_async_remain);
 
         buf = tmc->tmc_async_buf;
@@ -713,6 +714,7 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
     }
     else
     {
+        // new receive request
         NIOVA_ASSERT(!tmc->tmc_async_offset && !tmc->tmc_async_remain);
 
         buf = sink_buf;
@@ -734,6 +736,7 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 
             return;
         }
+
         DBG_RAFT_INSTANCE(LL_DEBUG, ri, "fd=%d bytes=%zd",
                           tmc->tmc_tsh.tsh_socket,
                           recv_bytes);
@@ -755,11 +758,14 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 
             if (tmc->tmc_async_remain)
             {
+                // unable to get bulk data without blocking
+                // tcp mgr will callback when available
                 return;
             }
             else if (tmc->tmc_async_buf)
             {
-                buf = tmc->tmc_async_buf; // managed by tcp_mgr
+                // bulk data immediately available
+                buf = tmc->tmc_async_buf;
                 recv_bytes = tmc->tmc_async_offset;
             }
         }
@@ -1752,8 +1758,6 @@ raft_net_destroy(void)
     regfree(&raftNetRncuiRegex);
 }
 
-// XXX caller should hold ref on rp node, so an active connection won't be
-// disconnected while we're here
 struct tcp_mgr_connection *
 raft_net_tcp_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp,
                             bool do_connect)

@@ -238,7 +238,7 @@ tcp_mgr_async_read(struct tcp_mgr_connection *tmc, size_t bulk_size,
 
     size_t buf_size = hdr_size + bulk_size;
 
-    // buffer free'd in
+    // buffer free'd in tcp_mgr_recv_cb
     void *buf = tcp_mgr_bulk_malloc(buf_size);
     if (!buf)
     {
@@ -500,8 +500,6 @@ tcp_mgr_connect_helper(struct tcp_mgr_connection *tmc)
     return rc;
 }
 
-
-
 static void
 tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
 {
@@ -591,4 +589,3 @@ tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
 
     return rc;
 }
-
