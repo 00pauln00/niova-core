@@ -1025,9 +1025,7 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
                                     ctl_svc_node_peer_2_client_port(csn) :
                                     ctl_svc_node_peer_2_port(csn));
 
-    // XXX this check only works on UDP
-    if (false &&
-        ((sender_addr->sin_port) != expected_port ||
+    if (((sender_addr->sin_port) != expected_port ||
          strncmp(ctl_svc_node_peer_2_ipaddr(csn),
                  inet_ntoa(sender_addr->sin_addr), IPV4_STRLEN)))
     {
