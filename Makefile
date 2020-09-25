@@ -57,6 +57,7 @@ SYS_CORE_OBJFILES = \
 	src/io.o \
 	src/log.o \
 	src/random.o \
+	src/raft_net.o \
 	src/registry.o \
 	src/system_info.o \
 	src/thread.o \
