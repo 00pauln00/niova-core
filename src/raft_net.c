@@ -1056,7 +1056,7 @@ raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
     SIMPLE_LOG_MSG(LL_DEBUG, "ri: %p leader: %p iov: %p no: %lu",
                    ri, ri->ri_csn_leader, iov, niovs);
 
-    if (!ri || !ri->ri_csn_leader || !iov || !niovs)
+    if (!ri || !iov || !niovs)
         return -EINVAL;
 
     else if (niovs > 256)
@@ -1086,17 +1086,13 @@ int
 raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    SIMPLE_LOG_MSG(LL_TRACE, "ri %p iov %p niovs %ld", ri, iov, niovs);
 
     if (!ri || !iov || !niovs)
-    {
-        SIMPLE_LOG_MSG(LL_DEBUG, "iov %p niovs %ld", iov, niovs);
         return -EINVAL;
-    }
+
     else if (niovs > 256)
-    {
         return -EMSGSIZE;
-    }
 
     struct tcp_mgr_connection *tmc = raft_net_tcp_connection_get(ri, csn, 1);
     if (!tmc)

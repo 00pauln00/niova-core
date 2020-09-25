@@ -159,7 +159,6 @@ pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
 static void
 pmdb_object_net_init(struct pmdb_object *pmdb_obj,
                      const uuid_t client_uuid,
-                     struct ctl_svc_node *csn,
                      const int64_t msg_id)
 {
     NIOVA_ASSERT(pmdb_obj);
@@ -417,8 +416,7 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
-    pmdb_object_net_init(obj, rncr->rncr_client_uuid,
-                         rncr->rncr_remote_csn, rncr->rncr_msg_id);
+    pmdb_object_net_init(obj, rncr->rncr_client_uuid, rncr->rncr_msg_id);
 
     raft_net_client_request_handle_set_write_raft_entry(rncr);
 
