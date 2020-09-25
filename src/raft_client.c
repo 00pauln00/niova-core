@@ -30,6 +30,7 @@ enum raft_client_instance_lreg_values
     RAFT_CLIENT_LREG_PEER_UUID,
     RAFT_CLIENT_LREG_LEADER_UUID,
     RAFT_CLIENT_LREG_PEER_STATE,
+    RAFT_CLIENT_LREG_REQUEST_TIMEOUT_SECS,
     RAFT_CLIENT_LREG_COMMIT_LATENCY,
     RAFT_CLIENT_LREG_READ_LATENCY,
     RAFT_CLIENT_LREG_LEADER_VIABLE,
@@ -55,6 +56,9 @@ typedef int  raft_client_app_ctx_int_t;   // raft client app thread
 typedef void raft_client_app_ctx_t;
 typedef epoll_mgr_cb_ctx_t raft_client_epoll_t;
 typedef int  raft_client_epoll_int_t;
+
+static unsigned int raftClientDefaultReqTimeoutSecs =
+    RAFT_CLIENT_REQUEST_TIMEOUT_SECS;
 
 #define RAFT_CLIENT_SUCCESSFUL_PING_UNTIL_VIABLE 4
 static size_t raftClientNpingsUntilViable =
@@ -2138,76 +2142,104 @@ raft_client_instance_lreg_multi_facet_cb(
     else if (lv->lrv_value_idx_in >= RAFT_CLIENT_LREG__MAX)
         return -ERANGE;
 
-    else if (op == LREG_NODE_CB_OP_WRITE_VAL)
-        return -EPERM;
-
-    else if (op != LREG_NODE_CB_OP_READ_VAL)
-        return -EOPNOTSUPP;
-
     const struct raft_client_sub_app_req_history *rh;
+    unsigned int tmp;
 
-    switch (lv->lrv_value_idx_in)
+    switch (op)
     {
-    case RAFT_CLIENT_LREG_RAFT_UUID:
-        lreg_value_fill_string(lv, "raft-uuid",
-                               RCI_2_RI(rci)->ri_raft_uuid_str);
-        break;
-    case RAFT_CLIENT_LREG_PEER_UUID:
-        lreg_value_fill_string(lv, "client-uuid",
-                               RCI_2_RI(rci)->ri_this_peer_uuid_str);
-        break;
-    case RAFT_CLIENT_LREG_LEADER_UUID:
-        if (RCI_2_RI(rci)->ri_csn_leader)
-            lreg_value_fill_string_uuid(
-                lv, "leader-uuid", RCI_2_RI(rci)->ri_csn_leader->csn_uuid);
-        else
-            lreg_value_fill_string(lv, "leader-uuid", NULL);
-        break;
-    case RAFT_CLIENT_LREG_PEER_STATE:
-        lreg_value_fill_string(
-            lv, "state", raft_server_state_to_string(RCI_2_RI(rci)->ri_state));
-        break;
-    case RAFT_CLIENT_LREG_COMMIT_LATENCY:
-        lreg_value_fill_object(lv, "commit-latency-msec",
-                               RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
-        break;
-    case RAFT_CLIENT_LREG_READ_LATENCY:
-        lreg_value_fill_object(lv, "read-latency-msec",
-                               RAFT_INSTANCE_HIST_READ_LAT_MSEC);
-        break;
-    case RAFT_CLIENT_LREG_LEADER_VIABLE:
-        lreg_value_fill_bool(lv, "leader-viable",
-                             raft_client_leader_is_viable(rci));
-        break;
-    case RAFT_CLIENT_LREG_LEADER_ALIVE_CNT:
-        lreg_value_fill_unsigned(lv, "leader-alive-cnt",
-                                 rci->rci_leader_alive_cnt);
-        break;
-    case RAFT_CLIENT_LREG_LAST_MSG_RECVD:
-        lreg_value_fill_string_time(lv, "last-request-sent",
-                                    rci->rci_last_request_sent.tv_sec);
-        break;
-    case RAFT_CLIENT_LREG_LAST_REQUEST_ACKD:
-        lreg_value_fill_string_time(lv, "last-request-ack",
-                                    rci->rci_last_request_ackd.tv_sec);
-        break;
-    case RAFT_CLIENT_LREG_RECENT_RD_OPS:
-        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_READ];
-        lreg_value_fill_varray(lv, "recent-ops-rd",
-                               LREG_USER_TYPE_RAFT_CLIENT_ROP_RD,
-                               raft_client_sub_app_req_history_size(rh),
-                               raft_client_sub_app_req_history_lreg_cb);
+    case LREG_NODE_CB_OP_WRITE_VAL:
+    {
+        if (LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+            return -EINVAL;
 
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_CLIENT_LREG_REQUEST_TIMEOUT_SECS:
+        {
+            tmp = strtoul(LREG_VALUE_TO_IN_STR(lv), NULL, 10);
+            if (tmp && !errno)
+                raft_client_set_default_request_timeout(tmp);
+            break;
+        }
+        default:
+            return -EPERM;
+        }
         break;
-    case RAFT_CLIENT_LREG_RECENT_WR_OPS:
-        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_WRITE];
-        lreg_value_fill_varray(lv, "recent-ops-wr",
-                               LREG_USER_TYPE_RAFT_CLIENT_ROP_WR,
-                               raft_client_sub_app_req_history_size(rh),
-                               raft_client_sub_app_req_history_lreg_cb);
+    }
+    case LREG_NODE_CB_OP_READ_VAL:
+    {
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_CLIENT_LREG_RAFT_UUID:
+            lreg_value_fill_string(lv, "raft-uuid",
+                                   RCI_2_RI(rci)->ri_raft_uuid_str);
+            break;
+        case RAFT_CLIENT_LREG_PEER_UUID:
+            lreg_value_fill_string(lv, "client-uuid",
+                                   RCI_2_RI(rci)->ri_this_peer_uuid_str);
+            break;
+        case RAFT_CLIENT_LREG_LEADER_UUID:
+            if (RCI_2_RI(rci)->ri_csn_leader)
+                lreg_value_fill_string_uuid(
+                    lv, "leader-uuid", RCI_2_RI(rci)->ri_csn_leader->csn_uuid);
+            else
+                lreg_value_fill_string(lv, "leader-uuid", NULL);
+            break;
+        case RAFT_CLIENT_LREG_REQUEST_TIMEOUT_SECS:
+            lreg_value_fill_unsigned(lv, "default-request-timeout-sec",
+                                     raftClientDefaultReqTimeoutSecs);
+            break;
+        case RAFT_CLIENT_LREG_PEER_STATE:
+            lreg_value_fill_string(
+                lv, "state",
+                raft_server_state_to_string(RCI_2_RI(rci)->ri_state));
+            break;
+        case RAFT_CLIENT_LREG_COMMIT_LATENCY:
+            lreg_value_fill_object(lv, "commit-latency-msec",
+                                   RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+            break;
+        case RAFT_CLIENT_LREG_READ_LATENCY:
+            lreg_value_fill_object(lv, "read-latency-msec",
+                                   RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+            break;
+        case RAFT_CLIENT_LREG_LEADER_VIABLE:
+            lreg_value_fill_bool(lv, "leader-viable",
+                                 raft_client_leader_is_viable(rci));
+            break;
+        case RAFT_CLIENT_LREG_LEADER_ALIVE_CNT:
+            lreg_value_fill_unsigned(lv, "leader-alive-cnt",
+                                     rci->rci_leader_alive_cnt);
+            break;
+        case RAFT_CLIENT_LREG_LAST_MSG_RECVD:
+            lreg_value_fill_string_time(lv, "last-request-sent",
+                                        rci->rci_last_request_sent.tv_sec);
+            break;
+        case RAFT_CLIENT_LREG_LAST_REQUEST_ACKD:
+            lreg_value_fill_string_time(lv, "last-request-ack",
+                                        rci->rci_last_request_ackd.tv_sec);
+            break;
+        case RAFT_CLIENT_LREG_RECENT_RD_OPS:
+            rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_READ];
+            lreg_value_fill_varray(lv, "recent-ops-rd",
+                                   LREG_USER_TYPE_RAFT_CLIENT_ROP_RD,
+                                   raft_client_sub_app_req_history_size(rh),
+                                   raft_client_sub_app_req_history_lreg_cb);
+
+            break;
+        case RAFT_CLIENT_LREG_RECENT_WR_OPS:
+            rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_WRITE];
+            lreg_value_fill_varray(lv, "recent-ops-wr",
+                                   LREG_USER_TYPE_RAFT_CLIENT_ROP_WR,
+                                   raft_client_sub_app_req_history_size(rh),
+                                   raft_client_sub_app_req_history_lreg_cb);
+            break;
+        default:
+            break;
+        }
         break;
+    }
     default:
-        break;
+        return -EOPNOTSUPP;
     }
 
     return 0;
@@ -2221,9 +2253,6 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     if (!rci)
         return -EINVAL;
 
-    if (lv)
-        lv->get.lrv_num_keys_out = RAFT_CLIENT_LREG__MAX;
-
     int rc = 0;
 
     switch (op)
@@ -2235,6 +2264,7 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                 LREG_VALUE_STRING_MAX);
         strncpy(LREG_VALUE_TO_OUT_STR(lv),
                 RCI_2_RI(rci)->ri_this_peer_uuid_str, LREG_VALUE_STRING_MAX);
+        lv->get.lrv_num_keys_out = RAFT_CLIENT_LREG__MAX;
         break;
 
     case LREG_NODE_CB_OP_READ_VAL:
@@ -2391,6 +2421,19 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     *raft_client_instance = (void *)rci;
 
     return 0;
+}
+
+unsigned int
+raft_client_get_default_request_timeout(void)
+{
+    return raftClientDefaultReqTimeoutSecs;
+}
+
+void
+raft_client_set_default_request_timeout(unsigned int timeout)
+{
+    if (timeout)
+        raftClientDefaultReqTimeoutSecs = timeout;
 }
 
 int
