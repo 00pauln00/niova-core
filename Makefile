@@ -166,7 +166,7 @@ tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/raft_net_test \
 		test/raft_net_test.c \
-		$(ALL_CORE_OBJFILES) src/raft_net.o $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/epoll_mgr_test \
 		test/epoll_mgr_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
