@@ -2701,7 +2701,7 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
             raft_server_get_follower_info((struct raft_instance *)ri, i);
 
         // Ignore if time has moved backwards
-        if (timespeccmp(&now, &rfi->rfi_last_ack, <=))
+        if (timespeccmp(&now, &rfi->rfi_last_ack, <))
             continue;
 
         struct timespec diff;
