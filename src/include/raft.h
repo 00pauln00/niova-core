@@ -30,12 +30,17 @@
 #define RAFT_ENTRY_SIZE           65536
 #define RAFT_ENTRY_MAX_DATA_SIZE  (RAFT_ENTRY_SIZE - RAFT_ENTRY_HEADER_RESERVE)
 
-#define RAFT_ELECTION_MAX_TIME_MS   3000 // XXX increased by 10x for now
-#define RAFT_ELECTION_MIN_TIME_MS   1500
-#define RAFT_ELECTION_RANGE_MS \
-    (RAFT_ELECTION_MAX_TIME_MS - RAFT_ELECTION_MIN_TIME_MS)
+// Raft election timeout upper and lower bounds
+#define	RAFT_ELECTION__MAX_TIME_MS 100000
+#define	RAFT_ELECTION__MIN_TIME_MS 100
 
-#define RAFT_HEARTBEAT_TIME_MS      50
+#define RAFT_HEARTBEAT__MIN_FREQ    2
+#define RAFT_HEARTBEAT__MIN_TIME_MS 10
+
+#define RAFT_ELECTION_UPPER_TIME_MS 300
+#define RAFT_ELECTION_RANGE_DIVISOR 2.0
+
+#define RAFT_HEARTBEAT_FREQ_PER_ELECTION 10
 
 #define RAFT_MIN_APPEND_ENTRY_IDX -1
 
@@ -106,7 +111,7 @@ struct raft_append_entries_request_msg
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint8_t  raerqm__pad[4];
-    char     raerqm_entries[]; // Must be last
+    char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
 struct raft_append_entries_reply_msg
@@ -346,6 +351,8 @@ struct raft_instance
     struct epoll_mgr                ri_epoll_mgr;
     struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
     size_t                          ri_epoll_handles_in_use;
+    uint32_t                        ri_election_timeout_max_ms;
+    uint32_t                        ri_heartbeat_freq_per_election_min;
     raft_net_timer_cb_t             ri_timer_fd_cb;
     raft_net_udp_cb_t               ri_udp_client_recv_cb;
     raft_net_udp_cb_t               ri_udp_server_recv_cb;
@@ -367,10 +374,13 @@ struct raft_instance
 static inline void
 raft_compile_time_checks(void)
 {
-    COMPILE_TIME_ASSERT(RAFT_ELECTION_RANGE_MS > 0);
+    COMPILE_TIME_ASSERT(RAFT_ELECTION_UPPER_TIME_MS > 0);
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
     COMPILE_TIME_ASSERT(RAFT_ENTRY_SIZE > RAFT_NET_MAX_RPC_SIZE);
+    COMPILE_TIME_ASSERT((RAFT_ELECTION_UPPER_TIME_MS /
+                         RAFT_HEARTBEAT_FREQ_PER_ELECTION) >
+                        RAFT_HEARTBEAT__MIN_TIME_MS);
 }
 
 #define DBG_RAFT_MSG(log_level, rm, fmt, ...)                                                     \
