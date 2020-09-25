@@ -194,6 +194,7 @@ raft_net_sockets_bind(struct raft_instance *ri)
 
     return rc;
 }
+
 static int
 raft_net_tcp_sockets_setup(struct raft_instance *ri)
 {
@@ -656,9 +657,7 @@ static size_t
 raft_net_msg_bulk_size(bool is_client_msg, void *sink_buf)
 {
     if (is_client_msg)
-    {
         return ((struct raft_client_rpc_msg *)sink_buf)->rcrm_data_size;
-    }
 
     struct raft_rpc_msg *msg = (struct raft_rpc_msg *)sink_buf;
     if (msg->rrm_type != RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
@@ -682,14 +681,14 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
         return;
     }
 
+    // used by server to verify that messages are received from expected IP
     static struct sockaddr_in from;
-    tcp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),
-                          ctl_svc_node_peer_2_port(csn), &from);
+    tcp_setup_sockaddr_in(tmc->tmc_tsh.tsh_ipaddr, ntohs(0), &from);
+    from.sin_port = 0;
 
     bool from_peer = csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER;
-    bool is_client_node =
-        ri->ri_csn_this_peer->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT;
-    bool is_client_msg = is_client_node || !from_peer;
+    bool is_this_client_node = raft_instance_is_client(ri);
+    bool is_client_msg = is_this_client_node || !from_peer;
 
     // XXX unify the headers or have a raft_net only initial header?
     // ideally it would also have a bulk size field or something to that effect
@@ -771,14 +770,16 @@ raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
         }
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "buf: %p recv_bytes: %ld", buf, recv_bytes);
+    SIMPLE_LOG_MSG(LL_DEBUG, "2 from: %s:%d csn port %d",
+                   inet_ntoa(from.sin_addr),
+                   ntohs(from.sin_port),
+                   ctl_svc_node_peer_2_port(csn));
 
     if (from_peer && ri->ri_server_recv_cb)
         ri->ri_server_recv_cb(ri, buf, recv_bytes, &from);
     else if (!from_peer && ri->ri_client_recv_cb)
         ri->ri_client_recv_cb(ri, buf, recv_bytes, &from);
 }
-
 
 static int
 raft_net_tcp_handshake_fill(struct raft_instance *ri,
@@ -824,7 +825,6 @@ raft_net_tcp_handshake_recv(struct raft_instance *ri, int fd,
         DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection fd: %d", fd);
         return NULL;
     }
-    ;
 
     struct tcp_mgr_connection *tmc = &csn->csn_peer.csnp_net_data;
 
@@ -862,7 +862,6 @@ raft_net_tcp_handshake_recv(struct raft_instance *ri, int fd,
 
     return tmc;
 }
-
 
 static raft_net_cb_ctx_t
 raft_net_connection_getput(struct tcp_mgr_connection *tmc,
@@ -1027,16 +1026,25 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     if (!ctl_svc_node_is_peer(csn))
         DBG_SIMPLE_CTL_SVC_NODE(LL_FATAL, csn, "csn is not a peer");
 
+    int port = ntohs(sender_addr->sin_port);
     const uint16_t expected_port = (raft_instance_is_client(ri) ?
                                     ctl_svc_node_peer_2_client_port(csn) :
                                     ctl_svc_node_peer_2_port(csn));
 
-    if (((sender_addr->sin_port) != expected_port ||
-         strncmp(ctl_svc_node_peer_2_ipaddr(csn),
-                 inet_ntoa(sender_addr->sin_addr), IPV4_STRLEN)))
+    bool udp_ports_match = sender_addr->sin_port == 0 || port == expected_port;
+    bool ipaddrs_match = strncmp(ctl_svc_node_peer_2_ipaddr(csn),
+                                 inet_ntoa(sender_addr->sin_addr),
+                                 IPV4_STRLEN) == 0;
+
+    if (!udp_ports_match || !ipaddrs_match)
     {
-        LOG_MSG(LL_NOTIFY, "uuid (%s) on unexpected IP:port (%s:%hu)",
-                sender_uuid, inet_ntoa(sender_addr->sin_addr), expected_port);
+        DECLARE_AND_INIT_UUID_STR(peer_uuid, sender_uuid);
+
+        LOG_MSG(LL_NOTIFY,
+                "uuid (%s) on unexpected IP:port (%s:%d), expected %s:%hu",
+                peer_uuid, inet_ntoa(sender_addr->sin_addr),
+                port, ctl_svc_node_peer_2_ipaddr(csn),
+                expected_port);
 
         csn = NULL;
     }
