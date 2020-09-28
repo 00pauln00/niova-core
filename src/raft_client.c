@@ -2143,7 +2143,7 @@ raft_client_instance_lreg_multi_facet_cb(
         return -ERANGE;
 
     const struct raft_client_sub_app_req_history *rh;
-    unsigned int tmp;
+    unsigned long int tmp;
 
     switch (op)
     {
@@ -2157,7 +2157,7 @@ raft_client_instance_lreg_multi_facet_cb(
         case RAFT_CLIENT_LREG_REQUEST_TIMEOUT_SECS:
         {
             tmp = strtoul(LREG_VALUE_TO_IN_STR(lv), NULL, 10);
-            if (tmp && !errno)
+            if (tmp && tmp != ULONG_MAX)
                 raft_client_set_default_request_timeout(tmp);
             break;
         }
