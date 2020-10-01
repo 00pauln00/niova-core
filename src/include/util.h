@@ -6,6 +6,7 @@
 #ifndef NIOVA_UTIL_H
 #define NIOVA_UTIL_H 1
 
+#include <limits.h>
 #include <stdio.h>
 #include <uuid/uuid.h>
 #include <ctype.h>
@@ -349,6 +350,25 @@ niova_string_to_bool(const char *string, bool *ret_bool)
         *ret_bool = false;
     else
         return -EINVAL;
+
+    return 0;
+}
+
+static inline unsigned int
+niova_string_to_unsigned_int(const char *string, unsigned int *val)
+{
+    if (!string || !val)
+        return -EINVAL;
+
+    unsigned long tmp = strtoul(string, NULL, 10);
+    if (tmp == ULONG_MAX)
+        return -errno;
+
+    else if (tmp > UINT_MAX)
+        return -EOVERFLOW;
+
+    else
+        *val = (unsigned int)tmp;
 
     return 0;
 }
