@@ -100,7 +100,15 @@ raft_net_lreg_set_heartbeat_freq(struct raft_instance *ri,
     if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
         return -EINVAL;
 
-    unsigned int hb_freq = strtoul(LREG_VALUE_TO_IN_STR(lv), NULL, 10);
+    unsigned int hb_freq = RAFT_HEARTBEAT_FREQ_PER_ELECTION;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        int rc = niova_string_to_unsigned_int(LREG_VALUE_TO_IN_STR(lv),
+                                              &hb_freq);
+        if (rc)
+            return rc;
+    }
 
     if (hb_freq == ri->ri_heartbeat_freq_per_election_min)
         return 0; // noop return
@@ -125,8 +133,15 @@ raft_net_lreg_set_election_timeout(struct raft_instance *ri,
     if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
         return -EINVAL;
 
-    unsigned long long int election_timeout =
-        strtoull(LREG_VALUE_TO_IN_STR(lv), NULL, 10);
+    unsigned long long election_timeout = RAFT_ELECTION_UPPER_TIME_MS;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        int rc = niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv),
+                                                    &election_timeout);
+	if (rc)
+            return rc;
+    }
 
     if (election_timeout > RAFT_ELECTION__MAX_TIME_MS ||
         election_timeout < RAFT_ELECTION__MIN_TIME_MS)
