@@ -1607,7 +1607,11 @@ raft_client_udp_recv_handler_process_reply(
 {
     NIOVA_ASSERT(rci && RCI_2_RI(rci) && rcrm && sender_csn && from);
 
-    if (sender_csn != RCI_2_RI(rci)->ri_csn_leader)
+    if (FAULT_INJECT(raft_client_udp_recv_handler_process_reply_bypass))
+    {
+        return;
+    }
+    else if (sender_csn != RCI_2_RI(rci)->ri_csn_leader)
     {
         DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcrm, from, "reply is not from leader");
         return;
@@ -1618,7 +1622,6 @@ raft_client_udp_recv_handler_process_reply(
                             strerror(-rcrm->rcrm_sys_error));
         return;
     }
-
     niova_realtime_coarse_clock(&rci->rci_last_request_ackd);
 
     raft_client_reply_try_complete(rci, rcrm, from);
@@ -1639,7 +1642,8 @@ raft_client_udp_recv_handler(struct raft_instance *ri, const char *recv_buffer,
                              const struct sockaddr_in *from)
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
+        recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE ||
+        FAULT_INJECT(raft_client_udp_recv_handler_bypass))
         return;
 
     struct raft_client_instance *rci =
