@@ -18,6 +18,7 @@ enum fault_inject_entries
     FAULT_INJECT_disabled,
     FAULT_INJECT_async_raft_client_request_expire,
     FAULT_INJECT_raft_leader_may_be_deposed,
+    FAULT_INJECT_raft_follower_ignores_AE,
     FAULT_INJECT__MAX,
     FAULT_INJECT__MIN = FAULT_INJECT_any,
 } PACKED;
@@ -34,7 +35,8 @@ enum fault_inject_when
 {
     FAULT_INJECT_PERIOD_one_time_only,
     FAULT_INJECT_PERIOD_every_time,
-    FAULT_INJECT_PERIOD_per_freq_in_seconds,
+    FAULT_INJECT_PERIOD_per_freq_in_seconds,    // 'true' once every N seconds
+    FAULT_INJECT_PERIOD_every_time_unless_bypassed,
     FAULT_INJECT_PERIOD_fixed_number_of_times,
 } PACKED;
 
@@ -50,6 +52,7 @@ struct fault_injection
     uint32_t               flti_num_remaining;
     uint32_t               flti_inject_cnt;
     time_t                 flti_last;
+    time_t                 flti_last_bypass;
     uint64_t               flti_cond_exec_cnt : 62,
                            flti_enabled       : 1;
     struct lreg_node       flti_lrn;
@@ -67,13 +70,15 @@ fault_injection_when_2_str(const struct fault_injection *flti)
     switch (flti->flti_when)
     {
     case FAULT_INJECT_PERIOD_one_time_only:
-        return "one_time_only";
+        return "one-time-only";
     case FAULT_INJECT_PERIOD_every_time:
-        return "every_time";
+        return "every-time";
     case FAULT_INJECT_PERIOD_per_freq_in_seconds:
-        return "freq_in_seconds";
+        return "freq-in-seconds";
     case FAULT_INJECT_PERIOD_fixed_number_of_times:
-        return "fixed_number_of_times";
+        return "fixed-number-of-times";
+    case FAULT_INJECT_PERIOD_every_time_unless_bypassed:
+        return "every-time-unless-bypassed";
     default:
         break;
     }
@@ -119,9 +124,18 @@ fault_injection_evaluate(struct fault_injection *flti)
             fire = true;
         break;
     case FAULT_INJECT_PERIOD_fixed_number_of_times:
-        fire = true;
-        if (!--flti->flti_num_remaining)
-            flti->flti_enabled = false;
+        fire = flti->flti_num_remaining > 0 ? true : false;
+        if (fire)
+            flti->flti_num_remaining--;
+        break;
+    case FAULT_INJECT_PERIOD_every_time_unless_bypassed:
+        // Inverse of FAULT_INJECT_PERIOD_fixed_number_of_times
+        fire = flti->flti_num_remaining > 0 ? false : true;
+        if (!fire)
+        {
+            flti->flti_num_remaining--;
+            flti->flti_last_bypass = niova_realtime_coarse_clock_get_sec();
+        }
         break;
     default:
         break;

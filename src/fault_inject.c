@@ -27,6 +27,7 @@ enum fault_inject_reg_keys
     FAULT_INJECT_REG_KEY_LINENO,        //unsigned
     FAULT_INJECT_REG_KEY_WHEN,          //string
     FAULT_INJECT_REG_KEY_LAST_INJECTED, //string
+    FAULT_INJECT_REG_KEY_LAST_BYPASS,   //string
     FAULT_INJECT_REG_KEY_INJECTED_CNT,  //unsigned
     FAULT_INJECT_REG_KEY_FREQ_SECONDS,  //unsigned (short)
     FAULT_INJECT_REG_KEY_NUM_REMAINING, //unsigned
@@ -49,6 +50,11 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
     [FAULT_INJECT_raft_leader_may_be_deposed] {
         .flti_name = "raft_leader_may_be_deposed",
         .flti_when = FAULT_INJECT_PERIOD_every_time,
+        .flti_enabled = 0,
+    },
+    [FAULT_INJECT_raft_follower_ignores_AE] {
+        .flti_name = "raft_follower_ignores_non_hb_AE_request",
+        .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
     [FAULT_INJECT_disabled] {
@@ -78,6 +84,7 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     struct fault_injection *flti = OFFSET_CAST(fault_injection, flti_lrn, lrn);
 
+    unsigned int tmp_val = 0;
     bool tmp_bool;
     int tmp_rc;
 
@@ -116,6 +123,10 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
             lreg_value_fill_string_time(lrv, "last_injected_at",
                                         flti->flti_last);
             break;
+        case FAULT_INJECT_REG_KEY_LAST_BYPASS:
+            lreg_value_fill_string_time(lrv, "last_bypassed_at",
+                                        flti->flti_last_bypass);
+            break;
         case FAULT_INJECT_REG_KEY_INJECTED_CNT:
             lreg_value_fill_unsigned(lrv, "injection_count",
                                      flti->flti_inject_cnt);
@@ -137,12 +148,12 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         }
         break;
     case LREG_NODE_CB_OP_WRITE_VAL:
+        if (lrv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
+            return -EINVAL;
+
         switch (lrv->lrv_value_idx_in)
         {
         case FAULT_INJECT_REG_KEY_ENABLED:
-            if (lrv->put.lrv_value_type_in != LREG_VAL_TYPE_STRING)
-                return -EINVAL;
-
             tmp_rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lrv),
                                           &tmp_bool);
             if (tmp_rc)
@@ -150,9 +161,16 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
             flti->flti_enabled = tmp_bool;
             break;
+        case FAULT_INJECT_REG_KEY_NUM_REMAINING:
+            tmp_rc = niova_string_to_unsigned_int(LREG_VALUE_TO_IN_STR(lrv),
+                                                  &tmp_val);
+            if (tmp_rc)
+                return tmp_rc;
+
+            flti->flti_num_remaining = tmp_val;
+            break;
         case FAULT_INJECT_REG_KEY_WHEN:          // fall through
         case FAULT_INJECT_REG_KEY_FREQ_SECONDS:  // fall through
-        case FAULT_INJECT_REG_KEY_NUM_REMAINING: // fall through
             return -EPERM;
         default:
             return -EOPNOTSUPP;

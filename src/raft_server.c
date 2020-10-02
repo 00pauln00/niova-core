@@ -2213,8 +2213,9 @@ raft_server_write_new_entry_from_leader(
     NIOVA_ASSERT(ri && raerq);
     NIOVA_ASSERT(raft_instance_is_follower(ri));
 
-    if (raerq->raerqm_heartbeat_msg)
-        return; // This is a heartbeat msg which does not enter the log
+    if (raerq->raerqm_heartbeat_msg || // heartbeats don't enter the log
+        FAULT_INJECT(raft_follower_ignores_AE))
+        return;
 
     NIOVA_ASSERT(raerq->raerqm_log_term > 0);
     NIOVA_ASSERT(raerq->raerqm_log_term >= raerq->raerqm_prev_log_term);
