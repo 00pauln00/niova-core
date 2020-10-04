@@ -30,6 +30,7 @@ struct tcp_mgr_instance
     struct epoll_mgr        *tmi_epoll_mgr;
     struct epoll_handle      tmi_listen_eph;
     void                    *tmi_data;
+    pthread_mutex_t          tmi_status_mutex;
 
     tcp_mgr_ref_cb_t         tmi_connection_ref_cb;
     tcp_mgr_recv_cb_t        tmi_recv_cb;
@@ -49,7 +50,6 @@ enum tcp_mgr_connection_status
 
 struct tcp_mgr_connection
 {
-    pthread_mutex_t                tmc_status_mutex;
     enum tcp_mgr_connection_status tmc_status;
     struct tcp_socket_handle       tmc_tsh;
     struct epoll_handle            tmc_eph;

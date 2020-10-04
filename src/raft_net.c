@@ -147,10 +147,7 @@ raft_net_sockets_close(struct raft_instance *ri)
     rc = raft_net_udp_sockets_close(ri);
     rc2 = raft_net_tcp_sockets_close(ri);
 
-    if (rc)
-        return rc;
-
-    return rc2;
+    return rc ? rc : rc2;
 }
 
 static int
@@ -609,13 +606,12 @@ raft_net_histogram_setup(struct raft_instance *ri)
 }
 
 static void
-raft_net_connection_lookup_csn(struct tcp_mgr_connection *tmc,
-                               struct ctl_svc_node **ret)
+raft_net_connection_to_csn(struct tcp_mgr_connection *tmc,
+                           struct ctl_svc_node **ret)
 {
-    char *peer = (char *)tmc -
-        offsetof(struct ctl_svc_node_peer, csnp_net_data);
-    *ret = (struct ctl_svc_node *)(peer - offsetof(struct ctl_svc_node,
-                                                   csn_peer));
+    struct ctl_svc_node_peer *peer = OFFSET_CAST(ctl_svc_node_peer,
+                                                 csnp_net_data, tmc);
+    *ret = OFFSET_CAST(ctl_svc_node, csn_peer, peer);
 }
 
 static int
@@ -626,31 +622,8 @@ raft_net_hdr_recv(struct tcp_mgr_connection *tmc, char *sink_buf, size_t size)
     iovs[0].iov_base = sink_buf;
     iovs[0].iov_len = size;
 
-    ssize_t total_bytes = 0;
-    const int MAX_ATTEMPTS = 2;
-
     // try twice in case interrupts cause short read
-    for (int i = 0; i < MAX_ATTEMPTS && iovs[0].iov_len > 0; i++)
-    {
-        ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, iovs, 1, NULL,
-                                             false);
-
-        SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_base=%p iov_len=%ld",
-                       recv_bytes, iovs[0].iov_base, iovs[0].iov_len);
-
-        if (recv_bytes == -EAGAIN)
-            recv_bytes = 0;
-
-        else if (recv_bytes <= 0)
-            return recv_bytes;
-
-        total_bytes += recv_bytes;
-
-        iovs[0].iov_base += recv_bytes;
-        iovs[0].iov_len -= recv_bytes;
-    }
-
-    return total_bytes;
+    return tcp_socket_recv_retry(&tmc->tmc_tsh, iovs, NULL, 2);
 }
 
 // XXX this feels hacky, perhaps switch to a unified RPC header in the future?
@@ -705,11 +678,9 @@ raft_net_tcp_recv_helper(struct tcp_mgr_connection *tmc, bool is_client_msg,
     }
 
     if (tmc->tmc_async_remain)
-    {
         // unable to get bulk data without blocking
         // tcp mgr will callback when available
         return -EAGAIN;
-    }
 
     NIOVA_ASSERT(tmc->tmc_async_buf && tmc->tmc_async_offset);
 
@@ -724,7 +695,7 @@ static raft_net_cb_ctx_t
 raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
 {
     struct ctl_svc_node *csn;
-    raft_net_connection_lookup_csn(tmc, &csn);
+    raft_net_connection_to_csn(tmc, &csn);
     if (!csn)
     {
         DBG_TCP_MGR_CXN(LL_ERROR, tmc, "cannot find csn for connection");
@@ -876,7 +847,7 @@ raft_net_connection_getput(struct tcp_mgr_connection *tmc,
     NIOVA_ASSERT(tmc);
 
     struct ctl_svc_node *csn;
-    raft_net_connection_lookup_csn(tmc, &csn);
+    raft_net_connection_to_csn(tmc, &csn);
 
     if (op == EPH_REF_PUT)
         ctl_svc_node_put(csn);

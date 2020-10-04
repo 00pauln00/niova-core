@@ -79,6 +79,10 @@ tcp_socket_recv_fd(int fd, struct iovec *iov, size_t iovlen,
                    struct sockaddr_in *from, bool block);
 
 ssize_t
+tcp_socket_recv_all(const struct tcp_socket_handle *tsh, struct iovec *iov,
+                    struct sockaddr_in *from, int max_attempts);
+
+ssize_t
 tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
                 const size_t iovlen);
 
@@ -97,4 +101,5 @@ tcp_get_default_port(void);
 void
 tcp_socket_handle_set_data(struct tcp_socket_handle *tsh, const char *ipaddr,
                            int port);
+
 #endif
