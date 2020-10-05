@@ -1355,6 +1355,9 @@ raft_server_become_candidate(struct raft_instance *ri)
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
     NIOVA_ASSERT(ri->ri_state != RAFT_STATE_LEADER);
 
+    if (FAULT_INJECT(raft_candidate_state_disabled))
+        return;
+
     // Reset vote counters
     raft_server_init_candidate_state(ri);
 
