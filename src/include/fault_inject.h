@@ -19,6 +19,8 @@ enum fault_inject_entries
     FAULT_INJECT_async_raft_client_request_expire,
     FAULT_INJECT_raft_leader_may_be_deposed,
     FAULT_INJECT_raft_follower_ignores_AE,
+    FAULT_INJECT_raft_client_udp_recv_handler_bypass,
+    FAULT_INJECT_raft_client_udp_recv_handler_process_reply_bypass,
     FAULT_INJECT__MAX,
     FAULT_INJECT__MIN = FAULT_INJECT_any,
 } PACKED;
@@ -159,14 +161,18 @@ fault_injection_evaluate(struct fault_injection *flti)
             fault_injection_apply_info(fis.fis_flti, __FILE__, __func__, \
                                        __LINE__);                        \
         }                                                                \
-        fis.fis_flti->flti_cond_exec_cnt++;                              \
-        bool fire = fault_injection_evaluate(fis.fis_flti);              \
-        if (fire)                                                        \
-        {                                                                \
-            fis.fis_flti->flti_inject_cnt++;                             \
-            callback;                                                    \
-        }                                                                \
-        fire;                                                            \
+        bool fire = false;                                              \
+        if (fis.fis_flti) /* avoid accessing null pointer */            \
+        {                                                               \
+            fis.fis_flti->flti_cond_exec_cnt++;                         \
+            fire = fault_injection_evaluate(fis.fis_flti);              \
+            if (fire)                                                   \
+            {                                                           \
+                fis.fis_flti->flti_inject_cnt++;                        \
+                callback;                                               \
+            }                                                           \
+        }                                                               \
+        fire;                                                           \
     })
 #else
 #define FAULT_INJECT_CB(id, callback) false

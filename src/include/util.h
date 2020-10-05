@@ -354,14 +354,32 @@ niova_string_to_bool(const char *string, bool *ret_bool)
     return 0;
 }
 
-static inline unsigned int
+static inline int
+niova_string_to_unsigned_long_long(const char *string, unsigned long long *val)
+{
+    if (!string || !val)
+        return -EINVAL;
+
+    errno = 0;
+    unsigned long long tmp = strtoull(string, NULL, 10);
+    if (tmp == ULLONG_MAX && errno)
+        return -errno;
+
+    else
+        *val = tmp;
+
+    return 0;
+}
+
+static inline int
 niova_string_to_unsigned_int(const char *string, unsigned int *val)
 {
     if (!string || !val)
         return -EINVAL;
 
+    errno = 0;
     unsigned long tmp = strtoul(string, NULL, 10);
-    if (tmp == ULONG_MAX)
+    if (tmp == ULONG_MAX && errno)
         return -errno;
 
     else if (tmp > UINT_MAX)

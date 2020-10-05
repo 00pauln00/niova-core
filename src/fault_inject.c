@@ -57,6 +57,16 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
+    [FAULT_INJECT_raft_client_udp_recv_handler_bypass] {
+        .flti_name = "raft_client_udp_recv_handler_bypass",
+        .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
+        .flti_enabled = 0,
+    },
+    [FAULT_INJECT_raft_client_udp_recv_handler_process_reply_bypass] {
+        .flti_name = "raft_client_udp_recv_handler_process_reply_bypass",
+        .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
+        .flti_enabled = 0,
+    },
     [FAULT_INJECT_disabled] {
         .flti_name = "disabled injection",
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,

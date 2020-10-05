@@ -50,6 +50,7 @@ enum pmdb_test_app_lreg_values
     PMDB_TEST_APP_LREG_PMDB_SEQNO,
     PMDB_TEST_APP_LREG_WRITE_PENDING,
     PMDB_TEST_APP_LREG_LAST_REQUEST_TIME,
+    PMDB_TEST_APP_LREG_LAST_REQUEST_DURATION_MS,
     PMDB_TEST_APP_LREG_LAST_REQUEST_TAG,
     PMDB_TEST_APP_LREG_APP_SYNC,
     PMDB_TEST_APP_LREG_APP_SEQNO,
@@ -67,6 +68,7 @@ enum pmdb_test_req_lreg_values
     PMDB_TEST_REQ_LREG_PMDB_SEQNO,
     PMDB_TEST_REQ_LREG_WRITE_PENDING,
     PMDB_TEST_REQ_LREG_LAST_REQUEST_TIME,
+    PMDB_TEST_REQ_LREG_LAST_REQUEST_DURATION_MS,
     PMDB_TEST_REQ_LREG_LAST_REQUEST_TAG,
     PMDB_TEST_REQ_LREG_APP_SEQNO,
     PMDB_TEST_REQ_LREG_APP_VALUE,
@@ -83,6 +85,7 @@ struct pmdbtc_app
     pmdb_obj_stat_t                papp_obj_stat;
     raft_net_request_tag_t         papp_last_tag;
     struct timespec                papp_last_request;
+    struct timespec                papp_last_request_completed;
     raft_net_request_tag_t         papp_pending_tag;
     struct random_data             papp_random_data;
     uint8_t                        papp_sync : 1;
@@ -103,6 +106,7 @@ struct pmdbtc_request
     raft_net_request_tag_t         preq_last_tag;
     pmdb_obj_stat_t                preq_obj_stat;
     struct timespec                preq_submitted;
+    struct timespec                preq_completed;
     struct raft_test_data_block    preq_rtdb; // preq_rtv must follow!
     struct raft_test_values        preq_rtv[PMDB_RTV_MAX];
 };
@@ -185,6 +189,12 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_string_time(lv, "last-request",
                                         papp->papp_last_request.tv_sec);
             break;
+        case PMDB_TEST_APP_LREG_LAST_REQUEST_DURATION_MS:
+            lreg_value_fill_unsigned(
+                lv, "last-request-duration-ms",
+                (timespec_2_msec(&papp->papp_last_request_completed) -
+                 timespec_2_msec(&papp->papp_last_request)));
+                 break;
         case PMDB_TEST_APP_LREG_APP_SYNC:
             lreg_value_fill_bool(lv, "app-sync",
                                  papp->papp_sync ? true : false);
@@ -284,6 +294,12 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
         case PMDB_TEST_REQ_LREG_LAST_REQUEST_TIME:
             lreg_value_fill_string_time(lv, "submitted-time",
                                         preq->preq_submitted.tv_sec);
+            break;
+        case PMDB_TEST_REQ_LREG_LAST_REQUEST_DURATION_MS:
+            lreg_value_fill_unsigned(
+                lv, "duration-ms",
+                (timespec_2_msec(&preq->preq_completed) -
+                 timespec_2_msec(&preq->preq_submitted)));
             break;
         case PMDB_TEST_REQ_LREG_APP_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",
@@ -699,6 +715,7 @@ pmdbtc_result_capture(struct pmdbtc_request *preq, int rc)
 
     papp->papp_last_tag = preq->preq_last_tag;
     papp->papp_last_request = preq->preq_submitted;
+    papp->papp_last_request_completed = preq->preq_completed;
     papp->papp_obj_stat = preq->preq_obj_stat;
     papp->papp_obj_stat.status = -ABS(rc);
 }
@@ -763,6 +780,8 @@ pmdbtc_request_requeue(struct pmdbtc_request *preq)
 static void
 pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
 {
+    niova_realtime_coarse_clock(&preq->preq_completed);
+
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
