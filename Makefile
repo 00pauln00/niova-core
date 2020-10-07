@@ -293,8 +293,10 @@ autofmt:
 autofmt-check:
 	uncrustify -c tools/uncrustify.cfg -q --check `find . -name "*.[ch]"` | grep -c FAIL | grep ^0$ > /dev/null
 
-clang : CC = clang -std=gnu99
-clang :	pumicedb
-clang : tests
-clang : raft
-clang : all
+clang-int : pumicedb tests raft all
+
+clang : CC = clang -std=gnu99 -Wall
+clang :	clang-int
+
+clang-strict : CC = clang -std=gnu99 -Werror
+clang-strict :	clang-int
