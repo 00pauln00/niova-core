@@ -70,6 +70,7 @@ typedef void                             raft_server_epoll_remote_sender_t;
 typedef void                             raft_server_epoll_sm_apply_t;
 typedef void                             raft_server_epoll_sm_apply_bool_t;
 typedef int                              raft_server_epoll_sm_apply_int_t;
+typedef void                             raft_server_epoll_t;
 
 typedef raft_server_epoll_sm_apply_t     raft_server_sm_apply_cb_t;
 typedef raft_server_epoll_sm_apply_int_t raft_server_sm_apply_cb_int_t;
@@ -217,6 +218,7 @@ enum raft_epoll_handles
     RAFT_EPOLL_HANDLE_CLIENT_UDP,
     RAFT_EPOLL_HANDLE_TIMERFD,
     RAFT_EPOLL_HANDLE_EVP_REMOTE_SEND,
+    RAFT_EPOLL_HANDLE_EVP_ASYNC_COMMIT_IDX_ADV,
     RAFT_EPOLL_HANDLE_EVP_SM_APPLY,
     RAFT_EPOLL_NUM_HANDLES,
     RAFT_EPOLL_HANDLE_EVP_ANY, // purposely out of range
@@ -261,8 +263,9 @@ struct raft_instance;
 enum raft_server_event_pipes
 {
     RAFT_SERVER_EVP_REMOTE_SEND  = 0,
-    RAFT_SERVER_EVP_SM_APPLY     = 1,
-    RAFT_SERVER_EVP_ANY          = 2,
+    RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV = 1,
+    RAFT_SERVER_EVP_SM_APPLY     = 2,
+    RAFT_SERVER_EVP_ANY          = 3,
 };
 
 enum raft_follower_reasons
@@ -525,6 +528,8 @@ raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
         return RAFT_EPOLL_HANDLE_EVP_REMOTE_SEND;
     case RAFT_SERVER_EVP_SM_APPLY:
         return RAFT_EPOLL_HANDLE_EVP_SM_APPLY;
+    case RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV:
+        return RAFT_EPOLL_HANDLE_EVP_ASYNC_COMMIT_IDX_ADV;
     default:
         break;
     }

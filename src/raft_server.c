@@ -41,6 +41,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define RAFT_SERVER_SYNC_FREQ_US 4000
 typedef void * raft_server_sync_thread_t;
+typedef void raft_server_sync_thread_ctx_t;
 
 static const char *
 raft_server_may_accept_client_request_reason(struct raft_instance *ri);
@@ -187,23 +188,23 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             break;
         case RAFT_LREG_NEWEST_ENTRY_IDX:
             lreg_value_fill_signed(
-                lv, "entry-idx",
+                lv, "sync-entry-idx",
                 raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC));
             break;
         case RAFT_LREG_NEWEST_ENTRY_TERM:
             lreg_value_fill_signed(
-                lv, "entry-term",
+                lv, "sync-entry-term",
                 raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC));
             break;
         case RAFT_LREG_NEWEST_ENTRY_SIZE:
             lreg_value_fill_unsigned(
-                lv, "entry-data-size",
+                lv, "sync-entry-data-size",
                 raft_server_get_current_raft_entry_data_size(ri,
                                                              RI_NEHDR_SYNC));
             break;
         case RAFT_LREG_NEWEST_ENTRY_CRC:
             lreg_value_fill_unsigned(
-                lv, "entry-crc",
+                lv, "sync-entry-crc",
                 raft_server_get_current_raft_entry_crc(ri, RI_NEHDR_SYNC));
             break;
         case RAFT_LREG_NEWEST_UNSYNC_ENTRY_IDX:
@@ -2690,6 +2691,26 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
     return committed_raft_idx;
 }
 
+static int64_t
+raft_server_leader_can_advance_commit_idx(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    if (!raft_instance_is_leader(ri))
+        return ID_ANY_64bit;
+
+    const struct raft_leader_state *rls = &ri->ri_leader;
+
+    const int64_t committed_raft_idx =
+        raft_server_leader_calculate_committed_idx(ri);
+
+    /* Only increase the commit index if the majority has ACKd this leader's
+     * "leader_change_marker" AE.
+     */
+    return (committed_raft_idx >= rls->rls_initial_term_idx &&
+            committed_raft_idx > ri->ri_commit_idx) ?
+        committed_raft_idx : ID_ANY_64bit;
+}
+
 /**
  * raft_server_leader_try_advance_commit_idx -
  *     After receiving a successful AE reply,
@@ -2702,28 +2723,25 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
  *     data used by it must first be updated through a commit + apply
  *     operation.
  */
-static raft_server_net_cb_leader_ctx_t
+static raft_server_net_cb_leader_ctx_t // or raft_server_epoll_t
 raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     NIOVA_ASSERT(raft_instance_is_leader(ri));
 
-    const struct raft_leader_state *rls = &ri->ri_leader;
-
     const int64_t committed_raft_idx =
-        raft_server_leader_calculate_committed_idx(ri);
+        raft_server_leader_can_advance_commit_idx(ri);
 
-    /* Only increase the commit index if the majority has ACKd this leader's
-     * "leader_change_marker" AE.
-     */
-    if (committed_raft_idx >= rls->rls_initial_term_idx &&
-        committed_raft_idx > ri->ri_commit_idx)
-    {
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "updating ri_commit_idx to %ld",
-                          committed_raft_idx);
-
+    if (committed_raft_idx != ID_ANY_64bit)
         raft_server_advance_commit_idx(ri, committed_raft_idx);
-    }
+}
+
+static raft_server_sync_thread_ctx_t
+raft_server_leader_try_advance_commit_idx_from_sync_thread(
+    struct raft_instance *ri)
+{
+    if (ri && raft_server_leader_can_advance_commit_idx(ri) != ID_ANY_64bit)
+        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV]);
 }
 
 static raft_server_net_cb_leader_ctx_t
@@ -3794,6 +3812,23 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
     raft_server_state_machine_apply(ri);
 }
 
+static raft_server_epoll_t
+raft_server_commit_idx_adv_evp_cb(const struct epoll_handle *eph)
+{
+    NIOVA_ASSERT(eph);
+    FUNC_ENTRY(LL_DEBUG);
+
+    struct raft_instance *ri = eph->eph_arg;
+
+    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV];
+    NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
+
+    EV_PIPE_RESET(evp);
+
+    if (raft_instance_is_leader(ri))
+        raft_server_leader_try_advance_commit_idx(ri);
+}
+
 static epoll_mgr_cb_t
 raft_server_evp_2_cb_fn(enum raft_server_event_pipes evps)
 {
@@ -3803,6 +3838,8 @@ raft_server_evp_2_cb_fn(enum raft_server_event_pipes evps)
         return raft_server_remote_send_evp_cb;
     case RAFT_SERVER_EVP_SM_APPLY:
         return raft_server_sm_apply_evp_cb;
+    case RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV:
+        return raft_server_commit_idx_adv_evp_cb;
     default:
         break;
     }
@@ -4000,6 +4037,8 @@ raft_server_sync_thread(void *arg)
         {
             raft_server_backend_sync_pending(ri);
             ri->ri_sync_cnt++;
+
+            raft_server_leader_try_advance_commit_idx_from_sync_thread(ri);
         }
     }
 
@@ -4126,9 +4165,6 @@ raft_server_main_loop(struct raft_instance *ri)
 
     do
     {
-        // Xxx these are just examples..
-        FAULT_INJECT(disabled);
-        FAULT_INJECT(any);
         rc = epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);
         if (rc == -EINTR)
             rc = 0;
