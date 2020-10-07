@@ -47,7 +47,8 @@ tcp_socket_handle_2_sockfd(const struct tcp_socket_handle *tsh)
 }
 
 void
-tcp_sockaddr_in_2_handle(struct sockaddr_in *addr_in, struct tcp_socket_handle *tsh);
+tcp_sockaddr_in_2_handle(struct sockaddr_in *addr_in,
+                         struct tcp_socket_handle *tsh);
 
 struct niova_env_var;
 

@@ -660,6 +660,8 @@ int
 raft_net_client_user_id_parse(const char *in,
                               struct raft_net_client_user_id *rncui,
                               const version_t version);
-struct tcp_mgr_connection *
-raft_net_tcp_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp, bool do_connect);
+void
+raft_net_csn_connection_setup(struct raft_instance *ri,
+                              struct ctl_svc_node *csn);
+
 #endif

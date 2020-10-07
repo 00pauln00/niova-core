@@ -46,6 +46,7 @@ void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
+              tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size)
@@ -55,6 +56,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_data = data;
     tmi->tmi_connection_ref_cb = connection_ref_cb;
     tmi->tmi_recv_cb = recv_cb;
+    tmi->tmi_bulk_size_cb = bulk_size_cb;
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
@@ -90,12 +92,15 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
 
 void
 tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
-                         struct tcp_mgr_connection *tmc)
+                         struct tcp_mgr_connection *tmc,
+                         size_t header_size)
 {
     tcp_socket_handle_init(&tmc->tmc_tsh);
     tmc->tmc_eph.eph_installed = 0;
 
     tmc->tmc_tmi = tmi;
+    tmc->tmc_header_size = header_size;
+
     tmc->tmc_status = TMCS_DISCONNECTED;
     tmc->tmc_async_buf = NULL;
     tmc->tmc_async_remain = 0;
@@ -103,20 +108,34 @@ tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
     SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_mgr_connection_setup() - tmc %p", tmc);
 }
 
-void
-tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
+static void
+tcp_mgr_connection_close_locked(struct tcp_mgr_connection *tmc)
 {
     if (tmc->tmc_status != TMCS_CONNECTING && tmc->tmc_status != TMCS_CONNECTED)
         DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection not connected, status: %d",
                         tmc->tmc_status);
 
-    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
     tmc->tmc_status = TMCS_DISCONNECTING;
     if (tmc->tmc_eph.eph_installed)
         epoll_handle_del(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
 
+    // XXX specifically we don't want this to happen when another thread is using
+    if (tmc->tmc_async_buf)
+        tcp_mgr_bulk_free(tmc->tmc_async_buf);
+
+    tmc->tmc_async_buf = NULL;
+    tmc->tmc_async_offset = 0;
+    tmc->tmc_async_remain = 0;
+
     tcp_socket_close(&tmc->tmc_tsh);
     tmc->tmc_status = TMCS_DISCONNECTED;
+}
+
+void
+tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
+{
+    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
+    tcp_mgr_connection_close_locked(tmc);
     niova_mutex_unlock(&tmc->tmc_tmi->tmi_status_mutex);
 }
 
@@ -128,18 +147,20 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
     if (!tmc)
         return NULL;
 
-    tcp_mgr_connection_setup(tmi, tmc);
+    tcp_mgr_connection_setup(tmi, tmc, 0);
 
     return tmc;
 }
 
-static void tcp_mgr_incoming_fini_err(struct tcp_mgr_connection *tmc)
+static void
+tcp_mgr_incoming_fini_err(struct tcp_mgr_connection *tmc)
 {
     tcp_mgr_connection_close(tmc);
     niova_free(tmc);
 }
 
-static void tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
+static void
+tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 {
     niova_free(tmc);
 }
@@ -196,10 +217,14 @@ epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
     return -rc;
 }
 
+// should be called with tmi status mutex
 static int
-tcp_mgr_async_read_helper(struct tcp_mgr_connection *tmc)
+tcp_mgr_async_progress_recv(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    if (!tmc->tmc_async_remain)
+        return 0;
 
     void *bulk = tmc->tmc_async_buf + tmc->tmc_async_offset;
 
@@ -228,9 +253,10 @@ tcp_mgr_async_read_helper(struct tcp_mgr_connection *tmc)
     return 0;
 }
 
-int
-tcp_mgr_async_read(struct tcp_mgr_connection *tmc, size_t bulk_size,
-                   void *hdr, size_t hdr_size)
+// should be called with tmi status lock
+static int
+tcp_mgr_async_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
+                               void *hdr, size_t hdr_size)
 {
     NIOVA_ASSERT(tmc && !tmc->tmc_async_buf && !tmc->tmc_async_remain);
     if (!bulk_size)
@@ -260,10 +286,41 @@ tcp_mgr_async_read(struct tcp_mgr_connection *tmc, size_t bulk_size,
     tmc->tmc_async_offset = hdr_size;
     tmc->tmc_async_remain = bulk_size;
 
-    int rc = tcp_mgr_async_read_helper(tmc);
+    int rc = tcp_mgr_async_progress_recv(tmc);
     if (rc < 0)
         return rc;
 
+    return 0;
+}
+
+// should be called with tmi status lock
+static int
+tcp_mgr_header_recv(struct tcp_mgr_connection *tmc)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    tcp_mgr_recv_cb_t recv_cb = tmi->tmi_recv_cb;
+    tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
+    size_t header_size = tmc->tmc_header_size;
+
+    NIOVA_ASSERT(recv_cb && bulk_size_cb && header_size);
+
+    static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
+    static struct iovec iov = {
+        .iov_base = sink_buf,
+    };
+    iov.iov_len = header_size;
+
+    // try twice in case interrupts cause short read
+    ssize_t rc = tcp_socket_recv_all(&tmc->tmc_tsh, &iov, NULL, 2);
+    if (rc != header_size)
+        return rc < 0 ? rc : -ECOMM;
+
+    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
+    if (rc > 0)
+        return tcp_mgr_async_prepare_and_recv(tmc, rc, sink_buf, header_size);
+
+    recv_cb(tmc, sink_buf, header_size, tmi->tmi_data);
     return 0;
 }
 
@@ -288,33 +345,98 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         return;
     }
 
-    tcp_mgr_recv_cb_t recv_cb = tmc->tmc_tmi->tmi_recv_cb;
-    if (!recv_cb)
-    {
-        DBG_TCP_MGR_CXN(LL_WARN, tmc, "no recv handler defined");
-        return;
-    }
+    // take lock for async_buf access
+    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
 
-    if (tmc->tmc_async_remain)
+    // is this a new RPC?
+    if (!tmc->tmc_async_remain)
     {
-        rc = tcp_mgr_async_read_helper(tmc);
-        if (rc)
+        int rc = tcp_mgr_header_recv(tmc);
+        if (rc < 0)
         {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete async read, rc=%d", rc);
-            tcp_mgr_connection_close(tmc);
-            return;
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC header, rc=%d", rc);
+            goto out;
         }
+
+        // simple (non-bulk) RPC, we're done
+        if (!tmc->tmc_async_buf)
+            goto out;
     }
 
-    recv_cb(tmc, tmc->tmc_tmi->tmi_data);
+    NIOVA_ASSERT(tmc->tmc_async_buf);
 
-    if (tmc->tmc_async_buf && !tmc->tmc_async_remain)
+    rc = tcp_mgr_async_progress_recv(tmc);
+    if (rc < 0)
     {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete async read, rc=%d", rc);
+        goto out;
+    }
+
+    // bulk buffer completed recv
+    if (!tmc->tmc_async_remain)
+    {
+        struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+        NIOVA_ASSERT(tmi->tmi_recv_cb);
+
+        tmi->tmi_recv_cb(tmc, tmc->tmc_async_buf, tmc->tmc_async_offset,
+                         tmc->tmc_tmi->tmi_data);
         tcp_mgr_bulk_free(tmc->tmc_async_buf);
 
         tmc->tmc_async_buf = NULL;
         tmc->tmc_async_offset = 0;
     }
+
+out:
+    if (rc < 0)
+        tcp_mgr_connection_close_locked(tmc);
+
+    niova_mutex_unlock(&tmc->tmc_tmi->tmi_status_mutex);
+}
+
+// should be called with tmi status lock
+static int
+tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
+                                  struct tcp_mgr_connection *owned)
+{
+    struct tcp_mgr_instance *tmi = incoming->tmc_tmi;
+
+    if (owned->tmc_status == TMCS_DISCONNECTING ||
+        owned->tmc_status == TMCS_CONNECTING ||
+        owned->tmc_status == TMCS_CONNECTED)
+    {
+        DBG_TCP_MGR_CXN(LL_NOTIFY, owned,
+                        "incoming connection, but outgoing conn exists,"
+                        " status: %d",
+                        owned->tmc_status);
+
+        // if peer is attempting to connect again, assume old connection is dead
+        // XXX it would be better to send a ping, and handle failure there
+        if (owned->tmc_status == TMCS_CONNECTED)
+            tcp_mgr_connection_close_locked(owned);
+
+        if (tmi->tmi_connection_ref_cb)
+            tmi->tmi_connection_ref_cb(owned, EPH_REF_PUT);
+        owned = NULL;
+    }
+
+    if (!owned)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "handshake error");
+        return -EINVAL;
+    }
+
+    owned->tmc_tsh.tsh_socket = incoming->tmc_tsh.tsh_socket;
+    owned->tmc_status = TMCS_CONNECTED;
+
+    if (incoming->tmc_eph.eph_installed)
+        epoll_handle_del(tmi->tmi_epoll_mgr, &incoming->tmc_eph);
+
+    tcp_mgr_connection_epoll_add(owned, EPOLLIN, tcp_mgr_recv_cb,
+                                 tmi->tmi_connection_ref_cb);
+
+    DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");
+
+    return 0;
 }
 
 static void
@@ -344,29 +466,24 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_socket_recv(): rc=%d", rc);
 
+    niova_mutex_lock(&tmi->tmi_status_mutex);
+
     struct tcp_mgr_connection *new_tmc =
         tmi->tmi_handshake_cb(tmi->tmi_data,
                               tmc->tmc_tsh.tsh_socket,
                               iov.iov_base,
                               rc);
+
     tcp_mgr_handshake_iov_fini(&iov);
 
-    if (!new_tmc)
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "handshake error: %d", rc);
+    rc = tcp_mgr_connection_merge_incoming(tmc, new_tmc);
+
+    niova_mutex_unlock(&tmi->tmi_status_mutex);
+
+    if (rc)
         tcp_mgr_incoming_fini_err(tmc);
-
-        return;
-    }
-
-    if (tmc->tmc_eph.eph_installed)
-        epoll_handle_del(tmi->tmi_epoll_mgr, &tmc->tmc_eph);
-
-    tcp_mgr_connection_epoll_add(new_tmc, EPOLLIN, tcp_mgr_recv_cb,
-                                 tmi->tmi_connection_ref_cb);
-
-    SIMPLE_LOG_MSG(LL_TRACE, "handshake validated");
-    tcp_mgr_incoming_fini(tmc);
+    else
+        tcp_mgr_incoming_fini(tmc);
 }
 
 static int
@@ -439,65 +556,60 @@ tcp_mgr_connection_epoll_mod(struct tcp_mgr_connection *tmc, int op,
     return epoll_handle_mod(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
 };
 
-// XXX lock status mutex at beginning
-// XXX split into two functions
 static int
-tcp_mgr_connect_helper(struct tcp_mgr_connection *tmc)
+tcp_mgr_handshake_fill_send(struct tcp_mgr_connection *tmc)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
-
     struct iovec handshake_iov;
-
     tcp_mgr_handshake_iov_init(tmc->tmc_tmi, &handshake_iov);
 
-    int rc = tmc->tmc_tmi->tmi_handshake_fill(tmc->tmc_tmi->tmi_data,
-                                              handshake_iov.iov_base,
-                                              handshake_iov.iov_len);
-    if (rc < 0)
-    {
-        DBG_TCP_MGR_CXN(LL_WARN, tmc, "handshake failed while connecting");
+    tmc->tmc_tmi->tmi_handshake_fill(tmc->tmc_tmi->tmi_data,
+                                     handshake_iov.iov_base,
+                                     handshake_iov.iov_len);
 
-        tcp_mgr_handshake_iov_fini(&handshake_iov);
-        tcp_socket_close(&tmc->tmc_tsh);
-        return rc;
-    }
-    rc = tcp_socket_send(&tmc->tmc_tsh, &handshake_iov, 1);
+    int rc = tcp_socket_send(&tmc->tmc_tsh, &handshake_iov, 1);
 
     tcp_mgr_handshake_iov_fini(&handshake_iov);
 
-    if (rc < 0)
+    return rc;
+}
+
+static int
+tcp_mgr_connect_complete(struct tcp_mgr_connection *tmc)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    int rc;
+
+    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
+    if (tmc->tmc_status != TMCS_CONNECTING)
     {
-        tcp_socket_close(&tmc->tmc_tsh);
-        return rc;
+        DBG_TCP_MGR_CXN(LL_ERROR, tmc, "unexpected connection status %d",
+                        tmc->tmc_status);
+        rc = -EAGAIN;
+        goto out;
     }
+
+    rc = tcp_mgr_handshake_fill_send(tmc);
+    if (rc < 0)
+        goto out;
 
     DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "reinstalling epoll handler");
 
     rc = tcp_mgr_connection_epoll_mod(tmc, EPOLLIN, tcp_mgr_recv_cb);
     if (rc < 0)
     {
-        DBG_TCP_MGR_CXN(LL_WARN, tmc, "error reinstalling epoll handler");
-        tcp_socket_close(&tmc->tmc_tsh);
-        return rc;
+        DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "error reinstalling epoll handler");
+        goto out;
     }
 
-    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
-    if (tmc->tmc_status == TMCS_CONNECTING)
-    {
-        tmc->tmc_status = TMCS_CONNECTED;
-        rc = 0;
-    }
-    else
-    {
-        rc = -EAGAIN;
-    }
+    DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
+    tmc->tmc_status = TMCS_CONNECTED;
+    rc = 0;
+out:
+    if (rc < 0)
+        tcp_mgr_connection_close_locked(tmc);
+
     niova_mutex_unlock(&tmc->tmc_tmi->tmi_status_mutex);
-
-    if (rc)
-        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc,
-                        "connection status changed while connecting");
-    else
-        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
 
     return rc;
 }
@@ -517,67 +629,59 @@ tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_tcp_connect_cb(): error, rc=%d",
                        rc);
-        tcp_socket_close(&tmc->tmc_tsh);
+        tcp_mgr_connection_close(tmc);
         return;
     }
 
-    tcp_mgr_connect_helper(tmc);
+    tcp_mgr_connect_complete(tmc);
 }
 
-// XXX lock the whole function
-int
-tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
-                       struct tcp_mgr_connection *tmc, const char *ipaddr,
-                       int port)
+static int
+tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
+                          bool do_connect)
 {
-    // trying to call setup here is racy
-    NIOVA_ASSERT(tmi && tmc && tmc->tmc_status != TMCS_NEEDS_SETUP);
+    NIOVA_ASSERT(tmc && !tmc->tmc_status == TMCS_NEEDS_SETUP);
 
-    if (tmc->tmc_status == TMCS_CONNECTED)
-        return 0;
-    if (!ipaddr || tmc->tmc_status == TMCS_DISCONNECTING)
-        return -ENOTCONN;
-    if (tmc->tmc_status == TMCS_CONNECTING)
-        return -EALREADY;
+    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
 
-    NIOVA_ASSERT(tmc->tmc_tsh.tsh_socket < 0);
+    int rc = 0;
+    if (tmc->tmc_status != TMCS_DISCONNECTED || !do_connect)
+    {
+        if (tmc->tmc_status == TMCS_CONNECTED)
+            rc = 0;
+        else if (tmc->tmc_status == TMCS_CONNECTING)
+            rc = -EALREADY;
+        else if (!do_connect || tmc->tmc_status == TMCS_DISCONNECTING)
+            rc = -ENOTCONN;
+        else
+            rc = -EINVAL;
+        goto out;
+    }
 
-    int rc = tcp_socket_setup(&tmc->tmc_tsh);
+    NIOVA_ASSERT(
+        tmc->tmc_tsh.tsh_socket < 0 && tmc->tmc_status == TMCS_DISCONNECTED);
+
+    tmc->tmc_status = TMCS_CONNECTING;
+
+    rc = tcp_socket_setup(&tmc->tmc_tsh);
     if (rc < 0)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_setup(): %d", rc);
-        return rc;
+        goto out;
     }
-
-    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
 
     rc = tcp_mgr_connection_epoll_add(tmc, EPOLLOUT, tcp_mgr_connect_cb,
                                       NULL);
     if (rc < 0)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_mgr_connection_epoll_add(): %d", rc);
-        return rc;
-    }
-
-    niova_mutex_lock(&tmc->tmc_tmi->tmi_status_mutex);
-    if (tmc->tmc_status != TMCS_DISCONNECTED)
-        rc = -EAGAIN;
-    else
-        tmc->tmc_status = TMCS_CONNECTING;
-    niova_mutex_unlock(&tmc->tmc_tmi->tmi_status_mutex);
-
-    if (rc < 0)
-    {
-        DBG_TCP_MGR_CXN(LL_WARN, tmc,
-                        "connection status changed, status: %d rc: %d",
-                        tmc->tmc_status, rc);
-        return rc;
+        goto out;
     }
 
     rc = tcp_socket_connect(&tmc->tmc_tsh);
     if (rc < 0 && rc != -EINPROGRESS)
     {
-        tcp_socket_close(&tmc->tmc_tsh);
+        tcp_mgr_connection_close_locked(tmc);
         SIMPLE_LOG_MSG(LL_WARN, "tcp_socket_connect(): %d", rc );
     }
     else if (rc == -EINPROGRESS)
@@ -587,8 +691,26 @@ tcp_mgr_connection_get(struct tcp_mgr_instance *tmi,
     }
     else     // rc == 0
     {
-        rc = tcp_mgr_connect_helper(tmc);
+        rc = tcp_mgr_connect_complete(tmc);
     }
+
+out:
+    niova_mutex_unlock(&tmc->tmc_tmi->tmi_status_mutex);
+
+    return rc;
+}
+
+int
+tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
+                 size_t niovs)
+{
+    if (!tcp_mgr_connection_verify(tmc, true))
+        return -ENOTCONN;
+
+    int rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
+
+    if (rc == -ENOTCONN || rc == -ECONNRESET)
+        tcp_mgr_connection_close(tmc);
 
     return rc;
 }

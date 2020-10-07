@@ -20,6 +20,7 @@
 #include "log.h"
 #include "tcp_mgr.h"
 #include "raft.h"
+#include "raft_net.h"
 #include "ref_tree_proto.h"
 #include "regex_defines.h"
 #include "registry.h"
@@ -960,13 +961,10 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
         return NULL;
 
     *csn = *in;
-    if (ctl_svc_node_is_peer(csn))
-    {
-        // XXX is getting ri ok here?
-        struct raft_instance *ri = raft_net_get_instance();
 
-        tcp_mgr_connection_setup(&ri->ri_tcp_mgr, &csn->csn_peer.csnp_net_data);
-    }
+    // XXX perhaps load different tcp_mgr based on node type in the future
+    if (ctl_svc_node_is_peer(csn))
+        raft_net_csn_connection_setup(raft_net_get_instance(), csn);
 
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);

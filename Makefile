@@ -86,14 +86,13 @@ CORE_OBJFILES   = \
 
 RAFT_OBJFILES	= \
 	src/raft_server.o	\
-	src/raft_net.o	\
 	src/raft_server_backend_posix.o \
 	src/raft_server_backend_rocksdb.o
 
 PUMICEDB_OBJFILES = $(RAFT_OBJFILES)	\
 	src/pumice_db.o
 
-PUMICEDB_CLIENT_OBJFILES = src/raft_net.o src/raft_client.o \
+PUMICEDB_CLIENT_OBJFILES = src/raft_client.o \
 	src/pumice_db_client.o
 
 ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
@@ -114,7 +113,7 @@ $(TARGET): $(ALL_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 
-tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
+tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/client_mmap test/client_mmap.c \

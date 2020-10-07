@@ -614,22 +614,12 @@ raft_net_connection_to_csn(struct tcp_mgr_connection *tmc,
     *ret = OFFSET_CAST(ctl_svc_node, csn_peer, peer);
 }
 
-static int
-raft_net_hdr_recv(struct tcp_mgr_connection *tmc, char *sink_buf, size_t size)
-{
-    static struct iovec iovs[1] = {0};
-
-    iovs[0].iov_base = sink_buf;
-    iovs[0].iov_len = size;
-
-    // try twice in case interrupts cause short read
-    return tcp_socket_recv_retry(&tmc->tmc_tsh, iovs, NULL, 2);
-}
-
-// XXX this feels hacky, perhaps switch to a unified RPC header in the future?
 static size_t
-raft_net_msg_bulk_size(bool is_client_msg, void *sink_buf)
+raft_net_msg_bulk_size_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
+                   struct raft_instance *ri)
 {
+    bool is_client_msg =
+        tmc->tmc_header_size == sizeof(struct raft_client_rpc_msg);
     if (is_client_msg)
         return ((struct raft_client_rpc_msg *)sink_buf)->rcrm_data_size;
 
@@ -640,125 +630,24 @@ raft_net_msg_bulk_size(bool is_client_msg, void *sink_buf)
     return msg->rrm_append_entries_request.raerqm_entries_sz;
 }
 
-static ssize_t
-raft_net_tcp_recv_helper(struct tcp_mgr_connection *tmc, bool is_client_msg,
-                         void **buf_out)
+static void
+raft_net_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size, struct raft_instance *ri)
 {
-    static char sink_buf[RAFT_NET_MAX_RPC_SIZE];
-
-    size_t hdr_size = is_client_msg
-            ? sizeof(struct raft_client_rpc_msg)
-            : sizeof(struct raft_rpc_msg);
-
-    *buf_out = sink_buf;
-    ssize_t recv_bytes = raft_net_hdr_recv(tmc, sink_buf, hdr_size);
-
-    // we use EAGAIN to signal async IO
-    // if we can't read a full header, assume the connection closed
-    if (recv_bytes == -EAGAIN)
-        return 0;
-
-    if (recv_bytes <= 0)
-        return recv_bytes;
-
-    size_t bulk_size = raft_net_msg_bulk_size(is_client_msg, sink_buf);
-    if (!bulk_size)
-        return recv_bytes;
-
-    int rc = tcp_mgr_async_read(tmc, bulk_size, sink_buf, hdr_size);
-    if (rc < 0)
-    {
-        // XXX on ENOMEM close random csn connection instead?
-        // could copy header to a temporary buffer and then resize later?
-        SIMPLE_LOG_MSG(LL_NOTIFY, "error recieving bulk buffer, fd=%d",
-                       tmc->tmc_tsh.tsh_socket);
-        tcp_mgr_connection_close(tmc);
-
-        return rc;
-    }
-
-    if (tmc->tmc_async_remain)
-        // unable to get bulk data without blocking
-        // tcp mgr will callback when available
-        return -EAGAIN;
-
-    NIOVA_ASSERT(tmc->tmc_async_buf && tmc->tmc_async_offset);
-
-    // bulk data immediately available
-    *buf_out = tmc->tmc_async_buf;
-    recv_bytes = tmc->tmc_async_offset;
-
-    return recv_bytes;
-}
-
-static raft_net_cb_ctx_t
-raft_net_tcp_cb(struct tcp_mgr_connection *tmc, struct raft_instance *ri)
-{
-    struct ctl_svc_node *csn;
-    raft_net_connection_to_csn(tmc, &csn);
-    if (!csn)
-    {
-        DBG_TCP_MGR_CXN(LL_ERROR, tmc, "cannot find csn for connection");
-
-        tcp_mgr_connection_close(tmc);
-        return;
-    }
-
     // used by server to verify that messages are received from expected IP
     static struct sockaddr_in from;
     tcp_setup_sockaddr_in(tmc->tmc_tsh.tsh_ipaddr, ntohs(0), &from);
     from.sin_port = 0;
 
-    bool from_peer = csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER;
-    bool is_this_client_node = raft_instance_is_client(ri);
-    bool is_client_msg = is_this_client_node || !from_peer;
-
-    void *buf;
-    ssize_t recv_bytes;
-
-    if (tmc->tmc_async_buf)
-    {
-        // async receive has just finished
-        NIOVA_ASSERT(tmc->tmc_async_offset && !tmc->tmc_async_remain);
-
-        buf = tmc->tmc_async_buf;
-        recv_bytes = tmc->tmc_async_offset;
-    }
-    else
-    {
-        // new receive request
-        NIOVA_ASSERT(!tmc->tmc_async_offset && !tmc->tmc_async_remain);
-
-        recv_bytes = raft_net_tcp_recv_helper(tmc, is_client_msg, &buf);
-        if (recv_bytes == -EAGAIN)
-        {
-            // bulk async read
-            return;
-        }
-        else if (recv_bytes < 0)
-        {
-            // XXX close socket here?
-            DBG_TCP_MGR_CXN(LL_WARN, tmc, "raft_net_tcp_recv_helper(): %s",
-                            strerror(-recv_bytes));
-            return;
-        }
-        else if (recv_bytes == 0)
-        {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "closing connection, fd=%d",
-                           tmc->tmc_tsh.tsh_socket);
-            tcp_mgr_connection_close(tmc);
-
-            return;
-        }
-    }
+    bool from_peer =
+        tmc->tmc_header_size == sizeof(struct raft_client_rpc_msg);
 
     if (from_peer && ri->ri_server_recv_cb)
-        ri->ri_server_recv_cb(ri, buf, recv_bytes, &from);
+        ri->ri_server_recv_cb(ri, buf, buf_size, &from);
     else if (!from_peer && ri->ri_client_recv_cb)
-        ri->ri_client_recv_cb(ri, buf, recv_bytes, &from);
+        ri->ri_client_recv_cb(ri, buf, buf_size, &from);
 }
 
-static int
+static void
 raft_net_tcp_handshake_fill(struct raft_instance *ri,
                             struct raft_rpc_msg *handshake, size_t size)
 {
@@ -772,8 +661,6 @@ raft_net_tcp_handshake_fill(struct raft_instance *ri,
 
     uuid_copy(handshake->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
     uuid_copy(handshake->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
-
-    return 0;
 }
 
 static struct tcp_mgr_connection *
@@ -803,41 +690,7 @@ raft_net_tcp_handshake_recv(struct raft_instance *ri, int fd,
         return NULL;
     }
 
-    struct tcp_mgr_connection *tmc = &csn->csn_peer.csnp_net_data;
-
-    niova_mutex_lock(&tmc->tmc_status_mutex);
-    if (tmc->tmc_status == TMCS_DISCONNECTING ||
-        tmc->tmc_status == TMCS_CONNECTING ||
-        tmc->tmc_status == TMCS_CONNECTED)
-    {
-        DBG_CTL_SVC_NODE(LL_NOTIFY, csn,
-                         "incoming connection, but outgoing conn exists,"
-                         " status: %d",
-                         tmc->tmc_status);
-
-        // if peer is attempting to connect again, assume old connection is dead
-        // XXX it would be better to send a ping, and handle failure there
-        if (tmc->tmc_status == TMCS_CONNECTED)
-            tcp_mgr_connection_close(tmc);
-
-        niova_mutex_unlock(&tmc->tmc_status_mutex);
-        return NULL;
-    }
-
-    const char *ipaddr = ctl_svc_node_peer_2_ipaddr(csn);
-    int port = ctl_svc_node_peer_2_port(csn);
-
-    SIMPLE_LOG_MSG(LL_DEBUG, "csn loaded %s:%d", ipaddr, port);
-
-    tmc->tmc_tsh.tsh_socket = fd;
-    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
-
-    tmc->tmc_status = TMCS_CONNECTED;
-    niova_mutex_unlock(&tmc->tmc_status_mutex);
-
-    DBG_CTL_SVC_NODE(LL_NOTIFY, csn, "incoming connection established");
-
-    return tmc;
+    return &csn->csn_peer.csnp_net_data;
 }
 
 static raft_net_cb_ctx_t
@@ -876,6 +729,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     tcp_mgr_setup(&ri->ri_tcp_mgr, ri,
                   (tcp_mgr_ref_cb_t)raft_net_connection_getput,
                   (tcp_mgr_recv_cb_t)raft_net_tcp_cb,
+                  (tcp_mgr_bulk_size_cb_t)raft_net_msg_bulk_size_cb,
                   (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_recv,
                   (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                   sizeof(struct raft_rpc_msg));
@@ -1083,16 +937,9 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
     else if (niovs > 256)
         return -EMSGSIZE;
 
-    struct tcp_mgr_connection *tmc = raft_net_tcp_connection_get(ri, csn, 1);
-    if (!tmc)
-        return -ENOTCONN;
+    raft_net_update_last_comm_time(ri, csn->csn_uuid, 1);
 
-    int rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
-
-    if (rc == -ENOTCONN || rc == -ECONNRESET)
-        tcp_mgr_connection_close(tmc);
-
-    return rc;
+    return tcp_mgr_send_msg(&csn->csn_peer.csnp_net_data, iov, niovs);
 }
 
 int
@@ -1725,7 +1572,8 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_server_recv_cb = server_recv_cb;
 }
 
-static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+static init_ctx_t
+NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
@@ -1737,40 +1585,31 @@ raft_net_init(void)
     return;
 }
 
-static destroy_ctx_t NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+static destroy_ctx_t
+NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_destroy(void)
 {
     regfree(&raftNetRncuiRegex);
 }
 
-struct tcp_mgr_connection *
-raft_net_tcp_connection_get(struct raft_instance *ri, struct ctl_svc_node *rp,
-                            bool do_connect)
+void
+raft_net_csn_connection_setup(struct raft_instance *ri,
+                              struct ctl_svc_node *csn)
 {
-    NIOVA_ASSERT(ri && rp && ctl_svc_node_is_peer(rp));
+    struct tcp_mgr_connection *tmc = &csn->csn_peer.csnp_net_data;
 
-    struct tcp_mgr_connection *tmc = &rp->csn_peer.csnp_net_data;
-    SIMPLE_LOG_MSG(LL_NOTIFY,
-                   "raft_net_remote_connect() - existing tmc status %d",
-                   tmc->tmc_status);
+    bool csn_is_raft_peer = csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER;
+    bool this_is_client_node = raft_instance_is_client(ri);
+    bool is_client_cxn = this_is_client_node || !csn_is_raft_peer;
 
-    if (tmc->tmc_status == TMCS_CONNECTED)
-        return tmc;
-    if (!do_connect || tmc->tmc_status == TMCS_DISCONNECTING)
-        return NULL;
+    size_t header_size = is_client_cxn
+        ? sizeof(struct raft_client_rpc_msg)
+        : sizeof(struct raft_rpc_msg);
 
-    // connect is treated like send request
-    raft_net_update_last_comm_time(ri, rp->csn_uuid, 1);
+    tcp_mgr_connection_setup(&ri->ri_tcp_mgr, tmc, header_size);
 
-    int rc = tcp_mgr_connection_get(&ri->ri_tcp_mgr,
-                                    &rp->csn_peer.csnp_net_data,
-                                    ctl_svc_node_peer_2_ipaddr(rp),
-                                    ctl_svc_node_peer_2_port(rp));
-    if (rc < 0)
-        return NULL;
+    const char *ipaddr = ctl_svc_node_peer_2_ipaddr(csn);
+    int port = ctl_svc_node_peer_2_port(csn);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_remote_connect() - new connection %p",
-                   tmc);
-
-    return tmc;
+    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
 }
