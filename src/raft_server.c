@@ -59,7 +59,7 @@ raft_follower_reason_2_str(enum raft_follower_reasons reason)
     case RAFT_BFRSN_VOTED_FOR_PEER:
         return "voted-for-peer";
     case RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE:
-        return "lost-election";
+        return "candidacy-stale-term";
     case RAFT_BFRSN_STALE_TERM_WHILE_LEADER:
         return "stale-leader";
     case RAFT_BFRSN_LEADER_ALREADY_PRESENT:
@@ -2216,8 +2216,7 @@ raft_server_write_new_entry_from_leader(
     NIOVA_ASSERT(ri && raerq);
     NIOVA_ASSERT(raft_instance_is_follower(ri));
 
-    if (raerq->raerqm_heartbeat_msg || // heartbeats don't enter the log
-        FAULT_INJECT(raft_follower_ignores_AE))
+    if (raerq->raerqm_heartbeat_msg) // heartbeats don't enter the log
         return;
 
     NIOVA_ASSERT(raerq->raerqm_log_term > 0);
@@ -2333,6 +2332,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
 
     // Candidate timer - reset if this operation is valid.
     bool reset_timerfd = true;
+    bool fault_inject_ignore_ae = false;
 
     int rc =
         raft_server_process_append_entries_term_check_ops(ri, sender_csn,
@@ -2357,7 +2357,9 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         }
         else
         {
-            if (!raerq->raerqm_heartbeat_msg)
+            if (!raerq->raerqm_heartbeat_msg &&
+                !(fault_inject_ignore_ae =
+                  FAULT_INJECT(raft_follower_ignores_AE)))
                 raft_server_write_new_entry_from_leader(ri, raerq);
 
             /* Update our commit-idx based on the value sent from the leader.
@@ -2369,8 +2371,10 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     if (reset_timerfd)
         raft_server_timerfd_settime(ri);
 
-    rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
-                              &rreply_msg);
+    rc = fault_inject_ignore_ae
+        ? 0
+        : raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
+                               &rreply_msg);
 
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
                                strerror(rc));
