@@ -21,7 +21,7 @@
 static bool niovaEnvVarsSubsysInit = false;
 
 static struct niova_env_var niovaEnvVars[] = {
-    [NIOVA_ENV_VAR_alloc_log_level] {
+    [NIOVA_ENV_VAR_alloc_log_level] = {
         .nev_name      = "NIOVA_ALLOC_LOG_LEVEL",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_LOG,
         .nev_var_num   = NIOVA_ENV_VAR_alloc_log_level,
@@ -32,14 +32,14 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = alloc_env_var_cb,
     },
-    [NIOVA_ENV_VAR_ctl_interface_init_path] {
+    [NIOVA_ENV_VAR_ctl_interface_init_path] = {
         .nev_name      = "NIOVA_CTL_INTERFACE_INIT_PATH",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
         .nev_var_num   = NIOVA_ENV_VAR_ctl_interface_init_path,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_epoll_mgr_nevents] {
+    [NIOVA_ENV_VAR_epoll_mgr_nevents] = {
         .nev_name      = "NIOVA_EPOLL_MGR_NEVENTS",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
         .nev_var_num   = NIOVA_ENV_VAR_epoll_mgr_nevents,
@@ -50,21 +50,21 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = epoll_mgr_env_var_cb,
     },
-    [NIOVA_ENV_VAR_inotify_base_path] {
+    [NIOVA_ENV_VAR_inotify_base_path] = {
         .nev_name      = "NIOVA_INOTIFY_BASE_PATH",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
         .nev_var_num   = NIOVA_ENV_VAR_inotify_base_path,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_inotify_path] {
+    [NIOVA_ENV_VAR_inotify_path] = {
         .nev_name      = "NIOVA_INOTIFY_PATH",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
         .nev_var_num   = NIOVA_ENV_VAR_inotify_path,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_local_ctl_svc_dir] {
+    [NIOVA_ENV_VAR_local_ctl_svc_dir] = {
         .nev_name      = "NIOVA_LOCAL_CTL_SVC_DIR",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
         .nev_var_num   = NIOVA_ENV_VAR_local_ctl_svc_dir,
@@ -72,7 +72,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = ctl_svc_set_local_dir,
     },
-    [NIOVA_ENV_VAR_log_level] {
+    [NIOVA_ENV_VAR_log_level] = {
         .nev_name      = "NIOVA_LOG_LEVEL",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_LOG,
         .nev_var_num   = NIOVA_ENV_VAR_log_level,
@@ -82,7 +82,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = LL_MAX,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_num_aio_events] {
+    [NIOVA_ENV_VAR_num_aio_events] = {
         .nev_name      = "NIOVA_NUM_AIO_EVENTS",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
         .nev_var_num   = NIOVA_ENV_VAR_num_aio_events,
@@ -92,7 +92,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = NIOSD_MAX_AIO_EVENTS,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_raft_client_request_timeout] {
+    [NIOVA_ENV_VAR_raft_client_request_timeout] = {
         .nev_name      = "NIOVA_RAFT_CLIENT_REQUEST_TIMEOUT",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_RAFT_CLIENT,
         .nev_var_num   = NIOVA_ENV_VAR_raft_client_request_timeout,
@@ -102,7 +102,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = RAFT_CLIENT_REQUEST_TIMEOUT_MAX_SECS,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_uuid] {
+    [NIOVA_ENV_VAR_uuid] = {
         .nev_name      = "NIOVA_UUID",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_SVC,
         .nev_var_num   = NIOVA_ENV_VAR_uuid,
@@ -110,14 +110,14 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_present   = false,
         .nev_cb        = system_info_apply_uuid_env_cb,
     },
-    [NIOVA_ENV_VAR_watchdog_disable] {
+    [NIOVA_ENV_VAR_watchdog_disable] = {
         .nev_name      = "NIOVA_WATCHDOG_DISABLE",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
         .nev_var_num   = NIOVA_ENV_VAR_watchdog_disable,
         .nev_type      = NIOVA_ENV_VAR_TYPE_NONE,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_watchdog_frequency] {
+    [NIOVA_ENV_VAR_watchdog_frequency] = {
         .nev_name      = "NIOVA_WATCHDOG_FREQUENCY",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
         .nev_var_num   = NIOVA_ENV_VAR_watchdog_frequency,
@@ -127,7 +127,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = WATCHDOG_MAX_FREQUENCY,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_watchdog_stall_cnt] {
+    [NIOVA_ENV_VAR_watchdog_stall_cnt] = {
         .nev_name      = "NIOVA_WATCHDOG_STALL_CNT",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_WATCHDOG,
         .nev_var_num   = NIOVA_ENV_VAR_watchdog_stall_cnt,

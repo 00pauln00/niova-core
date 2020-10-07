@@ -443,12 +443,20 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
 
 #define LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,    \
                                       read_write_op_cb, arg, type)  \
-    static inline void                                              \
-    lreg_compile_time_assert(enum lreg_value_types type)            \
+                                                                     \
+    _Pragma("GCC diagnostic push")                                   \
+    _Pragma("GCC diagnostic ignored \"-Wunknown-pragmas\"")          \
+    _Pragma("clang diagnostic push")                                 \
+    _Pragma("clang diagnostic ignored \"-Wunused-function\"")        \
+    static inline void                                               \
+    lreg_compile_time_assert(enum lreg_value_types type)             \
     {                                                               \
         COMPILE_TIME_ASSERT(type == LREG_VAL_TYPE_ARRAY ||          \
                             type == LREG_VAL_TYPE_OBJECT);          \
     }                                                               \
+    _Pragma("clang diagnostic pop")                                 \
+    _Pragma("GCC diagnostic pop")                                  \
+                                                                    \
     static lreg_install_int_ctx_t                                   \
     lreg_root_cb_child##name(enum lreg_node_cb_ops op,              \
                              struct lreg_node *lrn,                 \
@@ -523,7 +531,6 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         .lrn_cb = lreg_root_cb_parent##name,                        \
     };                                                              \
     struct lreg_node childEntry##name = {                           \
-        .lrn_cb_arg = (void *)1,                                    \
         .lrn_user_type = user_type,                                 \
         .lrn_statically_allocated = 1,                              \
         .lrn_cb = lreg_root_cb_child##name,                         \

@@ -92,11 +92,14 @@ rsbr_get_num_log_headers(const struct raft_instance *ri)
     return NUM_RAFT_LOG_HEADERS;
 }
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wunused-function"
 static inline bool
 rsbr_phys_idx_is_log_header(const struct raft_instance *ri, size_t phys_idx)
 {
     return phys_idx < rsbr_get_num_log_headers(ri) ? true : false;
 }
+#pragma clang diagnostic pop
 
 static inline raft_entry_idx_t
 rsbr_entry_idx_to_phys_idx(const struct raft_instance *ri,
@@ -273,11 +276,14 @@ rsbp_header_load(struct raft_instance *ri)
 
     struct raft_log_header most_recent_rlh = {0};
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
     struct
     {
         struct raft_entry      re;
         struct raft_log_header rlh;
     } entry_and_header;
+#pragma clang diagnostic pop
 
     for (raft_entry_idx_t i = 0; i < num_headers; i++)
     {
@@ -342,11 +348,14 @@ rsbp_header_write(struct raft_instance *ri)
     // log block entry indexes are negative
     raft_entry_idx_t re_idx = phys_block_num - rsbr_get_num_log_headers(ri);
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
     struct
     {
         struct raft_entry      re;
         struct raft_log_header rlh;
     } entry_and_header;
+#pragma clang diagnostic pop
 
     struct raft_entry *re = &entry_and_header.re;
 

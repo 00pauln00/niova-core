@@ -136,7 +136,7 @@ nri_cf_open(struct niova_rocksdb_instance *nri)
 static int
 nri_db_open(struct niova_rocksdb_instance *nri)
 {
-    if (!nri || !nri->nri_options || !nri->nri_path)
+    if (!nri || !nri->nri_options || nri->nri_path[0] == '\0')
         return -EINVAL;
     else if (nri->nri_db)
         return -EALREADY;

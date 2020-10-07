@@ -206,7 +206,8 @@ pumicedb-common: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) \
 		test/pumice_db_test_client.c $(ALL_CORE_OBJFILES) \
 		$(PUMICEDB_CLIENT_OBJFILES) $(LDFLAGS)
 
-pumicedb: CFLAGS = $(DEF_CFLAGS) -fPIC -c
+#pumicedb: CFLAGS = $(DEF_CFLAGS) -fPIC -c
+pumicedb: CFLAGS = $(DEF_CFLAGS)
 pumicedb: PMDB_CFLAGS = $(DEF_CFLAGS)
 pumicedb: pumicedb-common
 
@@ -291,3 +292,9 @@ autofmt:
 
 autofmt-check:
 	uncrustify -c tools/uncrustify.cfg -q --check `find . -name "*.[ch]"` | grep -c FAIL | grep ^0$ > /dev/null
+
+clang : CC = clang -std=gnu99
+clang :	pumicedb
+clang : tests
+clang : raft
+clang : all

@@ -63,9 +63,12 @@ struct rsc_raft_test_info
     struct raft_test_values     rrti_last_validated;
     size_t                      rrti_num_write_retries;
     // <---- Keep the below members intact ---->
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
     struct raft_client_rpc_msg  rtti_rcrm;
     struct raft_test_data_block rtti_rtdb;
     char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+#pragma clang diagnostic pop
 };
 
 /**

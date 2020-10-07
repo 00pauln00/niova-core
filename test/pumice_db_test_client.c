@@ -107,8 +107,11 @@ struct pmdbtc_request
     pmdb_obj_stat_t                preq_obj_stat;
     struct timespec                preq_submitted;
     struct timespec                preq_completed;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
     struct raft_test_data_block    preq_rtdb; // preq_rtv must follow!
     struct raft_test_values        preq_rtv[PMDB_RTV_MAX];
+#pragma clang diagnostic pop
 };
 
 static util_thread_ctx_ctli_int_t pmdbtcNumApps;

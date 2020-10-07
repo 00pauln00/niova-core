@@ -37,42 +37,42 @@ enum fault_inject_reg_keys
 
 static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
 {
-    [FAULT_INJECT_any] {
+    [FAULT_INJECT_any] = {
         .flti_name = "any injection",
         .flti_when = FAULT_INJECT_PERIOD_every_time,
         .flti_enabled = 1,
     },
-    [FAULT_INJECT_async_raft_client_request_expire] {
+    [FAULT_INJECT_async_raft_client_request_expire] = {
         .flti_name = "async_raft_client_request_expire",
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_leader_may_be_deposed] {
+    [FAULT_INJECT_raft_leader_may_be_deposed] = {
         .flti_name = "raft_leader_may_be_deposed",
         .flti_when = FAULT_INJECT_PERIOD_every_time,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_follower_ignores_AE] {
+    [FAULT_INJECT_raft_follower_ignores_AE] = {
         .flti_name = "raft_follower_ignores_non_hb_AE_request",
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_client_udp_recv_handler_bypass] {
+    [FAULT_INJECT_raft_client_udp_recv_handler_bypass] = {
         .flti_name = "raft_client_udp_recv_handler_bypass",
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_client_udp_recv_handler_process_reply_bypass] {
+    [FAULT_INJECT_raft_client_udp_recv_handler_process_reply_bypass] = {
         .flti_name = "raft_client_udp_recv_handler_process_reply_bypass",
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_candidate_state_disabled] {
+    [FAULT_INJECT_raft_candidate_state_disabled] = {
         .flti_name = "raft_candidate_state_disabled",
         .flti_when = FAULT_INJECT_PERIOD_every_time,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_disabled] {
+    [FAULT_INJECT_disabled] = {
         .flti_name = "disabled injection",
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,
         .flti_enabled = 0,

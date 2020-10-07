@@ -149,10 +149,13 @@ ev_pipe_setup(struct ev_pipe *evp)
 
     rc = rc ? -errno : 0;
 
-    if (rc)
-        (int)ev_pipe_cleanup(evp);
+    int cleanup_rc = 0;
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "%s", strerror(-rc));
+    if (rc)
+        cleanup_rc = ev_pipe_cleanup(evp);
+
+    SIMPLE_LOG_MSG((rc || cleanup_rc) ? LL_WARN : LL_DEBUG ,
+                   "(cleanup-rc=%d) %s", cleanup_rc, strerror(-rc));
 
     return rc;
 }

@@ -21,8 +21,6 @@ REGISTRY_ENTRY_FILE_GENERATE;
 struct pmdb_client_request
 {
     pmdb_obj_id_t          pcreq_obj_id;
-    struct pmdb_msg        pcreq_msg_request;
-    struct pmdb_msg        pcreq_msg_reply;
     enum PmdbOpType        pcreq_op;
     const char            *pcreq_user_request;
     const size_t           pcreq_user_request_size;
@@ -34,6 +32,11 @@ struct pmdb_client_request
     struct timespec        pcreq_timeout;
     pmdb_user_cb_t         pcreq_user_cb;
     void                  *pcreq_user_arg;
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
+    struct pmdb_msg        pcreq_msg_request;
+    struct pmdb_msg        pcreq_msg_reply;
+#pragma clang diagnostic pop
 };
 
 static void
