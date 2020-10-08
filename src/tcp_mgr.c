@@ -42,6 +42,13 @@ tcp_mgr_bulk_free(void *buf)
     bufsAvail++;
 }
 
+static void
+tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
+{
+    if (tmc->tmc_tmi && tmc->tmc_tmi->tmi_connection_ref_cb)
+        tmc->tmc_tmi->tmi_connection_ref_cb(tmc, EPH_REF_PUT);
+}
+
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_ref_cb_t connection_ref_cb,
@@ -417,6 +424,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (!owned)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "handshake error");
+        tcp_mgr_connection_put(owned);
         return -EINVAL;
     }
 
@@ -431,6 +439,8 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");
 
+    // epoll takes a ref, so we can give up ours
+    tcp_mgr_connection_put(owned);
     return 0;
 }
 
