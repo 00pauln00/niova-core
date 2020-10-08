@@ -717,7 +717,9 @@ pmdbtc_result_capture(struct pmdbtc_request *preq, int rc)
     papp->papp_last_request = preq->preq_submitted;
     papp->papp_last_request_completed = preq->preq_completed;
     papp->papp_obj_stat = preq->preq_obj_stat;
-    papp->papp_obj_stat.status = -ABS(rc);
+
+    if (rc) // Override the status if the provider encountered an error.
+        papp->papp_obj_stat.status = -ABS(rc);
 }
 
 static void
@@ -879,7 +881,12 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     }
 
     if (!use_async_requests)
+    {
         pmdbtc_request_complete(preq, rc);
+
+        if (!rc && preq->preq_obj_stat.status)
+            rc = preq->preq_obj_stat.status;
+    }
 
     return rc;
 }
