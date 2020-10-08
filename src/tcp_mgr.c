@@ -278,7 +278,7 @@ tcp_mgr_async_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
 
         int bytes_avail;
         ioctl(tmc->tmc_tsh.tsh_socket, FIONREAD, &bytes_avail);
-        if (bytes_avail == bulk_size)
+        if (bytes_avail >= bulk_size)
             buf = niova_malloc_can_fail(buf_size);
 
         if (!buf)
