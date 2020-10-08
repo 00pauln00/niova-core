@@ -293,10 +293,8 @@ tcp_mgr_async_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
     tmc->tmc_async_remain = bulk_size;
 
     int rc = tcp_mgr_async_progress_recv(tmc);
-    if (rc < 0)
-        return rc;
 
-    return 0;
+    return rc < 0 ? rc : 0;
 }
 
 // should be called with tmi status lock
