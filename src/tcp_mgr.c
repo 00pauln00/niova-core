@@ -99,20 +99,18 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
 
 void
 tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
-                         struct tcp_mgr_connection *tmc,
-                         size_t header_size)
+                         struct tcp_mgr_connection *tmc)
 {
+    SIMPLE_LOG_MSG(LL_TRACE, "tcp_mgr_connection_setup(): tmc %p", tmc);
+
     tcp_socket_handle_init(&tmc->tmc_tsh);
     tmc->tmc_eph.eph_installed = 0;
 
     tmc->tmc_tmi = tmi;
-    tmc->tmc_header_size = header_size;
 
     tmc->tmc_status = TMCS_DISCONNECTED;
     tmc->tmc_async_buf = NULL;
     tmc->tmc_async_remain = 0;
-
-    SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_mgr_connection_setup() - tmc %p", tmc);
 }
 
 void
@@ -148,7 +146,7 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
     if (!tmc)
         return NULL;
 
-    tcp_mgr_connection_setup(tmi, tmc, 0);
+    tcp_mgr_connection_setup(tmi, tmc);
     tmc->tmc_status = TMCS_CONNECTING;
 
     return tmc;
@@ -422,7 +420,6 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (!owned)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "handshake error");
-        tcp_mgr_connection_put(owned);
         return -EINVAL;
     }
 
@@ -564,9 +561,11 @@ tcp_mgr_handshake_fill_send(struct tcp_mgr_connection *tmc)
     struct iovec handshake_iov;
     tcp_mgr_handshake_iov_init(tmc->tmc_tmi, &handshake_iov);
 
-    tmc->tmc_tmi->tmi_handshake_fill(tmc->tmc_tmi->tmi_data,
-                                     handshake_iov.iov_base,
-                                     handshake_iov.iov_len);
+    size_t header_size =
+        tmc->tmc_tmi->tmi_handshake_fill(tmc->tmc_tmi->tmi_data, tmc,
+                                         handshake_iov.iov_base,
+                                         handshake_iov.iov_len);
+    tmc->tmc_header_size = header_size;
 
     int rc = tcp_socket_send(&tmc->tmc_tsh, &handshake_iov, 1);
 

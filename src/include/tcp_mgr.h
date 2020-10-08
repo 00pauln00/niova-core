@@ -24,8 +24,9 @@ typedef struct tcp_mgr_connection *(*tcp_mgr_handshake_cb_t)(void *data,
                                                              int fd,
                                                              void *handshake,
                                                              size_t size);
-typedef void (*tcp_mgr_handshake_fill_t)(void *data, void *handshake,
-                                         size_t size);
+typedef size_t (*tcp_mgr_handshake_fill_t)(void *data,
+                                           struct tcp_mgr_connection *tmc,
+                                           void *handshake, size_t size);
 
 struct tcp_mgr_instance
 {
@@ -95,8 +96,20 @@ tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr);
 
 void
 tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
-                         struct tcp_mgr_connection *tmc,
-                         size_t header_size);
+                         struct tcp_mgr_connection *tmc);
+
+static inline void
+tcp_mgr_connection_header_size_set(struct tcp_mgr_connection *tmc,
+                                   size_t size)
+{
+    tmc->tmc_header_size = size;
+}
+
+static inline size_t
+tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
+{
+    return tmc->tmc_header_size;
+}
 
 void
 tcp_mgr_connection_close(struct tcp_mgr_connection *tmc);
