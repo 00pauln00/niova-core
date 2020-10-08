@@ -41,7 +41,7 @@ static struct item_set item_sets[NUM_THREADS + 1];
 #define NITEMS 100000
 
 static void
-ev_pipe_test_cb(const struct epoll_handle *eph)
+ev_pipe_test_cb(const struct epoll_handle *eph, uint32_t events)
 {
     struct ev_pipe *evp = (struct ev_pipe *)eph->eph_arg;
     NIOVA_ASSERT(evp == &evPipe);

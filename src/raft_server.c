@@ -1084,107 +1084,48 @@ static int
 raft_server_send_msg_to_client(struct raft_instance *ri,
                                struct raft_net_client_request_handle *rncr)
 {
-    if (!ri || !rncr || !rncr->rncr_reply ||
-        raft_net_sockaddr_is_valid(&rncr->rncr_remote_addr))
+    NIOVA_ASSERT(ri && rncr);
+
+    if (!ri || !rncr || !rncr->rncr_reply || !rncr->rncr_remote_csn)
         return -EINVAL;
 
     const ssize_t msg_size = (sizeof(struct raft_client_rpc_msg) +
                               rncr->rncr_reply->rcrm_data_size);
-
-    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
-        return -E2BIG;
-
-    struct udp_socket_handle *ush = &ri->ri_ush[RAFT_UDP_LISTEN_CLIENT];
-
     struct iovec iov[1] = {
         [0].iov_len = msg_size,
         [0].iov_base = rncr->rncr_reply,
     };
-
-    ssize_t size_rc;
-    if (net_ctl_can_send(&rncr->rncr_nc))
-    {
-        size_rc = udp_socket_send(ush, iov, 1, &rncr->rncr_remote_addr);
-    }
-    else
-    {
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rncr->rncr_reply,
-                            &rncr->rncr_remote_addr,
-                            "send to this client UUID is disabled");
-        size_rc = msg_size;
-    }
-
-    return size_rc == msg_size ? 0 : -ECOMM;
+    return raft_net_send_msg(ri, rncr->rncr_remote_csn, iov, 1,
+                             RAFT_UDP_LISTEN_CLIENT);
 }
 
 static int
 raft_server_send_msg(struct raft_instance *ri,
-                     const enum raft_udp_listen_sockets sock_src,
-                     struct ctl_svc_node *rp, const struct raft_rpc_msg *rrm)
+                         const enum raft_udp_listen_sockets sock_src,
+                         struct ctl_svc_node *rp, const struct raft_rpc_msg *rrm)
 {
-    if (!ri || !rp || !rrm || !ctl_svc_node_is_peer(rp) ||
-        (sock_src != RAFT_UDP_LISTEN_SERVER &&
-         sock_src != RAFT_UDP_LISTEN_CLIENT))
-        return -EINVAL;
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-    /* For now, there's no use of multiple-IOVs since the only msg type
-     * requiring a payload is RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST.
-     */
-#if 0 //XXX reinvestigate!
-    const size_t msg_size = sizeof(struct raft_rpc_msg) +
-        (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ?
-         rrm->rrm_append_entries_request.raerqm_entries_sz : 0);
-#else
+    if (rp->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER) {
+        NIOVA_ASSERT(sock_src == RAFT_UDP_LISTEN_SERVER);
+    }
+    else
+    {
+        NIOVA_ASSERT(sock_src == RAFT_UDP_LISTEN_CLIENT);
+    }
+
     size_t msg_size = sizeof(struct raft_rpc_msg);
     if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
         msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
-
-#endif
-    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
-        return -E2BIG;
-
-    struct udp_socket_handle *ush = &ri->ri_ush[sock_src];
-
-    struct sockaddr_in dest;
-    int rc = udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(rp),
-                                   ctl_svc_node_peer_2_port(rp), &dest);
-    if (rc)
-    {
-        LOG_MSG(LL_NOTIFY, "udp_setup_sockaddr_in(): %s (peer=%s:%hu)",
-                strerror(-rc), ctl_svc_node_peer_2_ipaddr(rp),
-                ctl_svc_node_peer_2_port(rp));
-
-        return rc;
-    }
 
     struct iovec iov = {
         .iov_len = msg_size,
         .iov_base = (void *)rrm
     };
 
-    // The csn is checked to determine if send has been disabled for testing.
-    ssize_t size_rc;
-    if (!net_ctl_can_send(&rp->csn_peer.csnp_net_ctl))
-    {
-        DBG_CTL_SVC_NODE(LL_DEBUG, rp, "net_ctl_can_send() is false");
-        size_rc = msg_size;
-    }
-    else
-    {
-        size_rc = udp_socket_send(ush, &iov, 1, &dest);
-    }
-
-    if (size_rc < 0) // Return with system error here
-        return size_rc;
-
-    DBG_RAFT_MSG(LL_DEBUG, rrm, "");
-
-    if (sock_src == RAFT_UDP_LISTEN_SERVER)
-        raft_net_update_last_comm_time(ri, rp->csn_uuid, true);
-
-    // Error if expected size was not produced
-    return size_rc == msg_size ? 0 : -ECOMM;
+    return raft_net_send_msg(ri, rp, &iov, 1, sock_src);
 }
+
 
 static void
 raft_server_broadcast_msg(struct raft_instance *ri,
@@ -1200,9 +1141,7 @@ raft_server_broadcast_msg(struct raft_instance *ri,
             continue;
 
         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
-
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                                   "raft_server_send_msg(): %s", strerror(rc));
+        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_server_send_msg(): %d", rc);
     }
 }
 
@@ -1495,7 +1434,7 @@ raft_leader_has_applied_txn_in_my_term(const struct raft_instance *ri)
 /**
  * raft_server_leader_init_state - setup the raft instance for leader duties.
  */
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_leader_init_state(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -1543,7 +1482,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
  *    context, however, both leaders and followers may make use of write-supp
  *    when performing SM applies.
  */
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              const char *data, const size_t len,
                              enum raft_write_entry_opts opts,
@@ -1568,7 +1507,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                           strerror(-rc));
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_server_leader_write_new_entry(
     struct raft_instance *ri, const char *data, const size_t len,
     enum raft_write_entry_opts opts,
@@ -1593,7 +1532,7 @@ raft_server_leader_write_new_entry(
     ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_AE_SEND]);
 }
 
-static raft_server_udp_cb_leader_t
+static raft_server_net_cb_leader_t
 raft_server_write_leader_change_marker(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_leader(ri));
@@ -1607,7 +1546,7 @@ static void
 raft_server_set_leader_csn(struct raft_instance *ri,
                            struct ctl_svc_node *leader_csn);
 
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_candidate_becomes_leader(struct raft_instance *ri)
 {
     DBG_RAFT_INSTANCE_FATAL_IF((!raft_server_candidate_is_viable(ri)), ri,
@@ -1633,7 +1572,7 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
  * raft_server_process_vote_reply - handle a peer's response to our vote
  *    request.
  */
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_vote_reply(struct raft_instance *ri,
                                struct ctl_svc_node *sender_csn,
                                const struct raft_rpc_msg *rrm)
@@ -1893,7 +1832,7 @@ raft_server_process_vote_request_decide(const struct raft_instance *ri,
  * raft_server_process_vote_request - peer has requested that we vote for
  *    them.
  */
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_vote_request(struct raft_instance *ri,
                                  struct ctl_svc_node *sender_csn,
                                  const struct raft_rpc_msg *rrm)
@@ -1954,7 +1893,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
  *    or secondly, an old / retried / stale AE request arrives at this follower
  *    for an index which had already been written.
  */
-static raft_server_udp_cb_follower_ctx_bool_t
+static raft_server_net_cb_follower_ctx_bool_t
 raft_server_append_entry_check_already_stored(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2036,7 +1975,7 @@ raft_server_append_entry_check_already_stored(
  *    log may need to be pruned if it extends beyond the prev_log_index
  *    presented by our leader.  Follower-ctx is assert here.
  */
-static raft_server_udp_cb_follower_ctx_t
+static raft_server_net_cb_follower_ctx_t
 raft_server_append_entry_log_prune_if_needed(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2088,7 +2027,7 @@ raft_server_append_entry_log_prune_if_needed(
  *    follower and retry.  NOTE:  this function will truncate / prune the log
  *    according to the index value presented in the raerq.
  */
-static raft_server_udp_cb_follower_ctx_int_t
+static raft_server_net_cb_follower_ctx_int_t
 raft_server_append_entry_log_prepare_and_check(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2169,7 +2108,7 @@ raft_server_set_leader_csn(struct raft_instance *ri,
  * @sender_csn:  the ctl-svc-node for sender of the AE request.
  * @raerq:  contents of the AE message.
  */
-static raft_server_udp_cb_ctx_int_t
+static raft_server_net_cb_ctx_int_t
 raft_server_process_append_entries_term_check_ops(
     struct raft_instance *ri,
     struct ctl_svc_node *sender_csn,
@@ -2208,7 +2147,7 @@ raft_server_process_append_entries_term_check_ops(
  *    AE operation.  The log index is derived from the raft-instance which
  *    must match the index provided by the leader in raerq,
  */
-static raft_server_udp_cb_follower_ctx_t
+static raft_server_net_cb_follower_ctx_t
 raft_server_write_new_entry_from_leader(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
@@ -2246,7 +2185,7 @@ raft_server_write_new_entry_from_leader(
  *    raft_server_process_append_entries_request() which does some general
  *    AE reply setup.
  */
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request_prep_reply(
     struct raft_instance *ri,
     struct raft_rpc_msg *reply,
@@ -2264,7 +2203,7 @@ raft_server_process_append_entries_request_prep_reply(
     uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
 }
 
-static raft_server_udp_cb_ctx_int_t
+static raft_server_net_cb_ctx_int_t
 raft_server_process_append_entries_request_validity_check(
     const struct raft_append_entries_request_msg *raerq)
 {
@@ -2278,7 +2217,7 @@ raft_server_process_append_entries_request_validity_check(
     return 0;
 }
 
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_advance_commit_idx(struct raft_instance *ri,
                                int64_t new_commit_idx)
 {
@@ -2298,7 +2237,7 @@ raft_server_advance_commit_idx(struct raft_instance *ri,
     }
 }
 
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request(struct raft_instance *ri,
                                            struct ctl_svc_node *sender_csn,
                                            const struct raft_rpc_msg *rrm)
@@ -2380,7 +2319,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
                                strerror(rc));
 }
 
-static raft_server_udp_cb_leader_ctx_int64_t
+static raft_server_net_cb_leader_ctx_int64_t
 raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_raft);
@@ -2465,7 +2404,7 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri)
  *     data used by it must first be updated through a commit + apply
  *     operation.
  */
-static raft_server_udp_cb_leader_ctx_t
+static raft_server_net_cb_leader_ctx_t
 raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -2489,7 +2428,7 @@ raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
     }
 }
 
-static raft_server_udp_cb_leader_ctx_t
+static raft_server_net_cb_leader_ctx_t
 raft_server_apply_append_entries_reply_result(
     struct raft_instance *ri,
     const uuid_t follower_uuid,
@@ -2572,7 +2511,7 @@ raft_server_apply_append_entries_reply_result(
     }
 }
 
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_reply(struct raft_instance *ri,
                                          struct ctl_svc_node *sender_csn,
                                          const struct raft_rpc_msg *rrm)
@@ -2608,7 +2547,7 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
  *    that the sender's UUID and its raft UUID are known, this function will
  *    call the appropriate function handler based on the msg type.
  */
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_server_process_received_server_msg(struct raft_instance *ri,
                                         const struct raft_rpc_msg *rrm,
                                         struct ctl_svc_node *sender_csn)
@@ -2641,12 +2580,13 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
     }
 }
 
-static raft_net_udp_cb_ctx_t
-raft_server_udp_peer_recv_handler(struct raft_instance *ri,
+static raft_net_cb_ctx_t
+raft_server_peer_recv_handler(struct raft_instance *ri,
                                   const char *recv_buffer,
                                   ssize_t recv_bytes,
                                   const struct sockaddr_in *from)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes)
@@ -2687,7 +2627,7 @@ raft_server_udp_peer_recv_handler(struct raft_instance *ri,
     raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
-static raft_server_udp_cb_ctx_bool_t
+static raft_server_net_cb_ctx_bool_t
 raft_leader_instance_is_fresh(const struct raft_instance *ri)
 {
     if (!raft_instance_is_leader(ri) ||
@@ -2721,6 +2661,10 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
             num_acked_within_window++;
     }
 
+    SIMPLE_LOG_MSG(LL_DEBUG,
+            "num_acked_within_window: %lu required: %d (%d peers)",
+            num_acked_within_window, num_raft_peers /2 + 1, num_raft_peers);
+
     return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
         true : false;
 }
@@ -2730,7 +2674,7 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
  *    this raft instance to determine if it's qualified to accept a client
  *    request.
  */
-static raft_net_udp_cb_ctx_int_t
+static raft_net_cb_ctx_int_t
 raft_server_may_accept_client_request(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -2766,14 +2710,23 @@ raft_server_may_accept_client_request_reason(const struct raft_instance *ri)
     return raft_net_client_rpc_sys_error_2_string(rc);
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_server_reply_to_client(struct raft_instance *ri,
                             struct raft_net_client_request_handle *rncr)
 {
     if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft || !rncr ||
-        raft_net_sockaddr_is_valid(&rncr->rncr_remote_addr) ||
         !raft_net_client_request_handle_has_reply_info(rncr))
         return;
+
+    bool put_csn = false;
+    if (!rncr->rncr_remote_csn)
+    {
+        ctl_svc_node_lookup(rncr->rncr_client_uuid, &rncr->rncr_remote_csn);
+        if (!rncr->rncr_remote_csn)
+            return;
+
+        put_csn = true;
+    }
 
     /* Copy the reply info from the provided rncr pointer.  This reply info
      * fields have been written by the state_machine callback.
@@ -2781,19 +2734,23 @@ raft_server_reply_to_client(struct raft_instance *ri,
     const struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
     if (rncr->rncr_request)
-        DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request,
-                            &rncr->rncr_remote_addr, "original request");
-
-    DBG_RAFT_CLIENT_RPC(LL_DEBUG, reply, &rncr->rncr_remote_addr,
-                        "reply");
+        DBG_RAFT_CLIENT_RPC_CSN(LL_DEBUG, rncr->rncr_request,
+                                rncr->rncr_remote_csn, "original request");
+    DBG_RAFT_CLIENT_RPC_CSN(LL_DEBUG, reply, rncr->rncr_remote_csn, "reply");
 
     int rc = raft_server_send_msg_to_client(ri, rncr);
     if (rc)
-        DBG_RAFT_CLIENT_RPC(LL_ERROR, reply, &rncr->rncr_remote_addr,
-                            "raft_server_send_msg(): %s", strerror(rc));
+        DBG_RAFT_CLIENT_RPC_CSN(LL_ERROR, reply, rncr->rncr_remote_csn,
+                                "raft_server_send_msg(): %s", strerror(rc));
+    if (put_csn)
+    {
+        struct ctl_svc_node *csn = rncr->rncr_remote_csn;
+        rncr->rncr_remote_csn = NULL;
+        ctl_svc_node_put(csn);
+    }
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_server_udp_client_deny_request(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
     const int rc)
@@ -2814,11 +2771,11 @@ raft_server_udp_client_deny_request(
 }
 
 /**
- * raft_server_udp_client_reply_init - prepares a reply RPC by copying the
+ * raft_server_client_reply_init - prepares a reply RPC by copying the
  *    relevant items from the original request.
  */
-static raft_net_udp_cb_ctx_t
-raft_server_udp_client_reply_init(const struct raft_instance *ri,
+static raft_net_cb_ctx_t
+raft_server_client_reply_init(const struct raft_instance *ri,
                                   struct raft_net_client_request_handle *rncr,
                                   enum raft_client_rpc_msg_type msg_type)
 {
@@ -2840,10 +2797,10 @@ raft_server_udp_client_reply_init(const struct raft_instance *ri,
     reply->rcrm_data_size = rncr->rncr_reply_data_size;
 }
 
-static raft_net_udp_cb_ctx_bool_t
-raft_server_udp_client_recv_ignore_request(
+static raft_net_cb_ctx_bool_t
+raft_server_client_recv_ignore_request(
     struct raft_instance *ri, const struct raft_client_rpc_msg *rcm,
-    const struct sockaddr_in *from, struct net_ctl *nc_out)
+    const struct sockaddr_in *from, struct ctl_svc_node **csn_out)
 {
     NIOVA_ASSERT(rcm && from);
 
@@ -2864,8 +2821,16 @@ raft_server_udp_client_recv_ignore_request(
          */
         struct ctl_svc_node *client_csn = NULL;
         rc = ctl_svc_node_lookup(rcm->rcrm_sender_id, &client_csn);
+        if (rc)
+        {
+            DECLARE_AND_INIT_UUID_STR(sender_uuid,
+                                      rcm->rcrm_sender_id);
+            SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_lookup(): %d uuid %s",
+                           rc, sender_uuid);
+            return false;
+        }
 
-        if (!rc && client_csn)
+        if (client_csn)
         {
             if (client_csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT)
             {
@@ -2874,9 +2839,6 @@ raft_server_udp_client_recv_ignore_request(
                     cause = "recv from this UUID is disabled";
                     ignore_request = true;
                 }
-
-                if (nc_out)
-                    *nc_out = client_csn->csn_peer.csnp_net_ctl;
             }
             else
             {
@@ -2888,21 +2850,29 @@ raft_server_udp_client_recv_ignore_request(
                     "recv'd RPC request from this non-client UUID");
             }
 
-            ctl_svc_node_put(client_csn);
+            if (ignore_request)
+                ctl_svc_node_put(client_csn);
+            else
+                *csn_out = client_csn;
+        }
+        else
+        {
+            cause = "CSN required";
+            ignore_request = true;
         }
     }
 
     if (ignore_request)
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rcm, from, "%s (rc=%d)", cause, rc);
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcm, from, "%s (rc=%d)", cause, rc);
 
     return ignore_request;
 }
 
-static void // raft_net_udp_cb_ctx_t or raft_server_epoll_sm_apply_bool_t
+static void // raft_net_cb_ctx_t or raft_server_epoll_sm_apply_bool_t
 raft_server_net_client_request_init(
     const struct raft_instance *ri,
     struct raft_net_client_request_handle *rncr,
-    enum raft_net_client_request_type type,  struct net_ctl nc,
+    enum raft_net_client_request_type type, struct ctl_svc_node *csn,
     const struct raft_client_rpc_msg *rpc_request,  const char *commit_data,
     const size_t commit_data_size, const struct sockaddr_in *from,
     char *reply_buf, const size_t reply_buf_size)
@@ -2923,7 +2893,7 @@ raft_server_net_client_request_init(
 
     rncr->rncr_write_raft_entry = false;
     rncr->rncr_type = type;
-    rncr->rncr_nc = nc;
+    rncr->rncr_remote_csn = csn;
 
     rncr->rncr_is_leader = raft_instance_is_leader(ri) ? true : false;
     rncr->rncr_entry_term = ri->ri_log_hdr.rlh_term;
@@ -2946,7 +2916,7 @@ raft_server_net_client_request_init(
          * function is called from raft_net_udp_cb_ctx_t context.
          */
         raft_net_client_request_handle_set_reply_info(
-            rncr, from, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
+            rncr, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
 
         NIOVA_ASSERT(raft_net_client_request_handle_has_reply_info(rncr));
     }
@@ -2965,53 +2935,63 @@ raft_server_net_client_request_init(
     }
 }
 
-static raft_net_udp_cb_ctx_t
+static raft_net_cb_ctx_t
 raft_server_net_client_request_init_client_rpc(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
-    struct net_ctl nc, const struct raft_client_rpc_msg *rpc_request,
+    struct ctl_svc_node *csn, const struct raft_client_rpc_msg *rpc_request,
     const struct sockaddr_in *from, char *reply_buf,
     const size_t reply_buf_size)
 {
     NIOVA_ASSERT(ri && rncr && rpc_request);
 
     raft_server_net_client_request_init(ri, rncr,
-                                        RAFT_NET_CLIENT_REQ_TYPE_NONE, nc,
+                                        RAFT_NET_CLIENT_REQ_TYPE_NONE, csn,
                                         rpc_request, NULL, 0, from, reply_buf,
                                         reply_buf_size);
 
-    raft_server_udp_client_reply_init(
+    raft_server_client_reply_init(
         ri, rncr, (rpc_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING ?
                    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY :
                    RAFT_CLIENT_RPC_MSG_TYPE_REPLY));
 }
 
-static raft_net_udp_cb_ctx_t
-raft_server_udp_client_recv_handler(struct raft_instance *ri,
+// warning: buffers are statically allocated, so code is not multi-thread safe
+static raft_net_cb_ctx_t
+raft_server_client_recv_handler(struct raft_instance *ri,
                                     const char *recv_buffer,
                                     ssize_t recv_bytes,
                                     const struct sockaddr_in *from)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     static char reply_buf[RAFT_NET_MAX_RPC_SIZE];
 
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
+                recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
         return;
+    }
 
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct net_ctl nc = {0};
+    struct ctl_svc_node *csn;
 
     /* First set of request checks which are configuration based.
      */
-    if (raft_server_udp_client_recv_ignore_request(ri, rcm, from, &nc))
+    if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
         return;
+    }
 
     struct raft_net_client_request_handle rncr;
 
-    raft_server_net_client_request_init_client_rpc(ri, &rncr, nc, rcm, from,
+    raft_server_net_client_request_init_client_rpc(ri, &rncr, csn, rcm, from,
                                                    reply_buf,
                                                    RAFT_NET_MAX_RPC_SIZE);
 
@@ -3020,10 +3000,18 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
      */
     int rc = raft_server_may_accept_client_request(ri);
     if (rc)
-        return raft_server_udp_client_deny_request(ri, &rncr, rc);
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message, rc=%d", rc);
+        raft_server_udp_client_deny_request(ri, &rncr, rc);
+        goto out;
+    }
 
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
-        return raft_server_reply_to_client(ri, &rncr);
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
+        raft_server_reply_to_client(ri, &rncr);
+        goto out;
+    }
 
     /* May used by state machine, note that
      * raft_net_sm_write_supplement_destroy() must be called before exiting
@@ -3049,7 +3037,7 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
 
     enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
 
-    DBG_RAFT_CLIENT_RPC(log_level, rcm, from,
+    DBG_RAFT_CLIENT_RPC_CSN(log_level, rcm, csn,
                         "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
                         write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
                         strerror(-rncr.rncr_op_error), strerror(-cb_rc));
@@ -3057,39 +3045,40 @@ raft_server_udp_client_recv_handler(struct raft_instance *ri,
     /* Callback's with error are only logged.  There are no client replies
      * or raft operations which will occur.
      */
+    if (cb_rc) // Other than logging this issue, nothing can be done here
+        goto out1;
 
-    if (!cb_rc)
+    /* cb's may run for a long time and the server may have been deposed
+     * Xxx note that SM write requests left in this state may require
+     *   cleanup.
+     */
+    rc = raft_server_may_accept_client_request(ri);
+    if (rc)
     {
-        /* cb's may run for a long time and the server may have been deposed
-         * Xxx note that SM write requests left in this state may require
-         *   cleanup.
-         */
-        rc = raft_server_may_accept_client_request(ri);
-        if (rc)
-        {
-            raft_server_udp_client_deny_request(ri, &rncr, rc);
-        }
-        else
-        {
-
-            /* Store the request as an entry in the Raft log.  Do not reply to
-             * the client until the write is committed and applied!
-             */
-            if (rncr.rncr_write_raft_entry)
-                raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
-                                                   rcm->rcrm_data_size,
-                                                   RAFT_WR_ENTRY_OPT_NONE,
-                                                   &rncr.rncr_sm_write_supp);
-
-            /* Read operation or an already committed + applied write
-             * operation.
-             */
-            else
-                raft_server_reply_to_client(ri, &rncr);
-        }
+        raft_server_udp_client_deny_request(ri, &rncr, rc);
+        goto out1;
     }
 
+    /* Store the request as an entry in the Raft log.  Do not reply to
+     * the client until the write is committed and applied!
+     */
+    if (rncr.rncr_write_raft_entry)
+        raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
+                                           rcm->rcrm_data_size,
+                                           RAFT_WR_ENTRY_OPT_NONE,
+                                           &rncr.rncr_sm_write_supp);
+
+    /* Read operation or an already committed + applied write
+     * operation.
+     */
+    else
+        raft_server_reply_to_client(ri, &rncr);
+
+out1:
     raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
+out:
+    if (csn)
+        ctl_svc_node_put(csn);
 }
 
 /**
@@ -3115,6 +3104,9 @@ raft_server_append_entry_should_send_to_follower(
     int rc = raft_net_comm_recency(ri, raft_peer_idx,
                                    RAFT_COMM_RECENCY_UNACKED_SEND,
                                    &since_last_unacked);
+    if (rc == -EALREADY) {
+        return false;
+    }
     NIOVA_ASSERT(!rc);
 
     bool send_msg = true;
@@ -3232,8 +3224,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 
         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
 
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
-                                   strerror(rc));
+        /* log errors, but raft will retry if needed */
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %d", rc);
     }
 }
 
@@ -3255,10 +3247,8 @@ raft_server_net_client_request_init_sm_apply(
 {
     NIOVA_ASSERT(ri && rncr && commit_data);
 
-    struct net_ctl nc = {0};
-
     raft_server_net_client_request_init(ri, rncr,
-                                        RAFT_NET_CLIENT_REQ_TYPE_COMMIT, nc,
+                                        RAFT_NET_CLIENT_REQ_TYPE_COMMIT, NULL,
                                         NULL, commit_data, commit_data_size,
                                         NULL, reply_buf, reply_buf_size);
 }
@@ -3372,7 +3362,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
              * node is not the leader.
              */
             if (raft_net_client_request_handle_has_reply_info(&rncr))
-                raft_server_udp_client_reply_init(
+                raft_server_client_reply_init(
                     ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
         }
 
@@ -3397,7 +3387,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 }
 
 static raft_server_epoll_ae_sender_t
-raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
+raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 
@@ -3414,7 +3404,7 @@ raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph)
 }
 
 static raft_server_epoll_sm_apply_t
-raft_server_sm_apply_evp_cb(const struct epoll_handle *eph)
+raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 
@@ -3513,8 +3503,9 @@ raft_server_instance_init(struct raft_instance *ri)
     /* Assign the timer_fd and udp_recv callbacks.
      */
     raft_net_instance_apply_callbacks(ri, raft_server_timerfd_cb,
-                                      raft_server_udp_client_recv_handler,
-                                      raft_server_udp_peer_recv_handler);
+                                    raft_server_client_recv_handler,
+                                    raft_server_peer_recv_handler);
+
 }
 
 static util_thread_ctx_reg_t

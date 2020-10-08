@@ -28,6 +28,7 @@ enum niova_env_subsystem
     NIOVA_ENV_SUBSYSTEM_RAFT_CLIENT,
     NIOVA_ENV_SUBSYSTEM_WATCHDOG,
     NIOVA_ENV_SUBSYSTEM_CTL_SVC,
+    NIOVA_ENV_SUBSYSTEM_NET,
 } PACKED;
 
 enum niova_env_var_num
@@ -45,6 +46,7 @@ enum niova_env_var_num
     NIOVA_ENV_VAR_watchdog_disable,
     NIOVA_ENV_VAR_watchdog_frequency,
     NIOVA_ENV_VAR_watchdog_stall_cnt,
+    NIOVA_ENV_VAR_tcp_disable,
     NIOVA_ENV_VAR__MAX,
     NIOVA_ENV_VAR__MIN = NIOVA_ENV_VAR_alloc_log_level,
 } PACKED;

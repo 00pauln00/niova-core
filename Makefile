@@ -35,6 +35,8 @@ SYS_CORE_INCLUDES = \
 	src/include/system_info.h \
 	src/include/thread.h \
 	src/include/udp.h \
+	src/include/tcp.h \
+	src/include/tcp_mgr.h \
 	src/include/util.h \
 	src/include/util_thread.h \
 	src/include/watchdog.h
@@ -55,10 +57,13 @@ SYS_CORE_OBJFILES = \
 	src/io.o \
 	src/log.o \
 	src/random.o \
+	src/raft_net.o \
 	src/registry.o \
 	src/system_info.o \
 	src/thread.o \
 	src/udp.o \
+	src/tcp.o \
+	src/tcp_mgr.o \
 	src/util_thread.o \
 	src/watchdog.o
 
@@ -81,14 +86,13 @@ CORE_OBJFILES   = \
 
 RAFT_OBJFILES	= \
 	src/raft_server.o	\
-	src/raft_net.o	\
 	src/raft_server_backend_posix.o \
 	src/raft_server_backend_rocksdb.o
 
 PUMICEDB_OBJFILES = $(RAFT_OBJFILES)	\
 	src/pumice_db.o
 
-PUMICEDB_CLIENT_OBJFILES = src/raft_net.o src/raft_client.o \
+PUMICEDB_CLIENT_OBJFILES = src/raft_client.o \
 	src/pumice_db_client.o
 
 ALL_CORE_OBJFILES = $(SYS_CORE_OBJFILES) $(CORE_OBJFILES)
@@ -109,7 +113,7 @@ $(TARGET): $(ALL_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o $(TARGET) $(ALL_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 
-tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
+tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/simple_test test/simple_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/client_mmap test/client_mmap.c \
@@ -138,6 +142,9 @@ tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/config_token_test \
 		test/config_token_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/tcp_test \
+		test/tcp_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/udp_test \
 		test/udp_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
@@ -158,7 +165,7 @@ tests: $(ALL_CORE_OBJFILES) src/raft_net.o $(ALL_INCLUDES)
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/raft_net_test \
 		test/raft_net_test.c \
-		$(ALL_CORE_OBJFILES) src/raft_net.o $(INCLUDE) $(LDFLAGS)
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/epoll_mgr_test \
 		test/epoll_mgr_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
