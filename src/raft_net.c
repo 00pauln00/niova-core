@@ -117,6 +117,13 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
     return rc;
 }
 
+static bool
+raft_net_tcp_disabled()
+{
+    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_tcp_disable);
+    return ev && ev->nev_present;
+}
+
 static int
 raft_net_tcp_sockets_close(struct raft_instance *ri)
 {
@@ -139,12 +146,16 @@ raft_net_udp_sockets_close(struct raft_instance *ri)
     return rc;
 }
 
+
 static int
 raft_net_sockets_close(struct raft_instance *ri)
 {
     int rc, rc2;
 
     rc = raft_net_udp_sockets_close(ri);
+    if (raft_net_tcp_disabled())
+        return rc;
+
     rc2 = raft_net_tcp_sockets_close(ri);
 
     return rc ? rc : rc2;
@@ -184,7 +195,7 @@ raft_net_sockets_bind(struct raft_instance *ri)
     int rc;
 
     rc = raft_net_udp_sockets_bind(ri);
-    if (rc)
+    if (rc || raft_net_tcp_disabled())
         return rc;
 
     rc = raft_net_tcp_sockets_bind(ri);
@@ -264,7 +275,7 @@ raft_net_sockets_setup(struct raft_instance *ri)
     int rc;
 
     rc = raft_net_udp_sockets_setup(ri);
-    if (rc)
+    if (rc || raft_net_tcp_disabled())
         return rc;
 
     rc = raft_net_tcp_sockets_setup(ri);
@@ -365,7 +376,7 @@ raft_epoll_setup_net(struct raft_instance *ri)
     int rc;
 
     rc = raft_epoll_setup_udp(ri);
-    if (rc)
+    if (rc || raft_net_tcp_disabled())
         return rc;
 
     return tcp_mgr_epoll_setup(&ri->ri_tcp_mgr, &ri->ri_epoll_mgr);
@@ -744,13 +755,14 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     }
 
 
-    tcp_mgr_setup(&ri->ri_tcp_mgr, ri,
-                  (tcp_mgr_ref_cb_t)raft_net_connection_getput,
-                  (tcp_mgr_recv_cb_t)raft_net_tcp_cb,
-                  (tcp_mgr_bulk_size_cb_t)raft_net_msg_bulk_size_cb,
-                  (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_recv,
-                  (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
-                  sizeof(struct raft_rpc_msg));
+    if (!raft_net_tcp_disabled())
+        tcp_mgr_setup(&ri->ri_tcp_mgr, ri,
+                      (tcp_mgr_ref_cb_t)raft_net_connection_getput,
+                      (tcp_mgr_recv_cb_t)raft_net_tcp_cb,
+                      (tcp_mgr_bulk_size_cb_t)raft_net_msg_bulk_size_cb,
+                      (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_recv,
+                      (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
+                      sizeof(struct raft_rpc_msg));
 
     rc = raft_net_sockets_setup(ri);
     if (rc)
@@ -984,7 +996,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
         if (msg_size <= udp_get_max_size())
             size_rc = raft_net_send_udp(ri, csn, iov, niovs,
                                         sock_src);
-        else if (msg_size <= tcp_get_max_size())
+        else if (!raft_net_tcp_disabled() && msg_size <= tcp_get_max_size())
             size_rc = raft_net_send_tcp(ri, csn, iov, niovs);
         else
             size_rc = -E2BIG;
