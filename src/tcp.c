@@ -309,7 +309,7 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
             .msg_iovlen = my_iovlen,
         };
 
-        sendmsg_rc = sendmsg(tsh->tsh_socket, &msg, 0);
+        sendmsg_rc = sendmsg(tsh->tsh_socket, &msg, MSG_NOSIGNAL);
         if (sendmsg_rc < 0)
         {
             if (errno == EINTR) // retry the send.

@@ -2787,7 +2787,10 @@ raft_server_client_recv_ignore_request(
         rc = ctl_svc_node_lookup(rcm->rcrm_sender_id, &client_csn);
         if (rc)
         {
-            SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_lookup(): %d", rc);
+            DECLARE_AND_INIT_UUID_STR(sender_uuid,
+                                      rcm->rcrm_sender_id);
+            SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_lookup(): %d uuid %s",
+                           rc, sender_uuid);
             return false;
         }
 

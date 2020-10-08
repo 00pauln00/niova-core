@@ -616,7 +616,7 @@ raft_net_connection_to_csn(struct tcp_mgr_connection *tmc,
 
 static size_t
 raft_net_msg_bulk_size_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
-                   struct raft_instance *ri)
+                          struct raft_instance *ri)
 {
     bool is_client_msg =
         tmc->tmc_header_size == sizeof(struct raft_client_rpc_msg);
@@ -631,15 +631,20 @@ raft_net_msg_bulk_size_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
 }
 
 static void
-raft_net_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size, struct raft_instance *ri)
+raft_net_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
+                struct raft_instance *ri)
 {
+    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "buf=%p buf_size=%lu", buf, buf_size);
+
     // used by server to verify that messages are received from expected IP
     static struct sockaddr_in from;
     tcp_setup_sockaddr_in(tmc->tmc_tsh.tsh_ipaddr, ntohs(0), &from);
     from.sin_port = 0;
 
-    bool from_peer =
-        tmc->tmc_header_size == sizeof(struct raft_client_rpc_msg);
+    bool from_peer = tmc->tmc_header_size == sizeof(struct raft_rpc_msg);
+
+    NIOVA_ASSERT(from_peer ||
+                 tmc->tmc_header_size == sizeof(struct raft_client_rpc_msg));
 
     if (from_peer && ri->ri_server_recv_cb)
         ri->ri_server_recv_cb(ri, buf, buf_size, &from);
@@ -676,7 +681,20 @@ raft_net_tcp_handshake_recv(struct raft_instance *ri, int fd,
         handshake->rrm_version != 0
         )
     {
-        DBG_RAFT_MSG(LL_ERROR, handshake, "invalid raft handshake");
+        DECLARE_AND_INIT_UUID_STR(hs_sender_uuid,
+                                  handshake->rrm_sender_id);
+        DECLARE_AND_INIT_UUID_STR(hs_raft_uuid,
+                                  handshake->rrm_raft_id);
+        int comp = uuid_compare(handshake->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(
+                                    ri));
+
+        DBG_RAFT_MSG(LL_ERROR, handshake, "invalid raft handshake from %s",
+                     hs_sender_uuid);
+        SIMPLE_LOG_MSG(LL_DEBUG, "our raft %s, their raft %s"
+                                 " comp=%d type=%d, version=%d",
+                       ri->ri_raft_uuid_str, hs_raft_uuid, comp,
+                       handshake->rrm_type,
+                       handshake->rrm_version);
         return NULL;
     }
 
@@ -937,7 +955,7 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
     else if (niovs > 256)
         return -EMSGSIZE;
 
-    raft_net_update_last_comm_time(ri, csn->csn_uuid, 1);
+    raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
     return tcp_mgr_send_msg(&csn->csn_peer.csnp_net_data, iov, niovs);
 }
@@ -1062,10 +1080,10 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
         ? &ri->ri_last_send[peer_idx]
         : &ri->ri_last_recv[peer_idx];
 
-    const long long unsigned msec = timespec_2_msec(ts);
-
     // ~1 ms granularity which should be fine for this app.
     niova_realtime_coarse_clock(ts);
+
+    const long long unsigned msec = timespec_2_msec(ts);
     SIMPLE_LOG_MSG(LL_NOTIFY,
                    "raft_net_update_last_comm_time(): update %s with ts %llu",
                    send_or_recv  ? "send" : "recv", msec);
