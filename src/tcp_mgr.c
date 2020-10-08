@@ -590,18 +590,17 @@ tcp_mgr_connect_complete(struct tcp_mgr_connection *tmc)
         goto out;
     }
 
-    rc = tcp_mgr_handshake_fill_send(tmc);
-    if (rc < 0)
-        goto out;
-
     DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "reinstalling epoll handler");
-
     rc = tcp_mgr_connection_epoll_mod(tmc, EPOLLIN, tcp_mgr_recv_cb);
     if (rc < 0)
     {
         DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "error reinstalling epoll handler");
         goto out;
     }
+
+    rc = tcp_mgr_handshake_fill_send(tmc);
+    if (rc < 0)
+        goto out;
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
     tmc->tmc_status = TMCS_CONNECTED;
