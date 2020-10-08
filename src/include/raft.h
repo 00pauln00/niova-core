@@ -285,7 +285,8 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC  = 2,
     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
     RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC  = 4,
-    RAFT_INSTANCE_HIST_MAX                = 5,
+    RAFT_INSTANCE_HIST_NENTRIES_SYNC      = 5,
+    RAFT_INSTANCE_HIST_MAX                = 6,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -458,9 +459,10 @@ do {                                                                            
         break;                                                                                    \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                                                  \
         LOG_MSG(log_level,                                                                        \
-                "AE_REPLY t=%ld pli=%ld hb=%hhx err=%hhx:%hhx %s "fmt,                            \
+                "AE_REPLY t=%ld pli=%ld sli=%ld hb=%hhx err=%hhx:%hhx %s "fmt,                    \
                 (rm)->rrm_append_entries_reply.raerpm_leader_term,                                \
                 (rm)->rrm_append_entries_reply.raerpm_prev_log_index,                             \
+                (rm)->rrm_append_entries_reply.raerpm_synced_log_index,                           \
                 (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg,                              \
                 (rm)->rrm_append_entries_reply.raerpm_err_stale_term,                             \
                 (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term,                 \
@@ -573,6 +575,8 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "dev-write-latency-usec";
     case RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC:
         return "dev-sync-latency-usec";
+    case RAFT_INSTANCE_HIST_NENTRIES_SYNC:
+        return "nentries-per-sync";
     default:
         break;
     }
