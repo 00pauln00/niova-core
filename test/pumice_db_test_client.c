@@ -779,10 +779,11 @@ pmdbtc_request_requeue(struct pmdbtc_request *preq)
     niova_mutex_unlock(&mutex);
 }
 
-static void
+static int
 pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
 {
     niova_realtime_coarse_clock(&preq->preq_completed);
+    int status;
 
     switch (preq->preq_op)
     {
@@ -806,12 +807,15 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
         preq->preq_write_seqno++; // increment seqno after adding to history
 
     preq->preq_op_cnt--;
+    status = preq->preq_obj_stat.status;
 
     if (!rc && preq->preq_op_cnt > 0)
         pmdbtc_request_requeue(preq);
 
     else
         niova_free(preq);
+
+    return status;
 }
 
 static void
@@ -822,7 +826,7 @@ pmdbtc_async_cb(void *arg, ssize_t rrc)
 
     struct pmdbtc_request *preq = (struct pmdbtc_request *)arg;
 
-    pmdbtc_request_complete(preq, (int)rrc);
+    (void)pmdbtc_request_complete(preq, (int)rrc);
 }
 
 static int
@@ -882,10 +886,10 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
     if (!use_async_requests)
     {
-        pmdbtc_request_complete(preq, rc);
+        int status = pmdbtc_request_complete(preq, rc);
 
-        if (!rc && preq->preq_obj_stat.status)
-            rc = preq->preq_obj_stat.status;
+        if (!rc && status)
+            rc = status;
     }
 
     return rc;
