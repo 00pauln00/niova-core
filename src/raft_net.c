@@ -767,27 +767,31 @@ raft_net_msg_bulk_size_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
     return msg->rrm_append_entries_request.raerqm_entries_sz;
 }
 
-static void
+static tcp_mgr_ctx_int_t
 raft_net_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
                 struct raft_instance *ri)
 {
+    if (!tmc || !buf || !buf_size || !ri)
+        return -EINVAL;
+
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "buf=%p buf_size=%lu", buf, buf_size);
 
     // used by server to verify that messages are received from expected IP
-    static struct sockaddr_in from;
+    struct sockaddr_in from;
     tcp_setup_sockaddr_in(tmc->tmc_tsh.tsh_ipaddr, ntohs(0), &from);
     from.sin_port = 0;
 
     bool from_peer = !raft_net_connection_is_client(tmc);
-
-    NIOVA_ASSERT(from_peer &&
-                 tcp_mgr_connection_header_size_get(tmc) ==
-                     sizeof(struct raft_rpc_msg));
+    size_t header_size = tcp_mgr_connection_header_size_get(tmc);
+    if (from_peer && header_size != sizeof(struct raft_rpc_msg))
+        return -EBADMSG;
 
     if (from_peer && ri->ri_server_recv_cb)
         ri->ri_server_recv_cb(ri, buf, buf_size, &from);
     else if (!from_peer && ri->ri_client_recv_cb)
         ri->ri_client_recv_cb(ri, buf, buf_size, &from);
+
+    return 0;
 }
 
 static size_t

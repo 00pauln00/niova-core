@@ -12,6 +12,9 @@
 
 #define TCP_MGR_MAX_HDR_SIZE 65000
 
+typedef void tcp_mgr_ctx_t;
+typedef int tcp_mgr_ctx_int_t;
+
 struct tcp_mgr_connection;
 
 typedef void (*tcp_mgr_ref_cb_t)(void *,
