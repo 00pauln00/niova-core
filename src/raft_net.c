@@ -1174,6 +1174,25 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
 }
 
 int
+raft_net_send_msg_to_uuid(struct raft_instance *ri, uuid_t uuid,
+                          struct iovec *iov, size_t niovs,
+                          const enum raft_udp_listen_sockets sock_src)
+{
+    struct ctl_svc_node *csn;
+    int rc = ctl_svc_node_lookup(uuid, &csn);
+    if (rc)
+        return rc;
+
+    NIOVA_ASSERT(csn);
+
+    rc = raft_net_send_msg(ri, csn, iov, niovs, sock_src);
+
+    ctl_svc_node_put(csn);
+
+    return rc;
+}
+
+int
 raft_net_send_client_msg(struct raft_instance *ri,
                          struct raft_client_rpc_msg *rcrm)
 {
