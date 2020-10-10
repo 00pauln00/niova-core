@@ -1028,7 +1028,7 @@ void
 ctl_svc_node_get(struct ctl_svc_node *csn)
 {
     DBG_CTL_SVC_NODE(LL_TRACE, csn, "");
-    RT_GET(ctl_svc_node_tree, &ctlSvcNodeTree, csn, 0, NULL);
+    REF_TREE_REF_GET_ELEM(&ctlSvcNodeTree, csn, csn_rtentry);
 }
 
 void
