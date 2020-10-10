@@ -13,7 +13,6 @@
 #include <unistd.h>
 #include <string.h>
 
-
 #include "alloc.h"
 #include "crc32.h"
 #include "ctl_svc.h"
@@ -444,12 +443,10 @@ raft_net_epoll_cleanup(struct raft_instance *ri)
  *  raft_net_udp_cb - forward declaration for the generic udp recv handler.
  */
 static raft_net_cb_ctx_t
-raft_net_udp_cb(const struct epoll_handle *, uint32_t events);
+raft_net_udp_cb(const struct epoll_handle *, uint32_t);
 
 static int
-raft_net_epoll_handle_add(struct raft_instance *ri, int fd,
-                          void (*cb)(const struct epoll_handle *, uint32_t))
-
+raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
 {
     if (!ri || fd < 0 || !cb)
         return -EINVAL;
@@ -475,8 +472,6 @@ raft_epoll_setup_udp(struct raft_instance *ri)
 
     int rc = 0;
 
-    /* Next, add the udp sockets.
-     */
     for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
          i < RAFT_UDP_LISTEN_MAX && !rc; i++)
     {
@@ -535,7 +530,7 @@ raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
 }
 
 raft_net_timerfd_cb_ctx_t
-raft_net_timerfd_cb(const struct epoll_handle *, uint32_t events);
+raft_net_timerfd_cb(const struct epoll_handle *, uint32_t);
 
 static int
 raft_net_epoll_setup_timerfd(struct raft_instance *ri)
@@ -833,7 +828,7 @@ raft_net_tcp_handshake_fill(struct raft_instance *ri,
 
     struct ctl_svc_node *csn = NULL;
     raft_net_connection_to_csn(tmc, &csn);
-    return raft_net_connection_header_size(ri,csn);
+    return raft_net_connection_header_size(ri, csn);
 }
 
 static struct tcp_mgr_connection *
@@ -843,24 +838,20 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri, int fd,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && handshake && size == sizeof(struct raft_rpc_msg));
 
-    if (
-        uuid_compare(handshake->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri)) ||
+    int raft_uuid_comp = uuid_compare(handshake->rrm_raft_id,
+                                      RAFT_INSTANCE_2_RAFT_UUID(ri));
+    if (raft_uuid_comp ||
         handshake->rrm_type != RAFT_RPC_MSG_TYPE_ANY ||
-        handshake->rrm_version != 0
-        )
+        handshake->rrm_version != 0)
     {
-        DECLARE_AND_INIT_UUID_STR(hs_sender_uuid,
-                                  handshake->rrm_sender_id);
-        DECLARE_AND_INIT_UUID_STR(hs_raft_uuid,
-                                  handshake->rrm_raft_id);
-        int comp = uuid_compare(handshake->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(
-                                    ri));
+        DECLARE_AND_INIT_UUID_STR(hs_sender_uuid, handshake->rrm_sender_id);
+        DECLARE_AND_INIT_UUID_STR(hs_raft_uuid, handshake->rrm_raft_id);
 
         DBG_RAFT_MSG(LL_ERROR, handshake, "invalid raft handshake from %s",
                      hs_sender_uuid);
         SIMPLE_LOG_MSG(LL_DEBUG, "our raft %s, their raft %s"
                                  " comp=%d type=%d, version=%d",
-                       ri->ri_raft_uuid_str, hs_raft_uuid, comp,
+                       ri->ri_raft_uuid_str, hs_raft_uuid, raft_uuid_comp,
                        handshake->rrm_type,
                        handshake->rrm_version);
         return NULL;
@@ -1157,8 +1148,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
     else
     {
         if (msg_size <= udp_get_max_size())
-            size_rc = raft_net_send_udp(ri, csn, iov, niovs,
-                                        sock_src);
+            size_rc = raft_net_send_udp(ri, csn, iov, niovs, sock_src);
         else if (!raft_net_tcp_disabled() && msg_size <= tcp_get_max_size())
             size_rc = raft_net_send_tcp(ri, csn, iov, niovs);
         else
@@ -1730,11 +1720,10 @@ raft_net_client_user_id_parse(const char *in,
  *    to update its state reflecting the SM apply operation.
  */
 int
-raft_net_sm_write_supplement_add(
-    struct raft_net_sm_write_supplements *rnsws, void *handle,
-    void (*rnws_comp_cb)(void *),
-    const char *key, const size_t key_size, const char *value,
-    const size_t value_size)
+raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
+                                 void *handle, void (*rnws_comp_cb)(void *),
+                                 const char *key, const size_t key_size,
+                                 const char *value, const size_t value_size)
 {
     if (!rnsws || !key || !key_size)
         return -EINVAL;
@@ -1784,8 +1773,7 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_server_recv_cb = server_recv_cb;
 }
 
-static init_ctx_t
-NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
@@ -1797,8 +1785,7 @@ raft_net_init(void)
     return;
 }
 
-static destroy_ctx_t
-NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+static destroy_ctx_t NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_destroy(void)
 {
     regfree(&raftNetRncuiRegex);

@@ -29,7 +29,7 @@ enum epoll_handle_ref_op
 };
 
 struct epoll_handle;
-typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *, uint32_t events);
+typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *, uint32_t);
 
 struct epoll_handle
 {

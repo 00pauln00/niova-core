@@ -250,30 +250,32 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
 
 ssize_t tcp_socket_recv_all(const struct tcp_socket_handle *tsh,
                             struct iovec *iov, struct sockaddr_in *from,
-                            int max_attempts) {
-  SIMPLE_FUNC_ENTRY(LL_TRACE);
+                            int max_attempts)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-  ssize_t total_bytes = 0;
+    ssize_t total_bytes = 0;
 
-  for (int i = 0; i < max_attempts && iov->iov_len > 0; i++) {
-    ssize_t recv_bytes = tcp_socket_recv(tsh, iov, 1, NULL, false);
+    for (int i = 0; i < max_attempts && iov->iov_len > 0; i++)
+    {
+        ssize_t recv_bytes = tcp_socket_recv(tsh, iov, 1, NULL, false);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_base=%p iov_len=%ld",
-                   recv_bytes, iov->iov_base, iov->iov_len);
+        SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_base=%p iov_len=%ld",
+                       recv_bytes, iov->iov_base, iov->iov_len);
 
-    if (recv_bytes == -EAGAIN)
-      recv_bytes = 0;
+        if (recv_bytes == -EAGAIN)
+            recv_bytes = 0;
 
-    else if (recv_bytes <= 0)
-      return recv_bytes;
+        else if (recv_bytes <= 0)
+            return recv_bytes;
 
-    total_bytes += recv_bytes;
+        total_bytes += recv_bytes;
 
-    iov->iov_base += recv_bytes;
-    iov->iov_len -= recv_bytes;
-  }
+        iov->iov_base += recv_bytes;
+        iov->iov_len -= recv_bytes;
+    }
 
-  return total_bytes;
+    return total_bytes;
 }
 
 ssize_t

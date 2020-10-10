@@ -11,7 +11,6 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-// XXX should this be on tcp_mgr_instance?
 static uint32_t bufsAvail = DEFAULT_BULK_BUFS;
 
 void
@@ -20,8 +19,7 @@ set_bulk_bufs_avail(uint32_t cnt)
     bufsAvail = cnt;
 }
 
-// XXX not particularly thread safe
-void *
+static void *
 tcp_mgr_bulk_malloc(size_t sz)
 {
     if (bufsAvail <= 0)
@@ -35,7 +33,7 @@ tcp_mgr_bulk_malloc(size_t sz)
     return buf;
 }
 
-void
+static void
 tcp_mgr_bulk_free(void *buf)
 {
     niova_free(buf);
