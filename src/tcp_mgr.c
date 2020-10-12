@@ -65,8 +65,6 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
-
-    pthread_mutex_init(&tmi->tmi_status_mutex, NULL);
 }
 
 int
@@ -107,11 +105,11 @@ tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
     tmc->tmc_tmi = tmi;
 
     tmc->tmc_status = TMCS_DISCONNECTED;
-    tmc->tmc_async_buf = NULL;
-    tmc->tmc_async_remain = 0;
+    tmc->tmc_bulk_buf = NULL;
+    tmc->tmc_bulk_remain = 0;
 }
 
-void
+static void
 tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
 {
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "closing");
@@ -125,12 +123,12 @@ tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
         epoll_handle_del(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
 
     // XXX specifically we don't want this to happen when another thread is using
-    if (tmc->tmc_async_buf)
-        tcp_mgr_bulk_free(tmc->tmc_async_buf);
+    if (tmc->tmc_bulk_buf)
+        tcp_mgr_bulk_free(tmc->tmc_bulk_buf);
 
-    tmc->tmc_async_buf = NULL;
-    tmc->tmc_async_offset = 0;
-    tmc->tmc_async_remain = 0;
+    tmc->tmc_bulk_buf = NULL;
+    tmc->tmc_bulk_offset = 0;
+    tmc->tmc_bulk_remain = 0;
 
     tcp_socket_close(&tmc->tmc_tsh);
     tmc->tmc_status = TMCS_DISCONNECTED;
@@ -140,7 +138,7 @@ static struct tcp_mgr_connection *
 tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
 {
     struct tcp_mgr_connection *tmc =
-        niova_malloc(sizeof(struct tcp_mgr_connection));
+        niova_malloc_can_fail(sizeof(struct tcp_mgr_connection));
     if (!tmc)
         return NULL;
 
@@ -199,14 +197,15 @@ tcp_mgr_handshake_iov_fini(struct iovec *iov)
 }
 
 static int
-epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
+tcp_mgr_epoll_handle_rc_get(const struct epoll_handle *eph,
+                            uint32_t events)
 {
     int rc = 0;
 
     if (events & (EPOLLHUP | EPOLLERR))
     {
-        SIMPLE_LOG_MSG(LL_DEBUG, "received %s",
-                       events & EPOLLHUP ? "HUP" : "ERR");
+        SIMPLE_LOG_MSG(LL_DEBUG, "received %s", events & EPOLLHUP ? "HUP" :
+                       "ERR");
         socklen_t rc_len = sizeof(rc);
         int rc2 = getsockopt(eph->eph_fd, SOL_SOCKET, SO_ERROR, &rc, &rc_len);
         if (rc2)
@@ -219,20 +218,19 @@ epoll_handle_rc_get(const struct epoll_handle *eph, uint32_t events)
     return -rc;
 }
 
-// should be called with tmi status mutex
 static int
-tcp_mgr_async_progress_recv(struct tcp_mgr_connection *tmc)
+tcp_mgr_bulk_progress_recv(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-    if (!tmc->tmc_async_remain)
+    if (!tmc->tmc_bulk_remain)
         return 0;
 
-    void *bulk = tmc->tmc_async_buf + tmc->tmc_async_offset;
+    char *bulk = tmc->tmc_bulk_buf + tmc->tmc_bulk_offset;
 
     struct iovec iov = {
         .iov_base = bulk,
-        .iov_len = tmc->tmc_async_remain,
+        .iov_len = tmc->tmc_bulk_remain,
     };
 
     ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, &iov, 1, NULL, false);
@@ -247,20 +245,19 @@ tcp_mgr_async_progress_recv(struct tcp_mgr_connection *tmc)
     else if (recv_bytes < 0)
         return recv_bytes;
 
-    NIOVA_ASSERT(recv_bytes <= tmc->tmc_async_remain);
+    NIOVA_ASSERT(recv_bytes <= tmc->tmc_bulk_remain);
 
-    tmc->tmc_async_offset += recv_bytes;
-    tmc->tmc_async_remain -= recv_bytes;
+    tmc->tmc_bulk_offset += recv_bytes;
+    tmc->tmc_bulk_remain -= recv_bytes;
 
     return 0;
 }
 
-// should be called with tmi status lock
 static int
-tcp_mgr_async_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
-                               void *hdr, size_t hdr_size)
+tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
+                              void *hdr, size_t hdr_size)
 {
-    NIOVA_ASSERT(tmc && !tmc->tmc_async_buf && !tmc->tmc_async_remain);
+    NIOVA_ASSERT(tmc && !tmc->tmc_bulk_buf && !tmc->tmc_bulk_remain);
     if (!bulk_size)
         return 0;
 
@@ -284,18 +281,15 @@ tcp_mgr_async_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
     if (hdr && hdr_size)
         memcpy(buf, hdr, hdr_size);
 
-    tmc->tmc_async_buf = buf;
-    tmc->tmc_async_offset = hdr_size;
-    tmc->tmc_async_remain = bulk_size;
+    tmc->tmc_bulk_buf = buf;
+    tmc->tmc_bulk_offset = hdr_size;
+    tmc->tmc_bulk_remain = bulk_size;
 
-    int rc = tcp_mgr_async_progress_recv(tmc);
-
-    return rc < 0 ? rc : 0;
+    return 0;
 }
 
-// should be called with tmi status lock
 static int
-tcp_mgr_header_recv(struct tcp_mgr_connection *tmc)
+tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 {
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
 
@@ -316,11 +310,28 @@ tcp_mgr_header_recv(struct tcp_mgr_connection *tmc)
         return rc < 0 ? rc : -ECOMM;
 
     rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
-    if (rc > 0)
-        return tcp_mgr_async_prepare_and_recv(tmc, rc, sink_buf, header_size);
+    if (rc < 0)
+        return rc;
 
-    recv_cb(tmc, sink_buf, header_size, tmi->tmi_data);
-    return 0;
+    return rc == 0
+        ? recv_cb(tmc, sink_buf, header_size, tmi->tmi_data)
+        : tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size);
+}
+
+static int
+tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    NIOVA_ASSERT(tmi->tmi_recv_cb);
+
+    int rc = tmi->tmi_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset,
+                              tmc->tmc_tmi->tmi_data);
+    tcp_mgr_bulk_free(tmc->tmc_bulk_buf);
+
+    tmc->tmc_bulk_buf = NULL;
+    tmc->tmc_bulk_offset = 0;
+
+    return rc;
 }
 
 static void
@@ -331,12 +342,10 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     struct tcp_mgr_connection *tmc = eph->eph_arg;
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "received events: %d", events);
 
-    int rc = epoll_handle_rc_get(eph, events);
+    int rc = tcp_mgr_epoll_handle_rc_get(eph, events);
     if (rc)
     {
-        if (rc == -ECONNRESET ||
-            rc == -ENOTCONN ||
-            rc == -ECONNABORTED)
+        if (rc == -ECONNRESET || rc == -ENOTCONN || rc == -ECONNABORTED)
             tcp_mgr_connection_close(tmc);
 
         SIMPLE_LOG_MSG(LL_NOTIFY, "error received on socket fd=%d, rc=%d",
@@ -345,49 +354,31 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     }
 
     // is this a new RPC?
-    if (!tmc->tmc_async_remain)
+    if (!tmc->tmc_bulk_remain)
     {
-        int rc = tcp_mgr_header_recv(tmc);
+        NIOVA_ASSERT(!tmc->tmc_bulk_buf);
+
+        int rc = tcp_mgr_new_msg_handler(tmc);
         if (rc < 0)
-        {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC header, rc=%d", rc);
-            goto out;
-        }
-
-        // simple (non-bulk) RPC, we're done
-        if (!tmc->tmc_async_buf)
-            goto out;
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
     }
 
-    NIOVA_ASSERT(tmc->tmc_async_buf);
-
-    rc = tcp_mgr_async_progress_recv(tmc);
-    if (rc < 0)
+    // no 'else', tcp_mgr_new_msg_handler can initiate bulk read
+    if (tmc->tmc_bulk_remain)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete async read, rc=%d", rc);
-        goto out;
+        NIOVA_ASSERT(tmc->tmc_bulk_buf);
+
+        rc = tcp_mgr_bulk_progress_recv(tmc);
+        if (rc < 0)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
+        else if (!tmc->tmc_bulk_remain)
+            rc = tcp_mgr_bulk_complete(tmc);
     }
 
-    // bulk buffer completed recv
-    if (!tmc->tmc_async_remain)
-    {
-        struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-        NIOVA_ASSERT(tmi->tmi_recv_cb);
-
-        tmi->tmi_recv_cb(tmc, tmc->tmc_async_buf, tmc->tmc_async_offset,
-                         tmc->tmc_tmi->tmi_data);
-        tcp_mgr_bulk_free(tmc->tmc_async_buf);
-
-        tmc->tmc_async_buf = NULL;
-        tmc->tmc_async_offset = 0;
-    }
-
-out:
     if (rc < 0)
         tcp_mgr_connection_close(tmc);
 }
 
-// should be called with tmi status lock
 static int
 tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
                                   struct tcp_mgr_connection *owned)
@@ -534,8 +525,7 @@ tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr)
                                tmi->tmi_listen_socket.tsh_socket, EPOLLIN,
                                tcp_mgr_listen_cb, tmi, NULL);
 
-    return rc ? rc :
-        epoll_handle_add(epoll_mgr, &tmi->tmi_listen_eph);
+    return rc ? rc : epoll_handle_add(epoll_mgr, &tmi->tmi_listen_eph);
 }
 
 static int
@@ -619,7 +609,7 @@ tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
                    "tcp_mgr_connect_cb(): connecting to %s:%d[%p]",
                    tmc->tmc_tsh.tsh_ipaddr, tmc->tmc_tsh.tsh_port, tmc);
 
-    int rc = epoll_handle_rc_get(eph, events);
+    int rc = tcp_mgr_epoll_handle_rc_get(eph, events);
     if (rc < 0)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_tcp_connect_cb(): error, rc=%d",

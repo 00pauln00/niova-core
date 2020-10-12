@@ -13,23 +13,24 @@
 #define TCP_MGR_MAX_HDR_SIZE 65000
 
 typedef void tcp_mgr_ctx_t;
-typedef int tcp_mgr_ctx_int_t;
+typedef int  tcp_mgr_ctx_int_t;
 
 struct tcp_mgr_connection;
 
 typedef void (*tcp_mgr_ref_cb_t)(void *,
                                  enum epoll_handle_ref_op op);
-typedef void (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *tmc, char *buf,
-                                  size_t buf_size, void *data);
+typedef tcp_mgr_ctx_int_t (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *tmc,
+                                               char *buf,
+                                               size_t buf_size, void *data);
 typedef ssize_t (*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *tmc,
                                           char *header, void *data);
 typedef struct tcp_mgr_connection *(*tcp_mgr_handshake_cb_t)(void *data,
                                                              int fd,
                                                              void *handshake,
                                                              size_t size);
-typedef size_t (*tcp_mgr_handshake_fill_t)(void *data,
-                                           struct tcp_mgr_connection *tmc,
-                                           void *handshake, size_t size);
+typedef ssize_t (*tcp_mgr_handshake_fill_t)(void *data,
+                                            struct tcp_mgr_connection *tmc,
+                                            void *handshake, size_t size);
 
 struct tcp_mgr_instance
 {
@@ -37,7 +38,6 @@ struct tcp_mgr_instance
     struct epoll_mgr        *tmi_epoll_mgr;
     struct epoll_handle      tmi_listen_eph;
     void                    *tmi_data;
-    pthread_mutex_t          tmi_status_mutex;
 
     tcp_mgr_ref_cb_t         tmi_connection_ref_cb;
     tcp_mgr_recv_cb_t        tmi_recv_cb;
@@ -63,9 +63,9 @@ struct tcp_mgr_connection
     struct epoll_handle            tmc_eph;
     struct tcp_mgr_instance       *tmc_tmi;
     size_t                         tmc_header_size;
-    void                          *tmc_async_buf;
-    size_t                         tmc_async_offset;
-    size_t                         tmc_async_remain;
+    char                          *tmc_bulk_buf;
+    size_t                         tmc_bulk_offset;
+    size_t                         tmc_bulk_remain;
 };
 
 #define DBG_TCP_MGR_CXN(log_level, tmc, fmt, ...)                    \
@@ -113,9 +113,6 @@ tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
 {
     return tmc->tmc_header_size;
 }
-
-void
-tcp_mgr_connection_close(struct tcp_mgr_connection *tmc);
 
 int
 tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
