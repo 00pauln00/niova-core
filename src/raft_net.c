@@ -240,8 +240,8 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 static bool
 raft_net_tcp_disabled()
 {
-    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_tcp_disable);
-    return ev && ev->nev_present;
+    const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_tcp_enable);
+    return !(ev && ev->nev_present);
 }
 
 static int

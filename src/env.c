@@ -137,10 +137,10 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_max       = WATCHDOG_MAX_STALL_CNT,
         .nev_present   = false,
     },
-    [NIOVA_ENV_VAR_tcp_disable] {
-        .nev_name      = "NIOVA_TCP_DISABLE",
+    [NIOVA_ENV_VAR_tcp_enable] {
+        .nev_name      = "NIOVA_TCP_ENABLE",
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_NET,
-        .nev_var_num   = NIOVA_ENV_VAR_tcp_disable,
+        .nev_var_num   = NIOVA_ENV_VAR_tcp_enable,
         .nev_type      = NIOVA_ENV_VAR_TYPE_NONE,
         .nev_present   = false,
     },
