@@ -59,7 +59,8 @@ tcp_sockaddr_in_2_handle(struct sockaddr_in *addr_in,
                          struct tcp_socket_handle *tsh)
 {
     strncpy(tsh->tsh_ipaddr, inet_ntoa(addr_in->sin_addr),
-            sizeof(tsh->tsh_ipaddr));
+            sizeof(tsh->tsh_ipaddr) - 1);
+    tsh->tsh_ipaddr[sizeof(tsh->tsh_ipaddr) - 1] = 0;
     tsh->tsh_port = addr_in->sin_port;
 }
 
@@ -67,7 +68,8 @@ void
 tcp_socket_handle_set_data(struct tcp_socket_handle *tsh, const char *ipaddr,
                            int port)
 {
-    strncpy(tsh->tsh_ipaddr, ipaddr, sizeof(tsh->tsh_ipaddr));
+    strncpy(tsh->tsh_ipaddr, ipaddr, sizeof(tsh->tsh_ipaddr) - 1);
+    tsh->tsh_ipaddr[sizeof(tsh->tsh_ipaddr) - 1] = 0;
     tsh->tsh_port = port;
 }
 

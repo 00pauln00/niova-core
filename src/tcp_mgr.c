@@ -72,6 +72,7 @@ tcp_mgr_sockets_setup(struct tcp_mgr_instance *tmi, const char *ipaddr,
                       int port)
 {
     strncpy(tmi->tmi_listen_socket.tsh_ipaddr, ipaddr, IPV4_STRLEN);
+    tmi->tmi_listen_socket.tsh_ipaddr[IPV4_STRLEN - 1] = 0;
     tmi->tmi_listen_socket.tsh_port = port;
 
     return tcp_socket_setup(&tmi->tmi_listen_socket);
