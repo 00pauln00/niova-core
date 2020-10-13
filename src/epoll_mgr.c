@@ -392,7 +392,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
         if (eph->eph_installed && eph->eph_ref_cb)
-            eph->eph_ref_cb(eph, 0);
+            eph->eph_ref_cb(eph->eph_arg, 0);
     }
 
     for (int i = 0; i < nevents; i++)
