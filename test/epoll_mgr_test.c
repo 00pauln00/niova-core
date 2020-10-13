@@ -45,7 +45,7 @@ REF_TREE_GENERATE(epoll_mgr_test_ref_tree, epm_test_handle, eth_rtentry,
 static struct epoll_mgr_test_ref_tree epollMgrTestRT;
 
 static void
-foo_cb(const struct epoll_handle *eph)
+foo_cb(const struct epoll_handle *eph, uint32_t events)
 {
     (void)eph;
     return;
@@ -76,7 +76,7 @@ epoll_mgr_thread_test_ref_cb(void *arg, enum epoll_handle_ref_op op)
 }
 
 static epoll_mgr_cb_ctx_t
-epoll_mgr_thread_test_cb(const struct epoll_handle *eph)
+epoll_mgr_thread_test_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph && eph->eph_arg);
 
