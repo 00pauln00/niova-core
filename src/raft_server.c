@@ -1002,7 +1002,7 @@ raft_server_backend_sync(struct raft_instance *ri, const char *caller)
         &ri->ri_rihs[RAFT_INSTANCE_HIST_NENTRIES_SYNC].rihs_bh,
         unsync_reh.reh_index - sync_idx);
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "caller=%s nentries-this-sync=%ld",
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "caller=%s nentries-this-sync=%ld",
                       caller, unsync_reh.reh_index - sync_idx);
 
     struct timespec io_op[2];
@@ -1015,7 +1015,7 @@ raft_server_backend_sync(struct raft_instance *ri, const char *caller)
     raft_server_incorporate_latency_measurement(
         ri, io_op[0], io_op[1], RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "caller=%s rib_backend_sync(): %s",
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "caller=%s rib_backend_sync(): %s",
                       caller, strerror(-rc));
 
     if (!rc) // Copy the contents of the current unsynced header to the synced
@@ -2730,12 +2730,17 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%ld",
                       committed_raft_idx);
 
+//XXX the bug here is that we may get valid values but not from the committing
+//    majority and therefore we assert..
     /* The leader still has not obtained the sync_idx values from a majority
      * of its followers.  Also, ensure the ri_commit_idx is not moving
      * backwards but exempt the sync thread since it may have a stale view.
      */
-    if (committed_raft_idx && !sync_thread)
-        NIOVA_ASSERT(committed_raft_idx >= ri->ri_commit_idx);
+    if (committed_raft_idx && !sync_thread &&
+        (committed_raft_idx < ri->ri_commit_idx))
+        DBG_RAFT_INSTANCE(LL_WARN, ri,
+                          "committed_raft_idx (%ld) < ri_commit_idx",
+                          committed_raft_idx);
 
     return committed_raft_idx;
 }
@@ -2752,6 +2757,12 @@ raft_server_leader_can_advance_commit_idx(struct raft_instance *ri,
 
     const int64_t committed_raft_idx =
         raft_server_leader_calculate_committed_idx(ri, sync_thread);
+
+    DBG_RAFT_INSTANCE_FATAL_IF( // Note:  sync_thread view may be stale
+        (!sync_thread && committed_raft_idx < ri->ri_commit_idx &&
+         committed_raft_idx >= rls->rls_initial_term_idx), ri,
+        "committed_raft_idx (%ld) < ri_commit_idx after initial term commit",
+        committed_raft_idx);
 
     /* Only increase the commit index if the majority has ACKd this leader's
      * "leader_change_marker" AE.
