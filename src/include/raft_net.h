@@ -308,13 +308,12 @@ struct raft_net_client_request_handle
     }                                                                     \
 }
 
-#define DBG_RAFT_CLIENT_RPC_LEADER(log_level, ri, rcm, fmt, ...)          \
-{                                                                         \
-    if ((ri)->ri_csn_leader)                                              \
-    {                                                                     \
-        struct ctl_svc_node *csn = (ri)->ri_csn_leader;                   \
-        DBG_RAFT_CLIENT_RPC_CSN(log_level, rcm, csn, fmt, ##__VA_ARGS__); \
-    }                                                                     \
+#define DBG_RAFT_CLIENT_RPC_LEADER(log_level, ri, rcm, fmt, ...) \
+{                                                                \
+    if ((ri)->ri_csn_leader)                                     \
+    {                                                            \
+        DBG_RAFT_CLIENT_RPC(log_level, rcm, fmt, ##__VA_ARGS__); \
+    }                                                            \
 }
 
 static inline char *
