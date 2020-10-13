@@ -93,7 +93,8 @@ udp_socket_bind(struct udp_socket_handle *ush)
 
     struct sockaddr_in addr_in = {0};
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "udp_socket_bind(): %s:%d", ush->ush_ipaddr, ush->ush_port);
+    SIMPLE_LOG_MSG(LL_TRACE, "udp_socket_bind(): %s:%d",
+                   ush->ush_ipaddr, ush->ush_port);
 
     int rc = udp_setup_sockaddr_in(ush->ush_ipaddr, ush->ush_port, &addr_in);
     if (!rc)

@@ -248,9 +248,10 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
     return rc;
 }
 
-ssize_t tcp_socket_recv_all(const struct tcp_socket_handle *tsh,
-                            struct iovec *iov, struct sockaddr_in *from,
-                            int max_attempts)
+ssize_t
+tcp_socket_recv_all(const struct tcp_socket_handle *tsh,
+                    struct iovec *iov, struct sockaddr_in *from,
+                    int max_attempts)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
@@ -354,9 +355,8 @@ tcp_socket_connect(struct tcp_socket_handle *tsh)
 
     tcp_socket_set_nonblocking(tsh);
 
-    int rc =
-        connect(tsh->tsh_socket, (struct sockaddr *)&addr_in,
-                sizeof(struct sockaddr_in));
+    int rc = connect(tsh->tsh_socket, (struct sockaddr *)&addr_in,
+                     sizeof(struct sockaddr_in));
     if (rc < 0)
     {
         rc = -errno;

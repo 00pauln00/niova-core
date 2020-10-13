@@ -548,8 +548,9 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     }
     else if (rcrm->rcrm_data_size < sizeof(struct raft_test_data_block))
     {
-        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from, "invalid reply size %hu",
-                            rcrm->rcrm_data_size);
+        DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
+                                 "invalid reply size %u",
+                                 rcrm->rcrm_data_size);
         return;
     }
     else if (!rsc_get_pending_msg_id())
@@ -769,7 +770,6 @@ rsc_set_ping_target(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "rsc_ping_target_is_stale(): %s", rsc_ping_target_is_stale(ri) ? "yes" : "no");
     if (rsc_ping_target_is_stale(ri))
     {
         rsc_set_leader_viability(false);
