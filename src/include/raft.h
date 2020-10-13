@@ -18,6 +18,8 @@
 #include "epoll_mgr.h"
 #include "ev_pipe.h"
 #include "raft_net.h"
+#include "tcp.h"
+#include "tcp_mgr.h"
 #include "udp.h"
 #include "util.h"
 
@@ -50,15 +52,15 @@
 #define RAFT_INSTANCE_2_RAFT_UUID(ri) \
     (ri)->ri_csn_raft->csn_uuid
 
-typedef void                             raft_server_udp_cb_ctx_t;
-typedef int                              raft_server_udp_cb_ctx_int_t;
-typedef bool                             raft_server_udp_cb_ctx_bool_t;
-typedef bool                             raft_server_udp_cb_follower_ctx_bool_t;
-typedef int                              raft_server_udp_cb_follower_ctx_int_t;
-typedef void                             raft_server_udp_cb_follower_ctx_t;
-typedef void                             raft_server_udp_cb_leader_t;
-typedef void                             raft_server_udp_cb_leader_ctx_t;
-typedef int64_t                          raft_server_udp_cb_leader_ctx_int64_t;
+typedef void                             raft_server_net_cb_ctx_t;
+typedef int                              raft_server_net_cb_ctx_int_t;
+typedef bool                             raft_server_net_cb_ctx_bool_t;
+typedef bool                             raft_server_net_cb_follower_ctx_bool_t;
+typedef int                              raft_server_net_cb_follower_ctx_int_t;
+typedef void                             raft_server_net_cb_follower_ctx_t;
+typedef void                             raft_server_net_cb_leader_t;
+typedef void                             raft_server_net_cb_leader_ctx_t;
+typedef int64_t                          raft_server_net_cb_leader_ctx_int64_t;
 typedef void                             raft_server_timerfd_cb_ctx_t;
 typedef int                              raft_server_timerfd_cb_ctx_int_t;
 typedef void                             raft_server_leader_mode_t;
@@ -327,6 +329,7 @@ struct raft_instance_backend
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
+    struct tcp_mgr_instance         ri_tcp_mgr;
     struct ctl_svc_node            *ri_csn_raft;
     struct ctl_svc_node            *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
     struct ctl_svc_node            *ri_csn_this_peer;
@@ -354,8 +357,8 @@ struct raft_instance
     uint32_t                        ri_election_timeout_max_ms;
     uint32_t                        ri_heartbeat_freq_per_election_min;
     raft_net_timer_cb_t             ri_timer_fd_cb;
-    raft_net_udp_cb_t               ri_udp_client_recv_cb;
-    raft_net_udp_cb_t               ri_udp_server_recv_cb;
+    raft_net_cb_t                   ri_client_recv_cb;
+    raft_net_cb_t                   ri_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;
     raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
     raft_net_shutdown_cb_t          ri_shutdown_cb;
@@ -435,6 +438,7 @@ raft_compile_time_checks(void)
                 ##__VA_ARGS__);                                                                   \
         break;                                                                                    \
     default:                                                                                      \
+        LOG_MSG(log_level, "UNKNOWN "fmt, ##__VA_ARGS__);                                         \
         break;                                                                                    \
     }                                                                                             \
 }

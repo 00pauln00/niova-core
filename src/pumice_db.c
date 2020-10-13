@@ -64,9 +64,6 @@ struct pmdb_obj_extras_v0
  *   client may be a proxy for more than one application user id (rncui).
  * @pmdb_obj_rncui:  User / application identifier.  This is a rich structure
  *   which may encode several levels of nested identifiers.
- * @pmdb_obj_remote_addr:  The IP information taken from the original request.
- *   This is used to direct the reply, assuming that the term which handled the
- *   write is current.
  * @pmdb_obj_msg_id:  The RPC identifier used by the client's RPC.
  */
 struct pmdb_object
@@ -77,7 +74,6 @@ struct pmdb_object
     int64_t                        pmdb_obj_pending_term;
     uuid_t                         pmdb_obj_client_uuid;
     struct raft_net_client_user_id pmdb_obj_rncui;
-    struct sockaddr_in             pmdb_obj_remote_addr;
     int64_t                        pmdb_obj_msg_id;
     union
     {
@@ -99,7 +95,7 @@ struct pmdb_apply_handle
             RAFT_NET_CLIENT_USER_ID_2_UUID(&(pmdbo)->pmdb_obj_rncui, 0, 0), \
             __uuid_str);                                                    \
         LOG_MSG(log_level,                                                  \
-            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld %s msg-id=%lx "   \
+            "%s.%lx.%lx.%lx.%lx v=%d crc=%x cs=%ld pt=%ld msg-id=%lx "      \
             fmt,                                                            \
             __uuid_str,                                                     \
             RAFT_NET_CLIENT_USER_ID_2_UINT64(&(pmdbo)->pmdb_obj_rncui,      \
@@ -114,7 +110,6 @@ struct pmdb_apply_handle
             (pmdbo)->pmdb_obj_crc,                                          \
             (pmdbo)->pmdb_obj_commit_seqno,                                 \
             (pmdbo)->pmdb_obj_pending_term,                                 \
-            inet_ntoa((pmdbo)->pmdb_obj_remote_addr.sin_addr),              \
             (pmdbo)->pmdb_obj_msg_id,                                       \
             ##__VA_ARGS__);                                                 \
     }
@@ -164,17 +159,11 @@ pmdb_object_init(struct pmdb_object *pmdb_obj, version_t version,
 static void
 pmdb_object_net_init(struct pmdb_object *pmdb_obj,
                      const uuid_t client_uuid,
-                     const struct sockaddr_in *remote_addr,
                      const int64_t msg_id)
 {
     NIOVA_ASSERT(pmdb_obj);
 
     uuid_copy(pmdb_obj->pmdb_obj_client_uuid, client_uuid);
-
-    if (remote_addr)
-        pmdb_obj->pmdb_obj_remote_addr = *remote_addr;
-    else
-        memset(&pmdb_obj->pmdb_obj_remote_addr, 0, sizeof(struct sockaddr_in));
 
     pmdb_obj->pmdb_obj_msg_id = msg_id;
 
@@ -427,8 +416,7 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
-    pmdb_object_net_init(obj, rncr->rncr_client_uuid,
-                         &rncr->rncr_remote_addr, rncr->rncr_msg_id);
+    pmdb_object_net_init(obj, rncr->rncr_client_uuid, rncr->rncr_msg_id);
 
     raft_net_client_request_handle_set_write_raft_entry(rncr);
 
@@ -587,7 +575,8 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     size_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
-    if (!rrc) { // Ok.  Continue to read operation
+    if (!rrc)   // Ok.  Continue to read operation
+    {
         rrc =
             pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                pmdb_req->pmdbrm_data,
@@ -600,7 +589,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
         pmdb_reply->pmdbrm_data_size = 0;
         raft_client_net_request_handle_error_set(rncr, rrc, 0, rrc);
 
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req, &rncr->rncr_remote_addr,
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req,
                             "pmdbApi::read(): %s", strerror(rrc));
     }
     else if (rrc > (ssize_t)max_reply_size)
@@ -608,7 +597,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
         raft_client_net_request_handle_error_set(rncr, -E2BIG, 0, -E2BIG);
         pmdb_reply->pmdbrm_data_size = (uint32_t)rrc;
 
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req, &rncr->rncr_remote_addr,
+        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req,
                             "pmdbApi::read(): reply too large (%zd)", rrc);
     }
     else
@@ -618,7 +607,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
 
         pmdb_reply->pmdbrm_data_size = (uint32_t)rrc;
 
-        DBG_RAFT_CLIENT_RPC(LL_DEBUG, req, &rncr->rncr_remote_addr,
+        DBG_RAFT_CLIENT_RPC(LL_DEBUG, req,
                             "pmdbApi::read(): reply-size=%zd", rrc);
     }
 
@@ -658,8 +647,7 @@ pmdb_sm_handler_client_rw_op(struct raft_net_client_request_handle *rncr)
 
     const enum PmdbOpType op = pmdb_req->pmdbrm_op;
 
-    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request, &rncr->rncr_remote_addr,
-                        "op=%u", op);
+    DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request, "op=%u", op);
 
     switch (op)
     {
@@ -697,8 +685,7 @@ pmdb_init_net_client_request_from_obj(
     NIOVA_ASSERT(rncr && pmdb_obj);
 
     raft_net_client_request_handle_set_reply_info(
-        rncr, &pmdb_obj->pmdb_obj_remote_addr, pmdb_obj->pmdb_obj_client_uuid,
-        pmdb_obj->pmdb_obj_msg_id);
+        rncr, pmdb_obj->pmdb_obj_client_uuid, pmdb_obj->pmdb_obj_msg_id);
 }
 
 /**
@@ -793,8 +780,7 @@ pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
     if (rncr->rncr_request) // otherwise, this is an apply operation
-        DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request,
-                            &rncr->rncr_remote_addr, "");
+        DBG_RAFT_CLIENT_RPC(LL_DEBUG, rncr->rncr_request, "");
 
     if (pmdb_net_calc_rpc_msg_size(pmdb_req) !=
         rncr->rncr_request_or_commit_data_size)
@@ -831,7 +817,6 @@ pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
 
             // There's a problem with the application RPC request
             DBG_RAFT_CLIENT_RPC(LL_NOTIFY, rncr->rncr_request,
-                                &rncr->rncr_remote_addr,
                                 "pmdb_sm_handler_pmdb_req_check(): %s",
                                 strerror(-rc));
             return 0;

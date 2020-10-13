@@ -16,6 +16,7 @@
 #include "epoll_mgr.h"
 #include "log.h"
 #include "net_ctl.h"
+#include "tcp.h"
 
 #define RAFT_NET_SEQNO_ANY -1ULL
 
@@ -29,9 +30,9 @@ struct sockaddr_in;
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
 #define RAFT_NET_PEER_RECENCY_NO_SEND -2ULL
 
-typedef void     raft_net_udp_cb_ctx_t;
-typedef int      raft_net_udp_cb_ctx_int_t;
-typedef bool     raft_net_udp_cb_ctx_bool_t;
+typedef void     raft_net_cb_ctx_t;
+typedef int      raft_net_cb_ctx_int_t;
+typedef bool     raft_net_cb_ctx_bool_t;
 typedef void     raft_net_timerfd_cb_ctx_t;
 typedef int      raft_net_timerfd_cb_ctx_int_t;
 
@@ -50,16 +51,16 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_ANY,
 };
 
-typedef raft_net_udp_cb_ctx_t
-(*raft_net_udp_cb_t)(struct raft_instance *,
-                     const char *, ssize_t,
-                     const struct sockaddr_in *);
+typedef raft_net_cb_ctx_t
+(*raft_net_cb_t)(struct raft_instance *,
+                 const char *, ssize_t,
+                 const struct sockaddr_in *);
 
 typedef raft_net_timerfd_cb_ctx_t
 (*raft_net_timer_cb_t)(struct raft_instance *);
 
 // State machine request handler - reads, writes, and commits
-typedef raft_net_udp_cb_ctx_int_t
+typedef raft_net_cb_ctx_int_t
 (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
 
 typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
@@ -238,7 +239,6 @@ struct raft_net_client_request_handle
     enum raft_net_client_request_type    rncr_type;  // may be set by sm callback
     bool                                 rncr_write_raft_entry;
     bool                                 rncr_is_leader;
-    struct net_ctl                       rncr_nc;
     int                                  rncr_op_error;
     int64_t                              rncr_entry_term;
     int64_t                              rncr_current_term;
@@ -249,13 +249,18 @@ struct raft_net_client_request_handle
     struct raft_client_rpc_msg          *rncr_reply;
     const size_t                         rncr_reply_data_max_size;
     size_t                               rncr_reply_data_size;
-    struct sockaddr_in                   rncr_remote_addr;
     uint64_t                             rncr_msg_id;
     struct raft_net_sm_write_supplements rncr_sm_write_supp;
     uuid_t                               rncr_client_uuid;
 };
 
-#define DBG_RAFT_CLIENT_RPC(log_level, rcm, from, fmt, ...)               \
+#define DBG_RAFT_CLIENT_RPC_SOCK(log_level, rcm, from, fmt, ...) \
+    DBG_RAFT_CLIENT_RPC(log_level, rcm, "%s:%u "fmt,             \
+                        inet_ntoa((from)->sin_addr),             \
+                        ntohs((from)->sin_port),                 \
+                        ##__VA_ARGS__)
+
+#define DBG_RAFT_CLIENT_RPC(log_level, rcm, fmt, ...)                     \
 {                                                                         \
     char __uuid_str[UUID_STR_LEN];                                        \
     char __redir_uuid_str[UUID_STR_LEN];                                  \
@@ -265,26 +270,23 @@ struct raft_net_client_request_handle
     case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                                \
         uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);                    \
         LOG_MSG(log_level,                                                \
-                "CLI-REQ   %s %s:%u id=%lx sz=%u "fmt,                    \
+                "CLI-REQ   %s id=%lx sz=%u "fmt,                          \
                 __uuid_str,                                               \
-                inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),     \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,                \
                 ##__VA_ARGS__);                                           \
         break;                                                            \
     case RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT:                               \
         uuid_unparse((rcm)->rcrm_redirect_id, __redir_uuid_str);          \
         LOG_MSG(log_level,                                                \
-                "CLI-RDIR  %s %s:%u id=%lx sz=%u redir-to=%s "fmt,        \
+                "CLI-RDIR  %s id=%lx sz=%u redir-to=%s "fmt,              \
                 __uuid_str,                                               \
-                inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),     \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,                \
                 __redir_uuid_str, ##__VA_ARGS__);                         \
         break;                                                            \
     case RAFT_CLIENT_RPC_MSG_TYPE_REPLY:                                  \
         LOG_MSG(log_level,                                                \
-                "CLI-REPL  %s %s:%u id=%lx sz=%u err=%hd:%hd "fmt,        \
+                "CLI-REPL  %s id=%lx sz=%u err=%hd:%hd "fmt,              \
                 __uuid_str,                                               \
-                inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),     \
                 (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,                \
                 (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,             \
                 ##__VA_ARGS__);                                           \
@@ -293,11 +295,10 @@ struct raft_net_client_request_handle
         uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);                    \
     case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                             \
         LOG_MSG(log_level,                                                \
-                "CLI-%s %s %s:%u id=%lx err=%hd:%hd "fmt,                 \
+                "CLI-%s %s id=%lx err=%hd:%hd "fmt,                       \
                 (rcm)->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY ? \
                 "PREPL" : "PING ",                                        \
                 __uuid_str,                                               \
-                inet_ntoa((from)->sin_addr), ntohs((from)->sin_port),     \
                 (rcm)->rcrm_msg_id,                                       \
                 (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,             \
                 ##__VA_ARGS__);                                           \
@@ -307,17 +308,12 @@ struct raft_net_client_request_handle
     }                                                                     \
 }
 
-#define DBG_RAFT_CLIENT_RPC_LEADER(log_level, ri, rcm, fmt, ...)        \
-{                                                                       \
-    if ((ri)->ri_csn_leader)                                            \
-    {                                                                   \
-        struct sockaddr_in dest;                                        \
-        struct ctl_svc_node *csn = (ri)->ri_csn_leader;                 \
-        udp_setup_sockaddr_in(ctl_svc_node_peer_2_ipaddr(csn),          \
-                              ctl_svc_node_peer_2_client_port(csn),     \
-                              &dest);                                   \
-        DBG_RAFT_CLIENT_RPC(log_level, rcm, &dest, fmt, ##__VA_ARGS__); \
-    }                                                                   \
+#define DBG_RAFT_CLIENT_RPC_LEADER(log_level, ri, rcm, fmt, ...) \
+{                                                                \
+    if ((ri)->ri_csn_leader)                                     \
+    {                                                            \
+        DBG_RAFT_CLIENT_RPC(log_level, rcm, fmt, ##__VA_ARGS__); \
+    }                                                            \
 }
 
 static inline char *
@@ -367,8 +363,8 @@ raft_net_instance_shutdown(struct raft_instance *ri);
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
                                   raft_net_timer_cb_t timer_fd_cb,
-                                  raft_net_udp_cb_t udp_client_recv_cb,
-                                  raft_net_udp_cb_t udp_server_recv_cb);
+                                  raft_net_cb_t client_recv_cb,
+                                  raft_net_cb_t server_recv_cb);
 
 raft_peer_t
 raft_peer_2_idx(const struct raft_instance *ri, const uuid_t peer_uuid);
@@ -418,6 +414,16 @@ raft_net_sockaddr_is_valid(const struct sockaddr_in *sockaddr)
     return memcmp(&null_sockaddr, sockaddr, sizeof(struct sockaddr_in)) ?
         false : true;
 }
+
+int
+raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
+                  struct iovec *iov, size_t niovs,
+                  const enum raft_udp_listen_sockets sock_src);
+
+int
+raft_net_send_msg_to_uuid(struct raft_instance *ri, uuid_t uuid,
+                          struct iovec *iov, size_t niovs,
+                          const enum raft_udp_listen_sockets sock_src);
 
 int
 raft_net_send_client_msg(struct raft_instance *ri,
@@ -492,13 +498,10 @@ raft_net_client_request_handle_writes_raft_entry(
 static inline void
 raft_net_client_request_handle_set_reply_info(
     struct raft_net_client_request_handle *rncr,
-    const struct sockaddr_in *from, const uuid_t client_uuid, uint64_t msg_id)
+    const uuid_t client_uuid, uint64_t msg_id)
 {
     if (rncr)
     {
-        if (from)
-            rncr->rncr_remote_addr = *from;
-
         // Caller may supply a null-uuid string
         uuid_copy(rncr->rncr_client_uuid, client_uuid);
 
@@ -510,16 +513,15 @@ static inline bool
 raft_net_client_request_handle_has_reply_info(
     const struct raft_net_client_request_handle *rncr)
 {
-    const struct sockaddr_in empty = {0};
+    bool doesnt_have_info =
+        (!rncr ||
+         uuid_is_null(rncr->rncr_client_uuid) ||
+         rncr->rncr_msg_id == ID_ANY_64bit ||
+         rncr->rncr_msg_id == 0 ||
+         rncr->rncr_reply_data_max_size == 0 ||
+         rncr->rncr_reply == NULL);
 
-    return (!rncr ||
-            !memcmp(&rncr->rncr_remote_addr, &empty,
-                    sizeof(struct sockaddr_in)) ||
-            uuid_is_null(rncr->rncr_client_uuid) ||
-            rncr->rncr_msg_id == ID_ANY_64bit ||
-            rncr->rncr_msg_id == 0 ||
-            rncr->rncr_reply_data_max_size == 0 ||
-            rncr->rncr_reply == NULL) ? false : true;
+    return !doesnt_have_info;
 }
 
 static inline char *
@@ -554,11 +556,10 @@ raft_net_sm_write_supplement_destroy(
     struct raft_net_sm_write_supplements *rnsws);
 
 int
-raft_net_sm_write_supplement_add(
-    struct raft_net_sm_write_supplements *rnsws, void *handle,
-    void (*rnws_comp_cb)(void *),
-    const char *key, const size_t key_size, const char *value,
-    const size_t value_size);
+raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
+                                 void *handle, void (*rnws_comp_cb)(void *),
+                                 const char *key, const size_t key_size,
+                                 const char *value, const size_t value_size);
 
 // Raft Net User ID API
 static inline void
@@ -654,4 +655,8 @@ int
 raft_net_client_user_id_parse(const char *in,
                               struct raft_net_client_user_id *rncui,
                               const version_t version);
+void
+raft_net_csn_connection_setup(struct raft_instance *ri,
+                              struct ctl_svc_node *csn);
+
 #endif

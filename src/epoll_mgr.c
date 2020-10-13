@@ -71,9 +71,14 @@ epoll_mgr_tally_handles(struct epoll_mgr *epm)
     pthread_mutex_lock(&epm->epm_mutex);
 
     CIRCLEQ_FOREACH(eph, &epm->epm_active_list, eph_lentry)
+    {
         cnt++;
+    }
+
     CIRCLEQ_FOREACH(eph, &epm->epm_destroy_list, eph_lentry)
+    {
         cnt++;
+    }
 
     pthread_mutex_unlock(&epm->epm_mutex);
 
@@ -122,7 +127,7 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
 int
 epoll_handle_init(struct epoll_handle *eph, int fd, int events,
-                  void (*cb)(const struct epoll_handle *), void *arg,
+                  epoll_mgr_cb_t cb, void *arg,
                   void (*ref_cb)(void *, enum epoll_handle_ref_op))
 {
     if (!eph || !cb || (ref_cb && !arg))
@@ -147,6 +152,8 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
 int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
         return -EINVAL;
 
@@ -191,9 +198,36 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     return rc;
 }
 
+int
+epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
+{
+    if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
+        return -EINVAL;
+
+    else if (eph->eph_fd < 0 || epm->epm_epfd < 0)
+        return -EBADF;
+
+    else if (!eph->eph_installed || eph->eph_installing || eph->eph_destroying)
+        return -EINVAL;
+
+    struct epoll_event ev = {.events = eph->eph_events, .data.ptr = eph};
+
+    int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "epoll_handle_mod: fd=%d ev=%d rc=%d",
+            eph->eph_fd, ev.events, rc);
+
+    if (rc < 0)
+        return -errno;
+
+    return 0;
+}
+
 static epoll_mgr_thread_ctx_int_t
 epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !eph || !epm->epm_ready)
         return -EINVAL;
 
@@ -236,6 +270,8 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
 int
 epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !eph || !epm->epm_ready)
         return -EINVAL;
 
@@ -294,9 +330,12 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 static void
 epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct epoll_handle *destroy = NULL;
 
     if (!CIRCLEQ_EMPTY(&epm->epm_destroy_list))
+    {
         do
         {
             pthread_mutex_lock(&epm->epm_mutex);
@@ -319,11 +358,14 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
             }
 
         } while (destroy);
+    }
 }
 
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     if (!epm || !epm->epm_ready)
         return -EINVAL;
 
@@ -349,9 +391,18 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
+        if (eph->eph_installed && eph->eph_ref_cb)
+            eph->eph_ref_cb(eph->eph_arg, 0);
+    }
+
+    for (int i = 0; i < nevents; i++)
+    {
+        struct epoll_handle *eph = evs[i].data.ptr;
+        SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
 
         if (eph->eph_installed && eph->eph_cb)
-            eph->eph_cb(eph);
+            eph->eph_cb(eph, evs[i].events);
+
     }
 
     // Reap again before returning control to the caller

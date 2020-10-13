@@ -32,7 +32,7 @@ static pthread_mutex_t utilThreadMutex = PTHREAD_MUTEX_INITIALIZER;
 
 int
 util_thread_install_event_src(int fd, int events,
-                              void (*ut_cb)(const struct epoll_handle *),
+                              epoll_mgr_cb_t ut_cb,
                               void *arg, struct epoll_handle **ret_eph)
 {
     if (fd < 0 || !ut_cb)

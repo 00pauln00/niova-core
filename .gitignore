@@ -36,6 +36,7 @@ TODO*
 *.cmd
 test/config_token_test
 test/udp_test
+test/tcp_test
 raft_server
 raft-server
 test/random-test
@@ -55,3 +56,4 @@ rocksdb__test*
 .*.swo
 .*.swn
 test/epoll_mgr_test
+.clangd

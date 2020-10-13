@@ -32,7 +32,6 @@ struct rst_sm_node_app
     struct raft_test_values smna_committed;
     struct raft_test_values smna_pending;
     uint64_t                smna_pending_msg_id;
-    struct sockaddr_in      smna_pending_client_addr;
     int64_t                 smna_pending_entry_term;
     struct timespec         smna_pending_time_stamp;
 };
@@ -201,9 +200,8 @@ rst_sm_handler_commit(struct raft_net_client_request_handle *rncr)
         /* Entry was written by this leader - populate the remainder of the
          * reply information into the request handle.
          */
-        raft_net_client_request_handle_set_reply_info(
-            rncr, &sma->smna_pending_client_addr, sm->smn_uuid,
-            sma->smna_pending_msg_id);
+        raft_net_client_request_handle_set_reply_info(rncr, sm->smn_uuid,
+                                                      sma->smna_pending_msg_id);
 
         int rc = rst_sm_reply_init(rncr->rncr_reply, sm->smn_uuid,
                                    RAFT_TEST_DATA_OP_WRITE, NULL, 0);
@@ -342,7 +340,7 @@ rst_sm_handler_write(struct raft_net_client_request_handle *rncr)
         // Store some context for the reply (which will happen later)
         sma->smna_pending_msg_id = rncr->rncr_msg_id;
         sma->smna_pending_entry_term = rncr->rncr_current_term;
-        sma->smna_pending_client_addr = rncr->rncr_remote_addr;
+
         sma->smna_pending = *last_rtv;
 
         niova_realtime_coarse_clock(&sma->smna_pending_time_stamp);
@@ -510,7 +508,7 @@ raft_server_test_rst_sm_handler(struct raft_net_client_request_handle *rncr)
         if (rc)
         {
             DBG_RAFT_CLIENT_RPC(
-                LL_NOTIFY, rncr->rncr_request, &rncr->rncr_remote_addr,
+                LL_NOTIFY, rncr->rncr_request,
                 "rst_sm_handler_verify_request_and_set_type(): %s",
                 strerror(-rc));
 
