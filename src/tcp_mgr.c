@@ -49,7 +49,7 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
 
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
-              tcp_mgr_ref_cb_t connection_ref_cb,
+              epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
@@ -122,7 +122,6 @@ tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
     if (tmc->tmc_eph.eph_installed)
         epoll_handle_del(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
 
-    // XXX specifically we don't want this to happen when another thread is using
     if (tmc->tmc_bulk_buf)
         tcp_mgr_bulk_free(tmc->tmc_bulk_buf);
 
@@ -334,7 +333,7 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
     return rc;
 }
 
-static void
+static epoll_mgr_cb_ctx_t
 tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph && eph->eph_arg);
@@ -403,11 +402,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
 
         if (tmi->tmi_connection_ref_cb)
             tmi->tmi_connection_ref_cb(owned, EPH_REF_PUT);
-        owned = NULL;
-    }
 
-    if (!owned)
-    {
         SIMPLE_LOG_MSG(LL_ERROR, "handshake error");
         return -EINVAL;
     }
@@ -428,7 +423,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     return 0;
 }
 
-static void
+static epoll_mgr_cb_ctx_t
 tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -455,18 +450,15 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_socket_recv(): rc=%d", rc);
 
-    struct tcp_mgr_connection *new_tmc =
-        tmi->tmi_handshake_cb(tmi->tmi_data,
-                              tmc->tmc_tsh.tsh_socket,
-                              iov.iov_base,
-                              rc);
+    struct tcp_mgr_connection *new_tmc;
+
+    rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, tmc->tmc_tsh.tsh_socket,
+                               iov.iov_base, rc);
 
     tcp_mgr_handshake_iov_fini(&iov);
 
-    if (new_tmc)
+    if (rc == 0)
         rc = tcp_mgr_connection_merge_incoming(tmc, new_tmc);
-    else
-        rc = -EINVAL;
 
     if (rc)
         tcp_mgr_incoming_fini_err(tmc);
@@ -500,7 +492,7 @@ tcp_mgr_accept(struct tcp_mgr_instance *tmi, int fd)
     return 0;
 }
 
-static void
+static epoll_mgr_cb_ctx_t
 tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
 {
     SIMPLE_FUNC_ENTRY(LL_NOTIFY);
@@ -599,7 +591,7 @@ out:
     return rc;
 }
 
-static void
+static epoll_mgr_cb_ctx_t
 tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph && eph->eph_arg);

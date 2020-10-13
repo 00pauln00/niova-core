@@ -747,7 +747,7 @@ raft_net_connection_is_client(struct tcp_mgr_connection *tmc)
         sizeof(struct raft_client_rpc_msg);
 }
 
-static size_t
+static tcp_mgr_ctx_ssize_t
 raft_net_msg_bulk_size_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
                           struct raft_instance *ri)
 {
@@ -831,12 +831,15 @@ raft_net_tcp_handshake_fill(struct raft_instance *ri,
     return raft_net_connection_header_size(ri, csn);
 }
 
-static struct tcp_mgr_connection *
-raft_net_tcp_handshake_cb(struct raft_instance *ri, int fd,
+static tcp_mgr_ctx_int_t
+raft_net_tcp_handshake_cb(struct raft_instance *ri,
+                          struct tcp_mgr_connection **tmc_out, int fd,
                           struct raft_rpc_msg *handshake, size_t size)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && handshake && size == sizeof(struct raft_rpc_msg));
+
+    *tmc_out = NULL;
 
     int raft_uuid_comp = uuid_compare(handshake->rrm_raft_id,
                                       RAFT_INSTANCE_2_RAFT_UUID(ri));
@@ -854,7 +857,7 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri, int fd,
                        ri->ri_raft_uuid_str, hs_raft_uuid, raft_uuid_comp,
                        handshake->rrm_type,
                        handshake->rrm_version);
-        return NULL;
+        return -EINVAL;
     }
 
     SIMPLE_LOG_MSG(LL_TRACE, "handshake validated");
@@ -863,15 +866,17 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri, int fd,
     ctl_svc_node_lookup(handshake->rrm_sender_id, &csn);
     if (!csn)
     {
-        DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection fd: %d", fd);
-        return NULL;
+        DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection, fd: %d", fd);
+        return -ENOENT;
     }
 
     tcp_mgr_connection_header_size_set(
         &csn->csn_peer.csnp_net_data,
         raft_net_connection_header_size(ri, csn));
 
-    return &csn->csn_peer.csnp_net_data;
+    *tmc_out = &csn->csn_peer.csnp_net_data;
+
+    return 0;
 }
 
 static raft_net_cb_ctx_t
@@ -910,7 +915,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     if (!raft_net_tcp_disabled())
     {
         tcp_mgr_setup(&ri->ri_tcp_mgr, ri,
-                      (tcp_mgr_ref_cb_t)raft_net_connection_getput,
+                      (epoll_mgr_ref_cb_t)raft_net_connection_getput,
                       (tcp_mgr_recv_cb_t)raft_net_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,

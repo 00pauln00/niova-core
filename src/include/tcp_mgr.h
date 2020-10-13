@@ -12,34 +12,32 @@
 
 #define TCP_MGR_MAX_HDR_SIZE 65000
 
-typedef void tcp_mgr_ctx_t;
-typedef int  tcp_mgr_ctx_int_t;
+typedef void    tcp_mgr_ctx_t;
+typedef int     tcp_mgr_ctx_int_t;
+typedef ssize_t tcp_mgr_ctx_ssize_t;
 
 struct tcp_mgr_connection;
 
-typedef void (*tcp_mgr_ref_cb_t)(void *,
-                                 enum epoll_handle_ref_op op);
-typedef tcp_mgr_ctx_int_t (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *tmc,
-                                               char *buf,
-                                               size_t buf_size, void *data);
-typedef ssize_t (*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *tmc,
-                                          char *header, void *data);
-typedef struct tcp_mgr_connection *(*tcp_mgr_handshake_cb_t)(void *data,
-                                                             int fd,
-                                                             void *handshake,
-                                                             size_t size);
-typedef ssize_t (*tcp_mgr_handshake_fill_t)(void *data,
-                                            struct tcp_mgr_connection *tmc,
-                                            void *handshake, size_t size);
+typedef tcp_mgr_ctx_int_t
+(*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *, char *, size_t, void *);
+typedef tcp_mgr_ctx_ssize_t
+(*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *);
+typedef tcp_mgr_ctx_int_t
+(*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, int fd,
+                          void *, size_t);
+typedef tcp_mgr_ctx_ssize_t
+(*tcp_mgr_handshake_fill_t)(void *, struct tcp_mgr_connection *,
+                            void *, size_t);
 
 struct tcp_mgr_instance
 {
     struct tcp_socket_handle tmi_listen_socket;
-    struct epoll_mgr        *tmi_epoll_mgr;
-    struct epoll_handle      tmi_listen_eph;
     void                    *tmi_data;
 
-    tcp_mgr_ref_cb_t         tmi_connection_ref_cb;
+    struct epoll_mgr        *tmi_epoll_mgr;
+    struct epoll_handle      tmi_listen_eph;
+    epoll_mgr_ref_cb_t       tmi_connection_ref_cb;
+
     tcp_mgr_recv_cb_t        tmi_recv_cb;
     tcp_mgr_bulk_size_cb_t   tmi_bulk_size_cb;
     tcp_mgr_handshake_cb_t   tmi_handshake_cb;
@@ -77,7 +75,7 @@ do {                                                                 \
 
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
-              tcp_mgr_ref_cb_t connection_ref_cb,
+              epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
