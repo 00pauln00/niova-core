@@ -2967,7 +2967,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *csn;
+    struct ctl_svc_node *csn = NULL;
 
     /* First set of request checks which are configuration based.
      */
