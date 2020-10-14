@@ -2947,7 +2947,6 @@ raft_server_apply_append_entries_reply_result(
         return;
     }
 
-//XXX what about synced_idx here?
     if (raerp->raerpm_err_non_matching_prev_term)
     {
         if (rfi->rfi_next_idx > 0)
@@ -2966,13 +2965,6 @@ raft_server_apply_append_entries_reply_result(
             }
 
             rfi->rfi_prev_idx_term = -1; //Xxx this needs to go into a function
-#if SYNC_IDX_BUG
-            /* Don't yet take the raerpm_synced_log_index for rfi_synced_idx
-             * since it may be from another leader.
-             */
-            if (rfi->rfi_synced_idx >= rfi->rfi_next_idx)
-                rfi->rfi_synced_idx = rfi->rfi_next_idx - 1;
-#endif
         }
     }
     else
