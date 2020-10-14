@@ -50,6 +50,7 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
+              tcp_mgr_connect_info_cb_t connect_info_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
@@ -60,6 +61,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
 
     tmi->tmi_data = data;
     tmi->tmi_connection_ref_cb = connection_ref_cb;
+    tmi->tmi_connect_info_cb = connect_info_cb;
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
     tmi->tmi_handshake_cb = handshake_cb;
@@ -94,20 +96,44 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
     return rc;
 }
 
-void
-tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
-                         struct tcp_mgr_connection *tmc)
+static void
+tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
+                         struct tcp_mgr_instance *tmi)
 {
+    NIOVA_ASSERT(tmc->tmc_status == TMCS_NEEDS_SETUP);
+
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_mgr_connection_setup(): tmc %p", tmc);
 
+    tmc->tmc_status = TMCS_DISCONNECTED;
+
     tcp_socket_handle_init(&tmc->tmc_tsh);
+
     tmc->tmc_eph.eph_installed = 0;
 
     tmc->tmc_tmi = tmi;
 
-    tmc->tmc_status = TMCS_DISCONNECTED;
+    // setup during handshake
+    tmc->tmc_header_size = 0;
+
     tmc->tmc_bulk_buf = NULL;
+    tmc->tmc_bulk_offset = 0;
     tmc->tmc_bulk_remain = 0;
+}
+
+// cannot be used for incoming (temporary) connection objects
+static void
+tcp_mgr_connection_setup_info(struct tcp_mgr_connection *tmc)
+{
+    NIOVA_ASSERT(tmc->tmc_status != TMCS_NEEDS_SETUP && tmc->tmc_tmi);
+
+    if (!tmc->tmc_tmi->tmi_connect_info_cb)
+        return;
+
+    int port;
+    const char *ipaddr;
+    tmc->tmc_tmi->tmi_connect_info_cb(tmc, &ipaddr, &port);
+
+    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
 }
 
 static void
@@ -142,7 +168,9 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
     if (!tmc)
         return NULL;
 
-    tcp_mgr_connection_setup(tmi, tmc);
+    tmc->tmc_status = TMCS_NEEDS_SETUP;
+    tcp_mgr_connection_setup(tmc, tmi);
+
     tmc->tmc_status = TMCS_CONNECTING;
 
     return tmc;
@@ -387,9 +415,14 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
 
     struct tcp_mgr_instance *tmi = incoming->tmc_tmi;
 
-    if (owned->tmc_status == TMCS_DISCONNECTING ||
-        owned->tmc_status == TMCS_CONNECTING ||
-        owned->tmc_status == TMCS_CONNECTED)
+    if (owned->tmc_status == TMCS_NEEDS_SETUP)
+    {
+        tcp_mgr_connection_setup(owned, tmi);
+        tcp_mgr_connection_setup_info(owned);
+    }
+    else if (owned->tmc_status == TMCS_DISCONNECTING ||
+             owned->tmc_status == TMCS_CONNECTING ||
+             owned->tmc_status == TMCS_CONNECTED)
     {
         DBG_TCP_MGR_CXN(LL_NOTIFY, owned,
                         "incoming connection, but outgoing conn exists,"
@@ -408,6 +441,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
         return -EINVAL;
     }
 
+    owned->tmc_header_size = incoming->tmc_header_size;
     owned->tmc_tsh.tsh_socket = incoming->tmc_tsh.tsh_socket;
     owned->tmc_status = TMCS_CONNECTED;
 
@@ -453,8 +487,8 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 
     struct tcp_mgr_connection *new_tmc;
 
-    rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, tmc->tmc_tsh.tsh_socket,
-                               iov.iov_base, rc);
+    rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, &tmc->tmc_header_size,
+                               tmc->tmc_tsh.tsh_socket, iov.iov_base, rc);
 
     tcp_mgr_handshake_iov_fini(&iov);
 
@@ -615,8 +649,7 @@ tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 static int
-tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
-                          bool do_connect)
+tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc, bool do_connect)
 {
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "do_connect=%d", do_connect);
     NIOVA_ASSERT(tmc && tmc->tmc_status != TMCS_NEEDS_SETUP);
@@ -678,9 +711,15 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
 }
 
 int
-tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
-                 size_t niovs)
+tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
+                 struct iovec *iov, size_t niovs)
 {
+    if (tmc->tmc_status == TMCS_NEEDS_SETUP)
+    {
+        tcp_mgr_connection_setup(tmc, tmi);
+        tcp_mgr_connection_setup_info(tmc);
+    }
+
     int rc = tcp_mgr_connection_verify(tmc, true);
     DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "tcp_mgr_connection_verify(): %d", rc);
     if (rc < 0)

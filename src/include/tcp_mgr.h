@@ -23,26 +23,29 @@ typedef tcp_mgr_ctx_int_t
 typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *);
 typedef tcp_mgr_ctx_int_t
-(*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, int fd,
+(*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *, int fd,
                           void *, size_t);
 typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_handshake_fill_t)(void *, struct tcp_mgr_connection *,
                             void *, size_t);
+typedef tcp_mgr_ctx_t
+(*tcp_mgr_connect_info_cb_t)(struct tcp_mgr_connection *, const char **, int *);
 
 struct tcp_mgr_instance
 {
-    struct tcp_socket_handle tmi_listen_socket;
-    void                    *tmi_data;
+    struct tcp_socket_handle  tmi_listen_socket;
+    void                     *tmi_data;
 
-    struct epoll_mgr        *tmi_epoll_mgr;
-    struct epoll_handle      tmi_listen_eph;
-    epoll_mgr_ref_cb_t       tmi_connection_ref_cb;
+    struct epoll_mgr         *tmi_epoll_mgr;
+    struct epoll_handle       tmi_listen_eph;
+    epoll_mgr_ref_cb_t        tmi_connection_ref_cb;
 
-    tcp_mgr_recv_cb_t        tmi_recv_cb;
-    tcp_mgr_bulk_size_cb_t   tmi_bulk_size_cb;
-    tcp_mgr_handshake_cb_t   tmi_handshake_cb;
-    tcp_mgr_handshake_fill_t tmi_handshake_fill;
-    size_t                   tmi_handshake_size;
+    tcp_mgr_recv_cb_t         tmi_recv_cb;
+    tcp_mgr_bulk_size_cb_t    tmi_bulk_size_cb;
+    tcp_mgr_handshake_cb_t    tmi_handshake_cb;
+    tcp_mgr_handshake_fill_t  tmi_handshake_fill;
+    tcp_mgr_connect_info_cb_t tmi_connect_info_cb;
+    size_t                    tmi_handshake_size;
 };
 
 enum tcp_mgr_connection_status
@@ -76,6 +79,7 @@ do {                                                                 \
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
+              tcp_mgr_connect_info_cb_t connect_info_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
@@ -95,10 +99,6 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi);
 int
 tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr);
 
-void
-tcp_mgr_connection_setup(struct tcp_mgr_instance *tmi,
-                         struct tcp_mgr_connection *tmc);
-
 static inline void
 tcp_mgr_connection_header_size_set(struct tcp_mgr_connection *tmc,
                                    size_t size)
@@ -113,6 +113,6 @@ tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
 }
 
 int
-tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
-                 size_t niovs);
+tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
+                 struct iovec *iov, size_t niovs);
 #endif
