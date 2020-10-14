@@ -1233,7 +1233,7 @@ raft_server_entries_scan(struct raft_instance *ri)
 
         if (rc)
         {
-            DBG_RAFT_ENTRY(LL_WARN, &reh,
+            DBG_RAFT_ENTRY(LL_DEBUG, &reh,
                            "raft_server_entry_header_read_by_store():  %s",
                            strerror(-rc));
             break;
