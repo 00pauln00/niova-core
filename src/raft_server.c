@@ -921,11 +921,25 @@ raft_server_entry_header_read_by_store(struct raft_instance *ri,
 
     reh->reh_index = reh_index;
 
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
+
     int rc = ri->ri_backend->rib_entry_header_read(ri, reh);
 
     FATAL_IF((rc), "rib_entry_header_read(): %s", strerror(-rc));
 
-    DBG_RAFT_ENTRY(LL_DEBUG, reh, "");
+    niova_unstable_clock(&io_op[1]);
+
+    struct binary_hist *bh =
+        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC].rihs_bh;
+
+    const long long elapsed_usec =
+        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
+
+    if (elapsed_usec > 0)
+        binary_hist_incorporate_val(bh, elapsed_usec);
+
+    DBG_RAFT_ENTRY(LL_DEBUG, reh, "elapsed_usec=%lld", elapsed_usec);
 
     return read_server_entry_validate(ri, reh, reh_index);
 }
@@ -1215,7 +1229,7 @@ raft_server_entries_scan(struct raft_instance *ri)
     {
         rc = raft_server_entry_header_read_by_store(ri, &reh, i);
 
-        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "i=%lx rc=%d", i, rc);
+        DBG_RAFT_ENTRY(LL_WARN, &reh, "i=%lx rc=%d", i, rc);
 
         if (rc)
         {
