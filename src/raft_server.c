@@ -2518,14 +2518,26 @@ raft_server_process_append_entries_request_prep_reply(
     reply->rrm_append_entries_reply.raerpm_heartbeat_msg =
         raerq->raerqm_heartbeat_msg;
 
-    reply->rrm_append_entries_reply.raerpm_synced_log_index = rc ?
-        -1ULL : raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
-
-    uuid_copy(reply->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    const raft_entry_idx_t current_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
 
     struct raft_append_entries_reply_msg *rae_reply =
         &reply->rrm_append_entries_reply;
+
+    /* Issue #27 - explicitly tell the leader if we're newly initialized
+     * to remove any ambiguity about the use of the raerpm_synced_log_index
+     * value.  `raerpm_newly_initialized_peer == 0` will allow the leader to
+     * set our next-idx to '0'.
+     */
+    rae_reply->raerpm_newly_initialized_peer =
+        current_idx == ID_ANY_64bit ? 1 : 0;
+
+    // Issue #27 - send synced-log-index in non_matching_prev_term case too
+    rae_reply->raerpm_synced_log_index =
+        (!rc || non_matching_prev_term) ? current_idx : ID_ANY_64bit;
+
+    uuid_copy(reply->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
+    uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
 
     rae_reply->raerpm_err_stale_term = stale_term;
     rae_reply->raerpm_err_non_matching_prev_term = non_matching_prev_term;
@@ -2886,9 +2898,24 @@ raft_server_apply_append_entries_reply_result(
     {
         if (rfi->rfi_next_idx > 0)
         {
-            rfi->rfi_next_idx--;
+            if (raerp->raerpm_newly_initialized_peer)
+            {
+                rfi->rfi_next_idx = 0;
+            }
+            else
+            {
+                rfi->rfi_next_idx =
+                    (raerp->raerpm_synced_log_index >= 0 &&
+                     raerp->raerpm_synced_log_index < rfi->rfi_next_idx)
+                    ? raerp->raerpm_synced_log_index
+                    : rfi->rfi_next_idx - 1;
+            }
+
             rfi->rfi_prev_idx_term = -1; //Xxx this needs to go into a function
 #if SYNC_IDX_BUG
+            /* Don't yet take the raerpm_synced_log_index for rfi_synced_idx
+             * since it may be from another leader.
+             */
             if (rfi->rfi_synced_idx >= rfi->rfi_next_idx)
                 rfi->rfi_synced_idx = rfi->rfi_next_idx - 1;
 #endif
