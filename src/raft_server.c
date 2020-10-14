@@ -45,6 +45,10 @@ REGISTRY_ENTRY_FILE_GENERATE;
 typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
 
+// A value of '0' means that all will be read
+static size_t raftPersistentAppMaxScanEntries =
+    RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
+
 static const char *
 raft_server_may_accept_client_request_reason(struct raft_instance *ri);
 
@@ -1198,11 +1202,20 @@ raft_server_entries_scan(struct raft_instance *ri)
 
     struct raft_entry_header reh;
 
-    for (raft_entry_idx_t i = 0; i < num_entries; i++)
-    {
-        int rc = raft_server_entry_header_read_by_store(ri, &reh, i);
+    raft_entry_idx_t starting_entry =
+        (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP &&
+         raftPersistentAppMaxScanEntries > 0 &&
+         num_entries > raftPersistentAppMaxScanEntries)
+        ? starting_entry = num_entries - raftPersistentAppMaxScanEntries
+        : 0;
 
-        DBG_RAFT_ENTRY(LL_DEBUG, &reh, "i=%lx rc=%d", i, rc);
+    int rc = 0;
+
+    for (raft_entry_idx_t i = starting_entry; i < num_entries; i++)
+    {
+        rc = raft_server_entry_header_read_by_store(ri, &reh, i);
+
+        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "i=%lx rc=%d", i, rc);
 
         if (rc)
         {
@@ -1211,11 +1224,19 @@ raft_server_entries_scan(struct raft_instance *ri)
                            strerror(-rc));
             break;
         }
-        else if (!raft_server_entry_next_entry_is_valid(ri, &reh))
+
+        /* Skip the validity check on the first iteration when starting_entry
+         * is set.
+         */
+        else if (starting_entry && i > starting_entry)
         {
-            DBG_RAFT_ENTRY(LL_WARN, &reh,
-                           "raft_server_entry_next_entry_is_valid() false");
-            break;
+            if (!raft_server_entry_next_entry_is_valid(ri, &reh))
+            {
+                DBG_RAFT_ENTRY(
+                    LL_WARN, &reh,
+                    "raft_server_entry_next_entry_is_valid() false");
+                break;
+            }
         }
 
         /* During startup, sync and unsynced should be equivalent since all
@@ -1225,7 +1246,7 @@ raft_server_entries_scan(struct raft_instance *ri)
         raft_instance_update_newest_entry_hdr(ri, &reh, RI_NEHDR_ALL, false);
     }
 
-    return 0;
+    return rc;
 }
 
 /**

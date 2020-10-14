@@ -77,6 +77,8 @@ enum raft_instance_store_type
     RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
 };
 
+#define RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES 100000
+
 enum raft_udp_listen_sockets
 {
     RAFT_UDP_LISTEN_MIN    = 0,
