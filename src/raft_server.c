@@ -2674,26 +2674,45 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     }
     else
     {
+        bool advance_commit_idx = false;
+        raft_entry_idx_t new_commit_idx = raerq->raerqm_commit_index;
+
         rc = raft_server_append_entry_log_prepare_and_check(ri, raerq);
         if (rc)
         {
-            if (rc != -EALREADY)
+            if (rc == -EALREADY)
+            {
+                advance_commit_idx = true;
+            }
+            else
+            {
                 non_matching_prev_term = true;
+                if (rc == -ERANGE)
+                    advance_commit_idx = true;
+            }
+
+            // Issue #28 - advance the index of recently restarted server
+            if (advance_commit_idx)
+                new_commit_idx = MIN(new_commit_idx,
+                                     raft_server_get_current_raft_entry_index(
+                                         ri, RI_NEHDR_SYNC));
         }
         else
         {
+            advance_commit_idx = true;
             if (!raerq->raerqm_heartbeat_msg &&
                 !(fault_inject_ignore_ae =
                       FAULT_INJECT(raft_follower_ignores_AE)))
                 raft_server_write_new_entry_from_leader(ri, raerq);
-
-            /* Update our commit-idx based on the value sent from the leader.
-             * NOTE:  if synchronous mode is set then this will account for the
-             * the write performed above, otherwise, only the sync'd writes to
-             * this point are considered.
-             */
-            raft_server_advance_commit_idx(ri, raerq->raerqm_commit_index);
         }
+
+        /* Update our commit-idx based on the value sent from the leader.
+         * NOTE:  if synchronous mode is set then this will account for the
+         * the write performed above, otherwise, only the sync'd writes to
+         * this point are considered.
+         */
+        if (advance_commit_idx)
+            raft_server_advance_commit_idx(ri, new_commit_idx);
     }
 
     // Issue reply
