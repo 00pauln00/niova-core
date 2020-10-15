@@ -2348,7 +2348,7 @@ raft_server_append_entry_log_prune_if_needed(
     raft_server_log_truncate(ri);
 }
 
-static raft_server_udp_cb_follower_ctx_int_t
+static raft_server_net_cb_follower_ctx_int_t
 raft_server_follower_index_ahead_of_leader(
     struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq,
@@ -3023,7 +3023,7 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
                                                       raerp);
 }
 
-static raft_server_udp_cb_ctx_t
+static raft_server_net_cb_ctx_t
 raft_server_process_sync_idx_update(struct raft_instance *ri,
                                     struct ctl_svc_node *sender_csn,
                                     const struct raft_rpc_msg *rrm)
@@ -3912,9 +3912,8 @@ raft_server_follower_send_sync_idx(struct raft_instance *ri)
                           strerror(-rc));
 }
 
-static raft_server_epoll_ae_sender_t
-raft_server_append_entry_sender_evp_cb(const struct epoll_handle *eph,
-                                       uint32_t events)
+static raft_server_epoll_remote_sender_t
+raft_server_remote_send_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 
@@ -3950,7 +3949,8 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 static raft_server_epoll_t
-raft_server_commit_idx_adv_evp_cb(const struct epoll_handle *eph)
+raft_server_commit_idx_adv_evp_cb(const struct epoll_handle *eph,
+                                  uint32_t events)
 {
     NIOVA_ASSERT(eph);
     FUNC_ENTRY(LL_DEBUG);
