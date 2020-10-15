@@ -84,7 +84,7 @@ static unsigned long long raftClientIdlePingServerTimeMS =
     RAFT_CLIENT_STALE_SERVER_TIME_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
 static unsigned long long raftClientRetryTimeoutMS =
-    (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 2);
+    (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 10);
 
 #define RAFT_CLIENT_OP_HISTORY_SIZE 64
 static const size_t raftClientOpHistorySize = RAFT_CLIENT_OP_HISTORY_SIZE;
@@ -2415,6 +2415,9 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
 
     int rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
                                    "raft_client", (void *)rci, NULL);
+
+    FATAL_IF(rc, "pthread_create(): %s", strerror(-rc));
+
     // Start the thread
     thread_ctl_run(&rci->rci_thr_ctl);
 
@@ -2422,8 +2425,6 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
      * complete before proceeding.
      */
     thread_creator_wait_until_ctl_loop_reached(&rci->rci_thr_ctl);
-
-    FATAL_IF(rc, "pthread_create(): %s", strerror(errno));
 
     *raft_client_instance = (void *)rci;
 

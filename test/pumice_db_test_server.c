@@ -15,13 +15,13 @@
 #include "raft_test.h"
 #include "pumice_db.h"
 
-#define OPTS "u:r:h"
+#define OPTS "u:r:ha"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static const char *pmdbts_column_family_name = "PMDBTS_CF";
 static rocksdb_column_family_handle_t *pmdbts_cfh;
-
+static bool syncPMDBWrites = true;
 const char *raft_uuid_str;
 const char *my_uuid_str;
 
@@ -317,6 +317,9 @@ pmdbts_getopt(int argc, char **argv)
     {
         switch (opt)
         {
+        case 'a':
+            syncPMDBWrites = false;
+            break;
         case 'r':
             raft_uuid_str = optarg;
             break;
@@ -348,5 +351,6 @@ main(int argc, char **argv)
 
     const char *cf_names[1] = {pmdbts_column_family_name};
 
-    return PmdbExec(raft_uuid_str, my_uuid_str, &api, cf_names, 1);
+    return PmdbExec(raft_uuid_str, my_uuid_str, &api, cf_names, 1,
+                    syncPMDBWrites);
 }

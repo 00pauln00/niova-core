@@ -34,7 +34,7 @@ fi
 
 #gdb --args
 #gdb -ex=r --args \
-#./raft-server -R -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
+#./raft-server -a -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
 
 LD_LIBRARY_PATH=. gdb -ex=r --args \
-./pumicedb-server-test -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
+./pumicedb-server-test -a -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
