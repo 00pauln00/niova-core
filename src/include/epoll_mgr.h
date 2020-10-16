@@ -31,6 +31,7 @@ enum epoll_handle_ref_op
 struct epoll_handle;
 typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *, uint32_t);
 typedef void (*epoll_mgr_ref_cb_t)(void *, enum epoll_handle_ref_op);
+typedef void (*epoll_mgr_ctx_cb_t)(const void *, size_t); // XXX this name is confusing
 
 struct epoll_handle
 {
@@ -48,18 +49,28 @@ struct epoll_handle
 
 CIRCLEQ_HEAD(epoll_handle_list, epoll_handle);
 
+struct epoll_ctx_callback
+{
+    SLIST_ENTRY(epoll_ctx_callback) ecc_lentry;
+    epoll_mgr_ctx_cb_t ecc_cb;
+    size_t             ecc_data_size;
+    char               ecc_data[];
+};
+SLIST_HEAD(epoll_ctx_callback_list, epoll_ctx_callback);
+
 typedef void epoll_mgr_cb_ctx_t;
 
 struct epoll_mgr
 {
-    pthread_t                epm_thread_id;
-    pthread_mutex_t          epm_mutex;
-    int                      epm_num_handles;
-    int                      epm_epfd;
-    unsigned int             epm_ready : 1;
-    niova_atomic64_t         epm_epoll_wait_cnt;
-    struct epoll_handle_list epm_active_list;
-    struct epoll_handle_list epm_destroy_list;
+    pthread_t                      epm_thread_id;
+    pthread_mutex_t                epm_mutex;
+    int                            epm_num_handles;
+    int                            epm_epfd;
+    unsigned int                   epm_ready : 1;
+    niova_atomic64_t               epm_epoll_wait_cnt;
+    struct epoll_handle_list       epm_active_list;
+    struct epoll_handle_list       epm_destroy_list;
+    struct epoll_ctx_callback_list epm_ctx_cb_list;
 };
 
 struct niova_env_var;
@@ -92,5 +103,13 @@ epoll_handle_del_wait(struct epoll_mgr *epm, struct epoll_handle *eph);
 
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
+
+int
+epoll_mgr_ctx_cb_init(struct epoll_mgr *epm,
+                      epoll_mgr_ctx_cb_t ecc_cb,
+                      void **data_out, size_t data_size);
+
+void
+epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, void *data);
 
 #endif

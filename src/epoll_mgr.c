@@ -7,11 +7,13 @@
 #include <sys/epoll.h>
 #include <unistd.h>
 
+#include "alloc.h"
 #include "common.h"
 #include "ctor.h"
 #include "env.h"
 #include "epoll_mgr.h"
 #include "log.h"
+#include "queue.h"
 #include "registry.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -46,6 +48,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
 
     CIRCLEQ_INIT(&epm->epm_active_list);
     CIRCLEQ_INIT(&epm->epm_destroy_list);
+    SLIST_INIT(&epm->epm_ctx_cb_list);
 
     epm->epm_ready = 1;
     niova_atomic_init(&epm->epm_epoll_wait_cnt, 0);
@@ -215,7 +218,7 @@ epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_MOD, eph->eph_fd, &ev);
 
     SIMPLE_LOG_MSG(LL_DEBUG, "epoll_handle_mod: fd=%d ev=%d rc=%d",
-            eph->eph_fd, ev.events, rc);
+                   eph->eph_fd, ev.events, rc);
 
     if (rc < 0)
         return -errno;
@@ -362,6 +365,66 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 }
 
 int
+epoll_mgr_ctx_cb_init(struct epoll_mgr *epm,
+                      epoll_mgr_ctx_cb_t ecc_cb,
+                      void **data_out, size_t data_size)
+{
+    if (epm->epm_thread_id == pthread_self())
+        return -EALREADY;
+
+    if (ecc_cb == NULL || (data_out == NULL && data_size > 0))
+        return -EINVAL;
+
+    size_t ecc_size = sizeof(struct epoll_ctx_callback) + data_size;
+    struct epoll_ctx_callback *ecc = niova_malloc_can_fail(ecc_size);
+    if (!ecc)
+        return -ENOMEM;
+
+    ecc->ecc_cb = ecc_cb;
+    ecc->ecc_data_size = data_size;
+    *data_out = ecc->ecc_data;
+
+    return 0;
+}
+
+void
+epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, void *data)
+{
+    struct epoll_ctx_callback *ecc = OFFSET_CAST(epoll_ctx_callback, ecc_data,
+                                                 data);
+
+    niova_mutex_lock(&epm->epm_mutex);
+    SLIST_INSERT_HEAD(&epm->epm_ctx_cb_list, ecc, ecc_lentry);
+    niova_mutex_unlock(&epm->epm_mutex);
+
+    pthread_t tid = epm->epm_thread_id;
+    if (tid > 0)
+        thread_issue_sig_alarm_to_thread(tid);
+}
+
+static void
+epoll_mgr_ctx_cb_fini(struct epoll_ctx_callback *ecc)
+{
+    niova_free(ecc);
+}
+
+static void
+epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
+{
+    NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
+    niova_mutex_lock(&epm->epm_mutex);
+    while (!SLIST_EMPTY(&epm->epm_ctx_cb_list))
+    {
+        struct epoll_ctx_callback *ecc = SLIST_FIRST(&epm->epm_ctx_cb_list);
+        SLIST_REMOVE_HEAD(&epm->epm_ctx_cb_list, ecc_lentry);
+
+        ecc->ecc_cb(ecc->ecc_data, ecc->ecc_data_size);
+        epoll_mgr_ctx_cb_fini(ecc);
+    }
+    niova_mutex_unlock(&epm->epm_mutex);
+}
+
+int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -376,6 +439,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     // Try to cleanup destroying handles prior to blocking indefinitely
     epoll_mgr_reap_destroy_list(epm);
+    epoll_mgr_reap_ctx_list(epm);
 
     int maxevents = MAX(1, MIN(epollMgrNumEvents, epm->epm_num_handles));
 
@@ -407,6 +471,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
 
     // Reap again before returning control to the caller
     epoll_mgr_reap_destroy_list(epm);
+    epoll_mgr_reap_ctx_list(epm);
 
     return nevents < 0 ? rc : nevents;
 }

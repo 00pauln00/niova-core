@@ -126,4 +126,7 @@ tcp_mgr_bulk_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 void
 tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 
+void
+tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc);
+
 #endif
