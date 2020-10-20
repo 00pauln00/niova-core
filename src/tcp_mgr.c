@@ -111,6 +111,9 @@ tcp_mgr_sockets_setup(struct tcp_mgr_instance *tmi, const char *ipaddr,
 int
 tcp_mgr_sockets_close(struct tcp_mgr_instance *tmi)
 {
+    if (tmi->tmi_listen_eph.eph_installed)
+        epoll_handle_del(tmi->tmi_epoll_mgr, &tmi->tmi_listen_eph);
+
     return tcp_socket_close(&tmi->tmi_listen_socket);
 }
 
@@ -353,6 +356,7 @@ static int
 tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
                               void *hdr, size_t hdr_size)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(tmc && !tmc->tmc_bulk_buf && !tmc->tmc_bulk_remain);
     if (!bulk_size)
         return 0;
@@ -387,6 +391,8 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
 static int
 tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
 
     tcp_mgr_recv_cb_t recv_cb = tmi->tmi_recv_cb;
@@ -417,6 +423,8 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 static int
 tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     NIOVA_ASSERT(tmi->tmi_recv_cb);
 
@@ -433,6 +441,8 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 static epoll_mgr_cb_ctx_t
 tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     NIOVA_ASSERT(eph && eph->eph_arg);
 
     struct tcp_mgr_connection *tmc = eph->eph_arg;
@@ -460,7 +470,7 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     }
 
     // no 'else', tcp_mgr_new_msg_handler can initiate bulk read
-    if (tmc->tmc_bulk_remain)
+    if (rc == 0 && tmc->tmc_bulk_remain)
     {
         NIOVA_ASSERT(tmc->tmc_bulk_buf);
 
@@ -472,7 +482,10 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     }
 
     if (rc < 0)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "error in recv, closing");
         tcp_mgr_connection_close(tmc);
+    }
 }
 
 static int
@@ -553,10 +566,11 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_socket_recv(): rc=%d", rc);
 
-    struct tcp_mgr_connection *new_tmc;
+    struct tcp_mgr_connection *new_tmc = NULL;
 
     rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, &tmc->tmc_header_size,
                                tmc->tmc_tsh.tsh_socket, iov.iov_base, rc);
+    NIOVA_ASSERT(new_tmc);
 
     tcp_mgr_handshake_iov_fini(&iov);
 
@@ -598,7 +612,7 @@ tcp_mgr_accept(struct tcp_mgr_instance *tmi, int fd)
 static epoll_mgr_cb_ctx_t
 tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
 {
-    SIMPLE_FUNC_ENTRY(LL_NOTIFY);
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(eph && eph->eph_arg);
 
     struct tcp_mgr_instance *tmi = eph->eph_arg;
@@ -608,6 +622,7 @@ tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
         SIMPLE_LOG_MSG(LL_ERROR, "tcp_mgr_accept(): %d", rc);
 }
 
+/* must call sockets_setup and sockets_bind first */
 int
 tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr)
 {
@@ -723,6 +738,12 @@ tcp_mgr_connection_connect_epoll_ctx(const void *data, size_t sz)
     const struct tmc_context *cc = data;
     struct tcp_mgr_connection *tmc = cc->tmccc_tmc;
 
+    if (tmc->tmc_status != TMCS_CONNECTING)
+    {
+        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "no longer connecting");
+        return;
+    }
+
     int rc = tcp_socket_setup(&tmc->tmc_tsh);
     if (rc < 0)
     {
@@ -761,10 +782,11 @@ static int
 tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
                           bool do_connect)
 {
-    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "do_connect=%d", do_connect);
-    NIOVA_ASSERT(tmc && tmc->tmc_status != TMCS_NEEDS_SETUP);
-
     enum tcp_mgr_connection_status status = tmc->tmc_status;
+
+    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "do_connect=%d status=%d", do_connect, status);
+
+    NIOVA_ASSERT(tmc && status != TMCS_NEEDS_SETUP);
 
     int rc = 0;
     if (status != TMCS_DISCONNECTED || !do_connect)
@@ -786,14 +808,16 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
 
     tmc->tmc_status = TMCS_CONNECTING;
 
-    return tcp_mgr_connection_epoll_ctx_run(tmc,
-                                            tcp_mgr_connection_connect_epoll_ctx);
+    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx);
+
+    return -EAGAIN;
 }
 
 int
 tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
                  struct iovec *iov, size_t niovs)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (tmc->tmc_status == TMCS_NEEDS_SETUP)
     {
         tcp_mgr_connection_setup(tmc, tmi);

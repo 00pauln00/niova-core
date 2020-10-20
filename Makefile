@@ -142,6 +142,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/config_token_test \
 		test/config_token_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/tcp_mgr_test \
+		test/tcp_mgr_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 	$(CC) $(CFLAGS) -o test/tcp_test \
 		test/tcp_test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)

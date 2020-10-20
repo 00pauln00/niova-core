@@ -26,6 +26,7 @@ static pthread_mutex_t epollMgrInstallLock = PTHREAD_MUTEX_INITIALIZER;
 int
 epoll_mgr_setup(struct epoll_mgr *epm)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (!epm)
         return -EINVAL;
 
@@ -38,6 +39,9 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     }
 
     pthread_mutex_init(&epm->epm_mutex, NULL);
+    pthread_mutex_init(&epm->epm_ctx_cb_mutex, NULL);
+
+    epm->epm_thread_id = 0;
 
     epm->epm_epfd = epoll_create1(0);
     if (epm->epm_epfd < 0)
@@ -393,9 +397,9 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, void *data)
     struct epoll_ctx_callback *ecc = OFFSET_CAST(epoll_ctx_callback, ecc_data,
                                                  data);
 
-    niova_mutex_lock(&epm->epm_mutex);
+    niova_mutex_lock(&epm->epm_ctx_cb_mutex);
     SLIST_INSERT_HEAD(&epm->epm_ctx_cb_list, ecc, ecc_lentry);
-    niova_mutex_unlock(&epm->epm_mutex);
+    niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
 
     pthread_t tid = epm->epm_thread_id;
     if (tid > 0)
@@ -411,8 +415,9 @@ epoll_mgr_ctx_cb_fini(struct epoll_ctx_callback *ecc)
 static void
 epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
-    niova_mutex_lock(&epm->epm_mutex);
+    niova_mutex_lock(&epm->epm_ctx_cb_mutex);
     while (!SLIST_EMPTY(&epm->epm_ctx_cb_list))
     {
         struct epoll_ctx_callback *ecc = SLIST_FIRST(&epm->epm_ctx_cb_list);
@@ -421,7 +426,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
         ecc->ecc_cb(ecc->ecc_data, ecc->ecc_data_size);
         epoll_mgr_ctx_cb_fini(ecc);
     }
-    niova_mutex_unlock(&epm->epm_mutex);
+    niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
 }
 
 int
