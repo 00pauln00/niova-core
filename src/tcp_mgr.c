@@ -226,25 +226,40 @@ tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 // XXX this name could be better
 struct tmc_context {
     struct tcp_mgr_connection *tmccc_tmc;
+    void                       (*tmccc_cb)(struct tcp_mgr_connection *tmc);
+    epoll_mgr_ctx_cb_t         tmccc_done_cb;
+    void                      *tmccc_done_data;
 };
+
+static void
+tcp_mgr_connection_epoll_ctx_cb(const void *data)
+{
+    const struct tmc_context *cc = data;
+    NIOVA_ASSERT(cc->tmccc_cb);
+
+    cc->tmccc_cb(cc->tmccc_tmc);
+
+    if (cc->tmccc_done_cb)
+        cc->tmccc_done_cb(cc->tmccc_done_data);
+}
 
 static int
 tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
-                                 epoll_mgr_ctx_cb_t cb)
+                                 void (*cb)(struct tcp_mgr_connection *tmc),
+                                 epoll_mgr_ctx_cb_t done_cb,
+                                 void *done_data)
 {
     struct tmc_context *ctx;
     struct epoll_mgr *epm = tmc->tmc_tmi->tmi_epoll_mgr;
 
     int rc = epoll_mgr_ctx_cb_init(epm,
-                                   cb,
+                                   tcp_mgr_connection_epoll_ctx_cb,
                                    (void**)&ctx,
                                    sizeof(struct tmc_context));
     // are we already in the epoll thread ctx?
     if (rc == -EALREADY)
     {
-        struct tmc_context real_ctx;
-        real_ctx.tmccc_tmc = tmc;
-        cb(&real_ctx, sizeof(struct tmc_context));
+        cb(tmc);
         return 0;
     }
     else if (rc)
@@ -255,6 +270,9 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
     }
 
     ctx->tmccc_tmc = tmc;
+    ctx->tmccc_cb = cb;
+    ctx->tmccc_done_cb = done_cb;
+    ctx->tmccc_done_data = done_data;
     epoll_mgr_ctx_cb_add(epm, ctx);
 
     return 0;
@@ -732,12 +750,8 @@ tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 static void
-tcp_mgr_connection_connect_epoll_ctx(const void *data, size_t sz)
+tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
 {
-    NIOVA_ASSERT(sz == sizeof(struct tmc_context));
-    const struct tmc_context *cc = data;
-    struct tcp_mgr_connection *tmc = cc->tmccc_tmc;
-
     if (tmc->tmc_status != TMCS_CONNECTING)
     {
         DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "no longer connecting");
@@ -784,7 +798,8 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
 {
     enum tcp_mgr_connection_status status = tmc->tmc_status;
 
-    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "do_connect=%d status=%d", do_connect, status);
+    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "do_connect=%d status=%d", do_connect,
+                    status);
 
     NIOVA_ASSERT(tmc && status != TMCS_NEEDS_SETUP);
 
@@ -808,7 +823,9 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
 
     tmc->tmc_status = TMCS_CONNECTING;
 
-    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx);
+    // XXX add connect callback
+    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx,
+                                     NULL, NULL);
 
     return -EAGAIN;
 }
@@ -832,22 +849,16 @@ tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
     rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
 
     if (rc == -ENOTCONN || rc == -ECONNRESET)
-        tcp_mgr_connection_close_async(tmc);
+        tcp_mgr_connection_close_async(tmc, NULL, NULL);
 
     return rc;
 }
 
-static epoll_mgr_cb_ctx_t
-tcp_mgr_connection_close_epoll_ctx(const void *data, size_t sz)
-{
-    NIOVA_ASSERT(sz == sizeof(struct tmc_context));
-    const struct tmc_context *cc = data;
-    tcp_mgr_connection_close(cc->tmccc_tmc);
-}
-
 void
-tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc)
+tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
+                               epoll_mgr_ctx_cb_t done_cb, void *done_data)
 {
-    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_close_epoll_ctx);
+    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_close,
+                                     done_cb, done_data);
 };
 

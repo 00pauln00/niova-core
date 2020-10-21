@@ -423,7 +423,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
         struct epoll_ctx_callback *ecc = SLIST_FIRST(&epm->epm_ctx_cb_list);
         SLIST_REMOVE_HEAD(&epm->epm_ctx_cb_list, ecc_lentry);
 
-        ecc->ecc_cb(ecc->ecc_data, ecc->ecc_data_size);
+        ecc->ecc_cb(ecc->ecc_data);
         epoll_mgr_ctx_cb_fini(ecc);
     }
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);

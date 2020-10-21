@@ -127,6 +127,7 @@ void
 tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 
 void
-tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc);
+tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
+                               epoll_mgr_ctx_cb_t done_cb, void *done_data);
 
 #endif
