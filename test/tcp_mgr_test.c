@@ -7,16 +7,20 @@
 #include "tcp_mgr.h"
 #include "util.h"
 
-#define OPTS "c:xt:"
+#define OPTS "c:x:t:"
 
 #define IPADDR "127.0.0.1"
 #define DEFAULT_PORT 1701
 
 #define MAGIC 0x0D15EA5E
 
+#define MAX_TEST_TIME 3600
+#define MAX_CLOSE_SLEEP_TIME 360000
 #define DEFAULT_TEST_TIME 10
+#define DEFAULT_CLOSE_SLEEP_TIME 2
 
 static int testTime = DEFAULT_TEST_TIME;
+static int closeSleepTime = DEFAULT_CLOSE_SLEEP_TIME;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -207,7 +211,7 @@ tmt_close_thread(void *arg)
 
     THREAD_LOOP_WITH_CTL(tc)
     {
-        sleep(2);
+        usleep(closeSleepTime * 1000);
 
         struct tmt_owned_connection *oc = tmt_owned_connection_random_get(td);
         DBG_TCP_MGR_CXN(LL_NOTIFY, &oc->oc_tmc, "closing connection");
@@ -219,6 +223,8 @@ tmt_close_thread(void *arg)
 
 void tmt_threads_start(struct tmt_data *td)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct tmt_thread *thread;
     LIST_FOREACH(thread, &td->td_thread_list_head, tt_lentry)
     {
@@ -228,10 +234,12 @@ void tmt_threads_start(struct tmt_data *td)
 
 void tmt_threads_stop(struct tmt_data *td)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct tmt_thread *thread;
     LIST_FOREACH(thread, &td->td_thread_list_head, tt_lentry)
     {
-        thread_halt_and_destroy(&thread->tt_thread);
+        thread_ctl_halt(&thread->tt_thread);
     }
 }
 
@@ -300,19 +308,13 @@ tmt_handshake_fill(void *_data, struct tcp_mgr_connection *tmc, void *buf,
 }
 
 void
-tmt_setup(struct tmt_data *data, int port)
+tmt_bind(struct tmt_data *data, int port)
 {
-    epoll_mgr_setup(&data->td_epoll_mgr);
-
-    tcp_mgr_setup(&data->td_tcp_mgr, data, tmt_owned_connection_getput,
-                  tmt_recv_cb,
-                  tmt_bulk_size_cb,
-                  tmt_handshake_cb,
-                  tmt_handshake_fill, sizeof(struct tmt_handshake));
-
     tcp_mgr_sockets_setup(&data->td_tcp_mgr, IPADDR, port);
     tcp_mgr_sockets_bind(&data->td_tcp_mgr);
     tcp_mgr_epoll_setup(&data->td_tcp_mgr, &data->td_epoll_mgr);
+
+    printf("added server on port %d\n", port);
 }
 
 void *tmt_event_loop_thread(void *arg)
@@ -329,6 +331,8 @@ void *tmt_event_loop_thread(void *arg)
 
 void tmt_connections_putall(struct tmt_data *td)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     // getput can take the lock, so don't lock here
     struct tmt_owned_connection *oc = LIST_FIRST(&td->td_conn_list_head);
     LIST_INIT(&td->td_conn_list_head);
@@ -345,6 +349,8 @@ void tmt_connections_putall(struct tmt_data *td)
 static void
 tmt_client_add(struct tmt_data *td, int port)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct tmt_owned_connection *oc = tmt_owned_connection_new(td);
     struct tmt_thread *thread = tmt_thread_new(td);
     NIOVA_ASSERT(oc && thread);
@@ -356,24 +362,30 @@ tmt_client_add(struct tmt_data *td, int port)
     int rc = thread_create(tmt_send_thread, &thread->tt_thread, name, oc, NULL);
     if (rc)
         SIMPLE_LOG_MSG(LL_ERROR, "thread_create(): rc=%d", rc);
+
+    printf("added client, port %d\n", port);
 }
 
 static void
 tmt_close_thread_add(struct tmt_data *td)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     struct tmt_thread *thread = tmt_thread_new(td);
 
-    int rc = thread_create(tmt_close_thread, &thread->tt_thread, "close", NULL,
+    int rc = thread_create(tmt_close_thread, &thread->tt_thread, "close", td,
                            NULL);
     if (rc)
         SIMPLE_LOG_MSG(LL_ERROR, "thread_create(): rc=%d", rc);
+
+    printf("added connection closing thread\n");
 }
 
 static void
 tmt_print_help(const int error)
 {
     fprintf(error ? stderr : stdout,
-            "tcp_mgr_test [-t run_time_seconds] [-c port] [-x]\n");
+            "tcp_mgr_test [-t run_time_sec] [-c port] [-x close_time_msec]\n");
 
     exit(error);
 }
@@ -381,17 +393,23 @@ tmt_print_help(const int error)
 static void
 tmt_process_opts(struct tmt_data *td, int argc, char **argv)
 {
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
     int opt;
     while ((opt = getopt(argc, argv, OPTS)) != -1)
     {
+        SIMPLE_LOG_MSG(LL_DEBUG, "got opt %c", opt);
         switch (opt)
         {
         case 't':
             testTime = atoi(optarg);
-            if (testTime < 1 || testTime > 3600)
+            if (testTime < 1 || testTime > MAX_TEST_TIME)
                 testTime = DEFAULT_TEST_TIME;
             break;
         case 'x':
+            closeSleepTime = atoi(optarg);
+            if (closeSleepTime < 1 || closeSleepTime > MAX_CLOSE_SLEEP_TIME)
+                closeSleepTime = DEFAULT_CLOSE_SLEEP_TIME;
             tmt_close_thread_add(td);
             break;
         case 'c':
@@ -407,7 +425,8 @@ tmt_process_opts(struct tmt_data *td, int argc, char **argv)
     if (optind < argc)
         port = atoi(optarg);
 
-    tmt_setup(td, port);
+    SIMPLE_LOG_MSG(LL_DEBUG, "binding to port %d", port);
+    tmt_bind(td, port);
 }
 
 static void
@@ -422,24 +441,47 @@ tmt_event_loop_thread_add(struct tmt_data *td)
         SIMPLE_LOG_MSG(LL_ERROR, "thread_create(): rc=%d", rc);
 }
 
+static void
+tmt_setup(struct tmt_data *td)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    int rc = epoll_mgr_setup(&td->td_epoll_mgr);
+    NIOVA_ASSERT(!rc);
+
+    tcp_mgr_setup(&td->td_tcp_mgr, td, tmt_owned_connection_getput,
+                  tmt_recv_cb,
+                  tmt_bulk_size_cb,
+                  tmt_handshake_cb,
+                  tmt_handshake_fill, sizeof(struct tmt_handshake));
+
+    rc = pthread_mutex_init(&td->td_conn_list_mutex, NULL);
+    NIOVA_ASSERT(!rc);
+
+    LIST_INIT(&td->td_conn_list_head);
+    LIST_INIT(&td->td_thread_list_head);
+}
+
 int
 main(int argc, char **argv)
 {
-    struct tmt_data test_data;
+    struct tmt_data tmt_data;
+    tmt_setup(&tmt_data);
 
-    tmt_process_opts(&test_data, argc, argv);
-    tmt_event_loop_thread_add(&test_data);
+    tmt_process_opts(&tmt_data, argc, argv);
+    tmt_event_loop_thread_add(&tmt_data);
 
-    tmt_threads_start(&test_data);
+    tmt_threads_start(&tmt_data);
 
+    printf("running for %d seconds...\n", testTime);
     usleep(testTime * 1000 * 1000);
     SIMPLE_LOG_MSG(LL_NOTIFY, "ending");
 
-    tmt_threads_stop(&test_data);
+    tmt_threads_stop(&tmt_data);
 
-    tmt_connections_putall(&test_data);
+    tmt_connections_putall(&tmt_data);
 
-    tcp_mgr_sockets_close(&test_data.td_tcp_mgr);
+    tcp_mgr_sockets_close(&tmt_data.td_tcp_mgr);
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "main ended");
 }

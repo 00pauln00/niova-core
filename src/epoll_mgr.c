@@ -42,6 +42,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     pthread_mutex_init(&epm->epm_ctx_cb_mutex, NULL);
 
     epm->epm_thread_id = 0;
+    epm->epm_num_handles = 0;
 
     epm->epm_epfd = epoll_create1(0);
     if (epm->epm_epfd < 0)
@@ -369,9 +370,9 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 }
 
 int
-epoll_mgr_ctx_cb_init(struct epoll_mgr *epm,
-                      epoll_mgr_ctx_cb_t ecc_cb,
-                      void **data_out, size_t data_size)
+epoll_mgr_ctx_cb_init_data(struct epoll_mgr *epm,
+                           epoll_mgr_ctx_cb_t ecc_cb,
+                           void **data_out, size_t data_size)
 {
     if (epm->epm_thread_id == pthread_self())
         return -EALREADY;
@@ -392,7 +393,7 @@ epoll_mgr_ctx_cb_init(struct epoll_mgr *epm,
 }
 
 void
-epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, void *data)
+epoll_mgr_ctx_cb_add_data(struct epoll_mgr *epm, void *data)
 {
     struct epoll_ctx_callback *ecc = OFFSET_CAST(epoll_ctx_callback, ecc_data,
                                                  data);
@@ -404,6 +405,18 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, void *data)
     pthread_t tid = epm->epm_thread_id;
     if (tid > 0)
         thread_issue_sig_alarm_to_thread(tid);
+}
+
+void
+epoll_mgr_ctx_cb_add_simple(struct epoll_mgr *epm,
+                            epoll_mgr_ctx_cb_t ecc_cb,
+                            void *data)
+{
+    void **data_save;
+    epoll_mgr_ctx_cb_init_data(epm, ecc_cb, (void**)&data_save, sizeof(void *));
+
+    *data_save = data;
+    epoll_mgr_ctx_cb_add_data(epm, data_save);
 }
 
 static void

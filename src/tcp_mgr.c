@@ -232,7 +232,7 @@ struct tmc_context {
 };
 
 static void
-tcp_mgr_connection_epoll_ctx_cb(const void *data)
+tcp_mgr_connection_epoll_ctx_cb(void *data)
 {
     const struct tmc_context *cc = data;
     NIOVA_ASSERT(cc->tmccc_cb);
@@ -252,10 +252,10 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
     struct tmc_context *ctx;
     struct epoll_mgr *epm = tmc->tmc_tmi->tmi_epoll_mgr;
 
-    int rc = epoll_mgr_ctx_cb_init(epm,
-                                   tcp_mgr_connection_epoll_ctx_cb,
-                                   (void**)&ctx,
-                                   sizeof(struct tmc_context));
+    int rc = epoll_mgr_ctx_cb_init_data(epm,
+                                        tcp_mgr_connection_epoll_ctx_cb,
+                                        (void**)&ctx,
+                                        sizeof(struct tmc_context));
     // are we already in the epoll thread ctx?
     if (rc == -EALREADY)
     {
@@ -273,7 +273,7 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
     ctx->tmccc_cb = cb;
     ctx->tmccc_done_cb = done_cb;
     ctx->tmccc_done_data = done_data;
-    epoll_mgr_ctx_cb_add(epm, ctx);
+    epoll_mgr_ctx_cb_add_data(epm, ctx);
 
     return 0;
 }

@@ -107,11 +107,15 @@ int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
 
 int
-epoll_mgr_ctx_cb_init(struct epoll_mgr *epm,
+epoll_mgr_ctx_cb_init_data(struct epoll_mgr *epm,
                       epoll_mgr_ctx_cb_t ecc_cb,
                       void **data_out, size_t data_size);
 
 void
-epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, void *data);
+epoll_mgr_ctx_cb_add_data(struct epoll_mgr *epm, void *data);
 
+void
+epoll_mgr_ctx_cb_add_simple(struct epoll_mgr *epm,
+                            epoll_mgr_ctx_cb_t ecc_cb,
+                            void *data);
 #endif
