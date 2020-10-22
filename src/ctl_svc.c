@@ -962,10 +962,6 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
 
     *csn = *in;
 
-    // XXX perhaps load different tcp_mgr based on node type in the future
-    if (ctl_svc_node_is_peer(csn))
-        raft_net_csn_connection_setup(raft_net_get_instance(), csn);
-
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
 

@@ -356,7 +356,8 @@ enum raft_instance_newest_entry_hdr_types
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
-    struct tcp_mgr_instance         ri_tcp_mgr;
+    struct tcp_mgr_instance         ri_peer_tcp_mgr;
+    struct tcp_mgr_instance         ri_client_tcp_mgr;
     struct ctl_svc_node            *ri_csn_raft;
     struct ctl_svc_node            *ri_csn_raft_peers[CTL_SVC_MAX_RAFT_PEERS];
     struct ctl_svc_node            *ri_csn_this_peer;

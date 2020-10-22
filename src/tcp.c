@@ -68,6 +68,8 @@ void
 tcp_socket_handle_set_data(struct tcp_socket_handle *tsh, const char *ipaddr,
                            int port)
 {
+    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", ipaddr, port);
+
     strncpy(tsh->tsh_ipaddr, ipaddr, sizeof(tsh->tsh_ipaddr) - 1);
     tsh->tsh_ipaddr[sizeof(tsh->tsh_ipaddr) - 1] = 0;
     tsh->tsh_port = port;
