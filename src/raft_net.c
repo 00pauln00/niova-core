@@ -775,8 +775,8 @@ raft_net_peer_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
 }
 
 static tcp_mgr_ctx_int_t
-raft_net_client_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t
-                       buf_size, struct raft_instance *ri)
+raft_net_client_tcp_cb(struct tcp_mgr_connection *tmc, char *buf,
+                       size_t buf_size, struct raft_instance *ri)
 {
     if (!tmc || !buf || !buf_size || !ri)
         return -EINVAL;
@@ -850,7 +850,8 @@ raft_net_tcp_handshake_fill(struct raft_instance *ri,
 
 static tcp_mgr_ctx_int_t
 raft_net_tcp_handshake_cb(struct raft_instance *ri,
-                          struct tcp_mgr_connection **tmc_out, size_t *header_size_out,
+                          struct tcp_mgr_connection **tmc_out,
+                          size_t *header_size_out,
                           int fd, struct raft_rpc_msg *handshake, size_t size)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
