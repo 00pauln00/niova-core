@@ -216,7 +216,8 @@ tcp_mgr_incoming_fini_err(struct tcp_mgr_connection *tmc)
 static void
 tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 {
-    niova_free(tmc);
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
 }
 
 static int
