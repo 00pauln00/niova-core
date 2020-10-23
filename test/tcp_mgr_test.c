@@ -12,6 +12,9 @@
 #define IPADDR "127.0.0.1"
 #define DEFAULT_PORT 1701
 
+#define BULK_CREDITS 1
+#define INCOMING_CREDITS 1
+
 #define MAGIC 0x0D15EA5E
 
 #define MAX_TEST_TIME 3600
@@ -39,6 +42,7 @@ struct tmt_handshake
 struct tmt_owned_connection
 {
     niova_atomic32_t          oc_ref_cnt;
+    int                       oc_port;
     struct tcp_mgr_connection oc_tmc;
     struct tmt_data          *oc_tmt_data;
     LIST_ENTRY(tmt_owned_connection) oc_lentry;
@@ -62,7 +66,17 @@ struct tmt_data
     int                              td_conn_count;
 
     struct tmt_thread_list           td_thread_list_head;
+
+    niova_atomic32_t                 td_recv_cnt;
+    niova_atomic32_t                 td_send_cnt;
+    niova_atomic32_t                 td_close_cnt;
 };
+
+static struct tmt_owned_connection *
+tmt_tcp_mgr_2_owned_connection(struct tcp_mgr_connection *tmc)
+{
+    return OFFSET_CAST(tmt_owned_connection, oc_tmc, tmc);
+}
 
 static struct tmt_owned_connection *
 tmt_owned_connection_new(struct tmt_data *td)
@@ -79,7 +93,6 @@ tmt_owned_connection_new(struct tmt_data *td)
     oc->oc_tmt_data = td;
     niova_atomic_init(&oc->oc_ref_cnt, 1);
     oc->oc_tmc.tmc_status = TMCS_NEEDS_SETUP;
-    tcp_mgr_connection_setup(&td->td_tcp_mgr, &oc->oc_tmc);
 
     td->td_conn_count++;
     niova_mutex_unlock(&td->td_conn_list_mutex);
@@ -105,11 +118,12 @@ tmt_owned_connection_fini(struct tmt_owned_connection *oc)
 }
 
 static void
-tmt_owned_connection_getput(void *data, enum epoll_handle_ref_op op)
+tmt_owned_connection_getput(struct tmt_owned_connection *oc,
+                            enum epoll_handle_ref_op op)
 {
-    struct tcp_mgr_connection *tmc = (struct tcp_mgr_connection *)data;
-    struct tmt_owned_connection *oc = OFFSET_CAST(tmt_owned_connection, oc_tmc,
-                                                  tmc);
+    SIMPLE_LOG_MSG(LL_DEBUG, "oc: %p, %s", oc,
+                   op == EPH_REF_GET ? "GET" : "PUT");
+
     if (op == EPH_REF_GET)
     {
         niova_atomic_inc(&oc->oc_ref_cnt);
@@ -120,6 +134,17 @@ tmt_owned_connection_getput(void *data, enum epoll_handle_ref_op op)
         if (refcnt == 0)
             tmt_owned_connection_fini(oc);
     }
+}
+
+static void
+tmt_tcp_mgr_owned_connection_getput_cb(void *data, enum epoll_handle_ref_op op)
+{
+    NIOVA_ASSERT(data);
+
+    struct tcp_mgr_connection *tmc = (struct tcp_mgr_connection *)data;
+    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
+
+    tmt_owned_connection_getput(oc, op);
 }
 
 static struct tmt_thread *
@@ -151,19 +176,21 @@ tmt_send_thread(void *arg)
     struct tmt_owned_connection *oc = tc->tc_arg;
     tmt_owned_connection_getput(oc, EPH_REF_GET);
 
+    struct tcp_mgr_instance *tmi = &oc->oc_tmt_data->td_tcp_mgr;
+
     int msg_idx = 0;
     THREAD_LOOP_WITH_CTL(tc)
     {
         size_t max_msg = BUF_SZ - sizeof(struct tmt_message);
         int msg_size = snprintf(msg->msg_buf, max_msg,
                                 "hello from [%s:%d], msg idx=%d",
-                                oc->oc_tmc.tmc_tmi->tmi_listen_socket.tsh_ipaddr,
-                                oc->oc_tmc.tmc_tmi->tmi_listen_socket.tsh_port,
+                                tmi->tmi_listen_socket.tsh_ipaddr,
+                                tmi->tmi_listen_socket.tsh_port,
                                 msg_idx);
         msg->msg_size = msg_size;
         iov.iov_len = msg_size + sizeof(struct tmt_message);
         SIMPLE_LOG_MSG(LL_NOTIFY, "sending message, msg_size=%d", msg_size);
-        int rc = tcp_mgr_send_msg(&oc->oc_tmc, &iov, 1);
+        int rc = tcp_mgr_send_msg(tmi, &oc->oc_tmc, &iov, 1);
         if (rc < 0)
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "error sending message, rc=%d", rc);
@@ -172,11 +199,14 @@ tmt_send_thread(void *arg)
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "sent message, msg_idx=%d", msg_idx);
             msg_idx++;
+            niova_atomic_inc(&oc->oc_tmt_data->td_send_cnt);
         }
 
         usleep(100 * 1000);
     }
     tmt_owned_connection_getput(oc, EPH_REF_PUT);
+
+    SIMPLE_FUNC_EXIT(LL_TRACE);
 
     return NULL;
 }
@@ -194,6 +224,7 @@ tmt_owned_connection_random_get(struct tmt_data *td)
 
     niova_mutex_unlock(&td->td_conn_list_mutex);
 
+    tmt_owned_connection_getput(oc, EPH_REF_GET);
     return oc;
 }
 
@@ -216,7 +247,10 @@ tmt_close_thread(void *arg)
         struct tmt_owned_connection *oc = tmt_owned_connection_random_get(td);
         DBG_TCP_MGR_CXN(LL_NOTIFY, &oc->oc_tmc, "closing connection");
         tcp_mgr_connection_close_async(&oc->oc_tmc, tmt_close_done_cb, oc);
+        niova_atomic_inc(&td->td_close_cnt);
     }
+
+    SIMPLE_FUNC_EXIT(LL_TRACE);
 
     return NULL;
 }
@@ -250,10 +284,13 @@ tmt_recv_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
     struct tmt_message *msg = (struct tmt_message *)buf;
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, tmc,
-                    "[%s:%d] received_message[tmc=%p]: size=%lu str=%s\n",
+                    "[%s:%d] received_message[tmc=%p]: size=%lu str=%.*s\n",
                     tmc->tmc_tmi->tmi_listen_socket.tsh_ipaddr,
                     tmc->tmc_tmi->tmi_listen_socket.tsh_port,
-                    tmc, buf_size, msg->msg_buf);
+                    tmc, buf_size, (int)buf_size, msg->msg_buf);
+
+    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
+    niova_atomic_inc(&oc->oc_tmt_data->td_recv_cnt);
 
     return 0;
 }
@@ -270,8 +307,8 @@ tmt_bulk_size_cb(struct tcp_mgr_connection *tmc, char *header, void *_data)
 
 // XXX data should go at the end of fn signature
 static int
-tmt_handshake_cb(void *tmt_data, struct tcp_mgr_connection **tmc_out, int fd,
-                 void *buf, size_t buf_sz)
+tmt_handshake_cb(void *tmt_data, struct tcp_mgr_connection **tmc_out,
+                 size_t *header_size_out, int fd, void *buf, size_t buf_sz)
 {
     if (buf_sz != sizeof(struct tmt_handshake))
         return -EINVAL;
@@ -284,24 +321,28 @@ tmt_handshake_cb(void *tmt_data, struct tcp_mgr_connection **tmc_out, int fd,
     if (!oc)
         return -ENOMEM;
 
-    tcp_socket_handle_set_data(&oc->oc_tmc.tmc_tsh, IPADDR, hs->hs_id);
+    oc->oc_port = hs->hs_id;
 
     *tmc_out = &oc->oc_tmc;
-    tcp_mgr_connection_header_size_set(&oc->oc_tmc, sizeof(struct tmt_message));
+    *header_size_out = sizeof(struct tmt_message);
+
+    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", IPADDR, oc->oc_port);
 
     return 0;
 }
 
 static ssize_t
 tmt_handshake_fill(void *_data, struct tcp_mgr_connection *tmc, void *buf,
-                   size_t
-                   buf_sz)
+                   size_t buf_sz)
 {
     if (buf_sz != sizeof(struct tmt_handshake))
         return -EINVAL;
 
     struct tmt_handshake *hs = (struct tmt_handshake *)buf;
     hs->hs_magic = MAGIC;
+
+    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
+    hs->hs_id = oc->oc_port;
 
     // header size
     return sizeof(struct tmt_message);
@@ -355,7 +396,7 @@ tmt_client_add(struct tmt_data *td, int port)
     struct tmt_thread *thread = tmt_thread_new(td);
     NIOVA_ASSERT(oc && thread);
 
-    tcp_socket_handle_set_data(&oc->oc_tmc.tmc_tsh, IPADDR, port);
+    oc->oc_port = port;
 
     char name[16];
     snprintf(name, 16, "send-%d", port);
@@ -442,6 +483,17 @@ tmt_event_loop_thread_add(struct tmt_data *td)
 }
 
 static void
+tmt_owned_connection_info_cb(struct tcp_mgr_connection *tmc,
+                             const char **ipaddr_out, int *port_out)
+{
+    *ipaddr_out = IPADDR;
+    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
+    *port_out = oc->oc_port;
+
+    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", IPADDR, oc->oc_port);
+}
+
+static void
 tmt_setup(struct tmt_data *td)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -449,17 +501,36 @@ tmt_setup(struct tmt_data *td)
     int rc = epoll_mgr_setup(&td->td_epoll_mgr);
     NIOVA_ASSERT(!rc);
 
-    tcp_mgr_setup(&td->td_tcp_mgr, td, tmt_owned_connection_getput,
+    tcp_mgr_setup(&td->td_tcp_mgr, td, tmt_tcp_mgr_owned_connection_getput_cb,
+                  tmt_owned_connection_info_cb,
                   tmt_recv_cb,
                   tmt_bulk_size_cb,
                   tmt_handshake_cb,
-                  tmt_handshake_fill, sizeof(struct tmt_handshake));
+                  tmt_handshake_fill, sizeof(struct tmt_handshake),
+                  BULK_CREDITS, INCOMING_CREDITS);
 
     rc = pthread_mutex_init(&td->td_conn_list_mutex, NULL);
     NIOVA_ASSERT(!rc);
 
+    td->td_conn_count = 0;
     LIST_INIT(&td->td_conn_list_head);
     LIST_INIT(&td->td_thread_list_head);
+
+    niova_atomic_init(&td->td_recv_cnt, 0);
+    niova_atomic_init(&td->td_send_cnt, 0);
+    niova_atomic_init(&td->td_close_cnt, 0);
+}
+
+static void
+tmt_print_metrics(struct tmt_data *td)
+{
+    uint32_t sent = niova_atomic_read(&td->td_send_cnt);
+    uint32_t received = niova_atomic_read(&td->td_recv_cnt);
+    uint32_t closed = niova_atomic_read(&td->td_close_cnt);
+
+    printf("sent %d\n", sent);
+    printf("received %d\n", received);
+    printf("closed %d\n", closed);
 }
 
 int
@@ -484,4 +555,6 @@ main(int argc, char **argv)
     tcp_mgr_sockets_close(&tmt_data.td_tcp_mgr);
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "main ended");
+
+    tmt_print_metrics(&tmt_data);
 }
