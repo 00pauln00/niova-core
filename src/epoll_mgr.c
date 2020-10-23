@@ -474,7 +474,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
         if (eph->eph_installed && eph->eph_ref_cb)
-            eph->eph_ref_cb(eph->eph_arg, 0);
+            eph->eph_ref_cb(eph->eph_arg, EPH_REF_GET);
     }
 
     for (int i = 0; i < nevents; i++)
@@ -482,9 +482,19 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
         struct epoll_handle *eph = evs[i].data.ptr;
         SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
 
-        if (eph->eph_installed && eph->eph_cb)
+        if (!eph->eph_installed)
+            continue;
+
+        // if eph is not managed with ref_cb, eph may be free'd in callback
+        epoll_mgr_ref_cb_t eph_ref_cb = NULL;
+        if (eph->eph_ref_cb)
+            eph_ref_cb = eph->eph_ref_cb;
+
+        if (eph->eph_cb)
             eph->eph_cb(eph, evs[i].events);
 
+        if (eph_ref_cb)
+            eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
     }
 
     // Reap again before returning control to the caller
