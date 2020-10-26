@@ -69,6 +69,7 @@ struct tmt_data
 
     niova_atomic32_t                 td_recv_cnt;
     niova_atomic32_t                 td_send_cnt;
+    niova_atomic32_t                 td_send_err_cnt;
     niova_atomic32_t                 td_close_cnt;
 };
 
@@ -197,6 +198,7 @@ tmt_send_thread(void *arg)
         if (rc < 0)
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "error sending message, rc=%d", rc);
+            niova_atomic_inc(&oc->oc_tmt_data->td_send_err_cnt);
         }
         else
         {
@@ -280,6 +282,11 @@ void tmt_threads_stop(struct tmt_data *td)
     LIST_FOREACH(thread, &td->td_thread_list_head, tt_lentry)
     {
         thread_ctl_halt(&thread->tt_thread);
+    }
+    LIST_FOREACH(thread, &td->td_thread_list_head, tt_lentry)
+    {
+        thread_creator_wait_until_ctl_loop_reached(&thread->tt_thread);
+        thread_halt_and_destroy(&thread->tt_thread);
     }
 }
 
@@ -535,6 +542,7 @@ tmt_setup(struct tmt_data *td)
 
     niova_atomic_init(&td->td_recv_cnt, 0);
     niova_atomic_init(&td->td_send_cnt, 0);
+    niova_atomic_init(&td->td_send_err_cnt, 0);
     niova_atomic_init(&td->td_close_cnt, 0);
 }
 
@@ -542,10 +550,11 @@ static void
 tmt_print_metrics(struct tmt_data *td)
 {
     uint32_t sent = niova_atomic_read(&td->td_send_cnt);
+    uint32_t sent_errs = niova_atomic_read(&td->td_send_err_cnt);
     uint32_t received = niova_atomic_read(&td->td_recv_cnt);
     uint32_t closed = niova_atomic_read(&td->td_close_cnt);
 
-    printf("sent %d\n", sent);
+    printf("sent %d (%d errs)\n", sent, sent_errs);
     printf("received %d\n", received);
     printf("closed %d\n", closed);
 }
@@ -563,7 +572,8 @@ main(int argc, char **argv)
 
     printf("running for %d seconds...\n", testTime);
     usleep(testTime * 1000 * 1000);
-    SIMPLE_LOG_MSG(LL_NOTIFY, "ending");
+    SIMPLE_LOG_MSG(LL_NOTIFY, "stopping");
+    printf("stopping\n");
 
     tmt_threads_stop(&tmt_data);
 
