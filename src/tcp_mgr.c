@@ -482,7 +482,7 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     {
         NIOVA_ASSERT(!tmc->tmc_bulk_buf);
 
-        int rc = tcp_mgr_new_msg_handler(tmc);
+        rc = tcp_mgr_new_msg_handler(tmc);
         if (rc < 0)
             SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
     }
