@@ -2190,7 +2190,7 @@ raft_client_instance_lreg_multi_facet_cb(
                 lreg_value_fill_string_uuid(
                     lv, "leader-uuid", RCI_2_RI(rci)->ri_csn_leader->csn_uuid);
             else
-                lreg_value_fill_string(lv, "leader-uuid", NULL);
+                lreg_value_fill_string(lv, "leader-uuid", "");
             break;
         case RAFT_CLIENT_LREG_REQUEST_TIMEOUT_SECS:
             lreg_value_fill_unsigned(lv, "default-request-timeout-sec",

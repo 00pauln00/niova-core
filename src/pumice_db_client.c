@@ -32,11 +32,15 @@ struct pmdb_client_request
     struct timespec        pcreq_timeout;
     pmdb_user_cb_t         pcreq_user_cb;
     void                  *pcreq_user_arg;
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
+#endif
     struct pmdb_msg        pcreq_msg_request;
     struct pmdb_msg        pcreq_msg_reply;
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 };
 
 static void
