@@ -844,7 +844,7 @@ tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
     int rc = tcp_mgr_connection_verify(tmc, true);
     DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "tcp_mgr_connection_verify(): %d", rc);
     if (rc < 0)
-        return -ENOTCONN;
+        return rc;
 
     rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
 
