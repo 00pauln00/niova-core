@@ -48,6 +48,7 @@ enum lreg_value_types
     LREG_VAL_TYPE_UNSIGNED_VAL,
     LREG_VAL_TYPE_FLOAT_VAL,
     LREG_VAL_TYPE_ANY,
+    LREG_VAL_TYPE_HISTOGRAM_OBJECT = LREG_VAL_TYPE_OBJECT, // for now..
 } PACKED;
 
 enum lreg_user_types
@@ -55,7 +56,26 @@ enum lreg_user_types
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_CTL_SVC_NODE,
     LREG_USER_TYPE_FAULT_INJECT,
-    LREG_USER_TYPE_HISTOGRAM,
+    LREG_USER_TYPE_HISTOGRAM0,
+    LREG_USER_TYPE_HISTOGRAM1,
+    LREG_USER_TYPE_HISTOGRAM2,
+    LREG_USER_TYPE_HISTOGRAM3,
+    LREG_USER_TYPE_HISTOGRAM4,
+    LREG_USER_TYPE_HISTOGRAM5,
+    LREG_USER_TYPE_HISTOGRAM6,
+    LREG_USER_TYPE_HISTOGRAM8,
+    LREG_USER_TYPE_HISTOGRAM9,
+    LREG_USER_TYPE_HISTOGRAM10,
+    LREG_USER_TYPE_HISTOGRAM11,
+    LREG_USER_TYPE_HISTOGRAM12,
+    LREG_USER_TYPE_HISTOGRAM13,
+    LREG_USER_TYPE_HISTOGRAM14,
+    LREG_USER_TYPE_HISTOGRAM15,
+    LREG_USER_TYPE_HISTOGRAM16,
+    LREG_USER_TYPE_HISTOGRAM17,
+    LREG_USER_TYPE_HISTOGRAM18,
+    LREG_USER_TYPE_HISTOGRAM19,
+    LREG_USER_TYPE_HISTOGRAM__MAX,
     LREG_USER_TYPE_LOG_file,
     LREG_USER_TYPE_LOG_func,
     LREG_USER_TYPE_LOG_subsys,
@@ -73,7 +93,21 @@ enum lreg_user_types
     LREG_USER_TYPE_ROOT,
     LREG_USER_TYPE_SYS_INFO,
     LREG_USER_TYPE_ANY,
+    LREG_USER_TYPE_HISTOGRAM = LREG_USER_TYPE_HISTOGRAM0,
+    LREG_USER_TYPE_HISTOGRAM__MIN = LREG_USER_TYPE_HISTOGRAM0,
 } PACKED;
+
+static inline enum lreg_user_types
+lreg_user_type_histogram_convert(const int hist_idx)
+{
+    const int max_hist_idx =
+        LREG_USER_TYPE_HISTOGRAM__MAX - LREG_USER_TYPE_HISTOGRAM__MIN;
+
+    enum lreg_user_types ret_idx =
+        hist_idx <= max_hist_idx ? hist_idx : LREG_USER_TYPE_HISTOGRAM__MAX;
+
+    return ret_idx;
+}
 
 enum lreg_node_cb_ops
 {
@@ -772,6 +806,25 @@ lreg_value_fill_object(struct lreg_value *lv, const char *key,
     lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_OBJECT);
 
     lv->get.lrv_user_type_out = user_type;
+}
+
+/**
+ * lreg_value_fill_histogram - helper function for initializing an lreg value
+ *    which points to a binary histogram object (binary_hist.h).
+ * @lv:  lreg value pointer
+ * @key:  name to be given to the key
+ * @hist_idx:  numeric ID given to this histogram.  Each histogram held in an
+ *    lreg_node must have a unique ID.  This value will be translated into one
+ *    of the enum lreg_user_types members assigned for histograms.
+ */
+static inline void
+lreg_value_fill_histogram(struct lreg_value *lv, const char *key,
+                          const int hist_idx)
+
+{
+    lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_OBJECT);
+
+    lv->get.lrv_user_type_out = lreg_user_type_histogram_convert(hist_idx);
 }
 
 /**

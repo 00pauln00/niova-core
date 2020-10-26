@@ -270,42 +270,41 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_unsigned(lv, "sync-cnt", ri->ri_sync_cnt);
             break;
         case RAFT_LREG_HIST_COMMIT_LAT:
-            lreg_value_fill_object(
-                lv,
-                raft_instance_hist_stat_2_name(
+            lreg_value_fill_histogram(
+                lv, raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC),
                 RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
             break;
         case RAFT_LREG_HIST_READ_LAT:
-            lreg_value_fill_object(
+            lreg_value_fill_histogram(
                 lv,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_READ_LAT_MSEC),
                 RAFT_INSTANCE_HIST_READ_LAT_MSEC);
             break;
         case RAFT_LREG_HIST_DEV_READ_LAT:
-            lreg_value_fill_object(
+            lreg_value_fill_histogram(
                 lv,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC),
                 RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC);
             break;
         case RAFT_LREG_HIST_DEV_WRITE_LAT:
-            lreg_value_fill_object(
+            lreg_value_fill_histogram(
                 lv,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC),
                 RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC);
             break;
         case RAFT_LREG_HIST_DEV_SYNC_LAT:
-            lreg_value_fill_object(
+            lreg_value_fill_histogram(
                 lv,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC),
                 RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC);
             break;
         case RAFT_LREG_HIST_NENTRIES_SYNC:
-            lreg_value_fill_object(
+            lreg_value_fill_histogram(
                 lv,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_NENTRIES_SYNC),

@@ -2202,12 +2202,12 @@ raft_client_instance_lreg_multi_facet_cb(
                 raft_server_state_to_string(RCI_2_RI(rci)->ri_state));
             break;
         case RAFT_CLIENT_LREG_COMMIT_LATENCY:
-            lreg_value_fill_object(lv, "commit-latency-msec",
-                                   RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+            lreg_value_fill_histogram(lv, "commit-latency-msec",
+                                      RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
             break;
         case RAFT_CLIENT_LREG_READ_LATENCY:
-            lreg_value_fill_object(lv, "read-latency-msec",
-                                   RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+            lreg_value_fill_histogram(lv, "read-latency-msec",
+                                      RAFT_INSTANCE_HIST_READ_LAT_MSEC);
             break;
         case RAFT_CLIENT_LREG_LEADER_VIABLE:
             lreg_value_fill_bool(lv, "leader-viable",

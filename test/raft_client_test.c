@@ -1192,12 +1192,12 @@ raft_client_test_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                raft_server_state_to_string(ri->ri_state));
         break;
     case RAFT_CLIENT_LREG_COMMIT_LATENCY:
-        lreg_value_fill_object(lv, "commit-latency-msec",
-                               RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+        lreg_value_fill_histogram(lv, "commit-latency-msec",
+                                  RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
         break;
     case RAFT_CLIENT_LREG_READ_LATENCY:
-        lreg_value_fill_object(lv, "read-latency-msec",
-                               RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+        lreg_value_fill_histogram(lv, "read-latency-msec",
+                                  RAFT_INSTANCE_HIST_READ_LAT_MSEC);
         break;
     default:
         break;

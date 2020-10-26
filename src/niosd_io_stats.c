@@ -133,40 +133,28 @@ nioctx_stats_lreg_multi_facet_handler(enum lreg_node_cb_ops op,
         lv->get.lrv_value_type_out = LREG_VAL_TYPE_STRING;
         break;
     case NIOCTX_LREG_RD_SIZE_IN_BYTES:
-        strncpy(lv->lrv_key_string, "read_size_in_bytes",
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;
-        lv->get.lrv_user_type_out = NIOCTX_LREG_RD_SIZE_IN_BYTES;
+        lreg_value_fill_histogram(lv, "read_size_in_bytes",
+                                  NIOCTX_LREG_RD_SIZE_IN_BYTES);
         break;
     case NIOCTX_LREG_WR_SIZE_IN_BYTES:
-        strncpy(lv->lrv_key_string, "write_size_in_bytes",
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;
-        lv->get.lrv_user_type_out = NIOCTX_LREG_WR_SIZE_IN_BYTES;
+        lreg_value_fill_histogram(lv, "write_size_in_bytes",
+                                  NIOCTX_LREG_WR_SIZE_IN_BYTES);
         break;
     case NIOCTX_LREG_RD_LATENCY_USEC:
-        strncpy(lv->lrv_key_string, "read_latency_usec",
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;
-        lv->get.lrv_user_type_out = NIOCTX_LREG_RD_LATENCY_USEC;
+        lreg_value_fill_histogram(lv, "read_latency_usec",
+                                  NIOCTX_LREG_RD_LATENCY_USEC);
         break;
     case NIOCTX_LREG_WR_LATENCY_USEC:
-        strncpy(lv->lrv_key_string, "write_latency_usec",
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;
-        lv->get.lrv_user_type_out = NIOCTX_LREG_WR_LATENCY_USEC;
+        lreg_value_fill_histogram(lv, "write_latency_usec",
+                                  NIOCTX_LREG_WR_LATENCY_USEC);
         break;
     case NIOCTX_LREG_IO_TO_CB_TIME_USEC:
-        strncpy(lv->lrv_key_string, "cb_queue_latency_usec",
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;
-        lv->get.lrv_user_type_out = NIOCTX_LREG_IO_TO_CB_TIME_USEC;
+        lreg_value_fill_histogram(lv, "cb_queue_latency_usec",
+                                  NIOCTX_LREG_IO_TO_CB_TIME_USEC);
         break;
     case NIOCTX_LREG_IO_NUM_PENDING:
-        strncpy(lv->lrv_key_string, "io_pending_count",
-                LREG_VALUE_STRING_MAX);
-        lv->get.lrv_value_type_out = LREG_VAL_TYPE_OBJECT;
-        lv->get.lrv_user_type_out = NIOCTX_LREG_IO_NUM_PENDING;
+        lreg_value_fill_histogram(lv, "io_pending_count",
+                                  NIOCTX_LREG_IO_NUM_PENDING);
         break;
     default:
         break;
