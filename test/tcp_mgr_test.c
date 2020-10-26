@@ -121,7 +121,8 @@ static void
 tmt_owned_connection_getput(struct tmt_owned_connection *oc,
                             enum epoll_handle_ref_op op)
 {
-    SIMPLE_LOG_MSG(LL_DEBUG, "oc: %p, %s", oc,
+    uint32_t refcnt = niova_atomic_read(&oc->oc_ref_cnt);
+    SIMPLE_LOG_MSG(LL_DEBUG, "oc: %p, [oldref %d] %s", oc, refcnt,
                    op == EPH_REF_GET ? "GET" : "PUT");
 
     if (op == EPH_REF_GET)
@@ -130,7 +131,7 @@ tmt_owned_connection_getput(struct tmt_owned_connection *oc,
     }
     else
     {
-        uint32_t refcnt = niova_atomic_dec(&oc->oc_ref_cnt);
+        niova_atomic_dec(&oc->oc_ref_cnt);
         if (refcnt == 0)
             tmt_owned_connection_fini(oc);
     }
@@ -139,6 +140,8 @@ tmt_owned_connection_getput(struct tmt_owned_connection *oc,
 static void
 tmt_tcp_mgr_owned_connection_getput_cb(void *data, enum epoll_handle_ref_op op)
 {
+    SIMPLE_LOG_MSG(LL_TRACE, "data %p op %s", data,
+                   op == EPH_REF_GET ? "GET" : "PUT");
     NIOVA_ASSERT(data);
 
     struct tcp_mgr_connection *tmc = (struct tcp_mgr_connection *)data;
@@ -231,6 +234,7 @@ tmt_owned_connection_random_get(struct tmt_data *td)
 static void
 tmt_close_done_cb(void *oc)
 {
+    SIMPLE_LOG_MSG(LL_TRACE, "oc %p", oc);
     tmt_owned_connection_getput(oc, EPH_REF_PUT);
 }
 
@@ -240,14 +244,16 @@ tmt_close_thread(void *arg)
     struct thread_ctl *tc = arg;
     struct tmt_data *td = tc->tc_arg;
 
+    usleep(closeSleepTime * 1000);
     THREAD_LOOP_WITH_CTL(tc)
     {
-        usleep(closeSleepTime * 1000);
-
         struct tmt_owned_connection *oc = tmt_owned_connection_random_get(td);
         DBG_TCP_MGR_CXN(LL_NOTIFY, &oc->oc_tmc, "closing connection");
         tcp_mgr_connection_close_async(&oc->oc_tmc, tmt_close_done_cb, oc);
         niova_atomic_inc(&td->td_close_cnt);
+
+        // put it at the end so the test happens after sleep
+        usleep(closeSleepTime * 1000);
     }
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
@@ -320,6 +326,8 @@ tmt_handshake_cb(void *tmt_data, struct tcp_mgr_connection **tmc_out,
     struct tmt_owned_connection *oc = tmt_owned_connection_new(tmt_data);
     if (!oc)
         return -ENOMEM;
+
+    tmt_owned_connection_getput(oc, EPH_REF_GET);
 
     oc->oc_port = hs->hs_id;
 
@@ -464,7 +472,7 @@ tmt_process_opts(struct tmt_data *td, int argc, char **argv)
 
     int port = DEFAULT_PORT;
     if (optind < argc)
-        port = atoi(optarg);
+        port = atoi(argv[optind]);
 
     SIMPLE_LOG_MSG(LL_DEBUG, "binding to port %d", port);
     tmt_bind(td, port);

@@ -533,8 +533,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
         if (owned->tmc_status == TMCS_CONNECTED)
             tcp_mgr_connection_close(owned);
 
-        if (tmi->tmi_connection_ref_cb)
-            tmi->tmi_connection_ref_cb(owned, EPH_REF_PUT);
+        tcp_mgr_connection_put(owned);
 
         SIMPLE_LOG_MSG(LL_ERROR, "handshake error");
         return -EINVAL;
@@ -766,7 +765,7 @@ tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
     }
 
     rc = tcp_mgr_connection_epoll_add(tmc, EPOLLOUT, tcp_mgr_connect_cb,
-                                      NULL);
+                                      tmc->tmc_tmi->tmi_connection_ref_cb);
     if (rc < 0)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_mgr_connection_epoll_add(): %d", rc);
@@ -837,6 +836,7 @@ tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (tmc->tmc_status == TMCS_NEEDS_SETUP)
     {
+        SIMPLE_LOG_MSG(LL_DEBUG, "calling tcp_mgr_connection_setup, tmc %p", tmc);
         tcp_mgr_connection_setup(tmc, tmi);
         tcp_mgr_connection_setup_info(tmc);
     }
