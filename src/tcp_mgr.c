@@ -7,37 +7,61 @@
 #include "tcp_mgr.h"
 #include "util.h"
 
-#define DEFAULT_BULK_BUFS 32
-
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static uint32_t bufsAvail = DEFAULT_BULK_BUFS;
-
 void
-set_bulk_bufs_avail(uint32_t cnt)
+tcp_mgr_credits_set(niova_atomic32_t *credits, uint32_t cnt)
 {
-    bufsAvail = cnt;
+    niova_atomic_init(credits, cnt);
 }
 
 static void *
-tcp_mgr_bulk_malloc(size_t sz)
+tcp_mgr_credits_malloc(niova_atomic32_t *credits, size_t sz)
 {
-    if (bufsAvail <= 0)
+    uint32_t new_credits = niova_atomic_dec(credits);
+    if (new_credits < 0)
+    {
+        niova_atomic_inc(credits);
         return NULL;
+    }
 
     void *buf = niova_malloc_can_fail(sz);
     if (!buf)
         return NULL;
 
-    bufsAvail--;
     return buf;
 }
 
 static void
-tcp_mgr_bulk_free(void *buf)
+tcp_mgr_credits_free(niova_atomic32_t *credits, void *buf)
 {
     niova_free(buf);
-    bufsAvail++;
+
+    niova_atomic_inc(credits);
+}
+
+void
+tcp_mgr_bulk_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt)
+{
+    tcp_mgr_credits_set(&tmi->tmi_bulk_credits, cnt);
+}
+
+void
+tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt)
+{
+    tcp_mgr_credits_set(&tmi->tmi_incoming_credits, cnt);
+}
+
+static void *
+tcp_mgr_bulk_malloc(struct tcp_mgr_instance *tmi, size_t sz)
+{
+    return tcp_mgr_credits_malloc(&tmi->tmi_bulk_credits, sz);
+}
+
+static void
+tcp_mgr_bulk_free(struct tcp_mgr_instance *tmi, void *buf)
+{
+    tcp_mgr_credits_free(&tmi->tmi_bulk_credits, buf);
 }
 
 static void
@@ -55,7 +79,8 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
-              size_t handshake_size)
+              size_t handshake_size, uint32_t bulk_credits,
+              uint32_t incoming_credits)
 {
     NIOVA_ASSERT(tmi);
 
@@ -67,6 +92,9 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
+
+    tcp_mgr_bulk_credits_set(tmi, bulk_credits);
+    tcp_mgr_incoming_credits_set(tmi, incoming_credits);
 }
 
 int
@@ -150,7 +178,7 @@ tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
         epoll_handle_del(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
 
     if (tmc->tmc_bulk_buf)
-        tcp_mgr_bulk_free(tmc->tmc_bulk_buf);
+        tcp_mgr_bulk_free(tmc->tmc_tmi, tmc->tmc_bulk_buf);
 
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
@@ -164,7 +192,8 @@ static struct tcp_mgr_connection *
 tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
 {
     struct tcp_mgr_connection *tmc =
-        niova_malloc_can_fail(sizeof(struct tcp_mgr_connection));
+        tcp_mgr_credits_malloc(&tmi->tmi_incoming_credits,
+                               sizeof(struct tcp_mgr_connection));
     if (!tmc)
         return NULL;
 
@@ -179,14 +208,16 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
 static void
 tcp_mgr_incoming_fini_err(struct tcp_mgr_connection *tmc)
 {
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     tcp_mgr_connection_close(tmc);
-    niova_free(tmc);
+    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
 }
 
 static void
 tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 {
-    niova_free(tmc);
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
 }
 
 static int
@@ -292,7 +323,7 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
     size_t buf_size = hdr_size + bulk_size;
 
     // buffer free'd in tcp_mgr_recv_cb
-    void *buf = tcp_mgr_bulk_malloc(buf_size);
+    void *buf = tcp_mgr_bulk_malloc(tmc->tmc_tmi, buf_size);
     if (!buf)
     {
         DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "cannot allocate bulk buf");
@@ -354,7 +385,7 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 
     int rc = tmi->tmi_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset,
                               tmc->tmc_tmi->tmi_data);
-    tcp_mgr_bulk_free(tmc->tmc_bulk_buf);
+    tcp_mgr_bulk_free(tmi, tmc->tmc_bulk_buf);
 
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;

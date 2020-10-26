@@ -23,8 +23,8 @@ typedef tcp_mgr_ctx_int_t
 typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *);
 typedef tcp_mgr_ctx_int_t
-(*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *, int fd,
-                          void *, size_t);
+(*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *,
+                          int fd, void *, size_t);
 typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_handshake_fill_t)(void *, struct tcp_mgr_connection *,
                             void *, size_t);
@@ -46,6 +46,9 @@ struct tcp_mgr_instance
     tcp_mgr_handshake_fill_t  tmi_handshake_fill;
     tcp_mgr_connect_info_cb_t tmi_connect_info_cb;
     size_t                    tmi_handshake_size;
+
+    niova_atomic32_t          tmi_bulk_credits;
+    niova_atomic32_t          tmi_incoming_credits;
 };
 
 enum tcp_mgr_connection_status
@@ -84,7 +87,8 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
-              size_t handshake_size);
+              size_t handshake_size, uint32_t bulk_credits,
+              uint32_t incoming_credits);
 
 int
 tcp_mgr_sockets_close(struct tcp_mgr_instance *tmi);
@@ -115,4 +119,11 @@ tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
 int
 tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
                  struct iovec *iov, size_t niovs);
+
+void
+tcp_mgr_bulk_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
+
+void
+tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
+
 #endif

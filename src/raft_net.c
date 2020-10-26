@@ -27,6 +27,9 @@
 #include "udp.h"
 #include "util_thread.h"
 
+#define DEFAULT_BULK_CREDITS 32
+#define DEFAULT_INCOMING_CREDITS 32
+
 enum raft_net_lreg_values
 {
     RAFT_NET_LREG_IGNORE_TIMER_EVENTS,
@@ -979,7 +982,9 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
-                      sizeof(struct raft_rpc_msg));
+                      sizeof(struct raft_rpc_msg),
+                      DEFAULT_BULK_CREDITS,
+                      DEFAULT_INCOMING_CREDITS);
         tcp_mgr_setup(&ri->ri_peer_tcp_mgr, ri,
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
                       raft_net_peer_connect_info,
@@ -987,7 +992,9 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
-                      sizeof(struct raft_rpc_msg));
+                      sizeof(struct raft_rpc_msg),
+                      DEFAULT_BULK_CREDITS,
+                      DEFAULT_INCOMING_CREDITS);
     }
 
     rc = raft_net_sockets_setup(ri);
