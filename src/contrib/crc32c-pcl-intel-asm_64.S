@@ -74,7 +74,7 @@
 
 // Function entry point
 //ENTRY (crc_pcl)
-.globl crc_pcl 
+.globl crc_pcl
 .align 32
 crc_pcl:
 //ENTRY(crc_pcl)
@@ -173,7 +173,8 @@ continue_block:
 
     ## branch into array
     lea jump_table(%rip), bufp
-    movzxw  (bufp, %rax, 2), len
+    ## movzxw  (bufp, %rax, 2), len
+    movzwq  (bufp, %rax, 2), len
     offset=crc_array-jump_table
     lea     offset(bufp, len, 1), bufp
     jmp     *bufp

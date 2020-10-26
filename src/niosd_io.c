@@ -483,10 +483,17 @@ niosd_device_close(struct niosd_device *ndev)
         {
             struct niosd_io_ctx *nioctx = niosd_device_to_ctx(ndev, i);
 
-            if (nioctx->nioctx_use_blocking_mode)
-                (int)nioctx_blocking_mode_cleanup(nioctx);
+            int rc = 0;
 
-            int rc = io_destroy(nioctx->nioctx_ctx);
+            if (nioctx->nioctx_use_blocking_mode)
+            {
+                rc = nioctx_blocking_mode_cleanup(nioctx);
+                if (rc)
+                    LOG_MSG(LL_WARN, "nioctx_blocking_mode_cleanup(): %s",
+                            strerror(-rc));
+            }
+
+            rc = io_destroy(nioctx->nioctx_ctx);
             FATAL_IF((rc != 0), "io_destroy():  %s", strerror(-rc));
         }
     }
@@ -568,7 +575,8 @@ niosd_device_open(struct niosd_device *ndev)
 
         ndev->ndev_stb.st_size = seek_val;
 
-        (off_t)lseek(ndev->ndev_fd, 0, SEEK_SET);
+        seek_val = lseek(ndev->ndev_fd, 0, SEEK_SET);
+        FATAL_IF(seek_val != 0, "invalid seek_val %ld", seek_val);
     }
 
     if (ndev->ndev_stb.st_size < NIOSD_MIN_DEVICE_SZ_IN_BYTES)

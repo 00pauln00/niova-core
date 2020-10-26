@@ -15,85 +15,85 @@ REGISTRY_ENTRY_FILE_GENERATE;
 static
 struct conf_token confTokens[CT_ID__MAX] =
 {
-    [CT_ID_APPLY] {
+    [CT_ID_APPLY] = {
         .ct_name = "APPLY",
         .ct_name_len = 5,
         .ct_val_regex = NULL, // checked by internal user
         .ct_id = CT_ID_APPLY,
     },
-    [CT_ID_WHERE] {
+    [CT_ID_WHERE] = {
         .ct_name = "WHERE",
         .ct_name_len = 5,
         .ct_val_regex = NULL, //todo - same as GET
         .ct_id = CT_ID_WHERE,
     },
-    [CT_ID_GET] {
+    [CT_ID_GET] = {
         .ct_name = "GET",
         .ct_name_len = 3,
         .ct_val_regex = NULL, //todo - same as TO
         .ct_id = CT_ID_GET,
     },
-    [CT_ID_RESET] {
+    [CT_ID_RESET] = {
         .ct_name = "RESET",
         .ct_name_len = 5,
         .ct_val_regex = NULL,
         .ct_id = CT_ID_RESET,
     },
-    [CT_ID_OUTFILE] {
+    [CT_ID_OUTFILE] = {
         .ct_name = "OUTFILE",
         .ct_name_len = 7,
         .ct_val_regex = NULL, //todo
         .ct_id = CT_ID_OUTFILE,
     },
-    [CT_ID_HOSTNAME] {
+    [CT_ID_HOSTNAME] = {
         .ct_name = "HOSTNAME",
         .ct_name_len = 8,
         .ct_val_regex = HOSTNAME_REGEX,
         .ct_id = CT_ID_HOSTNAME,
     },
-    [CT_ID_PORT] {
+    [CT_ID_PORT] = {
         .ct_name = "PORT",
         .ct_name_len = 4,
         .ct_val_regex = PORT_REGEX,
         .ct_id = CT_ID_PORT,
     },
-    [CT_ID_CLIENT_PORT] {
+    [CT_ID_CLIENT_PORT] = {
         .ct_name = "CLIENT_PORT",
         .ct_name_len = 11,
         .ct_val_regex = PORT_REGEX,
         .ct_id = CT_ID_CLIENT_PORT,
     },
-    [CT_ID_STORE] {
+    [CT_ID_STORE] = {
         .ct_name = "STORE",
         .ct_name_len = 5,
         .ct_val_regex = NULL,
         .ct_id = CT_ID_STORE,
     },
-    [CT_ID_UUID] {
+    [CT_ID_UUID] = {
         .ct_name = "UUID",
         .ct_name_len = 4,
         .ct_val_regex = UUID_REGEX,
         .ct_id = CT_ID_UUID,
     },
-    [CT_ID_IPADDR] {
+    [CT_ID_IPADDR] = {
         .ct_name = "IPADDR",
         .ct_name_len = 6,
         .ct_val_regex = IPADDR_REGEX,
         .ct_id = CT_ID_IPADDR,
     },
-    [CT_ID_CTL_SVC_FILENAME] {
+    [CT_ID_CTL_SVC_FILENAME] = {
         .ct_name = "",
         .ct_name_len = 0,
         .ct_val_regex = UUID_REGEX_CTL_SVC_FILE_NAME,
         .ct_id = CT_ID_CTL_SVC_FILENAME,
     },
-    [CT_ID_RAFT] {
+    [CT_ID_RAFT] = {
         .ct_name = "RAFT",
         .ct_name_len = 4,
         .ct_val_regex = UUID_REGEX,
         .ct_id = CT_ID_RAFT,
     },
-    [CT_ID_PEER] {
+    [CT_ID_PEER] = {
         .ct_name = "PEER",
         .ct_name_len = 4,
         .ct_val_regex = UUID_REGEX,

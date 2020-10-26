@@ -524,8 +524,11 @@ main(int argc, char **argv)
         rc = niot_submit_request(&ndev, &niorqArray[i]);
         if (rc)
         {
+            int close_rc = niosd_device_close(&ndev);
             STDERR_MSG("niot_submit_request(): %s", strerror(-rc));
-            (int)niosd_device_close(&ndev);
+            if (close_rc)
+                STDERR_MSG("niosd_device_close(): %s", strerror(-close_rc));
+
             exit(rc);
         }
     }

@@ -51,9 +51,6 @@ LREG_ROOT_ENTRY_GENERATE(raft_client_root_entry, LREG_USER_TYPE_RAFT_CLIENT);
 // This is the same as the number of total pending requests per RCI
 #define RAFT_CLIENT_MAX_SUB_APP_INSTANCES 4096
 
-typedef void * raft_client_thread_t;
-typedef int  raft_client_app_ctx_int_t;   // raft client app thread
-typedef void raft_client_app_ctx_t;
 typedef epoll_mgr_cb_ctx_t raft_client_epoll_t;
 typedef int  raft_client_epoll_int_t;
 
@@ -162,7 +159,6 @@ struct raft_client_request_handle
     size_t                     rcrh_reply_used_size;
     size_t                     rcrh_reply_size;
     uint64_t                   rcrh_rpc_app_seqno;
-    struct raft_client_rpc_msg rcrh_rpc_request;
     uint8_t                    rcrh_send_niovs;
     uint8_t                    rcrh_recv_niovs;
     struct iovec               rcrh_iovs[RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS];
@@ -170,6 +166,7 @@ struct raft_client_request_handle
     pthread_cond_t            *rcrh_cond_var;
     raft_client_user_cb_t      rcrh_async_cb;
     void                      *rcrh_arg;
+    struct raft_client_rpc_msg rcrh_rpc_request;
 };
 
 #define RCI_2_RI(rci) (rci)->rci_ri
@@ -1010,9 +1007,13 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     while ((sa = STAILQ_FIRST(&expiredq)))
     {
         STAILQ_REMOVE_HEAD(&expiredq, rcsa_lentry);
-        raft_client_sub_app_cancel_pending_req(rci, sa, true,
-                                               -ETIMEDOUT,
-                                               __func__, __LINE__);
+
+        int rc = raft_client_sub_app_cancel_pending_req(rci, sa, true,
+                                                        -ETIMEDOUT,
+                                                        __func__, __LINE__);
+        if (rc)
+            LOG_MSG(LL_NOTIFY, "raft_client_sub_app_cancel_pending_req() %s",
+                    strerror(-rc));
 
         raft_client_sub_app_put(rci, sa, __func__, __LINE__);
     }
@@ -1308,11 +1309,11 @@ raft_client_request_cancel(raft_client_instance_t client_instance,
 //    else if (sa->rcsa_rh.rcrh_reply_buf != reply_buf)
     //      return -ESTALE;
 
-    /* Error code can be ignored here since this function has it's own
-     * reference.
-     */
-    raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED,
-                                                __func__, __LINE__);
+    int rc = raft_client_sub_app_cancel_pending_req(rci, sa, true, -ECANCELED,
+                                                    __func__, __LINE__);
+    if (rc)
+            LOG_MSG(LL_NOTIFY, "raft_client_sub_app_cancel_pending_req() %s",
+                    strerror(-rc));
 
     raft_client_sub_app_put(rci, sa, __func__, __LINE__);
 
@@ -2189,7 +2190,7 @@ raft_client_instance_lreg_multi_facet_cb(
                 lreg_value_fill_string_uuid(
                     lv, "leader-uuid", RCI_2_RI(rci)->ri_csn_leader->csn_uuid);
             else
-                lreg_value_fill_string(lv, "leader-uuid", NULL);
+                lreg_value_fill_string(lv, "leader-uuid", "");
             break;
         case RAFT_CLIENT_LREG_REQUEST_TIMEOUT_SECS:
             lreg_value_fill_unsigned(lv, "default-request-timeout-sec",
@@ -2201,12 +2202,12 @@ raft_client_instance_lreg_multi_facet_cb(
                 raft_server_state_to_string(RCI_2_RI(rci)->ri_state));
             break;
         case RAFT_CLIENT_LREG_COMMIT_LATENCY:
-            lreg_value_fill_object(lv, "commit-latency-msec",
-                                   RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+            lreg_value_fill_histogram(lv, "commit-latency-msec",
+                                      RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
             break;
         case RAFT_CLIENT_LREG_READ_LATENCY:
-            lreg_value_fill_object(lv, "read-latency-msec",
-                                   RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+            lreg_value_fill_histogram(lv, "read-latency-msec",
+                                      RAFT_INSTANCE_HIST_READ_LAT_MSEC);
             break;
         case RAFT_CLIENT_LREG_LEADER_VIABLE:
             lreg_value_fill_bool(lv, "leader-viable",

@@ -84,27 +84,27 @@ struct ctl_svc_node_type_suffix
 static const
 struct ctl_svc_node_type_suffix ctlSvcNodeTypes[CTL_SVC_NODE_TYPE_MAX] =
 {
-    [CTL_SVC_NODE_TYPE_NIOSD] {
+    [CTL_SVC_NODE_TYPE_NIOSD] = {
         .csnts_file_suffix = "niosd",
         .csnts_file_suffix_len = 5,
         .csnts_type = CTL_SVC_NODE_TYPE_NIOSD,
     },
-    [CTL_SVC_NODE_TYPE_RAFT] {
+    [CTL_SVC_NODE_TYPE_RAFT] = {
         .csnts_file_suffix = "raft",
         .csnts_file_suffix_len = 4,
         .csnts_type = CTL_SVC_NODE_TYPE_RAFT,
     },
-    [CTL_SVC_NODE_TYPE_RAFT_PEER] {
+    [CTL_SVC_NODE_TYPE_RAFT_PEER] = {
         .csnts_file_suffix = "peer",
         .csnts_file_suffix_len = 4,
         .csnts_type = CTL_SVC_NODE_TYPE_RAFT_PEER,
     },
-    [CTL_SVC_NODE_TYPE_RAFT_CLIENT] {
+    [CTL_SVC_NODE_TYPE_RAFT_CLIENT] = {
         .csnts_file_suffix = "raft_client",
         .csnts_file_suffix_len = 11,
         .csnts_type = CTL_SVC_NODE_TYPE_RAFT_CLIENT,
     },
-    [CTL_SVC_NODE_TYPE_ANY] {
+    [CTL_SVC_NODE_TYPE_ANY] = {
         .csnts_file_suffix = "", // This is effectively an invalid entry
         .csnts_file_suffix_len = 0,
         .csnts_type = CTL_SVC_NODE_TYPE_ANY,

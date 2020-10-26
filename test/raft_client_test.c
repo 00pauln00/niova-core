@@ -63,9 +63,12 @@ struct rsc_raft_test_info
     struct raft_test_values     rrti_last_validated;
     size_t                      rrti_num_write_retries;
     // <---- Keep the below members intact ---->
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
     struct raft_client_rpc_msg  rtti_rcrm;
     struct raft_test_data_block rtti_rtdb;
     char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+#pragma clang diagnostic pop
 };
 
 /**
@@ -1189,12 +1192,12 @@ raft_client_test_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                raft_server_state_to_string(ri->ri_state));
         break;
     case RAFT_CLIENT_LREG_COMMIT_LATENCY:
-        lreg_value_fill_object(lv, "commit-latency-msec",
-                               RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
+        lreg_value_fill_histogram(lv, "commit-latency-msec",
+                                  RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
         break;
     case RAFT_CLIENT_LREG_READ_LATENCY:
-        lreg_value_fill_object(lv, "read-latency-msec",
-                               RAFT_INSTANCE_HIST_READ_LAT_MSEC);
+        lreg_value_fill_histogram(lv, "read-latency-msec",
+                                  RAFT_INSTANCE_HIST_READ_LAT_MSEC);
         break;
     default:
         break;
