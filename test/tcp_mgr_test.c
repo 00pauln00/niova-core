@@ -400,6 +400,8 @@ tmt_client_add(struct tmt_data *td, int port)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
+    static int send_id = 0;
+
     struct tmt_owned_connection *oc = tmt_owned_connection_new(td);
     struct tmt_thread *thread = tmt_thread_new(td);
     NIOVA_ASSERT(oc && thread);
@@ -407,10 +409,12 @@ tmt_client_add(struct tmt_data *td, int port)
     oc->oc_port = port;
 
     char name[16];
-    snprintf(name, 16, "send-%d", port);
+    snprintf(name, 16, "send-%d-%d", send_id, port);
     int rc = thread_create(tmt_send_thread, &thread->tt_thread, name, oc, NULL);
     if (rc)
         SIMPLE_LOG_MSG(LL_ERROR, "thread_create(): rc=%d", rc);
+
+    send_id++;
 
     printf("added client, port %d\n", port);
 }
@@ -419,6 +423,11 @@ static void
 tmt_close_thread_add(struct tmt_data *td)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    static bool close_thread_started = false;
+    if (close_thread_started)
+        return;
+    close_thread_started = true;
 
     struct tmt_thread *thread = tmt_thread_new(td);
 
