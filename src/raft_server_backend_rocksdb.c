@@ -4,10 +4,15 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <rocksdb/c.h>
 
 #include "alloc.h"
 #include "common.h"
+#include "file_util.h"
 #include "log.h"
 #include "raft.h"
 #include "raft_server_backend_rocksdb.h"
@@ -42,11 +47,11 @@
 #define RAFT_ENTRY_HEADER_KEY_PRINTF \
     RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_HEADER_ENTRY_KEY_FMT
 
-
 REGISTRY_ENTRY_FILE_GENERATE;
 
 struct raft_instance_rocks_db
 {
+    int                                  rir_log_fd; //dirfd to ri->ri_log
     rocksdb_t                           *rir_db;
     rocksdb_options_t                   *rir_options;
     rocksdb_writeoptions_t              *rir_writeoptions_sync;
@@ -99,6 +104,22 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_backend_shutdown  = rsbr_destroy,
     .rib_sm_apply_opt      = rsbr_sm_apply_opt,
     .rib_backend_sync      = rsbr_sync,
+};
+
+#define RIR_RECOVERY_MARKER_FILENAME "recovery_marker."
+
+enum raft_instance_rocks_db_subdirs
+{
+    RIR_SUBDIR_DB = 0,
+    RIR_SUBDIR_CHKPT_ROOT,
+    RIR_SUBDIR_CHKPT_SELF,
+    RIR_SUBDIR_CHKPT_PEERS,
+    RIR_SUBDIR__MAX,
+    RIR_SUBDIR__MIN = RIR_SUBDIR_DB,
+};
+
+static const char * ribSubDirs[] = {
+    "db", "chkpt", "chkpt/self", "chkpt/peers",
 };
 
 static inline struct raft_instance_rocks_db *
@@ -722,6 +743,16 @@ rsbr_destroy(struct raft_instance *ri)
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
+    if (rir->rir_log_fd < 0)
+    {
+        int rc = close(rir->rir_log_fd);
+        if (rc)
+            SIMPLE_LOG_MSG(LL_WARN, "close(rir_log_fd): %s",
+                           strerror(-errno));
+        else
+            rir->rir_log_fd = -1;
+    }
+
     if (rir->rir_db)
         rocksdb_close(rir->rir_db);
 
@@ -751,6 +782,71 @@ rsbr_destroy(struct raft_instance *ri)
 }
 
 static int
+rsbr_subdirs_setup(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_backend_arg)
+        return -EINVAL;
+
+    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
+
+    int rc = file_util_pathname_build(ri->ri_log);
+    if (rc)
+    {
+         SIMPLE_LOG_MSG(LL_ERROR, "file_util_pathname_build(%s): %s",
+                        ri->ri_log, strerror(-rc));
+         return rc;
+    }
+
+    rir->rir_log_fd = open(ri->ri_log, O_DIRECTORY | O_RDONLY);
+
+    if (rir->rir_log_fd < 0)
+    {
+        int rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "open(%s): %s", ri->ri_log, strerror(-rc));
+
+        return rc;
+    }
+
+    for (enum raft_instance_rocks_db_subdirs i = RIR_SUBDIR__MIN;
+         i < RIR_SUBDIR__MAX; i++)
+    {
+        int rc = mkdirat(rir->rir_log_fd, ribSubDirs[i], 0700);
+        if (rc)
+        {
+            rc = -errno;
+
+            if (rc == -EEXIST)
+            {
+                struct stat stb;
+                rc = fstatat(rir->rir_log_fd, ribSubDirs[i], &stb,
+                             AT_SYMLINK_NOFOLLOW);
+                if (rc)
+                {
+                    rc = -errno;
+                    SIMPLE_LOG_MSG(LL_ERROR, "fstatat(%s): %s",
+                                   ribSubDirs[i], strerror(-rc));
+                    return rc;
+                }
+                else if (!S_ISDIR(stb.st_mode))
+                {
+                    SIMPLE_LOG_MSG(LL_ERROR, "Path %s: %s",
+                                   ribSubDirs[i], strerror(ENOTDIR));
+                    return -ENOTDIR;
+                }
+            }
+            else
+            {
+                SIMPLE_LOG_MSG(LL_ERROR, "mkdirat(%s): %s",
+                               ribSubDirs[i], strerror(-rc));
+                return rc;
+            }
+        }
+    }
+
+    return 0;
+}
+
+static int
 rsbr_setup(struct raft_instance *ri)
 {
     if (!ri || ri->ri_backend != &ribRocksDB)
@@ -766,7 +862,24 @@ rsbr_setup(struct raft_instance *ri)
         return -ENOMEM;
 
     struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
-    int rc = 0;
+    rir->rir_log_fd = -1;
+
+    int rc = rsbr_subdirs_setup(ri);
+    if (rc)
+    {
+         rsbr_destroy(ri);
+         return rc;
+    }
+
+    // The db will live in a subdir of 'ri->ri_log'
+    char rocksdb_dir[PATH_MAX] = {0};
+    rc = snprintf(rocksdb_dir, PATH_MAX, "%s/%s", ri->ri_log,
+                  ribSubDirs[RIR_SUBDIR_DB]);
+    if (rc > PATH_MAX)
+    {
+        rsbr_destroy(ri);
+        return -ENAMETOOLONG;
+    }
 
     rir->rir_options = rocksdb_options_create();
     if (!rir->rir_options)
@@ -849,25 +962,25 @@ rsbr_setup(struct raft_instance *ri)
     }
 
     rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
-        rocksdb_open_column_families(rir->rir_options, ri->ri_log,
+        rocksdb_open_column_families(rir->rir_options, rocksdb_dir,
                                      cft->rsrcfe_num_cf, cft->rsrcfe_cf_names,
                                      cft_opts, cft->rsrcfe_cf_handles, &err) :
-        rocksdb_open(rir->rir_options, ri->ri_log, &err);
+        rocksdb_open(rir->rir_options, rocksdb_dir, &err);
     if (!rir->rir_db || err)
     {
         // DB may not be created
         err = NULL;
 
         rocksdb_options_set_create_if_missing(rir->rir_options, 1);
-//        rir->rir_db = rocksdb_open(rir->rir_options, ri->ri_log, &err);
+//        rir->rir_db = rocksdb_open(rir->rir_options, rocksdb_dir, &err);
 
         rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
-            rocksdb_open_column_families(rir->rir_options, ri->ri_log,
+            rocksdb_open_column_families(rir->rir_options, rocksdb_dir,
                                          cft->rsrcfe_num_cf,
                                          cft->rsrcfe_cf_names,
                                          cft_opts, cft->rsrcfe_cf_handles,
                                          &err) :
-            rocksdb_open(rir->rir_options, ri->ri_log, &err);
+            rocksdb_open(rir->rir_options, rocksdb_dir, &err);
 
         if (rir->rir_db && !err)
         {
