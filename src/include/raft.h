@@ -314,6 +314,11 @@ struct raft_instance_hist_stats
  *    raft_entry_idx_t to be nullified from the raft log such that read
  *    operations of those addresses do not produce seemingly valid raft
  *    entries.
+ * @rib_log_prune:  Prune is opposite of truncate - it causes the removal of
+ *    entries older than and including the provided raft_entry_idx_t.  This
+ *    API call is optional and is intended for backends whose application data
+ *    are guaranteed to be persistent
+ *    (ie RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP).
  * @rib_header_load:  read-in the raft header.  The header stores frequently
  *    adjusted raft metadata such as the last known term value and the peer
  *    whom was last voted for.
@@ -322,24 +327,30 @@ struct raft_instance_hist_stats
  *    for use.
  * @rib_backend_shutdown:  stop / close the backend.
  * @rib_backend_sync:  force a sync of all pending items to the backing store
+ * @rib_backend_checkpoint:  optional API call for backends which support
+ *    some form of checkpointing, such as rocksDB.
  * @rib_sm_apply_opt:  optional callback used for niova-raft implementations
  *    which require conjoined, atomic, persistent updates of raft metadata and
  *    state machine data.
+
  */
 struct raft_instance_backend
 {
-    void (*rib_entry_write)(struct raft_instance *,
-                            const struct raft_entry *,
-                            const struct raft_net_sm_write_supplements *);
+    void    (*rib_entry_write)(struct raft_instance *,
+                               const struct raft_entry *,
+                               const struct raft_net_sm_write_supplements *);
     int     (*rib_entry_header_read)(struct raft_instance *,
                                      struct raft_entry_header *);
     ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
-    void    (*rib_log_truncate)(struct raft_instance *, const raft_entry_idx_t);
+    void    (*rib_log_truncate)(struct raft_instance *,
+                                const raft_entry_idx_t);
+    void    (*rib_log_prune)(struct raft_instance *, const raft_entry_idx_t);
     int     (*rib_header_load)(struct raft_instance *);
     int     (*rib_header_write)(struct raft_instance *);
     int     (*rib_backend_setup)(struct raft_instance *);
     int     (*rib_backend_shutdown)(struct raft_instance *);
     int     (*rib_backend_sync)(struct raft_instance *);
+    int     (*rib_backend_checkpoint)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
                                 const struct raft_net_sm_write_supplements *);
 };
