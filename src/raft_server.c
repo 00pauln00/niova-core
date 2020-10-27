@@ -105,6 +105,8 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_TERM,  // int64
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_SIZE,  // uint32
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC,   // uint32
+    RAFT_LREG_LOWEST_IDX,         // int64
+    RAFT_LREG_CHKPT_IDX,          // int64
     RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
     RAFT_LREG_HIST_DEV_SYNC_LAT,  // hist object
@@ -174,6 +176,13 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     case LREG_NODE_CB_OP_READ_VAL:
         switch (lv->lrv_value_idx_in)
         {
+        case RAFT_LREG_LOWEST_IDX:
+            lreg_value_fill_signed(lv, "lowest-idx", ri->ri_lowest_idx);
+            break;
+        case RAFT_LREG_CHKPT_IDX:
+            lreg_value_fill_signed(lv, "checkpoint-idx",
+                                   ri->ri_checkpoint_last_idx);
+            break;
         case RAFT_LREG_RAFT_UUID:
             lreg_value_fill_string(lv, "raft-uuid", ri->ri_raft_uuid_str);
             break;
