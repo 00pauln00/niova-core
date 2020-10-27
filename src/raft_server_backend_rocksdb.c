@@ -24,11 +24,19 @@
 #define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
 #define RAFT_LOG_HEADER_FMT RAFT_LOG_HEADER_ROCKSDB"%s__%s"
 
-#define RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC "a1_hdr.last_sync"
+#define RAFT_LOG_HEADER_ROCKSDB_END "a1_hdr."
+#define RAFT_LOG_HEADER_ROCKSDB_END_STRLEN 7
+
+#define RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC       \
+    RAFT_LOG_HEADER_ROCKSDB_END"last_sync"
 #define RAFT_LOG_HEADER_ROCKSDB_LAST_SYNC_STRLEN 16
 
-#define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB "a1_hdr.last_applied"
+#define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB    \
+    RAFT_LOG_HEADER_ROCKSDB_END"last_applied"
 #define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB_STRLEN 19
+
+#define RAFT_LOG_HEADER_UUID RAFT_LOG_HEADER_ROCKSDB_END"UUID"
+#define RAFT_LOG_HEADER_UUID_STRLEN 11
 
 #define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
 #define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
@@ -302,6 +310,23 @@ rsb_sm_get_last_applied_kv_idx(struct raft_instance *ri)
 }
 
 static void
+rsb_sm_get_instance_uuid(struct raft_instance *ri)
+{
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    uuid_t instance_uuid = {0};
+
+    int rc = rsbr_get_exact_val_size(rir, RAFT_LOG_HEADER_UUID,
+                                     RAFT_LOG_HEADER_UUID_STRLEN,
+                                     (char *)instance_uuid, sizeof(uuid_t));
+
+    DBG_RAFT_INSTANCE_FATAL_IF(rc, ri, "rsbr_get_exact_val_size(): %s",
+                               strerror(-rc));
+
+    uuid_copy(ri->ri_db_uuid, instance_uuid);
+}
+
+static void
 rsbr_sm_apply_opt(struct raft_instance *ri,
                   const struct raft_net_sm_write_supplements *ws)
 {
@@ -564,6 +589,13 @@ rsbr_header_write(struct raft_instance *ri)
                            (const char *)&ri->ri_log_hdr,
                            sizeof(struct raft_log_header));
 
+    // Generate and store the db-instance UUID
+    uuid_t instance_uuid;
+    uuid_generate(instance_uuid);
+    rocksdb_writebatch_put(rir->rir_writebatch, RAFT_LOG_HEADER_UUID,
+                           RAFT_LOG_HEADER_UUID_STRLEN,
+                           (const char *)instance_uuid, sizeof(uuid_t));
+
     char *err = NULL;
     // Log header writes are always synchronous
     rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync, rir->rir_writebatch,
@@ -635,8 +667,8 @@ rsbr_num_entries_calc(struct raft_instance *ri)
                    (int)iter_key_len, rocksdb_iter_key(iter, &iter_key_len));
 
     // There's no key entry or header key here.
-    if (rsbr_string_matches_iter_key(RAFT_LOG_HEADER_ROCKSDB,
-                                     RAFT_LOG_HEADER_ROCKSDB_STRLEN,
+    if (rsbr_string_matches_iter_key(RAFT_LOG_HEADER_ROCKSDB_END,
+                                     RAFT_LOG_HEADER_ROCKSDB_END_STRLEN,
                                      iter, false))
     {
         rocksdb_iter_destroy(iter);
@@ -753,6 +785,9 @@ rsbr_destroy(struct raft_instance *ri)
             rir->rir_log_fd = -1;
     }
 
+    if (rir->rir_cf_table)
+        raft_server_rocksdb_release_cf_table(rir->rir_cf_table);
+
     if (rir->rir_db)
         rocksdb_close(rir->rir_db);
 
@@ -770,9 +805,6 @@ rsbr_destroy(struct raft_instance *ri)
 
     if (rir->rir_writebatch)
         rocksdb_writebatch_destroy(rir->rir_writebatch);
-
-    if (rir->rir_cf_table)
-        raft_server_rocksdb_release_cf_table(rir->rir_cf_table);
 
     niova_free(ri->ri_backend_arg);
 
@@ -880,6 +912,8 @@ rsbr_setup(struct raft_instance *ri)
         rsbr_destroy(ri);
         return -ENAMETOOLONG;
     }
+    // Reset return code
+    rc = 0;
 
     rir->rir_options = rocksdb_options_create();
     if (!rir->rir_options)
@@ -1006,6 +1040,8 @@ rsbr_setup(struct raft_instance *ri)
      */
     if (!rc && !err)
     {
+        rsb_sm_get_instance_uuid(ri);
+
         ri->ri_entries_detected_at_startup = rsbr_num_entries_calc(ri);
         if (ri->ri_entries_detected_at_startup < 0)
             rc = ri->ri_entries_detected_at_startup;
