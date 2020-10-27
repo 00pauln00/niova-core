@@ -105,8 +105,9 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_leader_term; // current term of the leader
     int64_t  raerqm_log_term; // term of the log entry (prev_log_index + 1)
                               // .. used for replays of old msgs ?? XXX needed?
-    uint64_t raerqm_term_seqno; // used for read-window'ing
     int64_t  raerqm_commit_index;
+    int64_t  raerqm_lowest_index;  // oldest index available through raft
+    int64_t  raerqm_chkpt_index;  // index of last checkpoint
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
@@ -120,15 +121,14 @@ struct raft_append_entries_request_msg
 
 struct raft_append_entries_reply_msg
 {
-    int64_t  raerpm_leader_term;
-    int64_t  raerpm_prev_log_index;
-    int64_t  raerpm_synced_log_index; // highest synchronized index
-    uint64_t raerpm_term_seqno; // used for read-window'ing
-    uint8_t  raerpm_heartbeat_msg;
-    uint8_t  raerpm_err_stale_term;
-    uint8_t  raerpm_err_non_matching_prev_term;
-    uint8_t  raerpm_newly_initialized_peer;
-    uint8_t  raerpm__pad[4];
+    int64_t raerpm_leader_term;
+    int64_t raerpm_prev_log_index;
+    int64_t raerpm_synced_log_index; // highest synchronized index
+    uint8_t raerpm_heartbeat_msg;
+    uint8_t raerpm_err_stale_term;
+    uint8_t raerpm_err_non_matching_prev_term;
+    uint8_t raerpm_newly_initialized_peer;
+    uint8_t raerpm__pad[4];
 };
 
 struct raft_sync_idx_update_msg
@@ -144,9 +144,9 @@ struct raft_rpc_msg
     uint32_t rrm_type;
     uint16_t rrm_version;
     uint16_t rrm__pad;
-//    uuid_t   rrm_dest_id; // XXX should match the recv'r
     uuid_t   rrm_sender_id; // should match the sender
     uuid_t   rrm_raft_id;
+    uuid_t   rrm_db_id;     // Id assigned to the backend instance
     union
     {   // This union must be at the end of the structure
         struct raft_vote_request_msg           rrm_vote_request;
@@ -366,6 +366,7 @@ struct raft_instance
     struct timespec                 ri_last_recv[CTL_SVC_MAX_RAFT_PEERS];
     const char                     *ri_raft_uuid_str;
     const char                     *ri_this_peer_uuid_str;
+    uuid_t                          ri_db_uuid; // set by backend
     struct raft_candidate_state     ri_candidate;
     struct raft_leader_state        ri_leader;
     enum raft_state                 ri_state;
@@ -376,9 +377,12 @@ struct raft_instance
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
     struct raft_log_header          ri_log_hdr;
+    int64_t                         ri_lowest_idx;
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
+    unsigned int                    ri_checkpoint_freq_sec;
+    int64_t                         ri_checkpoint_last_idx;
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];

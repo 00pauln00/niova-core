@@ -1591,6 +1591,18 @@ raft_server_vote_for_self(struct raft_instance *ri)
     return rc;
 }
 
+static void
+raft_server_set_uuids_in_rpc_msg(const struct raft_instance *ri,
+                                 struct raft_rpc_msg *rrm)
+{
+    if (ri && rrm)
+    {
+        uuid_copy(rrm->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
+        uuid_copy(rrm->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+        uuid_copy(rrm->rrm_db_id, ri->ri_db_uuid);
+    }
+}
+
 /**
  * raft_server_become_candidate - called when the raft instance is either in
  *    follower or candidate mode and the leader has not provided a heartbeat
@@ -1628,8 +1640,7 @@ raft_server_become_candidate(struct raft_instance *ri)
         .rrm_vote_request.rvrqm_last_log_index = sync_hdr.reh_index,
     };
 
-    uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(rrm.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    raft_server_set_uuids_in_rpc_msg(ri, &rrm);
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 
@@ -2065,8 +2076,7 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     rrm->rrm_type = RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST;
     rrm->rrm_version = 0;
 
-    uuid_copy(rrm->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(rrm->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    raft_server_set_uuids_in_rpc_msg(ri, rrm);
 
     struct raft_append_entries_request_msg *raerq =
         &rrm->rrm_append_entries_request;
@@ -2085,6 +2095,8 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     raerq->raerqm_entries_sz = 0;
     raerq->raerqm_leader_change_marker = 0;
     raerq->raerqm_prev_idx_crc = rfi->rfi_prev_idx_crc;
+    raerq->raerqm_lowest_index = ri->ri_lowest_idx;
+    raerq->raerqm_chkpt_index = ri->ri_checkpoint_last_idx;
 
     // Previous log index is the address of the follower's last write.
     raerq->raerqm_prev_log_index = rfi->rfi_next_idx - 1;
@@ -2172,8 +2184,7 @@ raft_server_process_vote_request(struct raft_instance *ri,
 
     /* Do some initialization on the reply message.
      */
-    uuid_copy(rreply_msg.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(rreply_msg.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    raft_server_set_uuids_in_rpc_msg(ri, &rreply_msg);
 
     rreply_msg.rrm_type = RAFT_RPC_MSG_TYPE_VOTE_REPLY;
     rreply_msg.rrm_vote_reply.rvrpm_term = ri->ri_log_hdr.rlh_term;
@@ -2570,8 +2581,7 @@ raft_server_process_append_entries_request_prep_reply(
     rae_reply->raerpm_synced_log_index =
         (!rc || non_matching_prev_term) ? current_idx : ID_ANY_64bit;
 
-    uuid_copy(reply->rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(reply->rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    raft_server_set_uuids_in_rpc_msg(ri, reply);
 
     rae_reply->raerpm_err_stale_term = stale_term;
     rae_reply->raerpm_err_non_matching_prev_term = non_matching_prev_term;
@@ -3902,8 +3912,7 @@ raft_server_follower_send_sync_idx(struct raft_instance *ri)
         .rrm_sync_index_update.rsium_term = reh.reh_term,
     };
 
-    uuid_copy(rrm.rrm_sender_id, RAFT_INSTANCE_2_SELF_UUID(ri));
-    uuid_copy(rrm.rrm_raft_id, RAFT_INSTANCE_2_RAFT_UUID(ri));
+    raft_server_set_uuids_in_rpc_msg(ri, &rrm);
 
     int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, leader, &rrm);
     if (rc)
@@ -4041,8 +4050,10 @@ raft_server_instance_init(struct raft_instance *ri)
         ri->ri_heartbeat_freq_per_election_min =
             RAFT_HEARTBEAT_FREQ_PER_ELECTION;
 
-    ri->ri_commit_idx = -1; //Xxx this needs to go into a more general init fn
+    ri->ri_commit_idx = -1;
     ri->ri_last_applied_idx = -1;
+    ri->ri_lowest_idx = -1;
+    ri->ri_checkpoint_last_idx = -1;
 
     ri->ri_startup_pre_net_bind_cb = raft_server_instance_startup;
     ri->ri_shutdown_cb = raft_server_instance_shutdown;
