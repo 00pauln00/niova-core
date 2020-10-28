@@ -101,17 +101,21 @@ rsbr_sm_apply_opt(struct raft_instance *,
 static int
 rsbr_sync(struct raft_instance *);
 
+static int64_t
+rsbr_checkpoint(struct raft_instance *);
+
 static struct raft_instance_backend ribRocksDB = {
-    .rib_entry_write       = rsbr_entry_write,
-    .rib_entry_read        = rsbr_entry_read,
-    .rib_entry_header_read = rsbr_entry_header_read,
-    .rib_log_truncate      = rsbr_log_truncate,
-    .rib_header_write      = rsbr_header_write,
-    .rib_header_load       = rsbr_header_load,
-    .rib_backend_setup     = rsbr_setup,
-    .rib_backend_shutdown  = rsbr_destroy,
-    .rib_sm_apply_opt      = rsbr_sm_apply_opt,
-    .rib_backend_sync      = rsbr_sync,
+    .rib_entry_write        = rsbr_entry_write,
+    .rib_entry_read         = rsbr_entry_read,
+    .rib_entry_header_read  = rsbr_entry_header_read,
+    .rib_log_truncate       = rsbr_log_truncate,
+    .rib_header_write       = rsbr_header_write,
+    .rib_header_load        = rsbr_header_load,
+    .rib_backend_setup      = rsbr_setup,
+    .rib_backend_shutdown   = rsbr_destroy,
+    .rib_backend_checkpoint = rsbr_checkpoint,
+    .rib_sm_apply_opt       = rsbr_sm_apply_opt,
+    .rib_backend_sync       = rsbr_sync,
 };
 
 #define RIR_RECOVERY_MARKER_FILENAME "recovery_marker."
@@ -762,6 +766,109 @@ rsbr_sync(struct raft_instance *ri)
     rocksdb_writebatch_destroy(wb);
 
     return 0;
+}
+
+static int
+rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
+                           const uuid_t db_id, raft_entry_idx_t sync_idx,
+                           bool local, bool initial, char *chkpt_path,
+                           size_t len)
+{
+    if (!base || uuid_is_null(peer_id) || uuid_is_null(db_id) || !chkpt_path ||
+        !len || sync_idx < 0)
+        return -EINVAL;
+
+    DECLARE_AND_INIT_UUID_STR(peer_uuid, peer_id);
+    DECLARE_AND_INIT_UUID_STR(db_uuid, db_id);
+
+    int rc = snprintf(chkpt_path, len, "%s/%s/%s%s_%s_%ld",
+                      base, (local ?
+                             ribSubDirs[RIR_SUBDIR_CHKPT_SELF] :
+                             ribSubDirs[RIR_SUBDIR_CHKPT_PEERS]),
+                      initial ? ".in-progress_" : "", db_uuid, peer_uuid,
+                      sync_idx);
+
+    return rc > len ? -ENAMETOOLONG : 0;
+}
+
+static int64_t
+rsbr_checkpoint(struct raft_instance *ri)
+{
+    if (!ri || !rsbr_ri_to_rirdb(ri))
+        return -EINVAL;
+
+    const raft_entry_idx_t sync_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+
+    if (sync_idx < 0) // Don't checkpoint if the db is empty
+        return -ENODATA;
+
+    else if (sync_idx == ri->ri_checkpoint_last_idx)
+        return -EALREADY;
+
+    char chkpt_path[PATH_MAX] = {0};
+    char chkpt_tmp_path[PATH_MAX] = {0};
+
+    int64_t rc = rsbr_checkpoint_path_build(ri->ri_log,
+                                            RAFT_INSTANCE_2_SELF_UUID(ri),
+                                            ri->ri_db_uuid, sync_idx,
+                                            true, true, chkpt_tmp_path,
+                                            PATH_MAX);
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "rsbr_checkpoint_path_build(): %s",
+                          strerror(-rc));
+        return -rc;
+    }
+
+    rc = rsbr_checkpoint_path_build(ri->ri_log,
+                                    RAFT_INSTANCE_2_SELF_UUID(ri),
+                                    ri->ri_db_uuid, sync_idx, true, false,
+                                    chkpt_path, PATH_MAX);
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "rsbr_checkpoint_path_build(): %s",
+                          strerror(-rc));
+        return -rc;
+    }
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "tmp-path=%s final-path=%s",
+                   chkpt_tmp_path, chkpt_path);
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    char *err = NULL;
+
+    rocksdb_checkpoint_t *cp =
+        rocksdb_checkpoint_object_create(rir->rir_db, &err);
+
+    if (err)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri,
+                          "rocksdb_checkpoint_object_create(): %s", err);
+        return -ENOMEM;
+    }
+
+    rocksdb_checkpoint_create(cp, chkpt_tmp_path, 0, &err);
+
+    rocksdb_checkpoint_object_destroy(cp);
+
+    if (err)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "rocksdb_checkpoint_create(): %s",
+                          err);
+        return -ENOMEM;
+    }
+
+    // Move the directory to its intended location.
+    rc = rename(chkpt_tmp_path, chkpt_path);
+    if (rc)
+        rc = -errno;
+
+    DBG_RAFT_INSTANCE((rc ? LL_ERROR : LL_NOTIFY), ri, "checkpoint@%s: %s",
+                      chkpt_path, strerror(-rc));
+
+    return rc ? rc : sync_idx;
 }
 
 static int

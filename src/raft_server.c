@@ -42,8 +42,11 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define RAFT_SERVER_SYNC_MIN_FREQ_US 100
 #define RAFT_SERVER_SYNC_MAX_FREQ_US 100000000
 #define RAFT_SERVER_SYNC_FREQ_US 4000
+
 typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
+
+typedef void * raft_server_chkpt_thread_t;
 
 // A value of '0' means that all will be read
 static size_t raftPersistentAppMaxScanEntries =
@@ -111,6 +114,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
     RAFT_LREG_HIST_DEV_SYNC_LAT,  // hist object
     RAFT_LREG_HIST_NENTRIES_SYNC, // hist object
+    RAFT_LREG_HIST_CHKPT_LAT,     // hist object
     RAFT_LREG_FOLLOWER_VSTATS,    // varray - last follower node
     RAFT_LREG_HIST_COMMIT_LAT,    // hist object
     RAFT_LREG_HIST_READ_LAT,      // hist object
@@ -319,6 +323,13 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                     RAFT_INSTANCE_HIST_NENTRIES_SYNC),
                 RAFT_INSTANCE_HIST_NENTRIES_SYNC);
             break;
+        case RAFT_LREG_HIST_CHKPT_LAT:
+            lreg_value_fill_histogram(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC),
+                RAFT_INSTANCE_HIST_CHKPT_LAT_USEC);
+            break;
         case RAFT_LREG_FOLLOWER_VSTATS:
             lreg_value_fill_varray(lv, "follower-stats",
                                    LREG_USER_TYPE_RAFT_PEER_STATS,
@@ -336,6 +347,9 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         {
         case RAFT_LREG_SYNC_FREQ_US:
             raft_server_set_sync_freq(ri, lv);
+            break;
+        case RAFT_LREG_CHKPT_IDX:
+            ri->ri_take_checkpoint = true;
             break;
         default:
             rc = -EPERM;
@@ -4218,6 +4232,105 @@ raft_server_sync_thread_start(struct raft_instance *ri)
     return 0;
 }
 
+static void
+raft_server_take_chkpt(struct raft_instance *ri)
+{
+    raft_entry_idx_t sync_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+
+    if (sync_idx < 0)
+        return;
+
+    struct timespec io_op[2];
+    niova_unstable_clock(&io_op[0]);
+
+    /* rib_backend_checkpoint() returns the idx used for the checkpoint which
+     * must be >= to the one read here.
+     */
+    int64_t rc = ri->ri_backend->rib_backend_checkpoint(ri);
+
+    niova_unstable_clock(&io_op[1]);
+
+    raft_server_incorporate_latency_measurement(
+        ri, io_op[0], io_op[1], RAFT_INSTANCE_HIST_CHKPT_LAT_USEC);
+
+    if (rc >= 0)
+    {
+        FATAL_IF(
+            (rc < sync_idx ||
+             rc < niova_atomic_read(&ri->ri_checkpoint_last_idx)),
+            "invalid checkpoint-idx=%ld (sync-idx=%ld, chkpt_last_idx=%lld)",
+            rc, sync_idx, ri->ri_checkpoint_last_idx);
+
+        // Atomic here since this runs in a separate thread context.
+        niova_atomic_init(&ri->ri_checkpoint_last_idx, rc);
+    }
+
+    DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : /*LL_INFO*/ LL_WARN), ri,
+                      "rib_backend_checkpoint(): %s", strerror(-rc));
+}
+
+static raft_server_chkpt_thread_t
+raft_server_chkpt_thread(void *arg)
+{
+    struct thread_ctl *tc = arg;
+    struct raft_instance *ri = (struct raft_instance *)thread_ctl_get_arg(tc);
+
+//    thread_ctl_set_user_pause_usec(tc, ri->ri_sync_freq_us);
+
+    NIOVA_ASSERT(ri);
+
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        sleep(1);
+        DBG_THREAD_CTL(LL_TRACE, tc, "here");
+
+        const bool user_requested_chkpt = ri->ri_take_checkpoint;
+        if (user_requested_chkpt)
+            ri->ri_take_checkpoint = false;
+
+        const raft_entry_idx_t sync_idx =
+            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+
+        if (sync_idx < 0)
+            continue;
+
+        const raft_entry_idx_t num_entries_since_last_chkpt =
+            sync_idx - ri->ri_checkpoint_last_idx;
+
+        NIOVA_ASSERT(num_entries_since_last_chkpt >= 0);
+
+        DBG_RAFT_INSTANCE((num_entries_since_last_chkpt ? LL_DEBUG : LL_TRACE),
+                          ri, "num_entries_since_last_chkpt=%zd user-req=%s",
+                          num_entries_since_last_chkpt,
+                          user_requested_chkpt ? "yes" : "no");
+
+        if (user_requested_chkpt ||
+            (num_entries_since_last_chkpt >=
+             RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES))
+            raft_server_take_chkpt(ri);
+    }
+
+    return (void *)0;
+}
+
+static int
+raft_server_chkpt_thread_start(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+    NIOVA_ASSERT(ri->ri_backend->rib_backend_checkpoint);
+
+    int rc = thread_create_watched(raft_server_chkpt_thread,
+                                   &ri->ri_chkpt_thread_ctl,
+                                   "chkpt_thread", (void *)ri, NULL);
+     if (rc)
+	return rc;
+
+    thread_ctl_run(&ri->ri_chkpt_thread_ctl);
+
+    return 0;
+}
+
 static int
 raft_server_instance_startup(struct raft_instance *ri)
 {
@@ -4246,9 +4359,7 @@ raft_server_instance_startup(struct raft_instance *ri)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_instance_lreg_init(): %s",
                           strerror(-rc));
-
-        raft_server_instance_shutdown(ri);
-        return rc;
+        goto out;
     }
 
     rc = raft_server_log_load(ri);
@@ -4256,9 +4367,7 @@ raft_server_instance_startup(struct raft_instance *ri)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_log_load(): %s",
                           strerror(-rc));
-
-        raft_server_instance_shutdown(ri);
-        return rc;
+        goto out;
     }
 
     rc = raft_server_evp_setup(ri);
@@ -4266,22 +4375,28 @@ raft_server_instance_startup(struct raft_instance *ri)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "ev_pipe_setup(): %s",
                           strerror(-rc));
-
-        raft_server_instance_shutdown(ri);
-        return rc;
+        goto out;
     }
 
     if (!raft_server_does_synchronous_writes(ri))
     {
         rc = raft_server_sync_thread_start(ri);
         if (rc)
-        {
-            raft_net_instance_shutdown(ri);
-            return rc;
-        }
+            goto out;
     }
 
-    return 0;
+    if (ri->ri_backend->rib_backend_checkpoint)
+    {
+        rc = raft_server_chkpt_thread_start(ri);
+        if (rc)
+            goto out;
+    }
+
+out:
+    if (rc)
+        raft_net_instance_shutdown(ri);
+
+    return rc;
 }
 
 static int
