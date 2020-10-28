@@ -751,11 +751,13 @@ tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
 static void
 tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
 {
-    if (tmc->tmc_status != TMCS_CONNECTING)
+    if (tmc->tmc_status != TMCS_DISCONNECTED)
     {
-        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "no longer connecting");
+        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "no longer disconnected");
         return;
     }
+
+    tmc->tmc_status = TMCS_CONNECTING;
 
     int rc = tcp_socket_setup(&tmc->tmc_tsh);
     if (rc < 0)
@@ -817,12 +819,16 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
         return rc;
     }
 
-    NIOVA_ASSERT(
-        tmc->tmc_tsh.tsh_socket < 0 && tmc->tmc_status == TMCS_DISCONNECTED);
+    // status can change in epoll thread while we are here
+    if (tmc->tmc_tsh.tsh_socket >= 0 || tmc->tmc_status != TMCS_DISCONNECTED)
+        return -EALREADY;
 
-    tmc->tmc_status = TMCS_CONNECTING;
+    // can't set status to CONNECTING here because we aren't in epoll_ctx
 
-    // XXX add connect callback
+    // XXX should we add a connecting flag to tmc that is thread safe?
+    // XXX or perhaps a flag to indicate that the tmc is waiting for epoll ctx
+
+    // XXX could add connect callback to tcp_mgr_send_msg?
     tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx,
                                      NULL, NULL);
 
