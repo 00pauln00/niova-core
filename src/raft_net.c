@@ -1152,7 +1152,7 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     return csn;
 }
 
-int
+static int
 raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs,
                   const enum raft_udp_listen_sockets sock_src)
@@ -1195,7 +1195,7 @@ raft_net_tmi_get(struct raft_instance *ri, struct ctl_svc_node *csn)
     return is_client_cxn ? &ri->ri_client_tcp_mgr : &ri->ri_peer_tcp_mgr;
 }
 
-int
+static int
 raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs)
 {
