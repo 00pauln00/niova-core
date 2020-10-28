@@ -387,17 +387,18 @@ struct raft_instance
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
-    bool                            ri_take_checkpoint;
+    bool                            ri_user_requested_checkpoint;
+    bool                            ri_user_requested_prune;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
     struct raft_log_header          ri_log_hdr;
-    int64_t                         ri_lowest_idx;
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
     unsigned int                    ri_checkpoint_freq_sec;
     raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
+    raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log prune
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];

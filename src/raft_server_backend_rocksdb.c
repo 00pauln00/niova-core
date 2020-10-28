@@ -82,6 +82,9 @@ rsbr_entry_header_read(struct raft_instance *, struct raft_entry_header *);
 static void
 rsbr_log_truncate(struct raft_instance *, const raft_entry_idx_t);
 
+static void // runs in checkpoint thread context
+rsbr_log_prune(struct raft_instance *, const raft_entry_idx_t);
+
 static int
 rsbr_header_load(struct raft_instance *);
 
@@ -109,6 +112,7 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_entry_read         = rsbr_entry_read,
     .rib_entry_header_read  = rsbr_entry_header_read,
     .rib_log_truncate       = rsbr_log_truncate,
+    .rib_log_prune          = rsbr_log_prune,
     .rib_header_write       = rsbr_header_write,
     .rib_header_load        = rsbr_header_load,
     .rib_backend_setup      = rsbr_setup,
@@ -626,6 +630,83 @@ rsbr_init_header(struct raft_instance *ri)
     return rsbr_header_write(ri);
 }
 
+static int
+rsbr_lowest_entry_get(struct raft_instance *ri, raft_entry_idx_t *lowest_idx)
+{
+    if (!ri || !lowest_idx)
+        return -EINVAL;
+
+    *lowest_idx = -1ULL;
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    rocksdb_iterator_t *iter = rsbr_create_iterator(rir);
+    if (!iter)
+        return -ENOMEM;
+
+    int rc = rsbr_iter_seek(iter, RAFT_LOG_HEADER_ROCKSDB_END,
+                            RAFT_LOG_HEADER_ROCKSDB_END_STRLEN, true);
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri,
+                          "rsbr_iter_seek(%s): %s",
+                          RAFT_LOG_HEADER_ROCKSDB_END,
+                          strerror(-rc));
+        rocksdb_iter_destroy(iter);
+        return rc;
+    }
+
+    size_t iter_key_len = 0;
+    for (bool found = false; !found;)
+    {
+        // Iterate forward looking for the first entry key
+        rc = rsbr_iter_next_or_prev(iter, true, true);
+        if (rc)
+        {
+            DBG_RAFT_INSTANCE(LL_ERROR, ri,
+                              "rsbr_iter_next_or_prev(): %s",
+                              strerror(-rc));
+            break;
+        }
+        else if (rsbr_string_matches_iter_key(
+                     RAFT_LOG_LASTENTRY_ROCKSDB,
+                     RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN, iter, false))
+        {
+            break; // no entries found in the keyspace
+        }
+        else if (rsbr_string_matches_iter_key(
+                     RAFT_ENTRY_KEY_PREFIX_ROCKSDB,
+                     RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN, iter, false))
+        {
+            const char *key = rocksdb_iter_key(iter, &iter_key_len);
+
+            FATAL_IF(((strncmp(key, RAFT_ENTRY_KEY_PREFIX_ROCKSDB,
+                               RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN) &&
+                       key[iter_key_len - 1] != 'e')),
+                     "unexpected key (`%s'), len=%zu", key, iter_key_len);
+
+            unsigned long long val = 0;
+            // The above FATAL_IF guaranteed a non-numeric trailing char
+
+            rc = niova_string_to_unsigned_long_long(
+                &key[RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN], &val);
+
+            NIOVA_ASSERT(!rc);
+
+            *lowest_idx = (raft_entry_idx_t)val;
+            found = true;
+        }
+    }
+
+    SIMPLE_LOG_MSG(LL_WARN, "key='%.*s' lowest-idx=%zd rc=%d",
+                   (int)iter_key_len, rocksdb_iter_key(iter, &iter_key_len),
+                   *lowest_idx, rc);
+
+    rocksdb_iter_destroy(iter);
+
+    return rc;
+}
+
 static ssize_t
 rsbr_num_entries_calc(struct raft_instance *ri)
 {
@@ -737,7 +818,49 @@ rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
     rocksdb_writebatch_clear(rir->rir_writebatch);
 }
 
-static int
+static void // runs in checkpoint thread context
+rsbr_log_prune(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
+{
+    NIOVA_ASSERT(ri && rsbr_ri_to_rirdb(ri));
+    NIOVA_ASSERT(entry_idx >= 0);
+
+    /* Create our own rocksdb_writebatch_t since this runs outside of the
+     * main raft thread.
+     */
+    rocksdb_writebatch_t *wb = rocksdb_writebatch_create();
+    NIOVA_ASSERT(wb);
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    NIOVA_ASSERT(rir->rir_writeoptions_sync);
+
+    /* Take care to remove (and preserve) headers with their entries.  Entry
+     * keys end in 'e' (versus 'h' for headers) so this operation should use
+     * the lower key suffix ('e') for this operation.
+     */
+
+    size_t start_entry_key_len = 0;
+    DECL_AND_FMT_STRING_RET_LEN(start_entry_key,
+                                RAFT_ROCKSDB_KEY_LEN_MAX,
+                                (ssize_t *)&start_entry_key_len,
+                                RAFT_ENTRY_KEY_PRINTF, (raft_entry_idx_t)0);
+
+    size_t end_entry_key_len = 0;
+    DECL_AND_FMT_STRING_RET_LEN(end_entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+                                (ssize_t *)&end_entry_key_len,
+                                RAFT_ENTRY_KEY_PRINTF, entry_idx);
+
+    rocksdb_writebatch_delete_range(wb, start_entry_key, start_entry_key_len,
+                                    end_entry_key, end_entry_key_len);
+
+    char *err = NULL;
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync, wb, &err);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write(): %s", err);
+    rocksdb_writebatch_destroy(wb);
+}
+
+static int // runs in sync thread context
 rsbr_sync(struct raft_instance *ri)
 {
     if (!ri || !rsbr_ri_to_rirdb(ri))
@@ -791,7 +914,7 @@ rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
     return rc > len ? -ENAMETOOLONG : 0;
 }
 
-static int64_t
+static int64_t // checkpoint thread context
 rsbr_checkpoint(struct raft_instance *ri)
 {
     if (!ri || !rsbr_ri_to_rirdb(ri))
@@ -1152,6 +1275,14 @@ rsbr_setup(struct raft_instance *ri)
         ri->ri_entries_detected_at_startup = rsbr_num_entries_calc(ri);
         if (ri->ri_entries_detected_at_startup < 0)
             rc = ri->ri_entries_detected_at_startup;
+
+        raft_entry_idx_t lowest_idx = -1;
+        if (ri->ri_entries_detected_at_startup > 0)
+        {
+            rc = rsbr_lowest_entry_get(ri, &lowest_idx);
+            FATAL_IF(rc, "rsbr_lowest_entry_get(): %s", strerror(-rc));
+        }
+        niova_atomic_init(&ri->ri_lowest_idx, lowest_idx);
 
         /* Applications which store their application data in RocksDB may
          * bypass the entries which have already been applied.
