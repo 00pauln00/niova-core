@@ -287,7 +287,8 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
     RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC  = 4,
     RAFT_INSTANCE_HIST_NENTRIES_SYNC      = 5,
-    RAFT_INSTANCE_HIST_MAX                = 6,
+    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 6,
+    RAFT_INSTANCE_HIST_MAX                = 7,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -350,7 +351,7 @@ struct raft_instance_backend
     int     (*rib_backend_setup)(struct raft_instance *);
     int     (*rib_backend_shutdown)(struct raft_instance *);
     int     (*rib_backend_sync)(struct raft_instance *);
-    int     (*rib_backend_checkpoint)(struct raft_instance *);
+    int64_t (*rib_backend_checkpoint)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
                                 const struct raft_net_sm_write_supplements *);
 };
@@ -363,6 +364,8 @@ enum raft_instance_newest_entry_hdr_types
     RI_NEHDR_ALL = 2,
     RI_NEHDR__END = RI_NEHDR_ALL,
 };
+
+typedef niova_atomic64_t raft_chkpt_thread_atomic64_t;
 
 struct raft_instance
 {
@@ -384,6 +387,7 @@ struct raft_instance
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
+    bool                            ri_take_checkpoint;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
@@ -393,7 +397,7 @@ struct raft_instance
     int64_t                         ri_last_applied_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
     unsigned int                    ri_checkpoint_freq_sec;
-    int64_t                         ri_checkpoint_last_idx;
+    raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
@@ -420,6 +424,7 @@ struct raft_instance
     void                           *ri_client_arg;
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
+    struct thread_ctl               ri_chkpt_thread_ctl;
 };
 
 static inline void
@@ -517,7 +522,7 @@ do {                                                               \
                      __leader_uuid_str);                           \
                                                                    \
     LOG_MSG(log_level,                                                      \
-            "%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld v=%s l=%s "  \
+            "%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld lck=%lld v=%s l=%s "  \
             fmt,                                                            \
             raft_server_state_to_char((ri)->ri_state),                      \
             raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
@@ -525,9 +530,11 @@ do {                                                               \
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC), \
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC), \
             (ri)->ri_log_hdr.rlh_term,                                      \
-            (ri)->ri_log_hdr.rlh_seqno,                                     \
-            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,                 \
-            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);                  \
+            (ri)->ri_log_hdr.rlh_seqno,                                 \
+            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,             \
+            niova_atomic_read(&(ri)->ri_checkpoint_last_idx),           \
+            __uuid_str, __leader_uuid_str,                              \
+            ##__VA_ARGS__);                                             \
 } while (0)
 
 #define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)       \
@@ -594,6 +601,8 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "dev-sync-latency-usec";
     case RAFT_INSTANCE_HIST_NENTRIES_SYNC:
         return "nentries-per-sync";
+    case RAFT_INSTANCE_HIST_CHKPT_LAT_USEC:
+        return "checkpoint-latency-usec";
     default:
         break;
     }
