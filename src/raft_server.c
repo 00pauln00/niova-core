@@ -349,7 +349,10 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             raft_server_set_sync_freq(ri, lv);
             break;
         case RAFT_LREG_CHKPT_IDX:
-            ri->ri_take_checkpoint = true;
+            ri->ri_user_requested_checkpoint = true;
+            break;
+        case RAFT_LREG_LOWEST_IDX:
+            ri->ri_user_requested_prune = true;
             break;
         default:
             rc = -EPERM;
@@ -1220,39 +1223,20 @@ raft_server_entry_next_entry_is_valid(struct raft_instance *ri,
     return true;
 }
 
-/**
- * raft_server_entries_scan - reads through the non-header log entries to the
- *    log's end with the purpose of finding the latest valid entry.
- */
 static int
-raft_server_entries_scan(struct raft_instance *ri)
+raft_server_entries_scan_internal(struct raft_instance *ri,
+                                  const raft_entry_idx_t start,
+                                  const raft_entry_idx_t max)
 {
-    NIOVA_ASSERT(ri);
-
-    const raft_entry_idx_t num_entries = ri->ri_entries_detected_at_startup;
-    if (!num_entries)
-        return 0;
-
-    else if (num_entries < 0)
-        return (int)num_entries;
+    int rc = 0;
 
     struct raft_entry_header reh;
 
-    raft_entry_idx_t starting_entry =
-        (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP &&
-         raftPersistentAppMaxScanEntries > 0 &&
-         num_entries > raftPersistentAppMaxScanEntries)
-        ? starting_entry = num_entries - raftPersistentAppMaxScanEntries
-        : 0;
-
-    int rc = 0;
-
-    for (raft_entry_idx_t i = starting_entry; i < num_entries; i++)
+    for (raft_entry_idx_t i = start; i < max; i++)
     {
         rc = raft_server_entry_header_read_by_store(ri, &reh, i);
 
         DBG_RAFT_ENTRY(LL_WARN, &reh, "i=%lx rc=%d", i, rc);
-
         if (rc)
         {
             DBG_RAFT_ENTRY(LL_DEBUG, &reh,
@@ -1264,10 +1248,11 @@ raft_server_entries_scan(struct raft_instance *ri)
         /* Skip the validity check on the first iteration when starting_entry
          * is set.
          */
-        else if (starting_entry && i > starting_entry)
+        else if (start && i > start)
         {
             if (!raft_server_entry_next_entry_is_valid(ri, &reh))
             {
+                rc = -EINVAL;
                 DBG_RAFT_ENTRY(
                     LL_WARN, &reh,
                     "raft_server_entry_next_entry_is_valid() false");
@@ -1283,6 +1268,47 @@ raft_server_entries_scan(struct raft_instance *ri)
     }
 
     return rc;
+}
+
+/**
+ * raft_server_entries_scan - reads through the non-header log entries to the
+ *    log's end with the purpose of finding the latest valid entry.
+ */
+static int
+raft_server_entries_scan(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    const raft_entry_idx_t entry_max_idx = ri->ri_entries_detected_at_startup;
+    if (!entry_max_idx)
+        return 0;
+
+    else if (entry_max_idx < 0)
+        return (int)entry_max_idx;
+
+    /* Ensure the start of the key space is intact since it may not be
+     * otherwise checked due to raftPersistentAppMaxScanEntries.
+     */
+#define LOG_INITIAL_SCAN_SZ 1000UL
+    raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
+
+    int rc = raft_server_entries_scan_internal(
+        ri, lowest_idx, lowest_idx + LOG_INITIAL_SCAN_SZ);
+    if (rc)
+        return rc;
+
+    // Reinit
+    raft_instance_initialize_newest_entry_hdr(ri);
+
+    raft_entry_idx_t starting_entry =
+        (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP &&
+         raftPersistentAppMaxScanEntries > 0 &&
+         entry_max_idx > raftPersistentAppMaxScanEntries)
+        ? starting_entry = entry_max_idx - raftPersistentAppMaxScanEntries
+        : lowest_idx;
+
+    return raft_server_entries_scan_internal(ri, starting_entry,
+                                             entry_max_idx);
 }
 
 /**
@@ -4267,7 +4293,44 @@ raft_server_take_chkpt(struct raft_instance *ri)
     }
 
     DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : /*LL_INFO*/ LL_WARN), ri,
-                      "rib_backend_checkpoint(): %s", strerror(-rc));
+                      "rib_backend_checkpoint(%zd): %s",
+                      rc, rc < 0 ? strerror(-rc) : "Success");
+}
+
+
+// XXX change my name to "reap" or "cull" log
+static void
+raft_server_prune_log(struct raft_instance *ri)
+{
+    if (!ri)
+        return;
+
+    const raft_entry_idx_t sync_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+
+    if (sync_idx < 0)
+        return;
+
+    const raft_entry_idx_t num_entries =
+        sync_idx - MAX(0, niova_atomic_read(&ri->ri_lowest_idx));
+
+    raft_entry_idx_t prune_idx = -1ULL;
+
+    int rc = 0;
+    if (num_entries > RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES)
+    {
+        prune_idx = sync_idx - RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
+        NIOVA_ASSERT(prune_idx >
+                     RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES);
+
+        ri->ri_backend->rib_log_prune(ri, prune_idx);
+
+        niova_atomic_init(&ri->ri_lowest_idx, prune_idx);
+    }
+
+    DBG_RAFT_INSTANCE((rc ? LL_ERROR : LL_WARN), ri,
+                      "num-entries=%ld, prune-idx=%ld",
+                      num_entries, prune_idx);
 }
 
 static raft_server_chkpt_thread_t
@@ -4285,9 +4348,13 @@ raft_server_chkpt_thread(void *arg)
         sleep(1);
         DBG_THREAD_CTL(LL_TRACE, tc, "here");
 
-        const bool user_requested_chkpt = ri->ri_take_checkpoint;
+        const bool user_requested_chkpt = ri->ri_user_requested_checkpoint;
         if (user_requested_chkpt)
-            ri->ri_take_checkpoint = false;
+            ri->ri_user_requested_checkpoint = false;
+
+        const bool user_requested_prune = ri->ri_user_requested_prune;
+        if (user_requested_prune)
+            ri->ri_user_requested_prune = false;
 
         const raft_entry_idx_t sync_idx =
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
@@ -4309,6 +4376,13 @@ raft_server_chkpt_thread(void *arg)
             (num_entries_since_last_chkpt >=
              RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES))
             raft_server_take_chkpt(ri);
+
+        // Test for pruning
+        if (user_requested_prune ||
+            ((sync_idx - MAX(niova_atomic_read(&ri->ri_lowest_idx), 0)) >
+             RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES *
+             RAFT_INSTANCE_PERSISTENT_APP_PRUNE_FACTOR))
+            raft_server_prune_log(ri);
     }
 
     return (void *)0;
