@@ -83,7 +83,7 @@ static void
 rsbr_log_truncate(struct raft_instance *, const raft_entry_idx_t);
 
 static void // runs in checkpoint thread context
-rsbr_log_prune(struct raft_instance *, const raft_entry_idx_t);
+rsbr_log_reap(struct raft_instance *, const raft_entry_idx_t);
 
 static int
 rsbr_header_load(struct raft_instance *);
@@ -112,7 +112,7 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_entry_read         = rsbr_entry_read,
     .rib_entry_header_read  = rsbr_entry_header_read,
     .rib_log_truncate       = rsbr_log_truncate,
-    .rib_log_prune          = rsbr_log_prune,
+    .rib_log_reap           = rsbr_log_reap,
     .rib_header_write       = rsbr_header_write,
     .rib_header_load        = rsbr_header_load,
     .rib_backend_setup      = rsbr_setup,
@@ -819,7 +819,7 @@ rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 }
 
 static void // runs in checkpoint thread context
-rsbr_log_prune(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
+rsbr_log_reap(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 {
     NIOVA_ASSERT(ri && rsbr_ri_to_rirdb(ri));
     NIOVA_ASSERT(entry_idx >= 0);

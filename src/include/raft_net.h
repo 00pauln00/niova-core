@@ -78,7 +78,7 @@ enum raft_instance_store_type
 };
 
 #define RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES 10000
-#define RAFT_INSTANCE_PERSISTENT_APP_PRUNE_FACTOR 2
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR 2
 
 enum raft_udp_listen_sockets
 {
