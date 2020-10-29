@@ -36,6 +36,7 @@ enum raft_net_lreg_values
     RAFT_NET_LREG_ELECTION_TIMEOUT_MS,// uint32
     RAFT_NET_LREG_HEARTBEAT_FREQ,     // uint32
     RAFT_NET_LREG__MAX,
+    RAFT_NET_LREG__CLIENT_MAX = RAFT_NET_LREG_IGNORE_TIMER_EVENTS + 1,
 };
 
 struct raft_instance raftInstance = {
@@ -51,13 +52,6 @@ static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
                              void *);
 
-//LREG_ROOT_ENTRY_GENERATE(raft_net, LREG_USER_TYPE_RAFT_NET);
-
-LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
-                                RAFT_NET_LREG__MAX,
-                                raft_net_lreg_multi_facet_cb, NULL,
-                                LREG_INIT_OPT_NONE);
-
 struct raft_instance *
 raft_net_get_instance(void)
 {
@@ -65,6 +59,18 @@ raft_net_get_instance(void)
     //      may be serviced by a single process
     return &raftInstance;
 }
+
+static unsigned int
+raft_net_lreg_num_keys(void)
+{
+    return raft_instance_is_client(raft_net_get_instance()) ?
+        RAFT_NET_LREG__CLIENT_MAX : RAFT_NET_LREG__MAX;
+}
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
+                                raft_net_lreg_num_keys(),
+                                raft_net_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
 
 static unsigned int
 raft_net_calc_max_heartbeat_freq(const struct raft_instance *ri)
