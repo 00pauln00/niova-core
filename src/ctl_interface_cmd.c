@@ -27,7 +27,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define CTLIC_BUFFER_SIZE        4096
 #define CTLIC_MAX_TOKENS_PER_REQ 8
-#define CTLIC_MAX_VALUE_SIZE     127
+#define CTLIC_MAX_VALUE_SIZE     (NAME_MAX + 1)
 #define CTLIC_MAX_VALUE_DEPTH    32 // Max 'tree' depth which can be queried
 #define CTLIC_MAX_TAB_DEPTH      (CTLIC_MAX_VALUE_DEPTH * 2)
 #define CTLIC_MAX_SIBLING_CNT    16384
