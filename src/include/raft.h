@@ -315,7 +315,7 @@ struct raft_instance_hist_stats
  *    raft_entry_idx_t to be nullified from the raft log such that read
  *    operations of those addresses do not produce seemingly valid raft
  *    entries.
- * @rib_log_prune:  Prune is opposite of truncate - it causes the removal of
+ * @rib_log_reap:  Reap is opposite of truncate - it causes the removal of
  *    entries older than and including the provided raft_entry_idx_t.  This
  *    API call is optional and is intended for backends whose application data
  *    are guaranteed to be persistent
@@ -345,7 +345,7 @@ struct raft_instance_backend
     ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
     void    (*rib_log_truncate)(struct raft_instance *,
                                 const raft_entry_idx_t);
-    void    (*rib_log_prune)(struct raft_instance *, const raft_entry_idx_t);
+    void    (*rib_log_reap)(struct raft_instance *, const raft_entry_idx_t);
     int     (*rib_header_load)(struct raft_instance *);
     int     (*rib_header_write)(struct raft_instance *);
     int     (*rib_backend_setup)(struct raft_instance *);
@@ -388,7 +388,7 @@ struct raft_instance
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
     bool                            ri_user_requested_checkpoint;
-    bool                            ri_user_requested_prune;
+    bool                            ri_user_requested_reap;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
@@ -398,7 +398,7 @@ struct raft_instance
     crc32_t                         ri_last_applied_cumulative_crc;
     unsigned int                    ri_checkpoint_freq_sec;
     raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
-    raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log prune
+    raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log reap
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];

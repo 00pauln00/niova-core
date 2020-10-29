@@ -352,7 +352,7 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             ri->ri_user_requested_checkpoint = true;
             break;
         case RAFT_LREG_LOWEST_IDX:
-            ri->ri_user_requested_prune = true;
+            ri->ri_user_requested_reap = true;
             break;
         default:
             rc = -EPERM;
@@ -4300,7 +4300,7 @@ raft_server_take_chkpt(struct raft_instance *ri)
 
 // XXX change my name to "reap" or "cull" log
 static void
-raft_server_prune_log(struct raft_instance *ri)
+raft_server_reap_log(struct raft_instance *ri)
 {
     if (!ri)
         return;
@@ -4314,23 +4314,23 @@ raft_server_prune_log(struct raft_instance *ri)
     const raft_entry_idx_t num_entries =
         sync_idx - MAX(0, niova_atomic_read(&ri->ri_lowest_idx));
 
-    raft_entry_idx_t prune_idx = -1ULL;
+    raft_entry_idx_t reap_idx = -1ULL;
 
     int rc = 0;
     if (num_entries > RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES)
     {
-        prune_idx = sync_idx - RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
-        NIOVA_ASSERT(prune_idx >
+        reap_idx = sync_idx - RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
+        NIOVA_ASSERT(reap_idx >
                      RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES);
 
-        ri->ri_backend->rib_log_prune(ri, prune_idx);
+        ri->ri_backend->rib_log_reap(ri, reap_idx);
 
-        niova_atomic_init(&ri->ri_lowest_idx, prune_idx);
+        niova_atomic_init(&ri->ri_lowest_idx, reap_idx);
     }
 
     DBG_RAFT_INSTANCE((rc ? LL_ERROR : LL_WARN), ri,
-                      "num-entries=%ld, prune-idx=%ld",
-                      num_entries, prune_idx);
+                      "num-entries=%ld, reap-idx=%ld",
+                      num_entries, reap_idx);
 }
 
 static raft_server_chkpt_thread_t
@@ -4352,9 +4352,9 @@ raft_server_chkpt_thread(void *arg)
         if (user_requested_chkpt)
             ri->ri_user_requested_checkpoint = false;
 
-        const bool user_requested_prune = ri->ri_user_requested_prune;
-        if (user_requested_prune)
-            ri->ri_user_requested_prune = false;
+        const bool user_requested_reap = ri->ri_user_requested_reap;
+        if (user_requested_reap)
+            ri->ri_user_requested_reap = false;
 
         const raft_entry_idx_t sync_idx =
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
@@ -4378,11 +4378,11 @@ raft_server_chkpt_thread(void *arg)
             raft_server_take_chkpt(ri);
 
         // Test for pruning
-        if (user_requested_prune ||
+        if (user_requested_reap ||
             ((sync_idx - MAX(niova_atomic_read(&ri->ri_lowest_idx), 0)) >
              RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES *
-             RAFT_INSTANCE_PERSISTENT_APP_PRUNE_FACTOR))
-            raft_server_prune_log(ri);
+             RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR))
+            raft_server_reap_log(ri);
     }
 
     return (void *)0;
