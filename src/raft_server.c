@@ -43,14 +43,19 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define RAFT_SERVER_SYNC_MAX_FREQ_US 100000000
 #define RAFT_SERVER_SYNC_FREQ_US 4000
 
+#define RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES 1000000
+#define RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES 10000
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR 2
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX 100
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT 5
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX 20
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN 1
+
 typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
 
 typedef void * raft_server_chkpt_thread_t;
-
-// A value of '0' means that all will be read
-static size_t raftPersistentAppMaxScanEntries =
-    RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
+typedef void raft_server_chkpt_thread_ctx_t;
 
 static const char *
 raft_server_may_accept_client_request_reason(struct raft_instance *ri);
@@ -91,6 +96,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_PEER_UUID,          // string
     RAFT_LREG_VOTED_FOR_UUID,     // string
     RAFT_LREG_LEADER_UUID,        // string
+    RAFT_LREG_DB_UUID,            // string
     RAFT_LREG_PEER_STATE,         // string
     RAFT_LREG_FOLLOWER_REASON,    // string
     RAFT_LREG_CLIENT_REQUESTS,    // string
@@ -203,6 +209,9 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                             ri->ri_csn_leader->csn_uuid);
             else
                 lreg_value_fill_string(lv, "leader-uuid", "");
+            break;
+        case RAFT_LREG_DB_UUID:
+            lreg_value_fill_string_uuid(lv, "db-uuid", ri->ri_db_uuid);
             break;
         case RAFT_LREG_PEER_STATE:
             lreg_value_fill_string(lv, "state",
@@ -1236,7 +1245,7 @@ raft_server_entries_scan_internal(struct raft_instance *ri,
     {
         rc = raft_server_entry_header_read_by_store(ri, &reh, i);
 
-        DBG_RAFT_ENTRY(LL_WARN, &reh, "i=%lx rc=%d", i, rc);
+        DBG_RAFT_ENTRY(LL_DEBUG, &reh, "i=%lx rc=%d", i, rc);
         if (rc)
         {
             DBG_RAFT_ENTRY(LL_DEBUG, &reh,
@@ -1272,7 +1281,11 @@ raft_server_entries_scan_internal(struct raft_instance *ri,
 
 /**
  * raft_server_entries_scan - reads through the non-header log entries to the
- *    log's end with the purpose of finding the latest valid entry.
+ *    log's end with the purpose of finding the latest valid entry and
+ *    performing a cursory verification of the header entries.  Note that this
+ *    scan may be "fast-forwarded" if the store type is of
+ *    RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP.  In this case, the scan will
+ *    still check the initial set of header entries.
  */
 static int
 raft_server_entries_scan(struct raft_instance *ri)
@@ -1286,26 +1299,29 @@ raft_server_entries_scan(struct raft_instance *ri)
     else if (entry_max_idx < 0)
         return (int)entry_max_idx;
 
-    /* Ensure the start of the key space is intact since it may not be
-     * otherwise checked due to raftPersistentAppMaxScanEntries.
-     */
-#define LOG_INITIAL_SCAN_SZ 1000UL
-    raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
+    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
 
-    int rc = raft_server_entries_scan_internal(
-        ri, lowest_idx, lowest_idx + LOG_INITIAL_SCAN_SZ);
-    if (rc)
-        return rc;
-
-    // Reinit
-    raft_instance_initialize_newest_entry_hdr(ri);
-
-    raft_entry_idx_t starting_entry =
+    const raft_entry_idx_t starting_entry =
         (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP &&
-         raftPersistentAppMaxScanEntries > 0 &&
-         entry_max_idx > raftPersistentAppMaxScanEntries)
-        ? starting_entry = entry_max_idx - raftPersistentAppMaxScanEntries
-        : lowest_idx;
+         ri->ri_max_scan_entries > 0 &&
+         entry_max_idx > ri->ri_max_scan_entries)
+        ? entry_max_idx - ri->ri_max_scan_entries
+        : MAX(0, lowest_idx);
+
+    /* Ensure the start of the key space is intact since it may not be
+     * otherwise checked due to ri_max_scan_entries.
+     */
+    if (starting_entry > 0)
+    {
+#define LOG_INITIAL_SCAN_SZ 1000UL
+        int rc = raft_server_entries_scan_internal(
+            ri, lowest_idx, lowest_idx + LOG_INITIAL_SCAN_SZ);
+        if (rc)
+            return rc;
+
+        // Reinit
+        raft_instance_initialize_newest_entry_hdr(ri);
+    }
 
     return raft_server_entries_scan_internal(ri, starting_entry,
                                              entry_max_idx);
@@ -4088,9 +4104,84 @@ static int
 raft_server_instance_shutdown(struct raft_instance *ri);
 
 static void
-raft_server_instance_init(struct raft_instance *ri)
+raft_server_set_max_scan_entries(struct raft_instance *ri,
+                                 ssize_t max_scan_entries)
+{
+    NIOVA_ASSERT(ri);
+
+    if (max_scan_entries < 0)
+        ri->ri_max_scan_entries = (ssize_t)-1;
+
+    else
+        ri->ri_max_scan_entries =
+            MAX(max_scan_entries,
+                RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES);
+
+    SIMPLE_LOG_MSG(LL_WARN, "max_scan_entries=%zd", ri->ri_max_scan_entries);
+}
+
+static void
+raft_server_set_log_reap_factor(struct raft_instance *ri,
+                                size_t log_reap_factor)
+{
+    NIOVA_ASSERT(ri);
+
+    ri->ri_log_reap_factor = MIN(log_reap_factor,
+                                 RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX);
+
+    SIMPLE_LOG_MSG(LL_WARN, "log_reap_factor=%zu", ri->ri_log_reap_factor);
+}
+
+static void
+raft_server_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts)
+{
+    NIOVA_ASSERT(ri);
+
+    num_ckpts = MAX(RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN, num_ckpts);
+
+    ri->ri_num_checkpoints = MIN(num_ckpts,
+                                 RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX);
+
+    SIMPLE_LOG_MSG(LL_WARN, "num_checkpoints=%zu", ri->ri_num_checkpoints);
+}
+
+static void
+raft_server_instance_init_rocksdb_persistent_app(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+
+    if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP)
+    {
+        if (!ri->ri_max_scan_entries)
+            raft_server_set_max_scan_entries(
+                ri, RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES);
+
+        if (!ri->ri_log_reap_factor)
+            raft_server_set_log_reap_factor(
+                ri, RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR);
+
+        if (!ri->ri_num_checkpoints)
+            raft_server_set_num_checkpoints(
+                ri, RAFT_INSTANCE_PERSISTENT_APP_CHKPT);
+    }
+}
+
+static void
+raft_server_instance_init_tunables(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+
+    if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP)
+        raft_server_instance_init_rocksdb_persistent_app(ri);
+}
+
+static void
+raft_server_instance_init(struct raft_instance *ri,
+                          enum raft_instance_store_type type)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+
+    raft_instance_backend_type_specify(ri, type);
 
     if (!ri->ri_election_timeout_max_ms)
         ri->ri_election_timeout_max_ms = RAFT_ELECTION_UPPER_TIME_MS;
@@ -4104,6 +4195,8 @@ raft_server_instance_init(struct raft_instance *ri)
     ri->ri_lowest_idx = -1;
     ri->ri_checkpoint_last_idx = -1;
 
+    raft_server_instance_init_tunables(ri);
+
     ri->ri_startup_pre_net_bind_cb = raft_server_instance_startup;
     ri->ri_shutdown_cb = raft_server_instance_shutdown;
 
@@ -4112,7 +4205,6 @@ raft_server_instance_init(struct raft_instance *ri)
     raft_net_instance_apply_callbacks(ri, raft_server_timerfd_cb,
                                       raft_server_client_recv_handler,
                                       raft_server_peer_recv_handler);
-
 }
 
 static util_thread_ctx_reg_t
@@ -4297,12 +4389,11 @@ raft_server_take_chkpt(struct raft_instance *ri)
                       rc, rc < 0 ? strerror(-rc) : "Success");
 }
 
-
-// XXX change my name to "reap" or "cull" log
-static void
-raft_server_reap_log(struct raft_instance *ri)
+static raft_server_chkpt_thread_ctx_t
+raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
 {
-    if (!ri)
+    if (!ri || // Maintain a min number of entries
+        num_keep_entries < RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES)
         return;
 
     const raft_entry_idx_t sync_idx =
@@ -4311,26 +4402,22 @@ raft_server_reap_log(struct raft_instance *ri)
     if (sync_idx < 0)
         return;
 
-    const raft_entry_idx_t num_entries =
-        sync_idx - MAX(0, niova_atomic_read(&ri->ri_lowest_idx));
+    const raft_entry_idx_t lowest_idx =
+        MAX(0, niova_atomic_read(&ri->ri_lowest_idx));
 
-    raft_entry_idx_t reap_idx = -1ULL;
+    NIOVA_ASSERT(sync_idx >= lowest_idx);
 
-    int rc = 0;
-    if (num_entries > RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES)
+    const raft_entry_idx_t new_lowest_idx = sync_idx - num_keep_entries;
+
+    if (new_lowest_idx > lowest_idx)
     {
-        reap_idx = sync_idx - RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
-        NIOVA_ASSERT(reap_idx >
-                     RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES);
-
-        ri->ri_backend->rib_log_reap(ri, reap_idx);
-
-        niova_atomic_init(&ri->ri_lowest_idx, reap_idx);
+        ri->ri_backend->rib_log_reap(ri, new_lowest_idx);
+        niova_atomic_init(&ri->ri_lowest_idx, new_lowest_idx);
     }
 
-    DBG_RAFT_INSTANCE((rc ? LL_ERROR : LL_WARN), ri,
-                      "num-entries=%ld, reap-idx=%ld",
-                      num_entries, reap_idx);
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "num-keep-entries=%zd reap-idx=%ld",
+                      num_keep_entries,
+                      new_lowest_idx > lowest_idx ? new_lowest_idx : -1UL);
 }
 
 static raft_server_chkpt_thread_t
@@ -4368,21 +4455,30 @@ raft_server_chkpt_thread(void *arg)
         NIOVA_ASSERT(num_entries_since_last_chkpt >= 0);
 
         DBG_RAFT_INSTANCE((num_entries_since_last_chkpt ? LL_DEBUG : LL_TRACE),
-                          ri, "num_entries_since_last_chkpt=%zd user-req=%s",
+                          ri, "entries_since_last_chkpt=%zd user-req=%s",
                           num_entries_since_last_chkpt,
                           user_requested_chkpt ? "yes" : "no");
 
         if (user_requested_chkpt ||
-            (num_entries_since_last_chkpt >=
-             RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES))
+            (ri->ri_auto_checkpoints_enabled &&
+             (num_entries_since_last_chkpt >= ri->ri_max_scan_entries)))
             raft_server_take_chkpt(ri);
 
-        // Test for pruning
+        // Test for reaping
         if (user_requested_reap ||
-            ((sync_idx - MAX(niova_atomic_read(&ri->ri_lowest_idx), 0)) >
-             RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES *
-             RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR))
-            raft_server_reap_log(ri);
+            (ri->ri_auto_checkpoints_enabled && ri->ri_log_reap_factor))
+        {
+            NIOVA_ASSERT(ri->ri_log_reap_factor > 0); // sanity
+
+            ssize_t num_keep_entries =
+                ri->ri_log_reap_factor *
+                ((ri->ri_max_scan_entries >
+                  RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES)
+                 ? ri->ri_max_scan_entries
+                 : RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES);
+
+            raft_server_reap_log(ri, num_keep_entries);
+        }
     }
 
     return (void *)0;
@@ -4521,8 +4617,6 @@ raft_server_main_loop(struct raft_instance *ri)
     return rc;
 }
 
-
-
 int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
@@ -4535,15 +4629,13 @@ raft_server_instance_run(const char *raft_uuid_str,
 
     struct raft_instance *ri = raft_net_get_instance();
 
-    raft_server_instance_init(ri);
+    raft_server_instance_init(ri, type);
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes = sync_writes;
-
-    raft_instance_backend_type_specify(ri, type);
 
     int rc = raft_net_instance_startup(ri, false);
     if (rc)
