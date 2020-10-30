@@ -588,6 +588,35 @@ rsbr_header_write(struct raft_instance *ri)
                            (const char *)&ri->ri_log_hdr,
                            sizeof(struct raft_log_header));
 
+    char *err = NULL;
+    // Log header writes are always synchronous
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync, rir->rir_writebatch,
+                  &err);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
+
+    rocksdb_writebatch_clear(rir->rir_writebatch);
+
+    return 0;
+}
+
+static int // Call from rib_backend_setup()
+rsbr_init_header(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
+        return -EINVAL;
+
+    memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
+
+    // Since we're initializing the header block this is ok
+    ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    NIOVA_ASSERT(rir->rir_writeoptions_sync && rir->rir_writebatch);
+    rocksdb_writebatch_clear(rir->rir_writebatch);
+
+    size_t key_len;
     DECL_AND_FMT_STRING_RET_LEN(last_key, RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&key_len, RAFT_LOG_LASTENTRY_FMT,
                                 ri->ri_raft_uuid_str,
@@ -612,20 +641,6 @@ rsbr_header_write(struct raft_instance *ri)
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
 
     rocksdb_writebatch_clear(rir->rir_writebatch);
-
-    return 0;
-}
-
-static int // Call from rib_backend_setup()
-rsbr_init_header(struct raft_instance *ri)
-{
-    if (!ri)
-        return -EINVAL;
-
-    memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
-
-    // Since we're initializing the header block this is ok
-    ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
 
     return rsbr_header_write(ri);
 }

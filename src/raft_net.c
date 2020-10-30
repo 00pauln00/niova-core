@@ -35,6 +35,9 @@ enum raft_net_lreg_values
     RAFT_NET_LREG_IGNORE_TIMER_EVENTS,
     RAFT_NET_LREG_ELECTION_TIMEOUT_MS,// uint32
     RAFT_NET_LREG_HEARTBEAT_FREQ,     // uint32
+    RAFT_NET_LREG_MAX_SCAN_ENTRIES,   // int64
+    RAFT_NET_LREG_LOG_REAP_FACTOR,    // uint32
+    RAFT_NET_LREQ_NUM_CHECKPOINTS,
     RAFT_NET_LREG__MAX,
     RAFT_NET_LREG__CLIENT_MAX = RAFT_NET_LREG_IGNORE_TIMER_EVENTS + 1,
 };
@@ -208,6 +211,18 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         case RAFT_NET_LREG_HEARTBEAT_FREQ:
             lreg_value_fill_unsigned(lv, "heartbeat-freq-per-election-timeout",
                                      ri->ri_heartbeat_freq_per_election_min);
+            break;
+        case RAFT_NET_LREG_MAX_SCAN_ENTRIES:
+            lreg_value_fill_signed(lv, "max-scan-entries",
+                                   ri->ri_max_scan_entries);
+            break;
+        case RAFT_NET_LREG_LOG_REAP_FACTOR:
+            lreg_value_fill_unsigned(lv, "log-reap-factor",
+                                     ri->ri_log_reap_factor);
+            break;
+        case RAFT_NET_LREQ_NUM_CHECKPOINTS:
+            lreg_value_fill_unsigned(lv, "num-checkpoints",
+                                     ri->ri_num_checkpoints);
             break;
         default:
             rc = -ENOENT;

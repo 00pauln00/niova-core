@@ -389,6 +389,7 @@ struct raft_instance
     bool                            ri_synchronous_writes;
     bool                            ri_user_requested_checkpoint;
     bool                            ri_user_requested_reap;
+    bool                            ri_auto_checkpoints_enabled;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
@@ -396,11 +397,13 @@ struct raft_instance
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
-    unsigned int                    ri_checkpoint_freq_sec;
     raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
     raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log reap
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
+    ssize_t                         ri_max_scan_entries;
+    size_t                          ri_log_reap_factor;
+    size_t                          ri_num_checkpoints;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
     pthread_mutex_t                 ri_newest_entry_mutex;
     struct epoll_mgr                ri_epoll_mgr;
