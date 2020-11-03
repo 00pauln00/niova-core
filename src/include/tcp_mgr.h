@@ -31,6 +31,9 @@ typedef tcp_mgr_ctx_ssize_t
 typedef tcp_mgr_ctx_t
 (*tcp_mgr_connect_info_cb_t)(struct tcp_mgr_connection *, const char **, int *);
 
+typedef tcp_mgr_ctx_t
+(*tcp_mgr_connection_epoll_ctx_cb_t)(struct tcp_mgr_connection *);
+
 struct tcp_mgr_instance
 {
     struct tcp_socket_handle  tmi_listen_socket;
@@ -39,6 +42,7 @@ struct tcp_mgr_instance
     struct epoll_mgr         *tmi_epoll_mgr;
     struct epoll_handle       tmi_listen_eph;
     epoll_mgr_ref_cb_t        tmi_connection_ref_cb;
+    pthread_mutex_t           tmi_epoll_ctx_mutex;
 
     tcp_mgr_recv_cb_t         tmi_recv_cb;
     tcp_mgr_bulk_size_cb_t    tmi_bulk_size_cb;
@@ -62,14 +66,16 @@ enum tcp_mgr_connection_status
 
 struct tcp_mgr_connection
 {
-    enum tcp_mgr_connection_status tmc_status;
-    struct tcp_socket_handle       tmc_tsh;
-    struct epoll_handle            tmc_eph;
-    struct tcp_mgr_instance       *tmc_tmi;
-    size_t                         tmc_header_size;
-    char                          *tmc_bulk_buf;
-    size_t                         tmc_bulk_offset;
-    size_t                         tmc_bulk_remain;
+    enum tcp_mgr_connection_status    tmc_status;
+    struct tcp_socket_handle          tmc_tsh;
+    struct epoll_handle               tmc_eph;
+    struct tcp_mgr_instance          *tmc_tmi;
+    size_t                            tmc_header_size;
+    char                             *tmc_bulk_buf;
+    size_t                            tmc_bulk_offset;
+    size_t                            tmc_bulk_remain;
+    tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_cb;
+    tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_done_cb;
 };
 
 #define DBG_TCP_MGR_CXN(log_level, tmc, fmt, ...)                    \
@@ -128,6 +134,5 @@ tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 
 void
 tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
-                               epoll_mgr_ctx_cb_t done_cb, void *done_data);
-
+                               tcp_mgr_connection_epoll_ctx_cb_t done_cb);
 #endif

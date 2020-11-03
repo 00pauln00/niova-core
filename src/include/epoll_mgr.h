@@ -44,19 +44,13 @@ struct epoll_handle
     void              *eph_arg;
     epoll_mgr_cb_t     eph_cb;
     epoll_mgr_ref_cb_t eph_ref_cb;
+    epoll_mgr_ctx_cb_t eph_ctx_cb;
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
+    SLIST_ENTRY(epoll_handle) eph_cb_lentry;
 };
 
 CIRCLEQ_HEAD(epoll_handle_list, epoll_handle);
-
-struct epoll_ctx_callback
-{
-    SLIST_ENTRY(epoll_ctx_callback) ecc_lentry;
-    epoll_mgr_ctx_cb_t ecc_cb;
-    size_t             ecc_data_size;
-    char               ecc_data[];
-};
-SLIST_HEAD(epoll_ctx_callback_list, epoll_ctx_callback);
+SLIST_HEAD(epoll_ctx_callback_list, epoll_handle);
 
 typedef void epoll_mgr_cb_ctx_t;
 
@@ -107,15 +101,7 @@ int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
 
 int
-epoll_mgr_ctx_cb_init_data(struct epoll_mgr *epm,
-                      epoll_mgr_ctx_cb_t ecc_cb,
-                      void **data_out, size_t data_size);
+epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
+                     epoll_mgr_ctx_cb_t cb);
 
-void
-epoll_mgr_ctx_cb_add_data(struct epoll_mgr *epm, void *data);
-
-void
-epoll_mgr_ctx_cb_add_simple(struct epoll_mgr *epm,
-                            epoll_mgr_ctx_cb_t ecc_cb,
-                            void *data);
 #endif

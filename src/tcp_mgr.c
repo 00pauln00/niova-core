@@ -95,6 +95,8 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
 
     tcp_mgr_bulk_credits_set(tmi, bulk_credits);
     tcp_mgr_incoming_credits_set(tmi, incoming_credits);
+
+    pthread_mutex_init(&tmi->tmi_epoll_ctx_mutex, NULL);
 }
 
 int
@@ -139,7 +141,7 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
 
     tcp_socket_handle_init(&tmc->tmc_tsh);
 
-    tmc->tmc_eph.eph_installed = 0;
+    epoll_handle_init(&tmc->tmc_eph, -1, 0, NULL, tmc, NULL);
 
     tmc->tmc_tmi = tmi;
 
@@ -149,6 +151,8 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
     tmc->tmc_bulk_remain = 0;
+
+    tmc->tmc_epoll_ctx_done_cb = NULL;
 }
 
 // cannot be used for incoming (temporary) connection objects
@@ -223,59 +227,46 @@ tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
     tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
 }
 
-// XXX this name could be better
-struct tmc_context {
-    struct tcp_mgr_connection *tmccc_tmc;
-    void                       (*tmccc_cb)(struct tcp_mgr_connection *tmc);
-    epoll_mgr_ctx_cb_t         tmccc_done_cb;
-    void                      *tmccc_done_data;
-};
-
-static void
-tcp_mgr_connection_epoll_ctx_cb(void *data)
+static epoll_mgr_cb_ctx_t
+tcp_mgr_epoll_ctx_cb(void *data)
 {
-    const struct tmc_context *cc = data;
-    NIOVA_ASSERT(cc->tmccc_cb);
+    struct tcp_mgr_connection *tmc = data;
+    if (tmc->tmc_epoll_ctx_cb)
+        tmc->tmc_epoll_ctx_cb(tmc);
+    if (tmc->tmc_epoll_ctx_done_cb)
+        tmc->tmc_epoll_ctx_done_cb(tmc);
 
-    cc->tmccc_cb(cc->tmccc_tmc);
-
-    if (cc->tmccc_done_cb)
-        cc->tmccc_done_cb(cc->tmccc_done_data);
+    tmc->tmc_epoll_ctx_cb = NULL;
+    tmc->tmc_epoll_ctx_done_cb = NULL;
 }
 
 static int
 tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
-                                 void (*cb)(struct tcp_mgr_connection *tmc),
-                                 epoll_mgr_ctx_cb_t done_cb,
-                                 void *done_data)
+                                 tcp_mgr_connection_epoll_ctx_cb_t cb,
+                                 tcp_mgr_connection_epoll_ctx_cb_t done_cb)
 {
-    struct tmc_context *ctx;
-    struct epoll_mgr *epm = tmc->tmc_tmi->tmi_epoll_mgr;
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    struct epoll_mgr *epm = tmi->tmi_epoll_mgr;
+    if (!cb)
+        return -EINVAL;
 
-    int rc = epoll_mgr_ctx_cb_init_data(epm,
-                                        tcp_mgr_connection_epoll_ctx_cb,
-                                        (void**)&ctx,
-                                        sizeof(struct tmc_context));
-    // are we already in the epoll thread ctx?
-    if (rc == -EALREADY)
+    niova_mutex_lock(&tmi->tmi_epoll_ctx_mutex);
+    if (tmc->tmc_epoll_ctx_cb)
     {
-        cb(tmc);
-        return 0;
+        niova_mutex_unlock(&tmi->tmi_epoll_ctx_mutex);
+        return -EAGAIN;
     }
-    else if (rc)
+    else
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "cannot start epoll connection task, rc: %d",
-                       rc);
-        return rc;
+        tmc->tmc_epoll_ctx_cb = cb;
+        tmc->tmc_epoll_ctx_done_cb = done_cb;
+        niova_mutex_unlock(&tmi->tmi_epoll_ctx_mutex);
     }
 
-    ctx->tmccc_tmc = tmc;
-    ctx->tmccc_cb = cb;
-    ctx->tmccc_done_cb = done_cb;
-    ctx->tmccc_done_data = done_data;
-    epoll_mgr_ctx_cb_add_data(epm, ctx);
-
-    return 0;
+    int rc = epoll_mgr_ctx_cb_add(epm, &tmc->tmc_eph, tcp_mgr_epoll_ctx_cb);
+    if (rc)
+        LOG_MSG(LL_ERROR, "cannot start epoll connection task, rc: %d", rc);
+    return rc;
 }
 
 static int
@@ -830,7 +821,7 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
 
     // XXX could add connect callback to tcp_mgr_send_msg?
     tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx,
-                                     NULL, NULL);
+                                     NULL);
 
     return -EAGAIN;
 }
@@ -842,7 +833,8 @@ tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (tmc->tmc_status == TMCS_NEEDS_SETUP)
     {
-        SIMPLE_LOG_MSG(LL_DEBUG, "calling tcp_mgr_connection_setup, tmc %p", tmc);
+        SIMPLE_LOG_MSG(LL_DEBUG, "calling tcp_mgr_connection_setup, tmc %p",
+                       tmc);
         tcp_mgr_connection_setup(tmc, tmi);
         tcp_mgr_connection_setup_info(tmc);
     }
@@ -855,16 +847,16 @@ tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
     rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
 
     if (rc == -ENOTCONN || rc == -ECONNRESET)
-        tcp_mgr_connection_close_async(tmc, NULL, NULL);
+        tcp_mgr_connection_close_async(tmc, NULL);
 
     return rc;
 }
 
 void
 tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
-                               epoll_mgr_ctx_cb_t done_cb, void *done_data)
+                               tcp_mgr_connection_epoll_ctx_cb_t done_cb)
 {
     tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_close,
-                                     done_cb, done_data);
+                                     done_cb);
 };
 

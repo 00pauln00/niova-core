@@ -234,8 +234,9 @@ tmt_owned_connection_random_get(struct tmt_data *td)
 }
 
 static void
-tmt_close_done_cb(void *oc)
+tmt_close_done_cb(struct tcp_mgr_connection *tmc)
 {
+    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
     SIMPLE_LOG_MSG(LL_TRACE, "oc %p", oc);
     tmt_owned_connection_getput(oc, EPH_REF_PUT);
 }
@@ -251,7 +252,7 @@ tmt_close_thread(void *arg)
     {
         struct tmt_owned_connection *oc = tmt_owned_connection_random_get(td);
         DBG_TCP_MGR_CXN(LL_NOTIFY, &oc->oc_tmc, "closing connection");
-        tcp_mgr_connection_close_async(&oc->oc_tmc, tmt_close_done_cb, oc);
+        tcp_mgr_connection_close_async(&oc->oc_tmc, tmt_close_done_cb);
         niova_atomic_inc(&td->td_close_cnt);
 
         // put it at the end so the test happens after sleep
@@ -283,10 +284,16 @@ void tmt_threads_stop(struct tmt_data *td)
     {
         thread_ctl_halt(&thread->tt_thread);
     }
-    LIST_FOREACH(thread, &td->td_thread_list_head, tt_lentry)
+
+    thread = LIST_FIRST(&td->td_thread_list_head);
+    while(thread != NULL)
     {
         thread_creator_wait_until_ctl_loop_reached(&thread->tt_thread);
         thread_halt_and_destroy(&thread->tt_thread);
+
+        struct tmt_thread *tmp = LIST_NEXT(thread, tt_lentry);
+        niova_free(thread);
+        thread = tmp;
     }
 }
 
