@@ -234,9 +234,10 @@ lctli_prepare(struct ctl_interface *lctli)
     if (rc >= PATH_MAX)
         return -ENAMETOOLONG;
 
+    // note that IN_ATTRIB causes duplicate events on EXDEV file moves
     lctli->lctli_inotify_watch_fd =
         inotify_add_watch(lctli->lctli_inotify_fd, input_path,
-                          IN_CLOSE_WRITE | IN_ATTRIB | IN_MOVED_TO);
+                          IN_CLOSE_WRITE | IN_MOVED_TO);
 
     if (lctli->lctli_inotify_watch_fd < 0)
     {
