@@ -336,11 +336,18 @@ epoll_mgr_basic_tests(void)
 
     // Insert a bogus eph
     struct epoll_handle eph = {0};
+
     rc = epoll_handle_init(&eph, -1, 0, NULL, NULL, NULL);
-    FATAL_IF(rc != -EINVAL, "epoll_handle_init() expected -EINVAL got %d", rc);
+    FATAL_IF(rc, "epoll_handle_init() expected 0 got %d", rc);
+
+    rc = epoll_handle_add(epm, &eph);
+    FATAL_IF(rc != -EINVAL, "epoll_handle_add() expected -EINVAL got %d", rc);
 
     rc = epoll_handle_init(&eph, -1, 0, foo_cb, NULL, NULL);
-    FATAL_IF(rc != -EBADF, "epoll_handle_init() expected -EBADF got %d", rc);
+    FATAL_IF(rc, "epoll_handle_init() expected 0 got %d", rc);
+
+    rc = epoll_handle_add(epm, &eph);
+    FATAL_IF(rc != -EBADF, "epoll_handle_add() expected -EBADF got %d", rc);
 
     // Create a legit fd for epoll_handle_init and add
     struct ev_pipe evp;
