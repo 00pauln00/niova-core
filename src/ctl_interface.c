@@ -40,15 +40,29 @@ REGISTRY_ENTRY_FILE_GENERATE;
 typedef void lctli_inotify_thread_t;
 typedef int  lctli_inotify_thread_int_t;
 
+struct ctl_interface_op
+{
+    char            cio_input_name[NAME_MAX + 1];
+    int             cio_status;
+    bool            cio_init_ctx;
+    size_t          cio_op_num;
+    struct timespec cio_ts;
+};
+
+#define CTL_INTERFACE_COMPLETED_OP_CNT 32
+
 struct ctl_interface
 {
-    const char        lctli_path[PATH_MAX + 1];
-    bool              lctli_init;
-    int               lctli_inotify_fd;
-    int               lctli_inotify_watch_fd;
-    int               lctli_input_dirfd;
-    int               lctli_output_dirfd;
-    struct thread_ctl lctli_thr_ctl;
+    const char              lctli_path[PATH_MAX + 1];
+    bool                    lctli_init;
+    int                     lctli_inotify_fd;
+    int                     lctli_inotify_watch_fd;
+    int                     lctli_input_dirfd;
+    int                     lctli_output_dirfd;
+    size_t                  lctli_op_cnt;
+    struct lreg_node        lctli_lreg;
+    struct thread_ctl       lctli_thr_ctl;
+    struct ctl_interface_op lctli_cio[CTL_INTERFACE_COMPLETED_OP_CNT];
 };
 
 enum lctli_subdirs
@@ -92,6 +106,35 @@ lctli_new(void)
 }
 
 static util_thread_ctx_t
+lctli_store_completed_op(struct ctl_interface *lctli,
+                         const struct ctli_cmd_handle *cch, int status)
+{
+    if (!lctli || !cch)
+        return;
+
+    const size_t op_num = lctli->lctli_op_cnt++;
+    const size_t idx = op_num % CTL_INTERFACE_COMPLETED_OP_CNT;
+
+    struct ctl_interface_op *cio = &lctli->lctli_cio[idx];
+
+    cio->cio_status = status;
+    cio->cio_init_ctx = init_ctx();
+    cio->cio_op_num = op_num;
+    niova_realtime_coarse_clock(&cio->cio_ts);
+
+    strncpy(cio->cio_input_name, cch->ctlih_input_file_name, NAME_MAX);
+}
+
+static util_thread_ctx_t // or init_ctx_t
+lctli_process_request(struct ctl_interface *lctli,
+                      const struct ctli_cmd_handle *cch)
+{
+    int rc = ctlic_process_request(cch);
+
+    lctli_store_completed_op(lctli, cch, rc);
+}
+
+static util_thread_ctx_t
 lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
                                        char *buf, const ssize_t len)
 {
@@ -114,16 +157,8 @@ lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
                 .ctlih_input_file_name = event->name
             };
 
-            ctlic_process_request(&cch);
+            lctli_process_request(lctli, &cch);
         }
-#if 0
-        if (!(event->mask & IN_ISDIR) &&
-            (event->mask & IN_CLOSE_WRITE ||
-             event->mask & IN_ATTRIB      ||
-             event->mask & IN_MOVED_TO))
-        {
-        }
-#endif
     }
 }
 
@@ -356,7 +391,7 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
             .ctlih_input_file_name = dent->d_name,
         };
 
-        ctlic_process_request(&cch);
+        lctli_process_request(lctli, &cch);
     }
 
     close_rc = closedir(init_subdir);
