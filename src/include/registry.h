@@ -642,12 +642,12 @@ lreg_value_fill_string(struct lreg_value *lv, const char *key,
     {
         lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_STRING);
 
-        if (value)
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpragmas"
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
 #endif
+        if (value)
             strncpy(LREG_VALUE_TO_OUT_STR(lv), value, LREG_VALUE_STRING_MAX);
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop
