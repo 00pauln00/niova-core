@@ -961,6 +961,8 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
         return NULL;
 
     *csn = *in;
+    if (ctl_svc_node_is_peer(csn))
+        csn->csn_peer.csnp_net_data.tmc_status = TMCS_NEEDS_SETUP;
 
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
@@ -1093,4 +1095,18 @@ ctl_svc_destroy(void)
     FUNC_ENTRY(LL_NOTIFY);
 
     ctl_svc_nodes_release();
+}
+
+void
+ctl_svc_nodes_apply(int (*cb)(struct ctl_svc_node *, void *), void *data)
+{
+    struct ctl_svc_node *csn;
+
+    niova_mutex_lock(&ctlSvcNodeTree.mutex);
+    RT_FOREACH_LOCKED(csn, ctl_svc_node_tree, &ctlSvcNodeTree)
+    {
+        if (cb(csn, data))
+            break;
+    }
+    niova_mutex_unlock(&ctlSvcNodeTree.mutex);
 }

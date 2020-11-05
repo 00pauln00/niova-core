@@ -264,4 +264,7 @@ ctl_svc_node_get(struct ctl_svc_node *csn);
 void
 ctl_svc_node_put(struct ctl_svc_node *csn);
 
+void
+ctl_svc_nodes_apply(int (*cb)(struct ctl_svc_node *, void *), void *data);
+
 #endif

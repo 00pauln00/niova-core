@@ -74,7 +74,6 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
-              tcp_mgr_connect_info_cb_t connect_info_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
@@ -86,7 +85,6 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
 
     tmi->tmi_data = data;
     tmi->tmi_connection_ref_cb = connection_ref_cb;
-    tmi->tmi_connect_info_cb = connect_info_cb;
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
     tmi->tmi_handshake_cb = handshake_cb;
@@ -129,39 +127,13 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
     return rc;
 }
 
-// cannot be used for incoming (temporary) connection objects
 static void
-tcp_mgr_connection_setup_info(struct tcp_mgr_connection *tmc)
+tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
+                                  struct tcp_mgr_instance *tmi)
 {
-    NIOVA_ASSERT(tmc->tmc_status != TMCS_NEEDS_SETUP && tmc->tmc_tmi);
-
-    if (!tmc->tmc_tmi->tmi_connect_info_cb)
-        return;
-
-    int port;
-    const char *ipaddr;
-    tmc->tmc_tmi->tmi_connect_info_cb(tmc, &ipaddr, &port);
-
-    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
-}
-
-static void
-tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
-                         struct tcp_mgr_instance *tmi,
-                         bool is_owned)
-{
-    static pthread_mutex_t setup_lock = PTHREAD_MUTEX_INITIALIZER;
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_mgr_connection_setup(): tmc %p", tmc);
 
-    niova_mutex_lock(&setup_lock);
-    if (tmc->tmc_status != TMCS_NEEDS_SETUP)
-    {
-        niova_mutex_unlock(&setup_lock);
-        return;
-    }
-
     tmc->tmc_status = TMCS_DISCONNECTED;
-    niova_mutex_unlock(&setup_lock);
 
     tcp_socket_handle_init(&tmc->tmc_tsh);
 
@@ -176,10 +148,24 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
     tmc->tmc_bulk_offset = 0;
     tmc->tmc_bulk_remain = 0;
 
+    tmc->tmc_epoll_ctx_cb = NULL;
     tmc->tmc_epoll_ctx_done_cb = NULL;
+}
 
-    if (is_owned)
-        tcp_mgr_connection_setup_info(tmc);
+void
+tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
+                         struct tcp_mgr_instance *tmi,
+                         const char *ipaddr, int port)
+{
+    if (tmc->tmc_status != TMCS_NEEDS_SETUP)
+    {
+        DBG_TCP_MGR_CXN(LL_ERROR, tmc,
+                        "setup called on existing conn, status=%d",
+                        tmc->tmc_status);
+        return;
+    }
+    tcp_mgr_connection_setup_internal(tmc, tmi);
+    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
 }
 
 static void
@@ -216,7 +202,7 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
         return NULL;
 
     tmc->tmc_status = TMCS_NEEDS_SETUP;
-    tcp_mgr_connection_setup(tmc, tmi, false);
+    tcp_mgr_connection_setup_internal(tmc, tmi, false);
 
     tmc->tmc_status = TMCS_CONNECTING;
 
@@ -257,6 +243,8 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
                                  tcp_mgr_connection_epoll_ctx_cb_t cb,
                                  tcp_mgr_connection_epoll_ctx_cb_t done_cb)
 {
+    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "block=%d", block);
+
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     struct epoll_mgr *epm = tmi->tmi_epoll_mgr;
     if (!cb)
@@ -324,8 +312,6 @@ tcp_mgr_epoll_handle_rc_get(const struct epoll_handle *eph,
 
     if (events & (EPOLLHUP | EPOLLERR))
     {
-        SIMPLE_LOG_MSG(LL_DEBUG, "received %s", events & EPOLLHUP ? "HUP" :
-                       "ERR");
         socklen_t rc_len = sizeof(rc);
         int rc2 = getsockopt(eph->eph_fd, SOL_SOCKET, SO_ERROR, &rc, &rc_len);
         if (rc2)
@@ -333,6 +319,8 @@ tcp_mgr_epoll_handle_rc_get(const struct epoll_handle *eph,
             SIMPLE_LOG_MSG(LL_ERROR, "Error getting socket error: %d", rc2);
             return rc2;
         }
+        SIMPLE_LOG_MSG(LL_DEBUG, "ev=%d: received %s, rc=%d", events,
+                       events & EPOLLHUP ? "HUP" : "ERR", rc);
     }
 
     return -rc;
@@ -517,18 +505,15 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
 
     struct tcp_mgr_instance *tmi = incoming->tmc_tmi;
 
-    if (owned->tmc_status == TMCS_NEEDS_SETUP)
+    if (owned->tmc_status != TMCS_DISCONNECTED)
     {
-        tcp_mgr_connection_setup(owned, tmi, true);
-    }
-    else if (owned->tmc_status == TMCS_DISCONNECTING ||
-             owned->tmc_status == TMCS_CONNECTING ||
-             owned->tmc_status == TMCS_CONNECTED)
-    {
-        DBG_TCP_MGR_CXN(LL_NOTIFY, owned,
-                        "incoming connection, but outgoing conn exists,"
-                        " status: %d",
-                        owned->tmc_status);
+        if (owned->tmc_status == TMCS_NEEDS_SETUP)
+            DBG_TCP_MGR_CXN(LL_ERROR, owned, "connection not setup");
+        else
+            DBG_TCP_MGR_CXN(LL_NOTIFY, owned,
+                            "incoming connection, but outgoing conn exists,"
+                            " status: %d",
+                            owned->tmc_status);
 
         // if peer is attempting to connect again, assume old connection is dead
         // XXX it would be better to send a ping, and handle failure there
@@ -830,15 +815,14 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
 }
 
 int
-tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
-                 struct iovec *iov, size_t niovs)
+tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
+                 size_t niovs)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (tmc->tmc_status == TMCS_NEEDS_SETUP)
     {
-        SIMPLE_LOG_MSG(LL_DEBUG, "calling tcp_mgr_connection_setup, tmc %p",
-                       tmc);
-        tcp_mgr_connection_setup(tmc, tmi, true);
+        DBG_TCP_MGR_CXN(LL_ERROR, tmc, "connection not setup");
+        return -EINVAL;
     }
 
     int rc = tcp_mgr_connection_verify(tmc, true);

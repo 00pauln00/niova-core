@@ -80,7 +80,7 @@ tmt_tcp_mgr_2_owned_connection(struct tcp_mgr_connection *tmc)
 }
 
 static struct tmt_owned_connection *
-tmt_owned_connection_new(struct tmt_data *td)
+tmt_owned_connection_new(struct tmt_data *td, int port)
 {
     struct tmt_owned_connection *oc =
         niova_malloc_can_fail(sizeof(struct tmt_owned_connection));
@@ -94,6 +94,7 @@ tmt_owned_connection_new(struct tmt_data *td)
     oc->oc_tmt_data = td;
     niova_atomic_init(&oc->oc_ref_cnt, 1);
     oc->oc_tmc.tmc_status = TMCS_NEEDS_SETUP;
+    tcp_mgr_connection_setup(&oc->oc_tmc, &td->td_tcp_mgr, IPADDR, port);
 
     td->td_conn_count++;
     niova_mutex_unlock(&td->td_conn_list_mutex);
@@ -337,13 +338,12 @@ tmt_handshake_cb(void *tmt_data, struct tcp_mgr_connection **tmc_out,
     if (hs->hs_magic != MAGIC)
         return -EBADMSG;
 
-    struct tmt_owned_connection *oc = tmt_owned_connection_new(tmt_data);
+    struct tmt_owned_connection *oc = tmt_owned_connection_new(tmt_data,
+                                                               hs->hs_id);
     if (!oc)
         return -ENOMEM;
 
     tmt_owned_connection_getput(oc, EPH_REF_GET);
-
-    oc->oc_port = hs->hs_id;
 
     *tmc_out = &oc->oc_tmc;
     *header_size_out = sizeof(struct tmt_message);
@@ -416,11 +416,9 @@ tmt_client_add(struct tmt_data *td, int port)
 
     static int send_id = 0;
 
-    struct tmt_owned_connection *oc = tmt_owned_connection_new(td);
+    struct tmt_owned_connection *oc = tmt_owned_connection_new(td, port);
     struct tmt_thread *thread = tmt_thread_new(td);
     NIOVA_ASSERT(oc && thread);
-
-    oc->oc_port = port;
 
     char name[16];
     snprintf(name, 16, "send-%d-%d", send_id, port);
@@ -514,17 +512,6 @@ tmt_event_loop_thread_add(struct tmt_data *td)
 }
 
 static void
-tmt_owned_connection_info_cb(struct tcp_mgr_connection *tmc,
-                             const char **ipaddr_out, int *port_out)
-{
-    *ipaddr_out = IPADDR;
-    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
-    *port_out = oc->oc_port;
-
-    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", IPADDR, oc->oc_port);
-}
-
-static void
 tmt_setup(struct tmt_data *td)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -533,7 +520,6 @@ tmt_setup(struct tmt_data *td)
     NIOVA_ASSERT(!rc);
 
     tcp_mgr_setup(&td->td_tcp_mgr, td, tmt_tcp_mgr_owned_connection_getput_cb,
-                  tmt_owned_connection_info_cb,
                   tmt_recv_cb,
                   tmt_bulk_size_cb,
                   tmt_handshake_cb,

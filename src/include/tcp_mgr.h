@@ -29,9 +29,6 @@ typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_handshake_fill_t)(void *, struct tcp_mgr_connection *,
                             void *, size_t);
 typedef tcp_mgr_ctx_t
-(*tcp_mgr_connect_info_cb_t)(struct tcp_mgr_connection *, const char **, int *);
-
-typedef tcp_mgr_ctx_t
 (*tcp_mgr_connection_epoll_ctx_cb_t)(struct tcp_mgr_connection *);
 
 struct tcp_mgr_instance
@@ -48,7 +45,6 @@ struct tcp_mgr_instance
     tcp_mgr_bulk_size_cb_t    tmi_bulk_size_cb;
     tcp_mgr_handshake_cb_t    tmi_handshake_cb;
     tcp_mgr_handshake_fill_t  tmi_handshake_fill;
-    tcp_mgr_connect_info_cb_t tmi_connect_info_cb;
     size_t                    tmi_handshake_size;
 
     niova_atomic32_t          tmi_bulk_credits;
@@ -88,7 +84,6 @@ do {                                                                 \
 void
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
-              tcp_mgr_connect_info_cb_t connect_info_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
@@ -123,8 +118,8 @@ tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
 }
 
 int
-tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
-                 struct iovec *iov, size_t niovs);
+tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
+                 size_t niovs);
 
 void
 tcp_mgr_bulk_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
@@ -135,4 +130,10 @@ tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 void
 tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
                                tcp_mgr_connection_epoll_ctx_cb_t done_cb);
+
+// not thread safe for connection
+void
+tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
+                         struct tcp_mgr_instance *tmi,
+                         const char *ipaddr, int port);
 #endif
