@@ -195,7 +195,7 @@ tmt_send_thread(void *arg)
         msg->msg_size = msg_size;
         iov.iov_len = msg_size + sizeof(struct tmt_message);
         SIMPLE_LOG_MSG(LL_NOTIFY, "sending message, msg_size=%d", msg_size);
-        int rc = tcp_mgr_send_msg(tmi, &oc->oc_tmc, &iov, 1);
+        int rc = tcp_mgr_send_msg(&oc->oc_tmc, &iov, 1, true);
         if (rc < 0)
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "error sending message, rc=%d", rc);
@@ -234,14 +234,6 @@ tmt_owned_connection_random_get(struct tmt_data *td)
     return oc;
 }
 
-static void
-tmt_close_done_cb(struct tcp_mgr_connection *tmc)
-{
-    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
-    SIMPLE_LOG_MSG(LL_TRACE, "oc %p", oc);
-    tmt_owned_connection_getput(oc, EPH_REF_PUT);
-}
-
 static void *
 tmt_close_thread(void *arg)
 {
@@ -253,7 +245,8 @@ tmt_close_thread(void *arg)
     {
         struct tmt_owned_connection *oc = tmt_owned_connection_random_get(td);
         DBG_TCP_MGR_CXN(LL_NOTIFY, &oc->oc_tmc, "closing connection");
-        tcp_mgr_connection_close_async(&oc->oc_tmc, tmt_close_done_cb);
+        tcp_mgr_connection_close(&oc->oc_tmc, true);
+        tmt_owned_connection_getput(oc, EPH_REF_PUT);
         niova_atomic_inc(&td->td_close_cnt);
 
         // put it at the end so the test happens after sleep

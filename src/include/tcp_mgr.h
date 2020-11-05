@@ -71,7 +71,6 @@ struct tcp_mgr_connection
     size_t                            tmc_bulk_offset;
     size_t                            tmc_bulk_remain;
     tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_cb;
-    tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_done_cb;
 };
 
 #define DBG_TCP_MGR_CXN(log_level, tmc, fmt, ...)                    \
@@ -119,7 +118,7 @@ tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
 
 int
 tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
-                 size_t niovs);
+                 size_t niovs, bool block);
 
 void
 tcp_mgr_bulk_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
@@ -128,8 +127,7 @@ void
 tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 
 void
-tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
-                               tcp_mgr_connection_epoll_ctx_cb_t done_cb);
+tcp_mgr_connection_close(struct tcp_mgr_connection *tmc, bool block);
 
 // not thread safe for connection
 void

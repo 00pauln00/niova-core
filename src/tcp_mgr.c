@@ -149,7 +149,6 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
     tmc->tmc_bulk_remain = 0;
 
     tmc->tmc_epoll_ctx_cb = NULL;
-    tmc->tmc_epoll_ctx_done_cb = NULL;
 }
 
 void
@@ -169,7 +168,7 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
 }
 
 static void
-tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
+tcp_mgr_connection_close_internal(struct tcp_mgr_connection *tmc)
 {
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "closing");
 
@@ -202,7 +201,7 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
         return NULL;
 
     tmc->tmc_status = TMCS_NEEDS_SETUP;
-    tcp_mgr_connection_setup_internal(tmc, tmi, false);
+    tcp_mgr_connection_setup_internal(tmc, tmi);
 
     tmc->tmc_status = TMCS_CONNECTING;
 
@@ -213,7 +212,7 @@ static void
 tcp_mgr_incoming_fini_err(struct tcp_mgr_connection *tmc)
 {
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-    tcp_mgr_connection_close(tmc);
+    tcp_mgr_connection_close_internal(tmc);
     tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
 }
 
@@ -230,18 +229,14 @@ tcp_mgr_epoll_ctx_cb(void *data)
     struct tcp_mgr_connection *tmc = data;
     if (tmc->tmc_epoll_ctx_cb)
         tmc->tmc_epoll_ctx_cb(tmc);
-    if (tmc->tmc_epoll_ctx_done_cb)
-        tmc->tmc_epoll_ctx_done_cb(tmc);
 
-    // set ctx_cb to null second as ctx_run looks at that
-    tmc->tmc_epoll_ctx_done_cb = NULL;
     tmc->tmc_epoll_ctx_cb = NULL;
 }
 
 static int
 tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
                                  tcp_mgr_connection_epoll_ctx_cb_t cb,
-                                 tcp_mgr_connection_epoll_ctx_cb_t done_cb)
+                                 bool block)
 {
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "block=%d", block);
 
@@ -259,11 +254,11 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
     else
     {
         tmc->tmc_epoll_ctx_cb = cb;
-        tmc->tmc_epoll_ctx_done_cb = done_cb;
         niova_mutex_unlock(&tmi->tmi_epoll_ctx_mutex);
     }
 
-    int rc = epoll_mgr_ctx_cb_add(epm, &tmc->tmc_eph, tcp_mgr_epoll_ctx_cb);
+    int rc = epoll_mgr_ctx_cb_add(epm, &tmc->tmc_eph, tcp_mgr_epoll_ctx_cb,
+                                  block);
     if (rc)
         LOG_MSG(LL_ERROR, "cannot start epoll connection task, rc: %d", rc);
     return rc;
@@ -461,7 +456,7 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     if (rc)
     {
         if (rc == -ECONNRESET || rc == -ENOTCONN || rc == -ECONNABORTED)
-            tcp_mgr_connection_close(tmc);
+            tcp_mgr_connection_close_internal(tmc);
 
         SIMPLE_LOG_MSG(LL_NOTIFY, "error received on socket fd=%d, rc=%d",
                        eph->eph_fd, rc);
@@ -493,7 +488,7 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     if (rc < 0)
     {
         SIMPLE_LOG_MSG(LL_DEBUG, "error in recv, closing");
-        tcp_mgr_connection_close(tmc);
+        tcp_mgr_connection_close_internal(tmc);
     }
 }
 
@@ -518,7 +513,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
         // if peer is attempting to connect again, assume old connection is dead
         // XXX it would be better to send a ping, and handle failure there
         if (owned->tmc_status == TMCS_CONNECTED)
-            tcp_mgr_connection_close(owned);
+            tcp_mgr_connection_close_internal(owned);
 
         tcp_mgr_connection_put(owned);
 
@@ -708,7 +703,7 @@ tcp_mgr_connect_complete(struct tcp_mgr_connection *tmc)
     rc = 0;
 out:
     if (rc < 0)
-        tcp_mgr_connection_close(tmc);
+        tcp_mgr_connection_close_internal(tmc);
 
     return rc;
 }
@@ -728,7 +723,7 @@ tcp_mgr_connect_cb(const struct epoll_handle *eph, uint32_t events)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_tcp_connect_cb(): error, rc=%d",
                        rc);
-        tcp_mgr_connection_close(tmc);
+        tcp_mgr_connection_close_internal(tmc);
         return;
     }
 
@@ -764,7 +759,7 @@ tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
     rc = tcp_socket_connect(&tmc->tmc_tsh);
     if (rc < 0 && rc != -EINPROGRESS)
     {
-        tcp_mgr_connection_close(tmc);
+        tcp_mgr_connection_close_internal(tmc);
         SIMPLE_LOG_MSG(LL_WARN, "tcp_socket_connect(): %d", rc );
     }
     else if (rc == -EINPROGRESS)
@@ -782,7 +777,7 @@ tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
 
 static int
 tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
-                          bool do_connect)
+                          bool block, bool do_connect)
 {
     enum tcp_mgr_connection_status status = tmc->tmc_status;
 
@@ -809,14 +804,14 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
     // can't set status to CONNECTING here because we aren't in epoll_ctx
 
     tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx,
-                                     NULL);
+                                     block);
 
     return -EAGAIN;
 }
 
 int
 tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
-                 size_t niovs)
+                 size_t niovs, bool block)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (tmc->tmc_status == TMCS_NEEDS_SETUP)
@@ -825,7 +820,7 @@ tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
         return -EINVAL;
     }
 
-    int rc = tcp_mgr_connection_verify(tmc, true);
+    int rc = tcp_mgr_connection_verify(tmc, block, true);
     DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "tcp_mgr_connection_verify(): %d", rc);
     if (rc < 0)
         return rc;
@@ -833,16 +828,15 @@ tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
     rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
 
     if (rc == -ENOTCONN || rc == -ECONNRESET)
-        tcp_mgr_connection_close_async(tmc, NULL);
+        tcp_mgr_connection_close(tmc, false);
 
     return rc;
 }
 
 void
-tcp_mgr_connection_close_async(struct tcp_mgr_connection *tmc,
-                               tcp_mgr_connection_epoll_ctx_cb_t done_cb)
+tcp_mgr_connection_close(struct tcp_mgr_connection *tmc, bool block)
 {
-    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_close,
-                                     done_cb);
+    tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_close_internal,
+                                     block);
 };
 
