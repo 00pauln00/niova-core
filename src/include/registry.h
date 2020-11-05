@@ -145,6 +145,7 @@ enum lreg_init_options
     LREG_INIT_OPT_NONE                = 0,
     LREG_INIT_OPT_STATIC              = 1 << 0,
     LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO = 1 << 1,
+    LREG_INIT_OPT_REVERSE_VARRAY      = 1 << 2,
 };
 
 struct lreg_node;
@@ -261,6 +262,7 @@ struct lreg_node
                          lrn_may_destroy                  : 1,
                          lrn_array_element                : 1,
                          lrn_ignore_items_with_value_zero : 1,
+                         lrn_reverse_varray               : 1,
                          lrn_vnode_child                  : 1;
     struct lreg_vnode_data lrn_lvd;
     void                  *lrn_cb_arg;
