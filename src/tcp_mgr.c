@@ -129,15 +129,39 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
     return rc;
 }
 
+// cannot be used for incoming (temporary) connection objects
+static void
+tcp_mgr_connection_setup_info(struct tcp_mgr_connection *tmc)
+{
+    NIOVA_ASSERT(tmc->tmc_status != TMCS_NEEDS_SETUP && tmc->tmc_tmi);
+
+    if (!tmc->tmc_tmi->tmi_connect_info_cb)
+        return;
+
+    int port;
+    const char *ipaddr;
+    tmc->tmc_tmi->tmi_connect_info_cb(tmc, &ipaddr, &port);
+
+    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
+}
+
 static void
 tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
-                         struct tcp_mgr_instance *tmi)
+                         struct tcp_mgr_instance *tmi,
+                         bool is_owned)
 {
-    NIOVA_ASSERT(tmc->tmc_status == TMCS_NEEDS_SETUP);
-
+    static pthread_mutex_t setup_lock = PTHREAD_MUTEX_INITIALIZER;
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_mgr_connection_setup(): tmc %p", tmc);
 
+    niova_mutex_lock(&setup_lock);
+    if (tmc->tmc_status != TMCS_NEEDS_SETUP)
+    {
+        niova_mutex_unlock(&setup_lock);
+        return;
+    }
+
     tmc->tmc_status = TMCS_DISCONNECTED;
+    niova_mutex_unlock(&setup_lock);
 
     tcp_socket_handle_init(&tmc->tmc_tsh);
 
@@ -153,22 +177,9 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
     tmc->tmc_bulk_remain = 0;
 
     tmc->tmc_epoll_ctx_done_cb = NULL;
-}
 
-// cannot be used for incoming (temporary) connection objects
-static void
-tcp_mgr_connection_setup_info(struct tcp_mgr_connection *tmc)
-{
-    NIOVA_ASSERT(tmc->tmc_status != TMCS_NEEDS_SETUP && tmc->tmc_tmi);
-
-    if (!tmc->tmc_tmi->tmi_connect_info_cb)
-        return;
-
-    int port;
-    const char *ipaddr;
-    tmc->tmc_tmi->tmi_connect_info_cb(tmc, &ipaddr, &port);
-
-    tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
+    if (is_owned)
+        tcp_mgr_connection_setup_info(tmc);
 }
 
 static void
@@ -205,7 +216,7 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
         return NULL;
 
     tmc->tmc_status = TMCS_NEEDS_SETUP;
-    tcp_mgr_connection_setup(tmc, tmi);
+    tcp_mgr_connection_setup(tmc, tmi, false);
 
     tmc->tmc_status = TMCS_CONNECTING;
 
@@ -236,8 +247,9 @@ tcp_mgr_epoll_ctx_cb(void *data)
     if (tmc->tmc_epoll_ctx_done_cb)
         tmc->tmc_epoll_ctx_done_cb(tmc);
 
-    tmc->tmc_epoll_ctx_cb = NULL;
+    // set ctx_cb to null second as ctx_run looks at that
     tmc->tmc_epoll_ctx_done_cb = NULL;
+    tmc->tmc_epoll_ctx_cb = NULL;
 }
 
 static int
@@ -507,8 +519,7 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
 
     if (owned->tmc_status == TMCS_NEEDS_SETUP)
     {
-        tcp_mgr_connection_setup(owned, tmi);
-        tcp_mgr_connection_setup_info(owned);
+        tcp_mgr_connection_setup(owned, tmi, true);
     }
     else if (owned->tmc_status == TMCS_DISCONNECTING ||
              owned->tmc_status == TMCS_CONNECTING ||
@@ -810,16 +821,8 @@ tcp_mgr_connection_verify(struct tcp_mgr_connection *tmc,
         return rc;
     }
 
-    // status can change in epoll thread while we are here
-    if (tmc->tmc_tsh.tsh_socket >= 0 || tmc->tmc_status != TMCS_DISCONNECTED)
-        return -EALREADY;
-
     // can't set status to CONNECTING here because we aren't in epoll_ctx
 
-    // XXX should we add a connecting flag to tmc that is thread safe?
-    // XXX or perhaps a flag to indicate that the tmc is waiting for epoll ctx
-
-    // XXX could add connect callback to tcp_mgr_send_msg?
     tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_connect_epoll_ctx,
                                      NULL);
 
@@ -835,8 +838,7 @@ tcp_mgr_send_msg(struct tcp_mgr_instance *tmi, struct tcp_mgr_connection *tmc,
     {
         SIMPLE_LOG_MSG(LL_DEBUG, "calling tcp_mgr_connection_setup, tmc %p",
                        tmc);
-        tcp_mgr_connection_setup(tmc, tmi);
-        tcp_mgr_connection_setup_info(tmc);
+        tcp_mgr_connection_setup(tmc, tmi, true);
     }
 
     int rc = tcp_mgr_connection_verify(tmc, true);
