@@ -27,6 +27,7 @@
 #include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
+LREG_ROOT_ENTRY_GENERATE(ctlif_root_entry, LREG_USER_TYPE_CTL_INTERFACE);
 
 #define DEFAULT_INOTIFY_PATH "/tmp/.niova"
 
@@ -78,6 +79,23 @@ const char *lctliSubdirs[LCTLI_SUBDIR_MAX] =
     [LCTLI_SUBDIR_INIT] = "init",
     [LCTLI_SUBDIR_INPUT] = "input",
     [LCTLI_SUBDIR_OUTPUT] = "output"
+};
+
+enum lctli_reg_keys
+{
+    CTL_IF_REG_KEY_PATH,
+    CTL_IF_REG_KEY_OP_CNT,
+    CTL_IF_REG_KEY_OP_HISTORY,
+    CTL_IF_REG_KEY__MAX,
+};
+
+enum ctl_interface_op_reg_keys
+{
+    CIO_REG_KEY_INPUT_NAME,
+    CIO_REG_KEY_OP_NUM,
+    CIO_REG_KEY_STATUS,
+    CIO_REG_KEY_HUMAN_TIME,
+    CIO_REG_KEY__MAX,
 };
 
 static struct ctl_interface localCtlIf[LCTLI_MAX];
@@ -401,6 +419,130 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
     return close_rc;
 }
 
+static util_thread_ctx_reg_int_t
+lctli_lreg_op_history_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                              struct lreg_value *lv)
+{
+    if (!lrn || !lrn->lrn_cb_arg)
+        return -EINVAL;
+
+    const struct ctl_interface *lctli =
+        (const struct ctl_interface *)lrn->lrn_cb_arg;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = CIO_REG_KEY__MAX;
+
+    NIOVA_ASSERT(lrn->lrn_vnode_child);
+    struct lreg_vnode_data *vd = &lrn->lrn_lvd;
+
+    SIMPLE_LOG_MSG(LL_WARN, "here vd-idx=%u opcnt=%zu",
+                   vd->lvd_index, lctli->lctli_op_cnt);
+
+
+    if (vd->lvd_index >= CTL_INTERFACE_COMPLETED_OP_CNT ||
+        vd->lvd_index >= lctli->lctli_op_cnt)
+	return -ERANGE;
+
+    const size_t base_idx =
+        lctli->lctli_op_cnt >= CTL_INTERFACE_COMPLETED_OP_CNT
+        ? (lctli->lctli_op_cnt) % CTL_INTERFACE_COMPLETED_OP_CNT
+        : 0;
+
+    size_t idx = (base_idx + vd->lvd_index) % CTL_INTERFACE_COMPLETED_OP_CNT;
+
+    SIMPLE_LOG_MSG(LL_WARN, "base=%zu idx=%zu opcnt=%zu",
+                   base_idx, idx, lctli->lctli_op_cnt);
+
+    const struct ctl_interface_op *cio = &lctli->lctli_cio[idx];
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        strncpy(lv->lrv_key_string, "ctl-if-ops", LREG_VALUE_STRING_MAX);
+        strncpy(LREG_VALUE_TO_OUT_STR(lv), "none", LREG_VALUE_STRING_MAX);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lv->lrv_value_idx_in)
+        {
+        case CIO_REG_KEY_INPUT_NAME:
+            lreg_value_fill_string(lv, "input-file", cio->cio_input_name);
+            break;
+        case CIO_REG_KEY_OP_NUM:
+            lreg_value_fill_unsigned(lv, "op-num", cio->cio_op_num);
+            break;
+        case CIO_REG_KEY_STATUS:
+            lreg_value_fill_string(lv, "status", strerror(-cio->cio_status));
+            break;
+        case CIO_REG_KEY_HUMAN_TIME:
+            lreg_value_fill_string_time(lv, "time", cio->cio_ts.tv_sec);
+            break;
+        default:
+            return -EOPNOTSUPP;
+        }
+
+    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+	break;
+
+    default:
+        return -EOPNOTSUPP;
+    }
+
+    return 0;
+}
+
+static util_thread_ctx_reg_int_t
+lctli_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+              struct lreg_value *lrv)
+{
+    if (!lrn || (!lrv && (op == LREG_NODE_CB_OP_GET_NODE_INFO ||
+                          op == LREG_NODE_CB_OP_READ_VAL ||
+                          op == LREG_NODE_CB_OP_WRITE_VAL)))
+	return -EINVAL;
+
+    struct ctl_interface *lctli = (struct ctl_interface *)lrn->lrn_cb_arg;
+    NIOVA_ASSERT(lctli == OFFSET_CAST(ctl_interface, lctli_lreg, lrn));
+
+    size_t op_hist_sz = CTL_INTERFACE_COMPLETED_OP_CNT;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
+    case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+        break; // No-ops since these entries are effectively static
+    case LREG_NODE_CB_OP_GET_NODE_INFO:
+        lrv->get.lrv_num_keys_out = CTL_IF_REG_KEY__MAX;
+        snprintf(lrv->lrv_key_string, LREG_VALUE_STRING_MAX, "ctl_interface");
+        break;
+    case LREG_NODE_CB_OP_READ_VAL:
+	switch (lrv->lrv_value_idx_in)
+        {
+        case CTL_IF_REG_KEY_PATH:
+             lreg_value_fill_string(lrv, "path", lctli->lctli_path);
+             break;
+        case CTL_IF_REG_KEY_OP_CNT:
+            lreg_value_fill_unsigned(lrv, "op-cnt", lctli->lctli_op_cnt);
+            break;
+        case CTL_IF_REG_KEY_OP_HISTORY:
+            if (lctli->lctli_op_cnt < CTL_INTERFACE_COMPLETED_OP_CNT)
+                op_hist_sz = lctli->lctli_op_cnt;
+
+            lreg_value_fill_varray(lrv, "recent-ops",
+                                   LREG_USER_TYPE_CTL_INTERFACE_ROP,
+                                   op_hist_sz, lctli_lreg_op_history_lreg_cb);
+            break;
+        default:
+            return -EOPNOTSUPP;
+        }
+        break;
+    default:
+        return -EOPNOTSUPP;
+    }
+
+    return 0;
+}
+
 static init_ctx_t NIOVA_CONSTRUCTOR(LCTLI_SUBSYS_CTOR_PRIORITY)
 lctli_subsystem_init(void)
 {
@@ -409,7 +551,20 @@ lctli_subsystem_init(void)
     NIOVA_ASSERT(lctli);
     NIOVA_ASSERT(numLocalCtlIfs == 1);
 
-    int rc = lctli_setup_inotify_path(lctli);
+    LREG_ROOT_ENTRY_INSTALL(ctlif_root_entry);
+
+    /* offsetof() could be used inside the cb to calculate 'lctli'.  However,
+     * a VARRAY is used in lctli_lreg_cb and the varray cb will not be
+     * presented with lctli_lreg so we must set the cb_arg.
+     */
+    lreg_node_init(&lctli->lctli_lreg, LREG_USER_TYPE_CTL_INTERFACE,
+                   lctli_lreg_cb, lctli, LREG_INIT_OPT_REVERSE_VARRAY);
+
+    int rc = lreg_node_install_prepare(&lctli->lctli_lreg,
+                                       LREG_ROOT_ENTRY_PTR(ctlif_root_entry));
+    FATAL_IF(rc, "lreg_node_install_prepare() %s", strerror(-rc));
+
+    rc = lctli_setup_inotify_path(lctli);
     FATAL_IF(rc, "lctli_setup_inotify_path(): %s", strerror(-rc));
 
     rc = lctli_prepare(lctli);
