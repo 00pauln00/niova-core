@@ -480,7 +480,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     }                                                                   \
 
 #define LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,    \
-                                      read_write_op_cb, arg, type)  \
+                                      read_write_op_cb, arg, type, opts)  \
                                                                      \
     _Pragma("GCC diagnostic push")                                   \
     _Pragma("GCC diagnostic ignored \"-Wunknown-pragmas\"")          \
@@ -570,16 +570,19 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     };                                                              \
     struct lreg_node childEntry##name = {                           \
         .lrn_user_type = user_type,                                 \
-        .lrn_statically_allocated = 1,                              \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY),  \
+        .lrn_ignore_items_with_value_zero =                             \
+            !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO),                   \
         .lrn_cb = lreg_root_cb_child##name,                         \
         .lrn_cb_arg = arg,                                          \
     };                                                              \
 
 #define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys, \
-                                        read_write_op_cb, arg)     \
+                                        read_write_op_cb, arg, opts)    \
     LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,       \
                                   read_write_op_cb, arg,           \
-                                  LREG_VAL_TYPE_OBJECT)
+                                  LREG_VAL_TYPE_OBJECT, opts)
 
 #define LREG_ROOT_ENTRY_EXPORT(name) \
     extern struct lreg_node rootEntry##name
@@ -600,20 +603,12 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                                    LREG_ROOT_ENTRY_PTR(name))); \
 }
 
-#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ARG(name, arg) \
-{                                                     \
-    &childEntry##name.lrn_cb_arg = (arg);             \
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(name);             \
+static inline void
+lreg_node_set_reverse_varray(struct lreg_node *lrn, int x)
+{
+    if (lrn)
+        lrn->lrn_reverse_varray = 1;
 }
-
-
-#if 0 // LREG_ROOT_ENTRY_INSTALL variant
-NIOVA_ASSERT(
-    !lreg_node_install_prepare(&childEntry ## name,
-                               &rootEntry ## name));
-LREG_ROOT_ENTRY_INSTALL(name);
-#endif
-
 
 lreg_user_int_ctx_t
 lreg_node_recurse(const char *);

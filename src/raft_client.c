@@ -2299,7 +2299,8 @@ raft_client_instance_lreg_init(struct raft_client_instance *rci,
     NIOVA_ASSERT(rci && ri);
 
     lreg_node_init(&rci->rci_lreg, LREG_USER_TYPE_RAFT_CLIENT,
-                   raft_client_instance_lreg_cb, rci, LREG_INIT_OPT_NONE);
+                   raft_client_instance_lreg_cb, rci,
+                   LREG_INIT_OPT_REVERSE_VARRAY);
 
     int rc =
         lreg_node_install_prepare(&rci->rci_lreg,

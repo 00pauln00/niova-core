@@ -133,7 +133,8 @@ pmdbtc_lreg_cb(enum lreg_node_cb_ops, struct lreg_value *, void *);
 LREG_ROOT_ENTRY_GENERATE_OBJECT(pumice_db_test_client,
                                 LREG_USER_TYPE_RAFT_CLIENT_APP,
                                 PMDB_TEST_CLIENT_LREG__MAX,
-                                pmdbtc_lreg_cb, NULL);
+                                pmdbtc_lreg_cb, NULL,
+                                LREG_INIT_OPT_REVERSE_VARRAY);
 
 static util_thread_ctx_reg_int_t
 pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,

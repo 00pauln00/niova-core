@@ -52,7 +52,8 @@ LREG_ROOT_ENTRY_GENERATE(log_entry_map, LREG_USER_TYPE_LOG_file);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(log_subsystem, LREG_USER_TYPE_LOG_subsys,
                                 LOG_SUBSYS_KEY__MAX,
-                                log_subsys_lreg_multi_facet_cb, NULL);
+                                log_subsys_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
 
 static void
 log_lreg_check_and_assign_log_level(struct log_entry_info *lei,

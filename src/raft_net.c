@@ -55,7 +55,8 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
                                 RAFT_NET_LREG__MAX,
-                                raft_net_lreg_multi_facet_cb, NULL);
+                                raft_net_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
 
 struct raft_instance *
 raft_net_get_instance(void)
