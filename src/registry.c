@@ -58,7 +58,7 @@ lreg_node_vnode_entry_exec(const struct lreg_node *parent,
     parent_copy.lrn_lvd.lvd_user_type = user_type;
     parent_copy.lrn_lvd.lvd_index = idx;
 
-    SIMPLE_LOG_MSG(LL_WARN, "idx=%u", idx);
+    SIMPLE_LOG_MSG(LL_DEBUG, "idx=%u", idx);
 
     return lrn_wcb(&parent_copy, cb_arg, depth);
 }

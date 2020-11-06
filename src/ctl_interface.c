@@ -435,10 +435,6 @@ lctli_lreg_op_history_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     NIOVA_ASSERT(lrn->lrn_vnode_child);
     struct lreg_vnode_data *vd = &lrn->lrn_lvd;
 
-    SIMPLE_LOG_MSG(LL_WARN, "here vd-idx=%u opcnt=%zu",
-                   vd->lvd_index, lctli->lctli_op_cnt);
-
-
     if (vd->lvd_index >= CTL_INTERFACE_COMPLETED_OP_CNT ||
         vd->lvd_index >= lctli->lctli_op_cnt)
 	return -ERANGE;
@@ -450,8 +446,8 @@ lctli_lreg_op_history_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     size_t idx = (base_idx + vd->lvd_index) % CTL_INTERFACE_COMPLETED_OP_CNT;
 
-    SIMPLE_LOG_MSG(LL_WARN, "base=%zu idx=%zu opcnt=%zu",
-                   base_idx, idx, lctli->lctli_op_cnt);
+    SIMPLE_LOG_MSG(LL_DEBUG, "vd-idx=%u base=%zu idx=%zu opcnt=%zu",
+                   vd->lvd_index, base_idx, idx, lctli->lctli_op_cnt);
 
     const struct ctl_interface_op *cio = &lctli->lctli_cio[idx];
 
