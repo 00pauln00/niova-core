@@ -31,21 +31,21 @@ enum epoll_handle_ref_op
 struct epoll_handle;
 typedef void (*epoll_mgr_cb_t)(const struct epoll_handle *, uint32_t);
 typedef void (*epoll_mgr_ref_cb_t)(void *, enum epoll_handle_ref_op);
-typedef void (*epoll_mgr_ctx_cb_t)(void *); // XXX this name is confusing
+typedef void (*epoll_mgr_ctx_op_cb_t)(void *);
 
 struct epoll_handle
 {
-    int                eph_fd;
-    int                eph_events;
-    unsigned int       eph_installed     : 1;
-    unsigned int       eph_installing    : 1;
-    unsigned int       eph_destroying    : 1;
-    unsigned int       eph_async_destroy : 1;
-    void              *eph_arg;
-    epoll_mgr_cb_t     eph_cb;
-    epoll_mgr_ref_cb_t eph_ref_cb;
-    epoll_mgr_ctx_cb_t eph_ctx_cb;
-    pthread_t          eph_ctx_wait_id;
+    int                   eph_fd;
+    int                   eph_events;
+    unsigned int          eph_installed     : 1;
+    unsigned int          eph_installing    : 1;
+    unsigned int          eph_destroying    : 1;
+    unsigned int          eph_async_destroy : 1;
+    void                 *eph_arg;
+    epoll_mgr_cb_t        eph_cb;
+    epoll_mgr_ref_cb_t    eph_ref_cb;
+    epoll_mgr_ctx_op_cb_t eph_ctx_cb;
+    pthread_t             eph_ctx_wait_id;
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
     SLIST_ENTRY(epoll_handle) eph_cb_lentry;
 };
@@ -103,6 +103,6 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
 
 int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
-                     epoll_mgr_ctx_cb_t cb, bool block);
+                     epoll_mgr_ctx_op_cb_t cb, bool block);
 
 #endif

@@ -369,7 +369,7 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 
 int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
-                     epoll_mgr_ctx_cb_t cb, bool block)
+                     epoll_mgr_ctx_op_cb_t cb, bool block)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     if (!epm || !eph || !cb)
