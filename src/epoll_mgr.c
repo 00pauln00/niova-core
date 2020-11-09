@@ -158,7 +158,7 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
 int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    SIMPLE_LOG_MSG(LL_TRACE, "fd=%d", eph ? eph->eph_fd : -1);
 
     if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
         return -EINVAL;
@@ -381,8 +381,12 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         return 0;
     }
 
+    niova_mutex_lock(&epm->epm_ctx_cb_mutex);
     if (eph->eph_ctx_cb)
+    {
+        niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
         return -EBUSY;
+    }
     eph->eph_ctx_cb = cb;
 
     if (block)
@@ -393,7 +397,6 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         eph->eph_ctx_cb_cond = NULL;
     }
 
-    niova_mutex_lock(&epm->epm_ctx_cb_mutex);
     SLIST_INSERT_HEAD(&epm->epm_ctx_cb_list, eph, eph_cb_lentry);
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
 
@@ -409,6 +412,7 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         niova_mutex_unlock(&wait_mutex);
     }
 
+    SIMPLE_FUNC_EXIT(LL_TRACE);
     return 0;
 }
 
@@ -427,13 +431,15 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
     {
         NIOVA_ASSERT(eph->eph_ctx_cb);
         eph->eph_ctx_cb(eph->eph_arg);
-        eph->eph_ctx_cb = NULL;
 
         if (eph->eph_ctx_cb_cond)
             pthread_cond_broadcast(eph->eph_ctx_cb_cond);
 
         struct epoll_handle *tmp = SLIST_NEXT(eph, eph_cb_lentry);
         SLIST_NEXT(eph, eph_cb_lentry) = NULL;
+
+        // eph can be re-added to epm list after cb is set to NULL
+        eph->eph_ctx_cb = NULL;
         eph = tmp;
     }
 }
