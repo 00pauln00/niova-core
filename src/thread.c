@@ -16,7 +16,7 @@
 #include "log.h"
 #include "thread.h"
 
-#define NIOVA_BLOCK_SIGNAL SIGCONT
+#define NIOVA_BLOCK_SIGNAL SIGUSR1
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
