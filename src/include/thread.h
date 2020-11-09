@@ -173,4 +173,9 @@ thread_join_nb(struct thread_ctl *tc);
 int
 thread_issue_sig_alarm_to_thread(pthread_t tid);
 
+void
+thread_block();
+
+void
+thread_unblock(pthread_t tid);
 #endif

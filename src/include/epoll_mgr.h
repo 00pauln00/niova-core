@@ -45,7 +45,7 @@ struct epoll_handle
     epoll_mgr_cb_t     eph_cb;
     epoll_mgr_ref_cb_t eph_ref_cb;
     epoll_mgr_ctx_cb_t eph_ctx_cb;
-    pthread_cond_t    *eph_ctx_cb_cond;
+    pthread_t          eph_ctx_wait_id;
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
     SLIST_ENTRY(epoll_handle) eph_cb_lentry;
 };
