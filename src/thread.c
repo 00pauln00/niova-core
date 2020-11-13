@@ -16,8 +16,6 @@
 #include "log.h"
 #include "thread.h"
 
-#define NIOVA_BLOCK_SIGNAL SIGUSR1
-
 REGISTRY_ENTRY_FILE_GENERATE;
 
 __thread char thrName[MAX_THREAD_NAME + 1];
@@ -52,11 +50,6 @@ thread_ctl_install_sighandlers(void)
     newact.sa_handler = &thr_ctl_basic_sighandler;
     newact.sa_flags = 0;
     sigemptyset(&newact.sa_mask);
-
-    sigset_t set;
-    sigemptyset(&set);
-    sigaddset(&set, NIOVA_BLOCK_SIGNAL);
-    pthread_sigmask(SIG_BLOCK, &set, NULL);
 
     FATAL_IF_strerror((sigaction(SIGALRM, &newact, NULL)), "sigaction: ");
 }
@@ -332,20 +325,4 @@ void
 thread_abort(void)
 {
     abort();
-}
-
-void
-thread_block()
-{
-    sigset_t sigset;
-    int sig;
-    sigemptyset(&sigset);
-    sigaddset(&sigset, NIOVA_BLOCK_SIGNAL);
-    sigwait(&sigset, &sig);
-}
-
-void
-thread_unblock(pthread_t tid)
-{
-    pthread_kill(tid, NIOVA_BLOCK_SIGNAL);
 }
