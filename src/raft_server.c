@@ -4350,7 +4350,22 @@ raft_server_sync_thread_start(struct raft_instance *ri)
     return 0;
 }
 
-static void
+static raft_server_chkpt_thread_ctx_t
+raft_server_set_checkpoint_last_idx(struct raft_instance *ri,
+                                    int64_t chkpt_last_idx,
+                                    const raft_entry_idx_t sync_idx)
+{
+    FATAL_IF(!ri || chkpt_last_idx < 0 ||
+             (chkpt_last_idx < sync_idx ||
+              chkpt_last_idx < niova_atomic_read(&ri->ri_checkpoint_last_idx)),
+             "invalid checkpoint-idx=%ld (sync-idx=%ld, chkpt_last_idx=%lld)",
+             chkpt_last_idx, sync_idx, ri->ri_checkpoint_last_idx);
+
+    // Atomic here since this runs in a separate thread context.
+    niova_atomic_init(&ri->ri_checkpoint_last_idx, chkpt_last_idx);
+}
+
+static raft_server_chkpt_thread_ctx_t
 raft_server_take_chkpt(struct raft_instance *ri)
 {
     raft_entry_idx_t sync_idx =
@@ -4373,16 +4388,7 @@ raft_server_take_chkpt(struct raft_instance *ri)
         ri, io_op[0], io_op[1], RAFT_INSTANCE_HIST_CHKPT_LAT_USEC);
 
     if (rc >= 0)
-    {
-        FATAL_IF(
-            (rc < sync_idx ||
-             rc < niova_atomic_read(&ri->ri_checkpoint_last_idx)),
-            "invalid checkpoint-idx=%ld (sync-idx=%ld, chkpt_last_idx=%lld)",
-            rc, sync_idx, ri->ri_checkpoint_last_idx);
-
-        // Atomic here since this runs in a separate thread context.
-        niova_atomic_init(&ri->ri_checkpoint_last_idx, rc);
-    }
+        raft_server_set_checkpoint_last_idx(ri, rc, sync_idx);
 
     DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : /*LL_INFO*/ LL_WARN), ri,
                       "rib_backend_checkpoint(%zd): %s",
