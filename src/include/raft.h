@@ -160,6 +160,16 @@ struct raft_rpc_msg
  */
 };
 
+struct raft_recovery_handle
+{
+    uuid_t          rrh_peer_uuid;
+    uuid_t          rrh_peer_db_uuid;
+    int64_t         rrh_peer_chkpt_idx;
+    ssize_t         rrh_chkpt_size;
+    ssize_t         rrh_remaining;
+    struct timespec rrh_start;
+};
+
 struct raft_entry_header
 {
     uint64_t         reh_magic; // Magic is not included in the crc
@@ -390,6 +400,7 @@ struct raft_instance
     bool                            ri_user_requested_checkpoint;
     bool                            ri_user_requested_reap;
     bool                            ri_auto_checkpoints_enabled;
+    bool                            ri_needs_bulk_recovery;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
@@ -429,6 +440,7 @@ struct raft_instance
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
+    struct raft_recovery_handle     ri_recovery_handle;
 };
 
 static inline void

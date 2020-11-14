@@ -2706,6 +2706,61 @@ raft_server_append_entry_reply_send(
                                strerror(rc));
 }
 
+static void
+raft_server_init_recovery_handle(
+    struct raft_instance *ri,
+    const struct raft_append_entries_request_msg *raerq)
+{
+    NIOVA_ASSERT(ri && raerq);
+
+    const struct raft_rpc_msg *rrm =
+        OFFSET_CAST(raft_rpc_msg, rrm_append_entries_request, raerq);
+
+    struct raft_recovery_handle *rrh = &ri->ri_recovery_handle;
+
+    uuid_copy(rrh->rrh_peer_uuid, rrm->rrm_sender_id);
+    uuid_copy(rrh->rrh_peer_db_uuid, rrm->rrm_db_id);
+
+    rrh->rrh_peer_chkpt_idx = raerq->raerqm_chkpt_index;
+    rrh->rrh_chkpt_size = -1UL;
+    rrh->rrh_remaining = -1UL;
+
+    niova_realtime_coarse_clock(&rrh->rrh_start);
+}
+
+/**
+ * raft_server_process_bulk_recovery_check - this function compares the
+ *    current instance's newest entry idx with the leader's lowest available
+ *    index.
+ */
+static raft_server_net_cb_ctx_int_t
+raft_server_process_bulk_recovery_check(
+    struct raft_instance *ri,
+    const struct raft_append_entries_request_msg *raerq)
+{
+    NIOVA_ASSERT(ri && raerq);
+
+    int rc = 0;
+
+    const raft_entry_idx_t my_current_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
+
+    if (my_current_idx > raerq->raerqm_lowest_index ||
+        FAULT_INJECT(raft_force_bulk_recovery))
+    {
+        ri->ri_needs_bulk_recovery = true;
+        raft_server_init_recovery_handle(ri, raerq);
+
+        DBG_RAFT_INSTANCE(LL_WARN, ri,
+                          "needs bulk recovery (leader-lowest-idx=%ld)",
+                          raerq->raerqm_lowest_index);
+
+        rc = -ERANGE;
+    }
+
+    return rc;
+}
+
 static raft_server_net_cb_ctx_t
 raft_server_process_append_entries_request(struct raft_instance *ri,
                                            struct ctl_svc_node *sender_csn,
@@ -2726,6 +2781,10 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
             "raft_server_process_append_entries_request_validity_check() err");
         return;
     }
+
+    // Determine if bulk recovery is needed AFTER validating the AE request
+    if (raft_server_process_bulk_recovery_check(ri, raerq))
+        return;
 
     // Try to update the term if the leader has a higher one.
     const int64_t leader_term = raerq->raerqm_leader_term;
@@ -4599,6 +4658,12 @@ raft_server_instance_shutdown(struct raft_instance *ri)
     return 0;
 }
 
+static bool
+raft_server_main_loop_exit_conditions(const struct raft_instance *ri)
+{
+    return ri->ri_needs_bulk_recovery ? true : false;
+}
+
 static int
 raft_server_main_loop(struct raft_instance *ri)
 {
@@ -4615,10 +4680,10 @@ raft_server_main_loop(struct raft_instance *ri)
         rc = epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);
         if (rc == -EINTR)
             rc = 0;
-    } while (rc >= 0);
+    } while (rc >= 0 && !raft_server_main_loop_exit_conditions(ri));
 
-    SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
-                   strerror(-rc));
+    SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s (%d)",
+                   strerror(-rc), raft_server_main_loop_exit_conditions(ri));
 
     return rc;
 }
