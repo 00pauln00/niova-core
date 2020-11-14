@@ -55,6 +55,8 @@ enum lreg_user_types
 {
     LREG_USER_TYPE_NONE = 0,
     LREG_USER_TYPE_CTL_SVC_NODE,
+    LREG_USER_TYPE_CTL_INTERFACE,
+    LREG_USER_TYPE_CTL_INTERFACE_ROP,
     LREG_USER_TYPE_FAULT_INJECT,
     LREG_USER_TYPE_HISTOGRAM0,
     LREG_USER_TYPE_HISTOGRAM1,
@@ -145,6 +147,7 @@ enum lreg_init_options
     LREG_INIT_OPT_NONE                = 0,
     LREG_INIT_OPT_STATIC              = 1 << 0,
     LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO = 1 << 1,
+    LREG_INIT_OPT_REVERSE_VARRAY      = 1 << 2,
 };
 
 struct lreg_node;
@@ -261,6 +264,7 @@ struct lreg_node
                          lrn_may_destroy                  : 1,
                          lrn_array_element                : 1,
                          lrn_ignore_items_with_value_zero : 1,
+                         lrn_reverse_varray               : 1,
                          lrn_vnode_child                  : 1;
     struct lreg_vnode_data lrn_lvd;
     void                  *lrn_cb_arg;
@@ -476,7 +480,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     }                                                                   \
 
 #define LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,    \
-                                      read_write_op_cb, arg, type)  \
+                                      read_write_op_cb, arg, type, opts)  \
                                                                      \
     _Pragma("GCC diagnostic push")                                   \
     _Pragma("GCC diagnostic ignored \"-Wunknown-pragmas\"")          \
@@ -566,16 +570,19 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     };                                                              \
     struct lreg_node childEntry##name = {                           \
         .lrn_user_type = user_type,                                 \
-        .lrn_statically_allocated = 1,                              \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY),  \
+        .lrn_ignore_items_with_value_zero =                             \
+            !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO),                   \
         .lrn_cb = lreg_root_cb_child##name,                         \
         .lrn_cb_arg = arg,                                          \
     };                                                              \
 
 #define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys, \
-                                        read_write_op_cb, arg)     \
+                                        read_write_op_cb, arg, opts)    \
     LREG_ROOT_ENTRY_GENERATE_TYPE(name, user_type, num_keys,       \
                                   read_write_op_cb, arg,           \
-                                  LREG_VAL_TYPE_OBJECT)
+                                  LREG_VAL_TYPE_OBJECT, opts)
 
 #define LREG_ROOT_ENTRY_EXPORT(name) \
     extern struct lreg_node rootEntry##name
@@ -596,20 +603,12 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                                    LREG_ROOT_ENTRY_PTR(name))); \
 }
 
-#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ARG(name, arg) \
-{                                                     \
-    &childEntry##name.lrn_cb_arg = (arg);             \
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(name);             \
+static inline void
+lreg_node_set_reverse_varray(struct lreg_node *lrn, int x)
+{
+    if (lrn)
+        lrn->lrn_reverse_varray = 1;
 }
-
-
-#if 0 // LREG_ROOT_ENTRY_INSTALL variant
-NIOVA_ASSERT(
-    !lreg_node_install_prepare(&childEntry ## name,
-                               &rootEntry ## name));
-LREG_ROOT_ENTRY_INSTALL(name);
-#endif
-
 
 lreg_user_int_ctx_t
 lreg_node_recurse(const char *);
@@ -642,12 +641,12 @@ lreg_value_fill_string(struct lreg_value *lv, const char *key,
     {
         lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_STRING);
 
-        if (value)
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpragmas"
 #pragma GCC diagnostic ignored "-Wstringop-truncation"
 #endif
+        if (value)
             strncpy(LREG_VALUE_TO_OUT_STR(lv), value, LREG_VALUE_STRING_MAX);
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC diagnostic pop

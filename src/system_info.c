@@ -77,7 +77,7 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(system_info, LREG_USER_TYPE_SYS_INFO,
                                 SYS_INFO_KEY__MAX, system_info_multi_facet_cb,
-                                NULL);
+                                NULL, LREG_INIT_OPT_NONE);
 
 #define RUSAGE_CACHE_TIME_MS 10
 

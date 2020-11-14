@@ -63,12 +63,16 @@ struct rsc_raft_test_info
     struct raft_test_values     rrti_last_validated;
     size_t                      rrti_num_write_retries;
     // <---- Keep the below members intact ---->
+#if defined(__GNUC__) && defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
+#endif
     struct raft_client_rpc_msg  rtti_rcrm;
     struct raft_test_data_block rtti_rtdb;
     char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+#if defined(__GNUC__) && defined(__clang__)
 #pragma clang diagnostic pop
+#endif
 };
 
 /**
@@ -90,7 +94,7 @@ LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_client_app,
                                 LREG_USER_TYPE_RAFT_CLIENT,
                                 RAFT_CLIENT_APP_LREG_MAX,
                                 raft_client_test_app_lreg_multi_facet_cb,
-                                NULL);
+                                NULL, LREG_INIT_OPT_NONE);
 
 const char *raft_uuid_str;
 const char *my_uuid_str;
