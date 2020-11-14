@@ -86,6 +86,7 @@ enum lreg_user_types
     LREG_USER_TYPE_NIOSD_IO_STATS,
     LREG_USER_TYPE_RAFT,
     LREG_USER_TYPE_RAFT_NET,
+    LREG_USER_TYPE_RAFT_RECOVERY_NET,
     LREG_USER_TYPE_RAFT_CLIENT,
     LREG_USER_TYPE_RAFT_CLIENT_APP,
     LREG_USER_TYPE_RAFT_CLIENT_APP_DATA,
@@ -487,7 +488,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     _Pragma("clang diagnostic push")                                 \
     _Pragma("clang diagnostic ignored \"-Wunused-function\"")        \
     static inline void                                               \
-    lreg_compile_time_assert(enum lreg_value_types type)             \
+    lreg_compile_time_assert##name(enum lreg_value_types type)       \
     {                                                               \
         COMPILE_TIME_ASSERT(type == LREG_VAL_TYPE_ARRAY ||          \
                             type == LREG_VAL_TYPE_OBJECT);          \

@@ -17,6 +17,7 @@ enum fault_inject_entries
     FAULT_INJECT_any,
     FAULT_INJECT_disabled,
     FAULT_INJECT_async_raft_client_request_expire,
+    FAULT_INJECT_raft_force_bulk_recovery,
     FAULT_INJECT_raft_leader_may_be_deposed,
     FAULT_INJECT_raft_follower_ignores_AE,
     FAULT_INJECT_raft_candidate_state_disabled,

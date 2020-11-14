@@ -42,6 +42,17 @@ enum raft_net_lreg_values
     RAFT_NET_LREG__CLIENT_MAX = RAFT_NET_LREG_IGNORE_TIMER_EVENTS + 1,
 };
 
+enum raft_net_recovery_lreg_values
+{
+    RAFT_NET_RECOVERY_LREG_PEER_UUID,
+    RAFT_NET_RECOVERY_LREG_DB_UUID,
+    RAFT_NET_RECOVERY_LREG_CHKPT_IDX,
+    RAFT_NET_RECOVERY_LREG_REMAINING,
+    RAFT_NET_RECOVERY_LREG_START_TIME,
+    RAFT_NET_RECOVERY_LREG__MAX,
+    RAFT_NET_RECOVERY_LREG__NONE = 0,
+};
+
 struct raft_instance raftInstance = {
 //    .ri_store_type = RAFT_INSTANCE_STORE_ROCKSDB,
     .ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
@@ -54,6 +65,10 @@ REGISTRY_ENTRY_FILE_GENERATE;
 static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
                              void *);
+
+static util_thread_ctx_reg_int_t
+raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops,
+                                      struct lreg_value *, void *);
 
 struct raft_instance *
 raft_net_get_instance(void)
@@ -70,9 +85,24 @@ raft_net_lreg_num_keys(void)
         RAFT_NET_LREG__CLIENT_MAX : RAFT_NET_LREG__MAX;
 }
 
+static unsigned int
+raft_net_lreg_recovery_num_keys(void)
+{
+    const struct raft_instance *ri = raft_net_get_instance();
+
+    return (!raft_instance_is_client(ri) && ri->ri_needs_bulk_recovery) ?
+        RAFT_NET_RECOVERY_LREG__MAX : RAFT_NET_RECOVERY_LREG__NONE;
+}
+
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
                                 raft_net_lreg_num_keys(),
                                 raft_net_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_recovery_info,
+                                LREG_USER_TYPE_RAFT_RECOVERY_NET,
+                                raft_net_lreg_recovery_num_keys(),
+                                raft_net_recovery_lreg_multi_facet_cb, NULL,
                                 LREG_INIT_OPT_NONE);
 
 static unsigned int
@@ -177,6 +207,57 @@ raft_net_lreg_set_election_timeout(struct raft_instance *ri,
     }
 
     return 0;
+}
+
+static util_thread_ctx_reg_int_t
+raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                                      struct lreg_value *lv, void *arg)
+{
+    if (arg)
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= RAFT_NET_LREG__MAX)
+        return -ERANGE;
+
+    struct raft_instance *ri = raft_net_get_instance();
+    NIOVA_ASSERT(ri);
+
+    struct raft_recovery_handle *rrh = &ri->ri_recovery_handle;
+    int rc = 0;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_NET_RECOVERY_LREG_PEER_UUID:
+            lreg_value_fill_string_uuid(lv, "src-uuid", rrh->rrh_peer_uuid);
+            break;
+        case RAFT_NET_RECOVERY_LREG_DB_UUID:
+            lreg_value_fill_string_uuid(lv, "db-uuid", rrh->rrh_peer_db_uuid);
+            break;
+        case RAFT_NET_RECOVERY_LREG_CHKPT_IDX:
+            lreg_value_fill_signed(lv, "chkpt-idx", rrh->rrh_peer_chkpt_idx);
+            break;
+        case RAFT_NET_RECOVERY_LREG_REMAINING:
+            lreg_value_fill_signed(lv, "remaining-xfer-bytes",
+                                   rrh->rrh_remaining);
+            break;
+        case RAFT_NET_RECOVERY_LREG_START_TIME:
+            lreg_value_fill_string_time(lv, "start-time",
+                                        rrh->rrh_start.tv_sec);
+            break;
+        default:
+            rc = -EOPNOTSUPP;
+            break;
+        }
+        break;
+    default:
+        rc = -EOPNOTSUPP;
+        break;
+    }
+
+    return rc;
 }
 
 static util_thread_ctx_reg_int_t
