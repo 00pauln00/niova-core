@@ -98,6 +98,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_LEADER_UUID,        // string
     RAFT_LREG_DB_UUID,            // string
     RAFT_LREG_PEER_STATE,         // string
+    RAFT_LREG_PROCESS_STATE,      // string
     RAFT_LREG_FOLLOWER_REASON,    // string
     RAFT_LREG_CLIENT_REQUESTS,    // string
     RAFT_LREG_TERM,               // int64
@@ -127,7 +128,6 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_MAX,
     RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_VSTATS,
 };
-
 
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
@@ -216,6 +216,11 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         case RAFT_LREG_PEER_STATE:
             lreg_value_fill_string(lv, "state",
                                    raft_server_state_to_string(ri->ri_state));
+            break;
+        case RAFT_LREG_PROCESS_STATE:
+            lreg_value_fill_string(
+                lv, "process-state",
+                raft_server_process_state_to_string(ri->ri_proc_state));
             break;
         case RAFT_LREG_FOLLOWER_REASON:
             lreg_value_fill_string(
@@ -3894,7 +3899,7 @@ raft_server_backend_setup_last_applied(struct raft_instance *ri,
     NIOVA_ASSERT(ri && ri->ri_last_applied_idx == -1 &&
                  ri->ri_commit_idx == -1 &&
                  ri->ri_last_applied_cumulative_crc == 0 &&
-                 ri->ri_state == RAFT_STATE_BOOTING);
+                 raft_instance_is_booting(ri));
 
     ri->ri_last_applied_idx = last_applied_idx;
     ri->ri_last_applied_cumulative_crc = last_applied_cumulative_crc;
@@ -4637,7 +4642,7 @@ out:
 static int
 raft_server_backend_close(struct raft_instance *ri)
 {
-    if (!ri)
+    if (!ri || !raft_instance_is_shutdown(ri))
         return -EINVAL;
 
     return ri->ri_backend->rib_backend_shutdown(ri);
@@ -4646,6 +4651,8 @@ raft_server_backend_close(struct raft_instance *ri)
 static int
 raft_server_instance_shutdown(struct raft_instance *ri)
 {
+    ri->ri_proc_state = RAFT_PROC_STATE_SHUTDOWN;
+
     raft_server_backend_close(ri);
 
     raft_server_evp_cleanup(ri);
@@ -4667,7 +4674,7 @@ raft_server_main_loop_exit_conditions(const struct raft_instance *ri)
 static int
 raft_server_main_loop(struct raft_instance *ri)
 {
-    NIOVA_ASSERT(raft_instance_is_booting(ri));
+    NIOVA_ASSERT(raft_instance_is_running(ri));
     ri->ri_state = RAFT_STATE_FOLLOWER;
     ri->ri_follower_reason = RAFT_BFRSN_LEADER_ALREADY_PRESENT;
 

@@ -209,9 +209,17 @@ struct raft_log_header
 
 #define RAFT_LOG_HEADER_DATA_SIZE sizeof(struct raft_log_header)
 
+enum raft_process_state
+{
+    RAFT_PROC_STATE_BOOTING,
+    RAFT_PROC_STATE_RUNNING,
+    RAFT_PROC_STATE_RECOVERING,
+    RAFT_PROC_STATE_SHUTDOWN,
+} PACKED;
+
 enum raft_state
 {
-    RAFT_STATE_BOOTING = 0,
+    RAFT_STATE__NONE = 0,
     RAFT_STATE_LEADER,
     RAFT_STATE_FOLLOWER,
     RAFT_STATE_CANDIDATE,
@@ -394,6 +402,7 @@ struct raft_instance
     struct raft_candidate_state     ri_candidate;
     struct raft_leader_state        ri_leader;
     enum raft_state                 ri_state;
+    enum raft_process_state         ri_proc_state;
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
@@ -538,9 +547,10 @@ do {                                                               \
                      __leader_uuid_str);                           \
                                                                    \
     LOG_MSG(log_level,                                                      \
-            "%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld lck=%lld v=%s l=%s "  \
-            fmt,                                                            \
-            raft_server_state_to_char((ri)->ri_state),                      \
+            "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld lck=%lld v=%s l=%s "  \
+            fmt,                                                        \
+            raft_server_process_state_to_char((ri)->ri_proc_state),     \
+            raft_server_state_to_char((ri)->ri_state),                  \
             raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
             raft_server_get_current_raft_entry_term(ri, RI_NEHDR_UNSYNC), \
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC), \
@@ -583,10 +593,10 @@ raft_server_state_to_char(enum raft_state state)
 {
     switch (state)
     {
+    case RAFT_STATE__NONE:
+        return 'n';
     case RAFT_STATE_LEADER:
         return 'L';
-    case RAFT_STATE_BOOTING:
-        return 'B';
     case RAFT_STATE_FOLLOWER:
         return 'F';
     case RAFT_STATE_CANDIDATE:
@@ -598,6 +608,46 @@ raft_server_state_to_char(enum raft_state state)
     }
 
     return '?';
+}
+
+static inline char
+raft_server_process_state_to_char(enum raft_process_state state)
+{
+    switch (state)
+    {
+    case RAFT_PROC_STATE_BOOTING:
+        return 'b';
+    case RAFT_PROC_STATE_RUNNING:
+        return 'r';
+    case RAFT_PROC_STATE_RECOVERING:
+        return 'R';
+    case RAFT_PROC_STATE_SHUTDOWN:
+        return 's';
+    default:
+        break;
+    }
+
+    return '?';
+}
+
+static inline char *
+raft_server_process_state_to_string(enum raft_process_state state)
+{
+    switch (state)
+    {
+    case RAFT_PROC_STATE_BOOTING:
+        return "booting";
+    case RAFT_PROC_STATE_RUNNING:
+        return "running";
+    case RAFT_PROC_STATE_RECOVERING:
+        return "recovering";
+    case RAFT_PROC_STATE_SHUTDOWN:
+        return "shutdown";
+    default:
+        break;
+    }
+
+    return "unknown";
 }
 
 static inline const char *
@@ -632,8 +682,6 @@ raft_server_state_to_string(enum raft_state state)
     {
     case RAFT_STATE_LEADER:
         return "leader";
-    case RAFT_STATE_BOOTING:
-        return "booting";
     case RAFT_STATE_FOLLOWER:
         return "follower";
     case RAFT_STATE_CANDIDATE:
@@ -687,7 +735,21 @@ static inline bool
 raft_instance_is_booting(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
-    return ri->ri_state == RAFT_STATE_BOOTING ? true : false;
+    return ri->ri_proc_state == RAFT_PROC_STATE_BOOTING ? true : false;
+}
+
+static inline bool
+raft_instance_is_shutdown(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_proc_state == RAFT_PROC_STATE_SHUTDOWN ? true : false;
+}
+
+static inline bool
+raft_instance_is_running(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_proc_state == RAFT_PROC_STATE_RUNNING ? true : false;
 }
 
 static inline bool
