@@ -295,6 +295,9 @@ thread_issue_sig_alarm_to_thread(pthread_t tid)
 int
 thread_halt_and_destroy(struct thread_ctl *tc)
 {
+    if (!tc->tc_thread_id)
+        return -EINVAL;
+
     thread_ctl_halt(tc);
 
     thread_ctl_remove_from_watchdog(tc);
