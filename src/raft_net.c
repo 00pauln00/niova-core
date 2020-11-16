@@ -1066,6 +1066,8 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
     ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE__NONE;
     ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
+    ri->ri_epoll_handles_in_use = 0;
+    ri->ri_backend = NULL;
 
     raft_net_histogram_setup(ri);
 
@@ -1075,7 +1077,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         SIMPLE_LOG_MSG(LL_WARN, "raft_net_conf_init(): %s", strerror(-rc));
         return rc;
     }
-
 
     if (!raft_net_tcp_disabled())
     {
