@@ -4706,7 +4706,9 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 static bool
 raft_server_main_loop_exit_conditions(const struct raft_instance *ri)
 {
-    return ri->ri_needs_bulk_recovery ? true : false;
+    return (FAULT_INJECT(raft_server_main_loop_break) ||
+            ri->ri_needs_bulk_recovery)
+        ? true : false;
 }
 
 static int
