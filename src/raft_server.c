@@ -2160,7 +2160,7 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     raerq->raerqm_entries_sz = 0;
     raerq->raerqm_leader_change_marker = 0;
     raerq->raerqm_prev_idx_crc = rfi->rfi_prev_idx_crc;
-    raerq->raerqm_lowest_index = ri->ri_lowest_idx;
+    raerq->raerqm_lowest_index = niova_atomic_read(&ri->ri_lowest_idx);
     raerq->raerqm_chkpt_index = ri->ri_checkpoint_last_idx;
 
     // Previous log index is the address of the follower's last write.
@@ -2745,7 +2745,7 @@ raft_server_process_bulk_recovery_check(
     const raft_entry_idx_t my_current_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
 
-    if (my_current_idx > raerq->raerqm_lowest_index ||
+    if (my_current_idx < raerq->raerqm_lowest_index ||
         FAULT_INJECT(raft_force_bulk_recovery))
     {
         ri->ri_needs_bulk_recovery = true;
@@ -4251,8 +4251,8 @@ raft_server_instance_init(struct raft_instance *ri,
 
     ri->ri_commit_idx = -1;
     ri->ri_last_applied_idx = -1;
-    ri->ri_lowest_idx = -1;
     ri->ri_checkpoint_last_idx = -1;
+    niova_atomic_init(&ri->ri_lowest_idx, -1);
 
     raft_server_instance_init_tunables(ri);
 
