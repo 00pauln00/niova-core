@@ -4729,7 +4729,8 @@ raft_server_main_loop(struct raft_instance *ri)
     SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s (%d)",
                    strerror(-rc), raft_server_main_loop_exit_conditions(ri));
 
-    return rc;
+    // positive rc from epoll_mgr_wait_and_process_events() is not an error
+    return rc > 0 ? 0 : rc;
 }
 
 int
