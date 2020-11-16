@@ -4402,7 +4402,7 @@ raft_server_sync_thread_start(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
 
-    if (!raft_server_does_synchronous_writes(ri))
+    if (raft_server_does_synchronous_writes(ri))
         return -EINVAL;
 
     int rc = thread_create_watched(raft_server_sync_thread,
@@ -4421,7 +4421,7 @@ raft_server_sync_thread_join(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
 
-    if (!raft_server_does_synchronous_writes(ri))
+    if (raft_server_does_synchronous_writes(ri))
         return -EINVAL;
 
     int rc = thread_halt_and_destroy(&ri->ri_sync_thread_ctl);
