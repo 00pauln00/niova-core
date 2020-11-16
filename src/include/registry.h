@@ -431,8 +431,8 @@ lreg_install_int_ctx_t
 lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
 
 void
-    lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
-                   enum lreg_init_options);
+lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
+               enum lreg_init_options);
 
 lreg_install_ctx_t
 lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
