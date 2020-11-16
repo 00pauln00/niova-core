@@ -4401,7 +4401,9 @@ static int
 raft_server_sync_thread_start(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
-    NIOVA_ASSERT(!raft_server_does_synchronous_writes(ri));
+
+    if (!raft_server_does_synchronous_writes(ri))
+        return -EINVAL;
 
     int rc = thread_create_watched(raft_server_sync_thread,
                                    &ri->ri_sync_thread_ctl,
@@ -4412,6 +4414,22 @@ raft_server_sync_thread_start(struct raft_instance *ri)
     thread_ctl_run(&ri->ri_sync_thread_ctl);
 
     return 0;
+}
+
+static int
+raft_server_sync_thread_join(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
+
+    if (!raft_server_does_synchronous_writes(ri))
+        return -EINVAL;
+
+    int rc = thread_halt_and_destroy(&ri->ri_sync_thread_ctl);
+
+    LOG_MSG((rc ? LL_WARN : LL_NOTIFY), "thread_halt_and_destroy(): %s",
+             strerror(-rc));
+
+    return rc;
 }
 
 static raft_server_chkpt_thread_ctx_t
@@ -4558,7 +4576,8 @@ static int
 raft_server_chkpt_thread_start(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
-    NIOVA_ASSERT(ri->ri_backend->rib_backend_checkpoint);
+    if (!ri->ri_backend->rib_backend_checkpoint)
+        return -EINVAL;
 
     int rc = thread_create_watched(raft_server_chkpt_thread,
                                    &ri->ri_chkpt_thread_ctl,
@@ -4569,6 +4588,22 @@ raft_server_chkpt_thread_start(struct raft_instance *ri)
     thread_ctl_run(&ri->ri_chkpt_thread_ctl);
 
     return 0;
+}
+
+static int
+raft_server_chkpt_thread_join(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
+
+    if (!ri->ri_backend->rib_backend_checkpoint)
+        return -EINVAL;
+
+    int rc = thread_halt_and_destroy(&ri->ri_chkpt_thread_ctl);
+
+    LOG_MSG((rc ? LL_WARN : LL_NOTIFY), "thread_halt_and_destroy(): %s",
+             strerror(-rc));
+
+    return rc;
 }
 
 static int
@@ -4652,6 +4687,9 @@ static int
 raft_server_instance_shutdown(struct raft_instance *ri)
 {
     ri->ri_proc_state = RAFT_PROC_STATE_SHUTDOWN;
+
+    raft_server_chkpt_thread_join(ri);
+    raft_server_sync_thread_join(ri);
 
     raft_server_backend_close(ri);
 
