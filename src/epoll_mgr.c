@@ -244,11 +244,11 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     else if (!eph->eph_installed || !eph->eph_destroying)
         return -EAGAIN;
 
+    else if (eph->eph_ctx_cb)
+        return -EAGAIN;
+
     if (eph->eph_async_destroy)
-    {
         SIMPLE_LOG_MSG(LL_NOTIFY, "epm=%p eph=%p", epm, eph);
-        NIOVA_ASSERT(epm->epm_thread_id == pthread_self() && eph->eph_ref_cb);
-    }
 
     struct epoll_event ev = {.events = 0, .data.fd = -1};
 
@@ -308,7 +308,9 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_destroying = 1;
         CIRCLEQ_REMOVE(&epm->epm_active_list, eph, eph_lentry);
 
-        if (eph->eph_ref_cb && epm->epm_thread_id != pthread_self())
+        // Don't destroy the eph if there's still a callback pending
+        if ((eph->eph_ref_cb || eph->eph_ctx_cb) &&
+            epm->epm_thread_id != pthread_self())
         {
             CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
             // Mark that the 'eph' will be destroyed async
@@ -381,10 +383,16 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         return 0;
     }
 
+    if (eph->eph_ref_cb)
+        eph->eph_ref_cb(eph->eph_arg, EPH_REF_GET);
+
     niova_mutex_lock(&epm->epm_ctx_cb_mutex);
-    if (eph->eph_ctx_cb)
+    if (eph->eph_ctx_cb || eph->eph_destroying)
     {
         niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
+        if (eph->eph_ref_cb)
+            eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
+
         return -EBUSY;
     }
     eph->eph_ctx_cb = cb;
@@ -399,10 +407,14 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
     {
         static __thread pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
         eph->eph_ctx_cb_cond = &cond_var;
+
+        // eph might be freed in callback, don't ref after this
         pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
     }
-
-    eph->eph_ctx_cb_cond = NULL;
+    else
+    {
+        eph->eph_ctx_cb_cond = NULL;
+    }
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
@@ -415,25 +427,34 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
 
+    struct epoll_ctx_callback_list tmp_head =
+        SLIST_HEAD_INITIALIZER(epoll_ctx_callback_list);
+
     niova_mutex_lock(&epm->epm_ctx_cb_mutex);
-    struct epoll_handle *eph = SLIST_FIRST(&epm->epm_ctx_cb_list);
-    SLIST_INIT(&epm->epm_ctx_cb_list);
+    SLIST_SWAP(&epm->epm_ctx_cb_list, &tmp_head, epoll_handle);
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
 
-    while (eph)
+    struct epoll_handle *eph, *tmp;
+    SLIST_FOREACH_SAFE(eph, &tmp_head, eph_cb_lentry, tmp)
     {
         NIOVA_ASSERT(eph->eph_ctx_cb);
-        eph->eph_ctx_cb(eph->eph_arg);
 
-        if (eph->eph_ctx_cb_cond)
-            pthread_cond_broadcast(eph->eph_ctx_cb_cond);
-
-        struct epoll_handle *tmp = SLIST_NEXT(eph, eph_cb_lentry);
-        SLIST_NEXT(eph, eph_cb_lentry) = NULL;
+        // callback may free eph, so save everything
+        pthread_cond_t *cond = eph->eph_ctx_cb_cond;
+        epoll_mgr_ctx_op_cb_t cb = eph->eph_ctx_cb;
+        void *arg = eph->eph_arg;
 
         // eph can be re-added to epm list after cb is set to NULL
+        eph->eph_ctx_cb_cond = NULL;
         eph->eph_ctx_cb = NULL;
-        eph = tmp;
+
+        if (eph->eph_ref_cb)
+            eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
+
+        cb(arg);
+
+        if (cond)
+            pthread_cond_signal(cond);
     }
 }
 
@@ -451,6 +472,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
         NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
 
     // Try to cleanup destroying handles prior to blocking indefinitely
+    // Run callbacks before destroying handles
     epoll_mgr_reap_ctx_list(epm);
     epoll_mgr_reap_destroy_list(epm);
 

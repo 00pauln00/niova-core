@@ -128,15 +128,15 @@ struct qm_trace {
  */
 #define SLIST_HEAD(name, type)                      \
 struct name {                                       \
-        struct type *slh_first;	/* first element */ \
+        struct type *slh_first; /* first element */ \
 }
 
 #define SLIST_HEAD_INITIALIZER(head) \
         { NULL }
 
-#define SLIST_ENTRY(type)                         \
-struct {                                          \
-        struct type *sle_next;	/* next element */\
+#define SLIST_ENTRY(type)                          \
+struct {                                           \
+        struct type *sle_next;  /* next element */ \
 }
 
 #define SLIST_ENTRY_INIT(entry) \
@@ -162,6 +162,11 @@ struct {                                          \
         for ((varp) = &SLIST_FIRST((head));           \
             ((var) = *(varp)) != SLIST_END(head);     \
             (varp) = &SLIST_NEXT((var), field))
+
+#define SLIST_FOREACH_SAFE(var, head, field, tvar)         \
+        for ((var) = SLIST_FIRST((head));                    \
+            (var) && ((tvar) = SLIST_NEXT((var), field), 1); \
+            (var) = (tvar))
 
 /*
  * Singly-linked List functions.
@@ -200,6 +205,12 @@ struct {                                          \
                     curelm->field.sle_next->field.sle_next; \
                 _Q_INVALIDATE((elm)->field.sle_next);       \
         }                                                   \
+} while (0)
+
+#define SLIST_SWAP(head1, head2, type) do {				\
+	struct type *swap_first = SLIST_FIRST(head1);		\
+	SLIST_FIRST(head1) = SLIST_FIRST(head2);			\
+	SLIST_FIRST(head2) = swap_first;				\
 } while (0)
 
 /*
@@ -318,18 +329,18 @@ struct {                                           \
 /*
  * List definitions.
  */
-#define LIST_HEAD(name, type)                      \
-struct name {                                      \
-        struct type *lh_first;	/* first element */\
+#define LIST_HEAD(name, type)                       \
+struct name {                                       \
+        struct type *lh_first;  /* first element */ \
 }
 
 #define LIST_HEAD_INITIALIZER(head) \
         { NULL }
 
-#define LIST_ENTRY(type)                                              \
-struct {                                                              \
-        struct type *le_next;	/* next element */                    \
-        struct type **le_prev;	/* address of previous next element */\
+#define LIST_ENTRY(type)                                               \
+struct {                                                               \
+        struct type *le_next;   /* next element */                     \
+        struct type **le_prev;  /* address of previous next element */ \
 }
 
 /*
@@ -398,16 +409,16 @@ struct {                                                              \
  */
 #define SIMPLEQ_HEAD(name, type)                                \
 struct name {                                                   \
-        struct type *sqh_first;	/* first element */             \
-        struct type **sqh_last;	/* addr of last next element */ \
+        struct type *sqh_first; /* first element */             \
+        struct type **sqh_last; /* addr of last next element */ \
 }
 
 #define SIMPLEQ_HEAD_INITIALIZER(head) \
         { NULL, &(head).sqh_first }
 
-#define SIMPLEQ_ENTRY(type)                       \
-struct {                                          \
-        struct type *sqe_next;	/* next element */\
+#define SIMPLEQ_ENTRY(type)                        \
+struct {                                           \
+        struct type *sqe_next;  /* next element */ \
 }
 
 /*
@@ -459,8 +470,8 @@ struct {                                          \
  */
 #define TAILQ_HEAD(name, type)                                  \
 struct name {                                                   \
-        struct type *tqh_first;	/* first element */             \
-        struct type **tqh_last;	/* addr of last next element */ \
+        struct type *tqh_first; /* first element */             \
+        struct type **tqh_last; /* addr of last next element */ \
 }
 
 #define TAILQ_HEAD_INITIALIZER(head) \
@@ -468,8 +479,8 @@ struct name {                                                   \
 
 #define TAILQ_ENTRY(type)                                              \
 struct {                                                               \
-        struct type *tqe_next;	/* next element */                     \
-        struct type **tqe_prev;	/* address of previous next element */ \
+        struct type *tqe_next;  /* next element */                     \
+        struct type **tqe_prev; /* address of previous next element */ \
 }
 
 /*
@@ -564,19 +575,19 @@ struct {                                                               \
 /*
  * Circular queue definitions.
  */
-#define CIRCLEQ_HEAD(name, type)                     \
-struct name {                                        \
-        struct type *cqh_first;		/* first element */\
-        struct type *cqh_last;		/* last element */\
+#define CIRCLEQ_HEAD(name, type)                            \
+struct name {                                               \
+        struct type *cqh_first;         /* first element */ \
+        struct type *cqh_last;          /* last element */  \
 }
 
 #define CIRCLEQ_HEAD_INITIALIZER(head) \
         { CIRCLEQ_END(&head), CIRCLEQ_END(&head) }
 
-#define CIRCLEQ_ENTRY(type)                            \
-struct {                                               \
-        struct type *cqe_next;		/* next element */\
-        struct type *cqe_prev;		/* previous element */\
+#define CIRCLEQ_ENTRY(type)                                    \
+struct {                                                       \
+        struct type *cqe_next;          /* next element */     \
+        struct type *cqe_prev;          /* previous element */ \
 }
 
 /*
