@@ -4695,9 +4695,6 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     raft_server_evp_cleanup(ri);
 
-    for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
-        ev_pipe_cleanup(&ri->ri_evps[i]);
-
     pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
 
     return 0;
