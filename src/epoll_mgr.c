@@ -260,6 +260,7 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     pthread_mutex_unlock(&epm->epm_mutex);
 
     eph->eph_installed = 0;
+    eph->eph_fd = -1;
 
     if (eph->eph_ref_cb)
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);

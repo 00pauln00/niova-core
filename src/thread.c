@@ -321,6 +321,9 @@ thread_halt_and_destroy(struct thread_ctl *tc)
                    "pthread_join(): rc=%d:%d errno=%s, thr_retval=%p",
                    kill_rc, rc, strerror(my_errno), (long int *)retval);
 
+    if (!rc)
+        tc->tc_thread_id = 0;
+
     return rc;
 }
 
