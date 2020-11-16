@@ -1064,7 +1064,8 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     if (!ri)
         return -EINVAL;
 
-    ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_BOOTING;
+    ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE__NONE;
+    ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
 
     raft_net_histogram_setup(ri);
 
@@ -1155,6 +1156,8 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
         return rc;
     }
+
+    ri->ri_proc_state = RAFT_PROC_STATE_RUNNING;
 
     return 0;
 }
