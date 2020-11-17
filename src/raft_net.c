@@ -821,19 +821,47 @@ raft_net_instance_shutdown(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
+    int rc = 0;
+
     int epoll_close_rc = raft_net_epoll_cleanup(ri);
+    if (epoll_close_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_cleanup(): %s",
+                       strerror(-epoll_close_rc));
+        if (!rc)
+            rc = epoll_close_rc;
+    }
 
-    if (ri->ri_shutdown_cb)
-        ri->ri_shutdown_cb(ri);
+    int shutdown_cb_rc = ri->ri_shutdown_cb ? ri->ri_shutdown_cb(ri) : 0;
+    if (shutdown_cb_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "ri_shutdown_cb(): %s",
+                       strerror(-shutdown_cb_rc));
+        if (!rc)
+            rc = shutdown_cb_rc;
+    }
 
-    int sockets_close = raft_net_sockets_close(ri);
+    int sockets_close_rc = raft_net_sockets_close(ri);
+    if (sockets_close_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_sockets_close(): %s",
+                       strerror(-sockets_close_rc));
+        if (!rc)
+            rc = sockets_close_rc;
+    }
 
-    raft_net_timerfd_close(ri);
+    int timerfd_close_rc = raft_net_timerfd_close(ri);
+    if (timerfd_close_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_timerfd_close(): %s",
+                       strerror(-timerfd_close_rc));
+        if (!rc)
+            rc = timerfd_close_rc;
+    }
 
     raft_net_conf_destroy(ri);
 
-    return (sockets_close ? sockets_close :
-            (epoll_close_rc ? epoll_close_rc : 0));
+    return rc;
 }
 
 static void

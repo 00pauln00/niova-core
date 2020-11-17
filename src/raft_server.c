@@ -4147,18 +4147,41 @@ raft_server_evp_cleanup(struct raft_instance *ri)
     if (!ri || raft_instance_is_client(ri))
         return -EINVAL;
 
+    int epoll_handle_del_rc[RAFT_SERVER_EVP_ANY] = {0};
+    int ev_pipe_cleanup_rc[RAFT_SERVER_EVP_ANY] = {0};
+    int rc = 0;
+
     for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
     {
         enum raft_epoll_handles eph_type = raft_server_evp_2_epoll_handle(i);
         NIOVA_ASSERT(eph_type < RAFT_EPOLL_NUM_HANDLES);
 
         struct epoll_handle *eph = &ri->ri_epoll_handles[eph_type];
-        epoll_handle_del(&ri->ri_epoll_mgr, eph);
 
-        ev_pipe_cleanup(&ri->ri_evps[i]);
+        // Remove the handle if the mgr appears to be active
+        if (epoll_mgr_is_ready(&ri->ri_epoll_mgr))
+            epoll_handle_del_rc[i] = epoll_handle_del(&ri->ri_epoll_mgr, eph);
+
+        // eph's should not be installed if the mgr has been shutdown
+        else if (epoll_handle_is_installed(eph))
+            epoll_handle_del_rc[i] = -ENOTEMPTY;
+
+        // Cleanup the ev pipe
+        ev_pipe_cleanup_rc[i] = ev_pipe_cleanup(&ri->ri_evps[i]);
+
+        if (epoll_handle_del_rc[i] || ev_pipe_cleanup_rc[i])
+        {
+            LOG_MSG(LL_WARN,
+                    "epoll_handle_del(rc=%d) ev_pipe_cleanup(rc=%d) idx=%d",
+                    epoll_handle_del_rc[i], ev_pipe_cleanup_rc[i], i);
+
+            if (!rc)
+                rc = epoll_handle_del_rc[i] ?
+                    epoll_handle_del_rc[i] : ev_pipe_cleanup_rc[i];
+        }
     }
 
-    return 0;
+    return rc;
 }
 
 static int
@@ -4688,16 +4711,55 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 {
     ri->ri_proc_state = RAFT_PROC_STATE_SHUTDOWN;
 
-    raft_server_chkpt_thread_join(ri);
-    raft_server_sync_thread_join(ri);
+    int rc = 0;
 
-    raft_server_backend_close(ri);
+    int rc_chkpt = raft_server_chkpt_thread_join(ri);
+    int rc_sync = raft_server_sync_thread_join(ri);
+    int rc_backend_close = raft_server_backend_close(ri);
+    int rc_evp_cleanup = raft_server_evp_cleanup(ri);
+    int mutex_rc = pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
 
-    raft_server_evp_cleanup(ri);
+    if (rc_chkpt)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_chkpt_thread_join(): %s",
+                       strerror(-rc_chkpt));
+        if (!rc)
+            rc = rc_chkpt;
+    }
 
-    pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
+    if (rc_sync)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_sync_thread_join(): %s",
+                       strerror(-rc_sync));
+        if (!rc)
+            rc = rc_sync;
+    }
 
-    return 0;
+    if (rc_backend_close)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_backend_close(): %s",
+                       strerror(-rc_backend_close));
+        if (!rc)
+            rc = rc_backend_close;
+    }
+
+    if (rc_evp_cleanup)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_evp_cleanup(): %s",
+                       strerror(-rc_evp_cleanup));
+        if (!rc)
+            rc = rc_evp_cleanup;
+    }
+
+    if (mutex_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "pthread_mutex_destroy(): %s",
+                       strerror(mutex_rc));
+        if (!rc)
+            rc = -mutex_rc;
+    }
+
+    return rc;
 }
 
 static bool
@@ -4726,8 +4788,8 @@ raft_server_main_loop(struct raft_instance *ri)
             rc = 0;
     } while (rc >= 0 && !raft_server_main_loop_exit_conditions(ri));
 
-    SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s (%d)",
-                   strerror(-rc), raft_server_main_loop_exit_conditions(ri));
+    SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
+                   rc < 0 ? strerror(-rc) : "Success");
 
     // positive rc from epoll_mgr_wait_and_process_events() is not an error
     return rc > 0 ? 0 : rc;
@@ -4744,6 +4806,8 @@ raft_server_instance_run(const char *raft_uuid_str,
         return -EINVAL;
 
     struct raft_instance *ri = raft_net_get_instance();
+    if (!ri)
+        return -ENOENT;
 
     raft_server_instance_init(ri, type);
 
@@ -4753,13 +4817,35 @@ raft_server_instance_run(const char *raft_uuid_str,
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes = sync_writes;
 
-    int rc = raft_net_instance_startup(ri, false);
-    if (rc)
-        return rc;
+    int rc = 0;
+    int raft_net_startup_rc = raft_net_instance_startup(ri, false);
+    if (raft_net_startup_rc)
+    {
+        rc = raft_net_startup_rc;
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
+                       strerror(-rc));
+    }
+    else
+    {
+        int main_loop_rc = raft_server_main_loop(ri);
+        if (main_loop_rc)
+        {
+            if (!rc)
+                rc = main_loop_rc;
 
-    rc = raft_server_main_loop(ri);
+            SIMPLE_LOG_MSG(LL_ERROR, "raft_server_main_loop(): %s",
+                           strerror(-rc));
+        }
+        int shutdown_rc = raft_net_instance_shutdown(ri);
+        if (shutdown_rc)
+        {
+            if (!rc)
+                rc = shutdown_rc;
 
-    raft_net_instance_shutdown(ri);
+            SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_shutdown(): %s",
+                           strerror(-rc));
+        }
+    }
 
     return rc;
 }
