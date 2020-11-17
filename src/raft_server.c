@@ -4403,7 +4403,7 @@ raft_server_sync_thread_start(struct raft_instance *ri)
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
 
     if (raft_server_does_synchronous_writes(ri))
-        return -EINVAL;
+        return 0;
 
     int rc = thread_create_watched(raft_server_sync_thread,
                                    &ri->ri_sync_thread_ctl,
@@ -4422,7 +4422,7 @@ raft_server_sync_thread_join(struct raft_instance *ri)
     NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
 
     if (raft_server_does_synchronous_writes(ri))
-        return -EINVAL;
+        return 0;
 
     int rc = thread_halt_and_destroy(&ri->ri_sync_thread_ctl);
 
@@ -4577,7 +4577,7 @@ raft_server_chkpt_thread_start(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
     if (!ri->ri_backend->rib_backend_checkpoint)
-        return -EINVAL;
+        return 0;
 
     int rc = thread_create_watched(raft_server_chkpt_thread,
                                    &ri->ri_chkpt_thread_ctl,
@@ -4596,7 +4596,7 @@ raft_server_chkpt_thread_join(struct raft_instance *ri)
     NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
 
     if (!ri->ri_backend->rib_backend_checkpoint)
-        return -EINVAL;
+        return 0;
 
     int rc = thread_halt_and_destroy(&ri->ri_chkpt_thread_ctl);
 
