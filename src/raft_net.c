@@ -537,8 +537,10 @@ raft_net_timerfd_close(struct raft_instance *ri)
 
     if (ri->ri_timer_fd >= 0)
     {
+        int tmp_fd = ri->ri_timer_fd;
         ri->ri_timer_fd = -1;
-        return close(ri->ri_timer_fd);
+
+        return close(tmp_fd);
     }
 
     return 0;
