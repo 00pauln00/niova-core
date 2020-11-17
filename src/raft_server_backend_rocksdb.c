@@ -1030,12 +1030,20 @@ rsbr_destroy(struct raft_instance *ri)
             rir->rir_log_fd = -1;
     }
 
-    // Caller frees rir_cf_table
-//    if (rir->rir_cf_table)
-//        raft_server_rocksdb_release_cf_table(rir->rir_cf_table);
-
     if (rir->rir_db)
+    {
         rocksdb_close(rir->rir_db);
+
+        // User must call raft_server_rocksdb_release_cf_table()
+        if (rir->rir_cf_table) // Handles seem to be freed in rocksdb_close()
+        {
+            struct raft_server_rocksdb_cf_table *cft = rir->rir_cf_table;
+
+            for (size_t i = 0; i < cft->rsrcfe_num_cf; i++)
+                if (cft->rsrcfe_cf_handles[i])
+                    cft->rsrcfe_cf_handles[i] = NULL;
+        }
+    }
 
     if (rir->rir_writeoptions_sync)
         rocksdb_writeoptions_destroy(rir->rir_writeoptions_sync);
