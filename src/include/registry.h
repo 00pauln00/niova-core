@@ -399,6 +399,12 @@ lreg_node_needs_installation(const struct lreg_node *lrn)
 }
 
 static inline bool
+lreg_node_is_installed(const struct lreg_node *lrn)
+{
+    return lrn->lrn_install_state == LREG_NODE_INSTALLED ? true : false;
+}
+
+static inline bool
 lreg_node_install_prep_ok(struct lreg_node *lrn)
 {
     return niova_atomic_cas(&lrn->lrn_install_state, LREG_NODE_NOT_INSTALLED,
@@ -595,6 +601,14 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
 #define LREG_ROOT_ENTRY_INSTALL(name)                                  \
     NIOVA_ASSERT(!lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name), \
                                             lreg_root_node_get()))
+
+// Don't crash if the node is already installed.
+#define LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name)                   \
+{                                                                  \
+    int rc = lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name),  \
+                                       lreg_root_node_get());      \
+    NIOVA_ASSERT(!rc || rc == -EALREADY);                          \
+}
 
 #define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                    \
 {                                                               \
