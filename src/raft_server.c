@@ -26,6 +26,7 @@
 #include "thread.h"
 #include "util_thread.h"
 
+#define RAFT_SERVER_RECOVERY_ATTEMPTS 10
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
 
 enum raft_write_entry_opts
@@ -4803,50 +4804,63 @@ raft_server_instance_run(const char *raft_uuid_str,
                          enum raft_instance_store_type type,
                          bool sync_writes, void *arg)
 {
+    FUNC_ENTRY(LL_NOTIFY);
+
     if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
         return -EINVAL;
 
-    struct raft_instance *ri = raft_net_get_instance();
-    if (!ri)
-        return -ENOENT;
-
-    raft_server_instance_init(ri, type);
-
-    ri->ri_raft_uuid_str = raft_uuid_str;
-    ri->ri_this_peer_uuid_str = this_peer_uuid_str;
-    ri->ri_server_sm_request_cb = sm_request_handler;
-    ri->ri_backend_init_arg = arg;
-    ri->ri_synchronous_writes = sync_writes;
-
+    struct raft_instance *ri = NULL;
+    int remaining_recovery_tries = RAFT_SERVER_RECOVERY_ATTEMPTS;
     int rc = 0;
-    int raft_net_startup_rc = raft_net_instance_startup(ri, false);
-    if (raft_net_startup_rc)
-    {
-        rc = raft_net_startup_rc;
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
-                       strerror(-rc));
-    }
-    else
-    {
-        int main_loop_rc = raft_server_main_loop(ri);
-        if (main_loop_rc)
-        {
-            if (!rc)
-                rc = main_loop_rc;
 
-            SIMPLE_LOG_MSG(LL_ERROR, "raft_server_main_loop(): %s",
+    do
+    {
+        ri = raft_net_get_instance();
+        if (!ri)
+            return -ENOENT;
+
+        raft_server_instance_init(ri, type);
+
+        ri->ri_raft_uuid_str = raft_uuid_str;
+        ri->ri_this_peer_uuid_str = this_peer_uuid_str;
+        ri->ri_server_sm_request_cb = sm_request_handler;
+        ri->ri_backend_init_arg = arg;
+        ri->ri_synchronous_writes = sync_writes;
+
+        int raft_net_startup_rc = raft_net_instance_startup(ri, false);
+        if (raft_net_startup_rc)
+        {
+            rc = raft_net_startup_rc;
+            SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
                            strerror(-rc));
         }
-        int shutdown_rc = raft_net_instance_shutdown(ri);
-        if (shutdown_rc)
+        else
         {
-            if (!rc)
-                rc = shutdown_rc;
+            int main_loop_rc = raft_server_main_loop(ri);
+            if (main_loop_rc)
+            {
+                if (!rc)
+                    rc = main_loop_rc;
 
-            SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_shutdown(): %s",
-                           strerror(-rc));
+                SIMPLE_LOG_MSG(LL_ERROR, "raft_server_main_loop(): %s",
+                               strerror(-rc));
+            }
+            int shutdown_rc = raft_net_instance_shutdown(ri);
+            if (shutdown_rc)
+            {
+                if (!rc)
+                    rc = shutdown_rc;
+
+                SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_shutdown(): %s",
+                               strerror(-rc));
+            }
+            if (!rc && ri->ri_needs_bulk_recovery) // reset to booting state
+                ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
         }
-    }
+    }  while (!rc && ri->ri_needs_bulk_recovery &&
+              --remaining_recovery_tries >= 0);
+
+    FUNC_EXIT(LL_NOTIFY);
 
     return rc;
 }
