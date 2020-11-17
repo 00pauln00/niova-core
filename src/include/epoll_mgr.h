@@ -93,4 +93,16 @@ epoll_handle_del_wait(struct epoll_mgr *epm, struct epoll_handle *eph);
 int
 epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
 
+static inline bool
+epoll_mgr_is_ready(const struct epoll_mgr *epm)
+{
+    return (epm && epm->epm_ready) ? true : false;
+}
+
+static inline bool
+epoll_handle_is_installed(const struct epoll_handle *eph)
+{
+    return (eph && eph->eph_installed) ? true : false;
+}
+
 #endif
