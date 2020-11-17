@@ -4266,7 +4266,11 @@ raft_server_instance_init_tunables(struct raft_instance *ri)
 
 static void
 raft_server_instance_init(struct raft_instance *ri,
-                          enum raft_instance_store_type type)
+                          enum raft_instance_store_type type,
+                          const char *raft_uuid_str,
+                          const char *this_peer_uuid_str,
+                          raft_sm_request_handler_t sm_request_handler,
+                          bool sync_writes, void *arg)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
 
@@ -4278,6 +4282,12 @@ raft_server_instance_init(struct raft_instance *ri,
     if (!ri->ri_heartbeat_freq_per_election_min)
         ri->ri_heartbeat_freq_per_election_min =
             RAFT_HEARTBEAT_FREQ_PER_ELECTION;
+
+    ri->ri_raft_uuid_str = raft_uuid_str;
+    ri->ri_this_peer_uuid_str = this_peer_uuid_str;
+    ri->ri_server_sm_request_cb = sm_request_handler;
+    ri->ri_backend_init_arg = arg;
+    ri->ri_synchronous_writes = sync_writes;
 
     ri->ri_commit_idx = -1;
     ri->ri_last_applied_idx = -1;
@@ -4819,13 +4829,8 @@ raft_server_instance_run(const char *raft_uuid_str,
         if (!ri)
             return -ENOENT;
 
-        raft_server_instance_init(ri, type);
-
-        ri->ri_raft_uuid_str = raft_uuid_str;
-        ri->ri_this_peer_uuid_str = this_peer_uuid_str;
-        ri->ri_server_sm_request_cb = sm_request_handler;
-        ri->ri_backend_init_arg = arg;
-        ri->ri_synchronous_writes = sync_writes;
+        raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
+                                  sm_request_handler, sync_writes, arg);
 
         int raft_net_startup_rc = raft_net_instance_startup(ri, false);
         if (raft_net_startup_rc)
