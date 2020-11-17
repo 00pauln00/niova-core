@@ -267,14 +267,15 @@ struct lreg_node
                          lrn_ignore_items_with_value_zero : 1,
                          lrn_reverse_varray               : 1,
                          lrn_vnode_child                  : 1;
-    struct lreg_vnode_data lrn_lvd;
-    void                  *lrn_cb_arg;
-    lrn_cb_t               lrn_cb;
-    CIRCLEQ_ENTRY(lreg_node)  lrn_lentry;
+    void                    *lrn_cb_arg;
+    //xxx lrn_cb can be moved into a static array indexed by lrn_user_type
+    lrn_cb_t                 lrn_cb;
+    CIRCLEQ_ENTRY(lreg_node) lrn_lentry;
     union
     {
-        struct lreg_node_list lrn_head; //arrays and objects
-        struct lreg_node     *lrn_parent_for_install_only;
+        struct lreg_node_list  lrn_head; //arrays and objects
+        struct lreg_node      *lrn_parent_for_install_only;
+        struct lreg_vnode_data lrn_lvd;
     };
 };
 
