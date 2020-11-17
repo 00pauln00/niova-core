@@ -4147,8 +4147,6 @@ raft_server_evp_cleanup(struct raft_instance *ri)
     if (!ri || raft_instance_is_client(ri))
         return -EINVAL;
 
-    int epoll_handle_del_rc[RAFT_SERVER_EVP_ANY] = {0};
-    int ev_pipe_cleanup_rc[RAFT_SERVER_EVP_ANY] = {0};
     int rc = 0;
 
     for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
@@ -4158,26 +4156,29 @@ raft_server_evp_cleanup(struct raft_instance *ri)
 
         struct epoll_handle *eph = &ri->ri_epoll_handles[eph_type];
 
+        int epoll_handle_del_rc = 0;
+        int ev_pipe_cleanup_rc = 0;
+
         // Remove the handle if the mgr appears to be active
         if (epoll_mgr_is_ready(&ri->ri_epoll_mgr))
-            epoll_handle_del_rc[i] = epoll_handle_del(&ri->ri_epoll_mgr, eph);
+            epoll_handle_del_rc = epoll_handle_del(&ri->ri_epoll_mgr, eph);
 
         // eph's should not be installed if the mgr has been shutdown
         else if (epoll_handle_is_installed(eph))
-            epoll_handle_del_rc[i] = -ENOTEMPTY;
+            epoll_handle_del_rc = -ENOTEMPTY;
 
         // Cleanup the ev pipe
-        ev_pipe_cleanup_rc[i] = ev_pipe_cleanup(&ri->ri_evps[i]);
+        ev_pipe_cleanup_rc = ev_pipe_cleanup(&ri->ri_evps[i]);
 
-        if (epoll_handle_del_rc[i] || ev_pipe_cleanup_rc[i])
+        if (epoll_handle_del_rc || ev_pipe_cleanup_rc)
         {
             LOG_MSG(LL_WARN,
                     "epoll_handle_del(rc=%d) ev_pipe_cleanup(rc=%d) idx=%d",
-                    epoll_handle_del_rc[i], ev_pipe_cleanup_rc[i], i);
+                    epoll_handle_del_rc, ev_pipe_cleanup_rc, i);
 
             if (!rc)
-                rc = epoll_handle_del_rc[i] ?
-                    epoll_handle_del_rc[i] : ev_pipe_cleanup_rc[i];
+                rc = epoll_handle_del_rc ?
+                    epoll_handle_del_rc : ev_pipe_cleanup_rc;
         }
     }
 
