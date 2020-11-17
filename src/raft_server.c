@@ -4370,7 +4370,7 @@ raft_server_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
 static int
 raft_server_instance_lreg_init(struct raft_instance *ri)
 {
-    LREG_ROOT_ENTRY_INSTALL(raft_root_entry);
+    LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(raft_root_entry);
 
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT,
                    raft_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
