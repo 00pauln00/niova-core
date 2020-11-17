@@ -303,7 +303,7 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_destroying = 1;
         CIRCLEQ_REMOVE(&epm->epm_active_list, eph, eph_lentry);
 
-        if (eph->eph_ref_cb && epm->epm_thread_id != pthread_self())
+        if (!epoll_handle_releases_in_current_thread(epm, eph))
         {
             CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
             // Mark that the 'eph' will be destroyed async
