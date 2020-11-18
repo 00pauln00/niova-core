@@ -1095,7 +1095,7 @@ raft_server_backend_sync_pending(struct raft_instance *ri, const char *caller)
 #if 0
     // Schedule the main thread to issue AE requests to followers
     if (unsynced_entries && !rc)
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_REMOTE_SEND);
 #endif
 }
 
@@ -1937,7 +1937,7 @@ raft_server_leader_write_new_entry(
                                  ws);
 
     // Schedule ourselves to send this entry to the other members
-    ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
+    RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_REMOTE_SEND);
 }
 
 static raft_server_net_cb_leader_t
@@ -2689,7 +2689,7 @@ raft_server_advance_commit_idx(struct raft_instance *ri,
 
         ri->ri_commit_idx = new_commit_idx;
 
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_SM_APPLY);
     }
 }
 
@@ -3006,9 +3006,9 @@ static raft_server_sync_thread_ctx_t
 raft_server_leader_try_advance_commit_idx_from_sync_thread(
     struct raft_instance *ri)
 {
-    if (ri && raft_server_leader_can_advance_commit_idx(ri, true) !=
-        ID_ANY_64bit)
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV]);
+    if (ri && (raft_server_leader_can_advance_commit_idx(ri, true) !=
+               ID_ANY_64bit))
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_ASYNC_COMMIT_IDX_ADV);
 }
 
 static raft_server_net_cb_leader_ctx_t
@@ -3128,7 +3128,7 @@ raft_server_apply_append_entries_reply_result(
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "follower=%x still lags next-idx=%ld",
                           follower_idx, rfi->rfi_next_idx);
 
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_REMOTE_SEND);
     }
 }
 
@@ -4013,7 +4013,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "");
 
     if (ri->ri_last_applied_idx < ri->ri_commit_idx)
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_SM_APPLY);
 
     if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
         raft_net_client_request_handle_has_reply_info(&rncr))
@@ -4058,9 +4058,9 @@ raft_server_remote_send_evp_cb(const struct epoll_handle *eph, uint32_t events)
     FUNC_ENTRY(LL_DEBUG);
 
     struct raft_instance *ri = eph->eph_arg;
-    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND];
+    struct ev_pipe *evp = raft_net_evp_get(ri, RAFT_EVP_REMOTE_SEND);
 
-    NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
+    NIOVA_ASSERT(eph && eph->eph_fd == evp_read_fd_get(evp));
 
     EV_PIPE_RESET(evp); // reset prior to dequeuing work
 
@@ -4077,9 +4077,9 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
     FUNC_ENTRY(LL_DEBUG);
 
     struct raft_instance *ri = eph->eph_arg;
+    struct ev_pipe *evp = raft_net_evp_get(ri, RAFT_EVP_SM_APPLY);
 
-    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY];
-    NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
+    NIOVA_ASSERT(eph && eph->eph_fd == evp_read_fd_get(evp));
 
     EV_PIPE_RESET(evp);
 
@@ -4094,8 +4094,8 @@ raft_server_commit_idx_adv_evp_cb(const struct epoll_handle *eph,
     FUNC_ENTRY(LL_DEBUG);
 
     struct raft_instance *ri = eph->eph_arg;
+    struct ev_pipe *evp = raft_net_evp_get(ri, RAFT_EVP_ASYNC_COMMIT_IDX_ADV);
 
-    struct ev_pipe *evp = &ri->ri_evps[RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV];
     NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
 
     EV_PIPE_RESET(evp);
@@ -4105,15 +4105,15 @@ raft_server_commit_idx_adv_evp_cb(const struct epoll_handle *eph,
 }
 
 static epoll_mgr_cb_t
-raft_server_evp_2_cb_fn(enum raft_server_event_pipes evps)
+raft_server_evp_2_cb_fn(enum raft_event_pipe_types evps)
 {
     switch (evps)
     {
-    case RAFT_SERVER_EVP_REMOTE_SEND:
+    case RAFT_EVP_REMOTE_SEND:
         return raft_server_remote_send_evp_cb;
-    case RAFT_SERVER_EVP_SM_APPLY:
+    case RAFT_EVP_SM_APPLY:
         return raft_server_sm_apply_evp_cb;
-    case RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV:
+    case RAFT_EVP_ASYNC_COMMIT_IDX_ADV:
         return raft_server_commit_idx_adv_evp_cb;
     default:
         break;
@@ -4121,22 +4121,22 @@ raft_server_evp_2_cb_fn(enum raft_server_event_pipes evps)
     return NULL;
 }
 
-//xxx port to raft_net_evp_add()
 static int
 raft_server_evp_setup(struct raft_instance *ri)
 {
     if (!ri || raft_instance_is_client(ri))
         return -EINVAL;
 
-    for (enum raft_server_event_pipes i = 0; i < RAFT_SERVER_EVP_ANY; i++)
+    for (enum raft_event_pipe_types i = RAFT_EVP_SERVER__START;
+         i <= RAFT_EVP_SERVER__END; i++)
     {
-        int rc = raft_net_evp_add(ri, raft_server_evp_2_cb_fn(i));
-        NIOVA_ASSERT(rc == i); /* rc should equal the pipe value Xxx
-                                * since the code currently accesses the evp
-                                * array directly.
-                                */
-        if (rc < 0)
+        int rc = raft_net_evp_add(ri, raft_server_evp_2_cb_fn(i), i);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "raft_net_evp_add(%d): %s",
+                           i, strerror(-rc));
             return rc;
+        }
     }
 
     return 0;
@@ -4150,37 +4150,12 @@ raft_server_evp_cleanup(struct raft_instance *ri)
 
     int rc = 0;
 
-    for (int i = 0; i < RAFT_SERVER_EVP_ANY; i++)
+    for (enum raft_event_pipe_types i = RAFT_EVP_SERVER__START;
+         i <= RAFT_EVP_SERVER__END; i++)
     {
-        enum raft_epoll_handles eph_type = raft_server_evp_2_epoll_handle(i);
-        NIOVA_ASSERT(eph_type < RAFT_EPOLL_NUM_HANDLES);
-
-        struct epoll_handle *eph = &ri->ri_epoll_handles[eph_type];
-
-        int epoll_handle_del_rc = 0;
-        int ev_pipe_cleanup_rc = 0;
-
-        // Remove the handle if the mgr appears to be active
-        if (epoll_mgr_is_ready(&ri->ri_epoll_mgr))
-            epoll_handle_del_rc = epoll_handle_del(&ri->ri_epoll_mgr, eph);
-
-        // eph's should not be installed if the mgr has been shutdown
-        else if (epoll_handle_is_installed(eph))
-            epoll_handle_del_rc = -ENOTEMPTY;
-
-        // Cleanup the ev pipe
-        ev_pipe_cleanup_rc = ev_pipe_cleanup(&ri->ri_evps[i]);
-
-        if (epoll_handle_del_rc || ev_pipe_cleanup_rc)
-        {
-            LOG_MSG(LL_WARN,
-                    "epoll_handle_del(rc=%d) ev_pipe_cleanup(rc=%d) idx=%d",
-                    epoll_handle_del_rc, ev_pipe_cleanup_rc, i);
-
-            if (!rc)
-                rc = epoll_handle_del_rc ?
-                    epoll_handle_del_rc : ev_pipe_cleanup_rc;
-        }
+        int tmp_rc = raft_net_evp_remove(ri, i);
+        if (tmp_rc && !rc)
+            rc = tmp_rc;
     }
 
     return rc;
@@ -4372,6 +4347,8 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
 {
     LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(raft_root_entry);
 
+//    NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg));
+
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT,
                    raft_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
 
@@ -4461,8 +4438,8 @@ raft_server_sync_thread_join(struct raft_instance *ri)
 
     int rc = thread_halt_and_destroy(&ri->ri_sync_thread_ctl);
 
-    LOG_MSG((rc ? LL_WARN : LL_NOTIFY), "thread_halt_and_destroy(): %s",
-             strerror(-rc));
+    LOG_MSG(((rc && !ri->ri_startup_error) ? LL_WARN : LL_NOTIFY),
+            "thread_halt_and_destroy(): %s", strerror(-rc));
 
     return rc;
 }
@@ -4635,7 +4612,8 @@ raft_server_chkpt_thread_join(struct raft_instance *ri)
 
     int rc = thread_halt_and_destroy(&ri->ri_chkpt_thread_ctl);
 
-    LOG_MSG((rc ? LL_WARN : LL_NOTIFY), "thread_halt_and_destroy(): %s",
+    LOG_MSG(((rc && !ri->ri_startup_error) ? LL_WARN : LL_NOTIFY),
+             "thread_halt_and_destroy(): %s",
              strerror(-rc));
 
     return rc;
@@ -4683,7 +4661,7 @@ raft_server_instance_startup(struct raft_instance *ri)
     rc = raft_server_evp_setup(ri);
     if (rc)
     {
-        DBG_RAFT_INSTANCE(LL_ERROR, ri, "ev_pipe_setup(): %s",
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_evp_setup(): %s",
                           strerror(-rc));
         goto out;
     }
@@ -4704,7 +4682,10 @@ raft_server_instance_startup(struct raft_instance *ri)
 
 out:
     if (rc)
+    {
+        ri->ri_startup_error = rc;
         raft_net_instance_shutdown(ri);
+    }
 
     return rc;
 }
@@ -4731,9 +4712,11 @@ raft_server_instance_shutdown(struct raft_instance *ri)
     int rc_evp_cleanup = raft_server_evp_cleanup(ri);
     int mutex_rc = pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
 
+    enum log_level ll = ri->ri_startup_error ? LL_NOTIFY : LL_ERROR;
+
     if (rc_chkpt)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_chkpt_thread_join(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_server_chkpt_thread_join(): %s",
                        strerror(-rc_chkpt));
         if (!rc)
             rc = rc_chkpt;
@@ -4741,7 +4724,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     if (rc_sync)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_sync_thread_join(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_server_sync_thread_join(): %s",
                        strerror(-rc_sync));
         if (!rc)
             rc = rc_sync;
@@ -4749,7 +4732,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     if (rc_backend_close)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_backend_close(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_server_backend_close(): %s",
                        strerror(-rc_backend_close));
         if (!rc)
             rc = rc_backend_close;
@@ -4757,7 +4740,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     if (rc_evp_cleanup)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_server_evp_cleanup(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_server_evp_cleanup(): %s",
                        strerror(-rc_evp_cleanup));
         if (!rc)
             rc = rc_evp_cleanup;
@@ -4765,7 +4748,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     if (mutex_rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "pthread_mutex_destroy(): %s",
+        SIMPLE_LOG_MSG(ll, "pthread_mutex_destroy(): %s",
                        strerror(mutex_rc));
         if (!rc)
             rc = -mutex_rc;

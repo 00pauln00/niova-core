@@ -279,14 +279,6 @@ struct raft_leader_state
 struct epoll_handle;
 struct raft_instance;
 
-enum raft_server_event_pipes
-{
-    RAFT_SERVER_EVP_REMOTE_SEND  = 0,
-    RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV = 1,
-    RAFT_SERVER_EVP_SM_APPLY     = 2,
-    RAFT_SERVER_EVP_ANY          = 3,
-};
-
 enum raft_follower_reasons
 {
     RAFT_BFRSN_NONE,
@@ -385,6 +377,13 @@ enum raft_instance_newest_entry_hdr_types
 
 typedef niova_atomic64_t raft_chkpt_thread_atomic64_t;
 
+struct raft_evp
+{
+    struct ev_pipe             revp_evp;
+    enum raft_event_pipe_types revp_type;
+    uint8_t                    revp_installed_on_epm : 1;
+};
+
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -411,6 +410,7 @@ struct raft_instance
     bool                            ri_auto_checkpoints_enabled;
     bool                            ri_needs_bulk_recovery;
     enum raft_follower_reasons      ri_follower_reason;
+    int                             ri_startup_error;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
     struct raft_log_header          ri_log_hdr;
@@ -428,7 +428,6 @@ struct raft_instance
     pthread_mutex_t                 ri_newest_entry_mutex;
     struct epoll_mgr                ri_epoll_mgr;
     struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
-    size_t                          ri_epoll_handles_in_use;
     uint32_t                        ri_election_timeout_max_ms;
     uint32_t                        ri_heartbeat_freq_per_election_min;
     raft_net_timer_cb_t             ri_timer_fd_cb;
@@ -437,7 +436,7 @@ struct raft_instance
     raft_sm_request_handler_t       ri_server_sm_request_cb;
     raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
     raft_net_shutdown_cb_t          ri_shutdown_cb;
-    struct ev_pipe                  ri_evps[RAFT_EVP_HANDLES_MAX];
+    struct raft_evp                 ri_evps[RAFT_EVP_HANDLES_MAX];
     size_t                          ri_evps_in_use;
     struct lreg_node                ri_lreg;
     struct lreg_node                ri_net_lreg;
@@ -570,23 +569,6 @@ do {                                                             \
         DBG_RAFT_INSTANCE(LL_FATAL, ri, message, ##__VA_ARGS__); \
     }                                                            \
 } while (0)
-
-static inline enum raft_epoll_handles
-raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
-{
-    switch (evps)
-    {
-    case RAFT_SERVER_EVP_REMOTE_SEND:
-        return RAFT_EPOLL_HANDLE_EVP_REMOTE_SEND;
-    case RAFT_SERVER_EVP_SM_APPLY:
-        return RAFT_EPOLL_HANDLE_EVP_SM_APPLY;
-    case RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV:
-        return RAFT_EPOLL_HANDLE_EVP_ASYNC_COMMIT_IDX_ADV;
-    default:
-        break;
-    }
-    return RAFT_EPOLL_NUM_HANDLES;
-}
 
 static inline char
 raft_server_state_to_char(enum raft_state state)
