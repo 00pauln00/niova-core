@@ -421,15 +421,20 @@ lreg_node_install_add(struct lreg_node *child, struct lreg_node *parent)
 static lreg_svc_ctx_t // or init_ctx_t
 lreg_node_install(struct lreg_node *child)
 {
+    NIOVA_ASSERT(child);
+
     struct lreg_node *parent = child->lrn_parent_for_install_only;
 
-    NIOVA_ASSERT(!lreg_node_needs_installation(parent) ||
-                 child->lrn_inlined_member);
+    NIOVA_ASSERT(parent && (!lreg_node_needs_installation(parent) ||
+                            child->lrn_inlined_member));
 
     /* This is really required only for LREG_VAL_TYPE_ARRAY and
-     * LREG_VAL_TYPE_OBJECT.
+     * LREG_VAL_TYPE_OBJECT.  Statically allocated nodes may not have
+     * initialized their list heads.  Other should have called
+     * lreg_node_init().
      */
-    CIRCLEQ_INIT(&child->lrn_head);
+    if (child->lrn_statically_allocated)
+        CIRCLEQ_INIT(&child->lrn_head);
 
     //int rc = lreg_node_install_check_passes_wrlocked(child, parent);
 
