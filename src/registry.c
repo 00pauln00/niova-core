@@ -517,11 +517,13 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     NIOVA_ASSERT(child && parent);
     NIOVA_ASSERT(child != parent);
 
-    /* May install in this thread ctx if we're in initialization context or
-     * the parent has yet to be installed and this child is a sub object of
-     * the parent's structure.
+    /* May install in this thread ctx if:
+     * 1 - we're in initialization context
+     * 2 - this thread runs the registry subsys
+     * 3 - the parent has yet to be installed and this child is a sub object of
+     *     the parent's structure.
      */
-    const bool install_here = (init_ctx() ||
+    const bool install_here = (init_ctx() || lreg_thread_ctx() ||
                                (child->lrn_inlined_member &&
                                 lreg_node_needs_installation(parent)));
 
@@ -633,6 +635,12 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     lreg_install_queued_nodes();
 }
 
+bool
+lreg_thread_ctx(void)
+{
+    return (lRegInitialized && util_thread_ctx()) ? true : false;
+}
+
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_init(void)
 {
@@ -646,8 +654,6 @@ lreg_subsystem_init(void)
     lreg_node_init(&lRegRootNode, LREG_USER_TYPE_ROOT, lreg_root_node_cb,
                    NULL, LREG_INIT_OPT_STATIC);
 
-    lRegInitialized = true;
-
     int rc = ev_pipe_setup(&lRegEVP);
     FATAL_IF((rc), "ev_pipe_setup(): %s", strerror(-rc));
 
@@ -655,6 +661,8 @@ lreg_subsystem_init(void)
                                        lreg_util_thread_cb, NULL, NULL);
 
     FATAL_IF((rc), "util_thread_install_event_src(): %s", strerror(-rc));
+
+    lRegInitialized = true;
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }

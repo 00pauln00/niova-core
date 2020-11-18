@@ -12,6 +12,7 @@
 #include "init.h"
 #include "queue.h"
 #include "util.h"
+#include "util_thread.h"
 
 /* "Install context" is designated for threads other than the glreg service
  * thread which may add new registry objects.
@@ -896,5 +897,8 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
 
     return -ENOENT;
 }
+
+bool
+lreg_thread_ctx(void);
 
 #endif //_REGISTRY_H
