@@ -21,8 +21,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 static struct lreg_node_list lRegInstallingNodes;
 static struct lreg_node lRegRootNode;
 static bool lRegInitialized = false;
-static spinlock_t lRegLock;
-static pthread_rwlock_t lRegRwLock;
+static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_pipe lRegEVP;
 
 const char *lRegSeparatorString = "::";
@@ -33,8 +32,8 @@ struct lreg_node_lookup_handle
     struct lreg_node *lnlh_node;
 };
 
-#define LREG_NODE_INSTALL_LOCK   spinlock_lock(&lRegLock)
-#define LREG_NODE_INSTALL_UNLOCK spinlock_unlock(&lRegLock)
+#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lRegMutex)
+#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lRegMutex)
 
 /**
  * lreg_root_node_get - returns the root node of the local registry.
@@ -638,9 +637,6 @@ lreg_subsystem_init(void)
 {
     NIOVA_ASSERT(!lRegInitialized);
 
-    spinlock_init(&lRegLock);
-    NIOVA_ASSERT_strerror(!pthread_rwlock_init(&lRegRwLock, NULL));
-
     CIRCLEQ_INIT(&lRegInstallingNodes);
 
     lRegRootNode.lrn_root_node = 1;
@@ -665,9 +661,6 @@ static destroy_ctx_t NIOVA_DESTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_destroy(void)
 {
     //Remove from util thread?
-
-    spinlock_destroy(&lRegLock);
-    NIOVA_ASSERT_strerror(!pthread_rwlock_destroy(&lRegRwLock));
 
     SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread");
 }
