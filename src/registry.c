@@ -18,7 +18,8 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static struct lreg_node_list lRegInstallingNodes;
+static struct lreg_node_list lRegInstallQueue;
+static struct lreg_destroy_queue lRegDestroyQueue;
 static struct lreg_node lRegRootNode;
 static bool lRegInitialized = false;
 static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
@@ -411,7 +412,7 @@ lreg_node_install_add(struct lreg_node *child, struct lreg_node *parent)
 
 /**
  * lreg_node_install - executed exclusively by the registry service thread
- *    (lreg_svc_ctx_t) when installing new nodes from the lRegInstallingNodes
+ *    (lreg_svc_ctx_t) when installing new nodes from the lRegInstallQueue
  *    queue.
  * @child:  the child being installed
  * NOTES:  the parent list head (lrn_head) is exclusively owned by the
@@ -466,10 +467,10 @@ lreg_install_get_queued_node(void)
     struct lreg_node *install = NULL;
 
     LREG_NODE_INSTALL_LOCK;
-    if (!CIRCLEQ_EMPTY(&lRegInstallingNodes))
+    if (!CIRCLEQ_EMPTY(&lRegInstallQueue))
     {
-        install = CIRCLEQ_FIRST(&lRegInstallingNodes);
-        CIRCLEQ_REMOVE(&lRegInstallingNodes, install, lrn_lentry);
+        install = CIRCLEQ_FIRST(&lRegInstallQueue);
+        CIRCLEQ_REMOVE(&lRegInstallQueue, install, lrn_lentry);
     }
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -494,7 +495,7 @@ lreg_node_queue_for_install(struct lreg_node *child)
 {
     LREG_NODE_INSTALL_LOCK;
 
-    CIRCLEQ_INSERT_TAIL(&lRegInstallingNodes, child, lrn_lentry);
+    CIRCLEQ_INSERT_TAIL(&lRegInstallQueue, child, lrn_lentry);
 
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -637,7 +638,8 @@ lreg_subsystem_init(void)
 {
     NIOVA_ASSERT(!lRegInitialized);
 
-    CIRCLEQ_INIT(&lRegInstallingNodes);
+    CIRCLEQ_INIT(&lRegInstallQueue);
+    STAILQ_INIT(&lRegDestroyQueue);
 
     lRegRootNode.lrn_root_node = 1;
 

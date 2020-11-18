@@ -252,6 +252,8 @@ struct lreg_vnode_data
 struct lreg_node;
 CIRCLEQ_HEAD(lreg_node_list, lreg_node);
 
+STAILQ_HEAD(lreg_destroy_queue, lreg_node);
+
 /**
  * -- struct lreg_node --
  */
