@@ -4345,33 +4345,52 @@ raft_server_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
 static int
 raft_server_instance_lreg_init(struct raft_instance *ri)
 {
+    // Root entry may already be install but the ri_lreg must not be
     LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(raft_root_entry);
 
-//    NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg));
+    // Check for a correctly resumed raft process
+    NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg));
 
-    lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT,
-                   raft_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
+    // First, init the parent
+    lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT, raft_instance_lreg_cb,
+                   ri, LREG_INIT_OPT_NONE);
 
-    int rc = lreg_node_install_prepare(&ri->ri_lreg,
-                                       LREG_ROOT_ENTRY_PTR(raft_root_entry));
-    if (rc)
-        return rc;
-
+    // Install the inlined objects into the parent
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
         lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
                        raft_server_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i],
-                       LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
+                       (LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO |
+                        LREG_INIT_OPT_INLINED_MEMBER));
 
-        rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+        int rc =
+            lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+
         if (rc)
             return rc;
     }
 
+    // Last, install the parent w/ it's child objects already in place
+    return lreg_node_install_prepare(&ri->ri_lreg,
+                                     LREG_ROOT_ENTRY_PTR(raft_root_entry));
+}
+
+#if 0
+static int
+raft_server_instance_lreg_remove(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    else if (!lreg_node_is_installed(&ri->ri_lreg))
+        return -EALREADY;
+
+
     return 0;
 }
+#endif
 
 static raft_server_sync_thread_t
 raft_server_sync_thread(void *arg)
