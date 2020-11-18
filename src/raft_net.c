@@ -567,17 +567,68 @@ raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
     if (!ri || fd < 0 || !cb)
         return -EINVAL;
 
-    else if (ri->ri_epoll_handles_in_use >= RAFT_EPOLL_HANDLES_MAX)
+    struct epoll_handle *eph = NULL;
+    for (int i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+    {
+        if (!epoll_handle_is_installed(&ri->ri_epoll_handles[i]))
+        {
+            eph = &ri->ri_epoll_handles[i];
+            break;
+        }
+    }
+
+    if (!eph)
         return -ENOSPC;
 
-    size_t idx = ri->ri_epoll_handles_in_use++;
+    int rc = epoll_handle_init(eph, fd, EPOLLIN, cb, ri, NULL);
+    if (rc)
+        return rc;
 
-    int rc =
-        epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri,
-                          NULL);
+    rc = epoll_handle_add(&ri->ri_epoll_mgr, eph);
+    if (rc)
+        NIOVA_ASSERT(!epoll_handle_is_installed(eph));
 
-    return rc ? rc :
-        epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
+    return rc;
+}
+
+static int
+raft_net_epoll_handle_remove_by_fd(struct raft_instance *ri, int fd)
+{
+    if (!ri || fd < 0)
+	return -EINVAL;
+
+    if (!epoll_mgr_is_ready(&ri->ri_epoll_mgr))
+        return -ESHUTDOWN;
+
+    int rc = 0;
+    int removed_cnt = 0;
+
+    for (int i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+    {
+        struct epoll_handle *eph = &ri->ri_epoll_handles[i];
+        if (epoll_handle_is_installed(eph) && eph->eph_fd == fd)
+        {
+            NIOVA_ASSERT(
+                epoll_handle_releases_in_current_thread(&ri->ri_epoll_mgr,
+                                                        eph));
+
+            int tmp_rc = epoll_handle_del(&ri->ri_epoll_mgr, eph);
+            if (tmp_rc)
+            {
+                SIMPLE_LOG_MSG(LL_WARN, "epoll_handle_del(%p): %s ",
+                               eph, strerror(-tmp_rc));
+                if (!rc)
+                    rc = tmp_rc;
+            }
+            else
+            {
+                NIOVA_ASSERT(!epoll_handle_is_installed(eph));
+                removed_cnt++;
+            }
+        }
+    }
+
+    return (rc || removed_cnt) ? rc : -ENOENT;
 }
 
 static int
@@ -615,36 +666,143 @@ raft_epoll_setup_net(struct raft_instance *ri)
         : tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr);
 }
 
-int
-raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
+static bool
+raft_net_evp_type_valid(const struct raft_instance *ri,
+                        enum raft_event_pipe_types type)
 {
-    if (!ri || !cb)
+    return (!ri || type == RAFT_EVP__NONE || type == RAFT_EVP__ANY   ||
+            (raft_instance_is_client(ri) && type != RAFT_EVP_CLIENT) ||
+            (!raft_instance_is_client(ri) && type == RAFT_EVP_CLIENT))
+        ? false
+        : true;
+}
+
+struct ev_pipe *
+raft_net_evp_get(struct raft_instance *ri, enum raft_event_pipe_types type)
+{
+    for (int i = 0; i < RAFT_EVP_HANDLES_MAX; i++)
+    {
+        if (ri->ri_evps[i].revp_type == type)
+            return &ri->ri_evps[i].revp_evp;
+    }
+
+    return NULL;
+}
+
+int
+raft_net_evp_notify(struct raft_instance *ri, enum raft_event_pipe_types type)
+{
+    if (!raft_net_evp_type_valid(ri, type))
         return -EINVAL;
 
-    else if (ri->ri_epoll_handles_in_use >= RAFT_EPOLL_HANDLES_MAX ||
-             ri->ri_evps_in_use >= RAFT_EVP_HANDLES_MAX)
+    struct ev_pipe *evp = raft_net_evp_get(ri, type);
+    if (evp)
+    {
+        ev_pipe_notify(evp);
+        return 0;
+    }
+
+    return -ENOENT;
+}
+
+int
+raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb,
+                 enum raft_event_pipe_types type)
+{
+    if (!ri || !cb || !raft_net_evp_type_valid(ri, type))
+        return -EINVAL;
+
+    int idx = -1;
+    for (int i = 0; i < RAFT_EVP_HANDLES_MAX; i++)
+    {
+        if (ri->ri_evps[i].revp_type == RAFT_EVP__NONE)
+            idx = i; // Don't break, continue to end looking for dup
+
+        else if (ri->ri_evps[i].revp_type == type)
+            return -EALREADY;
+    }
+
+    if (idx == -1)
         return -ENOSPC;
 
-    int idx = ri->ri_evps_in_use++;
+    struct raft_evp *revp = &ri->ri_evps[idx];
 
-    struct ev_pipe *evp = &ri->ri_evps[idx];
-
-    int rc = ev_pipe_setup(evp);
+    int rc = ev_pipe_setup(&revp->revp_evp);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_setup(): %s", strerror(-rc));
         return rc;
     }
 
-    rc = raft_net_epoll_handle_add(ri, evp_read_fd_get(evp), cb);
+    rc = raft_net_epoll_handle_add(ri, evp_read_fd_get(&revp->revp_evp), cb);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_handle_add(): %s",
                        strerror(-rc));
+
+        int cleanup_rc = ev_pipe_cleanup(&revp->revp_evp);
+        if (cleanup_rc)
+            SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_cleanup(): %s",
+                           strerror(-cleanup_rc));
+
         return rc;
     }
 
-    return idx;
+    revp->revp_type = type;
+    revp->revp_installed_on_epm = 1;
+
+    return 0;
+}
+
+int
+raft_net_evp_remove(struct raft_instance *ri, enum raft_event_pipe_types type)
+{
+    if (!ri || !raft_net_evp_type_valid(ri, type))
+        return -EINVAL;
+
+    int idx = -1;
+    for (int i = 0; i < RAFT_EVP_HANDLES_MAX; i++)
+    {
+        if (ri->ri_evps[i].revp_type == type)
+            idx = i; // Don't break, continue to end looking for dup
+
+        else
+            NIOVA_ASSERT(ri->ri_evps[i].revp_type != type);
+    }
+
+    if (idx == -1)
+        return -ENOENT;
+
+    struct raft_evp *revp = &ri->ri_evps[idx];
+
+    // For now since all evp are placed onto an epm.
+    NIOVA_ASSERT(revp->revp_installed_on_epm);
+
+    int rc = 0;
+    int epoll_remove_rc =
+        raft_net_epoll_handle_remove_by_fd(ri,
+                                           evp_read_fd_get(&revp->revp_evp));
+    if (epoll_remove_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_handle_remove_by_fd(%d): %s",
+                       type, strerror(-epoll_remove_rc));
+        if (!rc)
+            rc = epoll_remove_rc;
+    }
+
+    int ev_pipe_cleanup_rc = ev_pipe_cleanup(&revp->revp_evp);
+    if (ev_pipe_cleanup_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_cleanup_rc(%d): %s",
+                       type, strerror(-ev_pipe_cleanup_rc));
+        if (!rc)
+            rc = ev_pipe_cleanup_rc;
+    }
+
+    revp->revp_type = RAFT_EVP__NONE;
+    revp->revp_installed_on_epm = 0;
+
+    return rc;
 }
 
 raft_net_timerfd_cb_ctx_t
@@ -821,12 +979,14 @@ raft_net_instance_shutdown(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
+    enum log_level ll = ri->ri_startup_error ? LL_NOTIFY : LL_ERROR;
+
     int rc = 0;
 
     int epoll_close_rc = raft_net_epoll_cleanup(ri);
     if (epoll_close_rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_cleanup(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_net_epoll_cleanup(): %s",
                        strerror(-epoll_close_rc));
         if (!rc)
             rc = epoll_close_rc;
@@ -835,7 +995,7 @@ raft_net_instance_shutdown(struct raft_instance *ri)
     int shutdown_cb_rc = ri->ri_shutdown_cb ? ri->ri_shutdown_cb(ri) : 0;
     if (shutdown_cb_rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "ri_shutdown_cb(): %s",
+        SIMPLE_LOG_MSG(ll, "ri_shutdown_cb(): %s",
                        strerror(-shutdown_cb_rc));
         if (!rc)
             rc = shutdown_cb_rc;
@@ -844,7 +1004,7 @@ raft_net_instance_shutdown(struct raft_instance *ri)
     int sockets_close_rc = raft_net_sockets_close(ri);
     if (sockets_close_rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_sockets_close(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_net_sockets_close(): %s",
                        strerror(-sockets_close_rc));
         if (!rc)
             rc = sockets_close_rc;
@@ -853,7 +1013,7 @@ raft_net_instance_shutdown(struct raft_instance *ri)
     int timerfd_close_rc = raft_net_timerfd_close(ri);
     if (timerfd_close_rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_timerfd_close(): %s",
+        SIMPLE_LOG_MSG(ll, "raft_net_timerfd_close(): %s",
                        strerror(-timerfd_close_rc));
         if (!rc)
             rc = timerfd_close_rc;
@@ -1096,7 +1256,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
     ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE__NONE;
     ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
-    ri->ri_epoll_handles_in_use = 0;
     ri->ri_backend = NULL;
 
     raft_net_histogram_setup(ri);

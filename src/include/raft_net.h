@@ -42,6 +42,18 @@ typedef uint64_t raft_net_request_tag_t;
 struct raft_client_rpc_msg;
 struct raft_net_client_request_handle;
 
+enum raft_event_pipe_types
+{
+    RAFT_EVP__NONE,
+    RAFT_EVP_REMOTE_SEND,
+    RAFT_EVP_ASYNC_COMMIT_IDX_ADV,
+    RAFT_EVP_SM_APPLY,
+    RAFT_EVP_CLIENT,
+    RAFT_EVP__ANY,
+    RAFT_EVP_SERVER__START = RAFT_EVP_REMOTE_SEND,
+    RAFT_EVP_SERVER__END = RAFT_EVP_SM_APPLY,
+};
+
 enum raft_net_client_request_type
 {
     RAFT_NET_CLIENT_REQ_TYPE_NONE,
@@ -439,8 +451,24 @@ void
 raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 
 
+struct ev_pipe *
+raft_net_evp_get(struct raft_instance *ri, enum raft_event_pipe_types type);
+
 int
-raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
+raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb,
+                 enum raft_event_pipe_types type);
+
+int
+raft_net_evp_remove(struct raft_instance *ri, enum raft_event_pipe_types type);
+
+int
+raft_net_evp_notify(struct raft_instance *ri, enum raft_event_pipe_types type);
+
+#define RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, type)                           \
+do {                                                                    \
+    int _rc = raft_net_evp_notify(ri, type);                            \
+    FATAL_IF(_rc, "raft_net_evp_notify(%d): %s", type, strerror(-_rc));  \
+} while (0)
 
 static inline void
 raft_client_msg_error_set(struct raft_client_rpc_msg *rcm, int sys, int app)

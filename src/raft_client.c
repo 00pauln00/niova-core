@@ -1001,7 +1001,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     RCI_UNLOCK(rci);
 
     if (cnt) // Signal that a request has been queued.
-        ev_pipe_notify(&RCI_2_RI(rci)->ri_evps[RAFT_CLIENT_EVP_IDX]);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_EVP_CLIENT);
 
     // Cleanup expiredq
     while ((sa = STAILQ_FIRST(&expiredq)))
@@ -1360,7 +1360,7 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
 
     // Done after the lock is released.
     if (queue)
-        ev_pipe_notify(&RCI_2_RI(rci)->ri_evps[RAFT_CLIENT_EVP_IDX]);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_CLIENT_EVP_IDX);
 
     if (block)
         raft_client_sub_app_wait(rci, &tls_cond_var, &tls_completion_notifier);
@@ -1850,7 +1850,7 @@ raft_client_evp_cb(const struct epoll_handle *eph, uint32_t events)
 
     struct raft_instance *ri = eph->eph_arg;
 
-    struct ev_pipe *evp = &ri->ri_evps[RAFT_CLIENT_EVP_IDX];
+    struct ev_pipe *evp = raft_net_evp_get(ri, RAFT_EVP_CLIENT);
 
     NIOVA_ASSERT(eph->eph_fd == evp_read_fd_get(evp));
 
@@ -1880,7 +1880,7 @@ raft_client_thread(void *arg)
     int rc = raft_net_instance_startup(ri, true);
     FATAL_IF((rc), "raft_net_instance_startup(): %s", strerror(-rc));
 
-    rc = raft_net_evp_add(ri, raft_client_evp_cb);
+    rc = raft_net_evp_add(ri, raft_client_evp_cb, RAFT_EVP_CLIENT);
     FATAL_IF((rc != RAFT_CLIENT_EVP_IDX), "raft_net_evp_add(): %s (idx=%d)",
              strerror(-rc), rc);
 
