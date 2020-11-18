@@ -276,8 +276,12 @@ struct lreg_node
     union
     {
         struct lreg_node_list  lrn_head; //arrays and objects
-        struct lreg_node      *lrn_parent_for_install_only;
         struct lreg_vnode_data lrn_lvd;
+    };
+    union
+    {
+        struct lreg_node       *lrn_parent_for_install_only;
+        STAILQ_ENTRY(lreg_node) lrn_removal_lentry;
     };
 };
 
