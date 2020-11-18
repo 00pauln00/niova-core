@@ -4249,6 +4249,15 @@ raft_server_instance_init(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
 
+    /* Sanity check for the recovery to ensure that the lreg node had been
+     * uninstalled from the registry before reusing the object.
+     */
+    NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg));
+
+    // Wipe the instance and restore 'booting' state
+    memset(ri, 0, sizeof(*ri));
+    ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
+
     raft_instance_backend_type_specify(ri, type);
 
     if (!ri->ri_election_timeout_max_ms)
