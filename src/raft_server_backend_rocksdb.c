@@ -237,8 +237,8 @@ rsbr_string_matches_iter_key(const char *str, size_t str_len,
     if ((exact_len && str_len != iter_key_len) ||
         strncmp(str, iter_key, str_len))
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "expected key='%s', got key='%.*s'",
-                       str, (int)iter_key_len, iter_key);
+        LOG_MSG(LL_NOTIFY, "expected key='%s', got key='%.*s'",
+                str, (int)iter_key_len, iter_key);
 
         return false;
     }
@@ -713,7 +713,7 @@ rsbr_lowest_entry_get(struct raft_instance *ri, raft_entry_idx_t *lowest_idx)
         }
     }
 
-    SIMPLE_LOG_MSG(LL_WARN, "key='%.*s' lowest-idx=%zd rc=%d",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "key='%.*s' lowest-idx=%zd rc=%d",
                    (int)iter_key_len, rocksdb_iter_key(iter, &iter_key_len),
                    *lowest_idx, rc);
 
@@ -749,7 +749,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 
     size_t iter_key_len = 0;
 
-    SIMPLE_LOG_MSG(LL_WARN, "last-key='%.*s'",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "last-key='%.*s'",
                    (int)iter_key_len, rocksdb_iter_key(iter, &iter_key_len));
 
     rrc = rsbr_iter_next_or_prev(iter, true, false);
@@ -763,7 +763,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
         return rrc;
     }
 
-    SIMPLE_LOG_MSG(LL_WARN, "prev-last-key='%.*s'",
+    SIMPLE_LOG_MSG(LL_NOTIFY, "prev-last-key='%.*s'",
                    (int)iter_key_len, rocksdb_iter_key(iter, &iter_key_len));
 
     // There's no key entry or header key here.
@@ -797,7 +797,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
     ssize_t last_entry_idx =
         strtoull(&iter_key[RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN], NULL, 10);
 
-    SIMPLE_LOG_MSG(LL_WARN, "last-entry-index=%zd", last_entry_idx + 1);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "last-entry-index=%zd", last_entry_idx + 1);
 
     return last_entry_idx >= 0UL ? last_entry_idx + 1 : last_entry_idx;
 }
@@ -1313,6 +1313,9 @@ rsbr_setup(struct raft_instance *ri)
          */
         if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP)
             rsb_sm_get_last_applied_kv_idx(ri);
+
+        SIMPLE_LOG_MSG(LL_WARN, "entry-idxs: lowest=%ld highest=%ld",
+                       lowest_idx, ri->ri_entries_detected_at_startup - 1);
     }
 out:
     if (rc || err)
