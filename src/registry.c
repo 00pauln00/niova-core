@@ -446,7 +446,7 @@ lreg_node_install(struct lreg_node *child)
     {
         lreg_node_install_add(child, parent);
     }
-    else
+    else if (child->lrn_async_install)
     {
         int destroy_rc =
             lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
@@ -493,6 +493,14 @@ lreg_install_queued_nodes(void)
 static lreg_install_ctx_t
 lreg_node_queue_for_install(struct lreg_node *child)
 {
+    child->lrn_async_install = 1;
+    int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_QUEUED_NODE, child,
+                                   NULL);
+    if (rc)
+        DBG_LREG_NODE(LL_WARN, child,
+                      "LREG_NODE_CB_OP_INSTALL_QUEUED_NODE cb failed: %s",
+                      strerror(-rc));
+
     LREG_NODE_INSTALL_LOCK;
 
     CIRCLEQ_INSERT_TAIL(&lRegInstallQueue, child, lrn_lentry);
@@ -542,6 +550,12 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
         lreg_node_install(child) : lreg_node_queue_for_install(child);
 
     return 0;
+}
+
+int
+lreg_node_remove_enqueue()
+{
+
 }
 
 /**

@@ -103,6 +103,7 @@ nioctx_stats_hist_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     case LREG_NODE_CB_OP_INSTALL_NODE:
     case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -184,16 +185,17 @@ nioctx_stats_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                  niosd_io_ctx_type_to_char(nioctx->nioctx_type));
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lv)
             return -EINVAL;
 
         nioctx_stats_lreg_multi_facet_handler(op, nioctx, lv);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -347,16 +349,17 @@ niosd_io_stats_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                  ndev->ndev_name);
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lv)
             return -EINVAL;
 
         niosd_io_stats_lreg_multi_facet_handler(op, ndev, lv);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:

@@ -1956,16 +1956,17 @@ raft_client_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
             LREG_VAL_TYPE_OBJECT);
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lv)
             return -EINVAL;
 
         rc = raft_client_instance_hist_lreg_multi_facet_handler(op, rihs, lv);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE:
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -2109,16 +2110,17 @@ raft_client_sub_app_req_history_lreg_cb(enum lreg_node_cb_ops op,
         strncpy(LREG_VALUE_TO_OUT_STR(lv), "none", LREG_VALUE_STRING_MAX);
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lv)
             return -EINVAL;
 
         return raft_client_sub_app_multi_facet_handler(op, sa, lv);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -2274,14 +2276,15 @@ raft_client_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         lv->get.lrv_num_keys_out = RAFT_CLIENT_LREG__MAX;
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         rc = lv ?
             raft_client_instance_lreg_multi_facet_cb(op, rci, lv) : -EINVAL;
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:

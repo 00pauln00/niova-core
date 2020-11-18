@@ -117,6 +117,7 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     {
     case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
     case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break; // No-ops since these entries are effectively static
     case LREG_NODE_CB_OP_GET_NODE_INFO:
         lrv->get.lrv_num_keys_out = FAULT_INJECT_REG_KEY__MAX;

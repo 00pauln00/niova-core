@@ -180,7 +180,8 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     {
     case LREG_NODE_CB_OP_GET_NODE_INFO: // fall through
     case LREG_NODE_CB_OP_INSTALL_NODE:  // fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_DESTROY_NODE:  // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         rc = -EOPNOTSUPP;
         break;
 
@@ -500,8 +501,9 @@ raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
         raft_instance_lreg_peer_stats_multi_facet_handler(op, ri, peer, lv);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -542,6 +544,7 @@ raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
     case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
     case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:

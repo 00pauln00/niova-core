@@ -118,8 +118,9 @@ enum lreg_node_cb_ops
     LREG_NODE_CB_OP_GET_NODE_INFO,
     LREG_NODE_CB_OP_WRITE_VAL,
     LREG_NODE_CB_OP_READ_VAL,
-    LREG_NODE_CB_OP_INSTALL_NODE,
-    LREG_NODE_CB_OP_DESTROY_NODE,
+    LREG_NODE_CB_OP_INSTALL_QUEUED_NODE, // node queued for async install
+    LREG_NODE_CB_OP_INSTALL_NODE,        // node is being installed
+    LREG_NODE_CB_OP_DESTROY_NODE,        // node is removed from the subsys
 } PACKED;
 
 #define LREG_NODE_CB_OP_GET_NAME LREG_NODE_CB_OP_GET_NODE_INFO
@@ -271,7 +272,8 @@ struct lreg_node
                          lrn_ignore_items_with_value_zero : 1,
                          lrn_reverse_varray               : 1,
                          lrn_vnode_child                  : 1,
-                         lrn_inlined_member               : 1;
+                         lrn_inlined_member               : 1,
+                         lrn_async_install                : 1;
     void                    *lrn_cb_arg;
     //xxx lrn_cb can be moved into a static array indexed by lrn_user_type
     lrn_cb_t                 lrn_cb;
@@ -375,7 +377,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 do {                                                               \
     struct lreg_value lrv = {0};                                   \
     SIMPLE_LOG_MSG(log_level,                                      \
-                   "lrn@%p %s %c%c%c%c%c%c%c%c%c%c arg=%p "fmt,        \
+                   "lrn@%p %s %c%c%c%c%c%c%c%c%c%c%c arg=%p "fmt,        \
                    (lrn),                                          \
                    (const char *)({                                \
                            (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, \
@@ -392,6 +394,7 @@ do {                                                               \
                    (lrn)->lrn_array_element         ? 'a' : '-',   \
                    (lrn)->lrn_vnode_child           ? 'v' : '-',        \
                    (lrn)->lrn_inlined_member        ? 'i' : '-',        \
+                   (lrn)->lrn_async_install         ? 'A' : '-',        \
                    (lrn)->lrn_cb_arg, ##__VA_ARGS__);              \
 } while (0)
 
@@ -470,7 +473,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             snprintf(lreg_val->lrv_key_string,                          \
                      LREG_VALUE_STRING_MAX, #name);                     \
             break;                                                      \
-        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */           \
+        case LREG_NODE_CB_OP_READ_VAL:                                  \
             if (!lreg_val)                                              \
                 return -EINVAL;                                         \
             if (lreg_val->lrv_value_idx_in != 0)                        \
@@ -480,10 +483,11 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             snprintf(lreg_val->lrv_key_string,                          \
                      LREG_VALUE_STRING_MAX, #name);                     \
             break;                                                      \
-        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */           \
+        case LREG_NODE_CB_OP_WRITE_VAL:                                 \
             return -EOPNOTSUPP;                                         \
         case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */           \
         case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */           \
+        case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:                       \
             break;                                                      \
         default:                                                        \
             return -ENOENT;                                             \
@@ -530,7 +534,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                      LREG_VALUE_STRING_MAX, #name);                 \
             break;                                                  \
         case LREG_NODE_CB_OP_READ_VAL:     /* fall through */       \
-        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */       \
+        case LREG_NODE_CB_OP_WRITE_VAL:                             \
             if (!(lreg_val))                                        \
                 return -EINVAL;                                     \
             if (lreg_val->lrv_value_idx_in >= num_keys)             \
@@ -539,6 +543,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             break;                                                  \
         case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */       \
         case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */       \
+        case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:                   \
             break;                                                  \
         default:                                                    \
             return -EOPNOTSUPP;                                     \
@@ -560,7 +565,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             snprintf(lreg_val->lrv_key_string,                      \
                      LREG_VALUE_STRING_MAX, #name);                 \
             break;                                                  \
-        case LREG_NODE_CB_OP_READ_VAL:     /* fall through */       \
+        case LREG_NODE_CB_OP_READ_VAL:                              \
             if (!lreg_val)                                          \
                 return -EINVAL;                                     \
             if (lreg_val->lrv_value_idx_in != 0)                    \
@@ -570,10 +575,11 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             snprintf(lreg_val->lrv_key_string,                      \
                      LREG_VALUE_STRING_MAX, #name);                 \
             break;                                                  \
-        case LREG_NODE_CB_OP_WRITE_VAL:    /* fall through */       \
+        case LREG_NODE_CB_OP_WRITE_VAL:                             \
             return -EOPNOTSUPP;                                     \
         case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */       \
         case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */       \
+        case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:                   \
             break;                                                  \
         default:                                                    \
             return -ENOENT;                                         \

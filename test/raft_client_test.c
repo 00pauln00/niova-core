@@ -1148,8 +1148,9 @@ raft_client_test_instance_hist_lreg_cb(enum lreg_node_cb_ops op,
                                                                      lv);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE:
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -1235,15 +1236,16 @@ raft_client_test_instance_lreg_cb(enum lreg_node_cb_ops op,
                 LREG_VALUE_STRING_MAX);
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         rc = lv ?
             raft_client_test_instance_lreg_multi_facet_cb(op, ri, lv) :
             -EINVAL;
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
