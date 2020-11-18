@@ -4808,6 +4808,10 @@ raft_server_instance_run(const char *raft_uuid_str,
 
     do
     {
+        if (remaining_recovery_tries < RAFT_SERVER_RECOVERY_ATTEMPTS)
+            LOG_MSG(LL_WARN, "recovery attempts remaining %d",
+                    remaining_recovery_tries);
+
         ri = raft_net_get_instance();
         if (!ri)
             return -ENOENT;
