@@ -550,7 +550,13 @@ static int
 raft_net_epoll_cleanup(struct raft_instance *ri)
 {
     for (enum raft_epoll_handles i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+    {
+        NIOVA_ASSERT(
+            epoll_handle_releases_in_current_thread(&ri->ri_epoll_mgr,
+                                                    &ri->ri_epoll_handles[i]));
+
         epoll_handle_del(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[i]);
+    }
 
     return epoll_mgr_close(&ri->ri_epoll_mgr);
 }
@@ -591,6 +597,13 @@ raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
     return rc;
 }
 
+static void
+raft_net_epoll_ensure_handles_are_removed(const struct raft_instance *ri)
+{
+    for (int i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+        NIOVA_ASSERT(!epoll_handle_is_installed(&ri->ri_epoll_handles[i]));
+}
+
 static int
 raft_net_epoll_handle_remove_by_fd(struct raft_instance *ri, int fd)
 {
@@ -598,7 +611,10 @@ raft_net_epoll_handle_remove_by_fd(struct raft_instance *ri, int fd)
 	return -EINVAL;
 
     if (!epoll_mgr_is_ready(&ri->ri_epoll_mgr))
+    {
+        raft_net_epoll_ensure_handles_are_removed(ri);
         return -ESHUTDOWN;
+    }
 
     int rc = 0;
     int removed_cnt = 0;
@@ -782,7 +798,11 @@ raft_net_evp_remove(struct raft_instance *ri, enum raft_event_pipe_types type)
     int epoll_remove_rc =
         raft_net_epoll_handle_remove_by_fd(ri,
                                            evp_read_fd_get(&revp->revp_evp));
-    if (epoll_remove_rc)
+
+    /* raft_net_epoll_handle_remove_by_fd() checks for cleanup of all epoll
+     * handles in the case where the epm has been already shutdown.
+     */
+    if (epoll_remove_rc && epoll_remove_rc != -ESHUTDOWN)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_handle_remove_by_fd(%d): %s",
                        type, strerror(-epoll_remove_rc));
