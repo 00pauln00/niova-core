@@ -423,7 +423,8 @@ lreg_node_install(struct lreg_node *child)
 {
     struct lreg_node *parent = child->lrn_parent_for_install_only;
 
-    NIOVA_ASSERT(!lreg_node_needs_installation(parent));
+    NIOVA_ASSERT(!lreg_node_needs_installation(parent) ||
+                 child->lrn_inlined_member);
 
     /* This is really required only for LREG_VAL_TYPE_ARRAY and
      * LREG_VAL_TYPE_OBJECT.
@@ -511,8 +512,13 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     NIOVA_ASSERT(child && parent);
     NIOVA_ASSERT(child != parent);
 
-//    if (parent->lrn_user_type == child->lrn_user_type)
-//        return -EINVAL;
+    /* May install in this thread ctx if we're in initialization context or
+     * the parent has yet to be installed and this child is a sub object of
+     * the parent's structure.
+     */
+    const bool install_here = (init_ctx() ||
+                               (child->lrn_inlined_member &&
+                                lreg_node_needs_installation(parent)));
 
     if (!lreg_node_needs_installation(child))
         return -EALREADY;
@@ -525,7 +531,8 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
 
     child->lrn_parent_for_install_only = parent;
 
-    init_ctx() ? lreg_node_install(child) : lreg_node_queue_for_install(child);
+    install_here ?
+        lreg_node_install(child) : lreg_node_queue_for_install(child);
 
     return 0;
 }
@@ -558,6 +565,7 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
     lrn->lrn_ignore_items_with_value_zero =
         !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
     lrn->lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY);
+    lrn->lrn_inlined_member = !!(opts & LREG_INIT_OPT_INLINED_MEMBER);
     lrn->lrn_cb = cb;
     lrn->lrn_cb_arg = cb_arg;
 
