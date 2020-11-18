@@ -149,6 +149,7 @@ enum lreg_init_options
     LREG_INIT_OPT_STATIC              = 1 << 0,
     LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO = 1 << 1,
     LREG_INIT_OPT_REVERSE_VARRAY      = 1 << 2,
+    LREG_INIT_OPT_INLINED_MEMBER      = 1 << 3,
 };
 
 struct lreg_node;
@@ -266,7 +267,8 @@ struct lreg_node
                          lrn_array_element                : 1,
                          lrn_ignore_items_with_value_zero : 1,
                          lrn_reverse_varray               : 1,
-                         lrn_vnode_child                  : 1;
+                         lrn_vnode_child                  : 1,
+                         lrn_inlined_member               : 1;
     void                    *lrn_cb_arg;
     //xxx lrn_cb can be moved into a static array indexed by lrn_user_type
     lrn_cb_t                 lrn_cb;
@@ -366,7 +368,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 do {                                                               \
     struct lreg_value lrv = {0};                                   \
     SIMPLE_LOG_MSG(log_level,                                      \
-                   "lrn@%p %s %c%c%c%c%c%c%c%c arg=%p "fmt,        \
+                   "lrn@%p %s %c%c%c%c%c%c%c%c%c%c arg=%p "fmt,        \
                    (lrn),                                          \
                    (const char *)({                                \
                            (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, \
@@ -381,6 +383,8 @@ do {                                                               \
                    (lrn)->lrn_may_destroy           ? 'd' : '-',   \
                    (lrn)->lrn_monitor               ? 'm' : '-',   \
                    (lrn)->lrn_array_element         ? 'a' : '-',   \
+                   (lrn)->lrn_vnode_child           ? 'v' : '-',        \
+                   (lrn)->lrn_inlined_member        ? 'i' : '-',        \
                    (lrn)->lrn_cb_arg, ##__VA_ARGS__);              \
 } while (0)
 
