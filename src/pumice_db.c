@@ -572,7 +572,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
 
     // Lookup the 'root' object
     struct pmdb_object obj = {0};
-    size_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
+    ssize_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
     if (!rrc)   // Ok.  Continue to read operation
