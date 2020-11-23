@@ -966,8 +966,8 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
 
-    int rc = lreg_node_install_prepare(&csn->csn_lrn,
-                                       LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
+    int rc = lreg_node_install(&csn->csn_lrn,
+                               LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
 
     DBG_CTL_SVC_NODE((rc ? LL_FATAL : LL_DEBUG), csn, "%s", strerror(-rc));
 

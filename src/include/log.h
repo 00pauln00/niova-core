@@ -122,15 +122,14 @@ struct log_entry_info
     if (lreg_node_needs_installation(&regFileEntry))                       \
     {                                                                      \
         _node_install_rc =                                                 \
-            lreg_node_install_prepare(&regFileEntry,                       \
-                                      LREG_ROOT_ENTRY_PTR(log_entry_map)); \
+            lreg_node_install(&regFileEntry,                               \
+                              LREG_ROOT_ENTRY_PTR(log_entry_map));         \
         NIOVA_ASSERT(!_node_install_rc ||                                  \
                      _node_install_rc == -EALREADY);                       \
     }                                                                      \
     if (lreg_node_needs_installation(&logMsgLrn))                          \
     {                                                                      \
-        _node_install_rc = lreg_node_install_prepare(&logMsgLrn,           \
-                                                     &regFileEntry);       \
+        _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry);   \
         NIOVA_ASSERT(!_node_install_rc ||                                  \
                      _node_install_rc == -EALREADY);                       \
     }                                                                      \

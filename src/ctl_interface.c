@@ -558,9 +558,9 @@ lctli_subsystem_init(void)
     lreg_node_init(&lctli->lctli_lreg, LREG_USER_TYPE_CTL_INTERFACE,
                    lctli_lreg_cb, lctli, LREG_INIT_OPT_REVERSE_VARRAY);
 
-    int rc = lreg_node_install_prepare(&lctli->lctli_lreg,
-                                       LREG_ROOT_ENTRY_PTR(ctlif_root_entry));
-    FATAL_IF(rc, "lreg_node_install_prepare() %s", strerror(-rc));
+    int rc = lreg_node_install(&lctli->lctli_lreg,
+                               LREG_ROOT_ENTRY_PTR(ctlif_root_entry));
+    FATAL_IF(rc, "lreg_node_install() %s", strerror(-rc));
 
     rc = lctli_setup_inotify_path(lctli);
     FATAL_IF(rc, "lctli_setup_inotify_path(): %s", strerror(-rc));

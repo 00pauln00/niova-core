@@ -2306,10 +2306,10 @@ raft_client_instance_lreg_init(struct raft_client_instance *rci,
                    LREG_INIT_OPT_REVERSE_VARRAY);
 
     int rc =
-        lreg_node_install_prepare(&rci->rci_lreg,
-                                  LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
+        lreg_node_install(&rci->rci_lreg,
+                          LREG_ROOT_ENTRY_PTR(raft_client_root_entry));
 
-    FATAL_IF((rc), "lreg_node_install_prepare(): %s", strerror(-rc));
+    FATAL_IF((rc), "lreg_node_install(): %s", strerror(-rc));
 
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
@@ -2319,9 +2319,9 @@ raft_client_instance_lreg_init(struct raft_client_instance *rci,
                        (void *)&ri->ri_rihs[i],
                        LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
 
-        rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn,
+        rc = lreg_node_install(&ri->ri_rihs[i].rihs_lrn,
                                        &rci->rci_lreg);
-        FATAL_IF((rc), "lreg_node_install_prepare(): %s", strerror(-rc));
+        FATAL_IF((rc), "lreg_node_install(): %s", strerror(-rc));
     }
 }
 

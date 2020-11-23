@@ -449,7 +449,7 @@ struct lreg_node *
 lreg_root_node_get(void);
 
 lreg_install_int_ctx_t
-lreg_node_install_prepare(struct lreg_node *, struct lreg_node *);
+lreg_node_install(struct lreg_node *, struct lreg_node *);
 
 void
 lreg_node_init(struct lreg_node *, enum lreg_user_types, lrn_cb_t, void *,
@@ -616,25 +616,24 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     &rootEntry##name
 
 #define LREG_ROOT_ENTRY_INSTALL(name)                                  \
-    NIOVA_ASSERT(!lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name), \
-                                            lreg_root_node_get()))
+    NIOVA_ASSERT(!lreg_node_install(LREG_ROOT_ENTRY_PTR(name), \
+                                    lreg_root_node_get()))
 
 // Don't crash if the node is already installed.
 #define LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name)                   \
-{                                                                  \
-    int rc = lreg_node_install_prepare(LREG_ROOT_ENTRY_PTR(name),  \
+do {                                                                  \
+    int rc = lreg_node_install(LREG_ROOT_ENTRY_PTR(name),  \
                                        lreg_root_node_get());      \
     NIOVA_ASSERT(!rc || rc == -EALREADY);                          \
-}
+} while (0)
 
 #define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                    \
-{                                                               \
+do {                                                               \
     LREG_ROOT_ENTRY_INSTALL(name);                              \
                                                                 \
-    NIOVA_ASSERT(                                               \
-        !lreg_node_install_prepare(&childEntry##name,           \
-                                   LREG_ROOT_ENTRY_PTR(name))); \
-}
+    NIOVA_ASSERT(                                                       \
+        !lreg_node_install(&childEntry##name, LREG_ROOT_ENTRY_PTR(name))); \
+} while (0)
 
 static inline void
 lreg_node_set_reverse_varray(struct lreg_node *lrn, int x)

@@ -4378,15 +4378,15 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
                         LREG_INIT_OPT_INLINED_MEMBER));
 
         int rc =
-            lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+            lreg_node_install(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
 
         if (rc)
             return rc;
     }
 
     // Last, install the parent w/ it's child objects already in place
-    return lreg_node_install_prepare(&ri->ri_lreg,
-                                     LREG_ROOT_ENTRY_PTR(raft_root_entry));
+    return lreg_node_install(&ri->ri_lreg,
+                             LREG_ROOT_ENTRY_PTR(raft_root_entry));
 }
 
 #if 0

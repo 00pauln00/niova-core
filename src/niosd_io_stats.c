@@ -244,10 +244,9 @@ nioctx_stats_init_internal_stats(struct niosd_io_ctx *nioctx)
                        nioctx_stats_hist_lreg_cb, (void *)niocs,
                        LREG_INIT_OPT_NONE);
 
-        rc = lreg_node_install_prepare(&niocs->niocs_lrn,
-                                       &nioctx->nioctx_lreg_node);
+        rc = lreg_node_install(&niocs->niocs_lrn, &nioctx->nioctx_lreg_node);
 
-        FATAL_IF(rc, "lreg_node_install_prepare(): %s", strerror(-rc));
+        FATAL_IF(rc, "lreg_node_install(): %s", strerror(-rc));
     }
 
     return rc;
@@ -264,10 +263,10 @@ nioctx_stats_init(struct niosd_io_ctx *nioctx)
     lreg_node_init(&nioctx->nioctx_lreg_node, LREG_USER_TYPE_NIOSD_IO_CTX,
                    nioctx_stats_lreg_cb, nioctx, LREG_INIT_OPT_NONE);
 
-    int rc = lreg_node_install_prepare(&nioctx->nioctx_lreg_node,
-                                       &ndev->ndev_lreg_node);
+    int rc = lreg_node_install(&nioctx->nioctx_lreg_node,
+                               &ndev->ndev_lreg_node);
 
-    FATAL_IF(rc, "lreg_node_install_prepare(): %s", strerror(-rc));
+    FATAL_IF(rc, "lreg_node_install(): %s", strerror(-rc));
 
     rc = nioctx_stats_init_internal_stats(nioctx);
     FATAL_IF(rc, "nioctx_stats_init_ctx_stats(): %s", strerror(-rc));
@@ -380,9 +379,9 @@ niosd_io_stats_init(struct niosd_device *ndev)
 
     struct lreg_node *root = LREG_ROOT_ENTRY_PTR(niosd_io_stats_root_entry);
 
-    int rc = lreg_node_install_prepare(&ndev->ndev_lreg_node, root);
+    int rc = lreg_node_install(&ndev->ndev_lreg_node, root);
 
-    FATAL_IF(rc, "lreg_node_install_prepare(): %s", strerror(-rc));
+    FATAL_IF(rc, "lreg_node_install(): %s", strerror(-rc));
 }
 
 void

@@ -1345,7 +1345,7 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT_CLIENT,
                    raft_client_test_instance_lreg_cb, ri, LREG_INIT_OPT_NONE);
 
-    int rc = lreg_node_install_prepare(
+    int rc = lreg_node_install(
         &ri->ri_lreg, LREG_ROOT_ENTRY_PTR(raft_client_test_root_entry));
 
     if (rc)
@@ -1359,7 +1359,7 @@ raft_client_test_lreg_init(struct raft_instance *ri)
                        (void *)&ri->ri_rihs[i],
                        LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
 
-        rc = lreg_node_install_prepare(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+        rc = lreg_node_install(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
         if (rc)
             return rc;
     }

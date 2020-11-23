@@ -225,9 +225,9 @@ fault_injection_init(void)
         lreg_node_init(lrn, LREG_USER_TYPE_FAULT_INJECT,
                        fault_injection_lreg_cb, NULL, LREG_INIT_OPT_NONE);
 
-        int rc = lreg_node_install_prepare(
+        int rc = lreg_node_install(
             lrn, LREG_ROOT_ENTRY_PTR(fault_injection_points));
 
-        FATAL_IF(rc, "lreg_node_install_prepare() %s", strerror(-rc));
+        FATAL_IF(rc, "lreg_node_install() %s", strerror(-rc));
     }
 }
