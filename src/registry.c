@@ -398,28 +398,16 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
 }
 #endif
 
-static lreg_svc_ctx_t
-lreg_node_install_add(struct lreg_node *child, struct lreg_node *parent)
-{
-    DBG_LREG_NODE(LL_TRACE, parent, "parent");
-    DBG_LREG_NODE(LL_DEBUG, child, "parent=%p", parent);
-
-    const bool install_complete_ok = lreg_node_install_complete(child);
-    NIOVA_ASSERT(install_complete_ok);
-
-    CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
-}
-
 /**
- * lreg_node_install - executed exclusively by the registry service thread
- *    (lreg_svc_ctx_t) when installing new nodes from the lRegInstallQueue
- *    queue.
+ * lreg_node_install_internal - executed exclusively by the registry service
+ *    thread (lreg_svc_ctx_t) when installing new nodes from the
+ *    lRegInstallQueue queue.
  * @child:  the child being installed
  * NOTES:  the parent list head (lrn_head) is exclusively owned by the
  *    registry service thread.
  */
 static lreg_svc_ctx_t // or init_ctx_t
-lreg_node_install(struct lreg_node *child)
+lreg_node_install_internal(struct lreg_node *child)
 {
     NIOVA_ASSERT(child);
 
@@ -444,7 +432,9 @@ lreg_node_install(struct lreg_node *child)
 
     if (!rc)
     {
-        lreg_node_install_add(child, parent);
+        CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
+        const bool install_complete_ok = lreg_node_install_complete(child);
+        NIOVA_ASSERT(install_complete_ok);
     }
     else if (child->lrn_async_install)
     {
@@ -487,7 +477,7 @@ lreg_install_queued_nodes(void)
     struct lreg_node *install;
 
     while ((install = lreg_install_get_queued_node()))
-        lreg_node_install(install);
+        lreg_node_install_internal(install);
 }
 
 static lreg_install_ctx_t
@@ -511,13 +501,13 @@ lreg_node_queue_for_install(struct lreg_node *child)
 }
 
 /**
- * lreg_node_queue_for_install - Inserts a registry node into the installation
- *    queue.
+ * lreg_node_install - Inserts a registry node into the installation queue or
+ *    performs the full installation if the proper conditions are met.
  * @child: The child node to be installed.
  * @parent:  The child's parent node.
  */
 lreg_install_int_ctx_t
-lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
+lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
 {
     if (destroy_ctx())
         return 0;
@@ -547,15 +537,16 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
     child->lrn_parent_for_install_only = parent;
 
     install_here ?
-        lreg_node_install(child) : lreg_node_queue_for_install(child);
+        lreg_node_install_internal(child) : lreg_node_queue_for_install(child);
 
     return 0;
 }
 
 int
-lreg_node_remove_enqueue()
+lreg_node_remove(struct lreg_node *child)
 {
-
+    (void)child;
+    return 0;
 }
 
 /**
