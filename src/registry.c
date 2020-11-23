@@ -481,9 +481,9 @@ lreg_install_queued_nodes(void)
 }
 
 static lreg_install_ctx_t
-lreg_node_queue_for_install(struct lreg_node *child)
+lreg_node_install_queue(struct lreg_node *child)
 {
-    child->lrn_async_install = 1;
+    // Notify owner that node is queuing for async install
     int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_QUEUED_NODE, child,
                                    NULL);
     if (rc)
@@ -494,6 +494,7 @@ lreg_node_queue_for_install(struct lreg_node *child)
     LREG_NODE_INSTALL_LOCK;
 
     CIRCLEQ_INSERT_TAIL(&lRegInstallQueue, child, lrn_lentry);
+    child->lrn_async_install = 1;
 
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -537,7 +538,7 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
     child->lrn_parent_for_install_only = parent;
 
     install_here ?
-        lreg_node_install_internal(child) : lreg_node_queue_for_install(child);
+        lreg_node_install_internal(child) : lreg_node_install_queue(child);
 
     return 0;
 }
