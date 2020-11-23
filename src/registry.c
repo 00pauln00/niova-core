@@ -539,7 +539,7 @@ lreg_node_install_prepare(struct lreg_node *child, struct lreg_node *parent)
         return -EALREADY;
 
     else if (!lreg_node_install_prep_ok(child))
-        return -EALREADY;
+        return -EAGAIN;
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
     DBG_LREG_NODE(LL_DEBUG, child, "child parent=%p", parent);
