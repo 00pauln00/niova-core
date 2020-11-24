@@ -399,7 +399,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
-        SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
+        LOG_MSG(LL_TRACE, "epoll_wait(): fd=%d", eph->eph_fd);
 
         if (eph->eph_installed && eph->eph_cb)
             eph->eph_cb(eph, evs[i].events);

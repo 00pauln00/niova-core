@@ -1721,15 +1721,15 @@ raft_net_comm_recency(const struct raft_instance *ri,
     switch (type)
     {
     case RAFT_COMM_RECENCY_RECV:
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): type recv");
+        SIMPLE_LOG_MSG(LL_TRACE, "raft_net_comm_recency(): type recv");
         *ret_ms = last_recv ? (now - last_recv) : 0;
         break;
     case RAFT_COMM_RECENCY_SEND:
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): type send");
+        SIMPLE_LOG_MSG(LL_TRACE, "raft_net_comm_recency(): type send");
         *ret_ms = last_send ? (now - last_send) : 0;
         break;
     case RAFT_COMM_RECENCY_UNACKED_SEND:
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): type unacked send");
+        SIMPLE_LOG_MSG(LL_TRACE, "raft_net_comm_recency(): type unacked send");
         *ret_ms = (last_send > last_recv) ? (now - last_recv) : 0;
         break;
     default:
@@ -1737,9 +1737,8 @@ raft_net_comm_recency(const struct raft_instance *ri,
         break;
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY,
-                   "raft_net_comm_recency(): idx=%d now=%llu ms=%llu rc=%d",
-                   raft_peer_idx, now, *ret_ms, rc);
+    LOG_MSG(LL_TRACE, "raft_net_comm_recency(): idx=%d now=%llu ms=%llu rc=%d",
+            raft_peer_idx, now, *ret_ms, rc);
 
     return rc;
 }
