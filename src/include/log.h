@@ -103,6 +103,8 @@ struct log_entry_info
         .lrn_statically_allocated = 1,                \
         .lrn_array_element = 1,                       \
         .lrn_cb = log_lreg_cb,                        \
+        .lrn_inlined_children = 1,                                       \
+        .lrn_head = CIRCLEQ_HEAD_INITIALIZER(regFileEntry.lrn_head),    \
     }
 
 #define REGISTY_ENTRY_FUNCTION_GENERATE                                    \
@@ -116,20 +118,21 @@ struct log_entry_info
         .lrn_user_type = LREG_USER_TYPE_LOG_func,                          \
         .lrn_statically_allocated = 1,                                     \
         .lrn_array_element = 1,                                            \
+        .lrn_inlined_member = 1,                                            \
         .lrn_cb = log_lreg_cb,                                             \
     };                                                                     \
     int _node_install_rc = 0;                                              \
+    if (lreg_node_needs_installation(&logMsgLrn))                       \
+    {                                                                      \
+        _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
+        NIOVA_ASSERT(!_node_install_rc ||                               \
+                     _node_install_rc == -EALREADY);                    \
+    }                                                                   \
     if (lreg_node_needs_installation(&regFileEntry))                       \
     {                                                                      \
         _node_install_rc =                                                 \
             lreg_node_install(&regFileEntry,                               \
                               LREG_ROOT_ENTRY_PTR(log_entry_map));         \
-        NIOVA_ASSERT(!_node_install_rc ||                                  \
-                     _node_install_rc == -EALREADY);                       \
-    }                                                                      \
-    if (lreg_node_needs_installation(&logMsgLrn))                          \
-    {                                                                      \
-        _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry);   \
         NIOVA_ASSERT(!_node_install_rc ||                                  \
                      _node_install_rc == -EALREADY);                       \
     }                                                                      \
