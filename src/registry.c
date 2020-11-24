@@ -447,6 +447,37 @@ lreg_node_install_internal(struct lreg_node *child)
     }
 }
 
+static lreg_svc_ctx_t // or init_ctx_t or destroy_ctx_t
+lreg_node_remove_internal(struct lreg_node *child)
+{
+    NIOVA_ASSERT(child && lreg_node_is_installed(child));
+
+    struct lreg_node *parent = child->lrn_parent_for_remove_only;
+
+    NIOVA_ASSERT(parent && !lreg_node_needs_installation(parent) &&
+                 !CIRCLEQ_EMPTY(&parent->lrn_head));
+
+    // 'removing' signifies that the removal is in progress
+    const bool removing_ok = lreg_node_set_removing(child);
+    NIOVA_ASSERT(removing_ok);
+
+    DBG_LREG_NODE(LL_DEBUG, child, "child");
+    DBG_LREG_NODE(LL_DEBUG, parent, "parent");
+
+    CIRCLEQ_REMOVE(&parent->lrn_head, child, lrn_lentry);
+
+    const bool uninstalled_ok = lreg_node_set_uninstalled(child);
+    NIOVA_ASSERT(uninstalled_ok);
+
+    enum lreg_user_types type = child->lrn_user_type;
+
+    // Consider *child as invalid following the cb execution
+    int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
+    if (rc)
+        LOG_MSG(LL_WARN, "lreg_node_exec_lrn_cb(%p:%d): %s",
+                child, type, strerror(-rc));
+}
+
 /**
  * lreg_install_get_queued_node - detects a queued node, removes, and returns
  *    it.
@@ -467,17 +498,41 @@ lreg_install_get_queued_node(void)
     return install;
 }
 
+static lreg_svc_lrn_ctx_t
+lreg_remove_get_queued_node(void)
+{
+    struct lreg_node *remove = NULL;
+
+    LREG_NODE_INSTALL_LOCK;
+
+    if ((remove = STAILQ_FIRST(&lRegDestroyQueue)))
+        STAILQ_REMOVE_HEAD(&lRegDestroyQueue, lrn_removal_lentry);
+
+    LREG_NODE_INSTALL_UNLOCK;
+
+    return remove;
+}
+
 /**
- * lreg_install_queued_nodes - called only by the service thread to install the
- *    registry nodes which are on the install queue.
+ * lreg_process_install_queue - called only by the service thread to install
+ *    the registry nodes which are on the install queue.
  */
 static lreg_svc_ctx_t
-lreg_install_queued_nodes(void)
+lreg_process_install_queue(void)
 {
     struct lreg_node *install;
 
     while ((install = lreg_install_get_queued_node()))
         lreg_node_install_internal(install);
+}
+
+static lreg_svc_ctx_t
+lreg_process_remove_queue(void)
+{
+    struct lreg_node *remove;
+
+    while ((remove = lreg_remove_get_queued_node()))
+        lreg_node_remove_internal(remove);
 }
 
 static lreg_install_ctx_t
@@ -495,6 +550,19 @@ lreg_node_install_queue(struct lreg_node *child)
 
     CIRCLEQ_INSERT_TAIL(&lRegInstallQueue, child, lrn_lentry);
     child->lrn_async_install = 1;
+
+    LREG_NODE_INSTALL_UNLOCK;
+
+    ev_pipe_notify(&lRegEVP);
+}
+
+static lreg_destroy_ctx_t
+lreg_node_remove_queue(struct lreg_node *child)
+{
+    LREG_NODE_INSTALL_LOCK;
+
+    STAILQ_INSERT_TAIL(&lRegDestroyQueue, child, lrn_removal_lentry);
+    child->lrn_async_remove = 1;
 
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -533,7 +601,7 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
         return -EAGAIN;
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
-    DBG_LREG_NODE(LL_DEBUG, child, "child parent=%p", parent);
+    DBG_LREG_NODE(LL_DEBUG, child, "child (install-here=%d)", install_here);
 
     child->lrn_parent_for_install_only = parent;
 
@@ -544,9 +612,32 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
 }
 
 int
-lreg_node_remove(struct lreg_node *child)
+lreg_node_remove(struct lreg_node *child, struct lreg_node *parent)
 {
-    (void)child;
+    if (!child || !parent || parent == child ||
+        !lreg_node_has_children(parent))
+        return -EINVAL;
+
+    else if (!lreg_node_is_installed(child) || !lreg_node_is_installed(parent))
+        return -EALREADY;
+
+    else if (lreg_node_has_children(child))
+        return -EBUSY;
+
+    const bool remove_here = init_ctx() || destroy_ctx() || lreg_thread_ctx();
+
+    DBG_LREG_NODE(LL_DEBUG, parent, "parent");
+    DBG_LREG_NODE(LL_DEBUG, child, "child (remove-here=%d)", remove_here);
+
+    /* Capture the parent pointer here.  The above check,
+     * lreg_node_has_children(), will protect the parent from removal via
+     * this method.
+     */
+    child->lrn_parent_for_remove_only = parent;
+
+    remove_here ?
+        lreg_node_remove_internal(child) : lreg_node_remove_queue(child);
+
     return 0;
 }
 
@@ -638,7 +729,8 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 
     EV_PIPE_RESET(&lRegEVP);
 
-    lreg_install_queued_nodes();
+    lreg_process_install_queue();
+    lreg_process_remove_queue();
 }
 
 bool
