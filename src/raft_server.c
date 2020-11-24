@@ -542,10 +542,20 @@ raft_instance_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         rc = lv ? raft_instance_lreg_multi_facet_cb(op, ri, lv) : -EINVAL;
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
     case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE:
+        if (ri->ri_lreg_registered)
+            return -EALREADY;
+        ri->ri_lreg_registered = true;
+        break;
+
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+        if (!ri->ri_lreg_registered)
+            return -EALREADY;
+        ri->ri_lreg_registered = false;
+	break;
 
     default:
         rc = -ENOENT;
@@ -4255,7 +4265,8 @@ raft_server_instance_init(struct raft_instance *ri,
     /* Sanity check for the recovery to ensure that the lreg node had been
      * uninstalled from the registry before reusing the object.
      */
-    NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg));
+    NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg) &&
+                 !ri->ri_lreg_registered);
 
     // Wipe the instance and restore 'booting' state
     memset(ri, 0, sizeof(*ri));
@@ -4731,6 +4742,15 @@ raft_server_backend_close(struct raft_instance *ri)
 }
 
 static int
+raft_server_lreg_node_removal_wait(const struct raft_instance *ri)
+{
+    for (int i = 0; ri->ri_lreg_registered && i < 1000; i++)
+        usleep(10);
+
+    return ri->ri_lreg_registered ? -ETIMEDOUT : 0;
+}
+
+static int
 raft_server_instance_shutdown(struct raft_instance *ri)
 {
     ri->ri_proc_state = RAFT_PROC_STATE_SHUTDOWN;
@@ -4742,6 +4762,11 @@ raft_server_instance_shutdown(struct raft_instance *ri)
     int rc_backend_close = raft_server_backend_close(ri);
     int rc_evp_cleanup = raft_server_evp_cleanup(ri);
     int mutex_rc = pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
+
+    int lreg_remove_rc =
+        lreg_node_remove(&ri->ri_lreg, LREG_ROOT_ENTRY_PTR(raft_root_entry));
+
+    int lreg_removal_wait_rc = raft_server_lreg_node_removal_wait(ri);
 
     enum log_level ll = ri->ri_startup_error ? LL_NOTIFY : LL_ERROR;
 
@@ -4783,6 +4808,22 @@ raft_server_instance_shutdown(struct raft_instance *ri)
                        strerror(mutex_rc));
         if (!rc)
             rc = -mutex_rc;
+    }
+
+    if (lreg_remove_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "lreg_node_remove(): %s",
+                       strerror(-lreg_remove_rc));
+	if (!rc)
+            rc = lreg_remove_rc;
+    }
+
+    if (lreg_removal_wait_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "raft_server_lreg_node_removal_wait(): %s",
+                       strerror(-lreg_removal_wait_rc));
+	if (!rc)
+            rc = lreg_removal_wait_rc;
     }
 
     return rc;
@@ -4877,6 +4918,8 @@ raft_server_instance_run(const char *raft_uuid_str,
                 SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_shutdown(): %s",
                                strerror(-rc));
             }
+
+            // Check if bulk recovery was detected
             if (!rc && ri->ri_needs_bulk_recovery) // reset to booting state
                 ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
         }

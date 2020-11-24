@@ -445,8 +445,10 @@ lreg_node_install_internal(struct lreg_node *child)
         const bool install_complete_ok = lreg_node_install_complete(child);
         NIOVA_ASSERT(install_complete_ok);
     }
+
     else if (child->lrn_async_install)
-    {
+    { // only if LREG_NODE_CB_OP_INSTALL_QUEUED_NODE was issued
+
         int destroy_rc =
             lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_DESTROY_NODE, child, NULL);
 

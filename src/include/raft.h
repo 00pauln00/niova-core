@@ -409,6 +409,7 @@ struct raft_instance
     bool                            ri_user_requested_reap;
     bool                            ri_auto_checkpoints_enabled;
     bool                            ri_needs_bulk_recovery;
+    bool                            ri_lreg_registered;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_startup_error;
     int                             ri_timer_fd;
