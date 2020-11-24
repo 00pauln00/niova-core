@@ -102,6 +102,7 @@ enum lreg_user_types
     LREG_USER_TYPE_UNIT_TEST1,
     LREG_USER_TYPE_UNIT_TEST2,
     LREG_USER_TYPE_UNIT_TEST3,
+    LREG_USER_TYPE_UNIT_TEST4,
     LREG_USER_TYPE_ANY,
     LREG_USER_TYPE_HISTOGRAM = LREG_USER_TYPE_HISTOGRAM0,
     LREG_USER_TYPE_HISTOGRAM__MIN = LREG_USER_TYPE_HISTOGRAM0,
@@ -158,6 +159,7 @@ enum lreg_init_options
     LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO = 1 << 1,
     LREG_INIT_OPT_REVERSE_VARRAY      = 1 << 2,
     LREG_INIT_OPT_INLINED_MEMBER      = 1 << 3,
+    LREG_INIT_OPT_INLINED_CHILDREN    = 1 << 4,
 };
 
 struct lreg_node;
@@ -287,6 +289,7 @@ struct lreg_node
                          lrn_reverse_varray               : 1,
                          lrn_vnode_child                  : 1,
                          lrn_inlined_member               : 1,
+                         lrn_inlined_children             : 1,
                          lrn_async_install                : 1,
                          lrn_async_remove                 : 1;
     void                    *lrn_cb_arg;
@@ -391,7 +394,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 do {                                                               \
     struct lreg_value lrv = {0};                                   \
     SIMPLE_LOG_MSG(log_level,                                      \
-                   "lrn@%p %s %c%c%c%c%c%c%c%c%c%c%c%c arg=%p "fmt,        \
+                   "lrn@%p %s %c%c%c%c%c%c%c%c%c%c%c%c%c arg=%p "fmt,   \
                    (lrn),                                          \
                    (const char *)({                                \
                            (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, \
@@ -408,8 +411,9 @@ do {                                                               \
                    (lrn)->lrn_array_element         ? 'a' : '-',   \
                    (lrn)->lrn_vnode_child           ? 'v' : '-',        \
                    (lrn)->lrn_inlined_member        ? 'i' : '-',        \
+                   (lrn)->lrn_inlined_children      ? 'C' : '-',    \
                    (lrn)->lrn_async_install         ? 'A' : '-',        \
-                   (lrn)->lrn_async_remove         ?  'R' : '-',        \
+                   (lrn)->lrn_async_remove          ? 'R' : '-',        \
                    (lrn)->lrn_cb_arg, ##__VA_ARGS__);              \
 } while (0)
 
@@ -465,6 +469,12 @@ static inline bool
 lreg_node_has_children(const struct lreg_node *lrn)
 {
     return CIRCLEQ_EMPTY(&lrn->lrn_head) ? false : true;
+}
+
+static inline bool
+lreg_node_children_are_inlined(const struct lreg_node *lrn)
+{
+    return lrn->lrn_inlined_children ? true : false;
 }
 
 static inline int

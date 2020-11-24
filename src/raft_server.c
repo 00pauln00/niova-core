@@ -4365,7 +4365,7 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
 
     // First, init the parent
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT, raft_instance_lreg_cb,
-                   ri, LREG_INIT_OPT_NONE);
+                   ri, LREG_INIT_OPT_INLINED_CHILDREN);
 
     // Install the inlined objects into the parent
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;

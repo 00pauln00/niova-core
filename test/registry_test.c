@@ -31,6 +31,11 @@ static struct lreg_node null_lrn =
  .lrn_user_type = LREG_USER_TYPE_UNIT_TEST2,
  .lrn_statically_allocated = 1};
 
+static struct lreg_node inlined_child_lrn =
+{.lrn_cb = null_lrn_cb,
+ .lrn_user_type = LREG_USER_TYPE_UNIT_TEST4,
+ .lrn_inlined_member = 1};
+
 static void
 registry_test_wait_for_install_or_removal(struct lreg_node *lrn, bool install)
 {
@@ -113,29 +118,40 @@ registry_test_init(void)
         DBG_LREG_NODE(LL_FATAL, lrn, "invalid state detected");
     }
 
+    lreg_node_init(&null_lrn, LREG_USER_TYPE_UNIT_TEST2, null_lrn_cb, NULL,
+                   LREG_INIT_OPT_INLINED_CHILDREN);
+    NIOVA_ASSERT(lreg_node_children_are_inlined(&null_lrn));
+
     /* Removing node before installation should fail w/ -EINVAL since, in this
      * case, the parent has no children attached.
      */
     int rc = lreg_node_remove(&null_lrn, lrn);
     NIOVA_ASSERT(rc == -EINVAL);
 
+    // Install an 'inlined' child into the null_lrn
+    rc = lreg_node_install(&inlined_child_lrn, &null_lrn);
+    NIOVA_ASSERT(!rc);
+
     // Install a test node onto our root lrn
     rc = lreg_node_install(&null_lrn, lrn);
     NIOVA_ASSERT(!rc);
+
+    // Adding node again should fail w/ -EALREADY
+    rc = lreg_node_install(&null_lrn, lrn);
+    NIOVA_ASSERT(rc == -EALREADY);
 
     /* Removing a node which has not yet been installed when the parent has
      * at least one entry.
      */
     struct lreg_node test_lrn = {.lrn_cb = null_lrn_cb,
-        .lrn_user_type = LREG_USER_TYPE_UNIT_TEST3,
-        .lrn_statically_allocated = 1};
+        .lrn_user_type = LREG_USER_TYPE_UNIT_TEST3};
 
-    rc = lreg_node_remove(&test_lrn, lrn);
+    rc = lreg_node_remove(&test_lrn, &null_lrn);
     NIOVA_ASSERT(rc == -EALREADY);
 
-    // Adding node again should fail w/ -EALREADY
-    rc = lreg_node_install(&null_lrn, lrn);
-    NIOVA_ASSERT(rc == -EALREADY);
+    // Will fail because test_lrn is not an inlined member
+    rc = lreg_node_install(&test_lrn, &null_lrn);
+    NIOVA_ASSERT(rc == -EINVAL);
 
     // Removing 'lrn' should fail w/ -EBUSY since it has a child
     rc = lreg_node_remove(lrn, lreg_root_node_get());
@@ -159,6 +175,7 @@ registry_test_destroy(void)
     int rc = lreg_node_remove(lrn, lreg_root_node_get());
     NIOVA_ASSERT(rc == -EBUSY);
 
+    NIOVA_ASSERT(lreg_node_children_are_inlined(&null_lrn));
     rc = lreg_node_remove(&null_lrn, lrn);
     NIOVA_ASSERT(!rc);
 

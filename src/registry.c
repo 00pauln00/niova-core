@@ -398,6 +398,15 @@ lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
 }
 #endif
 
+static lreg_install_bool_ctx_t
+lreg_parent_may_accept_child(struct lreg_node *child, struct lreg_node *parent)
+{
+    if (parent->lrn_inlined_children != child->lrn_inlined_member)
+        return false;
+
+    return true;
+}
+
 /**
  * lreg_node_install_internal - executed exclusively by the registry service
  *    thread (lreg_svc_ctx_t) when installing new nodes from the
@@ -584,6 +593,10 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
     NIOVA_ASSERT(child && parent);
     NIOVA_ASSERT(child != parent);
 
+    // Inlined and non-inlined children may not exist inside the same parent
+    if (!lreg_parent_may_accept_child(child, parent))
+        return -EINVAL;
+
     /* May install in this thread ctx if:
      * 1 - we're in initialization context
      * 2 - this thread runs the registry subsys
@@ -621,7 +634,8 @@ lreg_node_remove(struct lreg_node *child, struct lreg_node *parent)
     else if (!lreg_node_is_installed(child) || !lreg_node_is_installed(parent))
         return -EALREADY;
 
-    else if (lreg_node_has_children(child))
+    else if (lreg_node_has_children(child) &&
+             !lreg_node_children_are_inlined(child))
         return -EBUSY;
 
     const bool remove_here = init_ctx() || destroy_ctx() || lreg_thread_ctx();
@@ -670,6 +684,7 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
         !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
     lrn->lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY);
     lrn->lrn_inlined_member = !!(opts & LREG_INIT_OPT_INLINED_MEMBER);
+    lrn->lrn_inlined_children = !!(opts & LREG_INIT_OPT_INLINED_CHILDREN);
     lrn->lrn_cb = cb;
     lrn->lrn_cb_arg = cb_arg;
 
