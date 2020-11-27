@@ -58,6 +58,8 @@ typedef void raft_server_sync_thread_ctx_t;
 typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
 
+static unsigned long long raftServerMaxRecoveryLeaderCommMsec = 10000;
+
 static const char *
 raft_server_may_accept_client_request_reason(struct raft_instance *ri);
 
@@ -2725,6 +2727,36 @@ raft_server_append_entry_reply_send(
                                strerror(rc));
 }
 
+int
+raft_server_init_recovery_handle_from_marker(struct raft_instance *ri,
+                                             const char *peer_uuid_str,
+                                             const char *db_uuid_str)
+{
+    if (!ri || !peer_uuid_str || !db_uuid_str)
+        return -EINVAL;
+
+    uuid_t peer_uuid, db_uuid;
+
+    if (uuid_parse(peer_uuid_str, peer_uuid) ||
+        uuid_parse(db_uuid_str, db_uuid) ||
+        uuid_is_null(peer_uuid) || uuid_is_null(db_uuid))
+        return -EINVAL;
+
+    struct raft_recovery_handle *rrh = raft_instance_2_recovery_handle(ri);
+
+    uuid_copy(rrh->rrh_peer_uuid, peer_uuid);
+    uuid_copy(rrh->rrh_peer_db_uuid, db_uuid);
+
+    rrh->rrh_peer_chkpt_idx = -1UL;
+    rrh->rrh_chkpt_size = -1UL;
+    rrh->rrh_remaining = -1UL;
+    rrh->rrh_from_recovery_marker = true;
+
+    niova_realtime_coarse_clock(&rrh->rrh_start);
+
+    return 0;
+}
+
 static void
 raft_server_init_recovery_handle(
     struct raft_instance *ri,
@@ -2743,6 +2775,7 @@ raft_server_init_recovery_handle(
     rrh->rrh_peer_chkpt_idx = raerq->raerqm_chkpt_index;
     rrh->rrh_chkpt_size = -1UL;
     rrh->rrh_remaining = -1UL;
+    rrh->rrh_from_recovery_marker = false;
 
     niova_realtime_coarse_clock(&rrh->rrh_start);
 }
@@ -4862,6 +4895,68 @@ raft_server_main_loop(struct raft_instance *ri)
     return rc > 0 ? 0 : rc;
 }
 
+/**
+ * raft_server_recovery_handle_is_viable - test the handle contents for
+ *    relevance and freshness.
+ */
+static bool
+raft_server_recovery_handle_is_viable(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_leader);
+
+    const struct raft_recovery_handle *rrh = &ri->ri_recovery_handle;
+
+    if (uuid_compare(ri->ri_csn_leader->csn_uuid, rrh->rrh_peer_uuid))
+        return false;
+
+    else if ((niova_realtime_coarse_clock_get_msec() -
+              timespec_2_msec(&rrh->rrh_start)) >
+             raftServerMaxRecoveryLeaderCommMsec)
+        return false;
+
+    else if (rrh->rrh_peer_chkpt_idx < 0)
+        return false;
+
+    return true;
+}
+
+/**
+ * raft_server_bulk_recovery_can_proceed - tests performed prior to entering
+ *   recovery which determine if recovery should proceed.
+ */
+static bool
+raft_server_bulk_recovery_can_proceed(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    if (!ri->ri_csn_leader || !raft_server_recovery_handle_is_viable(ri))
+        return false;
+
+    unsigned long long recency_ms = 0;
+
+    // Ensure the leader has recently sent us a msg.
+    int rc = raft_net_comm_recency(
+        ri, raft_peer_2_idx(ri, ri->ri_csn_leader->csn_uuid),
+        RAFT_COMM_RECENCY_RECV, &recency_ms);
+
+    return (rc || recency_ms > raftServerMaxRecoveryLeaderCommMsec) ?
+        false : true;
+}
+
+static int
+raft_server_bulk_recovery(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    else if (!raft_server_bulk_recovery_can_proceed(ri))
+        return -EAGAIN;
+
+    return ri->ri_backend->rib_backend_recover
+        ? ri->ri_backend->rib_backend_recover(ri)
+        : -EOPNOTSUPP;
+}
+
 int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
@@ -4880,9 +4975,14 @@ raft_server_instance_run(const char *raft_uuid_str,
 
     do
     {
-        if (remaining_recovery_tries < RAFT_SERVER_RECOVERY_ATTEMPTS)
-            LOG_MSG(LL_WARN, "recovery attempts remaining %d",
-                    remaining_recovery_tries);
+        bool enter_bulk_recovery = ri->ri_needs_bulk_recovery;
+        if (enter_bulk_recovery)
+        {
+            rc = raft_server_bulk_recovery(ri);
+            SIMPLE_LOG_MSG(LL_ERROR, "raft_server_bulk_recovery(): %s",
+                           strerror(-rc));
+            break;
+        }
 
         ri = raft_net_get_instance();
         if (!ri)
@@ -4895,8 +4995,16 @@ raft_server_instance_run(const char *raft_uuid_str,
         if (raft_net_startup_rc)
         {
             rc = raft_net_startup_rc;
-            SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
-                           strerror(-rc));
+            if (rc != -EUCLEAN)
+            {
+                SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
+                               strerror(-rc));
+            }
+            else // Incomplete recovery detected, try to resume
+            {
+                rc = 0;
+                ri->ri_needs_bulk_recovery = true;
+            }
         }
         else
         {
@@ -4921,7 +5029,13 @@ raft_server_instance_run(const char *raft_uuid_str,
 
             // Check if bulk recovery was detected
             if (!rc && ri->ri_needs_bulk_recovery) // reset to booting state
+            {
                 ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
+
+                if (remaining_recovery_tries < RAFT_SERVER_RECOVERY_ATTEMPTS)
+                    LOG_MSG(LL_WARN, "recovery attempts remaining %d",
+                            remaining_recovery_tries - 1);
+            }
         }
     }  while (!rc && ri->ri_needs_bulk_recovery &&
               --remaining_recovery_tries >= 0);

@@ -6,7 +6,14 @@
 
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
+
+#include <fcntl.h> // Must precede dirent.h
+#ifndef __USE_GNU // scandirat
+#define __USE_GNU
+#endif
+#include <dirent.h>
+#include <regex.h>
+#include <unistd.h>
 
 #include <rocksdb/c.h>
 
@@ -16,6 +23,7 @@
 #include "log.h"
 #include "raft.h"
 #include "raft_server_backend_rocksdb.h"
+#include "regex_defines.h"
 #include "registry.h"
 
 #define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
@@ -54,6 +62,16 @@
     RAFT_ENTRY_KEY_PREFIX_ROCKSDB_STRLEN
 #define RAFT_ENTRY_HEADER_KEY_PRINTF \
     RAFT_ENTRY_KEY_PREFIX_ROCKSDB RAFT_HEADER_ENTRY_KEY_FMT
+
+/* The recovery marker filename will appear as
+ * ".recovery_marker.<peer-uuid>_<db-uuid>"
+ */
+#define RECOVERY_MARKER_NAME "recovery_marker"
+#define RECOVERY_MARKER_REGEX \
+    "^\\."RECOVERY_MARKER_NAME"\\."UUID_REGEX_BASE"_"UUID_REGEX_BASE"$"
+#define RECOVERY_MARKER_NAME_LEN_WITH_PERIODS 17
+
+static regex_t recovery_marker_regex;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -107,6 +125,9 @@ rsbr_sync(struct raft_instance *);
 static int64_t
 rsbr_checkpoint(struct raft_instance *);
 
+static int
+rsbr_bulk_recover(struct raft_instance *);
+
 static struct raft_instance_backend ribRocksDB = {
     .rib_entry_write        = rsbr_entry_write,
     .rib_entry_read         = rsbr_entry_read,
@@ -118,11 +139,10 @@ static struct raft_instance_backend ribRocksDB = {
     .rib_backend_setup      = rsbr_setup,
     .rib_backend_shutdown   = rsbr_destroy,
     .rib_backend_checkpoint = rsbr_checkpoint,
+    .rib_backend_recover    = rsbr_bulk_recover,
     .rib_sm_apply_opt       = rsbr_sm_apply_opt,
     .rib_backend_sync       = rsbr_sync,
 };
-
-#define RIR_RECOVERY_MARKER_FILENAME "recovery_marker."
 
 enum raft_instance_rocks_db_subdirs
 {
@@ -130,12 +150,13 @@ enum raft_instance_rocks_db_subdirs
     RIR_SUBDIR_CHKPT_ROOT,
     RIR_SUBDIR_CHKPT_SELF,
     RIR_SUBDIR_CHKPT_PEERS,
+    RIR_SUBDIR_TRASH,
     RIR_SUBDIR__MAX,
     RIR_SUBDIR__MIN = RIR_SUBDIR_DB,
 };
 
 static const char * ribSubDirs[] = {
-    "db", "chkpt", "chkpt/self", "chkpt/peers",
+    "db", "chkpt", "chkpt/self", "chkpt/peers", "trash",
 };
 
 static inline struct raft_instance_rocks_db *
@@ -150,6 +171,59 @@ rsbr_ri_to_rirdb(struct raft_instance *ri)
                  rir->rir_writebatch && rir->rir_readoptions);
 
     return rir;
+}
+
+static int
+rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
+{
+    if (!ri || !path || !ri->ri_backend_arg)
+        return -EINVAL;
+
+    struct raft_instance_rocks_db *rir =
+        (struct raft_instance_rocks_db *)ri->ri_backend_arg;
+
+    if (rir->rir_log_fd < 0)
+        return -EBADF;
+
+    uuid_t dir_name_uuid;
+    uuid_generate_time(dir_name_uuid);
+    DECLARE_AND_INIT_UUID_STR(dir_name, dir_name_uuid);
+
+    char tmp_path[PATH_MAX + 1];
+    int rc = snprintf(tmp_path, PATH_MAX, "%s/%s",
+                      ribSubDirs[RIR_SUBDIR_TRASH], dir_name);
+
+    if (rc > PATH_MAX)
+        return -ENAMETOOLONG;
+
+    // Make a dir to hold the trash item to avoid name conflicts
+    rc = mkdirat(rir->rir_log_fd, tmp_path, 0750);
+    if (rc)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "mkdirat(`%s'): %s", tmp_path, strerror(-rc));
+        return rc;
+    }
+
+    rc = snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
+                  ribSubDirs[RIR_SUBDIR_TRASH], dir_name, path);
+
+    if (rc > PATH_MAX)
+        return -ENAMETOOLONG;
+
+    // renameat() handles case where 'path' is absolute
+    rc = renameat(rir->rir_log_fd, path, rir->rir_log_fd, tmp_path);
+    if (rc)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "renameat(`%s' -> `%s'): %s", path, tmp_path,
+                       strerror(-rc));
+        return rc;
+    }
+
+    LOG_MSG(LL_NOTIFY, "path=%s moved to trash", path);
+
+    return 0;
 }
 
 static inline struct rocksdb_t *
@@ -973,6 +1047,31 @@ rsbr_checkpoint(struct raft_instance *ri)
     SIMPLE_LOG_MSG(LL_DEBUG, "tmp-path=%s final-path=%s",
                    chkpt_tmp_path, chkpt_path);
 
+    struct stat stb;
+    // Stale tmp path is placed into the trash
+    rc = stat(chkpt_tmp_path, &stb);
+    if (!rc)
+    {
+        rc = rsbr_move_item_to_trash(ri, chkpt_tmp_path);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "rsbr_move_dir_to_trash(`%s'): %s",
+                           chkpt_tmp_path, strerror(-rc));
+            return rc;
+        }
+    }
+
+    /* The rename below atomically moves the completed checkpoint into
+     * 'chkpt_path', therefore, if 'chkpt_path' exists we can assume it's
+     * valid.
+     */
+    rc = stat(chkpt_path, &stb);
+    if (!rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "chkpt_path=%s already exsits", chkpt_path);
+        return -EALREADY;
+    }
+
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     char *err = NULL;
@@ -1007,6 +1106,243 @@ rsbr_checkpoint(struct raft_instance *ri)
                       chkpt_path, strerror(-rc));
 
     return rc ? rc : sync_idx;
+}
+
+static int
+rsbr_log_dir_open_fd(const struct raft_instance *ri)
+{
+    return ri ? open(ri->ri_log, O_DIRECTORY | O_RDONLY) : -EINVAL;
+}
+
+static int rsbr_scandir_recovery_marker_cb(const struct dirent *dent)
+{
+    SIMPLE_LOG_MSG(LL_NOTIFY, "d_name=%s", dent->d_name);
+
+    return !regexec(&recovery_marker_regex, dent->d_name, 0, NULL, 0);
+}
+
+static int
+rsbr_recovery_marker_scan(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_backend_arg)
+        return -EINVAL;
+
+    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
+    if (rir->rir_log_fd < 0)
+        return -EBADF;
+
+    // ri_incomplete_recovery conveys this function's result
+    ri->ri_incomplete_recovery = false;
+
+    /* Open the log dir and ensure it's the same inode number as the currently
+     * open ri_log_fd.
+     */
+    struct stat stb = {0};
+
+    int rc = fstat(rir->rir_log_fd, &stb);
+    if (rc)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "fstat(log_fd): %s", strerror(-rc));
+        return rc;
+    }
+
+    struct dirent **recovery_marker_dents = NULL;
+    int nents = scandirat(rir->rir_log_fd, ".", &recovery_marker_dents,
+                          rsbr_scandir_recovery_marker_cb, alphasort);
+    if (nents < 0)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "scandirat(): %s", strerror(-rc));
+        return rc;
+    }
+    else if (nents > 0)
+    {
+        int n = nents;
+        if (n > 1)
+        {
+            rc = -E2BIG;
+            LOG_MSG(LL_ERROR, "Multiple recovery markers detected");
+        }
+        else
+        {
+            LOG_MSG(LL_WARN, "Found lingering recovery marker `%s'",
+                    recovery_marker_dents[0]->d_name);
+
+            const char *dname = recovery_marker_dents[0]->d_name;
+            char peer_uuid_str[UUID_STR_LEN] = {0};
+            char db_uuid_str[UUID_STR_LEN] = {0};
+
+            /* These should be safe since rsbr_scandir_recovery_marker_cb()
+             * performed a regex check on the dname.
+             */
+            strncpy(peer_uuid_str,
+                    &dname[RECOVERY_MARKER_NAME_LEN_WITH_PERIODS],
+                    UUID_STR_LEN - 1);
+
+            strncpy(
+                db_uuid_str,                              // includes "_"
+                &dname[RECOVERY_MARKER_NAME_LEN_WITH_PERIODS + UUID_STR_LEN],
+                UUID_STR_LEN - 1);
+
+            rc = raft_server_init_recovery_handle_from_marker(ri,
+                                                              peer_uuid_str,
+                                                              db_uuid_str);
+            if (rc)
+                LOG_MSG(
+                    LL_ERROR,
+                    "raft_server_init_recovery_handle_from_marker(%s): %s (%s:%s)",
+                    recovery_marker_dents[0]->d_name, strerror(-rc),
+                    peer_uuid_str, db_uuid_str);
+            else
+                ri->ri_incomplete_recovery = true; // found valid marker
+        }
+
+        // Cleanup scandirat memory allocations
+        while (nents--)
+            free(recovery_marker_dents[nents]);
+        free(recovery_marker_dents);
+    }
+
+    return rc;
+}
+
+#if 0
+static int
+rsbr_bulk_recovery_marker_mkpath(const struct raft_recovery_handle *rrh,
+                                 char *recovery_marker_path, const size_t len)
+{
+    if (!rrh || !len || !recovery_marker_path)
+        return -EINVAL;
+
+    DECLARE_AND_INIT_UUID_STR(peer_uuid, rrh->rrh_peer_uuid);
+    DECLARE_AND_INIT_UUID_STR(db_uuid, rrh->rrh_peer_db_uuid);
+
+    if (uuid_is_null(rrh->rrh_peer_uuid) ||
+        uuid_is_null(rrh->rrh_peer_db_uuid))
+    {
+        LOG_MSG(LL_ERROR, "null uuid (peer=%s, db=%s)", peer_uuid, db_uuid);
+
+        return -EINVAL;
+    }
+
+    int rc = snprintf(recovery_marker_path, len, "%s/%s/%s.%s_%s",
+                      db_path, ribSubDirs[RIR_SUBDIR_DB],
+                      RECOVERY_MARKER_NAME, peer_uuid, db_uuid);
+    if (rc >= len)
+    {
+        LOG_MSG(LL_ERROR, "path requires at least %d bytes (len=%zu)"
+                rc, len);
+
+        rc = -ENAMETOOLONG;
+    }
+    else
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "recovery_marker_path=`%s'",
+                       recovery_marker_path);
+    }
+    return rc;
+}
+#endif
+
+static int
+rsbr_bulk_recover_prepare(struct raft_instance *ri,
+                          const struct raft_recovery_handle *rrh)
+{
+    if (!ri || !rrh || ri->ri_incomplete_recovery ||
+        rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0)
+        return -EINVAL;
+
+    int64_t rrc = rsbr_checkpoint(ri);
+
+    LOG_MSG((rrc < 0 ? LL_ERROR : LL_WARN), "rsbr_checkpoint(%ld): %s",
+             rrc, strerror(-rrc));
+
+    // Accept EALREADY and ENODATA
+    if (rrc < 0 && (rrc == -EALREADY || rrc == -ENODATA))
+        return (int)rrc;
+
+    return 0;
+}
+
+static int //XXX todo
+rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
+                                   const struct raft_recovery_handle *rrh)
+{
+    if (!ri || !rrh || ri->ri_incomplete_recovery ||
+        rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0)
+        return -EINVAL;
+
+    return 0;
+}
+
+static int //XXX todo
+rsbr_bulk_recover_finalize_and_cleanup(struct raft_instance *ri,
+                                       const struct raft_recovery_handle *rrh)
+{
+    return 0;
+}
+
+static int
+rsbr_bulk_recover(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    struct raft_recovery_handle *rrh = raft_instance_2_recovery_handle(ri);
+    if (!rrh)
+        return -ENOENT;
+
+    if (uuid_is_null(rrh->rrh_peer_uuid) ||
+        uuid_is_null(rrh->rrh_peer_db_uuid))
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "null peer or db-uuid");
+        return -EINVAL;
+    }
+
+    // Remove files from "db" dir
+
+    // Dry rsync
+    // Calculate local capacity and required rsync capacity
+    //   . potentially remove stale local and remote checkpoints?
+
+    // Create chkpt remote dir
+    // Rsync data (capturing status along the way..)
+    // FAIL:  Retry the same rsync several times before giving up
+
+    // Add recovery marker to "db" following a successful rsync
+    // Restore checkpoint contents to the "db" dir - use hardlinks for the
+    //     sst files and copy the others
+
+    // Prepare 'db' for use
+    //   1. make a new db-UUID
+    //   2. reset the peer-uuid in the raft entry headers
+
+    // Remove the recovery marker
+    // Cleanup all checkpoints since they're stale
+
+    int rc = 0;
+    if (!rrh->rrh_from_recovery_marker)
+    {
+        rc = rsbr_bulk_recover_prepare(ri, rrh);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recover_prepare(): %s",
+                           strerror(-rc));
+            return rc;
+        }
+
+        rc = rsbr_bulk_recover_import_remote_db(ri, rrh);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR,
+                           "rsbr_bulk_recover_import_remote_db(): %s",
+                           strerror(-rc));
+            return rc;
+        }
+    }
+
+    return rsbr_bulk_recover_finalize_and_cleanup(ri, rrh);
 }
 
 static int
@@ -1060,7 +1396,7 @@ rsbr_destroy(struct raft_instance *ri)
     if (rir->rir_writebatch)
         rocksdb_writebatch_destroy(rir->rir_writebatch);
 
-    niova_free(ri->ri_backend_arg);
+    regfree(&recovery_marker_regex);
 
     ri->ri_backend_arg = NULL;
 
@@ -1083,7 +1419,7 @@ rsbr_subdirs_setup(struct raft_instance *ri)
          return rc;
     }
 
-    rir->rir_log_fd = open(ri->ri_log, O_DIRECTORY | O_RDONLY);
+    rir->rir_log_fd = rsbr_log_dir_open_fd(ri);
 
     if (rir->rir_log_fd < 0)
     {
@@ -1133,6 +1469,35 @@ rsbr_subdirs_setup(struct raft_instance *ri)
 }
 
 static int
+rsbr_setup_detect_recovery(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    int rc = rsbr_recovery_marker_scan(ri);
+
+    if (!rc && ri->ri_incomplete_recovery)
+    {
+        const struct raft_recovery_handle *rrh =
+            raft_instance_2_recovery_handle(ri);
+
+        if (!rrh->rrh_from_recovery_marker ||
+            uuid_is_null(rrh->rrh_peer_uuid) ||
+            uuid_is_null(rrh->rrh_peer_db_uuid))
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "invalid incomplete recovery state");
+            return -ENXIO;
+        }
+
+        return -EUCLEAN; // Special 'rc', caller will try to resume recovery
+    }
+
+    NIOVA_ASSERT(rc != -EUCLEAN); // Reserved rc cannot be used here
+
+    return rc;
+}
+
+static int
 rsbr_setup(struct raft_instance *ri)
 {
     if (!ri || ri->ri_backend != &ribRocksDB)
@@ -1140,6 +1505,15 @@ rsbr_setup(struct raft_instance *ri)
 
     else if (ri->ri_backend_arg)
         return -EALREADY;
+
+    int rc = regcomp(&recovery_marker_regex, RECOVERY_MARKER_REGEX, 0);
+    if (rc)
+    {
+        char regerr_str[63] = {0};
+        regerror(rc, &recovery_marker_regex, regerr_str, 63);
+        SIMPLE_LOG_MSG(LL_ERROR, "regcomp(): %s", regerr_str);
+        return -EINVAL;
+    }
 
     ri->ri_backend_arg =
         niova_calloc(1UL, sizeof(struct raft_instance_rocks_db));
@@ -1150,11 +1524,19 @@ rsbr_setup(struct raft_instance *ri)
     struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
     rir->rir_log_fd = -1;
 
-    int rc = rsbr_subdirs_setup(ri);
+    rc = rsbr_subdirs_setup(ri);
     if (rc)
     {
          rsbr_destroy(ri);
          return rc;
+    }
+
+    // Check for an existing recovery marker
+    rc = rsbr_setup_detect_recovery(ri);
+    if (rc)
+    {
+        rsbr_destroy(ri);
+        return rc;
     }
 
     // The db will live in a subdir of 'ri->ri_log'
@@ -1254,6 +1636,7 @@ rsbr_setup(struct raft_instance *ri)
                                      cft->rsrcfe_num_cf, cft->rsrcfe_cf_names,
                                      cft_opts, cft->rsrcfe_cf_handles, &err) :
         rocksdb_open(rir->rir_options, rocksdb_dir, &err);
+
     if (!rir->rir_db || err)
     {
         // DB may not be created

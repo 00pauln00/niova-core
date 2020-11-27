@@ -116,6 +116,14 @@ ctl_svc_node_peer_2_store(const struct ctl_svc_node *csn)
         csn->csn_peer.csnp_store : NULL;
 }
 
+static inline const struct ctl_svc_raft_member *
+ctl_svc_node_peer_2_raft_member(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_peer(csn))
+        ? &csn->csn_peer.csnp_raft_info.csnrp_member
+        : NULL;
+}
+
 static inline const struct ctl_svc_node_raft *
 ctl_svc_node_raft_2_raft(const struct ctl_svc_node *csn)
 {

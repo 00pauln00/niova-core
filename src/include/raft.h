@@ -168,6 +168,7 @@ struct raft_recovery_handle
     ssize_t         rrh_chkpt_size;
     ssize_t         rrh_remaining;
     struct timespec rrh_start;
+    bool            rrh_from_recovery_marker;
 };
 
 struct raft_entry_header
@@ -362,6 +363,7 @@ struct raft_instance_backend
     int     (*rib_backend_shutdown)(struct raft_instance *);
     int     (*rib_backend_sync)(struct raft_instance *);
     int64_t (*rib_backend_checkpoint)(struct raft_instance *);
+    int     (*rib_backend_recover)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
                                 const struct raft_net_sm_write_supplements *);
 };
@@ -410,6 +412,7 @@ struct raft_instance
     bool                            ri_auto_checkpoints_enabled;
     bool                            ri_needs_bulk_recovery;
     bool                            ri_lreg_registered;
+    bool                            ri_incomplete_recovery;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_startup_error;
     int                             ri_timer_fd;
@@ -451,6 +454,12 @@ struct raft_instance
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
 };
+
+static inline struct raft_recovery_handle *
+raft_instance_2_recovery_handle(struct raft_instance *ri)
+{
+    return ri ? &ri->ri_recovery_handle : NULL;
+}
 
 static inline void
 raft_compile_time_checks(void)
@@ -935,5 +944,10 @@ void
 raft_server_backend_setup_last_applied(struct raft_instance *ri,
                                        raft_entry_idx_t last_applied_idx,
                                        crc32_t last_applied_cumulative_crc);
+
+int
+raft_server_init_recovery_handle_from_marker(struct raft_instance *ri,
+                                             const char *peer_uuid_str,
+                                             const char *db_uuid_str);
 
 #endif

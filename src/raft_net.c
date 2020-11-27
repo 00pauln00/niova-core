@@ -48,6 +48,7 @@ enum raft_net_recovery_lreg_values
     RAFT_NET_RECOVERY_LREG_DB_UUID,
     RAFT_NET_RECOVERY_LREG_CHKPT_IDX,
     RAFT_NET_RECOVERY_LREG_REMAINING,
+    RAFT_NET_RECOVERY_LREG_INCOMPLETE,
     RAFT_NET_RECOVERY_LREG_START_TIME,
     RAFT_NET_RECOVERY_LREG__MAX,
     RAFT_NET_RECOVERY_LREG__NONE = 0,
@@ -243,6 +244,10 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_signed(lv, "remaining-xfer-bytes",
                                    rrh->rrh_remaining);
             break;
+        case RAFT_NET_RECOVERY_LREG_INCOMPLETE:
+            lreg_value_fill_bool(lv, "resume-incomplete",
+                                 ri->ri_incomplete_recovery);
+            break;
         case RAFT_NET_RECOVERY_LREG_START_TIME:
             lreg_value_fill_string_time(lv, "start-time",
                                         rrh->rrh_start.tv_sec);
@@ -344,7 +349,7 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 }
 
 static bool
-raft_net_tcp_disabled()
+raft_net_tcp_disabled(void)
 {
     const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_tcp_enable);
     return !(ev && ev->nev_present);
