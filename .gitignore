@@ -58,3 +58,4 @@ rocksdb__test*
 test/epoll_mgr_test
 test/tcp_mgr_test
 .clangd
+*.orig

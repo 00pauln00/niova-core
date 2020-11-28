@@ -547,8 +547,8 @@ epoll_mgr_context_test_user(void *arg)
 
     // one will install their nonblocking callback, other may get EBUSY
     pthread_mutex_lock(&mutex);
-        snprintf(shared_data.ectd_msg, sizeof(shared_data.ectd_msg),
-                 "racy testing");
+    snprintf(shared_data.ectd_msg, sizeof(shared_data.ectd_msg),
+             "racy testing");
     int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
                                   epoll_mgr_context_cb, 0);
     SIMPLE_LOG_MSG(LL_TRACE, "epoll_mgr_ctx_cb_add() %d", rc);
@@ -572,6 +572,7 @@ epoll_mgr_context_test_user(void *arg)
         SIMPLE_LOG_MSG(LL_TRACE, "epoll_mgr_ctx_cb_add() %d", rc);
     }
     FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
+
     epm_ctx_test_ref_cb(&shared_data, EPH_REF_PUT);
 
     // wait for threads to settle in order to validate refcnt
@@ -590,6 +591,28 @@ epoll_mgr_context_test_user(void *arg)
 
     int refcnt = niova_atomic_read(&shared_data.ectd_refcnt);
     FATAL_IF(refcnt != 1, "ref leak on shared data");
+
+    // try a bunch of local epoll ctx cb queuing from both threads
+    snprintf(local_data.ectd_msg, sizeof(local_data.ectd_msg),
+             "%s local_data test", is_leader ? "leader" : "follower");
+
+    const int LOCAL_DATA_TEST_NUMBER = 10;
+    for (int i = 0; i < LOCAL_DATA_TEST_NUMBER; i++)
+    {
+        rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
+                                  epoll_mgr_context_cb, 1);
+        // non-shared blocking epoll handle should never be busy
+        FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
+    }
+
+    for (int i = 0; i < LOCAL_DATA_TEST_NUMBER * 10; i++)
+    {
+        rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
+                                  epoll_mgr_context_cb, 0);
+        FATAL_IF(rc != 0 && rc != -EBUSY,
+                 "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
+        usleep(100 * 1000);
+    }
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
     return NULL;
