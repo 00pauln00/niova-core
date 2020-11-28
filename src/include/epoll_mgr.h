@@ -61,6 +61,7 @@ struct epoll_mgr
     pthread_mutex_t                epm_mutex;
     int                            epm_num_handles;
     int                            epm_epfd;
+    struct epoll_handle            epm_wake_handle;
     unsigned int                   epm_ready : 1;
     niova_atomic64_t               epm_epoll_wait_cnt;
     struct epoll_handle_list       epm_active_list;

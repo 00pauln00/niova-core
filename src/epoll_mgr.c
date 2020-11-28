@@ -5,6 +5,7 @@
  */
 
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 #include <unistd.h>
 
 #include "alloc.h"
@@ -51,6 +52,23 @@ epoll_mgr_setup(struct epoll_mgr *epm)
         return -errno;
     }
 
+    int wakefd = eventfd(0, EFD_NONBLOCK);
+    if (wakefd < 0)
+    {
+        pthread_mutex_unlock(&epollMgrInstallLock);
+        return -errno;
+    }
+    struct epoll_handle *eph = &epm->epm_wake_handle;
+    epoll_handle_init(eph, wakefd, EPOLLIN, NULL, NULL, NULL);
+    struct epoll_event ev = {.events = EPOLLIN, .data.ptr = eph };
+
+    int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
+    if (rc)
+    {
+        pthread_mutex_unlock(&epollMgrInstallLock);
+        return rc;
+    }
+
     CIRCLEQ_INIT(&epm->epm_active_list);
     CIRCLEQ_INIT(&epm->epm_destroy_list);
     SLIST_INIT(&epm->epm_ctx_cb_list);
@@ -60,6 +78,16 @@ epoll_mgr_setup(struct epoll_mgr *epm)
 
     pthread_mutex_unlock(&epollMgrInstallLock);
     return 0;
+}
+
+static int
+epoll_mgr_wake(struct epoll_mgr *epm)
+{
+    if (!epm || epm->epm_wake_handle.eph_fd <= 0)
+        return -EINVAL;
+
+    uint64_t i = 1;
+    return write(epm->epm_wake_handle.eph_fd, &i, 8);
 }
 
 /**
@@ -128,7 +156,19 @@ epoll_mgr_close(struct epoll_mgr *epm)
                 strerror(-rc));
     }
 
+    // closing fd removes from epoll set
+    close_fd = epm->epm_wake_handle.eph_fd;
+    epm->epm_wake_handle.eph_fd = -1;
+    rc = close(close_fd);
+    if (rc)
+    {
+        rc = -errno;
+        LOG_MSG(LL_WARN, "epm=%p close(fd=%d): %s", epm, close_fd,
+                strerror(-rc));
+    }
+
     pthread_mutex_destroy(&epm->epm_mutex);
+    pthread_mutex_destroy(&epm->epm_ctx_cb_mutex);
 
     return rc;
 }
@@ -289,7 +329,6 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     struct epoll_handle *tmp;
     bool found = false;
-    pthread_t tid = epm->epm_thread_id;
     bool complete_here = true;
 
     pthread_mutex_lock(&epm->epm_mutex);
@@ -328,8 +367,8 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         if (complete_here)
             rc = epoll_handle_del_complete(epm, eph);
 
-        else if (tid > 0) // Wakeup epoll-mgr thread blocked in epoll_wait()
-            thread_issue_sig_alarm_to_thread(tid);
+        else
+            epoll_mgr_wake(epm);
     }
 
     return rc;
@@ -367,6 +406,7 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 
         } while (destroy);
     }
+    SIMPLE_FUNC_EXIT(LL_TRACE);
 }
 
 int
@@ -398,9 +438,7 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
 
     SLIST_INSERT_HEAD(&epm->epm_ctx_cb_list, eph, eph_cb_lentry);
 
-    pthread_t tid = epm->epm_thread_id;
-    if (tid > 0)
-        thread_issue_sig_alarm_to_thread(tid);
+    epoll_mgr_wake(epm);
 
     if (block)
     {
@@ -467,11 +505,6 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
         epm->epm_thread_id = pthread_self();
     else
         NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
-
-    // Try to cleanup destroying handles prior to blocking indefinitely
-    // Run callbacks before destroying handles
-    epoll_mgr_reap_ctx_list(epm);
-    epoll_mgr_reap_destroy_list(epm);
 
     int maxevents = MAX(1, MIN(epollMgrNumEvents, epm->epm_num_handles));
 
