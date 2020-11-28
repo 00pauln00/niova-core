@@ -413,13 +413,15 @@ int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
                      epoll_mgr_ctx_op_cb_t cb, bool block)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    SIMPLE_LOG_MSG(LL_TRACE, "epm %p eph %p", epm, eph);
+
     // only allow eph's with put/get to prevent destroys while waiting for cb
     if (!epm || !eph || !cb || !eph->eph_ref_cb)
         return -EINVAL;
 
     if (epm->epm_thread_id == pthread_self())
     {
+        LOG_MSG(LL_DEBUG, "already in epm context, running cb");
         cb(eph->eph_arg);
         return 0;
     }
@@ -430,6 +432,8 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
     if (eph->eph_ctx_cb || eph->eph_destroying)
     {
         niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
+        LOG_MSG(LL_DEBUG, "eph busy, cb %p destroying %d",
+                eph->eph_ctx_cb, eph->eph_destroying);
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
         return -EBUSY;
@@ -446,6 +450,7 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         eph->eph_ctx_cb_cond = &cond_var;
 
         // eph might be freed in callback, don't ref after this
+        SIMPLE_LOG_MSG(LL_DEBUG, "waiting on ctx_cb_cond %p", &cond_var);
         pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
     }
     else
@@ -462,18 +467,32 @@ static void
 epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
+    if (!epm)
+        return;
+
     NIOVA_ASSERT(epm->epm_thread_id == pthread_self());
 
     struct epoll_ctx_callback_list tmp_head =
         SLIST_HEAD_INITIALIZER(epoll_ctx_callback_list);
 
+    // prevent epm close while checking ctx_cb_mutex
+    niova_mutex_lock(&epollMgrInstallLock);
+    if (!epm->epm_ready)
+    {
+        pthread_mutex_unlock(&epollMgrInstallLock);
+        return;
+    }
+
     niova_mutex_lock(&epm->epm_ctx_cb_mutex);
     SLIST_SWAP(&epm->epm_ctx_cb_list, &tmp_head, epoll_handle);
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
+    niova_mutex_unlock(&epollMgrInstallLock);
 
     struct epoll_handle *eph, *tmp;
     SLIST_FOREACH_SAFE(eph, &tmp_head, eph_cb_lentry, tmp)
     {
+        SIMPLE_LOG_MSG(LL_TRACE, "eph %p eph_ctx_cb %p eph_ref_cb %p",
+                eph, eph->eph_ctx_cb, eph->eph_ref_cb);
         NIOVA_ASSERT(eph->eph_ctx_cb && eph->eph_ref_cb);
 
         pthread_cond_t *cond = eph->eph_ctx_cb_cond;
@@ -486,11 +505,14 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
 
         cb(arg);
 
+        SIMPLE_LOG_MSG(LL_DEBUG, "signaling %p", cond);
         if (cond)
             pthread_cond_signal(cond);
 
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
     }
+
+    SIMPLE_FUNC_EXIT(LL_TRACE);
 }
 
 int
