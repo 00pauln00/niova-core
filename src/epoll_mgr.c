@@ -192,6 +192,8 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     eph->eph_ref_cb    = ref_cb;
     eph->eph_ctx_cb    = NULL;
 
+    SLIST_ENTRY_INIT(&eph->eph_cb_lentry);
+
     return 0;
 }
 
@@ -272,7 +274,12 @@ epoll_handle_mod(struct epoll_mgr *epm, struct epoll_handle *eph)
 static epoll_mgr_thread_ctx_int_t
 epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    SIMPLE_LOG_MSG(LL_TRACE,
+                   "epm %p eph %p ready? %s installed? %s destroying?%s", epm,
+                   eph,
+                   epm && epm->epm_ready ? "yes" : "no",
+                   eph && eph->eph_installed ? "yes" : "no",
+                   eph && eph->eph_destroying ? "yes" : "no");
 
     if (!epm || !eph || !epm->epm_ready)
         return -EINVAL;
@@ -290,6 +297,8 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     if (eph->eph_async_destroy)
         SIMPLE_LOG_MSG(LL_NOTIFY, "epm=%p eph=%p", epm, eph);
 
+    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del_complete 1");
+
     struct epoll_event ev = {.events = 0, .data.fd = -1};
 
     int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_DEL, eph->eph_fd, &ev);
@@ -299,6 +308,8 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
         LOG_MSG(LL_WARN, "epoll_ctl(fd=%d, EPOLL_CTL_DEL): %s",
                 epm->epm_epfd, strerror(-rc));
     }
+
+    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del_complete 2 rc=%d", rc);
 
     pthread_mutex_lock(&epm->epm_mutex);
     NIOVA_ASSERT(epm->epm_num_handles > 0);
@@ -310,13 +321,16 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     if (eph->eph_ref_cb)
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
+    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del_complete 3 rc=%d", rc);
+
     return rc;
 }
 
 int
 epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    SIMPLE_LOG_MSG(LL_TRACE, "epm %p eph %p ready? %s", epm, eph,
+                   epm && epm->epm_ready ? "yes" : "no");
 
     if (!epm || !eph || !epm->epm_ready)
         return -EINVAL;
@@ -326,6 +340,8 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     else if (!eph->eph_installed)
         return -EAGAIN;
+
+    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del 1");
 
     struct epoll_handle *tmp;
     bool found = false;
@@ -360,6 +376,8 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     pthread_mutex_unlock(&epm->epm_mutex);
 
+    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del 2");
+
     int rc = found ? 0 : -ENOENT;
 
     if (!rc)
@@ -370,6 +388,8 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         else
             epoll_mgr_wake(epm);
     }
+
+    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del 3 rc=%d", rc);
 
     return rc;
 }
@@ -433,34 +453,44 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
            !eph->eph_destroying)
         pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
 
-    if (eph->eph_ctx_cb || eph->eph_destroying)
+    if (eph->eph_ctx_cb)
     {
         niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
-        LOG_MSG(LL_DEBUG, "eph busy, cb %p destroying %d",
-                eph->eph_ctx_cb, eph->eph_destroying);
+        LOG_MSG(LL_DEBUG, "eph busy, cb %p", eph->eph_ctx_cb);
+        eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
+
+        return -EAGAIN;
+    }
+    eph->eph_ctx_cb = cb;
+
+    // ctx_cb must be set before checking destroying to avoid race with eph_del
+    if (eph->eph_destroying)
+    {
+        eph->eph_ctx_cb = NULL;
+        niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
+        LOG_MSG(LL_DEBUG, "eph destroying");
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
         return -EBUSY;
     }
-    eph->eph_ctx_cb = cb;
 
+    NIOVA_ASSERT(SLIST_ENTRY_DETACHED(&eph->eph_cb_lentry));
+    SIMPLE_LOG_MSG(LL_TRACE, "inserting eph %p eph_ctx_cb %p eph_ref_cb %p",
+                   eph, eph->eph_ctx_cb, eph->eph_ref_cb);
     SLIST_INSERT_HEAD(&epm->epm_ctx_cb_list, eph, eph_cb_lentry);
 
     epoll_mgr_wake(epm);
 
+    static __thread pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
+    eph->eph_ctx_cb_cond = &cond_var;
+
     if (block)
     {
-        static __thread pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
-        eph->eph_ctx_cb_cond = &cond_var;
-
         // eph might be freed in callback, don't ref after this
         SIMPLE_LOG_MSG(LL_DEBUG, "waiting on ctx_cb_cond %p", &cond_var);
         pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
     }
-    else
-    {
-        eph->eph_ctx_cb_cond = NULL;
-    }
+
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
@@ -495,8 +525,10 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
     struct epoll_handle *eph, *tmp;
     SLIST_FOREACH_SAFE(eph, &tmp_head, eph_cb_lentry, tmp)
     {
-        SIMPLE_LOG_MSG(LL_TRACE, "eph %p eph_ctx_cb %p eph_ref_cb %p",
-                       eph, eph->eph_ctx_cb, eph->eph_ref_cb);
+        SIMPLE_LOG_MSG(LL_TRACE,
+                       "eph %p eph_ctx_cb %p eph_ref_cb %p eph_next %p tmp %p",
+                       eph, eph->eph_ctx_cb, eph->eph_ref_cb,
+                       SLIST_NEXT(eph, eph_cb_lentry), tmp);
         NIOVA_ASSERT(eph->eph_ctx_cb && eph->eph_ref_cb);
 
         pthread_cond_t *cond = eph->eph_ctx_cb_cond;
@@ -504,6 +536,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
         void *arg = eph->eph_arg;
 
         // eph can be re-added to epm list after cb is set to NULL
+        SLIST_ENTRY_INIT(&eph->eph_cb_lentry);
         eph->eph_ctx_cb_cond = NULL;
         eph->eph_ctx_cb = NULL;
 
