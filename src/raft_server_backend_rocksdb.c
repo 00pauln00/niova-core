@@ -1254,15 +1254,12 @@ rsbr_bulk_recover_prepare(struct raft_instance *ri,
         return -EINVAL;
 
     int64_t rrc = rsbr_checkpoint(ri);
+    int rc = (rrc < 0 && rrc != -EALREADY && rrc != -ENODATA) ? rrc : 0;
 
-    LOG_MSG((rrc < 0 ? LL_ERROR : LL_WARN), "rsbr_checkpoint(%ld): %s",
-             rrc, strerror(-rrc));
+    LOG_MSG((rc < 0 ? LL_ERROR : LL_WARN), "rsbr_checkpoint(%d): %s",
+             rc, strerror(-rc));
 
-    // Accept EALREADY and ENODATA
-    if (rrc < 0 && (rrc == -EALREADY || rrc == -ENODATA))
-        return (int)rrc;
-
-    return 0;
+    return rc;
 }
 
 static int //XXX todo
