@@ -21,6 +21,8 @@
 #include "common.h"
 #include "file_util.h"
 #include "log.h"
+#define __USE_XOPEN_EXTENDED
+#include "ftw.h"
 #include "raft.h"
 #include "raft_server_backend_rocksdb.h"
 #include "regex_defines.h"
@@ -171,6 +173,56 @@ rsbr_ri_to_rirdb(struct raft_instance *ri)
                  rir->rir_writebatch && rir->rir_readoptions);
 
     return rir;
+}
+
+static int
+rsbr_remove_trash_cb(const char *path, const struct stat *stb, int typeflag,
+                     struct FTW *ftwbuf)
+{
+    (void)stb;
+    (void)ftwbuf;
+    int rc;
+
+    switch (typeflag)
+    {
+    case FTW_F:
+        rc = unlink(path);
+        rc = rc < 0 ? errno : rc;
+        LOG_MSG((rc ? LL_ERROR : LL_DEBUG), "unlink(`%s'): %s",
+                path, strerror(rc));
+        break;
+    case FTW_D:
+        rc = rmdir(path);
+        rc = rc < 0 ? errno : rc;
+        LOG_MSG((rc ? LL_ERROR : LL_DEBUG), "rmdir(`%s'): %s",
+                path, strerror(rc));
+        break;
+    default:
+        LOG_MSG(LL_NOTIFY, "`%s' has unhandled type (%d)", path, typeflag);
+        break;
+    }
+
+    return 0;
+}
+
+static int
+rsbr_remove_trash(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    char trash_path[PATH_MAX + 1];
+    int rc = snprintf(trash_path, PATH_MAX, "%s/%s",
+                      ri->ri_log, ribSubDirs[RIR_SUBDIR_TRASH]);
+
+    if (rc > PATH_MAX)
+        return -ENAMETOOLONG;
+
+    if (nftw(trash_path, rsbr_remove_trash_cb, 32,
+             FTW_DEPTH | FTW_MOUNT | FTW_PHYS))
+        LOG_MSG(LL_WARN, "ntfw(`%s') had non-zero return code.", trash_path);
+
+    return 0;
 }
 
 static int
@@ -1527,6 +1579,9 @@ rsbr_setup(struct raft_instance *ri)
          rsbr_destroy(ri);
          return rc;
     }
+
+    // Remove trash items before starting up
+    rsbr_remove_trash(ri);
 
     // Check for an existing recovery marker
     rc = rsbr_setup_detect_recovery(ri);
