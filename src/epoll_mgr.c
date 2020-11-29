@@ -429,6 +429,10 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
     eph->eph_ref_cb(eph->eph_arg, EPH_REF_GET);
 
     niova_mutex_lock(&epm->epm_ctx_cb_mutex);
+    while (block && eph->eph_ctx_cb && eph->eph_ctx_cb_cond &&
+           !eph->eph_destroying)
+        pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
+
     if (eph->eph_ctx_cb || eph->eph_destroying)
     {
         niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
@@ -492,7 +496,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
     SLIST_FOREACH_SAFE(eph, &tmp_head, eph_cb_lentry, tmp)
     {
         SIMPLE_LOG_MSG(LL_TRACE, "eph %p eph_ctx_cb %p eph_ref_cb %p",
-                eph, eph->eph_ctx_cb, eph->eph_ref_cb);
+                       eph, eph->eph_ctx_cb, eph->eph_ref_cb);
         NIOVA_ASSERT(eph->eph_ctx_cb && eph->eph_ref_cb);
 
         pthread_cond_t *cond = eph->eph_ctx_cb_cond;
@@ -507,7 +511,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
 
         SIMPLE_LOG_MSG(LL_DEBUG, "signaling %p", cond);
         if (cond)
-            pthread_cond_signal(cond);
+            pthread_cond_broadcast(cond);
 
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
     }

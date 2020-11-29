@@ -545,12 +545,20 @@ epoll_mgr_context_test_user(void *arg)
     while (!follower_running)
         usleep(1000);
 
+    // ensure stacked blocking adds don't return EBUSY
+    int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
+                                  epoll_mgr_context_cb, 1);
+    FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
+    rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
+                              epoll_mgr_context_cb, 1);
+    FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
+
     // one will install their nonblocking callback, other may get EBUSY
     pthread_mutex_lock(&mutex);
     snprintf(shared_data.ectd_msg, sizeof(shared_data.ectd_msg),
              "racy testing");
-    int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                                  epoll_mgr_context_cb, 0);
+    rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
+                              epoll_mgr_context_cb, 0);
     SIMPLE_LOG_MSG(LL_TRACE, "epoll_mgr_ctx_cb_add() %d", rc);
 
     // it's possible that context cb will be added and completed before
