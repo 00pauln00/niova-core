@@ -1098,13 +1098,17 @@ ctl_svc_destroy(void)
 }
 
 void
-ctl_svc_nodes_apply(int (*cb)(struct ctl_svc_node *, void *), void *data)
+ctl_svc_nodes_apply(enum ctl_svc_node_type type,
+                    int (*cb)(struct ctl_svc_node *, void *), void *data)
 {
     struct ctl_svc_node *csn;
 
     niova_mutex_lock(&ctlSvcNodeTree.mutex);
     RT_FOREACH_LOCKED(csn, ctl_svc_node_tree, &ctlSvcNodeTree)
     {
+        if (csn->csn_type != type)
+            continue;
+
         if (cb(csn, data))
             break;
     }

@@ -932,8 +932,7 @@ raft_net_peer_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
 static int
 raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
 {
-    if (!ctl_svc_node_is_peer(csn))
-        return 0;
+    NIOVA_ASSERT(csn && ctl_svc_node_is_peer(csn));
 
     struct raft_instance *ri = data;
     bool is_client_cxn = raft_net_is_client_connection(ri, csn);
@@ -952,7 +951,16 @@ raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
 static void
 raft_net_ctl_svc_nodes_setup(struct raft_instance *ri)
 {
-    ctl_svc_nodes_apply(raft_net_csn_setup, ri);
+    // types must match ctl_svc_node_is_peer test
+    const int PEER_TYPES_COUNT = 3;
+    enum ctl_svc_node_type peer_types[] = {
+        CTL_SVC_NODE_TYPE_NIOSD,
+        CTL_SVC_NODE_TYPE_RAFT_CLIENT,
+        CTL_SVC_NODE_TYPE_RAFT_PEER,
+    };
+
+    for (int i = 0; i < PEER_TYPES_COUNT; i++)
+        ctl_svc_nodes_apply(peer_types[i], raft_net_csn_setup, ri);
 }
 
 int
