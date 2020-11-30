@@ -49,4 +49,7 @@ ssize_t
 io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
                 const size_t num_iovs);
 
+int
+io_fd_nonblocking(int fd);
+
 #endif

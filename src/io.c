@@ -236,3 +236,16 @@ io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
 
     return bytes_copied;
 }
+
+int
+io_fd_nonblocking(int fd)
+{
+    if (fd < 0)
+        return -EINVAL;
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0)
+        return -errno;
+
+    return (flags & O_NONBLOCK) ? fcntl(fd, F_SETFL, (flags & O_NONBLOCK)) : 0;
+}
