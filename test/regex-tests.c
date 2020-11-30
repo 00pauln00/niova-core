@@ -22,6 +22,32 @@ struct regex_test
     const size_t             rt_nitems;
 };
 
+static const struct regex_item commaIntegerTests[] = {
+    {"0", true},
+    {"1", true},
+    {"9", true},
+    {"10", true},
+    {"111", true},
+    {"999", true},
+    {"00", false},
+    {"01", false},
+    {"9,", false},
+    {"9,0", false},
+    {"9,01", false},
+    {"9,000", true},
+    {"19,001", true},
+    {"09,001", false},
+    {"90,", false},
+    {"900,", false},
+    {"9001,", false},
+    {"900,1", false},
+    {"900,12", false},
+    {"900,123", true},
+    {"900,123,", false},
+    {"000,123", false},
+    {"123,456,789,000,123,234,000,000", true},
+};
+
 static const struct regex_item ipTests[] = {
     {"127.0.0.1", true},
     {"127.0.0.1000", false},
@@ -67,6 +93,8 @@ static const struct regex_test regexTests[] = {
     {IPADDR_REGEX, ipTests, ARRAY_SIZE(ipTests)},
     {PMDB_TEST_CLIENT_APPLY_CMD_REGEX, pmdbApplyCmdTests,
      ARRAY_SIZE(pmdbApplyCmdTests)},
+    {COMMA_DELIMITED_UNSIGNED_INTEGER, commaIntegerTests,
+     ARRAY_SIZE(commaIntegerTests)},
 };
 
 static int
