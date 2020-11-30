@@ -4534,6 +4534,47 @@ raft_server_set_checkpoint_last_idx(struct raft_instance *ri,
     niova_atomic_init(&ri->ri_checkpoint_last_idx, chkpt_last_idx);
 }
 
+static int
+raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_backend->rib_backend_checkpoint ||
+        !thread_ctl_thread_is_running(&ri->ri_chkpt_thread_ctl))
+        return -EINVAL;
+
+    raft_entry_idx_t last_idx = ri->ri_checkpoint_last_idx;
+
+    // Reset error
+    ri->ri_last_chkpt_err = 0;
+
+    // Schedule the checkpoint
+    ri->ri_user_requested_checkpoint = true;
+
+    int rc =
+        thread_issue_sig_alarm_to_thread(ri->ri_chkpt_thread_ctl.tc_thread_id);
+
+    if (rc)
+        return rc;
+
+    bool done = false;
+    int sleep_secs = 60;
+    while (sleep_secs--)
+    {
+        if ((niova_atomic_read(&ri->ri_checkpoint_last_idx) > last_idx) ||
+            ri->ri_last_chkpt_err)
+        {
+            done = true;
+            break;
+        }
+    }
+
+    rc = ri->ri_last_chkpt_err;
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "ri->ri_last_chkpt_err=%d", rc);
+
+    return (!done ? -ETIMEDOUT :
+            (rc == -ENODATA) ? 0 :
+            (rc == -EALREADY) ? 0 : rc);
+}
+
 static raft_server_chkpt_thread_ctx_t
 raft_server_take_chkpt(struct raft_instance *ri)
 {
@@ -4558,6 +4599,9 @@ raft_server_take_chkpt(struct raft_instance *ri)
 
     if (rc >= 0)
         raft_server_set_checkpoint_last_idx(ri, rc, sync_idx);
+
+    if (rc <= 0)
+        ri->ri_last_chkpt_err = rc;
 
     DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : /*LL_INFO*/ LL_WARN), ri,
                       "rib_backend_checkpoint(%zd): %s",
@@ -4906,16 +4950,28 @@ raft_server_recovery_handle_is_viable(struct raft_instance *ri)
 
     const struct raft_recovery_handle *rrh = &ri->ri_recovery_handle;
 
+    const unsigned long long msec_since_handle_generated =
+        niova_realtime_coarse_clock_get_msec() -
+        timespec_2_msec(&rrh->rrh_start);
+
     if (uuid_compare(ri->ri_csn_leader->csn_uuid, rrh->rrh_peer_uuid))
+    {
         return false;
-
-    else if ((niova_realtime_coarse_clock_get_msec() -
-              timespec_2_msec(&rrh->rrh_start)) >
-             raftServerMaxRecoveryLeaderCommMsec)
+    }
+    else if (msec_since_handle_generated > raftServerMaxRecoveryLeaderCommMsec)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "recovery handle is stale (%lld ms old)",
+                       msec_since_handle_generated);
         return false;
-
+    }
     else if (rrh->rrh_peer_chkpt_idx < 0)
+    {
+        SIMPLE_LOG_MSG(
+            LL_WARN,
+            "leader-checkpoint-idx=%ld:  Does leader hold a valid checkpoint?",
+            rrh->rrh_peer_chkpt_idx);
         return false;
+    }
 
     return true;
 }
@@ -4975,18 +5031,21 @@ raft_server_instance_run(const char *raft_uuid_str,
 
     do
     {
+        ri = raft_net_get_instance();
+        if (!ri)
+            return -ENOENT;
+
+        // Test for recovery
         bool enter_bulk_recovery = ri->ri_needs_bulk_recovery;
         if (enter_bulk_recovery)
         {
             rc = raft_server_bulk_recovery(ri);
             SIMPLE_LOG_MSG(LL_ERROR, "raft_server_bulk_recovery(): %s",
                            strerror(-rc));
+
+            // XXX Retry on -EAGAIN?
             break;
         }
-
-        ri = raft_net_get_instance();
-        if (!ri)
-            return -ENOENT;
 
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
                                   sm_request_handler, sync_writes, arg);
@@ -5008,6 +5067,7 @@ raft_server_instance_run(const char *raft_uuid_str,
         }
         else
         {
+            int recovery_chkpt_rc = 0;
             int main_loop_rc = raft_server_main_loop(ri);
             if (main_loop_rc)
             {
@@ -5016,6 +5076,21 @@ raft_server_instance_run(const char *raft_uuid_str,
 
                 SIMPLE_LOG_MSG(LL_ERROR, "raft_server_main_loop(): %s",
                                strerror(-rc));
+
+                if (!rc && ri->ri_needs_bulk_recovery)
+                {
+                    // Take a checkpoint of the current contents
+                    recovery_chkpt_rc =
+                        raft_server_chkpt_prior_to_recovery(ri);
+                    if (rc)
+                    {
+                        LOG_MSG(LL_ERROR,
+                                "raft_server_chkpt_prior_to_recovery(): %s",
+                                strerror(-rc));
+                        if (!rc)
+                            rc = recovery_chkpt_rc;
+                    }
+                }
             }
             int shutdown_rc = raft_net_instance_shutdown(ri);
             if (shutdown_rc)

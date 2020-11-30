@@ -167,6 +167,7 @@ struct raft_recovery_handle
     int64_t         rrh_peer_chkpt_idx;
     ssize_t         rrh_chkpt_size;
     ssize_t         rrh_remaining;
+    size_t          rrh_rate_bytes_per_sec;
     struct timespec rrh_start;
     bool            rrh_from_recovery_marker;
 };
@@ -423,6 +424,7 @@ struct raft_instance
     crc32_t                         ri_last_applied_cumulative_crc;
     raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
     raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log reap
+    int                             ri_last_chkpt_err;
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
     ssize_t                         ri_max_scan_entries;

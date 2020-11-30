@@ -15,14 +15,16 @@
 #include <regex.h>
 #include <unistd.h>
 
+#define __USE_XOPEN_EXTENDED
+#include <ftw.h>
+
 #include <rocksdb/c.h>
 
 #include "alloc.h"
 #include "common.h"
+#include "ctl_svc.h"
 #include "file_util.h"
 #include "log.h"
-#define __USE_XOPEN_EXTENDED
-#include "ftw.h"
 #include "raft.h"
 #include "raft_server_backend_rocksdb.h"
 #include "regex_defines.h"
@@ -1032,6 +1034,29 @@ rsbr_sync(struct raft_instance *ri)
     return 0;
 }
 
+#define CHKPT_RESTORE_PATH_FMT "%s_%s"
+#define CHKPT_RESTORE_PATH_FMT_ARGS(db, peer) db, peer
+#define CHKPT_PATH_FMT CHKPT_RESTORE_PATH_FMT"_%ld"
+#define CHKPT_PATH_FMT_ARGS(db, peer, idx) db, peer, idx
+
+static int
+rsbr_restore_path_build(const char *base, const uuid_t peer_id,
+                        const uuid_t db_id, char *restore_path, size_t len)
+{
+    if (!base || uuid_is_null(peer_id) || uuid_is_null(db_id) ||
+        !restore_path || !len)
+        return -EINVAL;
+
+    DECLARE_AND_INIT_UUID_STR(peer_uuid, peer_id);
+    DECLARE_AND_INIT_UUID_STR(db_uuid, db_id);
+
+    int rc = snprintf(restore_path, len, "%s/%s/"CHKPT_RESTORE_PATH_FMT,
+                      base, ribSubDirs[RIR_SUBDIR_CHKPT_PEERS],
+                      CHKPT_RESTORE_PATH_FMT_ARGS(db_uuid, peer_uuid));
+
+    return rc >= len ? -ENAMETOOLONG : 0;
+}
+
 static int
 rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
                            const uuid_t db_id, raft_entry_idx_t sync_idx,
@@ -1045,12 +1070,12 @@ rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
     DECLARE_AND_INIT_UUID_STR(peer_uuid, peer_id);
     DECLARE_AND_INIT_UUID_STR(db_uuid, db_id);
 
-    int rc = snprintf(chkpt_path, len, "%s/%s/%s%s_%s_%ld",
+    int rc = snprintf(chkpt_path, len, "%s/%s/%s"CHKPT_PATH_FMT,
                       base, (local ?
                              ribSubDirs[RIR_SUBDIR_CHKPT_SELF] :
                              ribSubDirs[RIR_SUBDIR_CHKPT_PEERS]),
-                      initial ? ".in-progress_" : "", db_uuid, peer_uuid,
-                      sync_idx);
+                      initial ? ".in-progress_" : "",
+                      CHKPT_PATH_FMT_ARGS(db_uuid, peer_uuid, sync_idx));
 
     return rc > len ? -ENAMETOOLONG : 0;
 }
@@ -1295,8 +1320,8 @@ rsbr_bulk_recovery_marker_mkpath(const struct raft_recovery_handle *rrh,
     }
     return rc;
 }
-#endif
 
+//XXX no longer needed..
 static int
 rsbr_bulk_recover_prepare(struct raft_instance *ri,
                           const struct raft_recovery_handle *rrh)
@@ -1313,14 +1338,92 @@ rsbr_bulk_recover_prepare(struct raft_instance *ri,
 
     return rc;
 }
+#endif
 
-static int //XXX todo
+static int
+rsbr_bulk_recover_build_remote_path(const struct raft_recovery_handle *rrh,
+                                    char *remote_path, size_t len)
+{
+    if (!rrh)
+        return -EINVAL;
+
+    DECLARE_AND_INIT_UUID_STR(peer_uuid_str, rrh->rrh_peer_uuid);
+
+    // Lookup the csn
+    struct ctl_svc_node *csn;
+    int rc = ctl_svc_node_lookup(rrh->rrh_peer_uuid, &csn);
+    if (rc)
+    {
+        LOG_MSG(LL_ERROR, "ctl_svc_node_lookup(%s): %s", peer_uuid_str,
+                strerror(-rc));
+        return rc;
+    }
+
+    // Find the remote store db path
+    const char *remote_store = ctl_svc_node_peer_2_store(csn);
+    if (!remote_store)
+    {
+        LOG_MSG(LL_ERROR, "ctl_svc_node_peer_2_store(%s): NULL",
+                peer_uuid_str);
+        rc = -ENOENT;
+        goto out;
+    }
+
+    char remote_relative_path[PATH_MAX];
+    /* Use the path building method.  Note that 'local' is set to true since
+     * the path is "local" relative to the remote peer.  In other words, we're
+     * building the path to be used on the remote end.
+     */
+    rc = rsbr_checkpoint_path_build(remote_store, rrh->rrh_peer_uuid,
+                                    rrh->rrh_peer_db_uuid,
+                                    rrh->rrh_peer_chkpt_idx, true, false,
+                                    remote_relative_path, PATH_MAX);
+    if (rc)
+    {
+        LOG_MSG(LL_ERROR, "rsbr_checkpoint_path_build(%s): %s",
+                peer_uuid_str, strerror(-rc));
+        goto out;
+    }
+
+    rc = snprintf(remote_path, len - 1, "%s:%s",
+                  ctl_svc_node_peer_2_ipaddr(csn), remote_relative_path);
+    if (rc >= len)
+    {
+        LOG_MSG(LL_ERROR, "snprintf() overrun (rc=%d)", rc);
+        rc = -ENAMETOOLONG;
+        goto out;
+    }
+    else
+    {
+        rc = 0;
+    }
+out:
+    ctl_svc_node_put(csn); // Must 'put' the csn to avoid leaks
+    return rc;
+}
+
+static int
 rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
                                    const struct raft_recovery_handle *rrh)
 {
     if (!ri || !rrh || ri->ri_incomplete_recovery ||
-        rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0)
+        rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0 ||
+        !uuid_compare(rrh->rrh_peer_uuid, ri->ri_csn_this_peer->csn_uuid))
         return -EINVAL;
+
+    char remote_path[PATH_MAX] = {0};
+
+    int rc = rsbr_bulk_recover_build_remote_path(rrh, remote_path, PATH_MAX);
+    if (rc)
+        return rc;
+
+    char local_path[PATH_MAX] = {0};
+    rc = rsbr_restore_path_build(ri->ri_log, rrh->rrh_peer_db_uuid,
+                                 rrh->rrh_peer_uuid, local_path, PATH_MAX);
+    if (rc)
+        return rc;
+
+    SIMPLE_LOG_MSG(LL_WARN, "rem=%s local=%s", remote_path, local_path);
 
     return 0;
 }
@@ -1373,14 +1476,6 @@ rsbr_bulk_recover(struct raft_instance *ri)
     int rc = 0;
     if (!rrh->rrh_from_recovery_marker)
     {
-        rc = rsbr_bulk_recover_prepare(ri, rrh);
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recover_prepare(): %s",
-                           strerror(-rc));
-            return rc;
-        }
-
         rc = rsbr_bulk_recover_import_remote_db(ri, rrh);
         if (rc)
         {
