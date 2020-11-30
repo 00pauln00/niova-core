@@ -479,22 +479,28 @@ epm_ctx_test_ref_cb(void *arg, enum epoll_handle_ref_op op)
 }
 
 static void
+epoll_mgr_context_event_cb(const struct epoll_handle *_eph, uint32_t _ev)
+{
+    FATAL_MSG("unexpected event received");
+}
+
+static void
 epm_ctx_test_data_init(struct epm_ctx_test_data *data, struct epoll_mgr *epm)
 {
     // set initial refs to 1 so we never try to destroy it
     niova_atomic_init(&data->ectd_refcnt, 1);
 
-    int rc = epoll_handle_init(&data->ectd_eph, -1, 0, NULL, data,
+    int evfd = eventfd(0, EFD_NONBLOCK);
+    int rc = epoll_handle_init(&data->ectd_eph, evfd, 0,
+                               epoll_mgr_context_event_cb, data,
                                epm_ctx_test_ref_cb);
     FATAL_IF(rc, "epoll_handle_init() expected 0 got %d", rc);
+
+    rc = epoll_handle_add(epm, &data->ectd_eph);
+    FATAL_IF(rc, "epoll_handle_add(): unexpected rc=%d", rc);
+
     data->ectd_epm = epm;
     data->ectd_runcnt = 0;
-}
-
-static void
-epoll_mgr_context_event_cb(const struct epoll_handle *_eph, uint32_t _ev)
-{
-    FATAL_MSG("unexpected event received");
 }
 
 static void *
@@ -591,6 +597,13 @@ epoll_mgr_context_test_user(void *arg)
                               epoll_mgr_context_cb, 1);
     FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
 
+    if (is_leader)
+    {
+        epoll_handle_del(epm, &shared_data.ectd_eph);
+        for (int i = 0; i < 100 && shared_data.ectd_eph.eph_installed; i++)
+            usleep(10 * 1000);
+    }
+
     epm_ctx_test_ref_cb(&shared_data, EPH_REF_PUT);
 
     // wait for threads to settle in order to validate refcnt
@@ -642,13 +655,6 @@ epoll_mgr_context_test_user(void *arg)
     SIMPLE_LOG_MSG(LL_TRACE, "calling epoll_handle_init() on local_data");
 
     // test destroying and epoll handle
-    int evfd = eventfd(0, EFD_NONBLOCK);
-    epoll_handle_init(&local_data.ectd_eph, evfd, 0,
-                      epoll_mgr_context_event_cb, &local_data,
-                      epm_ctx_test_ref_cb);
-    rc = epoll_handle_add(epm, &local_data.ectd_eph);
-    FATAL_IF(rc, "epoll_handle_add(): unexpected rc=%d", rc);
-
     // try both blocking and non-blocking
     rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
                               epoll_mgr_context_del_cb, is_leader);
@@ -659,7 +665,7 @@ epoll_mgr_context_test_user(void *arg)
     FATAL_IF(rc == -EINVAL, "epoll_handle_del(): unexpected rc=%d", rc);
 
     for (int i = 0; i < 100 && local_data.ectd_eph.eph_installed; i++)
-        usleep(10*1000);
+        usleep(10 * 1000);
 
     FATAL_IF(local_data.ectd_eph.eph_installed,
              "eph still installed after del");

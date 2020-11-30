@@ -55,18 +55,28 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     int wakefd = eventfd(0, EFD_NONBLOCK);
     if (wakefd < 0)
     {
+        SIMPLE_LOG_MSG(LL_DEBUG, "eventfd(): errno=%d", errno);
         pthread_mutex_unlock(&epollMgrInstallLock);
         return -errno;
     }
-    struct epoll_handle *eph = &epm->epm_wake_handle;
-    epoll_handle_init(eph, wakefd, EPOLLIN, NULL, NULL, NULL);
-    struct epoll_event ev = {.events = EPOLLIN, .data.ptr = eph };
 
-    int rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
+    struct epoll_handle *eph = &epm->epm_wake_handle;
+    int rc = epoll_handle_init(eph, wakefd, EPOLLIN, NULL, NULL, NULL);
     if (rc)
     {
+        SIMPLE_LOG_MSG(LL_DEBUG, "epoll_handle_init(): rc=%d", rc);
         pthread_mutex_unlock(&epollMgrInstallLock);
         return rc;
+    }
+
+    // wake handle only used internally, don't track it like user handles
+    struct epoll_event ev = { .events = EPOLLIN, .data.ptr = eph };
+    rc = epoll_ctl(epm->epm_epfd, EPOLL_CTL_ADD, eph->eph_fd, &ev);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "epoll_ctl(): errno=%d", errno);
+        pthread_mutex_unlock(&epollMgrInstallLock);
+        return -errno;
     }
 
     CIRCLEQ_INIT(&epm->epm_active_list);
@@ -87,7 +97,7 @@ epoll_mgr_wake(struct epoll_mgr *epm)
         return -EINVAL;
 
     uint64_t i = 1;
-    return write(epm->epm_wake_handle.eph_fd, &i, 8);
+    return write(epm->epm_wake_handle.eph_fd, &i, sizeof(i));
 }
 
 /**
@@ -181,6 +191,9 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     if (!eph || (ref_cb && !arg))
         return -EINVAL;
 
+    else if (fd < 0)
+        return -EBADF;
+
     eph->eph_installing = 0;
     eph->eph_destroying = 0;
     eph->eph_async_destroy = 0;
@@ -231,6 +244,7 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     if (rc) // 'installing' bit prevents removal from the active list
     {
         CIRCLEQ_REMOVE(&epm->epm_active_list, eph, eph_lentry);
+        rc = -errno;
     }
     else
     {
@@ -436,7 +450,7 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
     SIMPLE_LOG_MSG(LL_TRACE, "epm %p eph %p", epm, eph);
 
     // only allow eph's with put/get to prevent destroys while waiting for cb
-    if (!epm || !eph || !cb || !eph->eph_ref_cb)
+    if (!epm || !eph || !cb || !eph->eph_ref_cb || !eph->eph_installed)
         return -EINVAL;
 
     if (epm->epm_thread_id == pthread_self())
@@ -525,26 +539,30 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
     struct epoll_handle *eph, *tmp;
     SLIST_FOREACH_SAFE(eph, &tmp_head, eph_cb_lentry, tmp)
     {
-        SIMPLE_LOG_MSG(LL_TRACE,
-                       "eph %p eph_ctx_cb %p eph_ref_cb %p eph_next %p tmp %p",
-                       eph, eph->eph_ctx_cb, eph->eph_ref_cb,
-                       SLIST_NEXT(eph, eph_cb_lentry), tmp);
         NIOVA_ASSERT(eph->eph_ctx_cb && eph->eph_ref_cb);
 
         pthread_cond_t *cond = eph->eph_ctx_cb_cond;
         epoll_mgr_ctx_op_cb_t cb = eph->eph_ctx_cb;
         void *arg = eph->eph_arg;
 
-        // eph can be re-added to epm list after cb is set to NULL
-        SLIST_ENTRY_INIT(&eph->eph_cb_lentry);
-        eph->eph_ctx_cb_cond = NULL;
-        eph->eph_ctx_cb = NULL;
-
         cb(arg);
 
         SIMPLE_LOG_MSG(LL_DEBUG, "signaling %p", cond);
         if (cond)
+        {
+            niova_mutex_lock(&epm->epm_ctx_cb_mutex);
             pthread_cond_broadcast(cond);
+
+            SLIST_ENTRY_INIT(&eph->eph_cb_lentry);
+            eph->eph_ctx_cb_cond = NULL;
+            eph->eph_ctx_cb = NULL;
+
+            niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
+        }
+        else
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "eph %p condition null", eph);
+        }
 
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
     }
