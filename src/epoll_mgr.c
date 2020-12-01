@@ -208,9 +208,6 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
     if (!eph || (ref_cb && !arg))
         return -EINVAL;
 
-    else if (fd < 0)
-        return -EBADF;
-
     eph->eph_installing = 0;
     eph->eph_destroying = 0;
     eph->eph_async_destroy = 0;
