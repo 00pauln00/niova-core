@@ -130,9 +130,6 @@ epoll_mgr_test_handle_destructor(struct epm_test_handle *destroy)
     FATAL_IF(destroy->eth_rtentry.rte_ref_cnt, "ref cnt is non-zero (%d)",
              destroy->eth_rtentry.rte_ref_cnt);
     FATAL_IF(destroy->eth_eph.eph_installed, "eph_installed is true");
-    FATAL_IF(!destroy->eth_eph.eph_destroying, "eph_destroying is false");
-    FATAL_IF(!destroy->eth_eph.eph_async_destroy,
-             "eph_async_destroy is false");
 
     int rc = ev_pipe_cleanup(&destroy->eth_evp);
     FATAL_IF(rc, "ev_pipe_cleanup(): %s", strerror(-rc));

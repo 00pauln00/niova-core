@@ -289,7 +289,7 @@ static epoll_mgr_thread_ctx_int_t
 epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
     SIMPLE_LOG_MSG(LL_TRACE,
-                   "epm %p eph %p ready? %s installed? %s destroying?%s", epm,
+                   "epm %p eph %p ready? %s installed? %s destroying? %s", epm,
                    eph,
                    epm && epm->epm_ready ? "yes" : "no",
                    eph && eph->eph_installed ? "yes" : "no",
@@ -306,12 +306,10 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
         return -EAGAIN;
 
     else if (eph->eph_ctx_cb)
-        return -EAGAIN;
+        return -EBUSY;
 
     if (eph->eph_async_destroy)
         SIMPLE_LOG_MSG(LL_NOTIFY, "epm=%p eph=%p", epm, eph);
-
-    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del_complete 1");
 
     struct epoll_event ev = {.events = 0, .data.fd = -1};
 
@@ -319,23 +317,22 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     if (rc)
     {
         rc = -errno;
-        LOG_MSG(LL_WARN, "epoll_ctl(fd=%d, EPOLL_CTL_DEL): %s",
-                epm->epm_epfd, strerror(-rc));
+        LOG_MSG(LL_WARN, "epoll_ctl(epm_fd=%d, eph_fd=%d, EPOLL_CTL_DEL): %s",
+                epm->epm_epfd, eph->eph_fd, strerror(-rc));
     }
-
-    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del_complete 2 rc=%d", rc);
 
     pthread_mutex_lock(&epm->epm_mutex);
     NIOVA_ASSERT(epm->epm_num_handles > 0);
     epm->epm_num_handles--;
-    pthread_mutex_unlock(&epm->epm_mutex);
 
     eph->eph_installed = 0;
+    eph->eph_destroying = 0;
+    eph->eph_async_destroy = 0;
+
+    pthread_mutex_unlock(&epm->epm_mutex);
 
     if (eph->eph_ref_cb)
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
-
-    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del_complete 3 rc=%d", rc);
 
     return rc;
 }
