@@ -5035,7 +5035,9 @@ raft_server_instance_run(const char *raft_uuid_str,
         if (!ri)
             return -ENOENT;
 
-        // Test for recovery
+        /* Bulk recovery does not require the raft or db subsystems to be
+         * running.
+         */
         bool enter_bulk_recovery = ri->ri_needs_bulk_recovery;
         if (enter_bulk_recovery)
         {
@@ -5047,51 +5049,58 @@ raft_server_instance_run(const char *raft_uuid_str,
             break;
         }
 
+        // Initialization
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
                                   sm_request_handler, sync_writes, arg);
 
+        // Raft net startup
         int raft_net_startup_rc = raft_net_instance_startup(ri, false);
         if (raft_net_startup_rc)
         {
             rc = raft_net_startup_rc;
-            if (rc != -EUCLEAN)
+            if (rc == -EUCLEAN) // Special error code for incomplete recovery
+            {
+                /* NOTE:  this current error handling path assumes that the
+                 *  raft-net components are properly shutdown through
+                 *  raft_server_instance_startup()'s call to
+                 *  raft_net_instance_shutdown().
+                 */
+                rc = 0;
+                ri->ri_needs_bulk_recovery = true;
+            }
+            else
             {
                 SIMPLE_LOG_MSG(LL_ERROR, "raft_net_instance_startup(): %s",
                                strerror(-rc));
-            }
-            else // Incomplete recovery detected, try to resume
-            {
-                rc = 0;
-                ri->ri_needs_bulk_recovery = true;
             }
         }
         else
         {
             int recovery_chkpt_rc = 0;
+
+            // Execute the main loop
             int main_loop_rc = raft_server_main_loop(ri);
             if (main_loop_rc)
             {
-                if (!rc)
-                    rc = main_loop_rc;
+                rc = rc ? rc : main_loop_rc;
 
                 SIMPLE_LOG_MSG(LL_ERROR, "raft_server_main_loop(): %s",
                                strerror(-rc));
-
-                if (!rc && ri->ri_needs_bulk_recovery)
+            }
+            else if (ri->ri_needs_bulk_recovery)
+            {
+                // Checkpoint the current contents while the db is open
+                recovery_chkpt_rc = raft_server_chkpt_prior_to_recovery(ri);
+                if (recovery_chkpt_rc)
                 {
-                    // Take a checkpoint of the current contents
-                    recovery_chkpt_rc =
-                        raft_server_chkpt_prior_to_recovery(ri);
-                    if (rc)
-                    {
-                        LOG_MSG(LL_ERROR,
-                                "raft_server_chkpt_prior_to_recovery(): %s",
-                                strerror(-rc));
-                        if (!rc)
-                            rc = recovery_chkpt_rc;
-                    }
+                    rc = rc ? rc : recovery_chkpt_rc;
+
+                    LOG_MSG(LL_ERROR,
+                            "raft_server_chkpt_prior_to_recovery(): %s",
+                            strerror(-rc));
                 }
             }
+
             int shutdown_rc = raft_net_instance_shutdown(ri);
             if (shutdown_rc)
             {
