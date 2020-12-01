@@ -19,11 +19,13 @@ static void *
 tcp_mgr_credits_malloc(niova_atomic32_t *credits, size_t sz)
 {
     uint32_t new_credits = niova_atomic_dec(credits);
+    SIMPLE_LOG_MSG(LL_TRACE, "malloc sz %lu, new cred %u", sz, new_credits);
     if (new_credits < 0)
     {
         niova_atomic_inc(credits);
         return NULL;
     }
+
 
     void *buf = niova_malloc_can_fail(sz);
     if (!buf)
@@ -127,17 +129,22 @@ tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi)
     return rc;
 }
 
-static void
+static int
 tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
-                                  struct tcp_mgr_instance *tmi)
+                                  struct tcp_mgr_instance *tmi,
+                                  void (*ref_cb)(void *,
+                                                 enum epoll_handle_ref_op))
 {
     SIMPLE_LOG_MSG(LL_TRACE, "tcp_mgr_connection_setup(): tmc %p", tmc);
 
-    tmc->tmc_status = TMCS_DISCONNECTED;
-
     tcp_socket_handle_init(&tmc->tmc_tsh);
 
-    epoll_handle_init(&tmc->tmc_eph, -1, 0, NULL, tmc, NULL);
+    int rc = epoll_handle_init(&tmc->tmc_eph, -1, 0, NULL, tmc, ref_cb);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "epoll_handle_init(): rc=%d", rc);
+        return rc;
+    }
 
     tmc->tmc_tmi = tmi;
 
@@ -149,6 +156,10 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
     tmc->tmc_bulk_remain = 0;
 
     tmc->tmc_epoll_ctx_cb = NULL;
+
+    tmc->tmc_status = TMCS_DISCONNECTED;
+
+    return 0;
 }
 
 void
@@ -163,7 +174,11 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
                         tmc->tmc_status);
         return;
     }
-    tcp_mgr_connection_setup_internal(tmc, tmi);
+    int rc = tcp_mgr_connection_setup_internal(tmc, tmi,
+                                               tmi->tmi_connection_ref_cb);
+    if (rc)
+        return;
+
     tcp_socket_handle_set_data(&tmc->tmc_tsh, ipaddr, port);
 }
 
@@ -191,17 +206,40 @@ tcp_mgr_connection_close_internal(struct tcp_mgr_connection *tmc)
     tmc->tmc_status = TMCS_DISCONNECTED;
 }
 
+void
+tcp_mgr_incoming_getput(void *tmc, enum epoll_handle_ref_op op)
+{
+    struct tcp_mgr_incoming_connection *incoming =
+        OFFSET_CAST(tcp_mgr_incoming_connection, tmic_tmc, tmc);
+
+    int newref = (op == EPH_REF_GET)
+        ? niova_atomic_inc(&incoming->tmic_refcnt)
+        : niova_atomic_dec(&incoming->tmic_refcnt);
+
+    SIMPLE_LOG_MSG(LL_TRACE, "newref %d", newref);
+    NIOVA_ASSERT(newref > 0);
+}
+
 static struct tcp_mgr_connection *
 tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
 {
-    struct tcp_mgr_connection *tmc =
+    struct tcp_mgr_incoming_connection *incoming =
         tcp_mgr_credits_malloc(&tmi->tmi_incoming_credits,
-                               sizeof(struct tcp_mgr_connection));
-    if (!tmc)
+                               sizeof(struct tcp_mgr_incoming_connection));
+    if (!incoming)
         return NULL;
 
+    niova_atomic_init(&incoming->tmic_refcnt, 1);
+    struct tcp_mgr_connection *tmc = &incoming->tmic_tmc;
+
     tmc->tmc_status = TMCS_NEEDS_SETUP;
-    tcp_mgr_connection_setup_internal(tmc, tmi);
+    int rc = tcp_mgr_connection_setup_internal(tmc, tmi,
+                                               tcp_mgr_incoming_getput);
+    if (rc)
+    {
+        tcp_mgr_credits_free(&tmi->tmi_incoming_credits, incoming);
+        return NULL;
+    }
 
     tmc->tmc_status = TMCS_CONNECTING;
 
@@ -211,16 +249,26 @@ tcp_mgr_incoming_new(struct tcp_mgr_instance *tmi)
 static void
 tcp_mgr_incoming_fini_err(struct tcp_mgr_connection *tmc)
 {
+    struct tcp_mgr_incoming_connection *incoming =
+        OFFSET_CAST(tcp_mgr_incoming_connection, tmic_tmc, tmc);
+    int refcnt = niova_atomic_read(&incoming->tmic_refcnt);
+    NIOVA_ASSERT(refcnt == 1);
+
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     tcp_mgr_connection_close_internal(tmc);
-    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
+    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, incoming);
 }
 
 static void
 tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 {
+    struct tcp_mgr_incoming_connection *incoming =
+        OFFSET_CAST(tcp_mgr_incoming_connection, tmic_tmc, tmc);
+    int refcnt = niova_atomic_read(&incoming->tmic_refcnt);
+    NIOVA_ASSERT(refcnt == 1);
+
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, tmc);
+    tcp_mgr_credits_free(&tmi->tmi_incoming_credits, incoming);
 }
 
 static epoll_mgr_cb_ctx_t
