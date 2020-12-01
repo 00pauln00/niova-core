@@ -24,6 +24,14 @@ typedef int epoll_mgr_thread_ctx_int_t;
 static size_t epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
 static pthread_mutex_t epollMgrInstallLock = PTHREAD_MUTEX_INITIALIZER;
 
+static void
+epoll_mgr_wake_cb(const struct epoll_handle *eph, uint32_t evs)
+{
+    uint64_t eventcnt;
+    int rc = read(eph->eph_fd, &eventcnt, sizeof(eventcnt));
+    SIMPLE_LOG_MSG(LL_TRACE, "read(): rc=%d evcnt=%lu", rc, eventcnt);
+}
+
 int
 epoll_mgr_setup(struct epoll_mgr *epm)
 {
@@ -61,7 +69,8 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     }
 
     struct epoll_handle *eph = &epm->epm_wake_handle;
-    int rc = epoll_handle_init(eph, wakefd, EPOLLIN, NULL, NULL, NULL);
+    int rc = epoll_handle_init(eph, wakefd, EPOLLIN, epoll_mgr_wake_cb, NULL,
+                               NULL);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_DEBUG, "epoll_handle_init(): rc=%d", rc);
@@ -78,6 +87,7 @@ epoll_mgr_setup(struct epoll_mgr *epm)
         pthread_mutex_unlock(&epollMgrInstallLock);
         return -errno;
     }
+    eph->eph_installed = true;
 
     CIRCLEQ_INIT(&epm->epm_active_list);
     CIRCLEQ_INIT(&epm->epm_destroy_list);
