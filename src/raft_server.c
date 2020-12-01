@@ -52,6 +52,11 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX 20
 #define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN 1
 
+// This timeout is used for the chkpt which occurs prior to recovery
+#define RAFT_SERVER_DEF_CHKPT_TIMEOUT 300
+static int raftServerChkptTimeoutSec = RAFT_SERVER_DEF_CHKPT_TIMEOUT;
+static bool raftServerDoesChkptBeforeRecovery = true;
+
 typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
 
@@ -4541,6 +4546,13 @@ raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
         !thread_ctl_thread_is_running(&ri->ri_chkpt_thread_ctl))
         return -EINVAL;
 
+    if (!raftServerDoesChkptBeforeRecovery)
+    {
+        LOG_MSG(LL_WARN,
+                "bypassing checkpoint operation due to configuration");
+        return 0;
+    }
+
     raft_entry_idx_t last_idx = ri->ri_checkpoint_last_idx;
 
     // Reset error
@@ -4556,7 +4568,7 @@ raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
         return rc;
 
     bool done = false;
-    int sleep_secs = 60;
+    int sleep_secs = raftServerChkptTimeoutSec;
     while (sleep_secs--)
     {
         if ((niova_atomic_read(&ri->ri_checkpoint_last_idx) > last_idx) ||
@@ -4565,6 +4577,7 @@ raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
             done = true;
             break;
         }
+        sleep(1); // Wait for the recovery thread to finish up
     }
 
     rc = ri->ri_last_chkpt_err;
