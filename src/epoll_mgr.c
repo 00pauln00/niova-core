@@ -461,10 +461,11 @@ int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
                      epoll_mgr_ctx_op_cb_t cb, bool block)
 {
-    SIMPLE_LOG_MSG(LL_TRACE, "epm %p eph %p", epm, eph);
+    SIMPLE_LOG_MSG(LL_TRACE, "epm %p eph %p cb %p ref_cb %p", epm, eph, cb,
+                   eph ? eph->eph_ref_cb : NULL);
 
     // only allow eph's with put/get to prevent destroys while waiting for cb
-    if (!epm || !eph || !cb || !eph->eph_ref_cb || !eph->eph_installed)
+    if (!epm || !eph || !cb || !eph->eph_ref_cb)
         return -EINVAL;
 
     if (epm->epm_thread_id == pthread_self())
