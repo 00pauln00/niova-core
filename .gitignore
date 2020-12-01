@@ -58,3 +58,4 @@ rocksdb__test*
 test/epoll_mgr_test
 .clangd
 test/rsync-exec-test
+test/popen_cmd_test

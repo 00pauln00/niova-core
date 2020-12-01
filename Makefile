@@ -26,6 +26,7 @@ SYS_CORE_INCLUDES = \
 	src/include/lock.h \
 	src/include/log.h \
 	src/include/net_ctl.h \
+	src/include/popen_cmd.h \
 	src/include/raft.h \
 	src/include/raft_net.h \
 	src/include/random.h \
@@ -56,6 +57,7 @@ SYS_CORE_OBJFILES = \
 	src/init.o \
 	src/io.o \
 	src/log.o \
+	src/popen_cmd.o \
 	src/random.o \
 	src/raft_net.o \
 	src/registry.o \
@@ -172,6 +174,9 @@ tests: $(ALL_CORE_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o test/rsync-exec-test \
 		test/rsync-exec-test.c \
 		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
+	$(CC) $(CFLAGS) -o test/popen_cmd_test \
+		test/popen_cmd_test.c \
+		$(ALL_CORE_OBJFILES) $(INCLUDE) $(LDFLAGS)
 
 raft: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
 	$(CC) $(CFLAGS) -o raft-server test/raft_server_test.c \
@@ -244,6 +249,7 @@ test_build:
 	taskset -c 0,1 test/work_dispatch_test
 	test/rocksdb-test
 	test/epoll_mgr_test
+	test/popen_cmd_test > /dev/null
 
 check: test_build
 
