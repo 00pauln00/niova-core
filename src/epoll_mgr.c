@@ -83,6 +83,8 @@ epoll_mgr_setup(struct epoll_mgr *epm)
     CIRCLEQ_INIT(&epm->epm_destroy_list);
     SLIST_INIT(&epm->epm_ctx_cb_list);
 
+    niova_atomic_init(&epm->epm_ctx_cb_num, 0);
+
     epm->epm_ready = 1;
     niova_atomic_init(&epm->epm_epoll_wait_cnt, 0);
 
@@ -139,9 +141,14 @@ epoll_mgr_close(struct epoll_mgr *epm)
 
     // epm_ready is covered by the global lock
     pthread_mutex_lock(&epollMgrInstallLock);
-    int rc = epm->epm_ready ?
-        (epoll_mgr_tally_handles(epm) ? -EBUSY : 0) : -EALREADY;
+    int rc = 0;
+    if (!epm->epm_ready)
+        rc = -EALREADY;
+    else if (niova_atomic_read(&epm->epm_ctx_cb_num) ||
+             epoll_mgr_tally_handles(epm))
+        rc = -EBUSY;
 
+    // XXX what if eph_add is called between the tally_handles and ready=0?
     if (!rc)
         epm->epm_ready = 0;
 
@@ -459,18 +466,26 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
 
     eph->eph_ref_cb(eph->eph_arg, EPH_REF_GET);
 
+    // inc before checking epm_ready to avoid race in epm_close
+    niova_atomic_inc(&epm->epm_ctx_cb_num);
+    if (!epm->epm_ready)
+    {
+        niova_atomic_dec(&epm->epm_ctx_cb_num);
+        return -EBUSY;
+    }
+
     niova_mutex_lock(&epm->epm_ctx_cb_mutex);
     while (block && eph->eph_ctx_cb && eph->eph_ctx_cb_cond &&
            !eph->eph_destroying)
         pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
 
+    int rc = 0;
     if (eph->eph_ctx_cb)
     {
-        niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
         LOG_MSG(LL_DEBUG, "eph busy, cb %p", eph->eph_ctx_cb);
-        eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
 
-        return -EAGAIN;
+        rc = -EAGAIN;
+        goto out;
     }
     eph->eph_ctx_cb = cb;
 
@@ -478,11 +493,10 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
     if (eph->eph_destroying)
     {
         eph->eph_ctx_cb = NULL;
-        niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
-        LOG_MSG(LL_DEBUG, "eph destroying");
-        eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
+        LOG_MSG(LL_DEBUG, "eph %p destroying", eph);
 
-        return -EBUSY;
+        rc = -EBUSY;
+        goto out;
     }
 
     NIOVA_ASSERT(SLIST_ENTRY_DETACHED(&eph->eph_cb_lentry));
@@ -502,7 +516,13 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_ctx_cb_mutex);
     }
 
+out:
     niova_mutex_unlock(&epm->epm_ctx_cb_mutex);
+    if (rc)
+    {
+        eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
+        niova_atomic_dec(&epm->epm_ctx_cb_num);
+    }
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
     return 0;
@@ -524,7 +544,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
     niova_mutex_lock(&epollMgrInstallLock);
     if (!epm->epm_ready)
     {
-        pthread_mutex_unlock(&epollMgrInstallLock);
+        niova_mutex_unlock(&epollMgrInstallLock);
         return;
     }
 
@@ -562,6 +582,7 @@ epoll_mgr_reap_ctx_list(struct epoll_mgr *epm)
         }
 
         eph->eph_ref_cb(eph->eph_arg, EPH_REF_PUT);
+        niova_atomic_dec(&epm->epm_ctx_cb_num);
     }
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
