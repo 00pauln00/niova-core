@@ -45,6 +45,7 @@ static const struct regex_item commaIntegerTests[] = {
     {"900,123", true},
     {"900,123,", false},
     {"000,123", false},
+    {"0,11,,22,,333432432,,,", false},
     {"123,456,789,000,123,234,000,000", true},
 };
 

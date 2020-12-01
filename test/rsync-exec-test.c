@@ -10,6 +10,7 @@
 #include "io.h"
 #include "log.h"
 #include "regex_defines.h"
+#include "util.h"
 
 char *rsyncBin = "/usr/bin/rsync";
 char *rsyncArgsDryRun[] = {
@@ -40,44 +41,6 @@ struct status_value_extract
 };
 
 static int
-extract_unsigned_int_from_string(const char *str, size_t len,
-                                 unsigned long long *val)
-{
-
-#define VAL_STR_LEN 32
-
-    if (!str || !len || !val)
-        return -EINVAL;
-
-    char val_str[VAL_STR_LEN + 1] = {0};
-    int val_str_idx = 0;
-    bool found = false;
-    for (int i = 0; i < len; i++)
-    {
-        if (isdigit((int)str[i]))
-        {
-            if (!found)
-                found = true;
-
-            if (val_str_idx == VAL_STR_LEN)
-                return -E2BIG;
-
-            val_str[val_str_idx++] = str[i];
-        }
-        else if (found && str[i] != ',') // only other valid char
-        {
-            break;
-        }
-    }
-
-    int rc = niova_string_to_unsigned_long_long(val_str, val);
-
-    SIMPLE_LOG_MSG(LL_WARN, "rc=%d len=%zd byte-cnt=%lld", rc, len, *val);
-
-    return rc;
-}
-
-static int
 rsync_parent_parse(const char *buf, struct status_value_extract *sve)
 {
     regex_t regex;
@@ -105,9 +68,8 @@ rsync_parent_parse(const char *buf, struct status_value_extract *sve)
 
     size_t match_len = match.rm_eo - match.rm_so;
 
-    sve->sve_err =
-        extract_unsigned_int_from_string(&buf[match.rm_so], match_len,
-                                         &sve->sve_val);
+    sve->sve_err = niova_parse_comma_delimited_uint_string(
+        &buf[match.rm_so], match_len, &sve->sve_val);
 
     SIMPLE_LOG_MSG(LL_WARN, "sve_err=%d byte-cnt=%lld",
                    sve->sve_err, sve->sve_val);
