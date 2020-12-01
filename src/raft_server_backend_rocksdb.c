@@ -25,6 +25,7 @@
 #include "ctl_svc.h"
 #include "file_util.h"
 #include "log.h"
+#include "popen_cmd.h"
 #include "raft.h"
 #include "raft_server_backend_rocksdb.h"
 #include "regex_defines.h"
@@ -75,7 +76,36 @@
     "^\\."RECOVERY_MARKER_NAME"\\."UUID_REGEX_BASE"_"UUID_REGEX_BASE"$"
 #define RECOVERY_MARKER_NAME_LEN_WITH_PERIODS 17
 
-static regex_t recovery_marker_regex;
+/* Rsync related regex's
+ */
+#define RECOVERY_RSYNC_TOTAL_SIZE_REGEX \
+    "Total file size: "COMMA_DELIMITED_UNSIGNED_INTEGER_BASE" bytes"
+#define RECOVERY_RSYNC_TOTAL_XFER_SIZE_REGEX \
+    "Total transferred file size: "COMMA_DELIMITED_UNSIGNED_INTEGER_BASE" bytes"
+#define RECOVERY_RSYNC_PROGRESS_LINE_REGEX \
+    "[\r][ \t]*"COMMA_DELIMITED_UNSIGNED_INTEGER_BASE"[ \t]*[0-9]\\{1,3\\}%[ \t]*[0-9]\\+.[0-9][0-9][KMGT]B/s"
+
+enum recovery_regexes
+{
+    RECOVERY_MARKER_NAME__regex,
+    RECOVERY_RSYNC_TOTAL_SIZE__regex,
+    RECOVERY_RSYNC_TOTAL_XFER_SIZE__regex,
+    RECOVERY_RSYNC_PROGRESS_LINE__regex,
+    RECOVERY__num_regex,
+};
+
+struct regex_pair
+{
+    regex_t     rp_regex;
+    const char *rp_regex_str;
+};
+
+struct regex_pair recoveryRegexes[RECOVERY__num_regex] = {
+    { .rp_regex_str = RECOVERY_MARKER_REGEX },
+    { .rp_regex_str = RECOVERY_RSYNC_TOTAL_SIZE_REGEX, },
+    { .rp_regex_str = RECOVERY_RSYNC_TOTAL_XFER_SIZE_REGEX },
+    { .rp_regex_str = RECOVERY_RSYNC_PROGRESS_LINE_REGEX },
+};
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -1195,7 +1225,8 @@ static int rsbr_scandir_recovery_marker_cb(const struct dirent *dent)
 {
     SIMPLE_LOG_MSG(LL_NOTIFY, "d_name=%s", dent->d_name);
 
-    return !regexec(&recovery_marker_regex, dent->d_name, 0, NULL, 0);
+    return !regexec(&recoveryRegexes[RECOVERY_MARKER_NAME__regex].rp_regex,
+                    dent->d_name, 0, NULL, 0);
 }
 
 static int
@@ -1403,8 +1434,103 @@ out:
 }
 
 static int
+rsbr_bulk_recover_try_parse(struct raft_recovery_handle *rrh,
+                            const char *output, size_t len,
+                            enum recovery_regexes val_type)
+{
+    NIOVA_ASSERT(rrh && output &&
+                 ((val_type == RECOVERY_RSYNC_TOTAL_SIZE__regex) ||
+                  (val_type == RECOVERY_RSYNC_TOTAL_XFER_SIZE__regex)));
+
+    regex_t *regex = &recoveryRegexes[val_type].rp_regex;
+
+    int rc = regexec(regex, output, 0, NULL, 0);
+    if (rc)
+        return 0; // non-match is ok
+
+    ssize_t *val = (val_type == RECOVERY_RSYNC_TOTAL_SIZE__regex) ?
+        &rrh->rrh_chkpt_size : &rrh->rrh_remaining;
+
+    rc = niova_parse_comma_delimited_uint_string(output, len,
+                                                 (unsigned long long *)val);
+    if (rc)
+    {
+        *val = -1;
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "niova_parse_comma_delimited_uint_string(): %s",
+                       strerror(-rc));
+    }
+
+    return rc;
+}
+
+static int
+rsbr_bulk_recover_calculate_remaining_cb(const char *output, size_t len,
+                                         void *arg)
+{
+    if (!output || !arg || !len)
+        return -EINVAL;
+
+    struct raft_recovery_handle *rrh = (struct raft_recovery_handle *)arg;
+
+    LOG_MSG(LL_TRACE, "%zu >> %s", len, output);
+
+    int rc = 0;
+
+    if (rrh->rrh_chkpt_size < 0)
+    {
+        rc = rsbr_bulk_recover_try_parse(rrh, output, len,
+                                         RECOVERY_RSYNC_TOTAL_SIZE__regex);
+        if (!rc && rrh->rrh_chkpt_size > 0)
+            SIMPLE_LOG_MSG(LL_WARN, "rrh_chkpt_size=%zd",
+                           rrh->rrh_chkpt_size);
+    }
+
+    if (rrh->rrh_remaining < 0)
+    {
+        rc = rsbr_bulk_recover_try_parse(
+            rrh, output, len, RECOVERY_RSYNC_TOTAL_XFER_SIZE__regex);
+
+        if (!rc && rrh->rrh_remaining > 0)
+            SIMPLE_LOG_MSG(LL_WARN, "rrh_remaining=%zd", rrh->rrh_remaining);
+    }
+
+    return rc;
+}
+
+/**
+ * rsbr_bulk_recover_calculate_remaining - this function calls popen() to
+ *    launch an 'rsync' probe which will calculate the size of the remote
+ *    checkpoint and the amount requiring transfer.
+ */
+static int // performs a fork / exec via popen()
+rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
+                                      const char *remote_path,
+                                      const char *local_path)
+{
+    if (!rrh || !remote_path || !local_path)
+        return -EINVAL;
+
+    char cmd[PATH_MAX + 1] = {0};
+
+    int rc = snprintf(cmd, PATH_MAX, "rsync -an --info=stats2 %s %s 2>&1",
+                      remote_path, local_path);
+    if (rc > PATH_MAX)
+        return -ENAMETOOLONG;
+
+    LOG_MSG(LL_DEBUG, "cmd=`%s'", cmd);
+
+    rc = popen_cmd_out(cmd, rsbr_bulk_recover_calculate_remaining_cb,
+                       (void *)rrh);
+    if (rc)
+        LOG_MSG(LL_ERROR, "popen_cmd_out(rsync): %s", strerror(-rc));
+
+    return rc;
+}
+
+static int
 rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
-                                   const struct raft_recovery_handle *rrh)
+                                   struct raft_recovery_handle *rrh)
 {
     if (!ri || !rrh || ri->ri_incomplete_recovery ||
         rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0 ||
@@ -1421,9 +1547,26 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
     rc = rsbr_restore_path_build(ri->ri_log, rrh->rrh_peer_db_uuid,
                                  rrh->rrh_peer_uuid, local_path, PATH_MAX);
     if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_restore_path_build(): %s",
+                       strerror(-rc));
         return rc;
+    }
 
-    SIMPLE_LOG_MSG(LL_WARN, "rem=%s local=%s", remote_path, local_path);
+    SIMPLE_LOG_MSG(LL_DEBUG, "rem=%s local=%s", remote_path, local_path);
+
+    rc = rsbr_bulk_recover_calculate_remaining(rrh, remote_path, local_path);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recover_calculate_remaining(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+    else if (rrh->rrh_remaining < 0 || rrh->rrh_chkpt_size < 0)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Unable to determine size requirements.");
+        return -ENODATA;
+    }
 
     return 0;
 }
@@ -1444,6 +1587,9 @@ rsbr_bulk_recover(struct raft_instance *ri)
     struct raft_recovery_handle *rrh = raft_instance_2_recovery_handle(ri);
     if (!rrh)
         return -ENOENT;
+
+    rrh->rrh_remaining = -1;
+    rrh->rrh_chkpt_size = -1;
 
     if (uuid_is_null(rrh->rrh_peer_uuid) ||
         uuid_is_null(rrh->rrh_peer_db_uuid))
@@ -1539,8 +1685,6 @@ rsbr_destroy(struct raft_instance *ri)
 
     if (rir->rir_writebatch)
         rocksdb_writebatch_destroy(rir->rir_writebatch);
-
-    regfree(&recovery_marker_regex);
 
     ri->ri_backend_arg = NULL;
 
@@ -1642,6 +1786,32 @@ rsbr_setup_detect_recovery(struct raft_instance *ri)
 }
 
 static int
+rsbr_recovery_regex_setup(void)
+{
+    for (int i = 0; i < RECOVERY__num_regex; i++)
+    {
+        int rc = regcomp(&recoveryRegexes[i].rp_regex,
+                         recoveryRegexes[i].rp_regex_str, 0);
+        if (rc)
+        {
+            char regerr_str[63] = {0};
+            regerror(rc, &recoveryRegexes[i].rp_regex, regerr_str, 63);
+            SIMPLE_LOG_MSG(LL_ERROR, "regcomp(idx=%d): %s", i, regerr_str);
+            return -EINVAL;
+        }
+    }
+
+    return 0;
+}
+
+static void
+rsbr_recovery_regex_release(void)
+{
+    for (int i = 0; i < RECOVERY__num_regex; i++)
+        regfree(&recoveryRegexes[i].rp_regex);
+}
+
+static int
 rsbr_setup(struct raft_instance *ri)
 {
     if (!ri || ri->ri_backend != &ribRocksDB)
@@ -1649,15 +1819,6 @@ rsbr_setup(struct raft_instance *ri)
 
     else if (ri->ri_backend_arg)
         return -EALREADY;
-
-    int rc = regcomp(&recovery_marker_regex, RECOVERY_MARKER_REGEX, 0);
-    if (rc)
-    {
-        char regerr_str[63] = {0};
-        regerror(rc, &recovery_marker_regex, regerr_str, 63);
-        SIMPLE_LOG_MSG(LL_ERROR, "regcomp(): %s", regerr_str);
-        return -EINVAL;
-    }
 
     ri->ri_backend_arg =
         niova_calloc(1UL, sizeof(struct raft_instance_rocks_db));
@@ -1668,7 +1829,7 @@ rsbr_setup(struct raft_instance *ri)
     struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
     rir->rir_log_fd = -1;
 
-    rc = rsbr_subdirs_setup(ri);
+    int rc = rsbr_subdirs_setup(ri);
     if (rc)
     {
          rsbr_destroy(ri);
@@ -1935,4 +2096,17 @@ raft_server_rocksdb_add_cf_name(struct raft_server_rocksdb_cf_table *cft,
     cft->rsrcfe_num_cf++;
 
     return 0;
+}
+
+static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+rsbr_subsys_init(void)
+{
+    int rc = rsbr_recovery_regex_setup();
+    NIOVA_ASSERT(!rc);
+}
+
+static init_ctx_t NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+rsbr_subsys_destroy(void)
+{
+    rsbr_recovery_regex_release();
 }
