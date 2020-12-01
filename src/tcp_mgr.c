@@ -296,6 +296,9 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
     niova_mutex_lock(&tmi->tmi_epoll_ctx_mutex);
     if (tmc->tmc_epoll_ctx_cb)
     {
+        // can happen if other thread is about to call epoll_mgr_ctx_cb_add
+        if (!tmc->tmc_eph.eph_ctx_cb)
+            SIMPLE_LOG_MSG(LL_DEBUG, "mismatch between tmc and eph ctx cbs");
         niova_mutex_unlock(&tmi->tmi_epoll_ctx_mutex);
         return -EAGAIN;
     }
@@ -308,7 +311,13 @@ tcp_mgr_connection_epoll_ctx_run(struct tcp_mgr_connection *tmc,
     int rc = epoll_mgr_ctx_cb_add(epm, &tmc->tmc_eph, tcp_mgr_epoll_ctx_cb,
                                   block);
     if (rc)
+    {
+        tmc->tmc_epoll_ctx_cb = NULL;
+        SIMPLE_LOG_MSG(LL_TRACE, "epoll_mgr_ctx_cb_add(): rc=%d eph=%p", rc,
+                       &tmc->tmc_eph);
         LOG_MSG(LL_ERROR, "cannot start epoll connection task, rc: %d", rc);
+    }
+
     return rc;
 }
 
