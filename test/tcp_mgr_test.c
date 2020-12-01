@@ -99,7 +99,7 @@ tmt_owned_connection_new(struct tmt_data *td, int port)
     td->td_conn_count++;
     niova_mutex_unlock(&td->td_conn_list_mutex);
 
-    SIMPLE_LOG_MSG(LL_TRACE, "oc: %p", oc);
+    SIMPLE_LOG_MSG(LL_TRACE, "oc: %p port: %d", oc, port);
 
     return oc;
 }
@@ -124,19 +124,20 @@ tmt_owned_connection_getput(struct tmt_owned_connection *oc,
                             enum epoll_handle_ref_op op)
 {
     uint32_t refcnt = niova_atomic_read(&oc->oc_ref_cnt);
-    SIMPLE_LOG_MSG(LL_DEBUG, "oc: %p, [oldref %d] %s", oc, refcnt,
-                   op == EPH_REF_GET ? "GET" : "PUT");
+    NIOVA_ASSERT(refcnt > 0);
 
     if (op == EPH_REF_GET)
     {
-        niova_atomic_inc(&oc->oc_ref_cnt);
+        refcnt = niova_atomic_inc(&oc->oc_ref_cnt);
     }
     else
     {
-        niova_atomic_dec(&oc->oc_ref_cnt);
+        refcnt = niova_atomic_dec(&oc->oc_ref_cnt);
         if (refcnt == 0)
             tmt_owned_connection_fini(oc);
     }
+    LOG_MSG(LL_DEBUG, "oc: %p, [newref %d] %s", oc, refcnt,
+                   op == EPH_REF_GET ? "GET" : "PUT");
 }
 
 static void
@@ -210,6 +211,7 @@ tmt_send_thread(void *arg)
 
         usleep(100 * 1000);
     }
+    tcp_mgr_connection_close(&oc->oc_tmc, true);
     tmt_owned_connection_getput(oc, EPH_REF_PUT);
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
@@ -356,8 +358,8 @@ tmt_handshake_fill(void *_data, struct tcp_mgr_connection *tmc, void *buf,
     struct tmt_handshake *hs = (struct tmt_handshake *)buf;
     hs->hs_magic = MAGIC;
 
-    struct tmt_owned_connection *oc = tmt_tcp_mgr_2_owned_connection(tmc);
-    hs->hs_id = oc->oc_port;
+    hs->hs_id = tmc->tmc_tmi->tmi_listen_socket.tsh_port;
+    SIMPLE_LOG_MSG(LL_TRACE, "port: %d", hs->hs_id);
 
     // header size
     return sizeof(struct tmt_message);
@@ -381,6 +383,9 @@ void *tmt_event_loop_thread(void *arg)
     {
         epoll_mgr_wait_and_process_events(epm, -1);
     }
+
+    while (epoll_mgr_close(epm))
+        epoll_mgr_wait_and_process_events(epm, -1);
 
     return NULL;
 }
@@ -561,11 +566,11 @@ main(int argc, char **argv)
     SIMPLE_LOG_MSG(LL_NOTIFY, "stopping");
     printf("stopping\n");
 
+    tcp_mgr_sockets_close(&tmt_data.td_tcp_mgr);
+
     tmt_threads_stop(&tmt_data);
 
     tmt_connections_putall(&tmt_data);
-
-    tcp_mgr_sockets_close(&tmt_data.td_tcp_mgr);
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "main ended");
 
