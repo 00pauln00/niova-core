@@ -366,6 +366,8 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
         return 0;
 
     size_t buf_size = hdr_size + bulk_size;
+    if (buf_size > TCP_MGR_MAX_BULK_SIZE)
+        return -E2BIG;
 
     // buffer free'd in tcp_mgr_recv_cb
     void *buf = tcp_mgr_bulk_malloc(tmc->tmc_tmi, buf_size);
