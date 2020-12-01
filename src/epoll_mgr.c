@@ -130,11 +130,13 @@ epoll_mgr_tally_handles(struct epoll_mgr *epm)
 
     CIRCLEQ_FOREACH(eph, &epm->epm_active_list, eph_lentry)
     {
+        SIMPLE_LOG_MSG(LL_TRACE, "active eph %p", eph);
         cnt++;
     }
 
     CIRCLEQ_FOREACH(eph, &epm->epm_destroy_list, eph_lentry)
     {
+        SIMPLE_LOG_MSG(LL_TRACE, "destroy eph %p", eph);
         cnt++;
     }
 
@@ -227,7 +229,7 @@ epoll_handle_init(struct epoll_handle *eph, int fd, int events,
 int
 epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
-    SIMPLE_LOG_MSG(LL_TRACE, "fd=%d", eph ? eph->eph_fd : -1);
+    SIMPLE_LOG_MSG(LL_TRACE, "eph=%p fd=%d", eph, eph ? eph->eph_fd : -1);
 
     if (!epm || !eph || !eph->eph_cb || !epm->epm_ready)
         return -EINVAL;
@@ -366,8 +368,6 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
     else if (!eph->eph_installed)
         return -EAGAIN;
 
-    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del 1");
-
     struct epoll_handle *tmp;
     bool found = false;
     bool complete_here = true;
@@ -401,8 +401,6 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
 
     pthread_mutex_unlock(&epm->epm_mutex);
 
-    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del 2");
-
     int rc = found ? 0 : -ENOENT;
 
     if (!rc)
@@ -414,8 +412,6 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
             epoll_mgr_wake(epm);
     }
 
-    SIMPLE_LOG_MSG(LL_TRACE, "epoll_handle_del 3 rc=%d", rc);
-
     return rc;
 }
 
@@ -425,33 +421,50 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     struct epoll_handle *destroy = NULL;
+    struct epoll_handle_list delay_list = CIRCLEQ_HEAD_INITIALIZER(delay_list);
 
-    if (!CIRCLEQ_EMPTY(&epm->epm_destroy_list))
+    if (CIRCLEQ_EMPTY(&epm->epm_destroy_list))
+        return;
+    do
     {
-        do
+        pthread_mutex_lock(&epm->epm_mutex);
+
+        destroy = CIRCLEQ_EMPTY(&epm->epm_destroy_list) ? NULL :
+            CIRCLEQ_FIRST(&epm->epm_destroy_list);
+
+        if (destroy)
+            CIRCLEQ_REMOVE(&epm->epm_destroy_list, destroy, eph_lentry);
+
+        pthread_mutex_unlock(&epm->epm_mutex);
+
+        if (destroy)
         {
-            pthread_mutex_lock(&epm->epm_mutex);
+            int rc = epoll_handle_del_complete(epm, destroy);
+            if (rc == -EBUSY)
+                CIRCLEQ_INSERT_HEAD(&delay_list, destroy, eph_lentry);
+            else if (rc)
+                LOG_MSG(LL_WARN,
+                        "epoll_handle_del_complete(eph=%p): %s",
+                        destroy, strerror(-rc));
+        }
+    } while (destroy);
 
-            destroy = CIRCLEQ_EMPTY(&epm->epm_destroy_list) ? NULL :
-                CIRCLEQ_FIRST(&epm->epm_destroy_list);
+    if (CIRCLEQ_EMPTY(&delay_list))
+        return;
 
-            if (destroy)
-                CIRCLEQ_REMOVE(&epm->epm_destroy_list, destroy, eph_lentry);
+    // if eph still has a callback pending, delay del completion
+    struct epoll_handle *eph, *tmp;
 
-            pthread_mutex_unlock(&epm->epm_mutex);
+    pthread_mutex_lock(&epm->epm_mutex);
+    CIRCLEQ_FOREACH_SAFE(eph, &delay_list, eph_lentry, tmp)
+    {
+        SIMPLE_LOG_MSG(LL_TRACE, "delaying delete for eph %p", eph);
 
-            if (destroy)
-            {
-                int rc = epoll_handle_del_complete(epm, destroy);
-                if (rc)
-                    LOG_MSG(LL_WARN,
-                            "epoll_handle_del_complete(eph=%p): %s",
-                            destroy, strerror(-rc));
-            }
-
-        } while (destroy);
+        CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
     }
-    SIMPLE_FUNC_EXIT(LL_TRACE);
+    pthread_mutex_unlock(&epm->epm_mutex);
+
+    epoll_mgr_wake(epm);
 }
 
 int
