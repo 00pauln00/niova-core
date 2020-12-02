@@ -4641,15 +4641,20 @@ raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
 
     const raft_entry_idx_t new_lowest_idx = sync_idx - num_keep_entries;
 
-    if (new_lowest_idx > lowest_idx)
+    bool reaped = false;
+
+    if (new_lowest_idx > (lowest_idx + num_keep_entries))
     {
         ri->ri_backend->rib_log_reap(ri, new_lowest_idx);
         niova_atomic_init(&ri->ri_lowest_idx, new_lowest_idx);
+        reaped = true;
     }
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "num-keep-entries=%zd reap-idx=%ld",
+    DBG_RAFT_INSTANCE((reaped ? LL_NOTIFY : LL_DEBUG), ri,
+                      "num-keep-entries=%zd reap-idx=%ld reap=%s",
                       num_keep_entries,
-                      new_lowest_idx > lowest_idx ? new_lowest_idx : -1UL);
+                      new_lowest_idx > lowest_idx ? new_lowest_idx : -1UL,
+                      reaped ? "true" : "false");
 }
 
 static raft_server_chkpt_thread_t
