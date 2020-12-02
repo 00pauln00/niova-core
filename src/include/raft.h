@@ -160,6 +160,8 @@ struct raft_rpc_msg
  */
 };
 
+#define BW_RATE_LEN 31
+
 struct raft_recovery_handle
 {
     uuid_t          rrh_peer_uuid;
@@ -168,7 +170,7 @@ struct raft_recovery_handle
     ssize_t         rrh_chkpt_size;
     ssize_t         rrh_remaining;
     ssize_t         rrh_completed;
-    size_t          rrh_rate_bytes_per_sec;
+    char            rrh_rate_bytes_per_sec[BW_RATE_LEN + 1];
     struct timespec rrh_start;
     bool            rrh_from_recovery_marker;
 };

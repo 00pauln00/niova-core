@@ -83,8 +83,11 @@
     "Total file size: "COMMA_DELIMITED_UNSIGNED_INTEGER_BASE" bytes"
 #define RECOVERY_RSYNC_TOTAL_XFER_SIZE_REGEX \
     "Total transferred file size: "COMMA_DELIMITED_UNSIGNED_INTEGER_BASE" bytes"
+#define RECOVERY_RSYNC_PROGRESS_LINE_RATE_REGEX \
+    "[0-9]\\+.[0-9][0-9][KMGTkmgt]B/s"
+
 #define RECOVERY_RSYNC_PROGRESS_LINE_REGEX \
-    "[\r][ \t]*"COMMA_DELIMITED_UNSIGNED_INTEGER_BASE"[ \t]*[0-9]\\{1,3\\}%[ \t]*[0-9]\\+.[0-9][0-9][KMGT]B/s"
+    "[\r][ \t]*"COMMA_DELIMITED_UNSIGNED_INTEGER_BASE"[ \t]*[0-9]\\{1,3\\}%[ \t]*"RECOVERY_RSYNC_PROGRESS_LINE_RATE_REGEX
 
 enum recovery_regexes
 {
@@ -92,6 +95,7 @@ enum recovery_regexes
     RECOVERY_RSYNC_TOTAL_SIZE__regex,
     RECOVERY_RSYNC_TOTAL_XFER_SIZE__regex,
     RECOVERY_RSYNC_PROGRESS_LINE__regex,
+    RECOVERY_RSYNC_PROGRESS_LINE_RATE__regex,
     RECOVERY__num_regex,
 };
 
@@ -106,6 +110,7 @@ struct regex_pair recoveryRegexes[RECOVERY__num_regex] = {
     { .rp_regex_str = RECOVERY_RSYNC_TOTAL_SIZE_REGEX },
     { .rp_regex_str = RECOVERY_RSYNC_TOTAL_XFER_SIZE_REGEX },
     { .rp_regex_str = RECOVERY_RSYNC_PROGRESS_LINE_REGEX },
+    { .rp_regex_str = RECOVERY_RSYNC_PROGRESS_LINE_RATE_REGEX },
 };
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -1529,6 +1534,23 @@ rsbr_bulk_recover_calculate_remaining_rsync(struct raft_recovery_handle *rrh,
     return rc;
 }
 
+static void
+rsbr_bulk_recover_xfer_rsync_try_rate_parse(const char *output,
+                                            struct raft_recovery_handle *rrh)
+{
+    regex_t *regex =
+        &recoveryRegexes[RECOVERY_RSYNC_PROGRESS_LINE_RATE__regex].rp_regex;
+
+    regmatch_t match = {0};
+    if (!regexec(regex, output, 1, &match, 0))
+    {
+        strncpy(rrh->rrh_rate_bytes_per_sec, &output[match.rm_so],
+                MIN(BW_RATE_LEN, match.rm_eo - match.rm_so));
+
+        SIMPLE_LOG_MSG(LL_TRACE, "%s", rrh->rrh_rate_bytes_per_sec);
+    }
+}
+
 static popen_cmd_cb_ctx_t
 rsbr_bulk_recover_xfer_rsync_cb(const char *output, size_t len, void *arg)
 {
@@ -1554,12 +1576,16 @@ rsbr_bulk_recover_xfer_rsync_cb(const char *output, size_t len, void *arg)
         SIMPLE_LOG_MSG(LL_WARN,
                        "niova_parse_comma_delimited_uint_string(): %s",
                        strerror(-rc));
+        return rc;
     }
 
     if (val > rrh->rrh_completed)
         rrh->rrh_completed = val;
 
-    return rc;
+    // Grab the rate from the rsync "progress2" output
+    rsbr_bulk_recover_xfer_rsync_try_rate_parse(output, rrh);
+
+    return 0;
 }
 
 static popen_cmd_t // performs a fork / exec via popen()
