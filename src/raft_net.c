@@ -37,7 +37,8 @@ enum raft_net_lreg_values
     RAFT_NET_LREG_HEARTBEAT_FREQ,     // uint32
     RAFT_NET_LREG_MAX_SCAN_ENTRIES,   // int64
     RAFT_NET_LREG_LOG_REAP_FACTOR,    // uint32
-    RAFT_NET_LREQ_NUM_CHECKPOINTS,
+    RAFT_NET_LREG_NUM_CHECKPOINTS,
+    RAFT_NET_LREG_AUTO_CHECKPOINT,
     RAFT_NET_LREG__MAX,
     RAFT_NET_LREG__CLIENT_MAX = RAFT_NET_LREG_IGNORE_TIMER_EVENTS + 1,
 };
@@ -306,9 +307,13 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
             lreg_value_fill_unsigned(lv, "log-reap-factor",
                                      ri->ri_log_reap_factor);
             break;
-        case RAFT_NET_LREQ_NUM_CHECKPOINTS:
+        case RAFT_NET_LREG_NUM_CHECKPOINTS:
             lreg_value_fill_unsigned(lv, "num-checkpoints",
                                      ri->ri_num_checkpoints);
+            break;
+        case RAFT_NET_LREG_AUTO_CHECKPOINT:
+            lreg_value_fill_bool(lv, "auto-checkpoint-enabled",
+                                 ri->ri_auto_checkpoints_enabled);
             break;
         default:
             rc = -ENOENT;
@@ -328,6 +333,13 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
                 return rc;
 
             ri->ri_ignore_timerfd = tmp_bool;
+            break;
+        case RAFT_NET_LREG_AUTO_CHECKPOINT:
+            rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
+            if (rc)
+                return rc;
+            if (ri->ri_auto_checkpoints_enabled != tmp_bool)
+                ri->ri_auto_checkpoints_enabled = tmp_bool;
             break;
         case RAFT_NET_LREG_ELECTION_TIMEOUT_MS:
             rc = raft_net_lreg_set_election_timeout(ri, lv);
