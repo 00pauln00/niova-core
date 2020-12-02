@@ -1360,7 +1360,7 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
 
     // Done after the lock is released.
     if (queue)
-        RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_CLIENT_EVP_IDX);
+        RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_EVP_CLIENT);
 
     if (block)
         raft_client_sub_app_wait(rci, &tls_cond_var, &tls_completion_notifier);
