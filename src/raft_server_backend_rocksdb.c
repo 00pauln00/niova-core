@@ -1466,8 +1466,8 @@ rsbr_bulk_recover_try_parse(struct raft_recovery_handle *rrh,
 }
 
 static popen_cmd_cb_ctx_t
-rsbr_bulk_recover_calculate_remaining_cb(const char *output, size_t len,
-                                         void *arg)
+rsbr_bulk_recover_calculate_remaining_rsync_cb(const char *output, size_t len,
+                                               void *arg)
 {
     if (!output || !arg || !len)
         return -EINVAL;
@@ -1492,7 +1492,7 @@ rsbr_bulk_recover_calculate_remaining_cb(const char *output, size_t len,
         rc = rsbr_bulk_recover_try_parse(
             rrh, output, len, RECOVERY_RSYNC_TOTAL_XFER_SIZE__regex);
 
-        if (!rc && rrh->rrh_remaining > 0)
+        if (!rc && rrh->rrh_remaining >= 0)
             SIMPLE_LOG_MSG(LL_WARN, "rrh_remaining=%zd", rrh->rrh_remaining);
     }
 
@@ -1505,9 +1505,9 @@ rsbr_bulk_recover_calculate_remaining_cb(const char *output, size_t len,
  *    checkpoint and the amount requiring transfer.
  */
 static popen_cmd_t // performs a fork / exec via popen()
-rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
-                                      const char *remote_path,
-                                      const char *local_path)
+rsbr_bulk_recover_calculate_remaining_rsync(struct raft_recovery_handle *rrh,
+                                            const char *remote_path,
+                                            const char *local_path)
 {
     if (!rrh || !remote_path || !local_path)
         return -EINVAL;
@@ -1521,7 +1521,7 @@ rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
 
     LOG_MSG(LL_DEBUG, "cmd=`%s'", cmd);
 
-    rc = popen_cmd_out(cmd, rsbr_bulk_recover_calculate_remaining_cb,
+    rc = popen_cmd_out(cmd, rsbr_bulk_recover_calculate_remaining_rsync_cb,
                        (void *)rrh);
     if (rc)
         LOG_MSG(LL_ERROR, "popen_cmd_out(rsync): %s", strerror(-rc));
@@ -1530,7 +1530,7 @@ rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
 }
 
 static popen_cmd_cb_ctx_t
-rsbr_bulk_recover_xfer_cb(const char *output, size_t len, void *arg)
+rsbr_bulk_recover_xfer_rsync_cb(const char *output, size_t len, void *arg)
 {
     if (!output || !arg || !len)
         return -EINVAL;
@@ -1563,8 +1563,8 @@ rsbr_bulk_recover_xfer_cb(const char *output, size_t len, void *arg)
 }
 
 static popen_cmd_t // performs a fork / exec via popen()
-rsbr_bulk_recover_xfer(struct raft_recovery_handle *rrh,
-                       const char *remote_path, const char *local_path)
+rsbr_bulk_recover_xfer_rsync(struct raft_recovery_handle *rrh,
+                             const char *remote_path, const char *local_path)
 {
     if (!rrh || !remote_path || !local_path)
         return -EINVAL;
@@ -1578,11 +1578,46 @@ rsbr_bulk_recover_xfer(struct raft_recovery_handle *rrh,
 
     LOG_MSG(LL_DEBUG, "cmd=`%s'", cmd);
 
-    rc = popen_cmd_out(cmd, rsbr_bulk_recover_xfer_cb, (void *)rrh);
+    rc = popen_cmd_out(cmd, rsbr_bulk_recover_xfer_rsync_cb, (void *)rrh);
     if (rc)
         LOG_MSG(LL_ERROR, "popen_cmd_out(rsync): %s", strerror(-rc));
 
     return rc;
+}
+
+
+#define BULK_RECOVERY_RSYNC_RETRY_SECS 10
+#define BULK_RECOVERY_RSYNC_RETRY_MAX  4
+
+#define RSBR_BULK_RECOVER_RSYNC_CMD(func, rrh, remote_path, local_path)  \
+({                                                                  \
+    int rc = 0;                                                         \
+    int nretries = 0;                                                   \
+    do {                                                                \
+        rc = func(rrh, remote_path, local_path);                            \
+        if (rc)                                                         \
+        {                                                               \
+            bool retry = ++nretries >= BULK_RECOVERY_RSYNC_RETRY_MAX ?      \
+                false : true;                                           \
+            SIMPLE_LOG_MSG(                                             \
+                LL_ERROR,                                               \
+                #func": %s, retry=%s in %u seconds",                    \
+                strerror(-rc), retry ? "yes" : "no",                    \
+                retry ? (BULK_RECOVERY_RSYNC_RETRY_SECS * nretries) : 0); \
+            if (!retry)                                                 \
+                break;                                                  \
+            niova_sleep(BULK_RECOVERY_RSYNC_RETRY_SECS * nretries);     \
+        }                                                               \
+    } while (rc);                                                       \
+    rc;                                                                 \
+})
+
+static int
+rsbr_bulk_recover_xfer(struct raft_recovery_handle *rrh,
+                       const char *remote_path, const char *local_path)
+{
+    return RSBR_BULK_RECOVER_RSYNC_CMD(rsbr_bulk_recover_xfer_rsync, rrh,
+                                       remote_path, local_path);
 }
 
 static ssize_t
@@ -1615,6 +1650,33 @@ rsbr_bulk_recover_get_fs_free_space(struct raft_instance *ri)
 }
 
 static int
+rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
+                                      const char *remote_path,
+                                      const char *local_path,
+                                      const ssize_t available_cap)
+{
+    int rc = RSBR_BULK_RECOVER_RSYNC_CMD(
+        rsbr_bulk_recover_calculate_remaining_rsync, rrh, remote_path,
+        local_path);
+
+    if (!rc)
+    {
+        if (rrh->rrh_remaining < 0 || rrh->rrh_chkpt_size < 0)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "Unable to determine size requirements.");
+            return -ENODATA;
+        }
+        else if (rrh->rrh_remaining > available_cap)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "Remaining=%zd > available-capacity=%zd",
+                           rrh->rrh_remaining, available_cap);
+            return -ENOSPC;
+        }
+    }
+    return rc;
+}
+
+static int
 rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
                                    struct raft_recovery_handle *rrh)
 {
@@ -1629,7 +1691,6 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
         return (int)available_cap;
 
     char remote_path[PATH_MAX] = {0};
-
     int rc = rsbr_bulk_recover_build_remote_path(rrh, remote_path, PATH_MAX);
     if (rc)
         return rc;
@@ -1646,31 +1707,44 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
 
     SIMPLE_LOG_MSG(LL_DEBUG, "rem=%s local=%s", remote_path, local_path);
 
-    rc = rsbr_bulk_recover_calculate_remaining(rrh, remote_path, local_path);
+    // Perform a dry-run rsync to determine the amount of data to be xfer'd
+    rc = rsbr_bulk_recover_calculate_remaining(rrh, remote_path, local_path,
+                                               available_cap);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recover_calculate_remaining(): %s",
+        SIMPLE_LOG_MSG(LL_ERROR,
+                       "rsbr_bulk_recover_calculate_remaining(pre): %s",
                        strerror(-rc));
         return rc;
     }
-    else if (rrh->rrh_remaining < 0 || rrh->rrh_chkpt_size < 0)
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "Unable to determine size requirements.");
-        return -ENODATA;
-    }
-    else if (rrh->rrh_remaining > available_cap)
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "Remaining=%zd > available-capacity=%zd",
-                       rrh->rrh_remaining, available_cap);
-        return -ENOSPC;
-    }
 
+    // Execute the actual rsync
     rc = rsbr_bulk_recover_xfer(rrh, remote_path, local_path);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recover_xfer(): %s",
                        strerror(-rc));
         return rc;
+    }
+
+    // Run another dry-run to ensure that everything is in place.
+    rrh->rrh_remaining = -1;
+    rc = rsbr_bulk_recover_calculate_remaining(rrh, remote_path, local_path,
+                                               available_cap);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR,
+                       "rsbr_bulk_recover_calculate_remaining(post): %s",
+                       strerror(-rc));
+        return rc;
+    }
+    else if (rrh->rrh_remaining != 0) // Should prove the xfer is complete
+    {
+        SIMPLE_LOG_MSG(LL_ERROR,
+                       "rrh_remaining(%zd) != 0 after rsbr_bulk_recover_calculate_remaining(post)",
+                       rrh->rrh_remaining);
+
+        return -EBADE;
     }
 
     return 0;
@@ -1693,6 +1767,7 @@ rsbr_bulk_recover(struct raft_instance *ri)
     if (!rrh)
         return -ENOENT;
 
+    // Initialize the values set by this function
     rrh->rrh_remaining = -1;
     rrh->rrh_chkpt_size = -1;
 

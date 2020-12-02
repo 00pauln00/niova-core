@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <regex.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <uuid/uuid.h>
 
 // Do not include "log.h" here!
@@ -305,6 +306,13 @@ static inline float
 timeval_2_float(const struct timeval *tv)
 {
     return (float)tv->tv_sec + (.000001 * (float)tv->tv_usec);
+}
+
+static inline void
+niova_sleep(unsigned int seconds)
+{
+    while (seconds)
+        seconds = sleep(seconds);
 }
 
 static inline unsigned long long
