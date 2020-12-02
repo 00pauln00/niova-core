@@ -1588,7 +1588,7 @@ rsbr_bulk_recover_xfer(struct raft_recovery_handle *rrh,
 static ssize_t
 rsbr_bulk_recover_get_fs_free_space(struct raft_instance *ri)
 {
-    NIOVA_ASSERT(ri && ri->ri_log);
+    NIOVA_ASSERT(ri && ri->ri_log != NULL);
 
     struct statvfs stv;
 
