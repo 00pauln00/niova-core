@@ -103,7 +103,7 @@ struct regex_pair
 
 struct regex_pair recoveryRegexes[RECOVERY__num_regex] = {
     { .rp_regex_str = RECOVERY_MARKER_REGEX },
-    { .rp_regex_str = RECOVERY_RSYNC_TOTAL_SIZE_REGEX, },
+    { .rp_regex_str = RECOVERY_RSYNC_TOTAL_SIZE_REGEX },
     { .rp_regex_str = RECOVERY_RSYNC_TOTAL_XFER_SIZE_REGEX },
     { .rp_regex_str = RECOVERY_RSYNC_PROGRESS_LINE_REGEX },
 };
@@ -1529,6 +1529,62 @@ rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
     return rc;
 }
 
+static int
+rsbr_bulk_recover_xfer_cb(const char *output, size_t len, void *arg)
+{
+    if (!output || !arg || !len)
+        return -EINVAL;
+
+    struct raft_recovery_handle *rrh = (struct raft_recovery_handle *)arg;
+
+    LOG_MSG(LL_TRACE, "%zu >> %s", len, output);
+
+    regex_t *regex =
+        &recoveryRegexes[RECOVERY_RSYNC_PROGRESS_LINE__regex].rp_regex;
+
+    int rc = regexec(regex, output, 0, NULL, 0);
+    if (rc)
+        return 0; // non-match is ok
+
+    unsigned long long val;
+
+    rc = niova_parse_comma_delimited_uint_string(output, len, &val);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "niova_parse_comma_delimited_uint_string(): %s",
+                       strerror(-rc));
+    }
+
+    if (val > rrh->rrh_completed)
+        rrh->rrh_completed = val;
+
+    return rc;
+}
+
+static int // performs a fork / exec via popen()
+rsbr_bulk_recover_xfer(struct raft_recovery_handle *rrh,
+                       const char *remote_path, const char *local_path)
+{
+    if (!rrh || !remote_path || !local_path)
+        return -EINVAL;
+
+    char cmd[PATH_MAX + 1] = {0};
+
+    int rc = snprintf(cmd, PATH_MAX, "rsync -a --info=progress2 %s %s 2>&1",
+                      remote_path, local_path);
+    if (rc > PATH_MAX)
+        return -ENAMETOOLONG;
+
+    LOG_MSG(LL_DEBUG, "cmd=`%s'", cmd);
+
+    rc = popen_cmd_out(cmd, rsbr_bulk_recover_xfer_cb, (void *)rrh);
+    if (rc)
+        LOG_MSG(LL_ERROR, "popen_cmd_out(rsync): %s", strerror(-rc));
+
+    return rc;
+}
+
 static ssize_t
 rsbr_bulk_recover_get_fs_free_space(struct raft_instance *ri)
 {
@@ -1550,7 +1606,7 @@ rsbr_bulk_recover_get_fs_free_space(struct raft_instance *ri)
         return rc;
     }
 
-    ssize_t available_cap = stv.f_bsize * stv.f_avail;
+    ssize_t available_cap = stv.f_bsize * stv.f_bavail;
 
     SIMPLE_LOG_MSG(LL_WARN, "%s available-capacity=%zd",
                    ri->ri_log, available_cap);
@@ -1609,7 +1665,13 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
         return -ENOSPC;
     }
 
-
+    rc = rsbr_bulk_recover_xfer(rrh, remote_path, local_path);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recover_xfer(): %s",
+                       strerror(-rc));
+        return rc;
+    }
 
     return 0;
 }

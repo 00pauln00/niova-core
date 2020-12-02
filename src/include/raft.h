@@ -167,6 +167,7 @@ struct raft_recovery_handle
     int64_t         rrh_peer_chkpt_idx;
     ssize_t         rrh_chkpt_size;
     ssize_t         rrh_remaining;
+    ssize_t         rrh_completed;
     size_t          rrh_rate_bytes_per_sec;
     struct timespec rrh_start;
     bool            rrh_from_recovery_marker;
