@@ -425,10 +425,12 @@ struct epm_ctx_test_data
 static void
 epoll_mgr_context_cb(void *arg)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
-
     struct epm_ctx_test_data *data = arg;
+    SIMPLE_LOG_MSG(LL_TRACE, "data %p epm %p is running %s",
+                   data, data ? data->ectd_epm : 0,
+                   data && data->ectd_is_cb_running ? "yes" : "no");
     NIOVA_ASSERT(data && data->ectd_epm);
+
 
     FATAL_IF(data->ectd_epm->epm_thread_id != pthread_self(),
              "epoll_mgr_context_cb() not running in epm context");
@@ -497,6 +499,8 @@ epm_ctx_test_data_init(struct epm_ctx_test_data *data, struct epoll_mgr *epm)
     FATAL_IF(rc, "epoll_handle_add(): unexpected rc=%d", rc);
 
     data->ectd_epm = epm;
+    data->ectd_is_cb_running = false;
+    data->ectd_msg[0] = 0;
     data->ectd_runcnt = 0;
 }
 
