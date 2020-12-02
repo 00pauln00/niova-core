@@ -6,6 +6,10 @@
 
 #ifndef _POPEN_CMD_H
 #define _POPEN_CMD_H 1
+
+typedef int popen_cmd_t;
+typedef int popen_cmd_cb_ctx_t;
+
 /**
  * popen_cmd_out - run the provided cmd and continually pass output
  */

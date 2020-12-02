@@ -1465,7 +1465,7 @@ rsbr_bulk_recover_try_parse(struct raft_recovery_handle *rrh,
     return rc;
 }
 
-static int
+static popen_cmd_cb_ctx_t
 rsbr_bulk_recover_calculate_remaining_cb(const char *output, size_t len,
                                          void *arg)
 {
@@ -1504,7 +1504,7 @@ rsbr_bulk_recover_calculate_remaining_cb(const char *output, size_t len,
  *    launch an 'rsync' probe which will calculate the size of the remote
  *    checkpoint and the amount requiring transfer.
  */
-static int // performs a fork / exec via popen()
+static popen_cmd_t // performs a fork / exec via popen()
 rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
                                       const char *remote_path,
                                       const char *local_path)
@@ -1529,7 +1529,7 @@ rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
     return rc;
 }
 
-static int
+static popen_cmd_cb_ctx_t
 rsbr_bulk_recover_xfer_cb(const char *output, size_t len, void *arg)
 {
     if (!output || !arg || !len)
@@ -1562,7 +1562,7 @@ rsbr_bulk_recover_xfer_cb(const char *output, size_t len, void *arg)
     return rc;
 }
 
-static int // performs a fork / exec via popen()
+static popen_cmd_t // performs a fork / exec via popen()
 rsbr_bulk_recover_xfer(struct raft_recovery_handle *rrh,
                        const char *remote_path, const char *local_path)
 {
