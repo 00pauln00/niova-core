@@ -13,6 +13,7 @@
 #endif
 #include <dirent.h>
 #include <regex.h>
+#include <sys/statvfs.h>
 #include <unistd.h>
 
 #define __USE_XOPEN_EXTENDED
@@ -1528,6 +1529,35 @@ rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
     return rc;
 }
 
+static ssize_t
+rsbr_bulk_recover_get_fs_free_space(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && ri->ri_log);
+
+    struct statvfs stv;
+
+    int rc = statvfs(ri->ri_log, &stv);
+    if (rc)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "statvfs(): %s", strerror(-rc));
+        return rc;
+    }
+    else if (stv.f_flag & ST_RDONLY)
+    {
+        rc = -EPERM;
+        SIMPLE_LOG_MSG(LL_ERROR, "%s is a read-only-fs", ri->ri_log);
+        return rc;
+    }
+
+    ssize_t available_cap = stv.f_bsize * stv.f_avail;
+
+    SIMPLE_LOG_MSG(LL_WARN, "%s available-capacity=%zd",
+                   ri->ri_log, available_cap);
+
+    return available_cap;
+}
+
 static int
 rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
                                    struct raft_recovery_handle *rrh)
@@ -1536,6 +1566,11 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
         rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0 ||
         !uuid_compare(rrh->rrh_peer_uuid, ri->ri_csn_this_peer->csn_uuid))
         return -EINVAL;
+
+    // Obtain the available size on the DB fs
+    const ssize_t available_cap = rsbr_bulk_recover_get_fs_free_space(ri);
+    if (available_cap < 0)
+        return (int)available_cap;
 
     char remote_path[PATH_MAX] = {0};
 
@@ -1567,6 +1602,14 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
         SIMPLE_LOG_MSG(LL_ERROR, "Unable to determine size requirements.");
         return -ENODATA;
     }
+    else if (rrh->rrh_remaining > available_cap)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Remaining=%zd > available-capacity=%zd",
+                       rrh->rrh_remaining, available_cap);
+        return -ENOSPC;
+    }
+
+
 
     return 0;
 }
