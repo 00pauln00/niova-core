@@ -4296,7 +4296,7 @@ raft_server_instance_init(struct raft_instance *ri,
                           const char *raft_uuid_str,
                           const char *this_peer_uuid_str,
                           raft_sm_request_handler_t sm_request_handler,
-                          bool sync_writes, void *arg)
+                          enum raft_instance_options opts, void *arg)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
 
@@ -4323,7 +4323,10 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
     ri->ri_backend_init_arg = arg;
-    ri->ri_synchronous_writes = sync_writes;
+    ri->ri_synchronous_writes =
+        opts & RAFT_INSTANCE_OPTIONS_SYNC_WRITES ? true : false;
+    ri->ri_auto_checkpoints_enabled =
+        opts & RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT ? true : false;
 
     ri->ri_commit_idx = -1;
     ri->ri_last_applied_idx = -1;
@@ -5036,7 +5039,7 @@ raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
                          enum raft_instance_store_type type,
-                         bool sync_writes, void *arg)
+                         enum raft_instance_options opts, void *arg)
 {
     FUNC_ENTRY(LL_NOTIFY);
 
@@ -5069,7 +5072,7 @@ raft_server_instance_run(const char *raft_uuid_str,
 
         // Initialization
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
-                                  sm_request_handler, sync_writes, arg);
+                                  sm_request_handler, opts, arg);
 
         // Raft net startup
         int raft_net_startup_rc = raft_net_instance_startup(ri, false);

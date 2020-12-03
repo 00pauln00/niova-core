@@ -89,6 +89,16 @@ enum raft_instance_store_type
     RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
 };
 
+// Options for raft_server_instance_run()
+enum raft_instance_options
+{
+    RAFT_INSTANCE_OPTIONS_NONE            = 0,
+    RAFT_INSTANCE_OPTIONS_SYNC_WRITES     = 1 << 0,
+    RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT = 1 << 1,
+    RAFT_INSTANCE_OPTIONS_DISABLE_UDP     = 1 << 2,
+    RAFT_INSTANCE_OPTIONS_DISABLE_TCP     = 1 << 3,
+};
+
 enum raft_udp_listen_sockets
 {
     RAFT_UDP_LISTEN_MIN    = 0,

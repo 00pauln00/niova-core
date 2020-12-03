@@ -942,8 +942,8 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         enum raft_instance_store_type type, bool sync_writes,
-                         void *arg);
+                         enum raft_instance_store_type type,
+                         enum raft_instance_options opts, void *arg);
 
 void
 raft_server_backend_setup_last_applied(struct raft_instance *ri,
