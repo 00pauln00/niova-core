@@ -1072,7 +1072,7 @@ rsbr_sync(struct raft_instance *ri)
 
 #define CHKPT_RESTORE_PATH_FMT "%s_%s"
 #define CHKPT_RESTORE_PATH_FMT_ARGS(db, peer) db, peer
-#define CHKPT_PATH_FMT CHKPT_RESTORE_PATH_FMT"_%ld"
+#define CHKPT_PATH_FMT CHKPT_RESTORE_PATH_FMT"_%020lu"
 #define CHKPT_PATH_FMT_ARGS(db, peer, idx) db, peer, idx
 
 static int
