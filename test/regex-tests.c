@@ -89,6 +89,17 @@ static const struct regex_item pmdbApplyCmdTests[] = {
     {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.lookup.1000000001", true},
 };
 
+static const struct regex_item raftChkptDirnameTests[] = {
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_00000000000000025027", true},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_000000000000000250270", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_0000000000000002502", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_f0000000000000025027", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_90000000000000025027", true},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_a0000000000000025027", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_289-11ea-b67c-90324b2d1e89_00000000000000025027", false},
+    {"79551132-d289-11ea-b67c-90324b2d1e89_00000000000000025027", false},
+};
+
 static const struct regex_test regexTests[] = {
     {RNCUI_V0_REGEX_BASE, rncuiTests, ARRAY_SIZE(rncuiTests)},
     {IPADDR_REGEX, ipTests, ARRAY_SIZE(ipTests)},
@@ -96,6 +107,8 @@ static const struct regex_test regexTests[] = {
      ARRAY_SIZE(pmdbApplyCmdTests)},
     {COMMA_DELIMITED_UNSIGNED_INTEGER, commaIntegerTests,
      ARRAY_SIZE(commaIntegerTests)},
+    {RAFT_CHECKPOINT_DIRNAME, raftChkptDirnameTests,
+     ARRAY_SIZE(raftChkptDirnameTests)},
 };
 
 static int
