@@ -96,6 +96,7 @@ enum recovery_regexes
     RECOVERY_RSYNC_TOTAL_XFER_SIZE__regex,
     RECOVERY_RSYNC_PROGRESS_LINE__regex,
     RECOVERY_RSYNC_PROGRESS_LINE_RATE__regex,
+    RECOVERY_CHKPT_DIRNAME__regex,
     RECOVERY__num_regex,
 };
 
@@ -111,6 +112,7 @@ struct regex_pair recoveryRegexes[RECOVERY__num_regex] = {
     { .rp_regex_str = RECOVERY_RSYNC_TOTAL_XFER_SIZE_REGEX },
     { .rp_regex_str = RECOVERY_RSYNC_PROGRESS_LINE_REGEX },
     { .rp_regex_str = RECOVERY_RSYNC_PROGRESS_LINE_RATE_REGEX },
+    { .rp_regex_str = RAFT_CHECKPOINT_DIRNAME },
 };
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -295,8 +297,13 @@ rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
         return rc;
     }
 
+    size_t path_len = strnlen(path, PATH_MAX);
+    ssize_t tmp = niova_string_find_last_instance_of_char(path, '/', path_len);
+    size_t file_name_idx = MAX(0, tmp);
+
     rc = snprintf(tmp_path, PATH_MAX, "%s/%s/%s",
-                  ribSubDirs[RIR_SUBDIR_TRASH], dir_name, path);
+                  ribSubDirs[RIR_SUBDIR_TRASH], dir_name,
+                  &path[file_name_idx]);
 
     if (rc > PATH_MAX)
         return -ENAMETOOLONG;
@@ -311,7 +318,7 @@ rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
         return rc;
     }
 
-    LOG_MSG(LL_NOTIFY, "path=%s moved to trash", path);
+    LOG_MSG(LL_WARN, "path=%s moved to trash", path);
 
     return 0;
 }
@@ -1116,6 +1123,26 @@ rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
     return rc > len ? -ENAMETOOLONG : 0;
 }
 
+static int
+rsbr_self_chkpt_scan(struct raft_instance *ri,
+                     struct raft_instance_rocks_db *rir, bool apply_chkpt_idx);
+
+static void
+rsbr_checkpoint_cleanup(struct raft_instance *ri,
+                        struct raft_instance_rocks_db *rir)
+{
+    NIOVA_ASSERT(ri && rir);
+
+    int chkpt_scan_rc = rsbr_self_chkpt_scan(ri, rir, false);
+    if (chkpt_scan_rc)
+        LOG_MSG(LL_WARN, "rsbr_self_chkpt_scan(): %s",
+                strerror(-chkpt_scan_rc));
+
+    int trash_rc = rsbr_remove_trash(ri);
+    if (trash_rc)
+        LOG_MSG(LL_WARN, "rsbr_remove_trash(): %s", strerror(-trash_rc));
+}
+
 static int64_t // checkpoint thread context
 rsbr_checkpoint(struct raft_instance *ri)
 {
@@ -1218,6 +1245,8 @@ rsbr_checkpoint(struct raft_instance *ri)
     DBG_RAFT_INSTANCE((rc ? LL_ERROR : LL_NOTIFY), ri, "checkpoint@%s: %s",
                       chkpt_path, strerror(-rc));
 
+    rsbr_checkpoint_cleanup(ri, rir);
+
     return rc ? rc : sync_idx;
 }
 
@@ -1227,7 +1256,8 @@ rsbr_log_dir_open_fd(const struct raft_instance *ri)
     return ri ? open(ri->ri_log, O_DIRECTORY | O_RDONLY) : -EINVAL;
 }
 
-static int rsbr_scandir_recovery_marker_cb(const struct dirent *dent)
+static int
+rsbr_scandir_recovery_marker_cb(const struct dirent *dent)
 {
     SIMPLE_LOG_MSG(LL_NOTIFY, "d_name=%s", dent->d_name);
 
@@ -1319,6 +1349,157 @@ rsbr_recovery_marker_scan(struct raft_instance *ri)
     }
 
     return rc;
+}
+
+static int
+rsbr_startup_self_chkpt_scan_cb(const struct dirent *dent)
+{
+    SIMPLE_LOG_MSG(LL_NOTIFY, "d_name=%s", dent->d_name);
+
+    return !regexec(&recoveryRegexes[RECOVERY_CHKPT_DIRNAME__regex].rp_regex,
+                    dent->d_name, 0, NULL, 0);
+}
+
+#define CHKPT_FILENAME_LEN ((UUID_STR_LEN * 2) + 20)
+
+static int
+rsbr_chkpt_scan_parse_entry(const struct dirent *dent, uuid_t peer_uuid,
+                            uuid_t db_uuid, raft_entry_idx_t *chkpt_idx)
+{
+    if (!dent || !chkpt_idx)
+        return -EINVAL;
+
+    else if (dent->d_reclen < CHKPT_FILENAME_LEN) // Imprecise sanity check
+        return -ERANGE;
+
+    else if (dent->d_type != DT_DIR) // Immediately filter non-directories
+        return -ENOTDIR;
+
+    char dname[CHKPT_FILENAME_LEN + 1] = {0};
+    strncpy(dname, dent->d_name, CHKPT_FILENAME_LEN);
+    dname[UUID_STR_LEN - 1] = '\0';
+    dname[(UUID_STR_LEN * 2) - 1] = '\0';
+
+    return (uuid_parse(&dname[0], peer_uuid) ||
+            uuid_parse(&dname[UUID_STR_LEN], db_uuid) ||
+            niova_string_to_unsigned_long_long(
+                &dname[UUID_STR_LEN * 2],
+                (unsigned long long *)chkpt_idx)) ? -EBADMSG : 0;
+}
+
+static int
+rsbr_self_chkpt_scan(struct raft_instance *ri,
+                     struct raft_instance_rocks_db *rir, bool apply_chkpt_idx)
+{
+    NIOVA_ASSERT(ri && rir && rir->rir_log_fd >= 0 && ri->ri_csn_this_peer);
+
+    struct dirent **self_chkpts = NULL;
+    int nents = scandirat(rir->rir_log_fd, ribSubDirs[RIR_SUBDIR_CHKPT_SELF],
+                          &self_chkpts, rsbr_startup_self_chkpt_scan_cb,
+                          alphasort);
+    if (nents < 0)
+    {
+        int rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "scandirat(): %s", strerror(-rc));
+        return rc;
+    }
+
+    size_t num_checkpoints_found = 0;
+    while (nents--)
+    {
+        const struct dirent *dent = self_chkpts[nents];
+        uuid_t peer_uuid = {0};
+        uuid_t db_uuid = {0};
+        raft_entry_idx_t chkpt_idx = 0;
+        bool trash = false;
+
+        int rc = rsbr_chkpt_scan_parse_entry(dent, peer_uuid, db_uuid,
+                                             &chkpt_idx);
+        if (rc)
+        {
+            LOG_MSG(LL_DEBUG, "d_ent=`%s': %s", dent->d_name, strerror(-rc));
+            trash = true;
+        }
+        else
+        {
+            if (uuid_compare(ri->ri_csn_this_peer->csn_uuid, peer_uuid) ||
+                uuid_compare(ri->ri_db_uuid, db_uuid))
+            {
+                trash = true;
+            }
+            else
+            {
+                ++num_checkpoints_found;
+                if (num_checkpoints_found == 1)
+                {
+                    if (apply_chkpt_idx)
+                    {
+                        ri->ri_checkpoint_last_idx = chkpt_idx;
+                        LOG_MSG(LL_WARN, "last-checkpoint-idx=%ld", chkpt_idx);
+                    }
+                    else if (ri->ri_checkpoint_last_idx != chkpt_idx)
+                    {
+                        DBG_RAFT_INSTANCE(
+                            LL_WARN, ri,
+                            "last-checkpoint-idx=%ld != ri_checkpoint_last_idx (%lld)",
+                            chkpt_idx, ri->ri_checkpoint_last_idx);
+                    }
+                }
+                else if (num_checkpoints_found > ri->ri_num_checkpoints)
+                {
+                    trash = true;
+                }
+            }
+
+            SIMPLE_LOG_MSG(
+                LL_NOTIFY,
+                "nchk=%zu trash=%s d_ent=`%s' d_type=%hhu idx=%ld",
+                num_checkpoints_found, trash ? "yes" : "no", dent->d_name,
+                dent->d_type, chkpt_idx);
+        }
+
+        if (trash)
+        {
+            char path[PATH_MAX + 1];
+            /* Convert the dent into a relative pathname which can be used by
+             * rsbr_move_item_to_trash().
+             */
+            snprintf(path, PATH_MAX, "%s/%s",
+                     ribSubDirs[RIR_SUBDIR_CHKPT_SELF], dent->d_name);
+
+            rc = rsbr_move_item_to_trash(ri, path);
+            if (rc)
+                LOG_MSG(LL_WARN, "rsbr_move_item_to_trash(`%s'): %s",
+                        path, strerror(-rc));
+        }
+
+        free(self_chkpts[nents]); // Release the array entry
+    }
+
+    free(self_chkpts); // Release the array
+
+    return 0;
+}
+
+static int
+rsbr_startup_checkpoint_scan(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_backend_arg || uuid_is_null(ri->ri_db_uuid))
+        return -EINVAL;
+
+    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
+    if (rir->rir_log_fd < 0)
+        return -EBADF;
+
+    int rc = rsbr_self_chkpt_scan(ri, rir, true);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_startup_self_chkpt_scan(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    return 0;
 }
 
 #if 0
@@ -2213,6 +2394,10 @@ rsbr_setup(struct raft_instance *ri)
 
         SIMPLE_LOG_MSG(LL_WARN, "entry-idxs: lowest=%ld highest=%ld",
                        lowest_idx, ri->ri_entries_detected_at_startup - 1);
+
+        // Scan and possibly clean the checkpoint directories
+        rc = rsbr_startup_checkpoint_scan(ri);
+        FATAL_IF(rc, "rsbr_startup_checkpoint_scan(): %s", strerror(-rc));
     }
 out:
     if (rc || err)

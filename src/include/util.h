@@ -112,6 +112,22 @@ niova_string_find_next_instance_of_char(const char *string, char char_to_find,
     return pos < max_len ? pos : (ssize_t)-ENOENT;
 }
 
+static inline ssize_t
+niova_string_find_last_instance_of_char(const char *string, char char_to_find,
+                                        const size_t len)
+{
+    if (!string || !len)
+        return (ssize_t)-EINVAL;
+
+    ssize_t pos;
+    for (pos = len - 1; pos >= 0; pos--)
+         if (string[pos] == char_to_find)
+            break;
+
+    return pos >= 0 ? pos : (ssize_t)-ENOENT;
+}
+
+
 /**
  * niova_clear_whitespace_from_end_of_string - chomps whitespace from the end
  *   of the supplied string.
