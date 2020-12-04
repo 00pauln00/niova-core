@@ -231,11 +231,15 @@ rsbr_remove_trash_cb(const char *path, const struct stat *stb, int typeflag,
         LOG_MSG((rc ? LL_ERROR : LL_DEBUG), "unlink(`%s'): %s",
                 path, strerror(rc));
         break;
-    case FTW_D:
-        rc = rmdir(path);
-        rc = rc < 0 ? errno : rc;
-        LOG_MSG((rc ? LL_ERROR : LL_DEBUG), "rmdir(`%s'): %s",
-                path, strerror(rc));
+    case FTW_D: // fall through
+    case FTW_DP:
+        if (ftwbuf->level > 0)
+        {
+            rc = rmdir(path);
+            rc = rc < 0 ? errno : rc;
+            LOG_MSG((rc ? LL_ERROR : LL_DEBUG), "rmdir(`%s'): %s",
+                    path, strerror(rc));
+        }
         break;
     default:
         LOG_MSG(LL_NOTIFY, "`%s' has unhandled type (%d)", path, typeflag);
