@@ -4617,7 +4617,7 @@ raft_server_take_chkpt(struct raft_instance *ri)
     if (rc <= 0)
         ri->ri_last_chkpt_err = rc;
 
-    DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : /*LL_INFO*/ LL_WARN), ri,
+    DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : LL_NOTIFY), ri,
                       "rib_backend_checkpoint(%zd): %s",
                       rc, rc < 0 ? strerror(-rc) : "Success");
 }
