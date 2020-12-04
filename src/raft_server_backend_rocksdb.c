@@ -1128,8 +1128,7 @@ rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
 }
 
 static int
-rsbr_self_chkpt_scan(struct raft_instance *ri,
-                     struct raft_instance_rocks_db *rir, bool apply_chkpt_idx);
+rsbr_self_chkpt_scan(struct raft_instance *ri, struct raft_instance_rocks_db *rir);
 
 static void
 rsbr_checkpoint_cleanup(struct raft_instance *ri,
@@ -1137,7 +1136,7 @@ rsbr_checkpoint_cleanup(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri && rir);
 
-    int chkpt_scan_rc = rsbr_self_chkpt_scan(ri, rir, false);
+    int chkpt_scan_rc = rsbr_self_chkpt_scan(ri, rir);
     if (chkpt_scan_rc)
         LOG_MSG(LL_WARN, "rsbr_self_chkpt_scan(): %s",
                 strerror(-chkpt_scan_rc));
@@ -1392,8 +1391,7 @@ rsbr_chkpt_scan_parse_entry(const struct dirent *dent, uuid_t db_uuid,
 }
 
 static int
-rsbr_self_chkpt_scan(struct raft_instance *ri,
-                     struct raft_instance_rocks_db *rir, bool apply_chkpt_idx)
+rsbr_self_chkpt_scan(struct raft_instance *ri, struct raft_instance_rocks_db *rir)
 {
     NIOVA_ASSERT(ri && rir && rir->rir_log_fd >= 0 && ri->ri_csn_this_peer);
 
@@ -1436,17 +1434,10 @@ rsbr_self_chkpt_scan(struct raft_instance *ri,
                 ++num_checkpoints_found;
                 if (num_checkpoints_found == 1)
                 {
-                    if (apply_chkpt_idx)
+                    if (raft_instance_is_booting(ri))
                     {
                         ri->ri_checkpoint_last_idx = chkpt_idx;
                         LOG_MSG(LL_WARN, "last-checkpoint-idx=%ld", chkpt_idx);
-                    }
-                    else if (ri->ri_checkpoint_last_idx != chkpt_idx)
-                    {
-                        DBG_RAFT_INSTANCE(
-                            LL_WARN, ri,
-                            "last-checkpoint-idx=%ld != ri_checkpoint_last_idx (%lld)",
-                            chkpt_idx, ri->ri_checkpoint_last_idx);
                     }
                 }
                 else if (num_checkpoints_found > ri->ri_num_checkpoints)
@@ -1491,11 +1482,13 @@ rsbr_startup_checkpoint_scan(struct raft_instance *ri)
     if (!ri || !ri->ri_backend_arg || uuid_is_null(ri->ri_db_uuid))
         return -EINVAL;
 
+    NIOVA_ASSERT(raft_instance_is_booting(ri));
+
     struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
     if (rir->rir_log_fd < 0)
         return -EBADF;
 
-    int rc = rsbr_self_chkpt_scan(ri, rir, true);
+    int rc = rsbr_self_chkpt_scan(ri, rir);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "rsbr_startup_self_chkpt_scan(): %s",
