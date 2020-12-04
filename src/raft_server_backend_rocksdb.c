@@ -1363,8 +1363,8 @@ rsbr_startup_self_chkpt_scan_cb(const struct dirent *dent)
 #define CHKPT_FILENAME_LEN ((UUID_STR_LEN * 2) + 20)
 
 static int
-rsbr_chkpt_scan_parse_entry(const struct dirent *dent, uuid_t peer_uuid,
-                            uuid_t db_uuid, raft_entry_idx_t *chkpt_idx)
+rsbr_chkpt_scan_parse_entry(const struct dirent *dent, uuid_t db_uuid,
+                            uuid_t peer_uuid, raft_entry_idx_t *chkpt_idx)
 {
     if (!dent || !chkpt_idx)
         return -EINVAL;
@@ -1380,8 +1380,8 @@ rsbr_chkpt_scan_parse_entry(const struct dirent *dent, uuid_t peer_uuid,
     dname[UUID_STR_LEN - 1] = '\0';
     dname[(UUID_STR_LEN * 2) - 1] = '\0';
 
-    return (uuid_parse(&dname[0], peer_uuid) ||
-            uuid_parse(&dname[UUID_STR_LEN], db_uuid) ||
+    return (uuid_parse(&dname[0], db_uuid) ||
+            uuid_parse(&dname[UUID_STR_LEN], peer_uuid) ||
             niova_string_to_unsigned_long_long(
                 &dname[UUID_STR_LEN * 2],
                 (unsigned long long *)chkpt_idx)) ? -EBADMSG : 0;
@@ -1413,7 +1413,7 @@ rsbr_self_chkpt_scan(struct raft_instance *ri,
         raft_entry_idx_t chkpt_idx = 0;
         bool trash = false;
 
-        int rc = rsbr_chkpt_scan_parse_entry(dent, peer_uuid, db_uuid,
+        int rc = rsbr_chkpt_scan_parse_entry(dent, db_uuid, peer_uuid,
                                              &chkpt_idx);
         if (rc)
         {
