@@ -2986,8 +2986,6 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%ld",
                       committed_raft_idx);
 
-//XXX the bug here is that we may get valid values but not from the committing
-//    majority and therefore we assert..
     /* The leader still has not obtained the sync_idx values from a majority
      * of its followers.  Also, ensure the ri_commit_idx is not moving
      * backwards but exempt the sync thread since it may have a stale view.
