@@ -322,7 +322,7 @@ rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
         return rc;
     }
 
-    LOG_MSG(LL_WARN, "path=%s moved to trash", path);
+    LOG_MSG(LL_NOTIFY, "path=%s moved to trash", path);
 
     return 0;
 }
