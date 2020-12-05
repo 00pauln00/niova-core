@@ -72,10 +72,10 @@
 /* The recovery marker filename will appear as
  * ".recovery_marker.<peer-uuid>_<db-uuid>"
  */
-#define RECOVERY_MARKER_NAME "recovery_marker"
+#define RECOVERY_MARKER_NAME "inprogress-recovery-db"
 #define RECOVERY_MARKER_REGEX \
-    "^\\."RECOVERY_MARKER_NAME"\\."UUID_REGEX_BASE"_"UUID_REGEX_BASE"$"
-#define RECOVERY_MARKER_NAME_LEN_WITH_PERIODS 17
+    "^"RECOVERY_MARKER_NAME"\\."UUID_REGEX_BASE"_"UUID_REGEX_BASE"$"
+#define RECOVERY_MARKER_NAME_LEN 23
 
 /* Rsync related regex's
  */
@@ -128,6 +128,13 @@ struct raft_instance_rocks_db
     rocksdb_writebatch_t                *rir_writebatch;
     struct raft_server_rocksdb_cf_table *rir_cf_table;
 };
+
+void
+rsbr_compile_time_asserts(void)
+{
+    COMPILE_TIME_ASSERT(RECOVERY_MARKER_NAME_LEN ==
+                        strnlen(RECOVERY_MARKER_NAME, PATH_MAX));
+}
 
 static void
 rsbr_entry_write(struct raft_instance *, const struct raft_entry *,
