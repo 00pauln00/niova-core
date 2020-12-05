@@ -278,15 +278,38 @@ rsbr_remove_trash(struct raft_instance *ri)
 }
 
 static int
+rsbr_log_dir_open_fd(const struct raft_instance *ri)
+{
+    return ri ? open(ri->ri_log, O_DIRECTORY | O_RDONLY) : -EINVAL;
+}
+
+static int
+rsbr_try_ri_to_rirdb_logfd(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    if (!ri->ri_backend_arg)
+        return -ENOENT;
+
+    return rsbr_ri_to_rirdb(ri)->rir_log_fd;
+}
+
+static int
 rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
 {
-    if (!ri || !path || !ri->ri_backend_arg)
+    if (!ri || !path)
         return -EINVAL;
 
-    struct raft_instance_rocks_db *rir =
-        (struct raft_instance_rocks_db *)ri->ri_backend_arg;
+    bool close_fd = false;
 
-    if (rir->rir_log_fd < 0)
+    int fd = rsbr_try_ri_to_rirdb_logfd(ri); //rir_log_fd may not yet be here
+    if (fd == -ENOENT)
+    {
+        close_fd = true;
+        fd = rsbr_log_dir_open_fd(ri);
+    }
+
+    if (fd < 0)
         return -EBADF;
 
     uuid_t dir_name_uuid;
@@ -301,7 +324,7 @@ rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
         return -ENAMETOOLONG;
 
     // Make a dir to hold the trash item to avoid name conflicts
-    rc = mkdirat(rir->rir_log_fd, tmp_path, 0750);
+    rc = mkdirat(fd, tmp_path, 0750);
     if (rc)
     {
         rc = -errno;
@@ -321,7 +344,7 @@ rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
         return -ENAMETOOLONG;
 
     // renameat() handles case where 'path' is absolute
-    rc = renameat(rir->rir_log_fd, path, rir->rir_log_fd, tmp_path);
+    rc = renameat(fd, path, fd, tmp_path);
     if (rc)
     {
         rc = -errno;
@@ -331,6 +354,16 @@ rsbr_move_item_to_trash(struct raft_instance *ri, const char *path)
     }
 
     LOG_MSG(LL_NOTIFY, "path=%s moved to trash", path);
+
+    if (close_fd)
+    {
+        int rc = close(fd);
+        if (rc < 0)
+        {
+            rc = -errno;
+            LOG_MSG(LL_ERROR, "close(%d): %s", fd, strerror(-rc));
+        }
+    }
 
     return 0;
 }
