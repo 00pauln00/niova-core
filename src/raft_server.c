@@ -2734,8 +2734,8 @@ raft_server_append_entry_reply_send(
 
 int
 raft_server_init_recovery_handle_from_marker(struct raft_instance *ri,
-                                             const char *peer_uuid_str,
-                                             const char *db_uuid_str)
+                                             const char *db_uuid_str,
+                                             const char *peer_uuid_str)
 {
     if (!ri || !peer_uuid_str || !db_uuid_str)
         return -EINVAL;
