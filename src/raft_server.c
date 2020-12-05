@@ -4581,11 +4581,13 @@ raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
         sleep(1); // Wait for the recovery thread to finish up
     }
 
+    if (!done && !ri->ri_last_chkpt_err) // Set ETIMEDOUT here
+        ri->ri_last_chkpt_err = -ETIMEDOUT;
+
     rc = ri->ri_last_chkpt_err;
     DBG_RAFT_INSTANCE(LL_WARN, ri, "ri->ri_last_chkpt_err=%d", rc);
 
-    return (!done ? -ETIMEDOUT :
-            (rc == -ENODATA) ? 0 :
+    return ((rc == -ENODATA) ? 0 :
             (rc == -EALREADY) ? 0 : rc);
 }
 
