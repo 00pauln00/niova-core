@@ -216,9 +216,10 @@ rsbr_ri_to_rirdb(struct raft_instance *ri)
     struct raft_instance_rocks_db *rir =
         (struct raft_instance_rocks_db *)ri->ri_backend_arg;
 
-    NIOVA_ASSERT(rir->rir_writeoptions_sync && rir->rir_writeoptions_async &&
-                 rir->rir_writebatch && rir->rir_readoptions);
-
+    if (ri->ri_proc_state == RAFT_PROC_STATE_RUNNING)
+        NIOVA_ASSERT(rir->rir_writeoptions_sync &&
+                     rir->rir_writeoptions_async && rir->rir_writebatch &&
+                     rir->rir_readoptions);
     return rir;
 }
 
