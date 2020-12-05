@@ -1128,8 +1128,9 @@ rsbr_sync(struct raft_instance *ri)
 #define CHKPT_PATH_FMT_ARGS(db, peer, idx) db, peer, idx
 
 static int
-rsbr_restore_path_build(const char *base, const uuid_t peer_id,
-                        const uuid_t db_id, char *restore_path, size_t len)
+rsbr_recovery_rsync_path_build(const char *base, const uuid_t peer_id,
+                               const uuid_t db_id, char *restore_path,
+                               size_t len)
 {
     if (!base || uuid_is_null(peer_id) || uuid_is_null(db_id) ||
         !restore_path || !len)
@@ -1140,6 +1141,25 @@ rsbr_restore_path_build(const char *base, const uuid_t peer_id,
 
     int rc = snprintf(restore_path, len, "%s/%s/"CHKPT_RESTORE_PATH_FMT,
                       base, ribSubDirs[RIR_SUBDIR_CHKPT_PEERS],
+                      CHKPT_RESTORE_PATH_FMT_ARGS(db_uuid, peer_uuid));
+
+    return rc >= len ? -ENAMETOOLONG : 0;
+}
+
+static int
+rsbr_recovery_inprogress_path_build(const char *base,
+                                    const struct raft_recovery_handle *rrh,
+                                    char *dest, size_t len)
+{
+    if (!base || !rrh || !dest || !len || uuid_is_null(rrh->rrh_peer_uuid) ||
+        uuid_is_null(rrh->rrh_peer_db_uuid))
+        return -EINVAL;
+
+    DECLARE_AND_INIT_UUID_STR(peer_uuid, rrh->rrh_peer_uuid);
+    DECLARE_AND_INIT_UUID_STR(db_uuid, rrh->rrh_peer_db_uuid);
+
+    int rc = snprintf(dest, len, "%s/%s."CHKPT_RESTORE_PATH_FMT,
+                      base, RECOVERY_MARKER_NAME,
                       CHKPT_RESTORE_PATH_FMT_ARGS(db_uuid, peer_uuid));
 
     return rc >= len ? -ENAMETOOLONG : 0;
@@ -1295,18 +1315,15 @@ rsbr_checkpoint(struct raft_instance *ri)
 }
 
 static int
-rsbr_log_dir_open_fd(const struct raft_instance *ri)
-{
-    return ri ? open(ri->ri_log, O_DIRECTORY | O_RDONLY) : -EINVAL;
-}
-
-static int
 rsbr_scandir_recovery_marker_cb(const struct dirent *dent)
 {
-    SIMPLE_LOG_MSG(LL_NOTIFY, "d_name=%s", dent->d_name);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "d_name=%s d_type=%hhu",
+                   dent->d_name, dent->d_type);
 
-    return !regexec(&recoveryRegexes[RECOVERY_MARKER_NAME__regex].rp_regex,
-                    dent->d_name, 0, NULL, 0);
+    return dent->d_type == DT_DIR
+        ? (!regexec(&recoveryRegexes[RECOVERY_MARKER_NAME__regex].rp_regex,
+                    dent->d_name, 0, NULL, 0))
+        : -1;
 }
 
 static int
@@ -1322,18 +1339,7 @@ rsbr_recovery_marker_scan(struct raft_instance *ri)
     // ri_incomplete_recovery conveys this function's result
     ri->ri_incomplete_recovery = false;
 
-    /* Open the log dir and ensure it's the same inode number as the currently
-     * open ri_log_fd.
-     */
-    struct stat stb = {0};
-
-    int rc = fstat(rir->rir_log_fd, &stb);
-    if (rc)
-    {
-        rc = -errno;
-        SIMPLE_LOG_MSG(LL_ERROR, "fstat(log_fd): %s", strerror(-rc));
-        return rc;
-    }
+    int rc = 0;
 
     struct dirent **recovery_marker_dents = NULL;
     int nents = scandirat(rir->rir_log_fd, ".", &recovery_marker_dents,
@@ -1344,53 +1350,49 @@ rsbr_recovery_marker_scan(struct raft_instance *ri)
         SIMPLE_LOG_MSG(LL_ERROR, "scandirat(): %s", strerror(-rc));
         return rc;
     }
-    else if (nents > 0)
+
+    int n = nents;
+    if (n > 1)
     {
-        int n = nents;
-        if (n > 1)
-        {
-            rc = -E2BIG;
-            LOG_MSG(LL_ERROR, "Multiple recovery markers detected");
-        }
-        else
-        {
-            LOG_MSG(LL_WARN, "Found lingering recovery marker `%s'",
-                    recovery_marker_dents[0]->d_name);
+        rc = -E2BIG;
+        LOG_MSG(LL_ERROR, "Multiple recovery markers detected");
+    }
+    else if (nents == 1)
+    {
+        LOG_MSG(LL_WARN, "Found lingering recovery marker `%s'",
+                recovery_marker_dents[0]->d_name);
 
-            const char *dname = recovery_marker_dents[0]->d_name;
-            char peer_uuid_str[UUID_STR_LEN] = {0};
-            char db_uuid_str[UUID_STR_LEN] = {0};
+        const char *dname = recovery_marker_dents[0]->d_name;
+        char peer_uuid_str[UUID_STR_LEN] = {0};
+        char db_uuid_str[UUID_STR_LEN] = {0};
 
-            /* These should be safe since rsbr_scandir_recovery_marker_cb()
-             * performed a regex check on the dname.
-             */
-            strncpy(peer_uuid_str,
-                    &dname[RECOVERY_MARKER_NAME_LEN_WITH_PERIODS],
-                    UUID_STR_LEN - 1);
-
-            strncpy(
-                db_uuid_str,                              // includes "_"
-                &dname[RECOVERY_MARKER_NAME_LEN_WITH_PERIODS + UUID_STR_LEN],
+        /* These should be safe since rsbr_scandir_recovery_marker_cb()
+         * performed a regex check on the dname.
+         */
+        strncpy(db_uuid_str, &dname[RECOVERY_MARKER_NAME_LEN],
                 UUID_STR_LEN - 1);
 
-            rc = raft_server_init_recovery_handle_from_marker(ri,
-                                                              peer_uuid_str,
-                                                              db_uuid_str);
-            if (rc)
-                LOG_MSG(
-                    LL_ERROR,
-                    "raft_server_init_recovery_handle_from_marker(%s): %s (%s:%s)",
-                    recovery_marker_dents[0]->d_name, strerror(-rc),
-                    peer_uuid_str, db_uuid_str);
-            else
-                ri->ri_incomplete_recovery = true; // found valid marker
-        }
+        strncpy(peer_uuid_str,  // includes "_"
+                &dname[RECOVERY_MARKER_NAME_LEN + UUID_STR_LEN],
+                UUID_STR_LEN - 1);
 
-        // Cleanup scandirat memory allocations
-        while (nents--)
-            free(recovery_marker_dents[nents]);
-        free(recovery_marker_dents);
+        rc = raft_server_init_recovery_handle_from_marker(ri, db_uuid_str,
+                                                          peer_uuid_str);
+        if (rc)
+            LOG_MSG(
+                LL_ERROR,
+                "raft_server_init_recovery_handle_from_marker(%s): %s (%s:%s)",
+                recovery_marker_dents[0]->d_name, strerror(-rc), peer_uuid_str,
+                db_uuid_str);
+        else
+            ri->ri_incomplete_recovery = true; // found valid marker
     }
+
+    // Cleanup scandirat memory allocations
+    while (nents--)
+        free(recovery_marker_dents[nents]);
+
+    free(recovery_marker_dents);
 
     return rc;
 }
@@ -1738,7 +1740,7 @@ rsbr_bulk_recover_calculate_remaining_rsync(struct raft_recovery_handle *rrh,
 
     char cmd[PATH_MAX + 1] = {0};
 
-    int rc = snprintf(cmd, PATH_MAX, "rsync -an --info=stats2 %s %s 2>&1",
+    int rc = snprintf(cmd, PATH_MAX, "rsync -an --info=stats2 %s/ %s 2>&1",
                       remote_path, local_path);
     if (rc > PATH_MAX)
         return -ENAMETOOLONG;
@@ -1816,7 +1818,10 @@ rsbr_bulk_recover_xfer_rsync(struct raft_recovery_handle *rrh,
 
     char cmd[PATH_MAX + 1] = {0};
 
-    int rc = snprintf(cmd, PATH_MAX, "rsync -a --info=progress2 %s %s 2>&1",
+    /* Ensure that a '/' is appended to the remote path so that rsync does
+     * not apply the remote's parent directory to the local path.
+     */
+    int rc = snprintf(cmd, PATH_MAX, "rsync -a --info=progress2 %s/ %s 2>&1",
                       remote_path, local_path);
     if (rc > PATH_MAX)
         return -ENAMETOOLONG;
@@ -1922,8 +1927,39 @@ rsbr_bulk_recover_calculate_remaining(struct raft_recovery_handle *rrh,
 }
 
 static int
-rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
-                                   struct raft_recovery_handle *rrh)
+rsbr_bulk_recovery_remove_current_db_contents(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    // Check the status of the last checkpoint, if 'ok', remove db/ contents
+    if (!(ri->ri_last_chkpt_err == 0 ||
+          ri->ri_last_chkpt_err == -ENODATA ||
+          ri->ri_last_chkpt_err == -EALREADY))
+    {
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "Removing 'db/' with last_chkpt_err:  %s",
+                       strerror(-ri->ri_last_chkpt_err));
+    }
+
+    // Move the contents to the trash and empty
+    int rc = rsbr_move_item_to_trash(ri, ribSubDirs[RIR_SUBDIR_DB]);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_move_item_to_trash(`%s'): %s",
+                       ribSubDirs[RIR_SUBDIR_DB], strerror(-rc));
+        return rc;
+    }
+
+    rc = rsbr_remove_trash(ri);
+    if (rc)
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_remove_trash(): %s", strerror(-rc));
+
+    return rc;
+}
+
+static int
+rsbr_bulk_recovery_import_remote_db(struct raft_instance *ri,
+                                    struct raft_recovery_handle *rrh)
 {
     if (!ri || !rrh || ri->ri_incomplete_recovery ||
         rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0 ||
@@ -1941,11 +1977,11 @@ rsbr_bulk_recover_import_remote_db(struct raft_instance *ri,
         return rc;
 
     char local_path[PATH_MAX] = {0};
-    rc = rsbr_restore_path_build(ri->ri_log, rrh->rrh_peer_db_uuid,
-                                 rrh->rrh_peer_uuid, local_path, PATH_MAX);
+    rc = rsbr_recovery_rsync_path_build(ri->ri_log, rrh->rrh_peer_uuid,
+                                 rrh->rrh_peer_db_uuid, local_path, PATH_MAX);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_restore_path_build(): %s",
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_recovery_rsync_path_build(): %s",
                        strerror(-rc));
         return rc;
     }
@@ -2003,6 +2039,45 @@ rsbr_bulk_recover_finalize_and_cleanup(struct raft_instance *ri,
 }
 
 static int
+rsbr_bulk_recovery_promote_remote_db(struct raft_instance *ri,
+                                     const struct raft_recovery_handle *rrh)
+{
+    NIOVA_ASSERT(ri && rrh);
+
+    char rsync_path[PATH_MAX + 1] = {0};
+    int rc = rsbr_recovery_rsync_path_build(ri->ri_log, rrh->rrh_peer_uuid,
+                                            rrh->rrh_peer_db_uuid, rsync_path,
+                                            PATH_MAX);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_recovery_rsync_path_build(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    char promote_path[PATH_MAX + 1] = {0};
+    rc = rsbr_recovery_inprogress_path_build(ri->ri_log, rrh, promote_path,
+                                             PATH_MAX);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_recovery_inprogress_path_build(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    rc = rename(rsync_path, promote_path);
+    if (rc)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "rename(`%s' -> `%s'): %s",
+                       rsync_path, promote_path, strerror(-rc));
+        return rc;
+    }
+
+    return 0;
+}
+
+static int
 rsbr_bulk_recover(struct raft_instance *ri)
 {
     if (!ri)
@@ -2047,14 +2122,19 @@ rsbr_bulk_recover(struct raft_instance *ri)
     int rc = 0;
     if (!rrh->rrh_from_recovery_marker)
     {
-        rc = rsbr_bulk_recover_import_remote_db(ri, rrh);
+        // These routines do their own error logging
+
+        rc = rsbr_bulk_recovery_import_remote_db(ri, rrh);
         if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR,
-                           "rsbr_bulk_recover_import_remote_db(): %s",
-                           strerror(-rc));
             return rc;
-        }
+
+        rc = rsbr_bulk_recovery_promote_remote_db(ri, rrh);
+        if (rc)
+            return rc;
+
+        rc = rsbr_bulk_recovery_remove_current_db_contents(ri);
+        if (rc)
+            return rc;
     }
 
     return rsbr_bulk_recover_finalize_and_cleanup(ri, rrh);
