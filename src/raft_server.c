@@ -5005,6 +5005,7 @@ static bool
 raft_server_bulk_recovery_can_proceed(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
+    return true;
 
     if (!ri->ri_csn_leader || !raft_server_recovery_handle_is_viable(ri))
         return false;
