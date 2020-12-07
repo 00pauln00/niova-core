@@ -2078,76 +2078,6 @@ rsbr_bulk_recovery_promote_remote_db(struct raft_instance *ri,
 }
 
 static int
-rsbr_bulk_recover(struct raft_instance *ri)
-{
-    if (!ri)
-        return -EINVAL;
-
-    // The upper level caller
-    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING);
-
-    struct raft_recovery_handle *rrh = raft_instance_2_recovery_handle(ri);
-    if (!rrh)
-        return -ENOENT;
-
-    // Initialize the values set by this function
-    rrh->rrh_remaining = -1;
-    rrh->rrh_chkpt_size = -1;
-
-    if (uuid_is_null(rrh->rrh_peer_uuid) ||
-        uuid_is_null(rrh->rrh_peer_db_uuid))
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "null peer or db-uuid");
-        return -EINVAL;
-    }
-
-    // Remove files from "db" dir
-
-    // Dry rsync
-    // Calculate local capacity and required rsync capacity
-    //   . potentially remove stale local and remote checkpoints?
-
-    // Create chkpt remote dir
-    // Rsync data (capturing status along the way..)
-    // FAIL:  Retry the same rsync several times before giving up
-
-    // Add recovery marker to "db" following a successful rsync
-    // Restore checkpoint contents to the "db" dir - use hardlinks for the
-    //     sst files and copy the others
-
-    // Prepare 'db' for use
-    //   1. make a new db-UUID
-    //   2. reset the peer-uuid in the raft entry headers
-
-    // Remove the recovery marker
-    // Cleanup all checkpoints since they're stale
-
-    int rc = 0;
-    if (!rrh->rrh_from_recovery_marker)
-    {
-        // These routines do their own error logging
-
-        rc = rsbr_bulk_recovery_import_remote_db(ri, rrh);
-        if (rc)
-            return rc;
-
-        rc = rsbr_bulk_recovery_promote_remote_db(ri, rrh);
-        if (rc)
-            return rc;
-
-    }
-
-    rc = rsbr_bulk_recovery_remove_current_db_contents(ri);
-    if (rc)
-        return rc;
-
-    // XXX open db by calling rsbr_db_open()
-
-
-    return rsbr_bulk_recover_finalize_and_cleanup(ri, rrh);
-}
-
-static int
 rsbr_destroy(struct raft_instance *ri)
 {
     if (!ri)
@@ -2512,8 +2442,6 @@ static int
 rsbr_prep_raft_instance_from_db(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
-    // Must be RAFT_PROC_STATE_BOOTING and not RAFT_PROC_STATE_RECOVERING
-    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_BOOTING);
 
     rsb_sm_get_instance_uuid(ri);
 
@@ -2546,10 +2474,12 @@ rsbr_prep_raft_instance_from_db(struct raft_instance *ri)
     SIMPLE_LOG_MSG(LL_WARN, "entry-idxs: lowest=%ld highest=%ld",
                    lowest_idx, ri->ri_entries_detected_at_startup - 1);
 
-    // Scan and possibly clean the checkpoint directories
-    rc = rsbr_startup_checkpoint_scan(ri);
-    FATAL_IF(rc, "rsbr_startup_checkpoint_scan(): %s", strerror(-rc));
-
+    // Scan and possibly clean the checkpoint directories, skip if recovering
+    if (ri->ri_proc_state == RAFT_PROC_STATE_BOOTING)
+    {
+        rc = rsbr_startup_checkpoint_scan(ri);
+        FATAL_IF(rc, "rsbr_startup_checkpoint_scan(): %s", strerror(-rc));
+    }
     return 0;
 }
 
@@ -2583,11 +2513,93 @@ rsbr_db_open(struct raft_instance *ri, struct raft_instance_rocks_db *rir)
         return -ENOTCONN;
     }
 
-    if (!recovering)
-        rc = rsbr_prep_raft_instance_from_db(ri);
-//    else
-    //  prep_for_recovery()
+    // Called in both the booting and recovery contexts
+    return rsbr_prep_raft_instance_from_db(ri);
+}
 
+static int
+rsbr_bulk_recover(struct raft_instance *ri)
+{
+    if (!ri)
+        return -EINVAL;
+
+    // The upper level caller
+    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING);
+
+    struct raft_recovery_handle *rrh = raft_instance_2_recovery_handle(ri);
+    if (!rrh)
+        return -ENOENT;
+
+    // Initialize the values set by this function
+    rrh->rrh_remaining = -1;
+    rrh->rrh_chkpt_size = -1;
+
+    if (uuid_is_null(rrh->rrh_peer_uuid) ||
+        uuid_is_null(rrh->rrh_peer_db_uuid))
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "null peer or db-uuid");
+        return -EINVAL;
+    }
+
+    // Remove files from "db" dir
+
+    // Dry rsync
+    // Calculate local capacity and required rsync capacity
+    //   . potentially remove stale local and remote checkpoints?
+
+    // Create chkpt remote dir
+    // Rsync data (capturing status along the way..)
+    // FAIL:  Retry the same rsync several times before giving up
+
+    // Add recovery marker to "db" following a successful rsync
+    // Restore checkpoint contents to the "db" dir - use hardlinks for the
+    //     sst files and copy the others
+
+    // Prepare 'db' for use
+    //   1. make a new db-UUID
+    //   2. reset the peer-uuid in the raft entry headers
+
+    // Remove the recovery marker
+    // Cleanup all checkpoints since they're stale
+
+    int rc = 0;
+    if (!rrh->rrh_from_recovery_marker)
+    {
+        // These routines do their own error logging
+
+        rc = rsbr_bulk_recovery_import_remote_db(ri, rrh);
+        if (rc)
+            return rc;
+
+        rc = rsbr_bulk_recovery_promote_remote_db(ri, rrh);
+        if (rc)
+            return rc;
+
+    }
+
+    rc = rsbr_bulk_recovery_remove_current_db_contents(ri);
+    if (rc)
+        return rc;
+
+    rc = rsbr_setup_rir(ri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_setup_rir(): %s", strerror(-rc));
+        goto out;
+    }
+
+    rc = rsbr_db_open(ri, (struct raft_instance_rocks_db *)ri->ri_backend_arg);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_db_open(): %s", strerror(-rc));
+        goto out;
+    }
+
+    //
+    rc = rsbr_bulk_recover_finalize_and_cleanup(ri, rrh);
+
+out:
+    rsbr_destroy(ri);
 
     return rc;
 }
