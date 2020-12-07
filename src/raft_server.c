@@ -3949,7 +3949,8 @@ raft_server_backend_setup_last_applied(struct raft_instance *ri,
     NIOVA_ASSERT(ri && ri->ri_last_applied_idx == -1 &&
                  ri->ri_commit_idx == -1 &&
                  ri->ri_last_applied_cumulative_crc == 0 &&
-                 raft_instance_is_booting(ri));
+                 (raft_instance_is_booting(ri) ||
+                  raft_instance_is_recovering(ri)));
 
     ri->ri_last_applied_idx = last_applied_idx;
     ri->ri_last_applied_cumulative_crc = last_applied_cumulative_crc;

@@ -750,6 +750,13 @@ raft_instance_is_running(const struct raft_instance *ri)
 }
 
 static inline bool
+raft_instance_is_recovering(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING ? true : false;
+}
+
+static inline bool
 raft_num_members_is_valid(const raft_peer_t num_raft_members)
 {
     return (num_raft_members > CTL_SVC_MAX_RAFT_PEERS ||
