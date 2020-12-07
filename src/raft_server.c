@@ -5022,13 +5022,16 @@ raft_server_bulk_recovery_can_proceed(struct raft_instance *ri)
 }
 
 static int
-raft_server_bulk_recovery(struct raft_instance *ri)
+raft_server_bulk_recovery(struct raft_instance *ri, void *arg)
 {
     if (!ri)
         return -EINVAL;
 
     else if (!raft_server_bulk_recovery_can_proceed(ri))
         return -EAGAIN;
+
+    ri->ri_proc_state = RAFT_PROC_STATE_RECOVERING;
+    ri->ri_backend_init_arg = arg;
 
     return ri->ri_backend->rib_backend_recover
         ? ri->ri_backend->rib_backend_recover(ri)
@@ -5063,7 +5066,7 @@ raft_server_instance_run(const char *raft_uuid_str,
         bool enter_bulk_recovery = ri->ri_needs_bulk_recovery;
         if (enter_bulk_recovery)
         {
-            rc = raft_server_bulk_recovery(ri);
+            rc = raft_server_bulk_recovery(ri, arg); // arg contains cf list
             SIMPLE_LOG_MSG(LL_ERROR, "raft_server_bulk_recovery(): %s",
                            strerror(-rc));
 
@@ -5071,7 +5074,7 @@ raft_server_instance_run(const char *raft_uuid_str,
             break;
         }
 
-        // Initialization
+        // Initialization - this resets the raft instance's contents
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
                                   sm_request_handler, opts, arg);
 

@@ -241,7 +241,7 @@ rsbr_remove_trash_cb(const char *path, const struct stat *stb, int typeflag,
         break;
     case FTW_D: // fall through
     case FTW_DP:
-        if (ftwbuf->level > 0)
+        if (ftwbuf->level > 0) // Don't remove the top level dir ("trash/")
         {
             rc = rmdir(path);
             rc = rc < 0 ? errno : rc;
@@ -1323,7 +1323,7 @@ rsbr_scandir_recovery_marker_cb(const struct dirent *dent)
     return dent->d_type == DT_DIR
         ? (!regexec(&recoveryRegexes[RECOVERY_MARKER_NAME__regex].rp_regex,
                     dent->d_name, 0, NULL, 0))
-        : -1;
+        : 0; // returning '0' filters entry per scandirat(3)
 }
 
 static int
@@ -1943,7 +1943,7 @@ rsbr_bulk_recovery_remove_current_db_contents(struct raft_instance *ri)
 
     // Move the contents to the trash and empty
     int rc = rsbr_move_item_to_trash(ri, ribSubDirs[RIR_SUBDIR_DB]);
-    if (rc)
+    if (rc && rc != -ENOENT)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "rsbr_move_item_to_trash(`%s'): %s",
                        ribSubDirs[RIR_SUBDIR_DB], strerror(-rc));
@@ -2083,6 +2083,9 @@ rsbr_bulk_recover(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
+    // The upper level caller
+    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING);
+
     struct raft_recovery_handle *rrh = raft_instance_2_recovery_handle(ri);
     if (!rrh)
         return -ENOENT;
@@ -2132,10 +2135,14 @@ rsbr_bulk_recover(struct raft_instance *ri)
         if (rc)
             return rc;
 
-        rc = rsbr_bulk_recovery_remove_current_db_contents(ri);
-        if (rc)
-            return rc;
     }
+
+    rc = rsbr_bulk_recovery_remove_current_db_contents(ri);
+    if (rc)
+        return rc;
+
+    // XXX open db by calling rsbr_db_open()
+
 
     return rsbr_bulk_recover_finalize_and_cleanup(ri, rrh);
 }
@@ -2197,30 +2204,10 @@ rsbr_destroy(struct raft_instance *ri)
 }
 
 static int
-rsbr_subdirs_setup(struct raft_instance *ri)
+rsbr_setup_create_subdirs(struct raft_instance_rocks_db *rir)
 {
-    if (!ri || !ri->ri_backend_arg)
+    if (!rir || rir->rir_log_fd < 0)
         return -EINVAL;
-
-    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
-
-    int rc = file_util_pathname_build(ri->ri_log);
-    if (rc)
-    {
-         SIMPLE_LOG_MSG(LL_ERROR, "file_util_pathname_build(%s): %s",
-                        ri->ri_log, strerror(-rc));
-         return rc;
-    }
-
-    rir->rir_log_fd = rsbr_log_dir_open_fd(ri);
-
-    if (rir->rir_log_fd < 0)
-    {
-        int rc = -errno;
-        SIMPLE_LOG_MSG(LL_ERROR, "open(%s): %s", ri->ri_log, strerror(-rc));
-
-        return rc;
-    }
 
     for (enum raft_instance_rocks_db_subdirs i = RIR_SUBDIR__MIN;
          i < RIR_SUBDIR__MAX; i++)
@@ -2257,8 +2244,40 @@ rsbr_subdirs_setup(struct raft_instance *ri)
             }
         }
     }
-
     return 0;
+}
+
+static int
+rsbr_subdirs_setup(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_backend_arg)
+        return -EINVAL;
+
+    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
+
+    int rc = file_util_pathname_build(ri->ri_log);
+    if (rc)
+    {
+         SIMPLE_LOG_MSG(LL_ERROR, "file_util_pathname_build(%s): %s",
+                        ri->ri_log, strerror(-rc));
+         return rc;
+    }
+
+    rir->rir_log_fd = rsbr_log_dir_open_fd(ri);
+
+    if (rir->rir_log_fd < 0)
+    {
+        int rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "open(%s): %s", ri->ri_log, strerror(-rc));
+
+        return rc;
+    }
+
+    // Directories are not created in recovery mode.
+    rc = (ri->ri_proc_state != RAFT_PROC_STATE_RECOVERING) ?
+        rsbr_setup_create_subdirs(rir) : 0;
+
+    return rc;
 }
 
 static int
@@ -2316,10 +2335,70 @@ rsbr_recovery_regex_release(void)
         regfree(&recoveryRegexes[i].rp_regex);
 }
 
+/**
+ * rsbr_setup_rir_rockdsdb_items - configure and allocate rocksdb related
+ *    options and handle.
+ * NOTE:  caller is responsible for issuing rsbr_destroy() on failure.
+ */
 static int
-rsbr_setup(struct raft_instance *ri)
+rsbr_setup_rir_rockdsdb_items(struct raft_instance_rocks_db *rir)
 {
-    if (!ri || ri->ri_backend != &ribRocksDB)
+    rir->rir_options = rocksdb_options_create();
+    if (!rir->rir_options)
+        return -ENOMEM;
+
+    rocksdb_options_set_create_if_missing(rir->rir_options, 0);
+    rocksdb_options_set_create_missing_column_families(rir->rir_options, 1);
+
+    // These are options for future consideration
+//     const long int cpus = sysconf(_SC_NPROCESSORS_ONLN);
+//    rocksdb_options_increase_parallelism(rir->rir_options, (int)(cpus));
+//    rocksdb_options_set_use_direct_reads(rir->rir_options, 1);
+//    rocksdb_options_set_use_direct_io_for_flush_and_compaction(
+//        rir->rir_options, 1);
+
+    /* The documentation around this option is a bit confusing.  At this time,
+     * I don't think the option is needed for pumiceDB (which uses multiple
+     * CFs) since there's no explicit flushing of WALs or disabling of WALs for
+     * specific CF operations.
+     */
+    /* See https://github.com/facebook/rocksdb/wiki/Atomic-flush
+     * Users of this backend are expected to use column families.
+     */
+//    rocksdb_options_set_atomic_flush(rir->rir_options, 1);
+
+
+    rir->rir_writeoptions_sync = rocksdb_writeoptions_create();
+    if ( rir->rir_writeoptions_sync)
+        rocksdb_writeoptions_set_sync(rir->rir_writeoptions_sync, 1);
+    else
+        return -ENOMEM;
+
+    // Make a non-sync option as well.
+    rir->rir_writeoptions_async = rocksdb_writeoptions_create();
+    if (!rir->rir_writeoptions_async)
+        return -ENOMEM;
+
+    rir->rir_readoptions = rocksdb_readoptions_create();
+    if (!rir->rir_readoptions)
+        return -ENOMEM;
+
+    rir->rir_writebatch = rocksdb_writebatch_create();
+    if (!rir->rir_writebatch)
+        return -ENOMEM;
+
+    return 0;
+}
+
+/**
+ * rsbr_setup_rir - allocate, initialize and configure the
+ *    raft_instance_rocks_db structure and members.
+ * NOTE:  caller is responsible for issuing rsbr_destroy() on failure.
+ */
+static int
+rsbr_setup_rir(struct raft_instance *ri)
+{
+    if (!ri)
         return -EINVAL;
 
     else if (ri->ri_backend_arg)
@@ -2334,43 +2413,6 @@ rsbr_setup(struct raft_instance *ri)
     struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
     rir->rir_log_fd = -1;
 
-    int rc = rsbr_subdirs_setup(ri);
-    if (rc)
-    {
-         rsbr_destroy(ri);
-         return rc;
-    }
-
-    // Remove trash items before starting up
-    rsbr_remove_trash(ri);
-
-    // Check for an existing recovery marker
-    rc = rsbr_setup_detect_recovery(ri);
-    if (rc)
-    {
-        rsbr_destroy(ri);
-        return rc;
-    }
-
-    // The db will live in a subdir of 'ri->ri_log'
-    char rocksdb_dir[PATH_MAX] = {0};
-    rc = snprintf(rocksdb_dir, PATH_MAX, "%s/%s", ri->ri_log,
-                  ribSubDirs[RIR_SUBDIR_DB]);
-    if (rc > PATH_MAX)
-    {
-        rsbr_destroy(ri);
-        return -ENAMETOOLONG;
-    }
-    // Reset return code
-    rc = 0;
-
-    rir->rir_options = rocksdb_options_create();
-    if (!rir->rir_options)
-    {
-        rsbr_destroy(ri);
-        return -ENOMEM;
-    }
-
     /* The user may have passed in a list of column family names which are to
      * be opened.  These must be specified at db-open() time.
      */
@@ -2378,64 +2420,62 @@ rsbr_setup(struct raft_instance *ri)
         rir->rir_cf_table =
             (struct raft_server_rocksdb_cf_table *)ri->ri_backend_init_arg;
 
+    int rc = rsbr_subdirs_setup(ri);
+    if (rc)
+         return rc;
 
-//     const long int cpus = sysconf(_SC_NPROCESSORS_ONLN);
-//    rocksdb_options_increase_parallelism(rir->rir_options, (int)(cpus));
+    return rsbr_setup_rir_rockdsdb_items(rir);
+}
 
-//    rocksdb_options_set_use_direct_reads(rir->rir_options, 1);
+static int
+rsbr_make_db_pathname(const struct raft_instance *ri,
+                      struct raft_instance_rocks_db *rir,
+                      char *path, size_t len)
+{
+    if (!ri || !rir || !path || !len)
+        return -EINVAL;
 
-//    rocksdb_options_set_use_direct_io_for_flush_and_compaction(
-//        rir->rir_options, 1);
-
-    rir->rir_writeoptions_sync = rocksdb_writeoptions_create();
-    if (!rir->rir_writeoptions_sync)
+    int rc;
+    if (ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING)
     {
-        rsbr_destroy(ri);
-        return -ENOMEM;
+        rc = rsbr_recovery_inprogress_path_build(ri->ri_log,
+                                                 &ri->ri_recovery_handle,
+                                                 path, len);
+    }
+    else
+    {
+        rc = snprintf(path, len, "%s/%s", ri->ri_log,
+                      ribSubDirs[RIR_SUBDIR_DB]);
+        rc = (rc < 0 ? rc :
+              rc >= PATH_MAX ? -ENAMETOOLONG : 0);
     }
 
-    rocksdb_writeoptions_set_sync(rir->rir_writeoptions_sync, 1);
+    return rc;
+}
 
-    // Make a non-sync option as well.
-    rir->rir_writeoptions_async = rocksdb_writeoptions_create();
-    if (!rir->rir_writeoptions_async)
+static int
+rsbr_db_open_internal(const struct raft_instance *ri,
+                      struct raft_instance_rocks_db *rir, bool create_db)
+{
+    NIOVA_ASSERT(ri && rir && rir->rir_options);
+    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_BOOTING ||
+                 ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING);
+
+    if (create_db)
+        rocksdb_options_set_create_if_missing(rir->rir_options, 1);
+
+    char rocksdb_dir[PATH_MAX] = {0};
+    int rc = rsbr_make_db_pathname(ri, rir, rocksdb_dir, PATH_MAX);
+    if (rc)
     {
-        rsbr_destroy(ri);
-        return -ENOMEM;
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_setup_db_make_pathname(): %s",
+                       strerror(-rc));
+        return rc;
     }
-
-    rir->rir_readoptions = rocksdb_readoptions_create();
-    if (!rir->rir_readoptions)
-    {
-        rc = -ENOMEM;
-        goto out;
-    }
-
-    rir->rir_writebatch = rocksdb_writebatch_create();
-    if (!rir->rir_writebatch)
-    {
-        rc = -ENOMEM;
-        goto out;
-    }
-
-    char *err = NULL;
-
-    rocksdb_options_set_create_if_missing(rir->rir_options, 0);
-    rocksdb_options_set_create_missing_column_families(rir->rir_options, 1);
-    /* The documentation around this option is a bit confusing.  At this time,
-     * I don't think the option is needed for pumiceDB (which uses multiple
-     * CFs) since there's no explicit flushing of WALs or disabling of WALs for
-     * specific CF operations.
-     */
-//    rocksdb_options_set_atomic_flush(rir->rir_options, 1);
-
-    /* See https://github.com/facebook/rocksdb/wiki/Atomic-flush
-     * Users of this backend are expected to use column families.
-     */
-//    rocksdb_options_set_atomic_flush(rir->rir_options, 1);
 
     struct raft_server_rocksdb_cf_table *cft = rir->rir_cf_table;
 
+    // Prepare cf array
     const rocksdb_options_t *cft_opts[RAFT_ROCKSDB_MAX_CF];
     if (cft && cft->rsrcfe_num_cf)
     {
@@ -2444,81 +2484,139 @@ rsbr_setup(struct raft_instance *ri)
             cft_opts[i] = rir->rir_options;
     }
 
+    char *err = NULL;
+
     rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
         rocksdb_open_column_families(rir->rir_options, rocksdb_dir,
                                      cft->rsrcfe_num_cf, cft->rsrcfe_cf_names,
                                      cft_opts, cft->rsrcfe_cf_handles, &err) :
         rocksdb_open(rir->rir_options, rocksdb_dir, &err);
 
-    if (!rir->rir_db || err)
+    rc = (!rir->rir_db || err) ? -ENOENT : 0; // enoent is merely a guess
+
+    SIMPLE_LOG_MSG((rc ? LL_ERROR : LL_WARN), "%s(`%s'): %s (try-create=%s)",
+                   (cft && cft->rsrcfe_num_cf) ?
+                   "rocksdb_open_column_families" : "rocksdb_open",
+                   rocksdb_dir, err ? err : "Success",
+                   create_db ? "yes" : "no");
+
+    return rc;
+}
+
+/**
+ * rsbr_prep_raft_instance_from_db - this function takes the recently opened
+ *    rocksdb and scans for "metadata" K/V pairs and checkpoints to prepare
+ *    the raft instance.
+ */
+static int
+rsbr_prep_raft_instance_from_db(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    // Must be RAFT_PROC_STATE_BOOTING and not RAFT_PROC_STATE_RECOVERING
+    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_BOOTING);
+
+    rsb_sm_get_instance_uuid(ri);
+
+    int rc = 0;
+
+    /* Determine the number of entries which this backend instance contains
+     * and write that value into the raft_instance structure.
+     */
+    ri->ri_entries_detected_at_startup = rsbr_num_entries_calc(ri);
+    if (ri->ri_entries_detected_at_startup < 0)
     {
-        // DB may not be created
-        err = NULL;
+        rc = ri->ri_entries_detected_at_startup;
+        FATAL_IF(rc, "rsbr_num_entries_calc(): %s", strerror(-rc));
+    }
 
-        rocksdb_options_set_create_if_missing(rir->rir_options, 1);
-//        rir->rir_db = rocksdb_open(rir->rir_options, rocksdb_dir, &err);
+    raft_entry_idx_t lowest_idx = -1;
+    if (ri->ri_entries_detected_at_startup > 0)
+    {
+        rc = rsbr_lowest_entry_get(ri, &lowest_idx);
+        FATAL_IF(rc, "rsbr_lowest_entry_get(): %s", strerror(-rc));
+    }
+    niova_atomic_init(&ri->ri_lowest_idx, lowest_idx);
 
-        rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
-            rocksdb_open_column_families(rir->rir_options, rocksdb_dir,
-                                         cft->rsrcfe_num_cf,
-                                         cft->rsrcfe_cf_names,
-                                         cft_opts, cft->rsrcfe_cf_handles,
-                                         &err) :
-            rocksdb_open(rir->rir_options, rocksdb_dir, &err);
+    /* Applications which store their application data in RocksDB may
+     * bypass the entries which have already been applied.
+     */
+    if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP)
+        rsb_sm_get_last_applied_kv_idx(ri);
 
-        if (rir->rir_db && !err)
+    SIMPLE_LOG_MSG(LL_WARN, "entry-idxs: lowest=%ld highest=%ld",
+                   lowest_idx, ri->ri_entries_detected_at_startup - 1);
+
+    // Scan and possibly clean the checkpoint directories
+    rc = rsbr_startup_checkpoint_scan(ri);
+    FATAL_IF(rc, "rsbr_startup_checkpoint_scan(): %s", strerror(-rc));
+
+    return 0;
+}
+
+static int
+rsbr_db_open(struct raft_instance *ri, struct raft_instance_rocks_db *rir)
+{
+    NIOVA_ASSERT(ri && rir);
+    NIOVA_ASSERT(ri->ri_proc_state == RAFT_PROC_STATE_BOOTING ||
+                 ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING);
+
+    const bool recovering = ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING ?
+        true : false;
+
+    int rc = rsbr_db_open_internal(ri, rir, false);
+
+    if (rc && !recovering) // Try to 'create' the db if the first open failed
+    {
+        rc = rsbr_db_open_internal(ri, rir, true);
+        if (!rc)
         {
             rc = rsbr_init_header(ri);
             if (rc)
-            {
                 SIMPLE_LOG_MSG(LL_ERROR, "rsbr_init_header(): %s",
-                               strerror(rc));
-                goto out;
-            }
-        }
-        else
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_open(): %s", err);
-            rc = -ENOTCONN;
-            goto out;
+                               strerror(-rc));
         }
     }
 
-    /* If all is well to this point, determine the number of entries which
-     * this backend instance contains and write that value into the
-     * raft_instance structure.
-     */
-    if (!rc && !err)
+    if (rc)
     {
-        rsb_sm_get_instance_uuid(ri);
-
-        ri->ri_entries_detected_at_startup = rsbr_num_entries_calc(ri);
-        if (ri->ri_entries_detected_at_startup < 0)
-            rc = ri->ri_entries_detected_at_startup;
-
-        raft_entry_idx_t lowest_idx = -1;
-        if (ri->ri_entries_detected_at_startup > 0)
-        {
-            rc = rsbr_lowest_entry_get(ri, &lowest_idx);
-            FATAL_IF(rc, "rsbr_lowest_entry_get(): %s", strerror(-rc));
-        }
-        niova_atomic_init(&ri->ri_lowest_idx, lowest_idx);
-
-        /* Applications which store their application data in RocksDB may
-         * bypass the entries which have already been applied.
-         */
-        if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP)
-            rsb_sm_get_last_applied_kv_idx(ri);
-
-        SIMPLE_LOG_MSG(LL_WARN, "entry-idxs: lowest=%ld highest=%ld",
-                       lowest_idx, ri->ri_entries_detected_at_startup - 1);
-
-        // Scan and possibly clean the checkpoint directories
-        rc = rsbr_startup_checkpoint_scan(ri);
-        FATAL_IF(rc, "rsbr_startup_checkpoint_scan(): %s", strerror(-rc));
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_db_open_internal(): %s", strerror(-rc));
+        return -ENOTCONN;
     }
+
+    if (!recovering)
+        rc = rsbr_prep_raft_instance_from_db(ri);
+//    else
+    //  prep_for_recovery()
+
+
+    return rc;
+}
+
+static int
+rsbr_setup(struct raft_instance *ri)
+{
+    if (!ri || ri->ri_backend != &ribRocksDB)
+        return -EINVAL;
+
+    int rc = rsbr_setup_rir(ri);
+    if (rc)
+        goto out;
+
+    // Remove trash items before starting up
+    rsbr_remove_trash(ri);
+
+    /* Check for an existing recovery process.  If present return an error
+     * here so that caller may choose to complete the recovery process.
+     */
+    rc = rsbr_setup_detect_recovery(ri);
+    if (rc)
+        goto out;
+
+    struct raft_instance_rocks_db *rir = ri->ri_backend_arg;
+    rc = rsbr_db_open(ri, rir);
+
 out:
-    if (rc || err)
+    if (rc)
         rsbr_destroy(ri);
 
     return rc;
