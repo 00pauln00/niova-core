@@ -50,7 +50,11 @@
 #define RAFT_LOG_HEADER_LAST_APPLIED_ROCKSDB_STRLEN 19
 
 #define RAFT_LOG_HEADER_UUID RAFT_LOG_HEADER_ROCKSDB_END"UUID"
-#define RAFT_LOG_HEADER_UUID_STRLEN 11
+#define RAFT_LOG_HEADER_UUID_STRLEN (RAFT_LOG_HEADER_ROCKSDB_END_STRLEN + 4)
+
+#define RAFT_LOG_HEADER_UUID_PRE_RECOVERY RAFT_LOG_HEADER_UUID".pre-recovery"
+#define RAFT_LOG_HEADER_UUID_PRE_RECOVERY_STRLEN \
+    (RAFT_LOG_HEADER_UUID_STRLEN + 13)
 
 #define RAFT_LOG_LASTENTRY_ROCKSDB "z0_last."
 #define RAFT_LOG_LASTENTRY_ROCKSDB_STRLEN 8
@@ -548,6 +552,13 @@ rsb_sm_get_instance_uuid(struct raft_instance *ri)
                                strerror(-rc));
 
     uuid_copy(ri->ri_db_uuid, instance_uuid);
+
+    // Try to copy the recovery db uuid if it's present.
+    rc = rsbr_get_exact_val_size(rir, RAFT_LOG_HEADER_UUID_PRE_RECOVERY,
+                                 RAFT_LOG_HEADER_UUID_PRE_RECOVERY_STRLEN,
+                                 (char *)instance_uuid, sizeof(uuid_t));
+    if (!rc)
+        uuid_copy(ri->ri_db_recovery_uuid, instance_uuid);
 }
 
 static void
@@ -582,6 +593,40 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
      * however, the sync WAL option generally be avoided here.
      */
     rocksdb_write(rir->rir_db, rir->rir_writeoptions_async,
+                  rir->rir_writebatch, &err);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
+
+    rocksdb_writebatch_clear(rir->rir_writebatch);
+}
+
+/**
+ * rsbr_entry_header_write_recovery_scrub - this function synchronously writes
+ *    a header independently from its entry.  It is only used by recovery.
+ */
+static void
+rsbr_entry_header_write_recovery_scrub(struct raft_instance *ri,
+                                       const struct raft_entry_header *reh)
+{
+    NIOVA_ASSERT(ri && reh && raft_instance_is_recovering(ri));
+
+    raft_entry_idx_t entry_idx = reh->reh_index;
+
+    struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
+
+    rocksdb_writebatch_clear(rir->rir_writebatch);
+
+    size_t entry_header_key_len = 0;
+    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+                                (ssize_t *)&entry_header_key_len,
+                                RAFT_ENTRY_HEADER_KEY_PRINTF, entry_idx);
+
+    rocksdb_writebatch_put(rir->rir_writebatch, entry_header_key,
+                           entry_header_key_len, (const char *)reh,
+                           sizeof(struct raft_entry_header));
+    char *err = NULL;
+    // Always use synchronous writes here.
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync,
                   rir->rir_writebatch, &err);
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
@@ -822,10 +867,16 @@ rsbr_init_header(struct raft_instance *ri)
     if (!ri || !ri->ri_raft_uuid_str || !ri->ri_this_peer_uuid_str)
         return -EINVAL;
 
-    memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
-
-    // Since we're initializing the header block this is ok
-    ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
+    if (raft_instance_is_recovering(ri))
+    {
+        NIOVA_ASSERT(ri->ri_log_hdr.rlh_magic == RAFT_HEADER_MAGIC);
+        memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
+    }
+    else
+    {
+        // Since we're initializing the header block this is ok
+        ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
+    }
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
@@ -848,6 +899,13 @@ rsbr_init_header(struct raft_instance *ri)
     rocksdb_writebatch_put(rir->rir_writebatch, RAFT_LOG_HEADER_UUID,
                            RAFT_LOG_HEADER_UUID_STRLEN,
                            (const char *)instance_uuid, sizeof(uuid_t));
+
+    // We must put the current raft-log-header uuid if recovering
+    if (raft_instance_is_recovering(ri))
+         rocksdb_writebatch_put(rir->rir_writebatch,
+                                RAFT_LOG_HEADER_UUID_PRE_RECOVERY,
+                                RAFT_LOG_HEADER_UUID_PRE_RECOVERY_STRLEN,
+                                (const char *)ri->ri_db_uuid, sizeof(uuid_t));
 
     char *err = NULL;
     // Log header writes are always synchronous
@@ -2031,10 +2089,108 @@ rsbr_bulk_recovery_import_remote_db(struct raft_instance *ri,
     return 0;
 }
 
-static int //XXX todo
-rsbr_bulk_recover_finalize_and_cleanup(struct raft_instance *ri,
-                                       const struct raft_recovery_handle *rrh)
+static int
+rsbr_bulk_recovery_db_scrub_entry_headers(
+    struct raft_instance *ri,
+    const struct raft_recovery_handle *rrh)
 {
+    NIOVA_ASSERT(ri && rrh && raft_instance_is_recovering(ri));
+    NIOVA_ASSERT(uuid_compare(ri->ri_csn_this_peer->csn_uuid,
+                              rrh->rrh_peer_uuid));
+
+    raft_entry_idx_t start = ri->ri_lowest_idx;
+    raft_entry_idx_t end = ri->ri_entries_detected_at_startup;
+
+    NIOVA_ASSERT(start >= 0 && end >= 0 && start <= end);
+    struct raft_entry_header reh;
+
+    for (raft_entry_idx_t i = start; i < end; i++)
+    {
+        int rc = rsbr_entry_header_read(ri, &reh);
+        if (rc || reh.reh_magic != RAFT_ENTRY_MAGIC || reh.reh_index != i)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "");
+            return rc;
+        }
+
+        // Modify only this item:
+        uuid_copy(reh.reh_self_uuid, ri->ri_csn_this_peer->csn_uuid);
+        rsbr_entry_header_write_recovery_scrub(ri, &reh);
+
+        DBG_RAFT_ENTRY(LL_WARN, &reh, "");
+
+    }
+
+    return 0;
+}
+
+/**
+ * rsbr_bulk_recovery_db_scrub - this function opens the recovered db and
+ *    replaces the db-uuid, log-header, and raft entry headers from the old
+ *    with the uuid's from this instance.  The challenge here is that this
+ *    process must be idempotent from the perspective of the caller so that
+ *    incomplete scrubs may be resumed on the next restart.  One could take
+ *    the approach of staging all modifications into a rocksdb writebatch but
+ *    that may require large amounts of memory depending on the raft entry
+ *    log size.
+ */
+static int
+rsbr_bulk_recovery_db_scrub(struct raft_instance *ri,
+                            const struct raft_recovery_handle *rrh)
+{
+    NIOVA_ASSERT(ri && rrh && raft_instance_is_recovering(ri));
+
+    DECLARE_AND_INIT_UUID_STR(ri_db_uuid_str, ri->ri_db_uuid);
+    DECLARE_AND_INIT_UUID_STR(ri_db_recover_uuid_str, ri->ri_db_recovery_uuid);
+    DECLARE_AND_INIT_UUID_STR(rrh_db_uuid_str, rrh->rrh_peer_db_uuid);
+    DECLARE_AND_INIT_UUID_STR(rrh_peer_uuid_str, rrh->rrh_peer_uuid);
+
+    // The rrh db uuid must match the one from the currently opened db
+    if (uuid_compare(ri->ri_db_uuid, rrh->rrh_peer_db_uuid) &&
+        uuid_compare(ri->ri_db_recovery_uuid, rrh->rrh_peer_db_uuid))
+    {
+        SIMPLE_LOG_MSG(LL_ERROR,
+                       "expected db-uuid=%s or recovery-uuid=%s found db=%s",
+                       rrh_db_uuid_str, ri_db_recover_uuid_str,
+                       ri_db_uuid_str);
+
+        return -ENODEV;
+    }
+
+    // Stash our uuid string temporarily for a call to rsbr_header_load()
+    const char *tmp_this_peer_uuid_str = ri->ri_this_peer_uuid_str;
+    ri->ri_this_peer_uuid_str = rrh_peer_uuid_str;
+
+    int rc = rsbr_header_load(ri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_header_load(): %s", strerror(-rc));
+        return rc;
+    }
+
+    rc = rsbr_bulk_recovery_db_scrub_entry_headers(ri, rrh);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR,
+                       "rsbr_bulk_recovery_db_scrub_entry_headers(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    /* Restore the original uuid string and re-init the header.  Note that
+     * rsbr_init_header() will not clear the current log header contents
+     * (read in above) due to the presence of RAFT_PROC_STATE_RECOVERING.
+     * rsbr_init_header() regenerates the db-uuid.  This step comes after the
+     * entry headers have been replaced.
+     */
+    ri->ri_this_peer_uuid_str = tmp_this_peer_uuid_str;
+    rc = rsbr_init_header(ri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_init_header(): %s", strerror(-rc));
+        return rc;
+    }
+
     return 0;
 }
 
@@ -2595,10 +2751,16 @@ rsbr_bulk_recover(struct raft_instance *ri)
         goto out;
     }
 
-    //
-    rc = rsbr_bulk_recover_finalize_and_cleanup(ri, rrh);
+    rc = rsbr_bulk_recovery_db_scrub(ri, rrh);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_bulk_recovery_db_scrub(): %s",
+                       strerror(-rc));
+        goto out;
+    }
 
 out:
+    // rsbr_destroy() regardless of error
     rsbr_destroy(ri);
 
     return rc;

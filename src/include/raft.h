@@ -404,6 +404,7 @@ struct raft_instance
     const char                     *ri_raft_uuid_str;
     const char                     *ri_this_peer_uuid_str;
     uuid_t                          ri_db_uuid; // set by backend
+    uuid_t                          ri_db_recovery_uuid; // set by backend
     struct raft_candidate_state     ri_candidate;
     struct raft_leader_state        ri_leader;
     enum raft_state                 ri_state;
