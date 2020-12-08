@@ -1157,6 +1157,17 @@ rsbr_log_reap(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write(): %s", err);
     rocksdb_writebatch_destroy(wb);
+
+    // Compact the items which were just removed.
+    rocksdb_compact_range(rir->rir_db, start_entry_key, start_entry_key_len,
+                          end_entry_key, end_entry_key_len);
+
+    rocksdb_delete_file_in_range(rir->rir_db, start_entry_key,
+                                 start_entry_key_len, end_entry_key,
+                                 end_entry_key_len, &err);
+    if (err)
+        DBG_RAFT_INSTANCE(LL_ERROR, ri, "rocksdb_delete_file_in_range(): %s",
+                          err);
 }
 
 static int // runs in sync thread context
