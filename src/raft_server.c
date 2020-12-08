@@ -4554,6 +4554,11 @@ raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
                 "bypassing checkpoint operation due to configuration");
         return 0;
     }
+    else if (raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC) < 0)
+    {
+        return 0;
+    }
+
 
     raft_entry_idx_t last_idx = ri->ri_checkpoint_last_idx;
 
@@ -4599,7 +4604,10 @@ raft_server_take_chkpt(struct raft_instance *ri)
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
 
     if (sync_idx < 0)
+    {
+        ri->ri_last_chkpt_err = -ENODATA;
         return;
+    }
 
     struct timespec io_op[2];
     niova_unstable_clock(&io_op[0]);
