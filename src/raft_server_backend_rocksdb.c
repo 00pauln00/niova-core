@@ -2232,6 +2232,7 @@ rsbr_bulk_recovery_promote_scrubbed_db(struct raft_instance *ri,
 
     char db_path[PATH_MAX + 1] = {0};
     rc = rsbr_make_db_pathname(ri, db_path, PATH_MAX);
+    if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "rsbr_make_db_pathname(): %s", strerror(-rc));
         return rc;
