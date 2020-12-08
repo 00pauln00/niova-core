@@ -182,19 +182,19 @@ static int
 rsbr_bulk_recover(struct raft_instance *);
 
 static struct raft_instance_backend ribRocksDB = {
-    .rib_entry_write        = rsbr_entry_write,
-    .rib_entry_read         = rsbr_entry_read,
-    .rib_entry_header_read  = rsbr_entry_header_read,
-    .rib_log_truncate       = rsbr_log_truncate,
-    .rib_log_reap           = rsbr_log_reap,
-    .rib_header_write       = rsbr_header_write,
-    .rib_header_load        = rsbr_header_load,
-    .rib_backend_setup      = rsbr_setup,
-    .rib_backend_shutdown   = rsbr_destroy,
     .rib_backend_checkpoint = rsbr_checkpoint,
     .rib_backend_recover    = rsbr_bulk_recover,
-    .rib_sm_apply_opt       = rsbr_sm_apply_opt,
+    .rib_backend_setup      = rsbr_setup,
+    .rib_backend_shutdown   = rsbr_destroy,
     .rib_backend_sync       = rsbr_sync,
+    .rib_entry_header_read  = rsbr_entry_header_read,
+    .rib_entry_read         = rsbr_entry_read,
+    .rib_entry_write        = rsbr_entry_write,
+    .rib_header_load        = rsbr_header_load,
+    .rib_header_write       = rsbr_header_write,
+    .rib_log_reap           = rsbr_log_reap,
+    .rib_log_truncate       = rsbr_log_truncate,
+    .rib_sm_apply_opt       = rsbr_sm_apply_opt,
 };
 
 enum raft_instance_rocks_db_subdirs
