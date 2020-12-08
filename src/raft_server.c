@@ -5061,10 +5061,13 @@ raft_server_instance_run(const char *raft_uuid_str,
 
     struct raft_instance *ri = NULL;
     int remaining_recovery_tries = RAFT_SERVER_RECOVERY_ATTEMPTS;
+    bool restart_post_recovery;
     int rc = 0;
 
     do
     {
+        restart_post_recovery = false;
+
         ri = raft_net_get_instance();
         if (!ri)
             return -ENOENT;
@@ -5079,8 +5082,12 @@ raft_server_instance_run(const char *raft_uuid_str,
             SIMPLE_LOG_MSG(LL_ERROR, "raft_server_bulk_recovery(): %s",
                            strerror(-rc));
 
-            // XXX Retry on -EAGAIN?
-            break;
+            if (!rc) // Success - restart in the normal (non-recovery) mode
+            {
+                ri->ri_needs_bulk_recovery = false;
+                restart_post_recovery = true;
+                continue;
+            }
         }
 
         // Initialization - this resets the raft instance's contents
@@ -5155,8 +5162,9 @@ raft_server_instance_run(const char *raft_uuid_str,
                             remaining_recovery_tries - 1);
             }
         }
-    }  while (!rc && ri->ri_needs_bulk_recovery &&
-              --remaining_recovery_tries >= 0);
+    }  while (!rc && (restart_post_recovery ||
+                      (ri->ri_needs_bulk_recovery &&
+                       --remaining_recovery_tries >= 0)));
 
     FUNC_EXIT(LL_NOTIFY);
 
