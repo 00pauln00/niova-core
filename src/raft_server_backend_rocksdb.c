@@ -601,7 +601,7 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
 }
 
 /**
- * rsbr_entry_header_write_recovery_scrub - this function synchronously writes
+ * rsbr_entry_header_write_recovery_scrub - this function writes
  *    a header independently from its entry.  It is only used by recovery.
  */
 static void
@@ -626,7 +626,7 @@ rsbr_entry_header_write_recovery_scrub(struct raft_instance *ri,
                            sizeof(struct raft_entry_header));
     char *err = NULL;
     // Always use synchronous writes here.
-    rocksdb_write(rir->rir_db, rir->rir_writeoptions_sync,
+    rocksdb_write(rir->rir_db, rir->rir_writeoptions_async,
                   rir->rir_writebatch, &err);
 
     DBG_RAFT_INSTANCE_FATAL_IF((err), ri, "rocksdb_write():  %s", err);
@@ -869,11 +869,15 @@ rsbr_init_header(struct raft_instance *ri)
 
     if (raft_instance_is_recovering(ri))
     {
+        /* Recovering raft instance must keep the contents of the previous
+         * header to maintain the term and voted-for values.
+         */
         NIOVA_ASSERT(ri->ri_log_hdr.rlh_magic == RAFT_HEADER_MAGIC);
-        memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
     }
     else
     {
+        memset(&ri->ri_log_hdr, 0, sizeof(struct raft_log_header));
+
         // Since we're initializing the header block this is ok
         ri->ri_log_hdr.rlh_magic = RAFT_HEADER_MAGIC;
     }
@@ -1600,62 +1604,6 @@ rsbr_startup_checkpoint_scan(struct raft_instance *ri)
     return 0;
 }
 
-#if 0
-static int
-rsbr_bulk_recovery_marker_mkpath(const struct raft_recovery_handle *rrh,
-                                 char *recovery_marker_path, const size_t len)
-{
-    if (!rrh || !len || !recovery_marker_path)
-        return -EINVAL;
-
-    DECLARE_AND_INIT_UUID_STR(peer_uuid, rrh->rrh_peer_uuid);
-    DECLARE_AND_INIT_UUID_STR(db_uuid, rrh->rrh_peer_db_uuid);
-
-    if (uuid_is_null(rrh->rrh_peer_uuid) ||
-        uuid_is_null(rrh->rrh_peer_db_uuid))
-    {
-        LOG_MSG(LL_ERROR, "null uuid (peer=%s, db=%s)", peer_uuid, db_uuid);
-
-        return -EINVAL;
-    }
-
-    int rc = snprintf(recovery_marker_path, len, "%s/%s/%s.%s_%s",
-                      db_path, ribSubDirs[RIR_SUBDIR_DB],
-                      RECOVERY_MARKER_NAME, peer_uuid, db_uuid);
-    if (rc >= len)
-    {
-        LOG_MSG(LL_ERROR, "path requires at least %d bytes (len=%zu)"
-                rc, len);
-
-        rc = -ENAMETOOLONG;
-    }
-    else
-    {
-        SIMPLE_LOG_MSG(LL_DEBUG, "recovery_marker_path=`%s'",
-                       recovery_marker_path);
-    }
-    return rc;
-}
-
-//XXX no longer needed..
-static int
-rsbr_bulk_recover_prepare(struct raft_instance *ri,
-                          const struct raft_recovery_handle *rrh)
-{
-    if (!ri || !rrh || ri->ri_incomplete_recovery ||
-        rrh->rrh_from_recovery_marker || rrh->rrh_peer_chkpt_idx < 0)
-        return -EINVAL;
-
-    int64_t rrc = rsbr_checkpoint(ri);
-    int rc = (rrc < 0 && rrc != -EALREADY && rrc != -ENODATA) ? rrc : 0;
-
-    LOG_MSG((rc < 0 ? LL_ERROR : LL_WARN), "rsbr_checkpoint(%d): %s",
-             rc, strerror(-rc));
-
-    return rc;
-}
-#endif
-
 static int
 rsbr_bulk_recover_build_remote_path(const struct raft_recovery_handle *rrh,
                                     char *remote_path, size_t len)
@@ -2106,6 +2054,7 @@ rsbr_bulk_recovery_db_scrub_entry_headers(
 
     for (raft_entry_idx_t i = start; i < end; i++)
     {
+        reh.reh_index = i; // reh_index is an input parameter
         int rc = rsbr_entry_header_read(ri, &reh);
         if (rc || reh.reh_magic != RAFT_ENTRY_MAGIC || reh.reh_index != i)
         {
@@ -2184,7 +2133,7 @@ rsbr_bulk_recovery_db_scrub(struct raft_instance *ri,
      * entry headers have been replaced.
      */
     ri->ri_this_peer_uuid_str = tmp_this_peer_uuid_str;
-    rc = rsbr_init_header(ri);
+    rc = rsbr_init_header(ri); // must be a synchronous write
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "rsbr_init_header(): %s", strerror(-rc));
@@ -2195,8 +2144,8 @@ rsbr_bulk_recovery_db_scrub(struct raft_instance *ri,
 }
 
 static int
-rsbr_bulk_recovery_promote_remote_db(struct raft_instance *ri,
-                                     const struct raft_recovery_handle *rrh)
+rsbr_bulk_recovery_stage_remote_db(struct raft_instance *ri,
+                                   const struct raft_recovery_handle *rrh)
 {
     NIOVA_ASSERT(ri && rrh);
 
@@ -2211,8 +2160,8 @@ rsbr_bulk_recovery_promote_remote_db(struct raft_instance *ri,
         return rc;
     }
 
-    char promote_path[PATH_MAX + 1] = {0};
-    rc = rsbr_recovery_inprogress_path_build(ri->ri_log, rrh, promote_path,
+    char stage_path[PATH_MAX + 1] = {0};
+    rc = rsbr_recovery_inprogress_path_build(ri->ri_log, rrh, stage_path,
                                              PATH_MAX);
     if (rc)
     {
@@ -2221,16 +2170,78 @@ rsbr_bulk_recovery_promote_remote_db(struct raft_instance *ri,
         return rc;
     }
 
-    rc = rename(rsync_path, promote_path);
+    rc = rename(rsync_path, stage_path);
     if (rc)
     {
         rc = -errno;
         SIMPLE_LOG_MSG(LL_ERROR, "rename(`%s' -> `%s'): %s",
-                       rsync_path, promote_path, strerror(-rc));
+                       rsync_path, stage_path, strerror(-rc));
         return rc;
     }
 
     return 0;
+}
+
+static int
+rsbr_make_db_pathname(const struct raft_instance *ri, char *path, size_t len)
+{
+    if (!ri || !path || !len)
+        return -EINVAL;
+
+    int rc;
+    if (ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING)
+    {
+        rc = rsbr_recovery_inprogress_path_build(ri->ri_log,
+                                                 &ri->ri_recovery_handle,
+                                                 path, len);
+    }
+    else
+    {
+        rc = snprintf(path, len, "%s/%s", ri->ri_log,
+                      ribSubDirs[RIR_SUBDIR_DB]);
+        rc = (rc < 0 ? rc :
+              rc >= PATH_MAX ? -ENAMETOOLONG : 0);
+    }
+
+    return rc;
+}
+
+static int
+rsbr_bulk_recovery_promote_scrubbed_db(struct raft_instance *ri,
+                                       const struct raft_recovery_handle *rrh)
+{
+    char stage_path[PATH_MAX + 1] = {0};
+    int rc = rsbr_recovery_inprogress_path_build(ri->ri_log, rrh, stage_path,
+                                                 PATH_MAX);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_recovery_inprogress_path_build(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    // rsbr_make_db_pathname() determines pathname based on proc-state
+    if (!raft_instance_is_shutdown(ri))
+        ri->ri_proc_state = RAFT_PROC_STATE_SHUTDOWN;
+
+    char db_path[PATH_MAX + 1] = {0};
+    rc = rsbr_make_db_pathname(ri, db_path, PATH_MAX);
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "rsbr_make_db_pathname(): %s", strerror(-rc));
+        return rc;
+    }
+
+    rc = rename(stage_path, db_path);
+    if (rc)
+    {
+        rc = -errno;
+        SIMPLE_LOG_MSG(LL_ERROR, "rename(`%s' -> `%s'): %s",
+                       stage_path, db_path, strerror(-rc));
+        return rc;
+    }
+
+    return 0;
+
 }
 
 static int
@@ -2514,32 +2525,6 @@ rsbr_setup_rir(struct raft_instance *ri)
 }
 
 static int
-rsbr_make_db_pathname(const struct raft_instance *ri,
-                      struct raft_instance_rocks_db *rir,
-                      char *path, size_t len)
-{
-    if (!ri || !rir || !path || !len)
-        return -EINVAL;
-
-    int rc;
-    if (ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING)
-    {
-        rc = rsbr_recovery_inprogress_path_build(ri->ri_log,
-                                                 &ri->ri_recovery_handle,
-                                                 path, len);
-    }
-    else
-    {
-        rc = snprintf(path, len, "%s/%s", ri->ri_log,
-                      ribSubDirs[RIR_SUBDIR_DB]);
-        rc = (rc < 0 ? rc :
-              rc >= PATH_MAX ? -ENAMETOOLONG : 0);
-    }
-
-    return rc;
-}
-
-static int
 rsbr_db_open_internal(const struct raft_instance *ri,
                       struct raft_instance_rocks_db *rir, bool create_db)
 {
@@ -2551,7 +2536,7 @@ rsbr_db_open_internal(const struct raft_instance *ri,
         rocksdb_options_set_create_if_missing(rir->rir_options, 1);
 
     char rocksdb_dir[PATH_MAX] = {0};
-    int rc = rsbr_make_db_pathname(ri, rir, rocksdb_dir, PATH_MAX);
+    int rc = rsbr_make_db_pathname(ri, rocksdb_dir, PATH_MAX);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "rsbr_setup_db_make_pathname(): %s",
@@ -2697,46 +2682,30 @@ rsbr_bulk_recover(struct raft_instance *ri)
         return -EINVAL;
     }
 
-    // Remove files from "db" dir
-
-    // Dry rsync
-    // Calculate local capacity and required rsync capacity
-    //   . potentially remove stale local and remote checkpoints?
-
-    // Create chkpt remote dir
-    // Rsync data (capturing status along the way..)
-    // FAIL:  Retry the same rsync several times before giving up
-
-    // Add recovery marker to "db" following a successful rsync
-    // Restore checkpoint contents to the "db" dir - use hardlinks for the
-    //     sst files and copy the others
-
-    // Prepare 'db' for use
-    //   1. make a new db-UUID
-    //   2. reset the peer-uuid in the raft entry headers
-
-    // Remove the recovery marker
-    // Cleanup all checkpoints since they're stale
-
     int rc = 0;
     if (!rrh->rrh_from_recovery_marker)
     {
-        // These routines do their own error logging
-
+        // network tranfser of remote db to chkpt/peers/
         rc = rsbr_bulk_recovery_import_remote_db(ri, rrh);
         if (rc)
             return rc;
 
-        rc = rsbr_bulk_recovery_promote_remote_db(ri, rrh);
+        /* Move dir from chkpt/peers/ to top level - this creates a "recovery
+         * marker" from which the bulk recovery may be resumed should a crash
+         * occur.
+         */
+        rc = rsbr_bulk_recovery_stage_remote_db(ri, rrh);
         if (rc)
             return rc;
 
     }
 
+    // remove the db/ directory
     rc = rsbr_bulk_recovery_remove_current_db_contents(ri);
     if (rc)
         return rc;
 
+    // allocate and configure the rocksdb handle and accompanying structures
     rc = rsbr_setup_rir(ri);
     if (rc)
     {
@@ -2744,6 +2713,7 @@ rsbr_bulk_recover(struct raft_instance *ri)
         goto out;
     }
 
+    // Open the rocksdb and obtain system KVs
     rc = rsbr_db_open(ri, (struct raft_instance_rocks_db *)ri->ri_backend_arg);
     if (rc)
     {
@@ -2751,6 +2721,9 @@ rsbr_bulk_recover(struct raft_instance *ri)
         goto out;
     }
 
+    /* Replace raft entry headers and the log header KVs with versions
+     * containing this peer's UUID.
+     */
     rc = rsbr_bulk_recovery_db_scrub(ri, rrh);
     if (rc)
     {
@@ -2762,6 +2735,9 @@ rsbr_bulk_recover(struct raft_instance *ri)
 out:
     // rsbr_destroy() regardless of error
     rsbr_destroy(ri);
+
+    if (!rc) // Rename the "in progress" db dir after closing the rocksdb
+        rc = rsbr_bulk_recovery_promote_scrubbed_db(ri, rrh);
 
     return rc;
 }
