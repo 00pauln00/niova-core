@@ -906,10 +906,16 @@ rsbr_init_header(struct raft_instance *ri)
 
     // We must put the current raft-log-header uuid if recovering
     if (raft_instance_is_recovering(ri))
-         rocksdb_writebatch_put(rir->rir_writebatch,
-                                RAFT_LOG_HEADER_UUID_PRE_RECOVERY,
-                                RAFT_LOG_HEADER_UUID_PRE_RECOVERY_STRLEN,
-                                (const char *)ri->ri_db_uuid, sizeof(uuid_t));
+    {
+        struct raft_recovery_handle *rrh = &ri->ri_recovery_handle;
+
+        if (uuid_compare(rrh->rrh_peer_db_uuid, ri->ri_db_recovery_uuid))
+            rocksdb_writebatch_put(rir->rir_writebatch,
+                                   RAFT_LOG_HEADER_UUID_PRE_RECOVERY,
+                                   RAFT_LOG_HEADER_UUID_PRE_RECOVERY_STRLEN,
+                                   (const char *)rrh->rrh_peer_db_uuid,
+                                   sizeof(uuid_t));
+    }
 
     char *err = NULL;
     // Log header writes are always synchronous
