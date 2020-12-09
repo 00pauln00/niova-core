@@ -871,34 +871,117 @@ read_server_entry_validate(const struct raft_instance *ri,
     return 0;
 }
 
-static void
-raft_server_entry_read_by_store(struct raft_instance *ri, struct raft_entry *re)
+/**
+ * raft_server_entry_range_check - Verify the request is in range before
+ *    calling into the backend.  Note that unsynced entries are available for
+ *    reading.
+ */
+static int
+raft_server_entry_range_check(struct raft_instance *ri,
+                              const raft_entry_idx_t idx,
+                              raft_entry_idx_t *ret_lowest_idx)
+{
+    NIOVA_ASSERT(ri);
+
+    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
+
+    if (ret_lowest_idx)
+        *ret_lowest_idx = lowest_idx;
+
+    if (idx < lowest_idx)
+        return -ERANGE;
+
+    const raft_entry_idx_t current_unsync_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
+
+    return (idx > current_unsync_idx && !raft_instance_is_booting(ri))
+        ? -ERANGE
+        : 0;
+}
+
+/**
+ * raft_server_entry_read_by_store_common - provides a shared function for
+ *     entry and entry-header reads which unifies the range check and timing
+ *     info handling.
+ */
+static int
+raft_server_entry_read_by_store_common(struct raft_instance *ri,
+                                       struct raft_entry *re,
+                                       const bool header_only)
 {
     NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
 
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
+    // Access only this pointer if 'header_only'
+    struct raft_entry_header *reh = &re->re_header;
 
-    ssize_t read_sz = ri->ri_backend->rib_entry_read(ri, re);
+    raft_entry_idx_t initial_lowest_idx;
+    ssize_t rc = raft_server_entry_range_check(ri, re->re_header.reh_index,
+                                           &initial_lowest_idx);
+    NIOVA_ASSERT(!rc || rc == -ERANGE);
+    if (rc && rc == -ERANGE)
+        goto out;
 
-    DBG_RAFT_ENTRY_FATAL_IF((read_sz != raft_server_entry_to_total_size(re)),
-                            &re->re_header,
-                            "invalid read size rrc=%zu, expected %zu",
-                            read_sz, raft_server_entry_to_total_size(re));
+    NIOVA_TIMER_START(x);
 
-    niova_unstable_clock(&io_op[1]);
+    rc = header_only
+        ? ri->ri_backend->rib_entry_header_read(ri, reh)
+        : ri->ri_backend->rib_entry_read(ri, re);
 
-    struct binary_hist *bh =
-        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC].rihs_bh;
+    if (rc == -ENOENT && raft_instance_is_running(ri))
+    {
+        // Check if the lowest-idx has moved
+        raft_entry_idx_t post_lowest_idx;
+        int rc2 = raft_server_entry_range_check(ri, reh->reh_index,
+                                                &post_lowest_idx);
 
-    const long long elapsed_usec =
-        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
+        // Sanity check
+        NIOVA_ASSERT(post_lowest_idx >= initial_lowest_idx);
 
-    if (elapsed_usec > 0)
-        binary_hist_incorporate_val(bh, elapsed_usec);
+        // Override the error since the chkpt thread raced with this operation
+        if (rc2 == -ERANGE)
+        {
+            rc = -ERANGE;
+            goto out;
+        }
+    }
 
-    DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "sz=%zu usec=%lld",
-                   raft_server_entry_to_total_size(re), elapsed_usec);
+    if (rc)
+    {
+        if (header_only)
+        {
+            DBG_RAFT_ENTRY(LL_FATAL, reh, "rib_entry_header_read(): %s",
+                           strerror((int)-rc));
+        }
+        else
+        {
+            // entry read errors are fatal
+            DBG_RAFT_ENTRY_FATAL_IF(
+                (rc != raft_server_entry_to_total_size(re)), reh,
+                "invalid read size rrc=%zd, expected %zu: %s",
+                rc, raft_server_entry_to_total_size(re), strerror((int)-rc));
+        }
+    }
+    else
+    {
+        NIOVA_TIMER_STOP_and_HIST_ADD(
+            x, &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC].rihs_bh);
+
+        DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "sz=%zu (hdr-only=%s)",
+                       raft_server_entry_to_total_size(re),
+                       header_only ? "yes" : "no");
+    }
+
+out:
+    return (int)rc;
+}
+
+static int
+raft_server_entry_read_by_store(struct raft_instance *ri,
+                                struct raft_entry *re)
+{
+    NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
+
+    return raft_server_entry_read_by_store_common(ri, re, false);
 }
 
 /**
@@ -973,35 +1056,12 @@ raft_server_entry_header_read_by_store(struct raft_instance *ri,
     if (!ri || !reh || reh_index < 0)
         return -EINVAL;
 
-    // Unsynced entries are available for reading from the backend
-    else if (!raft_instance_is_booting(ri) &&
-             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC) <
-             reh_index)
-        return -ERANGE;
-
     reh->reh_index = reh_index;
 
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
+    int rc = raft_server_entry_read_by_store_common(
+        ri, (struct raft_entry *)reh, true);
 
-    int rc = ri->ri_backend->rib_entry_header_read(ri, reh);
-
-    FATAL_IF((rc), "rib_entry_header_read(): %s", strerror(-rc));
-
-    niova_unstable_clock(&io_op[1]);
-
-    struct binary_hist *bh =
-        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC].rihs_bh;
-
-    const long long elapsed_usec =
-        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
-
-    if (elapsed_usec > 0)
-        binary_hist_incorporate_val(bh, elapsed_usec);
-
-    DBG_RAFT_ENTRY(LL_DEBUG, reh, "elapsed_usec=%lld", elapsed_usec);
-
-    return read_server_entry_validate(ri, reh, reh_index);
+    return rc ? rc : read_server_entry_validate(ri, reh, reh_index);
 }
 
 static int
@@ -4657,8 +4717,10 @@ raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
 
     if (new_lowest_idx > (lowest_idx + num_keep_entries))
     {
-        ri->ri_backend->rib_log_reap(ri, new_lowest_idx);
+        // Increase lowest idx prior to issuing backend reap.
         niova_atomic_init(&ri->ri_lowest_idx, new_lowest_idx);
+
+        ri->ri_backend->rib_log_reap(ri, new_lowest_idx);
         reaped = true;
     }
 

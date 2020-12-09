@@ -776,6 +776,7 @@ rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re)
     if (!ri || !re)
         return -EINVAL;
 
+    // XXx if the caller has already obtained the header then bypass this read
     int rc = rsbr_entry_header_read(ri, &re->re_header);
     if (rc)
         return rc;

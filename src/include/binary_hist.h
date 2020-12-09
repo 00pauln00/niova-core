@@ -84,7 +84,6 @@ binary_hist_lower_bucket_range(const struct binary_hist *bh, int pos)
         0 : (unsigned long long)(1ULL << (pos - 1 + bh->bh_start_bit));
 }
 
-
 static inline long long
 binary_hist_upper_bucket_range(const struct binary_hist *bh, int pos)
 {
