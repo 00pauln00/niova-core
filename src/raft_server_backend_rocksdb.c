@@ -2083,8 +2083,7 @@ rsbr_bulk_recovery_db_scrub_entry_headers(
         uuid_copy(reh.reh_self_uuid, ri->ri_csn_this_peer->csn_uuid);
         rsbr_entry_header_write_recovery_scrub(ri, &reh);
 
-        DBG_RAFT_ENTRY(LL_WARN, &reh, "");
-
+        DBG_RAFT_ENTRY(LL_DEBUG, &reh, "");
     }
 
     return 0;
