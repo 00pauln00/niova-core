@@ -550,4 +550,24 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     (obj)->crc32_memb;                                                  \
 })
 
+#define NIOVA_TIMER_START(name)                 \
+    struct timespec io_op##name[2];             \
+    niova_unstable_clock(&io_op##name[0]);
+
+#define NIOVA_TIMER_STOP(name)                  \
+    niova_unstable_clock(&io_op##name[1]);      \
+
+#define NIOVA_TIMER_USEC_DIFF(name)                     \
+    (long long)(timespec_2_usec(&io_op##name[1]) -      \
+                timespec_2_usec(&io_op##name[0]))
+
+// binary_hist.h is not included here, caller must include itself
+#define NIOVA_TIMER_STOP_and_HIST_ADD(name, hist)               \
+{                                                               \
+    NIOVA_TIMER_STOP(name);                                     \
+    const long long elapsed_usec = NIOVA_TIMER_USEC_DIFF(name); \
+    if (elapsed_usec > 0)                                       \
+        binary_hist_incorporate_val((hist), elapsed_usec);      \
+}
+
 #endif
