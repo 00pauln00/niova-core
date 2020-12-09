@@ -5018,7 +5018,7 @@ static bool
 raft_server_bulk_recovery_can_proceed(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
-    return true;
+    return true; // XXX some checks should be reinstated
 
     if (!ri->ri_csn_leader || !raft_server_recovery_handle_is_viable(ri))
         return false;
@@ -5043,12 +5043,19 @@ raft_server_bulk_recovery(struct raft_instance *ri, void *arg)
     else if (!raft_server_bulk_recovery_can_proceed(ri))
         return -EAGAIN;
 
+    enum raft_process_state proc_state = ri->ri_proc_state;
+
     ri->ri_proc_state = RAFT_PROC_STATE_RECOVERING;
     ri->ri_backend_init_arg = arg;
 
-    return ri->ri_backend->rib_backend_recover
+    int rc = ri->ri_backend->rib_backend_recover
         ? ri->ri_backend->rib_backend_recover(ri)
         : -EOPNOTSUPP;
+
+    // restore proc state
+    ri->ri_proc_state = proc_state;
+
+    return rc;
 }
 
 int
