@@ -3198,17 +3198,21 @@ raft_server_process_append_entries_reply(struct raft_instance *ri,
     if (!raft_instance_is_leader(ri))
         return;
 
-    /* raerpm_err_stale_term should only be considered if it's more recent than
-     * our own term, otherwise it's stale.
-     */
-    if (raerp->raerpm_err_stale_term &&
-        raerp->raerpm_leader_term > ri->ri_log_hdr.rlh_term)
-        raft_server_becomes_follower(ri, raerp->raerpm_leader_term,
-                                     sender_csn->csn_uuid,
-                                     RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
+    if (raerp->raerpm_err_stale_term)
+    {
+        /* raerpm_err_stale_term should only be considered if it's more recent
+         * than our own term, otherwise it's stale.
+         */
+        if (raerp->raerpm_leader_term > ri->ri_log_hdr.rlh_term)
+            raft_server_becomes_follower(ri, raerp->raerpm_leader_term,
+                                         sender_csn->csn_uuid,
+                                         RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
+    }
     else
+    {
         raft_server_apply_append_entries_reply_result(ri, sender_csn->csn_uuid,
                                                       raerp);
+    }
 }
 
 static raft_server_net_cb_ctx_t
