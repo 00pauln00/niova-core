@@ -4731,14 +4731,17 @@ raft_server_chkpt_thread(void *arg)
         if (user_requested_reap)
             ri->ri_user_requested_reap = false;
 
-        const raft_entry_idx_t sync_idx =
-            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
-
-        if (sync_idx < 0)
+        /* We use ri_last_applied_idx because this is the final index to be
+         * incremented in the raft commit process and it implies that the
+         * log contents have been integrated into the backing store.  Sync idx
+         * should not be used since entries at and beyond may be rolled back.
+         */
+        const raft_entry_idx_t last_applied_idx = ri->ri_last_applied_idx;
+        if (last_applied_idx < 0)
             continue;
 
         const raft_entry_idx_t num_entries_since_last_chkpt =
-            sync_idx - ri->ri_checkpoint_last_idx;
+            last_applied_idx - ri->ri_checkpoint_last_idx;
 
         NIOVA_ASSERT(num_entries_since_last_chkpt >= 0);
 
