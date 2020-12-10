@@ -4841,6 +4841,9 @@ raft_server_instance_startup(struct raft_instance *ri)
     FATAL_IF((pthread_mutex_init(&ri->ri_newest_entry_mutex, NULL)),
              "pthread_mutex_init(): %s", strerror(errno));
 
+    FATAL_IF((pthread_mutex_init(&ri->ri_compaction_mutex, NULL)),
+             "pthread_mutex_init(): %s", strerror(errno));
+
     // raft_server_instance_init() should have been run
     if (!ri->ri_timer_fd_cb)
         return -EINVAL;
@@ -4934,6 +4937,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
     int rc_backend_close = raft_server_backend_close(ri);
     int rc_evp_cleanup = raft_server_evp_cleanup(ri);
     int mutex_rc = pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
+    int mutex_rc2 = pthread_mutex_destroy(&ri->ri_compaction_mutex);
 
     int lreg_remove_rc =
         lreg_node_remove(&ri->ri_lreg, LREG_ROOT_ENTRY_PTR(raft_root_entry));
@@ -4980,6 +4984,14 @@ raft_server_instance_shutdown(struct raft_instance *ri)
                        strerror(mutex_rc));
         if (!rc)
             rc = -mutex_rc;
+    }
+
+    if (mutex_rc2)
+    {
+        SIMPLE_LOG_MSG(ll, "pthread_mutex_destroy(): %s",
+                       strerror(mutex_rc2));
+        if (!rc)
+            rc = -mutex_rc2;
     }
 
     if (lreg_remove_rc)
