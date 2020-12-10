@@ -4670,6 +4670,21 @@ raft_server_take_chkpt(struct raft_instance *ri)
                       rc, rc < 0 ? strerror(-rc) : "Success");
 }
 
+/**
+ * raft_server_instance_chkpt_compact_max_idx - return the value which
+ *    representing the raft-entry-idx which will not be rolled back.
+ *    Here we choosed the ri_last_applied_idx over ri_commmit_idx to remove
+ *    the possibility of compaction occurring on entries which have yet to be
+ *    applied.
+ */
+static raft_entry_idx_t
+raft_server_instance_chkpt_compact_max_idx(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    return ri->ri_last_applied_idx;
+}
+
 static raft_server_chkpt_thread_ctx_t
 raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
 {
@@ -4677,18 +4692,18 @@ raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
         num_keep_entries < RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES)
         return;
 
-    const raft_entry_idx_t sync_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+    const raft_entry_idx_t max_idx =
+        raft_server_instance_chkpt_compact_max_idx(ri);
 
-    if (sync_idx < 0)
+    if (max_idx < 0)
         return;
 
     const raft_entry_idx_t lowest_idx =
         MAX(0, niova_atomic_read(&ri->ri_lowest_idx));
 
-    NIOVA_ASSERT(sync_idx >= lowest_idx);
+    NIOVA_ASSERT(max_idx >= lowest_idx);
 
-    const raft_entry_idx_t new_lowest_idx = sync_idx - num_keep_entries;
+    const raft_entry_idx_t new_lowest_idx = max_idx - num_keep_entries;
 
     bool reaped = false;
 
@@ -4731,17 +4746,15 @@ raft_server_chkpt_thread(void *arg)
         if (user_requested_reap)
             ri->ri_user_requested_reap = false;
 
-        /* We use ri_last_applied_idx because this is the final index to be
-         * incremented in the raft commit process and it implies that the
-         * log contents have been integrated into the backing store.  Sync idx
-         * should not be used since entries at and beyond may be rolled back.
-         */
-        const raft_entry_idx_t last_applied_idx = ri->ri_last_applied_idx;
-        if (last_applied_idx < 0)
+
+        const raft_entry_idx_t max_idx =
+            raft_server_instance_chkpt_compact_max_idx(ri);
+
+        if (max_idx < 0)
             continue;
 
         const raft_entry_idx_t num_entries_since_last_chkpt =
-            last_applied_idx - ri->ri_checkpoint_last_idx;
+            max_idx - ri->ri_checkpoint_last_idx;
 
         NIOVA_ASSERT(num_entries_since_last_chkpt >= 0);
 
