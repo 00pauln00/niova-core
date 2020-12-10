@@ -169,7 +169,6 @@ raft_server_set_sync_freq(struct raft_instance *ri,
         ri->ri_sync_freq_us = sync_freq;
 }
 
-
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                   struct raft_instance *ri,
@@ -740,26 +739,24 @@ raft_server_has_unsynced_entries(struct raft_instance *ri)
     return diff;
 }
 
+static struct binary_hist *
+raft_server_type_2_hist(struct raft_instance *ri,
+                        enum raft_instance_hist_types ht)
+{
+    return &ri->ri_rihs[ht].rihs_bh;
+}
+
 static void
 raft_server_entry_write_by_store(
     struct raft_instance *ri, const struct raft_entry *re,
     const struct raft_net_sm_write_supplements *ws)
 {
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
+    NIOVA_TIMER_START(x);
 
     ri->ri_backend->rib_entry_write(ri, re, ws);
 
-    niova_unstable_clock(&io_op[1]);
-
-    struct binary_hist *bh =
-        &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC].rihs_bh;
-
-    const long long elapsed_usec =
-        (long long)(timespec_2_usec(&io_op[1]) - timespec_2_usec(&io_op[0]));
-
-    if (elapsed_usec > 0)
-        binary_hist_incorporate_val(bh, elapsed_usec);
+    NIOVA_TIMER_STOP_and_HIST_ADD(
+        x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC));
 }
 
 /**
@@ -964,7 +961,8 @@ raft_server_entry_read_by_store_common(struct raft_instance *ri,
     else
     {
         NIOVA_TIMER_STOP_and_HIST_ADD(
-            x, &ri->ri_rihs[RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC].rihs_bh);
+            x, raft_server_type_2_hist(
+                ri, RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC));
 
         DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "sz=%zu (hdr-only=%s)",
                        raft_server_entry_to_total_size(re),
@@ -1090,22 +1088,6 @@ raft_server_log_header_write_prep(struct raft_instance *ri,
     uuid_copy(ri->ri_log_hdr.rlh_voted_for, candidate);
 }
 
-static void
-raft_server_incorporate_latency_measurement(struct raft_instance *ri,
-                                            struct timespec start,
-                                            struct timespec end,
-                                            enum raft_instance_hist_types ht)
-{
-    struct binary_hist *bh =
-        &ri->ri_rihs[ht].rihs_bh;
-
-    const long long elapsed_usec =
-        (long long)(timespec_2_usec(&end) - timespec_2_usec(&start));
-
-    if (elapsed_usec > 0)
-        binary_hist_incorporate_val(bh, elapsed_usec);
-}
-
 /**
  * raft_server_backend_sync - reentrant function which can be called from the
  *    main raft thread and the sync-thread.
@@ -1137,21 +1119,18 @@ raft_server_backend_sync(struct raft_instance *ri, const char *caller)
     NIOVA_ASSERT(sync_idx <= unsync_reh.reh_index);
 
     binary_hist_incorporate_val(
-        &ri->ri_rihs[RAFT_INSTANCE_HIST_NENTRIES_SYNC].rihs_bh,
+        raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_NENTRIES_SYNC),
         unsync_reh.reh_index - sync_idx);
 
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "caller=%s nentries-this-sync=%ld",
                       caller, unsync_reh.reh_index - sync_idx);
 
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
+    NIOVA_TIMER_START(x);
 
     int rc = ri->ri_backend->rib_backend_sync(ri);
 
-    niova_unstable_clock(&io_op[1]);
-
-    raft_server_incorporate_latency_measurement(
-        ri, io_op[0], io_op[1], RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC);
+    NIOVA_TIMER_STOP_and_HIST_ADD(
+        x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC));
 
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "caller=%s rib_backend_sync(): %s",
                       caller, strerror(-rc));
@@ -4091,7 +4070,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                 timespecsub(&ts, &reh.reh_store_time, &ts);
 
                 struct binary_hist *bh =
-                    &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
+                    raft_server_type_2_hist(
+                        ri, RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
 
                 if (timespec_2_msec(&ts) > 0)
                     binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
@@ -4669,18 +4649,15 @@ raft_server_take_chkpt(struct raft_instance *ri)
         return;
     }
 
-    struct timespec io_op[2];
-    niova_unstable_clock(&io_op[0]);
+    NIOVA_TIMER_START(x);
 
     /* rib_backend_checkpoint() returns the idx used for the checkpoint which
      * must be >= to the one read here.
      */
     int64_t rc = ri->ri_backend->rib_backend_checkpoint(ri);
 
-    niova_unstable_clock(&io_op[1]);
-
-    raft_server_incorporate_latency_measurement(
-        ri, io_op[0], io_op[1], RAFT_INSTANCE_HIST_CHKPT_LAT_USEC);
+    NIOVA_TIMER_STOP_and_HIST_ADD(
+        x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_CHKPT_LAT_USEC));
 
     if (rc >= 0)
         raft_server_set_checkpoint_last_idx(ri, rc, sync_idx);
