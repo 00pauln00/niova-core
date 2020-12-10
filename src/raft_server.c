@@ -886,13 +886,13 @@ raft_server_entry_range_check(struct raft_instance *ri,
         *ret_lowest_idx = lowest_idx;
 
     if (idx < lowest_idx)
-        return -ERANGE;
+        return -ERANGE; // Requested index has been compacted
 
     const raft_entry_idx_t current_unsync_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
 
     return (idx > current_unsync_idx && !raft_instance_is_booting(ri))
-        ? -ERANGE
+        ? -EDOM // Requested index is out of bounds
         : 0;
 }
 
