@@ -62,6 +62,7 @@ typedef void raft_server_sync_thread_ctx_t;
 
 typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
+typedef int raft_server_chkpt_thread_ctx_int_t;
 
 static unsigned long long raftServerMaxRecoveryLeaderCommMsec = 10000;
 
@@ -895,15 +896,75 @@ raft_server_entry_range_check(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri);
 
-    if (raft_server_entry_has_been_compacted(ri, idx, ret_lowest_idx))
-        return -ERANGE;
-
     const raft_entry_idx_t current_unsync_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
 
-    return (idx > current_unsync_idx && !raft_instance_is_booting(ri))
-        ? -EDOM // Requested index is out of bounds
-        : 0;
+    if (idx > current_unsync_idx && !raft_instance_is_booting(ri))
+        return -EDOM; // Requested index is out of bounds
+
+    else if (raft_server_entry_has_been_compacted(ri, idx, ret_lowest_idx))
+        return -ERANGE;
+
+    return 0;
+}
+
+static int
+raft_server_read_entry_register_idx(struct raft_instance *ri,
+                                    const raft_entry_idx_t idx)
+{
+    NIOVA_ASSERT(ri && idx >= 0);
+    int rc = raft_server_entry_range_check(ri, idx, NULL);
+    if (rc)
+        return rc;
+
+    pthread_mutex_lock(&ri->ri_compaction_mutex);
+    // only one read at a time
+    NIOVA_ASSERT(ri->ri_pending_read_idx == ID_ANY_64bit);
+
+    rc = raft_server_entry_has_been_compacted(ri, idx, NULL);
+    if (!rc)
+        ri->ri_pending_read_idx = idx;
+
+    pthread_mutex_unlock(&ri->ri_compaction_mutex);
+
+    return rc;
+}
+
+static void
+raft_server_read_entry_unregister_idx(struct raft_instance *ri,
+                                      const raft_entry_idx_t idx)
+{
+    NIOVA_ASSERT(ri);
+
+    pthread_mutex_lock(&ri->ri_compaction_mutex);
+
+    NIOVA_ASSERT(ri->ri_pending_read_idx == idx);
+    ri->ri_pending_read_idx = ID_ANY_64bit;
+
+    pthread_mutex_unlock(&ri->ri_compaction_mutex);
+}
+
+static raft_server_chkpt_thread_ctx_int_t
+raft_server_compaction_try_increase_lowest_idx(
+    struct raft_instance *ri, const raft_entry_idx_t new_lowest_idx)
+{
+    NIOVA_ASSERT(ri && new_lowest_idx >= 0);
+
+    int rc = 0;
+
+    pthread_mutex_lock(&ri->ri_compaction_mutex);
+    NIOVA_ASSERT(new_lowest_idx > niova_atomic_read(&ri->ri_lowest_idx));
+
+    // A read is currently operating in the compaction region
+    if (ri->ri_pending_read_idx != ID_ANY_64bit &&
+        ri->ri_pending_read_idx < new_lowest_idx)
+        rc = -EAGAIN;
+    else
+        niova_atomic_init(&ri->ri_lowest_idx, new_lowest_idx);
+
+    pthread_mutex_unlock(&ri->ri_compaction_mutex);
+
+    return rc;
 }
 
 /**
@@ -920,67 +981,52 @@ raft_server_entry_read_by_store_common(struct raft_instance *ri,
 
     // Access only this pointer if 'header_only'
     struct raft_entry_header *reh = &re->re_header;
+    const raft_entry_idx_t idx = reh->reh_index;
 
-    raft_entry_idx_t initial_lowest_idx;
-    ssize_t rc = raft_server_entry_range_check(ri, re->re_header.reh_index,
-                                           &initial_lowest_idx);
-    NIOVA_ASSERT(!rc || rc == -ERANGE);
-    if (rc && rc == -ERANGE)
-        goto out;
+    // Test that the idx is within range and prevent compaction removing it
+    int rc = raft_server_read_entry_register_idx(ri, idx);
+    if (rc)
+    {
+        NIOVA_ASSERT(rc == -ERANGE);
+        return rc;
+    }
 
     NIOVA_TIMER_START(x);
 
-    rc = header_only
+    ssize_t rrc = header_only
         ? ri->ri_backend->rib_entry_header_read(ri, reh)
         : ri->ri_backend->rib_entry_read(ri, re);
 
-    if (rc == -ENOENT && raft_instance_is_running(ri))
-    {
-        // Check if the lowest-idx has moved
-        raft_entry_idx_t post_lowest_idx;
-        int rc2 = raft_server_entry_range_check(ri, reh->reh_index,
-                                                &post_lowest_idx);
+    // unregister after the read operation
+    raft_server_read_entry_unregister_idx(ri, idx);
 
-        // Sanity check
-        NIOVA_ASSERT(post_lowest_idx >= initial_lowest_idx);
+    NIOVA_TIMER_STOP_and_HIST_ADD(
+        x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC));
 
-        // Override the error since the chkpt thread raced with this operation
-        if (rc2 == -ERANGE)
-        {
-            rc = -ERANGE;
-            goto out;
-        }
-    }
-
-    if (rc)
+    if (rrc)
     {
         if (header_only)
         {
             DBG_RAFT_ENTRY(LL_FATAL, reh, "rib_entry_header_read(): %s",
-                           strerror((int)-rc));
+                           strerror((int)-rrc));
         }
         else
         {
             // entry read errors are fatal
             DBG_RAFT_ENTRY_FATAL_IF(
-                (rc != raft_server_entry_to_total_size(re)), reh,
+                (rrc != raft_server_entry_to_total_size(re)), reh,
                 "invalid read size rrc=%zd, expected %zu: %s",
-                rc, raft_server_entry_to_total_size(re), strerror((int)-rc));
+                rrc, raft_server_entry_to_total_size(re), strerror((int)-rrc));
         }
     }
     else
     {
-        NIOVA_TIMER_STOP_and_HIST_ADD(
-            x, raft_server_type_2_hist(
-                ri, RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC));
-
         DBG_RAFT_ENTRY(LL_DEBUG, &re->re_header, "sz=%zu (hdr-only=%s)",
                        raft_server_entry_to_total_size(re),
                        header_only ? "yes" : "no");
     }
 
-out:
-    return (int)rc;
+    return (int)rrc;
 }
 
 static int
@@ -4717,11 +4763,9 @@ raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
 
     bool reaped = false;
 
-    if (new_lowest_idx > (lowest_idx + num_keep_entries))
+    if (new_lowest_idx > (lowest_idx + num_keep_entries) &&
+        !raft_server_compaction_try_increase_lowest_idx(ri, new_lowest_idx))
     {
-        // Increase lowest idx prior to issuing backend reap.
-        niova_atomic_init(&ri->ri_lowest_idx, new_lowest_idx);
-
         ri->ri_backend->rib_log_reap(ri, new_lowest_idx);
         reaped = true;
     }

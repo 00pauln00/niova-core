@@ -429,6 +429,7 @@ struct raft_instance
     raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
     raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log reap
     pthread_mutex_t                 ri_compaction_mutex;
+    raft_entry_idx_t                ri_pending_read_idx; // protected by mutex
     int                             ri_last_chkpt_err;
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
