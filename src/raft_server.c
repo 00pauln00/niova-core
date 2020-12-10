@@ -868,6 +868,21 @@ read_server_entry_validate(const struct raft_instance *ri,
     return 0;
 }
 
+static bool
+raft_server_entry_has_been_compacted(struct raft_instance *ri,
+                                     const raft_entry_idx_t idx,
+                                     raft_entry_idx_t *ret_lowest_idx)
+{
+    NIOVA_ASSERT(ri);
+
+    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
+
+    if (ret_lowest_idx)
+        *ret_lowest_idx = lowest_idx;
+
+    return idx < lowest_idx ? true : false;
+}
+
 /**
  * raft_server_entry_range_check - Verify the request is in range before
  *    calling into the backend.  Note that unsynced entries are available for
@@ -880,13 +895,8 @@ raft_server_entry_range_check(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri);
 
-    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
-
-    if (ret_lowest_idx)
-        *ret_lowest_idx = lowest_idx;
-
-    if (idx < lowest_idx)
-        return -ERANGE; // Requested index has been compacted
+    if (raft_server_entry_has_been_compacted(ri, idx, ret_lowest_idx))
+        return -ERANGE;
 
     const raft_entry_idx_t current_unsync_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
