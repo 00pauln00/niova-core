@@ -910,10 +910,11 @@ raft_server_entry_range_check(struct raft_instance *ri,
 
 static int
 raft_server_read_entry_register_idx(struct raft_instance *ri,
-                                    const raft_entry_idx_t idx)
+                                    const raft_entry_idx_t entry_idx)
 {
-    NIOVA_ASSERT(ri && idx >= 0);
-    int rc = raft_server_entry_range_check(ri, idx, NULL);
+    NIOVA_ASSERT(ri && entry_idx >= 0);
+
+    int rc = raft_server_entry_range_check(ri, entry_idx, NULL);
     if (rc)
         return rc;
 
@@ -921,24 +922,30 @@ raft_server_read_entry_register_idx(struct raft_instance *ri,
     // only one read at a time
     NIOVA_ASSERT(ri->ri_pending_read_idx == ID_ANY_64bit);
 
-    rc = raft_server_entry_has_been_compacted(ri, idx, NULL);
+    rc = raft_server_entry_has_been_compacted(ri, entry_idx, NULL);
     if (!rc)
-        ri->ri_pending_read_idx = idx;
+        ri->ri_pending_read_idx = entry_idx;
 
     pthread_mutex_unlock(&ri->ri_compaction_mutex);
+
+    if (rc)
+        DBG_RAFT_INSTANCE(
+            LL_WARN, ri,
+            "raft_server_entry_has_been_compacted(entry=%ld): %s",
+            entry_idx, strerror(-rc));
 
     return rc;
 }
 
 static void
 raft_server_read_entry_unregister_idx(struct raft_instance *ri,
-                                      const raft_entry_idx_t idx)
+                                      const raft_entry_idx_t entry_idx)
 {
     NIOVA_ASSERT(ri);
 
     pthread_mutex_lock(&ri->ri_compaction_mutex);
 
-    NIOVA_ASSERT(ri->ri_pending_read_idx == idx);
+    NIOVA_ASSERT(ri->ri_pending_read_idx == entry_idx);
     ri->ri_pending_read_idx = ID_ANY_64bit;
 
     pthread_mutex_unlock(&ri->ri_compaction_mutex);
@@ -2203,7 +2210,6 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         int rc =
             raft_server_entry_header_read_by_store(ri, &reh,
                                                    follower_prev_entry_idx);
-
         if (rc < 0)
             return rc;
 
@@ -2220,9 +2226,8 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
 
         int rc = raft_server_entry_header_read_by_store(ri, &reh,
                                                         rfi->rfi_next_idx);
-        DBG_RAFT_INSTANCE_FATAL_IF(
-            (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
-            rfi->rfi_next_idx, strerror(-rc));
+        if (rc < 0)
+            return rc;
 
         rfi->rfi_current_idx_term = reh.reh_term;
         rfi->rfi_current_idx_crc = reh.reh_crc;
@@ -2247,7 +2252,7 @@ raft_server_leader_get_current_term(const struct raft_instance *ri)
     return ri->ri_log_hdr.rlh_term;
 }
 
-static raft_server_leader_mode_t
+static raft_server_leader_mode_int_t
 raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
                                          struct raft_rpc_msg *rrm,
                                          const raft_peer_t follower,
@@ -2268,10 +2273,18 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
         &rrm->rrm_append_entries_request;
 
     int rc = raft_server_refresh_follower_prev_log_term(ri, follower);
+    if (rc && rc == -ERANGE) // Accept only ERANGE
+    {
+        // Convert this into heartbeat
+        heartbeat = true;
+    }
+    else
+    {
+        DBG_RAFT_INSTANCE(LL_FATAL, ri,
+                          "raft_server_refresh_follower_prev_log_term(): %s",
+                          strerror(-rc));
+    }
 
-    DBG_RAFT_INSTANCE_FATAL_IF(
-        (rc), ri, "raft_server_refresh_follower_prev_log_term() %s",
-        strerror(-rc));
     raerq->raerqm_heartbeat_msg = heartbeat ? 1 : 0;
 
     raerq->raerqm_leader_term = raft_server_leader_get_current_term(ri);
@@ -2287,8 +2300,14 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     // Previous log index is the address of the follower's last write.
     raerq->raerqm_prev_log_index = rfi->rfi_next_idx - 1;
 
-    // OK to copy the rls_prev_idx_term[] since it was refreshed above.
-    raerq->raerqm_prev_log_term = rfi->rfi_prev_idx_term;
+    // There are only 2 possible error codes at this point
+    NIOVA_ASSERT(!rc || rc == -ERANGE);
+
+    // Copy the rls_prev_idx_term[] if it was refreshed above.
+    raerq->raerqm_prev_log_term = rc ? -1ULL : rfi->rfi_prev_idx_term;
+
+    // If error, return -ESTALE to signify that the peer needs bulk recovery
+    return rc ? -ESTALE : 0;
 }
 
 static raft_server_epoll_remote_sender_t
@@ -3953,10 +3972,21 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
         memset(src_buf, 0, RAFT_NET_MAX_RPC_SIZE);
         memset(sink_buf, 0, RAFT_ENTRY_SIZE);
 
-        raft_server_leader_init_append_entry_msg(ri, rrm, i, heartbeat);
-
         struct raft_append_entries_request_msg *raerq =
             &rrm->rrm_append_entries_request;
+
+        int rc = raft_server_leader_init_append_entry_msg(ri, rrm, i,
+                                                          heartbeat);
+        NIOVA_ASSERT(!rc || rc == -ESTALE); // sanity check
+        if (rc == -ESTALE)
+        {
+            /* raft_server_leader_init_append_entry_msg() detected that the
+             * entry needed by the follower has been compacted.  Still send
+             * a msg so that the follower knows to enter bulk recovery.
+             */
+            heartbeat = true; // force this to be a heartbeat msg
+            NIOVA_ASSERT(raerq->raerqm_heartbeat_msg);
+        }
 
         const int64_t peer_next_raft_idx = raerq->raerqm_prev_log_index + 1;
 
@@ -3972,6 +4002,9 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
             int rc = raft_server_entry_header_read_by_store(
                 ri, reh, peer_next_raft_idx);
 
+            if (rc == -ERANGE) // allow -ERANGE
+                continue;
+
             DBG_RAFT_INSTANCE_FATAL_IF(
                 (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
                 peer_next_raft_idx, strerror(-rc));
@@ -3986,6 +4019,9 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
                 rc = raft_server_entry_read(ri, peer_next_raft_idx,
                                             raerq->raerqm_entries,
                                             raerq->raerqm_entries_sz, NULL);
+                if (rc == -ERANGE)
+                    continue;
+
                 DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
                                            "raft_server_entry_read(): %s",
                                            strerror(-rc));
@@ -4004,7 +4040,7 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
             rrm->rrm_append_entries_request.raerqm_prev_log_index,
             rrm->rrm_append_entries_request.raerqm_log_term);
 
-        int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
+        rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
 
         /* log errors, but raft will retry if needed */
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %d", rc);
