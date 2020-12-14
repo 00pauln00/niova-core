@@ -1983,7 +1983,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
 #if SYNC_IDX_BUG
         rfi->rfi_synced_idx = sync_hdr.reh_index;
 #else
-        rfi->rfi_synced_idx = -1ULL;
+        rfi->rfi_synced_idx = RAFT_MIN_APPEND_ENTRY_IDX;
 #endif
     }
 }
