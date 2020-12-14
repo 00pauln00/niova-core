@@ -2976,22 +2976,19 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         rc = raft_server_append_entry_log_prepare_and_check(ri, raerq);
         if (rc)
         {
-            if (rc == -EALREADY)
+            if (rc == -EALREADY) // Issue #28 - advance the index of recently restarted server
             {
                 advance_commit_idx = true;
+                // Limit the commit-idx range to log entries which are currently stored here
+                new_commit_idx =
+                    MIN(new_commit_idx,
+                        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC));
             }
             else
             {
+                // -EEXIST and -ERANGE cases do not advance advance the commit-idx
                 non_matching_prev_term = true;
-                if (rc == -ERANGE)
-                    advance_commit_idx = true;
             }
-
-            // Issue #28 - advance the index of recently restarted server
-            if (advance_commit_idx)
-                new_commit_idx = MIN(new_commit_idx,
-                                     raft_server_get_current_raft_entry_index(
-                                         ri, RI_NEHDR_SYNC));
         }
         else
         {
