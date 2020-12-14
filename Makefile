@@ -1,6 +1,7 @@
 CC		= gcc
 INCLUDE 	= -Isrc/include -Isrc/contrib/include
 DEBUG_CFLAGS 	= -Wall -g -O0 $(INCLUDE)
+DEBUG_CFLAGS_O2 = -Wall -g -O2 $(INCLUDE)
 #DEBUG_CFLAGS 	= -Wall -g -O2 $(INCLUDE)
 COVERAGE_FLAGS  = -Wall -g -O0 -fprofile-arcs -ftest-coverage --coverage $(INCLUDE)
 DEF_CFLAGS	= -O2 -Wall $(INCLUDE)
@@ -207,16 +208,18 @@ pumicedb-common: $(ALL_CORE_OBJFILES) $(PUMICEDB_OBJFILES) \
 	# $(LDFLAGS)
 	# $(CC) $(PMDB_CFLAGS) -o pumicedb-client-test \
 	# 	test/pumice_db_test_client.c -L. -lpumicedb_client $(LDFLAGS)
-	$(CC) $(PMDB_CFLAGS) -o pumicedb-server-test \
+	$(CC) $(PMDB_CFLAGS) -o $(SERVER_BIN) \
 		test/pumice_db_test_server.c $(ALL_CORE_OBJFILES) \
 		$(PUMICEDB_OBJFILES) -lrocksdb $(LDFLAGS)
-	$(CC) $(PMDB_CFLAGS) -o pumicedb-client-test \
+	$(CC) $(PMDB_CFLAGS) -o $(CLIENT_BIN) \
 		test/pumice_db_test_client.c $(ALL_CORE_OBJFILES) \
 		$(PUMICEDB_CLIENT_OBJFILES) $(LDFLAGS)
 
 #pumicedb: CFLAGS = $(DEF_CFLAGS) -fPIC -c
 pumicedb: CFLAGS = $(DEF_CFLAGS)
 pumicedb: PMDB_CFLAGS = $(DEF_CFLAGS)
+pumicedb: SERVER_BIN = pumicedb-server-test
+pumicedb: CLIENT_BIN = pumicedb-client-test
 pumicedb: pumicedb-common
 
 pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) \
@@ -224,7 +227,15 @@ pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) \
 #pumicedb-dbg: CFLAGS = $(DEBUG_CFLAGS) -fPIC -c \
 #	-DNIOVA_FAULT_INJECTION_ENABLED -fsanitize=address
 pumicedb-dbg: PMDB_CFLAGS = $(DEBUG_CFLAGS) -fsanitize=address
+pumicedb-dbg: SERVER_BIN = pumicedb-server-test
+pumicedb-dbg: CLIENT_BIN = pumicedb-client-test
 pumicedb-dbg: pumicedb-common
+
+pumicedb-dbg-sym: CFLAGS = $(DEBUG_CFLAGS_O2)
+pumicedb-dbg-sym: PMDB_CFLAGS = $(DEBUG_CFLAGS_O2)
+pumicedb-dbg-sym: SERVER_BIN = pumicedb-server-test.sym
+pumicedb-dbg-sym: CLIENT_BIN = pumicedb-client-test.sym
+pumicedb-dbg-sym: pumicedb-common
 
 raft-cg: CFLAGS = $(DEBUG_CFLAGS) -fdump-rtl-expand
 raft-cg: $(ALL_CORE_OBJFILES) $(RAFT_OBJFILES) $(ALL_INCLUDES)
