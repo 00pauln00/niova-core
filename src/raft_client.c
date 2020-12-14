@@ -1332,6 +1332,8 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
     bool queue = raft_client_leader_is_viable(rci);
     bool block = sa->rcsa_rh.rcrh_blocking ? true : false;
 
+    DBG_RAFT_CLIENT_SUB_APP(LL_TRACE, sa, "");
+
     if (block)
     {
         tls_completion_notifier = 1;
@@ -1701,7 +1703,7 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
     NIOVA_ASSERT(rci && RCI_2_RI(rci) && sa);
     NIOVA_ASSERT(!sa->rcsa_rh.rcrh_sendq);
 
-    // Launch the udp msg.
+    // Launch the msg.
     int rc = raft_net_send_client_msgv(RCI_2_RI(rci),
                                        &sa->rcsa_rh.rcrh_rpc_request,
                                        sa->rcsa_rh.rcrh_iovs,

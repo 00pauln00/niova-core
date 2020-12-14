@@ -79,8 +79,6 @@ enum pmdb_test_req_lreg_values
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define PMDB_RTV_MAX 1
-
 struct pmdbtc_app
 {
     struct raft_net_client_user_id papp_rncui;
@@ -113,8 +111,8 @@ struct pmdbtc_request
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
 #endif
-    struct raft_test_data_block    preq_rtdb; // preq_rtv must follow!
-    struct raft_test_values        preq_rtv[PMDB_RTV_MAX];
+    struct raft_test_data_block preq_rtdb;    // preq_rtv must follow!
+    struct raft_test_values     preq_rtv[];
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif
@@ -204,7 +202,7 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
                 lv, "last-request-duration-ms",
                 (timespec_2_msec(&papp->papp_last_request_completed) -
                  timespec_2_msec(&papp->papp_last_request)));
-                 break;
+            break;
         case PMDB_TEST_APP_LREG_APP_SYNC:
             lreg_value_fill_bool(lv, "app-sync",
                                  papp->papp_sync ? true : false);
@@ -407,8 +405,10 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     if (!papp)
         return -ENOSPC;
 
-    struct pmdbtc_request *preq =
-        niova_calloc_can_fail(1UL, sizeof(struct pmdbtc_request));
+    // each iteration uses random number of test values, so alloc max
+    size_t req_size = sizeof(struct pmdbtc_request) + RAFT_TEST_VALUES_MAX *
+        sizeof(struct raft_test_values);
+    struct pmdbtc_request *preq = niova_calloc_can_fail(1UL, req_size);
 
     if (!preq)
         return -ENOMEM;
@@ -455,7 +455,7 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
     size_t op_cnt = 1;
 
     /* Cmd string formats:
-     * <RNCUI_V0_REGEX_BASE>.<read>|(<write>.<seqno>)
+     * <RNCUI_V0_REGEX_BASE>.<read>|<lookup>|(<write:start seqno>.<# writes>)
      */
     const char *sep = ".";
     char *sp = NULL;
@@ -692,7 +692,7 @@ pmdbtc_app_rtv_fast_forward(struct pmdbtc_app *papp, int64_t write_seqno)
 
     pmdbtc_app_rand_init(papp);
 
-    for (int64_t i = -1UL; i < write_seqno; i++)
+    for (int64_t i = 0; i < write_seqno; i++)
         pmdbtc_app_rtv_increment(papp);
 }
 
@@ -710,13 +710,21 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
               RAFT_NET_CLIENT_USER_ID_2_UUID(&papp->papp_rncui, 0, 0));
 
     preq->preq_rtdb.rtdb_op = RAFT_TEST_DATA_OP_WRITE;
-    preq->preq_rtdb.rtdb_num_values = 1;
 
-    preq->preq_write_seqno == papp->papp_rtv.rtv_seqno ?
-    pmdbtc_app_rtv_increment(papp) :
-    pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
+    const unsigned int num_values = random_get() % RAFT_TEST_VALUES_MAX;
+    preq->preq_rtdb.rtdb_num_values = num_values;
 
-    preq->preq_rtv[0] = papp->papp_last_rtv_request;
+    SIMPLE_LOG_MSG(LL_TRACE, "papp %p preq %p preparing %d values",
+                   papp, preq, num_values);
+
+    if (preq->preq_write_seqno != papp->papp_rtv.rtv_seqno)
+        pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
+
+    for (int i = 0; i < preq->preq_rtdb.rtdb_num_values; i++)
+    {
+        pmdbtc_app_rtv_increment(papp);
+        preq->preq_rtv[i] = papp->papp_last_rtv_request;
+    }
 }
 
 static void
@@ -751,7 +759,7 @@ pmdbtc_read_result_capture(struct pmdbtc_request *preq, int rc)
 
     struct raft_test_values result_rtv = preq->preq_rtdb.rtdb_values[0];
 
-    pmdbtc_app_rtv_fast_forward(&tmp_papp, result_rtv.rtv_seqno - 1);
+    pmdbtc_app_rtv_fast_forward(&tmp_papp, result_rtv.rtv_seqno);
 
     if (tmp_papp.papp_rtv.rtv_reply_xor_all_values ==
         result_rtv.rtv_reply_xor_all_values)
@@ -816,8 +824,9 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
     // Makes a copy of the preq contents
     pmdbtc_app_history_add(preq);
 
+    // increment seqno after adding to history
     if (preq->preq_op == pmdb_op_write)
-        preq->preq_write_seqno++; // increment seqno after adding to history
+        preq->preq_write_seqno += preq->preq_rtdb.rtdb_num_values;
 
     preq->preq_op_cnt--;
     status = preq->preq_obj_stat.status;
@@ -851,8 +860,6 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&preq->preq_rncui.rncui_key;
     int rc = -EOPNOTSUPP;
 
-    preq->preq_obj_stat.sequence_num = preq->preq_write_seqno;
-
     // Underhanded way to set rpc-user-tag in raft-client-rpc msg
     preq->preq_obj_stat.status = random_get();
     preq->preq_last_tag = preq->preq_obj_stat.status;
@@ -882,16 +889,25 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
     case pmdb_op_write:
         pmdbtc_write_prep(preq);
+
+        size_t rqsz = (sizeof(struct raft_test_data_block) +
+                       preq->preq_rtdb.rtdb_num_values *
+                       sizeof(struct raft_test_values));
+
+        SIMPLE_LOG_MSG(LL_TRACE, "write rqsz: %lu", rqsz);
+
         rc = use_async_requests ?
             PmdbObjPutNB(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                         (sizeof(struct raft_test_data_block) +
-                          sizeof(struct raft_test_values)),
+                         rqsz,
                          pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
             PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                       (sizeof(struct raft_test_data_block) +
-                        sizeof(struct raft_test_values)),
+                       rqsz,
                        &preq->preq_obj_stat);
 
+
+        // pumicedb seqnum increases by 1 per write
+        // XXX: could this sequence num be inc'd by PmdbObjPut?
+        preq->preq_obj_stat.sequence_num++;
         break;
     default:
         break;

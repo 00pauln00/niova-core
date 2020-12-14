@@ -1779,7 +1779,7 @@ raft_net_send_client_msgv(struct raft_instance *ri,
                           struct raft_client_rpc_msg *rcrm,
                           const struct iovec *iov, size_t niovs)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    SIMPLE_LOG_MSG(LL_TRACE, "rcrm %p iov %p (n=%lu)", rcrm, iov, niovs);
 
     if (!ri || !ri->ri_csn_leader || !rcrm)
         return -EINVAL;

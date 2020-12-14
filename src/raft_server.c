@@ -1610,7 +1610,7 @@ raft_server_send_msg(struct raft_instance *ri,
                      const enum raft_udp_listen_sockets sock_src,
                      struct ctl_svc_node *rp, const struct raft_rpc_msg *rrm)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    DBG_RAFT_MSG(LL_TRACE, rrm, "");
 
     if (rp->csn_type == CTL_SVC_NODE_TYPE_RAFT_PEER)
         NIOVA_ASSERT(sock_src == RAFT_UDP_LISTEN_SERVER);
