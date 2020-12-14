@@ -211,6 +211,122 @@ raft_net_lreg_set_election_timeout(struct raft_instance *ri,
     return 0;
 }
 
+void
+raft_net_set_max_scan_entries(struct raft_instance *ri,
+                              ssize_t max_scan_entries)
+{
+    NIOVA_ASSERT(ri);
+
+    if (max_scan_entries < 0)
+        ri->ri_max_scan_entries = (ssize_t)-1;
+
+    else
+        ri->ri_max_scan_entries =
+            MAX(max_scan_entries,
+                RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES);
+
+    SIMPLE_LOG_MSG(LL_WARN, "max_scan_entries=%zd", ri->ri_max_scan_entries);
+}
+
+static int
+raft_net_lreg_set_max_scan_entries(struct raft_instance *ri,
+                                   const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    ssize_t max_scan_entries = RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        long long tmp;
+        int rc = niova_string_to_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
+        if (rc)
+            return rc;
+
+        max_scan_entries = tmp;
+    }
+
+    raft_net_set_max_scan_entries(ri, max_scan_entries);
+    return 0;
+}
+
+void
+raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor)
+{
+    NIOVA_ASSERT(ri);
+
+    ri->ri_log_reap_factor = MIN(log_reap_factor,
+                                 RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX);
+
+    SIMPLE_LOG_MSG(LL_WARN, "log_reap_factor=%zu", ri->ri_log_reap_factor);
+}
+
+static int
+raft_net_lreg_set_log_reap_factor(struct raft_instance *ri,
+                                  const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    size_t lrf = RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        unsigned long long tmp;
+        int rc =
+            niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
+
+        if (rc)
+            return rc;
+
+        lrf = tmp;
+    }
+
+    raft_net_set_log_reap_factor(ri, lrf);
+
+    return 0;
+}
+
+void
+raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts)
+{
+    NIOVA_ASSERT(ri);
+
+    num_ckpts = MAX(RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN, num_ckpts);
+
+    ri->ri_num_checkpoints = MIN(num_ckpts,
+                                 RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX);
+
+    SIMPLE_LOG_MSG(LL_WARN, "num_checkpoints=%zu", ri->ri_num_checkpoints);
+}
+
+static int
+raft_net_lreg_set_num_checkpoints(struct raft_instance *ri,
+                                  const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    size_t nchkpt = RAFT_INSTANCE_PERSISTENT_APP_CHKPT;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        unsigned long long tmp;
+        int rc =
+            niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
+
+        if (rc)
+            return rc;
+
+        nchkpt = tmp;
+    }
+
+    raft_net_set_num_checkpoints(ri, nchkpt);
+
+    return 0;
+}
+
 static util_thread_ctx_reg_int_t
 raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                                       struct lreg_value *lv, void *arg)
@@ -346,6 +462,15 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
             break;
         case RAFT_NET_LREG_HEARTBEAT_FREQ:
             rc = raft_net_lreg_set_heartbeat_freq(ri, lv);
+            break;
+        case RAFT_NET_LREG_MAX_SCAN_ENTRIES:
+            rc = raft_net_lreg_set_max_scan_entries(ri, lv);
+            break;
+        case RAFT_NET_LREG_LOG_REAP_FACTOR:
+            rc = raft_net_lreg_set_log_reap_factor(ri, lv);
+            break;
+        case RAFT_NET_LREG_NUM_CHECKPOINTS:
+            rc = raft_net_lreg_set_num_checkpoints(ri, lv);
             break;
         default:
             rc = -EPERM;

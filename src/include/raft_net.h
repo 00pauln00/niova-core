@@ -25,6 +25,14 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
+#define RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES 1000000
+#define RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES 10000
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR 2
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX 100
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT 5
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX 100
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN 1
+
 #define RAFT_NET_BINARY_HIST_SIZE 20
 
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
@@ -697,5 +705,15 @@ raft_net_client_user_id_parse(const char *in,
 void
 raft_net_csn_connection_setup(struct raft_instance *ri,
                               struct ctl_svc_node *csn);
+
+void
+raft_net_set_max_scan_entries(struct raft_instance *ri,
+                              ssize_t max_scan_entries);
+
+void
+raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor);
+
+void
+raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts);
 
 #endif

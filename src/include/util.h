@@ -398,6 +398,23 @@ niova_string_to_unsigned_long_long(const char *string, unsigned long long *val)
 }
 
 static inline int
+niova_string_to_long_long(const char *string, long long *val)
+{
+    if (!string || !val)
+        return -EINVAL;
+
+    errno = 0;
+    long long tmp = strtoll(string, NULL, 10);
+    if ((tmp == LONG_MIN || tmp == LONG_MAX) && errno)
+        return -errno;
+
+    else
+        *val = tmp;
+
+    return 0;
+}
+
+static inline int
 niova_string_to_unsigned_int(const char *string, unsigned int *val)
 {
     if (!string || !val)
