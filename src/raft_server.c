@@ -2391,10 +2391,11 @@ raft_server_process_vote_request(struct raft_instance *ri,
     rreply_msg.rrm_vote_reply.rvrpm_voted_granted =
         raft_server_process_vote_request_decide(ri, vreq, &sync_hdr) ? 1 : 0;
 
-    DBG_RAFT_MSG(LL_NOTIFY, rrm, "vote=%s my term=%ld last=%ld:%ld",
+    DBG_RAFT_MSG(LL_WARN, rrm, "vote=%s my term=%ld last=%ld:%ld",
                  rreply_msg.rrm_vote_reply.rvrpm_voted_granted ? "yes" : "no",
                  ri->ri_log_hdr.rlh_term, sync_hdr.reh_term,
                  sync_hdr.reh_index);
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 
     /* We intend to vote 'yes' - sync the candidate's term and UUID to our
      * log header.
@@ -2526,6 +2527,12 @@ raft_server_append_entry_log_prune_if_needed(
     int rc = raft_server_backend_sync(ri, __func__);
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
                                strerror(-rc));
+
+    // We must not prune already committed transactions.
+    DBG_RAFT_INSTANCE(LL_WARN, ri,
+                      "raerqm_prev_log_term=%ld raerqm_prev_log_index=%ld",
+                      raerq->raerqm_prev_log_term,
+                      raerq->raerqm_prev_log_index);
 
     // We must not prune already committed transactions.
     DBG_RAFT_INSTANCE_FATAL_IF(
