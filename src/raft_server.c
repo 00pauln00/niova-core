@@ -2983,17 +2983,19 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         rc = raft_server_append_entry_log_prepare_and_check(ri, raerq);
         if (rc)
         {
-            if (rc == -EALREADY) // Issue #28 - advance the index of recently restarted server
+            if (rc == -EALREADY)
             {
+                // Issue #28 - advance the index of recently restarted server
                 advance_commit_idx = true;
-                // Limit the commit-idx range to log entries which are currently stored here
+
+                //Limit the commit-idx range entries currently stored here.
                 new_commit_idx =
                     MIN(new_commit_idx,
                         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC));
             }
             else
             {
-                // -EEXIST and -ERANGE cases do not advance advance the commit-idx
+                // -EEXIST and -ERANGE cases do not advance advance commit-idx
                 non_matching_prev_term = true;
             }
         }
@@ -3024,23 +3026,14 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         raft_server_timerfd_settime(ri);
 }
 
-static raft_server_net_cb_leader_ctx_int64_t
-raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
-                                           const bool sync_thread)
+static raft_server_net_cb_leader_ctx_t
+raft_server_leader_setup_self_follower_info(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_raft);
     NIOVA_ASSERT(raft_instance_is_leader(ri));
 
-    raft_peer_t num_raft_members =
-        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
-
     raft_peer_t this_peer_num = raft_server_instance_self_idx(ri);
-
     NIOVA_ASSERT(raft_member_idx_is_valid(ri, this_peer_num));
-
-    uint8_t done_peers[CTL_SVC_MAX_RAFT_PEERS] = {0};
-    int64_t sorted_indexes[CTL_SVC_MAX_RAFT_PEERS] =
-    {[0 ... (CTL_SVC_MAX_RAFT_PEERS - 1)] = RAFT_MIN_APPEND_ENTRY_IDX};
 
     /* The leader doesn't update its own rfi_next_idx slot so do that here
      */
@@ -3053,45 +3046,34 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
     self->rfi_next_idx = sync_hdr.reh_index + 1;
     self->rfi_synced_idx = sync_hdr.reh_index;
     self->rfi_prev_idx_term = sync_hdr.reh_term;
+}
 
-    /* Sort the group member's next-idx values - note that these are the NEXT
-     * index to be written not the already written idx value.
-     */
-    for (raft_peer_t i = 0; i < num_raft_members; i++)
+static raft_server_net_cb_leader_ctx_int64_t
+raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
+                                           const bool sync_thread)
+{
+    NIOVA_ASSERT(ri && ri->ri_csn_raft);
+    NIOVA_ASSERT(raft_instance_is_leader(ri));
+
+    raft_server_leader_setup_self_follower_info(ri);
+
+    const size_t num_raft_members =
+        ctl_svc_node_raft_2_num_members(ri->ri_csn_raft);
+
+    NIOVA_ASSERT(num_raft_members <= CTL_SVC_MAX_RAFT_PEERS);
+
+    raft_entry_idx_t sync_indexes[num_raft_members];
+
+    for (size_t i = 0; i < num_raft_members; i++)
     {
-        raft_peer_t tmp_peer = RAFT_PEER_ANY;
-
-        for (raft_peer_t j = 0; j < num_raft_members; j++)
-        {
-            const struct raft_follower_info *rfi =
-                raft_server_get_follower_info(ri, j);
-
-            if (!done_peers[j] &&
-                (sorted_indexes[i] == RAFT_MIN_APPEND_ENTRY_IDX ||
-                 rfi->rfi_synced_idx < sorted_indexes[i]))
-            {
-                sorted_indexes[i] = rfi->rfi_synced_idx + 1;
-                tmp_peer = j;
-            }
-        }
-        NIOVA_ASSERT(tmp_peer < num_raft_members && !done_peers[tmp_peer]);
-        done_peers[tmp_peer] = 1;
+        struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
+        sync_indexes[i] = rfi->rfi_synced_idx;
     }
 
-    // simple sanity check.
-    for (raft_peer_t i = 0; i < num_raft_members; i++)
-        NIOVA_ASSERT(sorted_indexes[i] != RAFT_MIN_APPEND_ENTRY_IDX);
-
-    const raft_peer_t majority_idx =
-        raft_majority_index_value(num_raft_members);
-
-    NIOVA_ASSERT(majority_idx < num_raft_members);
-
-    /* Be sure to subtract one from the majority value since that value is the
-     * 'next-idx'.
-     */
-    const int64_t committed_raft_idx =
-        MAX(sorted_indexes[majority_idx] - 1, 0);
+    raft_entry_idx_t committed_raft_idx = -1;
+    int rc = raft_server_get_majority_entry_idx(sync_indexes, num_raft_members,
+                                                &committed_raft_idx);
+    FATAL_IF(rc, "raft_server_get_majority_entry_idx(): %s", strerror(-rc));
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "committed_raft_idx=%ld",
                       committed_raft_idx);
@@ -3102,9 +3084,18 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
      */
     if (committed_raft_idx && !sync_thread &&
         (committed_raft_idx < ri->ri_commit_idx))
+    {
         DBG_RAFT_INSTANCE(LL_WARN, ri,
                           "committed_raft_idx (%ld) < ri_commit_idx",
                           committed_raft_idx);
+        for (raft_peer_t i = 0; i < num_raft_members; i++)
+        {
+            struct raft_follower_info *rfi =
+                raft_server_get_follower_info(ri, i);
+            LOG_MSG(LL_WARN, "idx=%hhu sorted-idx=%ld, peer-sync-idx=%ld",
+                    i, sync_indexes[i], rfi->rfi_synced_idx);
+        }
+    }
 
     return committed_raft_idx;
 }

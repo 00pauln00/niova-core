@@ -810,9 +810,10 @@ raft_server_entry_idx_qsort_compare(const void *a, const void *b)
 
 static inline raft_entry_idx_t
 raft_server_get_majority_entry_idx(const raft_entry_idx_t *values,
-                                const size_t nvalues)
+                                   const size_t nvalues,
+                                   raft_entry_idx_t *ret_val)
 {
-    if (!values)
+    if (!values || !ret_val)
         return -EINVAL;
 
     else if (nvalues > CTL_SVC_MAX_RAFT_PEERS)
@@ -821,7 +822,9 @@ raft_server_get_majority_entry_idx(const raft_entry_idx_t *values,
     qsort((void *)values, nvalues, sizeof(raft_entry_idx_t),
           raft_server_entry_idx_qsort_compare);
 
-    return values[raft_majority_index_value((raft_peer_t)nvalues)];
+    *ret_val = values[raft_majority_index_value((raft_peer_t)nvalues)];
+
+    return 0;
 }
 
 /**
