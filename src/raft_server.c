@@ -4449,6 +4449,7 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_commit_idx = -1;
     ri->ri_last_applied_idx = -1;
     ri->ri_checkpoint_last_idx = -1;
+    ri->ri_pending_read_idx = -1;
     niova_atomic_init(&ri->ri_lowest_idx, -1);
 
     raft_server_instance_init_tunables(ri);
