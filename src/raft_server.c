@@ -2265,12 +2265,12 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
         &rrm->rrm_append_entries_request;
 
     int rc = raft_server_refresh_follower_prev_log_term(ri, follower);
-    if (rc && rc == -ERANGE) // Accept only ERANGE
+    if (rc == -ERANGE)
     {
         // Convert this into heartbeat
         heartbeat = true;
     }
-    else
+    else if (rc) // Accept only ERANGE
     {
         DBG_RAFT_INSTANCE(LL_FATAL, ri,
                           "raft_server_refresh_follower_prev_log_term(): %s",
