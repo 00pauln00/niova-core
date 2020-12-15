@@ -38,6 +38,14 @@ extern enum log_level allocLogLevel;
     ptr;                                                                  \
 })
 
+#define niova_realloc(oldptr, size)                                       \
+({                                                                        \
+    void *ptr = realloc(oldptr, size);                                    \
+    FATAL_IF_strerror((!ptr), "niova_realloc: ");                         \
+    LOG_MSG(allocLogLevel, "niova_realloc: %p  %zu", ptr, size);          \
+    ptr;                                                                  \
+})
+
 #define niova_calloc_can_fail(nmemb, size)                                \
 ({                                                                        \
     void *ptr = calloc(nmemb, size);                                      \

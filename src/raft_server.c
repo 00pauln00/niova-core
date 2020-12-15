@@ -45,6 +45,10 @@ REGISTRY_ENTRY_FILE_GENERATE;
 typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
 
+static struct raft_entry *re_coalesce_write = NULL;
+static char re_coalesce_wr_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
+static int rs_co_wr_timerfd = -1;
+
 // A value of '0' means that all will be read
 static size_t raftPersistentAppMaxScanEntries =
     RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES;
@@ -565,7 +569,9 @@ raft_server_entry_init(const struct raft_instance *ri,
                        struct raft_entry *re, const raft_entry_idx_t re_idx,
                        const uint64_t current_term,
                        const char *data, const size_t len,
-                       enum raft_write_entry_opts opts)
+                       const uint32_t ndata_entries,
+                       enum raft_write_entry_opts opts,
+                       bool coalesce_wr)
 {
     NIOVA_ASSERT(re);
     NIOVA_ASSERT(opts == RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER ||
@@ -583,10 +589,12 @@ raft_server_entry_init(const struct raft_instance *ri,
 
     reh->reh_magic = RAFT_ENTRY_MAGIC;
     reh->reh_data_size = len;
+    reh->reh_data_len_arr[0] = len;
     reh->reh_index = re_idx;
     reh->reh_term = current_term;
     reh->reh_leader_change_marker =
         (opts == RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER) ? 1 : 0;
+    reh->reh_ndata_entries = ndata_entries;
     reh->reh_crc = 0;
 
     uuid_copy(reh->reh_self_uuid, RAFT_INSTANCE_2_SELF_UUID(ri));
@@ -595,12 +603,14 @@ raft_server_entry_init(const struct raft_instance *ri,
     // Capture the approx time this entry will be stored
     niova_realtime_coarse_clock(&reh->reh_store_time);
 
-    memset(reh->reh_pad, 0, RAFT_ENTRY_PAD_SIZE);
+    //memset(reh->reh_pad, 0, RAFT_ENTRY_PAD_SIZE);
 
-    memcpy(re->re_data, data, len);
-
-    // Checksum the entire entry - including the 'data' section
-    reh->reh_crc = raft_server_entry_calc_crc(re);
+    if (!coalesce_wr)
+    {
+        memcpy(re->re_data, data, len);
+        // Checksum the entire entry - including the 'data' section
+        reh->reh_crc = raft_server_entry_calc_crc(re);
+    }
 }
 
 static bool
@@ -716,8 +726,10 @@ static int
 raft_server_entry_write(struct raft_instance *ri,
                         const raft_entry_idx_t re_idx,
                         const int64_t term, const char *data, size_t len,
+                        const uint32_t ndata_entries,
                         enum raft_write_entry_opts opts,
-                        const struct raft_net_sm_write_supplements *ws)
+                        const struct raft_net_sm_write_supplements *ws,
+                        const bool client_wr)
 {
     if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft ||
         (opts != RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER && (!data || !len)))
@@ -726,13 +738,22 @@ raft_server_entry_write(struct raft_instance *ri,
     else if (len > RAFT_ENTRY_MAX_DATA_SIZE)
         return -E2BIG;
 
-    const size_t total_entry_size = sizeof(struct raft_entry) + len;
-
-    struct raft_entry *re = niova_malloc(total_entry_size);
-    if (!re)
-        return -ENOMEM;
-
-    raft_server_entry_init(ri, re, re_idx, term, data, len, opts);
+    struct raft_entry *re = NULL;
+    if (client_wr)
+    {
+        /* use the global re_coalesce_write raft entry for client writes */
+        re = re_coalesce_write;
+        DBG_RAFT_ENTRY(LL_WARN, &re->re_header, "Using re_coalesce_write"); 
+    }
+    else
+    {
+        const size_t total_entry_size = sizeof(struct raft_entry) + len;
+        re = niova_malloc(total_entry_size);
+            if (!re)
+                return -ENOMEM;
+        raft_server_entry_init(ri, re, re_idx, term, data, len, ndata_entries,
+                               opts, false);
+    }
 
     DBG_RAFT_ENTRY(LL_NOTIFY, &re->re_header, "");
 
@@ -759,6 +780,9 @@ raft_server_entry_write(struct raft_instance *ri,
 
     niova_free(re);
 
+    if (client_wr)
+        re_coalesce_write = NULL;
+
     if (raft_server_does_synchronous_writes(ri))
         DBG_RAFT_INSTANCE_FATAL_IF((raft_server_has_unsynced_entries(ri)), ri,
                                    "raft_server_has_unsynced_entries() fails");
@@ -776,8 +800,8 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
 {
     NIOVA_ASSERT(re_idx < 0);
 
-    return raft_server_entry_init(ri, re, re_idx, current_term, data, len,
-                                  RAFT_WR_ENTRY_OPT_LOG_HEADER);
+    return raft_server_entry_init(ri, re, re_idx, current_term, data, len, 1,
+                                  RAFT_WR_ENTRY_OPT_LOG_HEADER, false);
 }
 
 /**
@@ -1775,6 +1799,8 @@ raft_server_leader_init_state(struct raft_instance *ri)
      */
     rls->rls_initial_term_idx = sync_hdr.reh_index;
 
+    rs_co_wr_timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+
     for (raft_peer_t i = 0; i < num_raft_peers; i++)
     {
         struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
@@ -1809,15 +1835,27 @@ raft_server_leader_init_state(struct raft_instance *ri)
 static raft_net_cb_ctx_t
 raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              const char *data, const size_t len,
+                             const uint32_t ndata_entries,
                              enum raft_write_entry_opts opts,
-                             const struct raft_net_sm_write_supplements *ws)
+                             const struct raft_net_sm_write_supplements *ws,
+                             const bool client_wr)
 {
-    struct raft_entry_header unsync_hdr = {0};
-    raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
+    raft_entry_idx_t idx;
+    if (client_wr)
+    {
+        idx = re_coalesce_write->re_header.reh_index;
+    }
+    else
+    {
+        struct raft_entry_header unsync_hdr = {0};
+        raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
 
-    NIOVA_ASSERT(term >= unsync_hdr.reh_term);
+        NIOVA_ASSERT(term >= unsync_hdr.reh_term);
 
-    const raft_entry_idx_t next_entry_idx = unsync_hdr.reh_index + 1;
+        idx = unsync_hdr.reh_index + 1;
+    }
+
+    const raft_entry_idx_t next_entry_idx = idx;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
                       "next-entry-idx=%ld term=%ld len=%zd opts=%d",
@@ -1826,8 +1864,8 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
     DBG_RAFT_INSTANCE_FATAL_IF((next_entry_idx < 0), ri,
                                "negative next-entry-idx=%ld", next_entry_idx);
 
-    int rc = raft_server_entry_write(ri, next_entry_idx, term, data, len, opts,
-                                     ws);
+    int rc = raft_server_entry_write(ri, next_entry_idx, term, data, len, ndata_entries,
+                                     opts, ws, client_wr);
     if (rc)
         DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
                           strerror(-rc));
@@ -1836,8 +1874,10 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
 static raft_net_cb_ctx_t
 raft_server_leader_write_new_entry(
     struct raft_instance *ri, const char *data, const size_t len,
+    const uint32_t ndata_entries,
     enum raft_write_entry_opts opts,
-    const struct raft_net_sm_write_supplements *ws)
+    const struct raft_net_sm_write_supplements *ws,
+    const bool client_wr)
 {
 #if 1
     NIOVA_ASSERT(raft_instance_is_leader(ri));
@@ -1851,8 +1891,8 @@ raft_server_leader_write_new_entry(
      * followers which may not always be able to use the current term when
      * rebuilding their log.
      */
-    raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len, opts,
-                                 ws);
+    raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data, len,
+                                 ndata_entries, opts, ws, client_wr);
 
     // Schedule ourselves to send this entry to the other members
     ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_REMOTE_SEND]);
@@ -1863,9 +1903,9 @@ raft_server_write_leader_change_marker(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_leader(ri));
 
-    raft_server_leader_write_new_entry(ri, NULL, 0,
+    raft_server_leader_write_new_entry(ri, NULL, 0, 1,
                                        RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER,
-                                       NULL);
+                                       NULL, false);
 }
 
 static void
@@ -2102,13 +2142,50 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
     NIOVA_ASSERT(raft_instance_is_leader(ri));
 
+    SIMPLE_LOG_MSG(LL_WARN, "Send the heartbeat AE: state: %d", ri->ri_state);
     raft_server_append_entry_sender(ri, true);
+}
+
+/*
+ * Write the coalesced writes if timer expired for it.
+ */
+static bool
+raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
+{
+    ssize_t rc = io_fd_drain(rs_co_wr_timerfd, NULL);
+    if (rc || re_coalesce_write == NULL)
+        return false;
+
+    struct raft_entry_header *raft_header = &re_coalesce_write->re_header;
+    memcpy(re_coalesce_write->re_data, re_coalesce_wr_buffer, raft_header->reh_data_size);
+            // Checksum the entire entry again - including the 'data' section
+    raft_header->reh_crc = raft_server_entry_calc_crc(re_coalesce_write);
+
+    SIMPLE_LOG_MSG(LL_WARN, "Write the data now from timer expiry");
+
+    /* Issue the pending wr */
+    raft_server_leader_write_new_entry(ri, re_coalesce_write->re_data,
+                                       re_coalesce_write->re_header.reh_data_size,
+                                       re_coalesce_write->re_header.reh_ndata_entries,
+                                       re_coalesce_write->re_header.reh_term,
+                                       RAFT_WR_ENTRY_OPT_NONE, true);
+
+    SIMPLE_LOG_MSG(LL_WARN, "Coalesce write expired, state: %d", ri->ri_state);
+    struct itimerspec co_wr_timer = {0};
+
+    msec_2_timespec(&co_wr_timer.it_value, 50000);
+    int timer_rc = timerfd_settime(rs_co_wr_timerfd, 0, &co_wr_timer, NULL);
+    if (timer_rc)
+        return false;
+
+    return true;
 }
 
 static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
     FUNC_ENTRY(LL_TRACE);
+    bool set_timer = true;
 
     switch (ri->ri_state)
     {
@@ -2118,15 +2195,22 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
 
     case RAFT_STATE_LEADER:
-        raft_server_issue_heartbeat(ri);
+    {
+        // First check if coalescing write expired.
+        if (raft_server_leader_co_wr_timer_expired(ri))
+            set_timer = false;
+        else
+            raft_server_issue_heartbeat(ri);
         break;
+    }
     default:
         break;
     }
 
 //XXX if leader and followers still have sync ops pending, wake up at a higher
 //    frequency
-    raft_server_timerfd_settime(ri);
+    if (set_timer)
+        raft_server_timerfd_settime(ri);
 }
 
 /**
@@ -2515,6 +2599,7 @@ raft_server_write_new_entry_from_leader(
     NIOVA_ASSERT(raerq->raerqm_log_term >= unsync_hdr.reh_term);
 
     const size_t entry_size = raerq->raerqm_entries_sz;
+    const uint8_t num_entries = raerq->raerqm_ndata_entries;
 
     // Msg size of '0' is OK.
     NIOVA_ASSERT(entry_size <= RAFT_ENTRY_MAX_DATA_SIZE);
@@ -2526,8 +2611,8 @@ raft_server_write_new_entry_from_leader(
         RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER : RAFT_WR_ENTRY_OPT_NONE;
 
     raft_server_write_next_entry(ri, raerq->raerqm_log_term,
-                                 raerq->raerqm_entries, entry_size, opts,
-                                 NULL);
+                                 raerq->raerqm_entries, entry_size,
+                                 num_entries, opts, NULL, false);
 }
 
 /**
@@ -3401,6 +3486,7 @@ raft_server_net_client_request_init(
         rncr->rncr_request = rpc_request;
         rncr->rncr_request_or_commit_data = rpc_request->rcrm_data;
 
+        SIMPLE_LOG_MSG(LL_WARN, "1 Here the size is: %u", rpc_request->rcrm_data_size);
         CONST_OVERRIDE(size_t, rncr->rncr_request_or_commit_data_size,
                        rpc_request->rcrm_data_size);
 
@@ -3419,6 +3505,7 @@ raft_server_net_client_request_init(
          */
         rncr->rncr_request_or_commit_data = commit_data;
 
+        SIMPLE_LOG_MSG(LL_WARN, "Here the size is: %ld", commit_data_size);
         CONST_OVERRIDE(size_t, rncr->rncr_request_or_commit_data_size,
                        commit_data_size);
 
@@ -3445,6 +3532,81 @@ raft_server_net_client_request_init_client_rpc(
         ri, rncr, (rpc_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING ?
                    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY :
                    RAFT_CLIENT_RPC_MSG_TYPE_REPLY));
+}
+static bool
+raft_server_write_coalesce_entry(struct raft_instance *ri,
+                                 const char *data, const size_t len,
+                                 const int64_t term,
+                                 enum raft_write_entry_opts opts)
+{
+    struct itimerspec co_wr_timer = {0};
+
+    msec_2_timespec(&co_wr_timer.it_value, 50000);
+    int rc = timerfd_settime(rs_co_wr_timerfd, 0, &co_wr_timer, NULL);
+    if (rc)
+        return rc;
+
+    if (re_coalesce_write == NULL)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "Allocate for the first time");
+        size_t total_size = sizeof(struct raft_entry) + len;
+
+        re_coalesce_write = niova_malloc(total_size);
+        if (!re_coalesce_write)
+            return -ENOMEM;
+
+        struct raft_entry_header *raft_header = &re_coalesce_write->re_header;
+        memset(&raft_header->reh_data_len_arr, 0,
+                            (RAFT_ENTRY_DATA_LEN_ENTRIES * sizeof(uint8_t)));
+        struct raft_entry_header unsync_hdr = {0};
+        raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
+
+        NIOVA_ASSERT(term >= unsync_hdr.reh_term);
+
+        const raft_entry_idx_t next_entry_idx = unsync_hdr.reh_index + 1;
+
+        raft_server_entry_init(ri, re_coalesce_write, next_entry_idx, term,
+                               data, len, 1, opts, true);
+
+        memcpy(re_coalesce_wr_buffer, data, len);
+        raft_header->reh_ndata_entries = 1;
+        //raft_header->reh_data_len_arr[0] = len;
+        SIMPLE_LOG_MSG(LL_WARN, "Allocate for the first time: %d", raft_header->reh_data_len_arr[0]);
+    }
+    else
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "Reallocate raft_entry with modified size");
+        /* Reallocate raft_entry to accomodate new write */
+
+        size_t total_size = sizeof(struct raft_entry) +
+                    re_coalesce_write->re_header.reh_data_size + len;
+        re_coalesce_write = niova_realloc(re_coalesce_write, total_size);
+
+        SIMPLE_LOG_MSG(LL_WARN, "nentries: %u, data_size: %u",
+                                re_coalesce_write->re_header.reh_ndata_entries,
+                                re_coalesce_write->re_header.reh_data_size);
+
+        struct raft_entry_header *raft_header = &re_coalesce_write->re_header;
+
+        raft_header->reh_data_len_arr[raft_header->reh_ndata_entries] =
+                                    len;
+        memcpy(re_coalesce_wr_buffer + raft_header->reh_data_size, data, len);
+        raft_header->reh_data_size = len +
+                            raft_header->reh_data_size;
+        raft_header->reh_ndata_entries++;
+
+        if (raft_header->reh_ndata_entries == RAFT_ENTRY_DATA_LEN_ENTRIES ||
+            raft_header->reh_data_size == RAFT_ENTRY_MAX_DATA_SIZE)
+        {
+            memcpy(re_coalesce_write->re_data, re_coalesce_wr_buffer, raft_header->reh_data_size);
+            // Checksum the entire entry again - including the 'data' section
+            raft_header->reh_crc = raft_server_entry_calc_crc(re_coalesce_write);
+
+            SIMPLE_LOG_MSG(LL_WARN, "Write the data now");
+            return true;
+        }
+    }
+    return false;
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -3555,10 +3717,18 @@ raft_server_client_recv_handler(struct raft_instance *ri,
      * the client until the write is committed and applied!
      */
     if (rncr.rncr_write_raft_entry)
-        raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
-                                           rcm->rcrm_data_size,
-                                           RAFT_WR_ENTRY_OPT_NONE,
-                                           &rncr.rncr_sm_write_supp);
+    {
+        bool wr_entry = raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
+                                                         rcm->rcrm_data_size,
+                                                         ri->ri_log_hdr.rlh_term,
+                                                         RAFT_WR_ENTRY_OPT_NONE);
+        if (wr_entry)
+            raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
+                                               rcm->rcrm_data_size,
+                                               re_coalesce_write->re_header.reh_ndata_entries,
+                                               RAFT_WR_ENTRY_OPT_NONE,
+                                               &rncr.rncr_sm_write_supp, true);
+    }
 
     /* Read operation or an already committed + applied write
      * operation.
@@ -3690,6 +3860,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 
             raerq->raerqm_entries_sz = reh->reh_data_size;
             raerq->raerqm_leader_change_marker = reh->reh_leader_change_marker;
+            raerq->raerqm_this_idx_crc = reh->reh_crc;
+            raerq->raerqm_ndata_entries = reh->reh_ndata_entries;
 
             NIOVA_ASSERT(reh->reh_index == peer_next_raft_idx);
 
@@ -3708,6 +3880,7 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
             raerq->raerqm_entries_sz = 0;
             raerq->raerqm_leader_change_marker = 0;
             raerq->raerqm_heartbeat_msg = 1;
+            raerq->raerqm_ndata_entries = 1;
         }
 
         DBG_SIMPLE_CTL_SVC_NODE(
@@ -3810,74 +3983,83 @@ raft_server_state_machine_apply(struct raft_instance *ri)
      */
     raft_server_last_applied_increment(ri, &reh);
 
-    struct raft_net_client_request_handle rncr;
-    raft_server_net_client_request_init_sm_apply(ri, &rncr, sink_buf,
-                                                 reh.reh_data_size,
-                                                 reply_buf,
-                                                 RAFT_NET_MAX_RPC_SIZE);
+    DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "Check the content here");
 
-    if (!reh.reh_leader_change_marker && reh.reh_data_size)
+    // Here we should go over each client request and send independent replies
+    for (uint8_t i = 0; i < reh.reh_ndata_entries; i++)
     {
-        rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
-                                    NULL);
-        DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
-                                   strerror(-rc));
+       struct raft_net_client_request_handle rncr;
+       SIMPLE_LOG_MSG(LL_WARN, "The data len: %u", reh.reh_data_len_arr[i]);
 
-        // Initialize supplement handle for possible use by SM callback
-        raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+       raft_server_net_client_request_init_sm_apply(ri, &rncr, sink_buf,
+                                                    reh.reh_data_len_arr[i],
+                                                    reply_buf,
+                                                    RAFT_NET_MAX_RPC_SIZE);
+   
+       if (!reh.reh_leader_change_marker)
+       {
+           SIMPLE_LOG_MSG(LL_WARN, "Followers and append entry should not call this");
+           rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
+                                       NULL);
+           DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
+                                      strerror(-rc));
 
-        int rc = ri->ri_server_sm_request_cb(&rncr);
+           // Initialize supplement handle for possible use by SM callback
+           raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
 
-        // Called regardless of ri_server_sm_request_cb() error
-        raft_server_sm_apply_opt(ri, &rncr);
+           int rc = ri->ri_server_sm_request_cb(&rncr);
 
-        if (!rc && raft_instance_is_leader(ri))
-        {
-            if (reh.reh_term == ri->ri_log_hdr.rlh_term)
-            {
-                struct timespec ts;
-                niova_realtime_coarse_clock(&ts);
+           // Called regardless of ri_server_sm_request_cb() error
+           raft_server_sm_apply_opt(ri, &rncr);
 
-                timespecsub(&ts, &reh.reh_store_time, &ts);
+           if (!rc && raft_instance_is_leader(ri))
+           {
+               if (reh.reh_term == ri->ri_log_hdr.rlh_term)
+               {
+                   struct timespec ts;
+                   niova_realtime_coarse_clock(&ts);
+   
+                   timespecsub(&ts, &reh.reh_store_time, &ts);
+   
+                   struct binary_hist *bh =
+                       &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
+   
+                   if (timespec_2_msec(&ts) > 0)
+                       binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
+               }
+               /* Perform basic initialization on the reply buffer if the SM has
+                * provided the necessary info for completing the reply.  The SM
+                * would have called
+                * raft_net_client_request_handle_set_reply_info() if the necessary
+                * info was provided.  Note that the SM may not check for leader
+                * status, so the reply info may be provided even when this node
+                * is a follower.  Therefore, udp init should be bypassed if this
+                * node is not the leader.
+                */
+               if (raft_net_client_request_handle_has_reply_info(&rncr))
+                   raft_server_client_reply_init(
+                       ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
+           }
 
-                struct binary_hist *bh =
-                    &ri->ri_rihs[RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC].rihs_bh;
+           DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rc));
 
-                if (timespec_2_msec(&ts) > 0)
-                    binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
-            }
-            /* Perform basic initialization on the reply buffer if the SM has
-             * provided the necessary info for completing the reply.  The SM
-             * would have called
-             * raft_net_client_request_handle_set_reply_info() if the necessary
-             * info was provided.  Note that the SM may not check for leader
-             * status, so the reply info may be provided even when this node
-             * is a follower.  Therefore, udp init should be bypassed if this
-             * node is not the leader.
-             */
-            if (raft_net_client_request_handle_has_reply_info(&rncr))
-                raft_server_client_reply_init(
-                    ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
-        }
+           // The destructor may issue a callback into the SM.
+           raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
+       }
 
-        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rc));
+       if (!reh.reh_leader_change_marker && !reh.reh_data_size)
+           DBG_RAFT_ENTRY(LL_WARN, &reh, "application entry contains no data!");
 
-        // The destructor may issue a callback into the SM.
-        raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
+       DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "ri_last_applied_idx was incremented");
+       DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "");
+
+       if (ri->ri_last_applied_idx < ri->ri_commit_idx)
+           ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
+ 
+       if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
+           raft_net_client_request_handle_has_reply_info(&rncr))
+           raft_server_reply_to_client(ri, &rncr, NULL);
     }
-
-    if (!reh.reh_leader_change_marker && !reh.reh_data_size)
-        DBG_RAFT_ENTRY(LL_WARN, &reh, "application entry contains no data!");
-
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "ri_last_applied_idx was incremented");
-    DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "");
-
-    if (ri->ri_last_applied_idx < ri->ri_commit_idx)
-        ev_pipe_notify(&ri->ri_evps[RAFT_SERVER_EVP_SM_APPLY]);
-
-    if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
-        raft_net_client_request_handle_has_reply_info(&rncr))
-        raft_server_reply_to_client(ri, &rncr, NULL);
 }
 
 static raft_server_epoll_remote_sender_t
