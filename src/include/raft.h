@@ -798,6 +798,32 @@ raft_majority_index_value(const raft_peer_t num_raft_members)
     return num_raft_members - (num_raft_members / 2) - 1;
 }
 
+static inline int
+raft_server_entry_idx_qsort_compare(const void *a, const void *b)
+{
+    const raft_entry_idx_t *x = (const raft_entry_idx_t *)a;
+    const raft_entry_idx_t *y = (const raft_entry_idx_t *)b;
+
+    return *x < *y ? -1 :
+           *x > *y ?  1 : 0;
+}
+
+static inline raft_entry_idx_t
+raft_server_get_majority_entry_idx(const raft_entry_idx_t *values,
+                                const size_t nvalues)
+{
+    if (!values)
+        return -EINVAL;
+
+    else if (nvalues > CTL_SVC_MAX_RAFT_PEERS)
+        return -E2BIG;
+
+    qsort((void *)values, nvalues, sizeof(raft_entry_idx_t),
+          raft_server_entry_idx_qsort_compare);
+
+    return values[raft_majority_index_value((raft_peer_t)nvalues)];
+}
+
 /**
  * raft_server_entry_header_is_null - strict check which asserts that if the
  *   magic value in the header is not equal to RAFT_HEADER_MAGIC that the
