@@ -1293,13 +1293,13 @@ rsbr_checkpoint(struct raft_instance *ri)
     if (!ri || !rsbr_ri_to_rirdb(ri))
         return -EINVAL;
 
-    const raft_entry_idx_t sync_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
+    const raft_entry_idx_t chkpt_idx =
+        raft_server_instance_chkpt_compact_max_idx(ri);
 
-    if (sync_idx < 0) // Don't checkpoint if the db is empty
+    if (chkpt_idx < 0) // Don't checkpoint if the db is empty
         return -ENODATA;
 
-    else if (sync_idx == ri->ri_checkpoint_last_idx)
+    else if (chkpt_idx == ri->ri_checkpoint_last_idx)
         return -EALREADY;
 
     char chkpt_path[PATH_MAX] = {0};
@@ -1307,7 +1307,7 @@ rsbr_checkpoint(struct raft_instance *ri)
 
     int64_t rc = rsbr_checkpoint_path_build(ri->ri_log,
                                             RAFT_INSTANCE_2_SELF_UUID(ri),
-                                            ri->ri_db_uuid, sync_idx,
+                                            ri->ri_db_uuid, chkpt_idx,
                                             true, true, chkpt_tmp_path,
                                             PATH_MAX);
     if (rc)
@@ -1319,7 +1319,7 @@ rsbr_checkpoint(struct raft_instance *ri)
 
     rc = rsbr_checkpoint_path_build(ri->ri_log,
                                     RAFT_INSTANCE_2_SELF_UUID(ri),
-                                    ri->ri_db_uuid, sync_idx, true, false,
+                                    ri->ri_db_uuid, chkpt_idx, true, false,
                                     chkpt_path, PATH_MAX);
     if (rc)
     {
@@ -1391,7 +1391,7 @@ rsbr_checkpoint(struct raft_instance *ri)
 
     rsbr_checkpoint_cleanup(ri, rir);
 
-    return rc ? rc : sync_idx;
+    return rc ? rc : chkpt_idx;
 }
 
 static int

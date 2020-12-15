@@ -4646,19 +4646,23 @@ raft_server_sync_thread_join(struct raft_instance *ri)
     return rc;
 }
 
+/**
+ * raft_server_set_checkpoint_last_idx - helper function for setting the
+ *    raft instance checkpoint index.
+ * @ri: raft instance
+ * @chkpt_ret_idx:  the index value returned by rib_backend_checkpoint()
+ */
 static raft_server_chkpt_thread_ctx_t
 raft_server_set_checkpoint_last_idx(struct raft_instance *ri,
-                                    int64_t chkpt_last_idx,
-                                    const raft_entry_idx_t sync_idx)
+                                    int64_t chkpt_ret_idx)
 {
-    FATAL_IF(!ri || chkpt_last_idx < 0 ||
-             (chkpt_last_idx < sync_idx ||
-              chkpt_last_idx < niova_atomic_read(&ri->ri_checkpoint_last_idx)),
-             "invalid checkpoint-idx=%ld (sync-idx=%ld, chkpt_last_idx=%lld)",
-             chkpt_last_idx, sync_idx, ri->ri_checkpoint_last_idx);
+    FATAL_IF(!ri || chkpt_ret_idx < 0 ||
+             chkpt_ret_idx < niova_atomic_read(&ri->ri_checkpoint_last_idx),
+             "invalid checkpoint-idx=%ld (chkpt_last_idx=%lld)",
+             chkpt_ret_idx, ri->ri_checkpoint_last_idx);
 
     // Atomic here since this runs in a separate thread context.
-    niova_atomic_init(&ri->ri_checkpoint_last_idx, chkpt_last_idx);
+    niova_atomic_init(&ri->ri_checkpoint_last_idx, chkpt_ret_idx);
 }
 
 static int
@@ -4720,10 +4724,7 @@ raft_server_chkpt_prior_to_recovery(struct raft_instance *ri)
 static raft_server_chkpt_thread_ctx_t
 raft_server_take_chkpt(struct raft_instance *ri)
 {
-    raft_entry_idx_t sync_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC);
-
-    if (sync_idx < 0)
+    if (raft_server_instance_chkpt_compact_max_idx(ri) < 0)
     {
         ri->ri_last_chkpt_err = -ENODATA;
         return;
@@ -4734,13 +4735,13 @@ raft_server_take_chkpt(struct raft_instance *ri)
     /* rib_backend_checkpoint() returns the idx used for the checkpoint which
      * must be >= to the one read here.
      */
-    int64_t rc = ri->ri_backend->rib_backend_checkpoint(ri);
+    raft_entry_idx_t rc = ri->ri_backend->rib_backend_checkpoint(ri);
 
     NIOVA_TIMER_STOP_and_HIST_ADD(
         x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_CHKPT_LAT_USEC));
 
     if (rc >= 0)
-        raft_server_set_checkpoint_last_idx(ri, rc, sync_idx);
+        raft_server_set_checkpoint_last_idx(ri, rc);
 
     if (rc <= 0)
         ri->ri_last_chkpt_err = rc;
@@ -4748,21 +4749,6 @@ raft_server_take_chkpt(struct raft_instance *ri)
     DBG_RAFT_INSTANCE((rc < 0 ? LL_ERROR : LL_NOTIFY), ri,
                       "rib_backend_checkpoint(%zd): %s",
                       rc, rc < 0 ? strerror(-rc) : "Success");
-}
-
-/**
- * raft_server_instance_chkpt_compact_max_idx - return the value which
- *    representing the raft-entry-idx which will not be rolled back.
- *    Here we choosed the ri_last_applied_idx over ri_commmit_idx to remove
- *    the possibility of compaction occurring on entries which have yet to be
- *    applied.
- */
-static raft_entry_idx_t
-raft_server_instance_chkpt_compact_max_idx(const struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-
-    return ri->ri_last_applied_idx;
 }
 
 static raft_server_chkpt_thread_ctx_t
@@ -4815,6 +4801,8 @@ raft_server_chkpt_thread(void *arg)
     {
         sleep(1);
         DBG_THREAD_CTL(LL_TRACE, tc, "here");
+        if (raft_instance_is_shutdown(ri))
+            break;
 
         const bool user_requested_chkpt = ri->ri_user_requested_checkpoint;
         if (user_requested_chkpt)
@@ -4823,7 +4811,6 @@ raft_server_chkpt_thread(void *arg)
         const bool user_requested_reap = ri->ri_user_requested_reap;
         if (user_requested_reap)
             ri->ri_user_requested_reap = false;
-
 
         const raft_entry_idx_t max_idx =
             raft_server_instance_chkpt_compact_max_idx(ri);

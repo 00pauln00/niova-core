@@ -994,4 +994,18 @@ raft_server_init_recovery_handle_from_marker(struct raft_instance *ri,
                                              const char *peer_uuid_str,
                                              const char *db_uuid_str);
 
+/**
+ * raft_server_instance_chkpt_compact_max_idx - return the value which
+ *    representing the raft-entry-idx which will not be rolled back.
+ *    Here we choosed the ri_last_applied_idx over ri_commmit_idx to remove
+ *    the possibility of compaction occurring on entries which have yet to be
+ *    applied.
+ */
+static inline raft_entry_idx_t
+raft_server_instance_chkpt_compact_max_idx(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    return ri->ri_last_applied_idx;
+}
 #endif
