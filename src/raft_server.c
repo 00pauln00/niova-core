@@ -2166,6 +2166,11 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
 
     NIOVA_ASSERT(rfi->rfi_next_idx >= 0);
 
+    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
+
+    const raft_entry_idx_t my_raft_idx =
+        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
+
     // next_idx of '0' means no blocks have ever been written.
     if (rfi->rfi_next_idx == 0)
     {
@@ -2173,10 +2178,15 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         rfi->rfi_current_idx_term = -1;
     }
 
-    /* Grab the current idx info if the follower is behind.
-     */
-    const int64_t my_raft_idx =
-        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
+    else if ((rfi->rfi_next_idx - 1) < lowest_idx) // Peer's next idx readable?
+    {
+        DBG_RAFT_INSTANCE(LL_WARN, ri,
+                          "increasing peer=%hhx next_idx from %ld to %ld",
+                          follower, rfi->rfi_next_idx, MAX(0, my_raft_idx - 1));
+
+        NIOVA_ASSERT(my_raft_idx < lowest_idx);
+        rfi->rfi_next_idx = MAX(0, my_raft_idx - 1);
+    }
 
     const bool refresh_prev = rfi->rfi_prev_idx_term < 0 ? true : false;
 #if 0
@@ -2203,7 +2213,11 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
             raft_server_entry_header_read_by_store(ri, &reh,
                                                    follower_prev_entry_idx);
         if (rc < 0)
+        {
+            rfi->rfi_prev_idx_term = 0;
+            rfi->rfi_prev_idx_crc = 0;
             return rc;
+        }
 
         DBG_RAFT_ENTRY_FATAL_IF((reh.reh_term < 0), &reh,
                                 "invalid reh.reh_term=%ld", reh.reh_term);
@@ -2219,10 +2233,16 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
         int rc = raft_server_entry_header_read_by_store(ri, &reh,
                                                         rfi->rfi_next_idx);
         if (rc < 0)
+        {
+            rfi->rfi_current_idx_term = -1;
+            rfi->rfi_current_idx_crc = 0;
             return rc;
-
-        rfi->rfi_current_idx_term = reh.reh_term;
-        rfi->rfi_current_idx_crc = reh.reh_crc;
+        }
+        else
+        {
+            rfi->rfi_current_idx_term = reh.reh_term;
+            rfi->rfi_current_idx_crc = reh.reh_crc;
+        }
     }
 
     DBG_RAFT_INSTANCE(
@@ -2278,22 +2298,27 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     }
 
     raerq->raerqm_heartbeat_msg = heartbeat ? 1 : 0;
+    raerq->raerqm_entry_out_of_range = (rc == -ERANGE) ? 1 : 0;
 
     raerq->raerqm_leader_term = raft_server_leader_get_current_term(ri);
     raerq->raerqm_commit_index = ri->ri_commit_idx;
-    raerq->raerqm_log_term = rfi->rfi_current_idx_term;
-    raerq->raerqm_this_idx_crc = rfi->rfi_current_idx_crc;
     raerq->raerqm_entries_sz = 0;
     raerq->raerqm_leader_change_marker = 0;
-    raerq->raerqm_prev_idx_crc = rfi->rfi_prev_idx_crc;
     raerq->raerqm_lowest_index = niova_atomic_read(&ri->ri_lowest_idx);
     raerq->raerqm_chkpt_index = ri->ri_checkpoint_last_idx;
 
-    // Previous log index is the address of the follower's last write.
-    raerq->raerqm_prev_log_index = rfi->rfi_next_idx - 1;
-
     // There are only 2 possible error codes at this point
     NIOVA_ASSERT(!rc || rc == -ERANGE);
+
+    if (!rc)
+    {
+        raerq->raerqm_log_term = rfi->rfi_current_idx_term;
+        raerq->raerqm_this_idx_crc = rfi->rfi_current_idx_crc;
+        raerq->raerqm_prev_idx_crc = rfi->rfi_prev_idx_crc;
+
+        // Previous log index is the address of the follower's last write.
+        raerq->raerqm_prev_log_index = rfi->rfi_next_idx - 1;
+    }
 
     // Copy the rls_prev_idx_term[] if it was refreshed above.
     raerq->raerqm_prev_log_term = rc ? -1ULL : rfi->rfi_prev_idx_term;
@@ -2433,6 +2458,9 @@ raft_server_append_entry_check_already_stored(
     NIOVA_ASSERT(ri && raerq);
     NIOVA_ASSERT(raft_instance_is_follower(ri));
 
+    if (raerq->raerqm_entry_out_of_range)
+        return false;
+
     // raerqm_prev_log_index can be -1 if no writes have ever been done.
     NIOVA_ASSERT(raerq->raerqm_prev_log_index >= RAFT_MIN_APPEND_ENTRY_IDX);
 
@@ -2462,7 +2490,8 @@ raft_server_append_entry_check_already_stored(
         if (reh.reh_term != raerq->raerqm_log_term)
             return false;
 
-        FATAL_IF((raerq->raerqm_this_idx_crc != reh.reh_crc),
+        FATAL_IF((!raerq->raerqm_entry_out_of_range &&
+                  raerq->raerqm_this_idx_crc != reh.reh_crc),
                  "crc (%u) does not match leader (%u) for idx=%ld",
                  reh.reh_crc, raerq->raerqm_this_idx_crc,
                  leaders_next_idx_for_me);
@@ -2596,6 +2625,49 @@ raft_server_follower_index_ahead_of_leader(
 
     return rc;
 }
+
+/**
+ * raft_server_append_entry_request_bounds_check - helper function used to
+ *    detect the case where a follower has undergone bulk recovery but the
+ *    still contains prev-log-index info from the follower's pre-recovery
+ *    state.  This function prevents the follower from executing log reads
+ *    which will fail since the requested entry does not exist on the follower.
+ */
+static raft_server_net_cb_follower_ctx_int_t
+raft_server_append_entry_request_bounds_check(
+    struct raft_instance *ri,
+    const struct raft_append_entries_request_msg *raerq)
+{
+    NIOVA_ASSERT(ri && raerq);
+
+    const struct raft_rpc_msg *rrm =
+        OFFSET_CAST(raft_rpc_msg, rrm_append_entries_request, raerq);
+
+    /* Sanity check the leader's request.  If the leader's lowest index is
+     * higher than the pli then don't proceed with this msg.
+     */
+    if (raerq->raerqm_prev_log_index < raerq->raerqm_lowest_index)
+    {
+        DBG_RAFT_MSG(LL_WARN, rrm, "pli < leader-lowest-idx");
+        return -EBADR;
+    }
+    // Don't proceed if we will be unable to read the requested index
+    else if (raerq->raerqm_prev_log_index <
+             niova_atomic_read(&ri->ri_lowest_idx))
+    {
+        DBG_RAFT_MSG(LL_WARN, rrm, "pli < my-lowest-idx (%lld)",
+                     niova_atomic_read(&ri->ri_lowest_idx));
+        return -EBADR;
+    }
+    else if (raerq->raerqm_entry_out_of_range)
+    {
+        DBG_RAFT_MSG(LL_WARN, rrm, "leader read failed with -ERANGE");
+        return -EBADR;
+    }
+
+    return 0;
+}
+
 /**
  * raft_server_append_entry_log_prepare_and_check - determine if the current
  *    append entry command can proceed to this follower's log.  This function
@@ -2612,11 +2684,15 @@ raft_server_append_entry_log_prepare_and_check(
 {
     NIOVA_ASSERT(ri && raerq);
 
+    int rc = raft_server_append_entry_request_bounds_check(ri, raerq);
+    if (rc)
+        return rc;
+
     struct raft_entry_header reh = {0};
     raft_instance_get_newest_header(ri, &reh, RI_NEHDR_UNSYNC);
 
     // raft_server_follower_index_ahead_of_leader() may update reh
-    int rc = (reh.reh_index > raerq->raerqm_prev_log_index) ?
+    rc = (reh.reh_index > raerq->raerqm_prev_log_index) ?
         raft_server_follower_index_ahead_of_leader(ri, raerq, &reh) : 0;
 
     if (rc)
@@ -2981,31 +3057,33 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
         raft_entry_idx_t new_commit_idx = raerq->raerqm_commit_index;
 
         rc = raft_server_append_entry_log_prepare_and_check(ri, raerq);
-        if (rc)
+        switch (rc)
         {
-            if (rc == -EALREADY)
-            {
-                // Issue #28 - advance the index of recently restarted server
-                advance_commit_idx = true;
-
-                //Limit the commit-idx range entries currently stored here.
-                new_commit_idx =
-                    MIN(new_commit_idx,
-                        raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC));
-            }
-            else
-            {
-                // -EEXIST and -ERANGE cases do not advance advance commit-idx
-                non_matching_prev_term = true;
-            }
-        }
-        else
-        {
+        case 0:
             advance_commit_idx = true;
             if (!raerq->raerqm_heartbeat_msg &&
                 !(fault_inject_ignore_ae =
                       FAULT_INJECT(raft_follower_ignores_AE)))
                 raft_server_write_new_entry_from_leader(ri, raerq);
+            break;
+
+        case -EBADR:
+            break; // simply reply to the server with our current info
+
+        case -EALREADY:
+            // Issue #28 - advance the index of recently restarted server
+            advance_commit_idx = true;
+
+            //Limit the commit-idx range entries currently stored here.
+            new_commit_idx =
+                MIN(new_commit_idx,
+                    raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC));
+            break;
+
+        default:
+            // -EEXIST and -ERANGE cases do not advance advance commit-idx
+            non_matching_prev_term = true;
+            break;
         }
 
         /* Update our commit-idx based on the value sent from the leader.

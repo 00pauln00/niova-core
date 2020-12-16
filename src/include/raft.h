@@ -115,7 +115,8 @@ struct raft_append_entries_request_msg
     uint16_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
-    uint8_t  raerqm__pad[4];
+    uint8_t  raerqm_entry_out_of_range;
+    uint8_t  raerqm__pad[3];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
@@ -507,15 +508,17 @@ do {                                                                            
         break;                                                                                    \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                                                \
         LOG_MSG(log_level,                                                                        \
-                "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx crc=%u:%u %s "fmt, \
+                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
                 (rm)->rrm_append_entries_request.raerqm_leader_term,                              \
                 (rm)->rrm_append_entries_request.raerqm_log_term,                                 \
                 (rm)->rrm_append_entries_request.raerqm_commit_index,                             \
+                (rm)->rrm_append_entries_request.raerqm_lowest_index,                             \
                 (rm)->rrm_append_entries_request.raerqm_prev_log_term,                            \
                 (rm)->rrm_append_entries_request.raerqm_prev_log_index,                           \
                 (rm)->rrm_append_entries_request.raerqm_entries_sz,                               \
                 (rm)->rrm_append_entries_request.raerqm_heartbeat_msg,                            \
                 (rm)->rrm_append_entries_request.raerqm_leader_change_marker,                     \
+                (rm)->rrm_append_entries_request.raerqm_entry_out_of_range,                       \
                 (rm)->rrm_append_entries_request.raerqm_prev_idx_crc,                             \
                 (rm)->rrm_append_entries_request.raerqm_this_idx_crc,                             \
                 __uuid_str,                                                                       \
