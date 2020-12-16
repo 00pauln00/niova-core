@@ -1894,7 +1894,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
 
     DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "sender-uuid=%s term=%ld rsn=%s",
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "sender-uuid=%s term=%ld rsn=%s",
                       peer_uuid_str, new_term,
                       raft_follower_reason_2_str(reason));
 
