@@ -2760,23 +2760,30 @@ raft_server_process_append_entries_term_check_ops(
     if (ri->ri_log_hdr.rlh_term > raerq->raerqm_leader_term)
         return -ESTALE;
 
+    const int64_t leader_term = raerq->raerqm_leader_term;
+
     // -- Sender's term is greater than or equal to my own --
 
     // Demote myself if candidate
-    if (ri->ri_log_hdr.rlh_term <= raerq->raerqm_leader_term &&
-        ri->ri_state == RAFT_STATE_CANDIDATE)
-        raft_server_becomes_follower(ri, raerq->raerqm_leader_term,
+    if (ri->ri_log_hdr.rlh_term <= leader_term &&
+        raft_instance_is_candidate(ri))
+        raft_server_becomes_follower(ri, leader_term,
                                      sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
 
     // Demote myself if stale leader
-    else if (ri->ri_log_hdr.rlh_term < raerq->raerqm_leader_term &&
-             ri->ri_state == RAFT_STATE_LEADER)
-        raft_server_becomes_follower(ri, raerq->raerqm_leader_term,
+    else if (ri->ri_log_hdr.rlh_term < leader_term &&
+             raft_instance_is_leader(ri))
+        raft_server_becomes_follower(ri, leader_term,
                                      sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
 
-    // Apply leader csn pointer.
+    // Follower detects leader with a higher term
+    else if (ri->ri_log_hdr.rlh_term < leader_term &&
+             raft_instance_is_follower(ri))
+        raft_server_try_update_log_header_null_voted_for_peer(ri, leader_term);
+
+    // Apply leader csn pointer
     raft_server_set_leader_csn(ri, sender_csn);
 
     return 0;
@@ -3032,16 +3039,13 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     if (raft_server_process_bulk_recovery_check(ri, raerq))
         return;
 
-    // Try to update the term if the leader has a higher one.
-    const int64_t leader_term = raerq->raerqm_leader_term;
-    raft_server_try_update_log_header_null_voted_for_peer(ri, leader_term);
-
     // Candidate timer - reset if this operation is valid.
     bool reset_timerfd = true;
     bool fault_inject_ignore_ae = false;
     bool stale_term = false;
     bool non_matching_prev_term = false;
 
+    // Check if leader or candidate should step down OR sync new term value
     int rc =
         raft_server_process_append_entries_term_check_ops(ri, sender_csn,
                                                           raerq);
