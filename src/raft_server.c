@@ -2182,9 +2182,10 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     {
         DBG_RAFT_INSTANCE(LL_WARN, ri,
                           "increasing peer=%hhx next_idx from %ld to %ld",
-                          follower, rfi->rfi_next_idx, MAX(0, my_raft_idx - 1));
+                          follower, rfi->rfi_next_idx,
+                          MAX(0, my_raft_idx - 1));
 
-        NIOVA_ASSERT(my_raft_idx < lowest_idx);
+        NIOVA_ASSERT(my_raft_idx > lowest_idx);
         rfi->rfi_next_idx = MAX(0, my_raft_idx - 1);
     }
 
