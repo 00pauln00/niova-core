@@ -25,7 +25,6 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
 static const struct PmdbAPI *pmdbApi;
-static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -192,37 +191,13 @@ PmdbCfHandleLookup(const char *cf_name)
     return NULL;
 }
 
-static int
-pmdb_init_rocksdb(void)
-{
-    if (pmdbRocksdbCFH)
-        return 0;
-
-    /* Find the handle for our column family which should have been opened
-     * at rocksDB initialization time.
-     */
-    pmdbRocksdbCFH = PmdbCfHandleLookup(PMDB_COLUMN_FAMILY_NAME);
-    if (!pmdbRocksdbCFH)
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "No handle found for column family: %s",
-                       PMDB_COLUMN_FAMILY_NAME);
-        return -EINVAL;
-    }
-
-    return 0;
-}
-
 static rocksdb_column_family_handle_t *
 pmdb_get_rocksdb_column_family_handle(void)
 {
-    if (!pmdbRocksdbCFH)
-    {
-        int rc = pmdb_init_rocksdb();
-        if (rc)
-            return NULL;
-    }
-
-    return pmdbRocksdbCFH;
+    /* NOTE:  do not cache handles until an revalidation method is in place to
+     *   deal with stale handles from bulk recovery.
+     */
+    return PmdbCfHandleLookup(PMDB_COLUMN_FAMILY_NAME);
 }
 
 void
