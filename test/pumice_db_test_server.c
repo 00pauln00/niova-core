@@ -20,7 +20,6 @@
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static const char *pmdbts_column_family_name = "PMDBTS_CF";
-static rocksdb_column_family_handle_t *pmdbts_cfh;
 static bool syncPMDBWrites = true;
 const char *raft_uuid_str;
 const char *my_uuid_str;
@@ -31,8 +30,12 @@ const char *my_uuid_str;
 static rocksdb_column_family_handle_t *
 pmdbst_get_cfh(void)
 {
-    if (!pmdbts_cfh)
-        pmdbts_cfh = PmdbCfHandleLookup(pmdbts_column_family_name);
+    /* Currently the lookup is always performed (as opposed to returning a
+     * cached cf pointer).  This is because the cf handles will change if
+     * the underlying raft instance has underwent recovery.
+     */
+    rocksdb_column_family_handle_t *pmdbts_cfh =
+        PmdbCfHandleLookup(pmdbts_column_family_name);
 
     NIOVA_ASSERT(pmdbts_cfh);
 
