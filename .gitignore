@@ -63,6 +63,6 @@ test/epoll_mgr_test
 *.la
 test/tcp_mgr_test
 *.rej
-config.*
+config.log
 autom4te.cache
 niova_core_config.*
