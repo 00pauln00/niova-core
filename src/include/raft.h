@@ -510,7 +510,7 @@ do {                                                                            
         break;                                                                                    \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                                                \
         LOG_MSG(log_level,                                                                        \
-                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
+                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt,  \
                 (rm)->rrm_append_entries_request.raerqm_leader_term,                              \
                 (rm)->rrm_append_entries_request.raerqm_log_term,                                 \
                 (rm)->rrm_append_entries_request.raerqm_commit_index,                             \

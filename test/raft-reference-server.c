@@ -264,7 +264,7 @@ rst_sm_handler_write(struct raft_net_client_request_handle *rncr)
     FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
 
     // Map the last rtv in the array after verify range
-    const uint16_t num_rtv = rtdb->rtdb_num_values;
+    const uint32_t num_rtv = rtdb->rtdb_num_values;
 
     if (!num_rtv || num_rtv > RAFT_TEST_VALUES_MAX)
     {

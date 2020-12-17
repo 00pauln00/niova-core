@@ -613,7 +613,7 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     if (rtdb->rtdb_num_values != expected_num_values)
     {
         DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
-                            "rtdb %s has invalid rtdb_num_values %hu",
+                            "rtdb %s has invalid rtdb_num_values %u",
                             raft_test_data_op_2_string(rtdb->rtdb_op),
                             rtdb->rtdb_num_values);
         return;

@@ -75,8 +75,7 @@ struct raft_test_data_block
 {
     uuid_t                  rtdb_client_uuid; // application uuid
     uint16_t                rtdb_op;
-    uint16_t                rtdb_num_values;
-    uint16_t                rtdb__pad[2];
+    uint32_t                rtdb_num_values;
     struct raft_test_values rtdb_values[];
 };
 
@@ -102,7 +101,7 @@ raft_test_data_block_total_size(const struct raft_test_data_block *rtdb)
 {                                                                    \
     char __uuid_str[UUID_STR_LEN];                                   \
     uuid_unparse((rtdb)->rtdb_client_uuid, __uuid_str);              \
-    LOG_MSG(log_level, "%s op=%s nv=%hu seqno=%ld val=%ld "fmt,      \
+    LOG_MSG(log_level, "%s op=%s nv=%u seqno=%ld val=%ld "fmt,       \
             __uuid_str, raft_test_data_op_2_string((rtdb)->rtdb_op), \
             (rtdb)->rtdb_num_values,                                 \
             ((rtdb)->rtdb_num_values > 0 ?                           \
