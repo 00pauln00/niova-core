@@ -57,3 +57,13 @@ rocksdb__test*
 .*.swn
 test/epoll_mgr_test
 .clangd
+*.log
+*.trs
+*.lo
+*.la
+test/tcp_mgr_test
+*.rej
+configure
+config.*
+autom4te.cache
+niova_core_config.*
