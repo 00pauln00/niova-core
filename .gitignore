@@ -65,4 +65,3 @@ test/tcp_mgr_test
 *.rej
 config.log
 autom4te.cache
-niova_core_config.*
