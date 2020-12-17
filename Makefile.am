@@ -55,7 +55,6 @@ src_libniova_la_SOURCES = \
         src/io.c \
         src/log.c \
 	src/random.c \
-        src/raft_net.c \
         src/registry.c \
 	src/system_info.c \
         src/thread.c \
@@ -134,11 +133,6 @@ noinst_PROGRAMS += test/regex-test
 test_regex_test_SOURCES = test/regex-tests.c
 test_regex_test_LDADD = src/libniova.la
 TESTS += test/regex-test
-
-noinst_PROGRAMS += test/raft_net_test
-test_raft_net_test_SOURCES = test/raft_net_test.c
-test_raft_net_test_LDADD = src/libniova.la
-TESTS += test/raft_net_test
 
 noinst_PROGRAMS += test/epoll_mgr_test
 test_epoll_mgr_test_SOURCES = test/epoll_mgr_test.c
