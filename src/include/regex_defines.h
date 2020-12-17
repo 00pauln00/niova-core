@@ -38,7 +38,7 @@
 #define ZERO_or_POS_INT "[0-9]\\{1\\}\\|[1-9][0-9]\\+"
 
 #define PMDB_TEST_CLIENT_APPLY_CMD_REGEX \
-    "^"RNCUI_V0_REGEX_BASE"\\(\\.lookup\\|\\.read\\|\\.write:\\("ZERO_or_POS_INT"\\)\\)\\($\\|.\\("POS_INT"\\)$\\)"
+    "^"RNCUI_V0_REGEX_BASE"\\(\\.lookup\\|\\.read\\|\\.write:\\("ZERO_or_POS_INT"\\)\\)\\($\\|.\\("POS_INT"\\)\\)\\($\\|.\\("ZERO_or_POS_INT"\\)$\\)"
 
 #define COMMA_DELIMITED_UNSIGNED_INTEGER_BASE \
     "\\([0-9]\\|[1-9][0-9]\\{1,2\\}\\)\\(,[0-9]\\{3\\}\\)*"

@@ -101,6 +101,7 @@ struct pmdbtc_request
     struct raft_net_client_user_id preq_rncui;
     enum PmdbOpType                preq_op;
     size_t                         preq_op_cnt;
+    size_t                         preq_val_cnt;
     int64_t                        preq_write_seqno;
     STAILQ_ENTRY(pmdbtc_request)   preq_lentry;
     raft_net_request_tag_t         preq_last_tag;
@@ -392,7 +393,7 @@ pmdbtc_app_history_add(const struct pmdbtc_request *preq)
 static util_thread_ctx_ctli_int_t
 pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
                      enum PmdbOpType op, size_t op_cnt,
-                     const int64_t write_seqno)
+                     const int64_t write_seqno, size_t val_cnt)
 {
     if (!rncui)
         return -EINVAL;
@@ -406,7 +407,8 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
         return -ENOSPC;
 
     // each iteration uses random number of test values, so alloc max
-    size_t req_size = sizeof(struct pmdbtc_request) + RAFT_TEST_VALUES_MAX *
+    size_t req_size = sizeof(struct pmdbtc_request) +
+        (val_cnt ? val_cnt : RAFT_TEST_VALUES_MAX) *
         sizeof(struct raft_test_values);
     struct pmdbtc_request *preq = niova_calloc_can_fail(1UL, req_size);
 
@@ -417,6 +419,7 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     preq->preq_papp = papp;
     preq->preq_op = op;
     preq->preq_op_cnt = op_cnt;
+    preq->preq_val_cnt = val_cnt;
     preq->preq_write_seqno = write_seqno;
     niova_realtime_coarse_clock(&preq->preq_submitted);
 
@@ -453,9 +456,11 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
 
     enum PmdbOpType op = pmdb_op_any;
     size_t op_cnt = 1;
+    size_t val_cnt = 0;
 
     /* Cmd string formats:
-     * <RNCUI_V0_REGEX_BASE>.<read>|<lookup>|(<write:start seqno>.<# writes>)
+     * <RNCUI_V0_REGEX_BASE>.<read>|<lookup>|(<write:start seqno>.<# writes>.
+     * <# of values (0 = random)>)
      */
     const char *sep = ".";
     char *sp = NULL;
@@ -497,6 +502,9 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
         case 2:
             op_cnt = strtoull(sub, NULL, 10);
             break;
+        case 3:
+            val_cnt = strtoull(sub, NULL, 10);
+            break;
         default:
             break;
         }
@@ -504,12 +512,12 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
 
     SIMPLE_LOG_MSG(LL_DEBUG,
                    RAFT_NET_CLIENT_USER_ID_FMT
-                   " op=%s seqno=%ld rc=%d op_cnt=%zu",
+                   " op=%s seqno=%ld rc=%d op_cnt=%zu val_cnt=%zu",
                    RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&rncui, uuid_str, 0),
-                   pmdp_op_2_string(op), write_seqno, rc, op_cnt);
+                   pmdp_op_2_string(op), write_seqno, rc, op_cnt, val_cnt);
 
     // Return errors here so they may be placed into the ctl-interface OUTFILE.
-    return pmdbtc_queue_request(&rncui, op, op_cnt, write_seqno);
+    return pmdbtc_queue_request(&rncui, op, op_cnt, write_seqno, val_cnt);
 }
 
 static util_thread_ctx_reg_int_t
@@ -711,7 +719,10 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
 
     preq->preq_rtdb.rtdb_op = RAFT_TEST_DATA_OP_WRITE;
 
-    const unsigned int num_values = random_get() % RAFT_TEST_VALUES_MAX;
+    const unsigned int num_values = preq->preq_val_cnt
+        ? preq->preq_val_cnt
+        : random_get() % RAFT_TEST_VALUES_MAX;
+
     preq->preq_rtdb.rtdb_num_values = num_values;
 
     SIMPLE_LOG_MSG(LL_TRACE, "papp %p preq %p preparing %d values",
@@ -912,6 +923,8 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     default:
         break;
     }
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "rc=%d", rc);
 
     if (!use_async_requests)
     {
