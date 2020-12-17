@@ -29,7 +29,7 @@
 
 #define RAFT_ENTRY_HEADER_RESERVE 128
 
-#define RAFT_ENTRY_SIZE           65536
+#define RAFT_ENTRY_SIZE           4*1024*1024
 #define RAFT_ENTRY_MAX_DATA_SIZE  (RAFT_ENTRY_SIZE - RAFT_ENTRY_HEADER_RESERVE)
 
 // Raft election timeout upper and lower bounds
@@ -111,11 +111,11 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
     uint32_t raerqm_this_idx_crc;
-    uint16_t raerqm_entries_sz;
+    uint32_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint8_t  raerqm_entry_out_of_range;
-    uint8_t  raerqm__pad[3];
+    uint8_t  raerqm__pad[1];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 

@@ -86,7 +86,7 @@ typedef raft_net_cb_ctx_int_t
 typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
 typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
 
-#define RAFT_NET_MAX_RPC_SIZE 65000
+#define RAFT_NET_MAX_RPC_SIZE 4*1024*1024-1
 #define RAFT_NET_MAX_RETRY_MS 30000
 #define RAFT_NET_MIN_RETRY_MS 100
 
