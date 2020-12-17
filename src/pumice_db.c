@@ -26,7 +26,6 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 static const struct PmdbAPI *pmdbApi;
 static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
-static rocksdb_readoptions_t *pmdbRocksdbReadOpts;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -179,13 +178,6 @@ pmdb_get_rocksdb_instance(void)
     return db;
 }
 
-static rocksdb_readoptions_t *
-pmdb_get_rocksdb_readopts(void)
-{
-    NIOVA_ASSERT(pmdbRocksdbReadOpts);
-    return pmdbRocksdbReadOpts;
-}
-
 rocksdb_column_family_handle_t *
 PmdbCfHandleLookup(const char *cf_name)
 {
@@ -216,10 +208,6 @@ pmdb_init_rocksdb(void)
                        PMDB_COLUMN_FAMILY_NAME);
         return -EINVAL;
     }
-
-    pmdbRocksdbReadOpts = rocksdb_readoptions_create();
-    if (!pmdbRocksdbReadOpts)
-        return -ENOMEM;
 
     return 0;
 }
@@ -285,11 +273,17 @@ pmdb_object_lookup(const struct raft_net_client_user_id *rncui,
     char *err = NULL;
     int rc = -ENOENT;
 
-    char *get_value =
-        rocksdb_get_cf(pmdb_get_rocksdb_instance(),
-                       pmdb_get_rocksdb_readopts(), PMDB_CFH_MUST_GET(),
-                       PMDB_RNCUI_2_KEY(rncui), PMDB_ENTRY_KEY_LEN,
-                       &val_len, &err);
+    rocksdb_readoptions_t *read_opts = rocksdb_readoptions_create();
+    if (!read_opts)
+        return -ENOMEM;
+
+    char *get_value = rocksdb_get_cf(pmdb_get_rocksdb_instance(), read_opts,
+                                     PMDB_CFH_MUST_GET(),
+                                     PMDB_RNCUI_2_KEY(rncui),
+                                     PMDB_ENTRY_KEY_LEN, &val_len, &err);
+
+    // Release rocksdb read opts
+    rocksdb_readoptions_destroy(read_opts);
 
     PMDB_STR_DEBUG(LL_NOTIFY, rncui, "err=%s val=%p", err, get_value);
 
@@ -709,7 +703,6 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     struct pmdb_object obj = {0};
 
     int rc = pmdb_object_lookup(rncui, &obj, rncr->rncr_current_term);
-
     if (rc)
     {
         PMDB_STR_DEBUG(((rc == -ENOENT) ? LL_DEBUG : LL_WARN), rncui,
