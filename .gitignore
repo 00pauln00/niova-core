@@ -65,3 +65,11 @@ test/tcp_mgr_test
 *.rej
 config.log
 autom4te.cache
+Makefile
+config.status
+libtool
+niova_core_config.h
+src/.deps/
+src/contrib/.deps/
+stamp-h1
+test/.deps/
