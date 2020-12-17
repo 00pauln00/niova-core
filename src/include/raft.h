@@ -116,6 +116,7 @@ struct raft_append_entries_request_msg
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint32_t  raerqm_ndata_entries;
+    uint8_t  raerqm_data_len_arr[RAFT_ENTRY_DATA_LEN_ENTRIES];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
@@ -480,11 +481,11 @@ do {                                                                            
     }                                                                                             \
 } while (0)
 
-#define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                   \
-    LOG_MSG(log_level,                                            \
-            "re@%p crc=%u size=%u idx=%ld term=%ld lcm=%hhx "fmt, \
-            (re), (re)->reh_crc, (re)->reh_data_size,             \
-            (re)->reh_index, (re)->reh_term,                      \
+#define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                               \
+    LOG_MSG(log_level,                                                        \
+            "re@%p crc=%u size=%u nentries=%u idx=%ld term=%ld lcm=%hhx "fmt, \
+            (re), (re)->reh_crc, (re)->reh_data_size, (re)->reh_ndata_entries,\
+            (re)->reh_index, (re)->reh_term,                                  \
             (re)->reh_leader_change_marker , ##__VA_ARGS__)
 
 #define DBG_RAFT_ENTRY_FATAL_IF(cond, re, message, ...)       \
