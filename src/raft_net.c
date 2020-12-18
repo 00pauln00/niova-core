@@ -48,7 +48,10 @@ enum raft_net_recovery_lreg_values
     RAFT_NET_RECOVERY_LREG_PEER_UUID,
     RAFT_NET_RECOVERY_LREG_DB_UUID,
     RAFT_NET_RECOVERY_LREG_CHKPT_IDX,
+    RAFT_NET_RECOVERY_LREG_CHKPT_SIZE,
     RAFT_NET_RECOVERY_LREG_REMAINING,
+    RAFT_NET_RECOVERY_LREG_COMPLETED,
+    RAFT_NET_RECOVERY_LREG_RATE,
     RAFT_NET_RECOVERY_LREG_INCOMPLETE,
     RAFT_NET_RECOVERY_LREG_START_TIME,
     RAFT_NET_RECOVERY_LREG__MAX,
@@ -92,7 +95,8 @@ raft_net_lreg_recovery_num_keys(void)
 {
     const struct raft_instance *ri = raft_net_get_instance();
 
-    return (!raft_instance_is_client(ri) && ri->ri_needs_bulk_recovery) ?
+    return (!raft_instance_is_client(ri) &&
+            (ri->ri_needs_bulk_recovery || ri->ri_successful_recovery)) ?
         RAFT_NET_RECOVERY_LREG__MAX : RAFT_NET_RECOVERY_LREG__NONE;
 }
 
@@ -101,7 +105,7 @@ LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
                                 raft_net_lreg_multi_facet_cb, NULL,
                                 LREG_INIT_OPT_NONE);
 
-LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_recovery_info,
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_bulk_recovery_info,
                                 LREG_USER_TYPE_RAFT_RECOVERY_NET,
                                 raft_net_lreg_recovery_num_keys(),
                                 raft_net_recovery_lreg_multi_facet_cb, NULL,
@@ -357,9 +361,17 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         case RAFT_NET_RECOVERY_LREG_CHKPT_IDX:
             lreg_value_fill_signed(lv, "chkpt-idx", rrh->rrh_peer_chkpt_idx);
             break;
+        case RAFT_NET_RECOVERY_LREG_CHKPT_SIZE:
+            lreg_value_fill_signed(lv, "chkpt-size",
+                                   rrh->rrh_chkpt_size);
+            break;
         case RAFT_NET_RECOVERY_LREG_REMAINING:
-            lreg_value_fill_signed(lv, "remaining-xfer-bytes",
+            lreg_value_fill_signed(lv, "total-bytes-to-xfer",
                                    rrh->rrh_remaining);
+            break;
+        case RAFT_NET_RECOVERY_LREG_COMPLETED:
+            lreg_value_fill_signed(lv, "xfer-completed",
+                                   rrh->rrh_completed);
             break;
         case RAFT_NET_RECOVERY_LREG_INCOMPLETE:
             lreg_value_fill_bool(lv, "resume-incomplete",
@@ -368,6 +380,9 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         case RAFT_NET_RECOVERY_LREG_START_TIME:
             lreg_value_fill_string_time(lv, "start-time",
                                         rrh->rrh_start.tv_sec);
+            break;
+        case RAFT_NET_RECOVERY_LREG_RATE:
+            lreg_value_fill_string(lv, "rate", rrh->rrh_rate_bytes_per_sec);
             break;
         default:
             rc = -EOPNOTSUPP;
@@ -2322,6 +2337,7 @@ raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
     LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_info);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);

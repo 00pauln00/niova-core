@@ -4513,9 +4513,18 @@ raft_server_instance_init(struct raft_instance *ri,
     NIOVA_ASSERT(!lreg_node_is_installed(&ri->ri_lreg) &&
                  !ri->ri_lreg_registered);
 
+    const struct raft_instance ri_save = *ri;
+
     // Wipe the instance and restore 'booting' state
     memset(ri, 0, sizeof(*ri));
     ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
+
+    // Restore the recovery handle if this instance was bulk-recovered
+    if (ri_save.ri_successful_recovery)
+    {
+        ri->ri_successful_recovery = true;
+        ri->ri_recovery_handle = ri_save.ri_recovery_handle;
+    }
 
     raft_instance_backend_type_specify(ri, type);
 
@@ -5313,8 +5322,10 @@ raft_server_instance_run(const char *raft_uuid_str,
 
             if (!rc) // Success - restart in the normal (non-recovery) mode
             {
+                ri->ri_successful_recovery = true;
                 ri->ri_needs_bulk_recovery = false;
                 restart_post_recovery = true;
+
 
                 // Reset the recovery attempt counter
                 remaining_recovery_tries = RAFT_SERVER_RECOVERY_ATTEMPTS;

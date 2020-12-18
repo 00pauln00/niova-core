@@ -1804,15 +1804,16 @@ rsbr_bulk_recover_xfer_rsync_cb(const char *output, size_t len, void *arg)
 
     struct raft_recovery_handle *rrh = (struct raft_recovery_handle *)arg;
 
-    LOG_MSG(LL_TRACE, "%zu >> %s", len, output);
-
     regex_t *regex =
         &recoveryRegexes[RECOVERY_RSYNC_PROGRESS_LINE__regex].rp_regex;
 
     int rc = regexec(regex, output, 0, NULL, 0);
     if (rc)
-        return 0; // non-match is ok
+    {
+        LOG_MSG(LL_TRACE, "%zu >> %s", len, output);
 
+        return 0; // non-match is ok
+    }
     unsigned long long val;
 
     rc = niova_parse_comma_delimited_uint_string(output, len, &val);
@@ -1829,6 +1830,9 @@ rsbr_bulk_recover_xfer_rsync_cb(const char *output, size_t len, void *arg)
 
     // Grab the rate from the rsync "progress2" output
     rsbr_bulk_recover_xfer_rsync_try_rate_parse(output, rrh);
+
+    SIMPLE_LOG_MSG(LL_TRACE, "val=%llu rate=%s",
+                   val, rrh->rrh_rate_bytes_per_sec);
 
     return 0;
 }

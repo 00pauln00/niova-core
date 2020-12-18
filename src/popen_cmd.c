@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define DEF_BUF_SZ 4097
+#define DEF_BUF_SZ 129
 
 /**
  * popen_cmd_out - run the provided cmd and continually pass output

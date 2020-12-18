@@ -419,6 +419,7 @@ struct raft_instance
     bool                            ri_needs_bulk_recovery;
     bool                            ri_lreg_registered;
     bool                            ri_incomplete_recovery;
+    bool                            ri_successful_recovery;
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_startup_error;
     int                             ri_timer_fd;
