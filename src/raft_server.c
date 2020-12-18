@@ -1194,6 +1194,11 @@ raft_server_backend_sync(struct raft_instance *ri, const char *caller)
         raft_instance_update_newest_entry_hdr(ri, &unsync_reh, RI_NEHDR_SYNC,
                                               false);
 
+    // update the last-applied-syncd-idx
+    NIOVA_ASSERT(ri->ri_last_applied_idx >= ri->ri_last_applied_synced_idx);
+    if (ri->ri_last_applied_synced_idx < ri->ri_last_applied_idx)
+        ri->ri_last_applied_synced_idx = ri->ri_last_applied_idx;
+
     return rc;
 }
 
@@ -4154,6 +4159,7 @@ raft_server_backend_setup_last_applied(struct raft_instance *ri,
                         raft_instance_is_recovering(ri)));
 
     ri->ri_last_applied_idx = last_applied_idx;
+    ri->ri_last_applied_synced_idx = last_applied_idx;
     ri->ri_last_applied_cumulative_crc = last_applied_cumulative_crc;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
@@ -4531,6 +4537,7 @@ raft_server_instance_init(struct raft_instance *ri,
 
     ri->ri_commit_idx = -1;
     ri->ri_last_applied_idx = -1;
+    ri->ri_last_applied_synced_idx = -1;
     ri->ri_checkpoint_last_idx = -1;
     ri->ri_pending_read_idx = -1;
     niova_atomic_init(&ri->ri_lowest_idx, -1);

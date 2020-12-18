@@ -426,6 +426,7 @@ struct raft_instance
     struct raft_log_header          ri_log_hdr;
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
+    int64_t                         ri_last_applied_synced_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
     raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
     raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log reap
@@ -567,7 +568,7 @@ do {                                                               \
                      __leader_uuid_str);                           \
                                                                    \
     LOG_MSG(log_level,                                                      \
-            "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld lck=%lld v=%s l=%s "  \
+            "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld:%ld lck=%lld v=%s l=%s "  \
             fmt,                                                        \
             raft_server_process_state_to_char((ri)->ri_proc_state),     \
             raft_server_state_to_char((ri)->ri_state),                  \
@@ -578,6 +579,7 @@ do {                                                               \
             (ri)->ri_log_hdr.rlh_term,                                      \
             (ri)->ri_log_hdr.rlh_seqno,                                 \
             (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,             \
+            (ri)->ri_last_applied_synced_idx,                           \
             niova_atomic_read(&(ri)->ri_checkpoint_last_idx),           \
             __uuid_str, __leader_uuid_str,                              \
             ##__VA_ARGS__);                                             \
@@ -1009,6 +1011,6 @@ raft_server_instance_chkpt_compact_max_idx(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    return ri->ri_last_applied_idx;
+    return ri->ri_last_applied_synced_idx;
 }
 #endif
