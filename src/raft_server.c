@@ -26,7 +26,7 @@
 #include "thread.h"
 #include "util_thread.h"
 
-#define RAFT_SERVER_RECOVERY_ATTEMPTS 10
+#define RAFT_SERVER_RECOVERY_ATTEMPTS 100
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
 
 enum raft_write_entry_opts
@@ -5315,6 +5315,9 @@ raft_server_instance_run(const char *raft_uuid_str,
             {
                 ri->ri_needs_bulk_recovery = false;
                 restart_post_recovery = true;
+
+                // Reset the recovery attempt counter
+                remaining_recovery_tries = RAFT_SERVER_RECOVERY_ATTEMPTS;
                 continue;
             }
         }
