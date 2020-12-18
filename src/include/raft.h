@@ -23,7 +23,7 @@
 #include "udp.h"
 #include "util.h"
 
-#define RAFT_ENTRY_DATA_LEN_ENTRIES 40
+#define RAFT_ENTRY_NUM_ENTRIES 10
 #define RAFT_ENTRY_PAD_SIZE 40
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
@@ -115,8 +115,8 @@ struct raft_append_entries_request_msg
     uint16_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
-    uint32_t  raerqm_ndata_entries;
-    uint8_t  raerqm_data_len_arr[RAFT_ENTRY_DATA_LEN_ENTRIES];
+    uint32_t raerqm_ndata_entries;
+    uint32_t raerqm_data_len_arr[RAFT_ENTRY_NUM_ENTRIES];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
@@ -175,7 +175,7 @@ struct raft_entry_header
     uuid_t           reh_raft_uuid; // UUID of raft instance
     uint8_t          reh_leader_change_marker; // noop
     uint32_t         reh_ndata_entries; //number of data entries
-    uint8_t          reh_data_len_arr[RAFT_ENTRY_DATA_LEN_ENTRIES]; //Array of data length.
+    uint32_t         reh_data_len_arr[RAFT_ENTRY_NUM_ENTRIES]; //Array of data length.
     //uint8_t        reh_ext_data_len_arr[]; //extended array of data length.
 };
 
@@ -409,6 +409,14 @@ struct raft_instance
     void                           *ri_client_arg;
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
+};
+
+struct raft_co_wr_info
+{
+    uint32_t     rc_nentries;
+    uint32_t     rc_total_data_len;
+    struct iovec rc_iovec[RAFT_ENTRY_NUM_ENTRIES];
+    char         rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
 };
 
 static inline void
