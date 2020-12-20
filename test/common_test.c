@@ -28,10 +28,29 @@ highest_power_of_two_test(void)
     }
 }
 
+static void
+ssize_t_checks(void)
+{
+    ssize_t x = -ENOENT;
+    int y = -ENOENT;
+    NIOVA_ASSERT(x == y);
+    NIOVA_ASSERT((ssize_t)x == (ssize_t)y);
+    NIOVA_ASSERT(    (int)x == (int)y);
+    NIOVA_ASSERT((ssize_t)x == (int)y);
+
+    x = -ENOLCK;
+    y = -ENOLCK;
+    NIOVA_ASSERT(x == y);
+    NIOVA_ASSERT((ssize_t)x == (ssize_t)y);
+    NIOVA_ASSERT(    (int)x == (int)y);
+    NIOVA_ASSERT((ssize_t)x == (int)y);
+}
+
 int
 main(void)
 {
     highest_power_of_two_test();
+    ssize_t_checks();
 
     return 0;
 }

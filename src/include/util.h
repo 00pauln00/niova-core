@@ -6,15 +6,18 @@
 #ifndef NIOVA_UTIL_H
 #define NIOVA_UTIL_H 1
 
-#include <limits.h>
-#include <stdio.h>
-#include <uuid/uuid.h>
 #include <ctype.h>
-#include <pthread.h>
 #include <errno.h>
+#include <limits.h>
+#include <pthread.h>
+#include <regex.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <uuid/uuid.h>
 
 // Do not include "log.h" here!
 #include "common.h"
+#include "regex_defines.h"
 
 #define CTIME_R_STR_LEN 26
 #define MK_TIME_STR_LEN 65
@@ -108,6 +111,22 @@ niova_string_find_next_instance_of_char(const char *string, char char_to_find,
 
     return pos < max_len ? pos : (ssize_t)-ENOENT;
 }
+
+static inline ssize_t
+niova_string_find_last_instance_of_char(const char *string, char char_to_find,
+                                        const size_t len)
+{
+    if (!string || !len)
+        return (ssize_t)-EINVAL;
+
+    ssize_t pos;
+    for (pos = len - 1; pos >= 0; pos--)
+         if (string[pos] == char_to_find)
+            break;
+
+    return pos >= 0 ? pos : (ssize_t)-ENOENT;
+}
+
 
 /**
  * niova_clear_whitespace_from_end_of_string - chomps whitespace from the end
@@ -305,6 +324,13 @@ timeval_2_float(const struct timeval *tv)
     return (float)tv->tv_sec + (.000001 * (float)tv->tv_usec);
 }
 
+static inline void
+niova_sleep(unsigned int seconds)
+{
+    while (seconds)
+        seconds = sleep(seconds);
+}
+
 static inline unsigned long long
 niova_unstable_coarse_clock_get_msec(void)
 {
@@ -372,6 +398,23 @@ niova_string_to_unsigned_long_long(const char *string, unsigned long long *val)
 }
 
 static inline int
+niova_string_to_long_long(const char *string, long long *val)
+{
+    if (!string || !val)
+        return -EINVAL;
+
+    errno = 0;
+    long long tmp = strtoll(string, NULL, 10);
+    if ((tmp == LONG_MIN || tmp == LONG_MAX) && errno)
+        return -errno;
+
+    else
+        *val = tmp;
+
+    return 0;
+}
+
+static inline int
 niova_string_to_unsigned_int(const char *string, unsigned int *val)
 {
     if (!string || !val)
@@ -389,6 +432,57 @@ niova_string_to_unsigned_int(const char *string, unsigned int *val)
         *val = (unsigned int)tmp;
 
     return 0;
+}
+
+#define VAL_STR_LEN 32
+
+/**
+ * niova_parse_comma_delimited_uint_string - this function will accept a
+ *   string which contains a comma delimited unsigned integer and return the
+ *   value of the first valid integer string found.  The function accepts
+ *   strings which contain unrelated preceding or trailing text.
+ */
+static inline int
+niova_parse_comma_delimited_uint_string(const char *str, size_t len,
+                                        unsigned long long *val)
+{
+    if (!str || !len || !val)
+        return -EINVAL;
+
+    regex_t regex;
+    int rc = regcomp(
+        &regex,
+        "\\(^\\|\\s\\)"COMMA_DELIMITED_UNSIGNED_INTEGER_BASE"\\($\\|\\s\\)",
+        0);
+
+    if (rc)
+        return -ENOEXEC;
+
+    regmatch_t match = {0};
+    rc = regexec(&regex, str, 1, &match, 0);
+
+    regfree(&regex); // release the regex
+
+    const ssize_t nmatched = match.rm_eo - match.rm_so;
+
+    if (rc || nmatched <= 0)
+        return -ENOENT;
+
+    else if (nmatched >= VAL_STR_LEN) // comma delimited 2^64 value should fit
+        return -E2BIG;
+
+    char val_str[VAL_STR_LEN + 1] = {0};
+    int val_str_idx = 0;
+    for (int i = 0; i < nmatched; i++)
+    {
+        int idx = i + match.rm_so;
+        char c = str[idx];
+
+        if (isdigit((int)str[idx]))
+            val_str[val_str_idx++] = c;
+    }
+
+    return niova_string_to_unsigned_long_long(val_str, val);
 }
 
 static inline void
@@ -472,5 +566,25 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     (obj)->crc32_memb = niova_crc(_buf, _crc_len, 0);                   \
     (obj)->crc32_memb;                                                  \
 })
+
+#define NIOVA_TIMER_START(name)                 \
+    struct timespec io_op##name[2];             \
+    niova_unstable_clock(&io_op##name[0]);
+
+#define NIOVA_TIMER_STOP(name)                  \
+    niova_unstable_clock(&io_op##name[1]);      \
+
+#define NIOVA_TIMER_USEC_DIFF(name)                     \
+    (long long)(timespec_2_usec(&io_op##name[1]) -      \
+                timespec_2_usec(&io_op##name[0]))
+
+// binary_hist.h is not included here, caller must include itself
+#define NIOVA_TIMER_STOP_and_HIST_ADD(name, hist)               \
+{                                                               \
+    NIOVA_TIMER_STOP(name);                                     \
+    const long long elapsed_usec = NIOVA_TIMER_USEC_DIFF(name); \
+    if (elapsed_usec > 0)                                       \
+        binary_hist_incorporate_val((hist), elapsed_usec);      \
+}
 
 #endif

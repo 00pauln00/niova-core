@@ -618,9 +618,13 @@ main(int argc, char **argv)
     REF_TREE_INIT_ALT_REF(&smNodeTree, rst_sm_node_construct,
                           rst_sm_node_destruct, 2);
 
+    enum raft_instance_options opts = use_synchronous_writes
+        ? RAFT_INSTANCE_OPTIONS_SYNC_WRITES
+        : RAFT_INSTANCE_OPTIONS_NONE;
+
     return raft_server_instance_run(
         raft_uuid_str, my_uuid_str,
         raft_server_test_rst_sm_handler,
         use_rocksdb_backend ? RAFT_INSTANCE_STORE_ROCKSDB :
-        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE, use_synchronous_writes, NULL);
+        RAFT_INSTANCE_STORE_POSIX_FLAT_FILE, opts, NULL);
 }

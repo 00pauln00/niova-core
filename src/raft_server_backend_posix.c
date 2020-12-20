@@ -561,10 +561,19 @@ rsbp_sync(struct raft_instance *ri)
     return rc;
 }
 
+static void
+rsbp_set_db_uuid(struct raft_instance *ri)
+{
+    const struct ctl_svc_node_raft_peer *csnp =
+        &ri->ri_csn_this_peer->csn_peer.csnp_raft_info;
+
+    uuid_copy(ri->ri_db_uuid, csnp->csnrp_member.csrm_peer);
+}
+
 static int
 rsbp_setup(struct raft_instance *ri)
 {
-    if (!ri || ri->ri_backend != &ribPosix)
+    if (!ri || ri->ri_backend != &ribPosix || !ri->ri_csn_this_peer)
         return -EINVAL;
 
     else if (ri->ri_backend_arg)
@@ -584,6 +593,8 @@ rsbp_setup(struct raft_instance *ri)
         rsbp_destroy(ri);
         return rc;
     }
+
+    rsbp_set_db_uuid(ri);
 
     return 0;
 }

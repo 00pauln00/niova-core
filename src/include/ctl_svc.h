@@ -43,7 +43,10 @@ struct ctl_svc_node_niosd
 
 struct ctl_svc_raft_member
 {
-    uuid_t csrm_peer;
+    uuid_t  csrm_peer;      // peer uuid
+    uuid_t  csrm_db_uuid;   // uuid of the db instance being checkpointed
+    int64_t csrm_chkpt_idx; // sync-entry-idx at checkpoint time
+    uint8_t csrm_chkpt_valid : 1;
 };
 
 struct ctl_svc_node_raft_peer
@@ -111,6 +114,14 @@ ctl_svc_node_peer_2_store(const struct ctl_svc_node *csn)
 {
     return (csn && ctl_svc_node_is_peer(csn)) ?
         csn->csn_peer.csnp_store : NULL;
+}
+
+static inline const struct ctl_svc_raft_member *
+ctl_svc_node_peer_2_raft_member(const struct ctl_svc_node *csn)
+{
+    return (csn && ctl_svc_node_is_peer(csn))
+        ? &csn->csn_peer.csnp_raft_info.csnrp_member
+        : NULL;
 }
 
 static inline const struct ctl_svc_node_raft *

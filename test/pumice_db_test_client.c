@@ -223,8 +223,9 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         }
         break;
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
     case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -321,8 +322,9 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         }
         break;
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -523,8 +525,9 @@ pmdbtc_lreg_cb(enum lreg_node_cb_ops op, struct lreg_value *lv, void *arg)
 
     switch (op)
     {
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     case LREG_NODE_CB_OP_GET_NAME:

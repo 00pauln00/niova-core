@@ -75,12 +75,16 @@ ev_pipe_cleanup(struct ev_pipe *evp)
     int save_errno[NUM_PIPE_FD];
 
     for (int i = 0; i < NUM_PIPE_FD; i++)
+    {
         save_errno[i] = close(evp->evp_pipe[i]) ? errno : 0;
+        evp->evp_pipe[i] = -1;
+    }
 
     const enum log_level level = (save_errno[0] || save_errno[1]) ?
         LL_WARN : LL_TRACE;
 
-    SIMPLE_LOG_MSG(level, "%s", strerror((save_errno[0] || save_errno[1])));
+    SIMPLE_LOG_MSG(level, "evp@%p %s",
+                   evp, strerror((save_errno[0] || save_errno[1])));
 
     return save_errno[0] ? save_errno[0] : save_errno[1];
 }

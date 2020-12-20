@@ -19,6 +19,9 @@ typedef void util_thread_ctx_ctli_t;
 typedef int  util_thread_ctx_ctli_int_t;
 typedef char util_thread_ctx_ctli_char_t;
 
+bool
+util_thread_ctx(void);
+
 int
 util_thread_install_event_src(int fd, int events,
                               epoll_mgr_cb_t ut_cb,
