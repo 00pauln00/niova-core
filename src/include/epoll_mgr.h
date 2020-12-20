@@ -66,10 +66,8 @@ struct epoll_mgr
     niova_atomic64_t               epm_epoll_wait_cnt;
     struct epoll_handle_list       epm_active_list;
     struct epoll_handle_list       epm_destroy_list;
-
-    pthread_mutex_t                epm_ctx_cb_mutex;
     struct epoll_ctx_callback_list epm_ctx_cb_list;
-    niova_atomic64_t               epm_ctx_cb_num;
+    int                            epm_ctx_cb_num;
 };
 
 struct niova_env_var;

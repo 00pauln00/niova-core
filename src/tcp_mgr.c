@@ -206,7 +206,12 @@ tcp_mgr_connection_close_internal(struct tcp_mgr_connection *tmc)
     tmc->tmc_status = TMCS_DISCONNECTED;
 }
 
-void
+/*
+ * tcp_mgr_incoming_getput is required by epoll_mgr_ctx_cb_add. Incoming
+ * connections are created and destroyed as part of connection workflow,
+ * however, so ref counting is only used as a sanity check.
+ */
+static void
 tcp_mgr_incoming_getput(void *tmc, enum epoll_handle_ref_op op)
 {
     struct tcp_mgr_incoming_connection *incoming =
