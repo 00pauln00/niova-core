@@ -318,9 +318,6 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     else if (!eph->eph_installed || !eph->eph_destroying)
         return -EAGAIN;
 
-    else if (eph->eph_ctx_cb)
-        return -EBUSY;
-
     if (eph->eph_async_destroy)
         SIMPLE_LOG_MSG(LL_NOTIFY, "epm=%p eph=%p", epm, eph);
 
@@ -385,9 +382,7 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_destroying = 1;
         CIRCLEQ_REMOVE(&epm->epm_active_list, eph, eph_lentry);
 
-        // Don't destroy the eph yet if there's still a callback pending
-        if (eph->eph_ref_cb &&
-            (eph->eph_ctx_cb || epm->epm_thread_id != pthread_self()))
+        if (epm->epm_thread_id != pthread_self())
         {
             CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
             // Mark that the 'eph' will be destroyed async
@@ -418,7 +413,6 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     struct epoll_handle *destroy = NULL;
-    struct epoll_handle_list delay_list = CIRCLEQ_HEAD_INITIALIZER(delay_list);
 
     if (CIRCLEQ_EMPTY(&epm->epm_destroy_list))
         return;
@@ -437,31 +431,12 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
         if (destroy)
         {
             int rc = epoll_handle_del_complete(epm, destroy);
-            if (rc == -EBUSY)
-                CIRCLEQ_INSERT_HEAD(&delay_list, destroy, eph_lentry);
-            else if (rc)
+            if (rc)
                 LOG_MSG(LL_WARN,
                         "epoll_handle_del_complete(eph=%p): %s",
                         destroy, strerror(-rc));
         }
     } while (destroy);
-
-    if (CIRCLEQ_EMPTY(&delay_list))
-        return;
-
-    // if eph still has a callback pending, delay del completion
-    struct epoll_handle *eph, *tmp;
-
-    pthread_mutex_lock(&epm->epm_mutex);
-    CIRCLEQ_FOREACH_SAFE(eph, &delay_list, eph_lentry, tmp)
-    {
-        SIMPLE_LOG_MSG(LL_TRACE, "delaying delete for eph %p", eph);
-
-        CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
-    }
-    pthread_mutex_unlock(&epm->epm_mutex);
-
-    epoll_mgr_wake(epm);
 }
 
 int
@@ -502,14 +477,6 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         LOG_MSG(LL_DEBUG, "eph busy, cb %p", eph->eph_ctx_cb);
 
         rc = -EAGAIN;
-        goto out;
-    }
-
-    if (eph->eph_destroying)
-    {
-        LOG_MSG(LL_DEBUG, "eph %p destroying", eph);
-
-        rc = -EBUSY;
         goto out;
     }
 
