@@ -3159,8 +3159,8 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
     {
         struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
 
-        if (rfi->rfi_ackd_idx >= rfi->rfi_synced_idx)
-            sync_indexes[i] = rfi->rfi_synced_idx;
+        // Don't consider a sync-idx which is > ackd-idx
+        sync_indexes[i] = MIN(rfi->rfi_ackd_idx, rfi->rfi_synced_idx);
     }
 
     raft_entry_idx_t committed_raft_idx = -1;
@@ -3209,8 +3209,8 @@ raft_server_leader_can_advance_commit_idx(struct raft_instance *ri,
     DBG_RAFT_INSTANCE_FATAL_IF( // Note:  sync_thread view may be stale
         (!sync_thread && committed_raft_idx < ri->ri_commit_idx &&
          committed_raft_idx >= rls->rls_initial_term_idx), ri,
-        "committed_raft_idx (%ld) < ri_commit_idx after initial term commit",
-        committed_raft_idx);
+        "commit_calc_idx (%ld) < ri_commit_idx after initial term idx (%ld)",
+        committed_raft_idx, rls->rls_initial_term_idx);
 
     /* Only increase the commit index if the majority has ACKd this leader's
      * "leader_change_marker" AE.
