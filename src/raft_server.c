@@ -393,6 +393,7 @@ enum raft_peer_stats_items
 //    RAFT_PEER_STATS_BYTES_RECV,
 #endif
     RAFT_PEER_STATS_SYNCED_LOG_IDX,
+    RAFT_PEER_STATS_ACKD_LOG_IDX,
     RAFT_PEER_STATS_PREV_LOG_IDX,
     RAFT_PEER_STATS_PREV_LOG_TERM,
     RAFT_PEER_STATS_MAX,
@@ -451,6 +452,9 @@ raft_instance_lreg_peer_stats_multi_facet_handler(
         break;
     case RAFT_PEER_STATS_SYNCED_LOG_IDX:
         lreg_value_fill_signed(lv, "sync-idx", rfi->rfi_synced_idx);
+        break;
+    case RAFT_PEER_STATS_ACKD_LOG_IDX:
+        lreg_value_fill_signed(lv, "ackd-idx", rfi->rfi_ackd_idx);
         break;
     default:
         break;
@@ -1985,11 +1989,8 @@ raft_server_leader_init_state(struct raft_instance *ri)
         rfi->rfi_prev_idx_crc = sync_hdr.reh_crc;
         rfi->rfi_current_idx_term = -1ULL;
         rfi->rfi_current_idx_crc = 0;
-#if SYNC_IDX_BUG
-        rfi->rfi_synced_idx = sync_hdr.reh_index;
-#else
         rfi->rfi_synced_idx = RAFT_MIN_APPEND_ENTRY_IDX;
-#endif
+        rfi->rfi_ackd_idx = RAFT_MIN_APPEND_ENTRY_IDX;
     }
 }
 
@@ -3133,6 +3134,7 @@ raft_server_leader_setup_self_follower_info(struct raft_instance *ri)
 
     self->rfi_next_idx = sync_hdr.reh_index + 1;
     self->rfi_synced_idx = sync_hdr.reh_index;
+    self->rfi_ackd_idx = sync_hdr.reh_index;
     self->rfi_prev_idx_term = sync_hdr.reh_term;
 }
 
@@ -3150,12 +3152,15 @@ raft_server_leader_calculate_committed_idx(struct raft_instance *ri,
 
     NIOVA_ASSERT(num_raft_members <= CTL_SVC_MAX_RAFT_PEERS);
 
-    raft_entry_idx_t sync_indexes[num_raft_members];
+    raft_entry_idx_t sync_indexes[CTL_SVC_MAX_RAFT_PEERS] =
+        { RAFT_MIN_APPEND_ENTRY_IDX };
 
     for (size_t i = 0; i < num_raft_members; i++)
     {
         struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
-        sync_indexes[i] = rfi->rfi_synced_idx;
+
+        if (rfi->rfi_ackd_idx >= rfi->rfi_synced_idx)
+            sync_indexes[i] = rfi->rfi_synced_idx;
     }
 
     raft_entry_idx_t committed_raft_idx = -1;
@@ -3260,18 +3265,26 @@ raft_server_try_update_follower_sync_idx(struct raft_instance *ri,
     struct raft_follower_info *rfi =
         raft_server_get_follower_info(ri, follower_idx);
 
-    NIOVA_ASSERT(rfi && rfi->rfi_synced_idx <= rfi->rfi_next_idx);
+    NIOVA_ASSERT(rfi);
 
     if (rfi->rfi_synced_idx < sync_idx)
     {
         rfi->rfi_synced_idx = sync_idx;
 
-         DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
-                           "follower=%x new-sync-idx=%ld caller=%s",
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+                          "follower=%x new-sync-idx=%ld caller=%s",
                            follower_idx, rfi->rfi_synced_idx, caller);
 
         // if this request increases the remote's rfi_synced_idx..
         raft_server_leader_try_advance_commit_idx(ri);
+    }
+    else if (rfi->rfi_synced_idx > rfi->rfi_next_idx)
+    {
+        DBG_RAFT_INSTANCE(
+            LL_WARN, ri,
+            "follower=%x next-idx=%ld > syncd-idx=%ld (ackd-idx=%ld)",
+            follower_idx, rfi->rfi_next_idx, rfi->rfi_synced_idx,
+            rfi->rfi_ackd_idx);
     }
 }
 
@@ -3334,6 +3347,10 @@ raft_server_apply_append_entries_reply_result(
             }
             else
             {
+                /* Fast-forwarding rfi_next_idx to raerpm_synced_log_index
+                 * prevents the leader from iterating over index values which
+                 * the follower has disclosed that it does hold.
+                 */
                 rfi->rfi_next_idx =
                     (raerp->raerpm_synced_log_index >= 0 &&
                      raerp->raerpm_synced_log_index < rfi->rfi_next_idx)
@@ -3346,6 +3363,12 @@ raft_server_apply_append_entries_reply_result(
     }
     else
     {
+        /* Adjust the ack'd index - we now know that the follower's log
+         * contains this entry and at the proper term.
+         */
+        if (rfi->rfi_ackd_idx < raerp->raerpm_prev_log_index)
+            rfi->rfi_ackd_idx = raerp->raerpm_prev_log_index;
+
         // Heartbeats don't advance the follower index
         if (!raerp->raerpm_heartbeat_msg)
         {
@@ -3356,6 +3379,7 @@ raft_server_apply_append_entries_reply_result(
                               follower_idx, rfi->rfi_next_idx);
         }
 
+        // XXX fix me so that I take the raerp and handle ackd-idx as well
         raft_server_try_update_follower_sync_idx(
             ri, follower_idx, raerp->raerpm_synced_log_index, __func__);
     }

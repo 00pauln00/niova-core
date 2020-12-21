@@ -266,6 +266,7 @@ struct raft_candidate_state
 struct raft_follower_info
 {
     int64_t            rfi_next_idx;
+    int64_t            rfi_ackd_idx;
     int64_t            rfi_synced_idx;
     int64_t            rfi_current_idx_term;
     int64_t            rfi_current_idx_crc;
