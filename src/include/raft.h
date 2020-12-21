@@ -82,8 +82,7 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 2,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 3,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 4,
-    RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE        = 5,
-    RAFT_RPC_MSG_TYPE_ANY                    = 6,
+    RAFT_RPC_MSG_TYPE_ANY                    = 5,
 };
 
 struct raft_vote_request_msg
