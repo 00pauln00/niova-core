@@ -466,7 +466,7 @@ epoll_mgr_reap_destroy_list(struct epoll_mgr *epm)
 
 int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
-                     epoll_mgr_ctx_op_cb_t cb, bool block)
+                     epoll_mgr_ctx_op_cb_t cb)
 {
     SIMPLE_LOG_MSG(LL_TRACE, "epm %p eph %p cb %p ref_cb %p", epm, eph, cb,
                    eph ? eph->eph_ref_cb : NULL);
@@ -482,7 +482,7 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         return 0;
     }
 
-    // put in reap_ctx_list
+    // PUT in reap_ctx_list
     eph->eph_ref_cb(eph->eph_arg, EPH_REF_GET);
 
     niova_mutex_lock(&epm->epm_mutex);
@@ -497,14 +497,8 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
         goto out;
     }
 
-    while (block && eph->eph_ctx_cb && eph->eph_ctx_cb_cond &&
-           !eph->eph_destroying)
-        pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_mutex);
-
     if (eph->eph_ctx_cb)
     {
-        NIOVA_ASSERT(!block);
-
         LOG_MSG(LL_DEBUG, "eph busy, cb %p", eph->eph_ctx_cb);
 
         rc = -EAGAIN;
@@ -526,17 +520,7 @@ epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
                    eph, eph->eph_ctx_cb, eph->eph_ref_cb);
     SLIST_INSERT_HEAD(&epm->epm_ctx_cb_list, eph, eph_cb_lentry);
 
-    static __thread pthread_cond_t cond_var = PTHREAD_COND_INITIALIZER;
-    eph->eph_ctx_cb_cond = &cond_var;
-
     epoll_mgr_wake(epm);
-
-    if (block)
-    {
-        // eph might be freed in callback, don't ref after this
-        SIMPLE_LOG_MSG(LL_DEBUG, "waiting on ctx_cb_cond %p", &cond_var);
-        pthread_cond_wait(eph->eph_ctx_cb_cond, &epm->epm_mutex);
-    }
 
 out:
     if (rc)
@@ -556,22 +540,14 @@ epoll_mgr_ctx_cb_run(struct epoll_mgr *epm, struct epoll_handle *eph)
 {
     NIOVA_ASSERT(epm && eph && eph->eph_ctx_cb && eph->eph_ref_cb);
 
-    pthread_cond_t *cond = eph->eph_ctx_cb_cond;
     epoll_mgr_ctx_op_cb_t cb = eph->eph_ctx_cb;
     void *arg = eph->eph_arg;
 
     cb(arg);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "signaling %p", cond);
     niova_mutex_lock(&epm->epm_mutex);
 
-    if (cond)
-        pthread_cond_broadcast(cond);
-    else
-        SIMPLE_LOG_MSG(LL_WARN, "eph %p condition null", eph);
-
     SLIST_ENTRY_INIT(&eph->eph_cb_lentry);
-    eph->eph_ctx_cb_cond = NULL;
     eph->eph_ctx_cb = NULL;
     epm->epm_ctx_cb_num--;
 

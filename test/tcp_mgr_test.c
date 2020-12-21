@@ -196,7 +196,7 @@ tmt_send_thread(void *arg)
         msg->msg_size = msg_size;
         iov.iov_len = msg_size + sizeof(struct tmt_message);
         SIMPLE_LOG_MSG(LL_NOTIFY, "sending message, msg_size=%d", msg_size);
-        int rc = tcp_mgr_send_msg(&oc->oc_tmc, &iov, 1, true);
+        int rc = tcp_mgr_send_msg(&oc->oc_tmc, &iov, 1);
         if (rc < 0)
         {
             SIMPLE_LOG_MSG(LL_NOTIFY, "error sending message, rc=%d", rc);
@@ -211,7 +211,7 @@ tmt_send_thread(void *arg)
 
         usleep(100 * 1000);
     }
-    tcp_mgr_connection_close(&oc->oc_tmc, true);
+    tcp_mgr_connection_close(&oc->oc_tmc);
     tmt_owned_connection_getput(oc, EPH_REF_PUT);
 
     SIMPLE_FUNC_EXIT(LL_TRACE);
@@ -247,7 +247,7 @@ tmt_close_thread(void *arg)
     {
         struct tmt_owned_connection *oc = tmt_owned_connection_random_get(td);
         DBG_TCP_MGR_CXN(LL_NOTIFY, &oc->oc_tmc, "closing connection");
-        tcp_mgr_connection_close(&oc->oc_tmc, true);
+        tcp_mgr_connection_close(&oc->oc_tmc);
         tmt_owned_connection_getput(oc, EPH_REF_PUT);
         niova_atomic_inc(&td->td_close_cnt);
 

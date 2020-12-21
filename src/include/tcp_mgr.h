@@ -126,7 +126,7 @@ tcp_mgr_connection_header_size_get(struct tcp_mgr_connection *tmc)
 
 int
 tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
-                 size_t niovs, bool block);
+                 size_t niovs);
 
 void
 tcp_mgr_bulk_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
@@ -135,7 +135,7 @@ void
 tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt);
 
 void
-tcp_mgr_connection_close(struct tcp_mgr_connection *tmc, bool block);
+tcp_mgr_connection_close(struct tcp_mgr_connection *tmc);
 
 // not thread safe for connection
 void

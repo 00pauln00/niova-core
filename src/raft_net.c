@@ -1221,7 +1221,7 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
 
     raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
-    return tcp_mgr_send_msg(&csn->csn_peer.csnp_net_data, iov, niovs, true);
+    return tcp_mgr_send_msg(&csn->csn_peer.csnp_net_data, iov, niovs);
 }
 
 int

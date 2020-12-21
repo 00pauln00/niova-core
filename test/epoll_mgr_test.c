@@ -517,6 +517,8 @@ epoll_mgr_context_test_user(void *arg)
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
     static bool leader_running = false;
     static bool follower_running = false;
+    static bool leader_ending = false;
+    static bool follower_ending = false;
     static struct epm_ctx_test_data shared_data;
 
     struct epm_ctx_test_data local_data;
@@ -548,7 +550,7 @@ epoll_mgr_context_test_user(void *arg)
         SIMPLE_LOG_MSG(LL_DEBUG, "epm_thread_id %lu", epm->epm_thread_id);
 
         int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                                      epoll_mgr_context_cb, 1);
+                                      epoll_mgr_context_cb);
         FATAL_IF(rc, "rc=%d", rc);
 
         SIMPLE_LOG_MSG(LL_TRACE, "epoll_mgr_ctx_cb_add() %d", rc);
@@ -560,9 +562,12 @@ epoll_mgr_context_test_user(void *arg)
         snprintf(shared_data.ectd_msg, sizeof(shared_data.ectd_msg),
                  "follower shared_data");
 
-        // leader blocks until cb is done, so add should never return busy
-        int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                                      epoll_mgr_context_cb, 1);
+        // leader is probably not done, so EAGAIN is expected
+        int rc;
+        while ((rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
+                                          epoll_mgr_context_cb)) == -EAGAIN)
+            usleep(1000);
+
         FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
     }
     pthread_mutex_unlock(&mutex);
@@ -571,20 +576,12 @@ epoll_mgr_context_test_user(void *arg)
     while (!follower_running)
         usleep(1000);
 
-    // ensure stacked blocking adds don't return EAGAIN
-    int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                                  epoll_mgr_context_cb, 1);
-    FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
-    rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                              epoll_mgr_context_cb, 1);
-    FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
-
     // one will install their nonblocking callback, other may get EAGAIN
     pthread_mutex_lock(&mutex);
     snprintf(shared_data.ectd_msg, sizeof(shared_data.ectd_msg),
              "racy testing");
-    rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                              epoll_mgr_context_cb, 0);
+    int rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
+                                  epoll_mgr_context_cb);
     SIMPLE_LOG_MSG(LL_TRACE, "epoll_mgr_ctx_cb_add() %d", rc);
 
     // it's possible that context cb will be added and completed before
@@ -592,11 +589,6 @@ epoll_mgr_context_test_user(void *arg)
     FATAL_IF(rc != -EAGAIN && rc != 0,
              "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
     pthread_mutex_unlock(&mutex);
-
-    // blocking cbs should wait for nonblock cbs to complete, so no EAGAIN
-    rc = epoll_mgr_ctx_cb_add(epm, &shared_data.ectd_eph,
-                              epoll_mgr_context_cb, 1);
-    FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
 
     if (is_leader)
     {
@@ -610,14 +602,14 @@ epoll_mgr_context_test_user(void *arg)
     // wait for threads to settle in order to validate refcnt
     if (is_leader)
     {
-        leader_running = false;
-        while (follower_running)
+        leader_ending = true;
+        while (!follower_ending)
             usleep(1000);
     }
     else
     {
-        follower_running = false;
-        while (leader_running)
+        follower_ending = true;
+        while (!leader_ending)
             usleep(1000);
     }
 
@@ -631,34 +623,21 @@ epoll_mgr_context_test_user(void *arg)
              &local_data.ectd_eph);
 
     const int LOCAL_DATA_TEST_NUMBER = 10;
-    for (int i = 0; i < LOCAL_DATA_TEST_NUMBER; i++)
-    {
-        // adding blocking epoll handle should never return busy
-        rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
-                                  epoll_mgr_context_cb, 1);
-        FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
-    }
-
     for (int i = 0; i < LOCAL_DATA_TEST_NUMBER * 10; i++)
     {
         rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
-                                  epoll_mgr_context_cb, 0);
+                                  epoll_mgr_context_cb);
         FATAL_IF(rc != 0 && rc != -EAGAIN,
                  "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
         usleep(100 * 1000);
     }
 
-    SIMPLE_LOG_MSG(LL_TRACE, "adding blocking after non-blocking");
-    rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
-                              epoll_mgr_context_cb, 1);
-    FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
-
     SIMPLE_LOG_MSG(LL_TRACE, "calling epoll_handle_init() on local_data");
 
     // test destroying and epoll handle
-    // try both blocking and non-blocking
-    rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
-                              epoll_mgr_context_del_cb, is_leader);
+    while ((rc = epoll_mgr_ctx_cb_add(epm, &local_data.ectd_eph,
+                              epoll_mgr_context_del_cb)) == -EAGAIN)
+        usleep(1000);
     FATAL_IF(rc, "epoll_mgr_ctx_cb_add(): unexpected rc=%d", rc);
 
     // context_del_cb will also try to delete eph, so non-inval rc ok

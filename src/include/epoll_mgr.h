@@ -45,7 +45,6 @@ struct epoll_handle
     epoll_mgr_cb_t        eph_cb;
     epoll_mgr_ref_cb_t    eph_ref_cb;
     epoll_mgr_ctx_op_cb_t eph_ctx_cb;
-    pthread_cond_t       *eph_ctx_cb_cond;
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
     SLIST_ENTRY(epoll_handle) eph_cb_lentry;
 };
@@ -103,6 +102,6 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout);
 
 int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
-                     epoll_mgr_ctx_op_cb_t cb, bool block);
+                     epoll_mgr_ctx_op_cb_t cb);
 
 #endif
