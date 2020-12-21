@@ -5,9 +5,6 @@ lib_LTLIBRARIES =
 
 ACLOCAL_AMFLAGS = -I m4
 
-AM_CPPFLAGS = -Isrc/include -Isrc/contrib/include
-AM_CFLAGS = -O2 -g
-
 lib_LTLIBRARIES += src/libniova.la
 src_libniova_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
 src_libniova_la_SOURCES = \
@@ -28,6 +25,7 @@ src_libniova_la_SOURCES = \
 	src/include/lock.h \
         src/include/log.h \
 	src/include/net_ctl.h \
+	src/include/popen_cmd.h \
         src/include/random.h \
         src/include/ref_tree_proto.h \
         src/include/regex_defines.h \
@@ -54,6 +52,7 @@ src_libniova_la_SOURCES = \
         src/init.c \
         src/io.c \
         src/log.c \
+	src/popen_cmd.c \
 	src/random.c \
         src/registry.c \
 	src/system_info.c \
@@ -63,6 +62,30 @@ src_libniova_la_SOURCES = \
         src/tcp_mgr.c \
         src/util_thread.c \
 	src/watchdog.c
+
+lib_LTLIBRARIES += src/libniova-raft.la
+src_libniova_raft_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+# Make libniova a dependency so that constructors execute in the correct order
+src_libniova_raft_la_LIBADD = src/libniova.la
+src_libniova_raft_la_SOURCES = \
+	src/include/raft_net.h \
+	src/include/raft.h \
+	src/include/raft_server_backend_rocksdb.h \
+	src/raft_net.c \
+	src/raft_server_backend_posix.c \
+	src/raft_server_backend_rocksdb.c \
+	src/raft_server.c
+
+lib_LTLIBRARIES += src/libniova-raft-client.la
+src_libniova_raft_client_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+# Make libniova a dependency so that constructors execute in the correct order
+src_libniova_raft_client_la_LIBADD = src/libniova.la
+src_libniova_raft_client_la_SOURCES = \
+	src/include/raft_net.h \
+	src/include/raft.h \
+	src/include/raft_client.h \
+	src/raft_net.c \
+	src/raft_client.c
 
 noinst_PROGRAMS += test/ref_tree_test
 test_ref_tree_test_SOURCES = test/ref_tree_test.c
@@ -139,6 +162,11 @@ test_epoll_mgr_test_SOURCES = test/epoll_mgr_test.c
 test_epoll_mgr_test_LDADD = src/libniova.la
 TESTS += test/epoll_mgr_test
 
+noinst_PROGRAMS += test/raft_net_test
+test_raft_net_test_SOURCES = test/raft_net_test.c
+test_raft_net_test_LDADD = src/libniova.la src/libniova-raft.la -lrocksdb
+TESTS += test/raft_net_test
+
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 
@@ -147,3 +175,7 @@ autofmt-check:
 
 version:
 	echo "Version info: major=@MAJOR_VERSION@ minor=@MINOR_VERSION@ suffix=@VERSION_SUFFIX@"
+
+show-flags:
+	echo "AM_CFLAGS: ${AM_CFLAGS}"
+	echo "CFLAGS: ${CFLAGS}"
