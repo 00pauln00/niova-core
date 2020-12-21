@@ -295,6 +295,9 @@ thread_issue_sig_alarm_to_thread(pthread_t tid)
 int
 thread_halt_and_destroy(struct thread_ctl *tc)
 {
+    if (!tc->tc_thread_id)
+        return -EINVAL;
+
     thread_ctl_halt(tc);
 
     thread_ctl_remove_from_watchdog(tc);
@@ -317,6 +320,9 @@ thread_halt_and_destroy(struct thread_ctl *tc)
     DBG_THREAD_CTL(log_level, tc,
                    "pthread_join(): rc=%d:%d errno=%s, thr_retval=%p",
                    kill_rc, rc, strerror(my_errno), (long int *)retval);
+
+    if (!rc)
+        tc->tc_thread_id = 0;
 
     return rc;
 }

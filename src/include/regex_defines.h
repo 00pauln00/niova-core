@@ -40,4 +40,13 @@
 #define PMDB_TEST_CLIENT_APPLY_CMD_REGEX \
     "^"RNCUI_V0_REGEX_BASE"\\(\\.lookup\\|\\.read\\|\\.write:\\("ZERO_or_POS_INT"\\)\\)\\($\\|.\\("POS_INT"\\)$\\)"
 
+#define COMMA_DELIMITED_UNSIGNED_INTEGER_BASE \
+    "\\([0-9]\\|[1-9][0-9]\\{1,2\\}\\)\\(,[0-9]\\{3\\}\\)*"
+
+#define COMMA_DELIMITED_UNSIGNED_INTEGER \
+    "^"COMMA_DELIMITED_UNSIGNED_INTEGER_BASE"$"
+
+#define RAFT_CHECKPOINT_DIRNAME \
+    "^"UUID_REGEX_BASE"_"UUID_REGEX_BASE"_[0-9]\\{20\\}$"
+
 #endif

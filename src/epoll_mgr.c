@@ -336,6 +336,7 @@ epoll_handle_del_complete(struct epoll_mgr *epm, struct epoll_handle *eph)
     epm->epm_num_handles--;
 
     eph->eph_installed = 0;
+    eph->eph_fd = -1;
     eph->eph_destroying = 0;
     eph->eph_async_destroy = 0;
 
@@ -382,7 +383,7 @@ epoll_handle_del(struct epoll_mgr *epm, struct epoll_handle *eph)
         eph->eph_destroying = 1;
         CIRCLEQ_REMOVE(&epm->epm_active_list, eph, eph_lentry);
 
-        if (epm->epm_thread_id != pthread_self())
+        if (!epoll_handle_releases_in_current_thread(epm, eph))
         {
             CIRCLEQ_INSERT_HEAD(&epm->epm_destroy_list, eph, eph_lentry);
             // Mark that the 'eph' will be destroyed async
@@ -590,7 +591,7 @@ epoll_mgr_wait_and_process_events(struct epoll_mgr *epm, int timeout)
     for (int i = 0; i < nevents; i++)
     {
         struct epoll_handle *eph = evs[i].data.ptr;
-        SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_wait(): fd=%d", eph->eph_fd);
+        LOG_MSG(LL_TRACE, "epoll_wait(): fd=%d", eph->eph_fd);
 
         if (!eph->eph_installed)
             continue;

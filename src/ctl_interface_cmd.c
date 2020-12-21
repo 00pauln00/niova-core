@@ -27,7 +27,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define CTLIC_BUFFER_SIZE        4096
 #define CTLIC_MAX_TOKENS_PER_REQ 8
-#define CTLIC_MAX_VALUE_SIZE     127
+#define CTLIC_MAX_VALUE_SIZE     (NAME_MAX + 1)
 #define CTLIC_MAX_VALUE_DEPTH    32 // Max 'tree' depth which can be queried
 #define CTLIC_MAX_TAB_DEPTH      (CTLIC_MAX_VALUE_DEPTH * 2)
 #define CTLIC_MAX_SIBLING_CNT    16384
@@ -1476,11 +1476,11 @@ ctlic_scan_registry(struct ctlic_request *cr)
     ctlic_scan_registry_cb_output_writer(&citer);
 }
 
-util_thread_ctx_ctli_t
+util_thread_ctx_ctli_int_t
 ctlic_process_request(const struct ctli_cmd_handle *cch)
 {
     if (!cch || !cch->ctlih_input_file_name || cch->ctlih_output_dirfd < 0)
-        return;
+        return -EINVAL;
 
     struct ctlic_request cr = {0};
 
@@ -1490,7 +1490,7 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
     {
         LOG_MSG(LL_NOTIFY, "ctlic_open_and_read_input_file(`%s'): %s",
                 cch->ctlih_input_file_name, strerror(-rc));
-        return;
+        return rc;
     }
 
     LOG_MSG(LL_DEBUG, "file=%s\ncontents=\n%s",
@@ -1520,4 +1520,6 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
     rc = ctlic_rename_output_file(cch->ctlih_output_dirfd, &cr);
 done:
     ctlic_request_done(&cr);
+
+    return rc;
 }

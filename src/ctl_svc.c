@@ -548,6 +548,7 @@ ctl_svc_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     {
     case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
     case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break; // These may require implementation later..
 
     case LREG_NODE_CB_OP_GET_NODE_INFO:
@@ -967,8 +968,8 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
 
-    int rc = lreg_node_install_prepare(&csn->csn_lrn,
-                                       LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
+    int rc = lreg_node_install(&csn->csn_lrn,
+                               LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
 
     DBG_CTL_SVC_NODE((rc ? LL_FATAL : LL_DEBUG), csn, "%s", strerror(-rc));
 

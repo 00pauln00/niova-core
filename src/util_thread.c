@@ -30,6 +30,13 @@ static struct epoll_handle utilThreadEpollHandles[MAX_UT_EPOLL_HANDLES];
 static size_t utilThreadNumEpollHandles;
 static pthread_mutex_t utilThreadMutex = PTHREAD_MUTEX_INITIALIZER;
 
+bool
+util_thread_ctx(void)
+{
+    return (utilThread.ut_started &&
+            utilThread.ut_tc.tc_thread_id == pthread_self()) ? true : false;
+}
+
 int
 util_thread_install_event_src(int fd, int events,
                               epoll_mgr_cb_t ut_cb,
@@ -83,6 +90,8 @@ util_thread_main(void *arg)
     NIOVA_ASSERT(tc && tc->tc_arg);
 
     struct util_thread *ut = tc->tc_arg;
+
+    NIOVA_ASSERT(util_thread_ctx());
 
     THREAD_LOOP_WITH_CTL(tc)
     {

@@ -52,7 +52,8 @@ LREG_ROOT_ENTRY_GENERATE(log_entry_map, LREG_USER_TYPE_LOG_file);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(log_subsystem, LREG_USER_TYPE_LOG_subsys,
                                 LOG_SUBSYS_KEY__MAX,
-                                log_subsys_lreg_multi_facet_cb, NULL);
+                                log_subsys_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
 
 static void
 log_lreg_check_and_assign_log_level(struct log_entry_info *lei,
@@ -237,16 +238,17 @@ log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                  "%s:%d", lei->lei_func, (int)lei->lei_lineno);
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lreg_val)
             return -EINVAL;
 
         log_lreg_function_entry_multi_facet_value_cb(op, lei, lreg_val);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -278,7 +280,7 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:  //fall through
+    case LREG_NODE_CB_OP_READ_VAL:  // fall through
     case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lreg_val)
             return -EINVAL;
@@ -286,8 +288,9 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         log_lreg_file_entry_multi_facet_value_cb(op, lei, lreg_val);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
     default:
         return -ENOENT;

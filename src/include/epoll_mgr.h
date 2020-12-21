@@ -104,4 +104,24 @@ int
 epoll_mgr_ctx_cb_add(struct epoll_mgr *epm, struct epoll_handle *eph,
                      epoll_mgr_ctx_op_cb_t cb);
 
+static inline bool
+epoll_mgr_is_ready(const struct epoll_mgr *epm)
+{
+    return (epm && epm->epm_ready) ? true : false;
+}
+
+static inline bool
+epoll_handle_is_installed(const struct epoll_handle *eph)
+{
+    return (eph && eph->eph_installed) ? true : false;
+}
+
+static inline bool
+epoll_handle_releases_in_current_thread(const struct epoll_mgr *epm,
+                                        const struct epoll_handle *eph)
+{
+    return (!eph->eph_ref_cb || epm->epm_thread_id == pthread_self()) ?
+        true : false;
+}
+
 #endif

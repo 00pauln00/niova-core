@@ -22,6 +22,33 @@ struct regex_test
     const size_t             rt_nitems;
 };
 
+static const struct regex_item commaIntegerTests[] = {
+    {"0", true},
+    {"1", true},
+    {"9", true},
+    {"10", true},
+    {"111", true},
+    {"999", true},
+    {"00", false},
+    {"01", false},
+    {"9,", false},
+    {"9,0", false},
+    {"9,01", false},
+    {"9,000", true},
+    {"19,001", true},
+    {"09,001", false},
+    {"90,", false},
+    {"900,", false},
+    {"9001,", false},
+    {"900,1", false},
+    {"900,12", false},
+    {"900,123", true},
+    {"900,123,", false},
+    {"000,123", false},
+    {"0,11,,22,,333432432,,,", false},
+    {"123,456,789,000,123,234,000,000", true},
+};
+
 static const struct regex_item ipTests[] = {
     {"127.0.0.1", true},
     {"127.0.0.1000", false},
@@ -62,11 +89,26 @@ static const struct regex_item pmdbApplyCmdTests[] = {
     {"79551132-d289-11ea-b67c-90324b2d1e89:111:11:1:0.lookup.1000000001", true},
 };
 
+static const struct regex_item raftChkptDirnameTests[] = {
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_00000000000000025027", true},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_000000000000000250270", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_0000000000000002502", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_f0000000000000025027", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_90000000000000025027", true},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_79551132-d289-11ea-b67c-90324b2d1e89_a0000000000000025027", false},
+    {"0d6ac28e-d278-11ea-9638-90324b2d1e89_289-11ea-b67c-90324b2d1e89_00000000000000025027", false},
+    {"79551132-d289-11ea-b67c-90324b2d1e89_00000000000000025027", false},
+};
+
 static const struct regex_test regexTests[] = {
     {RNCUI_V0_REGEX_BASE, rncuiTests, ARRAY_SIZE(rncuiTests)},
     {IPADDR_REGEX, ipTests, ARRAY_SIZE(ipTests)},
     {PMDB_TEST_CLIENT_APPLY_CMD_REGEX, pmdbApplyCmdTests,
      ARRAY_SIZE(pmdbApplyCmdTests)},
+    {COMMA_DELIMITED_UNSIGNED_INTEGER, commaIntegerTests,
+     ARRAY_SIZE(commaIntegerTests)},
+    {RAFT_CHECKPOINT_DIRNAME, raftChkptDirnameTests,
+     ARRAY_SIZE(raftChkptDirnameTests)},
 };
 
 static int

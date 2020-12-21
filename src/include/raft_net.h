@@ -25,6 +25,14 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
+#define RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES 1000000
+#define RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES 10000
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR 2
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX 100
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT 5
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX 100
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN 1
+
 #define RAFT_NET_BINARY_HIST_SIZE 20
 
 #define RAFT_NET_PEER_RECENCY_NO_RECV -1ULL
@@ -41,6 +49,18 @@ typedef uint64_t raft_net_request_tag_t;
 
 struct raft_client_rpc_msg;
 struct raft_net_client_request_handle;
+
+enum raft_event_pipe_types
+{
+    RAFT_EVP__NONE,
+    RAFT_EVP_REMOTE_SEND,
+    RAFT_EVP_ASYNC_COMMIT_IDX_ADV,
+    RAFT_EVP_SM_APPLY,
+    RAFT_EVP_CLIENT,
+    RAFT_EVP__ANY,
+    RAFT_EVP_SERVER__START = RAFT_EVP_REMOTE_SEND,
+    RAFT_EVP_SERVER__END = RAFT_EVP_SM_APPLY,
+};
 
 enum raft_net_client_request_type
 {
@@ -77,7 +97,15 @@ enum raft_instance_store_type
     RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
 };
 
-#define RAFT_INSTANCE_PERSISTENT_APP_MAX_SCAN_ENTRIES 100000
+// Options for raft_server_instance_run()
+enum raft_instance_options
+{
+    RAFT_INSTANCE_OPTIONS_NONE            = 0,
+    RAFT_INSTANCE_OPTIONS_SYNC_WRITES     = 1 << 0,
+    RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT = 1 << 1,
+    RAFT_INSTANCE_OPTIONS_DISABLE_UDP     = 1 << 2,
+    RAFT_INSTANCE_OPTIONS_DISABLE_TCP     = 1 << 3,
+};
 
 enum raft_udp_listen_sockets
 {
@@ -441,8 +469,24 @@ void
 raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs);
 
 
+struct ev_pipe *
+raft_net_evp_get(struct raft_instance *ri, enum raft_event_pipe_types type);
+
 int
-raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb);
+raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb,
+                 enum raft_event_pipe_types type);
+
+int
+raft_net_evp_remove(struct raft_instance *ri, enum raft_event_pipe_types type);
+
+int
+raft_net_evp_notify(struct raft_instance *ri, enum raft_event_pipe_types type);
+
+#define RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, type)                           \
+do {                                                                    \
+    int _rc = raft_net_evp_notify(ri, type);                            \
+    FATAL_IF(_rc, "raft_net_evp_notify(%d): %s", type, strerror(-_rc));  \
+} while (0)
 
 static inline void
 raft_client_msg_error_set(struct raft_client_rpc_msg *rcm, int sys, int app)
@@ -661,5 +705,15 @@ raft_net_client_user_id_parse(const char *in,
 void
 raft_net_csn_connection_setup(struct raft_instance *ri,
                               struct ctl_svc_node *csn);
+
+void
+raft_net_set_max_scan_entries(struct raft_instance *ri,
+                              ssize_t max_scan_entries);
+
+void
+raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor);
+
+void
+raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts);
 
 #endif

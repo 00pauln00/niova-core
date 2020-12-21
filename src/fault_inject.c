@@ -47,6 +47,16 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,
         .flti_enabled = 0,
     },
+    [FAULT_INJECT_raft_force_bulk_recovery] = {
+        .flti_name = "raft_force_bulk_recovery",
+        .flti_when = FAULT_INJECT_PERIOD_one_time_only,
+        .flti_enabled = 0,
+    },
+    [FAULT_INJECT_raft_server_main_loop_break] = {
+        .flti_name = "raft_server_main_loop_break",
+        .flti_when = FAULT_INJECT_PERIOD_one_time_only,
+        .flti_enabled = 0,
+    },
     [FAULT_INJECT_raft_leader_may_be_deposed] = {
         .flti_name = "raft_leader_may_be_deposed",
         .flti_when = FAULT_INJECT_PERIOD_every_time,
@@ -107,6 +117,7 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     {
     case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
     case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break; // No-ops since these entries are effectively static
     case LREG_NODE_CB_OP_GET_NODE_INFO:
         lrv->get.lrv_num_keys_out = FAULT_INJECT_REG_KEY__MAX;
@@ -214,9 +225,9 @@ fault_injection_init(void)
         lreg_node_init(lrn, LREG_USER_TYPE_FAULT_INJECT,
                        fault_injection_lreg_cb, NULL, LREG_INIT_OPT_NONE);
 
-        int rc = lreg_node_install_prepare(
+        int rc = lreg_node_install(
             lrn, LREG_ROOT_ENTRY_PTR(fault_injection_points));
 
-        FATAL_IF(rc, "lreg_node_install_prepare() %s", strerror(-rc));
+        FATAL_IF(rc, "lreg_node_install() %s", strerror(-rc));
     }
 }

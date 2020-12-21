@@ -25,8 +25,6 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
 static const struct PmdbAPI *pmdbApi;
-static rocksdb_column_family_handle_t *pmdbRocksdbCFH;
-static rocksdb_readoptions_t *pmdbRocksdbReadOpts;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -179,13 +177,6 @@ pmdb_get_rocksdb_instance(void)
     return db;
 }
 
-static rocksdb_readoptions_t *
-pmdb_get_rocksdb_readopts(void)
-{
-    NIOVA_ASSERT(pmdbRocksdbReadOpts);
-    return pmdbRocksdbReadOpts;
-}
-
 rocksdb_column_family_handle_t *
 PmdbCfHandleLookup(const char *cf_name)
 {
@@ -200,41 +191,13 @@ PmdbCfHandleLookup(const char *cf_name)
     return NULL;
 }
 
-static int
-pmdb_init_rocksdb(void)
-{
-    if (pmdbRocksdbCFH)
-        return 0;
-
-    /* Find the handle for our column family which should have been opened
-     * at rocksDB initialization time.
-     */
-    pmdbRocksdbCFH = PmdbCfHandleLookup(PMDB_COLUMN_FAMILY_NAME);
-    if (!pmdbRocksdbCFH)
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "No handle found for column family: %s",
-                       PMDB_COLUMN_FAMILY_NAME);
-        return -EINVAL;
-    }
-
-    pmdbRocksdbReadOpts = rocksdb_readoptions_create();
-    if (!pmdbRocksdbReadOpts)
-        return -ENOMEM;
-
-    return 0;
-}
-
 static rocksdb_column_family_handle_t *
 pmdb_get_rocksdb_column_family_handle(void)
 {
-    if (!pmdbRocksdbCFH)
-    {
-        int rc = pmdb_init_rocksdb();
-        if (rc)
-            return NULL;
-    }
-
-    return pmdbRocksdbCFH;
+    /* NOTE:  do not cache handles until an revalidation method is in place to
+     *   deal with stale handles from bulk recovery.
+     */
+    return PmdbCfHandleLookup(PMDB_COLUMN_FAMILY_NAME);
 }
 
 void
@@ -285,11 +248,17 @@ pmdb_object_lookup(const struct raft_net_client_user_id *rncui,
     char *err = NULL;
     int rc = -ENOENT;
 
-    char *get_value =
-        rocksdb_get_cf(pmdb_get_rocksdb_instance(),
-                       pmdb_get_rocksdb_readopts(), PMDB_CFH_MUST_GET(),
-                       PMDB_RNCUI_2_KEY(rncui), PMDB_ENTRY_KEY_LEN,
-                       &val_len, &err);
+    rocksdb_readoptions_t *read_opts = rocksdb_readoptions_create();
+    if (!read_opts)
+        return -ENOMEM;
+
+    char *get_value = rocksdb_get_cf(pmdb_get_rocksdb_instance(), read_opts,
+                                     PMDB_CFH_MUST_GET(),
+                                     PMDB_RNCUI_2_KEY(rncui),
+                                     PMDB_ENTRY_KEY_LEN, &val_len, &err);
+
+    // Release rocksdb read opts
+    rocksdb_readoptions_destroy(read_opts);
 
     PMDB_STR_DEBUG(LL_NOTIFY, rncui, "err=%s val=%p", err, get_value);
 
@@ -572,7 +541,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
 
     // Lookup the 'root' object
     struct pmdb_object obj = {0};
-    size_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
+    ssize_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
     if (!rrc)   // Ok.  Continue to read operation
@@ -709,7 +678,6 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     struct pmdb_object obj = {0};
 
     int rc = pmdb_object_lookup(rncui, &obj, rncr->rncr_current_term);
-
     if (rc)
     {
         PMDB_STR_DEBUG(((rc == -ENOENT) ? LL_DEBUG : LL_WARN), rncui,
@@ -911,10 +879,18 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
             return rc;
     }
 
-    return raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
-                                    pmdb_sm_handler,
-                                    RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
-                                    use_synchronous_writes, &pmdbCFT);
+    enum raft_instance_options opts =
+        (RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT |
+         (use_synchronous_writes ? RAFT_INSTANCE_OPTIONS_SYNC_WRITES : 0));
+
+    rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
+                                  pmdb_sm_handler,
+                                  RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
+                                  opts, &pmdbCFT);
+
+    raft_server_rocksdb_release_cf_table(&pmdbCFT);
+
+    return rc;
 }
 
 /**

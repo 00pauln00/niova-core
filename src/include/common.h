@@ -14,6 +14,7 @@
 #include <time.h>
 #include <errno.h>
 #include <string.h>
+#include <unistd.h>
 #include <uuid/uuid.h>
 
 #ifndef  _STDIO_H
@@ -266,6 +267,10 @@ common_compile_time_asserts(void)
 
     COMPILE_TIME_ASSERT(sizeof(uuid_t) ==
                         (sizeof(uint64_t) * NIOVA_OSD_ID_WORDS));
+
+    COMPILE_TIME_ASSERT((ssize_t)-1 == (int)-1);
+    COMPILE_TIME_ASSERT((ssize_t)-ENOENT == (int)-ENOENT);
+    COMPILE_TIME_ASSERT((ssize_t)-ENOLCK == (int)-ENOLCK);
 }
 
 static inline unsigned long long
