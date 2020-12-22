@@ -179,3 +179,7 @@ version:
 show-flags:
 	echo "AM_CFLAGS: ${AM_CFLAGS}"
 	echo "CFLAGS: ${CFLAGS}"
+
+gen-coverage:
+	lcov --no-external -b . --capture --directory . --output-file niova-coverage.out
+	genhtml ./niova-coverage.out --output-directory ./niova-coverage
