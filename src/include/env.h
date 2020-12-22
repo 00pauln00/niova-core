@@ -40,7 +40,6 @@ enum niova_env_var_num
     NIOVA_ENV_VAR_inotify_path,
     NIOVA_ENV_VAR_local_ctl_svc_dir,
     NIOVA_ENV_VAR_log_level,
-    NIOVA_ENV_VAR_num_aio_events,
     NIOVA_ENV_VAR_raft_client_request_timeout,
     NIOVA_ENV_VAR_uuid,
     NIOVA_ENV_VAR_watchdog_disable,

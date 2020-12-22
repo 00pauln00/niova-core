@@ -13,7 +13,6 @@
 #include "env.h"
 #include "epoll_mgr.h"
 #include "log.h"
-#include "niosd_io.h"
 #include "raft_client.h"
 #include "system_info.h"
 #include "watchdog.h"
@@ -80,16 +79,6 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_default   = LL_WARN,
         .nev_min       = 0,
         .nev_max       = LL_MAX,
-        .nev_present   = false,
-    },
-    [NIOVA_ENV_VAR_num_aio_events] = {
-        .nev_name      = "NIOVA_NUM_AIO_EVENTS",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_AIO,
-        .nev_var_num   = NIOVA_ENV_VAR_num_aio_events,
-        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
-        .nev_default   = NIOSD_DEFAULT_AIO_EVENTS,
-        .nev_min       = NIOSD_MIN_AIO_EVENTS,
-        .nev_max       = NIOSD_MAX_AIO_EVENTS,
         .nev_present   = false,
     },
     [NIOVA_ENV_VAR_raft_client_request_timeout] = {
