@@ -31,12 +31,6 @@ jobs:
     - name: print binaries
       run: ls -l ./code
       
-    - name: copy Dockerfile and action
-      run: cp Dockerfile ./code && cp action.yml ./code
-      
-    - name: copy binaries
-      run: cp pumicedb-*-test ./code
-
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
