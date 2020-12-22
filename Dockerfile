@@ -7,7 +7,9 @@ RUN apt-get update -y \
     && pip3 install jmespath
 WORKDIR /opt
 COPY holon /opt/bin/
-RUN mkdir /opt/sbin/niova/
+RUN mkdir -p /opt/sbin/niova/
+RUN mkdir /opt/bin
+
 COPY pumicedb-server-test /opt/sbin/niova/
 COPY pumicedb-client-test /opt/sbin/niova/
 COPY raft-server /opt/sbin/niova/
