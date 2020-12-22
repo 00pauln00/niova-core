@@ -60,6 +60,12 @@ CORE_SOURCES = src/include/alloc.h \
         src/util_thread.c \
 	src/watchdog.c
 
+lib_LTLIBRARIES += src/libniova.la
+src_libniova_la_LDFLAGS = \
+	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+src_libniova_la_SOURCES = $(CORE_SOURCES)
+
+## Raft
 RAFT_NET_CORE_SOURCES = \
 	src/include/raft_net.h \
 	src/include/raft.h \
@@ -79,23 +85,61 @@ RAFT_CLIENT_CORE_SOURCES = \
 	src/raft_net.c \
 	src/raft_client.c
 
-lib_LTLIBRARIES += src/libniova.la
-src_libniova_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_la_SOURCES = $(CORE_SOURCES)
-
 lib_LTLIBRARIES += src/libniova-raft.la
-src_libniova_raft_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+src_libniova_raft_la_LDFLAGS = \
+	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
 # Make libniova a dependency so that constructors execute in the correct order
 src_libniova_raft_la_LIBADD = src/libniova.la
 src_libniova_raft_la_SOURCES = \
 	$(RAFT_SERVER_CORE_SOURCES) $(RAFT_SERVER_BACKEND_SOURCES)
 
 lib_LTLIBRARIES += src/libniova-raft-client.la
-src_libniova_raft_client_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-# Make libniova a dependency so that constructors execute in the correct order
+src_libniova_raft_client_la_LDFLAGS = \
+	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
 src_libniova_raft_client_la_LIBADD = src/libniova.la
 src_libniova_raft_client_la_SOURCES = $(RAFT_CLIENT_CORE_SOURCES)
 
+noinst_PROGRAMS += test/raft-reference-client
+test_raft_reference_client_SOURCES = test/raft-reference-client.c
+test_raft_reference_client_LDADD = src/libniova.la src/libniova-raft-client.la
+
+noinst_PROGRAMS += test/raft-reference-server
+test_raft_reference_server_SOURCES = test/raft-reference-server.c
+test_raft_reference_server_LDADD = \
+	src/libniova.la src/libniova-raft.la -lrocksdb
+## end Raft
+
+## Pumice
+lib_LTLIBRARIES += src/libniova-pumice.la
+src_libniova_pumice_la_LDFLAGS = \
+	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+src_libniova_pumice_la_LIBADD = src/libniova.la src/libniova-raft.la
+src_libniova_pumice_la_SOURCES = \
+	src/include/pumice_db.h src/include/pumice_db_net.h src/pumice_db.c
+
+lib_LTLIBRARIES += src/libniova-pumice-client.la
+src_libniova_pumice_client_la_LDFLAGS = \
+	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+src_libniova_pumice_client_la_LIBADD = \
+	src/libniova.la src/libniova-raft-client.la
+src_libniova_pumice_client_la_SOURCES = \
+	src/include/pumice_db_net.h \
+	src/include/pumice_db_client.h \
+	src/pumice_db_client.c
+
+noinst_PROGRAMS += test/pumice-reference-client
+test_pumice_reference_client_SOURCES = test/pumice-reference-client.c
+test_pumice_reference_client_LDADD = \
+	src/libniova.la src/libniova-pumice-client.la
+
+noinst_PROGRAMS += test/pumice-reference-server
+test_pumice_reference_server_SOURCES = test/pumice-reference-server.c
+test_pumice_reference_server_LDADD = \
+	src/libniova.la src/libniova-pumice.la -lrocksdb
+
+## end Pumice
+
+## Tests
 noinst_PROGRAMS += test/ref-tree-test
 test_ref_tree_test_SOURCES = test/ref-tree-test.c
 test_ref_tree_test_LDADD = src/libniova.la
@@ -182,14 +226,6 @@ test_raft_net_test_LDADD = src/libniova.la
 test_raft_net_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/raft-net-test
 
-noinst_PROGRAMS += test/raft-reference-client
-test_raft_reference_client_SOURCES = test/raft-reference-client.c
-test_raft_reference_client_LDADD = src/libniova.la src/libniova-raft-client.la
-
-noinst_PROGRAMS += test/raft-reference-server
-test_raft_reference_server_SOURCES = test/raft-reference-server.c
-test_raft_reference_server_LDADD = src/libniova.la src/libniova-raft.la -lrocksdb
-
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 
@@ -204,5 +240,6 @@ show-flags:
 	echo "CFLAGS: ${CFLAGS}"
 
 gen-coverage:
-	lcov --no-external -b . --capture --directory . --output-file niova-coverage.out
+	lcov --no-external -b . --capture --directory . \
+		--output-file niova-coverage.out
 	genhtml ./niova-coverage.out --output-directory ./niova-coverage
