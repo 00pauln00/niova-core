@@ -36,8 +36,11 @@ jobs:
       with:
        repository: 00pauln00/holon
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
-       path: ./code
+       path: ./holon
 
+    - name: Copy holon repo
+      run: cp -r ./holon ./code
+      
     - name: print holon repo
       run: ls -l ./code
 
