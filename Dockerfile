@@ -8,7 +8,6 @@ RUN apt-get update -y \
 WORKDIR /opt
 COPY holon /opt/bin/
 RUN mkdir -p /opt/sbin/niova/
-RUN mkdir /opt/bin
 
 COPY pumicedb-server-test /opt/sbin/niova/
 COPY pumicedb-client-test /opt/sbin/niova/
