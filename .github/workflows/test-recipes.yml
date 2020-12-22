@@ -27,7 +27,7 @@ jobs:
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
     - name: make
-      run: make -j 4
+      run: cd ./code && make -j 4 pumicedb-dbg
 
     - name: print binaries
       run: ls -l ./code
