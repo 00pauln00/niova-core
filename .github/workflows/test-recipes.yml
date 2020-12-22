@@ -26,7 +26,7 @@ jobs:
     - name: print binaries
       run: ls -l
 
-    - name: Checkout repository : holon
+    - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
