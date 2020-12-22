@@ -5,10 +5,7 @@ lib_LTLIBRARIES =
 
 ACLOCAL_AMFLAGS = -I m4
 
-lib_LTLIBRARIES += src/libniova.la
-src_libniova_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_la_SOURCES = \
-	src/include/alloc.h \
+CORE_SOURCES = src/include/alloc.h \
         src/include/binary_hist.h \
         src/include/common.h \
         src/include/config_token.h \
@@ -62,6 +59,10 @@ src_libniova_la_SOURCES = \
         src/tcp_mgr.c \
         src/util_thread.c \
 	src/watchdog.c
+
+lib_LTLIBRARIES += src/libniova.la
+src_libniova_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+src_libniova_la_SOURCES = $(CORE_SOURCES)
 
 lib_LTLIBRARIES += src/libniova-raft.la
 src_libniova_raft_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
@@ -118,8 +119,13 @@ test_micro_test_LDADD = src/libniova.la
 TESTS += test/micro-test
 
 noinst_PROGRAMS += test/registry-test
-test_registry_test_SOURCES = test/registry-test.c
-test_registry_test_LDADD = src/libniova.la
+# Use CORE_SOURCES so that this binary's constructor runs inside of niova
+# init_ctx()
+test_registry_test_SOURCES = $(CORE_SOURCES) test/registry-test.c
+# See: https://www.gnu.org/software/automake/manual/html_node/Objects-created-both-with-libtool-and-without.html
+test_registry_test_CFLAGS = $(AM_CFLAGS)
+test_registry_test_CPPFLAGS = $(AM_CPPFLAGS)
+test_registry_test_ASFLAGS = $(AM_ASFLAGS)
 TESTS += test/registry-test
 
 noinst_PROGRAMS += test/config-token-test

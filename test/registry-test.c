@@ -8,7 +8,7 @@
 #include "init.h"
 #include "registry.h"
 #include "log.h"
-#include "ctl_interface.h"
+//#include "ctl_interface.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
