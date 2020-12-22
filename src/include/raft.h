@@ -82,8 +82,7 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 2,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 3,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 4,
-    RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE        = 5,
-    RAFT_RPC_MSG_TYPE_ANY                    = 6,
+    RAFT_RPC_MSG_TYPE_ANY                    = 5,
 };
 
 struct raft_vote_request_msg
@@ -266,6 +265,7 @@ struct raft_candidate_state
 struct raft_follower_info
 {
     int64_t            rfi_next_idx;
+    int64_t            rfi_ackd_idx;
     int64_t            rfi_synced_idx;
     int64_t            rfi_current_idx_term;
     int64_t            rfi_current_idx_crc;
