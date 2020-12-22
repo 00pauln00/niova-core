@@ -26,10 +26,19 @@ jobs:
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
     - name: make
-      run: cd ./code && make -j 4 pumicedb-dbg
+      run: cd ./code && make -j 4 pumicedb-dbg && make -j 4 raft-dbg
+
+    - name: Create build dir
+      run: mkdir ./build_dir
+
+    - name: Copy niova files
+      run: cp ./code/Dockerfile ./build_dir && cp ./code/action.yml ./build_dir
+
+    - name: Copy niova binaries
+      run: cp ./code/pumicedb-*-test ./build_dir && cp ./code/raft-* ./build_dir
 
     - name: print binaries
-      run: ls -l ./code
+      run: ls -l ./build_dir
       
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -39,10 +48,10 @@ jobs:
        path: ./holon
 
     - name: Copy holon repo
-      run: cp -r ./holon ./code
+      run: cp -r ./holon ./build_dir
       
     - name: print holon repo
-      run: ls -l ./code
+      run: ls -l ./build_dir
 
     - name: build_and_run docker image
-      uses: ./code # Uses an action in the specified directory
+      uses: ./build_dir # Uses an action in the specified directory

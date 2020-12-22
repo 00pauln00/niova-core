@@ -6,6 +6,9 @@ RUN apt-get update -y \
     && pip3 install ansible \
     && pip3 install jmespath
 WORKDIR /opt
-COPY . /opt
+COPY holon /opt/bin/
+COPY pumicedb-*-test /opt/sbin/niova
+COPY raft-* /opt/sbin/niova
 
-RUN ls -l /opt
+RUN ls -l /opt/bin/
+RUN ls -l /opt/sbin/
