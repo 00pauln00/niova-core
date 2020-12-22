@@ -88,52 +88,52 @@ src_libniova_raft_client_la_SOURCES = \
 	src/raft_client.c
 
 noinst_PROGRAMS += test/ref-tree-test
-test_ref_tree_test_SOURCES = test/ref_tree_test.c
+test_ref_tree_test_SOURCES = test/ref-tree-test.c
 test_ref_tree_test_LDADD = src/libniova.la
-TESTS += test/ref_tree_test
+TESTS += test/ref-tree-test
 
 noinst_PROGRAMS += test/ev-pipe-test
-test_ev_pipe_test_SOURCES = test/ev_pipe_test.c
+test_ev_pipe_test_SOURCES = test/ev-pipe-test.c
 test_ev_pipe_test_LDADD = src/libniova.la
-TESTS += test/ev_pipe_test
+TESTS += test/ev-pipe-test
 
 noinst_PROGRAMS += test/work-dispatch-test
-test_work_dispatch_test_SOURCES = test/work_dispatch_test.c
+test_work_dispatch_test_SOURCES = test/work-dispatch-test.c
 test_work_dispatch_test_LDADD = src/libniova.la
 TESTS += test/work-dispatch-test
 
 noinst_PROGRAMS += test/binary-hist-test
-test_binary_hist_test_SOURCES = test/binary_hist_test.c
+test_binary_hist_test_SOURCES = test/binary-hist-test.c
 test_binary_hist_test_LDADD = src/libniova.la
 TESTS += test/binary-hist-test
 
 noinst_PROGRAMS += test/common-test
-test_common_test_SOURCES = test/common_test.c
+test_common_test_SOURCES = test/common-test.c
 test_common_test_LDADD = src/libniova.la
 TESTS += test/common-test
 
 noinst_PROGRAMS += test/micro-test
-test_micro_test_SOURCES = test/micro_test.c
+test_micro_test_SOURCES = test/micro-test.c
 test_micro_test_LDADD = src/libniova.la
 TESTS += test/micro-test
 
 noinst_PROGRAMS += test/registry-test
-test_registry_test_SOURCES = test/registry_test.c
+test_registry_test_SOURCES = test/registry-test.c
 test_registry_test_LDADD = src/libniova.la
 TESTS += test/registry-test
 
 noinst_PROGRAMS += test/config-token-test
-test_config_token_test_SOURCES = test/config_token_test.c
+test_config_token_test_SOURCES = test/config-token-test.c
 test_config_token_test_LDADD = src/libniova.la
 TESTS += test/config-token-test
 
 noinst_PROGRAMS += test/tcp-test
-test_tcp_test_SOURCES = test/tcp_test.c
+test_tcp_test_SOURCES = test/tcp-test.c
 test_tcp_test_LDADD = src/libniova.la
 TESTS += test/tcp-test
 
 noinst_PROGRAMS += test/udp-test
-test_udp_test_SOURCES = test/udp_test.c
+test_udp_test_SOURCES = test/udp-test.c
 test_udp_test_LDADD = src/libniova.la
 TESTS += test/udp-test
 
@@ -143,7 +143,7 @@ test_random_test_LDADD = src/libniova.la
 TESTS += test/random-test
 
 noinst_PROGRAMS += test/queue-test
-test_queue_test_SOURCES = test/queue_test.c
+test_queue_test_SOURCES = test/queue-test.c
 test_queue_test_LDADD = src/libniova.la
 TESTS += test/queue-test
 
@@ -158,21 +158,21 @@ test_regex_test_LDADD = src/libniova.la
 TESTS += test/regex-test
 
 noinst_PROGRAMS += test/epoll-mgr-test
-test_epoll_mgr_test_SOURCES = test/epoll_mgr_test.c
+test_epoll_mgr_test_SOURCES = test/epoll-mgr-test.c
 test_epoll_mgr_test_LDADD = src/libniova.la
 TESTS += test/epoll-mgr-test
 
 noinst_PROGRAMS += test/raft-net-test
-test_raft_net_test_SOURCES = test/raft_net_test.c
+test_raft_net_test_SOURCES = test/raft-net-test.c
 test_raft_net_test_LDADD = src/libniova.la src/libniova-raft.la -lrocksdb
 TESTS += test/raft-net-test
 
 noinst_PROGRAMS += test/raft-reference-client
-test_raft_reference_client_SOURCES = test/raft_client_test.c
+test_raft_reference_client_SOURCES = test/raft-reference-client.c
 test_raft_reference_client_LDADD = src/libniova.la src/libniova-raft-client.la
 
 noinst_PROGRAMS += test/raft-reference-server
-test_raft_reference_server_SOURCES = test/raft_server_test.c
+test_raft_reference_server_SOURCES = test/raft-reference-server.c
 test_raft_reference_server_LDADD = src/libniova.la src/libniova-raft.la -lrocksdb
 
 autofmt:
