@@ -338,7 +338,7 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
     if (arg)
         return -EINVAL;
 
-    else if (lv->lrv_value_idx_in >= RAFT_NET_LREG__MAX)
+    else if (lv->lrv_value_idx_in >= RAFT_NET_RECOVERY_LREG__MAX)
         return -ERANGE;
 
     struct raft_instance *ri = raft_net_get_instance();
@@ -362,16 +362,14 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_signed(lv, "chkpt-idx", rrh->rrh_peer_chkpt_idx);
             break;
         case RAFT_NET_RECOVERY_LREG_CHKPT_SIZE:
-            lreg_value_fill_signed(lv, "chkpt-size",
-                                   rrh->rrh_chkpt_size);
+            lreg_value_fill_signed(lv, "chkpt-size", rrh->rrh_chkpt_size);
             break;
         case RAFT_NET_RECOVERY_LREG_REMAINING:
             lreg_value_fill_signed(lv, "total-bytes-to-xfer",
                                    rrh->rrh_remaining);
             break;
         case RAFT_NET_RECOVERY_LREG_COMPLETED:
-            lreg_value_fill_signed(lv, "xfer-completed",
-                                   rrh->rrh_completed);
+            lreg_value_fill_signed(lv, "xfer-completed", rrh->rrh_completed);
             break;
         case RAFT_NET_RECOVERY_LREG_INCOMPLETE:
             lreg_value_fill_bool(lv, "resume-incomplete",
