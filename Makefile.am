@@ -60,6 +60,25 @@ CORE_SOURCES = src/include/alloc.h \
         src/util_thread.c \
 	src/watchdog.c
 
+RAFT_NET_CORE_SOURCES = \
+	src/include/raft_net.h \
+	src/include/raft.h \
+	src/raft_net.c
+
+RAFT_SERVER_CORE_SOURCES = $(RAFT_NET_CORE_SOURCES) src/raft_server.c
+
+RAFT_SERVER_BACKEND_SOURCES = \
+        src/include/raft_server_backend_rocksdb.h \
+        src/raft_server_backend_posix.c \
+        src/raft_server_backend_rocksdb.c
+
+RAFT_CLIENT_CORE_SOURCES = \
+	src/include/raft_net.h \
+	src/include/raft.h \
+	src/include/raft_client.h \
+	src/raft_net.c \
+	src/raft_client.c
+
 lib_LTLIBRARIES += src/libniova.la
 src_libniova_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
 src_libniova_la_SOURCES = $(CORE_SOURCES)
@@ -69,24 +88,13 @@ src_libniova_raft_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VE
 # Make libniova a dependency so that constructors execute in the correct order
 src_libniova_raft_la_LIBADD = src/libniova.la
 src_libniova_raft_la_SOURCES = \
-	src/include/raft_net.h \
-	src/include/raft.h \
-	src/include/raft_server_backend_rocksdb.h \
-	src/raft_net.c \
-	src/raft_server_backend_posix.c \
-	src/raft_server_backend_rocksdb.c \
-	src/raft_server.c
+	$(RAFT_SERVER_CORE_SOURCES) $(RAFT_SERVER_BACKEND_SOURCES)
 
 lib_LTLIBRARIES += src/libniova-raft-client.la
 src_libniova_raft_client_la_LDFLAGS = -version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
 # Make libniova a dependency so that constructors execute in the correct order
 src_libniova_raft_client_la_LIBADD = src/libniova.la
-src_libniova_raft_client_la_SOURCES = \
-	src/include/raft_net.h \
-	src/include/raft.h \
-	src/include/raft_client.h \
-	src/raft_net.c \
-	src/raft_client.c
+src_libniova_raft_client_la_SOURCES = $(RAFT_CLIENT_CORE_SOURCES)
 
 noinst_PROGRAMS += test/ref-tree-test
 test_ref_tree_test_SOURCES = test/ref-tree-test.c
@@ -169,8 +177,9 @@ test_epoll_mgr_test_LDADD = src/libniova.la
 TESTS += test/epoll-mgr-test
 
 noinst_PROGRAMS += test/raft-net-test
-test_raft_net_test_SOURCES = test/raft-net-test.c
-test_raft_net_test_LDADD = src/libniova.la src/libniova-raft.la -lrocksdb
+test_raft_net_test_SOURCES = $(RAFT_NET_CORE_SOURCES) test/raft-net-test.c
+test_raft_net_test_LDADD = src/libniova.la
+test_raft_net_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/raft-net-test
 
 noinst_PROGRAMS += test/raft-reference-client
