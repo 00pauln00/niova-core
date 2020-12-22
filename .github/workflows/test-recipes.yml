@@ -1,0 +1,40 @@
+name: holon_niova_workflow
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu:18.04
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        ref: master
+        path: ./
+
+    - name: apt update
+      run: sudo apt update
+    - name: dpkg / rpm prep (debug)
+      run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
+    - name: dpkg / rpm prep
+      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+    - name: make
+      run: make -j 4
+
+    - name: print binaries
+      run: ls -l
+
+    - name: Checkout repository : holon
+      uses: actions/checkout@v2
+      with:
+       repository: 00pauln00/holon
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
+       path: ./
+
+    - name: print holon repo
+      run: ls -l
+
+    - name: build_and_run docker image
+      uses: ./ # Uses an action in the specified directory
