@@ -1397,30 +1397,38 @@ raft_net_peer_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
         : msg->rrm_append_entries_request.raerqm_entries_sz;
 }
 
-static void
-raft_net_peer_connect_info(struct tcp_mgr_connection *tmc,
-                           const char **ipaddr_out, int *port_out)
+static int
+raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
 {
-    struct ctl_svc_node *csn;
-    raft_net_connection_to_csn(tmc, &csn);
+    NIOVA_ASSERT(csn && ctl_svc_node_is_peer(csn));
 
-    *ipaddr_out = ctl_svc_node_peer_2_ipaddr(csn);
-    *port_out = ctl_svc_node_peer_2_port(csn);
+    struct raft_instance *ri = data;
+    bool is_client_cxn = raft_net_is_client_connection(ri, csn);
+    struct tcp_mgr_instance *tmi = is_client_cxn ? &ri->ri_client_tcp_mgr
+                                                 : &ri->ri_peer_tcp_mgr;
 
-    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", *ipaddr_out, *port_out);
+    const char *ipaddr = ctl_svc_node_peer_2_ipaddr(csn);
+    int port = is_client_cxn ? ctl_svc_node_peer_2_client_port(csn)
+                             : ctl_svc_node_peer_2_port(csn);
+
+    tcp_mgr_connection_setup(&csn->csn_peer.csnp_net_data, tmi, ipaddr, port);
+
+    return 0;
 }
 
 static void
-raft_net_client_connect_info(struct tcp_mgr_connection *tmc,
-                             const char **ipaddr_out, int *port_out)
+raft_net_ctl_svc_nodes_setup(struct raft_instance *ri)
 {
-    struct ctl_svc_node *csn;
-    raft_net_connection_to_csn(tmc, &csn);
+    // types must match ctl_svc_node_is_peer test
+    const int PEER_TYPES_COUNT = 3;
+    enum ctl_svc_node_type peer_types[] = {
+        CTL_SVC_NODE_TYPE_NIOSD,
+        CTL_SVC_NODE_TYPE_RAFT_CLIENT,
+        CTL_SVC_NODE_TYPE_RAFT_PEER,
+    };
 
-    *ipaddr_out = ctl_svc_node_peer_2_ipaddr(csn);
-    *port_out = ctl_svc_node_peer_2_client_port(csn);
-
-    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", *ipaddr_out, *port_out);
+    for (int i = 0; i < PEER_TYPES_COUNT; i++)
+        ctl_svc_nodes_apply(peer_types[i], raft_net_csn_setup, ri);
 }
 
 int
@@ -1446,7 +1454,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     {
         tcp_mgr_setup(&ri->ri_client_tcp_mgr, ri,
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
-                      raft_net_client_connect_info,
                       (tcp_mgr_recv_cb_t)raft_net_client_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
@@ -1456,7 +1463,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       DEFAULT_INCOMING_CREDITS);
         tcp_mgr_setup(&ri->ri_peer_tcp_mgr, ri,
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
-                      raft_net_peer_connect_info,
                       (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
@@ -1515,6 +1521,18 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_WARN, "raft_net_sockets_bind(): %s", strerror(-rc));
+
+        if (ri->ri_shutdown_cb)
+            ri->ri_shutdown_cb(ri);
+
+        return rc;
+    }
+
+    raft_net_ctl_svc_nodes_setup(ri);
+
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "raft_net_csn_setup(): %s", strerror(-rc));
 
         if (ri->ri_shutdown_cb)
             ri->ri_shutdown_cb(ri);
@@ -1623,7 +1641,7 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     return csn;
 }
 
-int
+static int
 raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs,
                   const enum raft_udp_listen_sockets sock_src)
@@ -1659,14 +1677,7 @@ raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
     return udp_socket_send(ush, iov, niovs, &dest);
 }
 
-static struct tcp_mgr_instance *
-raft_net_tmi_get(struct raft_instance *ri, struct ctl_svc_node *csn)
-{
-    bool is_client_cxn = raft_net_is_client_connection(ri, csn);
-    return is_client_cxn ? &ri->ri_client_tcp_mgr : &ri->ri_peer_tcp_mgr;
-}
-
-int
+static int
 raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs)
 {
@@ -1680,8 +1691,7 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
 
     raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
-    return tcp_mgr_send_msg(raft_net_tmi_get(ri, csn),
-                            &csn->csn_peer.csnp_net_data, iov, niovs);
+    return tcp_mgr_send_msg(&csn->csn_peer.csnp_net_data, iov, niovs);
 }
 
 int

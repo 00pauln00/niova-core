@@ -510,15 +510,15 @@ niova_mk_time_string(time_t time, char *out_str, size_t out_str_len)
 static inline void
 niova_mutex_lock(pthread_mutex_t *mutex)
 {
-    MY_FATAL_IF(pthread_mutex_lock(mutex), "pthread_mutex_lock(): %s",
-                strerror(errno));
+    int rc = pthread_mutex_lock(mutex);
+    MY_FATAL_IF(rc, "pthread_mutex_lock(): %s", strerror(rc));
 }
 
 static inline void
 niova_mutex_unlock(pthread_mutex_t *mutex)
 {
-    MY_FATAL_IF(pthread_mutex_unlock(mutex), "pthread_mutex_unlock(): %s",
-                strerror(errno));
+    int rc = pthread_mutex_unlock(mutex);
+    MY_FATAL_IF(rc, "pthread_mutex_unlock(): %s", strerror(rc));
 }
 
 #define NIOVA_TIMEDWAIT_COND(cond, mutex, cond_var, timeout)       \
