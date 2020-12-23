@@ -13,12 +13,6 @@ jobs:
       with:
         path: ./code
 
-    - name: list files
-      run: ls -l ./code
-      
-    - name: pwd
-      run: pwd
-      
     - name: apt update
       run: sudo apt update
     - name: dpkg / rpm prep (debug)
@@ -37,9 +31,6 @@ jobs:
     - name: Copy niova binaries
       run: cp ./code/pumicedb-*-test ./build_dir && cp ./code/raft-* ./build_dir
 
-    - name: print binaries
-      run: ls -l ./build_dir
-      
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
@@ -51,17 +42,10 @@ jobs:
     - name: Copy holon repo
       run: cp -r ./holon ./build_dir
       
-    - name: print holon repo
-      run: ls -l ./build_dir
-
-    - name: build_and_run docker image
-      #uses: ./build_dir # Uses an action in the specified directory
+    - name: build docker image
       run: cd ./build_dir && docker build -t niova-holon:latest .
 
-    - name: Checking  container images
-      run: docker images
-
-    - name: Create log directory
+    - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
     - name:  run recipe
@@ -71,6 +55,9 @@ jobs:
       run: ls -l /home/runner/work/niovad/niovad/holon_log 
       if: always()
 
+    - name: Give permissions to log dir
+      run: chmod -R 777 /home/runner/work/niovad/niovad/holon_log
+ 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
       with:

@@ -1,6 +1,0 @@
-# action.yml
-name: 'holon_niova_action_metadata'
-description: 'Build docker image and run recipes'
-runs:
-  using: 'docker'
-  image: 'Dockerfile'
