@@ -20,8 +20,8 @@
 
 #define OPTS "au:r:h"
 
-#define PMDB_TEST_CLIENT_MAX_APPS 128
-#define PMDB_TEST_CLIENT_REQ_HIST_SZ 128
+#define PMDB_TEST_CLIENT_MAX_APPS 1024
+#define PMDB_TEST_CLIENT_REQ_HIST_SZ 1024
 
 static struct thread_ctl pmdbtcThrCtl;
 static regex_t pmdbtcCmdRegex;
@@ -500,7 +500,7 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
         }
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY,
+    SIMPLE_LOG_MSG(LL_DEBUG,
                    RAFT_NET_CLIENT_USER_ID_FMT
                    " op=%s seqno=%ld rc=%d op_cnt=%zu",
                    RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&rncui, uuid_str, 0),
@@ -670,7 +670,7 @@ pmdbtc_app_rtv_increment(struct pmdbtc_app *papp)
     const uint64_t new_sum =
         papp->papp_rtv.rtv_reply_xor_all_values ^ next_seq;
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "old-seqno=%lu val=%u sum[old:new]=%lu:%lu",
+    SIMPLE_LOG_MSG(LL_TRACE, "old-seqno=%lu val=%u sum[old:new]=%lu:%lu",
                    papp->papp_rtv.rtv_seqno, next_seq,
                    papp->papp_rtv.rtv_reply_xor_all_values, new_sum);
 
