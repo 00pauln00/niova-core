@@ -70,3 +70,10 @@ jobs:
     - name: List log directory
       run: ls -l /home/runner/work/niovad/niovad/holon_log 
       if: always()
+
+    - name: Archive the recipe results
+      uses: actions/upload-artifact@v2
+      with:
+         name: test-recipe-report
+         path: /home/runner/work/niovad/niovad/holon_log
+      if: failure()
