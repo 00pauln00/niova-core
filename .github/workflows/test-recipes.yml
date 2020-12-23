@@ -56,3 +56,4 @@ jobs:
 
     - name: build_and_run docker image
       uses: ./build_dir # Uses an action in the specified directory
+      volumes: ./logs:/tmp
