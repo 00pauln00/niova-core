@@ -130,12 +130,16 @@ src_libniova_pumice_client_la_SOURCES = \
 noinst_PROGRAMS += test/pumice-reference-client
 test_pumice_reference_client_SOURCES = test/pumice-reference-client.c
 test_pumice_reference_client_LDADD = \
-	src/libniova.la src/libniova-pumice-client.la
+	src/libniova.la \
+	src/libniova-raft-client.la \
+	src/libniova-pumice-client.la
 
 noinst_PROGRAMS += test/pumice-reference-server
 test_pumice_reference_server_SOURCES = test/pumice-reference-server.c
 test_pumice_reference_server_LDADD = \
-	src/libniova.la src/libniova-pumice.la -lrocksdb
+	src/libniova.la \
+	src/libniova-raft.la \
+	src/libniova-pumice.la -lrocksdb
 
 ## end Pumice
 
