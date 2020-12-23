@@ -18,7 +18,7 @@ jobs:
     - name: dpkg / rpm prep (debug)
       run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
     - name: dpkg / rpm prep
-      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip func_timeout sockets psutil dpath ansible jmespath `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
     - name: make
       run: cd ./code && make -j 4 pumicedb-dbg && make -j 4 raft-dbg
 
@@ -39,9 +39,12 @@ jobs:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
+    - name: Install python libraries
+      run: sudo -E pip3 install func_timeout sockets psutil dpath ansible jmespath
+
     - name: Copy holon repo
       run: cp -r ./holon ./build_dir
-      
+
     #- name: build docker image
     #  run: cd ./build_dir && docker build -t niova-holon:latest .
 
