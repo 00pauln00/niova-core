@@ -60,3 +60,7 @@ jobs:
 
     - name: Checking  container images
       run: docker images
+
+    
+    - name:  run recipe
+      run: docker run -v ./holon_log:/var/log/ niova-holon:latest sh -c "env && cd /opt/bin/ansible && ansible-playbook -e 'srv_port=4000' -e 'npeers=5' -e 'dir_path=/var/log' -e 'client_port=14000' -e 'recipe=basic_ctl_int.yml' -e 'backend_type=pumicedb' holon.yml"
