@@ -135,4 +135,30 @@ AC_ARG_ENABLE(
     ]
 )
 
+AC_ARG_ENABLE(
+    [devel],
+    [AS_HELP_STRING([--enable-devel],[developer options])],
+    [
+        AM_CPPFLAGS="$AM_CPPFLAGS -DNIOVA_FAULT_INJECTION_ENABLED"
+        AC_MSG_NOTICE([developer options enabled])
+    ],
+    [
+        AC_MSG_NOTICE([developer options disabled])
+    ]
+)
+
+AC_ARG_ENABLE(
+    [debug],
+    [AS_HELP_STRING([--enable-debug],[debug options])],
+    [
+        AM_CPPFLAGS="$AM_CPPFLAGS -DNIOVA_FAULT_INJECTION_ENABLED"
+        # Overwrite AM_CFLAGS
+        AM_CFLAGS="-O0 -g3 -ggdb"
+        AC_MSG_NOTICE([debug options enabled])
+    ],
+    [
+        AC_MSG_NOTICE([debug options disabled])
+    ]
+)
+
 AC_OUTPUT
