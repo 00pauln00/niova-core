@@ -16,6 +16,7 @@ COPY raft-client /opt/sbin/niova/
 
 ENV ANSIBLE_LOOKUP_PLUGINS=/opt/bin/ansible
 ENV PYTHONPATH=/opt/bin/ansible
+ENV NIOVA_BIN_PATH=/opt/sbin/niova/
 
 RUN ls -l /opt/bin/
 
