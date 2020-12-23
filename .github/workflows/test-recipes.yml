@@ -52,7 +52,7 @@ jobs:
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
     - name:  run recipe
-      run: cd ./build_dir/holon/ansible && ansible-playbook -e 'srv_port=4000' -e 'npeers=5' -e 'dir_path=/home/runner/work/niovad/niovad/holon_log' -e 'client_port=14000' -e 'recipe=basic_ctl_int.yml' -e 'backend_type=pumicedb'
+      run: cd ./build_dir/holon/ansible && ansible-playbook -e 'srv_port=4000' -e 'npeers=5' -e 'dir_path=/home/runner/work/niovad/niovad/holon_log' -e 'client_port=14000' -e 'recipe=basic_ctl_int.yml' -e 'backend_type=pumicedb' holon.yml
 
     - name: List log directory
       run: ls -l /home/runner/work/niovad/niovad/holon_log 
