@@ -104,9 +104,7 @@ AC_ARG_ENABLE(
         AM_CFLAGS="$AM_CFLAGS -fsanitize=address"
         AC_MSG_NOTICE([address sanitizer enabled])
     ],
-    [
-        AC_MSG_NOTICE([address sanitizer disabled])
-    ]
+    [AC_MSG_NOTICE([address sanitizer disabled])]
 )
 
 AC_ARG_ENABLE(
@@ -116,9 +114,7 @@ AC_ARG_ENABLE(
         AM_CFLAGS="$AM_CFLAGS -fsanitize=leak"
         AC_MSG_NOTICE([leak sanitizer enabled])
     ],
-    [
-        AC_MSG_NOTICE([leak sanitizer disabled])
-    ]
+    [AC_MSG_NOTICE([leak sanitizer disabled])]
 )
 
 AC_ARG_ENABLE(
@@ -130,9 +126,7 @@ AC_ARG_ENABLE(
         AM_LDFLAGS="$AM_LDFLAGS -lgcov"
         AC_MSG_NOTICE([code coverage enabled])
     ],
-    [
-        AC_MSG_NOTICE([code coverage disabled])
-    ]
+    [AC_MSG_NOTICE([code coverage disabled])]
 )
 
 AC_ARG_ENABLE(
@@ -142,9 +136,7 @@ AC_ARG_ENABLE(
         AM_CPPFLAGS="$AM_CPPFLAGS -DNIOVA_FAULT_INJECTION_ENABLED"
         AC_MSG_NOTICE([developer options enabled])
     ],
-    [
-        AC_MSG_NOTICE([developer options disabled])
-    ]
+    [AC_MSG_NOTICE([developer options disabled])]
 )
 
 AC_ARG_ENABLE(
@@ -156,9 +148,7 @@ AC_ARG_ENABLE(
         AM_CFLAGS="-O0 -g3 -ggdb"
         AC_MSG_NOTICE([debug options enabled])
     ],
-    [
-        AC_MSG_NOTICE([debug options disabled])
-    ]
+    [AC_MSG_NOTICE([debug options disabled])]
 )
 
 AC_OUTPUT
