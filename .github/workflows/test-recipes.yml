@@ -57,9 +57,11 @@ jobs:
 
     - name: Give permissions to log dir
       run: chmod -R 777 /home/runner/work/niovad/niovad/holon_log
+      if: always()
 
     - name: Give permission to log dir
       run: chmod -R $USER:$GROUP /home/runner/work/niovad/niovad/holon_log
+      if: always()
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
