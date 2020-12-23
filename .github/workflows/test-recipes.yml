@@ -66,6 +66,7 @@ jobs:
 
     - name:  run recipe
       run: docker run -v /home/runner/work/niovad/niovad/holon_log:/var/log/ niova-holon:latest sh -c "env && cd /opt/bin/ansible && ansible-playbook -e 'srv_port=4000' -e 'npeers=5' -e 'dir_path=/var/log' -e 'client_port=14000' -e 'recipe=basic_ctl_int.yml' -e 'backend_type=pumicedb' holon.yml"
+      if: always()
 
     - name: List log directory
       run: ls -l /var/log/holon_log
