@@ -40,7 +40,7 @@ jobs:
        path: ./holon
 
     - name: Install python libraries
-      run: sudo -E -H pip3 install func_timeout sockets psutil dpath ansible jmespath
+      run: sudo -E -H pip3 install setuptools func_timeout sockets psutil dpath ansible jmespath
 
     - name: Copy holon repo
       run: cp -r ./holon ./build_dir
