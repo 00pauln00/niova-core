@@ -26,7 +26,7 @@ jobs:
       run: mkdir ./build_dir
 
     - name: Copy niova files
-      run: cp ./code/Dockerfile ./build_dir && cp ./code/action.yml ./build_dir
+      run: cp ./code/Dockerfile ./build_dir
 
     - name: Copy niova binaries
       run: cp ./code/pumicedb-*-test ./build_dir && cp ./code/raft-* ./build_dir
