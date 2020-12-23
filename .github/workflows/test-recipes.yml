@@ -55,7 +55,8 @@ jobs:
       run: ls -l ./build_dir
 
     - name: build_and_run docker image
-      uses: ./build_dir # Uses an action in the specified directory
+      #uses: ./build_dir # Uses an action in the specified directory
+      run: cd ./build_dir && docker build -t niova-holon:latest .
 
-    - name: Checking running containers
+    - name: Checking  container images
       run: docker images
