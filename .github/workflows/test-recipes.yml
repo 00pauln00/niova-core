@@ -59,7 +59,7 @@ jobs:
       env:
         ANSIBLE_LOOKUP_PLUGINS: /home/runner/work/niovad/niovad/build_dir/holon/ansible
         PYTHONPATH: /home/runner/work/niovad/niovad/build_dir/holon/ansible
-        NIOVA_BIN_PATH: /home/runner/work/niovad/niovad/build_dir/holon/ansible
+        NIOVA_BIN_PATH: /home/runner/work/niovad/niovad/build_dir/
 
     - name: List log directory
       run: ls -l /home/runner/work/niovad/niovad/holon_log 
