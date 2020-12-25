@@ -104,11 +104,73 @@ niova_string_to_unsigned_int_test(void)
     MY_FATAL_IF((rc || tmp != 0), "expected 0, got %d val=%u", rc, tmp);
 }
 
+static void
+niova_parse_comma_delimited_uint_string_test(void)
+{
+    unsigned long long val = 0;
+    int rc = niova_parse_comma_delimited_uint_string(NULL, 1, &val);
+    MY_FATAL_IF(rc != -EINVAL, "expected -EINVAL, got %d", rc);
+
+    rc = niova_parse_comma_delimited_uint_string("foo", 0, &val);
+    MY_FATAL_IF(rc != -EINVAL, "expected -EINVAL, got %d", rc);
+
+    rc = niova_parse_comma_delimited_uint_string("foo", 1, NULL);
+    MY_FATAL_IF(rc != -EINVAL, "expected -EINVAL, got %d", rc);
+
+    rc = niova_parse_comma_delimited_uint_string("foo", 3, &val);
+    MY_FATAL_IF(rc != -ENOENT, "expected -ENOENT, got %d", rc);
+
+    char *str = "foo 0,11,,22,,333432432,,,";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != -ENOENT, "expected -ENOENT, got %d (val=%llu)", rc, val);
+
+    str = "foo\0\\000\0\0 0,11,,22,,333432432,,,";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != -ENOENT, "expected -ENOENT, got %d (val=%llu)", rc, val);
+
+    str = "0,";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != -ENOENT, "expected -ENOENT, got %d (val=%llu)", rc, val);
+
+    str = "foo 10,000,000, bar";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != -ENOENT, "expected -ENOENT, got %d (val=%llu)", rc, val);
+
+    str = "100,000,000,000,000";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != 0 || val != 100000000000000,
+                "expected 0, got %d (val=%llu)", rc, val);
+
+    str = "100,000,000,000,00";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != -ENOENT, "expected -ENOENT, got %d (val=%llu)", rc, val);
+
+    str = "\t\n 100,000,000,999,000";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != 0 || val != 100000000999000,
+                "expected 0, got %d (val=%llu)", rc, val);
+
+    str = "100,000,000,000,999 ";
+    rc = niova_parse_comma_delimited_uint_string(str, strnlen(str, 4096),
+                                                 &val);
+    MY_FATAL_IF(rc != 0 || val != 100000000000999,
+                "expected 0, got %d (val=%llu)", rc, val);
+
+}
+
 int
 main(void)
 {
     mk_time_string_test();
     niova_string_to_unsigned_long_long_test();
     niova_string_to_unsigned_int_test();
+    niova_parse_comma_delimited_uint_string_test();
     return 0;
 }

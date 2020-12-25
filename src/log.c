@@ -238,16 +238,17 @@ log_lreg_function_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                  "%s:%d", lei->lei_func, (int)lei->lei_lineno);
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:
-    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+    case LREG_NODE_CB_OP_READ_VAL: // fall through
+    case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lreg_val)
             return -EINVAL;
 
         log_lreg_function_entry_multi_facet_value_cb(op, lei, lreg_val);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
 
     default:
@@ -279,7 +280,7 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 
         break;
 
-    case LREG_NODE_CB_OP_READ_VAL:  //fall through
+    case LREG_NODE_CB_OP_READ_VAL:  // fall through
     case LREG_NODE_CB_OP_WRITE_VAL:
         if (!lreg_val)
             return -EINVAL;
@@ -287,8 +288,9 @@ log_lreg_file_entry_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         log_lreg_file_entry_multi_facet_value_cb(op, lei, lreg_val);
         break;
 
-    case LREG_NODE_CB_OP_INSTALL_NODE: //fall through
-    case LREG_NODE_CB_OP_DESTROY_NODE:
+    case LREG_NODE_CB_OP_INSTALL_NODE: // fall through
+    case LREG_NODE_CB_OP_DESTROY_NODE: // fall through
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break;
     default:
         return -ENOENT;

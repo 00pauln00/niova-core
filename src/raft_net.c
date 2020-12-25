@@ -35,7 +35,27 @@ enum raft_net_lreg_values
     RAFT_NET_LREG_IGNORE_TIMER_EVENTS,
     RAFT_NET_LREG_ELECTION_TIMEOUT_MS,// uint32
     RAFT_NET_LREG_HEARTBEAT_FREQ,     // uint32
+    RAFT_NET_LREG_MAX_SCAN_ENTRIES,   // int64
+    RAFT_NET_LREG_LOG_REAP_FACTOR,    // uint32
+    RAFT_NET_LREG_NUM_CHECKPOINTS,
+    RAFT_NET_LREG_AUTO_CHECKPOINT,
     RAFT_NET_LREG__MAX,
+    RAFT_NET_LREG__CLIENT_MAX = RAFT_NET_LREG_IGNORE_TIMER_EVENTS + 1,
+};
+
+enum raft_net_recovery_lreg_values
+{
+    RAFT_NET_RECOVERY_LREG_PEER_UUID,
+    RAFT_NET_RECOVERY_LREG_DB_UUID,
+    RAFT_NET_RECOVERY_LREG_CHKPT_IDX,
+    RAFT_NET_RECOVERY_LREG_CHKPT_SIZE,
+    RAFT_NET_RECOVERY_LREG_REMAINING,
+    RAFT_NET_RECOVERY_LREG_COMPLETED,
+    RAFT_NET_RECOVERY_LREG_RATE,
+    RAFT_NET_RECOVERY_LREG_INCOMPLETE,
+    RAFT_NET_RECOVERY_LREG_START_TIME,
+    RAFT_NET_RECOVERY_LREG__MAX,
+    RAFT_NET_RECOVERY_LREG__NONE = 0,
 };
 
 struct raft_instance raftInstance = {
@@ -51,12 +71,9 @@ static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
                              void *);
 
-//LREG_ROOT_ENTRY_GENERATE(raft_net, LREG_USER_TYPE_RAFT_NET);
-
-LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
-                                RAFT_NET_LREG__MAX,
-                                raft_net_lreg_multi_facet_cb, NULL,
-                                LREG_INIT_OPT_NONE);
+static util_thread_ctx_reg_int_t
+raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops,
+                                      struct lreg_value *, void *);
 
 struct raft_instance *
 raft_net_get_instance(void)
@@ -65,6 +82,34 @@ raft_net_get_instance(void)
     //      may be serviced by a single process
     return &raftInstance;
 }
+
+static unsigned int
+raft_net_lreg_num_keys(void)
+{
+    return raft_instance_is_client(raft_net_get_instance()) ?
+        RAFT_NET_LREG__CLIENT_MAX : RAFT_NET_LREG__MAX;
+}
+
+static unsigned int
+raft_net_lreg_recovery_num_keys(void)
+{
+    const struct raft_instance *ri = raft_net_get_instance();
+
+    return (!raft_instance_is_client(ri) &&
+            (ri->ri_needs_bulk_recovery || ri->ri_successful_recovery)) ?
+        RAFT_NET_RECOVERY_LREG__MAX : RAFT_NET_RECOVERY_LREG__NONE;
+}
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
+                                raft_net_lreg_num_keys(),
+                                raft_net_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
+
+LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_bulk_recovery_info,
+                                LREG_USER_TYPE_RAFT_RECOVERY_NET,
+                                raft_net_lreg_recovery_num_keys(),
+                                raft_net_recovery_lreg_multi_facet_cb, NULL,
+                                LREG_INIT_OPT_NONE);
 
 static unsigned int
 raft_net_calc_max_heartbeat_freq(const struct raft_instance *ri)
@@ -170,6 +215,186 @@ raft_net_lreg_set_election_timeout(struct raft_instance *ri,
     return 0;
 }
 
+void
+raft_net_set_max_scan_entries(struct raft_instance *ri,
+                              ssize_t max_scan_entries)
+{
+    NIOVA_ASSERT(ri);
+
+    if (max_scan_entries < 0)
+        ri->ri_max_scan_entries = (ssize_t)-1;
+
+    else
+        ri->ri_max_scan_entries =
+            MAX(max_scan_entries,
+                RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES);
+
+    SIMPLE_LOG_MSG(LL_WARN, "max_scan_entries=%zd", ri->ri_max_scan_entries);
+}
+
+static int
+raft_net_lreg_set_max_scan_entries(struct raft_instance *ri,
+                                   const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    ssize_t max_scan_entries = RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        long long tmp;
+        int rc = niova_string_to_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
+        if (rc)
+            return rc;
+
+        max_scan_entries = tmp;
+    }
+
+    raft_net_set_max_scan_entries(ri, max_scan_entries);
+    return 0;
+}
+
+void
+raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor)
+{
+    NIOVA_ASSERT(ri);
+
+    ri->ri_log_reap_factor = MIN(log_reap_factor,
+                                 RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX);
+
+    SIMPLE_LOG_MSG(LL_WARN, "log_reap_factor=%zu", ri->ri_log_reap_factor);
+}
+
+static int
+raft_net_lreg_set_log_reap_factor(struct raft_instance *ri,
+                                  const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    size_t lrf = RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        unsigned long long tmp;
+        int rc =
+            niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
+
+        if (rc)
+            return rc;
+
+        lrf = tmp;
+    }
+
+    raft_net_set_log_reap_factor(ri, lrf);
+
+    return 0;
+}
+
+void
+raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts)
+{
+    NIOVA_ASSERT(ri);
+
+    num_ckpts = MAX(RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN, num_ckpts);
+
+    ri->ri_num_checkpoints = MIN(num_ckpts,
+                                 RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX);
+
+    SIMPLE_LOG_MSG(LL_WARN, "num_checkpoints=%zu", ri->ri_num_checkpoints);
+}
+
+static int
+raft_net_lreg_set_num_checkpoints(struct raft_instance *ri,
+                                  const struct lreg_value *lv)
+{
+    if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
+        return -EINVAL;
+
+    size_t nchkpt = RAFT_INSTANCE_PERSISTENT_APP_CHKPT;
+
+    if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
+    {
+        unsigned long long tmp;
+        int rc =
+            niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
+
+        if (rc)
+            return rc;
+
+        nchkpt = tmp;
+    }
+
+    raft_net_set_num_checkpoints(ri, nchkpt);
+
+    return 0;
+}
+
+static util_thread_ctx_reg_int_t
+raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
+                                      struct lreg_value *lv, void *arg)
+{
+    if (arg)
+        return -EINVAL;
+
+    else if (lv->lrv_value_idx_in >= RAFT_NET_RECOVERY_LREG__MAX)
+        return -ERANGE;
+
+    struct raft_instance *ri = raft_net_get_instance();
+    NIOVA_ASSERT(ri);
+
+    struct raft_recovery_handle *rrh = &ri->ri_recovery_handle;
+    int rc = 0;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_READ_VAL:
+        switch (lv->lrv_value_idx_in)
+        {
+        case RAFT_NET_RECOVERY_LREG_PEER_UUID:
+            lreg_value_fill_string_uuid(lv, "src-uuid", rrh->rrh_peer_uuid);
+            break;
+        case RAFT_NET_RECOVERY_LREG_DB_UUID:
+            lreg_value_fill_string_uuid(lv, "db-uuid", rrh->rrh_peer_db_uuid);
+            break;
+        case RAFT_NET_RECOVERY_LREG_CHKPT_IDX:
+            lreg_value_fill_signed(lv, "chkpt-idx", rrh->rrh_peer_chkpt_idx);
+            break;
+        case RAFT_NET_RECOVERY_LREG_CHKPT_SIZE:
+            lreg_value_fill_signed(lv, "chkpt-size", rrh->rrh_chkpt_size);
+            break;
+        case RAFT_NET_RECOVERY_LREG_REMAINING:
+            lreg_value_fill_signed(lv, "total-bytes-to-xfer",
+                                   rrh->rrh_remaining);
+            break;
+        case RAFT_NET_RECOVERY_LREG_COMPLETED:
+            lreg_value_fill_signed(lv, "xfer-completed", rrh->rrh_completed);
+            break;
+        case RAFT_NET_RECOVERY_LREG_INCOMPLETE:
+            lreg_value_fill_bool(lv, "resume-incomplete",
+                                 ri->ri_incomplete_recovery);
+            break;
+        case RAFT_NET_RECOVERY_LREG_START_TIME:
+            lreg_value_fill_string_time(lv, "start-time",
+                                        rrh->rrh_start.tv_sec);
+            break;
+        case RAFT_NET_RECOVERY_LREG_RATE:
+            lreg_value_fill_string(lv, "rate", rrh->rrh_rate_bytes_per_sec);
+            break;
+        default:
+            rc = -EOPNOTSUPP;
+            break;
+        }
+        break;
+    default:
+        rc = -EOPNOTSUPP;
+        break;
+    }
+
+    return rc;
+}
+
 static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
                              void *arg)
@@ -203,6 +428,22 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
             lreg_value_fill_unsigned(lv, "heartbeat-freq-per-election-timeout",
                                      ri->ri_heartbeat_freq_per_election_min);
             break;
+        case RAFT_NET_LREG_MAX_SCAN_ENTRIES:
+            lreg_value_fill_signed(lv, "max-scan-entries",
+                                   ri->ri_max_scan_entries);
+            break;
+        case RAFT_NET_LREG_LOG_REAP_FACTOR:
+            lreg_value_fill_unsigned(lv, "log-reap-factor",
+                                     ri->ri_log_reap_factor);
+            break;
+        case RAFT_NET_LREG_NUM_CHECKPOINTS:
+            lreg_value_fill_unsigned(lv, "num-checkpoints",
+                                     ri->ri_num_checkpoints);
+            break;
+        case RAFT_NET_LREG_AUTO_CHECKPOINT:
+            lreg_value_fill_bool(lv, "auto-checkpoint-enabled",
+                                 ri->ri_auto_checkpoints_enabled);
+            break;
         default:
             rc = -ENOENT;
             break;
@@ -222,11 +463,27 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 
             ri->ri_ignore_timerfd = tmp_bool;
             break;
+        case RAFT_NET_LREG_AUTO_CHECKPOINT:
+            rc = niova_string_to_bool(LREG_VALUE_TO_IN_STR(lv), &tmp_bool);
+            if (rc)
+                return rc;
+            if (ri->ri_auto_checkpoints_enabled != tmp_bool)
+                ri->ri_auto_checkpoints_enabled = tmp_bool;
+            break;
         case RAFT_NET_LREG_ELECTION_TIMEOUT_MS:
             rc = raft_net_lreg_set_election_timeout(ri, lv);
             break;
         case RAFT_NET_LREG_HEARTBEAT_FREQ:
             rc = raft_net_lreg_set_heartbeat_freq(ri, lv);
+            break;
+        case RAFT_NET_LREG_MAX_SCAN_ENTRIES:
+            rc = raft_net_lreg_set_max_scan_entries(ri, lv);
+            break;
+        case RAFT_NET_LREG_LOG_REAP_FACTOR:
+            rc = raft_net_lreg_set_log_reap_factor(ri, lv);
+            break;
+        case RAFT_NET_LREG_NUM_CHECKPOINTS:
+            rc = raft_net_lreg_set_num_checkpoints(ri, lv);
             break;
         default:
             rc = -EPERM;
@@ -242,7 +499,7 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
 }
 
 static bool
-raft_net_tcp_disabled()
+raft_net_tcp_disabled(void)
 {
     const struct niova_env_var *ev = env_get(NIOVA_ENV_VAR_tcp_enable);
     return !(ev && ev->nev_present);
@@ -435,8 +692,10 @@ raft_net_timerfd_close(struct raft_instance *ri)
 
     if (ri->ri_timer_fd >= 0)
     {
+        int tmp_fd = ri->ri_timer_fd;
         ri->ri_timer_fd = -1;
-        return close(ri->ri_timer_fd);
+
+        return close(tmp_fd);
     }
 
     return 0;
@@ -446,7 +705,13 @@ static int
 raft_net_epoll_cleanup(struct raft_instance *ri)
 {
     for (enum raft_epoll_handles i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+    {
+        NIOVA_ASSERT(
+            epoll_handle_releases_in_current_thread(&ri->ri_epoll_mgr,
+                                                    &ri->ri_epoll_handles[i]));
+
         epoll_handle_del(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[i]);
+    }
 
     return epoll_mgr_close(&ri->ri_epoll_mgr);
 }
@@ -463,17 +728,78 @@ raft_net_epoll_handle_add(struct raft_instance *ri, int fd, epoll_mgr_cb_t cb)
     if (!ri || fd < 0 || !cb)
         return -EINVAL;
 
-    else if (ri->ri_epoll_handles_in_use >= RAFT_EPOLL_HANDLES_MAX)
+    struct epoll_handle *eph = NULL;
+    for (int i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+    {
+        if (!epoll_handle_is_installed(&ri->ri_epoll_handles[i]))
+        {
+            eph = &ri->ri_epoll_handles[i];
+            break;
+        }
+    }
+
+    if (!eph)
         return -ENOSPC;
 
-    size_t idx = ri->ri_epoll_handles_in_use++;
+    int rc = epoll_handle_init(eph, fd, EPOLLIN, cb, ri, NULL);
+    if (rc)
+        return rc;
 
-    int rc =
-        epoll_handle_init(&ri->ri_epoll_handles[idx], fd, EPOLLIN, cb, ri,
-                          NULL);
+    rc = epoll_handle_add(&ri->ri_epoll_mgr, eph);
+    if (rc)
+        NIOVA_ASSERT(!epoll_handle_is_installed(eph));
 
-    return rc ? rc :
-        epoll_handle_add(&ri->ri_epoll_mgr, &ri->ri_epoll_handles[idx]);
+    return rc;
+}
+
+static void
+raft_net_epoll_ensure_handles_are_removed(const struct raft_instance *ri)
+{
+    for (int i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+        NIOVA_ASSERT(!epoll_handle_is_installed(&ri->ri_epoll_handles[i]));
+}
+
+static int
+raft_net_epoll_handle_remove_by_fd(struct raft_instance *ri, int fd)
+{
+    if (!ri || fd < 0)
+	return -EINVAL;
+
+    if (!epoll_mgr_is_ready(&ri->ri_epoll_mgr))
+    {
+        raft_net_epoll_ensure_handles_are_removed(ri);
+        return -ESHUTDOWN;
+    }
+
+    int rc = 0;
+    int removed_cnt = 0;
+
+    for (int i = 0; i < RAFT_EPOLL_HANDLES_MAX; i++)
+    {
+        struct epoll_handle *eph = &ri->ri_epoll_handles[i];
+        if (epoll_handle_is_installed(eph) && eph->eph_fd == fd)
+        {
+            NIOVA_ASSERT(
+                epoll_handle_releases_in_current_thread(&ri->ri_epoll_mgr,
+                                                        eph));
+
+            int tmp_rc = epoll_handle_del(&ri->ri_epoll_mgr, eph);
+            if (tmp_rc)
+            {
+                SIMPLE_LOG_MSG(LL_WARN, "epoll_handle_del(%p): %s ",
+                               eph, strerror(-tmp_rc));
+                if (!rc)
+                    rc = tmp_rc;
+            }
+            else
+            {
+                NIOVA_ASSERT(!epoll_handle_is_installed(eph));
+                removed_cnt++;
+            }
+        }
+    }
+
+    return (rc || removed_cnt) ? rc : -ENOENT;
 }
 
 static int
@@ -511,36 +837,147 @@ raft_epoll_setup_net(struct raft_instance *ri)
         : tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr);
 }
 
-int
-raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb)
+static bool
+raft_net_evp_type_valid(const struct raft_instance *ri,
+                        enum raft_event_pipe_types type)
 {
-    if (!ri || !cb)
+    return (!ri || type == RAFT_EVP__NONE || type == RAFT_EVP__ANY   ||
+            (raft_instance_is_client(ri) && type != RAFT_EVP_CLIENT) ||
+            (!raft_instance_is_client(ri) && type == RAFT_EVP_CLIENT))
+        ? false
+        : true;
+}
+
+struct ev_pipe *
+raft_net_evp_get(struct raft_instance *ri, enum raft_event_pipe_types type)
+{
+    for (int i = 0; i < RAFT_EVP_HANDLES_MAX; i++)
+    {
+        if (ri->ri_evps[i].revp_type == type)
+            return &ri->ri_evps[i].revp_evp;
+    }
+
+    return NULL;
+}
+
+int
+raft_net_evp_notify(struct raft_instance *ri, enum raft_event_pipe_types type)
+{
+    if (!raft_net_evp_type_valid(ri, type))
         return -EINVAL;
 
-    else if (ri->ri_epoll_handles_in_use >= RAFT_EPOLL_HANDLES_MAX ||
-             ri->ri_evps_in_use >= RAFT_EVP_HANDLES_MAX)
+    struct ev_pipe *evp = raft_net_evp_get(ri, type);
+    if (evp)
+    {
+        ev_pipe_notify(evp);
+        return 0;
+    }
+
+    return -ENOENT;
+}
+
+int
+raft_net_evp_add(struct raft_instance *ri, epoll_mgr_cb_t cb,
+                 enum raft_event_pipe_types type)
+{
+    if (!ri || !cb || !raft_net_evp_type_valid(ri, type))
+        return -EINVAL;
+
+    int idx = -1;
+    for (int i = 0; i < RAFT_EVP_HANDLES_MAX; i++)
+    {
+        if (ri->ri_evps[i].revp_type == RAFT_EVP__NONE)
+            idx = i; // Don't break, continue to end looking for dup
+
+        else if (ri->ri_evps[i].revp_type == type)
+            return -EALREADY;
+    }
+
+    if (idx == -1)
         return -ENOSPC;
 
-    int idx = ri->ri_evps_in_use++;
+    struct raft_evp *revp = &ri->ri_evps[idx];
 
-    struct ev_pipe *evp = &ri->ri_evps[idx];
-
-    int rc = ev_pipe_setup(evp);
+    int rc = ev_pipe_setup(&revp->revp_evp);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_setup(): %s", strerror(-rc));
         return rc;
     }
 
-    rc = raft_net_epoll_handle_add(ri, evp_read_fd_get(evp), cb);
+    rc = raft_net_epoll_handle_add(ri, evp_read_fd_get(&revp->revp_evp), cb);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_handle_add(): %s",
                        strerror(-rc));
+
+        int cleanup_rc = ev_pipe_cleanup(&revp->revp_evp);
+        if (cleanup_rc)
+            SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_cleanup(): %s",
+                           strerror(-cleanup_rc));
+
         return rc;
     }
 
-    return idx;
+    revp->revp_type = type;
+    revp->revp_installed_on_epm = 1;
+
+    return 0;
+}
+
+int
+raft_net_evp_remove(struct raft_instance *ri, enum raft_event_pipe_types type)
+{
+    if (!ri || !raft_net_evp_type_valid(ri, type))
+        return -EINVAL;
+
+    int idx = -1;
+    for (int i = 0; i < RAFT_EVP_HANDLES_MAX; i++)
+    {
+        if (ri->ri_evps[i].revp_type == type)
+            idx = i; // Don't break, continue to end looking for dup
+
+        else
+            NIOVA_ASSERT(ri->ri_evps[i].revp_type != type);
+    }
+
+    if (idx == -1)
+        return -ENOENT;
+
+    struct raft_evp *revp = &ri->ri_evps[idx];
+
+    // For now since all evp are placed onto an epm.
+    NIOVA_ASSERT(revp->revp_installed_on_epm);
+
+    int rc = 0;
+    int epoll_remove_rc =
+        raft_net_epoll_handle_remove_by_fd(ri,
+                                           evp_read_fd_get(&revp->revp_evp));
+
+    /* raft_net_epoll_handle_remove_by_fd() checks for cleanup of all epoll
+     * handles in the case where the epm has been already shutdown.
+     */
+    if (epoll_remove_rc && epoll_remove_rc != -ESHUTDOWN)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "raft_net_epoll_handle_remove_by_fd(%d): %s",
+                       type, strerror(-epoll_remove_rc));
+        if (!rc)
+            rc = epoll_remove_rc;
+    }
+
+    int ev_pipe_cleanup_rc = ev_pipe_cleanup(&revp->revp_evp);
+    if (ev_pipe_cleanup_rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "ev_pipe_cleanup_rc(%d): %s",
+                       type, strerror(-ev_pipe_cleanup_rc));
+        if (!rc)
+            rc = ev_pipe_cleanup_rc;
+    }
+
+    revp->revp_type = RAFT_EVP__NONE;
+    revp->revp_installed_on_epm = 0;
+
+    return rc;
 }
 
 raft_net_timerfd_cb_ctx_t
@@ -717,19 +1154,49 @@ raft_net_instance_shutdown(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
+    enum log_level ll = ri->ri_startup_error ? LL_NOTIFY : LL_ERROR;
+
+    int rc = 0;
+
     int epoll_close_rc = raft_net_epoll_cleanup(ri);
+    if (epoll_close_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "raft_net_epoll_cleanup(): %s",
+                       strerror(-epoll_close_rc));
+        if (!rc)
+            rc = epoll_close_rc;
+    }
 
-    if (ri->ri_shutdown_cb)
-        ri->ri_shutdown_cb(ri);
+    int shutdown_cb_rc = ri->ri_shutdown_cb ? ri->ri_shutdown_cb(ri) : 0;
+    if (shutdown_cb_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "ri_shutdown_cb(): %s",
+                       strerror(-shutdown_cb_rc));
+        if (!rc)
+            rc = shutdown_cb_rc;
+    }
 
-    int sockets_close = raft_net_sockets_close(ri);
+    int sockets_close_rc = raft_net_sockets_close(ri);
+    if (sockets_close_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "raft_net_sockets_close(): %s",
+                       strerror(-sockets_close_rc));
+        if (!rc)
+            rc = sockets_close_rc;
+    }
 
-    raft_net_timerfd_close(ri);
+    int timerfd_close_rc = raft_net_timerfd_close(ri);
+    if (timerfd_close_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "raft_net_timerfd_close(): %s",
+                       strerror(-timerfd_close_rc));
+        if (!rc)
+            rc = timerfd_close_rc;
+    }
 
     raft_net_conf_destroy(ri);
 
-    return (sockets_close ? sockets_close :
-            (epoll_close_rc ? epoll_close_rc : 0));
+    return rc;
 }
 
 static void
@@ -930,30 +1397,38 @@ raft_net_peer_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
         : msg->rrm_append_entries_request.raerqm_entries_sz;
 }
 
-static void
-raft_net_peer_connect_info(struct tcp_mgr_connection *tmc,
-                           const char **ipaddr_out, int *port_out)
+static int
+raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
 {
-    struct ctl_svc_node *csn;
-    raft_net_connection_to_csn(tmc, &csn);
+    NIOVA_ASSERT(csn && ctl_svc_node_is_peer(csn));
 
-    *ipaddr_out = ctl_svc_node_peer_2_ipaddr(csn);
-    *port_out = ctl_svc_node_peer_2_port(csn);
+    struct raft_instance *ri = data;
+    bool is_client_cxn = raft_net_is_client_connection(ri, csn);
+    struct tcp_mgr_instance *tmi = is_client_cxn ? &ri->ri_client_tcp_mgr
+                                                 : &ri->ri_peer_tcp_mgr;
 
-    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", *ipaddr_out, *port_out);
+    const char *ipaddr = ctl_svc_node_peer_2_ipaddr(csn);
+    int port = is_client_cxn ? ctl_svc_node_peer_2_client_port(csn)
+                             : ctl_svc_node_peer_2_port(csn);
+
+    tcp_mgr_connection_setup(&csn->csn_peer.csnp_net_data, tmi, ipaddr, port);
+
+    return 0;
 }
 
 static void
-raft_net_client_connect_info(struct tcp_mgr_connection *tmc,
-                             const char **ipaddr_out, int *port_out)
+raft_net_ctl_svc_nodes_setup(struct raft_instance *ri)
 {
-    struct ctl_svc_node *csn;
-    raft_net_connection_to_csn(tmc, &csn);
+    // types must match ctl_svc_node_is_peer test
+    const int PEER_TYPES_COUNT = 3;
+    enum ctl_svc_node_type peer_types[] = {
+        CTL_SVC_NODE_TYPE_NIOSD,
+        CTL_SVC_NODE_TYPE_RAFT_CLIENT,
+        CTL_SVC_NODE_TYPE_RAFT_PEER,
+    };
 
-    *ipaddr_out = ctl_svc_node_peer_2_ipaddr(csn);
-    *port_out = ctl_svc_node_peer_2_client_port(csn);
-
-    SIMPLE_LOG_MSG(LL_TRACE, "%s:%d", *ipaddr_out, *port_out);
+    for (int i = 0; i < PEER_TYPES_COUNT; i++)
+        ctl_svc_nodes_apply(peer_types[i], raft_net_csn_setup, ri);
 }
 
 int
@@ -962,7 +1437,9 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     if (!ri)
         return -EINVAL;
 
-    ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE_BOOTING;
+    ri->ri_state = client_mode ? RAFT_STATE_CLIENT : RAFT_STATE__NONE;
+    ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
+    ri->ri_backend = NULL;
 
     raft_net_histogram_setup(ri);
 
@@ -973,12 +1450,10 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         return rc;
     }
 
-
     if (!raft_net_tcp_disabled())
     {
         tcp_mgr_setup(&ri->ri_client_tcp_mgr, ri,
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
-                      raft_net_client_connect_info,
                       (tcp_mgr_recv_cb_t)raft_net_client_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
@@ -988,7 +1463,6 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       DEFAULT_INCOMING_CREDITS);
         tcp_mgr_setup(&ri->ri_peer_tcp_mgr, ri,
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
-                      raft_net_peer_connect_info,
                       (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
@@ -1053,6 +1527,20 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
         return rc;
     }
+
+    raft_net_ctl_svc_nodes_setup(ri);
+
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "raft_net_csn_setup(): %s", strerror(-rc));
+
+        if (ri->ri_shutdown_cb)
+            ri->ri_shutdown_cb(ri);
+
+        return rc;
+    }
+
+    ri->ri_proc_state = RAFT_PROC_STATE_RUNNING;
 
     return 0;
 }
@@ -1153,7 +1641,7 @@ raft_net_verify_sender_server_msg(struct raft_instance *ri,
     return csn;
 }
 
-int
+static int
 raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs,
                   const enum raft_udp_listen_sockets sock_src)
@@ -1189,14 +1677,7 @@ raft_net_send_udp(struct raft_instance *ri, struct ctl_svc_node *csn,
     return udp_socket_send(ush, iov, niovs, &dest);
 }
 
-static struct tcp_mgr_instance *
-raft_net_tmi_get(struct raft_instance *ri, struct ctl_svc_node *csn)
-{
-    bool is_client_cxn = raft_net_is_client_connection(ri, csn);
-    return is_client_cxn ? &ri->ri_client_tcp_mgr : &ri->ri_peer_tcp_mgr;
-}
-
-int
+static int
 raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs)
 {
@@ -1210,8 +1691,7 @@ raft_net_send_tcp(struct raft_instance *ri, struct ctl_svc_node *csn,
 
     raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
-    return tcp_mgr_send_msg(raft_net_tmi_get(ri, csn),
-                            &csn->csn_peer.csnp_net_data, iov, niovs);
+    return tcp_mgr_send_msg(&csn->csn_peer.csnp_net_data, iov, niovs);
 }
 
 int
@@ -1243,7 +1723,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
             size_rc = -E2BIG;
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_send_msg(): size_rc=%ld msg_size=%zu",
+    SIMPLE_LOG_MSG(LL_DEBUG, "raft_net_send_msg(): size_rc=%ld msg_size=%zu",
                    size_rc, msg_size);
     if (size_rc == msg_size)
         raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
@@ -1356,7 +1836,7 @@ raft_net_update_last_comm_time(struct raft_instance *ri,
     niova_realtime_coarse_clock(ts);
 
     const long long unsigned msec = timespec_2_msec(ts);
-    SIMPLE_LOG_MSG(LL_NOTIFY,
+    SIMPLE_LOG_MSG(LL_DEBUG,
                    "raft_net_update_last_comm_time(): update %s with ts %llu",
                    send_or_recv  ? "send" : "recv", msec);
 }
@@ -1406,15 +1886,15 @@ raft_net_comm_recency(const struct raft_instance *ri,
     switch (type)
     {
     case RAFT_COMM_RECENCY_RECV:
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): type recv");
+        SIMPLE_LOG_MSG(LL_TRACE, "raft_net_comm_recency(): type recv");
         *ret_ms = last_recv ? (now - last_recv) : 0;
         break;
     case RAFT_COMM_RECENCY_SEND:
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): type send");
+        SIMPLE_LOG_MSG(LL_TRACE, "raft_net_comm_recency(): type send");
         *ret_ms = last_send ? (now - last_send) : 0;
         break;
     case RAFT_COMM_RECENCY_UNACKED_SEND:
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_net_comm_recency(): type unacked send");
+        SIMPLE_LOG_MSG(LL_TRACE, "raft_net_comm_recency(): type unacked send");
         *ret_ms = (last_send > last_recv) ? (now - last_recv) : 0;
         break;
     default:
@@ -1422,9 +1902,8 @@ raft_net_comm_recency(const struct raft_instance *ri,
         break;
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY,
-                   "raft_net_comm_recency(): idx=%d now=%llu ms=%llu rc=%d",
-                   raft_peer_idx, now, *ret_ms, rc);
+    LOG_MSG(LL_TRACE, "raft_net_comm_recency(): idx=%d now=%llu ms=%llu rc=%d",
+            raft_peer_idx, now, *ret_ms, rc);
 
     return rc;
 }
@@ -1866,6 +2345,7 @@ raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
     LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_info);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);

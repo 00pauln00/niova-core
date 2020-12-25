@@ -83,8 +83,7 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 2,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 3,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 4,
-    RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE        = 5,
-    RAFT_RPC_MSG_TYPE_ANY                    = 6,
+    RAFT_RPC_MSG_TYPE_ANY                    = 5,
 };
 
 struct raft_vote_request_msg
@@ -106,8 +105,9 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_leader_term; // current term of the leader
     int64_t  raerqm_log_term; // term of the log entry (prev_log_index + 1)
                               // .. used for replays of old msgs ?? XXX needed?
-    uint64_t raerqm_term_seqno; // used for read-window'ing
     int64_t  raerqm_commit_index;
+    int64_t  raerqm_lowest_index;  // oldest index available through raft
+    int64_t  raerqm_chkpt_index;  // index of last checkpoint
     int64_t  raerqm_prev_log_term;
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
@@ -117,20 +117,20 @@ struct raft_append_entries_request_msg
     uint8_t  raerqm_leader_change_marker;
     uint32_t raerqm_ndata_entries;
     uint32_t raerqm_data_len_arr[RAFT_ENTRY_NUM_ENTRIES];
+    uint8_t  raerqm_entry_out_of_range;
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
 struct raft_append_entries_reply_msg
 {
-    int64_t  raerpm_leader_term;
-    int64_t  raerpm_prev_log_index;
-    int64_t  raerpm_synced_log_index; // highest synchronized index
-    uint64_t raerpm_term_seqno; // used for read-window'ing
-    uint8_t  raerpm_heartbeat_msg;
-    uint8_t  raerpm_err_stale_term;
-    uint8_t  raerpm_err_non_matching_prev_term;
-    uint8_t  raerpm_newly_initialized_peer;
-    uint8_t  raerpm__pad[4];
+    int64_t raerpm_leader_term;
+    int64_t raerpm_prev_log_index;
+    int64_t raerpm_synced_log_index; // highest synchronized index
+    uint8_t raerpm_heartbeat_msg;
+    uint8_t raerpm_err_stale_term;
+    uint8_t raerpm_err_non_matching_prev_term;
+    uint8_t raerpm_newly_initialized_peer;
+    uint8_t raerpm__pad[4];
 };
 
 struct raft_sync_idx_update_msg
@@ -146,9 +146,9 @@ struct raft_rpc_msg
     uint32_t rrm_type;
     uint16_t rrm_version;
     uint16_t rrm__pad;
-//    uuid_t   rrm_dest_id; // XXX should match the recv'r
     uuid_t   rrm_sender_id; // should match the sender
     uuid_t   rrm_raft_id;
+    uuid_t   rrm_db_id;     // Id assigned to the backend instance
     union
     {   // This union must be at the end of the structure
         struct raft_vote_request_msg           rrm_vote_request;
@@ -160,6 +160,21 @@ struct raft_rpc_msg
 /*  char rrm_payload[]; // future use if more msg types (other than
  *      rrm_append_entries_request require payload
  */
+};
+
+#define BW_RATE_LEN 31
+
+struct raft_recovery_handle
+{
+    uuid_t          rrh_peer_uuid;
+    uuid_t          rrh_peer_db_uuid;
+    int64_t         rrh_peer_chkpt_idx;
+    ssize_t         rrh_chkpt_size;
+    ssize_t         rrh_remaining;
+    ssize_t         rrh_completed;
+    char            rrh_rate_bytes_per_sec[BW_RATE_LEN + 1];
+    struct timespec rrh_start;
+    bool            rrh_from_recovery_marker;
 };
 
 struct raft_entry_header
@@ -203,9 +218,17 @@ struct raft_log_header
 
 #define RAFT_LOG_HEADER_DATA_SIZE sizeof(struct raft_log_header)
 
+enum raft_process_state
+{
+    RAFT_PROC_STATE_BOOTING,
+    RAFT_PROC_STATE_RUNNING,
+    RAFT_PROC_STATE_RECOVERING,
+    RAFT_PROC_STATE_SHUTDOWN,
+} PACKED;
+
 enum raft_state
 {
-    RAFT_STATE_BOOTING = 0,
+    RAFT_STATE__NONE = 0,
     RAFT_STATE_LEADER,
     RAFT_STATE_FOLLOWER,
     RAFT_STATE_CANDIDATE,
@@ -246,6 +269,7 @@ struct raft_candidate_state
 struct raft_follower_info
 {
     int64_t            rfi_next_idx;
+    int64_t            rfi_ackd_idx;
     int64_t            rfi_synced_idx;
     int64_t            rfi_current_idx_term;
     int64_t            rfi_current_idx_crc;
@@ -265,14 +289,6 @@ struct raft_leader_state
 struct epoll_handle;
 struct raft_instance;
 
-enum raft_server_event_pipes
-{
-    RAFT_SERVER_EVP_REMOTE_SEND  = 0,
-    RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV = 1,
-    RAFT_SERVER_EVP_SM_APPLY     = 2,
-    RAFT_SERVER_EVP_ANY          = 3,
-};
-
 enum raft_follower_reasons
 {
     RAFT_BFRSN_NONE,
@@ -291,7 +307,8 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
     RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC  = 4,
     RAFT_INSTANCE_HIST_NENTRIES_SYNC      = 5,
-    RAFT_INSTANCE_HIST_MAX                = 6,
+    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 6,
+    RAFT_INSTANCE_HIST_MAX                = 7,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -318,6 +335,11 @@ struct raft_instance_hist_stats
  *    raft_entry_idx_t to be nullified from the raft log such that read
  *    operations of those addresses do not produce seemingly valid raft
  *    entries.
+ * @rib_log_reap:  Reap is opposite of truncate - it causes the removal of
+ *    entries older than and including the provided raft_entry_idx_t.  This
+ *    API call is optional and is intended for backends whose application data
+ *    are guaranteed to be persistent
+ *    (ie RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP).
  * @rib_header_load:  read-in the raft header.  The header stores frequently
  *    adjusted raft metadata such as the last known term value and the peer
  *    whom was last voted for.
@@ -326,24 +348,31 @@ struct raft_instance_hist_stats
  *    for use.
  * @rib_backend_shutdown:  stop / close the backend.
  * @rib_backend_sync:  force a sync of all pending items to the backing store
+ * @rib_backend_checkpoint:  optional API call for backends which support
+ *    some form of checkpointing, such as rocksDB.
  * @rib_sm_apply_opt:  optional callback used for niova-raft implementations
  *    which require conjoined, atomic, persistent updates of raft metadata and
  *    state machine data.
+
  */
 struct raft_instance_backend
 {
-    void (*rib_entry_write)(struct raft_instance *,
-                            const struct raft_entry *,
-                            const struct raft_net_sm_write_supplements *);
+    void    (*rib_entry_write)(struct raft_instance *,
+                               const struct raft_entry *,
+                               const struct raft_net_sm_write_supplements *);
     int     (*rib_entry_header_read)(struct raft_instance *,
                                      struct raft_entry_header *);
     ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
-    void    (*rib_log_truncate)(struct raft_instance *, const raft_entry_idx_t);
+    void    (*rib_log_truncate)(struct raft_instance *,
+                                const raft_entry_idx_t);
+    void    (*rib_log_reap)(struct raft_instance *, const raft_entry_idx_t);
     int     (*rib_header_load)(struct raft_instance *);
     int     (*rib_header_write)(struct raft_instance *);
     int     (*rib_backend_setup)(struct raft_instance *);
     int     (*rib_backend_shutdown)(struct raft_instance *);
     int     (*rib_backend_sync)(struct raft_instance *);
+    int64_t (*rib_backend_checkpoint)(struct raft_instance *);
+    int     (*rib_backend_recover)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
                                 const struct raft_net_sm_write_supplements *);
 };
@@ -355,6 +384,15 @@ enum raft_instance_newest_entry_hdr_types
     RI_NEHDR_UNSYNC = 1,
     RI_NEHDR_ALL = 2,
     RI_NEHDR__END = RI_NEHDR_ALL,
+};
+
+typedef niova_atomic64_t raft_chkpt_thread_atomic64_t;
+
+struct raft_evp
+{
+    struct ev_pipe             revp_evp;
+    enum raft_event_pipe_types revp_type;
+    uint8_t                    revp_installed_on_epm : 1;
 };
 
 struct raft_instance
@@ -370,26 +408,45 @@ struct raft_instance
     struct timespec                 ri_last_recv[CTL_SVC_MAX_RAFT_PEERS];
     const char                     *ri_raft_uuid_str;
     const char                     *ri_this_peer_uuid_str;
+    uuid_t                          ri_db_uuid; // set by backend
+    uuid_t                          ri_db_recovery_uuid; // set by backend
     struct raft_candidate_state     ri_candidate;
     struct raft_leader_state        ri_leader;
     enum raft_state                 ri_state;
+    enum raft_process_state         ri_proc_state;
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
+    bool                            ri_user_requested_checkpoint;
+    bool                            ri_user_requested_reap;
+    bool                            ri_auto_checkpoints_enabled;
+    bool                            ri_needs_bulk_recovery;
+    bool                            ri_lreg_registered;
+    bool                            ri_incomplete_recovery;
+    bool                            ri_successful_recovery;
     enum raft_follower_reasons      ri_follower_reason;
+    int                             ri_startup_error;
     int                             ri_timer_fd;
     char                            ri_log[PATH_MAX + 1];
     struct raft_log_header          ri_log_hdr;
     int64_t                         ri_commit_idx;
     int64_t                         ri_last_applied_idx;
+    int64_t                         ri_last_applied_synced_idx;
     crc32_t                         ri_last_applied_cumulative_crc;
+    raft_chkpt_thread_atomic64_t    ri_checkpoint_last_idx;
+    raft_chkpt_thread_atomic64_t    ri_lowest_idx; // set by log reap
+    pthread_mutex_t                 ri_compaction_mutex;
+    raft_entry_idx_t                ri_pending_read_idx; // protected by mutex
+    int                             ri_last_chkpt_err;
     unsigned long long              ri_sync_freq_us;
     size_t                          ri_sync_cnt;
+    ssize_t                         ri_max_scan_entries;
+    size_t                          ri_log_reap_factor;
+    size_t                          ri_num_checkpoints;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
     pthread_mutex_t                 ri_newest_entry_mutex;
     struct epoll_mgr                ri_epoll_mgr;
     struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
-    size_t                          ri_epoll_handles_in_use;
     uint32_t                        ri_election_timeout_max_ms;
     uint32_t                        ri_heartbeat_freq_per_election_min;
     raft_net_timer_cb_t             ri_timer_fd_cb;
@@ -398,7 +455,7 @@ struct raft_instance
     raft_sm_request_handler_t       ri_server_sm_request_cb;
     raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
     raft_net_shutdown_cb_t          ri_shutdown_cb;
-    struct ev_pipe                  ri_evps[RAFT_EVP_HANDLES_MAX];
+    struct raft_evp                 ri_evps[RAFT_EVP_HANDLES_MAX];
     size_t                          ri_evps_in_use;
     struct lreg_node                ri_lreg;
     struct lreg_node                ri_net_lreg;
@@ -409,6 +466,8 @@ struct raft_instance
     void                           *ri_client_arg;
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
+    struct thread_ctl               ri_chkpt_thread_ctl;
+    struct raft_recovery_handle     ri_recovery_handle;
 };
 
 struct raft_co_wr_info
@@ -418,6 +477,12 @@ struct raft_co_wr_info
     struct iovec rc_iovec[RAFT_ENTRY_NUM_ENTRIES];
     char         rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
 };
+
+static inline struct raft_recovery_handle *
+raft_instance_2_recovery_handle(struct raft_instance *ri)
+{
+    return ri ? &ri->ri_recovery_handle : NULL;
+}
 
 static inline void
 raft_compile_time_checks(void)
@@ -457,15 +522,17 @@ do {                                                                            
         break;                                                                                    \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                                                \
         LOG_MSG(log_level,                                                                        \
-                "AE_REQ t=%ld lt=%ld ci=%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx crc=%u:%u %s "fmt, \
+                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
                 (rm)->rrm_append_entries_request.raerqm_leader_term,                              \
                 (rm)->rrm_append_entries_request.raerqm_log_term,                                 \
                 (rm)->rrm_append_entries_request.raerqm_commit_index,                             \
+                (rm)->rrm_append_entries_request.raerqm_lowest_index,                             \
                 (rm)->rrm_append_entries_request.raerqm_prev_log_term,                            \
                 (rm)->rrm_append_entries_request.raerqm_prev_log_index,                           \
                 (rm)->rrm_append_entries_request.raerqm_entries_sz,                               \
                 (rm)->rrm_append_entries_request.raerqm_heartbeat_msg,                            \
                 (rm)->rrm_append_entries_request.raerqm_leader_change_marker,                     \
+                (rm)->rrm_append_entries_request.raerqm_entry_out_of_range,                       \
                 (rm)->rrm_append_entries_request.raerqm_prev_idx_crc,                             \
                 (rm)->rrm_append_entries_request.raerqm_this_idx_crc,                             \
                 __uuid_str,                                                                       \
@@ -514,17 +581,21 @@ do {                                                               \
                      __leader_uuid_str);                           \
                                                                    \
     LOG_MSG(log_level,                                                      \
-            "%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld v=%s l=%s "  \
-            fmt,                                                            \
-            raft_server_state_to_char((ri)->ri_state),                      \
+            "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld:%ld lck=%lld v=%s l=%s "  \
+            fmt,                                                        \
+            raft_server_process_state_to_char((ri)->ri_proc_state),     \
+            raft_server_state_to_char((ri)->ri_state),                  \
             raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
             raft_server_get_current_raft_entry_term(ri, RI_NEHDR_UNSYNC), \
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC), \
             raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC), \
             (ri)->ri_log_hdr.rlh_term,                                      \
-            (ri)->ri_log_hdr.rlh_seqno,                                     \
-            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,                 \
-            __uuid_str, __leader_uuid_str, ##__VA_ARGS__);                  \
+            (ri)->ri_log_hdr.rlh_seqno,                                 \
+            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,             \
+            (ri)->ri_last_applied_synced_idx,                           \
+            niova_atomic_read(&(ri)->ri_checkpoint_last_idx),           \
+            __uuid_str, __leader_uuid_str,                              \
+            ##__VA_ARGS__);                                             \
 } while (0)
 
 #define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)       \
@@ -535,32 +606,15 @@ do {                                                             \
     }                                                            \
 } while (0)
 
-static inline enum raft_epoll_handles
-raft_server_evp_2_epoll_handle(enum raft_server_event_pipes evps)
-{
-    switch (evps)
-    {
-    case RAFT_SERVER_EVP_REMOTE_SEND:
-        return RAFT_EPOLL_HANDLE_EVP_REMOTE_SEND;
-    case RAFT_SERVER_EVP_SM_APPLY:
-        return RAFT_EPOLL_HANDLE_EVP_SM_APPLY;
-    case RAFT_SERVER_EVP_ASYNC_COMMIT_IDX_ADV:
-        return RAFT_EPOLL_HANDLE_EVP_ASYNC_COMMIT_IDX_ADV;
-    default:
-        break;
-    }
-    return RAFT_EPOLL_NUM_HANDLES;
-}
-
 static inline char
 raft_server_state_to_char(enum raft_state state)
 {
     switch (state)
     {
+    case RAFT_STATE__NONE:
+        return 'n';
     case RAFT_STATE_LEADER:
         return 'L';
-    case RAFT_STATE_BOOTING:
-        return 'B';
     case RAFT_STATE_FOLLOWER:
         return 'F';
     case RAFT_STATE_CANDIDATE:
@@ -572,6 +626,46 @@ raft_server_state_to_char(enum raft_state state)
     }
 
     return '?';
+}
+
+static inline char
+raft_server_process_state_to_char(enum raft_process_state state)
+{
+    switch (state)
+    {
+    case RAFT_PROC_STATE_BOOTING:
+        return 'b';
+    case RAFT_PROC_STATE_RUNNING:
+        return 'r';
+    case RAFT_PROC_STATE_RECOVERING:
+        return 'R';
+    case RAFT_PROC_STATE_SHUTDOWN:
+        return 's';
+    default:
+        break;
+    }
+
+    return '?';
+}
+
+static inline char *
+raft_server_process_state_to_string(enum raft_process_state state)
+{
+    switch (state)
+    {
+    case RAFT_PROC_STATE_BOOTING:
+        return "booting";
+    case RAFT_PROC_STATE_RUNNING:
+        return "running";
+    case RAFT_PROC_STATE_RECOVERING:
+        return "recovering";
+    case RAFT_PROC_STATE_SHUTDOWN:
+        return "shutdown";
+    default:
+        break;
+    }
+
+    return "unknown";
 }
 
 static inline const char *
@@ -591,6 +685,8 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "dev-sync-latency-usec";
     case RAFT_INSTANCE_HIST_NENTRIES_SYNC:
         return "nentries-per-sync";
+    case RAFT_INSTANCE_HIST_CHKPT_LAT_USEC:
+        return "checkpoint-latency-usec";
     default:
         break;
     }
@@ -604,8 +700,6 @@ raft_server_state_to_string(enum raft_state state)
     {
     case RAFT_STATE_LEADER:
         return "leader";
-    case RAFT_STATE_BOOTING:
-        return "booting";
     case RAFT_STATE_FOLLOWER:
         return "follower";
     case RAFT_STATE_CANDIDATE:
@@ -659,7 +753,28 @@ static inline bool
 raft_instance_is_booting(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
-    return ri->ri_state == RAFT_STATE_BOOTING ? true : false;
+    return ri->ri_proc_state == RAFT_PROC_STATE_BOOTING ? true : false;
+}
+
+static inline bool
+raft_instance_is_shutdown(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_proc_state == RAFT_PROC_STATE_SHUTDOWN ? true : false;
+}
+
+static inline bool
+raft_instance_is_running(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_proc_state == RAFT_PROC_STATE_RUNNING ? true : false;
+}
+
+static inline bool
+raft_instance_is_recovering(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_proc_state == RAFT_PROC_STATE_RECOVERING ? true : false;
 }
 
 static inline bool
@@ -699,6 +814,35 @@ raft_majority_index_value(const raft_peer_t num_raft_members)
         return RAFT_PEER_ANY;
 
     return num_raft_members - (num_raft_members / 2) - 1;
+}
+
+static inline int
+raft_server_entry_idx_qsort_compare(const void *a, const void *b)
+{
+    const raft_entry_idx_t *x = (const raft_entry_idx_t *)a;
+    const raft_entry_idx_t *y = (const raft_entry_idx_t *)b;
+
+    return *x < *y ? -1 :
+           *x > *y ?  1 : 0;
+}
+
+static inline raft_entry_idx_t
+raft_server_get_majority_entry_idx(const raft_entry_idx_t *values,
+                                   const size_t nvalues,
+                                   raft_entry_idx_t *ret_val)
+{
+    if (!values || !ret_val)
+        return -EINVAL;
+
+    else if (nvalues > CTL_SVC_MAX_RAFT_PEERS)
+        return -E2BIG;
+
+    qsort((void *)values, nvalues, sizeof(raft_entry_idx_t),
+          raft_server_entry_idx_qsort_compare);
+
+    *ret_val = values[raft_majority_index_value((raft_peer_t)nvalues)];
+
+    return 0;
 }
 
 /**
@@ -855,12 +999,31 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         enum raft_instance_store_type type, bool sync_writes,
-                         void *arg);
+                         enum raft_instance_store_type type,
+                         enum raft_instance_options opts, void *arg);
 
 void
 raft_server_backend_setup_last_applied(struct raft_instance *ri,
                                        raft_entry_idx_t last_applied_idx,
                                        crc32_t last_applied_cumulative_crc);
 
+int
+raft_server_init_recovery_handle_from_marker(struct raft_instance *ri,
+                                             const char *peer_uuid_str,
+                                             const char *db_uuid_str);
+
+/**
+ * raft_server_instance_chkpt_compact_max_idx - return the value which
+ *    representing the raft-entry-idx which will not be rolled back.
+ *    Here we choosed the ri_last_applied_idx over ri_commmit_idx to remove
+ *    the possibility of compaction occurring on entries which have yet to be
+ *    applied.
+ */
+static inline raft_entry_idx_t
+raft_server_instance_chkpt_compact_max_idx(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    return ri->ri_last_applied_synced_idx;
+}
 #endif

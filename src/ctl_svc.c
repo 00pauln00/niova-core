@@ -548,6 +548,7 @@ ctl_svc_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     {
     case LREG_NODE_CB_OP_INSTALL_NODE: /* fall through */
     case LREG_NODE_CB_OP_DESTROY_NODE: /* fall through */
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
         break; // These may require implementation later..
 
     case LREG_NODE_CB_OP_GET_NODE_INFO:
@@ -961,12 +962,14 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
         return NULL;
 
     *csn = *in;
+    if (ctl_svc_node_is_peer(csn))
+        csn->csn_peer.csnp_net_data.tmc_status = TMCS_NEEDS_SETUP;
 
     lreg_node_init(&csn->csn_lrn, LREG_USER_TYPE_CTL_SVC_NODE,
                    ctl_svc_lreg_cb, NULL, LREG_INIT_OPT_NONE);
 
-    int rc = lreg_node_install_prepare(&csn->csn_lrn,
-                                       LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
+    int rc = lreg_node_install(&csn->csn_lrn,
+                               LREG_ROOT_ENTRY_PTR(ctl_svc_nodes));
 
     DBG_CTL_SVC_NODE((rc ? LL_FATAL : LL_DEBUG), csn, "%s", strerror(-rc));
 
@@ -1093,4 +1096,22 @@ ctl_svc_destroy(void)
     FUNC_ENTRY(LL_NOTIFY);
 
     ctl_svc_nodes_release();
+}
+
+void
+ctl_svc_nodes_apply(enum ctl_svc_node_type type,
+                    int (*cb)(struct ctl_svc_node *, void *), void *data)
+{
+    struct ctl_svc_node *csn;
+
+    niova_mutex_lock(&ctlSvcNodeTree.mutex);
+    RT_FOREACH_LOCKED(csn, ctl_svc_node_tree, &ctlSvcNodeTree)
+    {
+        if (csn->csn_type != type)
+            continue;
+
+        if (cb(csn, data))
+            break;
+    }
+    niova_mutex_unlock(&ctlSvcNodeTree.mutex);
 }

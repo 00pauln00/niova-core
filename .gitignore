@@ -56,4 +56,8 @@ rocksdb__test*
 .*.swo
 .*.swn
 test/epoll_mgr_test
+test/tcp_mgr_test
 .clangd
+*.orig
+test/rsync-exec-test
+test/popen_cmd_test
