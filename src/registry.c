@@ -715,6 +715,32 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     lreg_process_remove_queue();
 }
 
+#define LREG_NODE_INSTALL_COMPLETION_WAIT_USEC 30000000
+lreg_install_int_ctx_t
+lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
+{
+    if (!lrn)
+        return -EINVAL;
+
+    if (lreg_node_is_installed(lrn) != install)
+    {
+        if ((init_ctx() || lreg_thread_ctx() || lrn->lrn_inlined_member))
+            DBG_LREG_NODE(LL_FATAL, (struct lreg_node *)lrn,
+                          "invalid installation or removal context");
+
+        for (int i = 0; i < LREG_NODE_INSTALL_COMPLETION_WAIT_USEC; i++)
+        {
+            if (lreg_node_is_installed(lrn) == install)
+                return 0;
+            else
+                usleep(1);
+        }
+        return -ETIMEDOUT;
+    }
+
+    return 0;
+}
+
 bool
 lreg_thread_ctx(void)
 {

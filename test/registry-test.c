@@ -39,21 +39,8 @@ static struct lreg_node inlined_child_lrn =
 static void
 registry_test_wait_for_install_or_removal(struct lreg_node *lrn, bool install)
 {
-    bool op_ok = false;
-    for (int i = 0; i < 1000; i++)
-    {
-        bool installed = lreg_node_is_installed(lrn);
-        if ((install && installed) || (!install && !installed))
-        {
-            DBG_LREG_NODE(LL_DEBUG, lrn, "async op done (i=%d)", i);
-            op_ok = true;
-            break;
-        }
-
-        usleep(100); // Wait a bit for the async install to complete
-    }
-
-    NIOVA_ASSERT(op_ok);
+    int rc = lreg_node_wait_for_completion(lrn, install);
+    NIOVA_ASSERT(!rc);
 }
 
 static void

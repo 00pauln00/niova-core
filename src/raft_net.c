@@ -15,6 +15,7 @@
 
 #include "alloc.h"
 #include "crc32.h"
+#include "ctl_interface.h"
 #include "ctl_svc.h"
 #include "ctor.h"
 #include "epoll_mgr.h"
@@ -2344,8 +2345,8 @@ static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_info);
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_bulk_recovery_info);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);
