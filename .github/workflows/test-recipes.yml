@@ -45,9 +45,6 @@ jobs:
     - name: Copy holon repo
       run: cp -r ./holon ./build_dir
 
-    #- name: build docker image
-    #  run: cd ./build_dir && docker build -t niova-holon:latest .
-
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
@@ -64,14 +61,6 @@ jobs:
     - name: List log directory
       run: ls -l /home/runner/work/niovad/niovad/holon_log 
       if: always()
-
-    #- name: Give permissions to log dir
-    #  run: chmod -R 777 /home/runner/work/niovad/niovad/holon_log
-    #  if: always()
-
-    #- name: Give permission to log dir
-    #  run: chmod -R $USER:$GROUP /home/runner/work/niovad/niovad/holon_log
-    #  if: always()
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
