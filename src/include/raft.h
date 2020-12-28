@@ -115,8 +115,8 @@ struct raft_append_entries_request_msg
     uint16_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
-    uint32_t raerqm_ndata_entries;
-    uint32_t raerqm_data_len_arr[RAFT_ENTRY_NUM_ENTRIES];
+    uint32_t raerqm_num_entries;
+    uint32_t raerqm_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
     uint8_t  raerqm_entry_out_of_range;
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
@@ -189,8 +189,8 @@ struct raft_entry_header
     int64_t          reh_term; // Term in which entry was originally written
     uuid_t           reh_raft_uuid; // UUID of raft instance
     uint8_t          reh_leader_change_marker; // noop
-    uint32_t         reh_ndata_entries; //number of data entries
-    uint32_t         reh_data_len_arr[RAFT_ENTRY_NUM_ENTRIES]; //Array of data length.
+    uint32_t         reh_num_entries; //number of data entries
+    uint32_t         reh_entry_sizes[RAFT_ENTRY_NUM_ENTRIES]; //Array of data length.
     //uint8_t        reh_ext_data_len_arr[]; //extended array of data length.
 };
 
@@ -374,7 +374,7 @@ struct raft_instance_backend
     int64_t (*rib_backend_checkpoint)(struct raft_instance *);
     int     (*rib_backend_recover)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
-                                const struct raft_net_sm_write_supplements *);
+                                struct raft_net_client_request_handle **rncr_arr);
 };
 
 enum raft_instance_newest_entry_hdr_types
@@ -470,13 +470,6 @@ struct raft_instance
     struct raft_recovery_handle     ri_recovery_handle;
 };
 
-struct raft_co_wr_info
-{
-    uint32_t     rc_nentries;
-    uint32_t     rc_total_data_len;
-    struct iovec rc_iovec[RAFT_ENTRY_NUM_ENTRIES];
-    char         rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
-};
 
 static inline struct raft_recovery_handle *
 raft_instance_2_recovery_handle(struct raft_instance *ri)
@@ -559,7 +552,7 @@ do {                                                                            
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                               \
     LOG_MSG(log_level,                                                        \
             "re@%p crc=%u size=%u nentries=%u idx=%ld term=%ld lcm=%hhx "fmt, \
-            (re), (re)->reh_crc, (re)->reh_data_size, (re)->reh_ndata_entries,\
+            (re), (re)->reh_crc, (re)->reh_data_size, (re)->reh_num_entries,  \
             (re)->reh_index, (re)->reh_term,                                  \
             (re)->reh_leader_change_marker , ##__VA_ARGS__)
 

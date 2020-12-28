@@ -170,7 +170,7 @@ rsbr_destroy(struct raft_instance *);
 
 static void
 rsbr_sm_apply_opt(struct raft_instance *,
-                  const struct raft_net_sm_write_supplements *);
+                  struct raft_net_client_request_handle **);
 
 static int
 rsbr_sync(struct raft_instance *);
@@ -563,11 +563,9 @@ rsb_sm_get_instance_uuid(struct raft_instance *ri)
 
 static void
 rsbr_sm_apply_opt(struct raft_instance *ri,
-                  const struct raft_net_sm_write_supplements *ws)
+                  struct raft_net_client_request_handle **rncr_arr)
 {
     NIOVA_ASSERT(ri);
-    if (!ws)
-        return;
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "idx=%ld cumu-crc=%x",
                       ri->ri_last_applied_idx,
@@ -582,8 +580,17 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
 
     rsb_sm_apply_add_last_applied_kv(rir, la_idx, la_crc);
 
+    size_t num_entries = sizeof(rncr_arr);
+    SIMPLE_LOG_MSG(LL_WARN, "Number of entries are: %ld", num_entries);
     // Attach any supplemental writes to the rocksdb-writebatch
-    rsbr_write_supplements_put(ws, rir->rir_writebatch);
+
+    for (uint32_t i = 0; i < num_entries; i++)
+    {
+        const struct raft_net_sm_write_supplements *ws = &rncr_arr[i]->rncr_sm_write_supp;
+        if (!ws)
+            continue;
+        rsbr_write_supplements_put(ws, rir->rir_writebatch);
+    }
 
     char *err = NULL;
 
