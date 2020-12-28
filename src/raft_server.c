@@ -4721,6 +4721,20 @@ raft_server_instance_init_tunables(struct raft_instance *ri)
 }
 
 static void
+raft_server_instance_restore_init_values(struct raft_instance *ri,
+                                         const struct raft_instance *save)
+{
+    if (!ri || !save)
+        return;
+
+    // Restore the recovery handle if this instance was bulk-recovered
+    ri->ri_successful_recovery = save->ri_successful_recovery;
+
+    // ignore_timerfd may have been set at startup
+    ri->ri_ignore_timerfd = save->ri_ignore_timerfd;
+}
+
+static void
 raft_server_instance_init(struct raft_instance *ri,
                           enum raft_instance_store_type type,
                           const char *raft_uuid_str,
@@ -4742,12 +4756,7 @@ raft_server_instance_init(struct raft_instance *ri,
     memset(ri, 0, sizeof(*ri));
     ri->ri_proc_state = RAFT_PROC_STATE_BOOTING;
 
-    // Restore the recovery handle if this instance was bulk-recovered
-    if (ri_save.ri_successful_recovery)
-    {
-        ri->ri_successful_recovery = true;
-        ri->ri_recovery_handle = ri_save.ri_recovery_handle;
-    }
+    raft_server_instance_restore_init_values(ri, &ri_save);
 
     raft_instance_backend_type_specify(ri, type);
 
