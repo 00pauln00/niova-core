@@ -142,7 +142,7 @@ rsbr_compile_time_asserts(void)
 
 static void
 rsbr_entry_write(struct raft_instance *, const struct raft_entry *,
-                 const struct raft_net_sm_write_supplements *);
+                 struct raft_net_client_request_handle *);
 
 static ssize_t
 rsbr_entry_read(struct raft_instance *, struct raft_entry *);
@@ -170,7 +170,8 @@ rsbr_destroy(struct raft_instance *);
 
 static void
 rsbr_sm_apply_opt(struct raft_instance *,
-                  struct raft_net_client_request_handle **);
+                  struct raft_net_client_request_handle *,
+                  uint32_t nentries);
 
 static int
 rsbr_sync(struct raft_instance *);
@@ -563,7 +564,8 @@ rsb_sm_get_instance_uuid(struct raft_instance *ri)
 
 static void
 rsbr_sm_apply_opt(struct raft_instance *ri,
-                  struct raft_net_client_request_handle **rncr_arr)
+                  struct raft_net_client_request_handle *rncr_arr,
+                  uint32_t num_entries)
 {
     NIOVA_ASSERT(ri);
 
@@ -580,13 +582,12 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
 
     rsb_sm_apply_add_last_applied_kv(rir, la_idx, la_crc);
 
-    size_t num_entries = sizeof(rncr_arr);
-    SIMPLE_LOG_MSG(LL_WARN, "Number of entries are: %ld", num_entries);
+    SIMPLE_LOG_MSG(LL_WARN, "Number of entries are: %u", num_entries);
     // Attach any supplemental writes to the rocksdb-writebatch
 
     for (uint32_t i = 0; i < num_entries; i++)
     {
-        const struct raft_net_sm_write_supplements *ws = &rncr_arr[i]->rncr_sm_write_supp;
+        const struct raft_net_sm_write_supplements *ws = &rncr_arr[i].rncr_sm_write_supp;
         if (!ws)
             continue;
         rsbr_write_supplements_put(ws, rir->rir_writebatch);
@@ -643,12 +644,13 @@ rsbr_entry_header_write_recovery_scrub(struct raft_instance *ri,
 
 static void
 rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
-                 const struct raft_net_sm_write_supplements *ws)
+                 struct raft_net_client_request_handle *rncr)
 {
     NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
 
     size_t entry_size = re->re_header.reh_data_size;
     raft_entry_idx_t entry_idx = re->re_header.reh_index;
+    const struct raft_entry_header *re_header = &re->re_header;
 
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
@@ -681,8 +683,18 @@ rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
     rocksdb_writebatch_put(rir->rir_writebatch, entry_key, entry_key_len,
                            entry_val, entry_size);
 
-    // Attach any supplemental writes to the rocksdb-writebatch
-    rsbr_write_supplements_put(ws, rir->rir_writebatch);
+    // XXX We should iterate over the rncr array and write all the
+    // write_supplements.
+    uint32_t nentries = re_header->reh_num_entries;
+
+    for (uint32_t i = 0; i < nentries; i++)
+    {
+        if (rncr == NULL)
+            continue;
+        const struct raft_net_sm_write_supplements *ws = &rncr[i].rncr_sm_write_supp;
+        // Attach any supplemental writes to the rocksdb-writebatch
+        rsbr_write_supplements_put(ws, rir->rir_writebatch);
+    }
 
     char *err = NULL;
     rocksdb_write(rir->rir_db,

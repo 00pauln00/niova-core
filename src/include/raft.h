@@ -359,7 +359,7 @@ struct raft_instance_backend
 {
     void    (*rib_entry_write)(struct raft_instance *,
                                const struct raft_entry *,
-                               const struct raft_net_sm_write_supplements *);
+                               struct raft_net_client_request_handle *rncr_arr);
     int     (*rib_entry_header_read)(struct raft_instance *,
                                      struct raft_entry_header *);
     ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
@@ -374,7 +374,8 @@ struct raft_instance_backend
     int64_t (*rib_backend_checkpoint)(struct raft_instance *);
     int     (*rib_backend_recover)(struct raft_instance *);
     void    (*rib_sm_apply_opt)(struct raft_instance *,
-                                struct raft_net_client_request_handle **rncr_arr);
+                                struct raft_net_client_request_handle *rncr_arr,
+                                uint32_t nentries);
 };
 
 enum raft_instance_newest_entry_hdr_types

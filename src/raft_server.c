@@ -58,6 +58,7 @@ struct raft_co_wr_info
     uint32_t     rc_nentries;
     uint32_t     rc_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
     size_t       rc_total_size;
+    struct raft_net_client_request_handle rc_rncr[RAFT_ENTRY_NUM_ENTRIES];
     char         rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
 };
 
@@ -772,11 +773,11 @@ raft_server_type_2_hist(struct raft_instance *ri,
 static void
 raft_server_entry_write_by_store(
     struct raft_instance *ri, const struct raft_entry *re,
-    const struct raft_net_sm_write_supplements *ws)
+    struct raft_net_client_request_handle *rncr)
 {
     NIOVA_TIMER_START(x);
 
-    ri->ri_backend->rib_entry_write(ri, re, ws);
+    ri->ri_backend->rib_entry_write(ri, re, rncr);
 
     NIOVA_TIMER_STOP_and_HIST_ADD(
         x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC));
@@ -800,7 +801,7 @@ raft_server_entry_write(struct raft_instance *ri,
                         uint32_t *entry_sizes,
                         const uint32_t nentries,
                         enum raft_write_entry_opts opts,
-                        const struct raft_net_sm_write_supplements *ws)
+                        struct raft_net_client_request_handle *rncr)
 {
     uint32_t total_size = raft_server_wr_entries_get_total_size(entry_sizes,
                                                                 nentries);
@@ -832,7 +833,7 @@ raft_server_entry_write(struct raft_instance *ri,
         (!raft_server_entry_next_entry_is_valid(ri, &re->re_header)), ri,
         "raft_server_entry_next_entry_is_valid() failed");
 
-    raft_server_entry_write_by_store(ri, re, ws);
+    raft_server_entry_write_by_store(ri, re, rncr);
 
     /* Following the successful writing and sync of the entry, copy the
      * header contents into the raft instance.   Note, this is a noop if the
@@ -2050,7 +2051,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              uint32_t *wr_entry_sizes,
                              const uint32_t nentries,
                              enum raft_write_entry_opts opts,
-                             const struct raft_net_sm_write_supplements *ws)
+                             struct raft_net_client_request_handle *rncr)
 {
     struct raft_entry_header unsync_hdr = {0};
     raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
@@ -2072,7 +2073,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                                "negative next-entry-idx=%ld", next_entry_idx);
 
     int rc = raft_server_entry_write(ri, next_entry_idx, term, data, wr_entry_sizes,
-                                     nentries, opts, ws);
+                                     nentries, opts, rncr);
     if (rc)
         DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
                           strerror(-rc));
@@ -2084,7 +2085,7 @@ raft_server_leader_write_new_entry(
     uint32_t *wr_entry_sizes,
     const uint32_t nentries,
     enum raft_write_entry_opts opts,
-    const struct raft_net_sm_write_supplements *ws)
+    struct raft_net_client_request_handle *rncr_list)
 {
 #if 1
     NIOVA_ASSERT(raft_instance_is_leader(ri));
@@ -2099,7 +2100,7 @@ raft_server_leader_write_new_entry(
      * rebuilding their log.
      */
     raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data,
-                                 wr_entry_sizes, nentries, opts, ws);
+                                 wr_entry_sizes, nentries, opts, rncr_list);
 
     // Schedule ourselves to send this entry to the other members
     RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_REMOTE_SEND);
@@ -2110,7 +2111,8 @@ raft_server_write_leader_change_marker(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_leader(ri));
 
-    raft_server_leader_write_new_entry(ri, NULL, 0, 1,
+    uint32_t size = 0;
+    raft_server_leader_write_new_entry(ri, NULL, &size, 1,
                                        RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER,
                                        NULL);
 }
@@ -2397,7 +2399,7 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 static bool
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
-    // XXX fix this
+    // XXX TBD
     //ssize_t rc = io_fd_drain(rs_co_wr_timerfd, NULL);
     //if (rc || re_coalesce_write == NULL)
     return false;
@@ -2410,7 +2412,7 @@ raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
                                        &re_co_wr_info.rc_entry_sizes[0],
                                        re_co_wr_info.rc_nentries,
                                        RAFT_WR_ENTRY_OPT_NONE,
-                                       NULL); //XXX pass correct sm_write_supp
+                                       &re_co_wr_info.rc_rncr[0]);
 
     struct itimerspec co_wr_timer = {0};
 
@@ -4064,7 +4066,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                                                &re_co_wr_info.rc_entry_sizes[0],
                                                re_co_wr_info.rc_nentries,
                                                RAFT_WR_ENTRY_OPT_NONE,
-                                               &rncr.rncr_sm_write_supp);
+                                               &re_co_wr_info.rc_rncr[0]);
             memset(&re_co_wr_info, 0, sizeof(re_co_wr_info));
         }
         raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
@@ -4260,13 +4262,14 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 
 static raft_server_epoll_sm_apply_t
 raft_server_sm_apply_opt(struct raft_instance *ri,
-                         struct raft_net_client_request_handle **rncr_arr)
+                         struct raft_net_client_request_handle *rncr_arr,
+                         uint32_t nentries)
 {
     NIOVA_ASSERT(ri && rncr_arr);
 
     if (ri->ri_backend->rib_sm_apply_opt)
         //ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
-        ri->ri_backend->rib_sm_apply_opt(ri, rncr_arr);
+        ri->ri_backend->rib_sm_apply_opt(ri, rncr_arr, nentries);
 }
 
 static raft_server_epoll_sm_apply_bool_t
@@ -4479,7 +4482,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
      * Called regardless of ri_server_sm_request_cb() error and only once
      * for the array of rncr.
      */
-    raft_server_sm_apply_opt(ri, &rncr_arr);
+    raft_server_sm_apply_opt(ri, &rncr_arr[0], sizeof(rncr_arr));
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
         if (!rc_arr[i] && raft_instance_is_leader(ri))
@@ -4518,7 +4521,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         raft_net_sm_write_supplement_destroy(&rncr_arr[i].rncr_sm_write_supp);
     
         if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
-            raft_net_client_request_handle_has_reply_info(&rncr_arr))
+            raft_net_client_request_handle_has_reply_info(&rncr_arr[i]))
             raft_server_reply_to_client(ri, &rncr_arr[i], NULL);
     }
 
