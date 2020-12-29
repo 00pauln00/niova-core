@@ -55,11 +55,11 @@ typedef void raft_server_sync_thread_ctx_t;
 
 struct raft_co_wr_info
 {
-    uint32_t     rc_nentries;
-    uint32_t     rc_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
-    size_t       rc_total_size;
+    uint32_t                              rc_nentries;
+    uint32_t                              rc_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
+    size_t                                rc_total_size;
     struct raft_net_client_request_handle rc_rncr[RAFT_ENTRY_NUM_ENTRIES];
-    char         rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
+    char                                  rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
 };
 
 static struct raft_co_wr_info re_co_wr_info = {0}; //coalesce write data information.
@@ -2393,34 +2393,51 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
     raft_server_append_entry_sender(ri, true);
 }
 
+static void
+raft_server_co_wr_timer_settime(struct raft_instance *ri)
+{
+    struct itimerspec co_wr_timer = {0};
+
+    msec_2_timespec(&co_wr_timer.it_value, 500);
+    co_wr_timer.it_interval = co_wr_timer.it_value;
+
+    int rc = timerfd_settime(rs_co_wr_timerfd, 0, &co_wr_timer, NULL);
+    if (rc)
+    {
+        rc = -errno;
+        DBG_RAFT_INSTANCE(LL_FATAL, ri, "timerfd_settime(): %s",
+                          strerror(-rc));
+    }
+}
+
+static void
+raft_server_write_coalesced_entries(struct raft_instance *ri)
+{
+    raft_server_leader_write_new_entry(ri, &re_co_wr_info.rc_buffer[0],
+                                       &re_co_wr_info.rc_entry_sizes[0],
+                                       re_co_wr_info.rc_nentries,
+                                       RAFT_WR_ENTRY_OPT_NONE,
+                                       &re_co_wr_info.rc_rncr[0]);
+    /* Reinit the rec_co_wr_info after writing coalesced entried to backend */
+    memset(&re_co_wr_info, 0, sizeof(re_co_wr_info));
+}
+
 /*
  * Write the coalesced writes if timer expired for it.
  */
 static bool
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
-    // XXX TBD
-    //ssize_t rc = io_fd_drain(rs_co_wr_timerfd, NULL);
-    //if (rc || re_coalesce_write == NULL)
-    return false;
+    ssize_t rc = io_fd_drain(rs_co_wr_timerfd, NULL);
+    if (rc || re_co_wr_info.rc_nentries == 0)
+        return false;
 
     SIMPLE_LOG_MSG(LL_WARN, "Write the data now after timer expired");
 
     /* Issue the pending wr */
-    
-    raft_server_leader_write_new_entry(ri, &re_co_wr_info.rc_buffer[0],
-                                       &re_co_wr_info.rc_entry_sizes[0],
-                                       re_co_wr_info.rc_nentries,
-                                       RAFT_WR_ENTRY_OPT_NONE,
-                                       &re_co_wr_info.rc_rncr[0]);
+    raft_server_write_coalesced_entries(ri);
 
-    struct itimerspec co_wr_timer = {0};
-
-    msec_2_timespec(&co_wr_timer.it_value, 50000);
-    int timer_rc = timerfd_settime(rs_co_wr_timerfd, 0, &co_wr_timer, NULL);
-    if (timer_rc)
-        return false;
-
+    raft_server_co_wr_timer_settime(ri);
     return true;
 }
 
@@ -3926,24 +3943,22 @@ raft_server_is_co_wr_buffer_full(const size_t len)
  */
 static void 
 raft_server_write_coalesce_entry(struct raft_instance *ri,
+                                 struct raft_net_client_request_handle *rncr,
                                  const char *data, const size_t len,
                                  const int64_t term,
                                  enum raft_write_entry_opts opts)
 {
-    struct itimerspec co_wr_timer = {0};
-
-    //XXX Do we want to reest the timer here?
-    msec_2_timespec(&co_wr_timer.it_value, 50000);
-    int rc = timerfd_settime(rs_co_wr_timerfd, 0, &co_wr_timer, NULL);
-    if (rc)
-        SIMPLE_LOG_MSG(LL_ERROR, "timerfs_settime failed");
-
-    /* Store the new entry at the free slot */
+    /* Store the new write entry at the free slot at re_co_wr_info */
     uint32_t nentries = re_co_wr_info.rc_nentries;
     re_co_wr_info.rc_entry_sizes[nentries] = len;
+    memcpy(&re_co_wr_info.rc_rncr[nentries], rncr,
+           sizeof(struct raft_net_client_request_handle));
     memcpy(re_co_wr_info.rc_buffer + re_co_wr_info.rc_total_size, data, len);
     re_co_wr_info.rc_nentries++;
     re_co_wr_info.rc_total_size += len;
+
+    /* reset the timer */
+    raft_server_co_wr_timer_settime(ri);
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -3978,6 +3993,18 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
         return;
+    }
+
+    /* Flush previously written entries if buffer is full or max number of
+     * entries are already written.
+     */
+    bool wr_to_backend = raft_server_is_co_wr_buffer_full(rcm->rcrm_data_size);
+    if (wr_to_backend)
+    {
+        /* Store the request as an entry in the Raft log.  Do not reply to
+         * the client until the write is committed and applied!
+         */
+        raft_server_write_coalesced_entries(ri);
     }
 
     struct raft_net_client_request_handle rncr;
@@ -4050,26 +4077,9 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         goto out1;
     }
 
-    /* Store the request as an entry in the Raft log.  Do not reply to
-     * the client until the write is committed and applied!
-     */
     if (rncr.rncr_write_raft_entry)
     {
-        bool wr_to_backend = raft_server_is_co_wr_buffer_full(rcm->rcrm_data_size);
-        if (wr_to_backend)
-        {
-            /*
-             * If the coalesced buffer is already full, write the data entries
-             * to backend first and then add the current entry to the buffer.
-             */
-            raft_server_leader_write_new_entry(ri, &re_co_wr_info.rc_buffer[0],
-                                               &re_co_wr_info.rc_entry_sizes[0],
-                                               re_co_wr_info.rc_nentries,
-                                               RAFT_WR_ENTRY_OPT_NONE,
-                                               &re_co_wr_info.rc_rncr[0]);
-            memset(&re_co_wr_info, 0, sizeof(re_co_wr_info));
-        }
-        raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
+        raft_server_write_coalesce_entry(ri, &rncr, rcm->rcrm_data,
                                          rcm->rcrm_data_size,
                                          ri->ri_log_hdr.rlh_term,
                                          RAFT_WR_ENTRY_OPT_NONE);
