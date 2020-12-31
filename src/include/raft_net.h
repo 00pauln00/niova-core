@@ -394,6 +394,7 @@ raft_net_instance_shutdown(struct raft_instance *ri);
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
                                   raft_net_timer_cb_t timer_fd_cb,
+                                  raft_net_timer_cb_t co_wr_timer_fd_cb,
                                   raft_net_cb_t client_recv_cb,
                                   raft_net_cb_t server_recv_cb);
 

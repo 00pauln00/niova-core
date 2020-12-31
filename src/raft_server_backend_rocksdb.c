@@ -142,7 +142,7 @@ rsbr_compile_time_asserts(void)
 
 static void
 rsbr_entry_write(struct raft_instance *, const struct raft_entry *,
-                 struct raft_net_client_request_handle *);
+                 struct raft_net_client_request_handle **);
 
 static ssize_t
 rsbr_entry_read(struct raft_instance *, struct raft_entry *);
@@ -644,7 +644,7 @@ rsbr_entry_header_write_recovery_scrub(struct raft_instance *ri,
 
 static void
 rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
-                 struct raft_net_client_request_handle *rncr)
+                 struct raft_net_client_request_handle **rncr_list)
 {
     NIOVA_ASSERT(ri && re && re->re_header.reh_index >= 0);
 
@@ -689,9 +689,11 @@ rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
 
     for (uint32_t i = 0; i < nentries; i++)
     {
-        if (rncr == NULL)
+        if (rncr_list == NULL)
             continue;
-        const struct raft_net_sm_write_supplements *ws = &rncr[i].rncr_sm_write_supp;
+
+        struct raft_net_client_request_handle *rncr = rncr_list[i];
+        const struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
         // Attach any supplemental writes to the rocksdb-writebatch
         rsbr_write_supplements_put(ws, rir->rir_writebatch);
     }

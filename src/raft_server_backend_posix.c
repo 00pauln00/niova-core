@@ -28,7 +28,7 @@ struct raft_instance_posix
 
 static void
 rsbp_entry_write(struct raft_instance *, const struct raft_entry *,
-                 const struct raft_net_sm_write_supplements *);
+                 struct raft_net_client_request_handle **);
 
 static ssize_t
 rsbp_entry_read(struct raft_instance *, struct raft_entry *);
@@ -154,7 +154,7 @@ rsbr_raft_entry_header_to_phys_offset(const struct raft_instance *ri,
 
 static void
 rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re,
-                 const struct raft_net_sm_write_supplements *unused)
+                 struct raft_net_client_request_handle **unused)
 {
     NIOVA_ASSERT(ri && re);
 

@@ -58,7 +58,7 @@ struct raft_co_wr_info
     uint32_t                              rc_nentries;
     uint32_t                              rc_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
     size_t                                rc_total_size;
-    struct raft_net_client_request_handle rc_rncr[RAFT_ENTRY_NUM_ENTRIES];
+    struct raft_net_client_request_handle *rc_rncr[RAFT_ENTRY_NUM_ENTRIES];
     char                                  rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
 };
 
@@ -773,7 +773,7 @@ raft_server_type_2_hist(struct raft_instance *ri,
 static void
 raft_server_entry_write_by_store(
     struct raft_instance *ri, const struct raft_entry *re,
-    struct raft_net_client_request_handle *rncr)
+    struct raft_net_client_request_handle **rncr)
 {
     NIOVA_TIMER_START(x);
 
@@ -801,7 +801,7 @@ raft_server_entry_write(struct raft_instance *ri,
                         uint32_t *entry_sizes,
                         const uint32_t nentries,
                         enum raft_write_entry_opts opts,
-                        struct raft_net_client_request_handle *rncr)
+                        struct raft_net_client_request_handle **rncr)
 {
     uint32_t total_size = raft_server_wr_entries_get_total_size(entry_sizes,
                                                                 nentries);
@@ -2051,7 +2051,7 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                              uint32_t *wr_entry_sizes,
                              const uint32_t nentries,
                              enum raft_write_entry_opts opts,
-                             struct raft_net_client_request_handle *rncr)
+                             struct raft_net_client_request_handle **rncr)
 {
     struct raft_entry_header unsync_hdr = {0};
     raft_instance_get_newest_header(ri, &unsync_hdr, RI_NEHDR_UNSYNC);
@@ -2085,7 +2085,7 @@ raft_server_leader_write_new_entry(
     uint32_t *wr_entry_sizes,
     const uint32_t nentries,
     enum raft_write_entry_opts opts,
-    struct raft_net_client_request_handle *rncr_list)
+    struct raft_net_client_request_handle **rncr_list)
 {
 #if 1
     NIOVA_ASSERT(raft_instance_is_leader(ri));
@@ -2417,7 +2417,13 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
                                        &re_co_wr_info.rc_entry_sizes[0],
                                        re_co_wr_info.rc_nentries,
                                        RAFT_WR_ENTRY_OPT_NONE,
-                                       &re_co_wr_info.rc_rncr[0]);
+                                       re_co_wr_info.rc_rncr);
+    for (uint32_t i = 0; i < re_co_wr_info.rc_nentries; i++)
+    {
+        struct raft_net_client_request_handle *rncr = re_co_wr_info.rc_rncr[i];
+        raft_net_sm_write_supplement_destroy(&rncr->rncr_sm_write_supp);
+        niova_free(rncr);
+    }
     /* Reinit the rec_co_wr_info after writing coalesced entried to backend */
     memset(&re_co_wr_info, 0, sizeof(re_co_wr_info));
 }
@@ -2442,10 +2448,29 @@ raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 }
 
 static raft_net_timerfd_cb_ctx_t
+raft_server_co_wr_timerfd_cb(struct raft_instance *ri)
+{
+    FUNC_ENTRY(LL_TRACE);
+
+    switch (ri->ri_state)
+    {
+    case RAFT_STATE_LEADER:
+    {
+        raft_server_leader_co_wr_timer_expired(ri);
+        break;
+    }
+    default:
+        break;
+    }
+
+    raft_server_co_wr_timer_settime(ri);
+}
+
+
+static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
     FUNC_ENTRY(LL_TRACE);
-    bool set_timer = true;
 
     switch (ri->ri_state)
     {
@@ -2456,11 +2481,7 @@ raft_server_timerfd_cb(struct raft_instance *ri)
 
     case RAFT_STATE_LEADER:
     {
-        // First check if coalescing write expired.
-        if (raft_server_leader_co_wr_timer_expired(ri))
-            set_timer = false;
-        else
-            raft_server_issue_heartbeat(ri);
+        raft_server_issue_heartbeat(ri);
         break;
     }
     default:
@@ -2469,8 +2490,7 @@ raft_server_timerfd_cb(struct raft_instance *ri)
 
 //XXX if leader and followers still have sync ops pending, wake up at a higher
 //    frequency
-    if (set_timer)
-        raft_server_timerfd_settime(ri);
+    raft_server_timerfd_settime(ri);
 }
 
 /**
@@ -3951,8 +3971,8 @@ raft_server_write_coalesce_entry(struct raft_instance *ri,
     /* Store the new write entry at the free slot at re_co_wr_info */
     uint32_t nentries = re_co_wr_info.rc_nentries;
     re_co_wr_info.rc_entry_sizes[nentries] = len;
-    memcpy(&re_co_wr_info.rc_rncr[nentries], rncr,
-           sizeof(struct raft_net_client_request_handle));
+
+    re_co_wr_info.rc_rncr[nentries] = rncr;
     memcpy(re_co_wr_info.rc_buffer + re_co_wr_info.rc_total_size, data, len);
     re_co_wr_info.rc_nentries++;
     re_co_wr_info.rc_total_size += len;
@@ -4007,9 +4027,10 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_server_write_coalesced_entries(ri);
     }
 
-    struct raft_net_client_request_handle rncr;
+    struct raft_net_client_request_handle *rncr =
+                niova_malloc(sizeof(struct raft_net_client_request_handle));
 
-    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, from,
+    raft_server_net_client_request_init_client_rpc(ri, rncr, rcm, from,
                                                    reply_buf,
                                                    RAFT_NET_MAX_RPC_SIZE);
 
@@ -4020,14 +4041,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message, rc=%d", rc);
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
+        raft_server_udp_client_deny_request(ri, rncr, csn, rc);
         goto out;
     }
 
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
-        raft_server_reply_to_client(ri, &rncr, csn);
+        raft_server_reply_to_client(ri, rncr, csn);
         goto out;
     }
 
@@ -4035,7 +4056,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
      * raft_net_sm_write_supplement_destroy() must be called before exiting
      * this function.
      */
-    raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+    raft_net_sm_write_supplement_init(&rncr->rncr_sm_write_supp);
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
@@ -4047,18 +4068,18 @@ raft_server_client_recv_handler(struct raft_instance *ri,
      * 4. SM processes a read request, returning the requested application
      *    data.
      */
-    int cb_rc = ri->ri_server_sm_request_cb(&rncr);
+    int cb_rc = ri->ri_server_sm_request_cb(rncr);
 
-    // rncr.rncr_type was set by the callback!
-    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
+    // rncr->rncr_type was set by the callback!
+    bool write_op = rncr->rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;
 
     enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
 
     DBG_RAFT_CLIENT_RPC(log_level, rcm,
                         "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
-                        write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
-                        strerror(-rncr.rncr_op_error), strerror(-cb_rc));
+                        write_op, rncr->rncr_write_raft_entry ? "yes" : "no",
+                        strerror(-rncr->rncr_op_error), strerror(-cb_rc));
 
     /* Callback's with error are only logged.  There are no client replies
      * or raft operations which will occur.
@@ -4073,26 +4094,29 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     rc = raft_server_may_accept_client_request(ri);
     if (rc)
     {
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
+        raft_server_udp_client_deny_request(ri, rncr, csn, rc);
         goto out1;
     }
 
-    if (rncr.rncr_write_raft_entry)
+    if (rncr->rncr_write_raft_entry)
     {
-        raft_server_write_coalesce_entry(ri, &rncr, rcm->rcrm_data,
+        raft_server_write_coalesce_entry(ri, rncr, rcm->rcrm_data,
                                          rcm->rcrm_data_size,
                                          ri->ri_log_hdr.rlh_term,
                                          RAFT_WR_ENTRY_OPT_NONE);
+        goto out;
     }
 
     /* Read operation or an already committed + applied write
      * operation.
      */
     else
-        raft_server_reply_to_client(ri, &rncr, csn);
+        raft_server_reply_to_client(ri, rncr, csn);
 
 out1:
-    raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
+    //XXX this should happen later.
+    raft_net_sm_write_supplement_destroy(&rncr->rncr_sm_write_supp);
+    niova_free(rncr);
 out:
     if (csn)
         ctl_svc_node_put(csn);
@@ -4278,7 +4302,6 @@ raft_server_sm_apply_opt(struct raft_instance *ri,
     NIOVA_ASSERT(ri && rncr_arr);
 
     if (ri->ri_backend->rib_sm_apply_opt)
-        //ri->ri_backend->rib_sm_apply_opt(ri, &rncr->rncr_sm_write_supp);
         ri->ri_backend->rib_sm_apply_opt(ri, rncr_arr, nentries);
 }
 
@@ -4804,6 +4827,7 @@ raft_server_instance_init(struct raft_instance *ri,
     /* Assign the timer_fd and udp_recv callbacks.
      */
     raft_net_instance_apply_callbacks(ri, raft_server_timerfd_cb,
+                                      raft_server_co_wr_timerfd_cb,
                                       raft_server_client_recv_handler,
                                       raft_server_peer_recv_handler);
 }

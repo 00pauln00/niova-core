@@ -996,6 +996,22 @@ raft_net_epoll_setup_timerfd(struct raft_instance *ri)
     return raft_net_epoll_handle_add(ri, ri->ri_timer_fd, raft_net_timerfd_cb);
 }
 
+raft_net_timerfd_cb_ctx_t
+raft_net_co_wr_timerfd_cb(const struct epoll_handle *, uint32_t);
+
+static int
+raft_net_epoll_co_wr_setup_timerfd(struct raft_instance *ri)
+{
+    if (!ri ||
+        (!raft_instance_is_client(ri) && !ri->ri_co_wr_timer_fd_cb))
+        return -EINVAL; // Servers must have specified ri_timer_fd_cb
+
+    else if (!ri->ri_co_wr_timer_fd_cb)
+        return 0;
+
+    return raft_net_epoll_handle_add(ri, ri->ri_co_wr_timer_fd, raft_net_co_wr_timerfd_cb);
+}
+
 static int
 raft_net_epoll_setup(struct raft_instance *ri)
 {
@@ -1009,6 +1025,10 @@ raft_net_epoll_setup(struct raft_instance *ri)
     /* Add the timerfd to the epoll_mgr.
      */
     rc = raft_net_epoll_setup_timerfd(ri);
+
+    /* Add the coalesce write timerfd to the poll_msg.
+     */
+    rc = raft_net_epoll_co_wr_setup_timerfd(ri);
 
     rc = raft_epoll_setup_net(ri);
 
@@ -2032,6 +2052,24 @@ raft_net_timerfd_cb(const struct epoll_handle *eph, uint32_t events)
         ri->ri_timer_fd_cb(ri);
 }
 
+raft_net_timerfd_cb_ctx_t
+raft_net_co_wr_timerfd_cb(const struct epoll_handle *eph, uint32_t events)
+{
+    struct raft_instance *ri = eph->eph_arg;
+
+    ssize_t rc = io_fd_drain(ri->ri_co_wr_timer_fd, NULL);
+    if (rc)
+    {
+        // Something went awry with the timerfd read.
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "io_fd_drain(): %zd", rc);
+        return;
+    }
+
+    if (ri->ri_co_wr_timer_fd_cb)
+        ri->ri_co_wr_timer_fd_cb(ri);
+}
+
+
 static enum raft_udp_listen_sockets
 raft_net_udp_identify_socket(const struct raft_instance *ri, const int fd)
 {
@@ -2330,12 +2368,14 @@ raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws)
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
                                   raft_net_timer_cb_t timer_fd_cb,
+                                  raft_net_timer_cb_t co_wr_timer_fd_cb,
                                   raft_net_cb_t client_recv_cb,
                                   raft_net_cb_t server_recv_cb)
 {
     NIOVA_ASSERT(ri);
 
     ri->ri_timer_fd_cb = timer_fd_cb;
+    ri->ri_co_wr_timer_fd_cb = co_wr_timer_fd_cb;
     ri->ri_client_recv_cb = client_recv_cb;
     ri->ri_server_recv_cb = server_recv_cb;
 }

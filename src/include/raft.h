@@ -359,7 +359,7 @@ struct raft_instance_backend
 {
     void    (*rib_entry_write)(struct raft_instance *,
                                const struct raft_entry *,
-                               struct raft_net_client_request_handle *rncr_arr);
+                               struct raft_net_client_request_handle **rncr_arr);
     int     (*rib_entry_header_read)(struct raft_instance *,
                                      struct raft_entry_header *);
     ssize_t (*rib_entry_read)(struct raft_instance *, struct raft_entry *);
@@ -428,6 +428,7 @@ struct raft_instance
     enum raft_follower_reasons      ri_follower_reason;
     int                             ri_startup_error;
     int                             ri_timer_fd;
+    int                             ri_co_wr_timer_fd;
     char                            ri_log[PATH_MAX + 1];
     struct raft_log_header          ri_log_hdr;
     int64_t                         ri_commit_idx;
@@ -451,6 +452,7 @@ struct raft_instance
     uint32_t                        ri_election_timeout_max_ms;
     uint32_t                        ri_heartbeat_freq_per_election_min;
     raft_net_timer_cb_t             ri_timer_fd_cb;
+    raft_net_timer_cb_t             ri_co_wr_timer_fd_cb;
     raft_net_cb_t                   ri_client_recv_cb;
     raft_net_cb_t                   ri_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;

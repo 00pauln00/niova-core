@@ -2415,6 +2415,7 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     raft_client_instance_init(rci, ri, obj_id_cb);
 
     raft_net_instance_apply_callbacks(ri, raft_client_timerfd_cb,
+                                      NULL,
                                       raft_client_recv_handler,
                                       raft_client_recv_handler);
 
