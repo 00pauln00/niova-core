@@ -1379,7 +1379,7 @@ main(int argc, char **argv)
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = my_uuid_str;
 
-    raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb, rsc_recv_handler,
+    raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb, NULL, rsc_recv_handler,
                                       rsc_recv_handler);
 
     int rc = raft_net_instance_startup(ri, true);
