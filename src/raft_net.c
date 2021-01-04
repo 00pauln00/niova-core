@@ -244,7 +244,7 @@ raft_net_lreg_set_max_scan_entries(struct raft_instance *ri,
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
-        long long tmp;
+        long long tmp = 0;
         int rc = niova_string_to_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
         if (rc)
             return rc;
@@ -278,7 +278,7 @@ raft_net_lreg_set_log_reap_factor(struct raft_instance *ri,
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
-        unsigned long long tmp;
+        unsigned long long tmp = 0;
         int rc =
             niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
 
@@ -317,7 +317,7 @@ raft_net_lreg_set_num_checkpoints(struct raft_instance *ri,
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
-        unsigned long long tmp;
+        unsigned long long tmp = 0;
         int rc =
             niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
 
