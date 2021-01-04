@@ -20,7 +20,7 @@ jobs:
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
 # default build
-    - make: prepare.sh
+    - name: prepare typical build
       run: ./prepare.sh
     - name: configure
       run: ./configure
@@ -31,7 +31,7 @@ jobs:
 # asan build
     - name: distclean
       run: make distclean
-    - make: prepare.sh
+    - name: prepare address sanitizer build
       run: ./prepare.sh
     - name: configure with address-sanitizer
       run: ./configure --enable-asan --enable-devel
@@ -42,7 +42,7 @@ jobs:
 # clang build
     - name: distclean
       run: make distclean
-    - make: prepare.sh
+    - name: prepare clang build
       run: ./prepare.sh
     - name: configure CC=clang
       run: ./configure CC=clang
