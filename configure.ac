@@ -60,6 +60,9 @@ AC_CHECK_HEADERS([stdlib.h], [],
 AC_CHECK_HEADERS([uuid/uuid.h], [],
                  [AC_MSG_ERROR([failed to locate uuid/uuid.h])], [])
 
+# rocksdb
+AC_CHECK_HEADERS([rocksdb/c.h], [],
+                 [AC_MSG_ERROR([failed to locate rocksdb/c.h])], [])
 
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STAT
@@ -85,10 +88,12 @@ AC_FUNC_STAT
 AC_FUNC_STRERROR_R
 AC_FUNC_STRFTIME
 AC_FUNC_VPRINTF
-AC_CHECK_FUNCS([endpwent ftruncate getcwd gethostbyname inet_ntoa localtime_r memmove memset mkdir munmap putenv rmdir setrlimit socket strcasecmp strchr strcspn strdup strerror strncasecmp strpbrk strrchr strstr strtol tzset])
+AC_CHECK_FUNCS([endpwent ftruncate getcwd gethostbyname inet_ntoa localtime_r memmove memset mkdir munmap putenv realloc rmdir setrlimit socket strcasecmp strchr strcspn strdup strerror strncasecmp strpbrk strrchr strstr strtol tzset])
 
 # These functions are *required* without option.
 AC_CHECK_FUNCS([clock_gettime], [], AC_MSG_ERROR([unable to locate required symbol clock_gettime]))
+AC_CHECK_FUNCS([reallocarray], [], AC_MSG_ERROR([unable to locate required symbol reallocarray]))
+
 # libuuid
 AC_CHECK_LIB([uuid],[uuid_compare],,
              [AC_MSG_ERROR([Could not find uuid_compare])])
@@ -96,6 +101,16 @@ AC_CHECK_LIB([uuid],[uuid_compare],,
 #pthread
 AC_CHECK_LIB([pthread],[pthread_join],,
              [AC_MSG_ERROR([Could not find pthread_join])])
+
+#rocksdb
+AC_CHECK_LIB([rocksdb],[rocksdb_writebatch_delete_range],,
+             [AC_MSG_ERROR([Could not find rocksdb_writebatch_delete_range])])
+AC_CHECK_LIB([rocksdb],[rocksdb_delete_file_in_range],,
+             [AC_MSG_ERROR([rocksdb_delete_file_in_range])])
+AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_create],,
+             [AC_MSG_ERROR([rocksdb_checkpoint_object_create])])
+AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_destroy],,
+             [AC_MSG_ERROR([rocksdb_checkpoint_object_destroy])])
 
 AC_ARG_ENABLE(
     [asan],
