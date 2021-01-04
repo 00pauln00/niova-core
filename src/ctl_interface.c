@@ -170,6 +170,7 @@ lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
         if (!(event->mask & IN_ISDIR))
         {
             struct ctli_cmd_handle cch = {
+                .ctlih_reg_user_type = LREG_USER_TYPE_ANY,
                 .ctlih_input_dirfd = lctli->lctli_input_dirfd,
                 .ctlih_output_dirfd = lctli->lctli_output_dirfd,
                 .ctlih_input_file_name = event->name
