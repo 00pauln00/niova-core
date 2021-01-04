@@ -19,6 +19,11 @@ jobs:
       run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+# capture gcc and clang versions
+    - name: gcc version
+      run: gcc --version
+    - name: clang version
+      run: clang --version
 # default build
     - name: prepare default build
       run: ./prepare.sh
