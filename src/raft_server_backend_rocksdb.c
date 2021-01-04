@@ -1814,7 +1814,7 @@ rsbr_bulk_recover_xfer_rsync_cb(const char *output, size_t len, void *arg)
 
         return 0; // non-match is ok
     }
-    unsigned long long val;
+    unsigned long long val = 0;
 
     rc = niova_parse_comma_delimited_uint_string(output, len, &val);
     if (rc)

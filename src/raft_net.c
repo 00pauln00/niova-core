@@ -15,6 +15,7 @@
 
 #include "alloc.h"
 #include "crc32.h"
+#include "ctl_interface.h"
 #include "ctl_svc.h"
 #include "ctor.h"
 #include "epoll_mgr.h"
@@ -243,7 +244,7 @@ raft_net_lreg_set_max_scan_entries(struct raft_instance *ri,
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
-        long long tmp;
+        long long tmp = 0;
         int rc = niova_string_to_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
         if (rc)
             return rc;
@@ -277,7 +278,7 @@ raft_net_lreg_set_log_reap_factor(struct raft_instance *ri,
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
-        unsigned long long tmp;
+        unsigned long long tmp = 0;
         int rc =
             niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
 
@@ -316,7 +317,7 @@ raft_net_lreg_set_num_checkpoints(struct raft_instance *ri,
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
-        unsigned long long tmp;
+        unsigned long long tmp = 0;
         int rc =
             niova_string_to_unsigned_long_long(LREG_VALUE_TO_IN_STR(lv), &tmp);
 
@@ -2344,8 +2345,8 @@ static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
     FUNC_ENTRY(LL_NOTIFY);
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_info);
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(raft_net_bulk_recovery_info);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);

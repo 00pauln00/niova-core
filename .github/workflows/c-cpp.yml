@@ -13,30 +13,56 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-#    - name: configure
-#      run: ./configure
     - name: apt update
       run: sudo apt update
     - name: dpkg / rpm prep (debug)
       run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+# capture gcc and clang versions
+    - name: gcc version
+      run: gcc --version
+    - name: clang version
+      run: clang --version
+# default build
+    - name: prepare default build
+      run: ./prepare.sh
+    - name: configure
+      run: ./configure
     - name: make
       run: make -j 4
-    - name: make check
+    - name: make check (default)
       run: make check
-    - name: clean
-      run: make clean
-    - name: make asan-check
-      run: make asan-check
+# asan build
+    - name: distclean
+      run: make distclean
+    - name: prepare address sanitizer build
+      run: ./prepare.sh
+    - name: configure with address-sanitizer
+      run: ./configure --enable-asan --enable-devel
+    - name: make
+      run: make -j 4
+    - name: make check (asan)
+      run: make check
+# clang build
+    - name: distclean
+      run: make distclean
+    - name: prepare clang build
+      run: ./prepare.sh
+    - name: configure CC=clang
+      run: ./configure CC=clang
+    - name: make
+      run: make -j 4
+    - name: make check (clang)
+      run: make check
+# other targets
     - name: uncrustify version (debug)
       run: uncrustify -v
     - name: make autofmt-check
       run: make autofmt-check
-    - name: clean
-      run: make clean
-    - name: make clang-strict
-      run: make clang-strict
+# gather some system stats
+    - name: memory
+      run: free
     - name: net
       run: ip a
     - name: disk

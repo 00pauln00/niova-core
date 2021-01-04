@@ -21,6 +21,7 @@
 #include "io.h"
 #include "log.h"
 #include "random.h"
+#include "registry.h"
 #include "util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -86,6 +87,7 @@ struct ctlic_file
 
 struct ctlic_request
 {
+    enum lreg_user_types         cr_reg_user_type;
     size_t                       cr_num_matched_tokens;
     size_t                       cr_current_token;
     size_t                       cr_output_byte_cnt;
@@ -1445,9 +1447,8 @@ ctlic_scan_registry(struct ctlic_request *cr)
 
     DBG_CITER(LL_DEBUG, &citer, "start");
 
-    int rc =
-        lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn_root,
-                              &citer.citer_lv);
+    int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_GET_NAME, lrn_root,
+                                   &citer.citer_lv);
     if (rc)
         return;
 
@@ -1470,7 +1471,7 @@ ctlic_scan_registry(struct ctlic_request *cr)
         if (cmt->cmt_token->ct_id == CT_ID_GET ||
             cmt->cmt_token->ct_id == CT_ID_WHERE)
             lreg_node_walk(lrn_root, ctlic_scan_registry_cb,
-                           (void *)&citer, 1, LREG_USER_TYPE_ANY);
+                           (void *)&citer, 1, cr->cr_reg_user_type);
     }
 
     ctlic_scan_registry_cb_output_writer(&citer);
@@ -1482,10 +1483,9 @@ ctlic_process_request(const struct ctli_cmd_handle *cch)
     if (!cch || !cch->ctlih_input_file_name || cch->ctlih_output_dirfd < 0)
         return -EINVAL;
 
-    struct ctlic_request cr = {0};
+    struct ctlic_request cr = {.cr_reg_user_type = cch->ctlih_reg_user_type};
 
     int rc = ctlic_open_and_read_input_file(cch, &cr);
-
     if (rc)
     {
         LOG_MSG(LL_NOTIFY, "ctlic_open_and_read_input_file(`%s'): %s",

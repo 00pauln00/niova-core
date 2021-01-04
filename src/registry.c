@@ -365,39 +365,6 @@ lreg_node_recurse(const char *registry_path)
     return rc;
 }
 
-#if 0
-static lreg_install_int_ctx_t
-lreg_node_install_check_passes_wrlocked(const struct lreg_node *child,
-                                        const struct lreg_node *parent)
-{
-    /* Grab the name of the child object.
-     */
-    struct lreg_value child_val;
-    int rc = child->lrn_cb(LREG_NODE_CB_OP_GET_NAME,
-                           (struct lreg_node *)child, &child_val);
-    if (rc)
-        return rc;
-
-    struct lreg_node *sibling = NULL;
-
-    //XXx do we care about naming collisions here?
-    CIRCLEQ_FOREACH(sibling, &parent->lrn_head, lrn_lentry)
-    {
-        struct lreg_value sibling_val;
-
-        rc = sibling->lrn_cb(LREG_NODE_CB_OP_GET_NAME,
-                             (struct lreg_node *)sibling, &child_val);
-        NIOVA_ASSERT(!rc); // Bogus entries should not be here.
-
-        if (!strncmp(sibling_val.lrv_string, child_val.lrv_string,
-                     LREG_VALUE_STRING_MAX))
-            return -EEXIST;
-    }
-
-    return 0;
-}
-#endif
-
 static lreg_install_bool_ctx_t
 lreg_parent_may_accept_child(struct lreg_node *child, struct lreg_node *parent)
 {
@@ -432,8 +399,6 @@ lreg_node_install_internal(struct lreg_node *child)
      */
     if (child->lrn_statically_allocated)
         CIRCLEQ_INIT(&child->lrn_head);
-
-    //int rc = lreg_node_install_check_passes_wrlocked(child, parent);
 
     int rc = child->lrn_may_destroy ?
         -ESTALE :
@@ -748,6 +713,32 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 
     lreg_process_install_queue();
     lreg_process_remove_queue();
+}
+
+#define LREG_NODE_INSTALL_COMPLETION_WAIT_USEC 30000000
+lreg_install_int_ctx_t
+lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
+{
+    if (!lrn)
+        return -EINVAL;
+
+    if (lreg_node_is_installed(lrn) != install)
+    {
+        if ((init_ctx() || lreg_thread_ctx() || lrn->lrn_inlined_member))
+            DBG_LREG_NODE(LL_FATAL, (struct lreg_node *)lrn,
+                          "invalid installation or removal context");
+
+        for (int i = 0; i < LREG_NODE_INSTALL_COMPLETION_WAIT_USEC; i++)
+        {
+            if (lreg_node_is_installed(lrn) == install)
+                return 0;
+            else
+                usleep(1);
+        }
+        return -ETIMEDOUT;
+    }
+
+    return 0;
 }
 
 bool
