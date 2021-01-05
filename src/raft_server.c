@@ -3392,27 +3392,38 @@ raft_server_try_update_follower_sync_idx(
     const struct raft_rpc_msg *rrm =
 	OFFSET_CAST(raft_rpc_msg, rrm_append_entries_reply, raerp);
 
-    /* Adjust the ack'd index - we now know that the follower's log
-     * contains this entry and at the proper term.
-     */
-    if (rfi->rfi_ackd_idx < raerp->raerpm_prev_log_index)
-        rfi->rfi_ackd_idx = raerp->raerpm_prev_log_index;
-
-    if (rfi->rfi_synced_idx < raerp->raerpm_synced_log_index)
-    {
-        rfi->rfi_synced_idx = raerp->raerpm_synced_log_index;
-
-        DBG_RAFT_MSG(LL_DEBUG, rrm, "new-sync-idx=%ld", rfi->rfi_synced_idx);
-
-        // if this request increases the remote's rfi_synced_idx..
-        raft_server_leader_try_advance_commit_idx(ri);
-    }
-    else if (rfi->rfi_synced_idx > rfi->rfi_next_idx)
+    if (rfi->rfi_synced_idx > rfi->rfi_next_idx)
     {
         DBG_RAFT_MSG(LL_DEBUG, rrm,
                      "next-idx=%ld > syncd-idx=%ld (ackd-idx=%ld)",
                      rfi->rfi_next_idx, rfi->rfi_synced_idx,
                      rfi->rfi_ackd_idx);
+    }
+    else
+    {
+        bool ackd_or_syncd_advanced = false;
+        /* Adjust the ack'd index - we now know that the follower's log
+         * contains this entry and at the proper term.
+         */
+        if (rfi->rfi_ackd_idx < (raerp->raerpm_prev_log_index + 1))
+        {
+            rfi->rfi_ackd_idx = raerp->raerpm_prev_log_index + 1;
+            ackd_or_syncd_advanced = true;
+        }
+
+        if (rfi->rfi_synced_idx < raerp->raerpm_synced_log_index)
+        {
+            rfi->rfi_synced_idx = raerp->raerpm_synced_log_index;
+
+            DBG_RAFT_MSG(LL_DEBUG, rrm, "new-sync-idx=%ld",
+                         rfi->rfi_synced_idx);
+
+            // if this request increases the remote's rfi_synced_idx..
+            ackd_or_syncd_advanced = true;
+        }
+
+        if (ackd_or_syncd_advanced)
+            raft_server_leader_try_advance_commit_idx(ri);
     }
 }
 

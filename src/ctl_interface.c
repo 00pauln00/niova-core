@@ -170,6 +170,7 @@ lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
         if (!(event->mask & IN_ISDIR))
         {
             struct ctli_cmd_handle cch = {
+                .ctlih_reg_user_type = LREG_USER_TYPE_ANY,
                 .ctlih_input_dirfd = lctli->lctli_input_dirfd,
                 .ctlih_output_dirfd = lctli->lctli_output_dirfd,
                 .ctlih_input_file_name = event->name
@@ -353,7 +354,8 @@ lctli_setup_inotify_path(struct ctl_interface *lctli)
 }
 
 static init_ctx_int_t
-lctli_process_init_subdir(struct ctl_interface *lctli)
+lctli_process_init_subdir(struct ctl_interface *lctli,
+                          enum lreg_user_types reg_type)
 {
     if (!lctli)
         return -EINVAL;
@@ -401,12 +403,14 @@ lctli_process_init_subdir(struct ctl_interface *lctli)
             continue;
         }
 
-        SIMPLE_LOG_MSG(LL_DEBUG, "processing dentry=%s", dent->d_name);
+        SIMPLE_LOG_MSG(LL_DEBUG, "processing dentry=%s type=%d",
+                       dent->d_name, reg_type);
 
         struct ctli_cmd_handle cch = {
             .ctlih_input_dirfd = init_subdir_fd,
             .ctlih_output_dirfd = lctli->lctli_output_dirfd,
             .ctlih_input_file_name = dent->d_name,
+            .ctlih_reg_user_type = reg_type,
         };
 
         lctli_process_request(lctli, &cch);
@@ -577,6 +581,29 @@ lctli_subsystem_init(void)
 }
 
 /**
+ * lctli_init_subdir_rescan - this function is used by modules which have been
+ *    started after init_ctx has completed.
+ * @reg_type: the type of registry node to process.  Note that the special
+ *    types, NONE and ANY, are not allowed since this function expects to
+ *    process ctl-interface cmds for a specific module.
+ */
+int
+lctli_init_subdir_rescan(enum lreg_user_types reg_type)
+{
+    if (reg_type == LREG_USER_TYPE_ANY || reg_type == LREG_USER_TYPE_NONE)
+        return -EINVAL;
+
+    struct ctl_interface *lctli = &localCtlIf[LCTLI_DEFAULT_IDX];
+
+    int rc = lctli_process_init_subdir(lctli, reg_type);
+    if (rc)
+        LOG_MSG(LL_WARN, "lctli_process_init_subdir(): %s (path=%s)",
+                strerror(-rc), lctli->lctli_path);
+
+    return rc;
+}
+
+/**
  * lctli_subsystem_enable - this scans the init/ subdir towards the end of the
  *    init context.  This is to give an opportunity for subsystem to have
  *    installed their registry hooks before the init/ scan is run.
@@ -586,7 +613,7 @@ lctli_subsystem_enable(void)
 {
     struct ctl_interface *lctli = &localCtlIf[LCTLI_DEFAULT_IDX];
 
-    int rc = lctli_process_init_subdir(lctli);
+    int rc = lctli_process_init_subdir(lctli, LREG_USER_TYPE_ANY);
     FATAL_IF(rc, "lctli_process_init_subdir(): %s (path=%s)",
              strerror(-rc), lctli->lctli_path);
 }

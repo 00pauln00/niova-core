@@ -687,6 +687,17 @@ do {                                                               \
         !lreg_node_install(&childEntry__##name, LREG_ROOT_ENTRY_PTR(name))); \
 } while (0)
 
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(name)                    \
+do {                                                               \
+    LREG_ROOT_ENTRY_INSTALL(name);                              \
+                                                                \
+    NIOVA_ASSERT(                                                       \
+        !lreg_node_install(&childEntry__##name, LREG_ROOT_ENTRY_PTR(name))); \
+    lreg_node_wait_for_completion(&childEntry__##name, true);           \
+    NIOVA_ASSERT(                                                       \
+        !lctli_init_subdir_rescan(childEntry__##name.lrn_user_type));   \
+} while (0)
+
 #define LREG_ROOT_OBJECT_ENTRY_REMOVE(name)                    \
 do {                                                               \
     LREG_ROOT_ENTRY_INSTALL(name);                              \
@@ -965,5 +976,8 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
 
 bool
 lreg_thread_ctx(void);
+
+lreg_install_int_ctx_t
+lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install);
 
 #endif //_REGISTRY_H
