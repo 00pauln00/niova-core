@@ -3277,9 +3277,9 @@ raft_server_try_update_follower_sync_idx(
         /* Adjust the ack'd index - we now know that the follower's log
          * contains this entry and at the proper term.
          */
-        if (rfi->rfi_ackd_idx < (raerp->raerpm_prev_log_index + 1))
+        if (rfi->rfi_ackd_idx < (rfi->rfi_next_idx - 1))
         {
-            rfi->rfi_ackd_idx = raerp->raerpm_prev_log_index + 1;
+            rfi->rfi_ackd_idx = rfi->rfi_next_idx - 1;
             ackd_or_syncd_advanced = true;
         }
 
