@@ -112,7 +112,7 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
     uint32_t raerqm_this_idx_crc;
-    uint16_t raerqm_entries_sz;
+    uint32_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint32_t raerqm_num_entries;
@@ -188,10 +188,9 @@ struct raft_entry_header
     raft_entry_idx_t reh_index;
     int64_t          reh_term; // Term in which entry was originally written
     uuid_t           reh_raft_uuid; // UUID of raft instance
-    uint8_t          reh_leader_change_marker; // noop
     uint32_t         reh_num_entries; //number of data entries
     uint32_t         reh_entry_sizes[RAFT_ENTRY_NUM_ENTRIES]; //Array of data length.
-    //uint8_t        reh_ext_data_len_arr[]; //extended array of data length.
+    uint8_t          reh_leader_change_marker; // noop
 };
 
 struct raft_entry

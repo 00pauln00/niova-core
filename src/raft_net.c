@@ -1004,7 +1004,7 @@ raft_net_epoll_co_wr_setup_timerfd(struct raft_instance *ri)
 {
     if (!ri ||
         (!raft_instance_is_client(ri) && !ri->ri_co_wr_timer_fd_cb))
-        return -EINVAL; // Servers must have specified ri_timer_fd_cb
+        return -EINVAL;
 
     else if (!ri->ri_co_wr_timer_fd_cb)
         return 0;
@@ -1022,16 +1022,14 @@ raft_net_epoll_setup(struct raft_instance *ri)
     if (rc)
         return rc;
 
-    /* Add the timerfd to the epoll_mgr.
-     */
-    rc = raft_net_epoll_setup_timerfd(ri);
-
-    /* Add the coalesce write timerfd to the poll_msg.
-     */
-    rc = raft_net_epoll_co_wr_setup_timerfd(ri);
+    /* Add the normal timerfd and coalesc write timerfd to the epoll_mgs */
+    if (raft_net_epoll_setup_timerfd(ri) ||
+        raft_net_epoll_co_wr_setup_timerfd(ri))
+        goto out;
 
     rc = raft_epoll_setup_net(ri);
 
+out:
     if (rc)
         raft_net_epoll_cleanup(ri);
 

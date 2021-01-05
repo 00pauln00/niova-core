@@ -53,17 +53,20 @@ typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
 
 
+/*
+ * coalesced write information stored on the leader.
+ */
 struct raft_co_wr_info
 {
-    uint32_t                              rc_nentries;
-    uint32_t                              rc_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
-    size_t                                rc_total_size;
-    struct raft_net_client_request_handle *rc_rncr[RAFT_ENTRY_NUM_ENTRIES];
-    char                                  rc_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
+    uint32_t                              rcwi_nentries;
+    uint32_t                              rcwi_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
+    size_t                                rcwi_total_size;
+    struct raft_net_client_request_handle *rcwi_rncr[RAFT_ENTRY_NUM_ENTRIES];
+    char                                  rcwi_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
+    int                                   rcwi_timerfd;
 };
 
 static struct raft_co_wr_info re_co_wr_info = {0}; //coalesce write data information.
-static int rs_co_wr_timerfd = -1;
 
 typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
@@ -2015,7 +2018,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
      */
     rls->rls_initial_term_idx = sync_hdr.reh_index;
 
-    rs_co_wr_timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+    re_co_wr_info.rcwi_timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 
     for (raft_peer_t i = 0; i < num_raft_peers; i++)
     {
@@ -2038,8 +2041,8 @@ raft_server_leader_init_state(struct raft_instance *ri)
  * @ri:  raft-instance pointer
  * @term:  term in which the entry was originally written - which may not be
  *    the current term.
- * @wr_entries:  array of iovec storing len and data pointer.
- * @total_data_len:  length of all the data entries.
+ * @wr_entry_sizes:  array of entry sizes.
+ * @nentries: Number of entries in the raft header.
  * @opts:  options flags
  * @ws:  write supplements - currently, only used on the leader in entry_write
  *    context, however, both leaders and followers may make use of write-supp
@@ -2401,7 +2404,7 @@ raft_server_co_wr_timer_settime(struct raft_instance *ri)
     msec_2_timespec(&co_wr_timer.it_value, 500);
     co_wr_timer.it_interval = co_wr_timer.it_value;
 
-    int rc = timerfd_settime(rs_co_wr_timerfd, 0, &co_wr_timer, NULL);
+    int rc = timerfd_settime(re_co_wr_info.rcwi_timerfd, 0, &co_wr_timer, NULL);
     if (rc)
     {
         rc = -errno;
@@ -2413,14 +2416,14 @@ raft_server_co_wr_timer_settime(struct raft_instance *ri)
 static void
 raft_server_write_coalesced_entries(struct raft_instance *ri)
 {
-    raft_server_leader_write_new_entry(ri, &re_co_wr_info.rc_buffer[0],
-                                       &re_co_wr_info.rc_entry_sizes[0],
-                                       re_co_wr_info.rc_nentries,
+    raft_server_leader_write_new_entry(ri, &re_co_wr_info.rcwi_buffer[0],
+                                       &re_co_wr_info.rcwi_entry_sizes[0],
+                                       re_co_wr_info.rcwi_nentries,
                                        RAFT_WR_ENTRY_OPT_NONE,
-                                       re_co_wr_info.rc_rncr);
-    for (uint32_t i = 0; i < re_co_wr_info.rc_nentries; i++)
+                                       re_co_wr_info.rcwi_rncr);
+    for (uint32_t i = 0; i < re_co_wr_info.rcwi_nentries; i++)
     {
-        struct raft_net_client_request_handle *rncr = re_co_wr_info.rc_rncr[i];
+        struct raft_net_client_request_handle *rncr = re_co_wr_info.rcwi_rncr[i];
         raft_net_sm_write_supplement_destroy(&rncr->rncr_sm_write_supp);
         niova_free(rncr);
     }
@@ -2434,8 +2437,8 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
 static bool
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
-    ssize_t rc = io_fd_drain(rs_co_wr_timerfd, NULL);
-    if (rc || re_co_wr_info.rc_nentries == 0)
+    ssize_t rc = io_fd_drain(re_co_wr_info.rcwi_timerfd, NULL);
+    if (rc || re_co_wr_info.rcwi_nentries == 0)
         return false;
 
     SIMPLE_LOG_MSG(LL_WARN, "Write the data now after timer expired");
@@ -3945,17 +3948,18 @@ raft_server_net_client_request_init_client_rpc(
 }
 
 /*
- * Check if write coalesce buffer is already full.
+ * Write the coalesced buffer to backend if it's already full.
  */
-static bool
-raft_server_is_co_wr_buffer_full(const size_t len)
+static void
+raft_server_wr_co_buffer_on_full(struct raft_instance *ri, const size_t len)
 {
-    if (re_co_wr_info.rc_nentries == RAFT_ENTRY_NUM_ENTRIES ||
-        re_co_wr_info.rc_total_size == RAFT_ENTRY_MAX_DATA_SIZE ||
-        re_co_wr_info.rc_total_size + len > RAFT_ENTRY_MAX_DATA_SIZE)
-        return true;
-
-    return false;
+    if (re_co_wr_info.rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
+        re_co_wr_info.rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE ||
+        re_co_wr_info.rcwi_total_size + len > RAFT_ENTRY_MAX_DATA_SIZE)
+        /* Store the request as an entry in the Raft log.  Do not reply to
+         * the client until the write is committed and applied!
+         */
+        raft_server_write_coalesced_entries(ri);
 }
 
 /*
@@ -3969,13 +3973,13 @@ raft_server_write_coalesce_entry(struct raft_instance *ri,
                                  enum raft_write_entry_opts opts)
 {
     /* Store the new write entry at the free slot at re_co_wr_info */
-    uint32_t nentries = re_co_wr_info.rc_nentries;
-    re_co_wr_info.rc_entry_sizes[nentries] = len;
+    uint32_t nentries = re_co_wr_info.rcwi_nentries;
+    re_co_wr_info.rcwi_entry_sizes[nentries] = len;
 
-    re_co_wr_info.rc_rncr[nentries] = rncr;
-    memcpy(re_co_wr_info.rc_buffer + re_co_wr_info.rc_total_size, data, len);
-    re_co_wr_info.rc_nentries++;
-    re_co_wr_info.rc_total_size += len;
+    re_co_wr_info.rcwi_rncr[nentries] = rncr;
+    memcpy(re_co_wr_info.rcwi_buffer + re_co_wr_info.rcwi_total_size, data, len);
+    re_co_wr_info.rcwi_nentries++;
+    re_co_wr_info.rcwi_total_size += len;
 
     /* reset the timer */
     raft_server_co_wr_timer_settime(ri);
@@ -4018,14 +4022,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     /* Flush previously written entries if buffer is full or max number of
      * entries are already written.
      */
-    bool wr_to_backend = raft_server_is_co_wr_buffer_full(rcm->rcrm_data_size);
-    if (wr_to_backend)
-    {
-        /* Store the request as an entry in the Raft log.  Do not reply to
-         * the client until the write is committed and applied!
-         */
-        raft_server_write_coalesced_entries(ri);
-    }
+    raft_server_wr_co_buffer_on_full(ri, rcm->rcrm_data_size);
 
     struct raft_net_client_request_handle *rncr =
                 niova_malloc(sizeof(struct raft_net_client_request_handle));
@@ -4471,8 +4468,6 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     if (ri->ri_last_applied_idx == ri->ri_commit_idx)
         return;
 
-    static char sink_buf[RAFT_ENTRY_SIZE];
-    static char reply_buf[RAFT_ENTRY_SIZE];
 
     const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
 
@@ -4483,31 +4478,37 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                                "raft_server_entry_header_read_by_store(): %s",
                                strerror(-rc));
 
+    NIOVA_ASSERT(reh.reh_num_entries <= RAFT_ENTRY_NUM_ENTRIES);
+
     /* Signify that the entry will be applied.  Prepare the last-applied values
      * prior to entering raft_server_sm_apply_opt().
      */
     raft_server_last_applied_increment(ri, &reh);
 
+    static char sink_buf[RAFT_ENTRY_NUM_ENTRIES][RAFT_ENTRY_SIZE];
+    static char reply_buf[RAFT_ENTRY_NUM_ENTRIES][RAFT_ENTRY_SIZE];
     struct raft_net_client_request_handle rncr_arr[reh.reh_num_entries];
-    int rc_arr[reh.reh_num_entries];
+    int rcwi_arr[reh.reh_num_entries];
+
+    if (!reh.reh_leader_change_marker && reh.reh_data_size)
+        rc = raft_server_entry_read(ri, apply_idx, sink_buf[0], reh.reh_data_size,
+                                    NULL);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
+                               strerror(-rc));
 
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
-        raft_server_net_client_request_init_sm_apply(ri, &rncr_arr[i], sink_buf,
+        raft_server_net_client_request_init_sm_apply(ri, &rncr_arr[i], sink_buf[i],
                                                      reh.reh_entry_sizes[i],
-                                                     reply_buf,
+                                                     reply_buf[i],
                                                      RAFT_NET_MAX_RPC_SIZE);
         if (!reh.reh_leader_change_marker && reh.reh_entry_sizes[i])
         {
-            rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
-                                        NULL);
-            DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
-                                       strerror(-rc));
-
             // Initialize supplement handle for possible use by SM callback
             raft_net_sm_write_supplement_init(&rncr_arr[i].rncr_sm_write_supp);
 
-            rc_arr[i] = ri->ri_server_sm_request_cb(&rncr_arr[i]);
+            rcwi_arr[i] = ri->ri_server_sm_request_cb(&rncr_arr[i]);
         }
     }
 
@@ -4518,7 +4519,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     raft_server_sm_apply_opt(ri, &rncr_arr[0], sizeof(rncr_arr));
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
-        if (!rc_arr[i] && raft_instance_is_leader(ri))
+        if (!rcwi_arr[i] && raft_instance_is_leader(ri))
         {
             if (reh.reh_term == ri->ri_log_hdr.rlh_term)
             {
@@ -4548,7 +4549,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                     ri, &rncr_arr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
         }
 
-        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rc_arr[i]));
+        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rcwi_arr[i]));
 
         // The destructor may issue a callback into the SM.
         raft_net_sm_write_supplement_destroy(&rncr_arr[i].rncr_sm_write_supp);
