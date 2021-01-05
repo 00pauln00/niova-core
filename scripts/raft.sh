@@ -36,5 +36,8 @@ fi
 #gdb -ex=r --args \
 #./raft-server -a -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
 
-LD_LIBRARY_PATH=. gdb -ex=r --args \
-./pumicedb-server-test -a -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
+# async mode add "-a"
+
+LD_LIBRARY_PATH=/usr/local/niova/lib \
+               gdb -ex=r --args /usr/local/niova/libexec/niova/pumice-reference-server \
+               -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
