@@ -216,21 +216,21 @@ env_parse(const char *ev_string, struct niova_env_var *nev)
     }
 }
 
-static init_ctx_t
-env_load(void)
+void
+env_load(struct niova_env_var *nevs, size_t num_nevs)
 {
-    for (enum niova_env_var_num i = NIOVA_ENV_VAR__MIN;
-         i < NIOVA_ENV_VAR__MAX; i++)
-    {
-        struct niova_env_var *nev = &niovaEnvVars[i];
+    if (!nevs || !num_nevs)
+        return;
 
+    for (size_t i = 0; i < num_nevs; i++)
+    {
+        struct niova_env_var *nev = &nevs[i];
         NIOVA_ASSERT(nev->nev_var_num == i);
         NIOVA_ASSERT(nev->nev_name);
 
         const char *ev_string = getenv(nev->nev_name);
-
         if (ev_string)
-        {
+	{
             env_parse(ev_string, nev);
 
             if (nev->nev_cb)
@@ -251,7 +251,7 @@ env_get(enum niova_env_var_num ev)
 static init_ctx_t NIOVA_CONSTRUCTOR(ENV_VAR_SUBSYS_CTOR_PRIORITY)
 env_init(void)
 {
-    env_load();
+    env_load(niovaEnvVars, NIOVA_ENV_VAR__MAX);
     niovaEnvVarsSubsysInit = true;
 }
 

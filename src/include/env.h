@@ -69,4 +69,7 @@ struct niova_env_var
 const struct niova_env_var *
 env_get(enum niova_env_var_num ev);
 
+void
+env_load(struct niova_env_var *nevs, size_t num_nevs);
+
 #endif
