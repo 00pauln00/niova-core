@@ -20,7 +20,7 @@ jobs:
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
     - name: make
-      run: cd ./code && make -j 4 pumicedb-dbg && make -j 4 raft-dbg
+      run: cd ./code && ./prepare.sh && ./configure && make
 
     - name: Create build dir
       run: mkdir ./build_dir
@@ -29,7 +29,7 @@ jobs:
       run: cp ./code/Dockerfile ./build_dir
 
     - name: Copy niova binaries
-      run: cp ./code/pumicedb-*-test ./build_dir && cp ./code/raft-* ./build_dir
+      run: cp ./code/test/*-reference-server ./build_dir && cp ./code/test/*-reference-client ./build_dir && ./code/scripts/run-recipes.sh ./build_dir
 
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -51,16 +51,12 @@ jobs:
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
-    - name:  run recipe
-      run: cd ./build_dir/holon/ansible && ansible-playbook -e 'srv_port=4000' -e 'npeers=5' -e 'dir_path=/home/runner/work/niovad/niovad/holon_log' -e 'client_port=14000' -e 'recipe=basic_ctl_int.yml' -e 'backend_type=pumicedb' holon.yml
+    - name:  run leader_overthrow
+      run: cd ./build_dir/ && sh run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon/ansible' '/home/runner/work/niovad/niovad/build_dir/' '/home/runner/work/niovad/niovad/holon_log' 5
       env:
         ANSIBLE_LOOKUP_PLUGINS: /home/runner/work/niovad/niovad/build_dir/holon/ansible
         PYTHONPATH: /home/runner/work/niovad/niovad/build_dir/holon/ansible
         NIOVA_BIN_PATH: /home/runner/work/niovad/niovad/build_dir/
-
-    - name: List log directory
-      run: ls -l /home/runner/work/niovad/niovad/holon_log 
-      if: always()
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
