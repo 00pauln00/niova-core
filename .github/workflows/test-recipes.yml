@@ -25,10 +25,10 @@ jobs:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
     - name: Copy niova files
-      run: cp ./code/Dockerfile ./build_dir
+      run: cp ./code/Dockerfile /home/runner/work/niovad/niova/build_dir/
 
     - name: Copy niova binaries
-      run: cp ./code/test/*-reference-server ./build_dir && cp ./code/test/*-reference-client ./build_dir && cp ./code/scripts/run-recipes.sh ./build_dir && cp -rf ./code/test/.libs ./buid_dir/
+      run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niova/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -42,7 +42,7 @@ jobs:
       run: sudo -E -H pip3 install setuptools func_timeout sockets psutil dpath ansible jmespath
 
     - name: Copy holon repo
-      run: cp -r ./holon ./build_dir
+      run: cp -r ./holon /home/runner/work/niovad/niova/build_dir/
 
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
