@@ -8,39 +8,47 @@ libexec_PROGRAMS =
 my_libexecdir = $(libexecdir)/niova
 my_libexec_PROGRAMS =
 
+my_includedir = $(includedir)/niova
+my_include_HEADERS =
+
 ACLOCAL_AMFLAGS = -I m4
 
-CORE_SOURCES = src/include/alloc.h \
+CORE_HDRS = src/include/atomic.h \
+	src/include/alloc.h \
         src/include/binary_hist.h \
         src/include/common.h \
-        src/include/config_token.h \
-	src/include/ctl_interface_cmd.h \
-        src/include/ctl_interface.h \
+	src/include/config_token.h \
+        src/include/ctl_interface_cmd.h \
+	src/include/ctl_interface.h \
         src/include/ctl_svc.h \
-	src/include/env.h \
+        src/include/ctor.h \
+        src/include/env.h \
         src/include/epoll_mgr.h \
-	src/include/ev_pipe.h \
+        src/include/ev_pipe.h \
 	src/include/fault_inject.h \
         src/include/file_util.h \
         src/include/io.h \
-	src/include/init.h \
+        src/include/init.h \
 	src/include/lock.h \
         src/include/log.h \
 	src/include/net_ctl.h \
-	src/include/popen_cmd.h \
-        src/include/random.h \
+        src/include/popen_cmd.h \
+	src/include/queue.h \
+	src/include/random.h \
         src/include/ref_tree_proto.h \
-        src/include/regex_defines.h \
-	src/include/registry.h \
-        src/include/system_info.h \
-        src/include/thread.h \
+	src/include/regex_defines.h \
+        src/include/registry.h \
+	src/include/system_info.h \
+	src/include/thread.h \
         src/include/udp.h \
         src/include/tcp.h \
         src/include/tcp_mgr.h \
-        src/include/util.h \
+	src/include/util.h \
         src/include/util_thread.h \
-        src/include/watchdog.h \
-        src/alloc.c \
+        src/include/watchdog.h
+
+CORE_SOURCES = $(CORE_HDRS) \
+	src/alloc.c \
         src/config_token.c \
         src/contrib/crc32c-pcl-intel-asm_64.S \
         src/ctl_interface.c \
@@ -65,6 +73,8 @@ CORE_SOURCES = src/include/alloc.h \
         src/util_thread.c \
 	src/watchdog.c
 
+my_include_HEADERS += $(CORE_HDRS)
+
 lib_LTLIBRARIES += src/libniova.la
 src_libniova_la_LDFLAGS = \
 	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
@@ -76,6 +86,9 @@ RAFT_NET_CORE_SOURCES = \
 	src/include/raft.h \
 	src/raft_net.c
 
+raft_includedir = $(includedir)/niova/raft
+raft_include_HEADERS = src/include/raft_net.h src/include/raft.h
+
 RAFT_SERVER_CORE_SOURCES = $(RAFT_NET_CORE_SOURCES) src/raft_server.c
 
 RAFT_SERVER_BACKEND_SOURCES = \
@@ -83,12 +96,16 @@ RAFT_SERVER_BACKEND_SOURCES = \
         src/raft_server_backend_posix.c \
         src/raft_server_backend_rocksdb.c
 
+raft_include_HEADERS += src/include/raft_server_backend_rocksdb.h
+
 RAFT_CLIENT_CORE_SOURCES = \
 	src/include/raft_net.h \
 	src/include/raft.h \
 	src/include/raft_client.h \
 	src/raft_net.c \
 	src/raft_client.c
+
+raft_include_HEADERS += src/include/raft_client.h
 
 lib_LTLIBRARIES += src/libniova_raft.la
 src_libniova_raft_la_LDFLAGS = \
@@ -145,6 +162,10 @@ test_pumice_reference_server_LDADD = \
 	src/libniova.la \
 	src/libniova_raft.la \
 	src/libniova_pumice.la -lrocksdb
+
+raft_include_HEADERS += src/include/pumice_db_net.h \
+	src/include/pumice_db_client.h \
+	src/include/pumice_db.h
 
 ## end Pumice
 
