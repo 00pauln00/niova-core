@@ -27,7 +27,7 @@ do
    if [ $? -ne 0 ]
    then
       echo "Recipe: $recipe failed"
-      exit
+      exit 1
    fi
    echo "Recipe: $recipe completed successfully!"
    rm -rf $LOG_PATH/*
