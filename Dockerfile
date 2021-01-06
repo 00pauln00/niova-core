@@ -6,14 +6,16 @@ RUN apt-get update -y \
     && pip3 install ansible \
     && pip3 install jmespath
 WORKDIR /opt
-COPY holon /opt/bin/
-RUN mkdir -p /opt/sbin/niova/
 
-COPY pumicedb-server-test /opt/sbin/niova/
-COPY pumicedb-client-test /opt/sbin/niova/
-COPY raft-server /opt/sbin/niova/
-COPY raft-client /opt/sbin/niova/
+RUN mkdir -p /usr/local/niova/lib \
+    && mkdir -p /usr/local/niova/libexec \
+    && mkdir -p /usr/local/holon/
 
-ENV ANSIBLE_LOOKUP_PLUGINS=/opt/bin/ansible
-ENV PYTHONPATH=/opt/bin/ansible
-ENV NIOVA_BIN_PATH=/opt/sbin/niova/
+COPY holon /usr/local/holon
+
+COPY lib /usr/local/niova/lib
+COPY libexec /usr/local/niova/libexec
+
+ENV ANSIBLE_LOOKUP_PLUGINS=/usr/local/holon/
+ENV PYTHONPATH=/usr/local/holon/
+ENV NIOVA_BIN_PATH=/usr/local/niova/libexec/niova

@@ -24,10 +24,10 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-    - name: Copy niova files
+    - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
 
-    - name: Copy niova binaries
+    - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
@@ -50,12 +50,8 @@ jobs:
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
-    - name:  run leader_overthrow
+    - name:  run recipes
       run: cd ./build_dir/holon/ && ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
-      env:
-        ANSIBLE_LOOKUP_PLUGINS: /home/runner/work/niovad/niovad/build_dir/holon
-        PYTHONPATH: /home/runner/work/niovad/niovad/build_dir/holon
-        NIOVA_BIN_PATH: /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
@@ -63,3 +59,9 @@ jobs:
          name: test-recipe-report
          path: /home/runner/work/niovad/niovad/holon_log
       if: failure()
+
+    - name: Build the Docker Image
+      run: cd /home/runner/work/niovad/niovad/build_dir && docker build -t niova-holon:latest .
+      if: success()
+      
+    # TODO push the Docker image with holon repo and niova binaries on github registry.
