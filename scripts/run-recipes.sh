@@ -1,9 +1,9 @@
 #!/bin/sh
 
-HOLON_LIBS = $1
-BIN_PATH = $2
-LOG_PATH = $3
-NPEERS = $4
+HOLON_LIBS=${1}
+BIN_PATH=${2}
+LOG_PATH=${3}
+NPEERS=${4}
 
 echo "Holon lib $HOLON_LIBS"
 echo "All executatbles at: $BIN_PATH"
