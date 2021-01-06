@@ -11,7 +11,6 @@ export NIOVA_BIN_PATH=$BIN_PATH
 
 declare -a recipe_list=("leader_overthrow.yml"
                         "leader_self_depose.yml"
-                        "pmdb_client_error_demonstration_standalone_client.yml"
                         "pmdb_client_request_timeout_modification_and_retry.yml"
                         "pmdb_foreign_client_error_demonstration.yml"
                         "promoting_the_most_qualified_peer_to_lead_multi_peer_recovery.yml"
