@@ -29,7 +29,7 @@ jobs:
       run: cp ./code/Dockerfile ./build_dir
 
     - name: Copy niova binaries
-      run: cp ./code/test/*-reference-server ./build_dir && cp ./code/test/*-reference-client ./build_dir && cp ./code/scripts/run-recipes.sh ./build_dir
+      run: cp ./code/test/*-reference-server ./build_dir && cp ./code/test/*-reference-client ./build_dir && cp ./code/scripts/run-recipes.sh ./build_dir && cp -rf ./code/test/.libs ./buid_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
