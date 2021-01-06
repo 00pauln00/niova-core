@@ -24,9 +24,6 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-    - name: Create build dir
-      run: mkdir ./build_dir
-
     - name: Copy niova files
       run: cp ./code/Dockerfile ./build_dir
 
