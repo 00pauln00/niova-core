@@ -20,7 +20,9 @@ jobs:
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
     - name: make
-      run: cd ./code && ./prepare.sh && ./configure && make
+      run: cd ./code && ./prepare.sh && ./configure --prefix=/home/runner/work/niovad/niova/build_dir/ && make clean && make && make install
+      env:
+        LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
     - name: Create build dir
       run: mkdir ./build_dir
@@ -52,11 +54,11 @@ jobs:
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
     - name:  run leader_overthrow
-      run: cd ./build_dir/holon/ && sh ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/' '/home/runner/work/niovad/niovad/holon_log' 5
+      run: cd ./build_dir/holon/ && sh ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
       env:
         ANSIBLE_LOOKUP_PLUGINS: /home/runner/work/niovad/niovad/build_dir/holon
         PYTHONPATH: /home/runner/work/niovad/niovad/build_dir/holon
-        NIOVA_BIN_PATH: /home/runner/work/niovad/niovad/build_dir/
+        NIOVA_BIN_PATH: /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
