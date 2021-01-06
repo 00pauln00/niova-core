@@ -51,7 +51,7 @@ jobs:
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
     - name:  run leader_overthrow
-      run: cd ./build_dir/holon/ && sh ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
+      run: cd ./build_dir/holon/ && ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
       env:
         ANSIBLE_LOOKUP_PLUGINS: /home/runner/work/niovad/niovad/build_dir/holon
         PYTHONPATH: /home/runner/work/niovad/niovad/build_dir/holon
