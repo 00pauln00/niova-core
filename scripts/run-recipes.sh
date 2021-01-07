@@ -18,6 +18,7 @@ declare -a recipe_list=("leader_overthrow.yml"
                         "selecting_the_correct_leader_at_boot_time.yml"
                         "completing_an_uncommitted_write_following_a_reboot.yml"
                         "election_timeout_modification.yml"
+                        "pmdb_client_error_demonstration_standalone_client.yml"
                        )
 
 for recipe in "${recipe_list[@]}"
