@@ -4,6 +4,8 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
+#include "niova_backtrace.h"
+
 #include "common.h"
 #include "raft_net.h"
 #include "raft.h"

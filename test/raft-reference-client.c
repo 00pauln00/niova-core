@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <sys/timerfd.h>
 
+#include "niova_backtrace.h"
+
 #include "log.h"
 #include "util_thread.h"
 #include "udp.h"

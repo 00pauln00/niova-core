@@ -10,6 +10,8 @@
 #include <netinet/in.h>
 #include <netinet/udp.h>
 
+#include "niova_backtrace.h"
+
 #include "registry.h"
 #include "log.h"
 #include "raft.h"

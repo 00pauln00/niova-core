@@ -137,6 +137,16 @@ struct log_entry_info
                      _node_install_rc == -EALREADY);                       \
     }                                                                      \
 
+
+// Allow users of _NIOVA_BACKTRACE_H_ to generate backtraces in abort ctx
+#ifdef _NIOVA_BACKTRACE_H_
+#define LOG_ABORT                               \
+    do { niova_backtrace_dump(); thread_abort(); } while (0)
+#else
+#define LOG_ABORT                               \
+    do { thread_abort(); } while (0)
+#endif
+
 #define SIMPLE_LOG_MSG(level, message, ...)                       \
 do {                                                              \
     if ((level) <= log_level_get())                               \
@@ -148,7 +158,7 @@ do {                                                              \
                 ll_to_string(level), thread_name_get(), __func__, \
                 __LINE__, ##__VA_ARGS__);                         \
         if ((level) == LL_FATAL)                                  \
-            thread_abort();                                       \
+            LOG_ABORT;                                            \
     }                                                             \
 } while (0)
 

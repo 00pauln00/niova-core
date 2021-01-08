@@ -24,6 +24,12 @@ jobs:
       run: gcc --version
     - name: clang version
       run: clang --version
+# build backtrace submodule
+    - name: submodule init
+      run: git submodule init && git submodule update
+# build backtrace submodule
+    - name: build libbacktrace
+      run: cd modules/libbacktrace/ && ./configure && make && sudo make install
 # default build
     - name: prepare default build
       run: ./prepare.sh

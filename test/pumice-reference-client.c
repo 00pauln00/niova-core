@@ -8,6 +8,8 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 
+#include "niova_backtrace.h" // place before log.h
+
 #include "common.h"
 #include "log.h"
 #include "alloc.h"
