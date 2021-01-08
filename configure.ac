@@ -59,6 +59,8 @@ AC_CHECK_HEADERS([stdlib.h], [],
                  [AC_MSG_ERROR([failed to locate stdlib.h])], [])
 AC_CHECK_HEADERS([uuid/uuid.h], [],
                  [AC_MSG_ERROR([failed to locate uuid/uuid.h])], [])
+AC_CHECK_HEADERS([backtrace.h], [],
+                 [AC_MSG_ERROR([failed to locate backtrace.h])], [])
 
 # rocksdb
 AC_CHECK_HEADERS([rocksdb/c.h], [],
@@ -93,6 +95,10 @@ AC_CHECK_FUNCS([endpwent ftruncate getcwd gethostbyname inet_ntoa localtime_r me
 # These functions are *required* without option.
 AC_CHECK_FUNCS([clock_gettime], [], AC_MSG_ERROR([unable to locate required symbol clock_gettime]))
 AC_CHECK_FUNCS([reallocarray], [], AC_MSG_ERROR([unable to locate required symbol reallocarray]))
+
+# libbacktrace
+AC_CHECK_LIB([backtrace],[backtrace_full],,
+             [AC_MSG_ERROR([Could not find backtrace_full])])
 
 # libuuid
 AC_CHECK_LIB([uuid],[uuid_compare],,

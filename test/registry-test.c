@@ -4,6 +4,8 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2019
  */
 
+#include "niova_backtrace.h"
+
 #include "ctor.h"
 #include "init.h"
 #include "registry.h"

@@ -9,6 +9,8 @@
 
 #include <rocksdb/c.h>
 
+#include "niova_backtrace.h"
+
 #include "common.h"
 #include "registry.h"
 #include "raft_net.h"

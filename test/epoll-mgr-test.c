@@ -7,6 +7,8 @@
 #include <sys/eventfd.h>
 #include <stdlib.h>
 
+#include "niova_backtrace.h"
+
 #include "common.h"
 #include "epoll_mgr.h"
 #include "ev_pipe.h"
