@@ -141,6 +141,8 @@ util_thread_subsystem_destroy(void)
 
     if (utilThread.ut_started)
     {
+        thread_halt_and_destroy(&utilThread.ut_tc);
+
         for (size_t i = 0; i < utilThreadNumEpollHandles; i++)
         {
             if (utilThreadEpollHandles[i].eph_installed)
@@ -154,7 +156,5 @@ util_thread_subsystem_destroy(void)
         }
 
         epoll_mgr_close(&utilThread.ut_epm);
-
-        thread_halt_and_destroy(&utilThread.ut_tc);
     }
 }
