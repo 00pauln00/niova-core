@@ -51,7 +51,7 @@ jobs:
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
     - name:  run recipes
-      run: cd ./build_dir/holon/ && ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ && ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
