@@ -32,6 +32,7 @@ CORE_HDRS = src/include/atomic.h \
 	src/include/lock.h \
         src/include/log.h \
 	src/include/net_ctl.h \
+	src/include/niova_backtrace.h \
         src/include/popen_cmd.h \
 	src/include/queue.h \
 	src/include/random.h \
