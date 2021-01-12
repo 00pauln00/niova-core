@@ -1836,7 +1836,7 @@ raft_server_become_candidate(struct raft_instance *ri)
 
     raft_server_set_uuids_in_rpc_msg(ri, &rrm);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 
     raft_server_broadcast_msg(ri, &rrm);
 }
@@ -2093,7 +2093,7 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
 
     raft_server_set_leader_csn(ri, ri->ri_csn_this_peer);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
 
 /**
