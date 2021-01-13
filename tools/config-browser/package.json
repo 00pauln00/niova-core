@@ -1,0 +1,59 @@
+{
+  "name": "niova-config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@apollo/client": "^3.3.6",
+    "@blueprintjs/core": "^3.36.0",
+    "@testing-library/jest-dom": "^5.11.9",
+    "@testing-library/react": "^11.1.0",
+    "@testing-library/user-event": "^12.1.10",
+    "@types/jest": "^26.0.15",
+    "@types/node": "^14.14.20",
+    "@types/react": "^17.0.0",
+    "@types/react-dom": "^17.0.0",
+    "apollo-server-express": "^2.19.1",
+    "express": "^4.17.1",
+    "graphql": "^15.4.0",
+    "react": "^17.0.1",
+    "react-dom": "^17.0.1",
+    "react-json-view": "https://github.com/kitwestneat/react-json-view.git",
+    "react-scripts": "4.0.1",
+    "ts-node": "^9.1.1",
+    "typescript": "^4.0.3",
+    "web-vitals": "^1.0.1"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "server": "node --experimental-specifier-resolution=node --loader ts-node/esm --experimental-modules src/server/index.ts",
+    "watch": "nodemon src/server/index.ts"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "eslint": "^7.17.0",
+    "eslint-config-google": "^0.14.0",
+    "nodemon": "^2.0.7",
+    "prettier-eslint": "^12.0.0"
+  }
+}

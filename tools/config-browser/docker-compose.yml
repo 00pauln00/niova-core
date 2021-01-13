@@ -1,0 +1,20 @@
+services:
+  webapp:
+    build:
+      context: .
+      dockerfile: Dockerfile.webapp
+    image: niova-config-webapp
+    environment:
+      NIOVA_CONFIG_HOST: server
+      NIOVA_CONFIG_PORT: 4000
+    ports:
+      - "3000:3000"
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    image: niova-config-server
+    ports:
+      - "4000:4000"
+    volumes:
+      - "/tmp/.niova:/tmp/.niova"
