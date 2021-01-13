@@ -13,6 +13,11 @@ jobs:
       with:
         path: ./code
 
+    - name: Generate build number
+      uses: einaregilsson/build-number@v3
+      with:
+        token: ${{secrets.github_token}}
+
     - name: apt update
       run: sudo apt update
     - name: dpkg / rpm prep (debug)
@@ -60,7 +65,7 @@ jobs:
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
       with:
-         name: test-recipe-report
+         name: test-recipe-report.$$BUILD_NUMBER
          path: /home/runner/work/niovad/niovad/holon_log
       if: failure()
 
