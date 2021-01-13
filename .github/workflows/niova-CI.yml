@@ -65,7 +65,7 @@ jobs:
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2
       with:
-         name: test-recipe-report.$$BUILD_NUMBER
+         name: test-recipe-report.${{ BUILD_NUMBER }}
          path: /home/runner/work/niovad/niovad/holon_log
       if: failure()
 
