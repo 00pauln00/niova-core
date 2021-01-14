@@ -1,17 +1,13 @@
 import { gql, useQuery } from '@apollo/client';
 import { ReactElement } from 'react';
-import { OnSelectProps } from 'react-json-view';
 
 const GET_JSON_QUERY = gql`
     query GetJson($uuid: String!, $path: String!) {
-        getJson(uuid: $uuid, path: $path)
+        getJson(uuid: $uuid, path: $path) {
+            json
+        }
     }
 `;
-
-export interface GetJsonRenderProps {
-    data: any;
-    onKeySelect(props: OnSelectProps): void;
-}
 
 export interface SearchParams {
     uuid: string;
@@ -20,8 +16,7 @@ export interface SearchParams {
 }
 
 interface GetJsonOpts extends SearchParams {
-    setPath(path: string): void;
-    render({ data, onKeySelect }: GetJsonRenderProps): ReactElement | null;
+    render({ data }: {data: any}) : ReactElement | null;
 }
 
 function addWildCard(path: string) {
@@ -37,15 +32,11 @@ function addWildCard(path: string) {
     return new_path + '/.*/.*';
 }
 
-const isNumeric = (num: any): boolean =>
-    typeof num == 'number' || (typeof num == 'string' && !isNaN(+num) && !isNaN(parseFloat(num)));
-
 export default function GetJson({
     uuid,
     path,
     useCache,
     render,
-    setPath,
 }: GetJsonOpts): ReactElement | null {
     const { loading, error, data } = useQuery(GET_JSON_QUERY, {
         fetchPolicy: useCache ? 'cache-first' : 'cache-and-network',
@@ -59,14 +50,10 @@ export default function GetJson({
         return <div>Error! {error}</div>;
     }
 
-    // filter out array indexes
-    const onKeySelect = ({ namespace }: OnSelectProps) =>
-        setPath('/' + namespace.filter((o) => !isNumeric(o)).join('/'));
-
     try {
-        const obj = JSON.parse(data.getJson);
+        const obj = JSON.parse(data.getJson?.json);
 
-        return render({ data: obj, onKeySelect });
+        return render({ data: obj });
     } catch (e) {
         return <div>Error parsing JSON: {JSON.stringify(data, null, 4)} </div>;
     }

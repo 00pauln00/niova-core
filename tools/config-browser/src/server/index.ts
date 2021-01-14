@@ -14,13 +14,21 @@ interface CmdOpts {
 
 const resolvers = {
     Query: {
-        getJson: (_parent: any, { uuid, path }: CmdOpts) => cmdJson('GET', uuid, path),
+        getJson: (_parent: any, { uuid, path }: CmdOpts) => ({
+            id: `${uuid}/${path}`,
+            json: cmdJson('GET', uuid, path),
+        }),
+    },
+    Mutation: {
         applyJson: (_parent: any, { uuid, path, value }: CmdOpts) => {
             if (!value) {
                 throw new Error('missing value arg');
             }
 
-            return cmdJson('APPLY', uuid, value, path);
+            return {
+                id: `${uuid}/${path}`,
+                json: cmdJson('APPLY', uuid, value, path),
+            };
         },
     },
 };

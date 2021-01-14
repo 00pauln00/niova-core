@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { ReactElement, useState } from 'react';
 import GetJson, { SearchParams } from './queries/GetJson';
 // import './App.css';
 import { newClient } from './client';
 import { ApolloProvider } from '@apollo/client';
 import DataFilter from './components/DataFilter';
-import DataView from './components/DataView';
+import getDataView from './components/DataView';
+import { OnSelectProps } from 'react-json-view';
 
 import '@blueprintjs/core/lib/css/blueprint.css';
 
@@ -13,10 +14,19 @@ const DEFAULT_PATH = '/';
 
 const client = newClient();
 
-function App() {
+const isNumeric = (num: any): boolean =>
+    typeof num == 'number' || (typeof num == 'string' && !isNaN(+num) && !isNaN(parseFloat(num)));
+
+function App(): ReactElement {
     const [uuid, setUuid] = useState<string>(DEFAULT_UUID);
     const [path, setPath] = useState<string>(DEFAULT_PATH);
     const [searchParams, setSearchParams] = useState<SearchParams>();
+
+    const onKeySelect = ({ namespace }: OnSelectProps) => {
+        const path = '/' + namespace.filter((o) => !isNumeric(o)).join('/');
+        setPath(path);
+        setSearchParams({ uuid, path, useCache: true });
+    };
 
     return (
         <ApolloProvider client={client}>
@@ -31,11 +41,7 @@ function App() {
                 {searchParams && (
                     <GetJson
                         {...searchParams}
-                        setPath={(path: string) => {
-                            setPath(path);
-                            setSearchParams({ uuid, path, useCache: true });
-                        }}
-                        render={DataView}
+                        render={({ data }) => getDataView({ data, onKeySelect })}
                     />
                 )}
             </div>
