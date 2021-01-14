@@ -3,17 +3,8 @@ import fs from 'fs';
 const CMD_BASE_DIR = '/tmp/.niova/';
 
 type CmdType = 'GET' | 'APPLY';
-function getCmd(
-    type: CmdType,
-    path: string,
-    outfile: string,
-    where?: string
-): string {
-    return (
-        `${type} ${path}\n` +
-        (where ? `WHERE ${where}\n` : '') +
-        `OUTFILE /${outfile}\n`
-    );
+function buildCmd(type: CmdType, arg: string, outfile: string, where?: string): string {
+    return `${type} ${arg}\n` + (where ? `WHERE ${where}\n` : '') + `OUTFILE /${outfile}\n`;
 }
 
 function getOutfile(): string {
@@ -34,7 +25,9 @@ function addOutputWatcher(uuid: string, outfile: string): Promise<string> {
 
     return new Promise((resolve) => {
         const watcher = fs.watch(outputDir, (event, filename) => {
-            if (filename != outfile) return;
+            if (filename != outfile) {
+                return;
+            }
 
             console.log(outfile, 'event: ' + event, filename);
             watcher.close();
@@ -47,11 +40,12 @@ function addOutputWatcher(uuid: string, outfile: string): Promise<string> {
 export async function cmdJson(
     cmdType: CmdType,
     uuid: string,
-    path: string
+    arg: string,
+    where?: string
 ): Promise<string> {
     const outfile = getOutfile();
     const infile = getInfile(uuid);
-    const cmd = getCmd(cmdType, path, outfile);
+    const cmd = buildCmd(cmdType, arg, outfile, where);
 
     const watcher = addOutputWatcher(uuid, outfile);
     console.log('watcher added, writing cmd');

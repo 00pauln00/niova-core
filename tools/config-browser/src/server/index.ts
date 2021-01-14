@@ -6,15 +6,22 @@ import { cmdJson } from './niova-api';
 
 const { SERVER_PORT } = getConfig();
 
-interface CmdPair {
+interface CmdOpts {
     uuid: string;
     path: string;
+    value?: string;
 }
 
 const resolvers = {
     Query: {
-        getJson: (_parent: any, { uuid, path }: CmdPair) =>
-            cmdJson('GET', uuid, path),
+        getJson: (_parent: any, { uuid, path }: CmdOpts) => cmdJson('GET', uuid, path),
+        applyJson: (_parent: any, { uuid, path, value }: CmdOpts) => {
+            if (!value) {
+                throw new Error('missing value arg');
+            }
+
+            return cmdJson('APPLY', uuid, value, path);
+        },
     },
 };
 
@@ -29,7 +36,5 @@ app.use((_req, res) => {
 });
 
 app.listen({ port: SERVER_PORT }, () =>
-    console.log(
-        `Server ready at http://localhost:${SERVER_PORT}${server.graphqlPath}`
-    )
+    console.log(`Server ready at http://localhost:${SERVER_PORT}${server.graphqlPath}`)
 );
