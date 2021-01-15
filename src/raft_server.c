@@ -130,6 +130,48 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_VSTATS,
 };
 
+static char *
+raft_instance_buffer_get(struct raft_instance *ri, size_t size)
+{
+    NIOVA_ASSERT(ri && ri->ri_buf_pool);
+
+    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    {
+        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+
+        NIOVA_ASSERT(rib->ribuf_buf);
+
+        if (rib->ribuf_free && rib->ribuf_size <= size)
+        {
+            rib->ribuf_free = false;
+            return rib->ribuf_buf;
+        }
+    }
+
+    FATAL_MSG("buffer exhaustion detected");
+
+    return NULL;
+}
+
+static void
+raft_instance_buffer_put(struct raft_instance *ri, const char *ribuf)
+{
+    NIOVA_ASSERT(ri && ri->ri_buf_pool);
+
+    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    {
+        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+        if (rib->ribuf_buf == ribuf)
+        {
+            NIOVA_ASSERT(!rib->ribuf_free);
+            rib->ribuf_free = true;
+            return;
+        }
+    }
+
+    FATAL_MSG("buffer %p does not belong to the pool", ribuf);
+}
+
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
                                   struct lreg_node *lrn,
