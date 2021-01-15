@@ -34,6 +34,9 @@
 
 #define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
 
+// Can become a tunable in the future
+#define RAFT_ENTRY_SIZE_ROCKSDB (4 * 1024 * 1024)
+
 #define RAFT_LOG_HEADER_ROCKSDB "a0_hdr."
 #define RAFT_LOG_HEADER_ROCKSDB_STRLEN 7
 #define RAFT_LOG_HEADER_FMT RAFT_LOG_HEADER_ROCKSDB"%s__%s"
@@ -2769,6 +2772,14 @@ rsbr_setup(struct raft_instance *ri)
 {
     if (!ri || ri->ri_backend != &ribRocksDB)
         return -EINVAL;
+
+    /* Set the max-entry-size supported by this backend.  If larger values are
+     * needed, this size may increased during initialization through a command
+     * line argument or a ctl-interface init cmd.  Modifying during runtime is
+     * possible as well but it will require the resizing of buffers owned by
+     * raft_server.c.
+     */
+    CONST_OVERRIDE(size_t, ri->ri_max_entry_size, RAFT_ENTRY_SIZE_ROCKSDB);
 
     int rc = rsbr_setup_rir(ri);
     if (rc)

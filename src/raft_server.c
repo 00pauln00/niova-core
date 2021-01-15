@@ -1285,7 +1285,14 @@ raft_server_backend_setup(struct raft_instance *ri)
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "log-file=%s", ri->ri_log);
 
-    return ri->ri_backend->rib_backend_setup(ri);
+    rc = ri->ri_backend->rib_backend_setup(ri);
+
+    if (!rc) // Ensure the backend reports a valid max-entry-size
+        FATAL_IF((ri->ri_max_entry_size < RAFT_ENTRY_SIZE_MIN),
+                 "backend reports max_entry_size of %zd, min is %u",
+                 ri->ri_max_entry_size, RAFT_ENTRY_SIZE_MIN);
+
+    return rc;
 }
 
 static void

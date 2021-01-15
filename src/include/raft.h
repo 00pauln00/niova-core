@@ -29,6 +29,7 @@
 
 #define RAFT_ENTRY_HEADER_RESERVE 128
 
+#define RAFT_ENTRY_SIZE_MIN        65536
 #define RAFT_ENTRY_SIZE           4*1024*1024
 #define RAFT_ENTRY_MAX_DATA_SIZE  (RAFT_ENTRY_SIZE - RAFT_ENTRY_HEADER_RESERVE)
 
@@ -439,6 +440,7 @@ struct raft_instance
     ssize_t                         ri_max_scan_entries;
     size_t                          ri_log_reap_factor;
     size_t                          ri_num_checkpoints;
+    const size_t                    ri_max_entry_size;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
     pthread_mutex_t                 ri_newest_entry_mutex;
     struct epoll_mgr                ri_epoll_mgr;
