@@ -30,8 +30,6 @@
 #define RAFT_ENTRY_HEADER_RESERVE 128
 
 #define RAFT_ENTRY_SIZE_MIN        65536
-#define RAFT_ENTRY_SIZE           4*1024*1024
-#define RAFT_ENTRY_MAX_DATA_SIZE  (RAFT_ENTRY_SIZE - RAFT_ENTRY_HEADER_RESERVE)
 
 // Raft election timeout upper and lower bounds
 #define	RAFT_ELECTION__MAX_TIME_MS 100000
@@ -495,7 +493,6 @@ raft_compile_time_checks(void)
     COMPILE_TIME_ASSERT(RAFT_ELECTION_UPPER_TIME_MS > 0);
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
-    COMPILE_TIME_ASSERT(RAFT_ENTRY_SIZE > RAFT_NET_MAX_RPC_SIZE);
     COMPILE_TIME_ASSERT((RAFT_ELECTION_UPPER_TIME_MS /
                          RAFT_HEARTBEAT_FREQ_PER_ELECTION) >
                         RAFT_HEARTBEAT__MIN_TIME_MS);

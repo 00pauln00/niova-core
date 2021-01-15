@@ -1705,7 +1705,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
     SIMPLE_LOG_MSG(LL_DEBUG, "msg_size: %ld udp max: %ld tcp max: %ld",
                    msg_size, udp_get_max_size(), tcp_get_max_size());
 
-    if (msg_size > RAFT_NET_MAX_RPC_SIZE)
+    if (msg_size > raft_net_max_rpc_size(ri->ri_store_type))
         return -E2BIG;
 
     ssize_t size_rc;

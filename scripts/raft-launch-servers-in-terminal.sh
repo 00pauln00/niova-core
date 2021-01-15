@@ -4,6 +4,7 @@ WATCH=0
 DRY_RUN=0
 LAUNCH_START_PEER=0
 LAUNCH_END_PEER=999
+RUN_CLIENT=0
 
 function print_help()
 {
@@ -17,7 +18,7 @@ then
     exit 1
 fi
 
-while getopts ":s:e:hdw" opt; do
+while getopts ":s:e:hdwc" opt; do
 case ${opt} in
     h )
         print_help
@@ -46,6 +47,9 @@ case ${opt} in
     w )
         WATCH=1
         ;;
+    c )
+        RUN_CLIENT=1
+        ;;
     ? )
         echo "Invalid option: '$OPTARG'" 1>&2
         echo ""
@@ -66,6 +70,7 @@ then
 fi
 
 RAFT_SUFFIX=".raft"
+RAFT_CONFIG_SUFFIX=".raft_config"
 RAFT_UUID=${1}
 
 # Verify the raft arg is a real UUID
@@ -85,24 +90,46 @@ SEARCH_PATHS[2]=/etc
 SEARCH_PATHS[3]=/var/tmp
 SEARCH_PATHS[4]=/nvme0n1/
 CFG_FILE=""
+CFG_DIR=""
 
 for i in ${SEARCH_PATHS[@]}
 do
-    TMP_CFG_FILE=`find ${i} -type f -name ${RAFT_UUID}${RAFT_SUFFIX} 2>/dev/null | head -1`
-    if [ "${TMP_CFG_FILE}x" != "x" ]
+    TMP_CFG_DIR=`find ${i} -type d -name ${RAFT_UUID}${RAFT_CONFIG_SUFFIX} 2>/dev/null |head -1`
+    if [ "${TMP_CFG_DIR}x" != "x" ]
     then
-        echo ${TMP_CFG_FILE} \
-            | egrep [a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}.raft$ \
+        echo ${TMP_CFG_DIR} \
+            | egrep [a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}.raft_config$ \
                     > /dev/null
         if [ $? -ne 0 ]
         then
             continue
         else
-            CFG_FILE=${TMP_CFG_FILE}
+            CFG_DIR=${TMP_CFG_DIR}
             break
         fi
     fi
 done
+
+if [ $? -ne 0 ] || [ "${CFG_DIR}x" == "x" ]
+then
+    echo "UUID '$RAFT_UUID' config dir could not be found"
+    exit 1
+fi
+
+TMP_CFG_FILE=`find ${CFG_DIR} -type f -name ${RAFT_UUID}${RAFT_SUFFIX} 2>/dev/null | head -1`
+if [ "${TMP_CFG_FILE}x" != "x" ]
+then
+    echo ${TMP_CFG_FILE} \
+        | egrep [a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}.raft$ \
+                > /dev/null
+    if [ $? -ne 0 ]
+    then
+        continue
+    else
+        CFG_FILE=${TMP_CFG_FILE}
+        break
+    fi
+fi
 
 if [ $? -ne 0 ] || [ "${CFG_FILE}x" == "x" ]
 then
@@ -128,7 +155,7 @@ then
 fi
 
 # Set the ctl-svc dir based on the location of the raft conf file
-export NIOVA_LOCAL_CTL_SVC_DIR=`dirname ${CFG_FILE}`
+export NIOVA_LOCAL_CTL_SVC_DIR=${CFG_DIR}
 
 IDX=0
 

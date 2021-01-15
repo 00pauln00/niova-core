@@ -86,16 +86,45 @@ typedef raft_net_cb_ctx_int_t
 typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
 typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
 
-#define RAFT_NET_MAX_RPC_SIZE 4*1024*1024-1
+#define RAFT_NET_ENTRY_RESERVE 512
+
+#define RAFT_NET_ENTRY_SIZE_POSIX   (64 * 1024)
+#define RAFT_NET_MAX_RPC_SIZE_POSIX                     \
+    (RAFT_NET_ENTRY_SIZE_POSIX - RAFT_NET_ENTRY_RESERVE)
+
+#define RAFT_NET_ENTRY_SIZE_ROCKSDB (4096 * 1024)
+#define RAFT_NET_MAX_RPC_SIZE_ROCKSDB                     \
+    (RAFT_NET_ENTRY_SIZE_ROCKSDB - RAFT_NET_ENTRY_RESERVE)
+
 #define RAFT_NET_MAX_RETRY_MS 30000
 #define RAFT_NET_MIN_RETRY_MS 100
 
 enum raft_instance_store_type
 {
-    RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
+    RAFT_INSTANCE_STORE_POSIX_FLAT_FILE = 0, // keep this as default
     RAFT_INSTANCE_STORE_ROCKSDB,
     RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
 };
+
+static inline size_t
+raft_net_max_rpc_size(enum raft_instance_store_type be_type)
+{
+    switch (be_type)
+    {
+    case RAFT_INSTANCE_STORE_POSIX_FLAT_FILE:
+        return RAFT_NET_MAX_RPC_SIZE_POSIX;
+
+    case RAFT_INSTANCE_STORE_ROCKSDB: // fall through
+    case RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP:
+        return RAFT_NET_MAX_RPC_SIZE_ROCKSDB;
+
+    default:
+        break;
+    }
+
+    return 0;
+}
+
 
 // Options for raft_server_instance_run()
 enum raft_instance_options
@@ -168,9 +197,6 @@ struct raft_net_client_user_id
     uint32_t                        rncui__unused;
 };
 
-#define RAFT_NET_CLIENT_MAX_RPC_SIZE \
-    (RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_client_rpc_msg))
-
 /**
  * @rcrm_type:  The type of RPC which is one of enum raft_client_rpc_msg_type
  * @rcrm_version:  Version number of this RPC.  This with the type composes
@@ -231,13 +257,13 @@ raft_client_rpc_msg_size(const size_t app_payload_size)
     return (sizeof(struct raft_client_rpc_msg) + app_payload_size);
 }
 
-// XXx does this need to check for messages which are too small?
 static inline bool
-raft_client_rpc_msg_size_is_valid(const size_t app_payload_size)
+raft_client_rpc_msg_size_is_valid(enum raft_instance_store_type store_type,
+                                  const size_t app_payload_size)
 
 {
     return raft_client_rpc_msg_size(app_payload_size) <=
-        RAFT_NET_CLIENT_MAX_RPC_SIZE ? true : false;
+        raft_net_max_rpc_size(store_type) ? true : false;
 }
 
 #define RAFT_NET_WR_SUPP_MAX 1024 // arbitrary limit..
@@ -374,7 +400,7 @@ raft_net_client_rpc_sys_error_2_string(const int rc)
 static inline void
 raft_net_compile_time_assert(void)
 {
-    COMPILE_TIME_ASSERT(RAFT_NET_MAX_RPC_SIZE >
+    COMPILE_TIME_ASSERT(RAFT_NET_ENTRY_RESERVE >=
                         (sizeof(struct raft_client_rpc_msg)));
 
     COMPILE_TIME_ASSERT(

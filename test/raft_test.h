@@ -10,10 +10,10 @@
 #include "common.h"
 #include "raft_net.h"
 
-#define RAFT_TEST_VALUES_MAX                                \
-    ((RAFT_NET_MAX_RPC_SIZE -                               \
-      (offsetof(struct raft_test_data_block, rtdb_values) + \
-       sizeof(struct raft_client_rpc_msg))) /               \
+#define RAFT_TEST_VALUES_MAX                                            \
+    ((raft_net_max_rpc_size(RAFT_INSTANCE_STORE_POSIX_FLAT_FILE) -      \
+      (offsetof(struct raft_test_data_block, rtdb_values) +             \
+       sizeof(struct raft_client_rpc_msg))) /                           \
      sizeof(struct raft_test_values))
 
 /**

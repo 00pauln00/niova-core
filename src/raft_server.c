@@ -130,6 +130,9 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_VSTATS,
 };
 
+#define RAFT_ENTRY_MAX_DATA_SIZE(ri) \
+    ((ri)->ri_max_entry_size - RAFT_ENTRY_HEADER_RESERVE)
+
 static char *
 raft_instance_buffer_get(struct raft_instance *ri, size_t size)
 {
@@ -676,7 +679,7 @@ raft_server_entry_init(const struct raft_instance *ri,
         NIOVA_ASSERT(re_idx >= 0);
 
     // Should have been checked already
-    NIOVA_ASSERT(len <= RAFT_ENTRY_MAX_DATA_SIZE);
+    NIOVA_ASSERT(len <= RAFT_ENTRY_MAX_DATA_SIZE(ri));
 
     struct raft_entry_header *reh = &re->re_header;
 
@@ -820,7 +823,7 @@ raft_server_entry_write(struct raft_instance *ri,
         (opts != RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER && (!data || !len)))
         return -EINVAL;
 
-    else if (len > RAFT_ENTRY_MAX_DATA_SIZE)
+    else if (len > RAFT_ENTRY_MAX_DATA_SIZE(ri))
         return -E2BIG;
 
     const size_t total_entry_size = sizeof(struct raft_entry) + len;
@@ -892,7 +895,7 @@ read_server_entry_validate(const struct raft_instance *ri,
 
     // Validate magic and data size.
     if (rh->reh_magic != RAFT_ENTRY_MAGIC ||
-        rh->reh_data_size > RAFT_ENTRY_MAX_DATA_SIZE)
+        rh->reh_data_size > RAFT_ENTRY_MAX_DATA_SIZE(ri))
         return -EINVAL;
 
     // reh_index should be the same as the expected index.
@@ -1095,7 +1098,7 @@ static int
 raft_server_entry_read(struct raft_instance *ri, const raft_entry_idx_t re_idx,
                        char *data, const size_t len, size_t *rc_len)
 {
-    if (!ri || !data || len > RAFT_ENTRY_SIZE)
+    if (!ri || !data || len > ri->ri_max_entry_size)
         return -EINVAL;
 
     const size_t total_entry_size = sizeof(struct raft_entry) + len;
@@ -2871,7 +2874,7 @@ raft_server_write_new_entry_from_leader(
     const size_t entry_size = raerq->raerqm_entries_sz;
 
     // Msg size of '0' is OK.
-    NIOVA_ASSERT(entry_size <= RAFT_ENTRY_MAX_DATA_SIZE);
+    NIOVA_ASSERT(entry_size <= RAFT_ENTRY_MAX_DATA_SIZE(ri));
 
     // Sanity check on the 'next' idx to be written.
     NIOVA_ASSERT(unsync_hdr.reh_index == raerq->raerqm_prev_log_index);
@@ -2932,13 +2935,14 @@ raft_server_process_append_entries_request_prep_reply(
 
 static raft_server_net_cb_ctx_int_t
 raft_server_process_append_entries_request_validity_check(
+    const struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq)
 {
     NIOVA_ASSERT(raerq);
 
     // Do some basic verification of the AE msg contents.
     if (raerq->raerqm_prev_log_index < RAFT_MIN_APPEND_ENTRY_IDX ||
-        raerq->raerqm_entries_sz > RAFT_ENTRY_MAX_DATA_SIZE)
+        raerq->raerqm_entries_sz > RAFT_ENTRY_MAX_DATA_SIZE(ri))
         return -EINVAL;
 
     return 0;
@@ -3083,7 +3087,7 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     const struct raft_append_entries_request_msg *raerq =
         &rrm->rrm_append_entries_request;
 
-    if (raft_server_process_append_entries_request_validity_check(raerq))
+    if (raft_server_process_append_entries_request_validity_check(ri, raerq))
     {
         DBG_RAFT_MSG(
             LL_WARN, rrm,
@@ -3888,8 +3892,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-    static char reply_buf[RAFT_NET_MAX_RPC_SIZE];
-
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
@@ -3913,11 +3915,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         return;
     }
 
+    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
+    char *reply_buf = raft_instance_buffer_get(ri, reply_size);
+    NIOVA_ASSERT(reply_buf);
+
     struct raft_net_client_request_handle rncr;
 
-    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, from,
-                                                   reply_buf,
-                                                   RAFT_NET_MAX_RPC_SIZE);
+    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, from, reply_buf,
+                                                   reply_size);
 
     /* Second set of checks which determine if this server is capable of
      * handling the request at this time.
@@ -4003,6 +4008,8 @@ out1:
 out:
     if (csn)
         ctl_svc_node_put(csn);
+
+    raft_instance_buffer_put(ri, reply_buf);
 }
 
 /**
@@ -4074,13 +4081,15 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     if (!raft_instance_is_leader(ri) || my_raft_idx < 0)
         return;
 
-    static char src_buf[RAFT_NET_MAX_RPC_SIZE];
-    static char sink_buf[RAFT_ENTRY_SIZE];
+    const size_t src_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
+    const size_t sink_buf_sz = ri->ri_max_entry_size;
+
+    // Xxx this function appears to only require a single buffer..
+    char *src_buf = raft_instance_buffer_get(ri, src_buf_sz);
+    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
+    NIOVA_ASSERT(src_buf && sink_buf);
 
     struct raft_rpc_msg *rrm = (struct raft_rpc_msg *)src_buf;
-//    const size_t data_len =
-//        RAFT_NET_MAX_RPC_SIZE - sizeof(struct raft_rpc_msg);
-
     const raft_peer_t num_raft_members = raft_num_members_validate_and_get(ri);
 
     ///Xxx this is a big mess of code which needs to be made into some
@@ -4094,8 +4103,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
              !heartbeat))
             continue;
 
-        memset(src_buf, 0, RAFT_NET_MAX_RPC_SIZE);
-        memset(sink_buf, 0, RAFT_ENTRY_SIZE);
+        memset(src_buf, 0, src_buf_sz);
+        memset(sink_buf, 0, sink_buf_sz);
 
         struct raft_append_entries_request_msg *raerq =
             &rrm->rrm_append_entries_request;
@@ -4170,6 +4179,10 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
         /* log errors, but raft will retry if needed */
         DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %d", rc);
     }
+
+    // release buffers
+    raft_instance_buffer_put(ri, src_buf);
+    raft_instance_buffer_put(ri, sink_buf);
 }
 
 static raft_server_epoll_sm_apply_t
@@ -4240,8 +4253,12 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     if (ri->ri_last_applied_idx == ri->ri_commit_idx)
         return;
 
-    static char sink_buf[RAFT_ENTRY_SIZE];
-    static char reply_buf[RAFT_ENTRY_SIZE];
+    const size_t reply_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
+    const size_t sink_buf_sz = ri->ri_max_entry_size;
+
+    char *reply_buf = raft_instance_buffer_get(ri, reply_buf_sz);
+    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
+    NIOVA_ASSERT(reply_buf && sink_buf);
 
     const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
 
@@ -4260,8 +4277,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     struct raft_net_client_request_handle rncr;
     raft_server_net_client_request_init_sm_apply(ri, &rncr, sink_buf,
                                                  reh.reh_data_size,
-                                                 reply_buf,
-                                                 RAFT_NET_MAX_RPC_SIZE);
+                                                 reply_buf, reply_buf_sz);
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
     {
@@ -4326,6 +4342,10 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
         raft_net_client_request_handle_has_reply_info(&rncr))
         raft_server_reply_to_client(ri, &rncr, NULL);
+
+    // release buffers
+    raft_instance_buffer_put(ri, reply_buf);
+    raft_instance_buffer_put(ri, sink_buf);
 }
 
 static raft_server_epoll_remote_sender_t
