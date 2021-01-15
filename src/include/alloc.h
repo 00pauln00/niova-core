@@ -45,6 +45,16 @@ extern enum log_level allocLogLevel;
     ptr;                                                                  \
 })
 
+#define niova_posix_memalign(size, alignment)                      \
+({                                                                 \
+    void *ptr = NULL;                                              \
+    int rc = posix_memalign(&ptr, alignment, size);                \
+    LOG_MSG((rc ? LL_ERROR : allocLogLevel),                       \
+            "niova_posix_memalign: %p %zu %zu: %s",                \
+            ptr, size, alignment, rc ? strerror(rc) : "OK");       \
+    ptr;                                                           \
+})
+
 #define niova_free(ptr)                            \
 {                                                  \
     free(ptr);                                     \

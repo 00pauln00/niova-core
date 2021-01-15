@@ -4974,6 +4974,57 @@ raft_server_chkpt_thread_join(struct raft_instance *ri)
 }
 
 static int
+raft_server_instance_buffer_pool_setup(struct raft_instance *ri)
+{
+    if (!ri->ri_max_entry_size)
+        return -EINVAL;
+    else if (ri->ri_buf_pool)
+        return -EALREADY;
+
+    ri->ri_buf_pool =
+        niova_calloc_can_fail(RAFT_INSTANCE_NUM_BUFS,
+                              sizeof(struct raft_instance_buffer));
+
+    if (!ri->ri_buf_pool)
+        return -ENOMEM;
+
+    ri->ri_buf_pool->ribufp_nbufs = RAFT_INSTANCE_NUM_BUFS;
+
+    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    {
+        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+
+        rib->ribuf_size = ri->ri_max_entry_size;
+        rib->ribuf_free = true;
+        rib->ribuf_buf = niova_posix_memalign(ri->ri_max_entry_size, 4096UL);
+
+        if (!rib->ribuf_buf)
+            return -ENOMEM;
+    }
+
+    return 0;
+}
+
+static void
+raft_server_instance_buffer_pool_destroy(struct raft_instance *ri)
+{
+    if (!ri || !ri->ri_buf_pool)
+        return;
+
+    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    {
+        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+
+        NIOVA_ASSERT(rib->ribuf_free);
+
+        if (rib->ribuf_buf)
+            niova_free(rib->ribuf_buf);
+    }
+
+    niova_free(ri->ri_buf_pool);
+}
+
+static int
 raft_server_instance_startup(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -4997,6 +5048,15 @@ raft_server_instance_startup(struct raft_instance *ri)
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "raft_server_backend_setup(): %s",
                           strerror(-rc));
         return rc;
+    }
+
+    rc = raft_server_instance_buffer_pool_setup(ri);
+    if (rc)
+    {
+        DBG_RAFT_INSTANCE(LL_ERROR, ri,
+                          "raft_server_instance_buffer_pool_setup(): %s",
+                          strerror(-rc));
+        goto out;
     }
 
     rc = raft_server_instance_lreg_init(ri);
@@ -5149,6 +5209,8 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 	if (!rc)
             rc = lreg_removal_wait_rc;
     }
+
+    raft_server_instance_buffer_pool_destroy(ri);
 
     return rc;
 }

@@ -392,6 +392,20 @@ struct raft_evp
     uint8_t                    revp_installed_on_epm : 1;
 };
 
+struct raft_instance_buffer
+{
+    char    *ribuf_buf;
+    size_t   ribuf_size;
+    bool     ribuf_free;
+};
+
+#define RAFT_INSTANCE_NUM_BUFS 2UL
+struct raft_instance_buf_pool
+{
+    size_t                      ribufp_nbufs;
+    struct raft_instance_buffer ribufp_bufs[];
+};
+
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -466,6 +480,7 @@ struct raft_instance
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
+    struct raft_instance_buf_pool  *ri_buf_pool;
 };
 
 static inline struct raft_recovery_handle *
