@@ -122,9 +122,6 @@ AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_create],,
              [AC_MSG_ERROR([rocksdb_checkpoint_object_create])])
 AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_destroy],,
              [AC_MSG_ERROR([rocksdb_checkpoint_object_destroy])])
-# Make ROCKS_DB_LIBS an output variable
-AC_OUTPUT([ROCKSDB_LIBS])
-
 # restore the original LIBS
 LIBS=$LIBS_save
 
