@@ -135,7 +135,7 @@ my_libexec_PROGRAMS += test/raft-reference-server
 test_raft_reference_server_SOURCES = $(non_library_common_SOURCES) \
 	test/raft-reference-server.c
 test_raft_reference_server_LDADD = \
-	src/libniova.la src/libniova_raft.la -lrocksdb
+	src/libniova.la src/libniova_raft.la $(ROCKSDB_LIBS)
 ## end Raft
 
 ## Pumice
@@ -170,7 +170,7 @@ test_pumice_reference_server_SOURCES =  $(non_library_common_SOURCES) \
 test_pumice_reference_server_LDADD = \
 	src/libniova.la \
 	src/libniova_raft.la \
-	src/libniova_pumice.la -lrocksdb
+	src/libniova_pumice.la $(ROCKSDB_LIBS)
 
 raft_include_HEADERS += src/include/pumice_db_net.h \
 	src/include/pumice_db_client.h \

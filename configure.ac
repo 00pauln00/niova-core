@@ -109,7 +109,12 @@ AC_CHECK_LIB([pthread],[pthread_join],,
              [AC_MSG_ERROR([Could not find pthread_join])])
 
 #rocksdb
-AC_CHECK_LIB([rocksdb],[rocksdb_writebatch_delete_range],,
+# Rocksdb will not be included in the global LIB var
+LIBS_save=$LIBS
+AC_CHECK_LIB([rocksdb],[rocksdb_writebatch_delete_range],
+             [
+                AC_SUBST(ROCKSDB_LIBS, [-lrocksdb])
+             ],
              [AC_MSG_ERROR([Could not find rocksdb_writebatch_delete_range])])
 AC_CHECK_LIB([rocksdb],[rocksdb_delete_file_in_range],,
              [AC_MSG_ERROR([rocksdb_delete_file_in_range])])
@@ -117,6 +122,11 @@ AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_create],,
              [AC_MSG_ERROR([rocksdb_checkpoint_object_create])])
 AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_destroy],,
              [AC_MSG_ERROR([rocksdb_checkpoint_object_destroy])])
+# Make ROCKS_DB_LIBS an output variable
+AC_OUTPUT([ROCKSDB_LIBS])
+
+# restore the original LIBS
+LIBS=$LIBS_save
 
 AC_ARG_ENABLE(
     [asan],
