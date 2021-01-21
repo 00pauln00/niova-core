@@ -6,6 +6,12 @@ export const typeDefs = gql`
         json: String
     }
 
+    type Service {
+        uuid: String
+        uptime: Int
+        pid: Int
+    }
+
     type Query {
         getJson(
             "NIOVA service UUID"
@@ -13,6 +19,7 @@ export const typeDefs = gql`
             "NIOVA JSON data location"
             path: String!
         ): TreeFragJson
+        getServices(): [Service]
     }
 
     type Mutation {
