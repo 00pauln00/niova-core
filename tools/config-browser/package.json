@@ -16,6 +16,7 @@
     "apollo-server-express": "^2.19.2",
     "express": "^4.17.1",
     "graphql": "^15.4.0",
+    "moment": "^2.29.1",
     "react": "^17.0.1",
     "react-dom": "^17.0.1",
     "react-json-view": "https://github.com/kitwestneat/react-json-view.git",

@@ -2,7 +2,7 @@ import express from 'express';
 import { ApolloServer } from 'apollo-server-express';
 import { typeDefs } from './schema';
 import { getConfig } from '../utils/config';
-import { cmdJson } from './niova-api';
+import { cmdJson, getServices } from './niova-api';
 
 const { SERVER_PORT } = getConfig();
 
@@ -18,6 +18,7 @@ const resolvers = {
             id: `${uuid}/${path}`,
             json: cmdJson('GET', uuid, path),
         }),
+        getServices,
     },
     Mutation: {
         applyJson: (_parent: any, { uuid, path, value }: CmdOpts) => {

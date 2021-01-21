@@ -19,7 +19,7 @@ export const typeDefs = gql`
             "NIOVA JSON data location"
             path: String!
         ): TreeFragJson
-        getServices(): [Service]
+        getServices: [Service]
     }
 
     type Mutation {

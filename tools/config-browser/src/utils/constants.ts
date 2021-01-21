@@ -3,6 +3,16 @@ import { gql } from '@apollo/client';
 export const DEFAULT_UUID = '';
 export const DEFAULT_PATH = '/';
 
+export const GET_SERVICES_QUERY = gql`
+    query GetServices {
+        getServices {
+            uuid
+            uptime
+            pid
+        }
+    }
+`;
+
 export const GET_JSON_QUERY = gql`
     query GetJson($uuid: String!, $path: String!) {
         getJson(uuid: $uuid, path: $path) {

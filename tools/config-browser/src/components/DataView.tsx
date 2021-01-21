@@ -7,7 +7,7 @@ interface DataViewProps {
     loading: boolean;
     error?: ApolloError;
     onKeySelect(props: OnSelectProps): void;
-    onEdit(props: InteractionProps): void;
+    onEdit?(props: InteractionProps): void;
 }
 
 export default function DataView({
