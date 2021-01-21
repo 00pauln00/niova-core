@@ -1,84 +1,62 @@
 import React, { ReactElement, useState } from 'react';
-import GetJson, { SearchParams } from './queries/GetJson';
-// import './App.css';
-import { newClient } from './client';
-import { ApolloProvider } from '@apollo/client';
-import DataFilter from './components/DataFilter';
-import renderDataView from './components/DataView';
+import { useLazyQuery, useMutation } from '@apollo/client';
 import { InteractionProps, OnSelectProps } from 'react-json-view';
-
 import '@blueprintjs/core/lib/css/blueprint.css';
-import ApplyJson, { ApplyParams } from './queries/ApplyJson';
-import renderApplyResultDialog from './components/ApplyResultDialog';
-import { DataLoadingError } from './types';
 
-const DEFAULT_UUID = '';
-const DEFAULT_PATH = '/';
+import { newClient } from './client';
+
+import DataFilter from './components/DataFilter';
+import DataView from './components/DataView'; // XXX should rename this
+import ApplyResultDialog from './components/ApplyResultDialog';
+import { APPLY_JSON_MUTATION, DEFAULT_PATH, DEFAULT_UUID, GET_JSON_QUERY } from './utils/constants';
+import { addWildCard, buildNiovaPath, isNumeric } from './utils/misc';
 
 const client = newClient();
 
-const isNumeric = (num: any): boolean =>
-    typeof num == 'number' || (typeof num == 'string' && !isNaN(+num) && !isNaN(parseFloat(num)));
-
-const niovaEscape = (str: string) => str.replace(/([() ])/, '\\$1');
-
-const NIOVA_ID_KEYS = ['name'];
-
-function buildNiovaPath(item: any, namespace: (string | null)[]): string[] {
-    const path: string[] = [];
-
-    for (let i = 0; i < namespace.length; i++) {
-        const key = namespace[i];
-        if (key == null) {
-            console.error('null found in namespace', namespace);
-
-            return [];
-        }
-
-        item = item[key];
-        // NIOVA uses field filters instead of array indexes
-        if (isNumeric(key)) {
-            let newKey: string | false = false;
-            for (let j = 0; j < NIOVA_ID_KEYS.length; j++) {
-                const id = NIOVA_ID_KEYS[j];
-                if (item[id]) {
-                    newKey = `${id}@${niovaEscape(item[id])}`;
-                    break;
-                }
-            }
-            if (!newKey) {
-                console.error('array element found with no name-type field', namespace, item);
-
-                return [];
-            } else {
-                path.push(newKey);
-            }
-        } else {
-            path.push(key);
-        }
+function parseData(data: any): any {
+    const json = data?.getJson?.json;
+    if (!json) {
+        return;
     }
 
-    return path;
+    try {
+        return JSON.parse(json);
+    } catch (e) {
+        console.error('Error parsing json', json);
+    }
+
+    return;
 }
 
 function App(): ReactElement {
     const [uuid, setUuid] = useState<string>(DEFAULT_UUID);
     const [path, setPath] = useState<string>(DEFAULT_PATH);
-    const [searchParams, setSearchParams] = useState<SearchParams>();
-    const [applyParams, setApplyParams] = useState<ApplyParams>();
+    const [getJson, { data, error, loading }] = useLazyQuery(GET_JSON_QUERY, {
+        fetchPolicy: 'cache-and-network',
+        client,
+    });
+
+    const [showApplyResults, setShowApplyResults] = useState<boolean>(false);
+    const [applyJson, applyJsonResults] = useMutation(APPLY_JSON_MUTATION, { client });
+
+    const doGetJson = ({ path, uuid }: { path: string; uuid: string }) =>
+        getJson({ variables: { uuid, path: addWildCard(path) } });
 
     const onKeySelect = ({ namespace }: OnSelectProps) => {
         console.log('onKeySelect');
         const path = '/' + namespace.filter((o) => !isNumeric(o)).join('/');
         setPath(path);
-        setSearchParams({ uuid, path, useCache: true });
+        doGetJson({ uuid, path });
     };
 
     const onEdit = ({ existing_src, new_value, namespace, name }: InteractionProps): boolean => {
         console.log('onEdit');
         const path = buildNiovaPath(existing_src, namespace);
         if (path.length) {
-            setApplyParams({ uuid, path: '/' + path.join('/'), value: name + '@' + new_value });
+            setShowApplyResults(true);
+            applyJson({
+                variables: { uuid, path: '/' + path.join('/'), value: name + '@' + new_value },
+            });
         }
 
         return false;
@@ -86,43 +64,31 @@ function App(): ReactElement {
 
     const onApplyResultClose = () => {
         console.log('onApplyResultClose: closing');
-        setApplyParams(undefined);
-        setSearchParams({ uuid, path, useCache: false });
+        doGetJson({ uuid, path });
+
+        setShowApplyResults(false);
     };
 
-    console.log('App');
-
     return (
-        <ApolloProvider client={client}>
-            <div className="App">
-                <DataFilter
-                    uuid={uuid}
-                    setUuid={setUuid}
-                    path={path}
-                    setPath={setPath}
-                    onSearch={() => setSearchParams({ uuid, path, useCache: false })}
-                />
-                {searchParams && !applyParams && (
-                    <GetJson
-                        {...searchParams}
-                        render={({ data }) => renderDataView({ data, onKeySelect, onEdit })}
-                    />
-                )}
-                {applyParams && (
-                    <ApplyJson
-                        {...applyParams}
-                        render={({ data, loading, error }: DataLoadingError) =>
-                            renderApplyResultDialog({
-                                data,
-                                loading,
-                                error,
-                                onClose: onApplyResultClose,
-                            })
-                        }
-                    />
-                )}
-            </div>
-        </ApolloProvider>
+        <div className="App">
+            <DataFilter
+                uuid={uuid}
+                setUuid={setUuid}
+                path={path}
+                setPath={setPath}
+                onSearch={() => doGetJson({ uuid, path })}
+            />
+            <DataView
+                data={parseData(data)}
+                onKeySelect={onKeySelect}
+                onEdit={onEdit}
+                loading={loading}
+                error={error}
+            />
+            {showApplyResults && (
+                <ApplyResultDialog {...applyJsonResults} onClose={onApplyResultClose} />
+            )}
+        </div>
     );
 }
 
