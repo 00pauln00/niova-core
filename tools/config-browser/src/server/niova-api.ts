@@ -48,11 +48,11 @@ export async function cmdJson(
     const cmd = buildCmd(cmdType, arg, outfile, where);
 
     const watcher = addOutputWatcher(uuid, outfile);
-    console.log('watcher added, writing cmd');
+    console.log('watcher added for', outfile, 'writing cmd', cmd);
     writeCmd(infile, cmd);
 
+
     const resp = await watcher;
-    console.log('resp', resp);
 
     return resp;
 }

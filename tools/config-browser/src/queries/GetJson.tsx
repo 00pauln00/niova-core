@@ -16,7 +16,7 @@ export interface SearchParams {
 }
 
 interface GetJsonOpts extends SearchParams {
-    render({ data }: {data: any}) : ReactElement | null;
+    render({ data }: { data: any }): ReactElement | null;
 }
 
 function addWildCard(path: string) {
@@ -38,6 +38,7 @@ export default function GetJson({
     useCache,
     render,
 }: GetJsonOpts): ReactElement | null {
+    console.log('GetJson');
     const { loading, error, data } = useQuery(GET_JSON_QUERY, {
         fetchPolicy: useCache ? 'cache-first' : 'cache-and-network',
         variables: { uuid, path: addWildCard(path) },
