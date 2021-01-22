@@ -102,8 +102,69 @@ circleq_splice_tail_test(void)
     NIOVA_ASSERT(tmp->ce_value == j++ && tmp->ce_version == 0);
 }
 
+#include "queue.h"
+
+static void
+circle_queue_checks(void)
+{
+    struct cq_entry {
+        int num;
+        CIRCLEQ_ENTRY(cq_entry) lentry;
+    };
+#define NENTRIES 4
+
+    CIRCLEQ_HEAD(cq_head, cq_entry);
+    struct cq_head head = CIRCLEQ_HEAD_INITIALIZER(head);
+
+    struct cq_entry unattached = {0};
+    NIOVA_ASSERT(CIRCLEQ_ENTRY_DETACHED(&unattached.lentry));
+    NIOVA_ASSERT(!CIRCLEQ_ENTRY_IS_MEMBER(&head, &unattached, lentry));
+
+    struct cq_entry entries[NENTRIES];
+
+    for (int i = 0; i < NENTRIES; i++)
+    {
+        entries[i].num = i;
+        CIRCLEQ_INSERT_HEAD(&head, &entries[i], lentry);
+        NIOVA_ASSERT(!CIRCLEQ_ENTRY_DETACHED(&entries[i].lentry));
+    }
+
+    for (int i = 0; i < NENTRIES; i++)
+    {
+        NIOVA_ASSERT(CIRCLEQ_ENTRY_IS_MEMBER(&head, &entries[i], lentry));
+    }
+
+    struct cq_entry *tmp;
+    int i = 0;
+    CIRCLEQ_FOREACH_REVERSE(tmp, &head, lentry)
+    {
+        NIOVA_ASSERT(tmp->num == i);
+        i++;
+    }
+
+    CIRCLEQ_FOREACH(tmp, &head, lentry)
+    {
+        NIOVA_ASSERT(tmp->num == i - 1);
+        i--;
+    }
+
+    CIRCLEQ_REMOVE(&head, &entries[1], lentry);
+    NIOVA_ASSERT(!CIRCLEQ_ENTRY_IS_MEMBER(&head, &entries[1], lentry));
+
+    i = NENTRIES - 1;
+    CIRCLEQ_FOREACH(tmp, &head, lentry)
+    {
+        NIOVA_ASSERT(tmp->num == i);
+        i == 2 ? i -= 2 : i--;
+    }
+
+    NIOVA_ASSERT(CIRCLEQ_FIRST(&head) == &entries[NENTRIES - 1]);
+    NIOVA_ASSERT(CIRCLEQ_LAST(&head) == &entries[0]);
+}
+
 int
 main(void)
 {
+    circle_queue_checks();
     circleq_splice_tail_test();
 }

@@ -724,4 +724,19 @@ struct {                                                       \
         CIRCLEQ_INIT((src_head));                                         \
     } while (0)
 
+#define CIRCLEQ_ENTRY_IS_MEMBER(head, elm, field)     \
+({                                                    \
+    bool found = false;                               \
+    typeof (elm) tmp;                                 \
+    CIRCLEQ_FOREACH(tmp, head, field)                 \
+    {                                                 \
+        if ((elm) == tmp)                             \
+        {                                             \
+            found = true;                             \
+            break;                                    \
+        }                                             \
+    }                                                 \
+    found;                                            \
+})
+
 #endif  /* !_SYS_QUEUE_H_ */
