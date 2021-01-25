@@ -25,6 +25,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
 static const struct PmdbAPI *pmdbApi;
+static void *pmdb_user_data = NULL;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -550,7 +551,8 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
             pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                pmdb_req->pmdbrm_data,
                                pmdb_req->pmdbrm_data_size,
-                               pmdb_reply->pmdbrm_data, max_reply_size);
+                               pmdb_reply->pmdbrm_data, max_reply_size,
+                               pmdb_user_data);
     }
     //XXX fault injection needed
     if (rrc < 0)
@@ -710,7 +712,8 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     // Call into the application so it may emplace its own KVs.
     int apply_rc =
         pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
-                            pmdb_req->pmdbrm_data_size, (void *)&pah);
+                            pmdb_req->pmdbrm_data_size, (void *)&pah,
+                            pmdb_user_data);
 
     // rc of 0 means the client will get a reply
     if (!rc)
@@ -858,6 +861,7 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes)
 {
+	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExec");
     pmdbApi = pmdb_api;
 
     if (!raft_uuid_str || !raft_instance_uuid_str || !pmdb_api ||
@@ -891,6 +895,18 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     raft_server_rocksdb_release_cf_table(&pmdbCFT);
 
     return rc;
+}
+
+int
+PmdbExecGo(const char *raft_uuid_str, const char *raft_instance_uuid_str,
+         const struct PmdbAPI *pmdb_api,
+         int num_cf_names, bool use_synchronous_writes, void *user_data)
+{
+	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExecGo");
+	pmdb_user_data = user_data;
+    const char *cf_names[1] = {"niova-go"};
+	return PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
+					num_cf_names, use_synchronous_writes);
 }
 
 /**

@@ -1,0 +1,10 @@
+prefix=@prefix@
+exec_prefix=@exec_prefix@
+libdir=@libdir@
+includedir=@includedir@
+ 
+Name: @PACKAGE_NAME@
+Description: Niova core library
+Version: @PACKAGE_VERSION@
+Libs: -L${libdir} -lniova -lniova_pumice -lniova_pumice_client -lniova_raft -lniova_raft_client -lrocksdb
+Cflags: -I${includedir}/niova

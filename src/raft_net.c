@@ -2344,7 +2344,7 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
 static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
-    FUNC_ENTRY(LL_NOTIFY);
+    FUNC_ENTRY(LL_WARN);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
