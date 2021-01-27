@@ -98,6 +98,17 @@ common_compile_time_asserts(void)
 }
 
 static inline unsigned long long
+highest_set_bit_pos_from_val(unsigned long long val)
+{
+    if (!val)
+        return 0;
+
+    int pos = TYPE_SZ_BITS(unsigned long long) - __builtin_clzll(val);
+
+    return pos;
+}
+
+static inline unsigned long long
 highest_power_of_two_from_val(unsigned long long val)
 {
     if (!val)

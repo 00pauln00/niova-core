@@ -9,6 +9,26 @@
 #include "random.h"
 
 static void
+highest_set_bit_pos_from_val_test(void)
+{
+    for (int i = 0; i < TYPE_SZ_BITS(unsigned long long); i++)
+    {
+        const unsigned long long val = 1ULL << i;
+        NIOVA_ASSERT(i + 1 == highest_set_bit_pos_from_val(val));
+
+        for (int j = 0; j < 10; j++)
+        {
+            const unsigned long long val_with_inner_bits =
+                val + (random_get() % val);
+
+            NIOVA_ASSERT(i + 1 ==
+                         highest_set_bit_pos_from_val(val_with_inner_bits));
+        }
+    }
+}
+
+
+static void
 highest_power_of_two_test(void)
 {
     for (int i = 0; i < TYPE_SZ_BITS(unsigned long long); i++)
@@ -49,6 +69,7 @@ ssize_t_checks(void)
 int
 main(void)
 {
+    highest_set_bit_pos_from_val_test();
     highest_power_of_two_test();
     ssize_t_checks();
 
