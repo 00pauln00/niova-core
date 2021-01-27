@@ -1,0 +1,55 @@
+{
+  "env": {
+    "node": true,
+    "es6": true
+  },
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "project": "./tsconfig.json"
+  },
+  "plugins": ["@typescript-eslint"],
+
+  "extends": [
+    "eslint:recommended",
+    "google",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "rules": {
+    "object-curly-spacing": ["error", "always"],
+    "max-len": ["error", { "code": 100 }],
+    "camelcase": "off",
+    "@typescript-eslint/camelcase": "off",
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-use-before-define": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "debug_obj|^_" }
+    ],
+    "curly": "error",
+    "brace-style": "error",
+    "indent": ["error", 4],
+    "no-console": "off",
+    "newline-before-return": "error",
+    "valid-jsdoc": "off",
+    "require-jsdoc": "off",
+    "new-cap": ["error", { "capIsNewExceptions": ["Deferred"] }],
+    "guard-for-in": "off",
+    "no-debugger": "off",
+    "no-invalid-this": "off",
+    "no-useless-escape": "off",
+    "nonblock-statement-body-position": ["error", "below"],
+    "comma-dangle": ["error", "only-multiline"]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.js"],
+      "rules": {
+        "@typescript-eslint/no-var-requires": "off",
+        "@typescript-eslint/no-unused-vars": "off",
+        "@typescript-eslint/explicit-function-return-type": "off",
+        "@typescript-eslint/no-this-alias": "off"
+      }
+    }
+  ]
+}

@@ -32,7 +32,6 @@ pahole.out
 .gdb_history
 uncommitted/
 TODO*
-*.json
 *.cmd
 test/config_token_test
 test/udp_test
