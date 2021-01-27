@@ -2,7 +2,6 @@ package main
 import (
 	"fmt"
 	"unsafe"
-	"github.com/google/uuid"
 )
 /*
 #cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries/niova/
@@ -36,20 +35,19 @@ func GoTraverse(cbs *GoCallbacks) {
 		cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
 	}
 
-    uuid1 := uuid.New()
-    ruuid := uuid1.String()
+	//First parameter is RAFT_UUID
+	ruuid := os.Args[1]
 
-    fmt.Printf("Generated raft uuid: %s\n", ruuid)
-    raft_uuid := (*C.char)(unsafe.Pointer(&ruuid))
-    uuid2 := uuid.New()
+    fmt.Printf("Raft uuid: %s\n", ruuid)
+	raft_uuid := C.CString(ruuid)
+	defer C.free(unsafe.Pointer(raft_uuid))
 
-    puuid := uuid2.String()
-    fmt.Printf("Generated peer uuid: %s\n", puuid)
-    peer_uuid := (*C.char)(unsafe.Pointer(&puuid))
+	//Second parameter is PEER_UUID
+	puuid := os.Args[2]
+    fmt.Printf("Peer uuid: %s\n", puuid)
 
-	//arr := [1]*C.char{}
-	//arr[0] = C.CString("niova-dict-cf")
-	//defer C.free(unsafe.Pointer(arr[0]))
+	peer_uuid := C.CString(puuid)
+	defer C.free(unsafe.Pointer(peer_uuid))
 
 	// Create an opaque C pointer for cbs to pass to traverse.
 	p := gopointer.Save(cbs)

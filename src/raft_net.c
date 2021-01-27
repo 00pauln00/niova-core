@@ -2341,15 +2341,22 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_server_recv_cb = server_recv_cb;
 }
 
+int entry_cnt;
 static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
     FUNC_ENTRY(LL_WARN);
+	SIMPLE_LOG_MSG(LL_WARN, "entry_cnt=%d", entry_cnt);
+	if (entry_cnt++ > 0)
+		return;
+
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);
+
+	FUNC_EXIT(LL_WARN);
 
     return;
 }

@@ -902,9 +902,11 @@ PmdbExecGo(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api,
          int num_cf_names, bool use_synchronous_writes, void *user_data)
 {
-	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExecGo");
+	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExecGo: %p", user_data);
 	pmdb_user_data = user_data;
-    const char *cf_names[1] = {"niova-go"};
+	const char *cf_names[1] = {"PMDBTS_CF"};
+
+	SIMPLE_LOG_MSG(LL_WARN, "raft uuid: %s, peer uuid: %s", raft_uuid_str, raft_instance_uuid_str);
 	return PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
 					num_cf_names, use_synchronous_writes);
 }
