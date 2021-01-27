@@ -6,6 +6,8 @@
 #ifndef NIOVA_BINARY_HIST_H
 #define NIOVA_BINARY_HIST_H 1
 
+#include <stdio.h>
+
 #include "common.h"
 #include "log.h"
 
@@ -92,6 +94,39 @@ binary_hist_upper_bucket_range(const struct binary_hist *bh, int pos)
 
     return pos == bh->bh_num_buckets - 1 ?
         -1 : (unsigned long long)((1ULL << (pos + bh->bh_start_bit)) - 1);
+}
+
+static inline void
+binary_hist_print(const struct binary_hist *bh, size_t num_hist,
+                  const char * (*name_cb)(int))
+{
+    if (!bh || !num_hist)
+        return;
+
+    for (size_t i = 0; i < num_hist; i++)
+    {
+        int values_printed = 0;
+
+        name_cb ?
+            fprintf(stdout, "\t%s = {", name_cb(i)) :
+            fprintf(stdout, "\thist-%zu = {", i);
+
+        const struct binary_hist *b = &bh[i];
+        for (int j = 0; j < b->bh_num_buckets; j++)
+        {
+            if (binary_hist_get_cnt(b, j))
+            {
+                fprintf(stdout, "%s\n\t\t%7lld: %lld",
+                        values_printed ? "," : "",
+                        binary_hist_lower_bucket_range(b, j),
+                        binary_hist_get_cnt(b, j));
+
+                values_printed++;
+            }
+        }
+        fprintf(stdout, "%s}%s\n", values_printed ? "\n\t" : "",
+                (i == (num_hist - 1)) ? "" : ",");
+    }
 }
 
 #endif
