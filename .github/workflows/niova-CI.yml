@@ -1,0 +1,77 @@
+name: holon_niova_workflow
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        path: ./code
+
+    - name: Generate build number
+      uses: einaregilsson/build-number@v3
+      with:
+        token: ${{secrets.github_token}}
+
+    - name: apt update
+      run: sudo apt update
+    - name: dpkg / rpm prep (debug)
+      run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
+    - name: dpkg / rpm prep
+      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+    - name: make
+      run: cd ./code &&
+           ./prepare.sh &&
+           ./configure --prefix=/home/runner/work/niovad/niovad/build_dir/ --enable-asan --enable-devel &&
+           make clean && make && make install
+      env:
+        LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
+
+    - name: Copy Docker file
+      run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
+
+    - name: Copy script to run recipes
+      run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/
+
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      with:
+       repository: 00pauln00/holon
+       #ref: testing_with_niova_repo
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
+       path: ./holon
+
+    - name: Install python libraries
+      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible jmespath
+
+    - name: Copy holon repo
+      run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
+
+    - name: Create log directory for storing holon logs
+      run: mkdir  /home/runner/work/niovad/niovad/holon_log
+
+    - name: List build directory
+      run: ls -l /home/runner/work/niovad/niovad/build_dir
+
+    - name:  run recipes
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
+
+    - name: Archive the recipe results
+      uses: actions/upload-artifact@v2
+      with:
+         name: test-recipe-report.${{ steps.buildnumber.outputs.build_number }}
+         path: /home/runner/work/niovad/niovad/holon_log
+      if: failure()
+
+    - name: Build the Docker Image
+      run: cd /home/runner/work/niovad/niovad/build_dir && docker build -t niova-holon:latest .
+      if: success()
+      
+    # TODO push the Docker image with holon repo and niova binaries on github registry.
