@@ -1,11 +1,15 @@
 package main
 import (
 	"fmt"
+	"os"
 	"unsafe"
+	"strconv"
 )
 /*
 #cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries/niova/
 #include <raft/pumice_db.h>
+#include <rocksdb/c.h>
+#include <raft/raft_net.h>
 extern void applyCgo(const struct raft_net_client_user_id *, const char *,
                      size_t, void *, void *);
 extern void readCgo(const struct raft_net_client_user_id *, const char *,
@@ -23,6 +27,7 @@ type GoCallbacks struct {
 	applyCb GoApplyCallback
 	readCb GoReadCallback
 }
+var seqno = 0
 
 func GoTraverse(cbs *GoCallbacks) {
 	fmt.Println("Inside GoTraverse")
@@ -78,11 +83,37 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf *C.char,
 func myapply(app_id *C.struct_raft_net_client_user_id, input_buf *C.char,
 			input_buf_sz C.size_t, pmdb_handle unsafe.Pointer) {
 	fmt.Println("from go myapply")
+	//rtdb *C.struct_raft_test_data_block = *C.struct_raft_test_data_block(input_buf)
+	//var stored_rtv C.struct_raft_test_values
+	seqno++
+
+	seq_string := strconv.Itoa(seqno)
+	stored_rtv := C.CString(seq_string)
+	defer C.free(unsafe.Pointer(stored_rtv))
+	//C.memset(unsafe.Pointer(&stored_rtv), 0, unsafe.Sizeof(C.struct_raft_test_values))
+	//C.pmdbts_sum_incoming_rtv(rtdb, &stored_rtv)
+
+	fmt.Println("Writing seqno", seqno)
+
+	cf := C.CString("PMDBTS_CF")
+	defer C.free(unsafe.Pointer(cf))
+
+	//pmdbts_cfh  := C.PmdbCfHandleLookup(cf)
+	//defer C.free(unsafe.Pointer(pmdbts_cfh))
+
+	C.PmdbWriteKVGo(app_id, pmdb_handle, C.Pmdb_rncui_2_key(app_id), C.Pmdb_entry_key_len(),
+				  stored_rtv, 32, nil, cf)
 }
 
 func myread(app_id *C.struct_raft_net_client_user_id, request_buf *C.char,
             request_bufsz C.size_t, reply_buf *C.char, reply_bufsz C.size_t) {
 	fmt.Println("from go myread")
+
+	cf_name := C.CString("PMDBTS_CF")
+	defer C.free(unsafe.Pointer(cf_name))
+
+	rc := C.Pmdb_test_app_lookup(app_id, cf_name)
+	fmt.Println("Return value is", rc)
 }
 
 func main() {
