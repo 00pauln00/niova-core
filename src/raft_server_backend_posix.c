@@ -16,6 +16,7 @@
 #include "raft.h"
 #include "registry.h"
 
+#define RAFT_ENTRY_SIZE_POSIX 65536
 #define NUM_RAFT_LOG_HEADERS 2
 
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -131,25 +132,31 @@ static off_t
 rsbr_raft_index_to_phys_offset(const struct raft_instance *ri,
                                raft_entry_idx_t entry_idx)
 {
+    NIOVA_ASSERT(ri && ri->ri_max_entry_size == RAFT_ENTRY_SIZE_POSIX);
+
     return (off_t)(rsbr_entry_idx_to_phys_idx(ri, entry_idx) *
-                   RAFT_ENTRY_SIZE);
+                   RAFT_ENTRY_SIZE_POSIX);
 }
 
 static off_t
 rsbr_raft_entry_to_phys_offset(const struct raft_instance *ri,
                                const struct raft_entry *re)
 {
+    NIOVA_ASSERT(ri && ri->ri_max_entry_size == RAFT_ENTRY_SIZE_POSIX);
+
     return (off_t)
         (rsbr_raft_entry_header_to_phys_idx(ri, &re->re_header) *
-         RAFT_ENTRY_SIZE);
+         RAFT_ENTRY_SIZE_POSIX);
 }
 
 static off_t
 rsbr_raft_entry_header_to_phys_offset(const struct raft_instance *ri,
                                       const struct raft_entry_header *reh)
 {
+    NIOVA_ASSERT(ri && ri->ri_max_entry_size == RAFT_ENTRY_SIZE_POSIX);
+
     return (off_t)
-        (rsbr_raft_entry_header_to_phys_idx(ri, reh) * RAFT_ENTRY_SIZE);
+        (rsbr_raft_entry_header_to_phys_idx(ri, reh) * RAFT_ENTRY_SIZE_POSIX);
 }
 
 static void
@@ -416,7 +423,7 @@ rsbp_stat_log_fd(struct raft_instance *ri)
 static ssize_t
 rsbp_num_entries_calc(struct raft_instance *ri)
 {
-    NIOVA_ASSERT(ri);
+    NIOVA_ASSERT(ri && ri->ri_max_entry_size == RAFT_ENTRY_SIZE_POSIX);
 
     int rc = rsbp_stat_log_fd(ri);
     if (rc)
@@ -428,8 +435,8 @@ rsbp_num_entries_calc(struct raft_instance *ri)
      * deducting the number of log header blocks.
      */
     ssize_t num_entries =
-        MAX(0, ((log_sz / RAFT_ENTRY_SIZE) +
-                ((log_sz % RAFT_ENTRY_SIZE) ? 1 : 0) -
+        MAX(0, ((log_sz / RAFT_ENTRY_SIZE_POSIX) +
+                ((log_sz % RAFT_ENTRY_SIZE_POSIX) ? 1 : 0) -
                 rsbr_get_num_log_headers(ri)));
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "num-block-entries=%zd", num_entries);
@@ -578,6 +585,8 @@ rsbp_setup(struct raft_instance *ri)
 
     else if (ri->ri_backend_arg)
         return -EALREADY;
+
+    CONST_OVERRIDE(size_t, ri->ri_max_entry_size, RAFT_ENTRY_SIZE_POSIX);
 
     ri->ri_backend_arg = niova_calloc(1UL, sizeof(struct raft_instance_posix));
 

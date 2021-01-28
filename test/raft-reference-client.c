@@ -71,7 +71,7 @@ struct rsc_raft_test_info
 #endif
     struct raft_client_rpc_msg  rtti_rcrm;
     struct raft_test_data_block rtti_rtdb;
-    char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE];
+    char                        rtti_payload[RAFT_NET_MAX_RPC_SIZE_POSIX];
 #if defined(__GNUC__) && defined(__clang__)
 #pragma clang diagnostic pop
 #endif
@@ -613,7 +613,7 @@ rsc_udp_recv_handler_process_reply(struct raft_instance *ri,
     if (rtdb->rtdb_num_values != expected_num_values)
     {
         DBG_RAFT_CLIENT_RPC_SOCK(LL_NOTIFY, rcrm, from,
-                            "rtdb %s has invalid rtdb_num_values %hu",
+                            "rtdb %s has invalid rtdb_num_values %u",
                             raft_test_data_op_2_string(rtdb->rtdb_op),
                             rtdb->rtdb_num_values);
         return;
@@ -723,7 +723,7 @@ rsc_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 {
     SIMPLE_FUNC_ENTRY(LL_NOTIFY);
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE)
+        recv_bytes > raft_net_max_rpc_size(ri->ri_store_type))
         return;
 
     const struct raft_client_rpc_msg *rcrm =
@@ -820,7 +820,7 @@ rsc_client_rpc_msg_init(struct raft_instance *ri,
     else if (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REQUEST &&
              (data_size == 0 ||
               (data_size + sizeof(struct raft_client_rpc_msg) >
-               RAFT_NET_MAX_RPC_SIZE)))
+               raft_net_max_rpc_size(RAFT_INSTANCE_STORE_POSIX_FLAT_FILE))))
         return -EMSGSIZE;
 
     memset(rcrm, 0, sizeof(struct raft_client_rpc_msg));
@@ -1380,6 +1380,7 @@ main(int argc, char **argv)
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = my_uuid_str;
+    ri->ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE;
 
     raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb, rsc_recv_handler,
                                       rsc_recv_handler);

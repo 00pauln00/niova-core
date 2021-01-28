@@ -29,8 +29,7 @@
 
 #define RAFT_ENTRY_HEADER_RESERVE 128
 
-#define RAFT_ENTRY_SIZE           65536
-#define RAFT_ENTRY_MAX_DATA_SIZE  (RAFT_ENTRY_SIZE - RAFT_ENTRY_HEADER_RESERVE)
+#define RAFT_ENTRY_SIZE_MIN        65536
 
 // Raft election timeout upper and lower bounds
 #define	RAFT_ELECTION__MAX_TIME_MS 100000
@@ -111,11 +110,11 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
     uint32_t raerqm_this_idx_crc;
-    uint16_t raerqm_entries_sz;
+    uint32_t raerqm_entries_sz;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint8_t  raerqm_entry_out_of_range;
-    uint8_t  raerqm__pad[3];
+    uint8_t  raerqm__pad[1];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
@@ -391,6 +390,20 @@ struct raft_evp
     uint8_t                    revp_installed_on_epm : 1;
 };
 
+struct raft_instance_buffer
+{
+    char    *ribuf_buf;
+    size_t   ribuf_size;
+    bool     ribuf_free;
+};
+
+#define RAFT_INSTANCE_NUM_BUFS 2UL
+struct raft_instance_buf_pool
+{
+    size_t                      ribufp_nbufs;
+    struct raft_instance_buffer ribufp_bufs[];
+};
+
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -439,6 +452,7 @@ struct raft_instance
     ssize_t                         ri_max_scan_entries;
     size_t                          ri_log_reap_factor;
     size_t                          ri_num_checkpoints;
+    const size_t                    ri_max_entry_size;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
     pthread_mutex_t                 ri_newest_entry_mutex;
     struct epoll_mgr                ri_epoll_mgr;
@@ -464,6 +478,7 @@ struct raft_instance
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
+    struct raft_instance_buf_pool  *ri_buf_pool;
 };
 
 static inline struct raft_recovery_handle *
@@ -478,7 +493,6 @@ raft_compile_time_checks(void)
     COMPILE_TIME_ASSERT(RAFT_ELECTION_UPPER_TIME_MS > 0);
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
-    COMPILE_TIME_ASSERT(RAFT_ENTRY_SIZE > RAFT_NET_MAX_RPC_SIZE);
     COMPILE_TIME_ASSERT((RAFT_ELECTION_UPPER_TIME_MS /
                          RAFT_HEARTBEAT_FREQ_PER_ELECTION) >
                         RAFT_HEARTBEAT__MIN_TIME_MS);
@@ -510,7 +524,7 @@ do {                                                                            
         break;                                                                                    \
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                                                \
         LOG_MSG(log_level,                                                                        \
-                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%hu hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
+                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt,  \
                 (rm)->rrm_append_entries_request.raerqm_leader_term,                              \
                 (rm)->rrm_append_entries_request.raerqm_log_term,                                 \
                 (rm)->rrm_append_entries_request.raerqm_commit_index,                             \

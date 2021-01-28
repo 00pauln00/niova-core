@@ -763,7 +763,9 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
         return -EOPNOTSUPP;
 
     else if (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REQUEST &&
-             (data_size == 0 || !raft_client_rpc_msg_size_is_valid(data_size)))
+             (data_size == 0 ||
+              !raft_client_rpc_msg_size_is_valid(RCI_2_RI(rci)->ri_store_type,
+                                                 data_size)))
         return -EMSGSIZE;
 
     memset(rcrm, 0, sizeof(struct raft_client_rpc_msg));
@@ -1332,6 +1334,8 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
     bool queue = raft_client_leader_is_viable(rci);
     bool block = sa->rcsa_rh.rcrh_blocking ? true : false;
 
+    DBG_RAFT_CLIENT_SUB_APP(LL_TRACE, sa, "");
+
     if (block)
     {
         tls_completion_notifier = 1;
@@ -1390,17 +1394,19 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     else if ((nsrc_iovs + ndest_iovs) > RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS)
         return -EFBIG;
 
-    else if (!raft_client_rpc_msg_size_is_valid(
-                 io_iovs_total_size_get(src_iovs, nsrc_iovs)) ||
-             !raft_client_rpc_msg_size_is_valid(
-                 io_iovs_total_size_get(dest_iovs, ndest_iovs)))
-        return -E2BIG;
-
     struct raft_client_instance *rci =
         raft_client_instance_lookup(client_instance);
 
     if (!rci || !RCI_2_RI(rci))
         return -ENODEV;
+
+    else if (!raft_client_rpc_msg_size_is_valid(
+                 RCI_2_RI(rci)->ri_store_type,
+                 io_iovs_total_size_get(src_iovs, nsrc_iovs)) ||
+             !raft_client_rpc_msg_size_is_valid(
+                 RCI_2_RI(rci)->ri_store_type,
+                 io_iovs_total_size_get(dest_iovs, ndest_iovs)))
+        return -E2BIG;
 
     // Stash the leader here so that subsequent checks are not needed
     struct ctl_svc_node *leader = RCI_2_RI(rci)->ri_csn_leader;
@@ -1644,7 +1650,7 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
                          ssize_t recv_bytes, const struct sockaddr_in *from)
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > RAFT_ENTRY_MAX_DATA_SIZE ||
+        recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
         FAULT_INJECT(raft_client_udp_recv_handler_bypass))
         return;
 
@@ -1701,7 +1707,7 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
     NIOVA_ASSERT(rci && RCI_2_RI(rci) && sa);
     NIOVA_ASSERT(!sa->rcsa_rh.rcrh_sendq);
 
-    // Launch the udp msg.
+    // Launch the msg.
     int rc = raft_net_send_client_msgv(RCI_2_RI(rci),
                                        &sa->rcsa_rh.rcrh_rpc_request,
                                        sa->rcsa_rh.rcrh_iovs,
@@ -2384,7 +2390,8 @@ raft_client_instance_assign(void)
 int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
-                 raft_client_instance_t *raft_client_instance)
+                 raft_client_instance_t *raft_client_instance,
+                 enum raft_instance_store_type server_store_type)
 {
     if (!raft_uuid_str || !raft_client_uuid_str || !obj_id_cb ||
         !raft_client_instance)
@@ -2404,6 +2411,7 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = raft_client_uuid_str;
+    ri->ri_store_type = server_store_type;
 
     NIOVA_ASSERT(!ri->ri_client_arg);
 

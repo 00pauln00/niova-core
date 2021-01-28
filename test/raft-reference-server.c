@@ -168,10 +168,11 @@ rst_sm_reply_init(struct raft_client_rpc_msg *reply,
 static int
 rst_sm_handler_commit(struct raft_net_client_request_handle *rncr)
 {
-    NIOVA_ASSERT(rncr && rncr->rncr_request_or_commit_data &&
-                 rncr->rncr_reply &&
-                 rncr->rncr_reply_data_max_size <= RAFT_NET_MAX_RPC_SIZE &&
-                 !raft_net_client_request_handle_writes_raft_entry(rncr));
+    NIOVA_ASSERT(
+        rncr && rncr->rncr_request_or_commit_data && rncr->rncr_reply &&
+        (rncr->rncr_reply_data_max_size <=
+         raft_net_max_rpc_size(RAFT_INSTANCE_STORE_POSIX_FLAT_FILE)) &&
+        !raft_net_client_request_handle_writes_raft_entry(rncr));
 
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)rncr->rncr_request_or_commit_data;
@@ -264,7 +265,7 @@ rst_sm_handler_write(struct raft_net_client_request_handle *rncr)
     FATAL_IF((rc), "rst_sm_reply_init(): %s", strerror(-rc));
 
     // Map the last rtv in the array after verify range
-    const uint16_t num_rtv = rtdb->rtdb_num_values;
+    const uint32_t num_rtv = rtdb->rtdb_num_values;
 
     if (!num_rtv || num_rtv > RAFT_TEST_VALUES_MAX)
     {
