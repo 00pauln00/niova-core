@@ -4250,7 +4250,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 
-    if (ri->ri_last_applied_idx == ri->ri_commit_idx)
+    if (FAULT_INJECT(raft_bypass_sm_apply) ||
+        ri->ri_last_applied_idx == ri->ri_commit_idx)
         return;
 
     const size_t reply_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
