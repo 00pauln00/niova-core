@@ -56,6 +56,16 @@ binary_hist_get_cnt(const struct binary_hist *bh, int pos)
     return bh->bh_values[pos];
 }
 
+static inline bool
+binary_hist_is_empty(const struct binary_hist *bh)
+{
+    for (int i = 0; i < binary_hist_size(bh); i++)
+        if (binary_hist_get_cnt(bh, i))
+            return false;
+
+    return true;
+}
+
 static inline void
 binary_hist_incorporate_val(struct binary_hist *bh, unsigned long long val)
 {
