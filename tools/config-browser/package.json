@@ -31,7 +31,7 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "ts": "node --experimental-specifier-resolution=node --loader ts-node/esm --experimental-modules",
-    "server": "ts src/server/index.ts",
+    "server": "node --experimental-specifier-resolution=node --loader ts-node/esm --experimental-modules src/server/index.ts",
     "watch": "nodemon src/server/index.ts"
   },
   "eslintConfig": {
