@@ -1702,32 +1702,6 @@ raft_server_broadcast_msg(struct raft_instance *ri,
     }
 }
 
-/**
- * raft_server_sync_vote_choice - this server has decided to vote for a
- *    candidate.  Before replying to that candidate, the choice must be stored
- *    locally in the log header.
- * @ri:  raft instance
- * @candidate:  UUID of the candidate being voted for
- * @candidate_term:  the term presented by the candidate
- */
-static int
-raft_server_sync_vote_choice(struct raft_instance *ri,
-                             const uuid_t candidate, int64_t candidate_term)
-{
-    NIOVA_ASSERT(ri && ri->ri_csn_raft);
-
-    // These checks should have been done prior to entering this function!
-    DBG_RAFT_INSTANCE_FATAL_IF((candidate_term <= ri->ri_log_hdr.rlh_term),
-                               ri, "candidate_term=%ld", candidate_term);
-
-    DBG_RAFT_INSTANCE_FATAL_IF(
-        (raft_peer_2_idx(ri, candidate) >=
-         ctl_svc_node_raft_2_num_members(ri->ri_csn_raft)), ri,
-        "invalid candidate uuid");
-
-    return raft_server_log_header_write(ri, candidate, candidate_term);
-}
-
 static raft_peer_t
 raft_server_candidate_count_votes(struct raft_instance *ri,
                                   enum raft_vote_result result)
@@ -1878,13 +1852,12 @@ raft_server_vote_for_self(struct raft_instance *ri)
                raft_instance_is_candidate(ri)))
         return -EPERM;
 
-    int rc = 0;
-
-    // Full-fledged candidate increases its term value
     if (raft_instance_is_candidate(ri))
     {
-        rc = raft_server_sync_vote_choice(ri, RAFT_INSTANCE_2_SELF_UUID(ri),
-                                          ri->ri_log_hdr.rlh_term + 1);
+        // Full-fledged candidate persists its term change
+        int rc =
+            raft_server_log_header_write(ri, RAFT_INSTANCE_2_SELF_UUID(ri),
+                                         ri->ri_log_hdr.rlh_term + 1);
         if (rc)
             return rc;
     }
