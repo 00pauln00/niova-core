@@ -1990,7 +1990,8 @@ raft_server_becomes_follower(struct raft_instance *ri,
      * However when 2 or more peers become candidates for the same term, the
      * losing peer may only be notified of a successful election completion
      * when it recv's a AE RPC.
-     * Additionally, in PreVote mode, the instance will not increment its
+     *
+     * In PreVote mode, the instance will not increment its
      * rlh_term and the 'new_term', provided by the responding peer, may be
      * == to the rlh_term.  However, it should not be < rlh_term since this
      * would imply that the cluster is ignoring a higher term value which has
@@ -2519,7 +2520,7 @@ raft_server_process_pre_vote_request_decide(
      * continuing...
      * If the proposed term value is > (current-term + 1) then we must allow
      * the PreVote to proceed so that the cluster can negotiate a higher term
-     * value, which the preVote candidate has already applied.  Otherwise.
+     * value, which the preVote candidate has already applied.  Otherwise,
      * leaders and followers always vote 'no'.  Leader's assume they are alive
      * (XXX CheckQuorum is needed, however) and followers will remain so until
      * their own AE timeouts expire.
@@ -2527,9 +2528,9 @@ raft_server_process_pre_vote_request_decide(
     if (raft_server_process_vote_request_decide(ri, vreq, cmp_hdr) &&
         (
             // 1. prevote candidate already persisted a higher term, vote yes
-            (vreq->rvrqm_proposed_term > ri->ri_log_hdr.rlh_term + 1) ||
+            (vreq->rvrqm_proposed_term > (ri->ri_log_hdr.rlh_term + 1)) ||
 
-            // 2. cluster leadership is influx as indicated by our own state
+            // 2. cluster leadership is in question, indicated by our own state
             (raft_instance_is_candidate(ri) ||
              raft_instance_is_candidate_prevote(ri)))
         )
