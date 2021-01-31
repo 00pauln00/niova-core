@@ -41,6 +41,9 @@
 #define RAFT_ELECTION_UPPER_TIME_MS 300
 #define RAFT_ELECTION_RANGE_DIVISOR 2.0
 
+// Leader steps down after this many cycles following quorum loss
+#define RAFT_ELECTION_CHECK_QUORUM_FACTOR 10
+
 #define RAFT_HEARTBEAT_FREQ_PER_ELECTION 10
 
 #define RAFT_MIN_APPEND_ENTRY_IDX -1
@@ -467,6 +470,7 @@ struct raft_instance
     struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
     uint32_t                        ri_election_timeout_max_ms;
     uint32_t                        ri_heartbeat_freq_per_election_min;
+    uint32_t                        ri_check_quorum_timeout_factor;
     raft_net_timer_cb_t             ri_timer_fd_cb;
     raft_net_cb_t                   ri_client_recv_cb;
     raft_net_cb_t                   ri_server_recv_cb;

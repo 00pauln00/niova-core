@@ -1888,7 +1888,6 @@ static raft_net_timerfd_cb_ctx_t // or raft_server_net_cb_ctx_t (!prevote)
 raft_server_become_candidate(struct raft_instance *ri, bool prevote)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
-    NIOVA_ASSERT(!raft_instance_is_leader(ri));
 
     // Promotion to full-fledged candidate may only come from pre-vote state
     if (!prevote)
@@ -2467,6 +2466,9 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
     raft_server_append_entry_sender(ri, true);
 }
 
+static raft_net_timerfd_cb_ctx_bool_t
+raft_leader_check_quorum(const struct raft_instance *ri);
+
 static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
@@ -2481,7 +2483,9 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
 
     case RAFT_STATE_LEADER:
-        raft_server_issue_heartbeat(ri);
+        raft_leader_check_quorum(ri) ?
+            raft_server_issue_heartbeat(ri) :
+            raft_server_become_candidate(ri, true);
         break;
     default:
         break;
@@ -3686,8 +3690,9 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
     raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
-static raft_server_net_cb_ctx_bool_t
-raft_leader_instance_is_fresh(const struct raft_instance *ri)
+static bool
+raft_leader_majority_followers_comm_window(const struct raft_instance *ri,
+                                           const unsigned int comm_window_ms)
 {
     if (!raft_instance_is_leader(ri) ||
         FAULT_INJECT(raft_leader_may_be_deposed))
@@ -3716,7 +3721,7 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
 
         timespecsub(&now, &rfi->rfi_last_ack, &diff);
 
-        if (timespec_2_msec(&diff) <= raft_election_timeout_lower_bound(ri))
+        if (timespec_2_msec(&diff) <= comm_window_ms)
             num_acked_within_window++;
     }
 
@@ -3727,6 +3732,21 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
 
     return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
         true : false;
+}
+
+static raft_server_net_cb_ctx_bool_t
+raft_leader_instance_is_fresh(const struct raft_instance *ri)
+{
+    return raft_leader_majority_followers_comm_window(
+        ri, raft_election_timeout_lower_bound(ri));
+}
+
+static raft_net_timerfd_cb_ctx_bool_t
+raft_leader_check_quorum(const struct raft_instance *ri)
+{
+    return raft_leader_majority_followers_comm_window(
+        ri, (raft_election_timeout_lower_bound(ri) *
+             ri->ri_check_quorum_timeout_factor));
 }
 
 /**
@@ -3747,7 +3767,8 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
     else if (raft_instance_is_candidate(ri))
         return -ENOENT;
 
-    else if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
+    // 1. am I the raft leader?
+    else if (!raft_instance_is_leader(ri))
         return -ENOSYS;
 
     // 2. am I a fresh raft leader?
@@ -4700,6 +4721,7 @@ raft_server_instance_init(struct raft_instance *ri,
 
     raft_instance_backend_type_specify(ri, type);
 
+    // Conditionally initialized values may have been by raft_net.c
     if (!ri->ri_election_timeout_max_ms)
         ri->ri_election_timeout_max_ms = RAFT_ELECTION_UPPER_TIME_MS;
 
@@ -4707,6 +4729,7 @@ raft_server_instance_init(struct raft_instance *ri,
         ri->ri_heartbeat_freq_per_election_min =
             RAFT_HEARTBEAT_FREQ_PER_ELECTION;
 
+    ri->ri_check_quorum_timeout_factor = RAFT_ELECTION_CHECK_QUORUM_FACTOR;
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
