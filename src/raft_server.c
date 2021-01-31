@@ -84,6 +84,8 @@ raft_follower_reason_2_str(enum raft_follower_reasons reason)
         return "stale-leader";
     case RAFT_BFRSN_LEADER_ALREADY_PRESENT:
         return "leader-already-present";
+    case RAFT_BFRSN_PRE_VOTE_REJECTED:
+        return "prevote-rejected";
     default:
         break;
     }
@@ -1726,21 +1728,6 @@ raft_server_sync_vote_choice(struct raft_instance *ri,
     return raft_server_log_header_write(ri, candidate, candidate_term);
 }
 
-static raft_net_timerfd_cb_ctx_t
-raft_server_init_candidate_state(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-
-    ri->ri_state = RAFT_STATE_CANDIDATE;
-
-    struct raft_candidate_state *rcs = &ri->ri_candidate;
-
-    rcs->rcs_term = ri->ri_log_hdr.rlh_term + 1;
-
-    for (raft_peer_t i = 0; i < CTL_SVC_MAX_RAFT_PEERS; i++)
-        rcs->rcs_results[i] = RATE_VOTE_RESULT_UNKNOWN;
-}
-
 static raft_peer_t
 raft_server_candidate_count_votes(struct raft_instance *ri,
                                   enum raft_vote_result result)
@@ -1757,20 +1744,43 @@ raft_server_candidate_count_votes(struct raft_instance *ri,
     return cnt;
 }
 
+/**
+ * raft_server_init_candidate_state - initialize the raft instance for
+ *    either candidate state (prevote or real vote).
+ */
+static raft_net_timerfd_cb_ctx_t
+raft_server_init_candidate_state(struct raft_instance *ri, bool prevote)
+{
+    NIOVA_ASSERT(ri);
+
+    ri->ri_state = prevote ?
+        RAFT_STATE_CANDIDATE_PREVOTE : RAFT_STATE_CANDIDATE;
+
+    struct raft_candidate_state *rcs = &ri->ri_candidate;
+
+    rcs->rcs_prevote = prevote;
+    rcs->rcs_term = ri->ri_log_hdr.rlh_term + 1;
+
+    for (raft_peer_t i = 0; i < CTL_SVC_MAX_RAFT_PEERS; i++)
+        rcs->rcs_results[i] = RAFT_VOTE_RESULT_UNKNOWN;
+}
+
 static bool
 raft_server_candidate_is_viable(struct raft_instance *ri)
 {
-    if (ri &&
-        (ri->ri_state != RAFT_STATE_CANDIDATE ||
-         ri->ri_candidate.rcs_term != ri->ri_log_hdr.rlh_term))
+    if (ri)
     {
+        if ((raft_instance_is_candidate(ri) &&
+             ri->ri_candidate.rcs_term == ri->ri_log_hdr.rlh_term) ||
+            (raft_instance_is_candidate_prevote(ri) &&
+             ri->ri_candidate.rcs_term == (ri->ri_log_hdr.rlh_term + 1)))
+            return true;
+
         DBG_RAFT_INSTANCE(LL_ERROR, ri,
                           "!candidate OR candidate-term (%ld) != ht",
                           ri->ri_candidate.rcs_term);
-        return false;
     }
-
-    return true;
+    return false;
 }
 
 static bool
@@ -1783,7 +1793,25 @@ raft_server_candidate_can_become_leader(struct raft_instance *ri)
         return false;
 
     const raft_peer_t num_yes_votes =
-        raft_server_candidate_count_votes(ri, RATE_VOTE_RESULT_YES);
+        raft_server_candidate_count_votes(ri, RAFT_VOTE_RESULT_YES);
+
+    const raft_peer_t npeers_majority =
+        (ctl_svc_node_raft_2_num_members(ri->ri_csn_raft) / 2) + 1;
+
+    return num_yes_votes >= npeers_majority ? true : false;
+}
+
+static bool
+raft_server_prevote_candidate_can_become_candidate(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    // Perform some sanity checks prior to counting the 'yes' votes.
+    if (!raft_server_candidate_is_viable(ri))
+        return false;
+
+    const raft_peer_t num_yes_votes =
+        raft_server_candidate_count_votes(ri, RAFT_PRE_VOTE_RESULT_YES);
 
     const raft_peer_t npeers_majority =
         (ctl_svc_node_raft_2_num_members(ri->ri_csn_raft) / 2) + 1;
@@ -1800,8 +1828,18 @@ raft_server_candidate_reg_vote_result(struct raft_instance *ri,
                                       uuid_t voter,
                                       enum raft_vote_result result)
 {
-    if (!ri || ri->ri_state != RAFT_STATE_CANDIDATE ||
-        result == RATE_VOTE_RESULT_UNKNOWN)
+    if (!ri || result == RAFT_VOTE_RESULT_UNKNOWN)
+        return -EINVAL;
+
+    else if (!(raft_instance_is_candidate_prevote(ri) ||
+               raft_instance_is_candidate(ri)))
+        return -EPERM;
+
+    const bool prevote = raft_instance_is_candidate_prevote(ri);
+    if ((prevote && (result != RAFT_PRE_VOTE_RESULT_YES &&
+                     result != RAFT_PRE_VOTE_RESULT_NO)) ||
+        (!prevote && (result != RAFT_VOTE_RESULT_YES &&
+                      result != RAFT_VOTE_RESULT_NO)))
         return -EINVAL;
 
     raft_peer_t peer_idx = raft_peer_2_idx(ri, voter);
@@ -1811,14 +1849,21 @@ raft_server_candidate_reg_vote_result(struct raft_instance *ri,
 
     struct raft_candidate_state *rcs = &ri->ri_candidate;
 
-    DBG_RAFT_INSTANCE_FATAL_IF((rcs->rcs_term != ri->ri_log_hdr.rlh_term), ri,
-                               "rcs->rcs_term (%ld) != ri_log_hdr",
-                               rcs->rcs_term);
+    // Prevote mode does not increment rlh_term
+    int64_t expected_term = ri->ri_log_hdr.rlh_term + (prevote ? 1 : 0);
+
+    // Internal instance sanity check
+    DBG_RAFT_INSTANCE_FATAL_IF((rcs->rcs_term != expected_term), ri,
+                               "rcs->rcs_term (%ld) != expected-term (%ld)",
+                               rcs->rcs_term, expected_term);
 
     rcs->rcs_results[peer_idx] = result;
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "peer-idx=%hhu voted=%s",
-                      peer_idx, result == RATE_VOTE_RESULT_YES ? "yes" : "no");
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "peer-idx=%hhu voted=%s (prevote=%s)",
+                      peer_idx,
+                      (result == RAFT_VOTE_RESULT_YES ||
+                       result == RAFT_PRE_VOTE_RESULT_YES) ? "yes" : "no",
+                      prevote ? "yes" : "no");
 
     return 0;
 }
@@ -1826,16 +1871,27 @@ raft_server_candidate_reg_vote_result(struct raft_instance *ri,
 static raft_server_timerfd_cb_ctx_int_t
 raft_server_vote_for_self(struct raft_instance *ri)
 {
-    int rc = raft_server_sync_vote_choice(ri, RAFT_INSTANCE_2_SELF_UUID(ri),
-                                          ri->ri_log_hdr.rlh_term + 1);
-    if (rc)
-        return rc;
+    if (!ri)
+        return -EINVAL;
 
-    rc =
-        raft_server_candidate_reg_vote_result(ri,
-                                              RAFT_INSTANCE_2_SELF_UUID(ri),
-                                              RATE_VOTE_RESULT_YES);
-    return rc;
+    else if (!(raft_instance_is_candidate_prevote(ri) ||
+               raft_instance_is_candidate(ri)))
+        return -EPERM;
+
+    int rc = 0;
+
+    // Full-fledged candidate increases its term value
+    if (raft_instance_is_candidate(ri))
+    {
+        rc = raft_server_sync_vote_choice(ri, RAFT_INSTANCE_2_SELF_UUID(ri),
+                                          ri->ri_log_hdr.rlh_term + 1);
+        if (rc)
+            return rc;
+    }
+
+    return raft_server_candidate_reg_vote_result(ri,
+                                                 RAFT_INSTANCE_2_SELF_UUID(ri),
+                                                 RAFT_VOTE_RESULT_YES);
 }
 
 static void
@@ -1855,19 +1911,25 @@ raft_server_set_uuids_in_rpc_msg(const struct raft_instance *ri,
  *    follower or candidate mode and the leader has not provided a heartbeat
  *    within the timeout threshold.
  */
-static raft_net_timerfd_cb_ctx_t
-raft_server_become_candidate(struct raft_instance *ri)
+static raft_net_timerfd_cb_ctx_t // or raft_server_net_cb_ctx_t (!prevote)
+raft_server_become_candidate(struct raft_instance *ri, bool prevote)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
-    NIOVA_ASSERT(ri->ri_state != RAFT_STATE_LEADER);
+    NIOVA_ASSERT(!raft_instance_is_leader(ri));
+
+    // Promotion to full-fledged candidate may only come from pre-vote state
+    if (!prevote)
+        NIOVA_ASSERT(raft_instance_is_candidate_prevote(ri));
 
     if (FAULT_INJECT(raft_candidate_state_disabled))
         return;
 
-    // Reset vote counters
-    raft_server_init_candidate_state(ri);
+    // Reset vote counters and mark self as in 'preVote' state
+    raft_server_init_candidate_state(ri, prevote);
 
-    // raft_server_vote_for_self() must sync ALL raft contents
+    const int64_t proposed_term = ri->ri_log_hdr.rlh_term + 1;
+
+    // sync's new term if !preVote state
     int rc = raft_server_vote_for_self(ri);
 
     if (rc) // Failed to sync our own log header!
@@ -1878,11 +1940,15 @@ raft_server_become_candidate(struct raft_instance *ri)
     struct raft_entry_header sync_hdr = {0};
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
+    const enum raft_rpc_msg_type type =
+        prevote ?
+        RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST : RAFT_RPC_MSG_TYPE_VOTE_REQUEST;
+
     struct raft_rpc_msg rrm = {
         //.rrm_rrm_sender_id = ri->ri_csn_this_peer.csn_uuid,
-        .rrm_type = RAFT_RPC_MSG_TYPE_VOTE_REQUEST,
+        .rrm_type = type,
         .rrm_version = 0,
-        .rrm_vote_request.rvrqm_proposed_term = ri->ri_log_hdr.rlh_term,
+        .rrm_vote_request.rvrqm_proposed_term = proposed_term,
         .rrm_vote_request.rvrqm_last_log_term = sync_hdr.reh_term,
         .rrm_vote_request.rvrqm_last_log_index = sync_hdr.reh_index,
     };
@@ -1890,6 +1956,9 @@ raft_server_become_candidate(struct raft_instance *ri)
     raft_server_set_uuids_in_rpc_msg(ri, &rrm);
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
+
+    if (!prevote) // allow more time to recv votes
+        raft_server_timerfd_settime(ri);
 
     raft_server_broadcast_msg(ri, &rrm);
 }
@@ -1929,7 +1998,7 @@ raft_server_try_update_log_header_null_voted_for_peer(struct raft_instance *ri,
  *    elsewhere in the cluster and this node becomes a stale leader or
  *    candidate.
  * @ri:  raft instance
- * @new_term:  the higher term provided by a peer
+ * @new_term:  the term provided by a peer
  * @peer_with_newer_term:  peer uuid which provided the higher term
  * @reason:  the reason why this instance becomes a follower
  */
@@ -1948,8 +2017,14 @@ raft_server_becomes_follower(struct raft_instance *ri,
      * However when 2 or more peers become candidates for the same term, the
      * losing peer may only be notified of a successful election completion
      * when it recv's a AE RPC.
+     * Additionally, in PreVote mode, the instance will not increment its
+     * rlh_term and the 'new_term', provided by the responding peer, may be
+     * == to the rlh_term.  However, it should not be < rlh_term since this
+     * would imply that the cluster is ignoring a higher term value which has
+     * been persisted by this peer.
      */
-    if (reason == RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE)
+    if (reason == RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE ||
+        reason == RAFT_BFRSN_PRE_VOTE_REJECTED)
         NIOVA_ASSERT(new_term >= ri->ri_log_hdr.rlh_term);
     else
         NIOVA_ASSERT(new_term > ri->ri_log_hdr.rlh_term);
@@ -2149,32 +2224,30 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
 
-/**
- * raft_server_process_vote_reply - handle a peer's response to our vote
- *    request.
- */
 static raft_server_net_cb_ctx_t
-raft_server_process_vote_reply(struct raft_instance *ri,
-                               struct ctl_svc_node *sender_csn,
-                               const struct raft_rpc_msg *rrm)
+raft_server_process_vote_reply_common(struct raft_instance *ri,
+                                      struct ctl_svc_node *sender_csn,
+                                      const struct raft_rpc_msg *rrm)
 {
     NIOVA_ASSERT(ri && sender_csn && rrm);
-
-    // The caller *should* have already checked this.
+    // The caller *should* have already checked these
     NIOVA_ASSERT(!ctl_svc_node_compare_uuid(sender_csn, rrm->rrm_sender_id));
 
-    /* Do not proceed if this instance's candidate status has changed.  It's
-     * possible that the process has received this reply after demotion or
-     * promotion (to leader).
-     */
-    if (ri->ri_state != RAFT_STATE_CANDIDATE)
-        return;
+    NIOVA_ASSERT(rrm->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY ||
+                 rrm->rrm_type == RAFT_RPC_MSG_TYPE_VOTE_REPLY);
+
+    const bool prevote = rrm->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY ?
+        true : false;
 
     const struct raft_vote_reply_msg *vreply = &rrm->rrm_vote_reply;
 
-    enum raft_vote_result result =
-        rrm->rrm_vote_reply.rvrpm_voted_granted ?
-        RATE_VOTE_RESULT_YES : RATE_VOTE_RESULT_NO;
+    if ((prevote && !raft_instance_is_candidate_prevote(ri)) ||
+        (!prevote && raft_instance_is_candidate(ri)))
+        return;  // the reply is no longer relevant to the instance's state
+
+    const enum raft_vote_result result = vreply->rvrpm_voted_granted ?
+        (prevote ? RAFT_PRE_VOTE_RESULT_YES : RAFT_VOTE_RESULT_YES) :
+        (prevote ? RAFT_PRE_VOTE_RESULT_NO : RAFT_VOTE_RESULT_NO);
 
     int rc = raft_server_candidate_reg_vote_result(ri, sender_csn->csn_uuid,
                                                    result);
@@ -2184,20 +2257,41 @@ raft_server_process_vote_reply(struct raft_instance *ri,
                      "raft_server_candidate_reg_vote_result() %s",
                      strerror(-rc));
         DBG_RAFT_INSTANCE(LL_ERROR, ri, "");
+
+        return;
     }
-    else if (result == RATE_VOTE_RESULT_NO &&
-             ri->ri_log_hdr.rlh_term < vreply->rvrpm_term)
+
+    switch (result)
     {
-        // The peer has replied that our term is stale
-        raft_server_becomes_follower(ri, vreply->rvrpm_term,
-                                     rrm->rrm_sender_id,
-                                     RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
-    }
-    else if (result == RATE_VOTE_RESULT_YES &&
-             raft_server_candidate_can_become_leader(ri))
-    {
-        // We have enough votes in this term to become the leader!
-        raft_server_candidate_becomes_leader(ri);
+    case RAFT_PRE_VOTE_RESULT_YES:
+        // Enough votes to enter full candidate mode?
+        if (raft_server_prevote_candidate_can_become_candidate(ri))
+            raft_server_become_candidate(ri, false);
+        break;
+
+    case RAFT_PRE_VOTE_RESULT_NO:
+        // Peer reports a viable leader, become a follower of that leader
+        raft_server_becomes_follower(
+            ri, vreply->rvrpm_term, vreply->rvrpm_current_leader,
+            RAFT_BFRSN_PRE_VOTE_REJECTED);
+        break;
+
+    case RAFT_VOTE_RESULT_YES:
+        // Enough votes in this term to become leader?
+        if (raft_server_candidate_can_become_leader(ri))
+            raft_server_candidate_becomes_leader(ri);
+        break;
+
+    case RAFT_VOTE_RESULT_NO:
+        if (ri->ri_log_hdr.rlh_term < vreply->rvrpm_term)
+            // The peer has replied that our term is stale
+            raft_server_becomes_follower(
+                ri, vreply->rvrpm_term, vreply->rvrpm_current_leader,
+                RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
+        break;
+
+    default:
+        NIOVA_ASSERT(0);
     }
 }
 
@@ -2407,8 +2501,9 @@ raft_server_timerfd_cb(struct raft_instance *ri)
     switch (ri->ri_state)
     {
     case RAFT_STATE_FOLLOWER: // fall through
+    case RAFT_STATE_CANDIDATE_PREVOTE: // fall through
     case RAFT_STATE_CANDIDATE:
-        raft_server_become_candidate(ri);
+        raft_server_become_candidate(ri, true);
         break;
 
     case RAFT_STATE_LEADER:
@@ -2440,21 +2535,51 @@ raft_server_process_vote_request_decide(
             vreq->rvrqm_last_log_index < cmp_hdr->reh_index) ? false : true;
 }
 
-/**
- * raft_server_process_vote_request - peer has requested that we vote for
- *    them.
- */
+static bool
+raft_server_process_pre_vote_request_decide(
+    const struct raft_instance *ri, const struct raft_vote_request_msg *vreq,
+    const struct raft_entry_header *cmp_hdr)
+{
+    NIOVA_ASSERT(ri && vreq && cmp_hdr);
+
+    /* First, check the typical vote conditions - these are prerequisites for
+     * continuing...
+     * If the proposed term value is > (current-term + 1) then we must allow
+     * the PreVote to proceed so that the cluster can negotiate a higher term
+     * value, which the preVote candidate has already applied.  Otherwise.
+     * leaders and followers always vote 'no'.  Leader's assume they are alive
+     * (XXX CheckQuorum is needed, however) and followers will remain so until
+     * their own AE timeouts expire.
+     */
+    if (raft_server_process_vote_request_decide(ri, vreq, cmp_hdr) &&
+        (
+            // 1. prevote candidate already persisted a higher term, vote yes
+            (vreq->rvrqm_proposed_term > ri->ri_log_hdr.rlh_term + 1) ||
+
+            // 2. cluster leadership is influx as indicated by our own state
+            (raft_instance_is_candidate(ri) ||
+             raft_instance_is_candidate_prevote(ri)))
+        )
+        return true;
+
+    return false;
+}
+
 static raft_server_net_cb_ctx_t
-raft_server_process_vote_request(struct raft_instance *ri,
-                                 struct ctl_svc_node *sender_csn,
-                                 const struct raft_rpc_msg *rrm)
+raft_server_process_vote_request_common(struct raft_instance *ri,
+                                        struct ctl_svc_node *sender_csn,
+                                        const struct raft_rpc_msg *rrm)
 {
     NIOVA_ASSERT(ri && sender_csn && rrm);
+    NIOVA_ASSERT(rrm->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST ||
+                 rrm->rrm_type == RAFT_RPC_MSG_TYPE_VOTE_REQUEST);
 
     // The caller *should* have already checked this.
     NIOVA_ASSERT(!ctl_svc_node_compare_uuid(sender_csn, rrm->rrm_sender_id));
 
     const struct raft_vote_request_msg *vreq = &rrm->rrm_vote_request;
+    const bool prevote = rrm->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST ?
+        true : false;
 
     struct raft_rpc_msg rreply_msg = {0};
 
@@ -2464,39 +2589,46 @@ raft_server_process_vote_request(struct raft_instance *ri,
     struct raft_entry_header sync_hdr = {0};
     raft_instance_get_newest_header(ri, &sync_hdr, RI_NEHDR_SYNC);
 
-    /* Do some initialization on the reply message.
-     */
+    // Do some initialization on the reply message.
     raft_server_set_uuids_in_rpc_msg(ri, &rreply_msg);
 
-    rreply_msg.rrm_type = RAFT_RPC_MSG_TYPE_VOTE_REPLY;
+    rreply_msg.rrm_type = prevote ?
+        RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY : RAFT_RPC_MSG_TYPE_VOTE_REPLY;
+
     rreply_msg.rrm_vote_reply.rvrpm_term = ri->ri_log_hdr.rlh_term;
 
-    /* Check the vote criteria - do we vote 'yes' or 'no'?
-     */
-    rreply_msg.rrm_vote_reply.rvrpm_voted_granted =
-        raft_server_process_vote_request_decide(ri, vreq, &sync_hdr) ? 1 : 0;
+    // Obtain the vote or prevote result
+    const bool result = prevote ?
+        raft_server_process_pre_vote_request_decide(ri, vreq, &sync_hdr) :
+        raft_server_process_vote_request_decide(ri, vreq, &sync_hdr);
 
-    DBG_RAFT_MSG(LL_WARN, rrm, "vote=%s my term=%ld last=%ld:%ld",
+    // Set the vote result
+    rreply_msg.rrm_vote_reply.rvrpm_voted_granted = !!result;
+
+    // Tell the candidate of our current leader if voting 'no'
+    if (!result && ri->ri_csn_leader)
+        uuid_copy(rreply_msg.rrm_vote_reply.rvrpm_current_leader,
+                  ri->ri_csn_leader->csn_uuid);
+
+    enum log_level level = prevote ? LL_NOTIFY : LL_WARN;
+    DBG_RAFT_MSG(level, rrm, "vote=%s my term=%ld last=%ld:%ld",
                  rreply_msg.rrm_vote_reply.rvrpm_voted_granted ? "yes" : "no",
                  ri->ri_log_hdr.rlh_term, sync_hdr.reh_term,
                  sync_hdr.reh_index);
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "");
+    DBG_RAFT_INSTANCE(level, ri, "");
 
-    /* We intend to vote 'yes' - sync the candidate's term and UUID to our
-     * log header.
-     */
-    if (rreply_msg.rrm_vote_reply.rvrpm_voted_granted)
+    // Sync our log header only if this is a real election and we vote 'yes'
+    if (!prevote && result)
         raft_server_becomes_follower(ri, vreq->rvrqm_proposed_term,
                                      rrm->rrm_sender_id,
                                      RAFT_BFRSN_VOTED_FOR_PEER);
 
-    /* Inform the candidate of our vote.
-     */
+    // Reply to the candidate
     int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, sender_csn,
                                   &rreply_msg);
-
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_send_msg(): %s",
-                               strerror(rc));
+    if (rc)
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %s",
+                          strerror(-rc));
 }
 
 /**
@@ -2826,7 +2958,8 @@ raft_server_process_append_entries_term_check_ops(
 
     // Demote myself if candidate
     if (ri->ri_log_hdr.rlh_term <= leader_term &&
-        raft_instance_is_candidate(ri))
+        (raft_instance_is_candidate(ri) ||
+         raft_instance_is_candidate_prevote(ri)))
         raft_server_becomes_follower(ri, leader_term,
                                      sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
@@ -3512,11 +3645,13 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
 
     switch (rrm->rrm_type)
     {
+    case RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST: // fall through
     case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:
-        return raft_server_process_vote_request(ri, sender_csn, rrm);
+        return raft_server_process_vote_request_common(ri, sender_csn, rrm);
 
+    case RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY: // fall through
     case RAFT_RPC_MSG_TYPE_VOTE_REPLY:
-        return raft_server_process_vote_reply(ri, sender_csn, rrm);
+        return raft_server_process_vote_reply_common(ri, sender_csn, rrm);
 
     case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:
         return raft_server_process_append_entries_request(ri, sender_csn, rrm);
