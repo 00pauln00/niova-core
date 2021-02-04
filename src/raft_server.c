@@ -1698,7 +1698,8 @@ raft_server_broadcast_msg(struct raft_instance *ri,
             continue;
 
         int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
-        SIMPLE_LOG_MSG(LL_NOTIFY, "raft_server_send_msg(): %d", rc);
+        SIMPLE_LOG_MSG((rc ? LL_NOTIFY : LL_TRACE),
+                       "raft_server_send_msg(): %d", rc);
     }
 }
 
@@ -2373,7 +2374,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
     }
 
     DBG_RAFT_INSTANCE(
-        ((refresh_prev || refresh_current) ? LL_NOTIFY : LL_DEBUG), ri,
+        ((refresh_prev || refresh_current) ? LL_DEBUG : LL_TRACE), ri,
         "peer=%hhx refresh=%d:%d pti=%ld:%ld si=%ld ct=%ld ccrc=%lu",
         follower, refresh_prev, refresh_current, rfi->rfi_prev_idx_term,
         rfi->rfi_next_idx, rfi->rfi_synced_idx, rfi->rfi_current_idx_term,
@@ -4318,8 +4319,9 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 
         rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, rp, rrm);
 
-        /* log errors, but raft will retry if needed */
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %d", rc);
+        // log errors, but raft will retry if needed
+        DBG_RAFT_INSTANCE((rc ? LL_NOTIFY : LL_TRACE), ri,
+                          "raft_server_send_msg(): %d", rc);
     }
 
     // release buffers
