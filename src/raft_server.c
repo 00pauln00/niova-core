@@ -144,7 +144,7 @@ raft_instance_buffer_get(struct raft_instance *ri, size_t size)
 
         NIOVA_ASSERT(rib->ribuf_buf);
 
-        if (rib->ribuf_free && rib->ribuf_size <= size)
+        if (rib->ribuf_free && rib->ribuf_size >= size)
         {
             rib->ribuf_free = false;
             return rib->ribuf_buf;
