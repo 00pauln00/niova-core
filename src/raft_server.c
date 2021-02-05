@@ -2705,7 +2705,8 @@ raft_server_append_entry_request_bounds_check(
     /* Sanity check the leader's request.  If the leader's lowest index is
      * higher than the pli then don't proceed with this msg.
      */
-    if (raerq->raerqm_prev_log_index < raerq->raerqm_lowest_index)
+    if (raerq->raerqm_prev_log_index != ID_ANY_64bit &&
+        raerq->raerqm_prev_log_index < raerq->raerqm_lowest_index)
     {
         DBG_RAFT_MSG(LL_WARN, rrm, "pli < leader-lowest-idx");
         return -EBADR;
@@ -3058,9 +3059,15 @@ raft_server_process_bulk_recovery_check(
     const raft_entry_idx_t my_current_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
 
-    if (my_current_idx < raerq->raerqm_lowest_index ||
+    if (raerq->raerqm_entry_out_of_range ||
         FAULT_INJECT(raft_force_bulk_recovery))
     {
+        if (my_current_idx >= raerq->raerqm_lowest_index)
+            DBG_RAFT_INSTANCE(
+                LL_WARN, ri,
+                "leader claims ERANGE but leader-lowest-idx=%ld < ei=%ld",
+                raerq->raerqm_lowest_index, my_current_idx);
+
         ri->ri_needs_bulk_recovery = true;
         raft_server_init_recovery_handle(ri, raerq);
 
