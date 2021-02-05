@@ -839,6 +839,21 @@ raft_num_members_validate_and_get(const struct raft_instance *ri)
     return num_peers;
 }
 
+static inline struct ctl_svc_node *
+raft_peer_uuid_to_csn(struct raft_instance *ri, const uuid_t peer_uuid)
+{
+    if (!ri || uuid_is_null(peer_uuid))
+        return NULL;
+
+    raft_peer_t npeers = raft_num_members_validate_and_get(ri);
+
+    for (raft_peer_t i = 0; i < npeers; i++)
+        if (!uuid_compare(ri->ri_csn_raft_peers[i]->csn_uuid, peer_uuid))
+            return ri->ri_csn_raft_peers[i];
+
+    return NULL;
+}
+
 static inline bool
 raft_member_idx_is_valid(const struct raft_instance *ri,
                          const raft_peer_t member)

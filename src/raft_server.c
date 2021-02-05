@@ -1853,6 +1853,8 @@ raft_server_vote_for_self(struct raft_instance *ri)
                raft_instance_is_candidate(ri)))
         return -EPERM;
 
+    enum raft_vote_result yes_vote = RAFT_PRE_VOTE_RESULT_YES;
+
     if (raft_instance_is_candidate(ri))
     {
         // Full-fledged candidate persists its term change
@@ -1861,11 +1863,13 @@ raft_server_vote_for_self(struct raft_instance *ri)
                                          ri->ri_log_hdr.rlh_term + 1);
         if (rc)
             return rc;
+
+        yes_vote = RAFT_VOTE_RESULT_YES;
     }
 
     return raft_server_candidate_reg_vote_result(ri,
                                                  RAFT_INSTANCE_2_SELF_UUID(ri),
-                                                 RAFT_VOTE_RESULT_YES);
+                                                 yes_vote);
 }
 
 static void
@@ -1889,6 +1893,8 @@ static raft_net_timerfd_cb_ctx_t // or raft_server_net_cb_ctx_t (!prevote)
 raft_server_become_candidate(struct raft_instance *ri, bool prevote)
 {
     NIOVA_ASSERT(ri && ri->ri_csn_this_peer);
+
+    ri->ri_csn_leader = NULL;
 
     // Promotion to full-fledged candidate may only come from pre-vote state
     if (!prevote)
@@ -1961,6 +1967,19 @@ raft_server_try_update_log_header_null_voted_for_peer(struct raft_instance *ri,
     }
 }
 
+static void
+raft_server_set_leader_csn(struct raft_instance *ri,
+                           struct ctl_svc_node *leader_csn)
+{
+    NIOVA_ASSERT(ri && leader_csn);
+
+    if (ri->ri_csn_leader != leader_csn)
+    {
+        ri->ri_csn_leader = leader_csn;
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "csn=%p", leader_csn);
+    }
+}
+
 /**
  * raft_server_becomes_follower - handle the transition from a
  *    a follower either from candidate or leader state.  This function sets
@@ -1983,6 +2002,12 @@ raft_server_becomes_follower(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri);
 
+    struct ctl_svc_node *suggested_leader =
+        raft_peer_uuid_to_csn(ri, peer_with_newer_term);
+
+    if (!suggested_leader || suggested_leader == ri->ri_csn_this_peer)
+        return;
+
     ri->ri_state = RAFT_STATE_FOLLOWER;
     ri->ri_follower_reason = reason;
 
@@ -2002,6 +2027,9 @@ raft_server_becomes_follower(struct raft_instance *ri,
         NIOVA_ASSERT(new_term >= ri->ri_log_hdr.rlh_term);
     else
         NIOVA_ASSERT(new_term > ri->ri_log_hdr.rlh_term);
+
+    // Set the leader csn pointer
+    raft_server_set_leader_csn(ri, suggested_leader);
 
     DECLARE_AND_INIT_UUID_STR(peer_uuid_str, peer_with_newer_term);
 
@@ -2213,11 +2241,11 @@ raft_server_process_vote_reply_common(struct raft_instance *ri,
     const bool prevote = rrm->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY ?
         true : false;
 
-    const struct raft_vote_reply_msg *vreply = &rrm->rrm_vote_reply;
-
-    if ((prevote && !raft_instance_is_candidate_prevote(ri)) ||
-        (!prevote && raft_instance_is_candidate(ri)))
+    if (prevote  != raft_instance_is_candidate_prevote(ri) &&
+        !prevote != raft_instance_is_candidate(ri))
         return;  // the reply is no longer relevant to the instance's state
+
+    const struct raft_vote_reply_msg *vreply = &rrm->rrm_vote_reply;
 
     const enum raft_vote_result result = vreply->rvrpm_voted_granted ?
         (prevote ? RAFT_PRE_VOTE_RESULT_YES : RAFT_VOTE_RESULT_YES) :
@@ -2245,9 +2273,10 @@ raft_server_process_vote_reply_common(struct raft_instance *ri,
 
     case RAFT_PRE_VOTE_RESULT_NO:
         // Peer reports a viable leader, become a follower of that leader
-        raft_server_becomes_follower(
-            ri, vreply->rvrpm_term, vreply->rvrpm_current_leader,
-            RAFT_BFRSN_PRE_VOTE_REJECTED);
+        if (!uuid_is_null(vreply->rvrpm_current_leader))
+            raft_server_becomes_follower(
+                ri, vreply->rvrpm_term, vreply->rvrpm_current_leader,
+                RAFT_BFRSN_PRE_VOTE_REJECTED);
         break;
 
     case RAFT_VOTE_RESULT_YES:
@@ -2468,7 +2497,7 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 }
 
 static raft_net_timerfd_cb_ctx_bool_t
-raft_leader_check_quorum(const struct raft_instance *ri);
+raft_leader_check_quorum(struct raft_instance *ri);
 
 static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
@@ -2536,7 +2565,8 @@ raft_server_process_pre_vote_request_decide(
             (vreq->rvrqm_proposed_term > (ri->ri_log_hdr.rlh_term + 1)) ||
 
             // 2. cluster leadership is in question, indicated by our own state
-            (raft_instance_is_candidate(ri) ||
+            (!ri->ri_csn_leader ||
+             raft_instance_is_candidate(ri) ||
              raft_instance_is_candidate_prevote(ri)))
         )
         return true;
@@ -2892,19 +2922,6 @@ raft_server_append_entry_log_prepare_and_check(
                       raerq->raerqm_prev_log_term, rc);
 
     return rc;
-}
-
-static void
-raft_server_set_leader_csn(struct raft_instance *ri,
-                           struct ctl_svc_node *leader_csn)
-{
-    NIOVA_ASSERT(ri && leader_csn);
-
-    if (ri->ri_csn_leader != leader_csn)
-    {
-        ri->ri_csn_leader = leader_csn;
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "csn=%p", leader_csn);
-    }
 }
 
 /**
@@ -3740,11 +3757,17 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
 }
 
 static raft_net_timerfd_cb_ctx_bool_t
-raft_leader_check_quorum(const struct raft_instance *ri)
+raft_leader_check_quorum(struct raft_instance *ri)
 {
-    return raft_leader_majority_followers_comm_window(
-        ri, (raft_election_timeout_lower_bound(ri) *
-             ri->ri_check_quorum_timeout_factor));
+    bool quorum_intact =
+        raft_leader_majority_followers_comm_window(
+            ri, (raft_election_timeout_lower_bound(ri) *
+                 ri->ri_check_quorum_timeout_factor));
+
+    if (!quorum_intact)
+        DBG_RAFT_INSTANCE(LL_WARN, ri, "quorum loss detected");
+
+    return quorum_intact;
 }
 
 /**
