@@ -84,8 +84,6 @@ raft_follower_reason_2_str(enum raft_follower_reasons reason)
         return "stale-leader";
     case RAFT_BFRSN_LEADER_ALREADY_PRESENT:
         return "leader-already-present";
-    case RAFT_BFRSN_PRE_VOTE_REJECTED:
-        return "prevote-rejected";
     default:
         break;
     }
@@ -2022,8 +2020,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
      * would imply that the cluster is ignoring a higher term value which has
      * been persisted by this peer.
      */
-    if (reason == RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE ||
-        reason == RAFT_BFRSN_PRE_VOTE_REJECTED)
+    if (reason == RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE)
         NIOVA_ASSERT(new_term >= ri->ri_log_hdr.rlh_term);
     else
         NIOVA_ASSERT(new_term > ri->ri_log_hdr.rlh_term);
@@ -2272,11 +2269,7 @@ raft_server_process_vote_reply_common(struct raft_instance *ri,
         break;
 
     case RAFT_PRE_VOTE_RESULT_NO:
-        // Peer reports a viable leader, become a follower of that leader
-        if (!uuid_is_null(vreply->rvrpm_current_leader))
-            raft_server_becomes_follower(
-                ri, vreply->rvrpm_term, vreply->rvrpm_current_leader,
-                RAFT_BFRSN_PRE_VOTE_REJECTED);
+        // Peer reports a viable leader but we remain a skeptical candidate
         break;
 
     case RAFT_VOTE_RESULT_YES:
