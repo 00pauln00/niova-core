@@ -5051,8 +5051,7 @@ raft_server_instance_buffer_pool_setup(struct raft_instance *ri)
         return -EALREADY;
 
     ri->ri_buf_pool =
-        niova_calloc_can_fail(RAFT_INSTANCE_NUM_BUFS,
-                              sizeof(struct raft_instance_buffer));
+        niova_calloc_can_fail(1UL, sizeof(struct raft_instance_buf_pool));
 
     if (!ri->ri_buf_pool)
         return -ENOMEM;

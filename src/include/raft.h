@@ -401,7 +401,7 @@ struct raft_instance_buffer
 struct raft_instance_buf_pool
 {
     size_t                      ribufp_nbufs;
-    struct raft_instance_buffer ribufp_bufs[];
+    struct raft_instance_buffer ribufp_bufs[RAFT_INSTANCE_NUM_BUFS];
 };
 
 struct raft_instance
