@@ -3778,7 +3778,8 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
     if (raft_instance_is_booting(ri))
         return -EINPROGRESS;
 
-    else if (raft_instance_is_candidate(ri))
+    else if (raft_instance_is_candidate(ri) ||
+             raft_instance_is_candidate_prevote(ri))
         return -ENOENT;
 
     // 1. am I the raft leader?
