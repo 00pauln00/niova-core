@@ -2798,7 +2798,7 @@ raft_server_follower_index_ahead_of_leader(
 
 /**
  * raft_server_append_entry_request_bounds_check - helper function used to
- *    detect the case where a follower has undergone bulk recovery but the
+ *    detect the case where a follower has undergone bulk recovery but the leader
  *    still contains prev-log-index info from the follower's pre-recovery
  *    state.  This function prevents the follower from executing log reads
  *    which will fail since the requested entry does not exist on the follower.
@@ -2939,15 +2939,13 @@ raft_server_process_append_entries_term_check_ops(
     if (ri->ri_log_hdr.rlh_term <= leader_term &&
         (raft_instance_is_candidate(ri) ||
          raft_instance_is_candidate_prevote(ri)))
-        raft_server_becomes_follower(ri, leader_term,
-                                     sender_csn->csn_uuid,
+        raft_server_becomes_follower(ri, leader_term, sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_CANDIDATE);
 
     // Demote myself if stale leader
     else if (ri->ri_log_hdr.rlh_term < leader_term &&
              raft_instance_is_leader(ri))
-        raft_server_becomes_follower(ri, leader_term,
-                                     sender_csn->csn_uuid,
+        raft_server_becomes_follower(ri, leader_term, sender_csn->csn_uuid,
                                      RAFT_BFRSN_STALE_TERM_WHILE_LEADER);
 
     // Follower detects leader with a higher term
@@ -3225,9 +3223,8 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
     bool non_matching_prev_term = false;
 
     // Check if leader or candidate should step down OR sync new term value
-    int rc =
-        raft_server_process_append_entries_term_check_ops(ri, sender_csn,
-                                                          raerq);
+    int rc = raft_server_process_append_entries_term_check_ops(ri, sender_csn,
+                                                               raerq);
     if (rc)
     {
         NIOVA_ASSERT(rc == -ESTALE);
