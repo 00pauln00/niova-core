@@ -840,6 +840,7 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
 {
     struct pmdb_apply_handle *pah = (struct pmdb_apply_handle *)pmdb_handle;
 
+	SIMPLE_LOG_MSG(LL_WARN, "key is: %s", key);
     if (!key || !key_len || pmdb_handle_verify(app_id, pah))
         return -EINVAL;
 
@@ -951,7 +952,9 @@ Pmdb_entry_key_len(void)
 }
 
 int
-Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id, const char *cf_name)
+Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
+					 const char *request, size_t request_bufsz,
+					 const char *cf_name)
 {
 
 	rocksdb_column_family_handle_t *pmdbts_cfh =
@@ -965,8 +968,8 @@ Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id, const char *c
     size_t value_len = 0;
 
     char *value = rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbts_cfh,
-                                 PMDB_RNCUI_2_KEY(app_id),
-                                 PMDB_ENTRY_KEY_LEN, &value_len, &err);
+                                 request,
+                                 request_bufsz, &value_len, &err);
 
     rocksdb_readoptions_destroy(ropts);
 

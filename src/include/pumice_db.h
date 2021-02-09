@@ -31,7 +31,7 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  */
 typedef pumicedb_apply_ctx_int_t
 (*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
-                           const char *input_buf, size_t input_bufsz,
+                           const void *input_buf, size_t input_bufsz,
                            void *pmdb_handle,
                            void *user_data);
 
@@ -118,6 +118,8 @@ size_t
 Pmdb_entry_key_len(void);
 
 int
-Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id, const char *cf_name);
+Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
+					 const char *request, size_t req_bufsz,
+					 const char *cf_name);
 
 #endif

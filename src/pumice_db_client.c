@@ -22,9 +22,9 @@ struct pmdb_client_request
 {
     pmdb_obj_id_t          pcreq_obj_id;
     enum PmdbOpType        pcreq_op;
-    const char            *pcreq_user_request;
+    const void            *pcreq_user_request;
     const size_t           pcreq_user_request_size;
-    char                  *pcreq_user_reply;
+    void                  *pcreq_user_reply;
     const size_t           pcreq_user_reply_size;
     off_t                  pcreq_user_reply_offset;
     struct pmdb_obj_stat  *pcreq_user_pmdb_stat;
@@ -173,8 +173,8 @@ pmdb_client_request_cb(void *arg, ssize_t status)
  */
 static struct pmdb_client_request *
 pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
-                        enum PmdbOpType op, const char *req_buf,
-                        const size_t req_buf_size, char *reply_buf,
+                        enum PmdbOpType op, const void *req_buf,
+                        const size_t req_buf_size, void *reply_buf,
                         const size_t reply_buf_size,
                         struct pmdb_obj_stat *user_pmdb_stat,
                         const struct timespec ts,
@@ -313,7 +313,7 @@ PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
 static int
 pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                      const char *user_buf, size_t user_buf_size,
+                      const void *user_buf, size_t user_buf_size,
                       const bool blocking, const struct timespec timeout,
                       pmdb_user_cb_t user_cb, void *user_arg,
                       struct pmdb_obj_stat *user_pmdb_stat)
@@ -357,13 +357,33 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  * PmdbObjPut - blocking public put (write) routine.
  */
 int
-PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *kv,
            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
                                  NULL, NULL, user_pmdb_stat);
+}
+
+int
+PmdbObjPutGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
+           size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
+{
+
+	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbObjPutGolang");	
+	struct raft_net_client_user_id rncui = {0};
+	SIMPLE_LOG_MSG(LL_WARN, "Calling raft_net_client_user_id_parse");
+	
+	int rc = raft_net_client_user_id_parse(rncui_str, &rncui, 0);
+
+	if (rc)
+		return rc;
+
+	SIMPLE_LOG_MSG(LL_WARN, "Get the obj");
+	pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&rncui.rncui_key;
+	SIMPLE_LOG_MSG(LL_WARN, "Obj is: %p", obj_id);
+	return PmdbObjPut(pmdb, obj_id, kv, kv_size, user_pmdb_stat);
 }
 
 /**
@@ -385,8 +405,8 @@ PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
 
 static int
 pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                      const char *key, size_t key_size,
-                      char *value, size_t value_size,
+                      const void *key, size_t key_size,
+                      void *value, size_t value_size,
                       const bool blocking, const struct timespec timeout,
                       pmdb_user_cb_t user_cb, void *user_arg,
                       struct pmdb_obj_stat *user_pmdb_stat)
@@ -417,7 +437,7 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     struct iovec reply_iovs[2] = {
         [0].iov_base = (void *)&pcreq->pcreq_msg_reply,
         [0].iov_len = sizeof(struct pmdb_msg),
-        [1].iov_base = (void *)value,
+        [1].iov_base = value,
         [1].iov_len = value_size,
     };
 
@@ -432,8 +452,8 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  * PmdbObjGet - blocking public get (read) routine.
  */
 int
-PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-            size_t key_size, char *value, size_t value_size,
+PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+            size_t key_size, void *value, size_t value_size,
             struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
@@ -442,6 +462,27 @@ PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
                                  value_size, true, timeout, NULL, NULL,
                                  user_pmdb_stat);
 }
+
+int
+PmdbObjGetXGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
+           		  size_t kv_size, void *value, size_t value_size,
+				  struct pmdb_obj_stat *user_pmdb_stat)
+{
+	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbObjGetXGolang");	
+	struct raft_net_client_user_id rncui = {0};
+	SIMPLE_LOG_MSG(LL_WARN, "Calling raft_net_client_user_id_parse");
+
+	int rc = raft_net_client_user_id_parse(rncui_str, &rncui, 0);
+
+	if (rc)
+		return rc;
+
+	pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&rncui.rncui_key;
+	SIMPLE_LOG_MSG(LL_WARN, "Obj is: %p", obj_id);
+	return PmdbObjGetX(pmdb, obj_id, kv, kv_size, value, value_size,
+					   user_pmdb_stat);
+}
+
 
 /**
  * PmdbObjGet - blocking public get (read) routine.
@@ -487,6 +528,7 @@ PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
                                  user_pmdb_stat);
 }
 
+
 /**
  * pmdb_obj_id_cb - essential cb function which is passed into
  *    raft_client_init().  The role of this cb is to translate the private
@@ -521,6 +563,7 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
 
     pmdb_t pmdb = NULL;
 
+	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbClientStart");
     int rc = raft_client_init(raft_uuid_str, raft_client_uuid_str,
                               pmdb_obj_id_cb, &pmdb);
     if (rc)

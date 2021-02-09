@@ -2127,6 +2127,8 @@ raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
 
     rnsws->rnsws_nitems++;
 
+	SIMPLE_LOG_MSG(LL_WARN, "rnsws_nitems is : %ld", rnsws->rnsws_nitems);
+
     // Initialize pointers to NULL
     memset(&rnsws->rnsws_ws[idx], 0, sizeof(struct raft_net_wr_supp));
 
@@ -2162,10 +2164,16 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
                         const size_t value_size)
 {
     if (!ws || !key || !key_size)
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "ERROR1");
         return -EINVAL;
+	}
 
     else if (ws->rnws_nkv == RAFT_NET_WR_SUPP_MAX)
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "ERROR2");
         return -ENOSPC;
+	}
 
     NIOVA_ASSERT(ws->rnws_nkv < RAFT_NET_WR_SUPP_MAX);
 
@@ -2206,7 +2214,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 
     ws->rnws_nkv++;
 
-    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s val=%p", ws, ws->rnws_nkv, key,
+    LOG_MSG(LL_WARN, "ws=%p nkv=%zu key=%s val=%p", ws, ws->rnws_nkv, key,
             value);
 
     return 0;
@@ -2229,14 +2237,23 @@ raft_net_client_user_id_parse(const char *in,
         return -ENAMETOOLONG;
 
     char local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE];
-    strncpy(local_str, in, RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1);
-    local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1] = '\0';
+    //strncpy(local_str, in, RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1);
+    //local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1] = '\0';
 
+    strncpy(local_str, in, strlen(in));
+    local_str[strlen(in) + 1] = '\0';
     const char *uuid_str = NULL;
 
-    int rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
+	SIMPLE_LOG_MSG(LL_WARN, "Level 4 %s, sizeof: %ld", local_str, sizeof(local_str));
+	SIMPLE_LOG_MSG(LL_WARN, "Local_str: %s", local_str);
+
+    int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
+    NIOVA_ASSERT(!rc);
+
+    rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
     if (!rc)
     {
+		SIMPLE_LOG_MSG(LL_WARN, "Level 5");
         const char *sep = RAFT_NET_CLIENT_USER_ID_V0_STR_SEP;
         char *sp = NULL;
         char *sub;
@@ -2246,8 +2263,10 @@ raft_net_client_user_id_parse(const char *in,
              sub != NULL;
              sub = strtok_r(NULL, sep, &sp), pos++)
         {
+			SIMPLE_LOG_MSG(LL_WARN, "Level 6");
             if (!pos)
             {
+				SIMPLE_LOG_MSG(LL_WARN, "Level 7");
                 rc = uuid_parse(sub, RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, 0,
                                                                     0));
                 if (rc)
@@ -2260,6 +2279,7 @@ raft_net_client_user_id_parse(const char *in,
             }
             else
             {
+				SIMPLE_LOG_MSG(LL_WARN, "Level 8");
                 NIOVA_ASSERT((1 + pos) < RAFT_NET_CLIENT_USER_ID_V0_NUINT64);
 
                 RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, 0, 1 + pos) =
@@ -2267,6 +2287,7 @@ raft_net_client_user_id_parse(const char *in,
             }
         }
     }
+	SIMPLE_LOG_MSG(LL_WARN, "Level 5");
 
     if (!rc)
         SIMPLE_LOG_MSG(LL_DEBUG, RAFT_NET_CLIENT_USER_ID_FMT,
@@ -2294,11 +2315,17 @@ raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
                                  const char *value, const size_t value_size)
 {
     if (!rnsws || !key || !key_size)
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "Return error EINVAL");
         return -EINVAL;
+	}
 
     struct raft_net_wr_supp *ws = raft_net_write_supp_get(rnsws, handle);
     if (!ws)
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "Return error ENOMEM");
         return -ENOMEM;
+	}
 
     if (rnws_comp_cb) // Apply the callback if it was specified
         ws->rnws_comp_cb = rnws_comp_cb;
