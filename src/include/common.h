@@ -125,4 +125,73 @@ number_of_ones_in_val(unsigned long long val)
     return __builtin_popcount(val);
 }
 
+static inline int
+nconsective_bits_assign(uint64_t *field, unsigned int nbits)
+{
+    unsigned int field_size = NBBY * sizeof(uint64_t);
+
+    if (!field || nbits <= 0 || nbits > field_size)
+        return -EINVAL;
+
+    if (nbits == field_size)
+    {
+        if (*field)
+        {
+            return -ENOSPC;
+        }
+        else
+        {
+            *field = -1ULL;
+            return 0;
+        }
+    }
+
+    const uint64_t ifield = ~(*field);
+    uint64_t mask = (1ULL << nbits) - 1;
+
+    for (unsigned int i = 0; i <= (field_size - nbits); i++)
+    {
+        uint64_t shifted_mask = mask << i;
+        if ((ifield & shifted_mask) == shifted_mask)
+        {
+            *field |= shifted_mask;
+            return i;
+        }
+    }
+
+    return -ENOSPC;
+}
+
+static inline int
+nconsective_bits_release(uint64_t *field, unsigned int offset,
+                         unsigned int nbits)
+{
+    unsigned int field_size = NBBY * sizeof(uint64_t);
+
+    if (!field || nbits <= 0 || nbits > field_size || offset >= field_size)
+        return -EINVAL;
+
+    if (nbits == field_size)
+    {
+        if (*field == -1ULL)
+        {
+            *field = 0;
+            return 0;
+        }
+        else
+        {
+            return -EBADSLT;
+        }
+    }
+
+    uint64_t mask = ((1ULL << nbits) - 1) << offset;
+    if ((*field & mask) == mask)
+    {
+        *field &= ~mask;
+        return 0;
+    }
+
+    return -EBADSLT;
+}
+
 #endif //NIOVA_COMMON_H
