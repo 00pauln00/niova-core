@@ -50,6 +50,7 @@ extern enum log_level allocLogLevel;
 ({                                                                 \
     void *ptr = NULL;                                              \
     int rc = posix_memalign(&ptr, alignment, size);                \
+    if (rc) ptr = NULL;                                            \
     LOG_MSG((rc ? LL_ERROR : allocLogLevel),                       \
             "niova_posix_memalign: %p %zu %zu: %s",                \
             ptr, size, alignment, rc ? strerror(rc) : "OK");       \
