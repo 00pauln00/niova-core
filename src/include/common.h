@@ -128,22 +128,21 @@ number_of_ones_in_val(unsigned long long val)
 static inline int
 nconsective_bits_assign(uint64_t *field, unsigned int nbits)
 {
-    unsigned int field_size = NBBY * sizeof(uint64_t);
+    const unsigned int field_size = NBBY * sizeof(uint64_t);
 
     if (!field || nbits <= 0 || nbits > field_size)
         return -EINVAL;
 
     if (nbits == field_size)
     {
+        int rc = 0;
+
         if (*field)
-        {
-            return -ENOSPC;
-        }
+            rc = -ENOSPC;
         else
-        {
             *field = -1ULL;
-            return 0;
-        }
+
+        return rc;
     }
 
     const uint64_t ifield = ~(*field);
@@ -166,22 +165,21 @@ static inline int
 nconsective_bits_release(uint64_t *field, unsigned int offset,
                          unsigned int nbits)
 {
-    unsigned int field_size = NBBY * sizeof(uint64_t);
+    const unsigned int field_size = NBBY * sizeof(uint64_t);
 
     if (!field || nbits <= 0 || nbits > field_size || offset >= field_size)
         return -EINVAL;
 
     if (nbits == field_size)
     {
+        int rc = 0;
+
         if (*field == -1ULL)
-        {
             *field = 0;
-            return 0;
-        }
         else
-        {
-            return -EBADSLT;
-        }
+            rc = -EBADSLT;
+
+        return rc;
     }
 
     uint64_t mask = ((1ULL << nbits) - 1) << offset;

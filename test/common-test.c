@@ -67,7 +67,7 @@ ssize_t_checks(void)
 }
 
 static void
-assign_nbits_test(void)
+assign_release_nbits_test1(void)
 {
     uint64_t field = 0;
     NIOVA_ASSERT(nconsective_bits_assign(&field, 1) == 0 &&
@@ -191,10 +191,78 @@ assign_nbits_test(void)
     NIOVA_ASSERT(field == 0);
 }
 
+// randomly assign and release bit fields
+static void
+assign_release_nbits_test2(void)
+{
+    uint64_t field = 0;
+
+    for (int x = 0; x < 10000; x++)
+    {
+        int nallocs = 0;
+        unsigned int allocs[257][2] = {0};
+
+        for (int i = 1; i <= 257; i++)
+        {
+            unsigned int cnt = MAX(1, random_get() % MAX(1, x) % 64);
+
+            int rc = nconsective_bits_assign(&field, cnt);
+//            fprintf(stdout, "i=%d cnt=%u offset=%d\n", i, cnt, rc);
+
+            if (rc >= 0)
+            {
+                allocs[nallocs][0] = rc;
+                allocs[nallocs++][1] = cnt;
+
+                if (i > 3 && !(i % 2)) // release one the assigned items
+                {
+                    int idx = random_get() % nallocs;
+                    if (allocs[idx][0] != -1u)
+                    {
+                        NIOVA_ASSERT(!nconsective_bits_release(
+                                         &field, allocs[idx][0],
+                                         allocs[idx][1]));
+                        allocs[idx][0] = -1u;
+                    }
+                }
+            }
+            else if (nallocs) // allocation failed, try to release something
+            {
+                int idx = random_get() % nallocs;
+
+                // Find something to release by looking forward
+                while (allocs[idx][0] != -1u && (idx < nallocs - 1))
+                    idx++;
+
+                if (allocs[idx][0] != -1u)
+                {
+                    NIOVA_ASSERT(!nconsective_bits_release(
+                                     &field, allocs[idx][0],
+                                     allocs[idx][1]));
+                    allocs[idx][0] = -1u;
+                }
+            }
+        } //end inner for loop
+
+        // Cleanup by releasing any unreleased bit fields
+        while (nallocs--)
+        {
+            if (allocs[nallocs][0] == -1u)
+                        continue;
+
+            NIOVA_ASSERT(!nconsective_bits_release(
+                             &field, allocs[nallocs][0],
+                                     allocs[nallocs][1]));
+        }
+        NIOVA_ASSERT(field == 0);
+    }
+}
+
 int
 main(void)
 {
-    assign_nbits_test();
+    assign_release_nbits_test1();
+    assign_release_nbits_test2();
     highest_set_bit_pos_from_val_test();
     highest_power_of_two_test();
     ssize_t_checks();
