@@ -103,7 +103,7 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba,
     if (unit_size == 0)
         return -EINVAL;
 
-    CONST_OVERRIDE(unsigned int, nvba->nvba_unit_size, unit_size);
+    CONST_OVERRIDE(size_t, nvba->nvba_unit_size, unit_size);
     nvba->nvba_bitmap = 0;
 
     return 0;

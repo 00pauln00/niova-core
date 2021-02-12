@@ -44,6 +44,8 @@ niova_vbasic_alloc_test2(void)
                 allocstuff[nallocs].ptr = ptr;
                 allocstuff[nallocs++].size = cnt;
 
+                *(char *)ptr = 'x';
+
                 if (i > 3 && !(i % 2)) // release one the assigned items
                 {
                     int idx = random_get() % nallocs;
