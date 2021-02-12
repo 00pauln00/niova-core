@@ -204,10 +204,13 @@ assign_release_nbits_test2(void)
 
         for (int i = 1; i <= 257; i++)
         {
-            unsigned int cnt = MAX(1, random_get() % MAX(1, x) % 64);
+            unsigned int rand = random_get();
+            unsigned int cnt = MAX(1, (rand % MAX(1, x) % 64));
 
             int rc = nconsective_bits_assign(&field, cnt);
 //            fprintf(stdout, "i=%d cnt=%u offset=%d\n", i, cnt, rc);
+
+            NIOVA_ASSERT(rc >= 0 || rc == -ENOSPC);
 
             if (rc >= 0)
             {

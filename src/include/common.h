@@ -167,7 +167,8 @@ nconsective_bits_release(uint64_t *field, unsigned int offset,
 {
     const unsigned int field_size = NBBY * sizeof(uint64_t);
 
-    if (!field || nbits <= 0 || nbits > field_size || offset >= field_size)
+    if (!field || nbits <= 0 || nbits > field_size || offset >= field_size ||
+        ((nbits + offset) > field_size))
         return -EINVAL;
 
     if (nbits == field_size)

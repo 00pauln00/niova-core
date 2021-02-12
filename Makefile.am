@@ -209,6 +209,11 @@ test_micro_test_SOURCES = test/micro-test.c
 test_micro_test_LDADD = src/libniova.la
 TESTS += test/micro-test
 
+noinst_PROGRAMS += test/alloc-test
+test_alloc_test_SOURCES = test/alloc-test.c
+test_alloc_test_LDADD = src/libniova.la
+TESTS += test/alloc-test
+
 noinst_PROGRAMS += test/registry-test
 # Use CORE_SOURCES so that this binary's constructor runs inside of niova
 # init_ctx()
