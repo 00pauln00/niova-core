@@ -93,6 +93,18 @@ struct niova_vbasic_allocator
     char         nvba_region[];
 };
 
+static inline size_t
+niova_vbasic_nassigned(const struct niova_vbasic_allocator *nvba)
+{
+    if (!nvba || nvba->nvba_bitmap == -1ULL)
+        return NIOVA_VBA_MAX_BITS;
+
+    else if (nvba->nvba_bitmap == 0)
+        return 0;
+
+    return number_of_ones_in_val(nvba->nvba_bitmap);
+}
+
 static inline int
 niova_vbasic_init(struct niova_vbasic_allocator *nvba,
                   size_t region_size)
