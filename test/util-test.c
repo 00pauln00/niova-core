@@ -165,9 +165,43 @@ niova_parse_comma_delimited_uint_string_test(void)
 
 }
 
+struct b_type
+{
+    int b;
+};
+
+struct a_type
+{
+    struct b_type a_b_first;
+    struct b_type a_b_array[10];
+    struct b_type a_b_last;
+};
+
+static void
+util_offset_cast_test(void)
+{
+    struct a_type a;
+    struct b_type *b = &a.a_b_last;
+
+    struct a_type *a_ptr = OFFSET_CAST(a_type, a_b_last, b);
+    MY_FATAL_IF(a_ptr != &a, "expected %p got %p", &a, a_ptr);
+
+    b = &a.a_b_first;
+    a_ptr = OFFSET_CAST(a_type, a_b_first, b);
+    MY_FATAL_IF(a_ptr != &a, "expected %p got %p", &a, a_ptr);
+
+    for (int i = 0; i < 10; i++)
+    {
+        b = &a.a_b_array[i];
+        a_ptr = OFFSET_CAST(a_type, a_b_array[i], b);
+        MY_FATAL_IF(a_ptr != &a, "expected %p got %p", &a, a_ptr);
+    }
+}
+
 int
 main(void)
 {
+    util_offset_cast_test();
     mk_time_string_test();
     niova_string_to_unsigned_long_long_test();
     niova_string_to_unsigned_int_test();
