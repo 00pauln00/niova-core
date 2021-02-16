@@ -869,12 +869,12 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     case pmdb_op_read:
         rc = use_async_requests ?
             PmdbObjGetXNB(pmdbtcPMDB, obj_id, NULL, 0,
-                          (char *)&preq->preq_rtdb,
+                          (void *)&preq->preq_rtdb,
                           (sizeof(struct raft_test_data_block) +
                            sizeof(struct raft_test_values)),
                           pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
             PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
-                        (char *)&preq->preq_rtdb,
+                        (void *)&preq->preq_rtdb,
                         (sizeof(struct raft_test_data_block) +
                          sizeof(struct raft_test_values)),
                         &preq->preq_obj_stat);
@@ -883,11 +883,11 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     case pmdb_op_write:
         pmdbtc_write_prep(preq);
         rc = use_async_requests ?
-            PmdbObjPutNB(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
+            PmdbObjPutNB(pmdbtcPMDB, obj_id, (void *)&preq->preq_rtdb,
                          (sizeof(struct raft_test_data_block) +
                           sizeof(struct raft_test_values)),
                          pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
-            PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
+            PmdbObjPut(pmdbtcPMDB, obj_id, (void *)&preq->preq_rtdb,
                        (sizeof(struct raft_test_data_block) +
                         sizeof(struct raft_test_values)),
                        &preq->preq_obj_stat);

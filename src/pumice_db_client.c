@@ -390,7 +390,7 @@ PmdbObjPutGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
  * PmdbObjPutNB - non-blocking public put (write) routine.
  */
 int
-PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *kv,
              size_t kv_size, pmdb_user_cb_t user_cb, void *user_arg,
              struct pmdb_obj_stat *user_pmdb_stat)
 {
@@ -488,7 +488,7 @@ PmdbObjGetXGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
  * PmdbObjGet - blocking public get (read) routine.
  */
 int
-PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
            size_t key_size, char *value, size_t value_size)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
@@ -501,7 +501,7 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
  * PmdbObjGetNB - non-blocking public put (write) routine.
  */
 int
-PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
              size_t key_size, char *value, size_t value_size,
              pmdb_user_cb_t user_cb, void *user_arg)
 {
@@ -516,7 +516,7 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
 }
 
 int
-PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
               size_t key_size, char *value, size_t value_size,
               pmdb_user_cb_t user_cb, void *user_arg,
               struct pmdb_obj_stat *user_pmdb_stat)

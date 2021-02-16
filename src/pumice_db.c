@@ -548,7 +548,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     if (!rrc)   // Ok.  Continue to read operation
     {
         rrc =
-            pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
+            pmdbApi->pmdb_read((void *)&pmdb_req->pmdbrm_user_id,
                                pmdb_req->pmdbrm_data,
                                pmdb_req->pmdbrm_data_size,
                                pmdb_reply->pmdbrm_data, max_reply_size,
@@ -711,7 +711,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     // Call into the application so it may emplace its own KVs.
     int apply_rc =
-        pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
+        pmdbApi->pmdb_apply((void *)rncui, pmdb_req->pmdbrm_data,
                             pmdb_req->pmdbrm_data_size, (void *)&pah,
                             pmdb_user_data);
 
@@ -851,10 +851,11 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
 }
 
 int
-PmdbWriteKVGo(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
+PmdbWriteKVGo(const void *id, void *pmdb_handle,
             const char *key, size_t key_len, const char *value,
             size_t value_len, void (*comp_cb)(void *), const char *cf_name)
 {
+	const struct raft_net_client_user_id *app_id = (struct raft_net_client_user_id *)id;
 	rocksdb_column_family_handle_t *cf_handle = PmdbCfHandleLookup(cf_name);
 	return PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
 					   comp_cb, (void *)cf_handle);
@@ -952,11 +953,13 @@ Pmdb_entry_key_len(void)
 }
 
 int
-Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
+Pmdb_test_app_lookup(const void *id,
 					 const char *request, size_t request_bufsz,
+					 char *value,
 					 const char *cf_name)
 {
 
+	const struct raft_net_client_user_id *app_id = (struct raft_net_client_user_id *)id;
 	rocksdb_column_family_handle_t *pmdbts_cfh =
 				PmdbCfHandleLookup(cf_name);
     char *err = NULL;
@@ -967,7 +970,7 @@ Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
 
     size_t value_len = 0;
 
-    char *value = rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbts_cfh,
+    value = rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbts_cfh,
                                  request,
                                  request_bufsz, &value_len, &err);
 
@@ -991,9 +994,6 @@ Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
     {
 		SIMPLE_LOG_MSG(LL_WARN, "Value of the key is: %s", value);
     }
-
-    if (value)
-        free(value);
 
     return rc;
 }

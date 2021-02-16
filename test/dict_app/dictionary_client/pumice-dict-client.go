@@ -9,10 +9,12 @@ import (
 	"encoding/gob"
 	"encoding/binary"
 	"log"
+	"flag"
+	"dictapplib/dict_libs"
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries/niova/
+#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries
 #include <raft/pumice_db.h>
 #include <raft/pumice_db_client.h>
 #include <rocksdb/c.h>
@@ -21,29 +23,19 @@ import (
 */
 import "C"
 
-type dict_request struct {
-	Dict_op string
-	Dict_wr_seq uint64
-	Dict_rncui string
-	Dict_text string
-}
+var raft_uuid_go string
+var peer_uuid_go string
 
-func GoTraverse() {
-	fmt.Println("Inside GoTraverse")
-	//First parameter is RAFT_UUID
-	ruuid := os.Args[1]
+func GoDictClient() {
 
-    fmt.Printf("Raft uuid: %s\n", ruuid)
-	raft_uuid := C.CString(ruuid)
+	//XXX move this the golibrary
+	raft_uuid := C.CString(raft_uuid_go)
 	defer C.free(unsafe.Pointer(raft_uuid))
 
-	//Second parameter is PEER_UUID
-	puuid := os.Args[2]
-
-    fmt.Printf("Peer uuid: %s\n", puuid)
-	peer_uuid := C.CString(puuid)
+	peer_uuid := C.CString(peer_uuid_go)
 	defer C.free(unsafe.Pointer(peer_uuid))
 
+	//Start the client.
 	var Cpmdb C.pmdb_t
 	Cpmdb  = C.PmdbClientStart(raft_uuid, peer_uuid)
 
@@ -52,76 +44,63 @@ func GoTraverse() {
 		//Read the input from console
 		words := bufio.NewReader(os.Stdin)
 		for {
-			fmt.Print("-> ")
 			text, _ := words.ReadString('\n')
 
 			// convert CRLF to LF
 			text = strings.Replace(text, "\n", "", -1)
 			input := strings.Split(text, ".")
-			fmt.Println("RNCUI", input[0])
-			fmt.Println("Text", input[1])
-			fmt.Println("Operation", input[2])
 			seq++
 
-			my_dict := dict_request{
+			//Format is: AppUUID.text.write or AppUUID.text.read
+			// Prepare the dictionary structure from values passed by user.
+			input_dict := DictAppLib.Dict_request{
 				Dict_op: input[2],
 				Dict_wr_seq: seq,
 				Dict_rncui: input[0],
 				Dict_text: input[1],
 			}
 
-
-			//req_ptr := dict_request{dict_op:input[2], dict_wr_seq:seq, dict_text:input[1], dict_rncui:input[0]}
-
 			var obj_stat C.pmdb_obj_stat_t
-			//var request_rncui C.struct_raft_net_client_user_id
-			//var rncui C.struct_raft_net_client_user_id
 
-			fmt.Println("COnvert the string to c string")
 			crncui := C.CString(input[0])
 			defer C.free(unsafe.Pointer(crncui))
 
-			//struct_ptr := unsafe.Pointer(my_dict)
-			//defer C.free(unsafe.Pointer(struct_ptr))
+			// XXX Get the size of byte array, need to get from DictAppEncodebuf
+			var request_size int64
 
-			buf := bytes.Buffer{}
-			enc := gob.NewEncoder(&buf)
-			err := enc.Encode(my_dict)
-			if err != nil {
-				log.Fatal(err)
-			}
+			//Encode the Dictionary structure into void * pointer for passing to C function.
+			request_ptr := DictAppLib.DictAppEncodebuf(input_dict, &request_size)
 
-			request := buf.Bytes()
-			fmt.Println("Passing byte array: %s", string(request))
+			if input_dict.Dict_op == "write" {
 
-			request_ptr := unsafe.Pointer(&request[0])
-			defer C.free(unsafe.Pointer(request_ptr))
+				//Send the write request
+				//XXX Lets not call cfunction directly from application. Create library
+				//function for it.
+				C.PmdbObjPutGolang(Cpmdb, crncui, request_ptr, request_size, &obj_stat)
 
-			// Get the size of byte array
-			size := C.size_t(binary.Size(request))
-			fmt.Println("Calling c function")
-			if my_dict.Dict_op == "write" {
-				C.PmdbObjPutGolang(Cpmdb, crncui, request_ptr, size, &obj_stat)
 			} else {
-				var result dict_request
-				res_buf := bytes.Buffer{}
-				enc := gob.NewEncoder(&res_buf)
-				err := enc.Encode(result)
-				if err != nil {
-					log.Fatal(err)
-				}
 
-				ptr := buf.Bytes()
-				result_ptr := unsafe.Pointer(&ptr[0])
-				defer C.free(unsafe.Pointer(result_ptr))
-
-				C.PmdbObjGetXGolang(Cpmdb, crncui, request_ptr, size, result_ptr, size, &obj_stat)
+				//XXX same here. This should happen from Golibrary.
+				C.PmdbObjGetXGolang(Cpmdb, crncui, request_ptr, request_size,
+									result_ptr, size, &obj_stat)
 			}
 		}
 	}
 }
 
+func pmdb_dict_app_getopts() {
+
+	flag.StringVar(&raft_uuid_go, "raft", "NULL", "raft uuid")
+	flag.StringVar(&peer_uuid_go, "peer", "NULL", "peer uuid")
+
+	flag.Parse()
+	fmt.Println("Raft UUID: ", raft_uuid_go)
+	fmt.Println("Peer UUID: ", peer_uuid_go)
+}
+
 func main() {
-	fmt.Println("Inside go main")
-	GoTraverse()
+	//Parse the cmdline parameter
+	pmdb_dict_app_getopts()
+
+	GoDictClient()
 }
