@@ -1526,7 +1526,8 @@ raft_server_log_truncate(struct raft_instance *ri)
 
     ri->ri_backend->rib_log_truncate(ri, trunc_entry_idx);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-raft-idx=%ld", trunc_entry_idx);
+    DBG_RAFT_INSTANCE_TAG(LL_NOTIFY, "log-rollback", ri, "new-max-raft-idx=%ld",
+                          trunc_entry_idx);
 }
 
 /**
@@ -2616,7 +2617,6 @@ raft_server_append_entry_log_prune_if_needed(
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
                                strerror(-rc));
 
-    // We must not prune already committed transactions.
     DBG_RAFT_INSTANCE(LL_WARN, ri,
                       "raerqm_prev_log_term=%ld raerqm_prev_log_index=%ld",
                       raerq->raerqm_prev_log_term,

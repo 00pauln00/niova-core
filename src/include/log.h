@@ -80,6 +80,7 @@ struct log_entry_info
     enum log_level lei_level;
     unsigned int   lei_lineno : 18;
     size_t         lei_exec_cnt;
+    const char    *lei_tag;
 #if 0
     size_t         lei_exec_cnt_since_last_reset;
     time_t         lei_exec_cnt_last_reset;
@@ -107,11 +108,12 @@ struct log_entry_info
         .lrn_head = CIRCLEQ_HEAD_INITIALIZER(regFileEntry.lrn_head),    \
     }
 
-#define REGISTY_ENTRY_FUNCTION_GENERATE                                    \
+#define REGISTY_ENTRY_FUNCTION_GENERATE(tag)                            \
     static struct log_entry_info logEntryInfo = {                          \
         .lei_level = LL_ANY,                                               \
         .lei_lineno = __LINE__,                                            \
         .lei_func = __func__,                                              \
+        .lei_tag = tag,                                                 \
     };                                                                     \
     static struct lreg_node logMsgLrn = {                                  \
         .lrn_cb_arg = &logEntryInfo,                                       \
@@ -179,13 +181,13 @@ do {                                                              \
  *    registry entry's level, and next from the file's level.  If neither are
  *    set, then use the level provided by the caller.
  */
-#define LOG_MSG(user_lvl, message, ...)                \
+#define _LOG_MSG(user_lvl, tag, message, ...)          \
 do {                                                   \
     enum log_level lvl = user_lvl;                     \
                                                        \
     if (!init_ctx())                                   \
     {                                                  \
-        REGISTY_ENTRY_FUNCTION_GENERATE;               \
+        REGISTY_ENTRY_FUNCTION_GENERATE(tag);          \
                                                        \
         logEntryInfo.lei_exec_cnt++;                   \
                                                        \
@@ -197,6 +199,12 @@ do {                                                   \
     }                                                  \
     SIMPLE_LOG_MSG(lvl, message, ##__VA_ARGS__);       \
 } while (0)
+
+#define LOG_MSG(user_lvl, message, ...)         \
+    _LOG_MSG(user_lvl, NULL, message, ##__VA_ARGS__)
+
+#define LOG_MSG_TAG(user_lvl, tag, message, ...)        \
+    _LOG_MSG(user_lvl, tag, message, ##__VA_ARGS__)
 
 #define FATAL_MSG(message, ...) \
     SIMPLE_LOG_MSG(LL_FATAL, message, ##__VA_ARGS__)

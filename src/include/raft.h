@@ -573,7 +573,7 @@ do {                                                          \
     }                                                         \
 } while (0)
 
-#define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)                 \
+#define _DBG_RAFT_INSTANCE(log_level, tag, ri, fmt, ...)           \
 do {                                                               \
     char __uuid_str[UUID_STR_LEN];                                 \
     uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);      \
@@ -582,7 +582,7 @@ do {                                                               \
         uuid_unparse((ri)->ri_csn_leader->csn_uuid,                \
                      __leader_uuid_str);                           \
                                                                    \
-    LOG_MSG(log_level,                                                      \
+    LOG_MSG_TAG(log_level, tag,                                         \
             "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld:%ld lck=%lld v=%s l=%s "  \
             fmt,                                                        \
             raft_server_process_state_to_char((ri)->ri_proc_state),     \
@@ -599,6 +599,12 @@ do {                                                               \
             __uuid_str, __leader_uuid_str,                              \
             ##__VA_ARGS__);                                             \
 } while (0)
+
+#define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)              \
+    _DBG_RAFT_INSTANCE(log_level, NULL, ri, fmt, ##__VA_ARGS__)
+
+#define DBG_RAFT_INSTANCE_TAG(log_level, tag, ri, fmt, ...)      \
+    _DBG_RAFT_INSTANCE(log_level, tag, ri, fmt, ##__VA_ARGS__)
 
 #define DBG_RAFT_INSTANCE_FATAL_IF(cond, ri, message, ...)       \
 do {                                                             \

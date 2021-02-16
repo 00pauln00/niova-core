@@ -31,6 +31,7 @@ enum log_lreg_function_entry_values
     LOG_LREG_ENTRY_LINENO,
     LOG_LREG_ENTRY_EXEC_CNT,
     LOG_LREG_ENTRY_FUNC,
+    LOG_LREG_ENTRY_TAG,
     LOG_LREG_ENTRY_MAX,
 };
 
@@ -207,6 +208,10 @@ log_lreg_function_entry_multi_facet_value_cb(enum lreg_node_cb_ops op,
 
         case LOG_LREG_ENTRY_FUNC:
             lreg_value_fill_string(lreg_val, "function", lei->lei_func);
+            break;
+
+        case LOG_LREG_ENTRY_TAG:
+            lreg_value_fill_string(lreg_val, "tag", lei->lei_tag);
             break;
 
         default:
