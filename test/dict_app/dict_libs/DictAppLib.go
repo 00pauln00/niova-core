@@ -18,26 +18,9 @@ type Dict_request struct {
 	Dict_wr_seq uint64
 	Dict_rncui string
 	Dict_text string
+	Dict_wcount int
 }
 
-func DictAppEncodebuf(curr_dict Dict_request) unsafe.Pointer {
-	buffer := bytes.Buffer{}
-
-	encode := gob.NewEncoder(&buffer)
-	err := encode.Encode(curr_dict)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	//Byte array
-	request := buffer.Bytes()
-
-	//Convert it to unsafe pointer (void * for C function)
-	request_ptr := unsafe.Pointer(&request[0])
-	defer C.free(unsafe.Pointer(request_ptr))
-
-	return request_ptr
-}
 
 func DictAppDecodebuf(input_buf unsafe.Pointer, bufsz int64)  *Dict_request{
 	gob.Register(Dict_request{})

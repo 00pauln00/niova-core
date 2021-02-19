@@ -1,20 +1,18 @@
 package main
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"unsafe"
 	"bufio"
 	"strings"
-	"encoding/gob"
-	"encoding/binary"
-	"log"
 	"flag"
+	"encoding/gob"
+	"log"
+	"gopmdblib/goPmdb"
 	"dictapplib/dict_libs"
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries
+#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
 #include <raft/pumice_db.h>
 #include <raft/pumice_db_client.h>
 #include <rocksdb/c.h>
@@ -26,24 +24,41 @@ import "C"
 var raft_uuid_go string
 var peer_uuid_go string
 
-func GoDictClient() {
+type Dict_request struct {
+	Dict_op string
+	Dict_wr_seq uint64
+	Dict_rncui string
+	Dict_text string
+	Dict_wcount int
+}
 
-	//XXX move this the golibrary
-	raft_uuid := C.CString(raft_uuid_go)
-	defer C.free(unsafe.Pointer(raft_uuid))
+func (pmdbDict Dict_request) PmdbEncode(encode *gob.Encoder) {
 
-	peer_uuid := C.CString(peer_uuid_go)
-	defer C.free(unsafe.Pointer(peer_uuid))
+	err := encode.Encode(pmdbDict)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+/*
+ Start the pmdb client.
+ Read the request from console and process it.
+ User will pass the request in following format.
+ app_uuid.Text.write => For write opertion.
+ app_uuid.Word.write  => For read operation.
+*/
+func pmdbDictClient() {
 
 	//Start the client.
-	var Cpmdb C.pmdb_t
-	Cpmdb  = C.PmdbClientStart(raft_uuid, peer_uuid)
+	GoPmdb.GoStartClient(raft_uuid_go, peer_uuid_go)
 
 	var seq uint64
 	for {
 		//Read the input from console
 		words := bufio.NewReader(os.Stdin)
 		for {
+			fmt.Print("Enter request in the format ")
+			fmt.Print("app_uuid.text.write/read")
 			text, _ := words.ReadString('\n')
 
 			// convert CRLF to LF
@@ -53,36 +68,29 @@ func GoDictClient() {
 
 			//Format is: AppUUID.text.write or AppUUID.text.read
 			// Prepare the dictionary structure from values passed by user.
-			input_dict := DictAppLib.Dict_request{
+			input_dict := Dict_request{
 				Dict_op: input[2],
 				Dict_wr_seq: seq,
 				Dict_rncui: input[0],
 				Dict_text: input[1],
 			}
 
-			var obj_stat C.pmdb_obj_stat_t
-
-			crncui := C.CString(input[0])
-			defer C.free(unsafe.Pointer(crncui))
-
-			// XXX Get the size of byte array, need to get from DictAppEncodebuf
-			var request_size int64
-
-			//Encode the Dictionary structure into void * pointer for passing to C function.
-			request_ptr := DictAppLib.DictAppEncodebuf(input_dict, &request_size)
+			fmt.Println("rncui", input_dict.Dict_rncui)
+			fmt.Println("Operation", input_dict.Dict_op)
+			fmt.Println("text", input_dict.Dict_text)
 
 			if input_dict.Dict_op == "write" {
-
-				//Send the write request
-				//XXX Lets not call cfunction directly from application. Create library
-				//function for it.
-				C.PmdbObjPutGolang(Cpmdb, crncui, request_ptr, request_size, &obj_stat)
-
+				//write operation
+				GoPmdb.GoPmdbClientWrite(input_dict, input_dict.Dict_rncui)
 			} else {
+				//read operation
+				var value_len int64
+				value_ptr := GoPmdb.GoPmdbClientRead(input_dict, input_dict.Dict_rncui, &value_len)
 
-				//XXX same here. This should happen from Golibrary.
-				C.PmdbObjGetXGolang(Cpmdb, crncui, request_ptr, request_size,
-									result_ptr, size, &obj_stat)
+				//Decode the result from unsafe.Pointer to dictionary structure..
+				result_dict := DictAppLib.DictAppDecodebuf(value_ptr, value_len)
+				fmt.Println("Word: ", result_dict.Dict_text)
+				fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
 			}
 		}
 	}
@@ -102,5 +110,6 @@ func main() {
 	//Parse the cmdline parameter
 	pmdb_dict_app_getopts()
 
-	GoDictClient()
+	//Start pmdbDictionary client.
+	pmdbDictClient()
 }
