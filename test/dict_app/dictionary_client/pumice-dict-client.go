@@ -12,7 +12,7 @@ import (
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
+#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries
 #include <raft/pumice_db.h>
 #include <raft/pumice_db_client.h>
 #include <rocksdb/c.h>
@@ -24,7 +24,7 @@ import "C"
 var raft_uuid_go string
 var peer_uuid_go string
 
-type Dict_request struct {
+type Dict_app struct {
 	Dict_op string
 	Dict_wr_seq uint64
 	Dict_rncui string
@@ -32,7 +32,7 @@ type Dict_request struct {
 	Dict_wcount int
 }
 
-func (pmdbDict Dict_request) PmdbEncode(encode *gob.Encoder) {
+func (pmdbDict Dict_app) PmdbEncode(encode *gob.Encoder) {
 
 	err := encode.Encode(pmdbDict)
 	if err != nil {
@@ -68,7 +68,7 @@ func pmdbDictClient() {
 
 			//Format is: AppUUID.text.write or AppUUID.text.read
 			// Prepare the dictionary structure from values passed by user.
-			input_dict := Dict_request{
+			input_dict := Dict_app{
 				Dict_op: input[2],
 				Dict_wr_seq: seq,
 				Dict_rncui: input[0],

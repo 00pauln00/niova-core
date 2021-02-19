@@ -7,7 +7,7 @@ import (
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
+#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries
 #include <raft/pumice_db.h>
 #include <rocksdb/c.h>
 #include <raft/raft_net.h>
@@ -39,9 +39,7 @@ type goPmdbEncDec interface {
 	PmdbEncode(enc *gob.Encoder)
 }
 
-//Write KV from client.
-func GoPmdbClientWrite(ed goPmdbEncDec, rncui string) {
-
+func GoEncode(ed goPmdbEncDec, data_len *int64) unsafe.Pointer {
 	fmt.Println("Client: Write Key-Value")
 	//Byte array
 	buffer := bytes.Buffer{}
@@ -50,45 +48,39 @@ func GoPmdbClientWrite(ed goPmdbEncDec, rncui string) {
 	ed.PmdbEncode(encode)
 
 	struct_data := buffer.Bytes()
-	key_len := int64(len(struct_data))
+	*data_len = int64(len(struct_data))
 
 	//Convert it to unsafe pointer (void * for C function) 
-	key := unsafe.Pointer(&struct_data[0])
-	GoClientWriteKV(rncui, key, key_len)
+	enc_data := unsafe.Pointer(&struct_data[0])
+	return enc_data
+}
+//Write KV from client.
+func GoPmdbClientWrite(ed goPmdbEncDec, rncui string) {
+
+	fmt.Println("Client: Write Key-Value")
+
+	var key_len int64
+	//Encode the structure into void pointer.
+	encoded_key := GoEncode(ed, &key_len)
+	//Perform the write
+	GoClientWriteKV(rncui, encoded_key, key_len)
 }
 
 //Read the value of key on the client
 func GoPmdbClientRead(ed goPmdbEncDec, rncui string, return_value_len *int64) unsafe.Pointer {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
-	key_buffer := bytes.Buffer{}
 
-	encode := gob.NewEncoder(&key_buffer)
-	ed.PmdbEncode(encode)
+	var key_len int64
+	encoded_key := GoEncode(ed, &key_len)
 
-	struct_data := key_buffer.Bytes()
-	key_len := int64(len(struct_data))
+	var val_len int64
+	encoded_val := GoEncode(ed, &val_len)
 
-	//Convert it to unsafe pointer (void * for C function) 
-	key := unsafe.Pointer(&struct_data[0])
-
-	//Need another Encode unsafe pointer to store the return value from read.
-	//XXX need common code for it as well.
-	value_buffer := bytes.Buffer{}
-
-	val_encode := gob.NewEncoder(&value_buffer)
-	ed.PmdbEncode(val_encode)
-
-	val_data := value_buffer.Bytes()
-	val_len := int64(len(val_data))
-
-	//Convert it to unsafe pointer (void * for C function) 
-	value := unsafe.Pointer(&val_data[0])
-
-	GoClientReadKV(rncui, key, key_len, value, val_len)
+	GoClientReadKV(rncui, encoded_key, key_len, encoded_val, val_len)
 	*return_value_len = val_len
 
-	return value
+	return encoded_val
 }
 
 /*

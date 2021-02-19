@@ -13,7 +13,7 @@ import (
 */
 import "C"
 
-type Dict_request struct {
+type Dict_app struct {
 	Dict_op string
 	Dict_wr_seq uint64
 	Dict_rncui string
@@ -22,14 +22,14 @@ type Dict_request struct {
 }
 
 
-func DictAppDecodebuf(input_buf unsafe.Pointer, bufsz int64)  *Dict_request{
-	gob.Register(Dict_request{})
+func DictAppDecodebuf(input_buf unsafe.Pointer, bufsz int64)  *Dict_app{
+	gob.Register(Dict_app{})
 
 	input_bytes_data := C.GoBytes(unsafe.Pointer(input_buf), C.int(bufsz))
 
 	buffer := bytes.NewBuffer(input_bytes_data)
 
-	dict_req := &Dict_request{}
+	dict_req := &Dict_app{}
 	dec := gob.NewDecoder(buffer)
 	for {
 		if err := dec.Decode(dict_req); err == io.EOF {
