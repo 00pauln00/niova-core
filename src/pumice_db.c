@@ -548,7 +548,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     if (!rrc)   // Ok.  Continue to read operation
     {
         rrc =
-            pmdbApi->pmdb_read((void *)&pmdb_req->pmdbrm_user_id,
+            pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                pmdb_req->pmdbrm_data,
                                pmdb_req->pmdbrm_data_size,
                                pmdb_reply->pmdbrm_data, max_reply_size,
@@ -711,7 +711,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     // Call into the application so it may emplace its own KVs.
     int apply_rc =
-        pmdbApi->pmdb_apply((void *)rncui, pmdb_req->pmdbrm_data,
+        pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
                             pmdb_req->pmdbrm_data_size, (void *)&pah,
                             pmdb_user_data);
 
@@ -851,11 +851,11 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
 }
 
 int
-PmdbWriteKVGo(const void *id, void *pmdb_handle,
+PmdbWriteKVGo(const struct raft_net_client_user_id  *app_id, void *pmdb_handle,
             const char *key, size_t key_len, const char *value,
             size_t value_len, void (*comp_cb)(void *), const char *cf_name)
 {
-	const struct raft_net_client_user_id *app_id = (struct raft_net_client_user_id *)id;
+	//const struct raft_net_client_user_id *app_id = (struct raft_net_client_user_id *)id;
 	rocksdb_column_family_handle_t *cf_handle = PmdbCfHandleLookup(cf_name);
 	return PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
 					   comp_cb, (void *)cf_handle);
@@ -912,16 +912,15 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
 int
 PmdbExecGo(const char *raft_uuid_str, const char *raft_instance_uuid_str,
-         const struct PmdbAPI *pmdb_api,
+         const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes, void *user_data)
 {
-	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExecGo: %p", user_data);
-	pmdb_user_data = user_data;
-	const char *cf_names[1] = {"PMDBTS_CF"};
+   SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExecGo: %s", cf_names[0]);
+   pmdb_user_data = user_data;
 
-	SIMPLE_LOG_MSG(LL_WARN, "raft uuid: %s, peer uuid: %s", raft_uuid_str, raft_instance_uuid_str);
-	return PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
-					num_cf_names, use_synchronous_writes);
+  SIMPLE_LOG_MSG(LL_WARN, "raft uuid: %s, peer uuid: %s", raft_uuid_str, raft_instance_uuid_str);
+  return PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
+		  num_cf_names, use_synchronous_writes);
 }
 
 /**
@@ -953,14 +952,12 @@ Pmdb_entry_key_len(void)
 }
 
 int
-Pmdb_test_app_lookup(const void *id,
-					 const char *request, size_t request_bufsz,
-					 char *value,
-					 const char *cf_name)
+Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
+		     const char *request, size_t request_bufsz,
+		     char *value,
+		     const char *cf_name)
 {
-
-	const struct raft_net_client_user_id *app_id = (struct raft_net_client_user_id *)id;
-	rocksdb_column_family_handle_t *pmdbts_cfh =
+    rocksdb_column_family_handle_t *pmdbts_cfh =
 				PmdbCfHandleLookup(cf_name);
     char *err = NULL;
 

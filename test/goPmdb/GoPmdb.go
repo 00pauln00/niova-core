@@ -4,26 +4,27 @@ import (
 	"unsafe"
 	"encoding/gob"
 	"bytes"
+	"reflect"
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries
+#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
 #include <raft/pumice_db.h>
 #include <rocksdb/c.h>
 #include <raft/raft_net.h>
 #include <raft/pumice_db_client.h>
-extern void applyCgo(const void *, const void *,
+extern void applyCgo(const struct raft_net_client_user_id *, const void *,
                      size_t, void *, void *);
-extern void readCgo(const void *, const void *,
+extern void readCgo(const struct raft_net_client_user_id *, const void *,
                     size_t, void *, size_t, void *);
 */
 import "C"
 
 import gopointer "github.com/mattn/go-pointer"
 
-type GoApplyCallback func(unsafe.Pointer, unsafe.Pointer, int64,
+type GoApplyCallback func(*C.struct_raft_net_client_user_id, unsafe.Pointer, int64,
                           unsafe.Pointer)
-type GoReadCallback func(unsafe.Pointer, unsafe.Pointer, int64,
+type GoReadCallback func(*C.struct_raft_net_client_user_id, unsafe.Pointer, int64,
                          unsafe.Pointer, int64)
 
 //Callback function for pmdb apply and read
@@ -34,12 +35,15 @@ type GoPmdbCallbacks struct {
 
 var Cpmdb C.pmdb_t //pmdb pointer
 
+type charsSlice []*C.char
+
 //Generic encoder/decoder interface
 type goPmdbEncDec interface {
 	PmdbEncode(enc *gob.Encoder)
 }
+type cfSlice []*C.char
 
-func GoEncode(ed goPmdbEncDec, data_len *int64) unsafe.Pointer {
+func GoEncode(ed goPmdbEncDec, data_len *int64) *C.char {
 	fmt.Println("Client: Write Key-Value")
 	//Byte array
 	buffer := bytes.Buffer{}
@@ -51,9 +55,11 @@ func GoEncode(ed goPmdbEncDec, data_len *int64) unsafe.Pointer {
 	*data_len = int64(len(struct_data))
 
 	//Convert it to unsafe pointer (void * for C function) 
-	enc_data := unsafe.Pointer(&struct_data[0])
+	enc_data := (*C.char)(unsafe.Pointer(&struct_data[0]))
+
 	return enc_data
 }
+
 //Write KV from client.
 func GoPmdbClientWrite(ed goPmdbEncDec, rncui string) {
 
@@ -67,7 +73,7 @@ func GoPmdbClientWrite(ed goPmdbEncDec, rncui string) {
 }
 
 //Read the value of key on the client
-func GoPmdbClientRead(ed goPmdbEncDec, rncui string, return_value_len *int64) unsafe.Pointer {
+func GoPmdbClientRead(ed goPmdbEncDec, rncui string, return_value_len *int64) *C.char {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
@@ -102,7 +108,7 @@ func GoPmdbDecoder(ed goPmdbEncDec, buffer_ptr unsafe.Pointer, buf_size int64) {
 */
 
 //export goApply
-func goApply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
+func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 			input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
             user_data unsafe.Pointer) {
 
@@ -117,7 +123,7 @@ func goApply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 }
 
 //export goRead
-func goRead(app_id unsafe.Pointer, request_buf unsafe.Pointer,
+func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
             request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
             user_data unsafe.Pointer) {
 
@@ -132,7 +138,8 @@ func goRead(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	gcb.ReadCb(app_id, request_buf, request_bufsz_go, reply_buf, reply_bufsz_go)
 }
 
-func GoStartServer(raft_uuid string, peer_uuid string, ptr unsafe.Pointer) {
+
+func GoStartServer(raft_uuid string, peer_uuid string, cf string, ptr unsafe.Pointer) {
 
 	//Convert the raft_uuid and peer_uuid go strings into C strings
 	//so that we can pass these to C function.
@@ -148,11 +155,21 @@ func GoStartServer(raft_uuid string, peer_uuid string, ptr unsafe.Pointer) {
 	cCallbacks.pmdb_apply = C.pmdb_apply_sm_handler_t(C.applyCgo)
 	cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
 
+	//Store the column family name into char * array.
+	//Store gostring to byte array
+	cf_byte_arr := []byte(cf)
+	cf_name := make(charsSlice, len(cf_byte_arr))
+	cf_name[0] = (*C.char)(C.CBytes(cf_byte_arr))
+
+	//Convert Byte array to char **
+	sH := (*reflect.SliceHeader)(unsafe.Pointer(&cf_name))
+	cf_array := (**C.char)(unsafe.Pointer(sH.Data))
+
 	// Starting the pmdb server.
-	C.PmdbExecGo(raft_uuid_c, peer_uuid_c, &cCallbacks, 1, true, ptr)
+	C.PmdbExecGo(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true, ptr)
 }
 
-func GoWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
+func GoWriteKV(app_id *C.struct_raft_net_client_user_id, pmdb_handle unsafe.Pointer, key string,
 			   key_len int64, value string, value_len int64, gocolfamily string) {
 
 	cf := C.CString(gocolfamily)
@@ -174,7 +191,7 @@ func GoWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 
 }
 
-func GoReadKV(app_id unsafe.Pointer, key string,
+func GoReadKV(app_id *C.struct_raft_net_client_user_id, key string,
 			  key_len int64, reply_buf unsafe.Pointer, reply_bufsz int64,
 			  gocolfamily string) {
 
@@ -204,26 +221,41 @@ func GoStartClient(Graft_uuid string, Gclient_uuid string) {
 	Cpmdb  = C.PmdbClientStart(raft_uuid, client_uuid)
 }
 
-func GoClientWriteKV(rncui string, key unsafe.Pointer,
+func GoClientWriteKV(rncui string, key *C.char,
 					 key_len int64) {
 
 	var obj_stat C.pmdb_obj_stat_t
-	crncui := C.CString(rncui)
-	defer C.free(unsafe.Pointer(crncui))
+	crncui_str := C.CString(rncui)
+	defer C.free(unsafe.Pointer(crncui_str))
 
 	c_key_len := C.size_t(key_len)
-	C.PmdbObjPutGolang(Cpmdb, crncui, key, c_key_len, &obj_stat)
+
+	var rncui_id C.struct_raft_net_client_user_id
+
+	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
+	var obj_id *C.pmdb_obj_id_t
+
+	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+
+	C.PmdbObjPut(Cpmdb, obj_id, key, c_key_len, &obj_stat)
 }
 
-func GoClientReadKV(rncui string, key unsafe.Pointer,
-					key_len int64, value unsafe.Pointer, value_len int64) {
+func GoClientReadKV(rncui string, key *C.char,
+		    key_len int64, value *C.char, value_len int64) {
 	var obj_stat C.pmdb_obj_stat_t
 
-	crncui := C.CString(rncui)
-	defer C.free(unsafe.Pointer(crncui))
+	crncui_str := C.CString(rncui)
+	defer C.free(unsafe.Pointer(crncui_str))
 
 	c_key_len := C.size_t(key_len)
 	c_value_len := C.size_t(value_len)
-	C.PmdbObjGetXGolang(Cpmdb, crncui, key, c_key_len,
-						value, c_value_len, &obj_stat)
+
+	var rncui_id C.struct_raft_net_client_user_id
+
+	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
+	var obj_id *C.pmdb_obj_id_t
+
+	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+	C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
+			&obj_stat)
 }

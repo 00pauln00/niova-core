@@ -25,6 +25,13 @@ var word_map map[string]int
 // Use the default column family 
 var colmfamily = "PMDBTS_CF"
 
+func (app_id C.struct_raft_net_client_user_id) PmdbEncode(encode *gob.Encoder) {
+	err := encode.Encode(app_id)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
 //split the string and add each word in the word-map
 func split_and_write_to_word_map(text string) {
 	words := strings.Fields(text)
@@ -34,7 +41,7 @@ func split_and_write_to_word_map(text string) {
     }
 }
 
-func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
+func dict_apply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 			input_buf_sz int64, pmdb_handle unsafe.Pointer) {
 	fmt.Println("Apply request received")
 
@@ -50,7 +57,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	split_and_write_to_word_map(apply_dict.Dict_text)
 
 	/*
-     Iterate over word_map and write work as key and frequency
+     	Iterate over word_map and write work as key and frequency
 	 as value to pmdb.
 	*/
 	for word, count := range word_map {
@@ -66,7 +73,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	}
 }
 
-func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
+func dict_read(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
             request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) {
 	fmt.Println("Read request received")
 
@@ -110,5 +117,5 @@ func main() {
 	opa_ptr:= gopointer.Save(cb)
 	defer gopointer.Unref(opa_ptr)
 
-	GoPmdb.GoStartServer(raft_uuid_go, peer_uuid_go, opa_ptr)
+	GoPmdb.GoStartServer(raft_uuid_go, peer_uuid_go, colmfamily, opa_ptr)
 }

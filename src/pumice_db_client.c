@@ -313,7 +313,7 @@ PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
 static int
 pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                      const void *user_buf, size_t user_buf_size,
+                      const char *user_buf, size_t user_buf_size,
                       const bool blocking, const struct timespec timeout,
                       pmdb_user_cb_t user_cb, void *user_arg,
                       struct pmdb_obj_stat *user_pmdb_stat)
@@ -357,33 +357,13 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  * PmdbObjPut - blocking public put (write) routine.
  */
 int
-PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *kv,
+PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
                                  NULL, NULL, user_pmdb_stat);
-}
-
-int
-PmdbObjPutGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
-           size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
-{
-
-	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbObjPutGolang");	
-	struct raft_net_client_user_id rncui = {0};
-	SIMPLE_LOG_MSG(LL_WARN, "Calling raft_net_client_user_id_parse");
-	
-	int rc = raft_net_client_user_id_parse(rncui_str, &rncui, 0);
-
-	if (rc)
-		return rc;
-
-	SIMPLE_LOG_MSG(LL_WARN, "Get the obj");
-	pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&rncui.rncui_key;
-	SIMPLE_LOG_MSG(LL_WARN, "Obj is: %p", obj_id);
-	return PmdbObjPut(pmdb, obj_id, kv, kv_size, user_pmdb_stat);
 }
 
 /**
@@ -452,8 +432,8 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  * PmdbObjGet - blocking public get (read) routine.
  */
 int
-PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
-            size_t key_size, void *value, size_t value_size,
+PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+            size_t key_size, char *value, size_t value_size,
             struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
@@ -463,32 +443,11 @@ PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
                                  user_pmdb_stat);
 }
 
-int
-PmdbObjGetXGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
-           		  size_t kv_size, void *value, size_t value_size,
-				  struct pmdb_obj_stat *user_pmdb_stat)
-{
-	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbObjGetXGolang");	
-	struct raft_net_client_user_id rncui = {0};
-	SIMPLE_LOG_MSG(LL_WARN, "Calling raft_net_client_user_id_parse");
-
-	int rc = raft_net_client_user_id_parse(rncui_str, &rncui, 0);
-
-	if (rc)
-		return rc;
-
-	pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)&rncui.rncui_key;
-	SIMPLE_LOG_MSG(LL_WARN, "Obj is: %p", obj_id);
-	return PmdbObjGetX(pmdb, obj_id, kv, kv_size, value, value_size,
-					   user_pmdb_stat);
-}
-
-
 /**
  * PmdbObjGet - blocking public get (read) routine.
  */
 int
-PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
            size_t key_size, char *value, size_t value_size)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
@@ -501,7 +460,7 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
  * PmdbObjGetNB - non-blocking public put (write) routine.
  */
 int
-PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
              size_t key_size, char *value, size_t value_size,
              pmdb_user_cb_t user_cb, void *user_arg)
 {
@@ -516,7 +475,7 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
 }
 
 int
-PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
               size_t key_size, char *value, size_t value_size,
               pmdb_user_cb_t user_cb, void *user_arg,
               struct pmdb_obj_stat *user_pmdb_stat)

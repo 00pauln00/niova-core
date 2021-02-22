@@ -30,7 +30,7 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  *    along with other pumiceDB and raft internal metadata.
  */
 typedef pumicedb_apply_ctx_int_t
-(*pmdb_apply_sm_handler_t)(const void *id,
+(*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
                            const void *input_buf, size_t input_bufsz,
                            void *pmdb_handle,
                            void *user_data);
@@ -41,7 +41,7 @@ typedef pumicedb_apply_ctx_int_t
  *    the number of bytes used in reply_buf.
  */
 typedef pumicedb_read_ctx_ssize_t
-(*pmdb_read_sm_handler_t)(const void *id,
+(*pmdb_read_sm_handler_t)(const struct raft_net_client_user_id *,
                           const char *request_buf, size_t request_bufsz,
                           char *reply_buf, size_t reply_bufsz, void *user_data);
 
@@ -75,7 +75,7 @@ PmdbWriteKV(const struct raft_net_client_user_id *, void *pmdb_handle,
             size_t value_len, void (*comp_cb)(void *), void *app_handle);
 
 int
-PmdbWriteKVGo(const void *, void *pmdb_handle,
+PmdbWriteKVGo(const struct raft_net_client_user_id *, void *pmdb_handle,
             const char *key, size_t key_len, const char *value,
             size_t value_len, void (*comp_cb)(void *), const char *cf_name);
 /**
@@ -95,7 +95,7 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
 int
 PmdbExecGo(const char *raft_uuid_str, const char *raft_instance_uuid_str,
-           const struct PmdbAPI *pmdb_api,
+           const struct PmdbAPI *pmdb_api, const char *cf_names[],
            int num_cf, bool use_synchronous_writes, void *user_data);
 
 /**
@@ -118,8 +118,8 @@ size_t
 Pmdb_entry_key_len(void);
 
 int
-Pmdb_test_app_lookup(const void *app_id,
-					 const char *request, size_t req_bufsz, char *value,
+Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
+		     const char *request, size_t req_bufsz, char *value,
 					 const char *cf_name);
 
 #endif

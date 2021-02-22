@@ -10,28 +10,20 @@
 #include "pumice_db_net.h"
 
 int
-PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
-            size_t key_size, void *value, size_t value_size,
+PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
+            size_t key_size, char *value, size_t value_size,
             struct pmdb_obj_stat *user_pmdb_stat);
 
-int
-PmdbObjGetXGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
-           		  size_t kv_size, void *value, size_t value_size,
-				  struct pmdb_obj_stat *user_pmdb_stat);
 int
 PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
               pmdb_obj_stat_t *ret_stat);
 
 int
-PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *kv,
+PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat);
 
 int
-PmdbObjPutGolang(pmdb_t pmdb, const char *rncui_str, const void *kv,
-           size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat);
-
-int
-PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
            size_t key_size, char *value, size_t value_size);
 
 int
@@ -44,12 +36,12 @@ PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *kv,
              struct pmdb_obj_stat *user_pmdb_stat);
 
 int
-PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
              size_t key_size, char *value, size_t value_size,
              pmdb_user_cb_t user_cb, void *user_arg);
 
 int
-PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *key,
+PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
               size_t key_size, char *value, size_t value_size,
               pmdb_user_cb_t user_cb, void *user_arg,
               struct pmdb_obj_stat *user_pmdb_stat);
