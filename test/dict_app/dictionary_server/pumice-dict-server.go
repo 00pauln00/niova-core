@@ -25,13 +25,6 @@ var word_map map[string]int
 // Use the default column family 
 var colmfamily = "PMDBTS_CF"
 
-func (app_id C.struct_raft_net_client_user_id) PmdbEncode(encode *gob.Encoder) {
-	err := encode.Encode(app_id)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
 //split the string and add each word in the word-map
 func split_and_write_to_word_map(text string) {
 	words := strings.Fields(text)
@@ -41,7 +34,7 @@ func split_and_write_to_word_map(text string) {
     }
 }
 
-func dict_apply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
+func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 			input_buf_sz int64, pmdb_handle unsafe.Pointer) {
 	fmt.Println("Apply request received")
 
@@ -62,27 +55,37 @@ func dict_apply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Point
 	*/
 	for word, count := range word_map {
 		go_key_len := len(word)
+		var prev_value string
 
+		//Lookup the key first
+		prev_result := GoPmdb.GoLookupKey(app_id, word, int64(go_key_len), prev_value, colmfamily)
+		fmt.Println("Previous value of the key: ", prev_result)
 		//Convert the word count into string.
+		prev_result_int, _ := strconv.Atoi(prev_result)
+		count = count + prev_result_int
+		fmt.Println("Now the count becomes: ", count)
 		value := strconv.Itoa(count)
 
 		value_len := len(value)
 
 		GoPmdb.GoWriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
-						 int64(value_len), colmfamily)
+				 int64(value_len), colmfamily)
+
+		//Delete the word entry once written in the pumicedb
+		delete(word_map, word)
 	}
 }
 
-func dict_read(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
+func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
             request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) {
 	fmt.Println("Read request received")
 
 	read_dict := DictAppLib.DictAppDecodebuf(request_buf, request_bufsz)
 
-	fmt.Println("Operation type %s", read_dict.Dict_op)
-	fmt.Println("Wr seq type %d", read_dict.Dict_wr_seq)
-	fmt.Println("rncui type %s", read_dict.Dict_rncui)
-	fmt.Println("Text %s", read_dict.Dict_text)
+	fmt.Println("dict_read: Operation type %s", read_dict.Dict_op)
+	fmt.Println("dict_read: Wr seq type %d", read_dict.Dict_wr_seq)
+	fmt.Println("dict_read: rncui type %s", read_dict.Dict_rncui)
+	fmt.Println("dict_read: Text %s", read_dict.Dict_text)
 
 	key_len := len(read_dict.Dict_text)
 

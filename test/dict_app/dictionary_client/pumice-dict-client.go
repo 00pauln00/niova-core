@@ -2,6 +2,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"unsafe"
 	"bufio"
 	"strings"
 	"flag"
@@ -87,8 +88,9 @@ func pmdbDictClient() {
 				var value_len int64
 				value_ptr := GoPmdb.GoPmdbClientRead(input_dict, input_dict.Dict_rncui, &value_len)
 
+				go_value := unsafe.Pointer(value_ptr)
 				//Decode the result from unsafe.Pointer to dictionary structure..
-				result_dict := DictAppLib.DictAppDecodebuf(value_ptr, value_len)
+				result_dict := DictAppLib.DictAppDecodebuf(go_value, value_len)
 				fmt.Println("Word: ", result_dict.Dict_text)
 				fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
 			}

@@ -22,9 +22,9 @@ import "C"
 
 import gopointer "github.com/mattn/go-pointer"
 
-type GoApplyCallback func(*C.struct_raft_net_client_user_id, unsafe.Pointer, int64,
+type GoApplyCallback func(unsafe.Pointer, unsafe.Pointer, int64,
                           unsafe.Pointer)
-type GoReadCallback func(*C.struct_raft_net_client_user_id, unsafe.Pointer, int64,
+type GoReadCallback func(unsafe.Pointer, unsafe.Pointer, int64,
                          unsafe.Pointer, int64)
 
 //Callback function for pmdb apply and read
@@ -119,7 +119,7 @@ func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz_go := int64(input_buf_sz)
 
 	//Calling the golang Application's Apply function.
-	gcb.ApplyCb(app_id, input_buf, input_buf_sz_go, pmdb_handle)
+	gcb.ApplyCb(unsafe.Pointer(app_id), input_buf, input_buf_sz_go, pmdb_handle)
 }
 
 //export goRead
@@ -135,7 +135,7 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer
 	reply_bufsz_go := int64(reply_bufsz)
 
 	//Calling the golang Application's Read function.
-	gcb.ReadCb(app_id, request_buf, request_bufsz_go, reply_buf, reply_bufsz_go)
+	gcb.ReadCb(unsafe.Pointer(app_id), request_buf, request_bufsz_go, reply_buf, reply_bufsz_go)
 }
 
 
@@ -156,8 +156,10 @@ func GoStartServer(raft_uuid string, peer_uuid string, cf string, ptr unsafe.Poi
 	cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
 
 	//Store the column family name into char * array.
-	//Store gostring to byte array
-	cf_byte_arr := []byte(cf)
+	//Store gostring to byte array.
+	//Don't forget to append the null terminating character.
+	cf_byte_arr := []byte(cf + "\000")
+
 	cf_name := make(charsSlice, len(cf_byte_arr))
 	cf_name[0] = (*C.char)(C.CBytes(cf_byte_arr))
 
@@ -169,7 +171,32 @@ func GoStartServer(raft_uuid string, peer_uuid string, cf string, ptr unsafe.Poi
 	C.PmdbExecGo(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true, ptr)
 }
 
-func GoWriteKV(app_id *C.struct_raft_net_client_user_id, pmdb_handle unsafe.Pointer, key string,
+func GoLookupKey(app_id unsafe.Pointer, key string, key_len int64, value string,
+		 go_cf string) string {
+
+	cf := C.CString(go_cf)
+	defer C.free(unsafe.Pointer(cf))
+
+	//Convert go string to C char *
+	C_key := C.CString(key)
+	defer C.free(unsafe.Pointer(C_key))
+
+	C_key_len := C.size_t(key_len)
+
+	C_value := C.CString(value)
+	defer C.free(unsafe.Pointer(C_value))
+
+	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
+
+	fmt.Println("Lookup for key before updating its value: ", C_key)
+	rc := C.Pmdb_test_app_lookup(capp_id, C_key, C_key_len, C_value, cf)
+	fmt.Println("Lookup result:", rc)
+
+	result := C.GoString(C_value)
+	return result
+}
+
+func GoWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 			   key_len int64, value string, value_len int64, gocolfamily string) {
 
 	cf := C.CString(gocolfamily)
@@ -186,15 +213,32 @@ func GoWriteKV(app_id *C.struct_raft_net_client_user_id, pmdb_handle unsafe.Poin
 
 	C_value_len := C.size_t(value_len)
 
+	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
+
+	fmt.Println("Lookup for key before updating its value: ", C_key)
+	rc := C.Pmdb_test_app_lookup(capp_id, C_key, C_key_len, C_value, cf)
+
+	if rc == 0 {
+
+		//Convert C string to golang string
+		go_value := C.GoString(C_value)
+		//Append null terminator
+		go_result := go_value + "\000"
+
+		fmt.Println("Existing key value", go_result)
+	}
+	fmt.Println("Return value of lookup: ", rc)
+
 	//Calling pmdb library function to write Key-Value.
-	C.PmdbWriteKVGo(app_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, cf)
+	C.PmdbWriteKVGo(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, cf)
 
 }
 
-func GoReadKV(app_id *C.struct_raft_net_client_user_id, key string,
+func GoReadKV(app_id unsafe.Pointer, key string,
 			  key_len int64, reply_buf unsafe.Pointer, reply_bufsz int64,
 			  gocolfamily string) {
 
+	fmt.Println("Go key", key)
 	//Convert the golang string to C char*
 	cf_name := C.CString(gocolfamily)
 	defer C.free(unsafe.Pointer(cf_name))
@@ -205,8 +249,16 @@ func GoReadKV(app_id *C.struct_raft_net_client_user_id, key string,
 	C_key_len := C.size_t(key_len)
 
 	var C_value *C.char
-	rc := C.Pmdb_test_app_lookup(app_id, C_key, C_key_len, C_value, cf_name)
+
+	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
+	rc := C.Pmdb_test_app_lookup(capp_id, C_key, C_key_len, C_value, cf_name)
 	fmt.Println("Return value of lookup: ", rc)
+	if rc == 0 {
+		//Get the result
+		go_value := C.GoString(C_value)
+		result := go_value + "\000"
+		fmt.Println("Result of the lookup is: ", result)
+	}
 }
 
 func GoStartClient(Graft_uuid string, Gclient_uuid string) {

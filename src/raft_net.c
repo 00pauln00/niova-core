@@ -2240,12 +2240,10 @@ raft_net_client_user_id_parse(const char *in,
     //strncpy(local_str, in, RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1);
     //local_str[RAFT_NET_CLIENT_USER_ID_V0_STRLEN_SIZE - 1] = '\0';
 
-    strncpy(local_str, in, strlen(in));
-    local_str[strlen(in) + 1] = '\0';
-    const char *uuid_str = NULL;
 
-	SIMPLE_LOG_MSG(LL_WARN, "Level 4 %s, sizeof: %ld", local_str, sizeof(local_str));
-	SIMPLE_LOG_MSG(LL_WARN, "Local_str: %s", local_str);
+    strncpy(local_str, in, strlen(in) + 1);
+    //local_str[strlen(in) + 1] = '\0';
+    const char *uuid_str = NULL;
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);
@@ -2253,7 +2251,6 @@ raft_net_client_user_id_parse(const char *in,
     rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
     if (!rc)
     {
-		SIMPLE_LOG_MSG(LL_WARN, "Level 5");
         const char *sep = RAFT_NET_CLIENT_USER_ID_V0_STR_SEP;
         char *sp = NULL;
         char *sub;
@@ -2263,10 +2260,8 @@ raft_net_client_user_id_parse(const char *in,
              sub != NULL;
              sub = strtok_r(NULL, sep, &sp), pos++)
         {
-			SIMPLE_LOG_MSG(LL_WARN, "Level 6");
             if (!pos)
             {
-				SIMPLE_LOG_MSG(LL_WARN, "Level 7");
                 rc = uuid_parse(sub, RAFT_NET_CLIENT_USER_ID_2_UUID(rncui, 0,
                                                                     0));
                 if (rc)
@@ -2279,7 +2274,6 @@ raft_net_client_user_id_parse(const char *in,
             }
             else
             {
-				SIMPLE_LOG_MSG(LL_WARN, "Level 8");
                 NIOVA_ASSERT((1 + pos) < RAFT_NET_CLIENT_USER_ID_V0_NUINT64);
 
                 RAFT_NET_CLIENT_USER_ID_2_UINT64(rncui, 0, 1 + pos) =
@@ -2287,13 +2281,12 @@ raft_net_client_user_id_parse(const char *in,
             }
         }
     }
-	SIMPLE_LOG_MSG(LL_WARN, "Level 5");
 
     if (!rc)
-        SIMPLE_LOG_MSG(LL_DEBUG, RAFT_NET_CLIENT_USER_ID_FMT,
+        SIMPLE_LOG_MSG(LL_WARN, RAFT_NET_CLIENT_USER_ID_FMT,
                        RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
     else
-        LOG_MSG(LL_NOTIFY, "parse failed for `%s'", local_str);
+        LOG_MSG(LL_ERROR, "parse failed for `%s'", local_str);
 
     return rc;
 }

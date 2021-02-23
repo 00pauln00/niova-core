@@ -840,7 +840,6 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
 {
     struct pmdb_apply_handle *pah = (struct pmdb_apply_handle *)pmdb_handle;
 
-	SIMPLE_LOG_MSG(LL_WARN, "key is: %s", key);
     if (!key || !key_len || pmdb_handle_verify(app_id, pah))
         return -EINVAL;
 
@@ -855,7 +854,6 @@ PmdbWriteKVGo(const struct raft_net_client_user_id  *app_id, void *pmdb_handle,
             const char *key, size_t key_len, const char *value,
             size_t value_len, void (*comp_cb)(void *), const char *cf_name)
 {
-	//const struct raft_net_client_user_id *app_id = (struct raft_net_client_user_id *)id;
 	rocksdb_column_family_handle_t *cf_handle = PmdbCfHandleLookup(cf_name);
 	return PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
 					   comp_cb, (void *)cf_handle);
@@ -874,7 +872,6 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes)
 {
-	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExec");
     pmdbApi = pmdb_api;
 
     if (!raft_uuid_str || !raft_instance_uuid_str || !pmdb_api ||
@@ -915,7 +912,6 @@ PmdbExecGo(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes, void *user_data)
 {
-   SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbExecGo: %s", cf_names[0]);
    pmdb_user_data = user_data;
 
   SIMPLE_LOG_MSG(LL_WARN, "raft uuid: %s, peer uuid: %s", raft_uuid_str, raft_instance_uuid_str);
