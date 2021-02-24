@@ -359,5 +359,5 @@ main(int argc, char **argv)
     const char *cf_names[1] = {pmdbts_column_family_name};
 
     return PmdbExec(raft_uuid_str, my_uuid_str, &api, cf_names, 1,
-                    syncPMDBWrites);
+                    syncPMDBWrites, NULL);
 }

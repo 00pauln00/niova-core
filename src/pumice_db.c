@@ -868,7 +868,7 @@ PmdbWriteKVGo(const struct raft_net_client_user_id  *app_id, void *pmdb_handle,
  * @pmdb_api:  Function callbacks for read and apply.
  */
 int
-PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
+_PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes)
 {
@@ -908,15 +908,13 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 }
 
 int
-PmdbExecGo(const char *raft_uuid_str, const char *raft_instance_uuid_str,
+PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes, void *user_data)
 {
-   pmdb_user_data = user_data;
-
-  SIMPLE_LOG_MSG(LL_WARN, "raft uuid: %s, peer uuid: %s", raft_uuid_str, raft_instance_uuid_str);
-  return PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
-		  num_cf_names, use_synchronous_writes);
+    pmdb_user_data = user_data;
+    return _PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
+					 num_cf_names, use_synchronous_writes);
 }
 
 /**

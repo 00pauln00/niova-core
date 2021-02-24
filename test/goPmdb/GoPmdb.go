@@ -22,28 +22,43 @@ import "C"
 
 import gopointer "github.com/mattn/go-pointer"
 
-type GoApplyCallback func(unsafe.Pointer, unsafe.Pointer, int64,
+type PmdbApplyCallback func(unsafe.Pointer, unsafe.Pointer, int64,
                           unsafe.Pointer)
-type GoReadCallback func(unsafe.Pointer, unsafe.Pointer, int64,
+type PmdbReadCallback func(unsafe.Pointer, unsafe.Pointer, int64,
                          unsafe.Pointer, int64)
 
 //Callback function for pmdb apply and read
-type GoPmdbCallbacks struct {
-	ApplyCb GoApplyCallback
-	ReadCb GoReadCallback
+type PmdbCallbacks struct {
+	ApplyCb PmdbApplyCallback
+	ReadCb PmdbReadCallback
 }
-
-var Cpmdb C.pmdb_t //pmdb pointer
 
 type charsSlice []*C.char
 
 //Generic encoder/decoder interface
-type goPmdbEncDec interface {
+type PmdbEncDec interface {
 	PmdbEncode(enc *gob.Encoder)
 }
 type cfSlice []*C.char
 
-func GoEncode(ed goPmdbEncDec, data_len *int64) *C.char {
+func GoToCString(gstring string) *C.char {
+	cstring := C.CString(gstring)
+	defer C.free(unsafe.Pointer(cstring))
+
+	return cstring
+}
+
+func GoToCSize_t(glen int64) C.size_t {
+	clen := C.size_t(glen)
+	return clen
+}
+
+func CToGoInt64(cvalue C.size_t) int64 {
+	gvalue := int64(cvalue)
+	return gvalue
+}
+
+func Encode(ed PmdbEncDec, data_len *int64) *C.char {
 	fmt.Println("Client: Write Key-Value")
 	//Byte array
 	buffer := bytes.Buffer{}
@@ -61,36 +76,37 @@ func GoEncode(ed goPmdbEncDec, data_len *int64) *C.char {
 }
 
 //Write KV from client.
-func GoPmdbClientWrite(ed goPmdbEncDec, rncui string) {
+func PmdbClientWrite(ed PmdbEncDec, pmdb unsafe.Pointer, rncui string) {
 
 	fmt.Println("Client: Write Key-Value")
 
 	var key_len int64
 	//Encode the structure into void pointer.
-	encoded_key := GoEncode(ed, &key_len)
+	encoded_key := Encode(ed, &key_len)
 	//Perform the write
-	GoClientWriteKV(rncui, encoded_key, key_len)
+	PmdbClientWriteKV(pmdb, rncui, encoded_key, key_len)
 }
 
 //Read the value of key on the client
-func GoPmdbClientRead(ed goPmdbEncDec, rncui string, return_value_len *int64) *C.char {
+func PmdbClientRead(ed PmdbEncDec, pmdb unsafe.Pointer, rncui string,
+					  return_value_len *int64) *C.char {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
 	var key_len int64
-	encoded_key := GoEncode(ed, &key_len)
+	encoded_key := Encode(ed, &key_len)
 
 	var val_len int64
-	encoded_val := GoEncode(ed, &val_len)
+	encoded_val := Encode(ed, &val_len)
 
-	GoClientReadKV(rncui, encoded_key, key_len, encoded_val, val_len)
+	PmdbClientReadKV(pmdb, rncui, encoded_key, key_len, encoded_val, val_len)
 	*return_value_len = val_len
 
 	return encoded_val
 }
 
 /*
-func GoPmdbDecoder(ed goPmdbEncDec, buffer_ptr unsafe.Pointer, buf_size int64) {
+func GoPmdbDecoder(ed PmdbEncDec, buffer_ptr unsafe.Pointer, buf_size int64) {
 	data := C.GoBytes(unsafe.Pointer(buffer_ptr), C.int(buf_size))
 	byte_arr := bytes.NewBuffer(data)
 
@@ -112,11 +128,11 @@ func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 			input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
             user_data unsafe.Pointer) {
 
-	//Restore the golang function pointers stored in GoPmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*GoPmdbCallbacks)
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(user_data).(*PmdbCallbacks)
 
 	//Convert buffer size from c data type size_t to golang int64.
-	input_buf_sz_go := int64(input_buf_sz)
+	input_buf_sz_go := CToGoInt64(input_buf_sz)
 
 	//Calling the golang Application's Apply function.
 	gcb.ApplyCb(unsafe.Pointer(app_id), input_buf, input_buf_sz_go, pmdb_handle)
@@ -127,27 +143,35 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer
             request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
             user_data unsafe.Pointer) {
 
-	//Restore the golang function pointers stored in GoPmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*GoPmdbCallbacks)
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(user_data).(*PmdbCallbacks)
 
 	//Convert buffer size from c data type size_t to golang int64.
-	request_bufsz_go := int64(request_bufsz)
-	reply_bufsz_go := int64(reply_bufsz)
+	request_bufsz_go := CToGoInt64(request_bufsz)
+	reply_bufsz_go := CToGoInt64(reply_bufsz)
 
 	//Calling the golang Application's Read function.
 	gcb.ReadCb(unsafe.Pointer(app_id), request_buf, request_bufsz_go, reply_buf, reply_bufsz_go)
 }
 
+/**
+ * Start the pmdb server.
+ * @raft_uuid: Raft UUID.
+ * @peer_uuid: Peer UUID.
+ * @cf: Column Family
+ * @cb: PmdbAPI callback funcs.
+ */
+func PmdbStartServer(raft_uuid string, peer_uuid string, cf string,
+					 cb *PmdbCallbacks) {
 
-func GoStartServer(raft_uuid string, peer_uuid string, cf string, ptr unsafe.Pointer) {
+	/*
+	 * Convert the raft_uuid and peer_uuid go strings into C strings
+	 * so that we can pass these to C function.
+	 */
 
-	//Convert the raft_uuid and peer_uuid go strings into C strings
-	//so that we can pass these to C function.
-	raft_uuid_c := C.CString(raft_uuid)
-	defer C.free(unsafe.Pointer(raft_uuid_c))
+	raft_uuid_c := GoToCString(raft_uuid)
 
-	peer_uuid_c := C.CString(peer_uuid)
-	defer C.free(unsafe.Pointer(peer_uuid_c))
+	peer_uuid_c := GoToCString(peer_uuid)
 
 	cCallbacks := C.struct_PmdbAPI{}
 
@@ -155,9 +179,11 @@ func GoStartServer(raft_uuid string, peer_uuid string, cf string, ptr unsafe.Poi
 	cCallbacks.pmdb_apply = C.pmdb_apply_sm_handler_t(C.applyCgo)
 	cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
 
-	//Store the column family name into char * array.
-	//Store gostring to byte array.
-	//Don't forget to append the null terminating character.
+	/*
+	 * Store the column family name into char * array.
+	 * Store gostring to byte array.
+	 * Don't forget to append the null terminating character.
+	 */
 	cf_byte_arr := []byte(cf + "\000")
 
 	cf_name := make(charsSlice, len(cf_byte_arr))
@@ -167,24 +193,26 @@ func GoStartServer(raft_uuid string, peer_uuid string, cf string, ptr unsafe.Poi
 	sH := (*reflect.SliceHeader)(unsafe.Pointer(&cf_name))
 	cf_array := (**C.char)(unsafe.Pointer(sH.Data))
 
+	// Create an opaque C pointer for cbs to pass to PmdbStartServer.
+	opa_ptr:= gopointer.Save(cb)
+	defer gopointer.Unref(opa_ptr)
+
 	// Starting the pmdb server.
-	C.PmdbExecGo(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true, ptr)
+	C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true, opa_ptr)
 }
 
-func GoLookupKey(app_id unsafe.Pointer, key string, key_len int64, value string,
+func PmdbLookupKey(app_id unsafe.Pointer, key string, key_len int64, value string,
 		 go_cf string) string {
 
-	cf := C.CString(go_cf)
-	defer C.free(unsafe.Pointer(cf))
+
+	cf := GoToCString(go_cf)
 
 	//Convert go string to C char *
-	C_key := C.CString(key)
-	defer C.free(unsafe.Pointer(C_key))
+	C_key := GoToCString(key)
 
-	C_key_len := C.size_t(key_len)
+	C_key_len := GoToCSize_t(key_len)
 
-	C_value := C.CString(value)
-	defer C.free(unsafe.Pointer(C_value))
+	C_value := GoToCString(value)
 
 	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
 
@@ -196,22 +224,18 @@ func GoLookupKey(app_id unsafe.Pointer, key string, key_len int64, value string,
 	return result
 }
 
-func GoWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
+func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 			   key_len int64, value string, value_len int64, gocolfamily string) {
 
-	cf := C.CString(gocolfamily)
-	defer C.free(unsafe.Pointer(cf))
+	//typecast go string to C char *
+	cf := GoToCString(gocolfamily)
+	C_key := GoToCString(key)
 
-	//Convert go string to C char *
-	C_key := C.CString(key)
-	defer C.free(unsafe.Pointer(C_key))
+	C_key_len := GoToCSize_t(key_len)
 
-	C_key_len := C.size_t(key_len)
+	C_value := GoToCString(value)
 
-	C_value := C.CString(value)
-	defer C.free(unsafe.Pointer(C_value))
-
-	C_value_len := C.size_t(value_len)
+	C_value_len := GoToCSize_t(value_len)
 
 	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
 
@@ -229,24 +253,22 @@ func GoWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 	}
 	fmt.Println("Return value of lookup: ", rc)
 
+	cf_handle := C.PmdbCfHandleLookup(cf)
 	//Calling pmdb library function to write Key-Value.
-	C.PmdbWriteKVGo(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, cf)
+	C.PmdbWriteKV(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, unsafe.Pointer(cf_handle))
 
 }
 
-func GoReadKV(app_id unsafe.Pointer, key string,
+func PmdbReadKV(app_id unsafe.Pointer, key string,
 			  key_len int64, reply_buf unsafe.Pointer, reply_bufsz int64,
 			  gocolfamily string) {
 
-	fmt.Println("Go key", key)
 	//Convert the golang string to C char*
-	cf_name := C.CString(gocolfamily)
-	defer C.free(unsafe.Pointer(cf_name))
+	cf_name := GoToCString(gocolfamily)
 
-	C_key := C.CString(key)
-	defer C.free(unsafe.Pointer(C_key))
+	C_key := GoToCString(key)
 
-	C_key_len := C.size_t(key_len)
+	C_key_len := GoToCSize_t(key_len)
 
 	var C_value *C.char
 
@@ -261,26 +283,25 @@ func GoReadKV(app_id unsafe.Pointer, key string,
 	}
 }
 
-func GoStartClient(Graft_uuid string, Gclient_uuid string) {
+func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
 
-	raft_uuid := C.CString(Graft_uuid)
-	defer C.free(unsafe.Pointer(raft_uuid))
+	raft_uuid := GoToCString(Graft_uuid)
 
-	client_uuid := C.CString(Gclient_uuid)
-	defer C.free(unsafe.Pointer(client_uuid))
+	client_uuid := GoToCString(Gclient_uuid)
 
 	//Start the client.
-	Cpmdb  = C.PmdbClientStart(raft_uuid, client_uuid)
+	Cpmdb := C.PmdbClientStart(raft_uuid, client_uuid)
+	return unsafe.Pointer(Cpmdb)
 }
 
-func GoClientWriteKV(rncui string, key *C.char,
+func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 					 key_len int64) {
 
 	var obj_stat C.pmdb_obj_stat_t
-	crncui_str := C.CString(rncui)
-	defer C.free(unsafe.Pointer(crncui_str))
 
-	c_key_len := C.size_t(key_len)
+	crncui_str := GoToCString(rncui)
+
+	c_key_len := GoToCSize_t(key_len)
 
 	var rncui_id C.struct_raft_net_client_user_id
 
@@ -288,19 +309,20 @@ func GoClientWriteKV(rncui string, key *C.char,
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+
+	Cpmdb := (C.pmdb_t)(pmdb)
 
 	C.PmdbObjPut(Cpmdb, obj_id, key, c_key_len, &obj_stat)
 }
 
-func GoClientReadKV(rncui string, key *C.char,
+func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 		    key_len int64, value *C.char, value_len int64) {
 	var obj_stat C.pmdb_obj_stat_t
 
-	crncui_str := C.CString(rncui)
-	defer C.free(unsafe.Pointer(crncui_str))
+	crncui_str := GoToCString(rncui)
 
-	c_key_len := C.size_t(key_len)
-	c_value_len := C.size_t(value_len)
+	c_key_len := GoToCSize_t(key_len)
+	c_value_len := GoToCSize_t(value_len)
 
 	var rncui_id C.struct_raft_net_client_user_id
 
@@ -308,6 +330,8 @@ func GoClientReadKV(rncui string, key *C.char,
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+
+	Cpmdb := (C.pmdb_t)(pmdb)
 	C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
 			&obj_stat)
 }

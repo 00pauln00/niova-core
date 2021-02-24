@@ -51,7 +51,7 @@ func (pmdbDict Dict_app) PmdbEncode(encode *gob.Encoder) {
 func pmdbDictClient() {
 
 	//Start the client.
-	GoPmdb.GoStartClient(raft_uuid_go, peer_uuid_go)
+	pmdb := GoPmdb.PmdbStartClient(raft_uuid_go, peer_uuid_go)
 
 	var seq uint64
 	for {
@@ -82,11 +82,11 @@ func pmdbDictClient() {
 
 			if input_dict.Dict_op == "write" {
 				//write operation
-				GoPmdb.GoPmdbClientWrite(input_dict, input_dict.Dict_rncui)
+				GoPmdb.PmdbClientWrite(input_dict, pmdb, input_dict.Dict_rncui)
 			} else {
 				//read operation
 				var value_len int64
-				value_ptr := GoPmdb.GoPmdbClientRead(input_dict, input_dict.Dict_rncui, &value_len)
+				value_ptr := GoPmdb.PmdbClientRead(input_dict, pmdb, input_dict.Dict_rncui, &value_len)
 
 				go_value := unsafe.Pointer(value_ptr)
 				//Decode the result from unsafe.Pointer to dictionary structure..

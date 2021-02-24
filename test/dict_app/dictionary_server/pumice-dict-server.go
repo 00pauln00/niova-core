@@ -16,7 +16,6 @@ import (
 #include <raft/raft_net.h>
 */
 import "C" //There should be no empty line between above c declarations and import "c"
-import gopointer "github.com/mattn/go-pointer"
 
 var seqno = 0
 var raft_uuid_go string
@@ -58,7 +57,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 		var prev_value string
 
 		//Lookup the key first
-		prev_result := GoPmdb.GoLookupKey(app_id, word, int64(go_key_len), prev_value, colmfamily)
+		prev_result := GoPmdb.PmdbLookupKey(app_id, word, int64(go_key_len), prev_value, colmfamily)
 		fmt.Println("Previous value of the key: ", prev_result)
 		//Convert the word count into string.
 		prev_result_int, _ := strconv.Atoi(prev_result)
@@ -68,7 +67,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 
 		value_len := len(value)
 
-		GoPmdb.GoWriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
+		GoPmdb.PmdbWriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
 				 int64(value_len), colmfamily)
 
 		//Delete the word entry once written in the pumicedb
@@ -89,7 +88,7 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 	key_len := len(read_dict.Dict_text)
 
-	GoPmdb.GoReadKV(app_id, read_dict.Dict_text, int64(key_len), request_buf,
+	GoPmdb.PmdbReadKV(app_id, read_dict.Dict_text, int64(key_len), request_buf,
 					request_bufsz, colmfamily)
 }
 
@@ -111,14 +110,10 @@ func main() {
 	word_map = make(map[string]int)
 
 	//Initialize the dictionary application callback functions
-	cb := &GoPmdb.GoPmdbCallbacks{
+	cb := &GoPmdb.PmdbCallbacks{
 		ApplyCb: dict_apply,
 		ReadCb:  dict_read,
 	}
 
-	// Create an opaque C pointer for cbs to pass to GoStartServer.
-	opa_ptr:= gopointer.Save(cb)
-	defer gopointer.Unref(opa_ptr)
-
-	GoPmdb.GoStartServer(raft_uuid_go, peer_uuid_go, colmfamily, opa_ptr)
+	GoPmdb.PmdbStartServer(raft_uuid_go, peer_uuid_go, colmfamily, cb)
 }

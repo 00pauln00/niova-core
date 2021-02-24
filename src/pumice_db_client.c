@@ -370,7 +370,7 @@ PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
  * PmdbObjPutNB - non-blocking public put (write) routine.
  */
 int
-PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const void *kv,
+PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
              size_t kv_size, pmdb_user_cb_t user_cb, void *user_arg,
              struct pmdb_obj_stat *user_pmdb_stat)
 {
