@@ -58,6 +58,11 @@ func CToGoInt64(cvalue C.size_t) int64 {
 	return gvalue
 }
 
+func CToGoString(cstring *C.char) string {
+	gstring := C.GoString(cstring)
+	return gstring
+}
+
 func Encode(ed PmdbEncDec, data_len *int64) *C.char {
 	fmt.Println("Client: Write Key-Value")
 	//Byte array
@@ -201,9 +206,14 @@ func PmdbStartServer(raft_uuid string, peer_uuid string, cf string,
 	C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true, opa_ptr)
 }
 
-func PmdbLookupKey(app_id unsafe.Pointer, key string, key_len int64, value string,
-		 go_cf string) string {
+func PmdbLookupKey(key string, key_len int64, value string,
+				   go_cf string) string {
 
+
+	var goerr string
+	var C_value_len C.size_t
+
+	err := GoToCString(goerr)
 
 	cf := GoToCString(go_cf)
 
@@ -212,16 +222,21 @@ func PmdbLookupKey(app_id unsafe.Pointer, key string, key_len int64, value strin
 
 	C_key_len := GoToCSize_t(key_len)
 
-	C_value := GoToCString(value)
+	//Get the column family handle
+	cf_handle := C.PmdbCfHandleLookup(cf)
 
-	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
+	ropts := C.rocksdb_readoptions_create()
+
+	C_value := C.rocksdb_get_cf(C.PmdbGetRocksDB(), ropts, cf_handle, C_key,
+							  C_key_len, &C_value_len, &err)
 
 	fmt.Println("Lookup for key before updating its value: ", C_key)
-	rc := C.Pmdb_test_app_lookup(capp_id, C_key, C_key_len, C_value, cf)
-	fmt.Println("Lookup result:", rc)
+	fmt.Println("Value is: ", C_value)
 
-	result := C.GoString(C_value)
-	return result
+	go_value := CToGoString(C_value)
+	fmt.Println("Value is: ", go_value)
+
+	return go_value
 }
 
 func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
@@ -229,6 +244,9 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 
 	//typecast go string to C char *
 	cf := GoToCString(gocolfamily)
+
+	go_value := PmdbLookupKey(key, key_len, value, gocolfamily)
+
 	C_key := GoToCString(key)
 
 	C_key_len := GoToCSize_t(key_len)
@@ -240,18 +258,15 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
 
 	fmt.Println("Lookup for key before updating its value: ", C_key)
-	rc := C.Pmdb_test_app_lookup(capp_id, C_key, C_key_len, C_value, cf)
 
-	if rc == 0 {
+	if go_value != "0" {
 
 		//Convert C string to golang string
-		go_value := C.GoString(C_value)
 		//Append null terminator
 		go_result := go_value + "\000"
 
 		fmt.Println("Existing key value", go_result)
 	}
-	fmt.Println("Return value of lookup: ", rc)
 
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	//Calling pmdb library function to write Key-Value.
@@ -263,24 +278,14 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 			  key_len int64, reply_buf unsafe.Pointer, reply_bufsz int64,
 			  gocolfamily string) {
 
+	var value string
 	//Convert the golang string to C char*
-	cf_name := GoToCString(gocolfamily)
 
-	C_key := GoToCString(key)
+	go_value := PmdbLookupKey(key, key_len, value, gocolfamily)
 
-	C_key_len := GoToCSize_t(key_len)
-
-	var C_value *C.char
-
-	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
-	rc := C.Pmdb_test_app_lookup(capp_id, C_key, C_key_len, C_value, cf_name)
-	fmt.Println("Return value of lookup: ", rc)
-	if rc == 0 {
-		//Get the result
-		go_value := C.GoString(C_value)
-		result := go_value + "\000"
-		fmt.Println("Result of the lookup is: ", result)
-	}
+	//Get the result
+	result := go_value + "\000"
+	fmt.Println("Result of the lookup is: ", result)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {

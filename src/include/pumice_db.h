@@ -79,7 +79,7 @@ PmdbWriteKVGo(const struct raft_net_client_user_id *, void *pmdb_handle,
             const char *key, size_t key_len, const char *value,
             size_t value_len, void (*comp_cb)(void *), const char *cf_name);
 /**
- * _PmdbExec - blocking API call used by a pumice-enabled application which
+ * PmdbExec - blocking API call used by a pumice-enabled application which
  *    starts the underlying raft process and waits for incoming requests.
  * @raft_uuid_str:  UUID of raft
  * @raft_instance_uuid_str:  UUID of this specific raft peer
@@ -87,14 +87,6 @@ PmdbWriteKVGo(const struct raft_net_client_user_id *, void *pmdb_handle,
  * @cf_names:  Array of RocksDB column family names to be used by application
  * @num_cf_names:  Size of cf_names[] array,
  * @use_synchronous_writes:  RocksDB uses synchronous writes
- */
-int
-_PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
-         const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf, bool use_synchronous_writes);
-
-/**
- * Wrapper function to _PmdbExec.
  */
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
@@ -119,10 +111,5 @@ Pmdb_rncui_2_key(const struct raft_net_client_user_id *rncui);
 
 size_t
 Pmdb_entry_key_len(void);
-
-int
-Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
-		     const char *request, size_t req_bufsz, char *value,
-					 const char *cf_name);
 
 #endif

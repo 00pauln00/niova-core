@@ -9,14 +9,6 @@ import (
 	"dictapplib/dict_libs"
 )
 
-/*
-#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
-#include <raft/pumice_db.h>
-#include <rocksdb/c.h>
-#include <raft/raft_net.h>
-*/
-import "C" //There should be no empty line between above c declarations and import "c"
-
 var seqno = 0
 var raft_uuid_go string
 var peer_uuid_go string
@@ -53,11 +45,11 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	 as value to pmdb.
 	*/
 	for word, count := range word_map {
-		go_key_len := len(word)
+		go_key_len := len(word) + 1
 		var prev_value string
 
 		//Lookup the key first
-		prev_result := GoPmdb.PmdbLookupKey(app_id, word, int64(go_key_len), prev_value, colmfamily)
+		prev_result := GoPmdb.PmdbLookupKey(word, int64(go_key_len), prev_value, colmfamily)
 		fmt.Println("Previous value of the key: ", prev_result)
 		//Convert the word count into string.
 		prev_result_int, _ := strconv.Atoi(prev_result)

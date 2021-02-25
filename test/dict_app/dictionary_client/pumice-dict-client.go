@@ -12,16 +12,6 @@ import (
 	"dictapplib/dict_libs"
 )
 
-/*
-#cgo pkg-config: niova --define-variable=prefix=/home/manisha/binaries
-#include <raft/pumice_db.h>
-#include <raft/pumice_db_client.h>
-#include <rocksdb/c.h>
-#include <raft/raft_net.h>
-#include <raft/pumice_db_net.h>
-*/
-import "C"
-
 var raft_uuid_go string
 var peer_uuid_go string
 

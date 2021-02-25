@@ -867,7 +867,7 @@ PmdbWriteKVGo(const struct raft_net_client_user_id  *app_id, void *pmdb_handle,
  * @raft_instance_uuid_str:  UUID of this specific raft peer
  * @pmdb_api:  Function callbacks for read and apply.
  */
-int
+static int
 _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes)
@@ -943,48 +943,4 @@ size_t
 Pmdb_entry_key_len(void)
 {
 	return sizeof(struct raft_net_client_user_key_v0);
-}
-
-int
-Pmdb_test_app_lookup(const struct raft_net_client_user_id *app_id,
-		     const char *request, size_t request_bufsz,
-		     char *value,
-		     const char *cf_name)
-{
-    rocksdb_column_family_handle_t *pmdbts_cfh =
-				PmdbCfHandleLookup(cf_name);
-    char *err = NULL;
-
-    rocksdb_readoptions_t *ropts = rocksdb_readoptions_create();
-    if (!ropts)
-        return -ENOMEM;
-
-    size_t value_len = 0;
-
-    value = rocksdb_get_cf(PmdbGetRocksDB(), ropts, pmdbts_cfh,
-                                 request,
-                                 request_bufsz, &value_len, &err);
-
-    rocksdb_readoptions_destroy(ropts);
-
-    int rc = 0;
-
-    if (!value) // Xxx need better error interpretation
-    {
-        rc = -ENOENT;
-    }
-    else if (err)
-    {
-        DECLARE_AND_INIT_UUID_STR(key, app_id->rncui_key.v0.rncui_v0_uuid[0]);
-        SIMPLE_LOG_MSG(LL_ERROR, "rocksdb_get_cf(`%s.%lx.%lx`): %s",
-                       key, app_id->rncui_key.v0.rncui_v0_uint64[2],
-                       app_id->rncui_key.v0.rncui_v0_uint64[3], err);
-        rc = -EINVAL;
-    }
-    else
-    {
-		SIMPLE_LOG_MSG(LL_WARN, "Value of the key is: %s", value);
-    }
-
-    return rc;
 }
