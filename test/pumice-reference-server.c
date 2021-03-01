@@ -177,7 +177,7 @@ pmdbts_apply_lookup_and_check(const struct raft_net_client_user_id *app_id,
     DBG_RAFT_TEST_DATA_BLOCK(LL_DEBUG, rtdb,
                              "pmdbts_lookup(): current seqno=%ld, val=%ld",
                              current_rtv.rtv_seqno,
-                             current_rtv.rtv_reply_xor_all_values)
+                             current_rtv.rtv_reply_xor_all_values);
 
     // Check the sequence is correct and the contents are valid.
     for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
