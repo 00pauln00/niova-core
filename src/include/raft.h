@@ -500,62 +500,64 @@ raft_compile_time_checks(void)
 
 #define DBG_RAFT_MSG(log_level, rm, fmt, ...)                                                     \
 do {                                                                                                 \
-    char __uuid_str[UUID_STR_LEN];                                                                \
-    uuid_unparse((rm)->rrm_sender_id, __uuid_str);                                                \
-    switch ((rm)->rrm_type)                                                                       \
-    {                                                                                             \
-    case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                                                          \
-        LOG_MSG(log_level,                                                                        \
-                "VREQ nterm=%ld last=%ld:%ld %s "fmt,                                             \
-                (rm)->rrm_vote_request.rvrqm_proposed_term,                                       \
-                (rm)->rrm_vote_request.rvrqm_last_log_term,                                       \
-                (rm)->rrm_vote_request.rvrqm_last_log_index,                                      \
-                __uuid_str,                                                                       \
-                ##__VA_ARGS__);                                                                   \
-        break;                                                                                    \
-    case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                                                            \
-        LOG_MSG(log_level,                                                                        \
-                "VREPLY term=%ld granted=%s %s "fmt,                                              \
-                (rm)->rrm_vote_reply.rvrpm_term,                                                  \
-                ((rm)->rrm_vote_reply.rvrpm_voted_granted ?                                       \
-                 "yes" : "no"),                                                                   \
-                __uuid_str,                                                                       \
-                ##__VA_ARGS__);                                                                   \
-        break;                                                                                    \
-    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                                                \
-        LOG_MSG(log_level,                                                                        \
-                "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt,  \
-                (rm)->rrm_append_entries_request.raerqm_leader_term,                              \
-                (rm)->rrm_append_entries_request.raerqm_log_term,                                 \
-                (rm)->rrm_append_entries_request.raerqm_commit_index,                             \
-                (rm)->rrm_append_entries_request.raerqm_lowest_index,                             \
-                (rm)->rrm_append_entries_request.raerqm_prev_log_term,                            \
-                (rm)->rrm_append_entries_request.raerqm_prev_log_index,                           \
-                (rm)->rrm_append_entries_request.raerqm_entries_sz,                               \
-                (rm)->rrm_append_entries_request.raerqm_heartbeat_msg,                            \
-                (rm)->rrm_append_entries_request.raerqm_leader_change_marker,                     \
-                (rm)->rrm_append_entries_request.raerqm_entry_out_of_range,                       \
-                (rm)->rrm_append_entries_request.raerqm_prev_idx_crc,                             \
-                (rm)->rrm_append_entries_request.raerqm_this_idx_crc,                             \
-                __uuid_str,                                                                       \
-                ##__VA_ARGS__);                                                                   \
-        break;                                                                                    \
-    case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                                                  \
-        LOG_MSG(log_level,                                                                        \
-                "AE_REPLY t=%ld pli=%ld sli=%ld hb=%hhx err=%hhx:%hhx %s "fmt,                    \
-                (rm)->rrm_append_entries_reply.raerpm_leader_term,                                \
-                (rm)->rrm_append_entries_reply.raerpm_prev_log_index,                             \
-                (rm)->rrm_append_entries_reply.raerpm_synced_log_index,                           \
-                (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg,                              \
-                (rm)->rrm_append_entries_reply.raerpm_err_stale_term,                             \
-                (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term,                 \
-                __uuid_str,                                                                       \
-                ##__VA_ARGS__);                                                                   \
-        break;                                                                                    \
-    default:                                                                                      \
-        LOG_MSG(log_level, "UNKNOWN "fmt, ##__VA_ARGS__);                                         \
-        break;                                                                                    \
-    }                                                                                             \
+    DEBUG_BLOCK(log_level) {                                            \
+        char __uuid_str[UUID_STR_LEN];                                  \
+        uuid_unparse((rm)->rrm_sender_id, __uuid_str);                  \
+        switch ((rm)->rrm_type)                                         \
+        {                                                               \
+        case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                            \
+            LOG_MSG(log_level,                                          \
+                    "VREQ nterm=%ld last=%ld:%ld %s "fmt,               \
+                    (rm)->rrm_vote_request.rvrqm_proposed_term,         \
+                    (rm)->rrm_vote_request.rvrqm_last_log_term,         \
+                    (rm)->rrm_vote_request.rvrqm_last_log_index,        \
+                    __uuid_str,                                         \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                              \
+            LOG_MSG(log_level,                                          \
+                    "VREPLY term=%ld granted=%s %s "fmt,                \
+                    (rm)->rrm_vote_reply.rvrpm_term,                    \
+                    ((rm)->rrm_vote_reply.rvrpm_voted_granted ?         \
+                     "yes" : "no"),                                     \
+                    __uuid_str,                                         \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                  \
+            LOG_MSG(log_level,                                          \
+                    "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
+                    (rm)->rrm_append_entries_request.raerqm_leader_term, \
+                    (rm)->rrm_append_entries_request.raerqm_log_term,   \
+                    (rm)->rrm_append_entries_request.raerqm_commit_index, \
+                    (rm)->rrm_append_entries_request.raerqm_lowest_index, \
+                    (rm)->rrm_append_entries_request.raerqm_prev_log_term, \
+                    (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
+                    (rm)->rrm_append_entries_request.raerqm_entries_sz, \
+                    (rm)->rrm_append_entries_request.raerqm_heartbeat_msg, \
+                    (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
+                    (rm)->rrm_append_entries_request.raerqm_entry_out_of_range, \
+                    (rm)->rrm_append_entries_request.raerqm_prev_idx_crc, \
+                    (rm)->rrm_append_entries_request.raerqm_this_idx_crc, \
+                    __uuid_str,                                         \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY:                    \
+            LOG_MSG(log_level,                                          \
+                    "AE_REPLY t=%ld pli=%ld sli=%ld hb=%hhx err=%hhx:%hhx %s "fmt, \
+                    (rm)->rrm_append_entries_reply.raerpm_leader_term,  \
+                    (rm)->rrm_append_entries_reply.raerpm_prev_log_index, \
+                    (rm)->rrm_append_entries_reply.raerpm_synced_log_index, \
+                    (rm)->rrm_append_entries_reply.raerpm_heartbeat_msg, \
+                    (rm)->rrm_append_entries_reply.raerpm_err_stale_term, \
+                    (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
+                    __uuid_str,                                         \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        default:                                                        \
+            LOG_MSG(log_level, "UNKNOWN "fmt, ##__VA_ARGS__);           \
+            break;                                                      \
+        }                                                               \
+    }                                                                   \
 } while (0)
 
 #define DBG_RAFT_ENTRY(log_level, re, fmt, ...)                   \
@@ -575,29 +577,31 @@ do {                                                          \
 
 #define _DBG_RAFT_INSTANCE(log_level, tag, ri, fmt, ...)           \
 do {                                                               \
-    char __uuid_str[UUID_STR_LEN];                                 \
-    uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);      \
-    char __leader_uuid_str[UUID_STR_LEN] = {0};                    \
-    if (ri->ri_csn_leader && !raft_instance_is_leader((ri)))       \
-        uuid_unparse((ri)->ri_csn_leader->csn_uuid,                \
-                     __leader_uuid_str);                           \
-                                                                   \
-    LOG_MSG_TAG(log_level, tag,                                         \
-            "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld:%ld lck=%lld v=%s l=%s "  \
-            fmt,                                                        \
-            raft_server_process_state_to_char((ri)->ri_proc_state),     \
-            raft_server_state_to_char((ri)->ri_state),                  \
-            raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
-            raft_server_get_current_raft_entry_term(ri, RI_NEHDR_UNSYNC), \
-            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC), \
-            raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC), \
-            (ri)->ri_log_hdr.rlh_term,                                      \
-            (ri)->ri_log_hdr.rlh_seqno,                                 \
-            (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,             \
-            (ri)->ri_last_applied_synced_idx,                           \
-            niova_atomic_read(&(ri)->ri_checkpoint_last_idx),           \
-            __uuid_str, __leader_uuid_str,                              \
-            ##__VA_ARGS__);                                             \
+    DEBUG_BLOCK(log_level) {                                           \
+        char __uuid_str[UUID_STR_LEN];                                 \
+        uuid_unparse((ri)->ri_log_hdr.rlh_voted_for, __uuid_str);      \
+        char __leader_uuid_str[UUID_STR_LEN] = {0};                    \
+        if (ri->ri_csn_leader && !raft_instance_is_leader((ri)))       \
+            uuid_unparse((ri)->ri_csn_leader->csn_uuid,                \
+                         __leader_uuid_str);                           \
+                                                                       \
+        LOG_MSG_TAG(log_level, tag,                                     \
+                    "%c:%c et[s:u]=%ld:%ld ei[s:u]=%ld:%ld ht=%ld hs=%ld c=%ld la=%ld:%ld lck=%lld v=%s l=%s " \
+                    fmt,                                                \
+                    raft_server_process_state_to_char((ri)->ri_proc_state), \
+                    raft_server_state_to_char((ri)->ri_state),          \
+                    raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC), \
+                    raft_server_get_current_raft_entry_term(ri, RI_NEHDR_UNSYNC), \
+                    raft_server_get_current_raft_entry_index(ri, RI_NEHDR_SYNC), \
+                    raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC), \
+                    (ri)->ri_log_hdr.rlh_term,                          \
+                    (ri)->ri_log_hdr.rlh_seqno,                         \
+                    (ri)->ri_commit_idx, (ri)->ri_last_applied_idx,     \
+                    (ri)->ri_last_applied_synced_idx,                   \
+                    niova_atomic_read(&(ri)->ri_checkpoint_last_idx),   \
+                    __uuid_str, __leader_uuid_str,                      \
+                    ##__VA_ARGS__);                                     \
+    }                                                                   \
 } while (0)
 
 #define DBG_RAFT_INSTANCE(log_level, ri, fmt, ...)              \
