@@ -27,7 +27,6 @@ highest_set_bit_pos_from_val_test(void)
     }
 }
 
-
 static void
 highest_power_of_two_test(void)
 {
@@ -261,6 +260,64 @@ assign_release_nbits_test2(void)
     }
 }
 
+static void
+lowest_bit_tests(void)
+{
+    uint64_t val = 1;
+    uint64_t x = lowest_bit_unset_and_return(&val);
+
+    NIOVA_ASSERT(number_of_ones_in_val(x) == 1 && x == 1 && !val);
+
+    val = 3;
+    x = lowest_bit_unset_and_return(&val);
+    NIOVA_ASSERT(number_of_ones_in_val(x) == 1 && x == 1 && val == 2);
+
+    val = 0x5555555555555555ULL;
+    NIOVA_ASSERT(number_of_ones_in_val(val) == 32);
+
+    for (int i = 0; i < 32; i++)
+    {
+        // ensure the high bit it not unset until the of the loop
+        NIOVA_ASSERT(highest_set_bit_pos_from_val(val) == 63);
+
+        x = lowest_bit_unset_and_return(&val);
+        NIOVA_ASSERT(number_of_ones_in_val(val) == (32 - (i + 1)) &&
+                     number_of_ones_in_val(x) == 1);
+    }
+
+    NIOVA_ASSERT(!val);
+
+    val = 0;
+    x = lowest_bit_set_and_return(&val);
+
+    NIOVA_ASSERT(x == 1 && val == 1);
+
+    val = 0x5555555555555555ULL;
+    x = lowest_bit_set_and_return(&val);
+
+    NIOVA_ASSERT(x == 2 && val == 0x5555555555555557ULL);
+
+    val = 0;
+
+    for (int i = 0; i < 64; i++)
+    {
+        x = lowest_bit_set_and_return(&val);
+        NIOVA_ASSERT(x == (1ULL << i));
+    }
+
+    NIOVA_ASSERT(val == -1ULL);
+
+    // Every 4th bit
+    val = 0xEEEEEEEEEEEEEEEEULL; //1110
+    for (int i = 0; i < 16; i++)
+    {
+        x = lowest_bit_set_and_return(&val);
+        NIOVA_ASSERT(x == (1ULL << (i * 4)));
+    }
+
+    NIOVA_ASSERT(val == -1ULL);
+}
+
 int
 main(void)
 {
@@ -269,6 +326,7 @@ main(void)
     highest_set_bit_pos_from_val_test();
     highest_power_of_two_test();
     ssize_t_checks();
+    lowest_bit_tests();
 
     return 0;
 }

@@ -123,7 +123,7 @@ highest_power_of_two_from_val(unsigned long long val)
 static inline int
 number_of_ones_in_val(unsigned long long val)
 {
-    return __builtin_popcount(val);
+    return __builtin_popcountll(val);
 }
 
 static inline int
@@ -192,6 +192,26 @@ nconsective_bits_release(uint64_t *field, unsigned int offset,
     }
 
     return -EBADSLT;
+}
+
+static inline uint64_t
+lowest_bit_unset_and_return(uint64_t *field)
+{
+    const uint64_t x = *field & ~(*field - 1);
+    *field &= (*field - 1);
+
+    return x;
+}
+
+static inline uint64_t
+lowest_bit_set_and_return(uint64_t *field)
+{
+    uint64_t inverse = ~(*field);
+    uint64_t x = inverse & ~(inverse - 1);
+
+    *field |= x;
+
+    return x;
 }
 
 #endif //NIOVA_COMMON_H
