@@ -10,9 +10,13 @@
 #include "log.h"
 #include "bitmap.h"
 
+#define MAX_NBWORDS 1025ull
+
 static void
 niova_bitmap_tests(size_t size)
 {
+    NIOVA_ASSERT(size <= MAX_NBWORDS);
+
     NIOVA_ASSERT(NB_NUM_WORDS(1) == 1);
     NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS) == 1);
     NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS - 1) == 1);
@@ -21,19 +25,22 @@ niova_bitmap_tests(size_t size)
     NIOVA_ASSERT(NB_NUM_WORDS(1024) == 16);
     NIOVA_ASSERT(NB_NUM_WORDS(1025) == 17);
 
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
+#endif
     struct x
     {
         struct niova_bitmap nb;
-        bitmap_word_t bar[size];
+        bitmap_word_t bar[MAX_NBWORDS];
     };
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
     struct x x;
 
     const size_t nbits = size * NB_WORD_TYPE_SZ_BITS;
-
-//    const size_t size = 16 * NB_WORD_TYPE_SZ_BITS;
-
-//    fprintf(stdout, "NW=%lu\n", NB_NUM_WORDS(63));
     int rc = niova_bitmap_init(&x.nb, size);
 
     NIOVA_ASSERT(niova_bitmap_size_bits(&x.nb) == nbits);
