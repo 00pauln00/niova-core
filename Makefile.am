@@ -16,6 +16,7 @@ ACLOCAL_AMFLAGS = -I m4
 CORE_HDRS = src/include/atomic.h \
 	src/include/alloc.h \
         src/include/binary_hist.h \
+        src/include/bitmap.h \
         src/include/common.h \
 	src/include/config_token.h \
         src/include/ctl_interface_cmd.h \

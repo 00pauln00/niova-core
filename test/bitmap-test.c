@@ -10,38 +10,27 @@
 #include "log.h"
 #include "bitmap.h"
 
-#define MAX_NBWORDS 1025ull
-
 static void
 niova_bitmap_tests(size_t size)
 {
-    NIOVA_ASSERT(size <= MAX_NBWORDS);
-
-    NIOVA_ASSERT(NB_NUM_WORDS(1) == 1);
-    NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS) == 1);
-    NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS - 1) == 1);
-    NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS + 1) == 2);
-    NIOVA_ASSERT(NB_NUM_WORDS(1023) == 16);
-    NIOVA_ASSERT(NB_NUM_WORDS(1024) == 16);
-    NIOVA_ASSERT(NB_NUM_WORDS(1025) == 17);
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wgnu-variable-sized-type-not-at-end"
-#endif
     struct x
     {
         struct niova_bitmap nb;
-        bitmap_word_t bar[MAX_NBWORDS];
     };
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
 
-    struct x x;
+    bitmap_word_t bar[size];
+
+    struct x x = {0};
+
+    int rc = niova_bitmap_init(&x.nb); // must attach() prior to init()
+    NIOVA_ASSERT(rc == -EINVAL);
 
     const size_t nbits = size * NB_WORD_TYPE_SZ_BITS;
-    int rc = niova_bitmap_init(&x.nb, size);
+
+    rc = niova_bitmap_attach(&x.nb, bar, size);
+    FATAL_IF(rc, "niova_bitmap_attach(): %s", strerror(rc));
+
+    rc = niova_bitmap_init(&x.nb);
 
     NIOVA_ASSERT(niova_bitmap_size_bits(&x.nb) == nbits);
 
@@ -102,7 +91,7 @@ niova_bitmap_tests(size_t size)
         }
 
         // reinit
-        NIOVA_ASSERT(!niova_bitmap_init(&x.nb, size));
+        NIOVA_ASSERT(!niova_bitmap_init(&x.nb));
 
         for (size_t i = 2; i <= 17; i++)
         {
@@ -122,7 +111,7 @@ niova_bitmap_tests(size_t size)
         NIOVA_ASSERT(!niova_bitmap_inuse(&x.nb));
     }
 
-    NIOVA_ASSERT(!niova_bitmap_init(&x.nb, size));
+    NIOVA_ASSERT(!niova_bitmap_init(&x.nb));
 
 #define ARRAY_SZ 1000000
     bool should_be_set[ARRAY_SZ] = {0};
@@ -171,6 +160,14 @@ niova_bitmap_tests(size_t size)
 int
 main(void)
 {
+    NIOVA_ASSERT(NB_NUM_WORDS(1) == 1);
+    NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS) == 1);
+    NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS - 1) == 1);
+    NIOVA_ASSERT(NB_NUM_WORDS(NB_WORD_TYPE_SZ_BITS + 1) == 2);
+    NIOVA_ASSERT(NB_NUM_WORDS(1023) == 16);
+    NIOVA_ASSERT(NB_NUM_WORDS(1024) == 16);
+    NIOVA_ASSERT(NB_NUM_WORDS(1025) == 17);
+
     niova_bitmap_tests(1UL);
     niova_bitmap_tests(7UL);
     niova_bitmap_tests(63UL);

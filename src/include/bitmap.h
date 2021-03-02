@@ -19,19 +19,30 @@ typedef uint64_t bitmap_word_t;
 
 struct niova_bitmap
 {
-    size_t        nb_nwords;
-    bitmap_word_t WORD_ALIGN_MEMBER(nb_map[]);
+    size_t         nb_nwords;
+    bitmap_word_t *nb_map;
 };
 
 static inline int
-niova_bitmap_init(struct niova_bitmap *nb, unsigned int nwords)
+niova_bitmap_attach(struct niova_bitmap *nb, bitmap_word_t *map,
+                    unsigned int nwords)
 {
-    if (!nb || !nwords)
+    if (!nb || !map || !nwords)
         return -EINVAL;
 
     nb->nb_nwords = nwords;
+    nb->nb_map = map;
 
-    memset(nb->nb_map, 0, nwords * NB_WORD_TYPE_SZ);
+    return 0;
+}
+
+static inline int
+niova_bitmap_init(struct niova_bitmap *nb)
+{
+    if (!nb || !nb->nb_map || !nb->nb_nwords)
+        return -EINVAL;
+
+    memset(nb->nb_map, 0, nb->nb_nwords * NB_WORD_TYPE_SZ);
 
     return 0;
 }
