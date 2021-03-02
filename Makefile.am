@@ -273,6 +273,12 @@ test_raft_net_test_LDADD = src/libniova.la
 test_raft_net_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/raft-net-test
 
+noinst_PROGRAMS += test/bitmap-test
+test_bitmap_test_SOURCES = test/bitmap-test.c
+test_bitmap_test_LDADD = src/libniova.la
+test_bitmap_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/bitmap-test
+
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 

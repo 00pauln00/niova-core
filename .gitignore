@@ -115,3 +115,4 @@ niova_raft_config.h.in
 niova_raft_config.h
 niova-coverage
 test/alloc-test
+test/bitmap-test
