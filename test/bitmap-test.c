@@ -157,6 +157,56 @@ niova_bitmap_tests(size_t size)
     }
 }
 
+static void
+niova_bitmap_merge_test(void)
+{
+    size_t size = 64;
+
+    struct niova_bitmap x;
+    bitmap_word_t x_map[size];
+
+    int rc = niova_bitmap_attach_and_init(&x, x_map, size);
+    NIOVA_ASSERT(!rc);
+
+    struct niova_bitmap y;
+    bitmap_word_t y_map[size];
+
+    rc = niova_bitmap_attach_and_init(&y, y_map, size);
+    NIOVA_ASSERT(!rc);
+
+    rc = niova_bitmap_exclusive(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_exclusive(): %s", strerror(-rc));
+
+    NIOVA_ASSERT(!niova_bitmap_set(&x, 0));
+    NIOVA_ASSERT(!niova_bitmap_set(&y, 0));
+
+    rc = niova_bitmap_exclusive(&x, &y);
+    FATAL_IF(rc != -EALREADY, "niova_bitmap_exclusive(): %s", strerror(-rc));
+
+    NIOVA_ASSERT(!niova_bitmap_unset(&y, 0));
+    NIOVA_ASSERT(!niova_bitmap_set(&y, 1));
+
+    rc = niova_bitmap_exclusive(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_exclusive(): %s", strerror(-rc));
+
+    for (int i = 0; i < size; i++)
+    {
+        x.nb_map[i] = 0xa55555555555555aULL;
+        y.nb_map[i] = 0x5aaaaaaaaaaaaaa5ULL;
+    }
+
+    rc = niova_bitmap_exclusive(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_exclusive(): %s", strerror(-rc));
+
+    rc = niova_bitmap_merge(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_merge(): %s", strerror(-rc));
+
+    FATAL_IF(!niova_bitmap_full(&x), "niova_bitmap_full() fails");
+
+    rc = niova_bitmap_exclusive(&x, &y);
+    FATAL_IF(rc != -EALREADY, "niova_bitmap_exclusive(): %s", strerror(-rc));
+}
+
 int
 main(void)
 {
@@ -177,6 +227,8 @@ main(void)
     niova_bitmap_tests(1023UL);
     niova_bitmap_tests(1024UL);
     niova_bitmap_tests(1025UL);
+
+    niova_bitmap_merge_test();
 
     return 0;
 }

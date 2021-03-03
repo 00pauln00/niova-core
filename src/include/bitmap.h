@@ -145,6 +145,40 @@ niova_bitmap_set(struct niova_bitmap *nb, unsigned int idx)
 }
 
 static inline int
+niova_bitmap_exclusive(const struct niova_bitmap *x,
+                       const struct niova_bitmap *y)
+{
+    if (!x || !y || x->nb_nwords != y->nb_nwords)
+        return -EINVAL;
+
+    for (unsigned int i = 0; i < x->nb_nwords; i++)
+    {
+        // Ensure the bits from the src map are not already set in the dst
+        if (((x->nb_map[i] ^ y->nb_map[i]) & y->nb_map[i]) != y->nb_map[i])
+            return -EALREADY;
+    }
+
+    return 0;
+}
+
+static inline int
+niova_bitmap_merge(struct niova_bitmap *dst, const struct niova_bitmap *src)
+{
+    if (!dst || !src || dst->nb_nwords != src->nb_nwords)
+        return -EINVAL;
+
+    int rc = niova_bitmap_exclusive(dst, src);
+
+    if (!rc)
+    {
+        for (unsigned int i = 0; i < dst->nb_nwords; i++)
+            dst->nb_map[i] |= src->nb_map[i];
+    }
+
+    return rc;
+}
+
+static inline int
 niova_bitmap_lowest_free_bit_assign(struct niova_bitmap *nb, unsigned int *idx)
 {
     if (!nb || !idx)
