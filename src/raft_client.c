@@ -203,47 +203,51 @@ raft_client_sub_app_2_msg_tag(const struct raft_client_sub_app *sa)
 }
 
 #define DBG_RAFT_CLIENT_SUB_APP(log_level, sa, fmt, ...)                \
-{                                                                       \
-    char __uuid_str[UUID_STR_LEN];                                      \
-    uuid_unparse(                                                       \
-        RAFT_NET_CLIENT_USER_ID_2_UUID(&(sa)->rcsa_rncui, 0, 0),        \
-        __uuid_str);                                                    \
-    LOG_MSG(                                                            \
-        log_level,                                                      \
-        "sa@%p %s.%lx.%lx.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c e=%d " \
-        fmt,                                                            \
-        sa,  __uuid_str,                                                \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 2),      \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 3),      \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 4),      \
-        RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 5),      \
-        raft_client_sub_app_2_msg_id(sa),                               \
-        (sa)->rcsa_rh.rcrh_num_sends,                                   \
-        (sa)->rcsa_rtentry.rte_ref_cnt,                                 \
-        (sa)->rcsa_rh.rcrh_blocking      ? 'b' : '-',                   \
-        (sa)->rcsa_rh.rcrh_cancel        ? 'c' : '-',                   \
-        (sa)->rcsa_rh.rcrh_cb_exec       ? 'e' : '-',                   \
-        (sa)->rcsa_rh.rcrh_initializing  ? 'i' : '-',                   \
-        (sa)->rcsa_rh.rcrh_op_wr         ? 'W' : 'R',                   \
-        (sa)->rcsa_rh.rcrh_ready         ? 'r' : '-',                   \
-        (sa)->rcsa_rh.rcrh_sendq         ? 's' : '-',                   \
-        (sa)->rcsa_rh.rcrh_send_failed   ? 'f' : '-',                   \
-        (sa)->rcsa_rh.rcrh_error,                                       \
-        ##__VA_ARGS__);                                                 \
-}
+do {                                                                \
+    DEBUG_BLOCK(log_level) {                                                \
+        char __uuid_str[UUID_STR_LEN];                                  \
+        uuid_unparse(                                                   \
+            RAFT_NET_CLIENT_USER_ID_2_UUID(&(sa)->rcsa_rncui, 0, 0),    \
+            __uuid_str);                                                \
+        LOG_MSG(                                                        \
+            log_level,                                                  \
+            "sa@%p %s.%lx.%lx.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c e=%d " \
+            fmt,                                                        \
+            sa,  __uuid_str,                                            \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 2),  \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 3),  \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 4),  \
+            RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 5),  \
+            raft_client_sub_app_2_msg_id(sa),                           \
+            (sa)->rcsa_rh.rcrh_num_sends,                               \
+            (sa)->rcsa_rtentry.rte_ref_cnt,                             \
+            (sa)->rcsa_rh.rcrh_blocking      ? 'b' : '-',               \
+            (sa)->rcsa_rh.rcrh_cancel        ? 'c' : '-',               \
+            (sa)->rcsa_rh.rcrh_cb_exec       ? 'e' : '-',               \
+            (sa)->rcsa_rh.rcrh_initializing  ? 'i' : '-',               \
+            (sa)->rcsa_rh.rcrh_op_wr         ? 'W' : 'R',               \
+            (sa)->rcsa_rh.rcrh_ready         ? 'r' : '-',               \
+            (sa)->rcsa_rh.rcrh_sendq         ? 's' : '-',               \
+            (sa)->rcsa_rh.rcrh_send_failed   ? 'f' : '-',               \
+            (sa)->rcsa_rh.rcrh_error,                                   \
+            ##__VA_ARGS__);                                             \
+    }                                                                   \
+} while (0)
 
 #define DBG_RAFT_CLIENT_SUB_APP_TS(log_level, sa, time_ms, fmt, ...)   \
-{                                                                      \
-    unsigned long long current_ms = time_ms ? time_ms :                \
-        niova_realtime_coarse_clock_get_msec();                        \
-                                                                       \
-    DBG_RAFT_CLIENT_SUB_APP(                                           \
-        log_level, sa, "sub:la=%llu:%llu "fmt,                         \
-        (current_ms - timespec_2_msec(&(sa)->rcsa_rh.rcrh_last_send)), \
-        (current_ms -                                                  \
-         timespec_2_msec(&(sa)->rcsa_rh.rcrh_submitted)),              \
-        ##__VA_ARGS__);                                                \
-}
+do {                                                                \
+    DEBUG_BLOCK(log_level) {                                                \
+        unsigned long long current_ms = time_ms ? time_ms :             \
+            niova_realtime_coarse_clock_get_msec();                     \
+                                                                        \
+        DBG_RAFT_CLIENT_SUB_APP(                                        \
+            log_level, sa, "sub:la=%llu:%llu "fmt,                      \
+            (current_ms - timespec_2_msec(&(sa)->rcsa_rh.rcrh_last_send)), \
+            (current_ms -                                               \
+             timespec_2_msec(&(sa)->rcsa_rh.rcrh_submitted)),           \
+            ##__VA_ARGS__);                                             \
+    }                                                                   \
+} while (0)
 
 #define RAFT_CLIENT_SUB_APP_FATAL_IF(cond, sa, fmt, ...)            \
 {                                                                   \

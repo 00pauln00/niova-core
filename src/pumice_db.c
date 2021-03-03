@@ -87,9 +87,10 @@ struct pmdb_apply_handle
 
 
 #define PMDB_OBJ_DEBUG(log_level, pmdbo, fmt, ...)                          \
-    {                                                                       \
-        char __uuid_str[UUID_STR_LEN];                                      \
-        uuid_unparse(                                                       \
+do {                                                                        \
+    DEBUG_BLOCK(log_level) {                                                \
+        char __uuid_str[UUID_STR_LEN];                                  \
+        uuid_unparse(                                                   \
             RAFT_NET_CLIENT_USER_ID_2_UUID(&(pmdbo)->pmdb_obj_rncui, 0, 0), \
             __uuid_str);                                                    \
         LOG_MSG(log_level,                                                  \
@@ -110,11 +111,13 @@ struct pmdb_apply_handle
             (pmdbo)->pmdb_obj_pending_term,                                 \
             (pmdbo)->pmdb_obj_msg_id,                                       \
             ##__VA_ARGS__);                                                 \
-    }
+    }                                                                   \
+} while (0)
 
 #define PMDB_STR_DEBUG(log_level, pmdb_rncui, fmt, ...)                \
-    {                                                                  \
-        char __uuid_str[UUID_STR_LEN];                                 \
+do {                                                                \
+    DEBUG_BLOCK(log_level) {                                                \
+        char __uuid_str[UUID_STR_LEN];                                  \
         uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(pmdb_rncui, 0, 0), \
                      __uuid_str);                                      \
         LOG_MSG(log_level, "%s.%lx.%lx: "fmt,                          \
@@ -123,6 +126,7 @@ struct pmdb_apply_handle
             RAFT_NET_CLIENT_USER_ID_2_UINT64(pmdb_rncui, 0, 3),        \
             ##__VA_ARGS__);                                            \
     }                                                                  \
+} while (0)
 
 static void
 pmdb_obj_crc_calc(struct pmdb_object *obj)
