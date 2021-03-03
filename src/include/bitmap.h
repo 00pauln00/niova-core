@@ -47,6 +47,15 @@ niova_bitmap_init(struct niova_bitmap *nb)
     return 0;
 }
 
+static inline int
+niova_bitmap_attach_and_init(struct niova_bitmap *nb, bitmap_word_t *map,
+                             unsigned int nwords)
+{
+    int rc = niova_bitmap_attach(nb, map, nwords);
+
+    return rc ? rc : niova_bitmap_init(nb);
+}
+
 static inline size_t
 niova_bitmap_size_bits(const struct niova_bitmap *nb)
 {
@@ -67,6 +76,12 @@ niova_bitmap_inuse(const struct niova_bitmap *nb)
     }
 
     return total;
+}
+
+static inline size_t
+niova_bitmap_nfree(const struct niova_bitmap *nb)
+{
+    return niova_bitmap_size_bits(nb) - niova_bitmap_inuse(nb);
 }
 
 static inline bool
