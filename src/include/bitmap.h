@@ -162,17 +162,47 @@ niova_bitmap_exclusive(const struct niova_bitmap *x,
 }
 
 static inline int
-niova_bitmap_merge(struct niova_bitmap *dst, const struct niova_bitmap *src)
+niova_bitmap_shared(const struct niova_bitmap *super,
+                    const struct niova_bitmap *sub)
 {
-    if (!dst || !src || dst->nb_nwords != src->nb_nwords)
+    if (!super || !sub || super->nb_nwords != sub->nb_nwords)
         return -EINVAL;
 
+    for (unsigned int i = 0; i < sub->nb_nwords; i++)
+    {
+        // Ensure the bits from the src map are not already set in the dst
+        if ((super->nb_map[i] & sub->nb_map[i]) != sub->nb_map[i])
+            return -ENOENT;
+    }
+
+    return 0;
+}
+
+static inline int
+niova_bitmap_merge(struct niova_bitmap *dst, const struct niova_bitmap *src)
+{
     int rc = niova_bitmap_exclusive(dst, src);
 
     if (!rc)
     {
         for (unsigned int i = 0; i < dst->nb_nwords; i++)
             dst->nb_map[i] |= src->nb_map[i];
+    }
+
+    return rc;
+}
+
+// Unset the items in 'dst' which are contained in 'src'
+static inline int
+niova_bitmap_bulk_unset(struct niova_bitmap *dst,
+                        const struct niova_bitmap *src)
+{
+    int rc = niova_bitmap_shared(dst, src);
+
+    if (!rc)
+    {
+        for (unsigned int i = 0; i < dst->nb_nwords; i++)
+            dst->nb_map[i] &= ~(src->nb_map[i]);
     }
 
     return rc;

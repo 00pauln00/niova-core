@@ -207,6 +207,72 @@ niova_bitmap_merge_test(void)
     FATAL_IF(rc != -EALREADY, "niova_bitmap_exclusive(): %s", strerror(-rc));
 }
 
+static void
+niova_bitmap_bulk_unset_test(void)
+{
+    size_t size = 64;
+
+    struct niova_bitmap x;
+    bitmap_word_t x_map[size];
+
+    int rc = niova_bitmap_attach_and_init(&x, x_map, size);
+    NIOVA_ASSERT(!rc);
+
+    struct niova_bitmap y;
+    bitmap_word_t y_map[size];
+
+    rc = niova_bitmap_attach_and_init(&y, y_map, size);
+    NIOVA_ASSERT(!rc);
+
+    rc = niova_bitmap_shared(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_shared(): %s", strerror(-rc));
+
+    NIOVA_ASSERT(!niova_bitmap_set(&x, 0));
+    NIOVA_ASSERT(!niova_bitmap_set(&y, 0));
+
+    rc = niova_bitmap_shared(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_shared(): %s", strerror(-rc));
+
+    NIOVA_ASSERT(!niova_bitmap_set(&x, 1));
+    rc = niova_bitmap_shared(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_shared(): %s", strerror(-rc));
+
+    // switch x and y
+    rc = niova_bitmap_shared(&y, &x);
+    FATAL_IF(rc != -ENOENT, "niova_bitmap_shared(): %s", strerror(-rc));
+
+    for (int i = 0; i < size; i++)
+    {
+        x.nb_map[i] = -1ULL;
+        y.nb_map[i] = 0x5555555555555555ULL;
+    }
+
+    rc = niova_bitmap_shared(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_shared(): %s", strerror(-rc));
+
+    x.nb_map[size - 1] -= 1; // remove one bit and retest
+    rc = niova_bitmap_shared(&x, &y);
+    FATAL_IF(rc != -ENOENT, "niova_bitmap_shared(): %s", strerror(-rc));
+
+    x.nb_map[size - 1] = -1ULL; // restore this item
+
+    rc = niova_bitmap_bulk_unset(&x, &y);
+    FATAL_IF(rc, "niova_bitmap_unset(): %s", strerror(-rc));
+
+    for (int i = 0; i < size; i++)
+    {
+        niova_bitmap_init(&y);
+
+        y.nb_map[i] = 0xaaaaaaaaaaaaaaaaULL;
+
+        rc = niova_bitmap_bulk_unset(&x, &y);
+        FATAL_IF(rc, "niova_bitmap_unset(): %s", strerror(-rc));
+    }
+
+    rc = niova_bitmap_inuse(&x);
+    FATAL_IF(rc, "niova_bitmap_inuse() returns non-zero (rc=%d)", rc);
+}
+
 int
 main(void)
 {
@@ -229,6 +295,7 @@ main(void)
     niova_bitmap_tests(1025UL);
 
     niova_bitmap_merge_test();
+    niova_bitmap_bulk_unset_test();
 
     return 0;
 }
