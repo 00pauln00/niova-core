@@ -4387,7 +4387,8 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 
     EV_PIPE_RESET(evp);
 
-    raft_server_state_machine_apply(ri);
+    if (!FAULT_INJECT(raft_server_bypass_sm_apply))
+        raft_server_state_machine_apply(ri);
 }
 
 static raft_server_epoll_t
