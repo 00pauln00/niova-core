@@ -7,6 +7,7 @@ import (
 	"flag"
 	"gopmdblib/goPmdb"
 	"dictapplib/dict_libs"
+	"log"
 )
 
 var seqno = 0
@@ -30,12 +31,11 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	fmt.Println("Apply request received")
 
 	/* Decode the input buffer into dictionary structure format */
-	apply_dict := DictAppLib.DictAppDecodebuf(input_buf, input_buf_sz)
+	//apply_dict := DictAppLib.DictAppDecodebuf(input_buf, input_buf_sz)
+	apply_dict := &DictAppLib.Dict_app{}
+	GoPmdb.Decode(input_buf, apply_dict, input_buf_sz)
 
-	fmt.Println("Operation type %s", apply_dict.Dict_op)
-	fmt.Println("Wr seq type %d", apply_dict.Dict_wr_seq)
-	fmt.Println("rncui type %s", apply_dict.Dict_rncui)
-	fmt.Println("Text %s", apply_dict.Dict_text)
+	fmt.Println("Input from client: %s", apply_dict.Dict_text)
 
 	/* Split the words and create map for word to frequency */
 	split_and_write_to_word_map(apply_dict.Dict_text)
@@ -51,14 +51,18 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 		//Lookup the key first
 		prev_result := GoPmdb.PmdbLookupKey(word, int64(go_key_len), prev_value, colmfamily)
 		fmt.Println("Previous value of the key: ", prev_result)
-		//Convert the word count into string.
-		prev_result_int, _ := strconv.Atoi(prev_result)
-		count = count + prev_result_int
-		fmt.Println("Now the count becomes: ", count)
-		value := strconv.Itoa(count)
 
-		value_len := len(value)
+		if prev_result != "" {
+			//Convert the word count into string.
+			prev_result_int, _ := strconv.Atoi(prev_result)
+			count = count + prev_result_int
+		}
 
+		fmt.Println("Frequency of the word is: ", count)
+		value := GoPmdb.GoIntToString(count)
+		value_len := GoPmdb.GoStringLen(value)
+
+		//Write word and frequency as value to Pmdb
 		GoPmdb.PmdbWriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
 				 int64(value_len), colmfamily)
 
@@ -71,17 +75,32 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
             request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) {
 	fmt.Println("Read request received")
 
-	read_dict := DictAppLib.DictAppDecodebuf(request_buf, request_bufsz)
+	//Decode the request structure sent by client.
+	req_dict := &DictAppLib.Dict_app{}
+	GoPmdb.Decode(request_buf, req_dict, request_bufsz)
 
-	fmt.Println("dict_read: Operation type %s", read_dict.Dict_op)
-	fmt.Println("dict_read: Wr seq type %d", read_dict.Dict_wr_seq)
-	fmt.Println("dict_read: rncui type %s", read_dict.Dict_rncui)
-	fmt.Println("dict_read: Text %s", read_dict.Dict_text)
+	fmt.Println("dict_read: Text %s", req_dict.Dict_text)
 
-	key_len := len(read_dict.Dict_text)
+	key_len := len(req_dict.Dict_text)
 
-	GoPmdb.PmdbReadKV(app_id, read_dict.Dict_text, int64(key_len), request_buf,
+	result_dict := DictAppLib.Dict_app {}
+	result_dict.Dict_text = req_dict.Dict_text
+	result := GoPmdb.PmdbReadKV(app_id, req_dict.Dict_text, int64(key_len), request_buf,
 					request_bufsz, colmfamily)
+
+	result_dict.Dict_wcount = 0
+	if result != "" {
+		word_count, err := strconv.Atoi(result)
+		if err != nil {
+			log.Fatal(err)
+		}
+		result_dict.Dict_wcount = word_count
+	}
+
+	//Store the value in reply_buf
+	reply_dict := (*DictAppLib.Dict_app)(reply_buf)
+	reply_dict.Dict_text = result_dict.Dict_text
+	reply_dict.Dict_wcount = result_dict.Dict_wcount
 }
 
 func pmdb_dict_app_getopts() {

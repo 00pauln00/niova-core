@@ -6,30 +6,12 @@ import (
 	"bufio"
 	"strings"
 	"flag"
-	"encoding/gob"
-	"log"
 	"gopmdblib/goPmdb"
 	"dictapplib/dict_libs"
 )
 
 var raft_uuid_go string
 var peer_uuid_go string
-
-type Dict_app struct {
-	Dict_op string
-	Dict_wr_seq uint64
-	Dict_rncui string
-	Dict_text string
-	Dict_wcount int
-}
-
-func (pmdbDict Dict_app) PmdbEncode(encode *gob.Encoder) {
-
-	err := encode.Encode(pmdbDict)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
 
 /*
  Start the pmdb client.
@@ -43,7 +25,6 @@ func pmdbDictClient() {
 	//Start the client.
 	pmdb := GoPmdb.PmdbStartClient(raft_uuid_go, peer_uuid_go)
 
-	var seq uint64
 	for {
 		//Read the input from console
 		words := bufio.NewReader(os.Stdin)
@@ -55,32 +36,43 @@ func pmdbDictClient() {
 			// convert CRLF to LF
 			text = strings.Replace(text, "\n", "", -1)
 			input := strings.Split(text, ".")
-			seq++
+			rncui := input[0]
+			input_text := input[1]
+			ops := input[2]
 
 			//Format is: AppUUID.text.write or AppUUID.text.read
 			// Prepare the dictionary structure from values passed by user.
-			input_dict := Dict_app{
-				Dict_op: input[2],
-				Dict_wr_seq: seq,
-				Dict_rncui: input[0],
-				Dict_text: input[1],
+			req_dict := DictAppLib.Dict_app{
+				Dict_text: input_text,
+				Dict_wcount: 0,
 			}
 
-			fmt.Println("rncui", input_dict.Dict_rncui)
-			fmt.Println("Operation", input_dict.Dict_op)
-			fmt.Println("text", input_dict.Dict_text)
 
-			if input_dict.Dict_op == "write" {
+			fmt.Println("rncui", rncui)
+			fmt.Println("Operation", ops)
+			fmt.Println("text", req_dict.Dict_text)
+
+			if ops == "write" {
 				//write operation
-				GoPmdb.PmdbClientWrite(input_dict, pmdb, input_dict.Dict_rncui)
+				GoPmdb.PmdbClientWrite(req_dict, pmdb, rncui)
 			} else {
-				//read operation
-				var value_len int64
-				value_ptr := GoPmdb.PmdbClientRead(input_dict, pmdb, input_dict.Dict_rncui, &value_len)
+				/*
+				 * Get the value len, would be same as req_dict
+				 * Encode function will convert the struct to byte array
+				 * and will return total bytes taken by structure.
+				 */
+				var length int64
+				GoPmdb.Encode(req_dict, &length)
+				fmt.Println("Length of the structure: ", length)
 
-				go_value := unsafe.Pointer(value_ptr)
-				//Decode the result from unsafe.Pointer to dictionary structure..
-				result_dict := DictAppLib.DictAppDecodebuf(go_value, value_len)
+				//read operation
+				value_buf := GoPmdb.PmdbClientRead(req_dict, pmdb, rncui, int64(value_len))
+
+				fmt.Println("Decode the result")
+				//Decode the output into Dict_app
+				result_dict := &DictAppLib.Dict_app{}
+				GoPmdb.Decode(unsafe.Pointer(value_buf), result_dict, length)
+
 				fmt.Println("Word: ", result_dict.Dict_text)
 				fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
 			}

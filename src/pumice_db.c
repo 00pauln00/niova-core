@@ -849,17 +849,6 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
                                             key, key_len, value, value_len);
 }
 
-int
-PmdbWriteKVGo(const struct raft_net_client_user_id  *app_id, void *pmdb_handle,
-            const char *key, size_t key_len, const char *value,
-            size_t value_len, void (*comp_cb)(void *), const char *cf_name)
-{
-	rocksdb_column_family_handle_t *cf_handle = PmdbCfHandleLookup(cf_name);
-	return PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
-					   comp_cb, (void *)cf_handle);
-}
-
-
 /**
  * PmdbExec - blocking API call used by a pumice-enabled application which
  *    starts the underlying raft process and waits for incoming requests.
