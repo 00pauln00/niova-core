@@ -329,7 +329,7 @@ log_level_set(enum log_level ll)
     }
 }
 
-enum log_level
+inline enum log_level
 log_level_get(void)
 {
     return masterLogLevel;
