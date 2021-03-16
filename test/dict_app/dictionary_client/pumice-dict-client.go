@@ -2,13 +2,18 @@ package main
 import (
 	"fmt"
 	"os"
-	"unsafe"
 	"bufio"
 	"strings"
 	"flag"
 	"gopmdblib/goPmdb"
 	"dictapplib/dict_libs"
 )
+
+/*
+#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
+#include <stdlib.h>
+*/
+import "C"
 
 var raft_uuid_go string
 var peer_uuid_go string
@@ -23,14 +28,14 @@ var peer_uuid_go string
 func pmdbDictClient() {
 
 	//Start the client.
-	pmdb := GoPmdb.PmdbStartClient(raft_uuid_go, peer_uuid_go)
+	pmdb := PumiceDB.PmdbStartClient(raft_uuid_go, peer_uuid_go)
 
 	for {
 		//Read the input from console
 		words := bufio.NewReader(os.Stdin)
 		for {
 			fmt.Print("Enter request in the format ")
-			fmt.Print("app_uuid.text.write/read")
+			fmt.Print("app_uuid.text.write/read: ")
 			text, _ := words.ReadString('\n')
 
 			// convert CRLF to LF
@@ -48,33 +53,32 @@ func pmdbDictClient() {
 			}
 
 
-			fmt.Println("rncui", rncui)
-			fmt.Println("Operation", ops)
-			fmt.Println("text", req_dict.Dict_text)
+			fmt.Println("rncui: ", rncui)
+			fmt.Println("Operation: ", ops)
+			fmt.Println("Input string: ", req_dict.Dict_text)
 
 			if ops == "write" {
 				//write operation
-				GoPmdb.PmdbClientWrite(req_dict, pmdb, rncui)
+				PumiceDB.PmdbClientWrite(req_dict, pmdb, rncui)
 			} else {
 				/*
-				 * Get the value len, would be same as req_dict
-				 * Encode function will convert the struct to byte array
-				 * and will return total bytes taken by structure.
+				 * Get the actual size of the structure
 				 */
-				var length int64
-				GoPmdb.Encode(req_dict, &length)
+				length := PumiceDB.GetStructSize(req_dict)
 				fmt.Println("Length of the structure: ", length)
 
+				// Allocate C memory to store the value of the result.
+				value_buf := C.malloc(C.size_t(length))
+
 				//read operation
-				value_buf := GoPmdb.PmdbClientRead(req_dict, pmdb, rncui, int64(value_len))
+				PumiceDB.PmdbClientRead(req_dict, pmdb, rncui, value_buf, int64(length))
 
-				fmt.Println("Decode the result")
-				//Decode the output into Dict_app
-				result_dict := &DictAppLib.Dict_app{}
-				GoPmdb.Decode(unsafe.Pointer(value_buf), result_dict, length)
+				result_dict := (*DictAppLib.Dict_app)(value_buf)
 
-				fmt.Println("Word: ", result_dict.Dict_text)
+				fmt.Println("Result of the read request is:")
+				fmt.Println("Word: ", input_text)
 				fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
+				C.free(value_buf)
 			}
 		}
 	}

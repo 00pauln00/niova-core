@@ -1,4 +1,4 @@
-package GoPmdb
+package PumiceDB
 import (
 	"fmt"
 	"unsafe"
@@ -18,7 +18,7 @@ import (
 #include <raft/pumice_db_client.h>
 extern void applyCgo(const struct raft_net_client_user_id *, const void *,
                      size_t, void *, void *);
-extern void readCgo(const struct raft_net_client_user_id *, const void *,
+extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
                     size_t, void *, size_t, void *);
 */
 import "C"
@@ -28,7 +28,7 @@ import gopointer "github.com/mattn/go-pointer"
 type PmdbApplyCallback func(unsafe.Pointer, unsafe.Pointer, int64,
                           unsafe.Pointer)
 type PmdbReadCallback func(unsafe.Pointer, unsafe.Pointer, int64,
-                         unsafe.Pointer, int64)
+                         unsafe.Pointer, int64) int64
 
 //Callback function for pmdb apply and read
 type PmdbCallbacks struct {
@@ -40,36 +40,42 @@ type charsSlice []*C.char
 
 type cfSlice []*C.char
 
+/* Typecast Go string to C String */
 func GoToCString(gstring string) *C.char {
 	return C.CString(gstring)
 }
 
+/* Free the C memory */
 func FreeCMem(cstring *C.char) {
 	C.free(unsafe.Pointer(cstring))
 }
 
+/* Typecast Go Int to string */
 func GoIntToString(value int) string {
 	return strconv.Itoa(value)
 }
 
+/* Get length of the Go string */
 func GoStringLen(str string) int {
 	return len(str)
 }
 
+/* Type cast Go int64 to C size_t */
 func GoToCSize_t(glen int64) C.size_t {
 	return C.size_t(glen)
 }
 
+/* Typecast C size_t to Go int64 */
 func CToGoInt64(cvalue C.size_t) int64 {
 	return int64(cvalue)
 }
 
+/* Type cast C char * to Go string */
 func CToGoString(cstring *C.char) string {
 	return C.GoString(cstring)
 }
 
 func Encode(ed interface{}, data_len *int64) *C.char {
-	fmt.Println("Client: Write Key-Value")
 	//Byte array
 	buffer := bytes.Buffer{}
 
@@ -78,7 +84,6 @@ func Encode(ed interface{}, data_len *int64) *C.char {
 	if err != nil {
 		log.Fatal(err)
 	}
-	//ed.PmdbEncode(encode)
 
 	struct_data := buffer.Bytes()
 	*data_len = int64(len(struct_data))
@@ -87,6 +92,16 @@ func Encode(ed interface{}, data_len *int64) *C.char {
 	enc_data := (*C.char)(unsafe.Pointer(&struct_data[0]))
 
 	return enc_data
+}
+
+/*
+ * Get the actual size of the structure by converting it to byte array.
+ */
+func GetStructSize(ed interface{}) int64 {
+	var struct_size int64
+	Encode(ed, &struct_size)
+
+	return struct_size
 }
 
 func Decode(input unsafe.Pointer, output interface{},
@@ -99,7 +114,6 @@ func Decode(input unsafe.Pointer, output interface{},
 	dec := gob.NewDecoder(buffer)
 	for {
 		if err := dec.Decode(output); err == io.EOF {
-			fmt.Println("EOF reached, break from the loop")
 			break
 		} else if err != nil {
 			log.Fatal(err)
@@ -110,8 +124,6 @@ func Decode(input unsafe.Pointer, output interface{},
 //Write KV from client.
 func PmdbClientWrite(ed interface{}, pmdb unsafe.Pointer, rncui string) {
 
-	fmt.Println("Client: Write Key-Value")
-
 	var key_len int64
 	//Encode the structure into void pointer.
 	encoded_key := Encode(ed, &key_len)
@@ -120,20 +132,18 @@ func PmdbClientWrite(ed interface{}, pmdb unsafe.Pointer, rncui string) {
 }
 
 //Read the value of key on the client
-func PmdbClientRead(ed interface{}, pmdb unsafe.Pointer, rncui string,
-					  value_len int64) *C.char {
+func PmdbClientRead(ed interface{}, pmdb unsafe.Pointer, rncui string, value unsafe.Pointer,
+					value_len int64) {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
 	var key_len int64
+	//Encode the input buffer passed by client.
 	encoded_key := Encode(ed, &key_len)
 
-	var val_len int64
-	encoded_val := Encode(ed, &val_len)
+	value_ptr := (*C.char)(value)
 
-	PmdbClientReadKV(pmdb, rncui, encoded_key, key_len, encoded_val, val_len)
-
-	return encoded_val
+	PmdbClientReadKV(pmdb, rncui, encoded_key, key_len, value_ptr, value_len)
 }
 
 func GoPmdbDecoder(ed interface{}, buffer_ptr unsafe.Pointer, buf_size int64) {
@@ -143,12 +153,10 @@ func GoPmdbDecoder(ed interface{}, buffer_ptr unsafe.Pointer, buf_size int64) {
 	decode := gob.NewDecoder(byte_arr)
 	for {
 		if err := decode.Decode(ed); err == io.EOF {
-			fmt.Println("EOF reached, break from the loop")
 			break
 		} else if err != nil {
 			log.Fatal(err)
 		}
-		//ed.PmdbDecode(decode)
 	}
 }
 
@@ -176,7 +184,7 @@ func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 //export goRead
 func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
             request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-            user_data unsafe.Pointer) {
+            user_data unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbCallbacks)
@@ -186,7 +194,7 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer
 	reply_bufsz_go := CToGoInt64(reply_bufsz)
 
 	//Calling the golang Application's Read function.
-	gcb.ReadCb(unsafe.Pointer(app_id), request_buf, request_bufsz_go, reply_buf, reply_bufsz_go)
+	return gcb.ReadCb(unsafe.Pointer(app_id), request_buf, request_bufsz_go, reply_buf, reply_bufsz_go)
 }
 
 /**
@@ -257,7 +265,8 @@ func PmdbLookupKey(key string, key_len int64, value string,
 	C_key_len := GoToCSize_t(key_len)
 
 	//Get the column family handle
-	fmt.Println("cf_name :", cf)
+	fmt.Println("Lookup for key :", key)
+	fmt.Println("key length:", key_len)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 
 	ropts := C.rocksdb_readoptions_create()
@@ -268,13 +277,16 @@ func PmdbLookupKey(key string, key_len int64, value string,
 	C.rocksdb_readoptions_destroy(ropts)
 
 	go_value := CToGoString(C_value)
-	fmt.Println("Value is: ", go_value)
+	fmt.Println("Value returned by rocksdb_get_cf is: ", go_value)
+
+	go_value_len := CToGoInt64(C_value_len)
+	fmt.Println("Value len is", go_value_len)
 
 	result := go_value
 	if result != "" {
-		//Terminate the string with null character.
-		result = go_value + "\000"
+		result = go_value[0:go_value_len]
 	}
+	fmt.Println("Result of the lookup is: ", result)
 
 	//Free C memory
 	FreeCMem(err)
@@ -301,10 +313,10 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 
 	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
 
-	fmt.Println("cf_name :", cf)
 	cf_handle := C.PmdbCfHandleLookup(cf)
-	fmt.Println("cf_handle in write: ", cf_handle)
-	fmt.Println("pmdb_handle in write: ", pmdb_handle)
+	fmt.Println("key", key)
+	fmt.Println("value", value)
+
 	//Calling pmdb library function to write Key-Value.
 	C.PmdbWriteKV(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, unsafe.Pointer(cf_handle))
 
@@ -321,10 +333,11 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 	var value string
 	//Convert the golang string to C char*
 
+	fmt.Println("Read request for key: ", key)
 	go_value := PmdbLookupKey(key, key_len, value, gocolfamily)
 
 	//Get the result
-	fmt.Println("Result of the lookup is: ", go_value)
+	fmt.Println("Value is: ", go_value)
 	return go_value
 }
 

@@ -923,13 +923,13 @@ PmdbGetRocksDB(void)
 }
 
 const char *
-Pmdb_rncui_2_key(const struct raft_net_client_user_id *rncui)
+PmdbRncui2Key(const struct raft_net_client_user_id *rncui)
 {
 	return (const char *)&(rncui)->rncui_key.v0;
 }
 
 size_t
-Pmdb_entry_key_len(void)
+PmdbEntryKeyLen(void)
 {
 	return sizeof(struct raft_net_client_user_key_v0);
 }
