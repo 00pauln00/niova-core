@@ -85,25 +85,24 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 	key_len := len(req_dict.Dict_text)
 
-	result_dict := DictAppLib.Dict_app {}
-	result_dict.Dict_text = req_dict.Dict_text
-	result := PumiceDB.PmdbReadKV(app_id, req_dict.Dict_text, int64(key_len), request_buf,
-					request_bufsz, colmfamily)
+	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
+	result := PumiceDB.PmdbReadKV(app_id, req_dict.Dict_text, int64(key_len), colmfamily)
 
-	result_dict.Dict_wcount = 0
+	/* typecast the output to int */
+	word_frequency := 0
 	if result != "" {
 		word_count, err := strconv.Atoi(result)
 		if err != nil {
 			log.Fatal(err)
 		}
 		fmt.Println("Frequency of the word is: ", word_count)
-		result_dict.Dict_wcount = word_count
+		word_frequency = word_count
 	}
 
 	//Copy the result in reply_buf
 	reply_dict := (*DictAppLib.Dict_app)(reply_buf)
-	reply_dict.Dict_text = result_dict.Dict_text
-	reply_dict.Dict_wcount = result_dict.Dict_wcount
+	reply_dict.Dict_text = req_dict.Dict_text
+	reply_dict.Dict_wcount = word_frequency
 
 	fmt.Println("Key: ", reply_dict.Dict_text)
 	fmt.Println("Frequency: ", reply_dict.Dict_wcount)

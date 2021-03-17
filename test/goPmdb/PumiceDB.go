@@ -327,8 +327,7 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
-			  key_len int64, reply_buf unsafe.Pointer, reply_bufsz int64,
-			  gocolfamily string) string {
+			    key_len int64, gocolfamily string) string {
 
 	var value string
 	//Convert the golang string to C char*
