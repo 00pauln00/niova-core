@@ -858,7 +858,7 @@ pmdbtc_async_cb(void *arg, ssize_t rrc)
         return;
 
     struct pmdbtc_request *preq = (struct pmdbtc_request *)arg;
-
+    preq->preq_obj_stat.sequence_num++;
     (void)pmdbtc_request_complete(preq, (int)rrc);
 }
 
@@ -917,8 +917,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
 
         // pumicedb seqnum increases by 1 per write
-        // XXX: could this sequence num be inc'd by PmdbObjPut?
-        preq->preq_obj_stat.sequence_num++;
+        // XXX: could this sequence num be inc'd by PmdbObjPut? (May be not!)
         break;
     default:
         break;
@@ -928,6 +927,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
     if (!use_async_requests)
     {
+        preq->preq_obj_stat.sequence_num++;
         int status = pmdbtc_request_complete(preq, rc);
 
         if (!rc && status)
