@@ -3,7 +3,7 @@ noinst_PROGRAMS =
 TESTS =
 lib_LTLIBRARIES =
 libexec_PROGRAMS =
-
+pkgconfig_DATA = ./niova.pc
 # libexec installs are placed into the 'niova' parent directory
 my_libexecdir = $(libexecdir)/niova
 my_libexec_PROGRAMS =

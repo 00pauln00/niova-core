@@ -8,6 +8,10 @@ m4_define([niova_core_version],
 
 AC_INIT([niova_core],[niova_core_version],[],[],[pauln@niova.io])
 
+# Dependencies
+PKG_PROG_PKG_CONFIG
+PKG_INSTALLDIR
+
 AC_SUBST(MAJOR_VERSION, niova_core_major)
 AC_SUBST(MINOR_VERSION, niova_core_minor)
 AC_SUBST(VERSION_SUFFIX, niova_core_suffix)
@@ -178,5 +182,7 @@ AC_ARG_ENABLE(
     ],
     [AC_MSG_NOTICE([debug options disabled])]
 )
+
+AC_CONFIG_FILES([niova.pc])
 
 AC_OUTPUT

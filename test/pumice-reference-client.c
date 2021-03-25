@@ -887,7 +887,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     case pmdb_op_read:
         rc = use_async_requests ?
             PmdbObjGetXNB(pmdbtcPMDB, obj_id, NULL, 0,
-                          (char *)&preq->preq_rtdb,
+                          (void *)&preq->preq_rtdb,
                           (sizeof(struct raft_test_data_block) +
                            sizeof(struct raft_test_values)),
                           pmdbtc_async_cb, preq, &preq->preq_obj_stat) :

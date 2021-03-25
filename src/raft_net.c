@@ -2206,7 +2206,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 
     ws->rnws_nkv++;
 
-    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s val=%p", ws, ws->rnws_nkv, key,
+    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s val=%s", ws, ws->rnws_nkv, key,
             value);
 
     return 0;
@@ -2234,7 +2234,10 @@ raft_net_client_user_id_parse(const char *in,
 
     const char *uuid_str = NULL;
 
-    int rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
+    int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
+    NIOVA_ASSERT(!rc);
+
+	rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
     if (!rc)
     {
         const char *sep = RAFT_NET_CLIENT_USER_ID_V0_STR_SEP;
@@ -2269,10 +2272,10 @@ raft_net_client_user_id_parse(const char *in,
     }
 
     if (!rc)
-        SIMPLE_LOG_MSG(LL_DEBUG, RAFT_NET_CLIENT_USER_ID_FMT,
+        SIMPLE_LOG_MSG(LL_WARN, RAFT_NET_CLIENT_USER_ID_FMT,
                        RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
     else
-        LOG_MSG(LL_NOTIFY, "parse failed for `%s'", local_str);
+        LOG_MSG(LL_ERROR, "parse failed for `%s'", local_str);
 
     return rc;
 }
@@ -2294,11 +2297,17 @@ raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
                                  const char *value, const size_t value_size)
 {
     if (!rnsws || !key || !key_size)
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "Return error EINVAL");
         return -EINVAL;
+	}
 
     struct raft_net_wr_supp *ws = raft_net_write_supp_get(rnsws, handle);
     if (!ws)
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "Return error ENOMEM");
         return -ENOMEM;
+	}
 
     if (rnws_comp_cb) // Apply the callback if it was specified
         ws->rnws_comp_cb = rnws_comp_cb;
@@ -2341,15 +2350,21 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_server_recv_cb = server_recv_cb;
 }
 
+int entry_cnt;
 static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
-    FUNC_ENTRY(LL_NOTIFY);
+    FUNC_ENTRY(LL_WARN);
+	if (entry_cnt++ > 0)
+		return;
+
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);
+
+	FUNC_EXIT(LL_WARN);
 
     return;
 }

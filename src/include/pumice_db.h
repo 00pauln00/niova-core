@@ -31,8 +31,9 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  */
 typedef pumicedb_apply_ctx_int_t
 (*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
-                           const char *input_buf, size_t input_bufsz,
-                           void *pmdb_handle);
+                           const void *input_buf, size_t input_bufsz,
+                           void *pmdb_handle,
+                           void *user_data);
 
 /**
  * pmdb_read_sm_handler_t - performs a general read operation. The app-uuid and
@@ -42,7 +43,7 @@ typedef pumicedb_apply_ctx_int_t
 typedef pumicedb_read_ctx_ssize_t
 (*pmdb_read_sm_handler_t)(const struct raft_net_client_user_id *,
                           const char *request_buf, size_t request_bufsz,
-                          char *reply_buf, size_t reply_bufsz);
+                          char *reply_buf, size_t reply_bufsz, void *user_data);
 
 struct PmdbAPI
 {
@@ -86,7 +87,7 @@ PmdbWriteKV(const struct raft_net_client_user_id *, void *pmdb_handle,
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf, bool use_synchronous_writes);
+         int num_cf, bool use_synchronous_writes, void *user_data);
 
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec
@@ -100,5 +101,11 @@ PmdbGetRocksDB(void);
 
 rocksdb_column_family_handle_t *
 PmdbCfHandleLookup(const char *cf_name);
+
+const char *
+PmdbRncui2Key(const struct raft_net_client_user_id *rncui);
+
+size_t
+PmdbEntryKeyLen(void);
 
 #endif
