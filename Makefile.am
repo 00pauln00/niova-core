@@ -280,6 +280,12 @@ test_bitmap_test_LDADD = src/libniova.la
 test_bitmap_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/bitmap-test
 
+noinst_PROGRAMS += test/io-iov-test
+test_io_iov_test_SOURCES = test/io-iov-test.c
+test_io_iov_test_LDADD = src/libniova.la
+test_io_iov_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/io-iov-test
+
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 

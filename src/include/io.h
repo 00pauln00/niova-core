@@ -7,6 +7,7 @@
 #ifndef _NIOVA_IO_H_
 #define _NIOVA_IO_H_ 1
 
+#include <sys/uio.h>
 #include <sys/socket.h>
 
 #define IO_MAX_IOVS 256
@@ -51,5 +52,13 @@ io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
 
 int
 io_fd_nonblocking(int fd);
+
+ssize_t
+io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_consumed,
+                struct iovec *save_iov);
+
+int
+io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
+               const struct iovec *save_iov);
 
 #endif

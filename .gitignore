@@ -117,3 +117,4 @@ niova-coverage
 test/alloc-test
 test/bitmap-test
 test/niova-bitmap-test
+test/io-iov-test
