@@ -5,6 +5,8 @@ import (
         "flag"
         "pmdblib/goPmdb"
         "covidapp.com/covidapplib"
+	"strconv"
+	"log"
 	//"github.com/satori/go.uuid"
 )
 
@@ -28,21 +30,49 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	//length of key.
 	len_of_key := len(apply_covid.Location)
 
-	//Convert value to int type.
+	/*
+        Total_vaccinations and People_vaccinated are the int type value so
+	Convert value to string type.
+	*/
 	TotalVaccinations := PumiceDB.GoIntToString(int(apply_covid.Total_vaccinations))
         PeopleVaccinated := PumiceDB.GoIntToString(int(apply_covid.People_vaccinated))
-	covideData_values := apply_covid.Iso_code + TotalVaccinations + PeopleVaccinated
-        fmt.Println(covideData_values)
-        covideData_len := PumiceDB.GoStringLen(covideData_values)
 
-	//Generate app_uuid.
-        //app_id := uuid.NewV4().String()
+	//Merge the all values.
+	covideData_values := apply_covid.Iso_code+" "+TotalVaccinations+" "+PeopleVaccinated
+	fmt.Println("All values:", covideData_values)
+
+	//length of all values.
+        covideData_len := PumiceDB.GoStringLen(covideData_values)
+        fmt.Println("Length of all values: %d", covideData_len)
+
+	var preValueTV string
+        var preValuePV string
+
+        //Lookup the key first
+        prevResultTV := PumiceDB.PmdbLookupKey(apply_covid.Location, int64(len_of_key), preValueTV, colmfamily)
+        prevResultPV := PumiceDB.PmdbLookupKey(apply_covid.Location, int64(len_of_key), preValuePV, colmfamily)
+
+        if prevResultTV != "" {
+                prevResultTV_int, _ := strconv.Atoi(prevResultTV)
+		Total_vaccinations_int, _ := strconv.Atoi(TotalVaccinations)
+                Total_vaccinations_int = Total_vaccinations_int + prevResultTV_int
+		fmt.Println("Updated value of Total_vaccinations:", Total_vaccinations_int)
+        } else if prevResultPV != "" {
+                prevResultPV_int, _ := strconv.Atoi(prevResultPV)
+		People_vaccinated_int, _ := strconv.Atoi(PeopleVaccinated)
+		People_vaccinated_int = People_vaccinated_int + prevResultPV_int
+		fmt.Println("Updated People_vaccinated:", People_vaccinated_int)
+        } else {
+                fmt.Println("Nothing to update values.")
+        }
+
+	fmt.Println("Current Values:", covideData_values)
+	fmt.Println("Previous value of the TotalVaccinations:", prevResultTV)
+	fmt.Println("Previous value of the PeopleVaccinated:", prevResultPV)
 
         fmt.Println("Write the KeyValue by calling PmdbWriteKV")
-        //Write word and frequency as value to Pmdb
         PumiceDB.PmdbWriteKV(app_id, pmdb_handle, apply_covid.Location, int64(len_of_key), covideData_values,
                              int64(covideData_len), colmfamily)
-
 }
 
 func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
@@ -59,12 +89,28 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
         key_len := len(req_struct.Location)
         fmt.Println("Key length: %d", key_len)
 
-	//Generate app_uuid.
-        //app_id := uuid.NewV4().String()
+	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
+        read_kv_result := PumiceDB.PmdbReadKV(app_id, req_struct.Location, int64(key_len), colmfamily)
+        fmt.Println("Read KV:", read_kv_result)
 
-        /* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-        read_kv := PumiceDB.PmdbReadKV(app_id, req_struct.Location, int64(key_len), colmfamily)
-        fmt.Println("Read KV:", read_kv)
+	/* typecast the output to int */
+        //word_frequency := 0
+        if read_kv_result != "" {
+                value, err := strconv.Atoi(read_kv_result)
+                if err != nil {
+                        log.Fatal(err)
+                }
+                fmt.Println("Value of the Key is: ", value)
+                //word_frequency = value
+        }
+
+        //Copy the result in reply_buf
+        reply_covid := (*CovidAppLib.Covid_app)(reply_buf)
+        reply_covid.Location = req_struct.Location
+        //reply_dict.Dict_wcount = word_frequency
+
+        fmt.Println("Key: ", reply_covid.Location)
+        //fmt.Println("Frequency: ", reply_dict.Dict_wcount)
 
 	return request_bufsz
 }
