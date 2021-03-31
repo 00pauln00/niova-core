@@ -6,7 +6,6 @@ import (
         "io"
         "log"
         "os"
-	//"reflect"
 	"strconv"
         "gopmdblib/goPmdb"
 	"github.com/satori/go.uuid"
@@ -81,7 +80,6 @@ func Zomato_app_client(){
 				Votes: Votes_struct,
 				}
 
-	        fmt.Println("struct_data = ",struct_data.Restaurant_id,struct_data.Restaurant_name,struct_data.City, struct_data.Cuisines, struct_data.Ratings_text, struct_data.Votes)
 		length_of_struct := PumiceDB.GetStructSize(struct_data)
                 fmt.Println("Length of the structure: ", length_of_struct)
 
