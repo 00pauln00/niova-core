@@ -3834,6 +3834,9 @@ raft_server_net_client_request_init(
     rncr->rncr_entry_term = ri->ri_log_hdr.rlh_term;
     rncr->rncr_current_term = ri->ri_log_hdr.rlh_term;
 
+    //memset the reply_buf to make sure garbage values are not used from it.
+    memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
+
     rncr->rncr_reply = (struct raft_client_rpc_msg *)reply_buf;
 
     CONST_OVERRIDE(size_t, rncr->rncr_reply_data_max_size,
@@ -4264,9 +4267,6 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     const size_t sink_buf_sz = ri->ri_max_entry_size;
 
     char *reply_buf = raft_instance_buffer_get(ri, reply_buf_sz);
-
-    //memset the reply_buf to zero.
-    memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
 
     char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
     NIOVA_ASSERT(reply_buf && sink_buf);
