@@ -72,6 +72,9 @@
 #define NUM_HEX_CHARS(type) \
     sizeof(type) * 2
 
+#define MEMBER_SIZE(type, member)               \
+    sizeof(((type *)0)->member)
+
 #define RAFT_PEER_ANY ID_ANY_8bit
 
 typedef uint8_t  raft_peer_t;
