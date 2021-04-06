@@ -5,6 +5,7 @@ import (
         "fmt"
         "os"
         "io"
+	"bufio"
         "log"
 	"strconv"
         "flag"
@@ -17,7 +18,6 @@ import (
 #cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
 #include <stdlib.h>
 */
-
 import "C"
 
 var raft_uuid_go string
@@ -27,10 +27,6 @@ var filename string
 
 /*
  Start the pmdb client.
- Read the request from console and process it.
- User will pass the request in following format.
- app_uuid.Text.write => For write opertion.
- app_uuid.Word.write  => For read operation.
 */
 func covidDataClient() {
 
@@ -43,8 +39,24 @@ func covidDataClient() {
                 log.Fatalln("Error to open the csv file", err)
         }
 
+	// Skip first row (line)
+	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
+	if err != nil {
+	  log.Fatalln("error")
+	}
+	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
+	if err != nil {
+	   log.Fatalln("error")
+	}
+
         // Parse the file
         r := csv.NewReader(csvfile)
+
+	//Generate app_uuid.
+        app_uuid := uuid.NewV4().String()
+
+        //Create rncui string.
+        rncui := app_uuid + ":0:0:0:0"
 
         for {
                 // Read each record from csv
@@ -76,13 +88,8 @@ func covidDataClient() {
             length_of_struct := PumiceDB.GetStructSize(covid)
             fmt.Println("Length of the structure: ", length_of_struct)
 
-	    //Generate app_uuid.
-            app_uuid := uuid.NewV4().String()
-
-            //Create rncui string.
-            rncui := app_uuid + ":0:0:0:0"
-
             if ops == "write"{
+                fmt.Println("Write opeartion-Structure Data:", covid)
                 //Perform write operation.
 		PumiceDB.PmdbClientWrite(covid, pmdb, rncui)
             } else {
@@ -96,15 +103,22 @@ func covidDataClient() {
                    // Allocate C memory to store the value of the result.
                    value_buf := C.malloc(C.size_t(length_of_struct))
 
-                   //read operation
+		   //Print all values which passed to PmdbClientRead()
+		   fmt.Println("Covid Structure:", covid)
+		   fmt.Println("ClientStart object:", pmdb)
+		   fmt.Println("RNCUI:", rncui)
+                   fmt.Println("Value buffer size:", value_buf)
+		   fmt.Println("Length of the structure: ", int64(length_of_struct))
+
+		   //read operation
                    PumiceDB.PmdbClientRead(covid, pmdb, rncui, value_buf, int64(length_of_struct))
 
                    struct_result := (*CovidAppLib.Covid_app)(value_buf)
+		   fmt.Println("Struct Result:", struct_result)
 
                    fmt.Println("Result of the read request is:")
                    fmt.Println("Location: ", struct_result.Location)
-                   //fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
-                   //C.free(value_buf)
+                   C.free(value_buf)
             }
         }
 }

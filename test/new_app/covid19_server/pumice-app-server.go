@@ -23,6 +23,8 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 
         /* Decode the input buffer into structure format */
         apply_covid := &CovidAppLib.Covid_app{}
+	fmt.Println("Structure format:", apply_covid)
+
         PumiceDB.Decode(input_buf, apply_covid, input_buf_sz)
 
         fmt.Println("Key passed by client: %s", apply_covid.Location)
@@ -39,11 +41,11 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 
 	//Merge the all values.
 	covideData_values := apply_covid.Iso_code+" "+TotalVaccinations+" "+PeopleVaccinated
-	fmt.Println("All values:", covideData_values)
+	//fmt.Println("All values:", covideData_values)
 
 	//length of all values.
         covideData_len := PumiceDB.GoStringLen(covideData_values)
-        fmt.Println("Length of all values: %d", covideData_len)
+        //fmt.Println("Length of all values: %d", covideData_len)
 
 	var preValueTV string
         var preValuePV string
@@ -56,12 +58,12 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
                 prevResultTV_int, _ := strconv.Atoi(prevResultTV)
 		Total_vaccinations_int, _ := strconv.Atoi(TotalVaccinations)
                 Total_vaccinations_int = Total_vaccinations_int + prevResultTV_int
-		fmt.Println("Updated value of Total_vaccinations:", Total_vaccinations_int)
+		//fmt.Println("Updated value of Total_vaccinations:", Total_vaccinations_int)
         } else if prevResultPV != "" {
                 prevResultPV_int, _ := strconv.Atoi(prevResultPV)
 		People_vaccinated_int, _ := strconv.Atoi(PeopleVaccinated)
 		People_vaccinated_int = People_vaccinated_int + prevResultPV_int
-		fmt.Println("Updated People_vaccinated:", People_vaccinated_int)
+		//fmt.Println("Updated People_vaccinated:", People_vaccinated_int)
         } else {
                 fmt.Println("Nothing to update values.")
         }
