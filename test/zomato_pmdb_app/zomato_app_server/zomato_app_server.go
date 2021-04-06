@@ -38,7 +38,7 @@ func zomatoData_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 	if prev_data_value != ""{
 
 		//Split the prev_data_value.
-		res_data := strings.Split(prev_data_value, ",")
+		res_data := strings.Split(prev_data_value, ".")
 
 		//Take last parameter of res_data (votes) and convert it to int64.
 		prev_votes,_ := strconv.ParseInt(res_data[len(res_data)-1], 10, 64)
@@ -51,7 +51,7 @@ func zomatoData_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 	//Convert votes from int to string.
         str_votes := PumiceDB.GoIntToString(int(data.Votes))
 
-	zomato_app_value := data.Restaurant_name+","+data.City+","+data.Cuisines+","+data.Ratings_text+","+str_votes
+	zomato_app_value := data.Restaurant_name+"."+data.City+"."+data.Cuisines+"."+data.Ratings_text+"."+str_votes
         app_value_len := len(zomato_app_value)
 
 	//Write key,values.
@@ -61,8 +61,39 @@ func zomatoData_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 
 func zomatoData_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
             data_request_bufsz int64, data_reply_buf unsafe.Pointer, data_reply_bufsz int64) int64{
-	fmt.Println("In read")
-	return 0
+
+	fmt.Println("Read request received from client")
+
+	//Decode the request structure sent by client.
+	read_req_data := &zomatoapplib.Zomato_App{}
+
+	fmt.Println("read_req_data: ",read_req_data)
+	PumiceDB.Decode(data_request_buf, read_req_data, data_request_bufsz)
+
+	fmt.Println("Key passed by client: ", read_req_data.Restaurant_id)
+
+	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
+	zapp_key := PumiceDB.GoIntToString(int(read_req_data.Restaurant_id))
+	zapp_key_len := len(zapp_key)
+
+	result := PumiceDB.PmdbReadKV(app_id, zapp_key, int64(zapp_key_len), colmfamily)
+
+	//Split the result to get respective values.
+	result_splt :=  strings.Split(result, ".")
+
+	//Copy the result in data_reply_buf
+	reply_data := (*zomatoapplib.Zomato_App)(data_reply_buf)
+	reply_data.Restaurant_id = read_req_data.Restaurant_id
+	reply_data.Restaurant_name = result_splt[0]
+	reply_data.City = result_splt[1]
+	reply_data.Cuisines = result_splt[2]
+	reply_data.Ratings_text = result_splt[3]
+	reply_data.Votes,_ = strconv.ParseInt(result_splt[4], 10, 64)
+
+	fmt.Println("Zomato_data_app_key: ", reply_data.Restaurant_id)
+	fmt.Println("Value for the respective key: "+reply_data.Restaurant_name+","+reply_data.City+","+reply_data.Cuisines+","+reply_data.Ratings_text+","+result_splt[4])
+
+	return data_request_bufsz
 }
 
 //Get cmdline parameters and start server.
