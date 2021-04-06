@@ -7,13 +7,12 @@ import (
         "covidapp.com/covidapplib"
 	"strconv"
 	"log"
-	//"github.com/satori/go.uuid"
 )
 
 var seqno = 0
 var raft_uuid_go string
 var peer_uuid_go string
-// Use the default column family 
+// Use the default column family
 var colmfamily = "PMDBTS_CF"
 
 func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
@@ -32,20 +31,14 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	//length of key.
 	len_of_key := len(apply_covid.Location)
 
-	/*
-        Total_vaccinations and People_vaccinated are the int type value so
-	Convert value to string type.
-	*/
 	TotalVaccinations := PumiceDB.GoIntToString(int(apply_covid.Total_vaccinations))
         PeopleVaccinated := PumiceDB.GoIntToString(int(apply_covid.People_vaccinated))
 
 	//Merge the all values.
 	covideData_values := apply_covid.Iso_code+" "+TotalVaccinations+" "+PeopleVaccinated
-	//fmt.Println("All values:", covideData_values)
 
 	//length of all values.
         covideData_len := PumiceDB.GoStringLen(covideData_values)
-        //fmt.Println("Length of all values: %d", covideData_len)
 
 	var preValueTV string
         var preValuePV string
@@ -58,12 +51,10 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
                 prevResultTV_int, _ := strconv.Atoi(prevResultTV)
 		Total_vaccinations_int, _ := strconv.Atoi(TotalVaccinations)
                 Total_vaccinations_int = Total_vaccinations_int + prevResultTV_int
-		//fmt.Println("Updated value of Total_vaccinations:", Total_vaccinations_int)
         } else if prevResultPV != "" {
                 prevResultPV_int, _ := strconv.Atoi(prevResultPV)
 		People_vaccinated_int, _ := strconv.Atoi(PeopleVaccinated)
 		People_vaccinated_int = People_vaccinated_int + prevResultPV_int
-		//fmt.Println("Updated People_vaccinated:", People_vaccinated_int)
         } else {
                 fmt.Println("Nothing to update values.")
         }
@@ -96,23 +87,19 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
         fmt.Println("Read KV:", read_kv_result)
 
 	/* typecast the output to int */
-        //word_frequency := 0
         if read_kv_result != "" {
                 value, err := strconv.Atoi(read_kv_result)
                 if err != nil {
                         log.Fatal(err)
                 }
                 fmt.Println("Value of the Key is: ", value)
-                //word_frequency = value
         }
 
         //Copy the result in reply_buf
         reply_covid := (*CovidAppLib.Covid_app)(reply_buf)
         reply_covid.Location = req_struct.Location
-        //reply_dict.Dict_wcount = word_frequency
 
         fmt.Println("Key: ", reply_covid.Location)
-        //fmt.Println("Frequency: ", reply_dict.Dict_wcount)
 
 	return request_bufsz
 }
