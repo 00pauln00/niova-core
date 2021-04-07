@@ -16,7 +16,7 @@
 #include "log.h"
 
 ssize_t
-io_read(int fd, char *buf, size_t size)
+niova_io_read(int fd, char *buf, size_t size)
 {
     if (fd < 0)
         return -EBADF;
@@ -42,7 +42,7 @@ io_read(int fd, char *buf, size_t size)
 }
 
 ssize_t
-io_pwrite(int fd, const char *buf, size_t size, off_t offset)
+niova_io_pwrite(int fd, const char *buf, size_t size, off_t offset)
 {
     if (fd < 0)
         return -EBADF;
@@ -66,7 +66,7 @@ io_pwrite(int fd, const char *buf, size_t size, off_t offset)
 }
 
 ssize_t
-io_pread(int fd, char *buf, size_t size, off_t offset)
+niova_io_pread(int fd, char *buf, size_t size, off_t offset)
 {
     if (fd < 0)
         return -EBADF;
@@ -93,7 +93,7 @@ io_pread(int fd, char *buf, size_t size, off_t offset)
 }
 
 int
-io_ftruncate(int fd, off_t length)
+niova_io_ftruncate(int fd, off_t length)
 {
     int rc = ftruncate(fd, length);
 
@@ -101,7 +101,7 @@ io_ftruncate(int fd, off_t length)
 }
 
 int
-io_fsync(int fd)
+niova_io_fsync(int fd)
 {
     int rc = fsync(fd);
 
@@ -109,7 +109,7 @@ io_fsync(int fd)
 }
 
 /**
- * io_fd_drain - helper function for non-blocking FDs which empties the
+ * niova_io_fd_drain - helper function for non-blocking FDs which empties the
  *    contents from the file descriptor.  This can be used in epoll callbacks
  *    to empty pending data from the fd.  It's expected that this function
  *    returns 0, signifying that all data have been read and the fd has been
@@ -119,7 +119,7 @@ io_fsync(int fd)
  *    descriptor in an aggregated count.
  */
 ssize_t
-io_fd_drain(int fd, size_t *ret_data)
+niova_io_fd_drain(int fd, size_t *ret_data)
 {
     ssize_t rrc, val, total;
 
@@ -140,7 +140,7 @@ io_fd_drain(int fd, size_t *ret_data)
 }
 
 /**
- * io_iovs_map_consumed - given a set of source iov's, map them to the set of
+ * niova_io_iovs_map_consumed - given a set of source iov's, map them to the set of
  *   destination iov's based on the number of bytes which have already been
  *   processed.
  * @src:  array of input iov's
@@ -153,8 +153,8 @@ io_fd_drain(int fd, size_t *ret_data)
  *    iov's which map unconsumed data.
  */
 ssize_t
-io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
-                     const size_t num_iovs, size_t bytes_already_consumed)
+niova_io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
+                           const size_t num_iovs, size_t bytes_already_consumed)
 {
     if (!src || !dest || !num_iovs)
         return -EINVAL;
@@ -179,8 +179,8 @@ io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
 }
 
 ssize_t
-io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
-                const size_t num_iovs)
+niova_io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
+                      const size_t num_iovs)
 {
     if (!src || !src_size || !dest_iovs || !num_iovs)
         return -EINVAL;
@@ -198,7 +198,7 @@ io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
 }
 
 int
-io_fd_nonblocking(int fd)
+niova_io_fd_nonblocking(int fd)
 {
     if (fd < 0)
         return -EINVAL;
@@ -211,7 +211,7 @@ io_fd_nonblocking(int fd)
 }
 
 /**
- * io_iovs_advance - an iov continuation method which can be non-destructive
+ * niova_io_iovs_advance - an iov continuation method which can be non-destructive
  *    while only requiring a single iov for restoring state.  The function will
  *    fast-forward to the current iov, based on the 'bytes_already_consumed'
  *    parameter, and return the index of the iov to be used in the next io
@@ -226,8 +226,8 @@ io_fd_nonblocking(int fd)
  *    original state.
  */
 ssize_t
-io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_consumed,
-                struct iovec *save_iov)
+niova_io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_consumed,
+                      struct iovec *save_iov)
 {
     if (!iovs || !niovs || bytes_already_consumed < 0)
         return -EINVAL;
@@ -269,7 +269,7 @@ io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_consumed,
 }
 
 /**
- * io_iov_restore - used in conjunction with io_iovs_advance() to replace a
+ * niova_io_iov_restore - used in conjunction with niova_io_iovs_advance() to replace a
  *    modified iov member with its original contents.
  * @iovs:  iov array
  * @niovs:  size of the array
@@ -277,8 +277,8 @@ io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_consumed,
  * @save_iov:  iov contents to be restored
  */
 int
-io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
-               const struct iovec *save_iov)
+niova_io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
+                     const struct iovec *save_iov)
 {
     if (!iovs || !niovs || save_idx >= niovs || !save_iov)
         return -EINVAL;

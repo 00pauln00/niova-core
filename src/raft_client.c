@@ -1193,7 +1193,7 @@ raft_client_request_handle_init(
 
     int rc = raft_client_rpc_msg_init(rci, &rcrh->rcrh_rpc_request,
                                       RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
-                                      io_iovs_total_size_get(src_iovs,
+                                      niova_io_iovs_total_size_get(src_iovs,
                                                              nsrc_iovs),
                                       leader, tag);
     if (rc)
@@ -1406,10 +1406,10 @@ raft_client_request_submit(raft_client_instance_t client_instance,
 
     else if (!raft_client_rpc_msg_size_is_valid(
                  RCI_2_RI(rci)->ri_store_type,
-                 io_iovs_total_size_get(src_iovs, nsrc_iovs)) ||
+                 niova_io_iovs_total_size_get(src_iovs, nsrc_iovs)) ||
              !raft_client_rpc_msg_size_is_valid(
                  RCI_2_RI(rci)->ri_store_type,
-                 io_iovs_total_size_get(dest_iovs, ndest_iovs)))
+                 niova_io_iovs_total_size_get(dest_iovs, ndest_iovs)))
         return -E2BIG;
 
     // Stash the leader here so that subsequent checks are not needed
@@ -1566,8 +1566,9 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         // XXX Need a fault injection here!
         int reply_size_error =
             (rcrh->rcrh_reply_size >
-             io_iovs_total_size_get(&rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
-                                    rcrh->rcrh_recv_niovs)) ? -E2BIG : 0;
+             niova_io_iovs_total_size_get(
+                 &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
+                 rcrh->rcrh_recv_niovs)) ? -E2BIG : 0;
         if (from)
         {
             rcrh->rcrh_sin_reply_addr = from->sin_addr;
@@ -1583,12 +1584,12 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         {
             struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
             ssize_t rrc =
-                io_copy_to_iovs(rcrm->rcrm_data, rcrm->rcrm_data_size,
+                niova_io_copy_to_iovs(rcrm->rcrm_data, rcrm->rcrm_data_size,
                                 recv_iovs, rcrh->rcrh_recv_niovs);
             NIOVA_ASSERT(rrc ==
                          MIN(rcrm->rcrm_data_size,
-                             io_iovs_total_size_get(recv_iovs,
-                                                    rcrh->rcrh_recv_niovs)));
+                             niova_io_iovs_total_size_get(
+                                 recv_iovs, rcrh->rcrh_recv_niovs)));
 
             rcrh->rcrh_reply_used_size = (size_t)rrc;
         }

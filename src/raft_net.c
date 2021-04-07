@@ -1700,7 +1700,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
                   struct iovec *iov, size_t niovs,
                   const enum raft_udp_listen_sockets sock_src)
 {
-    size_t msg_size = io_iovs_total_size_get(iov, niovs);
+    size_t msg_size = niova_io_iovs_total_size_get(iov, niovs);
 
     SIMPLE_LOG_MSG(LL_DEBUG, "msg_size: %ld udp max: %ld tcp max: %ld",
                    msg_size, udp_get_max_size(), tcp_get_max_size());
@@ -1785,7 +1785,7 @@ raft_net_send_client_msgv(struct raft_instance *ri,
         return -EINVAL;
 
     else if (niovs > 255 ||
-             io_iovs_total_size_get(iov, niovs) != rcrm->rcrm_data_size)
+             niova_io_iovs_total_size_get(iov, niovs) != rcrm->rcrm_data_size)
         return -EMSGSIZE;
 
     struct iovec my_iovs[niovs + 1];
@@ -2018,11 +2018,11 @@ raft_net_timerfd_cb(const struct epoll_handle *eph, uint32_t events)
 {
     struct raft_instance *ri = eph->eph_arg;
 
-    ssize_t rc = io_fd_drain(ri->ri_timer_fd, NULL);
+    ssize_t rc = niova_io_fd_drain(ri->ri_timer_fd, NULL);
     if (rc)
     {
         // Something went awry with the timerfd read.
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "io_fd_drain(): %zd", rc);
+        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "niova_io_fd_drain(): %zd", rc);
         return;
     }
 
