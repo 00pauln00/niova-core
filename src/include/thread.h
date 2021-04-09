@@ -34,6 +34,7 @@ struct thread_ctl
              tc_watchdog             : 1,
              tc_is_utility_thread    : 1,
              tc_is_watchdog_thread   : 1,
+             tc_exited               : 1,
              tc_has_reached_ctl_loop : 1;
     int                    tc_ret;    // thread return code
     pthread_t              tc_thread_id;
@@ -143,7 +144,7 @@ thread_ctl_set_self(struct thread_ctl *tc)
 static inline bool
 thread_ctl_thread_has_reached_ctl_loop(const struct thread_ctl *tc)
 {
-    return tc->tc_has_reached_ctl_loop ? true : false;
+    return (tc->tc_has_reached_ctl_loop || tc->tc_exited) ? true : false;
 }
 
 thread_exec_ctx_bool_t
@@ -173,4 +174,9 @@ thread_join_nb(struct thread_ctl *tc);
 int
 thread_issue_sig_alarm_to_thread(pthread_t tid);
 
+static inline bool
+thread_has_exited(const struct thread_ctl *tc)
+{
+    return (tc && tc->tc_exited) ? true : false;
+}
 #endif

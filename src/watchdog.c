@@ -114,6 +114,7 @@ watchdog_remove_thread(struct watchdog_handle *wdh)
         if (my_wdh == wdh)
         {
             CIRCLEQ_REMOVE(&wdi->wdi_thread_list, wdh, wdh_lentry);
+            CIRCLEQ_ENTRY_INIT(&wdh->wdh_lentry);
             removed = true;
             break;
         }
