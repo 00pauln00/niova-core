@@ -2234,10 +2234,7 @@ raft_net_client_user_id_parse(const char *in,
 
     const char *uuid_str = NULL;
 
-    int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
-    NIOVA_ASSERT(!rc);
-
-	rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
+    int rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
     if (!rc)
     {
         const char *sep = RAFT_NET_CLIENT_USER_ID_V0_STR_SEP;

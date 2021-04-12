@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"flag"
-	"gopmdblib/goPmdb"
+	"gopmdblib/goPmdbServer"
 	"dictapplib/dict_libs"
 	"log"
 )
@@ -34,7 +34,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	/* Decode the input buffer into dictionary structure format */
 	//apply_dict := DictAppLib.DictAppDecodebuf(input_buf, input_buf_sz)
 	apply_dict := &DictAppLib.Dict_app{}
-	PumiceDB.Decode(input_buf, apply_dict, input_buf_sz)
+	PumiceDBServer.Decode(input_buf, apply_dict, input_buf_sz)
 
 	fmt.Println("Key passed by client: %s", apply_dict.Dict_text)
 
@@ -50,7 +50,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 		var prev_value string
 
 		//Lookup the key first
-		prev_result := PumiceDB.PmdbLookupKey(word, int64(go_key_len), prev_value, colmfamily)
+		prev_result := PumiceDBServer.PmdbLookupKey(word, int64(go_key_len), prev_value, colmfamily)
 		fmt.Println("Previous value of the key: ", prev_result)
 
 		if prev_result != "" {
@@ -60,12 +60,12 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 		}
 
 		fmt.Println("Now the Frequency of the word is: ", count)
-		value := PumiceDB.GoIntToString(count)
-		value_len := PumiceDB.GoStringLen(value)
+		value := PumiceDBServer.GoIntToString(count)
+		value_len := PumiceDBServer.GoStringLen(value)
 
 		fmt.Println("Write the KeyValue by calling PmdbWriteKV")
 		//Write word and frequency as value to Pmdb
-		PumiceDB.PmdbWriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
+		PumiceDBServer.PmdbWriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
 				 int64(value_len), colmfamily)
 
 		//Delete the word entry once written in the pumicedb
@@ -79,14 +79,14 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 	//Decode the request structure sent by client.
 	req_dict := &DictAppLib.Dict_app{}
-	PumiceDB.Decode(request_buf, req_dict, request_bufsz)
+	PumiceDBServer.Decode(request_buf, req_dict, request_bufsz)
 
 	fmt.Println("Key passed by client: %s", req_dict.Dict_text)
 
 	key_len := len(req_dict.Dict_text)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-	result := PumiceDB.PmdbReadKV(app_id, req_dict.Dict_text, int64(key_len), colmfamily)
+	result := PumiceDBServer.PmdbReadKV(app_id, req_dict.Dict_text, int64(key_len), colmfamily)
 
 	/* typecast the output to int */
 	word_frequency := 0
@@ -104,10 +104,12 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	reply_dict.Dict_text = req_dict.Dict_text
 	reply_dict.Dict_wcount = word_frequency
 
+	reply_length := PumiceDBServer.GetStructSize(reply_dict)
+
 	fmt.Println("Key: ", reply_dict.Dict_text)
 	fmt.Println("Frequency: ", reply_dict.Dict_wcount)
 
-	return request_bufsz
+	return reply_length
 }
 
 func pmdb_dict_app_getopts() {
@@ -128,10 +130,10 @@ func main() {
 	word_map = make(map[string]int)
 
 	//Initialize the dictionary application callback functions
-	cb := &PumiceDB.PmdbCallbacks{
+	cb := &PumiceDBServer.PmdbCallbacks{
 		ApplyCb: dict_apply,
 		ReadCb:  dict_read,
 	}
 
-	PumiceDB.PmdbStartServer(raft_uuid_go, peer_uuid_go, colmfamily, cb)
+	PumiceDBServer.PmdbStartServer(raft_uuid_go, peer_uuid_go, colmfamily, cb)
 }

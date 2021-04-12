@@ -5,12 +5,11 @@ import (
 	"bufio"
 	"strings"
 	"flag"
-	"gopmdblib/goPmdb"
+	"gopmdblib/goPmdbClient"
 	"dictapplib/dict_libs"
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
 #include <stdlib.h>
 */
 import "C"
@@ -28,7 +27,7 @@ var peer_uuid_go string
 func pmdbDictClient() {
 
 	//Start the client.
-	pmdb := PumiceDB.PmdbStartClient(raft_uuid_go, peer_uuid_go)
+	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
 
 	for {
 		//Read the input from console
@@ -59,25 +58,29 @@ func pmdbDictClient() {
 
 			if ops == "write" {
 				//write operation
-				PumiceDB.PmdbClientWrite(req_dict, pmdb, rncui)
+				PumiceDBClient.PmdbClientWrite(req_dict, pmdb, rncui)
 			} else {
 				/*
 				 * Get the actual size of the structure
 				 */
-				length := PumiceDB.GetStructSize(req_dict)
+				length := PumiceDBClient.GetStructSize(req_dict) + 10
 				fmt.Println("Length of the structure: ", length)
 
 				// Allocate C memory to store the value of the result.
 				value_buf := C.malloc(C.size_t(length))
 
 				//read operation
-				PumiceDB.PmdbClientRead(req_dict, pmdb, rncui, value_buf, int64(length))
+				rc := PumiceDBClient.PmdbClientRead(req_dict, pmdb, rncui, value_buf, int64(length))
 
-				result_dict := (*DictAppLib.Dict_app)(value_buf)
+				if rc < 0 {
+					fmt.Println("Read request failed, error: ", rc)
+				} else {
+					result_dict := (*DictAppLib.Dict_app)(value_buf)
 
-				fmt.Println("Result of the read request is:")
-				fmt.Println("Word: ", input_text)
-				fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
+					fmt.Println("Result of the read request is:")
+					fmt.Println("Word: ", input_text)
+					fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
+				}
 				C.free(value_buf)
 			}
 		}
