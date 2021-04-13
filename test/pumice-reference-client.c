@@ -899,7 +899,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
             PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
                         (char *)&preq->preq_rtdb,
                         (sizeof(struct raft_test_data_block) +
-                         sizeof(struct raft_test_values)),
+                         sizeof(struct raft_test_values)), NULL,
                         &preq->preq_obj_stat);
         break;
 

@@ -1384,6 +1384,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct raft_net_client_user_id *rncui,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
+                           size_t *reply_size,
                            const struct timespec timeout,
                            const enum raft_client_request_type rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
@@ -1450,7 +1451,13 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     /* Place the 'sa' onto the sendq and mark that initialization is complete.
      * raft_client_request_submit_enqueue() will block per the user's request.
      */
-    return raft_client_request_submit_enqueue(rci, sa, &now);
+    rc = raft_client_request_submit_enqueue(rci, sa, &now);
+
+    // Get the actual reply size.
+    if (reply_size)
+        *reply_size = rcrh->rcrh_reply_size;
+
+    return rc;
 }
 
 static raft_net_cb_ctx_t
