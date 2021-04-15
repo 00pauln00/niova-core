@@ -6,6 +6,7 @@ import (
 	"strings"
 	"flag"
 	"gopmdblib/goPmdbClient"
+	"gopmdblib/goPmdbCommon"
 	"dictapplib/dict_libs"
 )
 
@@ -63,7 +64,7 @@ func pmdbDictClient() {
 				/*
 				 * Get the actual size of the structure
 				 */
-				length := PumiceDBClient.GetStructSize(req_dict) + 10
+				length := PumiceDBCommon.GetStructSize(req_dict) + 10
 				fmt.Println("Length of the structure: ", length)
 
 				// Allocate C memory to store the value of the result.

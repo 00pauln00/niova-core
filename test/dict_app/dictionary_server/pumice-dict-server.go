@@ -6,6 +6,7 @@ import (
 	"strings"
 	"flag"
 	"gopmdblib/goPmdbServer"
+	"gopmdblib/goPmdbCommon"
 	"dictapplib/dict_libs"
 	"log"
 )
@@ -34,7 +35,7 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	/* Decode the input buffer into dictionary structure format */
 	//apply_dict := DictAppLib.DictAppDecodebuf(input_buf, input_buf_sz)
 	apply_dict := &DictAppLib.Dict_app{}
-	PumiceDBServer.Decode(input_buf, apply_dict, input_buf_sz)
+	PumiceDBCommon.Decode(input_buf, apply_dict, input_buf_sz)
 
 	fmt.Println("Key passed by client: %s", apply_dict.Dict_text)
 
@@ -79,7 +80,7 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 	//Decode the request structure sent by client.
 	req_dict := &DictAppLib.Dict_app{}
-	PumiceDBServer.Decode(request_buf, req_dict, request_bufsz)
+	PumiceDBCommon.Decode(request_buf, req_dict, request_bufsz)
 
 	fmt.Println("Key passed by client: %s", req_dict.Dict_text)
 
@@ -104,7 +105,7 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	reply_dict.Dict_text = req_dict.Dict_text
 	reply_dict.Dict_wcount = word_frequency
 
-	reply_length := PumiceDBServer.GetStructSize(reply_dict)
+	reply_length := PumiceDBCommon.GetStructSize(reply_dict)
 
 	fmt.Println("Key: ", reply_dict.Dict_text)
 	fmt.Println("Frequency: ", reply_dict.Dict_wcount)
