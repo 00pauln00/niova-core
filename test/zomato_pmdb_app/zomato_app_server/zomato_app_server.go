@@ -38,7 +38,7 @@ func zomatoData_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 		if prev_data_value != ""{
 
 			//Split the prev_data_value.
-			res_data := strings.Split(prev_data_value, ".")
+			res_data := strings.Split(prev_data_value, "_")
 
 			//Take last parameter of res_data (votes) and convert it to int64.
 			prev_votes,_ := strconv.ParseInt(res_data[len(res_data)-1], 10, 64)
@@ -52,7 +52,7 @@ func zomatoData_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 		str_votes := PumiceDBServer.GoIntToString(int(data.Votes))
 
 		//Prepare string for zomato_app_value.
-		zomato_app_value := data.Restaurant_name+"."+data.City+"."+data.Cuisines+"."+data.Ratings_text+"."+str_votes
+		zomato_app_value := data.Restaurant_name+"_"+data.City+"_"+data.Cuisines+"_"+data.Ratings_text+"_"+str_votes
 		app_value_len := len(zomato_app_value)
 
 		//Write key,values.
@@ -79,7 +79,7 @@ func zomatoData_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 		result := PumiceDBServer.PmdbReadKV(app_id, zapp_key, int64(zapp_key_len), colmfamily)
 
 		//Split the result to get respective values.
-		result_splt :=  strings.Split(result, ".")
+		result_splt :=  strings.Split(result, "_")
 
 		votes_int64,_ := strconv.ParseInt(result_splt[4], 10, 64)
 		//Copy the result in data_reply_buf
@@ -97,7 +97,7 @@ func zomatoData_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 		result_encoded := PumiceDBServer.Encode(reply_data, &length)
 
 		C.memcpy(data_reply_buf, unsafe.Pointer(result_encoded), C.size_t(length))
-
+		fmt.Println("length of buffer is:",length)
 		return length
 }
 

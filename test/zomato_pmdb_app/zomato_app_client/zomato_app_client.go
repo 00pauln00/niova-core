@@ -135,6 +135,7 @@ func Zomato_app_read(pmdb unsafe.Pointer, key string, read_rncui string){
 				fmt.Println("Reply length returned is: ", reply_len)
 			} else {
 				fmt.Println("Read the return data now")
+				fmt.Println("Length of reply buffer:",reply_len)
 				read_data := &zomatoapplib.Zomato_App{}
 				PumiceDBClient.Decode(struct_buf, read_data, reply_len)
 
@@ -155,16 +156,24 @@ func Zomato_app_read(pmdb unsafe.Pointer, key string, read_rncui string){
 
 func main(){
 
+	//Print help message.
+	if len(os.Args)==1 || os.Args[1] == "-help" || os.Args[1] == "-h"{
+		fmt.Println("\nUsage: \n   For help:             ./zomato_app_client [-h] \n   To start client:      ./zomato_app_client [raft_uuid] [client_uuid]")
+		fmt.Println("Positional Arguments: \n   raft_uuid \n   client_uuid")
+		fmt.Println("Optional Arguments: \n   -h, --help            show this help message and exit")
+                os.Exit(0)
+	}
+
 	//Accept raft and client uuid from cmdline.
-	raft_uuid_go := os.Args[1]
-	peer_uuid_go := os.Args[2]
+        raft_uuid_go := os.Args[1]
+        client_uuid_go := os.Args[2]
 
 	fmt.Println("Raft uuid:", raft_uuid_go)
-	fmt.Println("Client uuid:", peer_uuid_go)
+	fmt.Println("Client uuid:", client_uuid_go)
 
         fmt.Println("Starting client...")
 	//Start the client.
-	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
+	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, client_uuid_go)
 
 	//Sleep for 1 minute to start client properly.
 	fmt.Println("Wait for client to bootup properly... 1 minute")
@@ -173,7 +182,7 @@ func main(){
 	//Create a file for storing keys and rncui.
 	os.Create("key_rncui_data.txt")
 
-	fmt.Print("\nEnter filename for write operation: ")
+	fmt.Print("\nEnter filename for write operation (.csv file): ")
 	input := bufio.NewReader(os.Stdin)
 	filename,_ := input.ReadString('\n')
 	filename = strings.Replace(filename, "\n", "", -1)
@@ -184,13 +193,13 @@ func main(){
 
 	for {
 
-		fmt.Print("Enter operation (write/read): ")
+		fmt.Print("Enter operation (write/read/readall/exit): ")
 		ops,_ := input.ReadString('\n')
 		ops = strings.Replace(ops, "\n", "", -1)
 
 		if ops == "write"{
 
-			fmt.Print("\nEnter zomato_data in the format - resturantid_name_city_cuisines_ratings_votes : ")
+			fmt.Print("\nEnter zomato_data in the format - resturantid_name_city_cuisines_ratingstext_votes : ")
 			data,_ := input.ReadString('\n')
 			data = strings.Replace(data, "\n", "", -1)
 			cmdline_prms := strings.Split(data, "_")
@@ -220,7 +229,7 @@ func main(){
 
 			Zomato_app_apply(&struct_data_cmdline, pmdb)
 
-		} else {
+		} else if ops == "read" {
 
 			fmt.Println("\nEnter key(Restuarant_id), rncui in the format - key_rncui (underscore seperated):")
 			read_prms,_ := input.ReadString('\n')
@@ -236,6 +245,38 @@ func main(){
 			//Perform read operation.
 			Zomato_app_read(pmdb, key, rncui)
 
+		} else if ops == "readall"{
+
+			f, err := os.Open("key_rncui_data.txt")
+
+		        if err != nil {
+			   log.Fatal(err)
+		        }
+
+		        defer f.Close()
+
+		        scanner := bufio.NewScanner(f)
+
+		        for scanner.Scan() {
+
+				    rall_data := strings.Split(scanner.Text()," ")
+
+				    rall_key := rall_data[3]
+				    rall_rncui := rall_data[5]
+
+				    fmt.Println("\nPerforming read for all key,values...key, rncui = ", rall_key,rall_rncui)
+
+				    //Perform read operation for every key and rncui associated with it.
+				    Zomato_app_read(pmdb, rall_key, rall_rncui)
+		        }
+
+		        if err := scanner.Err(); err != nil {
+				    log.Fatal(err)
+		        }
+		} else if ops == "exit"{
+			os.Exit(0)
+		} else {
+			fmt.Println("\nEnter valid operation: write/read/readall/exit")
 		}
 	}
 
