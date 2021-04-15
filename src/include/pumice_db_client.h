@@ -11,7 +11,7 @@
 
 int
 PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-            size_t key_size, char *value, size_t value_size, size_t *reply_size,
+            size_t key_size, char *value, size_t value_size,
             struct pmdb_obj_stat *user_pmdb_stat);
 
 int
