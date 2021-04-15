@@ -67,22 +67,32 @@ func pmdbDictClient() {
 				length := PumiceDBCommon.GetStructSize(req_dict) + 10
 				fmt.Println("Length of the structure: ", length)
 
-				// Allocate C memory to store the value of the result.
-				value_buf := C.malloc(C.size_t(length))
+				do {
+					var reply_size int64
+					// Allocate C memory to store the value of the result.
+					value_buf := C.malloc(C.size_t(length))
 
-				//read operation
-				rc := PumiceDBClient.PmdbClientRead(req_dict, pmdb, rncui, value_buf, int64(length))
+					//read operation
+					rc := PumiceDBClient.PmdbClientRead(req_dict, pmdb, rncui, value_buf,
+														int64(length), &reply_size)
 
-				if rc < 0 {
-					fmt.Println("Read request failed, error: ", rc)
-				} else {
-					result_dict := (*DictAppLib.Dict_app)(value_buf)
+					if rc < 0 {
+						fmt.Println("Read request failed, error: ", rc)
+						if rc == os.E2BIG {
+							fmt.Println("Allocate bigger buffer and retry read operation")
+							length = reply_size
+						}
+					} else {
+						result_dict := &DictAppLib.Dict_app{}
+						PumiceDBCommon.Decode(value_buf, result_dict, reply_size)
 
-					fmt.Println("Result of the read request is:")
-					fmt.Println("Word: ", input_text)
-					fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
-				}
-				C.free(value_buf)
+						fmt.Println("Result of the read request is:")
+						fmt.Println("Word: ", input_text)
+						fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
+					}
+
+					C.free(value_buf)
+				} while (rc < 0);
 			}
 		}
 	}

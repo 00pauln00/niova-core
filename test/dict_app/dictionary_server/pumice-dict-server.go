@@ -11,6 +11,11 @@ import (
 	"log"
 )
 
+/*
+#include <string.h>
+*/
+import "C"
+
 var seqno = 0
 var raft_uuid_go string
 var peer_uuid_go string
@@ -100,17 +105,19 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 		word_frequency = word_count
 	}
 
-	//Copy the result in reply_buf
-	reply_dict := (*DictAppLib.Dict_app)(reply_buf)
-	reply_dict.Dict_text = req_dict.Dict_text
-	reply_dict.Dict_wcount = word_frequency
+	var reply_size int64
 
-	reply_length := PumiceDBCommon.GetStructSize(reply_dict)
+	result_dict := DictAppLib.Dict_app{
+		Dict_text: req_dict.Dict_text,
+		Dict_wcount: word_frequency,
+	}
 
-	fmt.Println("Key: ", reply_dict.Dict_text)
-	fmt.Println("Frequency: ", reply_dict.Dict_wcount)
+	//Encode the structure before copying it to reply_buf
+	result_encoded := PumiceDBCommon.Encode(result_dict, &reply_size)
 
-	return reply_length
+	C.memcpy(reply_buf, result_encoded, C.size_t(reply_size))
+
+	return reply_size
 }
 
 func pmdb_dict_app_getopts() {

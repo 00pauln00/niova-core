@@ -58,7 +58,8 @@ func PmdbClientWrite(ed interface{}, pmdb unsafe.Pointer, rncui string) {
 
 //Read the value of key on the client
 func PmdbClientRead(ed interface{}, pmdb unsafe.Pointer, rncui string,
-					value unsafe.Pointer, value_len int64) int {
+					value unsafe.Pointer, value_len int64,
+					reply_size *int64) int {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
@@ -71,7 +72,8 @@ func PmdbClientRead(ed interface{}, pmdb unsafe.Pointer, rncui string,
 
 	value_ptr := (*C.char)(value)
 
-	return PmdbClientReadKV(pmdb, rncui, encoded_key, key_len, value_ptr, value_len)
+	return PmdbClientReadKV(pmdb, rncui, encoded_key, key_len, value_ptr,
+							value_len, reply_size)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
@@ -114,7 +116,8 @@ func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 }
 
 func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
-		    key_len int64, value *C.char, value_len int64) int {
+					  key_len int64, value *C.char, value_len int64,
+					  reply_size *int64) int {
 	var obj_stat C.pmdb_obj_stat_t
 
 	crncui_str := GoToCString(rncui)
@@ -132,6 +135,8 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 	Cpmdb := (C.pmdb_t)(pmdb)
 	rc := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
 			&obj_stat)
+
+	*reply_size = CToGoInt64(obj_stat.reply_size)
 
 	//Free C memory
 	FreeCMem(crncui_str)
