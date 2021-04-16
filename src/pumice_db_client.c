@@ -58,7 +58,7 @@ pmdb_client_completion_fill_pmdb_stat(struct pmdb_client_request *pcreq,
         pst->obj_id = pcreq->pcreq_obj_id;
         pst->sequence_num = reply->pmdbrm_write_seqno;
         pst->write_op_pending = !!reply->pmdbrm_write_pending;
-        pst->pcreq_user_pmdb_stat->reply_size = reply->pmdbrm_data_size;
+        pst->reply_size = reply->pmdbrm_data_size;
     }
 }
 
