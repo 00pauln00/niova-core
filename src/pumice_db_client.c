@@ -58,6 +58,7 @@ pmdb_client_completion_fill_pmdb_stat(struct pmdb_client_request *pcreq,
         pst->obj_id = pcreq->pcreq_obj_id;
         pst->sequence_num = reply->pmdbrm_write_seqno;
         pst->write_op_pending = !!reply->pmdbrm_write_pending;
+        pst->pcreq_user_pmdb_stat->reply_size = reply->pmdbrm_data_size;
     }
 }
 
@@ -133,11 +134,7 @@ pmdb_client_request_cb(void *arg, ssize_t status)
             status = ABS(reply->pmdbrm_err);
 
         else
-        {
-            // Store the value of reply data size for application use.
-            pcreq->pcreq_user_pmdb_stat->reply_size = reply->pmdbrm_data_size;
             status = 0; // success
-        }
     }
 
     switch (pcreq->pcreq_op)
