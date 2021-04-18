@@ -151,10 +151,23 @@ niova_bitmap_tests(size_t size)
 //        fprintf(stdout, "%x %x\n", set_idx, unset_idx);
     }
 
+    struct niova_bitmap copy = {0};
+    bitmap_word_t bf[size];
+    rc = niova_bitmap_attach(&copy, bf, size);
+    FATAL_IF(rc, "niova_bitmap_attach(): %s", strerror(-rc));
+
+    rc = niova_bitmap_copy(&copy, &x.nb);
+    FATAL_IF(rc, "niova_bitmap_copy(): %s", strerror(-rc));
+
     for (size_t i = 0; i < nbits; i++)
     {
         NIOVA_ASSERT(niova_bitmap_is_set(&x.nb, i) == should_be_set[i]);
+        NIOVA_ASSERT(niova_bitmap_is_set(&copy, i) == should_be_set[i]);
     }
+
+    // Deeper copy check
+    for (size_t i = 0; i < size; i++)
+        NIOVA_ASSERT(x.nb.nb_map[i] == bf[i]);
 }
 
 static void

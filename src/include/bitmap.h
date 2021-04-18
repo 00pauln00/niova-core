@@ -145,6 +145,21 @@ niova_bitmap_set(struct niova_bitmap *nb, unsigned int idx)
 }
 
 static inline int
+niova_bitmap_copy(struct niova_bitmap *dest,
+                  const struct niova_bitmap *src)
+{
+    if (!dest || !src || !src->nb_map || !dest->nb_map ||
+        dest->nb_nwords != src->nb_nwords)
+        return -EINVAL;
+
+    for (unsigned int i = 0; i < dest->nb_nwords; i++)
+        dest->nb_map[i] = src->nb_map[i];
+
+    return 0;
+
+}
+
+static inline int
 niova_bitmap_exclusive(const struct niova_bitmap *x,
                        const struct niova_bitmap *y)
 {
