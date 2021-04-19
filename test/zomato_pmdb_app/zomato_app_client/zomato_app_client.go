@@ -2,7 +2,6 @@ package main
 import (
   "encoding/csv"
   "fmt"
-  "time"
   "unsafe"
   "io"
   "strings"
@@ -172,10 +171,6 @@ func main(){
         fmt.Println("Starting client...")
 	//Start the client.
 	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, client_uuid_go)
-
-	//Sleep for 1 minute to start client properly.
-	fmt.Println("Wait for client to bootup properly... 1 minute")
-	time.Sleep(1*time.Minute)
 
 	//Create a file for storing keys and rncui.
 	os.Create("key_rncui_data.txt")
