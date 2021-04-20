@@ -1582,7 +1582,8 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         RCI_UNLOCK(rci);
         // Drop the lock and copy contents into the user's reply buffer.
 
-        if (!reply_size_error && rcrh->rcrh_recv_niovs)
+		//Copy the result even on failure.
+        if (rcrh->rcrh_recv_niovs)
         {
             struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
             ssize_t rrc =
