@@ -12,6 +12,10 @@ import (
 */
 import "C"
 
+type PmdbClientObj struct {
+	Pmdb unsafe.Pointer
+}
+
 /* Typecast Go string to C String */
 func GoToCString(gstring string) *C.char {
 	return C.CString(gstring)
@@ -43,7 +47,7 @@ func CToGoString(cstring *C.char) string {
 }
 
 //Write KV from client.
-func PmdbClientWrite(ed interface{}, pmdb unsafe.Pointer, rncui string) {
+func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) {
 
 	var key_len int64
 	//Encode the structure into void pointer.
@@ -53,13 +57,15 @@ func PmdbClientWrite(ed interface{}, pmdb unsafe.Pointer, rncui string) {
 	encoded_key := (*C.char)(ed_key)
 
 	//Perform the write
-	PmdbClientWriteKV(pmdb, rncui, encoded_key, key_len)
+	PmdbClientWriteKV(pmdb_client.Pmdb, rncui, encoded_key, key_len)
 }
 
 //Read the value of key on the client
-func PmdbClientRead(ed interface{}, pmdb unsafe.Pointer, rncui string,
-					value unsafe.Pointer, value_len int64,
-					reply_size *int64) int {
+func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
+												  rncui string,
+												  value unsafe.Pointer,
+												  value_len int64,
+												  reply_size *int64) int {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
@@ -72,8 +78,8 @@ func PmdbClientRead(ed interface{}, pmdb unsafe.Pointer, rncui string,
 
 	value_ptr := (*C.char)(value)
 
-	return PmdbClientReadKV(pmdb, rncui, encoded_key, key_len, value_ptr,
-							value_len, reply_size)
+	return PmdbClientReadKV(pmdb_client.Pmdb, rncui, encoded_key,
+							key_len, value_ptr, value_len, reply_size)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
@@ -136,8 +142,10 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 	rc := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
 			&obj_stat)
 
-	*reply_size = CToGoInt64(obj_stat.reply_size)
+	*reply_size = int64(obj_stat.reply_size)
 
+	fmt.Println("Reply size is: ", obj_stat.reply_size)
+	fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
 	//Free C memory
 	FreeCMem(crncui_str)
 

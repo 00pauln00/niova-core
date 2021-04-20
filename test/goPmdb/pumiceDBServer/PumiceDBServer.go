@@ -4,6 +4,7 @@ import (
 	"unsafe"
 	"reflect"
 	"strconv"
+	"gopmdblib/goPmdbCommon"
 )
 
 /*
@@ -249,3 +250,13 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 	return go_value
 }
 
+func PmdbCopyDataToBuffer(ed interface{}, buffer unsafe.Pointer) int64 {
+	var key_len int64
+	//Encode the structure into void pointer.
+	encoded_key := PumiceDBCommon.Encode(ed, &key_len)
+
+	//Copy the encoded structed into buffer
+	C.memcpy(buffer, encoded_key, C.size_t(key_len))
+
+	return key_len
+}

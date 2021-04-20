@@ -30,6 +30,11 @@ func pmdbDictClient() {
 	//Start the client.
 	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
 
+	client_obj := PumiceDBClient.PmdbClientObj{
+		Pmdb: pmdb,
+	}
+
+
 	for {
 		//Read the input from console
 		words := bufio.NewReader(os.Stdin)
@@ -59,28 +64,32 @@ func pmdbDictClient() {
 
 			if ops == "write" {
 				//write operation
-				PumiceDBClient.PmdbClientWrite(req_dict, pmdb, rncui)
+				client_obj.PmdbClientWrite(req_dict, rncui)
 			} else {
 				/*
-				 * Get the actual size of the structure
+				 * Get the size of the structure
 				 */
-				length := PumiceDBCommon.GetStructSize(req_dict) + 10
-				fmt.Println("Length of the structure: ", length)
+				data_length := PumiceDBCommon.GetStructSize(req_dict)
+				fmt.Println("Length of the structure: ", data_length)
+				rc := -1
+				/* Retry the read on failure */
+				for ok := true; ok; ok = (rc < 0) {
 
-				do {
-					var reply_size int64
 					// Allocate C memory to store the value of the result.
-					value_buf := C.malloc(C.size_t(length))
+					fmt.Println("Allocating buffer of size: ", data_length)
+					value_buf := C.malloc(C.size_t(data_length))
 
+					var reply_size int64
 					//read operation
-					rc := PumiceDBClient.PmdbClientRead(req_dict, pmdb, rncui, value_buf,
-														int64(length), &reply_size)
+					rc = client_obj.PmdbClientRead(req_dict, rncui, value_buf,
+												   int64(data_length), &reply_size)
 
 					if rc < 0 {
 						fmt.Println("Read request failed, error: ", rc)
-						if rc == os.E2BIG {
-							fmt.Println("Allocate bigger buffer and retry read operation")
-							length = reply_size
+						//if rc == os.E2BIG {
+						if reply_size > data_length {
+							fmt.Println("Allocate bigger buffer and retry read operation: ", data_length)
+							data_length = reply_size
 						}
 					} else {
 						result_dict := &DictAppLib.Dict_app{}
@@ -92,7 +101,7 @@ func pmdbDictClient() {
 					}
 
 					C.free(value_buf)
-				} while (rc < 0);
+				}
 			}
 		}
 	}

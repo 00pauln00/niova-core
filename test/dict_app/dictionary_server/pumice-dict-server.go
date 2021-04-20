@@ -105,18 +105,15 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 		word_frequency = word_count
 	}
 
-	var reply_size int64
-
 	result_dict := DictAppLib.Dict_app{
 		Dict_text: req_dict.Dict_text,
 		Dict_wcount: word_frequency,
 	}
 
-	//Encode the structure before copying it to reply_buf
-	result_encoded := PumiceDBCommon.Encode(result_dict, &reply_size)
+	//Copy the encoded result in reply_buffer
+	reply_size := PumiceDBServer.PmdbCopyDataToBuffer(result_dict, reply_buf)
 
-	C.memcpy(reply_buf, result_encoded, C.size_t(reply_size))
-
+	fmt.Println("Reply size is: ", reply_size)
 	return reply_size
 }
 
