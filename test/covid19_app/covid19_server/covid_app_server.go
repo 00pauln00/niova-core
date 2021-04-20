@@ -1,5 +1,4 @@
 package main
-
 import (
 	"fmt"
 	"unsafe"
@@ -23,7 +22,7 @@ var peer_uuid_go string
 var colmfamily = "PMDBTS_CF"
 
 func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
-	input_buf_sz int64, pmdb_handle unsafe.Pointer) {
+		input_buf_sz int64, pmdb_handle unsafe.Pointer) {
 
 	fmt.Println("Covid19_Data app server: Apply request received")
 
@@ -37,27 +36,25 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	//length of key.
 	len_of_key := len(apply_covid.Location)
 
-	var preValueTV string
-	var preValuePV string
+	var preValue string
+	//var preValuePV string
 
 	//Lookup the key first
-	prevResultTV := PumiceDBServer.PmdbLookupKey(apply_covid.Location, int64(len_of_key), preValueTV, colmfamily)
-	prevResultPV := PumiceDBServer.PmdbLookupKey(apply_covid.Location, int64(len_of_key), preValuePV, colmfamily)
+	prevResult := PumiceDBServer.PmdbLookupKey(apply_covid.Location, int64(len_of_key), preValue, colmfamily)
 
-	if prevResultTV != "" {
-		//Get Total_vaccinations value by splitting prevResultTV
-		TV := strings.Split(prevResultTV, " ")
+	if prevResult != "" {
+		//Get Total_vaccinations value and People_vaccinated value by splitting prevResult.
+		split_val := strings.Split(prevResult, " ")
+
 		//Convert data type to int64.
-		Total_vaccinations_int, _ := strconv.ParseInt(TV[len(TV)-2], 10, 64)
-		apply_covid.Total_vaccinations = apply_covid.Total_vaccinations + Total_vaccinations_int
-	} else if prevResultPV != "" {
-		//Get People_vaccinated value by splitting prevResultPV
-		PV := strings.Split(prevResultTV, " ")
+		TV_int, _ := strconv.ParseInt(split_val[len(split_val) - 2], 10, 64)
+		//update Total_vaccinations.
+		apply_covid.Total_vaccinations = apply_covid.Total_vaccinations + TV_int
+
 		//Convert data type to int64.
-		People_vaccinated_int, _ := strconv.ParseInt(PV[len(PV)-1], 10, 64)
-		apply_covid.People_vaccinated = apply_covid.People_vaccinated + People_vaccinated_int
-	} else {
-		fmt.Println("Nothing to update values.")
+		PV_int, _ := strconv.ParseInt(split_val[len(split_val) - 1], 10, 64)
+		//update People_vaccinated
+		apply_covid.People_vaccinated = apply_covid.People_vaccinated + PV_int
 	}
 
 	/*
@@ -67,22 +64,25 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	TotalVaccinations := PumiceDBServer.GoIntToString(int(apply_covid.Total_vaccinations))
 	PeopleVaccinated := PumiceDBServer.GoIntToString(int(apply_covid.People_vaccinated))
 
+	fmt.Println("Updated Total_vaccinations:", TotalVaccinations)
+	fmt.Println("Updated People_vaccinated:", PeopleVaccinated)
+
 	//Merge the all values.
 	covideData_values := apply_covid.Iso_code+" "+TotalVaccinations+" "+PeopleVaccinated
 
 	//length of all values.
 	covideData_len := PumiceDBServer.GoStringLen(covideData_values)
 
-	fmt.Println("Current Values:", covideData_values)
+	fmt.Println("covideData_values: ", covideData_values)
 
 	fmt.Println("Write the KeyValue by calling PmdbWriteKV")
 	PumiceDBServer.PmdbWriteKV(app_id, pmdb_handle, apply_covid.Location, int64(len_of_key), covideData_values,
 			     int64(covideData_len), colmfamily)
 
-	}
+}
 
 func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
-	request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) int64 {
+		request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) int64 {
 
 	fmt.Println("Covid19_Data App: Read request received")
 
@@ -92,13 +92,11 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 	fmt.Println("Key passed by client: ", req_struct.Location)
 
-	//loc_key := PumiceDBServer.GoIntToString(int(req_struct.Location))
 	key_len := len(req_struct.Location)
 	fmt.Println("Key length: ", key_len)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
 	read_kv_result := PumiceDBServer.PmdbReadKV(app_id, req_struct.Location, int64(key_len), colmfamily)
-	fmt.Println("Read KV:", read_kv_result)
 
 	//split space separated values.
 	split_values :=  strings.Split(read_kv_result, " ")
@@ -138,30 +136,31 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	fmt.Println("Value1 is Iso_code:", decode_covid.Iso_code)
 	fmt.Println("Value2 is Total_vaccinations:", decode_covid.Total_vaccinations)
 	fmt.Println("Value3 is People_vaccinated:", decode_covid.People_vaccinated)
+	fmt.Println("Reply buffer size:", reply_bufsz)
 
 	return length
 }
 
 func pmdb_dict_app_getopts() {
 
-	flag.StringVar(&raft_uuid_go, "raft", "NULL", "raft uuid")
-	flag.StringVar(&peer_uuid_go, "peer", "NULL", "peer uuid")
+        flag.StringVar(&raft_uuid_go, "raft", "NULL", "raft uuid")
+        flag.StringVar(&peer_uuid_go, "peer", "NULL", "peer uuid")
 
-	flag.Parse()
-	fmt.Println("Raft UUID: ", raft_uuid_go)
-	fmt.Println("Peer UUID: ", peer_uuid_go)
+        flag.Parse()
+        fmt.Println("Raft UUID: ", raft_uuid_go)
+        fmt.Println("Peer UUID: ", peer_uuid_go)
 }
 
 func main() {
-	//Parse the cmdline parameters
-	pmdb_dict_app_getopts()
+        //Parse the cmdline parameters
+        pmdb_dict_app_getopts()
 
-	//Initialize the dictionary application callback functions
-	cb := &PumiceDBServer.PmdbCallbacks{
-		ApplyCb: covid19_apply,
-		ReadCb:  covid19_read,
-	}
+        //Initialize the covid19_data application callback functions
+        cb := &PumiceDBServer.PmdbCallbacks{
+                ApplyCb: covid19_apply,
+                ReadCb:  covid19_read,
+        }
 
-	PumiceDBServer.PmdbStartServer(raft_uuid_go, peer_uuid_go, colmfamily, cb)
+        PumiceDBServer.PmdbStartServer(raft_uuid_go, peer_uuid_go, colmfamily, cb)
 }
 
