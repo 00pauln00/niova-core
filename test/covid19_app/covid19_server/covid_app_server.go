@@ -4,6 +4,7 @@ import (
 	"unsafe"
 	"flag"
 	"gopmdblib/goPmdbServer"
+	"gopmdblib/goPmdbCommon"
 	"covidapp.com/covidapplib"
 	"strconv"
 	"strings"
@@ -29,7 +30,7 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	/* Decode the input buffer into structure format */
 	apply_covid := &CovidAppLib.Covid_app{}
 
-	PumiceDBServer.Decode(input_buf, apply_covid, input_buf_sz)
+	PumiceDBCommon.Decode(input_buf, apply_covid, input_buf_sz)
 
 	fmt.Println("Key passed by client:", apply_covid.Location)
 
@@ -40,7 +41,9 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	//var preValuePV string
 
 	//Lookup the key first
-	prevResult := PumiceDBServer.PmdbLookupKey(apply_covid.Location, int64(len_of_key), preValue, colmfamily)
+	prevResult := PumiceDBServer.PmdbLookupKey(apply_covid.Location,
+							int64(len_of_key), preValue,
+							colmfamily)
 
 	if prevResult != "" {
 		//Get Total_vaccinations value and People_vaccinated value by splitting prevResult.
@@ -64,9 +67,6 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	TotalVaccinations := PumiceDBServer.GoIntToString(int(apply_covid.Total_vaccinations))
 	PeopleVaccinated := PumiceDBServer.GoIntToString(int(apply_covid.People_vaccinated))
 
-	fmt.Println("Updated Total_vaccinations:", TotalVaccinations)
-	fmt.Println("Updated People_vaccinated:", PeopleVaccinated)
-
 	//Merge the all values.
 	covideData_values := apply_covid.Iso_code+" "+TotalVaccinations+" "+PeopleVaccinated
 
@@ -76,8 +76,9 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	fmt.Println("covideData_values: ", covideData_values)
 
 	fmt.Println("Write the KeyValue by calling PmdbWriteKV")
-	PumiceDBServer.PmdbWriteKV(app_id, pmdb_handle, apply_covid.Location, int64(len_of_key), covideData_values,
-			     int64(covideData_len), colmfamily)
+	PumiceDBServer.PmdbWriteKV(app_id, pmdb_handle, apply_covid.Location,
+					int64(len_of_key), covideData_values,
+					int64(covideData_len), colmfamily)
 
 }
 
@@ -88,7 +89,7 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 	//Decode the request structure sent by client.
 	req_struct := &CovidAppLib.Covid_app{}
-	PumiceDBServer.Decode(request_buf, req_struct, request_bufsz)
+	PumiceDBCommon.Decode(request_buf, req_struct, request_bufsz)
 
 	fmt.Println("Key passed by client: ", req_struct.Location)
 
@@ -96,7 +97,8 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	fmt.Println("Key length: ", key_len)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-	read_kv_result := PumiceDBServer.PmdbReadKV(app_id, req_struct.Location, int64(key_len), colmfamily)
+	read_kv_result := PumiceDBServer.PmdbReadKV(app_id, req_struct.Location,
+							int64(key_len), colmfamily)
 
 	//split space separated values.
 	split_values :=  strings.Split(read_kv_result, " ")
@@ -112,33 +114,12 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 		People_vaccinated: PV_int,
 	}
 
-	var length int64
-	// Encode the structure
-	result_encoded := PumiceDBServer.Encode(result_covid, &length)
+	//Copy the encoded result in reply_buffer
+        reply_size := PumiceDBServer.PmdbCopyDataToBuffer(result_covid, reply_buf)
 
-	C.memcpy(reply_buf, unsafe.Pointer(result_encoded), C.size_t(length))
-
-	// Decode to check copy is successful
-	decode_covid := &CovidAppLib.Covid_app{}
-	PumiceDBServer.Decode(reply_buf, decode_covid, length)
-
-	/*
-	Total_vaccinations and People_vaccinated are the int type value so
-	Convert value to string type.
-	*/
-	TotalVaccinations := PumiceDBServer.GoIntToString(int(decode_covid.Total_vaccinations))
-	PeopleVaccinated := PumiceDBServer.GoIntToString(int(decode_covid.People_vaccinated))
-
-	//Merge the all values.
-	read_values :=  decode_covid.Iso_code+" "+TotalVaccinations+" "+PeopleVaccinated
-	fmt.Println("All values:", read_values)
-	fmt.Println("Key is Location:", decode_covid.Location)
-	fmt.Println("Value1 is Iso_code:", decode_covid.Iso_code)
-	fmt.Println("Value2 is Total_vaccinations:", decode_covid.Total_vaccinations)
-	fmt.Println("Value3 is People_vaccinated:", decode_covid.People_vaccinated)
 	fmt.Println("Reply buffer size:", reply_bufsz)
 
-	return length
+	return reply_size
 }
 
 func pmdb_dict_app_getopts() {
