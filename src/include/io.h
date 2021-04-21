@@ -44,6 +44,27 @@ niova_io_iovs_total_size_get(const struct iovec *iovs, const size_t iovlen)
 }
 
 static inline ssize_t
+niova_io_iovs_num_already_consumed(const struct iovec *iovs,
+                                   const size_t iovlen,
+                                   size_t bytes_already_consumed)
+{
+    if (!iovs || !iovlen)
+        return -EINVAL;
+
+    ssize_t my_already_consumed = bytes_already_consumed;
+    size_t i;
+
+    for (i = 0; i < iovlen; i++)
+    {
+        my_already_consumed -= iovs[i].iov_len;
+        if (my_already_consumed < 0)
+            break;
+    }
+
+    return i;
+}
+
+static inline ssize_t
 niova_io_iovs_num_to_meet_size(const struct iovec *iovs, const size_t iovlen,
                                size_t requested_size, size_t *prune_cnt)
 {
@@ -51,6 +72,7 @@ niova_io_iovs_num_to_meet_size(const struct iovec *iovs, const size_t iovlen,
         return -EINVAL;
 
     size_t tally = 0;
+
     for (size_t i = 0; i < iovlen; i++)
     {
         tally += iovs[i].iov_len;

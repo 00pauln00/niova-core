@@ -119,23 +119,33 @@ static int
 iov_test_num_to_meet_size(void)
 {
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(NULL, 0, 0, NULL) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(NULL, 0, 0) == -EINVAL);
+
 
     struct iovec iov = {0};
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 0, 0, NULL) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 0, 0) == -EINVAL);
 
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 0) == 1);
 
     iov.iov_len = 2;
     size_t prune_cnt = 0;
 
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 0) == 0);
+
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 1, &prune_cnt) == 1 &&
                  prune_cnt == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 1) == 0);
+
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 2, &prune_cnt) == 1 &&
                  prune_cnt == 0);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 2) == 1);
 
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 3, NULL) ==
                  -EOVERFLOW);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 3) == 1);
 
 
     struct iovec iovs[33] = {0};
@@ -145,12 +155,21 @@ iov_test_num_to_meet_size(void)
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(
                      iovs, 33, 1ULL << 34, NULL) ==
                  -EOVERFLOW);
+    NIOVA_ASSERT(
+        niova_io_iovs_num_already_consumed(iovs, 33, 1ULL << 34) == 33);
 
     for (int i = 0; i < 33; i++)
     {
         NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(
                          iovs, 33, 1ULL << i, &prune_cnt) == i + 1);
         NIOVA_ASSERT(prune_cnt == ((1ULL << i) - 1));
+
+//        fprintf(stderr, "niova_io_iovs_num_already_consumed(%d) = %zd\n",
+//                i, niova_io_iovs_num_already_consumed(iovs, 33, 1ULL << i));
+
+        NIOVA_ASSERT(
+            niova_io_iovs_num_already_consumed(iovs, 33, 1ULL << i) ==
+            MAX(1, i));
     }
 
     return 0;
