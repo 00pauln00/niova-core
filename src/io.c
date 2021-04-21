@@ -140,9 +140,9 @@ niova_io_fd_drain(int fd, size_t *ret_data)
 }
 
 /**
- * niova_io_iovs_map_consumed - given a set of source iov's, map them to the set of
- *   destination iov's based on the number of bytes which have already been
- *   processed.
+ * niova_io_iovs_map_consumed - given a set of source iov's, map them to the
+ *   set of destination iov's based on the number of bytes which have already
+ *   been processed.
  * @src:  array of input iov's
  * @dest:  array of output iov's which should be the same size as the 'src'
  *    array.
@@ -154,7 +154,8 @@ niova_io_fd_drain(int fd, size_t *ret_data)
  */
 ssize_t
 niova_io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
-                           const size_t num_iovs, size_t bytes_already_consumed)
+                           const size_t num_iovs,
+                           size_t bytes_already_consumed)
 {
     if (!src || !dest || !num_iovs)
         return -EINVAL;
@@ -179,8 +180,8 @@ niova_io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
 }
 
 ssize_t
-niova_io_copy_to_iovs(const char *src, size_t src_size, struct iovec *dest_iovs,
-                      const size_t num_iovs)
+niova_io_copy_to_iovs(const char *src, size_t src_size,
+                      struct iovec *dest_iovs, const size_t num_iovs)
 {
     if (!src || !src_size || !dest_iovs || !num_iovs)
         return -EINVAL;
@@ -269,8 +270,8 @@ niova_io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_cons
 }
 
 /**
- * niova_io_iov_restore - used in conjunction with niova_io_iovs_advance() to replace a
- *    modified iov member with its original contents.
+ * niova_io_iov_restore - used in conjunction with niova_io_iovs_advance() to
+ *    replace a modified iov member with its original contents.
  * @iovs:  iov array
  * @niovs:  size of the array
  * @save_idx:  index value to restore

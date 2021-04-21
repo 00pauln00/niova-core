@@ -115,11 +115,53 @@ iov_test(void)
     return 0;
 }
 
+static int
+iov_test_num_to_meet_size(void)
+{
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(NULL, 0, 0, NULL) == -EINVAL);
+
+    struct iovec iov = {0};
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 0, 0, NULL) == -EINVAL);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+
+    iov.iov_len = 2;
+    size_t prune_cnt = 0;
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 1, &prune_cnt) == 1 &&
+                 prune_cnt == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 2, &prune_cnt) == 1 &&
+                 prune_cnt == 0);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 3, NULL) ==
+                 -EOVERFLOW);
+
+
+    struct iovec iovs[33] = {0};
+    for (int i = 0; i < 33; i++)
+        iovs[i].iov_len = 1ULL << i;
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(
+                     iovs, 33, 1ULL << 34, NULL) ==
+                 -EOVERFLOW);
+
+    for (int i = 0; i < 33; i++)
+    {
+        NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(
+                         iovs, 33, 1ULL << i, &prune_cnt) == i + 1);
+        NIOVA_ASSERT(prune_cnt == ((1ULL << i) - 1));
+    }
+
+    return 0;
+}
+
 int
 main(void)
 {
     NIOVA_ASSERT(!iov_test_basic());
     NIOVA_ASSERT(!iov_test());
+    NIOVA_ASSERT(!iov_test_num_to_meet_size());
 
     return 0;
 }
