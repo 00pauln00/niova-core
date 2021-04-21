@@ -88,11 +88,10 @@ niova_io_iovs_num_to_meet_size(const struct iovec *iovs, const size_t iovlen,
     return -EOVERFLOW;
 }
 
-
 ssize_t
 niova_io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
                            const size_t num_iovs,
-                           size_t bytes_already_consumed);
+                           size_t bytes_already_consumed, ssize_t max_bytes);
 
 ssize_t
 niova_io_copy_to_iovs(const char *src, size_t src_size,

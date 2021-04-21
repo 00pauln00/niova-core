@@ -155,12 +155,15 @@ niova_io_fd_drain(int fd, size_t *ret_data)
 ssize_t
 niova_io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
                            const size_t num_iovs,
-                           size_t bytes_already_consumed)
+                           size_t bytes_already_consumed, ssize_t max_bytes)
 {
-    if (!src || !dest || !num_iovs)
+    if (!src || !dest || !num_iovs || src == dest ||
+        (dest > src && dest < &src[num_iovs]) ||
+        (src > dest && src < &dest[num_iovs]))
         return -EINVAL;
 
     ssize_t dest_num_iovs = 0;
+    ssize_t bytes_remaining = max_bytes;
 
     for (size_t i = 0; i < num_iovs; i++)
     {
@@ -171,10 +174,24 @@ niova_io_iovs_map_consumed(const struct iovec *src, struct iovec *dest,
             dest[idx].iov_len = src[i].iov_len - bytes_already_consumed;
             dest[idx].iov_base =
                 (char *)src[i].iov_base + bytes_already_consumed;
+
+            bytes_remaining -= dest[idx].iov_len;
+
+            // Handle the 'max_bytes' option, reducing the iov_len if needed
+            if (max_bytes > 0 && bytes_remaining <= 0)
+            {
+                NIOVA_ASSERT(ABS(bytes_remaining) <= dest[idx].iov_len);
+                dest[idx].iov_len -= ABS(bytes_remaining);
+                break;
+            }
         }
 
         bytes_already_consumed -= MIN(bytes_already_consumed, src[i].iov_len);
     }
+
+    // User requested max does not fit into the provided iovs
+    if (max_bytes > 0 && bytes_remaining > 0)
+        return -EOVERFLOW;
 
     return dest_num_iovs;
 }
