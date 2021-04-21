@@ -185,7 +185,7 @@ niova_bitmap_shared(const struct niova_bitmap *super,
 
     for (unsigned int i = 0; i < sub->nb_nwords; i++)
     {
-        // Ensure the bits from the src map are not already set in the dst
+        // Ensure the bits from the src map are set in the dst
         if ((super->nb_map[i] & sub->nb_map[i]) != sub->nb_map[i])
             return -ENOENT;
     }
