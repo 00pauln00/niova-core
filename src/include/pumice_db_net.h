@@ -73,6 +73,7 @@ typedef struct pmdb_obj_stat
 {
     pmdb_obj_id_t obj_id;
     int64_t       sequence_num;
+    int64_t       reply_size;
     int           status;
     uint8_t       write_op_pending : 1;
 } pmdb_obj_stat_t;

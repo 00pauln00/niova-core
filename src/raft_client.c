@@ -1569,6 +1569,17 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
              niova_io_iovs_total_size_get(
                  &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
                  rcrh->rcrh_recv_niovs)) ? -E2BIG : 0;
+        if (reply_size_error == -E2BIG)
+        {
+            struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
+            /* Reallocate bigger buffer */
+            SIMPLE_LOG_MSG(LL_WARN, "Reallocate bigger buffer: %ld",
+							(rcrh->rcrh_reply_size - recv_iovs[0].iov_len));
+
+            recv_iovs[1].iov_base = realloc(recv_iovs[1].iov_base, (rcrh->rcrh_reply_size - recv_iovs[0].iov_len));
+            recv_iovs[1].iov_len = (rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
+            reply_size_error = 0;
+        }
         if (from)
         {
             rcrh->rcrh_sin_reply_addr = from->sin_addr;
