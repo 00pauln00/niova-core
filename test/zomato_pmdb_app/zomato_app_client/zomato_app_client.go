@@ -2,7 +2,6 @@ package main
 import (
   "encoding/csv"
   "fmt"
-  "unsafe"
   "io"
   "strings"
   "log"
@@ -10,8 +9,9 @@ import (
   "bufio"
   "strconv"
   "gopmdblib/goPmdbClient"
+  "gopmdblib/goPmdbCommon"
   "github.com/satori/go.uuid"
-  "zomatoapp/zomatoapplib"
+  "zomatoapp.com/zomatolib"
 )
 
 /*
@@ -19,7 +19,7 @@ import (
 */
 import "C"
 
-func update(struct_app *zomatoapplib.Zomato_Data, pmdb unsafe.Pointer){
+func update(struct_app *zomatoapplib.Zomato_Data, client_obj *PumiceDBClient.PmdbClientObj){
 
 	//Generate app_uuid.
 	app_uuid := uuid.NewV4().String()
@@ -42,11 +42,11 @@ func update(struct_app *zomatoapplib.Zomato_Data, pmdb unsafe.Pointer){
 	}
 
 	//Perform write operation.
-	PumiceDBClient.PmdbClientWrite(struct_app, pmdb, rncui)
+	client_obj.PmdbClientWrite(struct_app, rncui)
 
 }
 
-func parse_file_and_update(pmdb unsafe.Pointer, filename string){
+func parse_file_and_update(client_obj *PumiceDBClient.PmdbClientObj, filename string){
 
 	//Open the file.
 	csvfile, err := os.Open(filename)
@@ -100,16 +100,14 @@ func parse_file_and_update(pmdb unsafe.Pointer, filename string){
 				Ratings_text: record[4],
 				Votes: Votes_struct,
 				}
-		update(&struct_data, pmdb)
+		update(&struct_data, client_obj)
 
 	}
 }
 
 
-func get(pmdb unsafe.Pointer, key string, read_rncui string){
+func get(client_obj *PumiceDBClient.PmdbClientObj, key string, read_rncui string){
 
-
-	var reply_len int64
 
 	//Typecast key into int64.
 	key_int64,_ := strconv.ParseInt(key, 10, 64)
@@ -119,35 +117,44 @@ func get(pmdb unsafe.Pointer, key string, read_rncui string){
 		    Restaurant_id: key_int64,
 	}
 
-	//Get size of the structure struct_data.
-	struct_len := PumiceDBClient.GetStructSize(struct_read)
+	//Allocating size as 1024.
+	struct_len := int64(1024)
 
-	fmt.Println("Length of the struct_read: ", struct_len)
+	rc := -1
+	/* Retry the read on failure */
+	for ok := true; ok; ok = (rc < 0){
 
-	//Allocate C memory to store the value of the result.
-	struct_buf := C.malloc(65536)
+		fmt.Println("Allocating buffer of size: ", struct_len)
+		//Allocate C memory to store the value of the result.
+		struct_buf := C.malloc(C.size_t(struct_len))
 
-	//Perform read operation.
-	rc := PumiceDBClient.PmdbClientRead(struct_read, pmdb, read_rncui, struct_buf, 65536, &reply_len)
-	if rc < 0 {
-		fmt.Println("Read request failed, error: ", rc)
-		fmt.Println("Reply length returned is: ", reply_len)
-	} else {
-		fmt.Println("Read the return data now")
-		fmt.Println("Length of reply buffer:",reply_len)
-		read_data := &zomatoapplib.Zomato_Data{}
-		PumiceDBClient.Decode(struct_buf, read_data, reply_len)
+		var reply_len int64
+		//Perform read operation.
+		rc := client_obj.PmdbClientRead(struct_read, read_rncui, struct_buf, int64(struct_len), &reply_len)
+		if rc < 0 {
+			fmt.Println("Read request failed, error: ", rc)
+			fmt.Println("Reply length returned is: ", reply_len)
+			if reply_len > struct_len{
+                             fmt.Println("Allocate bigger buffer and retry read operation: ", struct_len)
+                             struct_len = reply_len
+			}
+		} else {
+			fmt.Println("Read the return data now")
+			fmt.Println("Length of reply buffer:",reply_len)
+			read_data := &zomatoapplib.Zomato_Data{}
+			PumiceDBCommon.Decode(struct_buf, read_data, reply_len)
 
-		fmt.Println("\nData received after read request:")
-		fmt.Println("Restaurant id = ",read_data.Restaurant_id)
-		fmt.Println("Restaurant name = ",read_data.Restaurant_name)
-		fmt.Println("City = ",read_data.City)
-		fmt.Println("Cuisines = ",read_data.Cuisines)
-		fmt.Println("Ratings_text = ",read_data.Ratings_text)
-		fmt.Println("Votes = ",read_data.Votes)
-
+			fmt.Println("\nData received after read request:")
+			fmt.Println("Restaurant id = ",read_data.Restaurant_id)
+			fmt.Println("Restaurant name = ",read_data.Restaurant_name)
+			fmt.Println("City = ",read_data.City)
+			fmt.Println("Cuisines = ",read_data.Cuisines)
+			fmt.Println("Ratings_text = ",read_data.Ratings_text)
+			fmt.Println("Votes = ",read_data.Votes)
+			break
+		}
+		C.free(struct_buf)
 	}
-	C.free(struct_buf)
 }
 
 
@@ -172,6 +179,12 @@ func main(){
 	//Start the client.
 	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, client_uuid_go)
 
+	obj := PumiceDBClient.PmdbClientObj{
+               Pmdb: pmdb,
+        }
+
+        client_obj := &obj
+
 	//Create a file for storing keys and rncui.
 	os.Create("key_rncui_data.txt")
 
@@ -182,7 +195,7 @@ func main(){
 	fmt.Println("Filename:", filename)
 
         //Perform write operation.
-	parse_file_and_update(pmdb, filename)
+	parse_file_and_update(client_obj, filename)
 
 	for{
 		fmt.Print("Enter operation (write/read/readall/exit): ")
@@ -220,7 +233,7 @@ func main(){
 					}
 
 			//Perform write operation.
-			update(&struct_data_cmdline, pmdb)
+			update(&struct_data_cmdline, client_obj)
 
 		} else if ops == "read"{
 
@@ -236,7 +249,7 @@ func main(){
 			fmt.Println("rucui:", rncui)
 
 			//Perform read operation.
-			get(pmdb, key, rncui)
+			get(client_obj, key, rncui)
 
 		} else if ops == "readall"{
 
@@ -260,7 +273,7 @@ func main(){
 				    fmt.Println("\nPerforming read for all key,values...key, rncui = ", rall_key,rall_rncui)
 
 				    //Perform read operation for every key and rncui associated with it.
-				    get(pmdb, rall_key, rall_rncui)
+				    get(client_obj, rall_key, rall_rncui)
 			}
 
 			if err := scanner.Err(); err != nil {
