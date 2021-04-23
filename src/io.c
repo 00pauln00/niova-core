@@ -216,7 +216,7 @@ niova_io_iovs_map_consumed2(const struct iovec *src, struct iovec *dest,
         {
             const size_t idx = dest_num_iovs++;
 
-            if (idx > num_dest_iovs)
+            if (idx >= num_dest_iovs)
                 break;
 
             dest[idx].iov_len = src[i].iov_len - bytes_already_consumed;
