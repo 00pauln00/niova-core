@@ -6,7 +6,8 @@ import (
   "strings"
   "strconv"
   "gopmdblib/goPmdbServer"
-  "zomatoapp/zomatoapplib"
+  "gopmdblib/goPmdbCommon"
+  "zomatoapp.com/zomatolib"
 )
 
 /*
@@ -22,7 +23,7 @@ func zomatodata_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
                         data_buf_sz int64, pmdb_handle unsafe.Pointer){
 
 		data := &zomatoapplib.Zomato_Data{}
-		PumiceDBServer.Decode(data_buf, data, data_buf_sz)
+		PumiceDBCommon.Decode(data_buf, data, data_buf_sz)
 		fmt.Println("\nData received from client: ", data)
 
 		//Convert resturant_id from int to string and store as zomato_app_key.
@@ -67,7 +68,7 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 		//Decode the request structure sent by client.
 		read_req_data := &zomatoapplib.Zomato_Data{}
 
-		PumiceDBServer.Decode(data_request_buf, read_req_data, data_request_bufsz)
+		PumiceDBCommon.Decode(data_request_buf, read_req_data, data_request_bufsz)
 
 		fmt.Println("Key passed by client: ", read_req_data.Restaurant_id)
 
@@ -91,37 +92,30 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 				Votes: votes_int64,
 		}
 
-		var length int64
-		//Encode the structure.
-		result_encoded := PumiceDBServer.Encode(reply_data, &length)
-
-		C.memcpy(data_reply_buf, unsafe.Pointer(result_encoded), C.size_t(length))
-		fmt.Println("length of buffer is:",length)
-		return length
-}
-
-//Get cmdline parameters and start server.
-func zomato_app_start_server(){
-
-		raft_uuid := os.Args[1]
-		peer_uuid := os.Args[2]
-
-		fmt.Println("Raft uuid:", raft_uuid)
-		fmt.Println("Peer uuid:", peer_uuid)
-
-		//Initialize callbacks for zomato app.
-		cb := &PumiceDBServer.PmdbCallbacks{
-			ApplyCb: zomatodata_apply,
-			ReadCb:  zomatodata_read,
-		}
-
-		//Start pumicedb server.
-		PumiceDBServer.PmdbStartServer(raft_uuid, peer_uuid, colmfamily, cb)
-
+		//Copy the encoded result in reply_buffer
+	        data_reply_size := PumiceDBServer.PmdbCopyDataToBuffer(reply_data, data_reply_buf)
+		fmt.Println("length of buffer is:", data_reply_size)
+		return data_reply_size
 }
 
 func main(){
 
+		fmt.Println("In main")
 		//Method call to accept cmdline parameters and start server.
-		zomato_app_start_server()
+
+		raft_uuid := os.Args[1]
+                peer_uuid := os.Args[2]
+
+                fmt.Println("Raft uuid:", raft_uuid)
+                fmt.Println("Peer uuid:", peer_uuid)
+
+		//Initialize callbacks for zomato app.
+                cb := &PumiceDBServer.PmdbCallbacks{
+                        ApplyCb: zomatodata_apply,
+                        ReadCb:  zomatodata_read,
+                }
+
+		//Start pumicedb server.
+                PumiceDBServer.PmdbStartServer(raft_uuid, peer_uuid, colmfamily, cb)
+
 }
