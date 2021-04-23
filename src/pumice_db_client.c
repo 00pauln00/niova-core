@@ -277,7 +277,7 @@ pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     NIOVA_ASSERT(pmdb_obj_id_2_rncui(obj_id, &rncui) == &rncui);
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, &req_iov, 1,
-                                      &reply_iov, 1, timeout,
+                                      &reply_iov, 1, false, timeout,
                                       blocking ? RCRT_READ : RCRT_READ_NB,
                                       pmdb_client_request_cb, pcreq,
                                       pcreq->pcreq_tag);
@@ -348,7 +348,7 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     };
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
-                                      &reply_iov, 1, timeout,
+                                      &reply_iov, 1, false, timeout,
                                       blocking ? RCRT_WRITE : RCRT_WRITE_NB,
                                       pmdb_client_request_cb, pcreq,
                                       pcreq->pcreq_tag);
@@ -386,8 +386,8 @@ PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
 
 static void *
 pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                      const void *key, size_t key_size,
-                      size_t value_size,
+                      const void *key, size_t key_size, void *value,
+                      size_t value_size, bool expand_reply_buff,
                       const bool blocking, const struct timespec timeout,
                       pmdb_user_cb_t user_cb, void *user_arg,
                       struct pmdb_obj_stat *user_pmdb_stat)
@@ -397,11 +397,6 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
         return NULL;
 
     int rc = 0;
-
-    // Allocate buffer of size value_size.
-	void *value = niova_malloc(value_size);
-	if (!value)
-        return NULL;
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_read, key, key_size,
@@ -428,21 +423,25 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     };
 
     rc = raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
-                                      reply_iovs, 2, timeout,
+                                      reply_iovs, 2,
+                                      expand_reply_buff,
+                                      timeout,
                                       blocking ? RCRT_READ : RCRT_READ_NB,
                                       pmdb_client_request_cb, pcreq,
                                       pcreq->pcreq_tag);
 
-    /* If server sent data larger thatn value_size,
+    /* If server sent data larger than value_size,
        raft_client_reply_try_complete() might have allocated bigger buffer and
        stored the pointer in reply_iovs[1].iov_base.
      */
-    void *reply_buff = reply_iovs[1].iov_base == value ? value : reply_iovs[1].iov_base;
+    void *reply_buff = reply_iovs[1].iov_base;
 
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "raft_client_request_submit failed (error: %d)", rc);
-        niova_free(reply_buff);
+        if (reply_buff && reply_buff != value)
+            niova_free(reply_buff);
+
         return NULL;
     }
     return reply_buff;
@@ -453,13 +452,15 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  */
 void *
 PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-            size_t key_size, size_t value_size,
+            size_t key_size, char *value, size_t value_size,
+            bool expand_reply_buff,
             struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size,
-                                 value_size, true, timeout, NULL, NULL,
+    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
+                                 value_size, expand_reply_buff, true, timeout,
+                                 NULL, NULL,
                                  user_pmdb_stat);
 }
 
@@ -468,12 +469,12 @@ PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
  */
 void *
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-           size_t key_size, size_t value_size)
+           size_t key_size, char *value, size_t value_size, bool expand_reply_buff)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size,
-                                 value_size, true, timeout, NULL, NULL, NULL);
+    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
+                                 value_size, false, true, timeout, NULL, NULL, NULL);
 }
 
 /**
@@ -481,7 +482,8 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
  */
 void *
 PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-             size_t key_size, size_t value_size,
+             size_t key_size, char *value, size_t value_size,
+             bool expand_reply_buff,
              pmdb_user_cb_t user_cb, void *user_arg)
 {
     if (!user_cb)
@@ -489,21 +491,24 @@ PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
 
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size,
-                                 value_size, false, timeout, user_cb,
+    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
+                                 value_size, expand_reply_buff, false, timeout,
+                                 user_cb,
                                  user_arg, NULL);
 }
 
 void *
 PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-              size_t key_size, size_t value_size,
+              size_t key_size, char *value, size_t value_size,
+              bool expand_reply_buff,
               pmdb_user_cb_t user_cb, void *user_arg,
               struct pmdb_obj_stat *user_pmdb_stat)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size,
-                                 value_size, true, timeout, user_cb, user_arg,
+    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
+                                 value_size, expand_reply_buff, true, timeout,
+                                 user_cb, user_arg,
                                  user_pmdb_stat);
 }
 

@@ -893,20 +893,17 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         rc = -EIO;
         void *buffer = use_async_requests ?
             PmdbObjGetXNB(pmdbtcPMDB, obj_id, NULL, 0,
+                          (void *)&preq->preq_rtdb,
                           (sizeof(struct raft_test_data_block) +
-                           sizeof(struct raft_test_values)),
+                           sizeof(struct raft_test_values)), false,
                           pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
             PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
+                        (char *)&preq->preq_rtdb,
                         (sizeof(struct raft_test_data_block) +
-                         sizeof(struct raft_test_values)),
+                         sizeof(struct raft_test_values)), false,
                         &preq->preq_obj_stat);
-        if (buffer)
-        {
-            memcpy((void *)&preq->preq_rtdb, buffer,
-                (sizeof(struct raft_test_data_block) + sizeof(struct raft_test_values)));
-            free(buffer);
-            rc = 0;
-        }
+        FATAL_IF(buffer != (void *)&preq->preq_rtdb, "New buffer is allocated");
+
         break;
 
     case pmdb_op_write:
