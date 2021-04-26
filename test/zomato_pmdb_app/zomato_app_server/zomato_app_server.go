@@ -98,24 +98,26 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 		return data_reply_size
 }
 
-func main(){
+func zomato_app_start_server(){
 
-		fmt.Println("In main")
 		//Method call to accept cmdline parameters and start server.
-
-		raft_uuid := os.Args[1]
+                raft_uuid := os.Args[1]
                 peer_uuid := os.Args[2]
 
                 fmt.Println("Raft uuid:", raft_uuid)
                 fmt.Println("Peer uuid:", peer_uuid)
 
-		//Initialize callbacks for zomato app.
+                //Initialize callbacks for zomato app.
                 cb := &PumiceDBServer.PmdbCallbacks{
                         ApplyCb: zomatodata_apply,
                         ReadCb:  zomatodata_read,
                 }
 
-		//Start pumicedb server.
+                //Start pumicedb server.
                 PumiceDBServer.PmdbStartServer(raft_uuid, peer_uuid, colmfamily, cb)
 
+}
+func main(){
+		//Start zomato_app_server.
+		zomato_app_start_server()
 }
