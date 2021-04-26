@@ -5,12 +5,12 @@ import (
 	"bufio"
 	"strings"
 	"flag"
-	"gopmdblib/goPmdb"
+	"gopmdblib/goPmdbClient"
+	"gopmdblib/goPmdbCommon"
 	"dictapplib/dict_libs"
 )
 
 /*
-#cgo pkg-config: niova --define-variable=prefix=/usr/local/niova
 #include <stdlib.h>
 */
 import "C"
@@ -28,7 +28,12 @@ var peer_uuid_go string
 func pmdbDictClient() {
 
 	//Start the client.
-	pmdb := PumiceDB.PmdbStartClient(raft_uuid_go, peer_uuid_go)
+	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
+
+	client_obj := PumiceDBClient.PmdbClientObj{
+		Pmdb: pmdb,
+	}
+
 
 	for {
 		//Read the input from console
@@ -59,26 +64,44 @@ func pmdbDictClient() {
 
 			if ops == "write" {
 				//write operation
-				PumiceDB.PmdbClientWrite(req_dict, pmdb, rncui)
+				client_obj.PmdbClientWrite(req_dict, rncui)
 			} else {
 				/*
-				 * Get the actual size of the structure
+				 * Get the size of the structure
 				 */
-				length := PumiceDB.GetStructSize(req_dict)
-				fmt.Println("Length of the structure: ", length)
+				data_length := PumiceDBCommon.GetStructSize(req_dict)
+				fmt.Println("Length of the structure: ", data_length)
+				rc := -1
+				/* Retry the read on failure */
+				for ok := true; ok; ok = (rc < 0) {
 
-				// Allocate C memory to store the value of the result.
-				value_buf := C.malloc(C.size_t(length))
+					// Allocate C memory to store the value of the result.
+					fmt.Println("Allocating buffer of size: ", data_length)
+					value_buf := C.malloc(C.size_t(data_length))
 
-				//read operation
-				PumiceDB.PmdbClientRead(req_dict, pmdb, rncui, value_buf, int64(length))
+					var reply_size int64
+					//read operation
+					rc = client_obj.PmdbClientRead(req_dict, rncui, value_buf,
+												   int64(data_length), &reply_size)
 
-				result_dict := (*DictAppLib.Dict_app)(value_buf)
+					if rc < 0 {
+						fmt.Println("Read request failed, error: ", rc)
+						//if rc == os.E2BIG {
+						if reply_size > data_length {
+							fmt.Println("Allocate bigger buffer and retry read operation: ", data_length)
+							data_length = reply_size
+						}
+					} else {
+						result_dict := &DictAppLib.Dict_app{}
+						PumiceDBCommon.Decode(value_buf, result_dict, reply_size)
 
-				fmt.Println("Result of the read request is:")
-				fmt.Println("Word: ", input_text)
-				fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
-				C.free(value_buf)
+						fmt.Println("Result of the read request is:")
+						fmt.Println("Word: ", input_text)
+						fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
+					}
+
+					C.free(value_buf)
+				}
 			}
 		}
 	}

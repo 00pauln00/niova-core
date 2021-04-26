@@ -1,4 +1,4 @@
-package PumiceDB
+package PumiceDBServer
 
 /*
 #include <raft/pumice_db.h>
