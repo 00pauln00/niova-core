@@ -186,8 +186,13 @@ iov_test_map_consumed(void)
 
     NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, &iovA[1], 2, 0, 0) ==
                  -EINVAL);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
     NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, iovA - 1, 2, 0, 0) ==
                  -EINVAL);
+#pragma GCC diagnostic pop
+
     NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, iovB, 2, 0, 3) ==
                  -EOVERFLOW);
     NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, iovB, 2, 1, 0) == 1);
