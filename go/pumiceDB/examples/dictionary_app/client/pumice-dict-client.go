@@ -5,9 +5,9 @@ import (
 	"bufio"
 	"strings"
 	"flag"
-	"gopmdblib/goPmdbClient"
-	"gopmdblib/goPmdbCommon"
-	"dictapplib/dict_libs"
+	"niova/go-pumicedb-lib/common"
+	"niova/go-pumicedb-lib/client"
+	"dictapplib/lib"
 )
 
 /*

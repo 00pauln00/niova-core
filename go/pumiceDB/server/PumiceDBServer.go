@@ -2,7 +2,7 @@ package PumiceDBServer
 
 import (
 	"fmt"
-	"gopmdblib/goPmdbCommon"
+	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"unsafe"

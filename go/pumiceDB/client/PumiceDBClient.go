@@ -2,7 +2,7 @@ package PumiceDBClient
 
 import (
 	"fmt"
-	"gopmdblib/goPmdbCommon"
+	"niova/go-pumicedb-lib/common"
 	"strconv"
 	"unsafe"
 )
@@ -143,10 +143,11 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 	rc := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
 		&obj_stat)
 
-	*reply_size = int64(obj_stat.reply_size)
+	*reply_size = 0
+	//*reply_size = int64(obj_stat.reply_size)
 
-	fmt.Println("Reply size is: ", obj_stat.reply_size)
-	fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
+	//fmt.Println("Reply size is: ", obj_stat.reply_size)
+	//fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
 	//Free C memory
 	FreeCMem(crncui_str)
 
