@@ -1,10 +1,11 @@
 package PumiceDBServer
+
 import (
 	"fmt"
-	"unsafe"
+	"gopmdblib/goPmdbCommon"
 	"reflect"
 	"strconv"
-	"gopmdblib/goPmdbCommon"
+	"unsafe"
 )
 
 /*
@@ -23,14 +24,14 @@ import "C"
 import gopointer "github.com/mattn/go-pointer"
 
 type PmdbApplyCallback func(unsafe.Pointer, unsafe.Pointer, int64,
-                          unsafe.Pointer)
+	unsafe.Pointer)
 type PmdbReadCallback func(unsafe.Pointer, unsafe.Pointer, int64,
-                         unsafe.Pointer, int64) int64
+	unsafe.Pointer, int64) int64
 
 //Callback function for pmdb apply and read
 type PmdbCallbacks struct {
 	ApplyCb PmdbApplyCallback
-	ReadCb PmdbReadCallback
+	ReadCb  PmdbReadCallback
 }
 
 type charsSlice []*C.char
@@ -78,8 +79,8 @@ func CToGoString(cstring *C.char) string {
 
 //export goApply
 func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
-			input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
-            user_data unsafe.Pointer) {
+	input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
+	user_data unsafe.Pointer) {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbCallbacks)
@@ -93,8 +94,8 @@ func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 
 //export goRead
 func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
-            request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-            user_data unsafe.Pointer) int64 {
+	request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
+	user_data unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbCallbacks)
@@ -115,7 +116,7 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer
  * @cb: PmdbAPI callback funcs.
  */
 func PmdbStartServer(raft_uuid string, peer_uuid string, cf string,
-					 cb *PmdbCallbacks) {
+	cb *PmdbCallbacks) {
 
 	/*
 	 * Convert the raft_uuid and peer_uuid go strings into C strings
@@ -147,7 +148,7 @@ func PmdbStartServer(raft_uuid string, peer_uuid string, cf string,
 	cf_array := (**C.char)(unsafe.Pointer(sH.Data))
 
 	// Create an opaque C pointer for cbs to pass to PmdbStartServer.
-	opa_ptr:= gopointer.Save(cb)
+	opa_ptr := gopointer.Save(cb)
 	defer gopointer.Unref(opa_ptr)
 
 	// Starting the pmdb server.
@@ -160,7 +161,7 @@ func PmdbStartServer(raft_uuid string, peer_uuid string, cf string,
 }
 
 func PmdbLookupKey(key string, key_len int64, value string,
-				   go_cf string) string {
+	go_cf string) string {
 
 	var goerr string
 	var C_value_len C.size_t
@@ -182,7 +183,7 @@ func PmdbLookupKey(key string, key_len int64, value string,
 	ropts := C.rocksdb_readoptions_create()
 
 	C_value := C.rocksdb_get_cf(C.PmdbGetRocksDB(), ropts, cf_handle, C_key,
-							  C_key_len, &C_value_len, &err)
+		C_key_len, &C_value_len, &err)
 
 	C.rocksdb_readoptions_destroy(ropts)
 
@@ -208,7 +209,7 @@ func PmdbLookupKey(key string, key_len int64, value string,
 }
 
 func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
-			   key_len int64, value string, value_len int64, gocolfamily string) {
+	key_len int64, value string, value_len int64, gocolfamily string) {
 
 	//typecast go string to C char *
 	cf := GoToCString(gocolfamily)
@@ -237,7 +238,7 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
-			    key_len int64, gocolfamily string) string {
+	key_len int64, gocolfamily string) string {
 
 	var value string
 	//Convert the golang string to C char*
