@@ -115,11 +115,133 @@ iov_test(void)
     return 0;
 }
 
+static int
+iov_test_num_to_meet_size(void)
+{
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(NULL, 0, 0, NULL) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(NULL, 0, 0) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(NULL, NULL, 0, 0, 0) == -EINVAL);
+
+
+    struct iovec iov = {0};
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 0, 0, NULL) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 0, 0) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(&iov, NULL, 0, 0, 0) == -EINVAL);
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(&iov, &iov, 1, 0, 0) == -EINVAL);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 0) == 1);
+
+    iov.iov_len = 2;
+    size_t prune_cnt = 0;
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 0) == 0);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 1, &prune_cnt) == 1 &&
+                 prune_cnt == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 1) == 0);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 2, &prune_cnt) == 1 &&
+                 prune_cnt == 0);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 2) == 1);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 3, NULL) ==
+                 -EOVERFLOW);
+    NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 3) == 1);
+
+
+    struct iovec iovs[33] = {0};
+    for (int i = 0; i < 33; i++)
+        iovs[i].iov_len = 1ULL << i;
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(
+                     iovs, 33, 1ULL << 34, NULL) ==
+                 -EOVERFLOW);
+    NIOVA_ASSERT(
+        niova_io_iovs_num_already_consumed(iovs, 33, 1ULL << 34) == 33);
+
+    for (int i = 0; i < 33; i++)
+    {
+        NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(
+                         iovs, 33, 1ULL << i, &prune_cnt) == i + 1);
+        NIOVA_ASSERT(prune_cnt == ((1ULL << i) - 1));
+
+//        fprintf(stderr, "niova_io_iovs_num_already_consumed(%d) = %zd\n",
+//                i, niova_io_iovs_num_already_consumed(iovs, 33, 1ULL << i));
+
+        NIOVA_ASSERT(
+            niova_io_iovs_num_already_consumed(iovs, 33, 1ULL << i) ==
+            MAX(1, i));
+    }
+
+    return 0;
+}
+
+static int
+iov_test_map_consumed(void)
+{
+    struct iovec iovA[2] = { [0].iov_len = 1, [1].iov_len = 1 };
+    struct iovec iovB[2] = {0};
+
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, &iovA[1], 2, 0, 0) ==
+                 -EINVAL);
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, iovA - 1, 2, 0, 0) ==
+                 -EINVAL);
+#pragma GCC diagnostic pop
+
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, iovB, 2, 0, 3) ==
+                 -EOVERFLOW);
+    NIOVA_ASSERT(niova_io_iovs_map_consumed(iovA, iovB, 2, 1, 0) == 1);
+
+    struct iovec iovs[33] = {0};
+    for (int i = 0; i < 33; i++)
+        iovs[i].iov_len = 1ULL << i;
+
+    struct iovec dest[33] = {0};
+    ssize_t niovs = niova_io_iovs_map_consumed(iovs, dest, 33, 0, -1UL);
+    NIOVA_ASSERT(niova_io_iovs_total_size_get(dest, niovs) ==
+                 niova_io_iovs_total_size_get(iovs, niovs));
+
+    niovs = niova_io_iovs_map_consumed(iovs, dest, 33, 0, 1);
+    NIOVA_ASSERT(niova_io_iovs_total_size_get(dest, niovs) == 1);
+
+    niovs = niova_io_iovs_map_consumed(iovs, dest, 33, 0, 1000);
+    NIOVA_ASSERT(niovs == 10);
+    NIOVA_ASSERT(niova_io_iovs_total_size_get(dest, niovs) == 1000);
+
+    niovs = niova_io_iovs_map_consumed(iovs, dest, 33, 0, 1000000);
+    NIOVA_ASSERT(niovs == 20);
+    NIOVA_ASSERT(niova_io_iovs_total_size_get(dest, niovs) == 1000000);
+
+    niovs = niova_io_iovs_map_consumed(iovs, dest, 33, 0, 1000000000);
+    NIOVA_ASSERT(niovs == 30);
+    NIOVA_ASSERT(niova_io_iovs_total_size_get(dest, niovs) == 1000000000);
+
+    for (int i = 0; i < 33; i++)
+    {
+        niovs = niova_io_iovs_map_consumed(iovs, dest, 33, 0, 1ULL << i);
+//        fprintf(stderr,
+//                "niova_io_iovs_map_consumed(%d) niovs=%zd total-size=%zd\n",
+//                i, niovs, niova_io_iovs_total_size_get(dest, niovs));
+
+        NIOVA_ASSERT(niovs == i + 1);
+        NIOVA_ASSERT(niova_io_iovs_total_size_get(dest, niovs) == 1ULL << i);
+    }
+
+    return 0;
+}
+
 int
 main(void)
 {
     NIOVA_ASSERT(!iov_test_basic());
     NIOVA_ASSERT(!iov_test());
+    NIOVA_ASSERT(!iov_test_num_to_meet_size());
+    NIOVA_ASSERT(!iov_test_map_consumed());
 
     return 0;
 }

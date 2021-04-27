@@ -308,7 +308,7 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
     {
         struct iovec my_iovs[iovlen];
         const size_t my_iovlen =
-            niova_io_iovs_map_consumed(iov, my_iovs, iovlen, total_sent);
+            niova_io_iovs_map_consumed(iov, my_iovs, iovlen, total_sent, -1UL);
 
         struct msghdr msg = {
             .msg_name = 0,

@@ -61,7 +61,7 @@ struct niova_env_var
     bool                     nev_present;
     enum niova_env_var_type  nev_type;
     enum niova_env_subsystem nev_subsystem;
-    enum niova_env_var_num   nev_var_num;
+    unsigned int             nev_var_num;
     int                      nev_rc;
     void                     (*nev_cb)(const struct niova_env_var *);
 };

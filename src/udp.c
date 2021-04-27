@@ -241,7 +241,7 @@ udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
     {
         struct iovec my_iovs[iovlen];
         const size_t my_iovlen =
-            niova_io_iovs_map_consumed(iov, my_iovs, iovlen, total_sent);
+            niova_io_iovs_map_consumed(iov, my_iovs, iovlen, total_sent, -1UL);
         struct msghdr msg = {
             .msg_name = (void *)to,
             .msg_namelen = sizeof(*to),
