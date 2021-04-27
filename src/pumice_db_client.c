@@ -508,6 +508,12 @@ pmdb_obj_id_cb(const char *data, const size_t data_size,
     return 0;
 }
 
+int
+PmdbClientDestroy(pmdb_t pmdb)
+{
+    return pmdb ? raft_client_destroy(pmdb) : -EINVAL;
+}
+
 /**
  * PmdbClientStart - public initialization routine.
  */
