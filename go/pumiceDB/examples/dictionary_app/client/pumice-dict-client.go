@@ -1,13 +1,14 @@
 package main
+
 import (
+	"bufio"
+	"flag"
 	"fmt"
 	"os"
-	"bufio"
 	"strings"
-	"flag"
-	"niova/go-pumicedb-lib/common"
-	"niova/go-pumicedb-lib/client"
+
 	"dictapplib/lib"
+	"niova/go-pumicedb-lib/client"
 )
 
 /*
@@ -26,14 +27,12 @@ var peer_uuid_go string
  app_uuid.Word.write  => For read operation.
 */
 func pmdbDictClient() {
-
 	//Start the client.
-	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
-
-	client_obj := PumiceDBClient.PmdbClientObj{
-		Pmdb: pmdb,
+	pmdb := PumiceDBClient.PmdbClientNew(raft_uuid_go, peer_uuid_go)
+	if pmdb == nil {
+		return
 	}
-
+	defer pmdb.Stop()
 
 	for {
 		//Read the input from console
@@ -53,10 +52,9 @@ func pmdbDictClient() {
 			//Format is: AppUUID.text.write or AppUUID.text.read
 			// Prepare the dictionary structure from values passed by user.
 			req_dict := DictAppLib.Dict_app{
-				Dict_text: input_text,
+				Dict_text:   input_text,
 				Dict_wcount: 0,
 			}
-
 
 			fmt.Println("rncui: ", rncui)
 			fmt.Println("Operation: ", ops)
@@ -64,12 +62,12 @@ func pmdbDictClient() {
 
 			if ops == "write" {
 				//write operation
-				client_obj.PmdbClientWrite(req_dict, rncui)
+				pmdb.Write(req_dict, rncui)
 			} else {
 				/*
 				 * Get the size of the structure
 				 */
-				data_length := PumiceDBCommon.GetStructSize(req_dict)
+				data_length := pmdb.GetSize(req_dict)
 				fmt.Println("Length of the structure: ", data_length)
 				rc := -1
 				/* Retry the read on failure */
@@ -81,8 +79,8 @@ func pmdbDictClient() {
 
 					var reply_size int64
 					//read operation
-					rc = client_obj.PmdbClientRead(req_dict, rncui, value_buf,
-												   int64(data_length), &reply_size)
+					rc = pmdb.Read(req_dict, rncui, value_buf,
+						int64(data_length), &reply_size)
 
 					if rc < 0 {
 						fmt.Println("Read request failed, error: ", rc)
@@ -93,7 +91,7 @@ func pmdbDictClient() {
 						}
 					} else {
 						result_dict := &DictAppLib.Dict_app{}
-						PumiceDBCommon.Decode(value_buf, result_dict, reply_size)
+						pmdb.Decode(value_buf, result_dict, reply_size)
 
 						fmt.Println("Result of the read request is:")
 						fmt.Println("Word: ", input_text)

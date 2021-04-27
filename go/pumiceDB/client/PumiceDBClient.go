@@ -1,10 +1,13 @@
 package PumiceDBClient
 
 import (
+	"errors"
 	"fmt"
-	"niova/go-pumicedb-lib/common"
 	"strconv"
+	"syscall"
 	"unsafe"
+
+	"niova/go-pumicedb-lib/common"
 )
 
 /*
@@ -14,7 +17,11 @@ import (
 import "C"
 
 type PmdbClientObj struct {
-	Pmdb unsafe.Pointer
+	initialized bool
+	//pmdb        unsafe.Pointer
+	pmdb     C.pmdb_t
+	raftUuid string
+	myUuid   string
 }
 
 /* Typecast Go string to C String */
@@ -48,7 +55,7 @@ func CToGoString(cstring *C.char) string {
 }
 
 //Write KV from client.
-func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) {
+func (obj *PmdbClientObj) Write(ed interface{}, rncui string) {
 
 	var key_len int64
 	//Encode the structure into void pointer.
@@ -58,15 +65,12 @@ func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) 
 	encoded_key := (*C.char)(ed_key)
 
 	//Perform the write
-	PmdbClientWriteKV(pmdb_client.Pmdb, rncui, encoded_key, key_len)
+	obj.writeKV(rncui, encoded_key, key_len)
 }
 
 //Read the value of key on the client
-func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
-	rncui string,
-	value unsafe.Pointer,
-	value_len int64,
-	reply_size *int64) int {
+func (obj *PmdbClientObj) Read(ed interface{}, rncui string,
+	value unsafe.Pointer, value_len int64, reply_size *int64) int {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
@@ -79,31 +83,17 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 
 	value_ptr := (*C.char)(value)
 
-	return PmdbClientReadKV(pmdb_client.Pmdb, rncui, encoded_key,
-		key_len, value_ptr, value_len, reply_size)
+	return obj.readKV(rncui, encoded_key, key_len, value_ptr,
+		value_len, reply_size)
 }
 
-func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
-
-	raft_uuid := GoToCString(Graft_uuid)
-
-	client_uuid := GoToCString(Gclient_uuid)
-
-	//Start the client.
-	Cpmdb := C.PmdbClientStart(raft_uuid, client_uuid)
-
-	//Free C memory
-	FreeCMem(raft_uuid)
-	FreeCMem(client_uuid)
-	return unsafe.Pointer(Cpmdb)
-}
-
-func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
+func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	key_len int64) {
 
 	var obj_stat C.pmdb_obj_stat_t
 
 	crncui_str := GoToCString(rncui)
+	defer FreeCMem(crncui_str)
 
 	c_key_len := GoToCSize_t(key_len)
 
@@ -114,20 +104,16 @@ func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
-	Cpmdb := (C.pmdb_t)(pmdb)
-
-	C.PmdbObjPut(Cpmdb, obj_id, key, c_key_len, &obj_stat)
-
-	//Free C memory
-	FreeCMem(crncui_str)
+	C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
 }
 
-func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
-	key_len int64, value *C.char, value_len int64,
-	reply_size *int64) int {
+func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
+	key_len int64, value *C.char, value_len int64, reply_size *int64) int {
+
 	var obj_stat C.pmdb_obj_stat_t
 
 	crncui_str := GoToCString(rncui)
+	defer FreeCMem(crncui_str)
 
 	c_key_len := GoToCSize_t(key_len)
 	c_value_len := GoToCSize_t(value_len)
@@ -139,17 +125,75 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
-	Cpmdb := (C.pmdb_t)(pmdb)
-	rc := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
-		&obj_stat)
+	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len, value,
+		c_value_len, &obj_stat)
 
 	*reply_size = 0
 	//*reply_size = int64(obj_stat.reply_size)
 
 	//fmt.Println("Reply size is: ", obj_stat.reply_size)
 	//fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
-	//Free C memory
-	FreeCMem(crncui_str)
 
 	return int(rc)
+}
+
+// Return the decode / encode size of the provided object
+func (obj *PmdbClientObj) GetSize(ed interface{}) int64 {
+	return PumiceDBCommon.GetStructSize(ed)
+}
+
+// Decode in the input buffer into the output object
+// XXX note this function *should* return an error
+func (obj *PmdbClientObj) Decode(input unsafe.Pointer, output interface{},
+	len int64) {
+	PumiceDBCommon.Decode(input, output, len)
+}
+
+func (obj *PmdbClientObj) Stop() error {
+	if obj.initialized == true {
+		return errors.New("Client object is not initialized")
+	}
+
+	rc := C.PmdbClientDestroy((C.pmdb_t)(obj.pmdb))
+	if rc != 0 {
+		return fmt.Errorf("PmdbClientDestroy() returned %d", rc)
+	}
+	return nil
+}
+
+func (obj *PmdbClientObj) Start() error {
+	if obj.initialized == true {
+		return errors.New("Client object is already initialized")
+	}
+
+	raftUuid := GoToCString(obj.raftUuid)
+	if raftUuid == nil {
+		return errors.New("Memory allocation error")
+	}
+	defer FreeCMem(raftUuid)
+
+	clientUuid := GoToCString(obj.myUuid)
+	if clientUuid == nil {
+		return errors.New("Memory allocation error")
+	}
+	defer FreeCMem(clientUuid)
+
+	//Start the client
+	obj.pmdb = C.PmdbClientStart(raftUuid, clientUuid)
+	if obj.pmdb == nil {
+		var errno syscall.Errno
+		return fmt.Errorf("PmdbClientStart(): %d", errno)
+	}
+
+	return nil
+}
+
+func PmdbClientNew(Graft_uuid string, Gclient_uuid string) *PmdbClientObj {
+	var client PmdbClientObj
+
+	client.initialized = false
+	client.raftUuid = Graft_uuid
+	client.myUuid = Gclient_uuid
+
+	return &client
 }
