@@ -3,6 +3,7 @@ import (
   "encoding/csv"
   "fmt"
   "io"
+  "flag"
   "strings"
   "log"
   "os"
@@ -18,6 +19,9 @@ import (
 #include <stdlib.h>
 */
 import "C"
+
+var raft_uuid_go string
+var client_uuid_go string
 
 func update(struct_app *zomatoapplib.Zomato_Data, client_obj *PumiceDBClient.PmdbClientObj){
 
@@ -157,23 +161,29 @@ func get(client_obj *PumiceDBClient.PmdbClientObj, key string, read_rncui string
 	}
 }
 
+func get_commandline_parameters(){
+
+	flag.StringVar(&raft_uuid_go, "raft", "NULL", "raft uuid")
+	flag.StringVar(&client_uuid_go, "peer", "NULL", "client uuid")
+
+	flag.Parse()
+	fmt.Println("Raft UUID: ", raft_uuid_go)
+	fmt.Println("Client UUID: ", client_uuid_go)
+
+}
 
 func main(){
 
 	//Print help message.
 	if len(os.Args)==1 || os.Args[1] == "-help" || os.Args[1] == "-h"{
-		fmt.Println("\nUsage: \n   For help:             ./zomato_app_client [-h] \n   To start client:      ./zomato_app_client [raft_uuid] [client_uuid]")
+		fmt.Println("\nUsage: \n   For help:             ./zomato_app_client [-h] \n   To start client:      ./zomato_app_client -raft [raft_uuid] -peer [client_uuid]")
 		fmt.Println("Positional Arguments: \n   raft_uuid \n   client_uuid")
 		fmt.Println("Optional Arguments: \n   -h, --help            show this help message and exit")
                 os.Exit(0)
 	}
 
 	//Accept raft and client uuid from cmdline.
-        raft_uuid_go := os.Args[1]
-        client_uuid_go := os.Args[2]
-
-	fmt.Println("Raft uuid:", raft_uuid_go)
-	fmt.Println("Client uuid:", client_uuid_go)
+	get_commandline_parameters()
 
         fmt.Println("Starting client...")
 	//Start the client.
