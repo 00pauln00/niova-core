@@ -162,7 +162,7 @@ struct raft_client_request_handle
     uint64_t                   rcrh_rpc_app_seqno;
     uint8_t                    rcrh_send_niovs;
     uint8_t                    rcrh_recv_niovs;
-    struct iovec               rcrh_iovs[RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS + 1];
+    struct iovec               rcrh_iovs[RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS];
     int                       *rcrh_completion_notifier;
     pthread_cond_t            *rcrh_cond_var;
     raft_client_user_cb_t      rcrh_async_cb;
