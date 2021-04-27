@@ -71,37 +71,36 @@ func pmdbDictClient() {
 				 */
 				data_length := PumiceDBCommon.GetStructSize(req_dict)
 				fmt.Println("Length of the structure: ", data_length)
-				rc := -1
 				/* Retry the read on failure */
-				for ok := true; ok; ok = (rc < 0) {
 
-					// Allocate C memory to store the value of the result.
-					fmt.Println("Allocating buffer of size: ", data_length)
-					value_buf := C.malloc(C.size_t(data_length))
+				// Allocate C memory to store the value of the result.
+				fmt.Println("Allocating buffer of size: ", data_length)
+				value_buf := C.malloc(C.size_t(data_length))
 
-					var reply_size int64
-					//read operation
-					rc = client_obj.PmdbClientRead(req_dict, rncui, value_buf,
-												   int64(data_length), &reply_size)
+				var reply_size int64
+				//read operation
+				reply_buff := client_obj.PmdbClientRead(req_dict, rncui, value_buf,
+												   int64(data_length), true, &reply_size)
 
-					if rc < 0 {
-						fmt.Println("Read request failed, error: ", rc)
-						//if rc == os.E2BIG {
-						if reply_size > data_length {
-							fmt.Println("Allocate bigger buffer and retry read operation: ", data_length)
-							data_length = reply_size
-						}
-					} else {
-						result_dict := &DictAppLib.Dict_app{}
-						PumiceDBCommon.Decode(value_buf, result_dict, reply_size)
+				if reply_buff == nil {
+					fmt.Println("Read request failed !!")
+				} else {
+					result_dict := &DictAppLib.Dict_app{}
+					PumiceDBCommon.Decode(value_buf, result_dict, reply_size)
 
-						fmt.Println("Result of the read request is:")
-						fmt.Println("Word: ", input_text)
-						fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
-					}
-
-					C.free(value_buf)
+					fmt.Println("Result of the read request is:")
+					fmt.Println("Word: ", input_text)
+					fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
 				}
+				if reply_buff != value_buf {
+					/* If pmdb library has allocated bigger buffer to
+					 * accomodate the result, make sure we free the buffer.
+					 */
+					fmt.Println("Free the buffer allocated by library")
+					C.free(reply_buff)
+				}
+
+				C.free(value_buf)
 			}
 		}
 	}
