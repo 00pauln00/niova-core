@@ -1,7 +1,7 @@
 package main
 import (
   "fmt"
-  "os"
+  "flag"
   "unsafe"
   "strings"
   "strconv"
@@ -15,6 +15,9 @@ import (
 #include <string.h>
 */
 import "C"
+
+var raft_uuid string
+var peer_uuid string
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -101,11 +104,12 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 func zomato_app_start_server(){
 
 		//Method call to accept cmdline parameters and start server.
-                raft_uuid := os.Args[1]
-                peer_uuid := os.Args[2]
+		flag.StringVar(&raft_uuid, "raft", "NULL", "raft uuid")
+		flag.StringVar(&peer_uuid, "peer", "NULL", "peer uuid")
 
-                fmt.Println("Raft uuid:", raft_uuid)
-                fmt.Println("Peer uuid:", peer_uuid)
+		flag.Parse()
+		fmt.Println("Raft UUID: ", raft_uuid)
+		fmt.Println("Peer UUID: ", peer_uuid)
 
                 //Initialize callbacks for zomato app.
                 cb := &PumiceDBServer.PmdbCallbacks{
@@ -117,6 +121,7 @@ func zomato_app_start_server(){
                 PumiceDBServer.PmdbStartServer(raft_uuid, peer_uuid, colmfamily, cb)
 
 }
+
 func main(){
 		//Start zomato_app_server.
 		zomato_app_start_server()
