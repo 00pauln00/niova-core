@@ -86,6 +86,28 @@ binary_hist_incorporate_val(struct binary_hist *bh, unsigned long long val)
     }
 }
 
+static inline void
+binary_hist_incorporate_val_multi(struct binary_hist *bh,
+                                  unsigned long long val,
+                                  unsigned long long cnt)
+{
+    if (bh)
+    {
+        NIOVA_ASSERT(bh->bh_num_buckets <= BIN_HIST_BUCKETS_MAX);
+
+        int pos = 0;
+
+        val >>= bh->bh_start_bit;
+
+        if (val)
+            pos = MIN((TYPE_SZ_BITS(unsigned long long) -
+                       __builtin_clzll(val)),
+                      (bh->bh_num_buckets - 1));
+
+        bh->bh_values[pos] += cnt;
+    }
+}
+
 static inline long long
 binary_hist_lower_bucket_range(const struct binary_hist *bh, int pos)
 {
