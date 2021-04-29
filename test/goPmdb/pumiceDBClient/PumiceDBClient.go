@@ -9,6 +9,7 @@ import (
 /*
 #cgo LDFLAGS: -lniova -lniova_raft_client -lniova_pumice_client
 #include <raft/pumice_db_client.h>
+#include <raft/pumice_db_net.h>
 */
 import "C"
 
@@ -63,9 +64,7 @@ func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) 
 //Read the value of key on the client
 func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 												 rncui string,
-												 value unsafe.Pointer,
 												 value_len int64,
-												 expand_buff bool,
 												 reply_size *int64) unsafe.Pointer {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
@@ -77,11 +76,8 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	value_ptr := (*C.char)(value)
-
 	return PmdbClientReadKV(pmdb_client.Pmdb, rncui, encoded_key,
-							key_len, value_ptr, value_len, expand_buff,
-							reply_size)
+							key_len, value_len, reply_size)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
@@ -124,8 +120,8 @@ func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 }
 
 func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
-					  key_len int64, value *C.char, value_len int64,
-					  expand_buff bool, reply_size *int64) unsafe.Pointer {
+					  key_len int64, value_len int64,
+					  reply_size *int64) unsafe.Pointer {
 	var obj_stat C.pmdb_obj_stat_t
 
 	crncui_str := GoToCString(rncui)
@@ -140,9 +136,21 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
+    req_buff := C.malloc(C.sizeof_pmdb_request_opts_t)
+
+    pmdb_req := (*C.pmdb_request_opts_t)(req_buff)
+	pmdb_req.pro_fill_stat = 1
+	pmdb_req.pro_stat = &obj_stat
+	pmdb_req.pro_non_blocking_cb = nil
+	pmdb_req.pro_arg = nil
+	pmdb_req.pro_get_buffer = nil
+	pmdb_req.pro_get_buffer_size = c_value_len
+	pmdb_req.pro_use_provided_get_buffer = 0 //Let library allocate the buffer
+	pmdb_req.pro_non_blocking = 0 // Should run as blocking
+
 	Cpmdb := (C.pmdb_t)(pmdb)
-	reply_buff := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len, C.bool(expand_buff),
-			&obj_stat)
+	reply_buff := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, c_value_len,
+								pmdb_req)
 
 	*reply_size = int64(obj_stat.reply_size)
 
@@ -150,6 +158,7 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 	fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
 	//Free C memory
 	FreeCMem(crncui_str)
+	FreeCMem(pmdb_req)
 
 	return reply_buff
 }

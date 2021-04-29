@@ -148,7 +148,7 @@ struct raft_client_request_handle
     uint8_t                    rcrh_cb_exec       : 1;
     uint8_t                    rcrh_op_wr         : 1;
     uint8_t                    rcrh_history_cache : 1;
-    uint8_t                    rcrh_expand_reply_iovs : 1;
+    uint8_t                    rcrh_get_into_user_buffer : 1;
     int16_t                    rcrh_error;
     uint16_t                   rcrh_sin_reply_port;
     struct in_addr             rcrh_sin_reply_addr;
@@ -1175,8 +1175,8 @@ static int
 raft_client_request_handle_init(
     struct raft_client_instance *rci, struct raft_client_request_handle *rcrh,
     const struct iovec *src_iovs, size_t nsrc_iovs, struct iovec *dest_iovs,
-    size_t ndest_iovs, bool expand_reply_buff, const struct timespec now,
-    const struct timespec timeout, const enum raft_client_request_type rcrt,
+    size_t ndest_iovs, bool get_buffer, const struct timespec now,
+    const struct timespec timeout, const enum raft_client_request_opts rcrt,
     raft_client_user_cb_t user_cb, void *user_arg,
     const raft_net_request_tag_t tag)
 {
@@ -1206,13 +1206,11 @@ raft_client_request_handle_init(
     rcrh->rcrh_initializing = 1;
     rcrh->rcrh_send_niovs = nsrc_iovs;
     rcrh->rcrh_recv_niovs = ndest_iovs;
-    rcrh->rcrh_expand_reply_iovs = expand_reply_buff ? 1 : 0;
+    rcrh->rcrh_get_into_user_buffer = get_buffer;
 
-    rcrh->rcrh_blocking =
-        (rcrt == RCRT_READ_NB || rcrt == RCRT_WRITE_NB) ? 0 : 1;
+    rcrh->rcrh_blocking = !(rcrt & RCRT_NON_BLOCKING);
 
-    rcrh->rcrh_op_wr =
-        (rcrt == RCRT_WRITE || rcrt == RCRT_WRITE_NB) ? 1 : 0;
+    rcrh->rcrh_op_wr = (rcrt & RCRT_WRITE) ? 1 : 0;
 
     memcpy(&rcrh->rcrh_iovs[0], src_iovs, nsrc_iovs * sizeof(struct iovec));
     memcpy(&rcrh->rcrh_iovs[nsrc_iovs], dest_iovs,
@@ -1386,14 +1384,13 @@ raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct raft_net_client_user_id *rncui,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
-                           bool expand_reply_buff,
+                           bool get_buffer,
                            const struct timespec timeout,
-                           const enum raft_client_request_type rcrt,
+                           const enum raft_client_request_opts rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag)
 {
-    const bool block = (rcrt == RCRT_READ || rcrt == RCRT_WRITE) ?
-        true : false;
+    const bool block = (rcrt & RCRT_NON_BLOCKING) ? false: true;
 
     if (!client_instance || !rncui || (!block && user_cb == NULL))
         return -EINVAL;
@@ -1438,7 +1435,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
 
     int rc =
         raft_client_request_handle_init(rci, rcrh, src_iovs, nsrc_iovs,
-                                        dest_iovs, ndest_iovs, expand_reply_buff,
+                                        dest_iovs, ndest_iovs, get_buffer,
                                         now, timeout,
                                         rcrt, user_cb, user_arg, tag);
     if (rc)
@@ -1577,14 +1574,13 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
 
         // If client has allocated smaller buffer and allowed to explan the buffer on bigger size result
         // Or haven't allocated buffer at all. 
-        if ((reply_size_error == -E2BIG &&
-             rcrh->rcrh_expand_reply_iovs) || recv_iovs[1].iov_base == NULL)
+        if (rcrh->rcrh_get_into_user_buffer)
         {
             /* Allocate or Reallocate buffer */
             SIMPLE_LOG_MSG(LL_DEBUG, "Allocate or Reallocate buffer: %ld",
 							(rcrh->rcrh_reply_size - recv_iovs[0].iov_len));
 
-            recv_iovs[1].iov_base = realloc(recv_iovs[1].iov_base, (rcrh->rcrh_reply_size - recv_iovs[0].iov_len));
+            recv_iovs[1].iov_base = malloc(rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
             recv_iovs[1].iov_len = (rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
             reply_size_error = 0;
         }

@@ -74,33 +74,27 @@ func pmdbDictClient() {
 				/* Retry the read on failure */
 
 				// Allocate C memory to store the value of the result.
-				fmt.Println("Allocating buffer of size: ", data_length)
-				value_buf := C.malloc(C.size_t(data_length))
+				//fmt.Println("Allocating buffer of size: ", data_length)
+				//value_buf := C.malloc(C.size_t(data_length))
 
 				var reply_size int64
 				//read operation
-				reply_buff := client_obj.PmdbClientRead(req_dict, rncui, value_buf,
-												   int64(data_length), true, &reply_size)
+				reply_buff := client_obj.PmdbClientRead(req_dict, rncui,
+												   int64(data_length), &reply_size)
 
 				if reply_buff == nil {
 					fmt.Println("Read request failed !!")
 				} else {
 					result_dict := &DictAppLib.Dict_app{}
-					PumiceDBCommon.Decode(value_buf, result_dict, reply_size)
+					PumiceDBCommon.Decode(reply_buff, result_dict, reply_size)
 
 					fmt.Println("Result of the read request is:")
 					fmt.Println("Word: ", input_text)
 					fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
 				}
-				if reply_buff != value_buf {
-					/* If pmdb library has allocated bigger buffer to
-					 * accomodate the result, make sure we free the buffer.
-					 */
-					fmt.Println("Free the buffer allocated by library")
-					C.free(reply_buff)
-				}
 
-				C.free(value_buf)
+				// Application should free the this reply_buff which is allocate by pmdb lib
+				C.free(reply_buff)
 			}
 		}
 	}

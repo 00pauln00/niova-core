@@ -16,12 +16,12 @@
 #define RAFT_CLIENT_REQUEST_TIMEOUT_MAX_SECS 0xffffffffU
 #define RAFT_CLIENT_REQUEST_TIMEOUT_SECS 60
 
-enum raft_client_request_type
+enum raft_client_request_opts
 {
-    RCRT_READ,     // blocking
-    RCRT_READ_NB,  // non-blocking
-    RCRT_WRITE,
-    RCRT_WRITE_NB
+    RCRT_READ                     = 0,
+    RCRT_WRITE                    = (1 << 0),
+    RCRT_NON_BLOCKING             = (1 << 1),
+    RCRT_USE_PROVIDED_READ_BUFFER = (1 << 2),
 };
 
 #define RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS 8
@@ -71,7 +71,7 @@ raft_client_request_submit(raft_client_instance_t rci,
                            struct iovec *dest_iovs, size_t ndest_iovs,
                            bool expand_reply_buff,
                            const struct timespec timeout,
-                           const enum raft_client_request_type rcrt,
+                           const enum raft_client_request_opts rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag);
 #endif

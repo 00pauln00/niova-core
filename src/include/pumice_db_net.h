@@ -80,6 +80,20 @@ typedef struct pmdb_obj_stat
 
 typedef void (*pmdb_user_cb_t)(void *, ssize_t);
 
+typedef struct pmdb_request_options
+{
+    uint8_t         pro_use_provided_get_buffer;
+    uint8_t         pro_non_blocking;
+    uint8_t         pro_fill_stat;
+    pmdb_obj_stat_t *pro_stat;
+    pmdb_user_cb_t  pro_non_blocking_cb;
+    void            *pro_arg;
+    void            *pro_get_buffer;
+    size_t          pro_get_buffer_size;
+    //struct          pro_timeout;
+} pmdb_request_opts_t;
+
+
 static inline size_t
 pmdb_net_calc_rpc_msg_size(const struct pmdb_msg *pmdb_msg)
 {
@@ -115,6 +129,24 @@ static inline unsigned int
 pmdb_get_default_request_timeout(void)
 {
     return raft_client_get_default_request_timeout();
+}
+
+static inline void
+pmdb_request_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
+                  int non_blocking, int fill_stat,
+                  pmdb_obj_stat_t *obj_stat, pmdb_user_cb_t user_cb,
+                  void *user_arg,
+                  void *get_buffer,
+                  size_t get_buffer_size)
+{
+    pmdb_req->pro_use_provided_get_buffer = use_user_buffer;
+    pmdb_req->pro_non_blocking = non_blocking;
+    pmdb_req->pro_fill_stat = fill_stat;
+    pmdb_req->pro_stat = obj_stat;
+    pmdb_req->pro_non_blocking_cb = user_cb;
+    pmdb_req->pro_arg = user_arg;
+    pmdb_req->pro_get_buffer = get_buffer;
+    pmdb_req->pro_get_buffer_size = get_buffer_size; 
 }
 
 #endif
