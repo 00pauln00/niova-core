@@ -34,7 +34,6 @@ func pmdbDictClient() {
 		Pmdb: pmdb,
 	}
 
-
 	for {
 		//Read the input from console
 		words := bufio.NewReader(os.Stdin)
@@ -72,10 +71,6 @@ func pmdbDictClient() {
 				data_length := PumiceDBCommon.GetStructSize(req_dict)
 				fmt.Println("Length of the structure: ", data_length)
 				/* Retry the read on failure */
-
-				// Allocate C memory to store the value of the result.
-				//fmt.Println("Allocating buffer of size: ", data_length)
-				//value_buf := C.malloc(C.size_t(data_length))
 
 				var reply_size int64
 				//read operation

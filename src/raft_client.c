@@ -439,10 +439,13 @@ raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
      */
     int err = -ABS(rcrh->rcrh_error);
 
+    struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
+
     if (rcrh->rcrh_async_cb)
         rcrh->rcrh_async_cb(rcrh->rcrh_arg,
                             rcrh->rcrh_error ? err :
-                            rcrh->rcrh_reply_used_size);
+                            rcrh->rcrh_reply_used_size,
+                            recv_iovs[1].iov_base);
 
     if (rcrh->rcrh_blocking)
     {
@@ -1577,11 +1580,13 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         if (rcrh->rcrh_get_into_user_buffer)
         {
             /* Allocate or Reallocate buffer */
-            SIMPLE_LOG_MSG(LL_DEBUG, "Allocate or Reallocate buffer: %ld",
+            SIMPLE_LOG_MSG(LL_WARN, "Allocate or Reallocate buffer: %ld",
 							(rcrh->rcrh_reply_size - recv_iovs[0].iov_len));
 
             recv_iovs[1].iov_base = malloc(rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
             recv_iovs[1].iov_len = (rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
+
+            SIMPLE_LOG_MSG(LL_WARN, "Allocate buffer %p", recv_iovs[1].iov_base);
             reply_size_error = 0;
         }
         if (from)
@@ -1606,6 +1611,7 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
                              niova_io_iovs_total_size_get(
                                  recv_iovs, rcrh->rcrh_recv_niovs)));
 
+            SIMPLE_LOG_MSG(LL_WARN, "Copied the contents");
             rcrh->rcrh_reply_used_size = (size_t)rrc;
         }
 

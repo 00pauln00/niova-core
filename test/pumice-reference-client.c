@@ -880,42 +880,34 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     // Copy the pending seqno in the preq object stat.
     preq->preq_obj_stat.sequence_num = preq->preq_pmdb_seqno;
 
+    pmdb_request_opts_t pmdb_req;
+
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
-        rc = use_async_requests ?
-            PmdbObjLookupNB(pmdbtcPMDB, obj_id, &preq->preq_obj_stat,
-                            pmdbtc_async_cb, preq) :
-            PmdbObjLookup(pmdbtcPMDB, obj_id, &preq->preq_obj_stat);
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+                          &preq->preq_obj_stat,
+                          use_async_requests ? pmdbtc_async_cb : NULL,
+                          use_async_requests ? preq : NULL,
+                          NULL,
+                          0);
+
+        PmdbObjLookupX(pmdbtcPMDB, obj_id, &pmdb_req);
+        
         break;
 
     case pmdb_op_read:
-        rc = -EIO;
 
-        void *buffer;
-        if (use_async_requests)
-        {
-            pmdb_request_opts_t pmdb_req;
-            pmdb_request_init(&pmdb_req, 1, use_async_requests, 1,
+            pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
                               &preq->preq_obj_stat,
-                              pmdbtc_async_cb,
-                              preq,
+                              use_async_requests ? pmdbtc_async_cb : NULL,
+                              use_async_requests? preq : NULL,
                               (void *)&preq->preq_rtdb,
                               (sizeof(struct raft_test_data_block) +
                               sizeof(struct raft_test_values)));
-            buffer = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
+            rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
                                  (sizeof(struct raft_test_data_block) +
                                  sizeof(struct raft_test_values)), &pmdb_req);
-        }
-        else
-        {
-            buffer = PmdbObjGet(pmdbtcPMDB, obj_id, NULL, 0,
-                        (sizeof(struct raft_test_data_block) +
-                        sizeof(struct raft_test_values)));
-        }
-
-        FATAL_IF(buffer != (void *)&preq->preq_rtdb, "New buffer is allocated");
-
         break;
 
     case pmdb_op_write:
@@ -927,13 +919,13 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
         SIMPLE_LOG_MSG(LL_TRACE, "write rqsz: %lu", rqsz);
 
-        rc = use_async_requests ?
-            PmdbObjPutNB(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                         rqsz,
-                         pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
-            PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                       rqsz,
-                       &preq->preq_obj_stat);
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+                          &preq->preq_obj_stat,
+                          use_async_requests ? pmdbtc_async_cb : NULL,
+                          use_async_requests ? preq : NULL, NULL, 0);
+
+        rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb, rqsz,
+                          &pmdb_req);
 
         break;
     default:

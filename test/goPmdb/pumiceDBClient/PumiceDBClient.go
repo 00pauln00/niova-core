@@ -122,7 +122,6 @@ func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 					  key_len int64, value_len int64,
 					  reply_size *int64) unsafe.Pointer {
-	var obj_stat C.pmdb_obj_stat_t
 
 	crncui_str := GoToCString(rncui)
 
@@ -136,29 +135,18 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
-    req_buff := C.malloc(C.sizeof_pmdb_request_opts_t)
-
-    pmdb_req := (*C.pmdb_request_opts_t)(req_buff)
-	pmdb_req.pro_fill_stat = 1
-	pmdb_req.pro_stat = &obj_stat
-	pmdb_req.pro_non_blocking_cb = nil
-	pmdb_req.pro_arg = nil
-	pmdb_req.pro_get_buffer = nil
-	pmdb_req.pro_get_buffer_size = c_value_len
-	pmdb_req.pro_use_provided_get_buffer = 0 //Let library allocate the buffer
-	pmdb_req.pro_non_blocking = 0 // Should run as blocking
+	var actual_value_size C.size_t
 
 	Cpmdb := (C.pmdb_t)(pmdb)
-	reply_buff := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, c_value_len,
-								pmdb_req)
+	reply_buff := C.PmdbObjGet(Cpmdb, obj_id, key, c_key_len, c_value_len,
+							   &actual_value_size)
 
-	*reply_size = int64(obj_stat.reply_size)
+	*reply_size = int64(actual_value_size)
 
-	fmt.Println("Reply size is: ", obj_stat.reply_size)
-	fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
+	fmt.Println("Reply size is: ", *reply_size)
+
 	//Free C memory
 	FreeCMem(crncui_str)
-	FreeCMem(pmdb_req)
 
 	return reply_buff
 }

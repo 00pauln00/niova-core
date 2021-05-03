@@ -34,7 +34,7 @@ typedef void * raft_client_instance_t;
 typedef int (*raft_client_data_2_obj_id_t)(const char *, const size_t,
                                            struct raft_net_client_user_id *);
 
-typedef void (*raft_client_user_cb_t)(void *, ssize_t);
+typedef void (*raft_client_user_cb_t)(void *, ssize_t, void *);
 int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
