@@ -1526,7 +1526,7 @@ raft_server_log_truncate(struct raft_instance *ri)
 
     ri->ri_backend->rib_log_truncate(ri, trunc_entry_idx);
 
-    DBG_RAFT_INSTANCE_TAG(LL_NOTIFY, "log-rollback", ri, "new-max-raft-idx=%ld",
+    DBG_RAFT_INSTANCE_TAG(LL_WARN, "log-rollback", ri, "new-max-raft-idx=%ld",
                           trunc_entry_idx);
 }
 
@@ -2644,6 +2644,11 @@ raft_server_append_entry_log_prune_if_needed(
                  strerror(-rc));
 
         raft_instance_update_newest_entry_hdr(ri, &reh, RI_NEHDR_ALL, true);
+    }
+    else // Restore the initial state of the entry header
+    {
+        // Issue #65
+        raft_instance_initialize_newest_entry_hdr(ri);
     }
 
     // truncate the log.
