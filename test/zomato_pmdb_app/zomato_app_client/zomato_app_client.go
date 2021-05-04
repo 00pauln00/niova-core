@@ -1,18 +1,22 @@
 package main
+
 import (
-  "encoding/csv"
-  "fmt"
-  "io"
-  "flag"
-  "strings"
-  "log"
-  "os"
-  "bufio"
-  "strconv"
-  "gopmdblib/goPmdbClient"
-  "gopmdblib/goPmdbCommon"
-  "github.com/satori/go.uuid"
-  "zomatoapp.com/zomatolib"
+	"bufio"
+	"encoding/csv"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"github.com/satori/go.uuid"
+	"gopmdblib/goPmdbClient"
+	"gopmdblib/goPmdbCommon"
+	"io"
+	"io/ioutil"
+	"log"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+	"zomatoapp.com/zomatolib"
 )
 
 /*
@@ -20,53 +24,135 @@ import (
 */
 import "C"
 
-var raft_uuid_go string
-var client_uuid_go string
+var (
+	raft_uuid_go     string
+	client_uuid_go   string
+	leader_uuid      string
+	json_outfilepath string
+	app_data_map     = make(map[string]map[string]string)
+	csv_filepath     string
+	ops              string
+)
 
-func update(struct_app *zomatoapplib.Zomato_Data, client_obj *PumiceDBClient.PmdbClientObj){
+//Output structure declaration to dump into json.
+type zomato_app_output struct {
+	Raft_uuid   string
+	Client_uuid string
+	Leader_uuid string
+	Operation   string
+	Status      int
+	Timestamp   string
+	App_data    map[string]map[string]string
+}
+
+//Function to write read request output into map.
+func write_output_into_map(read_data *zomatoapplib.Zomato_Data, read_rncui string) {
+
+	rest_id := strconv.Itoa(int(read_data.Restaurant_id))
+	rest_votes := strconv.Itoa(int(read_data.Votes))
+	mp := map[string]string{
+		"Restaurant_id":   rest_id,
+		"Restaurant_name": read_data.Restaurant_name,
+		"city":            read_data.City,
+		"cuisines":        read_data.Cuisines,
+		"ratings_text":    read_data.Ratings_text,
+		"votes":           rest_votes,
+	}
+
+	app_data_map[read_rncui] = mp
+}
+
+//Method to dump zomato_app_output structure into json file.
+func (struct_out *zomato_app_output) dump_into_json() {
+
+	file, _ := json.MarshalIndent(struct_out, "", "\t")
+	outfile_name := json_outfilepath + "/" + "client_" + ops + "_" + client_uuid_go + ".json"
+	_ = ioutil.WriteFile(outfile_name, file, 0644)
+
+}
+
+func update(struct_app *zomatoapplib.Zomato_Data, client_obj *PumiceDBClient.PmdbClientObj) {
 
 	//Generate app_uuid.
 	app_uuid := uuid.NewV4().String()
 
 	//Create rncui string.
-	rncui := app_uuid+":0:0:0:0"
+	rncui := app_uuid + ":0:0:0:0"
+
+	//Get timestamp.
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	//Open file for storing key, rncui in append mode.
 	file, err := os.OpenFile("key_rncui_data.txt", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-	   log.Println(err)
+		log.Println(err)
 	}
 	defer file.Close()
 
 	//Append key_rncui in file.
 	rest_id_string := strconv.Itoa(int(struct_app.Restaurant_id))
-	_, err_write := file.WriteString("key, rncui = "+rest_id_string+"  "+rncui+"\n")
+	_, err_write := file.WriteString("key, rncui = " + rest_id_string + "  " + rncui + "\n")
 	if err_write != nil {
-	   log.Fatal(err)
+		log.Fatal(err)
 	}
 
-	//Perform write operation.
-	client_obj.PmdbClientWrite(struct_app, rncui)
+	//Get leader uuid.
+	leader_uuid = client_obj.PmdbGetLeader()
 
+	//Perform write operation.
+	rc := client_obj.PmdbClientWrite(struct_app, rncui)
+
+	if rc != 0 {
+		fmt.Println("Pmdb Write failed.")
+		write_strdata := zomato_app_output{
+			Raft_uuid:   raft_uuid_go,
+			Client_uuid: client_uuid_go,
+			Leader_uuid: leader_uuid,
+			Operation:   ops,
+			Status:      rc,
+			Timestamp:   timestamp,
+			App_data:    nil,
+		}
+
+		//Dump structure into json.
+		write_strdata.dump_into_json()
+	} else {
+		fmt.Println("Pmdb Write successful!")
+		//Fill read reuqest output into map.
+		write_output_into_map(struct_app, rncui)
+
+		write_strdata := zomato_app_output{
+			Raft_uuid:   raft_uuid_go,
+			Client_uuid: client_uuid_go,
+			Leader_uuid: leader_uuid,
+			Operation:   ops,
+			Status:      rc,
+			Timestamp:   timestamp,
+			App_data:    app_data_map,
+		}
+
+		//Dump structure into json.
+		write_strdata.dump_into_json()
+	}
 }
 
-func parse_file_and_update(client_obj *PumiceDBClient.PmdbClientObj, filename string){
+func parse_file_and_update(client_obj *PumiceDBClient.PmdbClientObj, filename string) {
 
 	//Open the file.
 	csvfile, err := os.Open(filename)
 	if err != nil {
-	   log.Fatalln("Couldn't open the csv file", err)
+		log.Fatalln("Couldn't open the csv file", err)
 	}
 
 	//Parse the file.
 	// Skip first row (line)
 	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
 	if err != nil {
-	   log.Fatalln("error")
+		log.Fatalln("error")
 	}
 	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
 	if err != nil {
-	   log.Fatalln("error")
+		log.Fatalln("error")
 	}
 
 	//Read remaining rows.
@@ -77,196 +163,261 @@ func parse_file_and_update(client_obj *PumiceDBClient.PmdbClientObj, filename st
 		//Read each record from csv.
 		record, err := r.Read()
 		if err == io.EOF {
-		   break
+			break
 		}
 		if err != nil {
-		   log.Fatal(err)
+			log.Fatal(err)
 		}
 
 		//Typecast Restaurant_id to int64.
-		Restaurant_id_struct, err := strconv.ParseInt(record[0], 10, 64)
+		restaurant_id_struct, err := strconv.ParseInt(record[0], 10, 64)
 		if err != nil {
-		   fmt.Println("Error occured in typecasting Restaurant_id to int64")
+			fmt.Println("Error occured in typecasting Restaurant_id to int64")
 		}
 
 		//Typecast Votes to int64.
-		Votes_struct, err := strconv.ParseInt(record[5], 10, 64)
+		votes_struct, err := strconv.ParseInt(record[5], 10, 64)
 		if err != nil {
-		   fmt.Println("Error occured in typecasting Votes to int64")
+			fmt.Println("Error occured in typecasting Votes to int64")
 		}
 
 		//Fill the Zomato_App structure.
-		struct_data := zomatoapplib.Zomato_Data {
-				Restaurant_id: Restaurant_id_struct,
-				Restaurant_name: record[1],
-				City: record[2],
-				Cuisines: record[3],
-				Ratings_text: record[4],
-				Votes: Votes_struct,
-				}
+		struct_data := zomatoapplib.Zomato_Data{
+			Restaurant_id:   restaurant_id_struct,
+			Restaurant_name: record[1],
+			City:            record[2],
+			Cuisines:        record[3],
+			Ratings_text:    record[4],
+			Votes:           votes_struct,
+		}
 		update(&struct_data, client_obj)
 
 	}
 }
 
-
-func get(client_obj *PumiceDBClient.PmdbClientObj, key string, read_rncui string){
-
+func get(client_obj *PumiceDBClient.PmdbClientObj, key string, read_rncui string) {
 
 	//Typecast key into int64.
-	key_int64,_ := strconv.ParseInt(key, 10, 64)
+	key_int64, _ := strconv.ParseInt(key, 10, 64)
 
 	//Fill the Zomato_App structure.
-	struct_read := zomatoapplib.Zomato_Data {
-		    Restaurant_id: key_int64,
+	struct_read := zomatoapplib.Zomato_Data{
+		Restaurant_id: key_int64,
 	}
 
-	//Allocating size as 1024.
-	struct_len := int64(1024)
+	// Get the size of the structure
+	struct_len := PumiceDBCommon.GetStructSize(struct_read)
+	fmt.Println("Length of the structure: ", struct_read)
 
-	rc := -1
-	/* Retry the read on failure */
-	for ok := true; ok; ok = (rc < 0){
+	//Get leader uuid.
+	leader_uuid := client_obj.PmdbGetLeader()
 
-		fmt.Println("Allocating buffer of size: ", struct_len)
-		//Allocate C memory to store the value of the result.
-		struct_buf := C.malloc(C.size_t(struct_len))
+	var reply_len int64
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
-		var reply_len int64
-		//Perform read operation.
-		rc := client_obj.PmdbClientRead(struct_read, read_rncui, struct_buf, int64(struct_len), &reply_len)
-		if rc < 0 {
-			fmt.Println("Read request failed, error: ", rc)
-			fmt.Println("Reply length returned is: ", reply_len)
-			if reply_len > struct_len{
-                             fmt.Println("Allocate bigger buffer and retry read operation: ", struct_len)
-                             struct_len = reply_len
-			}
-		} else {
-			fmt.Println("Read the return data now")
-			fmt.Println("Length of reply buffer:",reply_len)
-			read_data := &zomatoapplib.Zomato_Data{}
-			PumiceDBCommon.Decode(struct_buf, read_data, reply_len)
+	//Perform read operation.
+	reply_buff := client_obj.PmdbClientRead(struct_read, read_rncui, int64(struct_len), &reply_len)
 
-			fmt.Println("\nData received after read request:")
-			fmt.Println("Restaurant id = ",read_data.Restaurant_id)
-			fmt.Println("Restaurant name = ",read_data.Restaurant_name)
-			fmt.Println("City = ",read_data.City)
-			fmt.Println("Cuisines = ",read_data.Cuisines)
-			fmt.Println("Ratings_text = ",read_data.Ratings_text)
-			fmt.Println("Votes = ",read_data.Votes)
-			break
+	if reply_buff == nil {
+		fmt.Println("Read request failed !!")
+		strdata := zomato_app_output{
+			Raft_uuid:   raft_uuid_go,
+			Client_uuid: client_uuid_go,
+			Leader_uuid: leader_uuid,
+			Operation:   ops,
+			Status:      -1,
+			Timestamp:   timestamp,
+			App_data:    nil,
 		}
-		C.free(struct_buf)
+
+		//Dump structure into json.
+		strdata.dump_into_json()
+	} else {
+		read_data := &zomatoapplib.Zomato_Data{}
+		PumiceDBCommon.Decode(reply_buff, read_data, reply_len)
+
+		fmt.Println("\nResult of the read request is:")
+		fmt.Println("Restaurant id (key) = ", read_data.Restaurant_id)
+		fmt.Println("Restaurant name = ", read_data.Restaurant_name)
+		fmt.Println("City = ", read_data.City)
+		fmt.Println("Cuisines = ", read_data.Cuisines)
+		fmt.Println("Ratings_text = ", read_data.Ratings_text)
+		fmt.Println("Votes = ", read_data.Votes)
+
+		//Fill read reuqest output into map.
+		write_output_into_map(read_data, read_rncui)
+
+		strdata := zomato_app_output{
+			Raft_uuid:   raft_uuid_go,
+			Client_uuid: client_uuid_go,
+			Leader_uuid: leader_uuid,
+			Operation:   ops,
+			Status:      0,
+			Timestamp:   timestamp,
+			App_data:    app_data_map,
+		}
+
+		//Dump structure into json.
+		strdata.dump_into_json()
 	}
+	C.free(reply_buff)
 }
 
-func get_commandline_parameters(){
+func get_commandline_parameters() {
 
-	flag.StringVar(&raft_uuid_go, "raft", "NULL", "raft uuid")
-	flag.StringVar(&client_uuid_go, "peer", "NULL", "client uuid")
+	flag.StringVar(&raft_uuid_go, "r", "NULL", "raft uuid")
+	flag.StringVar(&client_uuid_go, "u", "NULL", "client uuid")
+	flag.StringVar(&json_outfilepath, "l", "NULL", "json_outfilepath")
 
 	flag.Parse()
 	fmt.Println("Raft UUID: ", raft_uuid_go)
 	fmt.Println("Client UUID: ", client_uuid_go)
+	fmt.Println("Outfile path: ", json_outfilepath)
 
 }
 
-func main(){
+func main() {
 
 	//Print help message.
-	if len(os.Args)==1 || os.Args[1] == "-help" || os.Args[1] == "-h"{
-		fmt.Println("\nUsage: \n   For help:             ./zomato_app_client [-h] \n   To start client:      ./zomato_app_client -raft [raft_uuid] -peer [client_uuid]")
-		fmt.Println("Positional Arguments: \n   raft_uuid \n   client_uuid")
-		fmt.Println("Optional Arguments: \n   -h, --help            show this help message and exit")
-                os.Exit(0)
+	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "--help" || os.Args[1] == "-h" {
+		fmt.Println("\nUsage: \n   For help:             ./zomato_app_client [-h] \n   To start client:      ./zomato_app_client -r [raft_uuid] -u [client_uuid] -l [json_outfilepath]")
+		fmt.Println("\nPositional Arguments: \n   -r    raft_uuid \n   -u    client_uuid \n   -l    json_outfilepath")
+		fmt.Println("\nOptional Arguments: \n   -h, --help            show this help message and exit")
+		os.Exit(0)
 	}
 
 	//Accept raft and client uuid from cmdline.
 	get_commandline_parameters()
 
-        fmt.Println("Starting client...")
+	fmt.Println("Starting client: ", client_uuid_go)
 	//Start the client.
 	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, client_uuid_go)
 
 	obj := PumiceDBClient.PmdbClientObj{
-               Pmdb: pmdb,
-        }
+		Pmdb: pmdb,
+	}
 
-        client_obj := &obj
+	client_obj := &obj
 
 	//Create a file for storing keys and rncui.
 	os.Create("key_rncui_data.txt")
 
-	fmt.Print("\nEnter filename for write operation (.csv file): ")
-	input := bufio.NewReader(os.Stdin)
-	filename,_ := input.ReadString('\n')
-	filename = strings.Replace(filename, "\n", "", -1)
-	fmt.Println("Filename:", filename)
+	for {
+		fmt.Print("Enter operation (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader /exit): ")
+		input := bufio.NewReader(os.Stdin)
+		cmd, _ := input.ReadString('\n')
+		cmd_s := strings.Replace(cmd, "\n", "", -1)
+		ops_split := strings.Split(cmd_s, "#")
 
-        //Perform write operation.
-	parse_file_and_update(client_obj, filename)
+		ops = ops_split[0]
+		if ops == "WriteOne" {
 
-	for{
-		fmt.Print("Enter operation (write/read/readall/exit): ")
-		ops,_ := input.ReadString('\n')
-		ops = strings.Replace(ops, "\n", "", -1)
+			fmt.Println("\nWriteOne request received:")
+			fmt.Println("Parameters passed:", ops_split)
+			rncui := ops_split[1]
 
-		if ops == "write"{
-
-			fmt.Print("\nEnter zomato_data in the format - resturantid_name_city_cuisines_ratingstext_votes : ")
-			data,_ := input.ReadString('\n')
-			data = strings.Replace(data, "\n", "", -1)
-			cmdline_prms := strings.Split(data, "_")
-
+			//Get timestamp.
+			timestamp := time.Now().Format("2006-01-02 15:04:05")
 			//Typecast Restaurant_id to int64.
-			rest_id_string := cmdline_prms[0]
-			Restaurant_id_struct, err := strconv.ParseInt(rest_id_string, 10, 64)
+			rest_id_string := ops_split[2]
+			restaurant_id_struct, err := strconv.ParseInt(rest_id_string, 10, 64)
 			if err != nil {
-			   fmt.Println("Error occured in typecasting Restaurant_id to int64")
+				fmt.Println("Error occured in typecasting Restaurant_id to int64")
 			}
 
 			//Typecast Votes to int64.
-			Votes_struct, err := strconv.ParseInt(cmdline_prms[5], 10, 64)
+			votes_struct, err := strconv.ParseInt(ops_split[7], 10, 64)
 			if err != nil {
-			   fmt.Println("Error occured in typecasting Votes to int64")
+				fmt.Println("Error occured in typecasting Votes to int64")
 			}
 
 			//Fill the Zomato_App structure.
-			struct_data_cmdline := zomatoapplib.Zomato_Data {
-					Restaurant_id: Restaurant_id_struct,
-					Restaurant_name: cmdline_prms[1],
-					City: cmdline_prms[2],
-					Cuisines: cmdline_prms[3],
-					Ratings_text: cmdline_prms[4],
-					Votes: Votes_struct,
-					}
+			struct_data_cmdline := zomatoapplib.Zomato_Data{
+				Restaurant_id:   restaurant_id_struct,
+				Restaurant_name: ops_split[3],
+				City:            ops_split[4],
+				Cuisines:        ops_split[5],
+				Ratings_text:    ops_split[6],
+				Votes:           votes_struct,
+			}
+
+			//Open file for storing key, rncui in append mode.
+			file, err := os.OpenFile("key_rncui_data.txt", os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				log.Println(err)
+			}
+			defer file.Close()
+
+			//Append key_rncui in file.
+			_, err_write := file.WriteString("key, rncui = " + rest_id_string + "  " + rncui + "\n")
+			if err_write != nil {
+				log.Fatal(err)
+			}
+
+			//Get leader uuid.
+			leader_uuid := client_obj.PmdbGetLeader()
 
 			//Perform write operation.
-			update(&struct_data_cmdline, client_obj)
+			rc := client_obj.PmdbClientWrite(struct_data_cmdline, rncui)
+			if rc != 0 {
+				fmt.Println("Pmdb Write failed.")
+				write_strdata_cmd := zomato_app_output{
+					Raft_uuid:   raft_uuid_go,
+					Client_uuid: client_uuid_go,
+					Leader_uuid: leader_uuid,
+					Operation:   ops,
+					Status:      rc,
+					Timestamp:   timestamp,
+					App_data:    nil,
+				}
+				//Dump structure into json.
+				write_strdata_cmd.dump_into_json()
+			} else {
+				fmt.Println("Pmdb Write successful!")
+				//Fill read reuqest output into map.
+				write_output_into_map(&struct_data_cmdline, rncui)
 
-		} else if ops == "read"{
+				write_strdata_cmd := zomato_app_output{
+					Raft_uuid:   raft_uuid_go,
+					Client_uuid: client_uuid_go,
+					Leader_uuid: leader_uuid,
+					Operation:   ops,
+					Status:      rc,
+					Timestamp:   timestamp,
+					App_data:    app_data_map,
+				}
+				//Dump structure into json.
+				write_strdata_cmd.dump_into_json()
+			}
 
-			fmt.Println("\nEnter key(Restuarant_id), rncui in the format - key_rncui (underscore seperated):")
-			read_prms,_ := input.ReadString('\n')
-			read_prms = strings.Replace(read_prms, "\n", "", -1)
+		} else if ops == "WriteMulti" {
+			fmt.Println("\nWriteMulti request received:")
+			fmt.Println("Parameters passed:", ops_split)
+			csv_filepath := ops_split[1]
+			//Perform write operation.
+			parse_file_and_update(client_obj, csv_filepath)
 
-			rprms := strings.Split(read_prms,"_")
-			key := rprms[0]
-			rncui := rprms[1]
+		} else if ops == "ReadOne" {
 
-			fmt.Println("Key :", key)
+			fmt.Println("\nReadOne request received:")
+			fmt.Println("Parameters passed:", ops_split)
+			key := ops_split[1]
+			rncui := ops_split[2]
+
+			fmt.Println("key :", key)
 			fmt.Println("rucui:", rncui)
 
 			//Perform read operation.
 			get(client_obj, key, rncui)
 
-		} else if ops == "readall"{
+		} else if ops == "ReadMulti" {
 
+			fmt.Println("\nReadMulti request received:")
+			fmt.Println("Parameters passed:", ops_split)
 			f, err := os.Open("key_rncui_data.txt")
 
 			if err != nil {
-			   log.Fatal(err)
+				log.Fatal(err)
 			}
 
 			defer f.Close()
@@ -275,24 +426,41 @@ func main(){
 
 			for scanner.Scan() {
 
-				    rall_data := strings.Split(scanner.Text()," ")
+				rall_data := strings.Split(scanner.Text(), " ")
 
-				    rall_key := rall_data[3]
-				    rall_rncui := rall_data[5]
+				rall_key := rall_data[3]
+				rall_rncui := rall_data[5]
 
-				    fmt.Println("\nPerforming read for all key,values...key, rncui = ", rall_key,rall_rncui)
+				fmt.Println("\nPerforming read for all key,values...key, rncui = ", rall_key, rall_rncui)
 
-				    //Perform read operation for every key and rncui associated with it.
-				    get(client_obj, rall_key, rall_rncui)
+				//Perform read operation for every key and rncui associated with it.
+				get(client_obj, rall_key, rall_rncui)
 			}
 
 			if err := scanner.Err(); err != nil {
-				    log.Fatal(err)
+				log.Fatal(err)
 			}
-		} else if ops == "exit"{
+		} else if ops == "get_leader" {
+			leader_uuid = client_obj.PmdbGetLeader()
+			fmt.Println("Leader uuid is: ", leader_uuid)
+
+			//Get timestamp.
+			timestamp := time.Now().Format("2006-01-02 15:04:05")
+
+			get_leader_uuid_struct := zomato_app_output{
+				Raft_uuid:   raft_uuid_go,
+				Client_uuid: client_uuid_go,
+				Leader_uuid: leader_uuid,
+				Operation:   ops,
+				Timestamp:   timestamp,
+			}
+
+			//Dump structure into json.
+			get_leader_uuid_struct.dump_into_json()
+		} else if ops == "exit" {
 			os.Exit(0)
-		} else{
-			fmt.Println("\nEnter valid operation: write/read/readall/exit")
+		} else {
+			fmt.Println("Enter valid operation: (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader /exit)")
 		}
 	}
 
