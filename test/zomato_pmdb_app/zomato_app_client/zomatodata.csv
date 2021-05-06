@@ -17,7 +17,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 13623,Hira Garden,Pune,"North Indian, Chinese",Average,4
 19043086,Swad Dhose Wala,Pune,"South Indian, Fast Food",Not rated,0
 19103229,Cafe Caveteria,Pune,"Fast Food, Beverages",Not rated,0
-18597704,Masakha - Seafood Resto & Bar,Pune,"North Indian, Seafood, Chinese, Asian, Mughlai",Very Good,552
+18597704,Masakha - Seafood Resto and Bar,Pune,"North Indian, Seafood, Chinese, Asian, Mughlai",Very Good,552
 12934,Domino's Pizza,Pune,"Pizza, Fast Food",Good,701
 11626,Brahma Pure Veg,Pune,"South Indian, North Indian, Street Food, Chinese",Good,566
 6504540,Shorba Family Restaurant,Pune,"North Indian, Chinese, Asian, Continental",Good,512
@@ -31,7 +31,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18429323,Paradise Kitchen Hyderabadi Biryani,Pune,"Biryani, North Indian",Good,1008
 10512,Domino's Pizza,Pune,"Pizza, Fast Food",Average,585
 11321,Pruthvi Vegetarianism,Pune,"North Indian, Chinese, Fast Food, Juices",Very Good,1110
-6507865,Le Petit Amour Patisserie & Bistro,Pune,"Cafe, French, European, Desserts, Salad",Excellent,854
+6507865,Le Petit Amour Patisserie and Bistro,Pune,"Cafe, French, European, Desserts, Salad",Excellent,854
 6507337,BOX8- Desi Meals,Pune,"Sandwich, Salad, North Indian, Fast Food, Wraps, Biryani",Very Good,620
 18770152,The Tipsy Duckling,Pune,"Continental, North Indian, Italian, Finger Food",Very Good,447
 6507653,Swarnaa Vegetarian,Pune,"North Indian, South Indian, Asian, Fast Food, Street Food, Mughlai, Beverages, Ice Cream",Good,857
@@ -50,7 +50,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 13231,Le Plaisir,Pune,"European, Italian, Fast Food, Salad, Continental, Beverages, Desserts",Excellent,4532
 10125,Vaishali,Pune,"South Indian, Street Food, Fast Food",Very Good,5522
 18678581,Hippie@Heart,Pune,"Continental, Italian, North Indian, Finger Food, European",Excellent,972
-6507967,Tales & Spirits,Pune,"Italian, Continental, Salad",Very Good,3779
+6507967,Tales and Spirits,Pune,"Italian, Continental, Salad",Very Good,3779
 6507020,Hotel Neha,Pune,"North Indian, Chinese",Good,882
 18292710,Raju Uncle's Chole Bhature,Pune,North Indian,Very Good,655
 13000,Domino's Pizza,Pune,"Pizza, Fast Food",Good,794
@@ -73,7 +73,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18425279,Origin Bistro,Pune,"Continental, Italian, European, Beverages, Desserts",Very Good,745
 18529624,The Greedy Man Pizzeria,Pune,"Italian, Pizza",Very Good,532
 11817,Rangla Punjab,Pune,"North Indian, Kebab, Biryani, Chinese, Seafood",Good,1672
-6505821,Bottle Rock Restaurant & Bar,Pune,"Continental, North Indian, Chinese, Seafood",Good,1410
+6505821,Bottle Rock Restaurant and Bar,Pune,"Continental, North Indian, Chinese, Seafood",Good,1410
 18429362,The Quick Wok,Pune,"Chinese, Thai",Very Good,772
 6503999,CP7 - The BBQ Heaven,Pune,"BBQ, Steak, Fast Food",Good,866
 6503743,Pagdandi Books Chai Cafe,Pune,"Cafe, Bakery, Fast Food, Juices, Frozen Yogurt",Excellent,874
@@ -82,7 +82,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18672611,द Vege टेबल,Pune,"North Indian, Continental, Italian",Very Good,840
 11807,Barbeque Nation,Pune,"North Indian, Mughlai, Salad, Kebab, BBQ",Excellent,3914
 18624743,Laa Unico,Pune,"Italian, Mexican, Continental, Modern Indian, Beverages",Excellent,1408
-18671526,FreshCliq Pizza & Pasta,Pune,"Salad, Continental, Fast Food, Italian, Pizza",Very Good,393
+18671526,FreshCliq Pizza and Pasta,Pune,"Salad, Continental, Fast Food, Italian, Pizza",Very Good,393
 12036,SP's Biryani House,Pune,"Biryani, Mughlai",Good,2128
 11213,Sukanta,Pune,"Gujarati, North Indian, Maharashtrian",Very Good,3178
 18315713,Crazy Cheesy,Pune,"Cafe, Fast Food",Very Good,1331
@@ -94,7 +94,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 12009,Kayani Bakery,Pune,Bakery,Excellent,2199
 10028,George Restaurant,Pune,"North Indian, Chinese, Biryani",Very Good,2627
 12063,Bagban Restaurant,Pune,"North Indian, Mughlai",Poor,1181
-11159,Dorabjee & Sons,Pune,"Parsi, North Indian",Very Good,1112
+11159,Dorabjee and Sons,Pune,"Parsi, North Indian",Very Good,1112
 6504861,Aaoji Khhaoji,Pune,North Indian,Excellent,2214
 6507231,Rosso Bianco,Pune,"Italian, Cafe, Salad",Very Good,756
 18520302,Phulka,Pune,North Indian,Very Good,460
@@ -122,7 +122,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 10710,Mezza 9,Pune,"Continental, North Indian, Mughlai, Asian",Good,3874
 11785,MoMo Cafe - Courtyard By Marriott Pune Hinjawadi,Pune,"Asian, North Indian, Continental, European, Salad",Very Good,740
 18315725,Frozen Monkey,Pune,"Continental, Italian, North Indian, Finger Food, Asian, Chinese",Very Good,2512
-18450492,Baraza Bars & Bites,Pune,"Modern Indian, North Indian, Asian, Continental, Mughlai, Bar Food",Excellent,1576
+18450492,Baraza Bars and Bites,Pune,"Modern Indian, North Indian, Asian, Continental, Mughlai, Bar Food",Excellent,1576
 11079,Exotica,Pune,"North Indian, Chinese, Mediterranean, Continental",Very Good,3669
 18602990,Publiq,Pune,"Continental, Thai, North Indian, Mughlai",Very Good,971
 18566930,Good News Dhaba,Pune,"North Indian, Mughlai, Biryani",Very Good,483
@@ -202,10 +202,10 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18732937,Darshan,Pune,"Italian, Continental, Chinese, Mexican, Fast Food, Street Food, Desserts",Excellent,2421
 18490419,Gong,Pune,"Asian, Thai, Sushi",Excellent,1518
 18520305,1BHK Superbar,Pune,"Finger Food, North Indian, Mediterranean, European, Continental",Very Good,1871
-18619582,Tales & Spirits - Hunters Bistro,Pune,"Italian, Continental, Salad",Very Good,1854
+18619582,Tales and Spirits - Hunters Bistro,Pune,"Italian, Continental, Salad",Very Good,1854
 6508323,The Urban Foundry,Pune,"North Indian, Bar Food",Excellent,3753
 18815527,Italy Via Punjab,Pune,"Italian, North Indian",Very Good,303
-6505933,"Incognito - Restaurant, Bar & Cafe",Pune,"European, Italian, North Indian, Asian, Salad, Desserts",Very Good,2063
+6505933,"Incognito - Restaurant, Bar and Cafe",Pune,"European, Italian, North Indian, Asian, Salad, Desserts",Very Good,2063
 18591288,Fish Curry Rice,Pune,"Seafood, Goan, Malwani, Maharashtrian",Very Good,497
 18620423,XOzero,Pune,"North Indian, Chinese, Continental",Very Good,741
 18750538,Kabila,Pune,"North Indian, Mughlai, Chinese",Good,107
@@ -215,7 +215,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18643189,Mottu Seth,Pune,"North Indian, Fast Food",Average,41
 18593319,Pruthvi's Biryani House,Pune,"Chinese, North Indian, Biryani",Average,39
 18572093,Food Buddies,Pune,"North Indian, Maharashtrian",Average,32
-6506385,Pizza & Cream Cafe,Pune,"Pizza, Fast Food, Ice Cream",Average,18
+6506385,Pizza and Cream Cafe,Pune,"Pizza, Fast Food, Ice Cream",Average,18
 18833804,Domino's Pizza,Nanded,"Pizza, Fast Food",Very Good,35
 18827631,Angad Tandoor Haveli Family Restaurant,Nanded,"North Indian, Chinese",Very Good,23
 18945494,Khusu's Maa Angad Family Restaurant,Nanded,"North Indian, Maharashtrian, Chinese, Biryani, South Indian",Very Good,17
@@ -235,10 +235,10 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 6503801,Parnkuti,Pune,"North Indian, Chinese",Not rated,2
 18701857,Hotel Mejvani,Pune,North Indian,Not rated,2
 18948287,Babbi Da Dhaba,Pune,North Indian,Not rated,3
-19035059,Ribbons & Balloons,Pune,"Bakery, Desserts",Not rated,0
+19035059,Ribbons and Balloons,Pune,"Bakery, Desserts",Not rated,0
 18875828,Jumboking Foods,Pune,Fast Food,Not rated,0
 18786033,Shiva Sagar,Pune,"South Indian, North Indian, Chinese",Not rated,0
-19149094,TTMM - Tongue Tummy & Much More,Pune,"Pizza, Fast Food, Beverages",Not rated,0
+19149094,TTMM - Tongue Tummy and Much More,Pune,"Pizza, Fast Food, Beverages",Not rated,0
 18292683,Global Punjab,Pune,"North Indian, Mughlai, Chinese, Seafood",Very Good,1139
 18702398,Fly High,Pune,"North Indian, Continental, Seafood, Lebanese, Chinese, Fast Food",Good,367
 18349073,V Cafe And Restaurant,Pune,"North Indian, Chinese, Thai, Sandwich",Average,333
@@ -262,12 +262,12 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18946394,Thorat's Baarbeque Misal,Pune,Street Food,Good,147
 18728556,Shreeji Pure Veg,Pune,"North Indian, Chinese, South Indian, Fast Food",Good,149
 18926265,Hotel Sinhgad Shahi,Pune,"Maharashtrian, North Indian, Biryani",Good,119
-18691651,RK'S Family Restro & Bar,Pune,"North Indian, Chinese, Seafood, Mughlai",Good,126
+18691651,RK'S Family Restro and Bar,Pune,"North Indian, Chinese, Seafood, Mughlai",Good,126
 19084969,So What Cafe,Pune,Cafe,Very Good,39
 12803,Chhavni,Pune,"North Indian, Chinese, Continental",Good,118
 12482,Relax Pure Veg,Pune,"North Indian, Chinese, Fast Food",Very Good,655
 10507,Domino's Pizza,Pune,"Pizza, Fast Food",Good,600
-12351,Nimantran Restaurant & Bar,Pune,"North Indian, Asian, Seafood, Fast Food",Good,541
+12351,Nimantran Restaurant and Bar,Pune,"North Indian, Asian, Seafood, Fast Food",Good,541
 10856,Kolhapuri Katta,Pune,"Maharashtrian, Kebab, Biryani, Seafood, Malwani",Very Good,488
 18523711,The Basil Deck,Pune,"North Indian, Continental, Italian, Beverages",Very Good,443
 10164,Baasuri,Pune,"South Indian, North Indian, Chinese, Fast Food",Good,511
@@ -296,7 +296,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18566818,JLWA,Mumbai,"Modern Indian, European, Pizza",Excellent,3548
 18291423,Bastian,Mumbai,Seafood,Very Good,2238
 18354546,Raasta,Mumbai,"Continental, Seafood, Italian, Finger Food",Very Good,3430
-18098231,The Daily Bar & Kitchen,Mumbai,"Mediterranean, Italian, European",Excellent,945
+18098231,The Daily Bar and Kitchen,Mumbai,"Mediterranean, Italian, European",Excellent,945
 18397684,Craftbar,Mumbai,"Continental, Mediterranean, Modern Indian, Mexican",Excellent,1690
 32835,Persian Darbar,Mumbai,"Biryani, North Indian, Chinese",Very Good,2514
 18181855,Khar Social,Mumbai,"American, North Indian, Chinese, Asian, Beverages, Continental, Biryani",Very Good,4220
@@ -323,7 +323,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 34269,Persian Darbar,Mumbai,"Mughlai, North Indian, Chinese, Biryani",Very Good,3277
 46577,Afzal Restaurant,Mumbai,"Mughlai, North Indian, Chinese, Seafood",Very Good,1139
 18432402,Lion Heart,Mumbai,"North Indian, Chinese, Italian, Finger Food, Asian, Bar Food, American",Excellent,980
-46590,Grills & Wok,Mumbai,"Chinese, Asian, Seafood",Good,752
+46590,Grills and Wok,Mumbai,"Chinese, Asian, Seafood",Good,752
 40558,Sarvi,Mumbai,"Mughlai, North Indian, Kebab",Very Good,773
 35236,Mama Mia!,Mumbai,"Chinese, Pizza, Fast Food",Good,554
 40610,Mao Chinese Garden,Mumbai,"Chinese, Mughlai, North Indian, Seafood, Biryani",Good,416
@@ -338,23 +338,23 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 43975,PizzaExpress,Mumbai,"Italian, Pizza",Very Good,3859
 37476,Khyber,Mumbai,"North Indian, Seafood, Mughlai",Very Good,1406
 37814,Bademiya,Mumbai,"Mughlai, North Indian, Kebab, Rolls",Good,6675
-18998859,The Millers Homebar & Kitchen,Pune,"Continental, North Indian, Thai",Excellent,300
+18998859,The Millers Homebar and Kitchen,Pune,"Continental, North Indian, Thai",Excellent,300
 18874909,Asia Kitchen By Mainland China,Pune,"Asian, Chinese",Excellent,487
 12056,Vohuman Cafe,Pune,Street Food,Excellent,3361
 13393,German Bakery,Pune,"German, Italian, Cafe",Very Good,4642
 10750,Dario's,Pune,"Italian, Pizza, Salad, Healthy Food, Mexican, Cafe, Desserts, Continental",Very Good,3159
 10699,Prem's,Pune,"North Indian, Chinese, Continental, Salad",Very Good,2572
 18999043,Tathya,Pune,"North Indian, Mughlai",Excellent,361
-18550258,The Goose & Gridiron,Mumbai,"European, Continental, North Indian, Desserts",Very Good,2965
+18550258,The Goose and Gridiron,Mumbai,"European, Continental, North Indian, Desserts",Very Good,2965
 36983,Say Cheese,Mumbai,"Rolls, Fast Food",Very Good,1444
 41769,Shalimar,Mumbai,"North Indian, Chinese, Mughlai, Fast Food",Very Good,2434
-39240,Kyani & Co.,Mumbai,"Parsi, Bakery",Very Good,4206
+39240,Kyani and Co.,Mumbai,"Parsi, Bakery",Very Good,4206
 32109,Gulshan-e-Iran,Mumbai,"Mughlai, Chinese, Fast Food",Very Good,1323
 18704834,Gughan Supreme South Indian,Mumbai,"South Indian, Beverages",Excellent,979
 18532715,Ustaadi,Mumbai,"Mughlai, North Indian, Chinese, Continental",Bardzo dobrze,1177
 18537232,BookMyShow Cafe,Mumbai,"North Indian, Chinese, Italian",Very Good,1324
 37465,Pancham Puriwala,Mumbai,North Indian,Very Good,1915
-18494145,Canto Cafe & Bar,Mumbai,"Continental, Mexican, Italian, American",Very Good,2980
+18494145,Canto Cafe and Bar,Mumbai,"Continental, Mexican, Italian, American",Very Good,2980
 43212,Sardar Pav bhaji,Mumbai,"Street Food, Maharashtrian, Fast Food, Juices",Good,4290
 18453954,Candy and Green,Mumbai,"Asian, Italian, Continental, Desserts, Healthy Food",Excellent,1193
 18471988,Grandmama's Cafe,Mumbai,"Cafe, American, Desserts",Very Good,1414
@@ -372,7 +372,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18281055,Kook,Mumbai,"North Indian, Chinese, Mughlai, Seafood",Good,1683
 39339,KFC,Mumbai,"Burger, Fast Food",Good,747
 36511,Kings Snack Bar,Mumbai,"North Indian, Chinese, Mughlai",Good,829
-18794327,Millennials Eatery & Bar,Mumbai,"Continental, American, Italian, Finger Food, Pizza",Excellent,748
+18794327,Millennials Eatery and Bar,Mumbai,"Continental, American, Italian, Finger Food, Pizza",Excellent,748
 18532715,Ustaadi,Mumbai,"Mughlai, North Indian, Chinese, Continental",Very Good,1177
 34396,Pizza By The Bay,Mumbai,Italian,Very Good,6100
 17806979,Burger King,Mumbai,"Burger, Fast Food, Beverages",Good,1177
@@ -438,7 +438,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18079789,Jimis Burger,Mumbai,"Burger, Fast Food",Very Good,4124
 47040,Daffodils 23,Mumbai,"North Indian, Chinese, Continental",Very Good,1032
 18580152,1441 Pizzeria,Mumbai,"Pizza, Fast Food",Very Good,1417
-18203267,Chili's American Grill & Bar,Mumbai,"American, Mexican, Burger, Tex-Mex",Excellent,7762
+18203267,Chili's American Grill and Bar,Mumbai,"American, Mexican, Burger, Tex-Mex",Excellent,7762
 18887194,Persia Darbar,Mumbai,"North Indian, Mughlai, Chinese",Very Good,501
 18541311,Bombay Adda,Mumbai,"North Indian, Continental, Italian",Very Good,4998
 18700854,Carter Road Social,Mumbai,"American, North Indian, Chinese, Fast Food, Continental, Asian, Beverages",Very Good,2987
@@ -468,13 +468,13 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 37854,Kangan - The Westin Mumbai Garden City,Mumbai,"North Indian, Mughlai",Very Good,1404
 32634,Cafe Maaz,Mumbai,"Chinese, North Indian, Mughlai, Biryani, Seafood",Very Good,1035
 18666751,Tick-eat,Mumbai,"North Indian, Italian, Chinese, Mexican, Lebanese",Very Good,880
-18702838,Mansion Bar & Lounge,Mumbai,"North Indian, Italian, Mexican, Chinese",Excellent,637
-18590994,The Food Studio - All Day Dining & Banquet,Mumbai,"Continental, Asian, North Indian",Very Good,1280
+18702838,Mansion Bar and Lounge,Mumbai,"North Indian, Italian, Mexican, Chinese",Excellent,637
+18590994,The Food Studio - All Day Dining and Banquet,Mumbai,"Continental, Asian, North Indian",Very Good,1280
 18587914,Farm Cafe,Mumbai,Fast Food,Very Good,1064
 18512289,Ph Se Food,Mumbai,"North Indian, Continental, Chinese",Very Good,3806
-40375,The Food Studio - Kitchen & Bar,Mumbai,"Continental, Asian, North Indian",Very Good,3084
+40375,The Food Studio - Kitchen and Bar,Mumbai,"Continental, Asian, North Indian",Very Good,3084
 18548881,Coffee By Di Bella,Mumbai,"Cafe, Desserts",Very Good,1890
-39380,Sorriso Indian Kitchen &  Bar,Mumbai,"North Indian, Chinese, Continental, Malwani, Mughlai",Good,933
+39380,Sorriso Indian Kitchen and  Bar,Mumbai,"North Indian, Chinese, Continental, Malwani, Mughlai",Good,933
 19083770,Hotel Abhiruchi,Raichur City,"Biryani, Hyderabadi, Kebab, Andhra",Very Good,68
 19089463,Chaat Bhandar,Raichur City,Fast Food,Good,26
 19087408,Hotel Karavali  residency,Raichur City,"Biryani, South Indian",Good,12
@@ -491,12 +491,12 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18603781,Flax,Mumbai,"Healthy Food, Beverages",Very Good,473
 18858071,Lilt,Mumbai,"American, Chinese, Japanese, Thai, North Indian",Very Good,427
 32026,Aditi,Mumbai,"North Indian, Chinese",Good,526
-38416,Kebabs & Kurries - ITC Grand Central,Mumbai,"North Indian, Mughlai, Lucknowi",Very Good,709
+38416,Kebabs and Kurries - ITC Grand Central,Mumbai,"North Indian, Mughlai, Lucknowi",Very Good,709
 18245969,Pan Of Asia,Mumbai,"Chinese, Thai, Malaysian",Good,532
 18574234,London Taxi,Mumbai,"Modern Indian, Asian, British",Excellent,1131
 18228655,Oye Kake,Mumbai,North Indian,Very Good,1050
 18494129,BKC  DIVE,Mumbai,"North Indian, Chinese, Continental",Excellent,6770
-18674420,Burn - Bar & Kitchen,Mumbai,"Continental, Mexican, Italian, Chinese",Very Good,2001
+18674420,Burn - Bar and Kitchen,Mumbai,"Continental, Mexican, Italian, Chinese",Very Good,2001
 18573450,Coffee Culture,Mumbai,"Cafe, Italian, Continental, North Indian, Chinese",Very Good,1373
 18531910,True Tramm Trunk,Mumbai,"Finger Food, Pizza, Burger",Very Good,1722
 18624821,The Market Project by PizzaExpress,Mumbai,"Italian, Continental",Very Good,2787
@@ -509,7 +509,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18286405,Sindhful,Mumbai,"Sindhi, North Indian, Chinese, Rolls",Excellent,1187
 18553710,Doolally Taproom,Mumbai,"Finger Food, American, Italian",Very Good,1015
 34182,Little Italy,Mumbai,"Mexican, Italian, Pizza, Lebanese",Very Good,1356
-18976827,Oi- Kitchen & Bar,Mumbai,"Finger Food, Asian, Italian, Mexican",Excellent,399
+18976827,Oi- Kitchen and Bar,Mumbai,"Finger Food, Asian, Italian, Mexican",Excellent,399
 18419736,Estella,Mumbai,"Asian, European, Bar Food",Very Good,1176
 32839,Vrindavan,Mumbai,"South Indian, Fast Food, North Indian, Chinese",Good,804
 18432390,Versova Social,Mumbai,"American, North Indian, Chinese, Asian, Beverages, Continental, Biryani",Very Good,4142
@@ -525,7 +525,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18796372,La Pino'z Pizza,Mumbai,"Pizza, Italian",Very Good,533
 18382976,Garde Manger Cafe,Mumbai,"Cafe, Healthy Food, Italian, Juices",Very Good,1831
 49486,Tea Villa Cafe,Mumbai,"Cafe, Fast Food, Desserts, Beverages",Very Good,3586
-18791155,Theko - Bar & Kitchen,Mumbai,"North Indian, Chinese",Very Good,585
+18791155,Theko - Bar and Kitchen,Mumbai,"North Indian, Chinese",Very Good,585
 39986,The Good Food Co.,Mumbai,Fast Food,Very Good,1146
 35186,Gajalee,Mumbai,"Malwani, Seafood, Maharashtrian, North Indian",Very Good,1686
 18379391,Eat Play Love,Mumbai,"Italian, Fast Food",Very Good,2095
@@ -547,13 +547,13 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 56353,Kava - Fairfield by Marriott,Bangalore,"North Indian, South Indian, Continental",Very Good,709
 55963,Richie Rich,Bangalore,"Desserts, Beverages, Fast Food, Ice Cream",Very Good,683
 50311,Corner House Ice Cream,Bangalore,"Ice Cream, Desserts",Excellent,458
-52218,My Place - Gokulam Grand Hotel & Spa,Bangalore,"Continental, Asian, South Indian, North Indian",Very Good,436
+52218,My Place - Gokulam Grand Hotel and Spa,Bangalore,"Continental, Asian, South Indian, North Indian",Very Good,436
 18766505,Tawa Tandoor,Bangalore,"North Indian, Chinese",Good,183
-52981,Mezzaluna - Gokulam Grand Hotel & Spa,Bangalore,Italian,Very Good,166
+52981,Mezzaluna - Gokulam Grand Hotel and Spa,Bangalore,Italian,Very Good,166
 57530,Kolkata Famous Kati Rolls,Bangalore,"Fast Food, Rolls",Good,88
 18460030,Hyderabadi Bawarchi Multi Cuisine Restaurant,Bangalore,"Biryani, North Indian, Chinese",Average,101
 18203022,Donne Biryani Mane,Bangalore,"Biryani, South Indian",Good,81
-52206,Obsidian Sports and Music Bar -Gokulam Grand Hotel & Spa,Bangalore,Continental,Good,39
+52206,Obsidian Sports and Music Bar -Gokulam Grand Hotel and Spa,Bangalore,Continental,Good,39
 18270185,Tandoori Delight,Bangalore,"North Indian, Chinese",Average,46
 55922,Banashankari Restaurant,Bangalore,"North Indian, Chinese, Biryani",Good,32
 50844,Rahhams,Bangalore,"Biryani, North Indian, Mughlai, Chinese, Kebab",Good,934
@@ -567,7 +567,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 53620,Manjit Da Dhaba,Bangalore,North Indian,Very Good,814
 18308756,Hammered,Bangalore,"North Indian, Continental",Excellent,5736
 53497,Pasta Street,Bangalore,"Italian, Pizza, Salad",Excellent,1873
-50510,Infinitea Tea Room & Tea Store,Bangalore,"Continental, Cafe, Desserts, Salad, Momos",Very Good,890
+50510,Infinitea Tea Room and Tea Store,Bangalore,"Continental, Cafe, Desserts, Salad, Momos",Very Good,890
 50477,Empire Restaurant,Bangalore,"North Indian, Mughlai, South Indian, Chinese",Very Good,795
 50693,Millers 46,Bangalore,"American, Continental, Steak",Very Good,2345
 50408,Eden Park,Bangalore,"Andhra, Biryani, Chinese, North Indian, Seafood, South Indian",Very Good,714
@@ -588,7 +588,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 19124358,Mangalore Lunch Home,Bangalore,South Indian,Not rated,3
 18861816,Swadishta Kuteera Veg Restaurant,Bangalore,"South Indian, North Indian",Not rated,3
 18987669,Cold Stone,Bangalore,"Desserts, Ice Cream",Not rated,3
-18891277,Digvijay Fruit Juice Center & Ice Cream Parlor,Bangalore,"Juices, Ice Cream",Not rated,3
+18891277,Digvijay Fruit Juice Center and Ice Cream Parlor,Bangalore,"Juices, Ice Cream",Not rated,3
 18911948,Hotel Nandu Andhra Style Dosa Word,Bangalore,"South Indian, Chinese",Not rated,0
 19155543,Kabira Hotel,Bangalore,"North Indian, Rajasthani",Not rated,1
 18868343,Cafe Noir,Bangalore,"European, French, Salad",Not rated,3
@@ -607,7 +607,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 19128392,SFC,Chittoor,"Biryani, Burger, Pizza, Rolls",Good,6
 19128310,prabaa grand inn ( veg restaurant) ,Chittoor,"Biryani, Coffee, Hyderabadi, Mithai, South Indian",Not rated,0
 19131424,Hotel Bhaskara,Chittoor,"Biryani, Hyderabadi, North Indian, South Indian",Good,4
-19127268,"Brundavan tiffin, meals & caterers",Chittoor,"South Indian, Andhra",Good,3
+19127268,"Brundavan tiffin, meals and caterers",Chittoor,"South Indian, Andhra",Good,3
 19127683,Vakula sweets ,Chittoor,Desserts,Good,4
 19127877,Nellore Ruchulu,Chittoor,"BBQ, Chinese, Fast Food, South Indian",Good,2
 61694,Srinidhi Sagar Delux,Bangalore,"South Indian, North Indian, Chinese",Good,41
@@ -623,7 +623,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18801352,Punjab Grill,Bangalore,North Indian,Excellent,977
 18414367,NH8,Bangalore,"North Indian, Rajasthani",Very Good,618
 59795,FreshMenu,Bangalore,"Continental, Healthy Food, Chinese, North Indian, Biryani, Pizza, Desserts, Fast Food",Good,892
-18391020,Bloomsbury's Global Kitchen & Bakehouse,Bangalore,"Cafe, Salad, Italian, American, Bakery, Beverages",Excellent,845
+18391020,Bloomsbury's Global Kitchen and Bakehouse,Bangalore,"Cafe, Salad, Italian, American, Bakery, Beverages",Excellent,845
 18278222,Nandhana Palace,Bangalore,"Andhra, Biryani, North Indian, Chinese",Very Good,1065
 18431041,Bamboo Hut,Bangalore,"Chinese, Cafe, Fast Food",Excellent,1387
 18366664,Cloud Cafe,Bangalore,"Cafe, Continental, American, Italian, Beverages",Very Good,2069
@@ -637,7 +637,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 19063102,Cafe Toit,Hosur,"Sandwich, Pizza, Desserts, Cafe, Burger, Beverages",Average,8
 19044118,Crazy Kitchen,Hosur,"Sandwich, Fast Food, Continental, Chinese, Burger, BBQ",Good,7
 19059260,HOTEL JUNIOR KUPPANNA,Hosur,"South Indian, North Indian, Modern Indian, Fast Food, Chinese, Beverages",Good,3
-19057261,Meat & Eat,Hosur,"Sandwich, Ice Cream, Fast Food, Burger, Beverages",Good,3
+19057261,Meat and Eat,Hosur,"Sandwich, Ice Cream, Fast Food, Burger, Beverages",Good,3
 19053409,BBQ RIDE,Hosur,BBQ,Average,4
 19055358,Sri Sampoorna Bhavan (Non Veg),Hosur,"South Indian, North Indian, Modern Indian, Fast Food, Beverages, Arabian, Chinese",Good,2
 19058691,New Lucky Darbar,Hosur,"Fast Food, Biryani",Good,2
@@ -679,7 +679,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 19094392,MVG Bakery And Sweets,Mandya,Bakery,Good,1
 19088139,Siddharth Coastal,Mandya,"North Indian, Seafood",Good,1
 19088132,Maharaja Grand,Mandya,"South Indian, North Indian",Good,1
-18370349,Pistawala Sweets & Snacks,New Delhi,"Street Food, Mithai",Average,21
+18370349,Pistawala Sweets and Snacks,New Delhi,"Street Food, Mithai",Average,21
 18918982,Gulab Wala,New Delhi,"Mithai, North Indian, Chinese",Average,9
 18865847,Bittoo Chicken Wala,New Delhi,"North Indian, Roast Chicken",Average,9
 19133684,Saini Foods,New Delhi,North Indian,Not rated,3
@@ -690,7 +690,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18719534,Milk Point,New Delhi,"Mithai, Fast Food",Not rated,2
 19054150,Desi Chef,New Delhi,"Pizza, North Indian, Fast Food",Average,26
 19084984,Chef Uncle,New Delhi,"North Indian, Chinese, Mughlai",Average,8
-19130432,Jaishree Sweet & Restaurant,New Delhi,"North Indian, South Indian, Fast Food, Mithai",Average,7
+19130432,Jaishree Sweet and Restaurant,New Delhi,"North Indian, South Indian, Fast Food, Mithai",Average,7
 19135926,Da Pizza Palace,New Delhi,"Pizza, Fast Food",Good,4
 18903984,Hot Spot Mini Shop,New Delhi,"Fast Food, North Indian, Beverages",Average,5
 19133727,Pizza D'zire,New Delhi,Fast Food,Not rated,2
@@ -711,7 +711,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 2051,Chitrakut,New Delhi,"North Indian, Chinese",Good,494
 311358,Domino's Pizza,New Delhi,"Pizza, Fast Food",Very Good,374
 18222576,SFC,New Delhi,Fast Food,Very Good,272
-2049,Madras Dosa & Chinese,New Delhi,"South Indian, Chinese",Average,237
+2049,Madras Dosa and Chinese,New Delhi,"South Indian, Chinese",Average,237
 18446388,The Urban Canteen,New Delhi,Fast Food,Very Good,209
 2047,Peshawari's Deluxe,New Delhi,"North Indian, Mughlai",Good,317
 18455522,SGF - Spice Grill Flame,New Delhi,"North Indian, Chinese",Good,249
@@ -728,7 +728,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 304896,Del 41,New Delhi,"North Indian, Chinese",Good,170
 18614381,Malik Chole Bhature,New Delhi,Street Food,Good,150
 5290,Banke Bihari,New Delhi,"North Indian, South Indian, Chinese, Mithai",Average,144
-304888,Sai Durga Dosa & Pizza Corner,New Delhi,"South Indian, Pizza, Fast Food",Average,59
+304888,Sai Durga Dosa and Pizza Corner,New Delhi,"South Indian, Pizza, Fast Food",Average,59
 18441686,Vimal Sweets,New Delhi,"Mithai, Bakery",Average,11
 305700,Sanjhi Rasoi,New Delhi,North Indian,Average,17
 18017260,Babu Soup Wale ki Chicken Variety,New Delhi,North Indian,Average,49
@@ -738,13 +738,13 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 2965,Billu's Hut,New Delhi,"Fast Food, Chinese, Beverages, Italian",Very Good,2747
 309542,Sura Vie,New Delhi,"North Indian, Italian, Chinese, Thai, Kebab",Very Good,1610
 312223,Burger King,New Delhi,"Burger, Fast Food, Beverages",Very Good,1490
-18423864,Uncle's Sip & Bite,New Delhi,Cafe,Very Good,1578
+18423864,Uncle's Sip and Bite,New Delhi,Cafe,Very Good,1578
 18760337,Sankalp,New Delhi,"South Indian, North Indian",Very Good,1110
 3372,BTW,New Delhi,"Street Food, North Indian, Mithai",Very Good,1092
 18037828,Hashtag Foods,New Delhi,"Fast Food, Burger, Sandwich, Pizza",Very Good,882
 9561,Barbeque Nation,New Delhi,"North Indian, Chinese, BBQ",Very Good,1590
 301677,Rahul Eggs,New Delhi,"Fast Food, Healthy Food",Very Good,1090
-18273624,Cafeteria & Co.,New Delhi,"Continental, Mexican, Fast Food",Excellent,4649
+18273624,Cafeteria and Co.,New Delhi,"Continental, Mexican, Fast Food",Excellent,4649
 18518483,Echoes Hudson Lane,New Delhi,"Cafe, American, Chinese, Continental, North Indian, Italian",Excellent,2777
 304262,Ricos,New Delhi,"Cafe, Continental, American, Italian, Mexican",Very Good,6031
 18457090,Railway Yard,New Delhi,"North Indian, Chinese, Continental",Good,1095
@@ -801,11 +801,11 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18469965,Pho King,New Delhi,"Asian, Continental, Mexican, North Indian, Momos, Chinese",Very Good,2428
 8621,Rose Cafe,New Delhi,"Cafe, Italian, Lebanese, Continental, Mediterranean, Salad",Very Good,3061
 18128893,Lavaash By Saby,New Delhi,"Armenian, Bengali",Very Good,1374
-18510830,Soho Bistro & Cafe,New Delhi,"Cafe, Continental, European",Very Good,1106
+18510830,Soho Bistro and Cafe,New Delhi,"Cafe, Continental, European",Very Good,1106
 18676964,Bo Tai,New Delhi,Thai,Very Good,1022
 18373071,Jugmug Thela,New Delhi,Cafe,Very Good,1074
 18217023,Blue Tokai Coffee Roasters,New Delhi,"Cafe, Coffee",Very Good,1255
-3258,Olive Bar & Kitchen,New Delhi,"Mediterranean, Italian, European, Salad, Seafood",Very Good,2483
+3258,Olive Bar and Kitchen,New Delhi,"Mediterranean, Italian, European, Salad, Seafood",Very Good,2483
 307432,Dramz,New Delhi,"European, Modern Indian, Asian",Very Good,1068
 18551422,Café Dori,New Delhi,"Cafe, European, Continental",Very Good,862
 18424673,Burger Singh - Big Punjabi Burgers,New Delhi,"Fast Food, Burger, Beverages",Good,485
@@ -841,11 +841,11 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18585232,Indish,New Delhi,"North Indian, Mughlai, Biryani, Kebab",Very Good,263
 1803,Vatika,Faridabad,"North Indian, Chinese",Good,239
 18277190,Banjara,Faridabad,"North Indian, Chinese, Continental",Good,74
-8099,Vrindavan Sweets & Restaurant,Faridabad,"North Indian, Chinese, South Indian, Fast Food",Good,182
+8099,Vrindavan Sweets and Restaurant,Faridabad,"North Indian, Chinese, South Indian, Fast Food",Good,182
 309927,Kolkata Hot Kathi Rolls,Faridabad,"Rolls, North Indian",Average,207
 5986,The Kitchen Exotica,Faridabad,"North Indian, Chinese, Mughlai",Good,209
 307809,Pizza House,Faridabad,"Pizza, Fast Food",Average,143
-18751352,Cheese & More - The Kitchen,Faridabad,"Continental, Italian, Desserts",Very Good,108
+18751352,Cheese and More - The Kitchen,Faridabad,"Continental, Italian, Desserts",Very Good,108
 303571,Spice Wok,Faridabad,"North Indian, Chinese",Good,102
 3371,BTW,New Delhi,"North Indian, Street Food, South Indian, Mithai, Beverages",Very Good,1002
 18611704,Roomali Garh,New Delhi,"North Indian, Mughlai, Rajasthani",Very Good,1139
@@ -855,7 +855,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18303834,Startup Cafe,New Delhi,"Cafe, Fast Food, North Indian",Good,354
 18387753,Riviera,New Delhi,"Continental, North Indian, Chinese, Mughlai",Very Good,256
 18258719,Sugar Magik,New Delhi,"Bakery, Fast Food",Very Good,240
-18241514,Moti Mahal Delux & King's Polo Lounge,New Delhi,"North Indian, Mughlai",Very Good,395
+18241514,Moti Mahal Delux and King's Polo Lounge,New Delhi,"North Indian, Mughlai",Very Good,395
 312703,Dolphin Rolls,New Delhi,"North Indian, Chinese, Mughlai",Good,773
 18668008,Indian Smith,Noida,"North Indian, Chinese",Very Good,767
 18241529,Food Sauda,Gurgaon,"North Indian, Chinese, Biryani, Kebab",Very Good,719
@@ -887,9 +887,9 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 312810,Dilli Darbar,New Delhi,"North Indian, Chinese, South Indian",Very Good,1339
 310563,Domino's Pizza,New Delhi,"Pizza, Fast Food",Good,1056
 18511800,The Yellow Bowl,New Delhi,"Fast Food, Chinese",Very Good,789
-18601031,Laddoo Gopal Sweets & Restaurant,New Delhi,"North Indian, Chinese, South Indian, Mithai, Street Food",Good,449
+18601031,Laddoo Gopal Sweets and Restaurant,New Delhi,"North Indian, Chinese, South Indian, Mithai, Street Food",Good,449
 18126077,Gulshan,New Delhi,North Indian,Very Good,450
-6206,Mitra Da Dhaba & Caterers,New Delhi,"North Indian, Rolls",Good,381
+6206,Mitra Da Dhaba and Caterers,New Delhi,"North Indian, Rolls",Good,381
 6219,The Shahi Foods,New Delhi,North Indian,Good,367
 302359,Madras Cafe,New Delhi,"South Indian, Chinese",Good,320
 19101545,mahadev soya chap,Mullana,,Not rated,0
@@ -897,7 +897,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18549416,Punjabi Angithi,New Delhi,"North Indian, Chinese, Rolls",Very Good,2571
 18232090,Burger King,New Delhi,"Burger, Fast Food, Beverages",Very Good,1254
 3373,BTW,New Delhi,"Mithai, North Indian, South Indian, Street Food",Good,1442
-18372693,Three Tuns Cafe & Bar,New Delhi,"Continental, North Indian, Italian, Asian",Very Good,998
+18372693,Three Tuns Cafe and Bar,New Delhi,"Continental, North Indian, Italian, Asian",Very Good,998
 1212,Barbeque Nation,New Delhi,"North Indian, Chinese, BBQ",Very Good,2758
 2363,Apna Dhaba Old,New Delhi,North Indian,Good,2355
 833,Berco's,New Delhi,"Chinese, Thai, Asian",Very Good,1336
@@ -920,13 +920,13 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18312480,Burger Singh - Big Punjabi Burgers,New Delhi,"Fast Food, Burger, Beverages",Good,1022
 18571190,Roomali Garh,New Delhi,"North Indian, Mughlai, Rajasthani",Very Good,1774
 18806676,Cafe Di Milano,New Delhi,"Cafe, Italian, Chinese",Very Good,883
-304599,Drool Fresh Bakehouse & Cafe,New Delhi,"Cafe, Continental, Salad",Good,900
+304599,Drool Fresh Bakehouse and Cafe,New Delhi,"Cafe, Continental, Salad",Good,900
 18425141,Haldiram's,New Delhi,"North Indian, Mithai, Street Food, South Indian",Very Good,623
 8194,Spring - Radisson Blu Dwarka,New Delhi,"Continental, North Indian",Very Good,657
 18618137,Sky Route,New Delhi,"North Indian, Chinese, Italian",Very Good,567
 18545801,The Fitness Kitchen,New Delhi,"Burger, Healthy Food, Salad, Continental, Sandwich, Pizza, Seafood",Very Good,558
 18557432,Five Spices,New Delhi,"North Indian, Chinese, Momos",Very Good,576
-18602298,BRYC Cafe & Restaurant,New Delhi,"North Indian, Chinese, Fast Food",Good,767
+18602298,BRYC Cafe and Restaurant,New Delhi,"North Indian, Chinese, Fast Food",Good,767
 312154,Domino's Pizza,New Delhi,"Pizza, Fast Food",Good,727
 9186,Bunny's Bite N Sip,New Delhi,"North Indian, Chinese, Fast Food, Mughlai",Good,572
 313349,Chilis Treat,New Delhi,"North Indian, Chinese",Average,221
@@ -937,7 +937,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 9225,The Italian Pizza,New Delhi,"Pizza, Fast Food",Good,96
 18863320,Unplugged Courtyard,Gurgaon,"North Indian, Continental, Momos",Very Good,979
 18204463,Twigly,Gurgaon,"Continental, Sandwich, Italian, Pizza, Asian",Very Good,753
-18528919,Ramesh Dhaba & Chinar Sweets,Gurgaon,"North Indian, Mithai",Average,524
+18528919,Ramesh Dhaba and Chinar Sweets,Gurgaon,"North Indian, Mithai",Average,524
 300652,Orange Chopsticks,Gurgaon,"Chinese, Thai, Asian, Momos",Good,330
 228,Domino's Pizza,Gurgaon,"Pizza, Fast Food",Good,406
 18597163,FreshMenu,Gurgaon,"Continental, Asian, Healthy Food, Fast Food",Good,307
@@ -950,7 +950,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18713262,The Munchbox,New Delhi,"North Indian, Chinese, Biryani, Beverages",Excellent,343
 18492031,Domino's Pizza,New Delhi,"Pizza, Fast Food",Good,330
 18449798,Domino's Pizza,New Delhi,"Pizza, Fast Food",Good,209
-306730,Dada's Rolls & Momos,New Delhi,"Fast Food, Rolls, Momos",Good,194
+306730,Dada's Rolls and Momos,New Delhi,"Fast Food, Rolls, Momos",Good,194
 18572953,Biryani by Moumita Biryani Pal,New Delhi,Biryani,Good,198
 18322614,Food Theory,New Delhi,"North Indian, Continental, Chinese",Good,205
 300556,Aggarwal Lassi Wala,New Delhi,"Mithai, Street Food",Good,175
@@ -961,7 +961,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18218626,Pizza Cantt Express,New Delhi,"Pizza, Fast Food",Average,81
 5258,Cafe Coffee Day,New Delhi,"Beverages, Cafe, Sandwich, Fast Food, Desserts",Good,47
 4429,Cantt Food,New Delhi,North Indian,Average,55
-18607069,Chili's Grill & Bar,New Delhi,"Italian, Finger Food",Excellent,2948
+18607069,Chili's Grill and Bar,New Delhi,"Italian, Finger Food",Excellent,2948
 17953943,The Burger Club,New Delhi,"Burger, Fast Food, Beverages",Very Good,2758
 18420456,Band Baaja Baaraat,New Delhi,"North Indian, Chinese, Continental",Very Good,1474
 18454951,Tippling Street,New Delhi,"North Indian, Italian, Continental, Chinese",Very Good,1404
@@ -979,7 +979,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 312999,Sardarji Malai Chaap Wale,New Delhi,"Fast Food, North Indian, Rolls",Good,662
 8394,Domino's Pizza,New Delhi,"Pizza, Fast Food",Good,655
 19000395,Tastebaaz,New Delhi,"North Indian, Chinese, Rolls",Excellent,167
-5059,Om Sweets & Snacks,New Delhi,"North Indian, South Indian, Street Food, Mithai",Very Good,2172
+5059,Om Sweets and Snacks,New Delhi,"North Indian, South Indian, Street Food, Mithai",Very Good,2172
 306517,The Tummy Section,New Delhi,"Fast Food, Chinese, Pizza, Rolls, Sandwich, Burger, Momos",Very Good,1439
 18429191,Singla's,New Delhi,"North Indian, South Indian, Chinese, Fast Food",Good,1129
 18748599,Jamie Oliver's Italian,New Delhi,Italian,Very Good,1916
@@ -1011,14 +1011,14 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18727335,Verandah Moonshine,New Delhi,"North Indian, Mediterranean",Very Good,1010
 18500611,Sixth Empirica,New Delhi,"North Indian, Italian, Continental",Very Good,1583
 18669515,Nik Bakers,New Delhi,"Bakery, Cafe",Very Good,987
-18344835,Raftaar - The High Speed Lounge & Bar,New Delhi,"North Indian, Italian, Continental",Very Good,1132
-18460322,Tornado Cafe & Resto Bar,New Delhi,"Chinese, Continental, North Indian",Very Good,1100
+18344835,Raftaar - The High Speed Lounge and Bar,New Delhi,"North Indian, Italian, Continental",Very Good,1132
+18460322,Tornado Cafe and Resto Bar,New Delhi,"Chinese, Continental, North Indian",Very Good,1100
 18367982,Nando's,New Delhi,"Portuguese, African",Very Good,855
 18371393,Midnight Hunger Hub,New Delhi,"North Indian, Fast Food, Italian, Asian",Very Good,1069
 130128,Kamlabai,Goa,"Seafood, North Indian, Chinese",Good,276
 130189,Navtara Veg Restaurant,Goa,"North Indian, South Indian, Chinese",Good,188
 17805781,Le Jardin,Goa,"Goan, North Indian, Chinese",Good,95
-18229777,Cremeux Pizza & Bakery Café,Goa,"Cafe, Italian, Fast Food",Good,73
+18229777,Cremeux Pizza and Bakery Café,Goa,"Cafe, Italian, Fast Food",Good,73
 18558649,Navtara Veg Restaurant,Goa,"North Indian, South Indian, Chinese",Good,97
 18584486,Babaji Classic,Goa,"North Indian, South Indian, Chinese",Good,51
 18229036,Appetite Classic,Goa,"North Indian, Chinese, Goan",Good,38
@@ -1029,7 +1029,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18232814,Kokni Kanteen,Goa,Goan,Excellent,948
 16512168,Ritz Classic,Goa,"Goan, Seafood, North Indian",Very Good,1613
 18287899,Black Vanilla Goa,Goa,"Bakery, Cafe, French",Very Good,366
-16541842,Barrels & Bones,Goa,"Steak, American, Desserts, Pizza, Salad, Continental",Very Good,349
+16541842,Barrels and Bones,Goa,"Steak, American, Desserts, Pizza, Salad, Continental",Very Good,349
 16519231,Cafe Al Fresco by Cantina Bodega,Goa,"Cafe, American, Italian, Burger",Very Good,665
 130797,Mum's Kitchen,Goa,"Goan, Seafood",Very Good,634
 16525600,Barbeque Nation,Goa,"North Indian, European, Mediterranean",Very Good,454
@@ -1069,7 +1069,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18986764,Aakansha Fast Food,Goa,Fast Food,Good,56
 19010219,Food Junction,Goa,"North Indian, Goan",Average,67
 130613,Shree Kashi,Goa,North Indian,Good,99
-18233133,Spicy Family Restaurant & Bar,Goa,"South Indian, Asian",Very Good,289
+18233133,Spicy Family Restaurant and Bar,Goa,"South Indian, Asian",Very Good,289
 130434,Peppers,Goa,"Goan, Continental, North Indian, Seafood, Chinese, Biryani, Desserts",Very Good,249
 130466,Pizza Hut,Goa,"Pizza, Fast Food, Italian",Very Good,601
 130609,KFC,Goa,"Burger, Fast Food",Average,277
@@ -1104,7 +1104,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18249144,Hoppipola,Kolkata,"Italian, Mexican",Very Good,3433
 18217475,Asia Kitchen by Mainland China,Kolkata,"Asian, Chinese, Momos",Excellent,2200
 25190,Shimla Biryani,Kolkata,"North Indian, Chinese",Very Good,1461
-25718,Chili's Grill & Bar,Kolkata,"American, Mexican, Italian, Burger",Excellent,3393
+25718,Chili's Grill and Bar,Kolkata,"American, Mexican, Italian, Burger",Excellent,3393
 18420364,Ozora,Kolkata,"Chinese, Italian, Thai",Very Good,2635
 18754568,Spicery By Sigree,Kolkata,"Street Food, North Indian",Very Good,886
 21829,Kasturi Restaurant,Kolkata,"Bengali, Bangladeshi",Very Good,1209
@@ -1145,7 +1145,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18166925,Arsalan,Kolkata,"Mughlai, North Indian, Kebab, Rolls, Biryani",Good,2579
 18440204,Social Kitchen - Holiday Inn,Kolkata,"North Indian, Asian, European",Very Good,632
 24808,Hatari,Kolkata,"Chinese, North Indian, Seafood",Very Good,1186
-18812843,Uno Chicago Bar & Grill,Kolkata,"American, Italian, Burger",Very Good,567
+18812843,Uno Chicago Bar and Grill,Kolkata,"American, Italian, Burger",Very Good,567
 20782,Haka,Kolkata,Chinese,Very Good,3345
 18621417,Besstoo,Kolkata,"Bengali, North Indian, Chinese, Biryani",Very Good,2264
 24802,Pawan Putra,Kolkata,"North Indian, South Indian, Continental",Very Good,993
@@ -1178,10 +1178,10 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18265462,The Country House,Kolkata,"Cafe, Fast Food, Desserts",Very Good,1138
 18361667,Monkey Bar,Kolkata,"American, North Indian, South Indian, Pizza, Burger, Salad",Very Good,1847
 20928,Mainland China,Kolkata,"Chinese, Asian, Sushi, Momos, Japanese, Thai",Excellent,2397
-25714,Chili's Grill & Bar,Kolkata,"American, Mexican, Italian, Burger",Excellent,3543
+25714,Chili's Grill and Bar,Kolkata,"American, Mexican, Italian, Burger",Excellent,3543
 23571,Sengupta's,Kolkata,"Bengali, Biryani, North Indian",Good,1726
 18663727,Snacking,Kolkata,"Cafe, Italian, Continental, Beverages",Excellent,1251
-21219,Flame & Grill,Kolkata,"North Indian, Continental",Very Good,2712
+21219,Flame and Grill,Kolkata,"North Indian, Continental",Very Good,2712
 20927,Mainland China,Kolkata,"Chinese, Asian, Momos, Japanese, Thai",Excellent,3175
 25544,Denzong Kitchen,Kolkata,"Momos, Chinese, Tibetan",Very Good,1054
 24794,Hanglaatherium,Kolkata,"Biryani, North Indian, Mughlai",Very Good,2600
@@ -1195,12 +1195,12 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18236290,Piyali Restaurant,Kolkata,"North Indian, Bengali, Chinese, Seafood",Average,129
 18822000,Robin's Pizza Factory,Kolkata,"Pizza, Fast Food",Very Good,101
 18354569,Tram Deepo,Kolkata,"Continental, Chinese, Fast Food, Finger Food, North Indian, Mexican",Very Good,2173
-18377112,Nawwarah Fine Dine & Lounge,Kolkata,"North Indian, Chinese, Continental, Italian, Mexican",Very Good,2251
+18377112,Nawwarah Fine Dine and Lounge,Kolkata,"North Indian, Chinese, Continental, Italian, Mexican",Very Good,2251
 18581816,Seasonal Tastes,Kolkata,"Continental, Biryani, American, North Indian, Asian",Very Good,832
 18249185,Country Roads,Kolkata,"Italian, Chinese, Continental",Very Good,1293
 25538,Cafe Ekante,Kolkata,Bengali,Good,915
 19028782,Barbeque Nation,Kolkata,"North Indian, Chinese, Kebab, BBQ",Excellent,311
-18535406,The Japanese Restaurant & Garden,Kolkata,"Japanese, Chinese",Good,205
+18535406,The Japanese Restaurant and Garden,Kolkata,"Japanese, Chinese",Good,205
 18934854,One Sip Restro Cafe,Kolkata,"Continental, Chinese, North Indian, Mediterranean, Italian, Thai",Very Good,103
 18821947,MAB,Kolkata,"Chinese, North Indian, Continental",Good,98
 24678,Le Vanilla,Kolkata,"Bakery, Desserts",Good,206
@@ -1239,7 +1239,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18728549,The Sultan's,Indore,"Arabian, North Indian",Very Good,249
 18690889,Alfresco,Indore,"North Indian, Chinese, Fast Food",Good,159
 1401320,Mama Ji Ka Dhaba,Indore,North Indian,Good,205
-1402001,Vikas Sweets & Restaurant,Indore,"North Indian, Fast Food, Street Food, Mithai",Good,142
+1402001,Vikas Sweets and Restaurant,Indore,"North Indian, Fast Food, Street Food, Mithai",Good,142
 1401999,Sardarji's Punjabi Zayka,Indore,"North Indian, Chinese",Good,120
 1400357,Hotel Madni Darbar,Indore,North Indian,Good,907
 1400503,Rasgulla House,Indore,Mithai,Very Good,843
@@ -1248,8 +1248,8 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 1401431,KFC,Indore,"Burger, Fast Food",Good,748
 1400394,Shreemaya Celebration,Indore,"Bakery, North Indian",Very Good,467
 1401710,Domino's Pizza,Indore,"Pizza, Fast Food",Good,581
-18614142,Lotus Cafe & Restaurant,Indore,"Cafe, North Indian",Average,504
-1402344,Mugs & Beans,Indore,"North Indian, Italian, Fast Food",Good,326
+18614142,Lotus Cafe and Restaurant,Indore,"Cafe, North Indian",Average,504
+1402344,Mugs and Beans,Indore,"North Indian, Italian, Fast Food",Good,326
 1400483,Dhaba Junction,Indore,"North Indian, Chinese",Good,257
 19086998,LaCasa Resto Cafe,Indore,"Cafe, Italian, North Indian, Chinese",Good,72
 1401854,Mad-eira - The Sensation Hotel,Indore,"North Indian, Chinese",Good,215
@@ -1283,7 +1283,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 90012,Chutneys,Hyderabad,"South Indian, North Indian, Chinese",Very Good,1464
 91727,Verandah - The Park,Hyderabad,"North Indian, Italian, Continental, Chinese",Excellent,1268
 90587,Rayalaseema Ruchulu,Hyderabad,"Andhra, South Indian, Biryani",Very Good,1564
-97824,Chili's American Grill & Bar,Hyderabad,"Mexican, American, Tex-Mex, Burger, Salad",Excellent,4960
+97824,Chili's American Grill and Bar,Hyderabad,"Mexican, American, Tex-Mex, Burger, Salad",Excellent,4960
 90690,Fishland By Swagath Grand,Hyderabad,"Seafood, North Indian, Chinese",Good,1204
 97362,Raja Rani Ruchulu,Hyderabad,"South Indian, Chinese, North Indian, Biryani",Very Good,1569
 18747011,Mehfil Restaurant,Hyderabad,"Biryani, North Indian, Chinese",Very Good,1814
@@ -1334,7 +1334,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 90860,Famous Ice Creams,Hyderabad,"Ice Cream, Desserts",Very Good,1054
 92651,Ram Ki Bandi,Hyderabad,South Indian,Very Good,2709
 92641,Alhamdulillah Hotel,Hyderabad,"Biryani, Hyderabadi",Very Good,1112
-96750,Krupa Mess & Tiffins,Hyderabad,South Indian,Very Good,774
+96750,Krupa Mess and Tiffins,Hyderabad,South Indian,Very Good,774
 92236,Taj Mahal - Taj Mahal Hotel,Hyderabad,"North Indian, South Indian, Chinese",Very Good,1137
 92687,Subhan Bakery,Hyderabad,"Bakery, Fast Food",Excellent,852
 91999,Pista House,Hyderabad,"Fast Food, Bakery",Very Good,1398
@@ -1356,7 +1356,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 90309,Ohri's Tansen,Hyderabad,North Indian,Excellent,2511
 90307,Ohri's 70mm,Hyderabad,"Continental, North Indian, Chinese",Very Good,2395
 18923862,FullFills,Hyderabad,"North Indian, Mexican, Continental, Lebanese",Very Good,478
-90903,Shah Ghouse Cafe & Restaurant,Hyderabad,"Biryani, North Indian, Chinese, Seafood",Very Good,7883
+90903,Shah Ghouse Cafe and Restaurant,Hyderabad,"Biryani, North Indian, Chinese, Seafood",Very Good,7883
 90392,Hotel Rumaan,Hyderabad,"Biryani, Street Food, Chinese",Very Good,2513
 18362345,Shehzade Restaurant,Hyderabad,"Biryani, Arabian",Good,1992
 90377,Mandar,Hyderabad,"North Indian, Mughlai, Chinese, Biryani",Very Good,984
@@ -1399,11 +1399,11 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18736110,Honey Hut,Nainital,Beverages,Good,16
 18736122,Kathi Junction,Nainital,Rolls,Good,18
 18735994,Anupam Restaurant,Nainital,North Indian,Good,116
-18735975,Pots & Stones Cafe,Nainital,Beverages,Good,103
+18735975,Pots and Stones Cafe,Nainital,Beverages,Good,103
 18735977,The Sakley's,Nainital,"Chinese, Desserts, North Indian",Average,59
 18735725,Saraswati Restaurant,Nainital,"South Indian, North Indian, Chinese",Average,43
 18735976,The Chocolate Room,Nainital,Desserts,Average,30
-18742897,Glenary's Restaurant  & Bar,Darjeeling,"Beverages, Cafe, Chinese, Continental, North Indian, Momos",Very Good,390
+18742897,Glenary's Restaurant  and Bar,Darjeeling,"Beverages, Cafe, Chinese, Continental, North Indian, Momos",Very Good,390
 18742898,Glenary's Bakery,Darjeeling,Bakery,Very Good,111
 18743090,Kunga Restaurant,Darjeeling,"Tibetan, Beverages",Very Good,111
 18742942,Keventers,Darjeeling,"Beverages, Desserts, Ice Cream",Very Good,162
@@ -1415,7 +1415,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18848840,Brewers - The Coffee Bar,Jammu,"Burger, Sandwich, Pizza, Wraps, Ice Cream, Fast Food",Excellent,465
 18996650,Pahalwan's,Jammu,"Desserts, Fast Food, Chinese, North Indian, Mithai, South Indian",Very Good,283
 18848353,Hunger Strike - Little Bite Big Taste,Jammu,"Fast Food, Chinese, Momos, Rolls, Street Food",Very Good,155
-18947386,Siip & Ziip,Jammu,"Chinese, North Indian, Pizza, Burger, Sandwich, Momos",Very Good,129
+18947386,Siip and Ziip,Jammu,"Chinese, North Indian, Pizza, Burger, Sandwich, Momos",Very Good,129
 19047989,The Gol Chakkar Cafe,Jammu,"Cafe, Pizza, Burger, Fast Food",Very Good,122
 18927765,Singh's Brother,Jammu,North Indian,Good,85
 18848091,Grill N Chill,Jammu,"Indian, Continental, Chinese, Fast Food",Good,91
@@ -1435,12 +1435,12 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18697985,Deep Punjabi Hotel,Vijayawada,"North Indian, Biryani, Chinese",Very Good,162
 18697970,Sweet Magic,Vijayawada,"Biryani, Beverages, Bakery, Chinese, North Indian, Andhra, Desserts, South Indian",Average,107
 18697984,New Chand Hotel,Vijayawada,Biryani,Very Good,80
-18819922,Sweet Magic Sweets & Bakers,Vijayawada,"Mithai, Bakery",Good,93
+18819922,Sweet Magic Sweets and Bakers,Vijayawada,"Mithai, Bakery",Good,93
 19094683,Karimulla Biryani Point,Vijayawada,Biryani,Good,22
 19030354,Karimulla Biryani Point,Vijayawada,Biryani,Good,34
 18900744,Bake Well,Vijayawada,"Bakery, Pizza, Burger, Sandwich",Average,48
 18855658,Pizza Time,Vijayawada,"Pizza, Fast Food",Good,147
-18698116,Cross Roads Restaurant & Sweets,Vijayawada,"Chinese, Biryani, Andhra, South Indian, North Indian",Good,96
+18698116,Cross Roads Restaurant and Sweets,Vijayawada,"Chinese, Biryani, Andhra, South Indian, North Indian",Good,96
 18821437,1947 Restaurant,Vijayawada,"Biryani, Chinese, South Indian, North Indian",Good,73
 18698137,Bay Leaves Kitchen,Vijayawada,"Biryani, North Indian, Chinese, South Indian",Average,10
 19079406,Mandeez,Vijayawada,"North Indian, Biryani",Average,8
@@ -1476,7 +1476,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18698694,Dark  Stone,Vijayawada,"Ice Cream, Desserts, Beverages",Good,75
 19051488,Wugan,Vijayawada,"Asian, Japanese, Thai, Chinese",Good,31
 18895895,OYALO,Vijayawada,Pizza,Average,21
-18974530,Curries & Biryanis,Vijayawada,"Biryani, Chinese, Seafood",Average,18
+18974530,Curries and Biryanis,Vijayawada,"Biryani, Chinese, Seafood",Average,18
 18698795,Aroma Restaurant,Vijayawada,"South Indian, Chinese, North Indian, Biryani",Average,56
 19150399,Kumbakarna,Vijayawada,"Biryani, Chinese, North Indian",Very Good,70
 19152173,Belgian Waffle Factory,Vijayawada,"Sandwich, Fast Food",Average,14
@@ -1488,7 +1488,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 19053159,Cool Blog,Vijayawada,"Fast Food, Beverages",Average,8
 18696253,Babai Hotel,Vijayawada,"South Indian, Andhra",Average,13
 18698677,Harika Royal Restaurant,Vijayawada,"Biryani, Andhra, North Indian, Chinese, Seafood",Very Good,276
-18698669,Alankar Sweet & Bakers,Vijayawada,"Bakery, Desserts, Mithai",Average,13
+18698669,Alankar Sweet and Bakers,Vijayawada,"Bakery, Desserts, Mithai",Average,13
 18698678,Sri Devi Grand,Vijayawada,"Biryani, North Indian, South Indian",Average,8
 18698668,Taj Hotel,Vijayawada,Biryani,Average,8
 19030265,Chitti Chitti Nethi Idly,Vijayawada,South Indian,Average,7
@@ -1511,7 +1511,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 2800856,Barbeque Nation,Vizag,"North Indian, Chinese, Mediterranean",Excellent,1119
 2800019,Flying Spaghetti Monster,Vizag,"Mexican, Italian",Excellent,776
 2800881,Plot 17,Vizag,"Pizza, Beverages",Very Good,742
-2801034,"Fresh Choice- Patisserie, Bakery & Café",Vizag,"Bakery, Cafe",Excellent,503
+2801034,"Fresh Choice- Patisserie, Bakery and Café",Vizag,"Bakery, Cafe",Excellent,503
 2800096,Kamat Restaurant,Vizag,"Andhra, North Indian, Chinese, Seafood, Biryani",Excellent,1749
 2800083,My Restaurant,Vizag,"Andhra, North Indian, Chinese, Biryani",Very Good,999
 2800467,Kalyani Mess,Vizag,South Indian,Very Good,536
@@ -1526,7 +1526,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 2800294,Sri Sairam Parlour,Vizag,"South Indian, North Indian",Excellent,1640
 2801559,Hotel V Parlour,Vizag,"South Indian, North Indian, Chinese",Very Good,744
 2800901,Paradise,Vizag,"Biryani, North Indian",Good,1865
-2800114,New Satyam Multicuisine Restaurant & Takeaway,Vizag,"North Indian, Chinese, Andhra",Very Good,1035
+2800114,New Satyam Multicuisine Restaurant and Takeaway,Vizag,"North Indian, Chinese, Andhra",Very Good,1035
 18837140,AB's - Absolute Barbecue,Vizag,"European, Mediterranean, North Indian",Excellent,921
 2800012,Pizza Hut,Vizag,"Pizza, Fast Food, Italian",Very Good,690
 2801648,Helapuri Restaurant,Vizag,"Biryani, Chinese, North Indian, South Indian",Good,688
@@ -1534,14 +1534,14 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18766029,Helapuri Restaurant,Vizag,"Biryani, Chinese, North Indian, South Indian",Good,716
 2801173,Paradise,Vizag,"Biryani, North Indian",Good,1251
 18755736,Friends Tandoori Point,Vizag,"North Indian, Chinese, Biryani",Very Good,385
-2800001,Red Cherry Bakers & Restaurant,Vizag,"Bakery, North Indian, Chinese, Biryani",Good,411
+2800001,Red Cherry Bakers and Restaurant,Vizag,"Bakery, North Indian, Chinese, Biryani",Good,411
 2800004,Domino's Pizza,Vizag,"Pizza, Fast Food",Good,850
 18762247,Uma Parlour,Vizag,South Indian,Very Good,386
-2800774,4 Seasons Bakery & Restaurant,Vizag,"Biryani, North Indian, Chinese, Bakery",Very Good,536
+2800774,4 Seasons Bakery and Restaurant,Vizag,"Biryani, North Indian, Chinese, Bakery",Very Good,536
 2800154,Alif Family Restaurant,Vizag,"North Indian, Chinese, Biryani",Good,661
 2800080,Gongura Hotel,Vizag,"Biryani, Chinese, North Indian, Seafood",Good,331
 2800840,Ratna Vari Vantillu,Vizag,"Andhra, Biryani",Good,330
-2801131,Kava Grill & Lounge,Vizag,"Continental, South Indian, Italian, North Indian, Asian",Very Good,268
+2801131,Kava Grill and Lounge,Vizag,"Continental, South Indian, Italian, North Indian, Asian",Very Good,268
 2800163,Hotel Prabha Veg Restaurant,Vizag,"North Indian, South Indian",Very Good,268
 18753615,New Ram Sai Celebration Hub,Vizag,"South Indian, North Indian, Chinese",Good,220
 18694189,Swad India Restaurant,Vizag,"North Indian, Biryani, Chinese",Good,244
@@ -1561,28 +1561,28 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18788958,Satyam Non-Veg Restaurant,Vizag,"North Indian, Biryani, Chinese",Very Good,498
 2800122,Rajadhani,Vizag,"North Indian, Chinese, Andhra, Biryani",Good,613
 2800265,Akshaya Restaurant,Vizag,"North Indian, Chinese, Biryani, Fast Food",Good,386
-2800488,Amalodbhavi Biryani & Curries,Vizag,"Biryani, South Indian",Average,75
+2800488,Amalodbhavi Biryani and Curries,Vizag,"Biryani, South Indian",Average,75
 2800495,Sri Sai Ram Parlour,Vizag,South Indian,Average,12
 18705367,Sampradaya Ruchulu,Vizag,Andhra,Average,10
 2800499,Sweet India,Vizag,Desserts,Average,6
 2800491,Nikitha Tiffin Centre,Vizag,South Indian,Not rated,3
 19024166,Simhapuri Royal Restaurant,Vizag,"North Indian, South Indian, Chinese",Average,4
-2800628,Chennai Bakery & Sweets,Vizag,"Bakery, Desserts, Fast Food",Average,9
+2800628,Chennai Bakery and Sweets,Vizag,"Bakery, Desserts, Fast Food",Average,9
 19107336,Royal Pizzeria,Vizag,"Italian, Beverages",Not rated,0
 2801428,Simhapuri Restaurant,Vizag,"Chinese, Indian, Tea",Not rated,1
 2801159,Celebrations Restaurant,Vizag,"Biryani, Fast Food, Bakery",Good,332
 2801366,Mayuri Restaurant,Vizag,"South Indian, North Indian, Biryani, Chinese",Good,179
 18925781,The Old Waltair,Vizag,"Italian, Burger, Sandwich, Chinese",Good,83
 18935980,Biryani Box,Vizag,"Biryani, South Indian",Good,86
-18917921,Soya & Spices,Vizag,"South Indian, North Indian, Chinese, Afghan",Good,59
+18917921,Soya and Spices,Vizag,"South Indian, North Indian, Chinese, Afghan",Good,59
 19103505,The Biryani Adda,Vizag,"Biryani, Beverages",Not rated,3
 18997722,Biryani Junction,Vizag,Biryani,Average,5
 19014538,Ministry of Sweet Affairs,Vizag,"Bakery, Desserts, Mithai, Ice Cream, Beverages",Not rated,2
-19027234,Multy & Tastyy Family Restaurant,Vizag,North Indian,Average,5
+19027234,Multy and Tastyy Family Restaurant,Vizag,North Indian,Average,5
 18962186,Hotel Mughal Darbar,Nasik,"Mughlai, North Indian, Chinese",Very Good,571
 1600099,Kokni Darbar,Nasik,"Fast Food, Chinese, Mughlai",Very Good,1160
 1600255,Budha Halwai,Nashik,"Mithai, Street Food",Very Good,552
-1600234,Bagga Sweets & Snacks,Nashik,"Mithai, Street Food",Very Good,509
+1600234,Bagga Sweets and Snacks,Nashik,"Mithai, Street Food",Very Good,509
 1600481,Sayantara,Nashik,Street Food,Very Good,351
 18839989,Samarth Juice Center,Nashik,"Beverages, Juices",Very Good,502
 1600268,Haji Darbar,Nashik,"Mughlai, North Indian, Biryani, Chinese",Very Good,181
@@ -1600,19 +1600,19 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18135213,Cowboy Cafe,Nashik,"Continental, Thai, Mexican",Good,60
 1600210,After Dark,Nashik,Finger Food,Good,76
 18806762,Hideout Cafe,Nagpur,"Cafe, Chinese, Fast Food, Beverages",Excellent,707
-19036272,Toss - Cafe & Restro,Nagpur,"Pizza, Sandwich, Burger, Rolls, Fast Food, Chinese, Beverages",Excellent,263
+19036272,Toss - Cafe and Restro,Nagpur,"Pizza, Sandwich, Burger, Rolls, Fast Food, Chinese, Beverages",Excellent,263
 18761314,Italy Via Punjab,Nagpur,"Pizza, North Indian",Very Good,577
-18623894,Bouffage Cafe & Bistro,Nagpur,"Cafe, Continental, North Indian",Excellent,754
+18623894,Bouffage Cafe and Bistro,Nagpur,"Cafe, Continental, North Indian",Excellent,754
 3301462,Three Beans,Nagpur,"Cafe, Italian, Continental",Very Good,773
-3300411,Nosh-Cafe Lounge & Restaurant,Nagpur,"Fast Food, Beverages",Good,532
+3300411,Nosh-Cafe Lounge and Restaurant,Nagpur,"Fast Food, Beverages",Good,532
 3300072,Dosa Plaza,Nagpur,"Chinese, Fast Food, South Indian",Good,846
 3301609,Pablo - The Art Cafe' Lounge,Nagpur,"Continental, Italian, North Indian, American",Excellent,1095
-3301970,Firangish Cafe & Courtyard,Nagpur,Cafe,Very Good,486
+3301970,Firangish Cafe and Courtyard,Nagpur,Cafe,Very Good,486
 3300060,Veeraswami,Nagpur,South Indian,Very Good,1812
 3301605,Roast Cafe,Nagpur,"Cafe, Roast Chicken, Fast Food, Wraps, Rolls, Kebab, Desserts",Excellent,953
 18394440,Uttar Dakshin by Naivedhyam,Nagpur,"North Indian, South Indian",Excellent,1552
 18706194,Goosebumps,Nagpur,"Ice Cream, Bakery, Street Food, Chinese",Very Good,829
-18660149,Shabana Bakery & Kitchen,Nagpur,"Bakery, Fast Food, Chinese",Very Good,921
+18660149,Shabana Bakery and Kitchen,Nagpur,"Bakery, Fast Food, Chinese",Very Good,921
 3300056,Barbecue Restaurant,Nagpur,North Indian,Excellent,1358
 3300148,Haldiram's Hotspot,Nagpur,"Street Food, Mithai, North Indian, South Indian",Very Good,1588
 3300065,FSB,Nagpur,"Continental, North Indian, Thai, Chinese, Burmese, Beverages, Desserts",Excellent,613
@@ -1635,7 +1635,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 3300033,Gupta's Bawarchi Restaurant,Nagpur,"North Indian, Chinese",Good,147
 3300011,Babbu Hotel,Nagpur,"North Indian, Biryani",Very Good,1236
 3300548,Shabana Bakery,Nagpur,"Bakery, Fast Food",Very Good,2769
-18718340,Chowringhee - Kathi Rolls & Kabab,Nagpur,"Rolls, Momos",Very Good,492
+18718340,Chowringhee - Kathi Rolls and Kabab,Nagpur,"Rolls, Momos",Very Good,492
 3300568,Domino's Pizza,Nagpur,"Pizza, Fast Food",Very Good,1122
 3300748,Panino The Sandwich World,Nagpur,"Sandwich, Fast Food",Very Good,992
 3301248,Kareem's,Nagpur,"North Indian, Mughlai",Very Good,858
@@ -1653,7 +1653,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 2500057,Suvidha Veg Restaurant,Aurangabad,"North Indian, Chinese, South Indian",Very Good,189
 18801863,Jai Bhawani Family Restaurant,Aurangabad,"North Indian, Maharashtrian, Biryani",Very Good,98
 18935331,Jai Bhavani Restaurant,Aurangabad,"Maharashtrian, North Indian",Good,58
-2500076,Balbeer's Kitchen & Bar,Aurangabad,"Italian, Continental, Chinese, North Indian",Good,85
+2500076,Balbeer's Kitchen and Bar,Aurangabad,"Italian, Continental, Chinese, North Indian",Good,85
 2500841,Aditya Garden Restaurant,Aurangabad,"North Indian, Chinese",Very Good,57
 2500077,Hotel New Vrundavan,Aurangabad,"North Indian, Chinese, Biryani",Good,54
 18800467,UR'S Pizza,Aurangabad,"Pizza, Fast Food",Average,39
@@ -1671,7 +1671,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18529208,Amigos Kitchen,Aurangabad,"North Indian, Chinese, Continental",Very Good,725
 2500034,Green Leaf,Aurangabad,"Chinese, North Indian",Excellent,884
 2500332,KFC,Aurangabad,"Burger, Fast Food",Very Good,541
-2500164,Koyla Dum Biryanis & Kebabs,Aurangabad,Biryani,Average,583
+2500164,Koyla Dum Biryanis and Kebabs,Aurangabad,Biryani,Average,583
 2500969,Mustafa's Dum Biryani,Aurangabad,Biryani,Good,885
 2500019,Domino's Pizza,Aurangabad,"Pizza, Fast Food",Good,347
 18766126,Barbeque Nation,Aurangabad,"North Indian, Seafood, Chinese, Mediterranean",Excellent,553
