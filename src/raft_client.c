@@ -1575,18 +1575,15 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
                  &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
                  rcrh->rcrh_recv_niovs)) ? -E2BIG : 0;
 
-        // If client has allocated smaller buffer and allowed to explan the buffer on bigger size result
-        // Or haven't allocated buffer at all. 
         if (rcrh->rcrh_get_into_user_buffer)
         {
-            /* Allocate or Reallocate buffer */
-            SIMPLE_LOG_MSG(LL_WARN, "Allocate or Reallocate buffer: %ld",
+            /* Allocate buffer to copy result*/
+            SIMPLE_LOG_MSG(LL_DEBUG, "Allocate buffer: %ld",
 							(rcrh->rcrh_reply_size - recv_iovs[0].iov_len));
 
             recv_iovs[1].iov_base = malloc(rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
             recv_iovs[1].iov_len = (rcrh->rcrh_reply_size - recv_iovs[0].iov_len);
 
-            SIMPLE_LOG_MSG(LL_WARN, "Allocate buffer %p", recv_iovs[1].iov_base);
             reply_size_error = 0;
         }
         if (from)

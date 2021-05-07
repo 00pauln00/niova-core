@@ -249,18 +249,20 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
 
 static int
 pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                         struct pmdb_obj_stat *user_stat, const bool blocking,
                          const struct timespec timeout,
-                         pmdb_user_cb_t user_cb, void *user_arg)
+                         pmdb_request_opts_t *pmdb_req_opt)
 {
-    if (!pmdb || !obj_id || !user_stat || (!blocking && !user_cb))
+    if (!pmdb || !obj_id || !pmdb_req_opt->pro_stat ||
+        (pmdb_req_opt->pro_non_blocking && !pmdb_req_opt->pro_non_blocking_cb))
         return -EINVAL;
 
     int rc = 0;
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_lookup, NULL, 0, NULL, 0,
-                                user_stat, timeout, user_cb, user_arg, &rc);
+                                pmdb_req_opt->pro_stat, timeout,
+                                pmdb_req_opt->pro_non_blocking_cb,
+                                pmdb_req_opt->pro_arg, &rc);
     if (!pcreq)
         return rc;
 
@@ -278,7 +280,7 @@ pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     NIOVA_ASSERT(pmdb_obj_id_2_rncui(obj_id, &rncui) == &rncui);
 
     int opts = RCRT_READ;
-    if (!blocking)
+    if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, &req_iov, 1,
@@ -297,8 +299,9 @@ PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_lookup_internal(pmdb, obj_id, ret_stat, true, timeout,
-                                    NULL, NULL);
+    pmdb_request_opts_t pmdb_req_opt;
+    pmdb_request_options_init(&pmdb_req_opt, 1, 0, ret_stat, NULL, NULL, NULL, 0); 
+    return pmdb_obj_lookup_internal(pmdb, obj_id, timeout, &pmdb_req_opt);
 }
 
 /**
@@ -306,37 +309,35 @@ PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  */
 int
 PmdbObjLookupX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                pmdb_request_opts_t *pmdb_req)
+                pmdb_request_opts_t *pmdb_req_opt)
 {
-    if (!pmdb_req || (pmdb_req->pro_non_blocking &&
-                      !pmdb_req->pro_non_blocking_cb))
+    if (!pmdb_req_opt || (pmdb_req_opt->pro_non_blocking &&
+                          !pmdb_req_opt->pro_non_blocking_cb))
         return -EINVAL;
 
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_lookup_internal(pmdb, obj_id, pmdb_req->pro_stat,
-                                    !pmdb_req->pro_non_blocking, timeout,
-                                    pmdb_req->pro_non_blocking_cb,
-                                    pmdb_req->pro_arg);
+    return pmdb_obj_lookup_internal(pmdb, obj_id, timeout, pmdb_req_opt);
 }
 
 static int
 pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                       const char *user_buf, size_t user_buf_size,
-                      const bool blocking, const struct timespec timeout,
-                      pmdb_user_cb_t user_cb, void *user_arg,
-                      struct pmdb_obj_stat *user_pmdb_stat)
+                      const struct timespec timeout,
+                      pmdb_request_opts_t *pmdb_req_opt)
 {
     // NULL user_buf or buf_size of 0 is OK
-    if (!pmdb || !user_pmdb_stat || !obj_id || (!blocking && !user_cb))
+    if (!pmdb || pmdb_req_opt->pro_stat || !obj_id ||
+        (pmdb_req_opt->pro_non_blocking && !pmdb_req_opt->pro_non_blocking_cb))
         return -EINVAL;
 
     int rc = 0;
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_write, user_buf, user_buf_size,
-                                NULL, 0, user_pmdb_stat, timeout, user_cb,
-                                user_arg, &rc);
+                                NULL, 0, pmdb_req_opt->pro_stat, timeout,
+                                pmdb_req_opt->pro_non_blocking_cb,
+                                pmdb_req_opt->pro_arg, &rc);
     if (!pcreq)
         return rc;
 
@@ -356,7 +357,7 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     };
 
     int opts = RCRT_WRITE;
-    if (!blocking)
+    if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
@@ -373,10 +374,12 @@ int
 PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
 {
+    pmdb_request_opts_t pmdb_req_opt;
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
-    return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, true, timeout,
-                                 NULL, NULL, user_pmdb_stat);
+    pmdb_request_options_init(&pmdb_req_opt, 1, 0, user_pmdb_stat, NULL, NULL, NULL, 0); 
+    return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size, timeout,
+                                 &pmdb_req_opt);
 }
 
 /**
@@ -384,32 +387,29 @@ PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
  */
 int
 PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-             size_t kv_size, pmdb_request_opts_t *pmdb_req)
+             size_t kv_size, pmdb_request_opts_t *pmdb_req_opt)
 {
     /* Non blocking call should have callback function pointer */
-    if (!pmdb_req || (pmdb_req->pro_non_blocking &&
-                      !pmdb_req->pro_non_blocking_cb))
+    if (!pmdb_req_opt || (pmdb_req_opt->pro_non_blocking &&
+                          !pmdb_req_opt->pro_non_blocking_cb))
         return -EINVAL;
 
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size,
-                                 !pmdb_req->pro_non_blocking, timeout,
-                                 pmdb_req->pro_non_blocking_cb,
-                                 pmdb_req->pro_arg,
-                                 pmdb_req->pro_stat);
+                                 timeout,
+                                 pmdb_req_opt);
 }
 
-static int 
+static int
 pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                      const void *key, size_t key_size, void *value,
-                      size_t value_size,
-                      const bool blocking, const struct timespec timeout,
-                      pmdb_user_cb_t user_cb, void *user_arg,
-                      struct pmdb_obj_stat *user_pmdb_stat)
+                      const void *key, size_t key_size,
+                      const struct timespec timeout,
+                      pmdb_request_opts_t *pmdb_req_opt)
 {
     // NULL user_buf or buf_size of 0 is OK
-    if (!pmdb || !obj_id || (!blocking && !user_cb))
+    if (!pmdb || !obj_id || (pmdb_req_opt->pro_non_blocking &&
+                             !pmdb_req_opt->pro_non_blocking_cb))
     {
         SIMPLE_LOG_MSG(LL_WARN, "Return from here1");
         return -EINVAL;
@@ -419,8 +419,11 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_read, key, key_size,
-                                value, value_size, user_pmdb_stat, timeout,
-                                user_cb, user_arg, &rc);
+                                pmdb_req_opt->pro_get_buffer,
+                                pmdb_req_opt->pro_get_buffer_size,
+                                pmdb_req_opt->pro_stat, timeout,
+                                pmdb_req_opt->pro_non_blocking_cb,
+                                pmdb_req_opt->pro_arg, &rc);
     if (!pcreq)
         return rc;
 
@@ -437,18 +440,19 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     struct iovec reply_iovs[2] = {
         [0].iov_base = (void *)&pcreq->pcreq_msg_reply,
         [0].iov_len = sizeof(struct pmdb_msg),
-        [1].iov_base = value,
-        [1].iov_len = value_size,
+        [1].iov_base = pmdb_req_opt->pro_get_buffer,
+        [1].iov_len = pmdb_req_opt->pro_get_buffer_size,
     };
 
     /* Set request type as READ and blocking or non-blocking operation */
     int opts = RCRT_READ;
-    if (!blocking)
+    if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
                                       reply_iovs, 2,
-                                      (value == NULL ? true : false),
+                                      (pmdb_req_opt->pro_get_buffer == NULL ?
+                                      true : false),
                                       timeout,
                                       opts,
                                       pmdb_client_request_cb, pcreq,
@@ -461,17 +465,12 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  */
 int
 PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-            size_t key_size, size_t value_size, pmdb_request_opts_t *pmdb_req)
+            size_t key_size, pmdb_request_opts_t *pmdb_req_opt)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
     return pmdb_obj_get_internal(pmdb, obj_id, key, key_size,
-                                 pmdb_req->pro_get_buffer,
-                                 value_size, !pmdb_req->pro_non_blocking,
-                                 timeout,
-                                 pmdb_req->pro_non_blocking_cb,
-                                 pmdb_req->pro_arg,
-                                 pmdb_req->pro_stat);
+                                 timeout, pmdb_req_opt);
 }
 
 /**
@@ -479,16 +478,19 @@ PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
  */
 void *
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-           size_t key_size, size_t value_size, size_t *reply_size)
+           size_t key_size, size_t *value_size)
 {
     const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
 
     struct pmdb_obj_stat pmdb_stat;
-    int rc = pmdb_obj_get_internal(pmdb, obj_id, key, key_size, NULL,
-                                        value_size, true, timeout,
-                                        NULL, NULL, &pmdb_stat);
+    pmdb_request_opts_t pmdb_req_opt;
 
-    *reply_size = pmdb_stat.reply_size;
+    pmdb_request_options_init(&pmdb_req_opt, 0, 0, &pmdb_stat, NULL, NULL,
+                              NULL, 0); 
+    int rc = pmdb_obj_get_internal(pmdb, obj_id, key, key_size, timeout,
+                                   &pmdb_req_opt);
+
+    *value_size = pmdb_stat.reply_size;
 
     if (rc)
     {
@@ -497,43 +499,6 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
     }
     return pmdb_stat.reply_buffer;
 }
-
-#if 0
-/**
- * PmdbObjGetNB - non-blocking public put (write) routine.
- */
-void *
-PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-             size_t key_size, char *value, size_t value_size,
-             bool expand_reply_buff,
-             pmdb_user_cb_t user_cb, void *user_arg)
-{
-    if (!user_cb)
-        return NULL;
-
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
-
-    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
-                                 value_size, false, timeout,
-                                 user_cb,
-                                 user_arg, NULL);
-}
-
-void *
-PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-              size_t key_size, char *value, size_t value_size,
-              bool expand_reply_buff,
-              pmdb_user_cb_t user_cb, void *user_arg,
-              struct pmdb_obj_stat *user_pmdb_stat)
-{
-    const struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
-
-    return pmdb_obj_get_internal(pmdb, obj_id, key, key_size, value,
-                                 value_size, expand_reply_buff, true, timeout,
-                                 user_cb, user_arg,
-                                 user_pmdb_stat);
-}
-#endif
 
 /**
  * pmdb_obj_id_cb - essential cb function which is passed into

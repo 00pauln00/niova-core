@@ -75,7 +75,7 @@ func pmdbDictClient() {
 				var reply_size int64
 				//read operation
 				reply_buff := client_obj.PmdbClientRead(req_dict, rncui,
-												   int64(data_length), &reply_size)
+												        &reply_size)
 
 				if reply_buff == nil {
 					fmt.Println("Read request failed !!")

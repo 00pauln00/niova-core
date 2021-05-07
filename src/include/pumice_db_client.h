@@ -11,7 +11,7 @@
 
 int
 PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-            size_t key_size, size_t value_size,
+            size_t key_size,
             pmdb_request_opts_t *pmdb_req);
 
 int
@@ -24,7 +24,7 @@ PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
 
 void *
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-           size_t key_size, size_t value_size, size_t *reply_size);
+           size_t key_size, size_t *value_size);
 
 int
 PmdbObjLookupX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,

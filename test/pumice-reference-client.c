@@ -905,9 +905,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
                               (void *)&preq->preq_rtdb,
                               (sizeof(struct raft_test_data_block) +
                               sizeof(struct raft_test_values)));
-            rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
-                                 (sizeof(struct raft_test_data_block) +
-                                 sizeof(struct raft_test_values)), &pmdb_req);
+            rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, &pmdb_req);
         break;
 
     case pmdb_op_write:
