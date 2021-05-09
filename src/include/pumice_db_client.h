@@ -51,4 +51,7 @@ PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
 pmdb_t
 PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
 
+char *
+PmdbGetLeaderUUID(pmdb_t pmdb);
+
 #endif
