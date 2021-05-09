@@ -48,7 +48,8 @@ func CToGoString(cstring *C.char) string {
 }
 
 //Write KV from client.
-func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) {
+func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{},
+                                                  rncui string) int {
 
 	var key_len int64
 	//Encode the structure into void pointer.
@@ -58,7 +59,7 @@ func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) 
 	encoded_key := (*C.char)(ed_key)
 
 	//Perform the write
-	PmdbClientWriteKV(pmdb_client.Pmdb, rncui, encoded_key, key_len)
+	return PmdbClientWriteKV(pmdb_client.Pmdb, rncui, encoded_key, key_len)
 }
 
 //Read the value of key on the client
@@ -79,6 +80,13 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 							key_len, reply_size)
 }
 
+func (pmdb_client *PmdbClientObj) PmdbGetLeader() string {
+	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
+	leader_uuid := C.PmdbGetLeaderUUID(Cpmdb)
+
+	return C.GoString(leader_uuid)
+}
+
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
 
 	raft_uuid := GoToCString(Graft_uuid)
@@ -95,7 +103,7 @@ func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
 }
 
 func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
-					 key_len int64) {
+					 key_len int64) int {
 
 	var obj_stat C.pmdb_obj_stat_t
 
@@ -112,10 +120,12 @@ func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 
 	Cpmdb := (C.pmdb_t)(pmdb)
 
-	C.PmdbObjPut(Cpmdb, obj_id, key, c_key_len, &obj_stat)
+	rc := C.PmdbObjPut(Cpmdb, obj_id, key, c_key_len, &obj_stat)
 
 	//Free C memory
 	FreeCMem(crncui_str)
+
+	return int(rc)
 }
 
 func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
