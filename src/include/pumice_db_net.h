@@ -90,7 +90,7 @@ typedef struct pmdb_request_options
     void            *pro_arg;
     void            *pro_get_buffer;
     size_t          pro_get_buffer_size;
-    //struct          pro_timeout;
+    struct timespec pro_timeout;
 } pmdb_request_opts_t;
 
 
@@ -137,7 +137,8 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
                   pmdb_obj_stat_t *obj_stat, pmdb_user_cb_t user_cb,
                   void *user_arg,
                   void *get_buffer,
-                  size_t get_buffer_size)
+                  size_t get_buffer_size,
+                  int timeout_sec)
 {
     pmdb_req->pro_use_provided_get_buffer = use_user_buffer;
     pmdb_req->pro_non_blocking = non_blocking;
@@ -145,7 +146,10 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
     pmdb_req->pro_non_blocking_cb = user_cb;
     pmdb_req->pro_arg = user_arg;
     pmdb_req->pro_get_buffer = get_buffer;
-    pmdb_req->pro_get_buffer_size = get_buffer_size; 
+    pmdb_req->pro_get_buffer_size = get_buffer_size;
+
+    struct timespec timeout = {timeout_sec, 0};
+    CONST_OVERRIDE(struct timespec, pmdb_req->pro_timeout, timeout);
 }
 
 #endif

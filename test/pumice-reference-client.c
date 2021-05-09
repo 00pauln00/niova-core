@@ -890,22 +890,22 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
                           use_async_requests ? pmdbtc_async_cb : NULL,
                           use_async_requests ? preq : NULL,
                           NULL,
-                          0);
+                          0, 0);
 
-        PmdbObjLookupX(pmdbtcPMDB, obj_id, &pmdb_req);
-        
+        rc = PmdbObjLookupX(pmdbtcPMDB, obj_id, &pmdb_req);
+
         break;
 
     case pmdb_op_read:
 
-            pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
-                              &preq->preq_obj_stat,
-                              use_async_requests ? pmdbtc_async_cb : NULL,
-                              use_async_requests? preq : NULL,
-                              (void *)&preq->preq_rtdb,
-                              (sizeof(struct raft_test_data_block) +
-                              sizeof(struct raft_test_values)));
-            rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, &pmdb_req);
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+                                  &preq->preq_obj_stat,
+                                  use_async_requests ? pmdbtc_async_cb : NULL,
+                                  use_async_requests? preq : NULL,
+                                  (void *)&preq->preq_rtdb,
+                                  (sizeof(struct raft_test_data_block) +
+                                  sizeof(struct raft_test_values)), 0);
+        rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, &pmdb_req);
         break;
 
     case pmdb_op_write:
@@ -920,10 +920,10 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
                           &preq->preq_obj_stat,
                           use_async_requests ? pmdbtc_async_cb : NULL,
-                          use_async_requests ? preq : NULL, NULL, 0);
+                          use_async_requests ? preq : NULL, NULL, 0, 0);
 
         rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb, rqsz,
-                          &pmdb_req);
+                         &pmdb_req);
 
         break;
     default:
