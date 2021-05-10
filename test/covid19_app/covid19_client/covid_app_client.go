@@ -369,6 +369,7 @@ func read_covidData(client_obj *PumiceDBClient.PmdbClientObj,
 
 	//Print all values which passed to PmdbClientRead()
 	fmt.Println("Covid Structure for read:", covid_rd_struct)
+	fmt.Println("Length of read:", length_rd_struct)
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
@@ -379,7 +380,7 @@ func read_covidData(client_obj *PumiceDBClient.PmdbClientObj,
 
 	//read operation
 	reply_buff := client_obj.PmdbClientRead(covid_rd_struct, rd_rncui,
-		int64(length_rd_struct), &reply_size)
+		&reply_size)
 
 	if reply_buff == nil {
 
