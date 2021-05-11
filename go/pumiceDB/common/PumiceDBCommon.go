@@ -1,10 +1,11 @@
 package PumiceDBCommon
+
 import (
-	"unsafe"
-	"encoding/gob"
 	"bytes"
-	"log"
+	"encoding/gob"
 	"io"
+	"log"
+	"unsafe"
 )
 
 /*
@@ -44,7 +45,7 @@ func GetStructSize(ed interface{}) int64 {
 }
 
 func Decode(input unsafe.Pointer, output interface{},
-			data_len int64) {
+	data_len int64) {
 
 	bytes_data := C.GoBytes(unsafe.Pointer(input), C.int(data_len))
 

@@ -1,13 +1,13 @@
 package main
+
 import (
-	"fmt"
-	"os"
 	"bufio"
-	"strings"
 	"flag"
-	"gopmdblib/goPmdbClient"
-	"gopmdblib/goPmdbCommon"
-	"dictapplib/dict_libs"
+	"fmt"
+	"niova/go-pumicedb-lib/client"
+	"dictapplib/lib"
+	"os"
+	"strings"
 )
 
 /*
@@ -28,12 +28,15 @@ var peer_uuid_go string
 */
 func pmdbDictClient() {
 
-	//Start the client.
-	pmdb := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
-
-	client_obj := PumiceDBClient.PmdbClientObj{
-		Pmdb: pmdb,
+	//Create new client object.
+	pmdb := PumiceDBClient.PmdbClientNew(raft_uuid_go, peer_uuid_go)
+	if pmdb == nil {
+		return
 	}
+
+	//Start the client
+	pmdb.Start()
+	defer pmdb.Stop()
 
 	for {
 		//Read the input from console
@@ -51,7 +54,7 @@ func pmdbDictClient() {
 
 			// If user asked for leader uuid
 			if ops == "get_leader" {
-				leader_uuid := client_obj.PmdbGetLeader()
+				leader_uuid := pmdb.GetLeader()
 				fmt.Println("Leader uuid is ", leader_uuid)
 			} else {
 				// If operation is read or write
@@ -61,7 +64,7 @@ func pmdbDictClient() {
 				//Format is: write.AppUUID.text or read.AppUUID.text
 				// Prepare the dictionary structure from values passed by user.
 				req_dict := DictAppLib.Dict_app{
-					Dict_text: input_text,
+					Dict_text:   input_text,
 					Dict_wcount: 0,
 				}
 
@@ -71,25 +74,25 @@ func pmdbDictClient() {
 
 				if ops == "write" {
 					//write operation
-					client_obj.PmdbClientWrite(req_dict, rncui)
+					pmdb.Write(req_dict, rncui)
 				} else {
 					/*
-				 	 * Get the size of the structure
-				 	 */
-					data_length := PumiceDBCommon.GetStructSize(req_dict)
+					 * Get the size of the structure
+					 */
+					data_length := pmdb.GetSize(req_dict)
 					fmt.Println("Length of the structure: ", data_length)
 					/* Retry the read on failure */
 
 					var reply_size int64
 					//read operation
-					reply_buff := client_obj.PmdbClientRead(req_dict, rncui,
-													        &reply_size)
+					reply_buff := pmdb.Read(req_dict, rncui,
+						&reply_size)
 
 					if reply_buff == nil {
 						fmt.Println("Read request failed !!")
 					} else {
 						result_dict := &DictAppLib.Dict_app{}
-						PumiceDBCommon.Decode(reply_buff, result_dict, reply_size)
+						pmdb.Decode(reply_buff, result_dict, reply_size)
 
 						fmt.Println("Result of the read request is:")
 						fmt.Println("Word: ", input_text)

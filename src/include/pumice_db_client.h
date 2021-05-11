@@ -54,4 +54,7 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
 char *
 PmdbGetLeaderUUID(pmdb_t pmdb);
 
+int
+PmdbClientDestroy(pmdb_t pmdb);
+
 #endif
