@@ -81,10 +81,20 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 }
 
 func (pmdb_client *PmdbClientObj) PmdbGetLeader() string {
-	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
-	leader_uuid := C.PmdbGetLeaderUUID(Cpmdb)
 
-	return C.GoString(leader_uuid)
+	//uuid is 128 bits (i.e 16 bytes) long
+	uuid := make([]byte, 16)
+	c_uuid := (*C.char)(C.CBytes(uuid))
+
+	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
+	rc := C.PmdbGetLeaderUUID(Cpmdb, c_uuid)
+
+	if rc != 0 {
+		fmt.Println("Failed to get the leader uuid")
+		return ""
+	}
+
+	return CToGoString(c_uuid)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {

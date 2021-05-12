@@ -75,6 +75,7 @@ raft_client_request_submit(raft_client_instance_t rci,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag);
 
-char *
-raft_client_get_leader_uuid(raft_client_instance_t client_instance);
+int
+raft_client_get_leader_uuid(raft_client_instance_t client_instance,
+                            char *leader_uuid);
 #endif

@@ -566,8 +566,8 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
     return pmdb;
 }
 
-char *
-PmdbGetLeaderUUID(pmdb_t pmdb)
+int
+PmdbGetLeaderUUID(pmdb_t pmdb, char *leader_uuid)
 {
-    return raft_client_get_leader_uuid(pmdb_2_rci(pmdb));
+    return raft_client_get_leader_uuid(pmdb_2_rci(pmdb), leader_uuid);
 }

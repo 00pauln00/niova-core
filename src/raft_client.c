@@ -2498,24 +2498,24 @@ raft_client_set_default_request_timeout(unsigned int timeout)
         raftClientDefaultReqTimeoutSecs = timeout;
 }
 
-char *
-raft_client_get_leader_uuid(raft_client_instance_t client_instance)
+int
+raft_client_get_leader_uuid(raft_client_instance_t client_instance,
+                            char *leader_uuid)
 {
     struct raft_client_instance *rci =
                 raft_client_instance_lookup(client_instance);
 
     if (!rci || !RCI_2_RI(rci))
-        return NULL;
+        return -EINVAL;
 
     struct ctl_svc_node *leader = RCI_2_RI(rci)->ri_csn_leader;
     if (!leader)
-        return NULL;
+        return -ENOENT;
 
-    /* Copy the leader uuid into a string */
-    char *leader_uuid = (char *)malloc(UUID_STR_LEN);
+    /* Copy the leader uuid into a user buffer */
     uuid_unparse(leader->csn_uuid, leader_uuid);
 
-    return leader_uuid;
+	return 0;
 }
 
 int
