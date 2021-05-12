@@ -48,7 +48,7 @@ jobs:
        path: ./holon
 
     - name: Install python libraries
-      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible==2.10.5 jmespath
+      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible==2.10.7 jmespath
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
