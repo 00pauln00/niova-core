@@ -886,11 +886,10 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     {
     case pmdb_op_lookup:
         pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
-                          &preq->preq_obj_stat,
-                          use_async_requests ? pmdbtc_async_cb : NULL,
-                          use_async_requests ? preq : NULL,
-                          NULL,
-                          0, 0);
+                                  &preq->preq_obj_stat,
+                                  use_async_requests ? pmdbtc_async_cb : NULL,
+                                  use_async_requests ? preq : NULL,
+                                  NULL, 0, 0);
 
         rc = PmdbObjLookupX(pmdbtcPMDB, obj_id, &pmdb_req);
 
@@ -905,6 +904,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
                                   (void *)&preq->preq_rtdb,
                                   (sizeof(struct raft_test_data_block) +
                                   sizeof(struct raft_test_values)), 0);
+
         rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, &pmdb_req);
         break;
 
@@ -918,9 +918,10 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         SIMPLE_LOG_MSG(LL_TRACE, "write rqsz: %lu", rqsz);
 
         pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
-                          &preq->preq_obj_stat,
-                          use_async_requests ? pmdbtc_async_cb : NULL,
-                          use_async_requests ? preq : NULL, NULL, 0, 0);
+                                  &preq->preq_obj_stat,
+                                  use_async_requests ? pmdbtc_async_cb : NULL,
+                                  use_async_requests ? preq : NULL,
+                                  NULL, 0, 0);
 
         rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb, rqsz,
                          &pmdb_req);
