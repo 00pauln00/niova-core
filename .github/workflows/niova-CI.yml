@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-18.04
     continue-on-error: true
     steps:
     - uses: actions/checkout@v2
@@ -24,7 +24,7 @@ jobs:
     - name: dpkg / rpm prep (debug)
       run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
     - name: dpkg / rpm prep
-      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python3-jmespath python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
