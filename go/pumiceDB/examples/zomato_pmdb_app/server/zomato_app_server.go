@@ -3,12 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"gopmdblib/goPmdbCommon"
-	"gopmdblib/goPmdbServer"
+	"log"
+	"niova/go-pumicedb-lib/server"
+	"os"
 	"strconv"
 	"strings"
 	"unsafe"
-	"zomatoapp.com/zomatolib"
+	"zomatoapplib/lib"
 )
 
 /*
@@ -20,16 +21,22 @@ import "C"
 var (
 	raft_uuid string
 	peer_uuid string
+	//Use the default column family
+	colmfamily = "PMDBTS_CF"
 )
 
-// Use the default column family
-var colmfamily = "PMDBTS_CF"
+type ZomatoServer struct {
+	raft_uuid      string
+	peer_uuid      string
+	columnFamilies string
+	pso            *PumiceDBServer.PmdbServerObject
+}
 
-func zomatodata_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
+func (zso *ZomatoServer) Apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 	data_buf_sz int64, pmdb_handle unsafe.Pointer) {
 
 	data := &zomatoapplib.Zomato_Data{}
-	PumiceDBCommon.Decode(data_buf, data, data_buf_sz)
+	zso.pso.Decode(data_buf, data, data_buf_sz)
 	fmt.Println("\nData received from client: ", data)
 
 	//Convert resturant_id from int to string and store as zomato_app_key.
@@ -38,7 +45,7 @@ func zomatodata_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 
 	//Lookup for the key if it is already present.
 	var previous_value string
-	prev_data_value := PumiceDBServer.PmdbLookupKey(zomato_app_key, int64(app_key_len), previous_value, colmfamily)
+	prev_data_value := zso.pso.LookupKey(zomato_app_key, int64(app_key_len), previous_value, colmfamily)
 
 	//If previous value is not null, update value of votes.
 	if prev_data_value != "" {
@@ -61,11 +68,11 @@ func zomatodata_apply(app_id unsafe.Pointer, data_buf unsafe.Pointer,
 	app_value_len := len(zomato_app_value)
 
 	//Write key,values.
-	PumiceDBServer.PmdbWriteKV(app_id, pmdb_handle, zomato_app_key, int64(app_key_len), zomato_app_value,
+	zso.pso.WriteKV(app_id, pmdb_handle, zomato_app_key, int64(app_key_len), zomato_app_value,
 		int64(app_value_len), colmfamily)
 }
 
-func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
+func (zso *ZomatoServer) Read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 	data_request_bufsz int64, data_reply_buf unsafe.Pointer, data_reply_bufsz int64) int64 {
 
 	fmt.Println("\nRead request received from client")
@@ -73,7 +80,7 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 	//Decode the request structure sent by client.
 	read_req_data := &zomatoapplib.Zomato_Data{}
 
-	PumiceDBCommon.Decode(data_request_buf, read_req_data, data_request_bufsz)
+	zso.pso.Decode(data_request_buf, read_req_data, data_request_bufsz)
 
 	fmt.Println("Key passed by client: ", read_req_data.Restaurant_id)
 
@@ -81,13 +88,13 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 	zapp_key := strconv.Itoa(int(read_req_data.Restaurant_id))
 	zapp_key_len := len(zapp_key)
 
-	result := PumiceDBServer.PmdbReadKV(app_id, zapp_key, int64(zapp_key_len), colmfamily)
+	result := zso.pso.ReadKV(app_id, zapp_key, int64(zapp_key_len), colmfamily)
 
 	//Split the result to get respective values.
 	result_splt := strings.Split(result, "_")
 
 	votes_int64, _ := strconv.ParseInt(result_splt[4], 10, 64)
-	//Copy the result in data_reply_buf
+	//Copy the result in data_reply_buf.
 	reply_data := zomatoapplib.Zomato_Data{
 		Restaurant_id:   read_req_data.Restaurant_id,
 		Restaurant_name: result_splt[0],
@@ -97,34 +104,57 @@ func zomatodata_read(app_id unsafe.Pointer, data_request_buf unsafe.Pointer,
 		Votes:           votes_int64,
 	}
 
-	//Copy the encoded result in reply_buffer
-	data_reply_size := PumiceDBServer.PmdbCopyDataToBuffer(reply_data, data_reply_buf)
+	//Copy the encoded result in reply_buffer.
+	data_reply_size := zso.pso.CopyDataToBuffer(reply_data, data_reply_buf)
 	fmt.Println("length of buffer is:", data_reply_size)
 	return data_reply_size
 }
 
-func zomato_app_start_server() {
+func zomatoServerNew() *ZomatoServer {
+
+	zso := &ZomatoServer{}
 
 	//Method call to accept cmdline parameters and start server.
-	flag.StringVar(&raft_uuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&peer_uuid, "u", "NULL", "peer uuid")
+	flag.StringVar(&zso.raft_uuid, "r", "NULL", "raft uuid")
+	flag.StringVar(&zso.peer_uuid, "u", "NULL", "peer uuid")
 
 	flag.Parse()
-	fmt.Println("Raft UUID: ", raft_uuid)
-	fmt.Println("Peer UUID: ", peer_uuid)
+	fmt.Println("Raft UUID: ", zso.raft_uuid)
+	fmt.Println("Peer UUID: ", zso.peer_uuid)
 
-	//Initialize callbacks for zomato app.
-	cb := &PumiceDBServer.PmdbCallbacks{
-		ApplyCb: zomatodata_apply,
-		ReadCb:  zomatodata_read,
-	}
-
-	//Start pumicedb server.
-	PumiceDBServer.PmdbStartServer(raft_uuid, peer_uuid, colmfamily, cb)
-
+	return zso
 }
 
 func main() {
-	//Start zomato_app_server.
-	zomato_app_start_server()
+
+	//Print help message.
+	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "--help" || os.Args[1] == "-h" {
+		fmt.Println("\nUsage: \n   For help:             ./zomato_app_server [-h] \n   To start server:      ./zomato_app_server -r [raft_uuid] -u [peer_uuid]")
+		fmt.Println("\nPositional Arguments: \n   -r    raft_uuid \n   -u    peer_uuid")
+		fmt.Println("\nOptional Arguments: \n   -h, --help            show this help message and exit")
+		os.Exit(0)
+	}
+
+	//Get Command line parameters and create ZomatoServer structure instance.
+	zso := zomatoServerNew()
+	fmt.Println(zso)
+	/*
+	   Initialize the internal pmdb-server-object pointer.
+	   Assign the Directionary object to PmdbAPI so the apply and
+	   read callback functions can be called through pmdb common library
+	   functions.
+	*/
+	zso.pso = &PumiceDBServer.PmdbServerObject{
+		ColumnFamilies: colmfamily,
+		RaftUuid:       zso.raft_uuid,
+		PeerUuid:       zso.peer_uuid,
+		PmdbAPI:        zso,
+	}
+
+	//Start the pmdb server.
+	err := zso.pso.Run()
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
