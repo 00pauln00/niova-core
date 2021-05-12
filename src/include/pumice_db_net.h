@@ -73,11 +73,36 @@ typedef struct pmdb_obj_stat
 {
     pmdb_obj_id_t obj_id;
     int64_t       sequence_num;
+    int64_t       reply_size;
     int           status;
     uint8_t       write_op_pending : 1;
+    void         *reply_buffer;
 } pmdb_obj_stat_t;
 
 typedef void (*pmdb_user_cb_t)(void *, ssize_t);
+
+/**
+ * pmdb_request_options - user parameters for 'advanced' behaviors such as
+ *   user provided buffer buffers, asynchronous requests, custom timeouts,
+ *   and obtaining system object information.
+ * @pro_non_blocking:  async request
+ * @pro_stat:  user requests pmdb sequence number information.
+ * @pro_non_blocking_cb:  user async cb handler
+ * @pro_arg:  user async cb arg
+ * @pro_get_buffer:  user provided sink buffer
+ * @pro_get_buffer_size:  sink buffer size
+ * @pro_timeout:  operation timeout
+ */
+typedef struct pmdb_request_options
+{
+    uint8_t          pro_non_blocking:1;
+    pmdb_obj_stat_t *pro_stat;
+    pmdb_user_cb_t   pro_non_blocking_cb;
+    void            *pro_arg;
+    void            *pro_get_buffer;
+    size_t           pro_get_buffer_size;
+    struct timespec  pro_timeout;
+} pmdb_request_opts_t;
 
 static inline size_t
 pmdb_net_calc_rpc_msg_size(const struct pmdb_msg *pmdb_msg)
@@ -89,7 +114,6 @@ pmdb_net_calc_rpc_msg_size(const struct pmdb_msg *pmdb_msg)
 
     return size;
 }
-
 
 static inline raft_client_instance_t
 pmdb_2_rci(pmdb_t pmdb)
@@ -114,6 +138,24 @@ static inline unsigned int
 pmdb_get_default_request_timeout(void)
 {
     return raft_client_get_default_request_timeout();
+}
+
+static inline void
+pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
+                  int non_blocking,
+                  pmdb_obj_stat_t *obj_stat, pmdb_user_cb_t user_cb,
+                  void *user_arg,
+                  void *get_buffer,
+                  size_t get_buffer_size,
+                  int timeout_sec)
+{
+    pmdb_req->pro_non_blocking = non_blocking;
+    pmdb_req->pro_stat = obj_stat;
+    pmdb_req->pro_non_blocking_cb = user_cb;
+    pmdb_req->pro_arg = user_arg;
+    pmdb_req->pro_get_buffer = get_buffer;
+    pmdb_req->pro_get_buffer_size = get_buffer_size;
+    pmdb_req->pro_timeout.tv_sec = timeout_sec;
 }
 
 #endif
