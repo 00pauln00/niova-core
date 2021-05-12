@@ -2,17 +2,16 @@ package main
 
 import (
 	"bufio"
-	"covidapp.com/covidapplib"
+	"covidapplib/lib"
 	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/satori/go.uuid"
-	"gopmdblib/goPmdbClient"
-	"gopmdblib/goPmdbCommon"
 	"io"
 	"io/ioutil"
 	"log"
+	"niova/go-pumicedb-lib/client"
 	"os"
 	"os/exec"
 	"strconv"
@@ -36,9 +35,7 @@ var (
 	read_data_map     map[string]map[string]string
 	write_data_map    map[string]map[string]string
 	operation         string
-
-	//Create and Initialize the map.
-	key_rncui_map = make(map[string]string)
+	key_rncui_map     map[string]string
 )
 
 /*
@@ -116,7 +113,7 @@ func (struct_out *covid_app_read) dump_into_json() {
 /*This function stores rncui for all csv file
   data into a key_rncui_map and returns that rncui.
 */
-func get_rncui_for_csvfile(covid_wr_struct *CovidAppLib.Covid_app) string {
+func get_rncui_for_csvfile(key_rncui_map map[string]string, covid_wr_struct *CovidAppLib.Covid_app) string {
 
 	//Generate app_uuid.
 	app_uuid := uuid.NewV4().String()
@@ -192,7 +189,7 @@ func copy_tmp_file_to_json_file() {
 }
 
 //write operation for csv file parsing.
-func covidData_write_by_csvfile(client_obj *PumiceDBClient.PmdbClientObj, filename string) {
+func covidData_write_by_csvfile(cli_obj *PumiceDBClient.PmdbClientObj, filename string) {
 
 	//call function to parse csv file.
 	fp := parse_csv_file(filename)
@@ -223,19 +220,19 @@ func covidData_write_by_csvfile(client_obj *PumiceDBClient.PmdbClientObj, filena
 		}
 
 		//Call the function to get rncui.
-		rncui := get_rncui_for_csvfile(&covid_wr_struct)
+		rncui := get_rncui_for_csvfile(key_rncui_map, &covid_wr_struct)
 
 		//get length of struct size
-		length_wr_struct := PumiceDBCommon.GetStructSize(covid_wr_struct)
+		length_wr_struct := cli_obj.GetSize(covid_wr_struct)
 		fmt.Println("Length of the structure: ", length_wr_struct)
 
 		fmt.Println("Structure Data:", covid_wr_struct)
 
 		//Get leader-uuid.
-		leader_uuid = client_obj.PmdbGetLeader()
+		leader_uuid = cli_obj.GetLeader()
 
 		//Write the key-value to pumicedb
-		rc := client_obj.PmdbClientWrite(covid_wr_struct, rncui)
+		rc := cli_obj.Write(covid_wr_struct, rncui)
 
 		if rc != 0 {
 			fmt.Println("Pmdb Write failed.")
@@ -271,21 +268,21 @@ func covidData_write_by_csvfile(client_obj *PumiceDBClient.PmdbClientObj, filena
 }
 
 //function to write covidData.
-func covidData_write(client_obj *PumiceDBClient.PmdbClientObj,
+func covidData_write(cli_obj *PumiceDBClient.PmdbClientObj,
 	pass_input_struct *CovidAppLib.Covid_app, rncui string) {
 
 	//Get the actual size of the structure.
-	len_wr_struct := PumiceDBCommon.GetStructSize(pass_input_struct)
+	len_wr_struct := cli_obj.GetSize(pass_input_struct)
 	fmt.Println("Length of the structure: ", len_wr_struct)
 
 	//Get timestamp.
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	//Get leader-uuid.
-	leader_uuid = client_obj.PmdbGetLeader()
+	leader_uuid = cli_obj.GetLeader()
 
 	//Perform write operation.
-	rc := client_obj.PmdbClientWrite(pass_input_struct, rncui)
+	rc := cli_obj.Write(pass_input_struct, rncui)
 
 	if rc != 0 {
 		fmt.Println("Pmdb Write failed.")
@@ -326,7 +323,7 @@ func covidData_write(client_obj *PumiceDBClient.PmdbClientObj,
 }
 
 //write operation by passing cmdline data.
-func write_covidData_key_value_from_cmdline(client_obj *PumiceDBClient.PmdbClientObj, input []string) {
+func write_covidData_key_value_from_cmdline(cli_obj *PumiceDBClient.PmdbClientObj, input []string) {
 
 	get_rncui := input[1]
 	input_key := input[2]
@@ -357,29 +354,29 @@ func write_covidData_key_value_from_cmdline(client_obj *PumiceDBClient.PmdbClien
 	fmt.Println("value2: ", pass_input_struct.People_vaccinated)
 
 	//call function to write from cmdline.
-	covidData_write(client_obj, &pass_input_struct, get_rncui)
+	covidData_write(cli_obj, &pass_input_struct, get_rncui)
 }
 
 //Read Data.
-func read_covidData(client_obj *PumiceDBClient.PmdbClientObj,
+func read_covidData(cli_obj *PumiceDBClient.PmdbClientObj,
 	covid_rd_struct *CovidAppLib.Covid_app,
 	rd_rncui string) {
 
-	length_rd_struct := PumiceDBCommon.GetStructSize(covid_rd_struct)
+	length_rd_struct := cli_obj.GetSize(covid_rd_struct)
 
-	//Print all values which passed to PmdbClientRead()
+	//Print all values which passed to Read()
 	fmt.Println("Covid Structure for read:", covid_rd_struct)
 	fmt.Println("Length of read:", length_rd_struct)
 
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	//Get leader-uuid.
-	leader_uuid = client_obj.PmdbGetLeader()
+	leader_uuid = cli_obj.GetLeader()
 
 	var reply_size int64
 
 	//read operation
-	reply_buff := client_obj.PmdbClientRead(covid_rd_struct, rd_rncui,
+	reply_buff := cli_obj.Read(covid_rd_struct, rd_rncui,
 		&reply_size)
 
 	if reply_buff == nil {
@@ -404,7 +401,7 @@ func read_covidData(client_obj *PumiceDBClient.PmdbClientObj,
 		rc := 0
 
 		struct_op := &CovidAppLib.Covid_app{}
-		PumiceDBCommon.Decode(reply_buff, struct_op, reply_size)
+		cli_obj.Decode(reply_buff, struct_op, reply_size)
 
 		fmt.Println("Result of the read request is: ", struct_op)
 
@@ -426,7 +423,7 @@ func read_covidData(client_obj *PumiceDBClient.PmdbClientObj,
 	C.free(reply_buff)
 }
 
-func read_covidData_key_value_from_cmdline(client_obj *PumiceDBClient.PmdbClientObj, input []string) {
+func read_covidData_key_value_from_cmdline(cli_obj *PumiceDBClient.PmdbClientObj, input []string) {
 
 	key := input[1]
 	rd_rncui := input[2]
@@ -439,7 +436,7 @@ func read_covidData_key_value_from_cmdline(client_obj *PumiceDBClient.PmdbClient
 	fmt.Println("key: ", key)
 
 	//call function to read cmdline data.
-	read_covidData(client_obj, &pass_rd_struct, rd_rncui)
+	read_covidData(cli_obj, &pass_rd_struct, rd_rncui)
 }
 
 func pmdb_dict_app_getopts() {
@@ -471,14 +468,18 @@ func main() {
 
 	// sleep for 2sec.
 	fmt.Println("Wait for 2 sec to start client")
-	cli_start := PumiceDBClient.PmdbStartClient(raft_uuid_go, peer_uuid_go)
-	time.Sleep(2 * time.Second)
-
-	obj := PumiceDBClient.PmdbClientObj{
-		Pmdb: cli_start,
+	//Create new client object.
+	cli_obj := PumiceDBClient.PmdbClientNew(raft_uuid_go, peer_uuid_go)
+	if cli_obj == nil {
+		return
 	}
 
-	client_obj := &obj
+	//Start the client
+	cli_obj.Start()
+	defer cli_obj.Stop()
+
+	//Create and Initialize the map.
+	key_rncui_map = make(map[string]string)
 
 	fmt.Println("=================Format to pass write-read entries================")
 	fmt.Println("Single write format ==> WriteOne#Rncui#Key#Val0#Val1#Val2#outfile_name")
@@ -508,7 +509,7 @@ func main() {
 			csv_filepath := input[1]
 			outfile_name = input[2]
 			//Write operation using csv file parsing.
-			covidData_write_by_csvfile(client_obj, csv_filepath)
+			covidData_write_by_csvfile(cli_obj, csv_filepath)
 
 			//Copy temporary json file into json outfile.
 			copy_tmp_file_to_json_file()
@@ -518,13 +519,13 @@ func main() {
 			outfile_name = input[6]
 			temp_uuid = uuid.NewV4().String()
 			//call function to write covid19 data from cmdline.
-			write_covidData_key_value_from_cmdline(client_obj, input)
+			write_covidData_key_value_from_cmdline(cli_obj, input)
 
 		} else if operation == "ReadOne" {
 
 			outfile_name = input[3]
 			//call function to read cmdline data.
-			read_covidData_key_value_from_cmdline(client_obj, input)
+			read_covidData_key_value_from_cmdline(cli_obj, input)
 
 		} else if operation == "ReadMulti" {
 			outfile_name = input[1]
@@ -535,12 +536,12 @@ func main() {
 					Location: key,
 				}
 				//call function to read csv file.
-				read_covidData(client_obj, &covid_rd_struct, rd_rncui)
+				read_covidData(cli_obj, &covid_rd_struct, rd_rncui)
 			}
 
 		} else if operation == "get_leader" {
 			outfile_name = input[1]
-			leader_uuid = client_obj.PmdbGetLeader()
+			leader_uuid = cli_obj.GetLeader()
 			fmt.Println("Leader uuid is: ", leader_uuid)
 
 			//Get timestamp.

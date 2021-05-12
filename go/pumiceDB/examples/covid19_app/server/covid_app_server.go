@@ -1,11 +1,11 @@
 package main
 
 import (
-	"covidapp.com/covidapplib"
+	"covidapplib/lib"
 	"flag"
 	"fmt"
-	"gopmdblib/goPmdbCommon"
-	"gopmdblib/goPmdbServer"
+	"log"
+	"niova/go-pumicedb-lib/server"
 	"os"
 	"strconv"
 	"strings"
@@ -25,7 +25,14 @@ var peer_uuid_go string
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
-func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
+type CovidServer struct {
+	raftUuid       string
+	peerUuid       string
+	columnFamilies string
+	pso            *PumiceDBServer.PmdbServerObject
+}
+
+func (cso *CovidServer) Apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	input_buf_sz int64, pmdb_handle unsafe.Pointer) {
 
 	fmt.Println("Covid19_Data app server: Apply request received")
@@ -33,7 +40,7 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	/* Decode the input buffer into structure format */
 	apply_covid := &CovidAppLib.Covid_app{}
 
-	PumiceDBCommon.Decode(input_buf, apply_covid, input_buf_sz)
+	cso.pso.Decode(input_buf, apply_covid, input_buf_sz)
 
 	fmt.Println("Key passed by client:", apply_covid.Location)
 
@@ -44,7 +51,7 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	//var preValuePV string
 
 	//Lookup the key first
-	prevResult := PumiceDBServer.PmdbLookupKey(apply_covid.Location,
+	prevResult := cso.pso.LookupKey(apply_covid.Location,
 		int64(len_of_key), preValue,
 		colmfamily)
 
@@ -79,20 +86,20 @@ func covid19_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	fmt.Println("covideData_values: ", covideData_values)
 
 	fmt.Println("Write the KeyValue by calling PmdbWriteKV")
-	PumiceDBServer.PmdbWriteKV(app_id, pmdb_handle, apply_covid.Location,
+	cso.pso.WriteKV(app_id, pmdb_handle, apply_covid.Location,
 		int64(len_of_key), covideData_values,
 		int64(covideData_len), colmfamily)
 
 }
 
-func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
+func (cso *CovidServer) Read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) int64 {
 
 	fmt.Println("Covid19_Data App: Read request received")
 
 	//Decode the request structure sent by client.
 	req_struct := &CovidAppLib.Covid_app{}
-	PumiceDBCommon.Decode(request_buf, req_struct, request_bufsz)
+	cso.pso.Decode(request_buf, req_struct, request_bufsz)
 
 	fmt.Println("Key passed by client: ", req_struct.Location)
 
@@ -100,7 +107,7 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	fmt.Println("Key length: ", key_len)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-	read_kv_result := PumiceDBServer.PmdbReadKV(app_id, req_struct.Location,
+	read_kv_result := cso.pso.ReadKV(app_id, req_struct.Location,
 		int64(key_len), colmfamily)
 
 	//split space separated values.
@@ -118,21 +125,24 @@ func covid19_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	}
 
 	//Copy the encoded result in reply_buffer
-	reply_size := PumiceDBServer.PmdbCopyDataToBuffer(result_covid, reply_buf)
+	reply_size := cso.pso.CopyDataToBuffer(result_covid, reply_buf)
 
 	fmt.Println("Reply buffer size:", reply_bufsz)
 
 	return reply_size
 }
 
-func pmdb_dict_app_getopts() {
+func covidServerNew() *CovidServer {
+	cso := &CovidServer{}
 
-	flag.StringVar(&raft_uuid_go, "r", "NULL", "raft uuid")
-	flag.StringVar(&peer_uuid_go, "u", "NULL", "peer uuid")
+	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
+	flag.StringVar(&cso.peerUuid, "u", "NULL", "peer uuid")
 
 	flag.Parse()
-	fmt.Println("Raft UUID: ", raft_uuid_go)
-	fmt.Println("Peer UUID: ", peer_uuid_go)
+	fmt.Println("Raft UUID: ", cso.raftUuid)
+	fmt.Println("Peer UUID: ", cso.peerUuid)
+
+	return cso
 }
 
 func main() {
@@ -146,14 +156,26 @@ func main() {
 		os.Exit(0)
 	}
 
-	//Parse the cmdline parameters
-	pmdb_dict_app_getopts()
+	//Parse the cmdline parameters and generate new Covid object
+	cso := covidServerNew()
 
-	//Initialize the covid19_data application callback functions
-	cb := &PumiceDBServer.PmdbCallbacks{
-		ApplyCb: covid19_apply,
-		ReadCb:  covid19_read,
+	/*
+	   Initialize the internal pmdb-server-object pointer.
+	   Assign the Directionary object to PmdbAPI so the apply and
+	   read callback functions can be called through pmdb common library
+	   functions.
+	*/
+	cso.pso = &PumiceDBServer.PmdbServerObject{
+		ColumnFamilies: colmfamily,
+		RaftUuid:       cso.raftUuid,
+		PeerUuid:       cso.peerUuid,
+		PmdbAPI:        cso,
 	}
 
-	PumiceDBServer.PmdbStartServer(raft_uuid_go, peer_uuid_go, colmfamily, cb)
+	// Start the pmdb server
+	err := cso.pso.Run()
+
+	if err != nil {
+		log.Fatal(err)
+	}
 }
