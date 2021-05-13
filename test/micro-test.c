@@ -210,7 +210,7 @@ simple_crc_t10dif_64byte_buf(void)
     buffer[0] = val;
 
 #if defined(__x86_64__)
-    val = crc_t10dif_pcl((0 ^ 0xFFFF), (const unsigned char *)buffer, 
+    val = crc_t10dif_pcl((0 ^ 0xFFFF), (const unsigned char *)buffer,
 		        (sizeof(uint64_t) * 8)) ^ 0xFFFF;
     (void)val;
 #endif
@@ -224,7 +224,7 @@ simple_crc_t10dif_4096byte_buf(void)
     static uint16_t val = (uint16_t)PRIME;
     static int cnt;
     uint16_t buffer[2048];
-    if (cnt > 2048)
+    if (cnt >= 2048)
 	    cnt = 0;
     buffer[cnt++] = val;
 
