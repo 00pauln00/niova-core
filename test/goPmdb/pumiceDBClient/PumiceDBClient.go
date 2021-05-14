@@ -7,9 +7,11 @@ import (
 )
 
 /*
-#cgo LDFLAGS: -lniova -lniova_raft_client -lniova_pumice_client
+#cgo LDFLAGS: -lniova -lniova_raft_client -lniova_pumice_client -luuid
 #include <raft/pumice_db_client.h>
 #include <raft/pumice_db_net.h>
+#include <raft/raft_client.h>
+#include <uuid/uuid.h>
 */
 import "C"
 
@@ -82,19 +84,21 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 
 func (pmdb_client *PmdbClientObj) PmdbGetLeader() string {
 
-	//uuid is 128 bits (i.e 16 bytes) long
-	uuid := make([]byte, 16)
-	c_uuid := (*C.char)(C.CBytes(uuid))
-
+	var leader_info C.raft_client_leader_info_t
 	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
-	rc := C.PmdbGetLeaderUUID(Cpmdb, c_uuid)
 
+	rc := C.PmdbGetLeaderInfo(Cpmdb, &leader_info)
 	if rc != 0 {
 		fmt.Println("Failed to get the leader uuid")
 		return ""
 	}
 
-	return CToGoString(c_uuid)
+	//Convert the uuid_t to string.
+	uuid_string := make([]byte, C.UUID_STR_LEN)
+	c_uuid_string := (*C.char)(C.CBytes(uuid_string))
+	C.uuid_unparse(&leader_info.rcli_leader_uuid[0], c_uuid_string)
+
+	return CToGoString(c_uuid_string)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
