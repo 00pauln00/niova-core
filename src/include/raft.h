@@ -23,7 +23,7 @@
 #include "udp.h"
 #include "util.h"
 
-#define RAFT_ENTRY_PAD_SIZE 47
+#define RAFT_ENTRY_PAD_SIZE 4
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
@@ -186,6 +186,8 @@ struct raft_entry_header
     int64_t          reh_term; // Term in which entry was originally written
     uuid_t           reh_raft_uuid; // UUID of raft instance
     uint8_t          reh_leader_change_marker; // noop
+    uint8_t          reh_num_entries; // number of raft entries
+    uint32_t         reh_entry_sz[RAFT_ENTRY_NUM_ENTRIES];
     uint8_t          reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
 
