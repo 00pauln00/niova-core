@@ -52,6 +52,21 @@ static bool raftServerDoesChkptBeforeRecovery = true;
 typedef void * raft_server_sync_thread_t;
 typedef void raft_server_sync_thread_ctx_t;
 
+/*
+ * coalesced write information stored on the leader.
+ */
+struct raft_co_wr_info
+{
+    uint32_t                              rcwi_nentries;
+    uint32_t                              rcwi_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
+    size_t                                rcwi_total_size;
+    struct raft_net_sm_write_supplements  rcwi_ws;
+    char                                  rcwi_buffer[RAFT_ENTRY_MAX_DATA_SIZE];
+    int                                   rcwi_timerfd;
+};
+
+static struct raft_co_wr_info re_co_wr_info = {0}; //coalesce write data information.
+
 typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
 typedef int raft_server_chkpt_thread_ctx_int_t;
@@ -2399,6 +2414,19 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
     raft_server_append_entry_sender(ri, true);
 }
 
+static void
+raft_server_write_coalesced_entries(struct raft_instance *ri)
+{
+    raft_server_leader_write_new_entry(ri, &re_co_wr_info.rcwi_buffer[0],
+                                       &re_co_wr_info.rcwi_entry_sizes[0],
+                                       re_co_wr_info.rcwi_nentries,
+                                       RAFT_WR_ENTRY_OPT_NONE,
+                                       &re_co_wr_info.rcwi_ws);
+
+    /* Reinit the rec_co_wr_info after writing coalesced entried to backend */
+    memset(&re_co_wr_info, 0, sizeof(re_co_wr_info));
+}
+
 static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
@@ -3893,6 +3921,44 @@ raft_server_net_client_request_init_client_rpc(
                    RAFT_CLIENT_RPC_MSG_TYPE_REPLY));
 }
 
+/*
+ * Write the coalesced buffer to backend if it's already full.
+ */
+static void
+raft_server_wr_co_buffer_on_full(struct raft_instance *ri, const size_t len)
+{
+    if (re_co_wr_info.rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
+        re_co_wr_info.rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE ||
+        re_co_wr_info.rcwi_total_size + len > RAFT_ENTRY_MAX_DATA_SIZE)
+        /* Store the request as an entry in the Raft log.  Do not reply to
+         * the client until the write is committed and applied!
+         */
+        raft_server_write_coalesced_entries(ri);
+}
+
+/*
+ * Keep collecting the incoming writes in re_coalesce_write raft_entry.
+ */
+static void 
+raft_server_write_coalesce_entry(struct raft_instance *ri,
+                                 struct raft_net_client_request_handle *rncr,
+                                 const char *data, const size_t len,
+                                 const int64_t term,
+                                 enum raft_write_entry_opts opts)
+{
+    /* Store the new write entry at the free slot at re_co_wr_info */
+    uint32_t nentries = re_co_wr_info.rcwi_nentries;
+    re_co_wr_info.rcwi_entry_sizes[nentries] = len;
+
+    re_co_wr_info.rcwi_ws = rncr->rncr_sm_write_supp;
+    memcpy(re_co_wr_info.rcwi_buffer + re_co_wr_info.rcwi_total_size, data, len);
+    re_co_wr_info.rcwi_nentries++;
+    re_co_wr_info.rcwi_total_size += len;
+
+    /* reset the timer */
+    raft_server_co_wr_timer_settime(ri);
+}
+
 // warning: buffers are statically allocated, so code is not multi-thread safe
 static raft_net_cb_ctx_t
 raft_server_client_recv_handler(struct raft_instance *ri,
@@ -3924,6 +3990,11 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
         return;
     }
+
+    /* Flush previously written entries if buffer is full or max number of
+     * entries are already written.
+     */
+    raft_server_wr_co_buffer_on_full(ri, rcm->rcrm_data_size);
 
     size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
     char *reply_buf = raft_instance_buffer_get(ri, reply_size);
@@ -3958,7 +4029,10 @@ raft_server_client_recv_handler(struct raft_instance *ri,
      * raft_net_sm_write_supplement_destroy() must be called before exiting
      * this function.
      */
-    raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+    //raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+
+    // Use the write_suppliment from coalesed write request structure.
+    rncr.rncr_sm_write_supp = re_co_wr_info.rcwi_ws;
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
@@ -4000,15 +4074,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         goto out1;
     }
 
-    /* Store the request as an entry in the Raft log.  Do not reply to
-     * the client until the write is committed and applied!
-     */
-    if (rncr.rncr_write_raft_entry)
-        raft_server_leader_write_new_entry(ri, rcm->rcrm_data,
-                                           rcm->rcrm_data_size,
-                                           RAFT_WR_ENTRY_OPT_NONE,
-                                           &rncr.rncr_sm_write_supp);
-
+    if (rncr->rncr_write_raft_entry)
+    {
+        raft_server_write_coalesce_entry(ri, rncr, rcm->rcrm_data,
+                                         rcm->rcrm_data_size,
+                                         ri->ri_log_hdr.rlh_term,
+                                         RAFT_WR_ENTRY_OPT_NONE);
+        goto out;
+    }
     /* Read operation or an already committed + applied write
      * operation.
      */
@@ -4268,10 +4341,6 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     const size_t reply_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
     const size_t sink_buf_sz = ri->ri_max_entry_size;
 
-    char *reply_buf = raft_instance_buffer_get(ri, reply_buf_sz);
-
-    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
-    NIOVA_ASSERT(reply_buf && sink_buf);
 
     const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
 
@@ -4282,32 +4351,57 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                                "raft_server_entry_header_read_by_store(): %s",
                                strerror(-rc));
 
+    char *reply_buf[reh.reh_num_entries];
+    int rc_arr[reh.reh_num_entries];
+    struct raft_net_client_request_handle rncr[reh.reh_num_entries];
+
+    // Allocate reply buffer for each request.
+    for (uint32_t i = 0; i < reh.reh_num_entries; i++)
+    {
+         reply_buf[i] = raft_instance_buffer_get(ri, reply_buf_sz);
+    }
+
+    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
+    NIOVA_ASSERT(reply_buf && sink_buf);
     /* Signify that the entry will be applied.  Prepare the last-applied values
      * prior to entering raft_server_sm_apply_opt().
      */
     raft_server_last_applied_increment(ri, &reh);
 
-    struct raft_net_client_request_handle rncr;
-    raft_server_net_client_request_init_sm_apply(ri, &rncr, sink_buf,
-                                                 reh.reh_data_size,
-                                                 reply_buf, reply_buf_sz);
-
+    //Read the raft entry
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
     {
-        rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
+        int rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
                                     NULL);
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));
+    }
 
-        // Initialize supplement handle for possible use by SM callback
-        raft_net_sm_write_supplement_init(&rncr.rncr_sm_write_supp);
+    uint32_t sink_buf_offset = 0;
+    for (uint32_t i = 0; i < reh.reh_num_entries; i++)
+    {
+        //calculate offset within data buffer for each request.
+        if (i > 0)
+            sink_buf_offset += reh.reh_entry_sz[i-1];
 
-        int rc = ri->ri_server_sm_request_cb(&rncr);
+        raft_server_net_client_request_init_sm_apply(ri, &rncr[i],
+                                                     sink_buf[sink_buf_offset],
+                                                     reh.reh_entry_sz[i],
+                                                     reply_buf[i],
+                                                     reply_buf_sz);
+        rc_arr[i] = ri->ri_server_sm_request_cb(&rncr);
+    }
 
+    if (!reh.reh_leader_change_marker && reh.reh_data_size)
+    {
         // Called regardless of ri_server_sm_request_cb() error
         raft_server_sm_apply_opt(ri, &rncr);
-
-        if (!rc && raft_instance_is_leader(ri))
+    }
+    
+    // init reply for each request.
+    for (uint32_t i = 0; i < reh.reh_num_entries; i++)
+    {
+        if (!rc_arr[i] && raft_instance_is_leader(ri))
         {
             if (reh.reh_term == ri->ri_log_hdr.rlh_term)
             {
@@ -4334,13 +4428,13 @@ raft_server_state_machine_apply(struct raft_instance *ri)
              */
             if (raft_net_client_request_handle_has_reply_info(&rncr))
                 raft_server_client_reply_init(
-                    ri, &rncr, RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
+                    ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
         }
 
         DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rc));
 
         // The destructor may issue a callback into the SM.
-        raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
+        raft_net_sm_write_supplement_destroy(&rncr[i].rncr_sm_write_supp);
     }
 
     if (!reh.reh_leader_change_marker && !reh.reh_data_size)
@@ -4352,12 +4446,18 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     if (ri->ri_last_applied_idx < ri->ri_commit_idx)
         RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_SM_APPLY);
 
-    if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
-        raft_net_client_request_handle_has_reply_info(&rncr))
-        raft_server_reply_to_client(ri, &rncr, NULL);
+    // Reply to client for each request.
+    for (uint32_t i = 0; i < reh.reh_num_entries; i++)
+    {
+        if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
+            raft_net_client_request_handle_has_reply_info(&rncr))
+            raft_server_reply_to_client(ri, &rncr[i], NULL);
+
+        //Release the reply buffer
+        raft_instance_buffer_put(ri, reply_buf[i]);
+    }
 
     // release buffers
-    raft_instance_buffer_put(ri, reply_buf);
     raft_instance_buffer_put(ri, sink_buf);
 }
 
