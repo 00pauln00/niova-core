@@ -11,8 +11,8 @@
 
 int
 PmdbObjGetX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-            size_t key_size, char *value, size_t value_size,
-            struct pmdb_obj_stat *user_pmdb_stat);
+            size_t key_size,
+            pmdb_request_opts_t *pmdb_req);
 
 int
 PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
@@ -22,29 +22,17 @@ int
 PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
            size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat);
 
-int
+void *
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-           size_t key_size, char *value, size_t value_size);
+           size_t key_size, size_t *value_size);
 
 int
-PmdbObjLookupNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                pmdb_obj_stat_t *ret_stat, pmdb_user_cb_t cb, void *arg);
+PmdbObjLookupX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
+               pmdb_request_opts_t *pmdb_req);
 
 int
-PmdbObjPutNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-             size_t kv_size, pmdb_user_cb_t user_cb, void *user_arg,
-             struct pmdb_obj_stat *user_pmdb_stat);
-
-int
-PmdbObjGetNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-             size_t key_size, char *value, size_t value_size,
-             pmdb_user_cb_t user_cb, void *user_arg);
-
-int
-PmdbObjGetXNB(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
-              size_t key_size, char *value, size_t value_size,
-              pmdb_user_cb_t user_cb, void *user_arg,
-              struct pmdb_obj_stat *user_pmdb_stat);
+PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
+            size_t kv_size, pmdb_request_opts_t *pmdb_req);
 
 pmdb_t
 PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);

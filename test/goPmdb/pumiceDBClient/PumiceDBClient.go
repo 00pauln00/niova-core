@@ -9,6 +9,7 @@ import (
 /*
 #cgo LDFLAGS: -lniova -lniova_raft_client -lniova_pumice_client
 #include <raft/pumice_db_client.h>
+#include <raft/pumice_db_net.h>
 */
 import "C"
 
@@ -62,10 +63,8 @@ func (pmdb_client *PmdbClientObj) PmdbClientWrite(ed interface{}, rncui string) 
 
 //Read the value of key on the client
 func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
-												  rncui string,
-												  value unsafe.Pointer,
-												  value_len int64,
-												  reply_size *int64) int {
+												 rncui string,
+												 reply_size *int64) unsafe.Pointer {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
@@ -76,10 +75,8 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	value_ptr := (*C.char)(value)
-
 	return PmdbClientReadKV(pmdb_client.Pmdb, rncui, encoded_key,
-							key_len, value_ptr, value_len, reply_size)
+							key_len, reply_size)
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
@@ -122,14 +119,13 @@ func PmdbClientWriteKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 }
 
 func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
-					  key_len int64, value *C.char, value_len int64,
-					  reply_size *int64) int {
-	var obj_stat C.pmdb_obj_stat_t
+					  key_len int64,
+					  reply_size *int64) unsafe.Pointer {
 
 	crncui_str := GoToCString(rncui)
 
 	c_key_len := GoToCSize_t(key_len)
-	c_value_len := GoToCSize_t(value_len)
+	//c_value_len := GoToCSize_t(value_len)
 
 	var rncui_id C.struct_raft_net_client_user_id
 
@@ -138,16 +134,18 @@ func PmdbClientReadKV(pmdb unsafe.Pointer, rncui string, key *C.char,
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
+	var actual_value_size C.size_t
+
 	Cpmdb := (C.pmdb_t)(pmdb)
-	rc := C.PmdbObjGetX(Cpmdb, obj_id, key, c_key_len, value, c_value_len,
-			&obj_stat)
+	reply_buff := C.PmdbObjGet(Cpmdb, obj_id, key, c_key_len,
+							   &actual_value_size)
 
-	*reply_size = int64(obj_stat.reply_size)
+	*reply_size = int64(actual_value_size)
 
-	fmt.Println("Reply size is: ", obj_stat.reply_size)
-	fmt.Println("Reply size is int(): ", int64(obj_stat.reply_size))
+	fmt.Println("Reply size is: ", *reply_size)
+
 	//Free C memory
 	FreeCMem(crncui_str)
 
-	return int(rc)
+	return reply_buff
 }
