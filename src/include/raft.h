@@ -23,6 +23,7 @@
 #include "udp.h"
 #include "util.h"
 
+#define RAFT_ENTRY_NUM_ENTRIES 10
 #define RAFT_ENTRY_PAD_SIZE 4
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
@@ -111,6 +112,7 @@ struct raft_append_entries_request_msg
     uint32_t raerqm_prev_idx_crc;
     uint32_t raerqm_this_idx_crc;
     uint32_t raerqm_entries_sz;
+    uint32_t raerqm_size_arr[RAFT_ENTRY_NUM_ENTRIES];
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint8_t  raerqm_entry_out_of_range;
