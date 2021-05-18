@@ -19,6 +19,13 @@ declare -a recipe_list=("leader_overthrow.yml"
                         "election_timeout_modification.yml"
                         "pmdb_client_error_demonstration_standalone_client.yml"
                        )
+echo "Print ansible version"
+ansible --version
+echo "Print ansible-playbook version"
+ansible-playbook --version
+
+echo "Print python pkgs"
+pip3 list
 
 for recipe in "${recipe_list[@]}"
 do
