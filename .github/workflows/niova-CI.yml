@@ -19,8 +19,6 @@ jobs:
       with:
         token: ${{secrets.github_token}}
 
-    - name: system info
-      run: uname -a && cat /etc/os-release && whoami
 
     - name: apt update
       run: sudo apt update
@@ -62,6 +60,9 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
+
+    - name: system info
+      run: uname -a && cat /etc/os-release && whoami && ansible --version
 
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
