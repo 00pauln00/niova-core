@@ -29,6 +29,7 @@ jobs:
     - name: Install python libraries
       run: sudo pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath
 
+      # Install Ansible
     - name: Install Ansible
       run: sudo pip3 install ansible
 
