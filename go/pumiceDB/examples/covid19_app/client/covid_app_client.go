@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"covidapplib/lib"
-	"encoding/csv"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -28,20 +27,14 @@ var (
 	raft_uuid_go      string
 	peer_uuid_go      string
 	json_outfile_path string
-	leader_uuid       string
-	outfile_name      string
-	temp_uuid         string
-	tmp_outfile       string
-	read_data_map     map[string]map[string]string
-	write_data_map    map[string]map[string]string
-	operation         string
+	data	          map[string]map[string]string
 	key_rncui_map     map[string]string
 )
 
 /*
  Structure to create json outfile
 */
-type covid_app_read struct {
+type CovidVaxData struct {
 	Raft_uuid   string
 	Client_uuid string
 	Leader_uuid string
@@ -49,65 +42,25 @@ type covid_app_read struct {
 	Status      int
 	Timestamp   string
 	Data        map[string]map[string]string
+	CV_obj PumiceDBClient.CommonVars
 }
 
-type covid_app_write struct {
-	Raft_uuid   string
-	Client_uuid string
-	Leader_uuid string
-	Operation   string
-	Timestamp   string
-	Data        map[string]map[string]string
-}
+//Function to write write_data into map.
+func fill_data_into_map(mp map[string]string, rncui string) {
 
-//Function to write write_data_map into map.
-func write_reqdata_into_map(key string, status int, app_uuid_str string) {
-
-	status_str := strconv.Itoa(status)
-	write_mp := map[string]string{
-		"Key":    key,
-		"Status": status_str,
-	}
-	write_data_map[app_uuid_str] = write_mp
-}
-
-//Method to dump zomato_app_write structure into json file.
-func (covid_out *covid_app_write) dump_writereq_into_json() {
-
-	//Prepare path for temporary json file.
-	tmp_outfile = json_outfile_path + "/" + temp_uuid + ".json"
-
-	fmt.Println("tmp outfile", tmp_outfile)
-
-	file, _ := json.MarshalIndent(covid_out, "", "\t")
-	_ = ioutil.WriteFile(tmp_outfile, file, 0644)
-}
-
-/*
- This function store json output to a map.
-*/
-func write_output_into_map(read_data *CovidAppLib.Covid_app, read_rncui string) {
-
-	total_vaccinations_int := strconv.Itoa(int(read_data.Total_vaccinations))
-	people_vaccinated_int := strconv.Itoa(int(read_data.People_vaccinated))
-
-	mp := map[string]string{
-		"Location":           read_data.Location,
-		"Iso_code":           read_data.Iso_code,
-		"Total_vaccinations": total_vaccinations_int,
-		"People_vaccinated":  people_vaccinated_int,
-	}
-
-	read_data_map[read_rncui] = mp
+	//Fill data into outer map.
+	data[rncui] = mp
 }
 
 //Method to dump output map into json file.
-func (struct_out *covid_app_read) dump_into_json() {
+func (struct_out *CovidVaxData) dump_into_json() string {
 
+	//Prepare path for temporary json file.
+	tmp_outfile := json_outfile_path + "/" + struct_out.CV_obj.Outfile_uuid + ".json"
 	file, _ := json.MarshalIndent(struct_out, "", "\t")
+	_ = ioutil.WriteFile(tmp_outfile, file, 0644)
 
-	read_outfile := json_outfile_path + "/" + outfile_name + ".json"
-	_ = ioutil.WriteFile(read_outfile, file, 0644)
+	return tmp_outfile
 }
 
 /*This function stores rncui for all csv file
@@ -126,62 +79,23 @@ func get_rncui_for_csvfile(key_rncui_map map[string]string, covid_wr_struct *Cov
 	return rncui
 }
 
-//read cmdline input.
-func get_cmdline_input(input []string) []string {
-
-	//Read the key from console
-	key := bufio.NewReader(os.Stdin)
-
-	key_text, _ := key.ReadString('\n')
-
-	// convert CRLF to LF
-	key_text = strings.Replace(key_text, "\n", "", -1)
-	input = strings.Split(key_text, "#")
-
-	return input
-}
-
-//parse csv file.
-func parse_csv_file(filename string) (fp *csv.Reader) {
-
-	// Open the file
-	csvfile, err := os.Open(filename)
-	if err != nil {
-		log.Fatalln("Error to open the csv file", err)
-	}
-
-	// Skip first row (line)
-	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
-	if err != nil {
-		log.Fatalln("error")
-	}
-	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
-	if err != nil {
-		log.Fatalln("error")
-	}
-	// Parse the file
-	fp = csv.NewReader(csvfile)
-
-	return fp
-}
-
-func copy_tmp_file_to_json_file() {
+func (struct_out *CovidVaxData) copy_tmp_file_to_json_file(tmp_outfile_name string) {
 
 	//Prepare json output filepath.
-	json_outf := json_outfile_path + "/" + outfile_name + ".json"
+	json_outf := json_outfile_path + "/" + struct_out.CV_obj.Json_filename + ".json"
 
 	fmt.Println("main outfile", json_outf)
 	//Create output json file.
 	os.Create(json_outf)
 
 	//Copy temporary json file into output json file.
-	_, err := exec.Command("cp", tmp_outfile, json_outf).Output()
+	_, err := exec.Command("cp", tmp_outfile_name, json_outf).Output()
 	if err != nil {
 		fmt.Printf("%s", err)
 	}
 
 	//Remove temporary outfile after copying into json outfile.
-	e := os.Remove(tmp_outfile)
+	e := os.Remove(tmp_outfile_name)
 	if e != nil {
 		log.Fatal(e)
 	}
@@ -189,10 +103,11 @@ func copy_tmp_file_to_json_file() {
 }
 
 //write operation for csv file parsing.
-func covidData_write_by_csvfile(cli_obj *PumiceDBClient.PmdbClientObj, filename string) {
+func (struct_out *CovidVaxData) WriteMultiStruct(filename string) string {
 
+	var tmp_outfile string
 	//call function to parse csv file.
-	fp := parse_csv_file(filename)
+	fp := struct_out.CV_obj.ParseFile(filename)
 
 	//Get timestamp.
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
@@ -219,111 +134,149 @@ func covidData_write_by_csvfile(cli_obj *PumiceDBClient.PmdbClientObj, filename 
 			People_vaccinated:  People_vaccinated_int,
 		}
 
-		//Call the function to get rncui.
+		//Call the function to get rncui.`
 		rncui := get_rncui_for_csvfile(key_rncui_map, &covid_wr_struct)
 
 		//get length of struct size
-		length_wr_struct := cli_obj.GetSize(covid_wr_struct)
+		length_wr_struct := struct_out.CV_obj.Cli_obj.GetSize(covid_wr_struct)
 		fmt.Println("Length of the structure: ", length_wr_struct)
 
 		fmt.Println("Structure Data:", covid_wr_struct)
 
 		//Get leader-uuid.
-		leader_uuid = cli_obj.GetLeader()
+		//leader_uuid = gopmdb_appstruct.cli_obj.GetLeader()
 
 		//Write the key-value to pumicedb
-		rc := cli_obj.Write(covid_wr_struct, rncui)
+		rc := struct_out.CV_obj.Cli_obj.Write(covid_wr_struct, rncui)
 
 		if rc != 0 {
 			fmt.Println("Pmdb Write failed.")
-			write_strdata := covid_app_write{
+
+			write_strdata := CovidVaxData{
 				Raft_uuid:   raft_uuid_go,
 				Client_uuid: peer_uuid_go,
-				Leader_uuid: leader_uuid,
-				Operation:   operation,
+				Leader_uuid: struct_out.Leader_uuid,
+	                        Operation:   struct_out.Operation,
 				Timestamp:   timestamp,
-				Data:        write_data_map,
+				Data:        data,
 			}
 
-			write_reqdata_into_map(covid_wr_struct.Location, rc, rncui)
+			status_str := strconv.Itoa(int(rc))
+			write_mp := map[string]string{
+				"Key":    covid_wr_struct.Location,
+				"Status": status_str,
+			}
+
+			//Fill write request data into a map.
+			fill_data_into_map(write_mp, rncui)
+
 			//Dump structure into json.
-			write_strdata.dump_writereq_into_json()
+                        tmp_outfile = write_strdata.dump_into_json()
 
 		} else {
 			fmt.Println("Pmdb Write successful!")
-			write_strdata := covid_app_write{
+			write_strdata := CovidVaxData{
 				Raft_uuid:   raft_uuid_go,
 				Client_uuid: peer_uuid_go,
-				Leader_uuid: leader_uuid,
-				Operation:   operation,
+				Leader_uuid: struct_out.Leader_uuid,
+	                        Operation:   struct_out.Operation,
 				Timestamp:   timestamp,
-				Data:        write_data_map,
+				Data:        data,
 			}
 
-			write_reqdata_into_map(covid_wr_struct.Location, rc, rncui)
+			status_str := strconv.Itoa(int(rc))
+                        write_mp := map[string]string{
+                                "Key":    covid_wr_struct.Location,
+                                "Status": status_str,
+                        }
+
+                        //Fill write request data into a map.
+                        fill_data_into_map(write_mp, rncui)
+
 			//Dump structure into json.
-			write_strdata.dump_writereq_into_json()
+			tmp_outfile = write_strdata.dump_into_json()
+
 		}
 	}
+	return tmp_outfile
 }
 
 //function to write covidData.
-func covidData_write(cli_obj *PumiceDBClient.PmdbClientObj,
-	pass_input_struct *CovidAppLib.Covid_app, rncui string) {
+func (struct_out *CovidVaxData) WriteOneStruct(pass_input_struct *CovidAppLib.Covid_app,
+	rncui string) {
 
 	//Get the actual size of the structure.
-	len_wr_struct := cli_obj.GetSize(pass_input_struct)
+	len_wr_struct := struct_out.CV_obj.Cli_obj.GetSize(pass_input_struct)
 	fmt.Println("Length of the structure: ", len_wr_struct)
 
 	//Get timestamp.
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	//Get leader-uuid.
-	leader_uuid = cli_obj.GetLeader()
+	//leader_uuid = cli_obj.GetLeader()
 
 	//Perform write operation.
-	rc := cli_obj.Write(pass_input_struct, rncui)
+	rc := struct_out.CV_obj.Cli_obj.Write(pass_input_struct, rncui)
 
 	if rc != 0 {
 		fmt.Println("Pmdb Write failed.")
-		write_strdata := covid_app_write{
+
+		write_strdata := CovidVaxData{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: peer_uuid_go,
-			Leader_uuid: leader_uuid,
-			Operation:   operation,
+			Leader_uuid: struct_out.Leader_uuid,
+			Operation:   struct_out.Operation,
 			Timestamp:   timestamp,
-			Data:        write_data_map,
+			Data:        data,
 		}
 
-		write_reqdata_into_map(pass_input_struct.Location, rc, rncui)
-		//Dump structure into json.
-		write_strdata.dump_writereq_into_json()
+		status_str := strconv.Itoa(int(rc))
+		write_mp := map[string]string{
+			"Key":    pass_input_struct.Location,
+			"Status": status_str,
+		}
 
-		//Copy temporary json file into json outfile.
-		copy_tmp_file_to_json_file()
+		//Fill write request data into a map.
+		fill_data_into_map(write_mp, rncui)
+
+		//Dump structure into json.
+                tmp_outfile := write_strdata.dump_into_json()
+
+                //Copy temporary json file into json outfile.
+                struct_out.copy_tmp_file_to_json_file(tmp_outfile)
 
 	} else {
 		fmt.Println("Pmdb Write successful!")
-		write_strdata := covid_app_write{
+		write_strdata := CovidVaxData{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: peer_uuid_go,
-			Leader_uuid: leader_uuid,
-			Operation:   operation,
+			Leader_uuid: struct_out.Leader_uuid,
+			Operation:   struct_out.Operation,
 			Timestamp:   timestamp,
-			Data:        write_data_map,
+			Data:        data,
 		}
 
-		write_reqdata_into_map(pass_input_struct.Location, rc, rncui)
+		status_str := strconv.Itoa(int(rc))
+                write_mp := map[string]string{
+                        "Key":    pass_input_struct.Location,
+                        "Status": status_str,
+                }
+
+                //Fill write request data into a map.
+                fill_data_into_map(write_mp, rncui)
+
 		//Dump structure into json.
-		write_strdata.dump_writereq_into_json()
+		tmp_outfile := write_strdata.dump_into_json()
 
 		//Copy temporary json file into json outfile.
-		copy_tmp_file_to_json_file()
+		struct_out.copy_tmp_file_to_json_file(tmp_outfile)
 	}
 }
 
 //write operation by passing cmdline data.
-func write_covidData_key_value_from_cmdline(cli_obj *PumiceDBClient.PmdbClientObj, input []string) {
+func (struct_out *CovidVaxData) WriteOneExec(input []string) {
+
+	input := GetInput()
 
 	get_rncui := input[1]
 	input_key := input[2]
@@ -354,15 +307,17 @@ func write_covidData_key_value_from_cmdline(cli_obj *PumiceDBClient.PmdbClientOb
 	fmt.Println("value2: ", pass_input_struct.People_vaccinated)
 
 	//call function to write from cmdline.
-	covidData_write(cli_obj, &pass_input_struct, get_rncui)
+	struct_out.WriteOneStruct(&pass_input_struct, get_rncui)
 }
 
 //Read Data.
-func read_covidData(cli_obj *PumiceDBClient.PmdbClientObj,
+func (struct_out *CovidVaxData) ReadStruct(cli_obj *PumiceDBClient.PmdbClientObj,
 	covid_rd_struct *CovidAppLib.Covid_app,
 	rd_rncui string) {
 
-	length_rd_struct := cli_obj.GetSize(covid_rd_struct)
+	var tmp_outfile string
+
+	length_rd_struct := struct_out.CV_obj.Cli_obj.GetSize(covid_rd_struct)
 
 	//Print all values which passed to Read()
 	fmt.Println("Covid Structure for read:", covid_rd_struct)
@@ -376,7 +331,7 @@ func read_covidData(cli_obj *PumiceDBClient.PmdbClientObj,
 	var reply_size int64
 
 	//read operation
-	reply_buff := cli_obj.Read(covid_rd_struct, rd_rncui,
+	reply_buff := struct_out.CV_obj.Cli_obj..Read(covid_rd_struct, rd_rncui,
 		&reply_size)
 
 	if reply_buff == nil {
@@ -385,7 +340,7 @@ func read_covidData(cli_obj *PumiceDBClient.PmdbClientObj,
 
 		fmt.Println("Read request failed !!")
 
-		strdata := covid_app_read{
+		strdata := CovidVaxData{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: peer_uuid_go,
 			Leader_uuid: leader_uuid,
@@ -395,7 +350,12 @@ func read_covidData(cli_obj *PumiceDBClient.PmdbClientObj,
 			Data:        nil,
 		}
 
-		strdata.dump_into_json()
+		//Dump structure into json.
+                tmp_outfile := strdata.dump_into_json()
+
+                //Copy temporary json file into json outfile.
+                struct_out.copy_tmp_file_to_json_file(tmp_outfile)
+
 
 	} else {
 		rc := 0
@@ -405,25 +365,42 @@ func read_covidData(cli_obj *PumiceDBClient.PmdbClientObj,
 
 		fmt.Println("Result of the read request is: ", struct_op)
 
-		write_output_into_map(struct_op, rd_rncui)
-
-		strdata := covid_app_read{
+		strdata := CovidVaxData{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: peer_uuid_go,
 			Leader_uuid: leader_uuid,
 			Operation:   operation,
 			Status:      rc,
 			Timestamp:   timestamp,
-			Data:        read_data_map,
+			Data:        data,
 		}
 
-		strdata.dump_into_json()
+		total_vaccinations_int := strconv.Itoa(int(struct_op.Total_vaccinations))
+                people_vaccinated_int := strconv.Itoa(int(struct_op.People_vaccinated))
+
+                read_map := map[string]string{
+                        "Location":           struct_op.Location,
+                        "Iso_code":           struct_op.Iso_code,
+                        "Total_vaccinations": total_vaccinations_int,
+                        "People_vaccinated":  people_vaccinated_int,
+                }
+
+		//Fill write request data into a map.
+                fill_data_into_map(read_map, rd_rncui)
+
+		//Dump structure into json.
+                tmp_outfile := write_strdata.dump_into_json()
+
+                //Copy temporary json file into json outfile.
+                struct_out.copy_tmp_file_to_json_file(tmp_outfile)
+
+
 	}
 	// Application should free the this reply_buff which is allocate by pmdb lib
 	C.free(reply_buff)
 }
 
-func read_covidData_key_value_from_cmdline(cli_obj *PumiceDBClient.PmdbClientObj, input []string) {
+func ReadOneStruct(cli_obj *PumiceDBClient.PmdbClientObj, input []string) {
 
 	key := input[1]
 	rd_rncui := input[2]
@@ -436,8 +413,9 @@ func read_covidData_key_value_from_cmdline(cli_obj *PumiceDBClient.PmdbClientObj
 	fmt.Println("key: ", key)
 
 	//call function to read cmdline data.
-	read_covidData(cli_obj, &pass_rd_struct, rd_rncui)
+	ReadStruct(cli_obj, &pass_rd_struct, rd_rncui)
 }
+*/
 
 func pmdb_dict_app_getopts() {
 
@@ -478,9 +456,6 @@ func main() {
 	cli_obj.Start()
 	defer cli_obj.Stop()
 
-	//Create and Initialize the map.
-	key_rncui_map = make(map[string]string)
-
 	fmt.Println("=================Format to pass write-read entries================")
 	fmt.Println("Single write format ==> WriteOne#Rncui#Key#Val0#Val1#Val2#outfile_name")
 	fmt.Println("Single read format ==> ReadOne#Key#Rncui#outfile_name")
@@ -493,41 +468,62 @@ func main() {
 		fmt.Print("Enter operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader/ exit): ")
 
 		//Create and Initialize map for write-read oufile.
-		read_data_map = make(map[string]map[string]string)
-		write_data_map = make(map[string]map[string]string)
+		data = make(map[string]map[string]string)
 
-		var str []string
+		//Create and Initialize the map.
+		key_rncui_map = make(map[string]string)
 
-		//Pass input string from console.
-		input := get_cmdline_input(str)
+		//Create temporary UUID
+		outfile_uuid := uuid.NewV4().String()
+		//Get Leader UUID by calling GetLeader().
+		leader_uuid := cli_obj.GetLeader()
 
-		operation = input[0]
+		operation := input[0]
 
-		if operation == "WriteMulti" {
+		switch operation {
 
-			temp_uuid = uuid.NewV4().String()
-			csv_filepath := input[1]
-			outfile_name = input[2]
+		case "WriteMulti":
+			csv_filename := input[1]
+			outfile_name := input[2]
+			cvd := CovidVaxData{
+				Raft_uuid:   raft_uuid_go,
+				Client_uuid: peer_uuid_go,
+				Leader_uuid: leader_uuid,
+				Operation:   operation,
+				CV_obj: PumiceDBClient.CommonVars{
+					Outfile_uuid:  outfile_uuid,
+					Json_filename: outfile_name,
+				},
+			}
+
 			//Write operation using csv file parsing.
-			covidData_write_by_csvfile(cli_obj, csv_filepath)
+			tmp_outfile := cvd.WriteMultiStruct(csv_filename)
 
 			//Copy temporary json file into json outfile.
-			copy_tmp_file_to_json_file()
+			cvd.copy_tmp_file_to_json_file(tmp_outfile)
 
-		} else if operation == "WriteOne" {
+		case "WriteOne":
+			outfile_name := input[6]
+			cvd := CovidVaxData{
+                                Raft_uuid:   raft_uuid_go,
+                                Client_uuid: peer_uuid_go,
+                                Leader_uuid: leader_uuid,
+                                Operation:   operation,
+                                CV_obj: PumiceDBClient.CommonVars{
+                                        Outfile_uuid:  outfile_uuid,
+                                        json_filename: outfile_name,
+                                },
+                        }
 
-			outfile_name = input[6]
-			temp_uuid = uuid.NewV4().String()
 			//call function to write covid19 data from cmdline.
-			write_covidData_key_value_from_cmdline(cli_obj, input)
+			cvd.WriteOneExec(input)
 
-		} else if operation == "ReadOne" {
-
+		case "ReadOne":
 			outfile_name = input[3]
 			//call function to read cmdline data.
-			read_covidData_key_value_from_cmdline(cli_obj, input)
+			ReadOneStruct(cli_obj, input)
 
-		} else if operation == "ReadMulti" {
+		case "ReadMulti":
 			outfile_name = input[1]
 			//Iterate over map to read all data from csv file.
 			for key, rd_rncui := range key_rncui_map {
@@ -536,18 +532,17 @@ func main() {
 					Location: key,
 				}
 				//call function to read csv file.
-				read_covidData(cli_obj, &covid_rd_struct, rd_rncui)
+				ReadStruct(cli_obj, &covid_rd_struct, rd_rncui)
 			}
 
-		} else if operation == "get_leader" {
+		case "get_leader":
 			outfile_name = input[1]
-			leader_uuid = cli_obj.GetLeader()
 			fmt.Println("Leader uuid is: ", leader_uuid)
 
 			//Get timestamp.
 			timestamp := time.Now().Format("2006-01-02 15:04:05")
 
-			get_leader_uuid_struct := covid_app_read{
+			get_leader_uuid_struct := CovidVaxData{
 				Raft_uuid:   raft_uuid_go,
 				Client_uuid: peer_uuid_go,
 				Leader_uuid: leader_uuid,
@@ -558,9 +553,9 @@ func main() {
 			//Dump structure into json.
 			get_leader_uuid_struct.dump_into_json()
 
-		} else if operation == "exit" {
+		case "exit":
 			os.Exit(0)
-		} else {
+		default:
 			fmt.Println("\nEnter valid operation: WriteOne/ReadOne/WriteMulti/ReadMulti/get_leader/exit")
 		}
 	}
