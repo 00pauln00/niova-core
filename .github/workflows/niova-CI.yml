@@ -25,6 +25,13 @@ jobs:
       run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
     - name: dpkg / rpm prep
       run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+
+    - name: Install python libraries
+      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath
+
+    - name: Install Ansible
+      run: sudo pip3 install ansible
+
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
@@ -46,9 +53,6 @@ jobs:
        #ref: testing_with_niova_repo
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
-
-    - name: Install python libraries
-      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible jmespath
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
