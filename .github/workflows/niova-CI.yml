@@ -19,6 +19,9 @@ jobs:
       with:
         token: ${{secrets.github_token}}
 
+    - name: system info
+      run: uname -a && cat /etc/os-release && whoami
+
     - name: apt update
       run: sudo apt update
     - name: dpkg / rpm prep (debug)
@@ -48,7 +51,7 @@ jobs:
        path: ./holon
 
     - name: Install python libraries
-      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible==2.10.7 jmespath
+      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible jmespath
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
