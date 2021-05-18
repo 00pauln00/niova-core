@@ -27,19 +27,34 @@ import "C"
 var (
 	raft_uuid_go     string
 	client_uuid_go   string
-	leader_uuid      string
 	json_outfilepath string
-	app_data_map     map[string]map[string]string
-	data             map[string]map[string]int
-	csv_filepath     string
-	ops              string
-	filename         string
-	temp_uuid        string
-	outfile_name     string
+	data             map[string]map[string]string
+	zci              zomato_cli
 )
 
-//Output structure declaration to dump into json.
-type zomato_app_output struct {
+// Creating an interface for client.
+type zomato_cli interface {
+
+	// Methods
+	writeone([]string)
+	write_multi(string) string
+	get()
+	copy_to_outfile(string)
+}
+
+//Structure declaration for a client request.
+type go_pmdb_app_request struct {
+	Operation     string
+	Leader_uuid   string
+	Outfile_uuid  string
+	Key           string
+	Rncui         string
+	Json_filename string
+	Cli_obj       *PumiceDBClient.PmdbClientObj
+}
+
+//Structure declaration to dump into json.
+type zomato_app_info struct {
 	Raft_uuid   string
 	Client_uuid string
 	Leader_uuid string
@@ -49,68 +64,130 @@ type zomato_app_output struct {
 	Data        map[string]map[string]string
 }
 
-//Structure for dumping write request data into json.
-type zomato_app_write struct {
-	Raft_uuid   string
-	Client_uuid string
-	Leader_uuid string
-	Operation   string
-	Timestamp   string
-	Data        map[string]map[string]int
-}
-
 //Function to write write_data into map.
-func write_reqdata_into_map(key, status int, rncui string) {
+func fill_data_into_map(mp map[string]string, rncui string) {
 
-	write_mp := map[string]int{
-		"Key":    key,
-		"Status": status,
-	}
-	data[rncui] = write_mp
-
-}
-
-//Function to write read request output into map.
-func write_output_into_map(read_data *zomatoapplib.Zomato_Data, read_rncui string) {
-
-	rest_id := strconv.Itoa(int(read_data.Restaurant_id))
-	rest_votes := strconv.Itoa(int(read_data.Votes))
-	mp := map[string]string{
-		"Restaurant_id":   rest_id,
-		"Restaurant_name": read_data.Restaurant_name,
-		"city":            read_data.City,
-		"cuisines":        read_data.Cuisines,
-		"ratings_text":    read_data.Ratings_text,
-		"votes":           rest_votes,
-	}
-
-	app_data_map[read_rncui] = mp
-}
-
-//Method to dump zomato_app_write structure into json file.
-func (struct_out *zomato_app_write) dump_writereq_into_json() {
-
-	//Prepare path for temporary json file.
-	outfile_name = json_outfilepath + "/" + temp_uuid + ".json"
-
-	file, _ := json.MarshalIndent(struct_out, "", "\t")
-	_ = ioutil.WriteFile(outfile_name, file, 0644)
+	//Fill data into outer map.
+	data[rncui] = mp
 
 }
 
 //Method to dump zomato_app_output structure into json file.
-func (struct_out *zomato_app_output) dump_into_json() {
+func (struct_out *zomato_app_info) dump_into_json(outf_uuid string) string {
 
-	//Prepare json output filepath.
-	read_json_outf := json_outfilepath + "/" + filename + ".json"
-
+	//Prepare path for temporary json file.
+	temp_outfile_name := json_outfilepath + "/" + outf_uuid + ".json"
 	file, _ := json.MarshalIndent(struct_out, "", "\t")
-	_ = ioutil.WriteFile(read_json_outf, file, 0644)
+	_ = ioutil.WriteFile(temp_outfile_name, file, 0644)
+
+	return temp_outfile_name
 
 }
 
-//Function for applying data.
-func update(struct_app *zomatoapplib.Zomato_Data, cli_obj *PumiceDBClient.PmdbClientObj) {
+//Method to perform single write operation.
+func (gopmdb_appstruct go_pmdb_app_request) writeone(args []string) {
+
+	rncui := args[1]
+	//Typecast Restaurant_id to int64.
+	rest_id_string := args[2]
+	restaurant_id_str, err := strconv.ParseInt(rest_id_string, 10, 64)
+	if err != nil {
+		fmt.Println("Error occured in typecasting Restaurant_id to int64")
+	}
+
+	//Typecast Votes to int64.
+	votes_str, err := strconv.ParseInt(args[7], 10, 64)
+	if err != nil {
+		fmt.Println("Error occured in typecasting Votes to int64")
+	}
+
+	//Create a file for storing keys and rncui.
+	os.Create("key_rncui_data.txt")
+
+	//Get timestamp.
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+
+	//Fill the Zomato_App structure.
+	struct_data_cmdline := zomatoapplib.Zomato_Data{
+		Restaurant_id:   restaurant_id_str,
+		Restaurant_name: args[3],
+		City:            args[4],
+		Cuisines:        args[5],
+		Ratings_text:    args[6],
+		Votes:           votes_str,
+	}
+
+	//Open file for storing key, rncui in append mode.
+	file, err := os.OpenFile("key_rncui_data.txt", os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		log.Println(err)
+	}
+	defer file.Close()
+
+	//Append key_rncui in file.
+	_, err_write := file.WriteString("key, rncui = " + rest_id_string + "  " + rncui + "\n")
+	if err_write != nil {
+		log.Fatal(err)
+	}
+
+	//Perform write operation.
+	rc := gopmdb_appstruct.Cli_obj.Write(struct_data_cmdline, rncui)
+	if rc != 0 {
+		fmt.Println("Pmdb Write failed.")
+		write_strdata_cmd := zomato_app_info{
+			Raft_uuid:   raft_uuid_go,
+			Client_uuid: client_uuid_go,
+			Leader_uuid: gopmdb_appstruct.Leader_uuid,
+			Operation:   gopmdb_appstruct.Operation,
+			Timestamp:   timestamp,
+			Data:        data,
+		}
+
+		status := strconv.Itoa(int(rc))
+		write_mp := map[string]string{
+			"Key":    rest_id_string,
+			"Status": status,
+		}
+
+		//Fill write request data into a map.
+		fill_data_into_map(write_mp, rncui)
+
+		//Dump structure into json.
+		temp_outfname := write_strdata_cmd.dump_into_json(gopmdb_appstruct.Outfile_uuid)
+
+		//Copy temporary json file into json outfile.
+		gopmdb_appstruct.copy_to_outfile(temp_outfname)
+	} else {
+		fmt.Println("Pmdb Write successful!")
+		write_strdata_cmd := zomato_app_info{
+			Raft_uuid:   raft_uuid_go,
+			Client_uuid: client_uuid_go,
+			Leader_uuid: gopmdb_appstruct.Leader_uuid,
+			Operation:   gopmdb_appstruct.Operation,
+			Timestamp:   timestamp,
+			Data:        data,
+		}
+
+		status := strconv.Itoa(int(rc))
+		write_mp := map[string]string{
+			"Key":    rest_id_string,
+			"Status": status,
+		}
+
+		//Fill write request data into a map.
+		fill_data_into_map(write_mp, rncui)
+
+		//Dump structure into json.
+		temp_outfname := write_strdata_cmd.dump_into_json(gopmdb_appstruct.Outfile_uuid)
+
+		//Copy temporary json file into json outfile.
+		gopmdb_appstruct.copy_to_outfile(temp_outfname)
+	}
+
+}
+
+//Method for applying data.
+func (gopmdb_appstruct go_pmdb_app_request) update(struct_app *zomatoapplib.Zomato_Data) string {
 
 	//Generate app_uuid.
 	app_uuid := uuid.NewV4().String()
@@ -135,49 +212,59 @@ func update(struct_app *zomatoapplib.Zomato_Data, cli_obj *PumiceDBClient.PmdbCl
 		log.Fatal(err)
 	}
 
-	//Get leader uuid.
-	leader_uuid = cli_obj.GetLeader()
-
+	var tmpoutfname string
 	//Perform write operation.
-	rc := cli_obj.Write(struct_app, rncui)
+	rc := gopmdb_appstruct.Cli_obj.Write(struct_app, rncui)
 
 	if rc != 0 {
 		fmt.Println("Pmdb Write failed.")
-		write_strdata := zomato_app_write{
+		write_strdata := zomato_app_info{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: client_uuid_go,
-			Leader_uuid: leader_uuid,
-			Operation:   ops,
+			Leader_uuid: gopmdb_appstruct.Leader_uuid,
+			Operation:   gopmdb_appstruct.Operation,
 			Timestamp:   timestamp,
 			Data:        data,
 		}
 
-		//Fill key, status in map.
-		write_reqdata_into_map(int(struct_app.Restaurant_id), rc, rncui)
-		//Dump structure into json.
-		write_strdata.dump_writereq_into_json()
+		status := strconv.Itoa(int(rc))
+		write_mp := map[string]string{
+			"Key":    rest_id_string,
+			"Status": status,
+		}
 
+		//Fill write request data into a map.
+		fill_data_into_map(write_mp, rncui)
+		//Dump structure into json.
+		tmpoutfname = write_strdata.dump_into_json(gopmdb_appstruct.Outfile_uuid)
 	} else {
 		fmt.Println("Pmdb Write successful!")
-		write_strdata := zomato_app_write{
+		write_strdata := zomato_app_info{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: client_uuid_go,
-			Leader_uuid: leader_uuid,
-			Operation:   ops,
+			Leader_uuid: gopmdb_appstruct.Leader_uuid,
+			Operation:   gopmdb_appstruct.Operation,
 			Timestamp:   timestamp,
 			Data:        data,
 		}
+		status := strconv.Itoa(int(rc))
+		write_mp := map[string]string{
+			"Key":    rest_id_string,
+			"Status": status,
+		}
 
-		//Fill key, status in map.
-		write_reqdata_into_map(int(struct_app.Restaurant_id), rc, rncui)
+		//Fill write request data into a map.
+		fill_data_into_map(write_mp, rncui)
 		//Dump structure into json.
-		write_strdata.dump_writereq_into_json()
+		tmpoutfname = write_strdata.dump_into_json(gopmdb_appstruct.Outfile_uuid)
 	}
+	return tmpoutfname
 }
 
-//Function for parsing .csv file.
-func parse_file_and_update(cli_obj *PumiceDBClient.PmdbClientObj, filename string) {
+//Method for parsing .csv file and perform write multi operation.
+func (gopmdb_appstruct go_pmdb_app_request) write_multi(filename string) string {
 
+	var tmpout_fname string
 	//Open the file.
 	csvfile, err := os.Open(filename)
 	if err != nil {
@@ -230,49 +317,49 @@ func parse_file_and_update(cli_obj *PumiceDBClient.PmdbClientObj, filename strin
 			Ratings_text:    record[4],
 			Votes:           votes_struct,
 		}
-		update(&struct_data, cli_obj)
-
+		tmpout_fname = gopmdb_appstruct.update(&struct_data)
 	}
+	return tmpout_fname
 }
 
-//Function for read operation.
-func get(cli_obj *PumiceDBClient.PmdbClientObj, key string, read_rncui string) {
+//Method for read operation.
+func (gopmdb_appstruct go_pmdb_app_request) get() {
 
 	//Typecast key into int64.
-	key_int64, _ := strconv.ParseInt(key, 10, 64)
+	key_int64, _ := strconv.ParseInt(gopmdb_appstruct.Key, 10, 64)
 
 	//Fill the Zomato_App structure.
 	struct_read := zomatoapplib.Zomato_Data{
 		Restaurant_id: key_int64,
 	}
 
-	//Get leader uuid.
-	leader_uuid := cli_obj.GetLeader()
-
 	var reply_len int64
+	var tmpout_filename string
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
 	//Perform read operation.
-	reply_buff := cli_obj.Read(struct_read, read_rncui, &reply_len)
+	reply_buff := gopmdb_appstruct.Cli_obj.Read(struct_read, gopmdb_appstruct.Rncui, &reply_len)
 
 	if reply_buff == nil {
 		fmt.Println("Read request failed !!")
-		strdata := zomato_app_output{
+		strdata := zomato_app_info{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: client_uuid_go,
-			Leader_uuid: leader_uuid,
-			Operation:   ops,
+			Leader_uuid: gopmdb_appstruct.Leader_uuid,
+			Operation:   gopmdb_appstruct.Operation,
 			Status:      -1,
 			Timestamp:   timestamp,
 			Data:        nil,
 		}
-
 		//Dump structure into json.
-		strdata.dump_into_json()
+		tmpout_filename = strdata.dump_into_json(gopmdb_appstruct.Outfile_uuid)
+
+		//Copy temporary json file into json outfile.
+		gopmdb_appstruct.copy_to_outfile(tmpout_filename)
 
 	} else {
 		read_data := &zomatoapplib.Zomato_Data{}
-		cli_obj.Decode(reply_buff, read_data, reply_len)
+		gopmdb_appstruct.Cli_obj.Decode(reply_buff, read_data, reply_len)
 
 		fmt.Println("\nResult of the read request is:")
 		fmt.Println("Restaurant id (key) = ", read_data.Restaurant_id)
@@ -282,43 +369,55 @@ func get(cli_obj *PumiceDBClient.PmdbClientObj, key string, read_rncui string) {
 		fmt.Println("Ratings_text = ", read_data.Ratings_text)
 		fmt.Println("Votes = ", read_data.Votes)
 
-		//Fill read reuqest output into map.
-		write_output_into_map(read_data, read_rncui)
+		rest_id := strconv.Itoa(int(read_data.Restaurant_id))
+		rest_votes := strconv.Itoa(int(read_data.Votes))
+		read_req_mp := map[string]string{
+			"Restaurant_id":   rest_id,
+			"Restaurant_name": read_data.Restaurant_name,
+			"city":            read_data.City,
+			"cuisines":        read_data.Cuisines,
+			"ratings_text":    read_data.Ratings_text,
+			"votes":           rest_votes,
+		}
 
-		strdata := zomato_app_output{
+		//Fill write request data into a map.
+		fill_data_into_map(read_req_mp, gopmdb_appstruct.Rncui)
+
+		strdata := zomato_app_info{
 			Raft_uuid:   raft_uuid_go,
 			Client_uuid: client_uuid_go,
-			Leader_uuid: leader_uuid,
-			Operation:   ops,
+			Leader_uuid: gopmdb_appstruct.Leader_uuid,
+			Operation:   gopmdb_appstruct.Operation,
 			Status:      0,
 			Timestamp:   timestamp,
-			Data:        app_data_map,
+			Data:        data,
 		}
 
 		//Dump structure into json.
-		strdata.dump_into_json()
-
+		tmpout_filename = strdata.dump_into_json(gopmdb_appstruct.Outfile_uuid)
+		//Copy temporary json file into json outfile.
+		gopmdb_appstruct.copy_to_outfile(tmpout_filename)
 	}
 	C.free(reply_buff)
 }
 
-//Function to copy temporary json file into output json file.
-func copy_to_outfile() {
+//Method to copy temporary json file into output json file.
+func (gopmdb_appstruct go_pmdb_app_request) copy_to_outfile(tmp_outfile_name string) {
 
 	//Prepare json output filepath.
-	json_outf := json_outfilepath + "/" + filename + ".json"
+	json_outf := json_outfilepath + "/" + gopmdb_appstruct.Json_filename + ".json"
 
 	//Create output json file.
 	os.Create(json_outf)
 
 	//Copy temporary json file into output json file.
-	_, err := exec.Command("cp", outfile_name, json_outf).Output()
+	_, err := exec.Command("cp", tmp_outfile_name, json_outf).Output()
 	if err != nil {
-		fmt.Printf("%s", err)
+		fmt.Print("%s", err)
 	}
 
 	//Remove temporary outfile after copying into json outfile.
-	os.Remove(outfile_name)
+	os.Remove(tmp_outfile_name)
 
 }
 
@@ -373,148 +472,81 @@ func main() {
 		cmd, _ := input.ReadString('\n')
 		cmd_s := strings.Replace(cmd, "\n", "", -1)
 		ops_split := strings.Split(cmd_s, "#")
-		ops = ops_split[0]
+		ops := ops_split[0]
 
 		//Make the required maps.
-		data = make(map[string]map[string]int)
-		app_data_map = make(map[string]map[string]string)
+		data = make(map[string]map[string]string)
 
-		if ops == "WriteOne" {
+		//Generate uuid for temporary json file.
+		outf_uuid := uuid.NewV4().String()
 
-			rncui := ops_split[1]
-			filename = ops_split[8]
+		//Get leader uuid.
+		leader_uuid := cli_obj.GetLeader()
 
-			//Create uuid for temporary json file.
-			temp_uuid = uuid.NewV4().String()
+		switch ops {
 
-			//Create a file for storing keys and rncui.
-			os.Create("key_rncui_data.txt")
-
-			//Get timestamp.
-			timestamp := time.Now().Format("2006-01-02 15:04:05")
-
-			//Typecast Restaurant_id to int64.
-			rest_id_string := ops_split[2]
-			restaurant_id_struct, err := strconv.ParseInt(rest_id_string, 10, 64)
-			if err != nil {
-				fmt.Println("Error occured in typecasting Restaurant_id to int64")
+		case "WriteOne":
+			jsonfilename := ops_split[8]
+			zci = go_pmdb_app_request{
+				Operation:     ops,
+				Leader_uuid:   leader_uuid,
+				Outfile_uuid:  outf_uuid,
+				Json_filename: jsonfilename,
+				Cli_obj:       cli_obj,
 			}
+			//Perform WriteOne operation.
+			zci.writeone(ops_split)
 
-			//Typecast Votes to int64.
-			votes_struct, err := strconv.ParseInt(ops_split[7], 10, 64)
-			if err != nil {
-				fmt.Println("Error occured in typecasting Votes to int64")
-			}
-
-			//Fill the Zomato_App structure.
-			struct_data_cmdline := zomatoapplib.Zomato_Data{
-				Restaurant_id:   restaurant_id_struct,
-				Restaurant_name: ops_split[3],
-				City:            ops_split[4],
-				Cuisines:        ops_split[5],
-				Ratings_text:    ops_split[6],
-				Votes:           votes_struct,
-			}
-
-			//Open file for storing key, rncui in append mode.
-			file, err := os.OpenFile("key_rncui_data.txt", os.O_APPEND|os.O_WRONLY, 0644)
-			if err != nil {
-				log.Println(err)
-			}
-			defer file.Close()
-
-			//Append key_rncui in file.
-			_, err_write := file.WriteString("key, rncui = " + rest_id_string + "  " + rncui + "\n")
-			if err_write != nil {
-				log.Fatal(err)
-			}
-
-			//Get leader uuid.
-			leader_uuid := cli_obj.GetLeader()
-
-			//Perform write operation.
-			rc := cli_obj.Write(struct_data_cmdline, rncui)
-			if rc != 0 {
-				fmt.Println("Pmdb Write failed.")
-				write_strdata_cmd := zomato_app_write{
-					Raft_uuid:   raft_uuid_go,
-					Client_uuid: client_uuid_go,
-					Leader_uuid: leader_uuid,
-					Operation:   ops,
-					Timestamp:   timestamp,
-					Data:        data,
-				}
-
-				//Fill write request data into a map.
-				write_reqdata_into_map(int(struct_data_cmdline.Restaurant_id), rc, rncui)
-
-				//Dump structure into json.
-				write_strdata_cmd.dump_writereq_into_json()
-
-				//Copy temporary json file into json outfile.
-				copy_to_outfile()
-			} else {
-				fmt.Println("Pmdb Write successful!")
-				write_strdata_cmd := zomato_app_write{
-					Raft_uuid:   raft_uuid_go,
-					Client_uuid: client_uuid_go,
-					Leader_uuid: leader_uuid,
-					Operation:   ops,
-					Timestamp:   timestamp,
-					Data:        data,
-				}
-
-				//Fill write request data into a map.
-				write_reqdata_into_map(int(struct_data_cmdline.Restaurant_id), rc, rncui)
-
-				//Dump structure into json.
-				write_strdata_cmd.dump_writereq_into_json()
-
-				//Copy temporary json file into json outfile.
-				copy_to_outfile()
-			}
-
-		} else if ops == "WriteMulti" {
-
+		case "WriteMulti":
 			csv_filepath := ops_split[1]
-			filename = ops_split[2]
-
-			//Create uuid for temporary json file.
-			temp_uuid = uuid.NewV4().String()
+			jsonfilename := ops_split[2]
 
 			//Create a file for storing keys and rncui.
 			os.Create("key_rncui_data.txt")
 
+			zci = go_pmdb_app_request{
+				Operation:     ops,
+				Leader_uuid:   leader_uuid,
+				Outfile_uuid:  outf_uuid,
+				Json_filename: jsonfilename,
+				Cli_obj:       cli_obj,
+			}
+
 			//Perform write operation.
-			parse_file_and_update(cli_obj, csv_filepath)
+			tmoutfname := zci.write_multi(csv_filepath)
 
 			//Copy temporary json file into json outfile.
-			copy_to_outfile()
+			zci.copy_to_outfile(tmoutfname)
 
-		} else if ops == "ReadOne" {
-
+		case "ReadOne":
 			key := ops_split[1]
 			rncui := ops_split[2]
-			filename = ops_split[3]
+			jfilename := ops_split[3]
 
 			fmt.Println("key :", key)
 			fmt.Println("rucui:", rncui)
 
+			zci = go_pmdb_app_request{
+				Operation:     ops,
+				Leader_uuid:   leader_uuid,
+				Outfile_uuid:  outf_uuid,
+				Key:           key,
+				Rncui:         rncui,
+				Json_filename: jfilename,
+				Cli_obj:       cli_obj,
+			}
 			//Perform read operation.
-			get(cli_obj, key, rncui)
+			zci.get()
 
-		} else if ops == "ReadMulti" {
-
+		case "ReadMulti":
 			f, err := os.Open("key_rncui_data.txt")
-
-			filename = ops_split[1]
-
 			if err != nil {
 				log.Fatal(err)
 			}
 
 			defer f.Close()
 
+			jfilename := ops_split[1]
 			scanner := bufio.NewScanner(f)
 
 			for scanner.Scan() {
@@ -527,21 +559,30 @@ func main() {
 				fmt.Println("\nPerforming read for all key,values...key, rncui = ", rall_key, rall_rncui)
 
 				//Perform read operation for every key and rncui associated with it.
-				get(cli_obj, rall_key, rall_rncui)
+				zci = go_pmdb_app_request{
+					Operation:     ops,
+					Leader_uuid:   leader_uuid,
+					Outfile_uuid:  outf_uuid,
+					Key:           rall_key,
+					Rncui:         rall_rncui,
+					Json_filename: jfilename,
+					Cli_obj:       cli_obj,
+				}
+				//Perform read operation.
+				zci.get()
 			}
 
 			if err := scanner.Err(); err != nil {
 				log.Fatal(err)
 			}
-		} else if ops == "get_leader" {
-			leader_uuid = cli_obj.GetLeader()
+		case "get_leader":
 			fmt.Println("Leader uuid is: ", leader_uuid)
 
-			filename = ops_split[1]
+			jfilename := ops_split[1]
 			//Get timestamp.
 			timestamp := time.Now().Format("2006-01-02 15:04:05")
 
-			get_leader_uuid_struct := zomato_app_output{
+			get_leader_uuid_struct := zomato_app_info{
 				Raft_uuid:   raft_uuid_go,
 				Client_uuid: client_uuid_go,
 				Leader_uuid: leader_uuid,
@@ -550,10 +591,21 @@ func main() {
 			}
 
 			//Dump structure into json.
-			get_leader_uuid_struct.dump_into_json()
-		} else if ops == "exit" {
+			tempfname := get_leader_uuid_struct.dump_into_json(outf_uuid)
+
+			zci = go_pmdb_app_request{
+				Operation:     ops,
+				Leader_uuid:   leader_uuid,
+				Outfile_uuid:  outf_uuid,
+				Json_filename: jfilename,
+				Cli_obj:       cli_obj,
+			}
+			//Copy temporary json file into json outfile.
+			zci.copy_to_outfile(tempfname)
+
+		case "exit":
 			os.Exit(0)
-		} else {
+		case "default":
 			fmt.Println("Enter valid operation: (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader /exit)")
 		}
 	}
