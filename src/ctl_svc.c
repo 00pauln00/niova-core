@@ -951,8 +951,10 @@ out_close_dir:
 }
 
 static struct ctl_svc_node *
-ctl_svc_node_construct(const struct ctl_svc_node *in)
+ctl_svc_node_construct(const struct ctl_svc_node *in, void *arg)
 {
+    (void)arg;
+
     if (!in)
         return NULL;
 
@@ -977,8 +979,10 @@ ctl_svc_node_construct(const struct ctl_svc_node *in)
 }
 
 static int
-ctl_svc_node_destruct(struct ctl_svc_node *destroy)
+ctl_svc_node_destruct(struct ctl_svc_node *destroy, void *arg)
 {
+    (void)arg;
+
     if (!destroy)
         return -EINVAL;
 
@@ -1081,7 +1085,7 @@ ctl_svc_init(void)
      * dependencies to remain in the tree after creation.
      */
     REF_TREE_INIT_ALT_REF(&ctlSvcNodeTree, ctl_svc_node_construct,
-                          ctl_svc_node_destruct, 2);
+                          ctl_svc_node_destruct, 2, NULL);
 
     int rc = ctl_svc_init_scan_entries();
 
