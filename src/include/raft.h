@@ -111,12 +111,13 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
     uint32_t raerqm_this_idx_crc;
-    uint32_t raerqm_entries_sz;
     uint32_t raerqm_size_arr[RAFT_ENTRY_NUM_ENTRIES];
+    uint32_t raerqm_entries_sz;
+    uint32_t raerqm_num_entries;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint8_t  raerqm_entry_out_of_range;
-    uint8_t  raerqm__pad[1];
+    uint8_t  raerqm__pad[5];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
@@ -1003,7 +1004,8 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
                                       struct raft_entry *re,
                                       const raft_entry_idx_t re_idx,
                                       const uint64_t current_term,
-                                      const char *data, const size_t len);
+                                      const char *data,
+                                      uint32_t *entry_sizes);
 
 void
 raft_server_backend_use_posix(struct raft_instance *ri);
