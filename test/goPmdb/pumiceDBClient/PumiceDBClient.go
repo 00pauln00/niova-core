@@ -4,6 +4,7 @@ import (
 	"unsafe"
 	"strconv"
 	"gopmdblib/goPmdbCommon"
+	"github.com/google/uuid"
 )
 
 /*
@@ -82,7 +83,7 @@ func (pmdb_client *PmdbClientObj) PmdbClientRead(ed interface{},
 							key_len, reply_size)
 }
 
-func (pmdb_client *PmdbClientObj) PmdbGetLeader() string {
+func (pmdb_client *PmdbClientObj) PmdbGetLeader(leader_uuid *uuid.UUID) int {
 
 	var leader_info C.raft_client_leader_info_t
 	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
@@ -90,15 +91,19 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() string {
 	rc := C.PmdbGetLeaderInfo(Cpmdb, &leader_info)
 	if rc != 0 {
 		fmt.Println("Failed to get the leader uuid")
-		return ""
+		return -1
 	}
 
-	//Convert the uuid_t to string.
+	//Convert the C uuid_t to go string first.
 	uuid_string := make([]byte, C.UUID_STR_LEN)
 	c_uuid_string := (*C.char)(C.CBytes(uuid_string))
 	C.uuid_unparse(&leader_info.rcli_leader_uuid[0], c_uuid_string)
+	uuid_go_str := CToGoString(c_uuid_string)
 
-	return CToGoString(c_uuid_string)
+	//Convert go string to go uuid type.
+	leader_uuid_go := uuid.MustParse(uuid_go_str)
+	*leader_uuid = leader_uuid_go
+	return 0
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {

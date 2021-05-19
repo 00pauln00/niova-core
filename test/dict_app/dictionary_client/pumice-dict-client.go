@@ -8,6 +8,7 @@ import (
 	"gopmdblib/goPmdbClient"
 	"gopmdblib/goPmdbCommon"
 	"dictapplib/dict_libs"
+	"github.com/google/uuid"
 )
 
 /*
@@ -51,8 +52,14 @@ func pmdbDictClient() {
 
 			// If user asked for leader uuid
 			if ops == "get_leader" {
-				leader_uuid := client_obj.PmdbGetLeader()
-				fmt.Println("Leader uuid is ", leader_uuid)
+				var leader_uuid uuid.UUID
+				err := client_obj.PmdbGetLeader(&leader_uuid)
+				if err != 0 {
+					fmt.Println("Failed to get Leader UUID")
+					continue
+				}
+				leader_uuid_str := leader_uuid.String()
+				fmt.Println("Leader uuid is ", leader_uuid_str)
 			} else {
 				// If operation is read or write
 				rncui := input[1]
