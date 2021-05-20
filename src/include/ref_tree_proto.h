@@ -50,6 +50,12 @@
         int           (*destructor)(struct type *, void *);            \
     }
 
+#define REF_TREE_REF_INCREASE_ELEM_LOCKED(elm, field, cnt)      \
+    do {                                                        \
+        (elm)->field.rte_ref_cnt += cnt;                        \
+        NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0);             \
+    } while (0)
+
 #define REF_TREE_REF_GET_ELEM_LOCKED(elm, field)    \
     do {                                            \
         NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0); \
