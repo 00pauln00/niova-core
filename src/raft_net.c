@@ -2337,12 +2337,14 @@ raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws)
 void
 raft_net_instance_apply_callbacks(struct raft_instance *ri,
                                   raft_net_timer_cb_t timer_fd_cb,
+                                  raft_net_timer_cb_t co_wr_timer_fd_cb,
                                   raft_net_cb_t client_recv_cb,
                                   raft_net_cb_t server_recv_cb)
 {
     NIOVA_ASSERT(ri);
 
     ri->ri_timer_fd_cb = timer_fd_cb;
+    ri->ri_co_wr_timer_fd_cb = co_wr_timer_fd_cb;
     ri->ri_client_recv_cb = client_recv_cb;
     ri->ri_server_recv_cb = server_recv_cb;
 }

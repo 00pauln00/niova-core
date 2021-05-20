@@ -305,6 +305,7 @@ pmdb_obj_to_reply(const struct pmdb_object *obj, struct pmdb_msg *reply,
     //XXx  reply->pmdbrm_user_id should have already been set
 //    reply->pmdbrm_user_id = obj->pmdb_obj_rncui;
     reply->pmdbrm_op = pmdb_op_reply;
+    SIMPLE_LOG_MSG(LL_WARN, "The pmdbrm_write_seqno in reply is: %ld", obj->pmdb_obj_commit_seqno);
     reply->pmdbrm_write_seqno = obj->pmdb_obj_commit_seqno;
 
     // if either term value is -1 then write_pending is false;
@@ -410,6 +411,7 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
+    SIMPLE_LOG_MSG(LL_WARN, "Increment the pmdb_obj_commit_seqno: %ld", obj->pmdb_obj_commit_seqno);
     // Increment the commit sequence by 1.
     obj->pmdb_obj_commit_seqno++;
 
@@ -417,7 +419,7 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
     pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, ID_ANY_64bit);
 
-    PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
+    PMDB_OBJ_DEBUG(LL_WARN, obj, "");
 }
 
 /**
@@ -681,6 +683,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     const struct raft_net_client_user_id *rncui = &pmdb_req->pmdbrm_user_id;
 
+    PMDB_STR_DEBUG(LL_WARN, rncui, "check the rncui");
     struct pmdb_object obj = {0};
 
     int rc = pmdb_object_lookup(rncui, &obj, rncr->rncr_current_term);
@@ -698,6 +701,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
          * is not present since this raft instance did not accept the initial
          * write.
          */
+        SIMPLE_LOG_MSG(LL_WARN, "Create new object");
         pmdb_object_init(&obj, pmdb_get_current_version(),
                          &pmdb_req->pmdbrm_user_id);
     }

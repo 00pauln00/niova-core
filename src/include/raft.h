@@ -402,7 +402,7 @@ struct raft_instance_buffer
     bool     ribuf_free;
 };
 
-#define RAFT_INSTANCE_NUM_BUFS 2UL
+#define RAFT_INSTANCE_NUM_BUFS 12UL
 struct raft_instance_buf_pool
 {
     size_t                      ribufp_nbufs;
@@ -530,7 +530,7 @@ do {                                                                            
             break;                                                      \
         case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                  \
             LOG_MSG(log_level,                                          \
-                    "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
+                    "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u nen=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
                     (rm)->rrm_append_entries_request.raerqm_leader_term, \
                     (rm)->rrm_append_entries_request.raerqm_log_term,   \
                     (rm)->rrm_append_entries_request.raerqm_commit_index, \
@@ -538,6 +538,7 @@ do {                                                                            
                     (rm)->rrm_append_entries_request.raerqm_prev_log_term, \
                     (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
                     (rm)->rrm_append_entries_request.raerqm_entries_sz, \
+                    (rm)->rrm_append_entries_request.raerqm_num_entries, \
                     (rm)->rrm_append_entries_request.raerqm_heartbeat_msg, \
                     (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
                     (rm)->rrm_append_entries_request.raerqm_entry_out_of_range, \
