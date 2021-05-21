@@ -390,8 +390,10 @@ raft_client_instance_release(struct raft_client_instance *rci)
 }
 
 static struct raft_client_sub_app *
-raft_client_sub_app_construct(const struct raft_client_sub_app *in)
+raft_client_sub_app_construct(const struct raft_client_sub_app *in, void *arg)
 {
+    (void)arg;
+
     if (!in)
         return NULL;
 
@@ -419,8 +421,10 @@ raft_client_sub_app_construct(const struct raft_client_sub_app *in)
 }
 
 static int
-raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
+raft_client_sub_app_destruct(struct raft_client_sub_app *destroy, void *arg)
 {
+    (void)arg;
+
     if (!destroy)
         return -EINVAL;
 
@@ -2378,7 +2382,7 @@ raft_client_instance_init(struct raft_client_instance *rci,
                           raft_client_data_2_obj_id_t obj_id_cb)
 {
     REF_TREE_INIT(&rci->rci_sub_apps, raft_client_sub_app_construct,
-                  raft_client_sub_app_destruct);
+                  raft_client_sub_app_destruct, NULL);
 
     STAILQ_INIT(&rci->rci_sendq);
 

@@ -137,7 +137,6 @@ assign_release_nbits_test1(void)
         NIOVA_ASSERT(nconsective_bits_assign(&field, 3) ==
                      -ENOSPC);
     }
-
     field = 0x8888888888888888ULL; //10001000
     for (int i = 1; i < 65; i++)
     {
