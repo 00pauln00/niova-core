@@ -2,10 +2,10 @@ package main
 
 import (
 	"bufio"
+	"dictapplib/lib"
 	"flag"
 	"fmt"
 	"niova/go-pumicedb-lib/client"
-	"dictapplib/lib"
 	"os"
 	"strings"
 )
@@ -83,24 +83,17 @@ func pmdbDictClient() {
 					fmt.Println("Length of the structure: ", data_length)
 					/* Retry the read on failure */
 
-					var reply_size int64
 					//read operation
-					reply_buff := pmdb.Read(req_dict, rncui,
-						&reply_size)
+					result_dict := &DictAppLib.Dict_app{}
+					rc := pmdb.Read(req_dict, rncui, result_dict)
 
-					if reply_buff == nil {
+					if rc != 0 {
 						fmt.Println("Read request failed !!")
 					} else {
-						result_dict := &DictAppLib.Dict_app{}
-						pmdb.Decode(reply_buff, result_dict, reply_size)
-
 						fmt.Println("Result of the read request is:")
 						fmt.Println("Word: ", input_text)
 						fmt.Println("Frequecy of the word: ", result_dict.Dict_wcount)
 					}
-
-					// Application should free the this reply_buff which is allocate by pmdb lib
-					C.free(reply_buff)
 				}
 			}
 		}

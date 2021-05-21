@@ -1,11 +1,11 @@
 package main
 
 import (
+	"dictapplib/lib"
 	"flag"
 	"fmt"
 	"log"
 	"niova/go-pumicedb-lib/server"
-	"dictapplib/lib"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -56,8 +56,8 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 	split_and_write_to_word_map(apply_dict.Dict_text)
 
 	/*
-	     	Iterate over word_map and write work as key and frequency
-		    as value to pmdb.
+		     	Iterate over word_map and write work as key and frequency
+			    as value to pmdb.
 	*/
 	for word, count := range word_map {
 		go_key_len := len(word)
@@ -65,7 +65,7 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 
 		//Lookup the key first
 		prev_result := dso.pso.LookupKey(word, int64(go_key_len), prev_value,
-										colmfamily)
+			colmfamily)
 		fmt.Println("Previous value of the key: ", prev_result)
 
 		if prev_result != "" {
@@ -127,6 +127,7 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 	fmt.Println("Reply size is: ", reply_size)
 	return reply_size
 }
+
 func dictionaryServerNew() *DictionaryServer {
 	dso := &DictionaryServer{}
 

@@ -1,12 +1,12 @@
 package PumiceDBClient
 
 import (
+	"errors"
 	"fmt"
 	"niova/go-pumicedb-lib/common"
 	"strconv"
-	"unsafe"
 	"syscall"
-	"errors"
+	"unsafe"
 )
 
 /*
@@ -18,9 +18,9 @@ import "C"
 
 type PmdbClientObj struct {
 	initialized bool
-	pmdb     C.pmdb_t
-	raftUuid string
-	myUuid   string
+	pmdb        C.pmdb_t
+	raftUuid    string
+	myUuid      string
 	//Pmdb unsafe.Pointer
 }
 
@@ -70,21 +70,31 @@ func (obj *PmdbClientObj) Write(ed interface{},
 }
 
 //Read the value of key on the client
-func (obj *PmdbClientObj) Read(ed interface{},
+func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,
-	reply_size *int64) unsafe.Pointer {
+	output_ed interface{}) int {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
 	var key_len int64
+	var reply_size int64
+
 	//Encode the input buffer passed by client.
-	ed_key := PumiceDBCommon.Encode(ed, &key_len)
+	ed_key := PumiceDBCommon.Encode(input_ed, &key_len)
 
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	return obj.readKV(rncui, encoded_key,
-		key_len, reply_size)
+	reply_buff := obj.readKV(rncui, encoded_key,
+		key_len, output_ed, &reply_size)
+	fmt.Println("Reply size is: ", reply_size)
+
+	if reply_buff != nil {
+		PumiceDBCommon.Decode(unsafe.Pointer(reply_buff), output_ed,
+			reply_size)
+		return 0
+	}
+	return -1
 }
 
 func (obj *PmdbClientObj) GetLeader() string {
@@ -116,9 +126,9 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	return int(rc)
 }
 
-func (obj * PmdbClientObj) readKV(rncui string, key *C.char,
+func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	key_len int64,
-	reply_size *int64) unsafe.Pointer {
+	output_ed interface{}, reply_size *int64) unsafe.Pointer {
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -138,8 +148,6 @@ func (obj * PmdbClientObj) readKV(rncui string, key *C.char,
 		&actual_value_size)
 
 	*reply_size = int64(actual_value_size)
-
-	fmt.Println("Reply size is: ", *reply_size)
 
 	return reply_buff
 }
