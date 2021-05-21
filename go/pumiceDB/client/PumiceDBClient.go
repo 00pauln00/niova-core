@@ -87,7 +87,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	reply_buff := obj.readKV(rncui, encoded_key,
-		key_len, output_ed, &reply_size)
+		key_len, &reply_size)
 	fmt.Println("Reply size is: ", reply_size)
 
 	if reply_buff != nil {
@@ -97,6 +97,26 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	}
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
+	return rc
+}
+
+//Read the value of key on the client the application passed buffer
+func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
+	rncui string,
+	reply_buff unsafe.Pointer,
+	buff_size int64) int {
+
+	var key_len int64
+	//Encode the input buffer passed by client.
+	ed_key := PumiceDBCommon.Encode(input_ed, &key_len)
+
+	//Typecast the encoded key to char*
+	encoded_key := (*C.char)(ed_key)
+
+	//Read the value of the key in application buffer
+	rc := obj.readKVZeroCopy(rncui, encoded_key,
+		key_len, reply_buff, buff_size)
+
 	return rc
 }
 
@@ -131,7 +151,7 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 
 func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	key_len int64,
-	output_ed interface{}, reply_size *int64) unsafe.Pointer {
+	reply_size *int64) unsafe.Pointer {
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -153,6 +173,39 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	*reply_size = int64(actual_value_size)
 
 	return reply_buff
+}
+
+/*
+ * Note the data is not decoded in this method. Application should
+ * take care of decoding the buffer data.
+ */
+func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
+	key_len int64,
+	reply_buff unsafe.Pointer,
+	reply_buff_size int64) int {
+
+	crncui_str := GoToCString(rncui)
+	defer FreeCMem(crncui_str)
+
+	c_key_len := GoToCSize_t(key_len)
+
+	var rncui_id C.struct_raft_net_client_user_id
+
+	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
+	var obj_id *C.pmdb_obj_id_t
+
+	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+
+	var stat C.pmdb_obj_stat_t
+	var pmdb_req_opt C.pmdb_request_opts_t
+
+	C.pmdb_request_options_init(&pmdb_req_opt, 1, 0, &stat, nil, nil,
+		reply_buff, C.size_t(reply_buff_size), 0)
+
+	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
+		&pmdb_req_opt)
+
+	return int(rc)
 }
 
 // Return the decode / encode size of the provided object
