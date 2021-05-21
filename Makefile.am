@@ -48,7 +48,7 @@ CORE_HDRS = src/include/atomic.h \
 	src/include/util.h \
         src/include/util_thread.h \
         src/include/watchdog.h \
-	src/include/tree.h
+	src/contrib/include/tree.h
 
 CORE_SOURCES = $(CORE_HDRS) \
 	src/alloc.c \
