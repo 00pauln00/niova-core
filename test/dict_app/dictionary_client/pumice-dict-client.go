@@ -53,9 +53,10 @@ func pmdbDictClient() {
 			// If user asked for leader uuid
 			if ops == "get_leader" {
 				var leader_uuid uuid.UUID
-				err := client_obj.PmdbGetLeader(&leader_uuid)
-				if err != 0 {
-					fmt.Println("Failed to get Leader UUID")
+				var err error
+				leader_uuid, err = client_obj.PmdbGetLeader()
+				if err != nil {
+					fmt.Errorf("Failed to get Leader UUID")
 					continue
 				}
 				leader_uuid_str := leader_uuid.String()
@@ -78,7 +79,11 @@ func pmdbDictClient() {
 
 				if ops == "write" {
 					//write operation
-					client_obj.PmdbClientWrite(req_dict, rncui)
+					rc := client_obj.PmdbClientWrite(req_dict, rncui)
+					if rc != 0 {
+						fmt.Errorf("Failed to write the key-value: rc - ", rc)
+						continue
+					}
 				} else {
 					/*
 				 	 * Get the size of the structure
