@@ -79,6 +79,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	var key_len int64
 	var reply_size int64
 
+	rc := -1
 	//Encode the input buffer passed by client.
 	ed_key := PumiceDBCommon.Encode(input_ed, &key_len)
 
@@ -92,9 +93,11 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	if reply_buff != nil {
 		PumiceDBCommon.Decode(unsafe.Pointer(reply_buff), output_ed,
 			reply_size)
-		return 0
+		rc = 0
 	}
-	return -1
+	//Free the buffer allocated by C library.
+	C.free(reply_buff)
+	return rc
 }
 
 func (obj *PmdbClientObj) GetLeader() string {
