@@ -1,12 +1,12 @@
 package PumiceDBServer
 
 import (
+	"errors"
 	"fmt"
+	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"unsafe"
-	"errors"
-	"niova/go-pumicedb-lib/common"
 )
 
 /*
@@ -92,7 +92,7 @@ func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 
 	//Calling the golang Application's Apply function.
 	gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
-					pmdb_handle)
+		pmdb_handle)
 }
 
 //export goRead
@@ -109,7 +109,7 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer
 
 	//Calling the golang Application's Read function.
 	return gcb.PmdbAPI.Read(unsafe.Pointer(app_id), request_buf, request_bufsz_go,
-							reply_buf, reply_bufsz_go)
+		reply_buf, reply_bufsz_go)
 }
 
 /**
@@ -165,7 +165,7 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 
 	// Starting the pmdb server.
 	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true,
-					opa_ptr)
+		opa_ptr)
 	if rc != 0 {
 		return fmt.Errorf("PmdbExec() returned %d", rc)
 	}
@@ -275,7 +275,7 @@ func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 	key_len int64, value string, value_len int64, gocolfamily string) {
 
 	PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
-				gocolfamily)
+		gocolfamily)
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
@@ -303,7 +303,11 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 func PmdbCopyDataToBuffer(ed interface{}, buffer unsafe.Pointer) int64 {
 	var key_len int64
 	//Encode the structure into void pointer.
-	encoded_key := PumiceDBCommon.Encode(ed, &key_len)
+	encoded_key, err := PumiceDBCommon.Encode(ed, &key_len)
+	if err != nil {
+		fmt.Println("Failed to encode data during copy data: ", err)
+		return 0
+	}
 
 	//Copy the encoded structed into buffer
 	C.memcpy(buffer, encoded_key, C.size_t(key_len))

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"io"
-	"log"
 	"unsafe"
 )
 
@@ -14,14 +13,14 @@ import (
 */
 import "C"
 
-func Encode(ed interface{}, data_len *int64) unsafe.Pointer {
+func Encode(ed interface{}, data_len *int64) (unsafe.Pointer, error) {
 	//Byte array
 	buffer := bytes.Buffer{}
 
 	encode := gob.NewEncoder(&buffer)
 	err := encode.Encode(ed)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	struct_data := buffer.Bytes()
@@ -31,7 +30,7 @@ func Encode(ed interface{}, data_len *int64) unsafe.Pointer {
 	//enc_data := (*C.char)(unsafe.Pointer(&struct_data[0]))
 	enc_data := unsafe.Pointer(&struct_data[0])
 
-	return enc_data
+	return enc_data, nil
 }
 
 /*
@@ -45,7 +44,7 @@ func GetStructSize(ed interface{}) int64 {
 }
 
 func Decode(input unsafe.Pointer, output interface{},
-	data_len int64) {
+	data_len int64) error {
 
 	bytes_data := C.GoBytes(unsafe.Pointer(input), C.int(data_len))
 
@@ -56,12 +55,14 @@ func Decode(input unsafe.Pointer, output interface{},
 		if err := dec.Decode(output); err == io.EOF {
 			break
 		} else if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
+
+	return nil
 }
 
-func GoPmdbDecoder(ed interface{}, buffer_ptr unsafe.Pointer, buf_size int64) {
+func GoPmdbDecoder(ed interface{}, buffer_ptr unsafe.Pointer, buf_size int64) error {
 	data := C.GoBytes(unsafe.Pointer(buffer_ptr), C.int(buf_size))
 	byte_arr := bytes.NewBuffer(data)
 
@@ -70,7 +71,9 @@ func GoPmdbDecoder(ed interface{}, buffer_ptr unsafe.Pointer, buf_size int64) {
 		if err := decode.Decode(ed); err == io.EOF {
 			break
 		} else if err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
+
+	return nil
 }

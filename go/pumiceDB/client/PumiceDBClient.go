@@ -56,11 +56,15 @@ func CToGoString(cstring *C.char) string {
 
 //Write KV from client.
 func (obj *PmdbClientObj) Write(ed interface{},
-	rncui string) int {
+	rncui string) error {
 
 	var key_len int64
 	//Encode the structure into void pointer.
-	ed_key := PumiceDBCommon.Encode(ed, &key_len)
+	ed_key, err := PumiceDBCommon.Encode(ed, &key_len)
+	if err != nil {
+		fmt.Print("Failed to encode the application data: ", err)
+		return err
+	}
 
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
@@ -72,52 +76,60 @@ func (obj *PmdbClientObj) Write(ed interface{},
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,
-	output_ed interface{}) int {
+	output_ed interface{}) error {
 	//Byte array
 	fmt.Println("Client: Read Value for the given Key")
 
 	var key_len int64
 	var reply_size int64
 
-	rc := -1
 	//Encode the input buffer passed by client.
-	ed_key := PumiceDBCommon.Encode(input_ed, &key_len)
+	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
+	if err != nil {
+		return err
+	}
 
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	reply_buff := obj.readKV(rncui, encoded_key,
+	reply_buff, rd_err := obj.readKV(rncui, encoded_key,
 		key_len, &reply_size)
+
+	if rd_err != nil {
+		return rd_err
+	}
+
 	fmt.Println("Reply size is: ", reply_size)
 
 	if reply_buff != nil {
-		PumiceDBCommon.Decode(unsafe.Pointer(reply_buff), output_ed,
+		err = PumiceDBCommon.Decode(unsafe.Pointer(reply_buff), output_ed,
 			reply_size)
-		rc = 0
 	}
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
-	return rc
+	return err
 }
 
 //Read the value of key on the client the application passed buffer
 func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 	rncui string,
 	reply_buff unsafe.Pointer,
-	buff_size int64) int {
+	buff_size int64) error {
 
 	var key_len int64
 	//Encode the input buffer passed by client.
-	ed_key := PumiceDBCommon.Encode(input_ed, &key_len)
+	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
+	if err != nil {
+		return err
+	}
 
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
 	//Read the value of the key in application buffer
-	rc := obj.readKVZeroCopy(rncui, encoded_key,
+	return obj.readKVZeroCopy(rncui, encoded_key,
 		key_len, reply_buff, buff_size)
 
-	return rc
 }
 
 func (obj *PmdbClientObj) GetLeader() string {
@@ -128,7 +140,7 @@ func (obj *PmdbClientObj) GetLeader() string {
 }
 
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
-	key_len int64) int {
+	key_len int64) error {
 
 	var obj_stat C.pmdb_obj_stat_t
 
@@ -146,12 +158,17 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 
 	rc := C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
 
-	return int(rc)
+	if rc != 0 {
+		var errno syscall.Errno
+		return fmt.Errorf("PmdbObjPut(): %d", errno)
+	}
+
+	return nil
 }
 
 func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	key_len int64,
-	reply_size *int64) unsafe.Pointer {
+	reply_size *int64) (unsafe.Pointer, error) {
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -170,9 +187,15 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	reply_buff := C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
 		&actual_value_size)
 
+	if reply_buff == nil {
+		*reply_size = 0
+		err := errors.New("PmdbObjGet() failed")
+		return nil, err
+	}
+
 	*reply_size = int64(actual_value_size)
 
-	return reply_buff
+	return reply_buff, nil
 }
 
 /*
@@ -182,7 +205,7 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	key_len int64,
 	reply_buff unsafe.Pointer,
-	reply_buff_size int64) int {
+	reply_buff_size int64) error {
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -205,7 +228,11 @@ func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
 		&pmdb_req_opt)
 
-	return int(rc)
+	if rc != 0 {
+		return fmt.Errorf("PmdbObjGetX(): return code: %d", rc)
+	}
+
+	return nil
 }
 
 // Return the decode / encode size of the provided object

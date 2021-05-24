@@ -72,9 +72,14 @@ func pmdbDictClient() {
 				fmt.Println("Operation: ", ops)
 				fmt.Println("Input string: ", req_dict.Dict_text)
 
+				var err error
 				if ops == "write" {
 					//write operation
-					pmdb.Write(req_dict, rncui)
+					err = pmdb.Write(req_dict, rncui)
+					if err != nil {
+						fmt.Println("Write key-value failed : ", err)
+						continue
+					}
 				} else {
 					/*
 					 * Get the size of the structure
@@ -85,10 +90,10 @@ func pmdbDictClient() {
 
 					//read operation
 					result_dict := &DictAppLib.Dict_app{}
-					rc := pmdb.Read(req_dict, rncui, result_dict)
+					err = pmdb.Read(req_dict, rncui, result_dict)
 
-					if rc != 0 {
-						fmt.Println("Read request failed !!")
+					if err != nil {
+						fmt.Println("Read request failed !!: ", err)
 					} else {
 						fmt.Println("Result of the read request is:")
 						fmt.Println("Word: ", input_text)
