@@ -24,6 +24,11 @@ type PmdbClientObj struct {
 	//Pmdb unsafe.Pointer
 }
 
+type RDZeroCopyObj struct {
+	buffer		unsafe.Pointer
+	buffer_len	int64
+}
+
 /* Typecast Go string to C String */
 func GoToCString(gstring string) *C.char {
 	return C.CString(gstring)
@@ -113,8 +118,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 //Read the value of key on the client the application passed buffer
 func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 	rncui string,
-	reply_buff unsafe.Pointer,
-	buff_size int64) error {
+	zeroCopyObj *RDZeroCopyObj) error {
 
 	var key_len int64
 	//Encode the input buffer passed by client.
@@ -128,7 +132,7 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 
 	//Read the value of the key in application buffer
 	return obj.readKVZeroCopy(rncui, encoded_key,
-		key_len, reply_buff, buff_size)
+		key_len, zeroCopyObj)
 
 }
 
@@ -198,14 +202,18 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	return reply_buff, nil
 }
 
+//Relase the C memory allocated for reading the value
+func (obj *RDZeroCopyObj) CBufferRelease() {
+	C.free(obj.buffer)
+}
+
 /*
  * Note the data is not decoded in this method. Application should
  * take care of decoding the buffer data.
  */
 func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	key_len int64,
-	reply_buff unsafe.Pointer,
-	reply_buff_size int64) error {
+	zeroCopyObj *RDZeroCopyObj) error {
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -223,7 +231,7 @@ func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	var pmdb_req_opt C.pmdb_request_opts_t
 
 	C.pmdb_request_options_init(&pmdb_req_opt, 1, 0, &stat, nil, nil,
-		reply_buff, C.size_t(reply_buff_size), 0)
+		zeroCopyObj.buffer, C.size_t(zeroCopyObj.buffer_len), 0)
 
 	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
 		&pmdb_req_opt)
