@@ -83,6 +83,98 @@ type ReadMulti struct {
 }
 type GetLeader struct {
 	Wr_req_info *wr_req_info
+	Leadt       *zomato_app_info
+}
+
+func (prep_wmstruct *WriteMulti) Get_struct_info() []*zomatoapplib.Zomato_Data {
+
+	var multireq_dt []*zomatoapplib.Zomato_Data
+	//Open the file.
+	csvfile, err := os.Open(prep_wmstruct.Csv_fpath)
+	if err != nil {
+		log.Fatalln("Couldn't open the csv file", err)
+	}
+	//Parse the file, Skip first row (line)
+	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
+	if err != nil {
+		log.Fatalln("error")
+	}
+	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
+	if err != nil {
+		log.Fatalln("error")
+	}
+	//Read remaining rows.
+	r := csv.NewReader(csvfile)
+	//Iterate through the records.
+	for {
+		//Read each record from csv.
+		record, err := r.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+		//Typecast Restaurant_id to int64.
+		restaurant_id_struct, err := strconv.ParseInt(record[0], 10, 64)
+		if err != nil {
+			fmt.Println("Error occured in typecasting Restaurant_id to int64")
+		}
+		//Typecast Votes to int64.
+		votes_struct, err := strconv.ParseInt(record[5], 10, 64)
+		if err != nil {
+			fmt.Println("Error occured in typecasting Votes to int64")
+		}
+
+		//Fill the Zomato_App structure.
+		struct_data := zomatoapplib.Zomato_Data{
+			Restaurant_id:   restaurant_id_struct,
+			Restaurant_name: record[1],
+			City:            record[2],
+			Cuisines:        record[3],
+			Ratings_text:    record[4],
+			Votes:           votes_struct,
+		}
+		multireq_dt = append(multireq_dt, &struct_data)
+	}
+	return multireq_dt
+}
+
+func (prep_rstrct *ReadOne) Display_readop_and_fill_struct(read_data *zomatoapplib.Zomato_Data) {
+	rest_id := strconv.Itoa(int(read_data.Restaurant_id))
+	rest_votes := strconv.Itoa(int(read_data.Votes))
+	fmt.Println("\nResult of the read request is: \nRestaurant id (key) = " + rest_id + "\nRestaurant name = " + read_data.Restaurant_name + "\nCity = " + read_data.City + "\nCuisines = " + read_data.Cuisines + "\nRatings_text = " + read_data.Ratings_text + "\nVotes = " + rest_votes)
+
+	read_req_mp := map[string]string{
+		"Restaurant_id":   rest_id,
+		"Restaurant_name": read_data.Restaurant_name,
+		"city":            read_data.City,
+		"cuisines":        read_data.Cuisines,
+		"ratings_text":    read_data.Ratings_text,
+		"votes":           rest_votes,
+	}
+	//Fill write request data into a map.
+	fill_data_into_map(read_req_mp, prep_rstrct.Wr_req_info.Rncui)
+	strdata := &zomato_app_info{Status: 0}
+	strdata.Fill_rstruct(prep_rstrct)
+}
+func (prep_rmstruct *ReadMulti) Display_readmulop_and_fill_struct(strdata *zomato_app_info, read_data *zomatoapplib.Zomato_Data, i int) {
+	rest_id := strconv.Itoa(int(read_data.Restaurant_id))
+	rest_votes := strconv.Itoa(int(read_data.Votes))
+	fmt.Println("\nResult of the read request is: \nRestaurant id (key) = " + rest_id + "\nRestaurant name = " + read_data.Restaurant_name + "\nCity = " + read_data.City + "\nCuisines = " + read_data.Cuisines + "\nRatings_text = " + read_data.Ratings_text + "\nVotes = " + rest_votes)
+
+	read_req_mp := map[string]string{
+		"Restaurant_id":   rest_id,
+		"Restaurant_name": read_data.Restaurant_name,
+		"city":            read_data.City,
+		"cuisines":        read_data.Cuisines,
+		"ratings_text":    read_data.Ratings_text,
+		"votes":           rest_votes,
+	}
+	//Fill write request data into a map.
+	fill_data_into_map(read_req_mp, prep_rmstruct.Rm_rncui[i])
+	strdata.Status = 0
+	strdata.Fill_rmstruct(prep_rmstruct)
 }
 
 func (struct_zinfo *zomato_app_info) Fill_struct(wone *WriteOne) {
@@ -193,14 +285,16 @@ func (prep_strct *WriteOne) Prepare() error {
 func (exec_strct *WriteOne) Exec() error {
 
 	var error_msg error
+	var write_strdata_cmd zomato_app_info
 	//Perform write operation.
-	rc := exec_strct.Wr_req_info.Cli_obj.Write(exec_strct.Wr_req_info.Zomato_data, exec_strct.Args[1])
-	write_strdata_cmd := &zomato_app_info{Status: rc}
-	if rc != 0 {
-		fmt.Println("Pmdb Write failed.")
+	err := exec_strct.Wr_req_info.Cli_obj.Write(exec_strct.Wr_req_info.Zomato_data, exec_strct.Args[1])
+	if err != nil {
+		fmt.Println("Write key-value failed : ", err)
+		write_strdata_cmd.Status = -1
 		error_msg = errors.New("Exec method for WriteOne Operation failed.")
 	} else {
 		fmt.Println("Pmdb Write successful!")
+		write_strdata_cmd.Status = 0
 		error_msg = nil
 	}
 	write_strdata_cmd.Fill_struct(exec_strct)
@@ -239,45 +333,18 @@ func (prep_rstrct *ReadOne) Prepare() error {
 
 func (prep_rstrct *ReadOne) Exec() error {
 
-	var err error
-	var reply_len int64
+	var roerr error
 	//Perform read operation.
-	reply_buff := prep_rstrct.Wr_req_info.Cli_obj.Read(prep_rstrct.Wr_req_info.Zomato_data, prep_rstrct.Wr_req_info.Rncui, &reply_len)
-	if reply_buff == nil {
-		fmt.Println("Read request failed !!")
+	op_struct := &zomatoapplib.Zomato_Data{}
+	err := prep_rstrct.Wr_req_info.Cli_obj.Read(prep_rstrct.Wr_req_info.Zomato_data, prep_rstrct.Wr_req_info.Rncui, op_struct)
+	if err != nil {
+		fmt.Println("Read request failed !!", err)
 		strdata := &zomato_app_info{Status: -1}
 		strdata.Fill_rstruct(prep_rstrct)
-		err = errors.New("Exec method for ReadOne Operation failed")
-	} else {
-		read_data := &zomatoapplib.Zomato_Data{}
-		prep_rstrct.Wr_req_info.Cli_obj.Decode(reply_buff, read_data, reply_len)
-
-		fmt.Println("\nResult of the read request is:")
-		fmt.Println("Restaurant id (key) = ", read_data.Restaurant_id)
-		fmt.Println("Restaurant name = ", read_data.Restaurant_name)
-		fmt.Println("City = ", read_data.City)
-		fmt.Println("Cuisines = ", read_data.Cuisines)
-		fmt.Println("Ratings_text = ", read_data.Ratings_text)
-		fmt.Println("Votes = ", read_data.Votes)
-
-		rest_id := strconv.Itoa(int(read_data.Restaurant_id))
-		rest_votes := strconv.Itoa(int(read_data.Votes))
-		read_req_mp := map[string]string{
-			"Restaurant_id":   rest_id,
-			"Restaurant_name": read_data.Restaurant_name,
-			"city":            read_data.City,
-			"cuisines":        read_data.Cuisines,
-			"ratings_text":    read_data.Ratings_text,
-			"votes":           rest_votes,
-		}
-		//Fill write request data into a map.
-		fill_data_into_map(read_req_mp, prep_rstrct.Wr_req_info.Rncui)
-		strdata := &zomato_app_info{Status: 0}
-		strdata.Fill_rstruct(prep_rstrct)
-		err = nil
+		roerr = errors.New("Exec method for ReadOne Operation failed")
 	}
-	C.free(reply_buff)
-	return err
+	prep_rstrct.Display_readop_and_fill_struct(op_struct)
+	return roerr
 }
 
 func (prep_rstrct *ReadOne) Complete() error {
@@ -294,59 +361,9 @@ func (prep_rstrct *ReadOne) Complete() error {
 func (prep_wmstruct *WriteMulti) Prepare() error {
 
 	var wmperr error
-	var multireq_dt []*zomatoapplib.Zomato_Data
-	//Open the file.
-	csvfile, err := os.Open(prep_wmstruct.Csv_fpath)
-	if err != nil {
-		log.Fatalln("Couldn't open the csv file", err)
-	}
-	//Parse the file, Skip first row (line)
-	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
-	if err != nil {
-		log.Fatalln("error")
-	}
-	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
-	if err != nil {
-		log.Fatalln("error")
-	}
-	//Read remaining rows.
-	r := csv.NewReader(csvfile)
-	//Iterate through the records.
-	for {
-		//Read each record from csv.
-		record, err := r.Read()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		//Typecast Restaurant_id to int64.
-		restaurant_id_struct, err := strconv.ParseInt(record[0], 10, 64)
-		if err != nil {
-			fmt.Println("Error occured in typecasting Restaurant_id to int64")
-		}
-
-		//Typecast Votes to int64.
-		votes_struct, err := strconv.ParseInt(record[5], 10, 64)
-		if err != nil {
-			fmt.Println("Error occured in typecasting Votes to int64")
-		}
-
-		//Fill the Zomato_App structure.
-		struct_data := zomatoapplib.Zomato_Data{
-			Restaurant_id:   restaurant_id_struct,
-			Restaurant_name: record[1],
-			City:            record[2],
-			Cuisines:        record[3],
-			Ratings_text:    record[4],
-			Votes:           votes_struct,
-		}
-		//fmt.Println("Printing structure:", struct_data)
-		multireq_dt = append(multireq_dt, &struct_data)
-		prep_wmstruct.Multi_reqdata = multireq_dt
-	}
+	//Get array of zomato_data structure.
+	mreqdata := prep_wmstruct.Get_struct_info()
+	prep_wmstruct.Multi_reqdata = mreqdata
 	if prep_wmstruct.Multi_reqdata == nil {
 		wmperr = errors.New("Prepare method for WriteMulti Operation failed")
 	} else {
@@ -381,18 +398,17 @@ func (prep_wmstruct *WriteMulti) Exec() error {
 		prep_wmstruct.Wr_req_info.Key = rest_id_str
 		prep_wmstruct.Wr_req_info.Rncui = rncui
 
-		rc := prep_wmstruct.Wr_req_info.Cli_obj.Write(prep_wmstruct.Multi_reqdata[i], rncui)
-		if rc != 0 {
-			fmt.Println("Pmdb Write failed.")
-			write_strdata = &zomato_app_info{Status: rc}
-			write_strdata.Fill_wmstruct(prep_wmstruct)
+		err := prep_wmstruct.Wr_req_info.Cli_obj.Write(prep_wmstruct.Multi_reqdata[i], rncui)
+		if err != nil {
+			fmt.Println("Pmdb Write failed.", err)
+			write_strdata.Status = -1
 			excerr = errors.New("Exec method for WriteMulti Operation failed")
 		} else {
 			fmt.Println("Pmdb Write successful!")
-			write_strdata = &zomato_app_info{Status: rc}
-			write_strdata.Fill_wmstruct(prep_wmstruct)
+			write_strdata.Status = 0
 			excerr = nil
 		}
+		write_strdata.Fill_wmstruct(prep_wmstruct)
 	}
 	//Dump structure into json.
 	temp_outfname := write_strdata.dump_into_json(prep_wmstruct.Wr_req_info.Outfile_uuid)
@@ -447,43 +463,21 @@ func (prep_rmstruct *ReadMulti) Exec() error {
 	var strdata = &zomato_app_info{}
 	if len(prep_rmstruct.Rmdata) == len(prep_rmstruct.Rm_rncui) {
 		for i := range prep_rmstruct.Rmdata {
-			var reply_len int64
 			//Perform read operation.
-			reply_buff := prep_rmstruct.Wr_req_info.Cli_obj.Read(prep_rmstruct.Rmdata[i], prep_rmstruct.Rm_rncui[i], &reply_len)
-			if reply_buff == nil {
+			rmop_struct := &zomatoapplib.Zomato_Data{}
+			err := prep_rmstruct.Wr_req_info.Cli_obj.Read(prep_rmstruct.Rmdata[i], prep_rmstruct.Rm_rncui[i], rmop_struct)
+			if err != nil {
 				strdata = &zomato_app_info{Status: -1}
 				strdata.Fill_rmstruct(prep_rmstruct)
 				rmexcerr = errors.New("Exec method for ReadOne Operation failed")
 			} else {
-				read_data := &zomatoapplib.Zomato_Data{}
-				prep_rmstruct.Wr_req_info.Cli_obj.Decode(reply_buff, read_data, reply_len)
-				fmt.Println("\nResult of the read request is:")
-				fmt.Println("Restaurant id (key) = ", read_data.Restaurant_id)
-				fmt.Println("Restaurant name = ", read_data.Restaurant_name)
-				fmt.Println("City = ", read_data.City)
-				fmt.Println("Cuisines = ", read_data.Cuisines)
-				fmt.Println("Ratings_text = ", read_data.Ratings_text)
-				fmt.Println("Votes = ", read_data.Votes)
-				rest_id := strconv.Itoa(int(read_data.Restaurant_id))
-				rest_votes := strconv.Itoa(int(read_data.Votes))
-				read_req_mp := map[string]string{
-					"Restaurant_id":   rest_id,
-					"Restaurant_name": read_data.Restaurant_name,
-					"city":            read_data.City,
-					"cuisines":        read_data.Cuisines,
-					"ratings_text":    read_data.Ratings_text,
-					"votes":           rest_votes,
-				}
-				//Fill write request data into a map.
-				fill_data_into_map(read_req_mp, prep_rmstruct.Rm_rncui[i])
-				strdata = &zomato_app_info{Status: 0}
-				strdata.Fill_rmstruct(prep_rmstruct)
+				prep_rmstruct.Display_readmulop_and_fill_struct(strdata, rmop_struct, i)
 			}
-			//Dump structure into json.
-			temp_outfname := strdata.dump_into_json(prep_rmstruct.Wr_req_info.Outfile_uuid)
-			prep_rmstruct.Wr_req_info.Outfilename = temp_outfname
 		}
 	}
+	//Dump structure into json.
+	temp_outfname := strdata.dump_into_json(prep_rmstruct.Wr_req_info.Outfile_uuid)
+	prep_rmstruct.Wr_req_info.Outfilename = temp_outfname
 	return rmexcerr
 }
 func (prep_rmstruct *ReadMulti) Complete() error {
@@ -496,7 +490,8 @@ func (prep_rmstruct *ReadMulti) Complete() error {
 	return cerr
 }
 
-func (get_leader *GetLeader) Get_leader() error {
+func (get_leader *GetLeader) Prepare() error {
+
 	var gleaerr error
 	//Get timestamp.
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
@@ -508,17 +503,35 @@ func (get_leader *GetLeader) Get_leader() error {
 		Operation:   get_leader.Wr_req_info.Operation,
 		Timestamp:   timestamp,
 	}
-
-	//Dump structure into json.
-	tempfname := zai_leader.dump_into_json(get_leader.Wr_req_info.Outfile_uuid)
-	copy_to_outfile(tempfname, get_leader.Wr_req_info.Json_fname)
-	if zai_leader.Leader_uuid == "" {
-		gleaerr = errors.New("GetLeader method failed")
+	get_leader.Leadt = &zai_leader
+	if get_leader.Leadt.Leader_uuid == "" {
+		gleaerr = errors.New("Prepare method for get leader operation failed")
 	} else {
 		gleaerr = nil
-		fmt.Println("Leader uuid is:", zai_leader.Leader_uuid)
+		fmt.Println("Leader uuid is:", get_leader.Leadt.Leader_uuid)
 	}
+
 	return gleaerr
+}
+
+func (get_leader *GetLeader) Exec() error {
+
+	var glexcerr error
+	//Dump structure into json.
+	tempfname := get_leader.Leadt.dump_into_json(get_leader.Wr_req_info.Outfile_uuid)
+	get_leader.Wr_req_info.Outfilename = tempfname
+	if get_leader.Wr_req_info.Outfilename == "" {
+		glexcerr = errors.New("Exec method for get leader operation failed")
+	} else {
+		glexcerr = nil
+	}
+	return glexcerr
+}
+
+func (get_leader *GetLeader) Complete() error {
+
+	err := copy_to_outfile(get_leader.Wr_req_info.Outfilename, get_leader.Wr_req_info.Json_fname)
+	return err
 
 }
 
@@ -628,18 +641,6 @@ func main() {
 					Cli_obj:      cli_obj,
 				},
 			}
-			pr_err := zci.Prepare()
-			if pr_err != nil {
-				log.Fatal(pr_err)
-			}
-			err := zci.Exec()
-			if err != nil {
-				log.Fatal(err)
-			}
-			comperr := zci.Complete()
-			if comperr != nil {
-				log.Fatal(comperr)
-			}
 		case "ReadOne":
 			zci = &ReadOne{
 				Wr_req_info: &wr_req_info{
@@ -652,18 +653,6 @@ func main() {
 					Cli_obj:      cli_obj,
 				},
 			}
-			err := zci.Prepare()
-			if err != nil {
-				log.Fatal(err)
-			}
-			excerr := zci.Exec()
-			if excerr != nil {
-				log.Fatal(err)
-			}
-			comperr := zci.Complete()
-			if comperr != nil {
-				log.Fatal(err)
-			}
 		case "WriteMulti":
 			zci = &WriteMulti{
 				Csv_fpath: ops_split[1],
@@ -675,18 +664,6 @@ func main() {
 					Cli_obj:      cli_obj,
 				},
 			}
-			wmperr := zci.Prepare()
-			if wmperr != nil {
-				log.Fatal(wmperr)
-			}
-			excerr := zci.Exec()
-			if excerr != nil {
-				log.Fatal(excerr)
-			}
-			comperr := zci.Complete()
-			if excerr != nil {
-				log.Fatal(comperr)
-			}
 		case "ReadMulti":
 			zci = &ReadMulti{
 				Wr_req_info: &wr_req_info{
@@ -697,20 +674,8 @@ func main() {
 					Cli_obj:      cli_obj,
 				},
 			}
-			prmerr := zci.Prepare()
-			if prmerr != nil {
-				log.Fatal(prmerr)
-			}
-			rmerr := zci.Exec()
-			if rmerr != nil {
-				log.Fatal(rmerr)
-			}
-			cerr := zci.Complete()
-			if cerr != nil {
-				log.Fatal(cerr)
-			}
 		case "get_leader":
-			Lea_dt := &GetLeader{
+			zci = &GetLeader{
 				Wr_req_info: &wr_req_info{
 					Operation:    ops,
 					Json_fname:   ops_split[1],
@@ -718,14 +683,24 @@ func main() {
 					Cli_obj:      cli_obj,
 				},
 			}
-			gleaerr := Lea_dt.Get_leader()
-			if gleaerr != nil {
-				log.Fatal(gleaerr)
-			}
 		case "exit":
 			os.Exit(0)
 		case "default":
 			fmt.Println("Enter valid operation: (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader /exit)")
+		}
+
+		//Perform Operations.
+		prmerr := zci.Prepare()
+		if prmerr != nil {
+			log.Fatal(prmerr)
+		}
+		excerr := zci.Exec()
+		if excerr != nil {
+			log.Fatal(excerr)
+		}
+		cerr := zci.Complete()
+		if cerr != nil {
+			log.Fatal(cerr)
 		}
 	}
 
