@@ -140,39 +140,39 @@ func (prep_wmstruct *WriteMulti) Get_struct_info() []*zomatoapplib.Zomato_Data {
 	return multireq_dt
 }
 
-func (prep_rstrct *ReadOne) Display_readop_and_fill_struct(read_data *zomatoapplib.Zomato_Data) {
-	rest_id := strconv.Itoa(int(read_data.Restaurant_id))
-	rest_votes := strconv.Itoa(int(read_data.Votes))
-	fmt.Println("\nResult of the read request is: \nRestaurant id (key) = " + rest_id + "\nRestaurant name = " + read_data.Restaurant_name + "\nCity = " + read_data.City + "\nCuisines = " + read_data.Cuisines + "\nRatings_text = " + read_data.Ratings_text + "\nVotes = " + rest_votes)
+func (prep_rstrct *ReadOne) Display_rdop_and_fill_struct(rd_data *zomatoapplib.Zomato_Data) {
+	rest_id := strconv.Itoa(int(rd_data.Restaurant_id))
+	rest_votes := strconv.Itoa(int(rd_data.Votes))
+	fmt.Println("\nResult of the read request is: \nRestaurant id (key) = " + rest_id + "\nRestaurant name = " + rd_data.Restaurant_name + "\nCity = " + rd_data.City + "\nCuisines = " + rd_data.Cuisines + "\nRatings_text = " + rd_data.Ratings_text + "\nVotes = " + rest_votes)
 
-	read_req_mp := map[string]string{
+	rd_req_mp := map[string]string{
 		"Restaurant_id":   rest_id,
-		"Restaurant_name": read_data.Restaurant_name,
-		"city":            read_data.City,
-		"cuisines":        read_data.Cuisines,
-		"ratings_text":    read_data.Ratings_text,
+		"Restaurant_name": rd_data.Restaurant_name,
+		"city":            rd_data.City,
+		"cuisines":        rd_data.Cuisines,
+		"ratings_text":    rd_data.Ratings_text,
 		"votes":           rest_votes,
 	}
 	//Fill write request data into a map.
-	fill_data_into_map(read_req_mp, prep_rstrct.Wr_req_info.Rncui)
+	fill_data_into_map(rd_req_mp, prep_rstrct.Wr_req_info.Rncui)
 	strdata := &zomato_app_info{Status: 0}
 	strdata.Fill_rstruct(prep_rstrct)
 }
-func (prep_rmstruct *ReadMulti) Display_readmulop_and_fill_struct(strdata *zomato_app_info, read_data *zomatoapplib.Zomato_Data, i int) {
-	rest_id := strconv.Itoa(int(read_data.Restaurant_id))
-	rest_votes := strconv.Itoa(int(read_data.Votes))
-	fmt.Println("\nResult of the read request is: \nRestaurant id (key) = " + rest_id + "\nRestaurant name = " + read_data.Restaurant_name + "\nCity = " + read_data.City + "\nCuisines = " + read_data.Cuisines + "\nRatings_text = " + read_data.Ratings_text + "\nVotes = " + rest_votes)
+func (prep_rmstruct *ReadMulti) Display_rdmulop_and_fill_struct(strdata *zomato_app_info, rd_data *zomatoapplib.Zomato_Data, i int) {
+	rest_id := strconv.Itoa(int(rd_data.Restaurant_id))
+	rest_votes := strconv.Itoa(int(rd_data.Votes))
+	fmt.Println("\nResult of the read request is: \nRestaurant id (key) = " + rest_id + "\nRestaurant name = " + rd_data.Restaurant_name + "\nCity = " + rd_data.City + "\nCuisines = " + rd_data.Cuisines + "\nRatings_text = " + rd_data.Ratings_text + "\nVotes = " + rest_votes)
 
-	read_req_mp := map[string]string{
+	rd_req_mp := map[string]string{
 		"Restaurant_id":   rest_id,
-		"Restaurant_name": read_data.Restaurant_name,
-		"city":            read_data.City,
-		"cuisines":        read_data.Cuisines,
-		"ratings_text":    read_data.Ratings_text,
+		"Restaurant_name": rd_data.Restaurant_name,
+		"city":            rd_data.City,
+		"cuisines":        rd_data.Cuisines,
+		"ratings_text":    rd_data.Ratings_text,
 		"votes":           rest_votes,
 	}
 	//Fill write request data into a map.
-	fill_data_into_map(read_req_mp, prep_rmstruct.Rm_rncui[i])
+	fill_data_into_map(rd_req_mp, prep_rmstruct.Rm_rncui[i])
 	strdata.Status = 0
 	strdata.Fill_rmstruct(prep_rmstruct)
 }
@@ -187,12 +187,12 @@ func (struct_zinfo *zomato_app_info) Fill_struct(wone *WriteOne) {
 	struct_zinfo.Timestamp = timestamp
 	struct_zinfo.Data = data
 	status := strconv.Itoa(int(struct_zinfo.Status))
-	write_mp := map[string]string{
+	wr_mp := map[string]string{
 		"Key":    wone.Args[2],
 		"Status": status,
 	}
 	//Fill write request data into a map.
-	fill_data_into_map(write_mp, wone.Args[1])
+	fill_data_into_map(wr_mp, wone.Args[1])
 	//Dump structure into json.
 	temp_outfname := struct_zinfo.dump_into_json(wone.Wr_req_info.Outfile_uuid)
 	wone.Wr_req_info.Outfilename = temp_outfname
@@ -272,8 +272,8 @@ func (prep_strct *WriteOne) Prepare() error {
 	}
 	defer file.Close()
 	//Append key_rncui in file.
-	_, err_write := file.WriteString("key, rncui = " + rest_id_string + "  " + rncui + "\n")
-	if err_write != nil {
+	_, err_wr := file.WriteString("key, rncui = " + rest_id_string + "  " + rncui + "\n")
+	if err_wr != nil {
 		log.Fatal(err)
 	}
 	if prep_strct.Wr_req_info.Zomato_data == nil {
@@ -318,10 +318,10 @@ func (prep_rstrct *ReadOne) Prepare() error {
 	//Typecast key into int64.
 	key_int64, _ := strconv.ParseInt(prep_rstrct.Wr_req_info.Key, 10, 64)
 	//Fill the Zomato_App structure.
-	struct_read := zomatoapplib.Zomato_Data{
+	struct_rd := zomatoapplib.Zomato_Data{
 		Restaurant_id: key_int64,
 	}
-	prep_rstrct.Wr_req_info.Zomato_data = &struct_read
+	prep_rstrct.Wr_req_info.Zomato_data = &struct_rd
 	if prep_rstrct.Wr_req_info.Zomato_data == nil {
 		err = errors.New("Prepare method for ReadOne Operation failed")
 	} else {
@@ -343,7 +343,7 @@ func (prep_rstrct *ReadOne) Exec() error {
 		strdata.Fill_rstruct(prep_rstrct)
 		roerr = errors.New("Exec method for ReadOne Operation failed")
 	}
-	prep_rstrct.Display_readop_and_fill_struct(op_struct)
+	prep_rstrct.Display_rdop_and_fill_struct(op_struct)
 	return roerr
 }
 
@@ -375,7 +375,7 @@ func (prep_wmstruct *WriteMulti) Prepare() error {
 func (prep_wmstruct *WriteMulti) Exec() error {
 
 	var excerr error
-	var write_strdata = &zomato_app_info{}
+	var wr_strdata = &zomato_app_info{}
 	//Create a file for storing keys and rncui.
 	os.Create("key_rncui_data.txt")
 	//Open file for storing key, rncui in append mode.
@@ -401,17 +401,17 @@ func (prep_wmstruct *WriteMulti) Exec() error {
 		err := prep_wmstruct.Wr_req_info.Cli_obj.Write(prep_wmstruct.Multi_reqdata[i], rncui)
 		if err != nil {
 			fmt.Println("Pmdb Write failed.", err)
-			write_strdata.Status = -1
+			wr_strdata.Status = -1
 			excerr = errors.New("Exec method for WriteMulti Operation failed")
 		} else {
 			fmt.Println("Pmdb Write successful!")
-			write_strdata.Status = 0
+			wr_strdata.Status = 0
 			excerr = nil
 		}
-		write_strdata.Fill_wmstruct(prep_wmstruct)
+		wr_strdata.Fill_wmstruct(prep_wmstruct)
 	}
 	//Dump structure into json.
-	temp_outfname := write_strdata.dump_into_json(prep_wmstruct.Wr_req_info.Outfile_uuid)
+	temp_outfname := wr_strdata.dump_into_json(prep_wmstruct.Wr_req_info.Outfile_uuid)
 	prep_wmstruct.Wr_req_info.Outfilename = temp_outfname
 	return excerr
 }
@@ -437,17 +437,17 @@ func (prep_rmstruct *ReadMulti) Prepare() error {
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
-		rall_data := strings.Split(scanner.Text(), " ")
-		rall_key := rall_data[3]
-		rall_rncui := rall_data[5]
+		rdall_data := strings.Split(scanner.Text(), " ")
+		rdall_key := rdall_data[3]
+		rdall_rncui := rdall_data[5]
 		//Typecast key into int64.
-		key_int64, _ := strconv.ParseInt(rall_key, 10, 64)
+		key_int64, _ := strconv.ParseInt(rdall_key, 10, 64)
 		//Fill the Zomato_App structure.
-		struct_read := zomatoapplib.Zomato_Data{
+		struct_rd := zomatoapplib.Zomato_Data{
 			Restaurant_id: key_int64,
 		}
-		rmrncui = append(rmrncui, rall_rncui)
-		rmreq_dt = append(rmreq_dt, &struct_read)
+		rmrncui = append(rmrncui, rdall_rncui)
+		rmreq_dt = append(rmreq_dt, &struct_rd)
 		prep_rmstruct.Rm_rncui = rmrncui
 		prep_rmstruct.Rmdata = rmreq_dt
 	}
@@ -471,7 +471,7 @@ func (prep_rmstruct *ReadMulti) Exec() error {
 				strdata.Fill_rmstruct(prep_rmstruct)
 				rmexcerr = errors.New("Exec method for ReadOne Operation failed")
 			} else {
-				prep_rmstruct.Display_readmulop_and_fill_struct(strdata, rmop_struct, i)
+				prep_rmstruct.Display_rdmulop_and_fill_struct(strdata, rmop_struct, i)
 			}
 		}
 	}
@@ -510,7 +510,6 @@ func (get_leader *GetLeader) Prepare() error {
 		gleaerr = nil
 		fmt.Println("Leader uuid is:", get_leader.Leadt.Leader_uuid)
 	}
-
 	return gleaerr
 }
 
@@ -530,9 +529,14 @@ func (get_leader *GetLeader) Exec() error {
 
 func (get_leader *GetLeader) Complete() error {
 
+	var cerr error
 	err := copy_to_outfile(get_leader.Wr_req_info.Outfilename, get_leader.Wr_req_info.Json_fname)
-	return err
-
+	if err != nil {
+		cerr = errors.New("Complete method for get leader operation failed")
+	} else {
+		cerr = nil
+	}
+	return cerr
 }
 
 //Function to write write_data into map.
