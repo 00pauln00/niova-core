@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"covidapplib/lib"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"github.com/satori/go.uuid"
+	"io"
 	"io/ioutil"
 	"log"
 	"niova/go-pumicedb-lib/client"
@@ -29,20 +31,20 @@ var (
 	json_outfile_path string
 	data              map[string]map[string]string
 	key_rncui_map     map[string]string
+	WriteMulti_map    map[CovidAppLib.Covid_app]string
 )
 
-//Interface for WROne
-type WORO_iface interface {
+//Interface for RDWR
+type RDWR_iface interface {
 	Prepare() error
 	Exec() error
 	Complete() error
 }
 
 /*
- Structure for Common items from WriteOne
- and ReadOne struct
+ Structure for Common items from RDWR operations
 */
-type WROne struct {
+type RDWR struct {
 	Leader_uuid   string
 	Outfile_uuid  string
 	Outfile_name  string
@@ -57,15 +59,40 @@ type WROne struct {
 /*
  Structure for WriteOne operation
 */
-type WriteOne struct {
-	CommonObj *WROne
+type WRONE struct {
+	CommonObj RDWR
 }
 
 /*
  Structure for ReadOne operation
 */
-type ReadOne struct {
-	CommonObj *WROne
+type RDONE struct {
+	CommonObj RDWR
+}
+
+/*
+ Structure for WriteMulti operation
+*/
+type WRMUL struct {
+	Csvfile   string
+	CommonObj RDWR
+}
+
+/*
+ Structure for ReadMulti operation
+*/
+type RDMUL struct {
+	Multi_rd    []*CovidAppLib.Covid_app
+	Multi_rncui []string
+	CommonObj   RDWR
+}
+
+/*
+ Structure for GetLeader operation
+*/
+type GetLeader struct {
+	CommonObj   RDWR
+	Leader_data CovidVaxData
 }
 
 /*
@@ -115,48 +142,120 @@ func get_cmdline_input(input []string) []string {
 	return input
 }
 
-func (wr_data *CovidVaxData) Fill_WStruct(Wr *WriteOne) {
+/*This function stores rncui for all csv file
+  data into a key_rncui_map and returns that rncui.
+*/
+func get_rncui_for_csvfile(key_rncui_map map[string]string,
+	covid_wr_struct *CovidAppLib.Covid_app) string {
+
+	//Generate app_uuid.
+	app_uuid := uuid.NewV4().String()
+
+	//Create rncui string.
+	rncui := app_uuid + ":0:0:0:0"
+
+	key_rncui_map[covid_wr_struct.Location] = rncui
+
+	return rncui
+}
+
+//parse csv file.
+func parse_csv_file(filename string) (fp *csv.Reader) {
+
+	// Open the file
+	csvfile, err := os.Open(filename)
+	if err != nil {
+		log.Fatalln("Error to open the csv file", err)
+	}
+
+	// Skip first row (line)
+	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
+	if err != nil {
+		log.Fatalln("error")
+	}
+	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
+	if err != nil {
+		log.Fatalln("error")
+	}
+	// Parse the file
+	fp = csv.NewReader(csvfile)
+
+	return fp
+}
+
+func (wr_one *CovidVaxData) Fill_WriteOne(wr *WRONE) {
 
 	//Get timestamp.
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
-	wr_data = &CovidVaxData{
-		Raft_uuid:   raft_uuid_go,
-		Client_uuid: peer_uuid_go,
-		Leader_uuid: Wr.CommonObj.Leader_uuid,
-		Operation:   Wr.CommonObj.Input[0],
-		Timestamp:   timestamp,
-		Data:        data,
-	}
-	status_str := strconv.Itoa(int(wr_data.Status))
+	//fill the value into json structure.
+	wr_one.Raft_uuid = raft_uuid_go
+	wr_one.Client_uuid = peer_uuid_go
+	wr_one.Leader_uuid = wr.CommonObj.Leader_uuid
+	wr_one.Operation = wr.CommonObj.Input[0]
+	wr_one.Timestamp = timestamp
+	wr_one.Data = data
+
+	status_str := strconv.Itoa(int(wr_one.Status))
 	write_mp := map[string]string{
-		"Key":    Wr.CommonObj.Covid_data.Location,
+		"Key":    wr.CommonObj.Key,
 		"Status": status_str,
 	}
 
-	//Fill write request data into a map.
-	fill_data_into_map(write_mp, Wr.CommonObj.Input[1])
+	//fill write request data into a map.
+	fill_data_into_map(write_mp, wr.CommonObj.Rncui)
 
-	//Dump structure into json.
-	Wr.CommonObj.Outfile_name = wr_data.dump_into_json(Wr.CommonObj.Outfile_uuid)
 }
 
-func (rd_data *CovidVaxData) Fill_RStruct(Rd *ReadOne) {
+func (rd_one *CovidVaxData) Fill_ReadOne(rd *RDONE) {
 
 	//Get timestamp.
 	timestamp := time.Now().Format("2006-01-02 15:04:05")
 
-	rd_data = &CovidVaxData{
-		Raft_uuid:   raft_uuid_go,
-		Client_uuid: peer_uuid_go,
-		Leader_uuid: Rd.CommonObj.Leader_uuid,
-		Operation:   Rd.CommonObj.Input[0],
-		Timestamp:   timestamp,
-		Data:        data,
+	//Fill the value into Json structure.
+	rd_one.Raft_uuid = raft_uuid_go
+	rd_one.Client_uuid = peer_uuid_go
+	rd_one.Leader_uuid = rd.CommonObj.Leader_uuid
+	rd_one.Operation = rd.CommonObj.Input[0]
+	rd_one.Timestamp = timestamp
+	rd_one.Data = data
+}
+
+func (wr_data *CovidVaxData) Fill_WriteMulti(wm *WRMUL) {
+
+	//get timestamp.
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+
+	//fill the value into json structure.
+	wr_data.Raft_uuid = raft_uuid_go
+	wr_data.Client_uuid = peer_uuid_go
+	wr_data.Leader_uuid = wm.CommonObj.Leader_uuid
+	wr_data.Operation = wm.CommonObj.Input[0]
+	wr_data.Timestamp = timestamp
+	wr_data.Data = data
+
+	status_str := strconv.Itoa(int(wr_data.Status))
+	write_mp := map[string]string{
+		"Key":    wm.CommonObj.Key,
+		"Status": status_str,
 	}
 
-	//Dump structure into json.
-	Rd.CommonObj.Outfile_name = rd_data.dump_into_json(Rd.CommonObj.Outfile_uuid)
+	//fill write request data into a map.
+	fill_data_into_map(write_mp, wm.CommonObj.Rncui)
+}
+
+func (rd_data *CovidVaxData) Fill_ReadMulti(rm *RDMUL) {
+
+	//Get timestamp.
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+
+	//Fill the value into Json structure.
+	rd_data.Raft_uuid = raft_uuid_go
+	rd_data.Client_uuid = peer_uuid_go
+	rd_data.Leader_uuid = rm.CommonObj.Leader_uuid
+	rd_data.Operation = rm.CommonObj.Input[0]
+	rd_data.Timestamp = timestamp
+	rd_data.Data = data
 }
 
 func copy_tmp_file_to_json_file(temp_outfile_name string, json_filename string) error {
@@ -177,7 +276,6 @@ func copy_tmp_file_to_json_file(temp_outfile_name string, json_filename string) 
 	} else {
 		cp_err = nil
 	}
-
 	//Remove temporary outfile after copying into json outfile.
 	e := os.Remove(temp_outfile_name)
 	if e != nil {
@@ -186,7 +284,7 @@ func copy_tmp_file_to_json_file(temp_outfile_name string, json_filename string) 
 	return cp_err
 }
 
-func (wr_obj *WriteOne) Prepare() error {
+func (wr_obj *WRONE) Prepare() error {
 
 	var err error
 
@@ -215,30 +313,31 @@ func (wr_obj *WriteOne) Prepare() error {
 	return err
 }
 
-func (wr_obj *WriteOne) Exec() error {
+func (wr_obj *WRONE) Exec() error {
 
 	var err_msg error
-
-	//Get the actual size of the structure.
-	len_wr_struct := wr_obj.CommonObj.Cli_obj.GetSize(wr_obj.CommonObj.Covid_data)
-	fmt.Println("Length of the structure: ", len_wr_struct)
+	var fill_wrone = &CovidVaxData{}
 
 	//Perform write operation.
-	rc := wr_obj.CommonObj.Cli_obj.Write(wr_obj.CommonObj.Covid_data, wr_obj.CommonObj.Rncui)
+	err := wr_obj.CommonObj.Cli_obj.Write(wr_obj.CommonObj.Covid_data,
+		wr_obj.CommonObj.Rncui)
 
-	fill_wrdata := &CovidVaxData{Status: rc}
-	if rc != 0 {
+	if err != nil {
 		err_msg = errors.New("Exec() method failed for WriteOne.")
-		fill_wrdata.Fill_WStruct(wr_obj)
+		fill_wrone.Status = -1
 	} else {
 		fmt.Println("Pmdb Write successful!")
+		fill_wrone.Status = 0
 		err_msg = nil
-		fill_wrdata.Fill_WStruct(wr_obj)
 	}
+	fill_wrone.Fill_WriteOne(wr_obj)
+	//Dump structure into json.
+	wr_obj.CommonObj.Outfile_name = fill_wrone.dump_into_json(wr_obj.CommonObj.Outfile_uuid)
+
 	return err_msg
 }
 
-func (wr_obj *WriteOne) Complete() error {
+func (wr_obj *WRONE) Complete() error {
 
 	var c_err error
 
@@ -251,7 +350,7 @@ func (wr_obj *WriteOne) Complete() error {
 	return c_err
 }
 
-func (rd_obj *ReadOne) Prepare() error {
+func (rd_obj *RDONE) Prepare() error {
 
 	var err error
 
@@ -266,56 +365,44 @@ func (rd_obj *ReadOne) Prepare() error {
 	return err
 }
 
-func (rd_obj *ReadOne) Exec() error {
+func (rd_obj *RDONE) Exec() error {
 
-	var err error
+	var rerr error
+	var rd_strone = &CovidVaxData{}
 
-	length_rd_struct := rd_obj.CommonObj.Cli_obj.GetSize(rd_obj.CommonObj.Covid_data)
-
-	//Print all values which passed to Read()
-	fmt.Println("Covid Structure for read:", rd_obj.CommonObj.Covid_data)
-	fmt.Println("Length of read:", length_rd_struct)
-
-	var reply_size int64
-
+	res_struct := &CovidAppLib.Covid_app{}
 	//read operation
-	reply_buff := rd_obj.CommonObj.Cli_obj.Read(rd_obj.CommonObj.Covid_data, rd_obj.CommonObj.Rncui,
-		&reply_size)
+	err := rd_obj.CommonObj.Cli_obj.Read(rd_obj.CommonObj.Covid_data,
+		rd_obj.CommonObj.Rncui, res_struct)
 
-	if reply_buff == nil {
-
-		fmt.Println("Read request failed !!")
-
-		rd_strdata := &CovidVaxData{Status: -1}
-		rd_strdata.Fill_RStruct(rd_obj)
-		err = errors.New("Exec() method failed for ReadOne")
+	if err != nil {
+		fmt.Println("Read request failed !!", err)
+		rd_strone.Status = -1
+		rd_strone.Fill_ReadOne(rd_obj)
+		rerr = errors.New("Exec() method failed for ReadOne")
 	} else {
-		req_struct := &CovidAppLib.Covid_app{}
-		rd_obj.CommonObj.Cli_obj.Decode(reply_buff, req_struct, reply_size)
-		fmt.Println("Result of the read request is: ", req_struct)
-
-		total_vaccinations_int := strconv.Itoa(int(req_struct.Total_vaccinations))
-		people_vaccinated_int := strconv.Itoa(int(req_struct.People_vaccinated))
+		fmt.Println("Result of the read request is: ", res_struct)
+		total_vaccinations_int := strconv.Itoa(int(res_struct.Total_vaccinations))
+		people_vaccinated_int := strconv.Itoa(int(res_struct.People_vaccinated))
 
 		read_map := map[string]string{
-			"Location":           req_struct.Location,
-			"Iso_code":           req_struct.Iso_code,
+			"Location":           res_struct.Location,
+			"Iso_code":           res_struct.Iso_code,
 			"Total_vaccinations": total_vaccinations_int,
 			"People_vaccinated":  people_vaccinated_int,
 		}
 		//Fill write request data into a map.
-		fill_data_into_map(read_map, rd_obj.CommonObj.Input[2])
-
-		rd_strdata := &CovidVaxData{Status: 0}
-		rd_strdata.Fill_RStruct(rd_obj)
-		err = nil
+		fill_data_into_map(read_map, rd_obj.CommonObj.Rncui)
+		rd_strone.Status = 0
+		rd_strone.Fill_ReadOne(rd_obj)
+		rerr = nil
 	}
-	// Application should free the this reply_buff which is allocate by pmdb lib
-	C.free(reply_buff)
-	return err
+	//Dump structure into json.
+	rd_obj.CommonObj.Outfile_name = rd_strone.dump_into_json(rd_obj.CommonObj.Outfile_uuid)
+	return rerr
 }
 
-func (rd_obj *ReadOne) Complete() error {
+func (rd_obj *RDONE) Complete() error {
 
 	var c_err error
 	//Copy temporary json file into json outfile.
@@ -325,6 +412,209 @@ func (rd_obj *ReadOne) Complete() error {
 		c_err = errors.New("Complete() method failed for ReadOne.")
 	}
 	return c_err
+}
+
+func (wm_obj *WRMUL) Prepare() error {
+
+	var err error
+
+	/*Create and Initialize the map for multiple
+	keys and its rncui.*/
+	key_rncui_map = make(map[string]string)
+
+	//call function to parse csv file.
+	fp := parse_csv_file(wm_obj.Csvfile)
+
+	for {
+		// Read each record from csv
+		record, err := fp.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		//typecast the data type to int
+		Total_vaccinations_int, _ := strconv.ParseInt(record[3], 10, 64)
+		People_vaccinated_int, _ := strconv.ParseInt(record[4], 10, 64)
+
+		//fill the struture
+		covid_wr_struct := &CovidAppLib.Covid_app{
+			Location:           record[0],
+			Iso_code:           record[1],
+			Total_vaccinations: Total_vaccinations_int,
+			People_vaccinated:  People_vaccinated_int,
+		}
+
+		//Fill the map for each structure of csv record.
+		WriteMulti_map[*covid_wr_struct] = "record_struct"
+
+		if WriteMulti_map == nil {
+			err = errors.New("Prepare() method failed for WriteMulti operation.")
+		} else {
+			err = nil
+		}
+	}
+	return err
+}
+
+func (wm_obj *WRMUL) Exec() error {
+
+	var werr error
+	var fill_wrdata = &CovidVaxData{}
+
+	for csv_struct, val := range WriteMulti_map {
+		fmt.Println(csv_struct, val)
+		rncui := get_rncui_for_csvfile(key_rncui_map, &csv_struct)
+		wm_obj.CommonObj.Key = csv_struct.Location
+		wm_obj.CommonObj.Rncui = rncui
+		err := wm_obj.CommonObj.Cli_obj.Write(&csv_struct, rncui)
+
+		if err != nil {
+			fmt.Println("Pmdb Write failed.", err)
+			fill_wrdata.Status = -1
+			werr = errors.New("Exec() method failed for WriteMulti operation.")
+		} else {
+			fmt.Println("Pmdb Write successful!")
+			fill_wrdata.Status = 0
+			werr = nil
+		}
+		fill_wrdata.Fill_WriteMulti(wm_obj)
+	}
+	//Dump structure into json.
+	wm_obj.CommonObj.Outfile_name = fill_wrdata.dump_into_json(wm_obj.CommonObj.Outfile_uuid)
+	return werr
+}
+
+func (wm_obj *WRMUL) Complete() error {
+	var c_err error
+	//Copy temporary json file into json outfile.
+	err := copy_tmp_file_to_json_file(wm_obj.CommonObj.Outfile_name,
+		wm_obj.CommonObj.Json_filename)
+	if err != nil {
+		c_err = errors.New("Complete() method failed for ReadOne.")
+	}
+	return c_err
+}
+
+func (rm_obj *RDMUL) Prepare() error {
+
+	var err error
+	var rm_rncui []string
+	var rm_data []*CovidAppLib.Covid_app
+
+	for rd_key, rd_rncui := range key_rncui_map {
+		fmt.Println(rd_key, " ", rd_rncui)
+		multi_rd_struct := CovidAppLib.Covid_app{
+			Location: rd_key,
+		}
+		rm_rncui = append(rm_rncui, rd_rncui)
+		rm_obj.Multi_rncui = rm_rncui
+		rm_data = append(rm_data, &multi_rd_struct)
+		rm_obj.Multi_rd = rm_data
+
+		if rm_obj.Multi_rd == nil && rm_obj.Multi_rncui == nil {
+			err = errors.New("Prepare() method failed for ReadMulti.")
+		} else {
+			err = nil
+		}
+	}
+	return err
+}
+
+func (rm_obj *RDMUL) Exec() error {
+
+	var rerr error
+	//var reply_size int64
+	var rd_strdata = &CovidVaxData{}
+
+	if len(rm_obj.Multi_rd) == len(rm_obj.Multi_rncui) {
+		for i := range rm_obj.Multi_rncui {
+			res_struct := &CovidAppLib.Covid_app{}
+			err := rm_obj.CommonObj.Cli_obj.Read(rm_obj.Multi_rd[i], rm_obj.Multi_rncui[i], res_struct)
+			if err != nil {
+				fmt.Println("Read request failed !!", err)
+				rd_strdata.Status = -1
+				rd_strdata.Fill_ReadMulti(rm_obj)
+				rerr = errors.New("Exec() method failed for ReadMulti")
+			} else {
+				fmt.Println("Result of the read request is: ", res_struct)
+				total_vaccinations_int := strconv.Itoa(int(res_struct.Total_vaccinations))
+				people_vaccinated_int := strconv.Itoa(int(res_struct.People_vaccinated))
+
+				read_map := map[string]string{
+					"Location":           res_struct.Location,
+					"Iso_code":           res_struct.Iso_code,
+					"Total_vaccinations": total_vaccinations_int,
+					"People_vaccinated":  people_vaccinated_int,
+				}
+				//Fill write request data into a map.
+				fill_data_into_map(read_map, rm_obj.Multi_rncui[i])
+				rd_strdata.Status = 0
+				rd_strdata.Fill_ReadMulti(rm_obj)
+				rerr = nil
+			}
+		}
+	}
+	//Dump structure into json.
+	rm_obj.CommonObj.Outfile_name = rd_strdata.dump_into_json(rm_obj.CommonObj.Outfile_uuid)
+	return rerr
+}
+
+func (rm_obj *RDMUL) Complete() error {
+	var c_err error
+	//Copy temporary json file into json outfile.
+	err := copy_tmp_file_to_json_file(rm_obj.CommonObj.Outfile_name,
+		rm_obj.CommonObj.Json_filename)
+	if err != nil {
+		c_err = errors.New("Complete() method failed for ReadMulti.")
+	}
+	return c_err
+}
+
+func (getleader *GetLeader) Prepare() error {
+
+	var err error
+	//Get timestamp.
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	leader_uuid := getleader.CommonObj.Cli_obj.GetLeader()
+	app_leader := CovidVaxData{
+		Raft_uuid:   raft_uuid_go,
+		Client_uuid: peer_uuid_go,
+		Leader_uuid: leader_uuid,
+		Operation:   getleader.CommonObj.Input[0],
+		Timestamp:   timestamp,
+	}
+	getleader.Leader_data = app_leader
+	if getleader.Leader_data.Leader_uuid == "" {
+		err = errors.New("Prepare() method failed for get_leader operation.")
+	} else {
+		err = nil
+		fmt.Println("Leader uuid is:", getleader.Leader_data.Leader_uuid)
+	}
+
+	return err
+}
+
+func (getleader *GetLeader) Exec() error {
+
+	var err error
+	//Dump structure into json.
+	temp_file := getleader.Leader_data.dump_into_json(getleader.CommonObj.Outfile_uuid)
+	getleader.CommonObj.Outfile_name = temp_file
+	if getleader.CommonObj.Outfile_name == "" {
+		err = errors.New("Exec() method failed for get_leader operation")
+	} else {
+		err = nil
+	}
+	return err
+}
+
+func (getleader *GetLeader) Complete() error {
+
+	err := copy_tmp_file_to_json_file(getleader.CommonObj.Outfile_name, getleader.CommonObj.Json_filename)
+	return err
 }
 
 func pmdb_dict_app_getopts() {
@@ -380,8 +670,8 @@ func main() {
 		//Create and Initialize map for write-read oufile.
 		data = make(map[string]map[string]string)
 
-		//Create and Initialize the map.
-		key_rncui_map = make(map[string]string)
+		//Create and Initialize the map for WriteMulti
+		WriteMulti_map = make(map[CovidAppLib.Covid_app]string)
 
 		//Create temporary UUID
 		temp_uuid := uuid.NewV4().String()
@@ -396,13 +686,13 @@ func main() {
 
 		operation := input[0]
 
-		var wr_iface WORO_iface
+		var rw_iface RDWR_iface
 
 		switch operation {
 
 		case "WriteOne":
-			wr_iface = &WriteOne{
-				CommonObj: &WROne{
+			rw_iface = &WRONE{
+				CommonObj: RDWR{
 					Leader_uuid:   leader_uuid,
 					Outfile_uuid:  temp_uuid,
 					Json_filename: input[6],
@@ -413,8 +703,8 @@ func main() {
 				},
 			}
 		case "ReadOne":
-			wr_iface = &ReadOne{
-				CommonObj: &WROne{
+			rw_iface = &RDONE{
+				CommonObj: RDWR{
 					Leader_uuid:   leader_uuid,
 					Outfile_uuid:  temp_uuid,
 					Json_filename: input[3],
@@ -424,22 +714,51 @@ func main() {
 					Cli_obj:       cli_obj,
 				},
 			}
-
+		case "WriteMulti":
+			rw_iface = &WRMUL{
+				Csvfile: input[1],
+				CommonObj: RDWR{
+					Leader_uuid:   leader_uuid,
+					Outfile_uuid:  temp_uuid,
+					Json_filename: input[2],
+					Input:         input,
+					Cli_obj:       cli_obj,
+				},
+			}
+		case "ReadMulti":
+			rw_iface = &RDMUL{
+				CommonObj: RDWR{
+					Leader_uuid:   leader_uuid,
+					Outfile_uuid:  temp_uuid,
+					Json_filename: input[1],
+					Input:         input,
+					Cli_obj:       cli_obj,
+				},
+			}
+		case "get_leader":
+			rw_iface = &GetLeader{
+				CommonObj: RDWR{
+					Outfile_uuid:  temp_uuid,
+					Json_filename: input[1],
+					Input:         input,
+					Cli_obj:       cli_obj,
+				},
+			}
 		case "exit":
 			os.Exit(0)
 		default:
 			fmt.Println("\nEnter valid operation: WriteOne/ReadOne/WriteMulti/ReadMulti/get_leader/exit")
 		}
 		//Call set of methods from interface
-		P_err := wr_iface.Prepare()
+		P_err := rw_iface.Prepare()
 		if P_err != nil {
 			log.Fatal("error")
 		}
-		E_err := wr_iface.Exec()
+		E_err := rw_iface.Exec()
 		if E_err != nil {
 			log.Fatal("error")
 		}
-		C_err := wr_iface.Complete()
+		C_err := rw_iface.Complete()
 		if C_err != nil {
 			log.Fatal("error")
 		}
