@@ -62,7 +62,6 @@ struct raft_co_wr_info
     uint32_t                              rcwi_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
     size_t                                rcwi_total_size;
     struct raft_net_sm_write_supplements  rcwi_ws;
-    int                                   rcwi_timerfd;
     char                                  rcwi_buffer[];
 };
 
@@ -162,7 +161,6 @@ raft_instance_buffer_get(struct raft_instance *ri, size_t size)
 
         if (rib->ribuf_free && rib->ribuf_size >= size)
         {
-            SIMPLE_LOG_MSG(LL_WARN, "Get buffer");
             rib->ribuf_free = false;
             return rib->ribuf_buf;
         }
@@ -183,7 +181,6 @@ raft_instance_buffer_put(struct raft_instance *ri, const char *ribuf)
         struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
         if (rib->ribuf_buf == ribuf)
         {
-            SIMPLE_LOG_MSG(LL_WARN, "Put buffer");
             NIOVA_ASSERT(!rib->ribuf_free);
             rib->ribuf_free = true;
             return;
@@ -734,13 +731,13 @@ raft_server_entry_init(const struct raft_instance *ri,
     niova_realtime_coarse_clock(&reh->reh_store_time);
 
     memset(reh->reh_pad, 0, RAFT_ENTRY_PAD_SIZE);
+    memset(reh->reh_entry_sz, 0, sizeof(uint32_t) * RAFT_ENTRY_NUM_ENTRIES);
 
     if (total_size)
+    {
         memcpy(reh->reh_entry_sz, entry_sizes, sizeof(uint32_t) * nentries);
-    else
-        memset(reh->reh_entry_sz, 0, sizeof(uint32_t) * nentries);
-
-    memcpy(re->re_data, data, total_size);
+        memcpy(re->re_data, data, total_size);
+    }
 
     // Checksum the entire entry - including the 'data' section
     reh->reh_crc = raft_server_entry_calc_crc(re);
@@ -2085,8 +2082,6 @@ raft_server_leader_init_state(struct raft_instance *ri)
      */
     rls->rls_initial_term_idx = sync_hdr.reh_index;
 
-    re_co_wr_info->rcwi_timerfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-
     for (raft_peer_t i = 0; i < num_raft_peers; i++)
     {
         struct raft_follower_info *rfi = raft_server_get_follower_info(ri, i);
@@ -2420,7 +2415,6 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
                           strerror(-rc));
     }
 
-    SIMPLE_LOG_MSG(LL_WARN, "Init raerq");
     raerq->raerqm_heartbeat_msg = heartbeat ? 1 : 0;
     raerq->raerqm_entry_out_of_range = (rc == -ERANGE) ? 1 : 0;
 
@@ -2467,25 +2461,6 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 }
 
 static void
-raft_server_co_wr_timer_settime(struct raft_instance *ri)
-{
-    struct itimerspec co_wr_timer = {0};
-
-    //TODO use smaller timeout value than client timeout.
-    msec_2_timespec(&co_wr_timer.it_value, 100);
-    co_wr_timer.it_interval = co_wr_timer.it_value;
-
-    int rc = timerfd_settime(re_co_wr_info->rcwi_timerfd, 0, &co_wr_timer, NULL);
-    if (rc)
-    {
-        rc = -errno;
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "timerfd_settime(): %s",
-                          strerror(-rc));
-    }
-}
-
-
-static void
 raft_server_write_coalesced_entries(struct raft_instance *ri)
 {
     SIMPLE_LOG_MSG(LL_WARN, "Write the coalesced entries: %u",
@@ -2507,41 +2482,18 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
 /*
  * Write the coalesced writes if timer expired for it.
  */
-static bool
+static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
-    ssize_t rc = niova_io_fd_drain(re_co_wr_info->rcwi_timerfd, NULL);
-    if (rc || re_co_wr_info->rcwi_nentries == 0)
-        return false;
-
-    SIMPLE_LOG_MSG(LL_WARN, "Write the data now after timer expired");
-
-    /* Issue the pending wr */
-    raft_server_write_coalesced_entries(ri);
-
-    raft_server_co_wr_timer_settime(ri);
-    return true;
-}
-
-static raft_net_timerfd_cb_ctx_t
-raft_server_co_wr_timerfd_cb(struct raft_instance *ri)
-{
-    FUNC_ENTRY(LL_TRACE);
-
-    switch (ri->ri_state)
+    //Do nothing if there no entries in the coalesced buffer
+    if (re_co_wr_info->rcwi_nentries)
     {
-    case RAFT_STATE_LEADER:
-    {
-        raft_server_leader_co_wr_timer_expired(ri);
-        break;
-    }
-    default:
-        break;
-    }
+        SIMPLE_LOG_MSG(LL_WARN, "Write the data now after timer expired");
 
-    raft_server_co_wr_timer_settime(ri);
+        /* Issue the pending wr */
+        raft_server_write_coalesced_entries(ri);
+    }
 }
-
 
 static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
@@ -2557,6 +2509,7 @@ raft_server_timerfd_cb(struct raft_instance *ri)
 
     case RAFT_STATE_LEADER:
         raft_server_issue_heartbeat(ri);
+        raft_server_leader_co_wr_timer_expired(ri);
         break;
     default:
         break;
@@ -4357,9 +4310,6 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
                 peer_next_raft_idx, strerror(-rc));
 
             raerq->raerqm_entries_sz = reh->reh_data_size;
-            SIMPLE_LOG_MSG(LL_WARN, "Total data size: %u, entry_size: %u", raerq->raerqm_entries_sz,
-                                    reh->reh_num_entries);
-            SIMPLE_LOG_MSG(LL_WARN, "reh num entries: %u", reh->reh_num_entries);
 
             raerq->raerqm_leader_change_marker = reh->reh_leader_change_marker;
             raerq->raerqm_num_entries = reh->reh_num_entries;
@@ -4383,7 +4333,6 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
         }
         else
         {
-            SIMPLE_LOG_MSG(LL_WARN, "For heartbeat");
             raerq->raerqm_entries_sz = 0;
             raerq->raerqm_num_entries = 0;
             memset(&raerq->raerqm_size_arr, 0,
@@ -4449,7 +4398,7 @@ raft_server_backend_setup_last_applied(struct raft_instance *ri,
     ri->ri_last_applied_synced_idx = last_applied_idx;
     ri->ri_last_applied_cumulative_crc = last_applied_cumulative_crc;
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
+    DBG_RAFT_INSTANCE(LL_TRACE, ri, "");
 }
 
 static raft_server_epoll_sm_apply_t
@@ -4522,10 +4471,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
      * make sure all coalesced write entries are part of same write suppliment
      * structure.
      */
-    struct raft_net_sm_write_supplements coalesced_ws = {0};
+    struct raft_net_sm_write_supplements coalesced_ws = {0, NULL};
 
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
+
         raft_server_net_client_request_init_sm_apply(ri, &rncr[i],
                                                      sink_buf,
                                                      reh.reh_entry_sz[i],
@@ -4870,7 +4820,6 @@ raft_server_instance_init(struct raft_instance *ri,
     /* Assign the timer_fd and udp_recv callbacks.
      */
     raft_net_instance_apply_callbacks(ri, raft_server_timerfd_cb,
-                                      raft_server_co_wr_timerfd_cb,
                                       raft_server_client_recv_handler,
                                       raft_server_peer_recv_handler);
 }
@@ -5320,7 +5269,6 @@ raft_server_instance_buffer_pool_setup(struct raft_instance *ri)
         struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
 
         rib->ribuf_size = ri->ri_max_entry_size;
-        SIMPLE_LOG_MSG(LL_WARN, "Allocate buffer of size: %ld", rib->ribuf_size);
         rib->ribuf_free = true;
         rib->ribuf_buf = niova_posix_memalign(ri->ri_max_entry_size, 4096UL);
 
