@@ -89,25 +89,15 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 	var leader_info C.raft_client_leader_info_t
 	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
 
-	var leader_uuid uuid.UUID
-	var err error
-
 	rc := C.PmdbGetLeaderInfo(Cpmdb, &leader_info)
 	if rc != 0 {
-		lib_err := errors.New("Failed to get leader uuid")
-		return leader_uuid, lib_err
+		return uuid.Nil, fmt.Errorf("Failed to get leader info (%d)", rc)
 	}
 
 	//C uuid to Go bytes
-	uuidSlice := C.GoBytes(unsafe.Pointer(&leader_info.rcli_leader_uuid), 16)
+	return uuid.FromBytes(C.GoBytes(unsafe.Pointer(&leader_info.rcli_leader_uuid),
+		C.int(unsafe.Sizeof(leader_info.rcli_leader_uuid))))
 
-	leader_uuid, err = uuid.FromBytes(uuidSlice)
-
-	if err != nil {
-		fmt.Println("FromBytes failed, ", err)
-	}
-
-	return leader_uuid, err
 }
 
 func PmdbStartClient(Graft_uuid string, Gclient_uuid string) unsafe.Pointer {
