@@ -3,10 +3,13 @@ package PumiceDBClient
 import (
 	"errors"
 	"fmt"
-	"niova/go-pumicedb-lib/common"
 	"strconv"
 	"syscall"
 	"unsafe"
+
+	"github.com/google/uuid"
+
+	"niova/go-pumicedb-lib/common"
 )
 
 /*
@@ -25,8 +28,8 @@ type PmdbClientObj struct {
 }
 
 type RDZeroCopyObj struct {
-	buffer		unsafe.Pointer
-	buffer_len	int64
+	buffer     unsafe.Pointer
+	buffer_len int64
 }
 
 /* Typecast Go string to C String */
@@ -139,7 +142,7 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
 	var leader_info C.raft_client_leader_info_t
-	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
+	Cpmdb := (C.pmdb_t)(pmdb_client.pmdb)
 
 	rc := C.PmdbGetLeaderInfo(Cpmdb, &leader_info)
 	if rc != 0 {
@@ -211,8 +214,13 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	return reply_buff, nil
 }
 
+//Allocate memory in C heap
+func (obj *RDZeroCopyObj) AllocateCMem(size int64) unsafe.Pointer {
+	return C.malloc(C.size_t(size))
+}
+
 //Relase the C memory allocated for reading the value
-func (obj *RDZeroCopyObj) CBufferRelease() {
+func (obj *RDZeroCopyObj) ReleaseCMem() {
 	C.free(obj.buffer)
 }
 

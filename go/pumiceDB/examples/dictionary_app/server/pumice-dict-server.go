@@ -31,6 +31,47 @@ type DictionaryServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
+func main() {
+	//Parse the cmdline parameters and generate new Dictionary object
+	dso := dictionaryServerNew()
+
+	/*
+		Initialize the internal pmdb-server-object pointer.
+		Assign the Directionary object to PmdbAPI so the apply and
+		read callback functions can be called through pmdb common library
+		functions.
+	*/
+	dso.pso = &PumiceDBServer.PmdbServerObject{
+		ColumnFamilies: colmfamily,
+		RaftUuid:       dso.raftUuid,
+		PeerUuid:       dso.peerUuid,
+		PmdbAPI:        dso,
+	}
+
+	//Create empty word map
+	word_map = make(map[string]int)
+
+	// Start the pmdb server
+	err := dso.pso.Run()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func dictionaryServerNew() *DictionaryServer {
+	dso := &DictionaryServer{}
+
+	flag.StringVar(&dso.raftUuid, "r", "NULL", "raft uuid")
+	flag.StringVar(&dso.peerUuid, "u", "NULL", "peer uuid")
+
+	flag.Parse()
+	fmt.Println("Raft UUID: ", dso.raftUuid)
+	fmt.Println("Peer UUID: ", dso.peerUuid)
+
+	return dso
+}
+
 //split the string and add each word in the word-map
 func split_and_write_to_word_map(text string) {
 	words := strings.Fields(text)
@@ -126,45 +167,4 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 
 	fmt.Println("Reply size is: ", reply_size)
 	return reply_size
-}
-
-func dictionaryServerNew() *DictionaryServer {
-	dso := &DictionaryServer{}
-
-	flag.StringVar(&dso.raftUuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&dso.peerUuid, "u", "NULL", "peer uuid")
-
-	flag.Parse()
-	fmt.Println("Raft UUID: ", dso.raftUuid)
-	fmt.Println("Peer UUID: ", dso.peerUuid)
-
-	return dso
-}
-
-func main() {
-	//Parse the cmdline parameters and generate new Dictionary object
-	dso := dictionaryServerNew()
-
-	/*
-		Initialize the internal pmdb-server-object pointer.
-		Assign the Directionary object to PmdbAPI so the apply and
-		read callback functions can be called through pmdb common library
-		functions.
-	*/
-	dso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
-		RaftUuid:       dso.raftUuid,
-		PeerUuid:       dso.peerUuid,
-		PmdbAPI:        dso,
-	}
-
-	//Create empty word map
-	word_map = make(map[string]int)
-
-	// Start the pmdb server
-	err := dso.pso.Run()
-
-	if err != nil {
-		log.Fatal(err)
-	}
 }
