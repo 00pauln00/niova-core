@@ -24,6 +24,13 @@ enum raft_client_request_opts
     RCRT_USE_PROVIDED_READ_BUFFER = (1 << 2),
 };
 
+typedef struct raft_client_leader_info
+{
+    uuid_t  rcli_leader_uuid;
+    size_t  rcli_leader_alive_cnt;
+    bool    rcli_leader_viable;
+} raft_client_leader_info_t;
+
 #define RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS 8
 
 typedef void * raft_client_thread_t;
@@ -69,12 +76,13 @@ raft_client_request_submit(raft_client_instance_t rci,
                            const struct raft_net_client_user_id *rncui,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
-                           bool expand_reply_buff,
+                           bool allocate_get_buffer_for_user,
                            const struct timespec timeout,
                            const enum raft_client_request_opts rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag);
 
-char *
-raft_client_get_leader_uuid(raft_client_instance_t client_instance);
+int
+raft_client_get_leader_info(raft_client_instance_t client_instance,
+                            raft_client_leader_info_t *leader_info);
 #endif

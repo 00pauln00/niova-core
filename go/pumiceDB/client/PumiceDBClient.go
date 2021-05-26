@@ -136,11 +136,20 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 
 }
 
-func (obj *PmdbClientObj) GetLeader() string {
+func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
-	leader_uuid := C.PmdbGetLeaderUUID(obj.pmdb)
+	var leader_info C.raft_client_leader_info_t
+	Cpmdb := (C.pmdb_t)(pmdb_client.Pmdb)
 
-	return C.GoString(leader_uuid)
+	rc := C.PmdbGetLeaderInfo(Cpmdb, &leader_info)
+	if rc != 0 {
+		return uuid.Nil, fmt.Errorf("Failed to get leader info (%d)", rc)
+	}
+
+	//C uuid to Go bytes
+	return uuid.FromBytes(C.GoBytes(unsafe.Pointer(&leader_info.rcli_leader_uuid),
+		C.int(unsafe.Sizeof(leader_info.rcli_leader_uuid))))
+
 }
 
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,

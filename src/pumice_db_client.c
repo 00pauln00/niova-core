@@ -465,10 +465,11 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
+    // Note: we should probably only send 1 iov in the case of !pro_get_buffer.
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
                                       reply_iovs, 2,
                                       (pmdb_req_opt->pro_get_buffer == NULL ?
-                                      true : false),
+                                       true : false),
                                       pmdb_req_opt->pro_timeout,
                                       opts,
                                       pmdb_client_request_cb, pcreq,
@@ -502,7 +503,7 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
     /* Initialize the request options */
     pmdb_request_options_init(&pmdb_req_opt, 0, 0, &pmdb_stat, NULL, NULL,
                               NULL, 0, pmdb_get_default_request_timeout());
- 
+
     int rc = pmdb_obj_get_internal(pmdb, obj_id, key, key_size, &pmdb_req_opt);
 
     /* Copy the actual reply size */
@@ -571,8 +572,8 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
     return pmdb;
 }
 
-char *
-PmdbGetLeaderUUID(pmdb_t pmdb)
+int
+PmdbGetLeaderInfo(pmdb_t pmdb, raft_client_leader_info_t *leader_info)
 {
-    return raft_client_get_leader_uuid(pmdb_2_rci(pmdb));
+    return raft_client_get_leader_info(pmdb_2_rci(pmdb), leader_info);
 }

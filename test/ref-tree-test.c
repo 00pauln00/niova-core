@@ -34,8 +34,10 @@ te_cmp(const struct test_entry *a, const struct test_entry *b)
 REF_TREE_GENERATE(ref_tree_test_head, test_entry, te_tentry, te_cmp);
 
 static struct test_entry *
-te_construct(const struct test_entry *in)
+te_construct(const struct test_entry *in, void *arg)
 {
+    (void)arg;
+
     struct test_entry *new_te = niova_malloc(sizeof(struct test_entry));
     new_te->val = in->val;
 
@@ -43,8 +45,10 @@ te_construct(const struct test_entry *in)
 }
 
 static int
-te_destruct(struct test_entry *destroy)
+te_destruct(struct test_entry *destroy, void *arg)
 {
+    (void)arg;
+
     log_msg(LL_DEBUG, "destroy item %d@%p", destroy->val, destroy);
     niova_free(destroy);
 
@@ -59,7 +63,7 @@ ref_tree_tests(void)
     struct test_entry *captured_te[N_ITERATIONS];
     struct ref_tree_test_head test_rt;
 
-    REF_TREE_INIT(&test_rt, te_construct, te_destruct);
+    REF_TREE_INIT(&test_rt, te_construct, te_destruct, NULL);
 
     int i;
     for (i = 0; i < N_ITERATIONS; i++)

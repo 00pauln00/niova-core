@@ -54,8 +54,15 @@ func pmdbDictClient() {
 
 			// If user asked for leader uuid
 			if ops == "get_leader" {
-				leader_uuid := pmdb.GetLeader()
-				fmt.Println("Leader uuid is ", leader_uuid)
+				var leader_uuid uuid.UUID
+				var err error
+				leader_uuid, err = client_obj.PmdbGetLeader()
+				if err != nil {
+					fmt.Errorf("Failed to get Leader UUID")
+					continue
+				}
+				leader_uuid_str := leader_uuid.String()
+				fmt.Println("Leader uuid is ", leader_uuid_str)
 			} else {
 				// If operation is read or write
 				rncui := input[1]
