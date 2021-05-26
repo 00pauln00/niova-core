@@ -2503,6 +2503,27 @@ raft_client_set_default_request_timeout(unsigned int timeout)
 }
 
 int
+raft_client_get_leader_info(raft_client_instance_t client_instance,
+                            raft_client_leader_info_t *leader_info)
+{
+    struct raft_client_instance *rci =
+                raft_client_instance_lookup(client_instance);
+
+    if (!leader_info || !rci || !RCI_2_RI(rci))
+        return -EINVAL;
+
+    struct ctl_svc_node *leader = RCI_2_RI(rci)->ri_csn_leader;
+    if (!leader)
+        return -ENOENT;
+
+    uuid_copy(leader_info->rcli_leader_uuid, leader->csn_uuid);
+    leader_info->rcli_leader_alive_cnt = rci->rci_leader_alive_cnt;
+    leader_info->rcli_leader_viable = raft_client_leader_is_viable(rci);
+
+    return 0;
+}
+
+int
 raft_client_destroy(raft_client_instance_t client_instance)
 {
     if (!client_instance)
