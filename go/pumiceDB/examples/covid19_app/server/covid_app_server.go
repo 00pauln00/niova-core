@@ -38,7 +38,7 @@ func (cso *CovidServer) Apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	fmt.Println("Covid19_Data app server: Apply request received")
 
 	/* Decode the input buffer into structure format */
-	apply_covid := &CovidAppLib.Covid_app{}
+	apply_covid := &CovidAppLib.Covid_locale{}
 
 	cso.pso.Decode(input_buf, apply_covid, input_buf_sz)
 
@@ -98,7 +98,7 @@ func (cso *CovidServer) Read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	fmt.Println("Covid19_Data App: Read request received")
 
 	//Decode the request structure sent by client.
-	req_struct := &CovidAppLib.Covid_app{}
+	req_struct := &CovidAppLib.Covid_locale{}
 	cso.pso.Decode(request_buf, req_struct, request_bufsz)
 
 	fmt.Println("Key passed by client: ", req_struct.Location)
@@ -117,7 +117,7 @@ func (cso *CovidServer) Read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	TV_int, _ := strconv.ParseInt(split_values[1], 10, 64)
 	PV_int, _ := strconv.ParseInt(split_values[2], 10, 64)
 
-	result_covid := CovidAppLib.Covid_app{
+	result_covid := CovidAppLib.Covid_locale{
 		Location:           req_struct.Location,
 		Iso_code:           split_values[0],
 		Total_vaccinations: TV_int,
