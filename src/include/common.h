@@ -53,6 +53,7 @@
 
 #define ABS(v) ((v < 0) ? (-v) : (v))
 
+#define IS_EVEN(val) (val & 1) ? false : true
 
 #define PACKED __attribute__((packed))
 
