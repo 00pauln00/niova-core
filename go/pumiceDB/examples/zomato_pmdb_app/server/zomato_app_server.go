@@ -19,15 +19,15 @@ import (
 import "C"
 
 var (
-	raft_uuid string
-	peer_uuid string
+	raftUuid string
+	peerUuid string
 	//Use the default column family
 	colmfamily = "PMDBTS_CF"
 )
 
 type ZomatoServer struct {
-	raft_uuid      string
-	peer_uuid      string
+	raftUuid       string
+	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
 }
@@ -115,12 +115,12 @@ func zomatoServerNew() *ZomatoServer {
 	zso := &ZomatoServer{}
 
 	//Method call to accept cmdline parameters and start server.
-	flag.StringVar(&zso.raft_uuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&zso.peer_uuid, "u", "NULL", "peer uuid")
+	flag.StringVar(&zso.raftUuid, "r", "NULL", "raft uuid")
+	flag.StringVar(&zso.peerUuid, "u", "NULL", "peer uuid")
 
 	flag.Parse()
-	fmt.Println("Raft UUID: ", zso.raft_uuid)
-	fmt.Println("Peer UUID: ", zso.peer_uuid)
+	fmt.Println("Raft UUID: ", zso.raftUuid)
+	fmt.Println("Peer UUID: ", zso.peerUuid)
 
 	return zso
 }
@@ -146,8 +146,8 @@ func main() {
 	*/
 	zso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
-		RaftUuid:       zso.raft_uuid,
-		PeerUuid:       zso.peer_uuid,
+		RaftUuid:       zso.raftUuid,
+		PeerUuid:       zso.peerUuid,
 		PmdbAPI:        zso,
 	}
 
