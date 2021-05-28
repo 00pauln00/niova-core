@@ -234,7 +234,7 @@ pmdbts_apply(const struct raft_net_client_user_id *app_id,
 
     pmdbts_sum_incoming_rtv(rtdb, &stored_rtv);
 
-    DBG_RAFT_TEST_DATA_BLOCK(LL_WARN, rtdb, "new seqno=%ld, val=%ld",
+    DBG_RAFT_TEST_DATA_BLOCK(LL_DEBUG, rtdb, "new seqno=%ld, val=%ld",
                              stored_rtv.rtv_seqno,
                              stored_rtv.rtv_reply_xor_all_values);
 
