@@ -443,8 +443,10 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
 }
 
 static struct pmdb_cowr_sub_app *
-pmdb_cowr_sub_app_construct(const struct pmdb_cowr_sub_app *in)
+pmdb_cowr_sub_app_construct(const struct pmdb_cowr_sub_app *in, void *arg)
 {
+    (void)arg;
+
     if (!in)
         return NULL;
 
@@ -463,8 +465,10 @@ pmdb_cowr_sub_app_construct(const struct pmdb_cowr_sub_app *in)
 }
 
 static int
-pmdb_cowr_sub_app_destruct(struct pmdb_cowr_sub_app *destroy)
+pmdb_cowr_sub_app_destruct(struct pmdb_cowr_sub_app *destroy, void *arg)
 {
+    (void)arg;
+
     if (!destroy)
         return -EINVAL;
 
