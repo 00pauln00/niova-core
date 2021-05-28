@@ -1022,7 +1022,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     SIMPLE_LOG_MSG(LL_WARN, "Initialize coalesced write RB tree");
     REF_TREE_INIT(&pmdb_cowr_sub_apps, pmdb_cowr_sub_app_construct,
-                  pmdb_cowr_sub_app_destruct);
+                  pmdb_cowr_sub_app_destruct, NULL);
 
     int rc = raft_server_rocksdb_add_cf_name(
         &pmdbCFT, PMDB_COLUMN_FAMILY_NAME,
