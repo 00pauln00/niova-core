@@ -15,9 +15,9 @@ import "C"
 
 type PMDBInfo struct {
 
-        Raft_uuid   string
-        Client_uuid string
-        Leader_uuid string
+        RaftUUID   string
+        ClientUUID string
+        LeaderUUID string
 }
 
 func Encode(ed interface{}, data_len *int64) (unsafe.Pointer, error) {

@@ -1,15 +1,16 @@
 package main
 
 import (
-	"covidapplib/lib"
 	"flag"
 	"fmt"
 	"log"
-	"niova/go-pumicedb-lib/server"
 	"os"
 	"strconv"
 	"strings"
 	"unsafe"
+
+	"covidapplib/lib"
+	"niova/go-pumicedb-lib/server"
 )
 
 /*
@@ -19,11 +20,59 @@ import (
 import "C"
 
 var seqno = 0
-var raft_uuid_go string
-var peer_uuid_go string
+var raftUuid string
+var peerUuid string
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
+
+func main() {
+
+	//Print help message.
+	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "-h" {
+		fmt.Println("You need to pass the following arguments:")
+		fmt.Println("Positional Arguments: \n           '-r' - RAFT UUID \n           '-u' - PEER UUID")
+		fmt.Println("Optional Arguments: \n             -h, -help")
+		fmt.Println("Pass arguments in this format: \n          ./covid_app_server -r RAFT UUID -u PEER UUID")
+		os.Exit(0)
+	}
+
+	//Parse the cmdline parameters and generate new Covid object
+	cso := parseFlag()
+
+	/*
+	   Initialize the internal pmdb-server-object pointer.
+	   Assign the Directionary object to PmdbAPI so the apply and
+	   read callback functions can be called through pmdb common library
+	   functions.
+	*/
+	cso.pso = &PumiceDBServer.PmdbServerObject{
+		ColumnFamilies: colmfamily,
+		RaftUuid:       cso.raftUuid,
+		PeerUuid:       cso.peerUuid,
+		PmdbAPI:        cso,
+	}
+
+	// Start the pmdb server
+	err := cso.pso.Run()
+
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func parseFlag() *CovidServer {
+	cso := &CovidServer{}
+
+	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
+	flag.StringVar(&cso.peerUuid, "u", "NULL", "peer uuid")
+
+	flag.Parse()
+	fmt.Println("Raft UUID: ", cso.raftUuid)
+	fmt.Println("Peer UUID: ", cso.peerUuid)
+
+	return cso
+}
 
 type CovidServer struct {
 	raftUuid       string
@@ -130,52 +179,4 @@ func (cso *CovidServer) Read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 	fmt.Println("Reply buffer size:", reply_bufsz)
 
 	return reply_size
-}
-
-func covidServerNew() *CovidServer {
-	cso := &CovidServer{}
-
-	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&cso.peerUuid, "u", "NULL", "peer uuid")
-
-	flag.Parse()
-	fmt.Println("Raft UUID: ", cso.raftUuid)
-	fmt.Println("Peer UUID: ", cso.peerUuid)
-
-	return cso
-}
-
-func main() {
-
-	//Print help message.
-	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "-h" {
-		fmt.Println("You need to pass the following arguments:")
-		fmt.Println("Positional Arguments: \n           '-r' - RAFT UUID \n           '-u' - PEER UUID")
-		fmt.Println("Optional Arguments: \n             -h, -help")
-		fmt.Println("Pass arguments in this format: \n          ./covid_app_server -r RAFT UUID -u PEER UUID")
-		os.Exit(0)
-	}
-
-	//Parse the cmdline parameters and generate new Covid object
-	cso := covidServerNew()
-
-	/*
-	   Initialize the internal pmdb-server-object pointer.
-	   Assign the Directionary object to PmdbAPI so the apply and
-	   read callback functions can be called through pmdb common library
-	   functions.
-	*/
-	cso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
-		RaftUuid:       cso.raftUuid,
-		PeerUuid:       cso.peerUuid,
-		PmdbAPI:        cso,
-	}
-
-	// Start the pmdb server
-	err := cso.pso.Run()
-
-	if err != nil {
-		log.Fatal(err)
-	}
 }
