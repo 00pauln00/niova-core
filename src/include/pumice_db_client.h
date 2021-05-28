@@ -37,4 +37,7 @@ PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
 pmdb_t
 PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
 
+int
+PmdbGetLeaderInfo(pmdb_t pmdb, raft_client_leader_info_t *leader_info);
+
 #endif

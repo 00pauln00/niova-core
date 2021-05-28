@@ -390,8 +390,10 @@ raft_client_instance_release(struct raft_client_instance *rci)
 }
 
 static struct raft_client_sub_app *
-raft_client_sub_app_construct(const struct raft_client_sub_app *in)
+raft_client_sub_app_construct(const struct raft_client_sub_app *in, void *arg)
 {
+    (void)arg;
+
     if (!in)
         return NULL;
 
@@ -419,8 +421,10 @@ raft_client_sub_app_construct(const struct raft_client_sub_app *in)
 }
 
 static int
-raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
+raft_client_sub_app_destruct(struct raft_client_sub_app *destroy, void *arg)
 {
+    (void)arg;
+
     if (!destroy)
         return -EINVAL;
 
@@ -2378,7 +2382,7 @@ raft_client_instance_init(struct raft_client_instance *rci,
                           raft_client_data_2_obj_id_t obj_id_cb)
 {
     REF_TREE_INIT(&rci->rci_sub_apps, raft_client_sub_app_construct,
-                  raft_client_sub_app_destruct);
+                  raft_client_sub_app_destruct, NULL);
 
     STAILQ_INIT(&rci->rci_sendq);
 
@@ -2496,6 +2500,27 @@ raft_client_set_default_request_timeout(unsigned int timeout)
 {
     if (timeout)
         raftClientDefaultReqTimeoutSecs = timeout;
+}
+
+int
+raft_client_get_leader_info(raft_client_instance_t client_instance,
+                            raft_client_leader_info_t *leader_info)
+{
+    struct raft_client_instance *rci =
+                raft_client_instance_lookup(client_instance);
+
+    if (!leader_info || !rci || !RCI_2_RI(rci))
+        return -EINVAL;
+
+    struct ctl_svc_node *leader = RCI_2_RI(rci)->ri_csn_leader;
+    if (!leader)
+        return -ENOENT;
+
+    uuid_copy(leader_info->rcli_leader_uuid, leader->csn_uuid);
+    leader_info->rcli_leader_alive_cnt = rci->rci_leader_alive_cnt;
+    leader_info->rcli_leader_viable = raft_client_leader_is_viable(rci);
+
+    return 0;
 }
 
 int

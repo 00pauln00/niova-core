@@ -38,7 +38,6 @@ func dict_apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
 	fmt.Println("Dictionary app server: Apply request received")
 
 	/* Decode the input buffer into dictionary structure format */
-	//apply_dict := DictAppLib.DictAppDecodebuf(input_buf, input_buf_sz)
 	apply_dict := &DictAppLib.Dict_app{}
 	PumiceDBCommon.Decode(input_buf, apply_dict, input_buf_sz)
 
@@ -119,8 +118,8 @@ func dict_read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
 
 func pmdb_dict_app_getopts() {
 
-	flag.StringVar(&raft_uuid_go, "raft", "NULL", "raft uuid")
-	flag.StringVar(&peer_uuid_go, "peer", "NULL", "peer uuid")
+	flag.StringVar(&raft_uuid_go, "r", "NULL", "raft uuid")
+	flag.StringVar(&peer_uuid_go, "u", "NULL", "peer uuid")
 
 	flag.Parse()
 	fmt.Println("Raft UUID: ", raft_uuid_go)
