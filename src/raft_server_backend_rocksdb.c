@@ -573,7 +573,7 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
     if (!ws)
         return;
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "idx=%ld cumu-crc=%x",
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "idx=%ld cumu-crc=%x",
                       ri->ri_last_applied_idx,
                       ri->ri_last_applied_cumulative_crc);
 
