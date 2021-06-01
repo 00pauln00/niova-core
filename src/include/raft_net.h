@@ -307,7 +307,7 @@ struct raft_net_client_request_handle
     const size_t                         rncr_reply_data_max_size;
     size_t                               rncr_reply_data_size;
     uint64_t                             rncr_msg_id;
-    struct raft_net_sm_write_supplements rncr_sm_write_supp;
+    struct raft_net_sm_write_supplements *rncr_sm_write_supp;
     uuid_t                               rncr_client_uuid;
 };
 

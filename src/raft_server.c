@@ -3904,6 +3904,7 @@ static void // raft_net_cb_ctx_t or raft_server_epoll_sm_apply_bool_t
 raft_server_net_client_request_init(
     const struct raft_instance *ri,
     struct raft_net_client_request_handle *rncr,
+    struct raft_net_sm_write_supplements *ws,
     enum raft_net_client_request_type type,
     const struct raft_client_rpc_msg *rpc_request,  const char *commit_data,
     const size_t commit_data_size, const struct sockaddr_in *from,
@@ -3937,6 +3938,8 @@ raft_server_net_client_request_init(
 
     CONST_OVERRIDE(size_t, rncr->rncr_reply_data_max_size,
                    (reply_buf_size - sizeof(struct raft_client_rpc_msg)));
+
+    rncr->rncr_sm_write_supp = ws;
 
     if (rpc_request)
     {
@@ -3972,13 +3975,14 @@ raft_server_net_client_request_init(
 static raft_net_cb_ctx_t
 raft_server_net_client_request_init_client_rpc(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
+    struct raft_net_sm_write_supplements *ws,
     const struct raft_client_rpc_msg *rpc_request,
     const struct sockaddr_in *from, char *reply_buf,
     const size_t reply_buf_size)
 {
     NIOVA_ASSERT(ri && rncr && rpc_request);
 
-    raft_server_net_client_request_init(ri, rncr,
+    raft_server_net_client_request_init(ri, rncr, ws,
                                         RAFT_NET_CLIENT_REQ_TYPE_NONE,
                                         rpc_request, NULL, 0, from, reply_buf,
                                         reply_buf_size);
@@ -3987,13 +3991,6 @@ raft_server_net_client_request_init_client_rpc(
         ri, rncr, (rpc_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING ?
                    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY :
                    RAFT_CLIENT_RPC_MSG_TYPE_REPLY));
-}
-
-static void
-raft_server_cowr_copy_ws(struct raft_net_sm_write_supplements *dest_ws,
-                    struct raft_net_sm_write_supplements *src_ws)
-{
-    *dest_ws = *src_ws;
 }
 
 /*
@@ -4031,7 +4028,6 @@ raft_server_write_coalesce_entry(struct raft_instance *ri,
     re_co_wr_info->rcwi_entry_sizes[nentries] = len;
 
     uuid_copy(re_co_wr_info->rcwi_client_uuid, client_uuid);
-    re_co_wr_info->rcwi_ws = rncr->rncr_sm_write_supp;
     memcpy(re_co_wr_info->rcwi_buffer + re_co_wr_info->rcwi_total_size,
            data, len);
     re_co_wr_info->rcwi_nentries++;
@@ -4076,7 +4072,9 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     struct raft_net_client_request_handle rncr;
 
-    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, from, reply_buf,
+    raft_server_net_client_request_init_client_rpc(ri, &rncr,
+                                                   NULL,
+                                                   rcm, from, reply_buf,
                                                    reply_size);
 
     /* Second set of checks which determine if this server is capable of
@@ -4098,7 +4096,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     }
 
     // Use the write_suppliment from coalesed write request structure.
-    raft_server_cowr_copy_ws(&rncr.rncr_sm_write_supp, &re_co_wr_info->rcwi_ws);
+    rncr.rncr_sm_write_supp = &re_co_wr_info->rcwi_ws;
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
@@ -4153,7 +4151,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (rc)
     {
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp);
+        raft_net_sm_write_supplement_destroy(rncr.rncr_sm_write_supp);
         goto out;
     }
 
@@ -4372,12 +4370,13 @@ raft_server_sm_apply_opt(struct raft_instance *ri,
 static raft_server_epoll_sm_apply_bool_t
 raft_server_net_client_request_init_sm_apply(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
+    struct raft_net_sm_write_supplements *ws,
     char *commit_data, const size_t commit_data_size, char *reply_buf,
     const size_t reply_buf_size)
 {
     NIOVA_ASSERT(ri && rncr && commit_data);
 
-    raft_server_net_client_request_init(ri, rncr,
+    raft_server_net_client_request_init(ri, rncr, ws,
                                         RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
                                         NULL, commit_data, commit_data_size,
                                         NULL, reply_buf, reply_buf_size);
@@ -4477,19 +4476,12 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     {
 
         raft_server_net_client_request_init_sm_apply(ri, &rncr[i],
+                                                     &coalesced_ws,
                                                      sink_buf,
                                                      reh.reh_entry_sz[i],
                                                      reply_buf[i],
                                                      reply_buf_sz);
-        //Use the previously populated coalesced_write_supplement.
-        raft_server_cowr_copy_ws(&rncr[i].rncr_sm_write_supp,
-                                 &coalesced_ws);
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
-
-        /* Get the newly populated write supplment structure to be used for
-         * next rncr.
-         */
-        raft_server_cowr_copy_ws(&coalesced_ws, &rncr[i].rncr_sm_write_supp);
     }
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
