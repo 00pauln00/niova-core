@@ -417,7 +417,7 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     raft_net_client_request_handle_set_write_raft_entry(rncr);
 
     // Mark that the object is pending a write in this leader's term.
-    pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
+    pmdb_prep_obj_write(rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, rncr->rncr_current_term);
 
     PMDB_OBJ_DEBUG(LL_NOTIFY, obj, "");
@@ -436,7 +436,7 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
     obj->pmdb_obj_commit_seqno++;
 
     // Reset the pending term value with -1
-    pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
+    pmdb_prep_obj_write(rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, ID_ANY_64bit);
 
     PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
@@ -519,20 +519,19 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
 
     if (!subapp)
     {
-        PMDB_STR_DEBUG(LL_DEBUG, rncui, "Failed to add rncui %s:%d",
-                       caller_func, caller_lineno);
+        LOG_MSG(LL_DEBUG, "Can not add RB entry pmdb_cowr_sub_app_add(): %s",
+                strerror(-error));
+
         return NULL;
     }
 
     if (error) // The entry already existed
     {
         *ret_error = -EINPROGRESS;
-
-        // Check If the different client is using rncui from other client..
+        // If the different client is trying to use existing rncui.
         if (uuid_compare(subapp->pcwsa_client_uuid, client_uuid))
         {
-            PMDB_STR_DEBUG(LL_ERROR, rncui, "Client using existing rncui %s:%d",
-                           caller_func, caller_lineno);
+            LOG_MSG(LL_DEBUG, "Different client trying out existing rncui");
             *ret_error = -EPERM;
         }
         pmdb_cowr_sub_app_put(subapp, __func__, __LINE__);
@@ -610,7 +609,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                               __LINE__);
     if (!cowr_sa)
     {
-        raft_client_net_request_handle_error_set(rncr, error, 0, 0);
+        raft_client_net_request_handle_error_set(rncr, error, error, 0);
     }
 
     /* Check if the request was already committed and applied.  A commit-seqno
@@ -847,7 +846,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
      */
     pmdb_prep_sm_apply_write(rncr, &obj);
 
-    struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
+    struct raft_net_sm_write_supplements *ws = rncr->rncr_sm_write_supp;
     struct pmdb_apply_handle pah = {.pah_rncui = rncui, .pah_ws = ws};
 
     // Call into the application so it may emplace its own KVs.
@@ -875,8 +874,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     //release the reference on the rncui from coalesced write RB tree
     if (cowr_sa)
     {
-        //one put for derement for lookup above and one for destroying the entry
-        //FIXME
+        //FIXME May be destroy the whole tree once.
         pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
         pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
     }
