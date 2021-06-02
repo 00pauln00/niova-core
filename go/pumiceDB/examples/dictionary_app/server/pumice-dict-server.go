@@ -89,7 +89,10 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 
 	/* Decode the input buffer into dictionary structure format */
 	apply_dict := &DictAppLib.Dict_app{}
-	dso.pso.Decode(input_buf, apply_dict, input_buf_sz)
+	decode_err := dso.pso.Decode(input_buf, apply_dict, input_buf_sz)
+	if decode_err != nil {
+		log.Fatal("Failed to decode the application data")
+	}
 
 	fmt.Println("Key passed by client: %s", apply_dict.Dict_text)
 
@@ -105,11 +108,11 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 		var prev_value string
 
 		//Lookup the key first
-		prev_result := dso.pso.LookupKey(word, int64(go_key_len), prev_value,
+		prev_result, err := dso.pso.LookupKey(word, int64(go_key_len), prev_value,
 			colmfamily)
 		fmt.Println("Previous value of the key: ", prev_result)
 
-		if prev_result != "" {
+		if err == nil {
 			//Convert the word count into string.
 			prev_result_int, _ := strconv.Atoi(prev_result)
 			count = count + prev_result_int
@@ -137,18 +140,21 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 
 	//Decode the request structure sent by client.
 	req_dict := &DictAppLib.Dict_app{}
-	dso.pso.Decode(request_buf, req_dict, request_bufsz)
+	decode_err := dso.pso.Decode(request_buf, req_dict, request_bufsz)
 
+	if decode_err != nil {
+		log.Fatal("Failed to decode the read request")
+	}
 	fmt.Println("Key passed by client: %s", req_dict.Dict_text)
 
 	key_len := len(req_dict.Dict_text)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-	result := dso.pso.ReadKV(app_id, req_dict.Dict_text, int64(key_len), colmfamily)
+	result, read_err := dso.pso.ReadKV(app_id, req_dict.Dict_text, int64(key_len), colmfamily)
 
 	/* typecast the output to int */
 	word_frequency := 0
-	if result != "" {
+	if read_err == nil {
 		word_count, err := strconv.Atoi(result)
 		if err != nil {
 			log.Fatal(err)
@@ -163,7 +169,10 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 	}
 
 	//Copy the encoded result in reply_buffer
-	reply_size := dso.pso.CopyDataToBuffer(result_dict, reply_buf)
+	reply_size, copy_err := dso.pso.CopyDataToBuffer(result_dict, reply_buf)
+	if copy_err != nil {
+		log.Fatal("Failed to Copy result in the buffer: %s", copy_err)
+	}
 
 	fmt.Println("Reply size is: ", reply_size)
 	return reply_size

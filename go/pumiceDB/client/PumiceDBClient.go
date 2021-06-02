@@ -268,8 +268,8 @@ func (obj *PmdbClientObj) GetSize(ed interface{}) int64 {
 // Decode in the input buffer into the output object
 // XXX note this function *should* return an error
 func (obj *PmdbClientObj) Decode(input unsafe.Pointer, output interface{},
-	len int64) {
-	PumiceDBCommon.Decode(input, output, len)
+	len int64) error {
+	return PumiceDBCommon.Decode(input, output, len)
 }
 
 func (obj *PmdbClientObj) Stop() error {

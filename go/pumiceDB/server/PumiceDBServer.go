@@ -181,16 +181,18 @@ func (pso *PmdbServerObject) Run() error {
 
 // Export the common decode method via the server object
 func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
-	len int64) {
-	PumiceDBCommon.Decode(input, output, len)
+	len int64) error {
+	return PumiceDBCommon.Decode(input, output, len)
 }
 
 // search a key in RocksDB
 func PmdbLookupKey(key string, key_len int64, value string,
-	go_cf string) string {
+	go_cf string) (string, error) {
 
 	var goerr string
 	var C_value_len C.size_t
+	var result string
+	var lookup_err error
 
 	err := GoToCString(goerr)
 
@@ -213,15 +215,19 @@ func PmdbLookupKey(key string, key_len int64, value string,
 
 	C.rocksdb_readoptions_destroy(ropts)
 
-	go_value := CToGoString(C_value)
-	fmt.Println("Value returned by rocksdb_get_cf is: ", go_value)
+	if C_value != nil {
+		go_value := CToGoString(C_value)
+		fmt.Println("Value returned by rocksdb_get_cf is: ", go_value)
 
-	go_value_len := CToGoInt64(C_value_len)
-	fmt.Println("Value len is", go_value_len)
-
-	result := go_value
-	if result != "" {
+		go_value_len := CToGoInt64(C_value_len)
+		fmt.Println("Value len is", go_value_len)
+		result = go_value
 		result = go_value[0:go_value_len]
+		lookup_err = nil
+		FreeCMem(C_value)
+	} else {
+		lookup_err = errors.New("Failed to lookup for key")
+		result = ""
 	}
 	fmt.Println("Result of the lookup is: ", result)
 
@@ -229,14 +235,13 @@ func PmdbLookupKey(key string, key_len int64, value string,
 	FreeCMem(err)
 	FreeCMem(cf)
 	FreeCMem(C_key)
-	FreeCMem(C_value)
 
-	return result
+	return result, lookup_err
 }
 
 // Public method of PmdbLookupKey
 func (*PmdbServerObject) LookupKey(key string, key_len int64, value string,
-	go_cf string) string {
+	go_cf string) (string, error) {
 	return PmdbLookupKey(key, key_len, value, go_cf)
 }
 
@@ -279,44 +284,43 @@ func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) string {
+	key_len int64, gocolfamily string) (string, error) {
 
 	var value string
-	//Convert the golang string to C char*
 
 	fmt.Println("Read request for key: ", key)
-	go_value := PmdbLookupKey(key, key_len, value, gocolfamily)
+	go_value, err := PmdbLookupKey(key, key_len, value, gocolfamily)
 
 	//Get the result
 	fmt.Println("Value is: ", go_value)
-	return go_value
+	return go_value, err
 }
 
 // Public method of PmdbReadKV
 func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) string {
+	key_len int64, gocolfamily string) (string, error) {
 
 	return PmdbReadKV(app_id, key, key_len, gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer
-func PmdbCopyDataToBuffer(ed interface{}, buffer unsafe.Pointer) int64 {
+func PmdbCopyDataToBuffer(ed interface{}, buffer unsafe.Pointer) (int64, error) {
 	var key_len int64
 	//Encode the structure into void pointer.
 	encoded_key, err := PumiceDBCommon.Encode(ed, &key_len)
 	if err != nil {
 		fmt.Println("Failed to encode data during copy data: ", err)
-		return 0
+		return -1, err
 	}
 
 	//Copy the encoded structed into buffer
 	C.memcpy(buffer, encoded_key, C.size_t(key_len))
 
-	return key_len
+	return key_len, nil
 }
 
 // Public method version of PmdbCopyDataToBuffer
 func (*PmdbServerObject) CopyDataToBuffer(ed interface{},
-	buffer unsafe.Pointer) int64 {
+	buffer unsafe.Pointer) (int64, error) {
 	return PmdbCopyDataToBuffer(ed, buffer)
 }
