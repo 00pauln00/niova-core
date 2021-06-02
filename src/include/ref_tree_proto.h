@@ -207,4 +207,7 @@ struct {                                 \
 #define RT_FOREACH_REVERSE_SAFE_LOCKED(x, name, head, y) \
     RB_FOREACH_REVERSE(x, _RT_##name, &(head)->rt_head, y)
 
+#define RT_EMPTY(head) RB_EMPTY(&(head)->rt_head)
+#define RT_INIT(head) RB_INIT(&(head)->rt_head)
+
 #endif //REF_TREE_H
