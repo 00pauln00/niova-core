@@ -175,7 +175,6 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 
 // Method version of PmdbStartServer()
 func (pso *PmdbServerObject) Run() error {
-	fmt.Println("Start server")
 	return PmdbStartServer(pso)
 }
 
@@ -204,8 +203,6 @@ func PmdbLookupKey(key string, key_len int64, value string,
 	C_key_len := GoToCSize_t(key_len)
 
 	//Get the column family handle
-	fmt.Println("Lookup for key :", key)
-	fmt.Println("key length:", key_len)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 
 	ropts := C.rocksdb_readoptions_create()
@@ -217,10 +214,8 @@ func PmdbLookupKey(key string, key_len int64, value string,
 
 	if C_value != nil {
 		go_value := CToGoString(C_value)
-		fmt.Println("Value returned by rocksdb_get_cf is: ", go_value)
 
 		go_value_len := CToGoInt64(C_value_len)
-		fmt.Println("Value len is", go_value_len)
 		result = go_value
 		result = go_value[0:go_value_len]
 		lookup_err = nil
@@ -229,7 +224,6 @@ func PmdbLookupKey(key string, key_len int64, value string,
 		lookup_err = errors.New("Failed to lookup for key")
 		result = ""
 	}
-	fmt.Println("Result of the lookup is: ", result)
 
 	//Free C memory
 	FreeCMem(err)
@@ -262,8 +256,6 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 	capp_id := (*C.struct_raft_net_client_user_id)(app_id)
 
 	cf_handle := C.PmdbCfHandleLookup(cf)
-	fmt.Println("key", key)
-	fmt.Println("value", value)
 
 	//Calling pmdb library function to write Key-Value.
 	C.PmdbWriteKV(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, unsafe.Pointer(cf_handle))
@@ -288,11 +280,9 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 
 	var value string
 
-	fmt.Println("Read request for key: ", key)
 	go_value, err := PmdbLookupKey(key, key_len, value, gocolfamily)
 
 	//Get the result
-	fmt.Println("Value is: ", go_value)
 	return go_value, err
 }
 

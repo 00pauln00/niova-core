@@ -70,7 +70,6 @@ func (obj *PmdbClientObj) Write(ed interface{},
 	//Encode the structure into void pointer.
 	ed_key, err := PumiceDBCommon.Encode(ed, &key_len)
 	if err != nil {
-		fmt.Print("Failed to encode the application data: ", err)
 		return err
 	}
 
@@ -86,7 +85,6 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,
 	output_ed interface{}) error {
 	//Byte array
-	fmt.Println("Client: Read Value for the given Key")
 
 	var key_len int64
 	var reply_size int64
@@ -106,8 +104,6 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	if rd_err != nil {
 		return rd_err
 	}
-
-	fmt.Println("Reply size is: ", reply_size)
 
 	if reply_buff != nil {
 		err = PumiceDBCommon.Decode(unsafe.Pointer(reply_buff), output_ed,
