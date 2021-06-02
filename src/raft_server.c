@@ -2483,8 +2483,9 @@ static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
     //Do nothing if there no entries in the coalesced buffer
-    if (re_co_wr_info->rcwi_nentries)
+    if (re_co_wr_info->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
     {
+        SIMPLE_LOG_MSG(LL_WARN, "Should not happen through timeout");
         /* Issue the pending wr */
         raft_server_write_coalesced_entries(ri);
     }
@@ -4073,7 +4074,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     struct raft_net_client_request_handle rncr;
 
     raft_server_net_client_request_init_client_rpc(ri, &rncr,
-                                                   NULL,
+                                                   &re_co_wr_info->rcwi_ws,
                                                    rcm, from, reply_buf,
                                                    reply_size);
 
@@ -4087,6 +4088,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                        "cannot accept client message, rc=%d: msg-type=%u",
                        rc, rcm->rcrm_type);
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
+        raft_net_sm_write_supplement_destroy(rncr.rncr_sm_write_supp);
         goto out;
     }
 
@@ -4096,9 +4098,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_server_reply_to_client(ri, &rncr, csn);
         goto out;
     }
-
-    // Use the write_suppliment from coalesed write request structure.
-    rncr.rncr_sm_write_supp = &re_co_wr_info->rcwi_ws;
 
     /* Call into the application state machine logic.  There are several
      * outcomes here:
@@ -4164,7 +4163,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                                          rcm->rcrm_sender_id,
                                          ri->ri_log_hdr.rlh_term,
                                          RAFT_WR_ENTRY_OPT_NONE);
-        goto out;
     }
     /* Read operation or an already committed + applied write
      * operation.
