@@ -383,7 +383,7 @@ rsbp_header_write(struct raft_instance *ri)
     raft_server_entry_init_for_log_header(ri, re, re_idx,
                                           ri->ri_log_hdr.rlh_term,
                                           (const char *)&ri->ri_log_hdr,
-                                          &len);
+                                          len);
 
     const ssize_t write_sz =
         niova_io_pwrite(rip->rip_fd, (const char *)&entry_and_header,
