@@ -402,7 +402,7 @@ struct raft_instance_buffer
     bool     ribuf_free;
 };
 
-#define RAFT_INSTANCE_NUM_BUFS 12UL
+#define RAFT_INSTANCE_NUM_BUFS (RAFT_ENTRY_NUM_ENTRIES + 2UL)
 struct raft_instance_buf_pool
 {
     size_t                      ribufp_nbufs;
@@ -1006,7 +1006,7 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
                                       const raft_entry_idx_t re_idx,
                                       const uint64_t current_term,
                                       const char *data,
-                                      uint32_t *entry_sizes);
+                                      uint32_t entry_sizes);
 
 void
 raft_server_backend_use_posix(struct raft_instance *ri);

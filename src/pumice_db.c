@@ -527,12 +527,20 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
 
     if (error) // The entry already existed
     {
-        *ret_error = -EINPROGRESS;
-        // If the different client is trying to use existing rncui.
-        if (uuid_compare(subapp->pcwsa_client_uuid, client_uuid))
+        /*
+         * -EALREADY indicates write request is already in coalesced buffer.
+         * Convert the error to -EINPROGRESS as -EALREADY means write is
+         * already committed in pmdb_sm_handler_client_write().
+         */
+        if (error == -EALREADY)
         {
-            LOG_MSG(LL_DEBUG, "Different client trying out existing rncui");
-            *ret_error = -EPERM;
+            *ret_error = -EINPROGRESS;
+            // If the different client is trying to use existing rncui.
+            if (uuid_compare(subapp->pcwsa_client_uuid, client_uuid))
+            {
+                LOG_MSG(LL_DEBUG, "Different client trying out existing rncui");
+                *ret_error = -EPERM;
+            }
         }
         pmdb_cowr_sub_app_put(subapp, __func__, __LINE__);
         return NULL;

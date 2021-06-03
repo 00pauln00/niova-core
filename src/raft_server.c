@@ -848,7 +848,10 @@ raft_server_entry_write_by_store(
  * @ri:  raft instance
  * @re_idx:  the raft_entry index at which the block will be written
  * @data:  the application data buffer
- * @len:  length of the application data buffer.
+ * @entry_sizes: Pointer to entry size array.
+ * @nentries: Number of entries to be written.
+ * @opts: write entry option.
+ * @ws: pointer to write supplement for all the nentries.
  */
 static int
 raft_server_entry_write(struct raft_instance *ri,
@@ -918,12 +921,12 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
                                       struct raft_entry *re,
                                       const raft_entry_idx_t re_idx,
                                       const uint64_t current_term,
-                                      const char *data, uint32_t *entry_sizes)
+                                      const char *data, uint32_t entry_sizes)
 {
     NIOVA_ASSERT(re_idx < 0);
 
     return raft_server_entry_init(ri, re, re_idx, current_term, data,
-                                  entry_sizes, 1,
+                                  &entry_sizes, 1,
                                   RAFT_WR_ENTRY_OPT_LOG_HEADER);
 }
 
@@ -2102,7 +2105,8 @@ raft_server_leader_init_state(struct raft_instance *ri)
  * @term:  term in which the entry was originally written - which may not be
  *    the current term.
  * @data:  raft-entry data
- * @len:  length of the raft-entry data
+ * @wr_entry_size: Pointer to array of write entry sizes.
+ * @nentries: Total number of entries to be written.
  * @opts:  options flags
  * @ws:  write supplements - currently, only used on the leader in entry_write
  *    context, however, both leaders and followers may make use of write-supp
@@ -4467,10 +4471,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     /*
      * Use single entry of write suppliement for each rncr objects to
-     * make sure all coalesced write entries are part of same write suppliment
+     * make sure all coalesced write entries are part of same write supplement
      * structure.
      */
     struct raft_net_sm_write_supplements coalesced_ws = {0, NULL};
+    bool failed = false;
 
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
@@ -4482,6 +4487,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                                                      reply_buf[i],
                                                      reply_buf_sz);
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
+        if (rc_arr[i])
+            failed = true;
     }
 
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
@@ -4490,44 +4497,42 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         raft_server_sm_apply_opt(ri, &coalesced_ws);
     }
 
-    // init reply for each request.
-    for (uint32_t i = 0; i < reh.reh_num_entries; i++)
+    if (!failed && raft_instance_is_leader(ri))
     {
-        if (!rc_arr[i] && raft_instance_is_leader(ri))
+        if (reh.reh_term == ri->ri_log_hdr.rlh_term)
         {
-            if (reh.reh_term == ri->ri_log_hdr.rlh_term)
-            {
-                struct timespec ts;
-                niova_realtime_coarse_clock(&ts);
+            struct timespec ts;
+            niova_realtime_coarse_clock(&ts);
 
-                timespecsub(&ts, &reh.reh_store_time, &ts);
+            timespecsub(&ts, &reh.reh_store_time, &ts);
 
-                struct binary_hist *bh =
+            struct binary_hist *bh =
                     raft_server_type_2_hist(
                         ri, RAFT_INSTANCE_HIST_COMMIT_LAT_MSEC);
 
-                if (timespec_2_msec(&ts) > 0)
-                    binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
-            }
-            /* Perform basic initialization on the reply buffer if the SM has
-             * provided the necessary info for completing the reply.  The SM
-             * would have called
-             * raft_net_client_request_handle_set_reply_info() if the necessary
-             * info was provided.  Note that the SM may not check for leader
-             * status, so the reply info may be provided even when this node
-             * is a follower.  Therefore, udp init should be bypassed if this
-             * node is not the leader.
-             */
-            if (raft_net_client_request_handle_has_reply_info(&rncr[i]))
-                raft_server_client_reply_init(
-                    ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
+            if (timespec_2_msec(&ts) > 0)
+                binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
         }
-
-        DBG_RAFT_ENTRY(LL_NOTIFY, &reh, "rc=%s", strerror(-rc));
-
-        // The destructor may issue a callback into the SM.
     }
+    // init reply for each request.
+    for (uint32_t i = 0; i < reh.reh_num_entries; i++)
+    {
+         /* Perform basic initialization on the reply buffer if the SM has
+          * provided the necessary info for completing the reply.  The SM
+          * would have called
+          * raft_net_client_request_handle_set_reply_info() if the necessary
+          * info was provided.  Note that the SM may not check for leader
+          * status, so the reply info may be provided even when this node
+          * is a follower.  Therefore, udp init should be bypassed if this
+          * node is not the leader.
+          */
+         if (raft_net_client_request_handle_has_reply_info(&rncr[i]))
+            raft_server_client_reply_init(
+                ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
+    }
+
     // All rncr entries were using single ws structure.
+    // The destructor may issue a callback into the SM.
     raft_net_sm_write_supplement_destroy(&coalesced_ws);
 
     if (!reh.reh_leader_change_marker && !reh.reh_data_size)
