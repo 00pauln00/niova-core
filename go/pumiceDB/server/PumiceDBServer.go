@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"unsafe"
+	"log"
 )
 
 /*
@@ -297,7 +298,7 @@ func PmdbCopyDataToBuffer(ed interface{}, buffer unsafe.Pointer) (int64, error) 
 	//Encode the structure into void pointer.
 	encoded_key, err := PumiceDBCommon.Encode(ed, &key_len)
 	if err != nil {
-		fmt.Println("Failed to encode data during copy data: ", err)
+		log.Print("Failed to encode data during copy data: ", err)
 		return -1, err
 	}
 
