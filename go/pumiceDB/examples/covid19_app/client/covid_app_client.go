@@ -5,9 +5,9 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
-	"log"
 	"os"
 	"os/exec"
 	"strconv"
@@ -42,14 +42,24 @@ func main() {
 	//Print help message.
 	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "-h" {
 		fmt.Println("You need to pass the following arguments:")
-		fmt.Println("Positional Arguments: \n           '-r' - RAFT UUID \n             '-u' - PEER UUID \n             '-l' - Outfile path")
-		fmt.Println("Optional Arguments: \n             -h, -help")
-		fmt.Println("Pass arguments in this format: \n          ./covid_app_client -r RAFT UUID -u PEER UUID -l Log file path")
+		fmt.Println("Positional Arguments: \n		'-r' - RAFT UUID \n		'-u' - CLIENT UUID")
+		fmt.Println("Optional Arguments: \n		'-l' - Json and Log File Path \n		-h, -help")
+		fmt.Println("Pass arguments in this format: \n		./covid_app_client -r RAFT UUID -u CLIENT UUID")
 		os.Exit(0)
 	}
 
 	//Parse the cmdline parameter
 	parseFlag()
+
+	//Create log directory if not Exist.
+	makeDirectoryIfNotExists()
+
+	//Create log file.
+	initLogger()
+
+	log.Info("Raft UUID: ", raftUuid)
+	log.Info("Peer UUID: ", clientUuid)
+	log.Info("Outfile Path: ", jsonFilePath)
 
 	// sleep for 2sec.
 	fmt.Println("Wait for 2 sec to start client")
@@ -169,13 +179,41 @@ func parseFlag() {
 
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "peer uuid")
-	flag.StringVar(&jsonFilePath, "l", "NULL", "json outfile path")
+	flag.StringVar(&jsonFilePath, "l", "/tmp/covidAppLog", "json outfile path")
 
 	flag.Parse()
+}
 
-	fmt.Println("Raft UUID: ", raftUuid)
-	fmt.Println("Peer UUID: ", clientUuid)
-	fmt.Println("Outfile Path: ", jsonFilePath)
+//If log directory is not exist it creates directory.
+//and if dir path is not passed then it will create log file
+//in "/tmp/covidAppLog" path.
+func makeDirectoryIfNotExists() error {
+	if _, err := os.Stat(jsonFilePath); os.IsNotExist(err) {
+		return os.Mkdir(jsonFilePath, os.ModeDir|0755)
+	}
+	return nil
+}
+
+func initLogger() {
+
+	var filename string = jsonFilePath + "/" + clientUuid + ".log"
+	fmt.Println("logfile:", filename)
+	// Create the log file if doesn't exist. And append to it if it already exists.
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	Formatter := new(log.TextFormatter)
+	// You can change the Timestamp format. But you have to use the same date and time.
+	// "2006-02-02 15:04:06" Works. If you change any digit, it won't work
+	// ie "Mon Jan 2 15:04:05 MST 2006" is the reference time. You can't change it
+	Formatter.TimestampFormat = "02-01-2006 15:04:05"
+	Formatter.FullTimestamp = true
+	log.SetFormatter(Formatter)
+	if err != nil {
+		// Cannot open log file. Logging to stderr
+		fmt.Println(err)
+	} else {
+		log.SetOutput(f)
+	}
+
 }
 
 //Interface for operation.
@@ -304,17 +342,17 @@ func parseCSV(filename string) (fp *csv.Reader) {
 	// Open the file
 	csvfile, err := os.Open(filename)
 	if err != nil {
-		log.Fatalln("Error to open the csv file", err)
+		log.Fatal("Error to open the csv file", err)
 	}
 
 	// Skip first row (line)
 	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
 	if err != nil {
-		log.Fatalln("error")
+		log.Fatal("error")
 	}
 	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
 	if err != nil {
-		log.Fatalln("error")
+		log.Fatal("error")
 	}
 	// Parse the file
 	fp = csv.NewReader(csvfile)
@@ -401,7 +439,7 @@ func copyToJsonFile(temp_outfile_name string, json_filename string) error {
 	//Copy temporary json file into output json file.
 	_, err := exec.Command("cp", temp_outfile_name, json_outf).Output()
 	if err != nil {
-		fmt.Printf("%s", err)
+		log.Error("%s", err)
 		cp_err = err
 	} else {
 		cp_err = nil
@@ -458,9 +496,9 @@ func (wr_obj *wrOne) Exec() error {
 	if err != nil {
 		err_msg = errors.New("Exec() method failed for WriteOne.")
 		fill_wrone.Status = -1
-		fmt.Println("Write key-value failed : ", err)
+		log.Info("Write key-value failed : ", err)
 	} else {
-		fmt.Println("Pmdb Write successful!")
+		log.Info("Pmdb Write successful!")
 		fill_wrone.Status = 0
 		err_msg = nil
 	}
@@ -515,12 +553,12 @@ func (rd_obj *rdOne) Exec() error {
 		rd_obj.Op.Rncui, res_struct)
 
 	if err != nil {
-		fmt.Println("Read request failed !!", err)
+		log.Info("Read request failed !!", err)
 		rd_strone.Status = -1
 		rd_strone.FillReadOne(rd_obj)
 		rerr = errors.New("Exec() method failed for ReadOne")
 	} else {
-		fmt.Println("Result of the read request is: ", res_struct)
+		log.Info("Result of the read request is: ", res_struct)
 		total_vaccinations_int := strconv.Itoa(int(res_struct.Total_vaccinations))
 		people_vaccinated_int := strconv.Itoa(int(res_struct.People_vaccinated))
 
@@ -616,10 +654,10 @@ func (wm_obj *wrMul) Exec() error {
 
 		if err != nil {
 			wmData.Status = -1
-			fmt.Println("Write key-value failed : ", err)
+			log.Info("Write key-value failed : ", err)
 			werr = errors.New("Exec() method failed for WriteMulti operation.")
 		} else {
-			fmt.Println("Pmdb Write successful!")
+			log.Info("Pmdb Write successful!")
 			wmData.Status = 0
 			werr = nil
 		}
@@ -627,7 +665,6 @@ func (wm_obj *wrMul) Exec() error {
 	}
 	//Dump structure into json.
 	wm_obj.Op.Outfile_name = wmData.dumpIntoJson(wm_obj.Op.Outfile_uuid)
-	fmt.Println("Temp filename:", wm_obj.Op.Outfile_name)
 	return werr
 }
 
@@ -683,12 +720,12 @@ func (rm_obj *rdMul) Exec() error {
 			res_struct := &CovidAppLib.Covid_locale{}
 			err := rm_obj.Op.Cli_obj.Read(rm_obj.Multi_rd[i], rm_obj.Multi_rncui[i], res_struct)
 			if err != nil {
-				fmt.Println("Read request failed !!", err)
+				log.Info("Read request failed !!", err)
 				rmData.Status = -1
 				rmData.FillReadMulti(rm_obj)
 				rerr = errors.New("Exec() method failed for ReadMulti")
 			} else {
-				fmt.Println("Result of the read request is: ", res_struct)
+				log.Info("Result of the read request is: ", res_struct)
 				total_vaccinations_int := strconv.Itoa(int(res_struct.Total_vaccinations))
 				people_vaccinated_int := strconv.Itoa(int(res_struct.People_vaccinated))
 
@@ -758,7 +795,7 @@ func (getleader *getLeader) Exec() error {
 		err = errors.New("Exec() method failed for get_leader operation")
 	} else {
 		err = nil
-		fmt.Println("Leader uuid is ", getleader.PmdbData.LeaderUUID)
+		log.Info("Leader uuid is ", getleader.PmdbData.LeaderUUID)
 	}
 	return err
 }
