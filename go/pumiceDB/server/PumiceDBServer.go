@@ -185,7 +185,7 @@ func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 }
 
 // search a key in RocksDB
-func PmdbLookupKey(key string, key_len int64, value string,
+func PmdbLookupKey(key string, key_len int64,
 	go_cf string) (string, error) {
 
 	var goerr string
@@ -234,9 +234,9 @@ func PmdbLookupKey(key string, key_len int64, value string,
 }
 
 // Public method of PmdbLookupKey
-func (*PmdbServerObject) LookupKey(key string, key_len int64, value string,
+func (*PmdbServerObject) LookupKey(key string, key_len int64,
 	go_cf string) (string, error) {
-	return PmdbLookupKey(key, key_len, value, go_cf)
+	return PmdbLookupKey(key, key_len, go_cf)
 }
 
 func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
@@ -278,9 +278,7 @@ func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 func PmdbReadKV(app_id unsafe.Pointer, key string,
 	key_len int64, gocolfamily string) (string, error) {
 
-	var value string
-
-	go_value, err := PmdbLookupKey(key, key_len, value, gocolfamily)
+	go_value, err := PmdbLookupKey(key, key_len, gocolfamily)
 
 	//Get the result
 	return go_value, err

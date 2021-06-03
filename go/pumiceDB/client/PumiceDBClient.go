@@ -24,7 +24,6 @@ type PmdbClientObj struct {
 	pmdb        C.pmdb_t
 	raftUuid    string
 	myUuid      string
-	//Pmdb unsafe.Pointer
 }
 
 type RDZeroCopyObj struct {
@@ -67,7 +66,9 @@ func (obj *PmdbClientObj) Write(ed interface{},
 	rncui string) error {
 
 	var key_len int64
-	//Encode the structure into void pointer.
+
+	// Encode the application structure into void pointer so it can be
+	// type casted to C char *
 	ed_key, err := PumiceDBCommon.Encode(ed, &key_len)
 	if err != nil {
 		return err
@@ -84,12 +85,11 @@ func (obj *PmdbClientObj) Write(ed interface{},
 func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,
 	output_ed interface{}) error {
-	//Byte array
 
 	var key_len int64
 	var reply_size int64
 
-	//Encode the input buffer passed by client.
+	//Encode the data passed by application.
 	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
 	if err != nil {
 		return err
@@ -135,6 +135,7 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 
 }
 
+//Get the Leader UUID.
 func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
 	var leader_info C.raft_client_leader_info_t
@@ -151,6 +152,7 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
 }
 
+//Call the pmdb C library function to write the application data.
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	key_len int64) error {
 
@@ -178,6 +180,7 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	return nil
 }
 
+//Call the pmdb C library function to read the value for the key.
 func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	key_len int64,
 	reply_size *int64) (unsafe.Pointer, error) {
@@ -268,6 +271,7 @@ func (obj *PmdbClientObj) Decode(input unsafe.Pointer, output interface{},
 	return PumiceDBCommon.Decode(input, output, len)
 }
 
+// Stop the Pmdb client instance
 func (obj *PmdbClientObj) Stop() error {
 	if obj.initialized == true {
 		return errors.New("Client object is not initialized")
@@ -280,6 +284,7 @@ func (obj *PmdbClientObj) Stop() error {
 	return nil
 }
 
+//Start the Pmdb client instance
 func (obj *PmdbClientObj) Start() error {
 	if obj.initialized == true {
 		return errors.New("Client object is already initialized")

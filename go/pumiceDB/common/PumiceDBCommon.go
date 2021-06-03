@@ -13,6 +13,8 @@ import (
 */
 import "C"
 
+//Encode the data passed as interface and return the unsafe.Pointer
+// to the encoded data. Also return length of the encoded data.
 func Encode(ed interface{}, data_len *int64) (unsafe.Pointer, error) {
 	//Byte array
 	buffer := bytes.Buffer{}
@@ -27,7 +29,6 @@ func Encode(ed interface{}, data_len *int64) (unsafe.Pointer, error) {
 	*data_len = int64(len(struct_data))
 
 	//Convert it to unsafe pointer (void * for C function)
-	//enc_data := (*C.char)(unsafe.Pointer(&struct_data[0]))
 	enc_data := unsafe.Pointer(&struct_data[0])
 
 	return enc_data, nil
@@ -43,6 +44,7 @@ func GetStructSize(ed interface{}) int64 {
 	return struct_size
 }
 
+//Decode the data in user specific structure.
 func Decode(input unsafe.Pointer, output interface{},
 	data_len int64) error {
 
@@ -53,22 +55,6 @@ func Decode(input unsafe.Pointer, output interface{},
 	dec := gob.NewDecoder(buffer)
 	for {
 		if err := dec.Decode(output); err == io.EOF {
-			break
-		} else if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
-func GoPmdbDecoder(ed interface{}, buffer_ptr unsafe.Pointer, buf_size int64) error {
-	data := C.GoBytes(unsafe.Pointer(buffer_ptr), C.int(buf_size))
-	byte_arr := bytes.NewBuffer(data)
-
-	decode := gob.NewDecoder(byte_arr)
-	for {
-		if err := decode.Decode(ed); err == io.EOF {
 			break
 		} else if err != nil {
 			return err

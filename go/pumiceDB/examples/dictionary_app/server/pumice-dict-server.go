@@ -85,16 +85,13 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 	input_buf unsafe.Pointer, input_buf_sz int64,
 	pmdb_handle unsafe.Pointer) {
 
-	fmt.Println("Dictionary app server: Apply request received")
-
 	/* Decode the input buffer into dictionary structure format */
 	apply_dict := &DictAppLib.Dict_app{}
 	decode_err := dso.pso.Decode(input_buf, apply_dict, input_buf_sz)
 	if decode_err != nil {
-		log.Fatal("Failed to decode the application data")
+		log.Print("Failed to decode the application data")
+		return
 	}
-
-	fmt.Println("Key passed by client: %s", apply_dict.Dict_text)
 
 	/* Split the words and create map for word to frequency */
 	split_and_write_to_word_map(apply_dict.Dict_text)
@@ -105,24 +102,18 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 	*/
 	for word, count := range word_map {
 		go_key_len := len(word)
-		var prev_value string
 
 		//Lookup the key first
-		prev_result, err := dso.pso.LookupKey(word, int64(go_key_len), prev_value,
-			colmfamily)
-		fmt.Println("Previous value of the key: ", prev_result)
-
+		prev_result, err := dso.pso.LookupKey(word, int64(go_key_len), colmfamily)
 		if err == nil {
 			//Convert the word count into string.
 			prev_result_int, _ := strconv.Atoi(prev_result)
 			count = count + prev_result_int
 		}
 
-		fmt.Println("Now the Frequency of the word is: ", count)
 		value := PumiceDBServer.GoIntToString(count)
 		value_len := PumiceDBServer.GoStringLen(value)
 
-		fmt.Println("Write the KeyValue by calling PmdbWriteKV")
 		//Write word and frequency as value to Pmdb
 		dso.pso.WriteKV(app_id, pmdb_handle, word, int64(go_key_len), value,
 			int64(value_len), colmfamily)
@@ -136,16 +127,14 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 	request_buf unsafe.Pointer, request_bufsz int64,
 	reply_buf unsafe.Pointer, reply_bufsz int64) int64 {
 
-	fmt.Println("Dictionary App: Read request received")
-
 	//Decode the request structure sent by client.
 	req_dict := &DictAppLib.Dict_app{}
 	decode_err := dso.pso.Decode(request_buf, req_dict, request_bufsz)
 
 	if decode_err != nil {
-		log.Fatal("Failed to decode the read request")
+		log.Print("Failed to decode the read request")
+		return -1
 	}
-	fmt.Println("Key passed by client: %s", req_dict.Dict_text)
 
 	key_len := len(req_dict.Dict_text)
 
@@ -159,7 +148,6 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println("Frequency of the word is: ", word_count)
 		word_frequency = word_count
 	}
 
@@ -171,9 +159,9 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 	//Copy the encoded result in reply_buffer
 	reply_size, copy_err := dso.pso.CopyDataToBuffer(result_dict, reply_buf)
 	if copy_err != nil {
-		log.Fatal("Failed to Copy result in the buffer: %s", copy_err)
+		log.Print("Failed to Copy result in the buffer: %s", copy_err)
+		return -1
 	}
 
-	fmt.Println("Reply size is: ", reply_size)
 	return reply_size
 }
