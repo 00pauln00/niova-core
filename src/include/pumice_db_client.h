@@ -38,6 +38,9 @@ pmdb_t
 PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
 
 int
+PmdbClientDestroy(pmdb_t pmdb);
+
+int
 PmdbGetLeaderInfo(pmdb_t pmdb, raft_client_leader_info_t *leader_info);
 
 #endif
