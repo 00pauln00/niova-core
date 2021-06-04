@@ -31,14 +31,13 @@ func main() {
 
 	//Print help message.
 	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "-h" {
-		fmt.Println("You need to pass the following arguments:")
 		fmt.Println("Positional Arguments: \n		'-r' - RAFT UUID \n		'-u' - PEER UUID")
 		fmt.Println("Optional Arguments: \n		'-l' - Log Dir Path \n		-h, -help")
-		fmt.Println("Pass arguments in this format: \n		./covid_app_server -r RAFT UUID -u PEER UUID")
+		fmt.Println("covid_app_server -r <RAFT UUID> -u <PEER UUID> -l <log directory>")
 		os.Exit(0)
 	}
 
-	cso := parseFlag()
+	cso := parseArgs()
 
 	//Create log directory if not Exist.
 	makeDirectoryIfNotExists()
@@ -66,11 +65,11 @@ func main() {
 	err := cso.pso.Run()
 
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
 }
 
-func parseFlag() *CovidServer {
+func parseArgs() *CovidServer {
 	cso := &CovidServer{}
 
 	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
@@ -82,36 +81,42 @@ func parseFlag() *CovidServer {
 	return cso
 }
 
-//If log directory is not exist it creates directory.
-//and if dir path is not passed then it will create log file
-//in "/tmp/covidAppLog" path.
+/*If log directory is not exist it creates directory.
+  and if dir path is not passed then it will create
+  log file in "/tmp/covidAppLog" path.
+*/
 func makeDirectoryIfNotExists() error {
+
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+
 		return os.Mkdir(logDir, os.ModeDir|0755)
 	}
+
 	return nil
 }
 
+//Create logfile for each peer.
 func initLogger(cso *CovidServer) {
 
 	var filename string = logDir + "/" + cso.peerUuid + ".log"
+
 	fmt.Println("logfile:", filename)
-	// Create the log file if doesn't exist. And append to it if it already exists.
+
+	//Create the log file if doesn't exist. And append to it if it already exists.
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	Formatter := new(log.TextFormatter)
-	// You can change the Timestamp format. But you have to use the same date and time.
-	// "2006-02-02 15:04:06" Works. If you change any digit, it won't work
-	// ie "Mon Jan 2 15:04:05 MST 2006" is the reference time. You can't change it
+
+	//Set Timestamp format for logfile.
 	Formatter.TimestampFormat = "02-01-2006 15:04:05"
 	Formatter.FullTimestamp = true
 	log.SetFormatter(Formatter)
+
 	if err != nil {
 		// Cannot open log file. Logging to stderr
 		fmt.Println(err)
 	} else {
 		log.SetOutput(f)
 	}
-
 }
 
 type CovidServer struct {
@@ -121,119 +126,110 @@ type CovidServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (cso *CovidServer) Apply(app_id unsafe.Pointer, input_buf unsafe.Pointer,
-	input_buf_sz int64, pmdb_handle unsafe.Pointer) {
+func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+	inputBufSize int64, pmdbHandle unsafe.Pointer) {
 
 	log.Info("Covid19_Data app server: Apply request received")
 
 	/* Decode the input buffer into structure format */
-	apply_covid := &CovidAppLib.Covid_locale{}
+	applyCovid := &CovidAppLib.CovidLocale{}
 
-	decode_err := cso.pso.Decode(input_buf, apply_covid, input_buf_sz)
-	if decode_err != nil {
-		log.Fatal("Failed to decode the application data")
+	decodeErr := cso.pso.Decode(inputBuf, applyCovid, inputBufSize)
+	if decodeErr != nil {
+		log.Error("Failed to decode the application data")
+		return
 	}
 
-	log.Info("Key passed by client: ", apply_covid.Location)
+	log.Info("Key passed by client: ", applyCovid.Location)
 
 	//length of key.
-	len_of_key := len(apply_covid.Location)
-
-	var preValue string
+	keyLength := len(applyCovid.Location)
 
 	//Lookup the key first
-	prevResult, err := cso.pso.LookupKey(apply_covid.Location,
-		int64(len_of_key), preValue,
-		colmfamily)
+	prevResult, err := cso.pso.LookupKey(applyCovid.Location,
+		int64(keyLength), colmfamily)
 
-	log.Info("Previous value of the key: ", prevResult)
+	log.Info("Previous values of the covidData: ", prevResult)
 
 	if err == nil {
 
-		//Get Total_vaccinations value and People_vaccinated value by splitting prevResult.
-		split_val := strings.Split(prevResult, " ")
+		//Get TotalVaccinations value and PeopleVaccinated value by splitting prevResult.
+		splitVal := strings.Split(prevResult, " ")
 
 		//Convert data type to int64.
-		TV_int, _ := strconv.ParseInt(split_val[len(split_val)-2], 10, 64)
-		//update Total_vaccinations.
-		apply_covid.Total_vaccinations = apply_covid.Total_vaccinations + TV_int
+		tvInt, _ := strconv.ParseInt(splitVal[len(splitVal)-2], 10, 64)
+		//update TotalVaccinations.
+		applyCovid.TotalVaccinations = applyCovid.TotalVaccinations + tvInt
 
 		//Convert data type to int64.
-		PV_int, _ := strconv.ParseInt(split_val[len(split_val)-1], 10, 64)
-		//update People_vaccinated
-		apply_covid.People_vaccinated = apply_covid.People_vaccinated + PV_int
+		pvInt, _ := strconv.ParseInt(splitVal[len(splitVal)-1], 10, 64)
+		//update PeopleVaccinated
+		applyCovid.PeopleVaccinated = applyCovid.PeopleVaccinated + pvInt
 	}
 
-	/*
-		Total_vaccinations and People_vaccinated are the int type value so
-		Convert value to string type.
-	*/
-	TotalVaccinations := strconv.Itoa(int(apply_covid.Total_vaccinations))
-	PeopleVaccinated := strconv.Itoa(int(apply_covid.People_vaccinated))
-
-	//Merge the all values.
-	covideData_values := apply_covid.Iso_code + " " + TotalVaccinations + " " + PeopleVaccinated
+	covidDataVal := fmt.Sprintf("%s %d %d", applyCovid.IsoCode, applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
 
 	//length of all values.
-	covideData_len := len(covideData_values)
+	covidDataLen := len(covidDataVal)
 
-	log.Info("covideData_values: ", covideData_values)
+	log.Info("Current covideData values: ", covidDataVal)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
-	cso.pso.WriteKV(app_id, pmdb_handle, apply_covid.Location,
-		int64(len_of_key), covideData_values,
-		int64(covideData_len), colmfamily)
+	cso.pso.WriteKV(appId, pmdbHandle, applyCovid.Location,
+		int64(keyLength), covidDataVal,
+		int64(covidDataLen), colmfamily)
 
 }
 
-func (cso *CovidServer) Read(app_id unsafe.Pointer, request_buf unsafe.Pointer,
-	request_bufsz int64, reply_buf unsafe.Pointer, reply_bufsz int64) int64 {
+func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
+	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
 	log.Info("Covid19_Data App: Read request received")
 
 	//Decode the request structure sent by client.
-	req_struct := &CovidAppLib.Covid_locale{}
-	decode_err := cso.pso.Decode(request_buf, req_struct, request_bufsz)
+	reqStruct := &CovidAppLib.CovidLocale{}
+	decodeErr := cso.pso.Decode(requestBuf, reqStruct, requestBufSize)
 
-	if decode_err != nil {
-		log.Fatal("Failed to decode the read request")
+	if decodeErr != nil {
+		log.Error("Failed to decode the read request")
+		return -1
 	}
 
-	log.Info("Key passed by client: ", req_struct.Location)
+	log.Info("Key passed by client: ", reqStruct.Location)
 
-	key_len := len(req_struct.Location)
-	log.Info("Key length: ", key_len)
+	keyLen := len(reqStruct.Location)
+	log.Info("Key length: ", keyLen)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-	read_kv_result, read_err := cso.pso.ReadKV(app_id, req_struct.Location,
-		int64(key_len), colmfamily)
+	readRsult, readErr := cso.pso.ReadKV(appId, reqStruct.Location,
+		int64(keyLen), colmfamily)
 
-	var split_values []string
+	var splitValues []string
 
-	if read_err == nil {
+	if readErr == nil {
 		//split space separated values.
-		split_values = strings.Split(read_kv_result, " ")
-
+		splitValues = strings.Split(readRsult, " ")
 	}
 
-	//Convert Total_vaccinations and People_vaccinated into int64 type
-	TV_int, _ := strconv.ParseInt(split_values[1], 10, 64)
-	PV_int, _ := strconv.ParseInt(split_values[2], 10, 64)
+	//Convert TotalVaccinations and PeopleVaccinated into int64 type
+	tvInt, _ := strconv.ParseInt(splitValues[1], 10, 64)
+	pvInt, _ := strconv.ParseInt(splitValues[2], 10, 64)
 
-	result_covid := CovidAppLib.Covid_locale{
-		Location:           req_struct.Location,
-		Iso_code:           split_values[0],
-		Total_vaccinations: TV_int,
-		People_vaccinated:  PV_int,
+	resultCovid := CovidAppLib.CovidLocale{
+		Location:          reqStruct.Location,
+		IsoCode:           splitValues[0],
+		TotalVaccinations: tvInt,
+		PeopleVaccinated:  pvInt,
 	}
 
-	//Copy the encoded result in reply_buffer
-	reply_size, copy_err := cso.pso.CopyDataToBuffer(result_covid, reply_buf)
-	if copy_err != nil {
-		log.Fatal("Failed to Copy result in the buffer: %s", copy_err)
+	//Copy the encoded result in replyBuffer
+	replySize, copyErr := cso.pso.CopyDataToBuffer(resultCovid, replyBuf)
+	if copyErr != nil {
+		log.Error("Failed to Copy result in the buffer: %s", copyErr)
+		return -1
 	}
 
-	log.Info("Reply size: ", reply_size)
+	log.Info("Reply size: ", replySize)
 
-	return reply_size
+	return replySize
 }

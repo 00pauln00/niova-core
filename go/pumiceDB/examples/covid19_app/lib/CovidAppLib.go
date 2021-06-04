@@ -1,9 +1,8 @@
 package CovidAppLib
 
-type Covid_locale struct {
-        Location string
-        Iso_code string
-        Total_vaccinations int64
-        People_vaccinated int64
+type CovidLocale struct {
+	Location          string
+	IsoCode           string
+	TotalVaccinations int64
+	PeopleVaccinated  int64
 }
-
