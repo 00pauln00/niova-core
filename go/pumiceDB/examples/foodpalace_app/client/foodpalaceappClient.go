@@ -89,11 +89,15 @@ type getLeader struct {
 }
 
 //Function to initialize logger.
-func initLogger() {
+func initLogger() error {
 
 	var filename string = jsonOutFpath + "/" + clientUuid + ".log"
 	// Create the log file if doesn't exist. And append to it if it already exists.
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 	Formatter := new(log.TextFormatter)
 
 	//Set Formatter.
@@ -103,11 +107,12 @@ func initLogger() {
 
 	if err != nil {
 		// Cannot open log file. Logging to stderr
-		fmt.Println(err)
+		log.Error(err)
 	} else {
 		log.SetOutput(f)
 	}
 	log.Info("client uuid:", clientUuid)
+	return err
 }
 
 //Function to get current time.
@@ -117,22 +122,25 @@ func getCurrentTime() string {
 }
 
 //Method to parse csv file and fill the required structures for writemulti operation.
-func (wm *writeMulti) getWmInfo() []*foodpalaceapplib.FoodpalaceData {
+func (wm *writeMulti) getWmInfo() ([]*foodpalaceapplib.FoodpalaceData, error) {
 
 	var multireqDt []*foodpalaceapplib.FoodpalaceData
 	//Open the file.
 	csvfile, err := os.Open(wm.csvFpath)
 	if err != nil {
 		log.Error("Couldn't open the csv file", err)
+		return multireqDt, err
 	}
 	//Parse the file, Skip first row (line)
 	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
 	if err != nil {
 		log.Error("error")
+		return multireqDt, err
 	}
 	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
 	if err != nil {
 		log.Error("error")
+		return multireqDt, err
 	}
 	//Read remaining rows.
 	r := csv.NewReader(csvfile)
@@ -144,17 +152,20 @@ func (wm *writeMulti) getWmInfo() []*foodpalaceapplib.FoodpalaceData {
 			break
 		}
 		if err != nil {
-			log.Fatal(err)
+			log.Error(err)
+			return multireqDt, err
 		}
 		//Typecast RestaurantId to int64.
 		restIdStr, err := strconv.ParseInt(record[0], 10, 64)
 		if err != nil {
 			log.Error("Error occured in typecasting RestaurantId to int64")
+			return multireqDt, err
 		}
 		//Typecast Votes to int64.
 		votesStr, err := strconv.ParseInt(record[5], 10, 64)
 		if err != nil {
 			log.Error("Error occured in typecasting Votes to int64")
+			return multireqDt, err
 		}
 
 		//Fill the Foodpalace App structure.
@@ -168,7 +179,7 @@ func (wm *writeMulti) getWmInfo() []*foodpalaceapplib.FoodpalaceData {
 		}
 		multireqDt = append(multireqDt, &zmDt)
 	}
-	return multireqDt
+	return multireqDt, err
 }
 
 //Method to display output of read one operation and fill the structure.
@@ -280,12 +291,14 @@ func (w *writeOne) prepare() error {
 	restId, err := strconv.ParseInt(restIdStr, 10, 64)
 	if err != nil {
 		log.Error("Error occured in typecasting RestaurantId to int64")
+		return err
 	}
 
 	//Typecast Votes to int64.
 	votesStr, err := strconv.ParseInt(w.args[7], 10, 64)
 	if err != nil {
 		log.Error("Error occured in typecasting Votes to int64")
+		return err
 	}
 	//Create a file for storing keys and rncui.
 	os.Create("keyRncuiData.txt")
@@ -303,15 +316,18 @@ func (w *writeOne) prepare() error {
 	file, err := os.OpenFile("keyRncuiData.txt", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 	defer file.Close()
 	//Append key_rncui in file.
 	_, errWr := file.WriteString("key, rncui = " + restIdStr + "  " + rncui + "\n")
 	if errWr != nil {
 		log.Error(errWr)
+		return err
 	}
 	if w.rq.foodpalaceData == nil {
 		err = errors.New("prepare method for WriteOne failed")
+		return err
 	}
 	return err
 }
@@ -402,13 +418,11 @@ func (wmp *writeMulti) prepare() error {
 
 	var wmperr error
 	//Get array of foodpalace_data structure.
-	mreqdata := wmp.getWmInfo()
-	wmp.multiReqdata = mreqdata
-	if wmp.multiReqdata == nil {
+	mreqdata, err := wmp.getWmInfo()
+	if err != nil {
 		wmperr = errors.New("prepare method for WriteMulti Operation failed")
-	} else {
-		wmperr = nil
 	}
+	wmp.multiReqdata = mreqdata
 	return wmperr
 }
 
@@ -423,7 +437,8 @@ func (wme *writeMulti) exec() error {
 	//Open file for storing key, rncui in append mode.
 	file, err := os.OpenFile("keyRncuiData.txt", os.O_APPEND|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Println(err)
+		log.Error(err)
+		return err
 	}
 	defer file.Close()
 	for i := 0; i < len(wme.multiReqdata); i++ {
@@ -435,7 +450,8 @@ func (wme *writeMulti) exec() error {
 		restIdStr := strconv.Itoa(int(wme.multiReqdata[i].RestaurantId))
 		_, errWrite := file.WriteString("key, rncui = " + restIdStr + "  " + rncui + "\n")
 		if errWrite != nil {
-			log.Fatal(err)
+			log.Error(errWrite)
+			return errWrite
 		}
 		wme.rq.key = restIdStr
 		wme.rq.rncui = rncui
@@ -476,6 +492,7 @@ func (rmp *readMulti) prepare() error {
 	f, err := os.Open("keyRncuiData.txt")
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
@@ -763,16 +780,19 @@ func main() {
 		prerr := fpci.prepare()
 		if prerr != nil {
 			log.Error(prerr)
+			os.Exit(0)
 		}
 
 		excerr := fpci.exec()
 		if excerr != nil {
 			log.Error(excerr)
+			os.Exit(0)
 		}
 
 		cerr := fpci.complete()
 		if cerr != nil {
 			log.Error(cerr)
+			os.Exit(0)
 		}
 	}
 
