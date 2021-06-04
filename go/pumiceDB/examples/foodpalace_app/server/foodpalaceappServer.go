@@ -83,11 +83,8 @@ func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Point
 		data.Votes += prevVotes
 	}
 
-	//Convert votes from int to string.
-	votesStr := strconv.Itoa(int(data.Votes))
-
-	//Prepare string for fp_app_value.
-	fpAppValue := data.RestaurantName + "_" + data.City + "_" + data.Cuisines + "_" + data.RatingsText + "_" + votesStr
+	fpAppValue := fmt.Sprintf("%s_%s_%s_%s_%d", data.RestaurantName, data.City, data.Cuisines, data.RatingsText, data.Votes)
+	fmt.Println("fpAppValue", fpAppValue)
 	appValLen := len(fpAppValue)
 
 	//Write key,values.
@@ -119,7 +116,11 @@ func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Poi
 		resultSplt = strings.Split(result, "_")
 	}
 
-	votesInt64, _ := strconv.ParseInt(resultSplt[4], 10, 64)
+	votesInt64, err := strconv.ParseInt(resultSplt[4], 10, 64)
+	if err != nil {
+		log.Error(err)
+		return -1
+	}
 	//Copy the result in data_reply_buf.
 	replyData := foodpalaceapplib.FoodpalaceData{
 		RestaurantId:   readReqData.RestaurantId,
@@ -133,7 +134,8 @@ func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Poi
 	//Copy the encoded result in reply_buffer.
 	dataReplySize, copyErr := fpso.pso.CopyDataToBuffer(replyData, dataReplyBuf)
 	if copyErr != nil {
-		log.Fatal("Failed to Copy result in the buffer: %s", copyErr)
+		log.Error("Failed to Copy result in the buffer: %s", copyErr)
+		return -1
 	}
 	log.Info("length of buffer is:", dataReplySize)
 	return dataReplySize
@@ -171,8 +173,8 @@ func main() {
 
 	//Print help message.
 	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "--help" || os.Args[1] == "-h" {
-		fmt.Println("\nUsage: \n   For help:             ./foodpalaceappserver [-h] \n   To start server:      ./foodpalaceappserver -r [raft_uuid] -u [peer_uuid]")
-		fmt.Println("\nPositional Arguments: \n   -r    raft_uuid \n   -u    peer_uuid")
+		fmt.Println("\nUsage: \n   For help:             ./foodpalaceappserver [-h] \n   To start server:      ./foodpalaceappserver -r [raftUuid] -u [peerUuid]")
+		fmt.Println("\nPositional Arguments: \n   -r    raftUuid \n   -u    peerUuid")
 		fmt.Println("\nOptional Arguments: \n   -h, --help            show this help message and exit")
 		os.Exit(0)
 	}
@@ -203,6 +205,6 @@ func main() {
 	err := fpso.pso.Run()
 
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
 }
