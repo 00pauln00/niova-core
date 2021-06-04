@@ -23,11 +23,6 @@ import (
 	"niova/go-pumicedb-lib/common"
 )
 
-/*
-#include <stdlib.h>
-*/
-import "C"
-
 var (
 	raftUuid      string
 	clientUuid    string
@@ -60,8 +55,6 @@ func main() {
 	log.Info("Client UUID: ", clientUuid)
 	log.Info("Outfile Path: ", jsonFilePath)
 
-	// sleep for 2sec.
-	fmt.Println("Wait for 2 sec to start client")
 	//Create new client object.
 	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
 	if clientObj == nil {
@@ -160,15 +153,18 @@ func main() {
 		}
 		prepErr := opIface.prepare()
 		if prepErr != nil {
-			log.Fatal("error")
+			log.Error("error to call prepare() method")
+			os.Exit(0)
 		}
 		execErr := opIface.exec()
 		if execErr != nil {
-			log.Fatal("error")
+			log.Error("error to call exec() method")
+			os.Exit(0)
 		}
 		compErr := opIface.complete()
 		if compErr != nil {
-			log.Fatal("error")
+			log.Error("error to call complete() method")
+			os.Exit(0)
 		}
 	}
 }
@@ -215,7 +211,7 @@ func initLogger() {
 
 	if err != nil {
 		// Cannot open log file. Logging to stderr
-		fmt.Println(err)
+		log.Error(err)
 	} else {
 		log.SetOutput(f)
 	}
@@ -351,17 +347,17 @@ func parseCSV(filename string) (fp *csv.Reader) {
 	csvfile, err := os.Open(filename)
 
 	if err != nil {
-		log.Fatal("Error to open the csv file", err)
+		log.Error("Error to open the csv file", err)
 	}
 
 	// Skip first row (line)
 	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
 	if err != nil {
-		log.Fatal("error")
+		log.Error("error")
 	}
 	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
 	if err != nil {
-		log.Fatal("error")
+		log.Error("error")
 	}
 	// Parse the file
 	fp = csv.NewReader(csvfile)
@@ -459,7 +455,7 @@ func copyToJsonFile(tempOutfileName string, jsonFileName string) error {
 	_, err := exec.Command("cp", tempOutfileName, jsonOut).Output()
 
 	if err != nil {
-		log.Error("%s", err)
+		log.Error("Failed to copy data to json file: %s", err)
 		cp_err = err
 	} else {
 		cp_err = nil
@@ -468,7 +464,7 @@ func copyToJsonFile(tempOutfileName string, jsonFileName string) error {
 	//Remove temporary outfile after copying into json outfile.
 	e := os.Remove(tempOutfileName)
 	if e != nil {
-		log.Fatal(e)
+		log.Error("Failed to remove temporary outfile:%s", e)
 	}
 	return cp_err
 }
@@ -478,13 +474,13 @@ func (wrObj *wrOne) prepare() error {
 
 	var err error
 
-	field0Val := wrObj.op.inputStr[3]
-	field1Val := wrObj.op.inputStr[4]
-	field2Val := wrObj.op.inputStr[5]
+	isoVal := wrObj.op.inputStr[3]
+	tvVal := wrObj.op.inputStr[4]
+	pvVal := wrObj.op.inputStr[5]
 
 	//typecast the int64 type of csv file.
-	field1Int, _ := strconv.ParseInt(field1Val, 10, 64)
-	field2Int, _ := strconv.ParseInt(field2Val, 10, 64)
+	tvInt, _ := strconv.ParseInt(tvVal, 10, 64)
+	pvInt, _ := strconv.ParseInt(pvVal, 10, 64)
 
 	/*
 	   prepare the structure from values passed by user.
@@ -492,9 +488,9 @@ func (wrObj *wrOne) prepare() error {
 	*/
 	inputStruct := CovidAppLib.CovidLocale{
 		Location:          wrObj.op.key,
-		IsoCode:           field0Val,
-		TotalVaccinations: field1Int,
-		PeopleVaccinated:  field2Int,
+		IsoCode:           isoVal,
+		TotalVaccinations: tvInt,
+		PeopleVaccinated:  pvInt,
 	}
 
 	wrObj.op.covidData = &inputStruct
@@ -745,18 +741,18 @@ func (wmObj *wrMul) complete() error {
 func (rmObj *rdMul) prepare() error {
 
 	var err error
-	var rm_rncui []string
-	var rm_rwMap []*CovidAppLib.CovidLocale
+	var rmRncui []string
+	var rmData []*CovidAppLib.CovidLocale
 
-	for rd_key, rd_rncui := range keyRncuiMap {
-		log.Info(rd_key, ":", rd_rncui)
-		multi_rd_struct := CovidAppLib.CovidLocale{
-			Location: rd_key,
+	for key, rncui := range keyRncuiMap {
+		log.Info(key, ":", rncui)
+		crd := CovidAppLib.CovidLocale{
+			Location: key,
 		}
-		rm_rncui = append(rm_rncui, rd_rncui)
-		rmObj.rdRncui = rm_rncui
-		rm_rwMap = append(rm_rwMap, &multi_rd_struct)
-		rmObj.multiRead = rm_rwMap
+		rmRncui = append(rmRncui, rncui)
+		rmObj.rdRncui = rmRncui
+		rmData = append(rmData, &crd)
+		rmObj.multiRead = rmData
 
 		if rmObj.multiRead == nil && rmObj.rdRncui == nil {
 			err = errors.New("prepare() method failed for ReadMulti.")
@@ -868,18 +864,13 @@ func (getleader *getLeader) exec() error {
 	leaderUuid, err = getleader.op.cliObj.PmdbGetLeader()
 
 	if err != nil {
-		fmt.Errorf("Failed to get Leader UUID")
+		return fmt.Errorf("Failed to get Leader UUID")
 	}
 
 	leaderUuidStr := leaderUuid.String()
 	getleader.pmdbInfo.LeaderUUID = leaderUuidStr
 
-	if getleader.pmdbInfo.LeaderUUID == "" {
-		err = errors.New("exec() method failed for GetLeader Operation")
-	} else {
-		err = nil
-		log.Info("Leader uuid is ", getleader.pmdbInfo.LeaderUUID)
-	}
+	log.Info("Leader uuid is ", getleader.pmdbInfo.LeaderUUID)
 
 	return err
 }
@@ -894,14 +885,12 @@ func (getleader *getLeader) complete() error {
 
 	//prepare path for json file.
 	jsonOutfile := jsonFilePath + "/" + getleader.op.jsonFileName + ".json"
-	file, err := json.MarshalIndent(getleader.pmdbInfo, "", "\t")
-	err = ioutil.WriteFile(jsonOutfile, file, 0644)
+	file, cerr := json.MarshalIndent(getleader.pmdbInfo, "", "\t")
+	cerr = ioutil.WriteFile(jsonOutfile, file, 0644)
 
-	if err != nil {
-		cerr = errors.New("complete method for get leader Operation failed")
-	} else {
-		cerr = nil
+	if cerr != nil {
+		return nil
 	}
 
-	return cerr
+	return ioutil.WriteFile(jsonOutfile, file, 0644)
 }
