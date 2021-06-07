@@ -77,10 +77,12 @@ func main() {
 		fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
 
 		//Get console input string
-		var str []string
+		var str string
 
 		//Split the inout string.
-		input := getInput(str)
+		input, err := getInput(str)
+		fmt.Printf("err: %v\n", err)
+
 		ops := input[0]
 
 		//Create and Initialize map for write-read oufile.
@@ -145,8 +147,6 @@ func main() {
 					cliObj:       clientObj,
 				},
 			}
-		case "exit":
-			os.Exit(0)
 		default:
 			fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
 			continue
@@ -306,19 +306,31 @@ func (cvd *covidVaxData) dumpIntoJson(outfileUuid string) string {
 
 }
 
-//read cmdline input.
-func getInput(input []string) []string {
+//read console input.
+func getInput(keyText string) ([]string, error) {
 
 	//Read the key from console
 	key := bufio.NewReader(os.Stdin)
 
-	keyText, _ := key.ReadString('\n')
+	keyText, _ = key.ReadString('\n')
 
 	// convert CRLF to LF
 	keyText = strings.Replace(keyText, "\n", "", -1)
-	input = strings.Split(keyText, "#")
 
-	return input
+	if keyText == "exit" {
+		os.Exit(0)
+	}
+
+	input := strings.Split(keyText, "#")
+	for i := range input {
+		input[i] = strings.TrimSpace(input[i])
+	}
+
+	if len(input) == 1 {
+		return nil, errors.New("delimiter not found")
+	}
+
+	return input, nil
 }
 
 /*This function stores rncui for all csv file
@@ -345,19 +357,18 @@ func parseCSV(filename string) (fp *csv.Reader) {
 
 	// open the filei
 	csvfile, err := os.Open(filename)
-
 	if err != nil {
-		log.Error("Error to open the csv file", err)
+		log.Error("Error to open the csv file:", err)
 	}
 
 	// Skip first row (line)
 	row1, err := bufio.NewReader(csvfile).ReadSlice('\n')
 	if err != nil {
-		log.Error("error")
+		log.Error("Error to skip first row from csvfile:", err)
 	}
 	_, err = csvfile.Seek(int64(len(row1)), io.SeekStart)
 	if err != nil {
-		log.Error("error")
+		log.Error(err)
 	}
 	// Parse the file
 	fp = csv.NewReader(csvfile)
