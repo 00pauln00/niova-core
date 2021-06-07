@@ -21,10 +21,21 @@ jobs:
 
     - name: apt update
       run: sudo apt update
-    - name: dpkg / rpm prep (debug)
-      run: echo "sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0"
     - name: dpkg / rpm prep
-      run: sudo -E apt-get install -y uuid-dev uuid libuuid1 libaio-dev libaio1 libgcrypt20 openssl libssl-dev python3-pip python-jmespath python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+      run: sudo apt-get install -y uuid-dev
+                                   uuid libuuid1
+                                   libaio-dev libaio1
+                                   libgcrypt20 openssl
+                                   libssl-dev python3-pip
+                                   python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
+
+    - name: Install python libraries
+      run:  pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath
+
+      # Install Ansible
+    - name: Install Ansible
+      run:  pip3 install ansible
+
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
@@ -47,9 +58,6 @@ jobs:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
-    - name: Install python libraries
-      run: sudo -E -H pip3 install setuptools wheel func_timeout sockets psutil dpath ansible jmespath
-
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
 
@@ -61,7 +69,9 @@ jobs:
 
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
-           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon' '/home/runner/work/niovad/niovad/build_dir/libexec/niova' '/home/runner/work/niovad/niovad/holon_log' 5
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
+                             '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
+                             '/home/runner/work/niovad/niovad/holon_log' 5
 
     - name: Archive the recipe results
       uses: actions/upload-artifact@v2

@@ -14,6 +14,7 @@
 #include "random.h"
 #include "atomic.h"
 #include "crc32.h"
+#include "crc24q.h"
 
 #define DEF_ITER 200000000
 #define PRIME 1040071U
@@ -173,6 +174,19 @@ simple_uuid_generate_random(void)
 }
 
 static void
+simple_crc24_64byte_buf(void)
+{
+    static uint32_t val = PRIME;
+    uint64_t buffer[8];
+    buffer[0] = val;
+
+    val = crc24q_hash((unsigned char *)buffer, (sizeof(uint64_t) * 8));
+    (void)val;
+
+    return;
+}
+
+static void
 simple_crc32_64byte_buf(void)
 {
     static uint32_t val = PRIME;
@@ -187,6 +201,42 @@ simple_crc32_64byte_buf(void)
 
     return;
 }
+
+static void
+simple_crc_t10dif_64byte_buf(void)
+{
+    static uint32_t val = PRIME;
+    uint64_t buffer[8];
+    buffer[0] = val;
+
+#if defined(__x86_64__)
+    val = crc_t10dif_pcl((0 ^ 0xFFFF), (const unsigned char *)buffer,
+		        (sizeof(uint64_t) * 8)) ^ 0xFFFF;
+    (void)val;
+#endif
+
+    return;
+}
+
+static void
+simple_crc_t10dif_4096byte_buf(void)
+{
+    static uint16_t val = (uint16_t)PRIME;
+    static int cnt;
+    uint16_t buffer[2048];
+    if (cnt >= 2048)
+	    cnt = 0;
+    buffer[cnt++] = val;
+
+#if defined(__x86_64__)
+    val = crc_t10dif_pcl((0 ^ 0xFFFF), (const unsigned char *)buffer,
+                        4096) ^ 0xFFFF;
+    (void)val;
+#endif
+
+    return;
+}
+
 
 static void
 micro_pthread_self(void)
@@ -231,6 +281,12 @@ main(void)
     run_micro(simple_random, DEF_ITER, "random_number_generate");
     run_micro(simple_crc32_64byte_buf, DEF_ITER / 10,
               "simple_crc32_64byte_buf");
+    run_micro(simple_crc_t10dif_64byte_buf, DEF_ITER / 10,
+              "simple_crc_t10dif_64byte_buf");
+    run_micro(simple_crc_t10dif_4096byte_buf, DEF_ITER / 100,
+	      "simple_crc_t10dif_4096byte_buf");
+    run_micro(simple_crc24_64byte_buf, DEF_ITER / 10,
+              "simple_crc24_64byte_buf");
     run_micro(simple_clock_gettime_mono_coarse, DEF_ITER,
               "clock_gettime_monotonic_coarse");
     run_micro(simple_clock_gettime_realtime_coarse, DEF_ITER,

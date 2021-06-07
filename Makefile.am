@@ -19,6 +19,7 @@ CORE_HDRS = src/include/atomic.h \
         src/include/bitmap.h \
         src/include/common.h \
 	src/include/config_token.h \
+        src/include/crc24q.h \
         src/include/ctl_interface_cmd.h \
 	src/include/ctl_interface.h \
         src/include/ctl_svc.h \
@@ -47,12 +48,15 @@ CORE_HDRS = src/include/atomic.h \
         src/include/tcp_mgr.h \
 	src/include/util.h \
         src/include/util_thread.h \
-        src/include/watchdog.h
+        src/include/watchdog.h \
+	src/contrib/include/tree.h
 
 CORE_SOURCES = $(CORE_HDRS) \
 	src/alloc.c \
         src/config_token.c \
         src/contrib/crc32c-pcl-intel-asm_64.S \
+        src/contrib/crct10dif-pcl-asm_64.S \
+        src/contrib/crc24q.c \
         src/ctl_interface.c \
         src/ctl_interface_cmd.c \
         src/ctl_svc.c \

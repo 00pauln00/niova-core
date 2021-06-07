@@ -148,6 +148,7 @@ struct raft_client_request_handle
     uint8_t                    rcrh_cb_exec       : 1;
     uint8_t                    rcrh_op_wr         : 1;
     uint8_t                    rcrh_history_cache : 1;
+    uint8_t                    rcrh_alloc_get_buffer_for_user : 1;
     int16_t                    rcrh_error;
     uint16_t                   rcrh_sin_reply_port;
     struct in_addr             rcrh_sin_reply_addr;
@@ -389,8 +390,10 @@ raft_client_instance_release(struct raft_client_instance *rci)
 }
 
 static struct raft_client_sub_app *
-raft_client_sub_app_construct(const struct raft_client_sub_app *in)
+raft_client_sub_app_construct(const struct raft_client_sub_app *in, void *arg)
 {
+    (void)arg;
+
     if (!in)
         return NULL;
 
@@ -418,8 +421,10 @@ raft_client_sub_app_construct(const struct raft_client_sub_app *in)
 }
 
 static int
-raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
+raft_client_sub_app_destruct(struct raft_client_sub_app *destroy, void *arg)
 {
+    (void)arg;
+
     if (!destroy)
         return -EINVAL;
 
@@ -438,10 +443,13 @@ raft_client_sub_app_destruct(struct raft_client_sub_app *destroy)
      */
     int err = -ABS(rcrh->rcrh_error);
 
+    struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
+
     if (rcrh->rcrh_async_cb)
         rcrh->rcrh_async_cb(rcrh->rcrh_arg,
                             rcrh->rcrh_error ? err :
-                            rcrh->rcrh_reply_used_size);
+                            rcrh->rcrh_reply_used_size,
+                            recv_iovs[1].iov_base);
 
     if (rcrh->rcrh_blocking)
     {
@@ -1174,10 +1182,10 @@ static int
 raft_client_request_handle_init(
     struct raft_client_instance *rci, struct raft_client_request_handle *rcrh,
     const struct iovec *src_iovs, size_t nsrc_iovs, struct iovec *dest_iovs,
-    size_t ndest_iovs, const struct timespec now,
-    const struct timespec timeout, const enum raft_client_request_type rcrt,
-    raft_client_user_cb_t user_cb, void *user_arg,
-    const raft_net_request_tag_t tag)
+    size_t ndest_iovs, bool allocate_get_buffer_for_user,
+    const struct timespec now, const struct timespec timeout,
+    const enum raft_client_request_opts rcrt, raft_client_user_cb_t user_cb,
+    void *user_arg, const raft_net_request_tag_t tag)
 {
     NIOVA_ASSERT(rcrh && rcrh->rcrh_initializing);
     NIOVA_ASSERT(rci && RCI_2_RI(rci));
@@ -1205,12 +1213,11 @@ raft_client_request_handle_init(
     rcrh->rcrh_initializing = 1;
     rcrh->rcrh_send_niovs = nsrc_iovs;
     rcrh->rcrh_recv_niovs = ndest_iovs;
+    rcrh->rcrh_alloc_get_buffer_for_user = allocate_get_buffer_for_user;
 
-    rcrh->rcrh_blocking =
-        (rcrt == RCRT_READ_NB || rcrt == RCRT_WRITE_NB) ? 0 : 1;
+    rcrh->rcrh_blocking = !(rcrt & RCRT_NON_BLOCKING);
 
-    rcrh->rcrh_op_wr =
-        (rcrt == RCRT_WRITE || rcrt == RCRT_WRITE_NB) ? 1 : 0;
+    rcrh->rcrh_op_wr = (rcrt & RCRT_WRITE) ? 1 : 0;
 
     memcpy(&rcrh->rcrh_iovs[0], src_iovs, nsrc_iovs * sizeof(struct iovec));
     memcpy(&rcrh->rcrh_iovs[nsrc_iovs], dest_iovs,
@@ -1384,13 +1391,13 @@ raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct raft_net_client_user_id *rncui,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
+                           bool allocate_get_buffer_for_user,
                            const struct timespec timeout,
-                           const enum raft_client_request_type rcrt,
+                           const enum raft_client_request_opts rcrt,
                            raft_client_user_cb_t user_cb, void *user_arg,
                            const raft_net_request_tag_t tag)
 {
-    const bool block = (rcrt == RCRT_READ || rcrt == RCRT_WRITE) ?
-        true : false;
+    const bool block = (rcrt & RCRT_NON_BLOCKING) ? false: true;
 
     if (!client_instance || !rncui || (!block && user_cb == NULL))
         return -EINVAL;
@@ -1435,7 +1442,9 @@ raft_client_request_submit(raft_client_instance_t client_instance,
 
     int rc =
         raft_client_request_handle_init(rci, rcrh, src_iovs, nsrc_iovs,
-                                        dest_iovs, ndest_iovs, now, timeout,
+                                        dest_iovs, ndest_iovs,
+                                        allocate_get_buffer_for_user,
+                                        now, timeout,
                                         rcrt, user_cb, user_arg, tag);
     if (rc)
     {
@@ -1563,12 +1572,42 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
     {
         rcrh->rcrh_reply_size = rcrm->rcrm_data_size;
 
-        // XXX Need a fault injection here!
+        struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
+
         int reply_size_error =
             (rcrh->rcrh_reply_size >
              niova_io_iovs_total_size_get(
                  &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs],
                  rcrh->rcrh_recv_niovs)) ? -E2BIG : 0;
+
+        /* NOTE:  The current implementation requires the user / upper layer
+         *    to allocate at least the RPC msg buffer into recv_iovs[0].
+         *    If the user has requested for the system (ie this function) to
+         *    allocate a buffer large enough to fit the data section of the
+         *    reply, then we will place that buffer into recv_iovs[1].  Should
+         *    the user wish to utilize a more complex iov mapping then they
+         *    must provide their own GET sink buffer to
+         *    raft_client_request_submit().
+         */
+        if (rcrh->rcrh_alloc_get_buffer_for_user)
+        {
+            if (rcrh->rcrh_reply_size > recv_iovs[0].iov_len)
+            {
+                const size_t user_alloc_sz =
+                    rcrh->rcrh_reply_size - recv_iovs[0].iov_len;
+
+                recv_iovs[1].iov_base = niova_malloc_can_fail(user_alloc_sz);
+
+                reply_size_error = recv_iovs[1].iov_base ? 0 : -ENOMEM;
+
+                recv_iovs[1].iov_len = reply_size_error ? 0 : user_alloc_sz;
+
+                SIMPLE_LOG_MSG((reply_size_error ? LL_DEBUG : LL_WARN),
+                               "allocate buffer sz=%ld: %s",
+                               user_alloc_sz, strerror(reply_size_error));
+            }
+        }
+
         if (from)
         {
             rcrh->rcrh_sin_reply_addr = from->sin_addr;
@@ -1591,6 +1630,7 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
                              niova_io_iovs_total_size_get(
                                  recv_iovs, rcrh->rcrh_recv_niovs)));
 
+            SIMPLE_LOG_MSG(LL_DEBUG, "Copied the contents");
             rcrh->rcrh_reply_used_size = (size_t)rrc;
         }
 
@@ -2342,7 +2382,7 @@ raft_client_instance_init(struct raft_client_instance *rci,
                           raft_client_data_2_obj_id_t obj_id_cb)
 {
     REF_TREE_INIT(&rci->rci_sub_apps, raft_client_sub_app_construct,
-                  raft_client_sub_app_destruct);
+                  raft_client_sub_app_destruct, NULL);
 
     STAILQ_INIT(&rci->rci_sendq);
 
@@ -2460,6 +2500,47 @@ raft_client_set_default_request_timeout(unsigned int timeout)
 {
     if (timeout)
         raftClientDefaultReqTimeoutSecs = timeout;
+}
+
+char *
+raft_client_get_leader_uuid(raft_client_instance_t client_instance)
+{
+    struct raft_client_instance *rci =
+                raft_client_instance_lookup(client_instance);
+
+    if (!rci || !RCI_2_RI(rci))
+        return NULL;
+
+    struct ctl_svc_node *leader = RCI_2_RI(rci)->ri_csn_leader;
+    if (!leader)
+        return NULL;
+
+    /* Copy the leader uuid into a string */
+    char *leader_uuid = (char *)malloc(UUID_STR_LEN);
+    uuid_unparse(leader->csn_uuid, leader_uuid);
+
+    return leader_uuid;
+}
+
+int
+raft_client_get_leader_info(raft_client_instance_t client_instance,
+                            raft_client_leader_info_t *leader_info)
+{
+    struct raft_client_instance *rci =
+                raft_client_instance_lookup(client_instance);
+
+    if (!leader_info || !rci || !RCI_2_RI(rci))
+        return -EINVAL;
+
+    struct ctl_svc_node *leader = RCI_2_RI(rci)->ri_csn_leader;
+    if (!leader)
+        return -ENOENT;
+
+    uuid_copy(leader_info->rcli_leader_uuid, leader->csn_uuid);
+    leader_info->rcli_leader_alive_cnt = rci->rci_leader_alive_cnt;
+    leader_info->rcli_leader_viable = raft_client_leader_is_viable(rci);
+
+    return 0;
 }
 
 int

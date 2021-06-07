@@ -307,8 +307,8 @@ struct name {                                     \
     (root)->rbh_root = NULL; \
 } while (0)
 
-#define RB_BLACK    0
-#define RB_RED        1
+#define RB_BLACK 0
+#define RB_RED   1
 #define RB_ENTRY(type)                                   \
 struct {                                                 \
     struct type *rbe_left;        /* left element */     \
@@ -322,8 +322,8 @@ struct {                                                 \
     struct type *rbe_left;        /* left element */     \
     struct type *rbe_right;        /* right element */   \
     struct type *rbe_parent;    /* parent element */     \
-    unsigned char rbe_color;            /* node color */ \
-}  __attribute__ ((__packed__))
+    unsigned char rbe_color:1;    /* node color */       \
+} __attribute__ ((__packed__))
 
 #define RB_LEFT(elm, field)        (elm)->field.rbe_left
 #define RB_RIGHT(elm, field)        (elm)->field.rbe_right

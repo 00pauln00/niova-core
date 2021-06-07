@@ -93,8 +93,9 @@ epoll_mgr_thread_test_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 static struct epm_test_handle *
-epoll_mgr_test_handle_constructor(const struct epm_test_handle *in)
+epoll_mgr_test_handle_constructor(const struct epm_test_handle *in, void *arg)
 {
+    (void)arg;
     if (!in)
         return NULL;
 
@@ -123,8 +124,9 @@ epoll_mgr_test_handle_constructor(const struct epm_test_handle *in)
 static size_t destructor_cnt;
 
 static int
-epoll_mgr_test_handle_destructor(struct epm_test_handle *destroy)
+epoll_mgr_test_handle_destructor(struct epm_test_handle *destroy, void *arg)
 {
+    (void)arg;
     FATAL_IF((!destroy), "destroy obj is invalid %p", destroy);
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "eth=%p id=%lu", destroy, destroy->eth_id);
@@ -729,7 +731,7 @@ int
 main(void)
 {
     REF_TREE_INIT(&epollMgrTestRT, epoll_mgr_test_handle_constructor,
-                  epoll_mgr_test_handle_destructor);
+                  epoll_mgr_test_handle_destructor, NULL);
 
     epoll_mgr_basic_tests();
     epoll_mgr_multi_thread_tests();
