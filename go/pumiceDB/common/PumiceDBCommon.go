@@ -13,6 +13,12 @@ import (
 */
 import "C"
 
+type PMDBInfo struct {
+        RaftUUID   string
+        ClientUUID string
+        LeaderUUID string
+}
+
 //Encode the data passed as interface and return the unsafe.Pointer
 // to the encoded data. Also return length of the encoded data.
 func Encode(ed interface{}, data_len *int64) (unsafe.Pointer, error) {
