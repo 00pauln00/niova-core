@@ -2467,6 +2467,9 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
 static void
 raft_server_write_coalesced_entries(struct raft_instance *ri)
 {
+	SIMPLE_LOG_MSG(LL_DEBUG, "Write coalesced entries: %u",
+                            re_co_wr_info->rcwi_nentries);
+
     raft_server_leader_write_new_entry(ri, &re_co_wr_info->rcwi_buffer[0],
                                        &re_co_wr_info->rcwi_entry_sizes[0],
                                        re_co_wr_info->rcwi_nentries,
@@ -4118,8 +4121,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
      * which is already part of coalesced buffer.
      */
     bool flush_cowr_buff = (cb_rc ||
-                            rncr.rncr_op_error == -EINPROGRESS) ? true : false;
-
+                            (rncr.rncr_op_error == -EINPROGRESS &&
+                            !FAULT_INJECT(ignore_einprogress))) ? true : false;
     raft_server_write_coalesced_buffer(ri, rcm->rcrm_data_size,
                                      rcm->rcrm_sender_id,
                                      flush_cowr_buff);
@@ -4475,15 +4478,18 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     struct raft_net_sm_write_supplements coalesced_ws = {0, NULL};
     bool failed = false;
 
+    uint32_t length = 0;
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
+        length = (i == 0) ? 0 : length + reh.reh_entry_sz[i];
 
         raft_server_net_client_request_init_sm_apply(ri, &rncr[i],
                                                      &coalesced_ws,
-                                                     sink_buf,
+                                                     sink_buf + length,
                                                      reh.reh_entry_sz[i],
                                                      reply_buf[i],
                                                      reply_buf_sz);
+
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
         if (rc_arr[i])
             failed = true;
@@ -5654,7 +5660,8 @@ raft_server_instance_run(const char *raft_uuid_str,
 
         // Initialization - this resets the raft instance's contents
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
-                                  sm_request_handler, opts, arg);
+                                  sm_request_handler,
+                                  opts, arg);
 
         // Raft net startup
         int raft_net_startup_rc = raft_net_instance_startup(ri, false);
