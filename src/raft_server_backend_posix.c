@@ -173,12 +173,12 @@ rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re,
     const off_t offset = rsbr_raft_entry_to_phys_offset(ri, re);
 
     const ssize_t rrc =
-        io_pwrite(rip->rip_fd, (const char *)re, expected_size, offset);
+        niova_io_pwrite(rip->rip_fd, (const char *)re, expected_size, offset);
 
     const bool write_ok = (rrc == (ssize_t)expected_size) ? true : false;
 
     DBG_RAFT_ENTRY((write_ok ? LL_DEBUG : LL_ERROR), &re->re_header,
-                   "io_pwrite() %s (rrc=%zd expected-size=%zu offset=%ld)",
+                   "niova_io_pwrite() %s (rrc=%zd expected-size=%zu offset=%ld)",
                    rrc < 0 ? strerror(-rrc) : "Success", rrc, expected_size,
                    offset);
 
@@ -208,14 +208,14 @@ rsbp_read_common(struct raft_instance *ri, struct raft_entry *re,
     LOG_MSG(LL_DEBUG, "reh=%p reh-idx=%ld reh-data-size=%u total-sz=%zd",
             reh, reh->reh_index, reh->reh_data_size, expected_sz);
 
-    ssize_t read_sz = io_pread(rip->rip_fd, (char *)reh, expected_sz,
+    ssize_t read_sz = niova_io_pread(rip->rip_fd, (char *)reh, expected_sz,
                                rsbr_raft_entry_header_to_phys_offset(ri, reh));
 
     if (read_sz != expected_sz)
     {
         LOG_MSG(
             LL_ERROR,
-            "io_pread(): %s (rrc=%zd != %zd idx=%ld off=%ld hdr-only=%s)",
+            "niova_io_pread(): %s (rrc=%zd != %zd idx=%ld off=%ld hdr-only=%s)",
             read_sz < 0 ? strerror((int)-read_sz) : "Success",
             read_sz, expected_sz, idx,
             rsbr_raft_entry_header_to_phys_offset(ri, reh),
@@ -269,8 +269,8 @@ rsbp_log_truncate(struct raft_instance *ri,
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "trunc-off=%ld entry-idx=%ld",
                       trunc_off, entry_idx);
 
-    int rc = io_ftruncate(rip->rip_fd, trunc_off);
-    FATAL_IF((rc), "io_ftruncate(): %s", strerror(-rc));
+    int rc = niova_io_ftruncate(rip->rip_fd, trunc_off);
+    FATAL_IF((rc), "niova_io_ftruncate(): %s", strerror(-rc));
 
     rc = rsbp_sync(ri);
     FATAL_IF((rc), "rsbp_sync(): %s", strerror(rc));
@@ -384,7 +384,7 @@ rsbp_header_write(struct raft_instance *ri)
                                           sizeof(struct raft_log_header));
 
     const ssize_t write_sz =
-        io_pwrite(rip->rip_fd, (const char *)&entry_and_header,
+        niova_io_pwrite(rip->rip_fd, (const char *)&entry_and_header,
                   raft_server_entry_to_total_size(re),
                   rsbr_raft_entry_to_phys_offset(ri, re));
 
@@ -394,7 +394,7 @@ rsbp_header_write(struct raft_instance *ri)
 
     DBG_RAFT_ENTRY(
         ((rc || sync_rc) ? LL_ERROR : LL_DEBUG), &re->re_header,
-        "io_pwrite(): %s:%s (rrc=%zd expected-sz=%zu off=%ld)",
+        "niova_io_pwrite(): %s:%s (rrc=%zd expected-sz=%zu off=%ld)",
         strerror(-rc), strerror(sync_rc), write_sz,
         raft_server_entry_to_total_size(re),
         rsbr_raft_entry_to_phys_offset(ri, re));
@@ -561,7 +561,7 @@ rsbp_sync(struct raft_instance *ri)
 
     struct raft_instance_posix *rip = rsbp_ri_to_rip(ri);
 
-    int rc = io_fsync(rip->rip_fd);
+    int rc = niova_io_fsync(rip->rip_fd);
     if (rc < 0)
         rc = -errno;
 

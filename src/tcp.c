@@ -216,7 +216,7 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
     else if (iovlen > IO_MAX_IOVS)
         return -E2BIG;
 
-    size_t total_size = io_iovs_total_size_get(iov, iovlen);
+    size_t total_size = niova_io_iovs_total_size_get(iov, iovlen);
     if (!total_size || !tcp_iov_size_ok(total_size))
         return -EMSGSIZE;
 
@@ -295,7 +295,7 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
     else if (iovlen > IO_MAX_IOVS)
         return -E2BIG;
 
-    const ssize_t total_size = io_iovs_total_size_get(iov, iovlen);
+    const ssize_t total_size = niova_io_iovs_total_size_get(iov, iovlen);
     if (!total_size || !tcp_iov_size_ok(total_size))
         return -EMSGSIZE;
 
@@ -307,8 +307,9 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
     for (ssize_t sendmsg_rc = 0; total_sent < total_size;)
     {
         struct iovec my_iovs[iovlen];
-        const size_t my_iovlen = io_iovs_map_consumed(iov, my_iovs, iovlen,
-                                                      total_sent);
+        const size_t my_iovlen =
+            niova_io_iovs_map_consumed(iov, my_iovs, iovlen, total_sent, -1UL);
+
         struct msghdr msg = {
             .msg_name = 0,
             .msg_namelen = 0,

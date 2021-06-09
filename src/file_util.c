@@ -67,8 +67,8 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
 
     bool close_fd = ret_fd ? false : true;
 
-    ssize_t io_rc = io_read(fd, output_buf,
-                            proc_file ? output_size : stb.st_size);
+    ssize_t io_rc = niova_io_read(fd, output_buf,
+                                  proc_file ? output_size : stb.st_size);
     if (io_rc < 0)
     {
         io_rc = -errno;

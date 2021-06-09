@@ -586,8 +586,10 @@ rst_getopt(int argc, char **argv)
 }
 
 static struct rst_sm_node *
-rst_sm_node_construct(const struct rst_sm_node *in)
+rst_sm_node_construct(const struct rst_sm_node *in, void *arg)
 {
+    (void)arg;
+
     if (!in)
         return NULL;
 
@@ -603,8 +605,10 @@ rst_sm_node_construct(const struct rst_sm_node *in)
 }
 
 static int
-rst_sm_node_destruct(struct rst_sm_node *destroy)
+rst_sm_node_destruct(struct rst_sm_node *destroy, void *arg)
 {
+    (void)arg;
+
     if (!destroy)
         return -EINVAL;
 
@@ -619,7 +623,7 @@ main(int argc, char **argv)
     rst_getopt(argc, argv);
 
     REF_TREE_INIT_ALT_REF(&smNodeTree, rst_sm_node_construct,
-                          rst_sm_node_destruct, 2);
+                          rst_sm_node_destruct, 2, NULL);
 
     enum raft_instance_options opts = use_synchronous_writes
         ? RAFT_INSTANCE_OPTIONS_SYNC_WRITES

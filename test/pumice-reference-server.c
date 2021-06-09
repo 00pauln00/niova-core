@@ -177,7 +177,7 @@ pmdbts_apply_lookup_and_check(const struct raft_net_client_user_id *app_id,
     DBG_RAFT_TEST_DATA_BLOCK(LL_DEBUG, rtdb,
                              "pmdbts_lookup(): current seqno=%ld, val=%ld",
                              current_rtv.rtv_seqno,
-                             current_rtv.rtv_reply_xor_all_values)
+                             current_rtv.rtv_reply_xor_all_values);
 
     // Check the sequence is correct and the contents are valid.
     for (uint16_t i = 0; i < rtdb->rtdb_num_values; i++)
@@ -218,7 +218,8 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
 
 static pumicedb_apply_ctx_int_t
 pmdbts_apply(const struct raft_net_client_user_id *app_id,
-             const char *input_buf, size_t input_bufsz, void *pmdb_handle)
+             const void *input_buf, size_t input_bufsz, void *pmdb_handle,
+             void *user_data)
 {
 //    NIOVA_ASSERT(!pmdbst_init_rocksdb());
 
@@ -249,8 +250,9 @@ pmdbts_apply(const struct raft_net_client_user_id *app_id,
 static pumicedb_read_ctx_ssize_t
 pmdbts_read(const struct raft_net_client_user_id *app_id,
             const char *request_buf, size_t request_bufsz, char *reply_buf,
-            size_t reply_bufsz)
+            size_t reply_bufsz, void *user_data)
 {
+
     (void)request_buf;
     (void)request_bufsz;
 
@@ -357,5 +359,5 @@ main(int argc, char **argv)
     const char *cf_names[1] = {pmdbts_column_family_name};
 
     return PmdbExec(raft_uuid_str, my_uuid_str, &api, cf_names, 1,
-                    syncPMDBWrites);
+                    syncPMDBWrites, NULL);
 }

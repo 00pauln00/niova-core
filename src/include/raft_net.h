@@ -318,52 +318,54 @@ struct raft_net_client_request_handle
                         ##__VA_ARGS__)
 
 #define DBG_RAFT_CLIENT_RPC(log_level, rcm, fmt, ...)                     \
-{                                                                         \
-    char __uuid_str[UUID_STR_LEN];                                        \
-    char __redir_uuid_str[UUID_STR_LEN];                                  \
-    uuid_unparse((rcm)->rcrm_sender_id, __uuid_str);                      \
-    switch ((rcm)->rcrm_type)                                             \
-    {                                                                     \
-    case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                                \
-        uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);                    \
-        LOG_MSG(log_level,                                                \
-                "CLI-REQ   %s id=%lx sz=%u "fmt,                          \
-                __uuid_str,                                               \
-                (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,                \
-                ##__VA_ARGS__);                                           \
-        break;                                                            \
-    case RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT:                               \
-        uuid_unparse((rcm)->rcrm_redirect_id, __redir_uuid_str);          \
-        LOG_MSG(log_level,                                                \
-                "CLI-RDIR  %s id=%lx sz=%u redir-to=%s "fmt,              \
-                __uuid_str,                                               \
-                (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,                \
-                __redir_uuid_str, ##__VA_ARGS__);                         \
-        break;                                                            \
-    case RAFT_CLIENT_RPC_MSG_TYPE_REPLY:                                  \
-        LOG_MSG(log_level,                                                \
-                "CLI-REPL  %s id=%lx sz=%u err=%hd:%hd "fmt,              \
-                __uuid_str,                                               \
-                (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,                \
-                (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,             \
-                ##__VA_ARGS__);                                           \
-        break;                                                            \
-    case RAFT_CLIENT_RPC_MSG_TYPE_PING:        /* fall through */         \
-        uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);                    \
-    case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                             \
-        LOG_MSG(log_level,                                                \
-                "CLI-%s %s id=%lx err=%hd:%hd "fmt,                       \
-                (rcm)->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY ? \
-                "PREPL" : "PING ",                                        \
-                __uuid_str,                                               \
-                (rcm)->rcrm_msg_id,                                       \
-                (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,             \
-                ##__VA_ARGS__);                                           \
-        break;                                                            \
-    default:                                                              \
-        break;                                                            \
-    }                                                                     \
-}
+do {                                                                    \
+    DEBUG_BLOCK(log_level) {                                            \
+        char __uuid_str[UUID_STR_LEN];                                  \
+        char __redir_uuid_str[UUID_STR_LEN];                            \
+        uuid_unparse((rcm)->rcrm_sender_id, __uuid_str);                \
+        switch ((rcm)->rcrm_type)                                       \
+        {                                                               \
+        case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                          \
+            uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+            LOG_MSG(log_level,                                          \
+                    "CLI-REQ   %s id=%lx sz=%u "fmt,                    \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT:                         \
+            uuid_unparse((rcm)->rcrm_redirect_id, __redir_uuid_str);    \
+            LOG_MSG(log_level,                                          \
+                    "CLI-RDIR  %s id=%lx sz=%u redir-to=%s "fmt,        \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
+                    __redir_uuid_str, ##__VA_ARGS__);                   \
+            break;                                                      \
+        case RAFT_CLIENT_RPC_MSG_TYPE_REPLY:                            \
+            LOG_MSG(log_level,                                          \
+                    "CLI-REPL  %s id=%lx sz=%u err=%hd:%hd "fmt,        \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
+                    (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,       \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_CLIENT_RPC_MSG_TYPE_PING:        /* fall through */   \
+            uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+        case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                       \
+            LOG_MSG(log_level,                                          \
+                    "CLI-%s %s id=%lx err=%hd:%hd "fmt,                 \
+                    (rcm)->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY ? \
+                    "PREPL" : "PING ",                                  \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id,                                 \
+                    (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,       \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        default:                                                        \
+            break;                                                      \
+        }                                                               \
+    }                                                                   \
+} while (0)
 
 #define DBG_RAFT_CLIENT_RPC_LEADER(log_level, ri, rcm, fmt, ...) \
 {                                                                \

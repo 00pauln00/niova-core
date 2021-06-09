@@ -53,6 +53,7 @@
 
 #define ABS(v) ((v < 0) ? (-v) : (v))
 
+#define IS_EVEN(val) (val & 1) ? false : true
 
 #define PACKED __attribute__((packed))
 
@@ -72,6 +73,9 @@
 #define NUM_HEX_CHARS(type) \
     sizeof(type) * 2
 
+#define MEMBER_SIZE(type, member)               \
+    sizeof(((type *)0)->member)
+
 #define RAFT_PEER_ANY ID_ANY_8bit
 
 typedef uint8_t  raft_peer_t;
@@ -86,6 +90,7 @@ typedef bool      thread_exec_ctx_bool_t;
 typedef uint64_t  thread_exec_ctx_u64_t;
 
 #define ID_ANY_8bit  255
+#define ID_ANY_16bit 65535
 #define ID_ANY_32bit -1U
 #define ID_ANY_64bit -1ULL
 
@@ -122,7 +127,95 @@ highest_power_of_two_from_val(unsigned long long val)
 static inline int
 number_of_ones_in_val(unsigned long long val)
 {
-    return __builtin_popcount(val);
+    return __builtin_popcountll(val);
+}
+
+static inline int
+nconsective_bits_assign(uint64_t *field, unsigned int nbits)
+{
+    const unsigned int field_size = NBBY * sizeof(uint64_t);
+
+    if (!field || nbits <= 0 || nbits > field_size)
+        return -EINVAL;
+
+    if (nbits == field_size)
+    {
+        int rc = 0;
+
+        if (*field)
+            rc = -ENOSPC;
+        else
+            *field = -1ULL;
+
+        return rc;
+    }
+
+    const uint64_t ifield = ~(*field);
+    uint64_t mask = (1ULL << nbits) - 1;
+
+    for (unsigned int i = 0; i <= (field_size - nbits); i++)
+    {
+        uint64_t shifted_mask = mask << i;
+        if ((ifield & shifted_mask) == shifted_mask)
+        {
+            *field |= shifted_mask;
+            return i;
+        }
+    }
+
+    return -ENOSPC;
+}
+
+static inline int
+nconsective_bits_release(uint64_t *field, unsigned int offset,
+                         unsigned int nbits)
+{
+    const unsigned int field_size = NBBY * sizeof(uint64_t);
+
+    if (!field || nbits <= 0 || nbits > field_size || offset >= field_size ||
+        ((nbits + offset) > field_size))
+        return -EINVAL;
+
+    if (nbits == field_size)
+    {
+        int rc = 0;
+
+        if (*field == -1ULL)
+            *field = 0;
+        else
+            rc = -EBADSLT;
+
+        return rc;
+    }
+
+    uint64_t mask = ((1ULL << nbits) - 1) << offset;
+    if ((*field & mask) == mask)
+    {
+        *field &= ~mask;
+        return 0;
+    }
+
+    return -EBADSLT;
+}
+
+static inline uint64_t
+lowest_bit_unset_and_return(uint64_t *field)
+{
+    const uint64_t x = *field & ~(*field - 1);
+    *field &= (*field - 1);
+
+    return x;
+}
+
+static inline uint64_t
+lowest_bit_set_and_return(uint64_t *field)
+{
+    uint64_t inverse = ~(*field);
+    uint64_t x = inverse & ~(inverse - 1);
+
+    *field |= x;
+
+    return x;
 }
 
 #endif //NIOVA_COMMON_H

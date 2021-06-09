@@ -3,7 +3,7 @@ noinst_PROGRAMS =
 TESTS =
 lib_LTLIBRARIES =
 libexec_PROGRAMS =
-
+pkgconfig_DATA = ./niova.pc
 # libexec installs are placed into the 'niova' parent directory
 my_libexecdir = $(libexecdir)/niova
 my_libexec_PROGRAMS =
@@ -16,8 +16,10 @@ ACLOCAL_AMFLAGS = -I m4
 CORE_HDRS = src/include/atomic.h \
 	src/include/alloc.h \
         src/include/binary_hist.h \
+        src/include/bitmap.h \
         src/include/common.h \
 	src/include/config_token.h \
+        src/include/crc24q.h \
         src/include/ctl_interface_cmd.h \
 	src/include/ctl_interface.h \
         src/include/ctl_svc.h \
@@ -46,12 +48,15 @@ CORE_HDRS = src/include/atomic.h \
         src/include/tcp_mgr.h \
 	src/include/util.h \
         src/include/util_thread.h \
-        src/include/watchdog.h
+        src/include/watchdog.h \
+	src/contrib/include/tree.h
 
 CORE_SOURCES = $(CORE_HDRS) \
 	src/alloc.c \
         src/config_token.c \
         src/contrib/crc32c-pcl-intel-asm_64.S \
+        src/contrib/crct10dif-pcl-asm_64.S \
+        src/contrib/crc24q.c \
         src/ctl_interface.c \
         src/ctl_interface_cmd.c \
         src/ctl_svc.c \
@@ -209,6 +214,11 @@ test_micro_test_SOURCES = test/micro-test.c
 test_micro_test_LDADD = src/libniova.la
 TESTS += test/micro-test
 
+noinst_PROGRAMS += test/alloc-test
+test_alloc_test_SOURCES = test/alloc-test.c
+test_alloc_test_LDADD = src/libniova.la
+TESTS += test/alloc-test
+
 noinst_PROGRAMS += test/registry-test
 # Use CORE_SOURCES so that this binary's constructor runs inside of niova
 # init_ctx()
@@ -267,6 +277,18 @@ test_raft_net_test_SOURCES =  $(non_library_common_SOURCES) \
 test_raft_net_test_LDADD = src/libniova.la
 test_raft_net_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/raft-net-test
+
+noinst_PROGRAMS += test/bitmap-test
+test_bitmap_test_SOURCES = test/bitmap-test.c
+test_bitmap_test_LDADD = src/libniova.la
+test_bitmap_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/bitmap-test
+
+noinst_PROGRAMS += test/io-iov-test
+test_io_iov_test_SOURCES = test/io-iov-test.c
+test_io_iov_test_LDADD = src/libniova.la
+test_io_iov_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/io-iov-test
 
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null

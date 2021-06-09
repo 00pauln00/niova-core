@@ -479,6 +479,7 @@ rsbr_write_supplements_put(const struct raft_net_sm_write_supplements *ws,
     for (size_t i = 0; i < ws->rnsws_nitems; i++)
     {
         const struct raft_net_wr_supp *supp = &ws->rnsws_ws[i];
+
         supp->rnws_handle ?
         rocksdb_writebatch_putv_cf(
             wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,

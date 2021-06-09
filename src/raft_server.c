@@ -144,7 +144,7 @@ raft_instance_buffer_get(struct raft_instance *ri, size_t size)
 
         NIOVA_ASSERT(rib->ribuf_buf);
 
-        if (rib->ribuf_free && rib->ribuf_size <= size)
+        if (rib->ribuf_free && rib->ribuf_size >= size)
         {
             rib->ribuf_free = false;
             return rib->ribuf_buf;
@@ -1526,7 +1526,8 @@ raft_server_log_truncate(struct raft_instance *ri)
 
     ri->ri_backend->rib_log_truncate(ri, trunc_entry_idx);
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new-max-raft-idx=%ld", trunc_entry_idx);
+    DBG_RAFT_INSTANCE_TAG(LL_NOTIFY, "log-rollback", ri, "new-max-raft-idx=%ld",
+                          trunc_entry_idx);
 }
 
 /**
@@ -2616,7 +2617,6 @@ raft_server_append_entry_log_prune_if_needed(
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
                                strerror(-rc));
 
-    // We must not prune already committed transactions.
     DBG_RAFT_INSTANCE(LL_WARN, ri,
                       "raerqm_prev_log_term=%ld raerqm_prev_log_index=%ld",
                       raerq->raerqm_prev_log_term,
@@ -2705,7 +2705,8 @@ raft_server_append_entry_request_bounds_check(
     /* Sanity check the leader's request.  If the leader's lowest index is
      * higher than the pli then don't proceed with this msg.
      */
-    if (raerq->raerqm_prev_log_index < raerq->raerqm_lowest_index)
+    if (raerq->raerqm_prev_log_index != ID_ANY_64bit &&
+        raerq->raerqm_prev_log_index < raerq->raerqm_lowest_index)
     {
         DBG_RAFT_MSG(LL_WARN, rrm, "pli < leader-lowest-idx");
         return -EBADR;
@@ -3058,9 +3059,15 @@ raft_server_process_bulk_recovery_check(
     const raft_entry_idx_t my_current_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
 
-    if (my_current_idx < raerq->raerqm_lowest_index ||
+    if (raerq->raerqm_entry_out_of_range ||
         FAULT_INJECT(raft_force_bulk_recovery))
     {
+        if (my_current_idx >= raerq->raerqm_lowest_index)
+            DBG_RAFT_INSTANCE(
+                LL_WARN, ri,
+                "leader claims ERANGE but leader-lowest-idx=%ld < ei=%ld",
+                raerq->raerqm_lowest_index, my_current_idx);
+
         ri->ri_needs_bulk_recovery = true;
         raft_server_init_recovery_handle(ri, raerq);
 
@@ -3827,6 +3834,9 @@ raft_server_net_client_request_init(
     rncr->rncr_entry_term = ri->ri_log_hdr.rlh_term;
     rncr->rncr_current_term = ri->ri_log_hdr.rlh_term;
 
+    //memset the reply_buf to make sure garbage values are not used from it.
+    memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
+
     rncr->rncr_reply = (struct raft_client_rpc_msg *)reply_buf;
 
     CONST_OVERRIDE(size_t, rncr->rncr_reply_data_max_size,
@@ -4257,6 +4267,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     const size_t sink_buf_sz = ri->ri_max_entry_size;
 
     char *reply_buf = raft_instance_buffer_get(ri, reply_buf_sz);
+
     char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
     NIOVA_ASSERT(reply_buf && sink_buf);
 
@@ -4380,7 +4391,8 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 
     EV_PIPE_RESET(evp);
 
-    raft_server_state_machine_apply(ri);
+    if (!FAULT_INJECT(raft_server_bypass_sm_apply))
+        raft_server_state_machine_apply(ri);
 }
 
 static raft_server_epoll_t
@@ -5044,8 +5056,7 @@ raft_server_instance_buffer_pool_setup(struct raft_instance *ri)
         return -EALREADY;
 
     ri->ri_buf_pool =
-        niova_calloc_can_fail(RAFT_INSTANCE_NUM_BUFS,
-                              sizeof(struct raft_instance_buffer));
+        niova_calloc_can_fail(1UL, sizeof(struct raft_instance_buf_pool));
 
     if (!ri->ri_buf_pool)
         return -ENOMEM;

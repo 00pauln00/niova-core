@@ -103,6 +103,7 @@ struct pmdbtc_request
     size_t                         preq_op_cnt;
     size_t                         preq_val_cnt;
     int64_t                        preq_write_seqno;
+    int64_t                        preq_pmdb_seqno;
     STAILQ_ENTRY(pmdbtc_request)   preq_lentry;
     raft_net_request_tag_t         preq_last_tag;
     pmdb_obj_stat_t                preq_obj_stat;
@@ -456,7 +457,8 @@ pmdbtc_parse_and_process_input_cmd(const char *input_cmd_str)
 
     enum PmdbOpType op = pmdb_op_any;
     size_t op_cnt = 1;
-    size_t val_cnt = 0;
+    // Set the default value to 1 to make it compatible with old holon code.
+    size_t val_cnt = 1;
 
     /* Cmd string formats:
      * <RNCUI_V0_REGEX_BASE>.<read>|<lookup>|(<write:start seqno>.<# writes>.
@@ -817,6 +819,8 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
     niova_realtime_coarse_clock(&preq->preq_completed);
     int status;
 
+    // pending pmdb seqno.
+    preq->preq_pmdb_seqno++;
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
@@ -858,7 +862,6 @@ pmdbtc_async_cb(void *arg, ssize_t rrc)
         return;
 
     struct pmdbtc_request *preq = (struct pmdbtc_request *)arg;
-
     (void)pmdbtc_request_complete(preq, (int)rrc);
 }
 
@@ -874,28 +877,35 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     // Underhanded way to set rpc-user-tag in raft-client-rpc msg
     preq->preq_obj_stat.status = random_get();
     preq->preq_last_tag = preq->preq_obj_stat.status;
+    // Copy the pending seqno in the preq object stat.
+    preq->preq_obj_stat.sequence_num = preq->preq_pmdb_seqno;
+
+    pmdb_request_opts_t pmdb_req;
 
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
-        rc = use_async_requests ?
-            PmdbObjLookupNB(pmdbtcPMDB, obj_id, &preq->preq_obj_stat,
-                            pmdbtc_async_cb, preq) :
-            PmdbObjLookup(pmdbtcPMDB, obj_id, &preq->preq_obj_stat);
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+                                  &preq->preq_obj_stat,
+                                  use_async_requests ? pmdbtc_async_cb : NULL,
+                                  use_async_requests ? preq : NULL,
+                                  NULL, 0, 0);
+
+        rc = PmdbObjLookupX(pmdbtcPMDB, obj_id, &pmdb_req);
+
         break;
 
     case pmdb_op_read:
-        rc = use_async_requests ?
-            PmdbObjGetXNB(pmdbtcPMDB, obj_id, NULL, 0,
-                          (char *)&preq->preq_rtdb,
-                          (sizeof(struct raft_test_data_block) +
-                           sizeof(struct raft_test_values)),
-                          pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
-            PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0,
-                        (char *)&preq->preq_rtdb,
-                        (sizeof(struct raft_test_data_block) +
-                         sizeof(struct raft_test_values)),
-                        &preq->preq_obj_stat);
+
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+                                  &preq->preq_obj_stat,
+                                  use_async_requests ? pmdbtc_async_cb : NULL,
+                                  use_async_requests? preq : NULL,
+                                  (void *)&preq->preq_rtdb,
+                                  (sizeof(struct raft_test_data_block) +
+                                  sizeof(struct raft_test_values)), 0);
+
+        rc = PmdbObjGetX(pmdbtcPMDB, obj_id, NULL, 0, &pmdb_req);
         break;
 
     case pmdb_op_write:
@@ -907,18 +917,15 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
         SIMPLE_LOG_MSG(LL_TRACE, "write rqsz: %lu", rqsz);
 
-        rc = use_async_requests ?
-            PmdbObjPutNB(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                         rqsz,
-                         pmdbtc_async_cb, preq, &preq->preq_obj_stat) :
-            PmdbObjPut(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb,
-                       rqsz,
-                       &preq->preq_obj_stat);
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+                                  &preq->preq_obj_stat,
+                                  use_async_requests ? pmdbtc_async_cb : NULL,
+                                  use_async_requests ? preq : NULL,
+                                  NULL, 0, 0);
 
+        rc = PmdbObjPutX(pmdbtcPMDB, obj_id, (char *)&preq->preq_rtdb, rqsz,
+                         &pmdb_req);
 
-        // pumicedb seqnum increases by 1 per write
-        // XXX: could this sequence num be inc'd by PmdbObjPut?
-        preq->preq_obj_stat.sequence_num++;
         break;
     default:
         break;

@@ -17,19 +17,21 @@
 /**
  * REF_TREE_INIT_ALT_REF - "ALT_REF" means "use an alternate initial ref cnt".
  */
-#define REF_TREE_INIT_ALT_REF(rt, constructor_fn, destructor_fn, ref) \
+#define REF_TREE_INIT_ALT_REF(rt, constructor_fn, destructor_fn, ref, \
+                              user_arg)                               \
     {                                                                 \
         pthread_mutex_init(&(rt)->mutex, NULL);                       \
         (rt)->initial_ref_cnt = ref;                                  \
         RB_INIT(&(rt)->rt_head);                                      \
         (rt)->constructor = constructor_fn;                           \
         (rt)->destructor = destructor_fn;                             \
+        (rt)->arg = user_arg;                                         \
     }
 
 #define REF_TREE_INITIAL_REF_CNT(rt) (rt)->initial_ref_cnt
 
-#define REF_TREE_INIT(rt, constructor_fn, destructor_fn) \
-    REF_TREE_INIT_ALT_REF(rt, constructor_fn, destructor_fn, 1);
+#define REF_TREE_INIT(rt, constructor_fn, destructor_fn, arg)           \
+    REF_TREE_INIT_ALT_REF(rt, constructor_fn, destructor_fn, 1, arg);
 
 #define REF_TREE_DESTROY(rt)                 \
     {                                        \
@@ -43,9 +45,22 @@
         struct _RT_##name rt_head;                         \
         unsigned int    initial_ref_cnt;                   \
         pthread_mutex_t mutex;                             \
-        struct type  *(*constructor)(const struct type *); \
-        int           (*destructor)(struct type *);        \
+        void           *arg;                               \
+        struct type  *(*constructor)(const struct type *, void *);     \
+        int           (*destructor)(struct type *, void *);            \
     }
+
+#define REF_TREE_REF_INCREASE_ELEM_LOCKED(elm, field, cnt)      \
+    do {                                                        \
+        (elm)->field.rte_ref_cnt += cnt;                        \
+        NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0);             \
+    } while (0)
+
+#define REF_TREE_REF_DECREASE_ELEM_LOCKED(elm, field, cnt)      \
+    do {                                                        \
+        (elm)->field.rte_ref_cnt -= cnt;                        \
+        NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0);             \
+    } while (0)
 
 #define REF_TREE_REF_GET_ELEM_LOCKED(elm, field)    \
     do {                                            \
@@ -102,7 +117,7 @@ struct {                                 \
         }                                                            \
         pthread_mutex_unlock(&head->mutex);                          \
         if (removed)                                                 \
-            head->destructor(elm);                                   \
+            head->destructor(elm, head->arg);                        \
         return removed;                                              \
     }                                                                \
                                                                      \
@@ -137,7 +152,7 @@ struct {                                 \
             return elm;                                              \
         }                                                            \
                                                                      \
-        elm = head->constructor(lookup_elm);                         \
+        elm = head->constructor(lookup_elm, head->arg);              \
         if (!elm)                                                    \
         {                                                            \
             if (ret)                                                 \
@@ -159,7 +174,7 @@ struct {                                 \
                                                                      \
         if (already)                                                 \
         {                                                            \
-            (int)head->destructor(elm);                              \
+            (int)head->destructor(elm, head->arg);                   \
             elm = already;                                           \
             if (ret)                                                 \
                 *ret = -EALREADY;                                    \
@@ -191,5 +206,8 @@ struct {                                 \
 
 #define RT_FOREACH_REVERSE_SAFE_LOCKED(x, name, head, y) \
     RB_FOREACH_REVERSE(x, _RT_##name, &(head)->rt_head, y)
+
+#define RT_EMPTY(head) RB_EMPTY(&(head)->rt_head)
+#define RT_INIT(head) RB_INIT(&(head)->rt_head)
 
 #endif //REF_TREE_H

@@ -25,6 +25,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
 static const struct PmdbAPI *pmdbApi;
+static void *pmdb_user_data = NULL;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -87,9 +88,10 @@ struct pmdb_apply_handle
 
 
 #define PMDB_OBJ_DEBUG(log_level, pmdbo, fmt, ...)                          \
-    {                                                                       \
-        char __uuid_str[UUID_STR_LEN];                                      \
-        uuid_unparse(                                                       \
+do {                                                                        \
+    DEBUG_BLOCK(log_level) {                                                \
+        char __uuid_str[UUID_STR_LEN];                                  \
+        uuid_unparse(                                                   \
             RAFT_NET_CLIENT_USER_ID_2_UUID(&(pmdbo)->pmdb_obj_rncui, 0, 0), \
             __uuid_str);                                                    \
         LOG_MSG(log_level,                                                  \
@@ -110,11 +112,13 @@ struct pmdb_apply_handle
             (pmdbo)->pmdb_obj_pending_term,                                 \
             (pmdbo)->pmdb_obj_msg_id,                                       \
             ##__VA_ARGS__);                                                 \
-    }
+    }                                                                   \
+} while (0)
 
 #define PMDB_STR_DEBUG(log_level, pmdb_rncui, fmt, ...)                \
-    {                                                                  \
-        char __uuid_str[UUID_STR_LEN];                                 \
+do {                                                                \
+    DEBUG_BLOCK(log_level) {                                                \
+        char __uuid_str[UUID_STR_LEN];                                  \
         uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(pmdb_rncui, 0, 0), \
                      __uuid_str);                                      \
         LOG_MSG(log_level, "%s.%lx.%lx: "fmt,                          \
@@ -123,6 +127,7 @@ struct pmdb_apply_handle
             RAFT_NET_CLIENT_USER_ID_2_UINT64(pmdb_rncui, 0, 3),        \
             ##__VA_ARGS__);                                            \
     }                                                                  \
+} while (0)
 
 static void
 pmdb_obj_crc_calc(struct pmdb_object *obj)
@@ -550,7 +555,8 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
             pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                pmdb_req->pmdbrm_data,
                                pmdb_req->pmdbrm_data_size,
-                               pmdb_reply->pmdbrm_data, max_reply_size);
+                               pmdb_reply->pmdbrm_data, max_reply_size,
+                               pmdb_user_data);
     }
     //XXX fault injection needed
     if (rrc < 0)
@@ -710,7 +716,8 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     // Call into the application so it may emplace its own KVs.
     int apply_rc =
         pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
-                            pmdb_req->pmdbrm_data_size, (void *)&pah);
+                            pmdb_req->pmdbrm_data_size, (void *)&pah,
+                            pmdb_user_data);
 
     // rc of 0 means the client will get a reply
     if (!rc)
@@ -853,8 +860,8 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
  * @raft_instance_uuid_str:  UUID of this specific raft peer
  * @pmdb_api:  Function callbacks for read and apply.
  */
-int
-PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
+static int
+_PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
          int num_cf_names, bool use_synchronous_writes)
 {
@@ -893,6 +900,16 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     return rc;
 }
 
+int
+PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
+         const struct PmdbAPI *pmdb_api, const char *cf_names[],
+         int num_cf_names, bool use_synchronous_writes, void *user_data)
+{
+    pmdb_user_data = user_data;
+    return _PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
+					 num_cf_names, use_synchronous_writes);
+}
+
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec
  *   thread.
@@ -907,4 +924,16 @@ rocksdb_t *
 PmdbGetRocksDB(void)
 {
     return pmdb_get_rocksdb_instance();
+}
+
+const char *
+PmdbRncui2Key(const struct raft_net_client_user_id *rncui)
+{
+	return (const char *)&(rncui)->rncui_key.v0;
+}
+
+size_t
+PmdbEntryKeyLen(void)
+{
+	return sizeof(struct raft_net_client_user_key_v0);
 }
