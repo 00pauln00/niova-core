@@ -129,11 +129,12 @@ raft_net_max_rpc_size(enum raft_instance_store_type be_type)
 // Options for raft_server_instance_run()
 enum raft_instance_options
 {
-    RAFT_INSTANCE_OPTIONS_NONE            = 0,
-    RAFT_INSTANCE_OPTIONS_SYNC_WRITES     = 1 << 0,
-    RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT = 1 << 1,
-    RAFT_INSTANCE_OPTIONS_DISABLE_UDP     = 1 << 2,
-    RAFT_INSTANCE_OPTIONS_DISABLE_TCP     = 1 << 3,
+    RAFT_INSTANCE_OPTIONS_NONE                 = 0,
+    RAFT_INSTANCE_OPTIONS_SYNC_WRITES          = 1 << 0,
+    RAFT_INSTANCE_OPTIONS_COALESCED_WRITES     = 1 << 1,
+    RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT      = 1 << 2,
+    RAFT_INSTANCE_OPTIONS_DISABLE_UDP          = 1 << 3,
+    RAFT_INSTANCE_OPTIONS_DISABLE_TCP          = 1 << 4,
 };
 
 enum raft_udp_listen_sockets

@@ -1022,7 +1022,8 @@ PmdbWriteKV(const struct raft_net_client_user_id *app_id, void *pmdb_handle,
 static int
 _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf_names, bool use_synchronous_writes)
+         int num_cf_names, bool use_synchronous_writes,
+         bool use_coalesced_writes)
 {
     pmdbApi = pmdb_api;
 
@@ -1050,7 +1051,8 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     enum raft_instance_options opts =
         (RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT |
-         (use_synchronous_writes ? RAFT_INSTANCE_OPTIONS_SYNC_WRITES : 0));
+         (use_synchronous_writes ? RAFT_INSTANCE_OPTIONS_SYNC_WRITES : 0) |
+         (use_coalesced_writes ? RAFT_INSTANCE_OPTIONS_COALESCED_WRITES: 0));
 
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
@@ -1065,11 +1067,14 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf_names, bool use_synchronous_writes, void *user_data)
+         int num_cf_names, bool use_synchronous_writes,
+         bool use_coalesced_writes,
+         void *user_data)
 {
     pmdb_user_data = user_data;
     return _PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
-					 num_cf_names, use_synchronous_writes);
+                     num_cf_names, use_synchronous_writes,
+                     use_coalesced_writes);
 }
 
 /**

@@ -431,6 +431,7 @@ struct raft_instance
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
+    bool                            ri_coalesced_writes;
     bool                            ri_user_requested_checkpoint;
     bool                            ri_user_requested_reap;
     bool                            ri_auto_checkpoints_enabled;
