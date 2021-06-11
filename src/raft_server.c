@@ -66,7 +66,6 @@ struct raft_co_wr_info
 };
 
 static struct raft_co_wr_info *re_co_wr_info; //coalesce write data information.
-
 typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
 typedef int raft_server_chkpt_thread_ctx_int_t;
@@ -4003,14 +4002,16 @@ raft_server_net_client_request_init_client_rpc(
 
 /*
  * Write the coalesced buffer to backend if it's already full or
- * write request is for app id which is already part of coalesced buffer.
+ * write request is for app id which is already part of coalesced buffer or
+ * if coalesced writes are disabled.
  */
 static void
 raft_server_write_coalesced_buffer(struct raft_instance *ri, const size_t len,
                                    const uuid_t sender_uuid,
                                    bool existing_appid)
 {
-    if (re_co_wr_info->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
+    if (!ri->ri_coalesced_writes ||
+        re_co_wr_info->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
         re_co_wr_info->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri) ||
         re_co_wr_info->rcwi_total_size + len > RAFT_ENTRY_MAX_DATA_SIZE(ri) ||
         (existing_appid && re_co_wr_info->rcwi_nentries))
@@ -4807,6 +4808,8 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes =
         opts & RAFT_INSTANCE_OPTIONS_SYNC_WRITES ? true : false;
+    ri->ri_coalesced_writes =
+        opts & RAFT_INSTANCE_OPTIONS_COALESCED_WRITES ? true : false;
     ri->ri_auto_checkpoints_enabled =
         opts & RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT ? true : false;
 
