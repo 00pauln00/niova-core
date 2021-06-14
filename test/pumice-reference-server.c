@@ -17,7 +17,7 @@
 #include "raft_test.h"
 #include "pumice_db.h"
 
-#define OPTS "u:r:ha"
+#define OPTS "u:r:hac"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

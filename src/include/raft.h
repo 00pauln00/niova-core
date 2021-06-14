@@ -402,6 +402,18 @@ struct raft_instance_buffer
     bool     ribuf_free;
 };
 
+/*
+ * coalesced write information stored on the leader.
+ */
+struct raft_instance_co_wr
+{
+    uint32_t                              rcwi_nentries;
+    uint32_t                              rcwi_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
+    size_t                                rcwi_total_size;
+    struct raft_net_sm_write_supplements  rcwi_ws;
+    char                                  rcwi_buffer[];
+};
+
 #define RAFT_INSTANCE_NUM_BUFS (RAFT_ENTRY_NUM_ENTRIES + 2UL)
 struct raft_instance_buf_pool
 {
@@ -485,6 +497,8 @@ struct raft_instance
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
     struct raft_instance_buf_pool  *ri_buf_pool;
+    struct raft_instance_co_wr     *ri_coalesced_wr; //should be the last
+                                                          //member.
 };
 
 static inline struct raft_recovery_handle *
