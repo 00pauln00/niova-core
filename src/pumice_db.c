@@ -420,7 +420,7 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     pmdb_prep_obj_write(rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, rncr->rncr_current_term);
 
-    PMDB_OBJ_DEBUG(LL_WARN, obj, "");
+    PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
 }
 
 static void
@@ -439,7 +439,7 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
     pmdb_prep_obj_write(rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, ID_ANY_64bit);
 
-    PMDB_OBJ_DEBUG(LL_WARN, obj, "");
+    PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
 }
 
 static struct pmdb_cowr_sub_app *
@@ -519,7 +519,7 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
 
     if (!subapp)
     {
-        LOG_MSG(LL_DEBUG, "Can not add RB entry pmdb_cowr_sub_app_add(): %s",
+        LOG_MSG(LL_WARN, "Can not add RB entry pmdb_cowr_sub_app_add(): %s",
                 strerror(-error));
 
         return NULL;
@@ -532,9 +532,9 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
          * Convert the error to -EINPROGRESS as -EALREADY means write is
          * already committed in pmdb_sm_handler_client_write().
          */
-        if (error == -EALREADY)
+        if (error == -EALREADY || error == -EEXIST)
         {
-			PMDB_STR_DEBUG(LL_WARN, &subapp->pcwsa_rncui, "RNCUI already added");
+            PMDB_STR_DEBUG(LL_DEBUG, &subapp->pcwsa_rncui, "RNCUI already added");
             *ret_error = -EINPROGRESS;
             // If the different client is trying to use existing rncui.
             if (uuid_compare(subapp->pcwsa_client_uuid, client_uuid))
