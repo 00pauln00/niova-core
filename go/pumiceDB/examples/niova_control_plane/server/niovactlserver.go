@@ -5,7 +5,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"os"
-	"strconv"
+	//"strconv"
 	"unsafe"
 
 	"niova/go-pumicedb-lib/server"
@@ -144,32 +144,14 @@ func (cso *NiovaCtlServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// length of key.
 	keyLength := len(applyNiovaCtlReq.InputKey)
 
-	// Lookup the key first
-	prevResult, err := cso.pso.LookupKey(applyNiovaCtlReq.InputKey,
-		int64(keyLength), colmfamily)
-
-	var updatedVal int
-
-	if err == nil {
-
-		//Convert value []byte to string.
-		byteToStrVal, _ := strconv.Atoi(string(applyNiovaCtlReq.InputValue))
-
-		//Convert data type to int
-		intVal, _ := strconv.Atoi(prevResult)
-		//Update int type value.
-		updatedVal = byteToStrVal + intVal
-	}
-
-	//Convert new updated value to string.
-	strValue := strconv.Itoa(updatedVal)
+	byteToStr := string(applyNiovaCtlReq.InputValue)
 
 	// Length of value.
-	valLen := len(strValue)
+	valLen := len(byteToStr)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
 	cso.pso.WriteKV(appId, pmdbHandle, applyNiovaCtlReq.InputKey,
-		int64(keyLength), strValue,
+		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
 }
