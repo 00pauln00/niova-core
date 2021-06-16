@@ -290,6 +290,12 @@ test_io_iov_test_LDADD = src/libniova.la
 test_io_iov_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/io-iov-test
 
+noinst_PROGRAMS += test/rocksdb-test
+test_rocksdb_test_SOURCES = test/rocksdb-test.c
+test_rocksdb_test_LDADD = src/libniova.la $(ROCKSDB_LIBS)
+test_rocksdb_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/rocksdb-test
+
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 
