@@ -1,7 +1,6 @@
-package main
+package niovactlclient
 
 import (
-	"bufio"
 	"errors"
 	"flag"
 	"fmt"
@@ -10,7 +9,6 @@ import (
 	"niova/go-pumicedb-lib/client"
 	"niovactlplane/niovareqlib"
 	"os"
-	"strings"
 )
 
 var (
@@ -19,6 +17,7 @@ var (
 	key          string
 	value        []byte
 	jsonOutFpath string
+	clientObj    *PumiceDBClient.PmdbClientObj
 )
 
 //Structure definition for client.
@@ -95,7 +94,7 @@ func getCmdParams() {
 	fmt.Println("Json outfilepath:", jsonOutFpath)
 }
 
-func main() {
+func startPumiceDBClient() {
 
 	//Get command line parameters.
 	getCmdParams()
@@ -105,10 +104,6 @@ func main() {
 	if logErr != nil {
 		log.Error(logErr)
 	}
-
-	//Generate uuid for temporary json file.
-	appUuid := uuid.NewV4().String()
-	rncui := appUuid + ":0:0:0:0"
 
 	//Create new client object.
 	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
@@ -121,34 +116,35 @@ func main() {
 	defer clientObj.Stop()
 
 	for {
-		fmt.Print("\nEnter operation, key and value: ")
-		input := bufio.NewReader(os.Stdin)
-		cmd, _ := input.ReadString('\n')
-		cmdS := strings.Replace(cmd, "\n", "", -1)
-		cmdParams := strings.Split(cmdS, "#")
-		ops := cmdParams[0]
+	}
 
-		switch ops {
+}
+
+func PerformOps(reqObj *niovareqlib.NiovaCtlReq) {
+
+	//Generate uuid.
+	appUuid := uuid.NewV4().String()
+	rncui := appUuid + ":0:0:0:0"
+
+	fmt.Println("Rncui:", rncui)
+
+	fmt.Println("Request object received from httpserver:",reqObj)
+
+	ops := reqObj.InputOps
+	fmt.Println("Operation:",ops)
+
+
+	switch ops {
 
 		case "write":
-			key = cmdParams[1]
-			value = []byte(cmdParams[2])
-			reqObj := niovareqlib.NiovaCtlReq{
-				InputKey:   key,
-				InputValue: value,
-			}
-			ncc := niovaCtlClient{clientObj, &reqObj, rncui}
+			ncc := niovaCtlClient{clientObj, reqObj, rncui}
 			err := ncc.Write()
 			if err != nil {
 				log.Error(err)
 			}
 
 		case "read":
-			key = cmdParams[1]
-			reqObj := niovareqlib.NiovaCtlReq{
-				InputKey: key,
-			}
-			ncc := niovaCtlClient{clientObj, &reqObj, rncui}
+			ncc := niovaCtlClient{clientObj, reqObj, rncui}
 			err := ncc.Read()
 			if err != nil {
 				log.Error(err)
@@ -160,5 +156,4 @@ func main() {
 			fmt.Print("\nEnter valid operation....")
 		}
 
-	}
 }
