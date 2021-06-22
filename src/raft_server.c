@@ -4081,7 +4081,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                        "cannot accept client message, rc=%d: msg-type=%u",
                        rc, rcm->rcrm_type);
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        raft_net_sm_write_supplement_destroy(rncr.rncr_sm_write_supp);
         goto out;
     }
 
