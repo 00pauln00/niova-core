@@ -17,6 +17,7 @@ CORE_HDRS = src/include/atomic.h \
 	src/include/alloc.h \
         src/include/binary_hist.h \
         src/include/bitmap.h \
+        src/include/buffer.h \
         src/include/common.h \
 	src/include/config_token.h \
         src/include/crc24q.h \
@@ -53,6 +54,7 @@ CORE_HDRS = src/include/atomic.h \
 
 CORE_SOURCES = $(CORE_HDRS) \
 	src/alloc.c \
+        src/buffer.c \
         src/config_token.c \
         src/contrib/crc32c-pcl-intel-asm_64.S \
         src/contrib/crct10dif-pcl-asm_64.S \
@@ -218,6 +220,11 @@ noinst_PROGRAMS += test/alloc-test
 test_alloc_test_SOURCES = test/alloc-test.c
 test_alloc_test_LDADD = src/libniova.la
 TESTS += test/alloc-test
+
+noinst_PROGRAMS += test/buffer-test
+test_buffer_test_SOURCES = test/buffer-test.c
+test_buffer_test_LDADD = src/libniova.la
+TESTS += test/buffer-test
 
 noinst_PROGRAMS += test/registry-test
 # Use CORE_SOURCES so that this binary's constructor runs inside of niova
