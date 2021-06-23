@@ -21,6 +21,7 @@ CORE_HDRS = src/include/atomic.h \
         src/include/common.h \
 	src/include/config_token.h \
         src/include/crc24q.h \
+        src/include/crc32.h \
         src/include/ctl_interface_cmd.h \
 	src/include/ctl_interface.h \
         src/include/ctl_svc.h \
