@@ -1,6 +1,7 @@
 package niovareqlib
 
-type NiovaCtlReq struct {
+type NiovaKVReq struct {
+	InputOps   string
 	InputKey   string
 	InputValue []byte
 }

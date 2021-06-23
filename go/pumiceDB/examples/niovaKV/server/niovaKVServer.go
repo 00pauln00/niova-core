@@ -5,7 +5,6 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"os"
-	//"strconv"
 	"unsafe"
 
 	"niova/go-pumicedb-lib/server"
@@ -36,16 +35,16 @@ func main() {
 		os.Exit(0)
 	}
 
-	cso := parseArgs()
+	nso := parseArgs()
 
 	//Create log directory if not Exist.
 	makeDirectoryIfNotExists()
 
 	//Create log file.
-	initLogger(cso)
+	initLogger(nso)
 
-	log.Info("Raft UUID: %s", cso.raftUuid)
-	log.Info("Peer UUID: %s", cso.peerUuid)
+	log.Info("Raft UUID: %s", nso.raftUuid)
+	log.Info("Peer UUID: %s", nso.peerUuid)
 
 	/*
 	   Initialize the internal pmdb-server-object pointer.
@@ -53,31 +52,31 @@ func main() {
 	   read callback functions can be called through pmdb common library
 	   functions.
 	*/
-	cso.pso = &PumiceDBServer.PmdbServerObject{
+	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
-		RaftUuid:       cso.raftUuid,
-		PeerUuid:       cso.peerUuid,
-		PmdbAPI:        cso,
+		RaftUuid:       nso.raftUuid,
+		PeerUuid:       nso.peerUuid,
+		PmdbAPI:        nso,
 	}
 
 	// Start the pmdb server
-	err := cso.pso.Run()
+	err := nso.pso.Run()
 
 	if err != nil {
 		log.Error(err)
 	}
 }
 
-func parseArgs() *NiovaCtlServer {
-	cso := &NiovaCtlServer{}
+func parseArgs() *NiovaKVServer {
+	nso := &NiovaKVServer{}
 
-	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&cso.peerUuid, "u", "NULL", "peer uuid")
+	flag.StringVar(&nso.raftUuid, "r", "NULL", "raft uuid")
+	flag.StringVar(&nso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "/tmp/niovaCtlPlane", "log dir")
 
 	flag.Parse()
 
-	return cso
+	return nso
 }
 
 /*If log directory is not exist it creates directory.
@@ -95,9 +94,9 @@ func makeDirectoryIfNotExists() error {
 }
 
 //Create logfile for each peer.
-func initLogger(cso *NiovaCtlServer) {
+func initLogger(nso *NiovaKVServer) {
 
-	var filename string = logDir + "/" + cso.peerUuid + ".log"
+	var filename string = logDir + "/" + nso.peerUuid + ".log"
 
 	fmt.Println("logfile:", filename)
 
@@ -118,52 +117,52 @@ func initLogger(cso *NiovaCtlServer) {
 	}
 }
 
-type NiovaCtlServer struct {
+type NiovaKVServer struct {
 	raftUuid       string
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (cso *NiovaCtlServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) {
 
 	log.Info("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
-	applyNiovaCtlReq := &niovareqlib.NiovaCtlReq{}
+	applyNiovaKVReq := &niovareqlib.NiovaKVReq{}
 
-	decodeErr := cso.pso.Decode(inputBuf, applyNiovaCtlReq, inputBufSize)
+	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKVReq, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return
 	}
 
-	log.Info("Key passed by client: ", applyNiovaCtlReq.InputKey)
+	log.Info("Key passed by client: ", applyNiovaKVReq.InputKey)
 
 	// length of key.
-	keyLength := len(applyNiovaCtlReq.InputKey)
+	keyLength := len(applyNiovaKVReq.InputKey)
 
-	byteToStr := string(applyNiovaCtlReq.InputValue)
+	byteToStr := string(applyNiovaKVReq.InputValue)
 
 	// Length of value.
 	valLen := len(byteToStr)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
-	cso.pso.WriteKV(appId, pmdbHandle, applyNiovaCtlReq.InputKey,
+	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKVReq.InputKey,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
 }
 
-func (cso *NiovaCtlServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
+func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
 	log.Info("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
-	reqStruct := &niovareqlib.NiovaCtlReq{}
-	decodeErr := cso.pso.Decode(requestBuf, reqStruct, requestBufSize)
+	reqStruct := &niovareqlib.NiovaKVReq{}
+	decodeErr := nso.pso.Decode(requestBuf, reqStruct, requestBufSize)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
@@ -176,7 +175,7 @@ func (cso *NiovaCtlServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	log.Info("Key length: ", keyLen)
 
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	readResult, readErr := cso.pso.ReadKV(appId, reqStruct.InputKey,
+	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.InputKey,
 		int64(keyLen), colmfamily)
 
 	var valType []byte
@@ -186,13 +185,13 @@ func (cso *NiovaCtlServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Info("Input value after read request:", valType)
 	}
 
-	resultReq := niovareqlib.NiovaCtlReq{
+	resultReq := niovareqlib.NiovaKVReq{
 		InputKey:   reqStruct.InputKey,
 		InputValue: valType,
 	}
 
 	//Copy the encoded result in replyBuffer
-	replySize, copyErr := cso.pso.CopyDataToBuffer(resultReq, replyBuf)
+	replySize, copyErr := nso.pso.CopyDataToBuffer(resultReq, replyBuf)
 	if copyErr != nil {
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1

@@ -1,4 +1,4 @@
-module niovactlplane/niovactlserver
+module niovactlplane/niovaKVServer
 
 go 1.16
 
