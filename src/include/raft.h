@@ -85,6 +85,13 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_ANY                    = 5,
 };
 
+enum raft_buf_pool_type
+{
+    RAFT_BUF_SMALL_POOL = 0,
+    RAFT_BUF_BIG_POOL = 1,
+    RAFT_BUF_MAX_POOL = 2,
+};
+
 struct raft_vote_request_msg
 {
     int64_t rvrqm_proposed_term;
@@ -497,7 +504,7 @@ struct raft_instance
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
-    struct raft_instance_buf_pool  *ri_buf_pool;
+    struct raft_instance_buf_pool  *ri_buf_pool[RAFT_BUF_MAX_POOL];
     struct raft_instance_co_wr     *ri_coalesced_wr; //should be the last
                                                           //member.
 };
