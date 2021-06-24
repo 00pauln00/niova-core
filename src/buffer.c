@@ -66,7 +66,7 @@ buffer_set_allocate_item(struct buffer_set *bs)
     if (!navail)
     {
         NIOVA_ASSERT(CIRCLEQ_EMPTY(&bs->bs_free_list));
-	return NULL;
+	    return NULL;
     }
 
     NIOVA_ASSERT(!CIRCLEQ_EMPTY(&bs->bs_free_list));
