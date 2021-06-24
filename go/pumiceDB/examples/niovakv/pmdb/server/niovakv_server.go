@@ -8,7 +8,7 @@ import (
 	"unsafe"
 
 	"niova/go-pumicedb-lib/server"
-	"niovactlplane/lib"
+	"niovakv/lib"
 )
 
 /*
@@ -130,26 +130,26 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	log.Info("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
-	applyNiovaKVReq := &niovareqlib.NiovaKVReq{}
+	applyNiovaKV := &niovakvlib.NiovaKV{}
 
-	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKVReq, inputBufSize)
+	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return
 	}
 
-	log.Info("Key passed by client: ", applyNiovaKVReq.InputKey)
+	log.Info("Key passed by client: ", applyNiovaKV.InputKey)
 
 	// length of key.
-	keyLength := len(applyNiovaKVReq.InputKey)
+	keyLength := len(applyNiovaKV.InputKey)
 
-	byteToStr := string(applyNiovaKVReq.InputValue)
+	byteToStr := string(applyNiovaKV.InputValue)
 
 	// Length of value.
 	valLen := len(byteToStr)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
-	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKVReq.InputKey,
+	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
@@ -161,7 +161,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	log.Info("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
-	reqStruct := &niovareqlib.NiovaKVReq{}
+	reqStruct := &niovakvlib.NiovaKV{}
 	decodeErr := nso.pso.Decode(requestBuf, reqStruct, requestBufSize)
 
 	if decodeErr != nil {
@@ -185,7 +185,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Info("Input value after read request:", valType)
 	}
 
-	resultReq := niovareqlib.NiovaKVReq{
+	resultReq := niovakvlib.NiovaKV{
 		InputKey:   reqStruct.InputKey,
 		InputValue: valType,
 	}
