@@ -25,6 +25,7 @@
 #include "registry.h"
 #include "thread.h"
 #include "util_thread.h"
+#include "buffer.h"
 
 #define RAFT_SERVER_RECOVERY_ATTEMPTS 100
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
@@ -132,53 +133,6 @@ enum raft_instance_lreg_entry_values
 
 #define RAFT_ENTRY_MAX_DATA_SIZE(ri) \
     ((ri)->ri_max_entry_size - RAFT_ENTRY_HEADER_RESERVE)
-
-static char *
-raft_instance_buffer_get(struct raft_instance *ri, size_t size,
-                         enum raft_buf_pool_type pool_type)
-{
-    NIOVA_ASSERT(ri && ri->ri_buf_pool && ri->ri_buf_pool[pool_type]);
-
-    for (size_t i = 0; i < ri->ri_buf_pool[pool_type]->ribufp_nbufs; i++)
-    {
-        struct raft_instance_buffer *rib = &ri->ri_buf_pool[pool_type]->ribufp_bufs[i];
-
-        NIOVA_ASSERT(rib->ribuf_buf);
-
-        if (rib->ribuf_free && rib->ribuf_size >= size)
-        {
-            SIMPLE_LOG_MSG(LL_WARN, "Allocate buffer from pool %d for size: %ld", pool_type, size);
-            rib->ribuf_free = false;
-            return rib->ribuf_buf;
-        }
-    }
-
-    FATAL_MSG("buffer exhaustion detected for pool: %d", pool_type);
-
-    return NULL;
-}
-
-static void
-raft_instance_buffer_put(struct raft_instance *ri, const char *ribuf,
-                         enum raft_buf_pool_type pool_type)
-{
-    NIOVA_ASSERT(ri && ri->ri_buf_pool && ri->ri_buf_pool[pool_type]);
-
-    for (size_t i = 0; i < ri->ri_buf_pool[pool_type]->ribufp_nbufs; i++)
-    {
-        struct raft_instance_buffer *rib =
-                       &ri->ri_buf_pool[pool_type]->ribufp_bufs[i];
-        if (rib->ribuf_buf == ribuf)
-        {
-            SIMPLE_LOG_MSG(LL_WARN, "Put buffer from pool %d", pool_type);
-            NIOVA_ASSERT(!rib->ribuf_free);
-            rib->ribuf_free = true;
-            return;
-        }
-    }
-
-    FATAL_MSG("buffer %p does not belong to the pool", ribuf);
-}
 
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
@@ -4062,8 +4016,15 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         return;
     }
 
+    struct buffer_item *bi;
+    char *reply_buf;
     size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
-    char *reply_buf = raft_instance_buffer_get(ri, reply_size, RAFT_BUF_BIG_POOL);
+
+    bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+    NIOVA_ASSERT(bi);
+
+    reply_buf = (char *)bi->bi_iov.iov_base;
+
     NIOVA_ASSERT(reply_buf);
 
     struct raft_net_client_request_handle rncr;
@@ -4148,6 +4109,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                                          ri->ri_log_hdr.rlh_term,
                                          RAFT_WR_ENTRY_OPT_NONE);
     }
+
     /* Read operation or an already committed + applied write
      * operation.
      */
@@ -4158,7 +4120,7 @@ out:
     if (csn)
         ctl_svc_node_put(csn);
 
-    raft_instance_buffer_put(ri, reply_buf, RAFT_BUF_BIG_POOL);
+    buffer_set_release_item(bi);
 }
 
 /**
@@ -4233,10 +4195,14 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     const size_t src_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
     const size_t sink_buf_sz = ri->ri_max_entry_size;
 
+    struct buffer_item *src_bi, *sink_bi;
     // Xxx this function appears to only require a single buffer..
-    char *src_buf = raft_instance_buffer_get(ri, src_buf_sz, RAFT_BUF_BIG_POOL);
-    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz, RAFT_BUF_BIG_POOL);
-    NIOVA_ASSERT(src_buf && sink_buf);
+    src_bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+    sink_bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+    NIOVA_ASSERT(src_bi && sink_bi);
+
+    char *src_buf = (char *)src_bi->bi_iov.iov_base;
+    char *sink_buf = (char *)sink_bi->bi_iov.iov_base;
 
     struct raft_rpc_msg *rrm = (struct raft_rpc_msg *)src_buf;
     const raft_peer_t num_raft_members = raft_num_members_validate_and_get(ri);
@@ -4337,8 +4303,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     }
 
     // release buffers
-    raft_instance_buffer_put(ri, src_buf, RAFT_BUF_BIG_POOL);
-    raft_instance_buffer_put(ri, sink_buf, RAFT_BUF_BIG_POOL);
+    buffer_set_release_item(src_bi);
+    buffer_set_release_item(sink_bi);
 }
 
 static raft_server_epoll_sm_apply_t
@@ -4410,9 +4376,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     if (ri->ri_last_applied_idx == ri->ri_commit_idx)
         return;
 
-    const size_t reply_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
-    SIMPLE_LOG_MSG(LL_WARN, "Reply buf size is: %ld", reply_buf_sz);
-    const size_t sink_buf_sz = ri->ri_max_entry_size;
+    //reply size for write should be small
+    const size_t reply_buf_sz = RAFT_BS_SMALL_SZ;
 
     const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
 
@@ -4423,21 +4388,21 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                                "raft_server_entry_header_read_by_store(): %s",
                                strerror(-rc));
 
-    char *reply_buf[reh.reh_num_entries];
+    struct buffer_item *reply_bi[reh.reh_num_entries];
     int rc_arr[reh.reh_num_entries];
     struct raft_net_client_request_handle rncr[reh.reh_num_entries];
 
     // Allocate reply buffer for each request.
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
-         reply_buf[i] = raft_instance_buffer_get(ri, reply_buf_sz,
-                                                 RAFT_BUF_SMALL_POOL);
-         NIOVA_ASSERT(reply_buf[i]);
+         reply_bi[i] = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_SMALL]);
+
+         NIOVA_ASSERT(reply_bi[i]);
     }
 
-    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz,
-                                              RAFT_BUF_BIG_POOL);
-    NIOVA_ASSERT(sink_buf);
+    struct buffer_item *sink_bi;
+    sink_bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+    NIOVA_ASSERT(sink_bi);
     /* Signify that the entry will be applied.  Prepare the last-applied values
      * prior to entering raft_server_sm_apply_opt().
      */
@@ -4446,8 +4411,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     //Read the raft entry
     if (!reh.reh_leader_change_marker && reh.reh_data_size)
     {
-        int rc = raft_server_entry_read(ri, apply_idx, sink_buf, reh.reh_data_size,
-                                    NULL);
+        int rc = raft_server_entry_read(ri, apply_idx,
+                                        (char *)sink_bi->bi_iov.iov_base,
+                                        reh.reh_data_size, NULL);
         DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_read(): %s",
                                    strerror(-rc));
     }
@@ -4461,13 +4427,17 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     bool failed = false;
 
     uint32_t offset = 0;
+    char *sink_buf = (char *)sink_bi;
+    char *reply_buf;
+
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
+        reply_buf = (char *)reply_bi[i]->bi_iov.iov_base;
         raft_server_net_client_request_init_sm_apply(ri, &rncr[i],
                                                      &coalesced_ws,
                                                      sink_buf + offset,
                                                      reh.reh_entry_sz[i],
-                                                     reply_buf[i],
+                                                     reply_buf,
                                                      reply_buf_sz);
 
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
@@ -4539,11 +4509,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
             raft_server_reply_to_client(ri, &rncr[i], NULL);
 
         //Release the reply buffer
-        raft_instance_buffer_put(ri, reply_buf[i], RAFT_BUF_SMALL_POOL);
+        buffer_set_release_item(reply_bi[i]);
     }
 
     // release buffers
-    raft_instance_buffer_put(ri, sink_buf, RAFT_BUF_BIG_POOL);
+    buffer_set_release_item(sink_bi);
 }
 
 static raft_server_epoll_remote_sender_t
@@ -5238,63 +5208,38 @@ raft_server_chkpt_thread_join(struct raft_instance *ri)
 }
 
 static int
-raft_server_instance_buffer_pool_setup(struct raft_instance *ri)
+raft_server_instance_buffer_set_setup(struct raft_instance *ri)
 {
     if (!ri->ri_max_entry_size)
         return -EINVAL;
-    else if (ri->ri_buf_pool[0])
-        return -EALREADY;
 
-    for (int p = 0; p < RAFT_BUF_MAX_POOL; p++)
+    int rc;
+    size_t buff_set_sizes[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_SZ,
+                                               RAFT_BS_LARGE_SZ};
+
+    size_t nbuff[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_NBUF, RAFT_BS_LARGE_SZ};
+
+    for (int p = 0; p < RAFT_BUF_SET_MAX; p++)
     {
-        ri->ri_buf_pool[p] =
-            niova_calloc_can_fail(1UL, sizeof(struct raft_instance_buf_pool));
-        if (!ri->ri_buf_pool[p])
-            return -ENOMEM;
-        ri->ri_buf_pool[p]->ribufp_nbufs = RAFT_INSTANCE_NUM_BUFS;
-    }
-
-    size_t size;
-    for (int p = 0; p < RAFT_BUF_MAX_POOL; p++)
-    {
-        size = (p == RAFT_BUF_SMALL_POOL) ? 4096 : ri->ri_max_entry_size;
-        for (size_t i = 0; i < ri->ri_buf_pool[p]->ribufp_nbufs; i++)
-        {
-            struct raft_instance_buffer *rib = &ri->ri_buf_pool[p]->ribufp_bufs[i];
-
-            rib->ribuf_size = size;
-            rib->ribuf_free = true;
-            rib->ribuf_buf = niova_posix_memalign(size, 4096UL);
-
-            if (!rib->ribuf_buf)
-                return -ENOMEM;
-        }
+        rc = buffer_set_init(&ri->ri_buf_set[p], nbuff[p],
+                             buff_set_sizes[p], true);
+        NIOVA_ASSERT(rc == 0);
     }
 
     return 0;
 }
 
 static void
-raft_server_instance_buffer_pool_destroy(struct raft_instance *ri)
+raft_server_instance_buffer_set_destroy(struct raft_instance *ri)
 {
-    if (!ri || !ri->ri_buf_pool)
+    if (!ri)
         return;
 
-    for (int p = 0; p < RAFT_BUF_MAX_POOL; p++)
+    int rc;
+    for (int p = 0; p < RAFT_BUF_SET_MAX; p++)
     {
-        if (!ri->ri_buf_pool[p])
-            continue;
-
-        for (size_t i = 0; i < ri->ri_buf_pool[p]->ribufp_nbufs; i++)
-        {
-            struct raft_instance_buffer *rib = &ri->ri_buf_pool[p]->ribufp_bufs[i];
-
-            NIOVA_ASSERT(rib->ribuf_free);
-
-            if (rib->ribuf_buf)
-                niova_free(rib->ribuf_buf);
-        }
-        niova_free(ri->ri_buf_pool[p]);
+        rc = buffer_set_destroy(&ri->ri_buf_set[p]);
+        NIOVA_ASSERT(rc == 0);
     }
 }
 
@@ -5324,11 +5269,11 @@ raft_server_instance_startup(struct raft_instance *ri)
         return rc;
     }
 
-    rc = raft_server_instance_buffer_pool_setup(ri);
+    rc = raft_server_instance_buffer_set_setup(ri);
     if (rc)
     {
         DBG_RAFT_INSTANCE(LL_ERROR, ri,
-                          "raft_server_instance_buffer_pool_setup(): %s",
+                          "raft_server_instance_buffer_set_setup(): %s",
                           strerror(-rc));
         goto out;
     }
@@ -5484,7 +5429,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
             rc = lreg_removal_wait_rc;
     }
 
-    raft_server_instance_buffer_pool_destroy(ri);
+    raft_server_instance_buffer_set_destroy(ri);
 
     return rc;
 }
