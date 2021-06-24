@@ -134,38 +134,43 @@ enum raft_instance_lreg_entry_values
     ((ri)->ri_max_entry_size - RAFT_ENTRY_HEADER_RESERVE)
 
 static char *
-raft_instance_buffer_get(struct raft_instance *ri, size_t size)
+raft_instance_buffer_get(struct raft_instance *ri, size_t size,
+                         enum raft_buf_pool_type pool_type)
 {
-    NIOVA_ASSERT(ri && ri->ri_buf_pool);
+    NIOVA_ASSERT(ri && ri->ri_buf_pool && ri->ri_buf_pool[pool_type]);
 
-    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    for (size_t i = 0; i < ri->ri_buf_pool[pool_type]->ribufp_nbufs; i++)
     {
-        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+        struct raft_instance_buffer *rib = &ri->ri_buf_pool[pool_type]->ribufp_bufs[i];
 
         NIOVA_ASSERT(rib->ribuf_buf);
 
         if (rib->ribuf_free && rib->ribuf_size >= size)
         {
+            SIMPLE_LOG_MSG(LL_WARN, "Allocate buffer from pool %d for size: %ld", pool_type, size);
             rib->ribuf_free = false;
             return rib->ribuf_buf;
         }
     }
 
-    FATAL_MSG("buffer exhaustion detected");
+    FATAL_MSG("buffer exhaustion detected for pool: %d", pool_type);
 
     return NULL;
 }
 
 static void
-raft_instance_buffer_put(struct raft_instance *ri, const char *ribuf)
+raft_instance_buffer_put(struct raft_instance *ri, const char *ribuf,
+                         enum raft_buf_pool_type pool_type)
 {
-    NIOVA_ASSERT(ri && ri->ri_buf_pool);
+    NIOVA_ASSERT(ri && ri->ri_buf_pool && ri->ri_buf_pool[pool_type]);
 
-    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    for (size_t i = 0; i < ri->ri_buf_pool[pool_type]->ribufp_nbufs; i++)
     {
-        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+        struct raft_instance_buffer *rib =
+                       &ri->ri_buf_pool[pool_type]->ribufp_bufs[i];
         if (rib->ribuf_buf == ribuf)
         {
+            SIMPLE_LOG_MSG(LL_WARN, "Put buffer from pool %d", pool_type);
             NIOVA_ASSERT(!rib->ribuf_free);
             rib->ribuf_free = true;
             return;
@@ -2446,6 +2451,82 @@ raft_server_issue_heartbeat(struct raft_instance *ri)
     raft_server_append_entry_sender(ri, true);
 }
 
+static raft_server_net_cb_ctx_bool_t
+raft_leader_instance_is_fresh(const struct raft_instance *ri)
+{
+    if (!raft_instance_is_leader(ri) ||
+        FAULT_INJECT(raft_leader_may_be_deposed))
+        return false;
+
+    struct timespec now;
+    niova_realtime_coarse_clock(&now);
+
+    size_t num_acked_within_window = 1; // count "self"
+
+    const raft_peer_t num_raft_peers = raft_num_members_validate_and_get(ri);
+
+    for (raft_peer_t i = 0; i < num_raft_peers; i++)
+    {
+        if (i == raft_server_instance_self_idx(ri))
+            continue;
+
+        const struct raft_follower_info *rfi =
+            raft_server_get_follower_info((struct raft_instance *)ri, i);
+
+        // Ignore if time has moved backwards
+        if (timespeccmp(&now, &rfi->rfi_last_ack, <))
+            continue;
+
+        struct timespec diff;
+
+        timespecsub(&now, &rfi->rfi_last_ack, &diff);
+
+        if (timespec_2_msec(&diff) <= raft_election_timeout_lower_bound(ri))
+            num_acked_within_window++;
+    }
+
+    SIMPLE_LOG_MSG(LL_DEBUG,
+                   "num_acked_within_window: %lu required: %d (%d peers)",
+                   num_acked_within_window, num_raft_peers / 2 + 1,
+                   num_raft_peers);
+
+    return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
+        true : false;
+}
+
+/**
+ * raft_server_may_process_client_request - this function checks the state of
+ *    this raft instance to determine if it's qualified to accept a client
+ *    request.
+ */
+static raft_net_cb_ctx_int_t
+raft_server_may_accept_client_request(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+
+    /* Not the leader, then cause a redirect reply to be done.
+     */
+    if (raft_instance_is_booting(ri))
+        return -EINPROGRESS;
+
+    else if (raft_instance_is_candidate(ri))
+        return -ENOENT;
+
+    else if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
+        return -ENOSYS;
+
+    // 2. am I a fresh raft leader?
+    else if (!raft_leader_instance_is_fresh(ri))
+        return -EAGAIN;
+
+    // 3. have I applied all of the lastApplied entries that I need -
+    //    including a fake AE command (which is written to the logs)?
+    else if (!raft_leader_has_applied_txn_in_my_term(ri))
+        return -EBUSY;
+
+    return 0;
+}
+
 /*
  * Write all the coalesced write entries.
  */
@@ -2475,13 +2556,15 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
+    // Only the valid leader shpuld write the coalesced entries.
+    int rc = raft_server_may_accept_client_request(ri);
+    if (rc)
+        return;
+
     //Do nothing if there no entries in the coalesced buffer
     if (ri->ri_coalesced_wr->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
-    {
-        SIMPLE_LOG_MSG(LL_WARN, "Should not happen through timeout");
         /* Issue the pending wr */
         raft_server_write_coalesced_entries(ri);
-    }
 }
 
 static raft_net_timerfd_cb_ctx_t
@@ -3667,82 +3750,6 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
     raft_server_process_received_server_msg(ri, rrm, sender_csn);
 }
 
-static raft_server_net_cb_ctx_bool_t
-raft_leader_instance_is_fresh(const struct raft_instance *ri)
-{
-    if (!raft_instance_is_leader(ri) ||
-        FAULT_INJECT(raft_leader_may_be_deposed))
-        return false;
-
-    struct timespec now;
-    niova_realtime_coarse_clock(&now);
-
-    size_t num_acked_within_window = 1; // count "self"
-
-    const raft_peer_t num_raft_peers = raft_num_members_validate_and_get(ri);
-
-    for (raft_peer_t i = 0; i < num_raft_peers; i++)
-    {
-        if (i == raft_server_instance_self_idx(ri))
-            continue;
-
-        const struct raft_follower_info *rfi =
-            raft_server_get_follower_info((struct raft_instance *)ri, i);
-
-        // Ignore if time has moved backwards
-        if (timespeccmp(&now, &rfi->rfi_last_ack, <))
-            continue;
-
-        struct timespec diff;
-
-        timespecsub(&now, &rfi->rfi_last_ack, &diff);
-
-        if (timespec_2_msec(&diff) <= raft_election_timeout_lower_bound(ri))
-            num_acked_within_window++;
-    }
-
-    SIMPLE_LOG_MSG(LL_DEBUG,
-                   "num_acked_within_window: %lu required: %d (%d peers)",
-                   num_acked_within_window, num_raft_peers / 2 + 1,
-                   num_raft_peers);
-
-    return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
-        true : false;
-}
-
-/**
- * raft_server_may_process_client_request - this function checks the state of
- *    this raft instance to determine if it's qualified to accept a client
- *    request.
- */
-static raft_net_cb_ctx_int_t
-raft_server_may_accept_client_request(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri);
-
-    /* Not the leader, then cause a redirect reply to be done.
-     */
-    if (raft_instance_is_booting(ri))
-        return -EINPROGRESS;
-
-    else if (raft_instance_is_candidate(ri))
-        return -ENOENT;
-
-    else if (!raft_instance_is_leader(ri)) // 1. am I the raft leader?
-        return -ENOSYS;
-
-    // 2. am I a fresh raft leader?
-    else if (!raft_leader_instance_is_fresh(ri))
-        return -EAGAIN;
-
-    // 3. have I applied all of the lastApplied entries that I need -
-    //    including a fake AE command (which is written to the logs)?
-    else if (!raft_leader_has_applied_txn_in_my_term(ri))
-        return -EBUSY;
-
-    return 0;
-}
-
 static const char *
 raft_server_may_accept_client_request_reason(struct raft_instance *ri)
 {
@@ -4056,13 +4063,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     }
 
     size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
-    char *reply_buf = raft_instance_buffer_get(ri, reply_size);
+    char *reply_buf = raft_instance_buffer_get(ri, reply_size, RAFT_BUF_BIG_POOL);
     NIOVA_ASSERT(reply_buf);
-
-    /* Flush previously written entries if buffer is full or max number of
-     * entries are already written.
-     */
-    raft_server_write_coalesced_buffer(ri, rcm->rcrm_data_size);
 
     struct raft_net_client_request_handle rncr;
 
@@ -4081,6 +4083,11 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
         goto out;
     }
+
+    /* Flush previously written entries if buffer is full or max number of
+     * entries are already written.
+     */
+    raft_server_write_coalesced_buffer(ri, rcm->rcrm_data_size);
 
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
@@ -4131,7 +4138,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (rc)
     {
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        raft_net_sm_write_supplement_destroy(rncr.rncr_sm_write_supp);
         goto out;
     }
 
@@ -4152,7 +4158,7 @@ out:
     if (csn)
         ctl_svc_node_put(csn);
 
-    raft_instance_buffer_put(ri, reply_buf);
+    raft_instance_buffer_put(ri, reply_buf, RAFT_BUF_BIG_POOL);
 }
 
 /**
@@ -4228,8 +4234,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     const size_t sink_buf_sz = ri->ri_max_entry_size;
 
     // Xxx this function appears to only require a single buffer..
-    char *src_buf = raft_instance_buffer_get(ri, src_buf_sz);
-    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
+    char *src_buf = raft_instance_buffer_get(ri, src_buf_sz, RAFT_BUF_BIG_POOL);
+    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz, RAFT_BUF_BIG_POOL);
     NIOVA_ASSERT(src_buf && sink_buf);
 
     struct raft_rpc_msg *rrm = (struct raft_rpc_msg *)src_buf;
@@ -4331,8 +4337,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     }
 
     // release buffers
-    raft_instance_buffer_put(ri, src_buf);
-    raft_instance_buffer_put(ri, sink_buf);
+    raft_instance_buffer_put(ri, src_buf, RAFT_BUF_BIG_POOL);
+    raft_instance_buffer_put(ri, sink_buf, RAFT_BUF_BIG_POOL);
 }
 
 static raft_server_epoll_sm_apply_t
@@ -4405,6 +4411,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         return;
 
     const size_t reply_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
+    SIMPLE_LOG_MSG(LL_WARN, "Reply buf size is: %ld", reply_buf_sz);
     const size_t sink_buf_sz = ri->ri_max_entry_size;
 
     const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
@@ -4423,11 +4430,13 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     // Allocate reply buffer for each request.
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
-         reply_buf[i] = raft_instance_buffer_get(ri, reply_buf_sz);
+         reply_buf[i] = raft_instance_buffer_get(ri, reply_buf_sz,
+                                                 RAFT_BUF_SMALL_POOL);
          NIOVA_ASSERT(reply_buf[i]);
     }
 
-    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz);
+    char *sink_buf = raft_instance_buffer_get(ri, sink_buf_sz,
+                                              RAFT_BUF_BIG_POOL);
     NIOVA_ASSERT(sink_buf);
     /* Signify that the entry will be applied.  Prepare the last-applied values
      * prior to entering raft_server_sm_apply_opt().
@@ -4530,11 +4539,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
             raft_server_reply_to_client(ri, &rncr[i], NULL);
 
         //Release the reply buffer
-        raft_instance_buffer_put(ri, reply_buf[i]);
+        raft_instance_buffer_put(ri, reply_buf[i], RAFT_BUF_SMALL_POOL);
     }
 
     // release buffers
-    raft_instance_buffer_put(ri, sink_buf);
+    raft_instance_buffer_put(ri, sink_buf, RAFT_BUF_BIG_POOL);
 }
 
 static raft_server_epoll_remote_sender_t
@@ -5233,27 +5242,33 @@ raft_server_instance_buffer_pool_setup(struct raft_instance *ri)
 {
     if (!ri->ri_max_entry_size)
         return -EINVAL;
-    else if (ri->ri_buf_pool)
+    else if (ri->ri_buf_pool[0])
         return -EALREADY;
 
-    ri->ri_buf_pool =
-        niova_calloc_can_fail(1UL, sizeof(struct raft_instance_buf_pool));
-
-    if (!ri->ri_buf_pool)
-        return -ENOMEM;
-
-    ri->ri_buf_pool->ribufp_nbufs = RAFT_INSTANCE_NUM_BUFS;
-
-    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    for (int p = 0; p < RAFT_BUF_MAX_POOL; p++)
     {
-        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
-
-        rib->ribuf_size = ri->ri_max_entry_size;
-        rib->ribuf_free = true;
-        rib->ribuf_buf = niova_posix_memalign(ri->ri_max_entry_size, 4096UL);
-
-        if (!rib->ribuf_buf)
+        ri->ri_buf_pool[p] =
+            niova_calloc_can_fail(1UL, sizeof(struct raft_instance_buf_pool));
+        if (!ri->ri_buf_pool[p])
             return -ENOMEM;
+        ri->ri_buf_pool[p]->ribufp_nbufs = RAFT_INSTANCE_NUM_BUFS;
+    }
+
+    size_t size;
+    for (int p = 0; p < RAFT_BUF_MAX_POOL; p++)
+    {
+        size = (p == RAFT_BUF_SMALL_POOL) ? 4096 : ri->ri_max_entry_size;
+        for (size_t i = 0; i < ri->ri_buf_pool[p]->ribufp_nbufs; i++)
+        {
+            struct raft_instance_buffer *rib = &ri->ri_buf_pool[p]->ribufp_bufs[i];
+
+            rib->ribuf_size = size;
+            rib->ribuf_free = true;
+            rib->ribuf_buf = niova_posix_memalign(size, 4096UL);
+
+            if (!rib->ribuf_buf)
+                return -ENOMEM;
+        }
     }
 
     return 0;
@@ -5265,17 +5280,22 @@ raft_server_instance_buffer_pool_destroy(struct raft_instance *ri)
     if (!ri || !ri->ri_buf_pool)
         return;
 
-    for (size_t i = 0; i < ri->ri_buf_pool->ribufp_nbufs; i++)
+    for (int p = 0; p < RAFT_BUF_MAX_POOL; p++)
     {
-        struct raft_instance_buffer *rib = &ri->ri_buf_pool->ribufp_bufs[i];
+        if (!ri->ri_buf_pool[p])
+            continue;
 
-        NIOVA_ASSERT(rib->ribuf_free);
+        for (size_t i = 0; i < ri->ri_buf_pool[p]->ribufp_nbufs; i++)
+        {
+            struct raft_instance_buffer *rib = &ri->ri_buf_pool[p]->ribufp_bufs[i];
 
-        if (rib->ribuf_buf)
-            niova_free(rib->ribuf_buf);
+            NIOVA_ASSERT(rib->ribuf_free);
+
+            if (rib->ribuf_buf)
+                niova_free(rib->ribuf_buf);
+        }
+        niova_free(ri->ri_buf_pool[p]);
     }
-
-    niova_free(ri->ri_buf_pool);
 }
 
 static int
@@ -5493,6 +5513,14 @@ raft_server_main_loop(struct raft_instance *ri)
         rc = epoll_mgr_wait_and_process_events(&ri->ri_epoll_mgr, -1);
         if (rc == -EINTR)
             rc = 0;
+
+        /* If this node demoted from leader to follower, but has some
+         * coalesced writes buffered in ri_coalesced_wr, destroy the write
+         * supplement for them.
+         */
+        if (ri->ri_coalesced_wr->rcwi_nentries && !raft_instance_is_leader(ri))
+            raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
+ 
     } while (rc >= 0 && !raft_server_main_loop_exit_conditions(ri));
 
     SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
