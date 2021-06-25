@@ -1,4 +1,4 @@
-package SerfClientHandler
+package serfclienthandler
 
 import (
 	"math/rand"

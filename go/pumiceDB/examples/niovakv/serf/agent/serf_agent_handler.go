@@ -1,4 +1,4 @@
-package SerfAgentHandler
+package serfagenthandler
 
 import (
 	"log"
