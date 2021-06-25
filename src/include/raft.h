@@ -24,12 +24,12 @@
 #include "util.h"
 #include "buffer.h"
 
-#define RAFT_ENTRY_NUM_ENTRIES 10
+#define RAFT_ENTRY_NUM_ENTRIES 100
 #define RAFT_ENTRY_PAD_SIZE 6
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
-#define RAFT_ENTRY_HEADER_RESERVE 128
+#define RAFT_ENTRY_HEADER_RESERVE 488
 
 #define RAFT_ENTRY_SIZE_MIN        65536
 
