@@ -1,4 +1,4 @@
-module niovakv/niovakvclient
+module niovakv/niovakvpmdbclient
 
 go 1.16
 
