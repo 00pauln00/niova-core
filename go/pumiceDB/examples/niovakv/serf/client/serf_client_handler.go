@@ -1,7 +1,10 @@
 package serfclienthandler
 
 import (
+	"bufio"
 	"math/rand"
+	"os"
+	"strings"
 
 	"github.com/hashicorp/serf/client"
 )
@@ -19,6 +22,7 @@ type SerfClientHandler struct {
 	Retries    int              //No of retries to connect with any agent
 	AgentData  map[string]*Data //Holds data of each agent
 	RpcPort    string           //Port for rpc listner
+	Hport      string
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
@@ -48,6 +52,29 @@ type RetryLimitExceded struct{}
 
 func (m *RetryLimitExceded) Error() string {
 	return "Retry Limit Exceded"
+}
+
+func getConfigData(serfConfigPath string) (string, string, string, error) {
+	configData := make(map[string]string)
+	reader, err := os.Open(serfConfigPath)
+	if err != nil {
+		return "", "", "", err
+	}
+	filescanner := bufio.NewScanner(reader)
+	filescanner.Split(bufio.ScanLines)
+	for filescanner.Scan() {
+		input := strings.Split(filescanner.Text(), " ")
+		configData[input[0]] = input[1]
+	}
+
+	return configData["Addr"], configData["Rport"], configData["Hport"], err
+}
+
+func (Handler *SerfClientHandler) Initdata(configpath string) {
+	agentAddr, agentPort, hport, _ := getConfigData(configpath)
+	Handler.AgentAddrs = append(Handler.AgentAddrs, agentAddr)
+	Handler.RpcPort = agentPort
+	Handler.Hport = hport
 }
 
 /*
