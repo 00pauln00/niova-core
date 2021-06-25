@@ -4427,7 +4427,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     bool failed = false;
 
     uint32_t offset = 0;
-    char *sink_buf = (char *)sink_bi;
+    char *sink_buf = (char *)sink_bi->bi_iov.iov_base;
     char *reply_buf;
 
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
@@ -5217,7 +5217,7 @@ raft_server_instance_buffer_set_setup(struct raft_instance *ri)
     size_t buff_set_sizes[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_SZ,
                                                RAFT_BS_LARGE_SZ};
 
-    size_t nbuff[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_NBUF, RAFT_BS_LARGE_SZ};
+    size_t nbuff[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_NBUF, RAFT_BS_LARGE_NBUF};
 
     for (int p = 0; p < RAFT_BUF_SET_MAX; p++)
     {
