@@ -1,4 +1,4 @@
-module niovakv/niovakv_server
+module niovakv/niovakv_pmdbserver
 
 go 1.16
 

@@ -1,4 +1,4 @@
-package niovakvclient
+package niovakvpmdbclient
 
 import (
 	"errors"
@@ -15,6 +15,8 @@ type NiovaKVClient struct {
 	ReqObj    *niovakvlib.NiovaKV
 	Rncui     string
 }
+
+var num_req int
 
 //Function to initialize logger.
 func initLogger(clientUuid, jsonOutFpath string) error {
@@ -45,7 +47,8 @@ func (nco *NiovaKVClient) Write() error {
 
 	var errorMsg error
 	//Perform write operation.
-	err := nco.ClientObj.Write(nco.ReqObj, nco.Rncui)
+	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, num_req)
+	err := nco.ClientObj.Write(nco.ReqObj, rncui)
 	if err != nil {
 		log.Error("Write key-value failed : ", err)
 		errorMsg = errors.New("Write operation failed.")
@@ -53,6 +56,7 @@ func (nco *NiovaKVClient) Write() error {
 		log.Info("Pmdb Write successful!")
 		errorMsg = nil
 	}
+	num_req = num_req + 1
 	return errorMsg
 }
 
