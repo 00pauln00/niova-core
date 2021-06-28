@@ -6,14 +6,15 @@ import (
 	"io/ioutil"
 	"net/http"
 	"niovakv/niovakvlib"
-	"niovakv/niovakvclient"
+	log "github.com/sirupsen/logrus"
+	"niovakv/niovakvpmdbclient"
 )
 
 type HttpServerHandler struct {
 	//Exported
 	Addr       string
 	Port       string
-	NKVCliObj *niovakvclient.NiovaKVClient
+	NKVCliObj *niovakvpmdbclient.NiovaKVClient
 	//Non-exported
 	server http.Server
 	rncui string
@@ -26,23 +27,33 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reqBody, err := ioutil.ReadAll(r.Body)
 		json.Unmarshal(reqBody, &niovaobj)
 		if err != nil {
-			fmt.Println("Data recieved using GET is :", niovaobj)
+			log.Error("Data recieved using GET is :", niovaobj)
 		}
 	case "PUT":
 		r.ParseForm()
 		reqBody, err := ioutil.ReadAll(r.Body)
 		json.Unmarshal(reqBody, &niovaobj)
-		if err =! nil {
-			fmt.Println("PUT request failed")
+		if err != nil {
+			log.Error("PUT request failed")
 		}
 
 		h.NKVCliObj.ReqObj = &niovaobj
 		//Perform the read/write operation on pmdb client
 		result, status := h.NKVCliObj.ProcessRequest()
 		if status != 0 {
-			fmt.Println("Operation failed.")
+			log.Error("Operation failed.")
 		}
-		fmt.Fprintf(w, "result from httpserver is :", result, status)
+		fmt.Println("Result of the operation is:",result)
+
+		resp := niovakvlib.NiovaKVResponse{
+			RespStatus: status,
+			RespValue:  result,
+		}
+		response, err := json.Marshal(&resp)
+		_, errRes := fmt.Fprintf(w, "%s", response)
+		if errRes != nil{
+			log.Error(errRes)
+		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
