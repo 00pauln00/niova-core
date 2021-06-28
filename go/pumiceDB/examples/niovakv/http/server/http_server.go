@@ -42,7 +42,7 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if status != 0 {
 			fmt.Println("Operation failed.")
 		}
-
+		fmt.Fprintf(w, "result from httpserver is :", result, status)
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
