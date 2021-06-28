@@ -15,7 +15,6 @@ replace niovakv/niovakvclient => ../pmdb/client
 replace niovakvserver/serfagenthandler => ../serf/agent
 
 require (
-	github.com/satori/go.uuid v1.2.0
 	httpserver.com/httpserver v0.0.0-00010101000000-000000000000
 	niovakv/niovakvclient v0.0.0-00010101000000-000000000000
 	niovakvserver/serfagenthandler v0.0.0-00010101000000-000000000000

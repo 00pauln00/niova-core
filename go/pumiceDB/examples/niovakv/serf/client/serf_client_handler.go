@@ -64,7 +64,9 @@ func getConfigData(serfConfigPath string) (string, string, string, error) {
 	filescanner.Split(bufio.ScanLines)
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		configData[input[0]] = input[1]
+		if len(input) == 2 {
+			configData[input[0]] = input[1]
+		}
 	}
 
 	return configData["Addr"], configData["Rport"], configData["Hport"], err

@@ -102,7 +102,7 @@ Return value : int, error
 Description : Joins the cluster
 */
 func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
-	no_of_nodes, err := Handler.agentObj.Join(addrs, false)
+	no_of_nodes, err := Handler.agentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
 	return no_of_nodes, err
 }
 

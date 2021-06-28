@@ -43,7 +43,9 @@ func getData() error {
 	filescanner.Split(bufio.ScanLines)
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		configData[input[0]] = input[1]
+		if len(input) == 2 {
+			configData[input[0]] = input[1]
+		}
 	}
 	return nil
 }
