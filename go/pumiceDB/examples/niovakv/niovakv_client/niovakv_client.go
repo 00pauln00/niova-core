@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 	"math/rand"
-	"niovakv/http_client"
+	"niovakv/httpclient"
 	"niovakv/niovakvlib"
 	"niovakv/serfclienthandler"
 )
@@ -54,7 +54,7 @@ func main() {
 		// Get the alive http server IP and port
 		addr, port := getServerAddr(refresh)
 		//Send the request over http
-		err := http_client.SendRequest(&reqObj, addr, port)
+		err := httpclient.SendRequest(&reqObj, addr, port)
 		if err == nil {
 			break
 		}
