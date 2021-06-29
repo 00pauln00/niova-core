@@ -3,9 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"
 	defaultLog "log"
-	"github.com/satori/go.uuid"
 	"niovakv/httpserver"
 	"niovakv/niovakvpmdbclient"
 	"niovakvserver/serfagenthandler"
@@ -14,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -102,7 +101,6 @@ func main() {
 
 	//Generate uuid.
 	appUuid := uuid.NewV4().String()
-	//rncui := appUuid + ":0:0:0:0"
 
 	//Store rncui in nkvclientObj.
 	nkvclientObj.Rncui = appUuid
@@ -139,9 +137,9 @@ func main() {
 	handlerobj.Port = configData["Hport"]
 	handlerobj.NKVCliObj = nkvclientObj
 
-	fmt.Println("Starting httpd server")
+	log.Info("Starting httpd server")
 	errServer := handlerobj.StartServer()
 	if errServer != nil {
-		fmt.Println("Err occured while starting httpserver:", errServer)
+		log.Error(errServer)
 	}
 }
