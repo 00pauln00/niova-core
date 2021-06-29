@@ -118,6 +118,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC,   // uint32
     RAFT_LREG_LOWEST_IDX,         // int64
     RAFT_LREG_CHKPT_IDX,          // int64
+    RAFT_LREG_HIST_COALESCED_WR_CNT,  // hist object
     RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
     RAFT_LREG_HIST_DEV_SYNC_LAT,  // hist object
@@ -382,6 +383,13 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_NENTRIES_SYNC),
                 RAFT_INSTANCE_HIST_NENTRIES_SYNC);
+            break;
+        case RAFT_LREG_HIST_COALESCED_WR_CNT:
+            lreg_value_fill_histogram(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_COALESCED_WR_CNT),
+                RAFT_INSTANCE_HIST_COALESCED_WR_CNT);
             break;
         case RAFT_LREG_HIST_CHKPT_LAT:
             lreg_value_fill_histogram(
@@ -4492,6 +4500,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
             if (timespec_2_msec(&ts) > 0)
                 binary_hist_incorporate_val(bh, timespec_2_msec(&ts));
         }
+        binary_hist_incorporate_val(
+            raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_COALESCED_WR_CNT),
+            reh.reh_num_entries);
     }
     // init reply for each request.
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
