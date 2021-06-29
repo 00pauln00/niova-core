@@ -16,38 +16,14 @@ type NiovaKVClient struct {
 	Rncui     string
 }
 
-var num_req int
-
-//Function to initialize logger.
-func initLogger(clientUuid, jsonOutFpath string) error {
-	var filename string = jsonOutFpath + "/" + clientUuid + ".log"
-	// Create the log file if doesn't exist. And append to it if it already exists.
-	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	Formatter := new(log.TextFormatter)
-	//Set Formatter.
-	Formatter.TimestampFormat = "02-01-2006 15:04:05"
-	Formatter.FullTimestamp = true
-	log.SetFormatter(Formatter)
-	if err != nil {
-		// Cannot open log file. Logging to stderr
-		log.Error(err)
-	} else {
-		log.SetOutput(f)
-	}
-	log.Info("client uuid:", clientUuid)
-	return err
-}
+var numReq int
 
 //Method to perform write operation.
 func (nco *NiovaKVClient) Write() error {
 
 	var errorMsg error
 	//Perform write operation.
-	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, num_req)
+        rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, numReq)
 	err := nco.ClientObj.Write(nco.ReqObj, rncui)
 	if err != nil {
 		log.Error("Write key-value failed : ", err)
@@ -56,7 +32,7 @@ func (nco *NiovaKVClient) Write() error {
 		log.Info("Pmdb Write successful!")
 		errorMsg = nil
 	}
-	num_req = num_req + 1
+	numReq = numReq + 1
 	return errorMsg
 }
 
@@ -65,7 +41,8 @@ func (nco *NiovaKVClient) Read() ([]byte, error) {
 
 	var rErr error
 	rop := &niovakvlib.NiovaKV{}
-	err := nco.ClientObj.Read(nco.ReqObj, nco.Rncui, rop)
+	rncui := fmt.Sprintf("%s:0:0:0:0", nco.Rncui)
+	err := nco.ClientObj.Read(nco.ReqObj, rncui, rop)
 	if err != nil {
 		log.Error("Read request failed !!", err)
 		rErr = errors.New("Read operation failed")
@@ -76,13 +53,7 @@ func (nco *NiovaKVClient) Read() ([]byte, error) {
 }
 
 //Function to get pumicedb client object.
-func GetNiovaKVClientObj(raftUuid, clientUuid, jsonOutFpath string) *NiovaKVClient {
-
-	//Initialize logger.
-	logErr := initLogger(clientUuid, jsonOutFpath)
-	if logErr != nil {
-		log.Error(logErr)
-	}
+func GetNiovaKVClientObj(raftUuid, clientUuid, logFilepath string) *NiovaKVClient {
 
 	//Create new client object.
 	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
@@ -111,7 +82,7 @@ func (nkvClient *NiovaKVClient) ProcessRequest() ([]byte, int) {
 			log.Error(err)
 			status = -1
 		} else {
-			fmt.Println("Write operation successful")
+			log.Info("Write operation successful")
 			status = 0
 		}
 
