@@ -22,13 +22,14 @@
 #include "tcp_mgr.h"
 #include "udp.h"
 #include "util.h"
+#include "buffer.h"
 
-#define RAFT_ENTRY_NUM_ENTRIES 10
+#define RAFT_ENTRY_NUM_ENTRIES 100
 #define RAFT_ENTRY_PAD_SIZE 6
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
-#define RAFT_ENTRY_HEADER_RESERVE 128
+#define RAFT_ENTRY_HEADER_RESERVE 488
 
 #define RAFT_ENTRY_SIZE_MIN        65536
 
@@ -83,6 +84,25 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 3,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 4,
     RAFT_RPC_MSG_TYPE_ANY                    = 5,
+};
+
+enum raft_buf_set_type
+{
+    RAFT_BUF_SET_SMALL  = 0,
+    RAFT_BUF_SET_LARGE  = 1,
+    RAFT_BUF_SET_MAX    = 2,
+};
+
+enum raft_buf_set_size
+{
+    RAFT_BS_SMALL_SZ = 4096,
+    RAFT_BS_LARGE_SZ = 4194304,
+};
+
+enum raft_buf_set_nbuf
+{
+    RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
+    RAFT_BS_LARGE_NBUF = 2,
 };
 
 struct raft_vote_request_msg
@@ -415,13 +435,6 @@ struct raft_instance_co_wr
     char                                  rcwi_buffer[];
 };
 
-#define RAFT_INSTANCE_NUM_BUFS (RAFT_ENTRY_NUM_ENTRIES + 2UL)
-struct raft_instance_buf_pool
-{
-    size_t                      ribufp_nbufs;
-    struct raft_instance_buffer ribufp_bufs[RAFT_INSTANCE_NUM_BUFS];
-};
-
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -497,7 +510,7 @@ struct raft_instance
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
-    struct raft_instance_buf_pool  *ri_buf_pool;
+    struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //should be the last
                                                           //member.
 };
