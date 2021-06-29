@@ -5,14 +5,14 @@ import (
 	"flag"
 	"fmt"
 	defaultLog "log"
+	"github.com/satori/go.uuid"
+	"niovakv/httpserver"
 	"niovakv/niovakvpmdbclient"
 	"niovakvserver/serfagenthandler"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"niovakv/httpserver"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -81,6 +81,10 @@ func getCmdParams() {
 	flag.StringVar(&serfConfigPath, "c", "./", "serf config path")
 
 	flag.Parse()
+	fmt.Println("Raft UUID: ", raftUuid)
+	fmt.Println("Client UUID: ", clientUuid)
+	fmt.Println("Log path:", logPath)
+	fmt.Println("Serf config path:", serfConfigPath)
 }
 
 func main() {
