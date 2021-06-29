@@ -81,10 +81,6 @@ func getCmdParams() {
 	flag.StringVar(&serfConfigPath, "c", "./", "serf config path")
 
 	flag.Parse()
-	fmt.Println("Raft UUID: ", raftUuid)
-	fmt.Println("Client UUID: ", clientUuid)
-	fmt.Println("Log path:", logPath)
-	fmt.Println("Serf config path:", serfConfigPath)
 }
 
 func main() {
