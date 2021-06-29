@@ -4,21 +4,46 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
-	"log"
-	"niovakv/niovakvclient"
+	defaultLog "log"
+	"niovakv/niovakvpmdbclient"
 	"niovakvserver/serfagenthandler"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
-	"httpserver.com/httpserver"
+	"niovakv/httpserver"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
-	raftUuid, clientUuid, jsonOutFpath, serfConfigPath string
-	configData                                         map[string]string
+	raftUuid, clientUuid, logPath, serfConfigPath string
+	configData                                    map[string]string
 )
+
+//Create logfile for client.
+func initLogger() {
+
+	var filename string = logPath + "/" + "niovaServer" + ".log"
+	log.Info("logfile:", filename)
+
+	//Create the log file if doesn't exist. And append to it if it already exists.i
+	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+	Formatter := new(log.TextFormatter)
+
+	//Set Timestamp format for logfile.
+	Formatter.TimestampFormat = "02-01-2006 15:04:05"
+	Formatter.FullTimestamp = true
+	log.SetFormatter(Formatter)
+
+	if err != nil {
+		// Cannot open log file. Logging to stderr
+		log.Error(err)
+	} else {
+		log.SetOutput(f)
+	}
+}
 
 /*
 Config should contain following:
@@ -43,9 +68,7 @@ func getData() error {
 	filescanner.Split(bufio.ScanLines)
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		if len(input) == 2 {
-			configData[input[0]] = input[1]
-		}
+		configData[input[0]] = input[1]
 	}
 	return nil
 }
@@ -54,14 +77,38 @@ func getData() error {
 func getCmdParams() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "client uuid")
-	flag.StringVar(&jsonOutFpath, "l", "./", "json_outfilepath")
+	flag.StringVar(&logPath, "l", "./", "log filepath")
 	flag.StringVar(&serfConfigPath, "c", "./", "serf config path")
 
 	flag.Parse()
 	fmt.Println("Raft UUID: ", raftUuid)
 	fmt.Println("Client UUID: ", clientUuid)
-	fmt.Println("Json outfilepath:", jsonOutFpath)
+	fmt.Println("Log path:", logPath)
 	fmt.Println("Serf config path:", serfConfigPath)
+}
+
+func getGossipData(pmdbClientObj *niovakvpmdbclient,
+	serfAgentHandler *serfagenthandler.SerfAgentHandler) {
+	tag := make(map[string]string)
+	leader, err := pmdbClientObj.PmdbGetLeader()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	tag["Leader UUID"] = leader.String()
+	serfAgentHandler.SetTags(tag)
+	for {
+		new_leader, err := pmdbClientObj.PmdbGetLeader()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		if new_leader != leader {
+			leader = new_leader
+			tag["Leader UUID"] = leader.String()
+			serfAgentHandler.SetTags(tag)
+		}
+	}
 }
 
 func main() {
@@ -69,8 +116,11 @@ func main() {
 	//Get commandline paraameters.
 	getCmdParams()
 
+	//Create log file.
+	initLogger()
+
 	//Get client object.
-	nkvclientObj := niovakvclient.GetNiovaKVClientObj(raftUuid, clientUuid, jsonOutFpath)
+	nkvclientObj := niovakvpmdbclient.GetNiovaKVClientObj(raftUuid, clientUuid, logPath)
 
 	//Start pumicedb client.
 	nkvclientObj.ClientObj.Start()
@@ -80,16 +130,16 @@ func main() {
 
 	//Generate uuid.
 	appUuid := uuid.NewV4().String()
-	rncui := appUuid + ":0:0:0:0"
+	//rncui := appUuid + ":0:0:0:0"
 
 	//Store rncui in nkvclientObj.
-	nkvclientObj.Rncui = rncui
+	nkvclientObj.Rncui = appUuid
 
 	//get cmd line and config data
 	configData = make(map[string]string, 10)
 	err := getData()
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		os.Exit(1)
 	}
 
@@ -98,7 +148,7 @@ func main() {
 	agentHandler.Name = configData["Name"]
 	agentHandler.BindAddr = configData["Addr"]
 	agentHandler.BindPort, _ = strconv.Atoi(configData["Aport"])
-	agentHandler.AgentLogger = log.Default()
+	agentHandler.AgentLogger = defaultLog.Default()
 	agentHandler.RpcAddr = configData["Addr"]
 	agentHandler.RpcPort = configData["Rport"]
 	var joinaddr []string
@@ -107,7 +157,7 @@ func main() {
 	}
 	_, err = agentHandler.Startup(joinaddr)
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 		os.Exit(1)
 	}
 
