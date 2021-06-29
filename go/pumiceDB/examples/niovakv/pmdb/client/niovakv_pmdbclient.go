@@ -3,10 +3,12 @@ package niovakvpmdbclient
 import (
 	"errors"
 	"fmt"
+	"os"
+
 	log "github.com/sirupsen/logrus"
+
 	"niova/go-pumicedb-lib/client"
 	"niovakv/niovakvlib"
-	"os"
 )
 
 //Structure definition for client.
@@ -23,7 +25,7 @@ func (nco *NiovaKVClient) Write() error {
 
 	var errorMsg error
 	//Perform write operation.
-        rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, numReq)
+	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, numReq)
 	err := nco.ClientObj.Write(nco.ReqObj, rncui)
 	if err != nil {
 		log.Error("Write key-value failed : ", err)

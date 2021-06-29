@@ -5,16 +5,16 @@ import (
 	"flag"
 	"fmt"
 	defaultLog "log"
-	"github.com/satori/go.uuid"
-	"niovakv/httpserver"
-	"niovakv/niovakvpmdbclient"
-	"niovakvserver/serfagenthandler"
 	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
+
+	"niovakv/httpserver"
+	"niovakv/niovakvpmdbclient"
+	"niovakvserver/serfagenthandler"
 )
 
 var (
@@ -81,6 +81,34 @@ func getCmdParams() {
 	flag.StringVar(&serfConfigPath, "c", "./", "serf config path")
 
 	flag.Parse()
+	fmt.Println("Raft UUID: ", raftUuid)
+	fmt.Println("Client UUID: ", clientUuid)
+	fmt.Println("Log path:", logPath)
+	fmt.Println("Serf config path:", serfConfigPath)
+}
+
+func getGossipData(pmdbClientObj *niovakvpmdbclient,
+	serfAgentHandler *serfagenthandler.SerfAgentHandler) {
+	tag := make(map[string]string)
+	leader, err := pmdbClientObj.PmdbGetLeader()
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	tag["Leader UUID"] = leader.String()
+	serfAgentHandler.SetTags(tag)
+	for {
+		new_leader, err := pmdbClientObj.PmdbGetLeader()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		if new_leader != leader {
+			leader = new_leader
+			tag["Leader UUID"] = leader.String()
+			serfAgentHandler.SetTags(tag)
+		}
+	}
 }
 
 func main() {
