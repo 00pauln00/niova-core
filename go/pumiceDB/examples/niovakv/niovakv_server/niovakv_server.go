@@ -4,9 +4,6 @@ import (
 	"bufio"
 	"flag"
 	defaultLog "log"
-	"niovakv/httpserver"
-	"niovakv/niovakvpmdbclient"
-	"niovakvserver/serfagenthandler"
 	"os"
 	"strconv"
 	"strings"
@@ -14,6 +11,10 @@ import (
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+
+	"niovakv/httpserver"
+	"niovakv/niovakvpmdbclient"
+	"niovakvserver/serfagenthandler"
 )
 
 var (

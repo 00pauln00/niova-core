@@ -3,9 +3,11 @@ package httpserver
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
+
+	log "github.com/sirupsen/logrus"
+
 	"niovakv/niovakvlib"
 	"niovakv/niovakvpmdbclient"
 )
@@ -27,21 +29,22 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		reqBody, err := ioutil.ReadAll(r.Body)
 		json.Unmarshal(reqBody, &niovaobj)
 		if err != nil {
-			log.Error("Data recieved using GET is :", niovaobj)
+			log.Error("GET request failed: ", err)
 		}
+		log.Info("Data recieved using GET is :", niovaobj)
 	case "PUT":
 		r.ParseForm()
 		reqBody, err := ioutil.ReadAll(r.Body)
 		json.Unmarshal(reqBody, &niovaobj)
 		if err != nil {
-			log.Error("PUT request failed")
+			log.Error("PUT request failed: ", err)
 		}
 
 		h.NKVCliObj.ReqObj = &niovaobj
 		//Perform the read/write operation on pmdb client
 		result, status := h.NKVCliObj.ProcessRequest()
 		if status != 0 {
-			log.Error("Operation failed.")
+			log.Error("Operation failed: ", status)
 		}
 		log.Info("Result of the operation is:", result)
 

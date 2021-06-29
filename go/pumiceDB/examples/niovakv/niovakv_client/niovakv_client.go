@@ -3,12 +3,13 @@ package main
 import (
 	"flag"
 	"math/rand"
-	"niovakv/httpclient"
-	"niovakv/niovakvlib"
-	"niovakv/serfclienthandler"
 	"os"
 
 	log "github.com/sirupsen/logrus"
+
+	"niovakv/httpclient"
+	"niovakv/niovakvlib"
+	"niovakv/serfclienthandler"
 )
 
 var (
