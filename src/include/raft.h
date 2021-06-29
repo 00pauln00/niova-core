@@ -307,8 +307,9 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
     RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC  = 4,
     RAFT_INSTANCE_HIST_NENTRIES_SYNC      = 5,
-    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 6,
-    RAFT_INSTANCE_HIST_MAX                = 7,
+    RAFT_INSTANCE_HIST_COALESCED_WR_CNT   = 6,
+    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 7,
+    RAFT_INSTANCE_HIST_MAX                = 8,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -718,6 +719,8 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "dev-sync-latency-usec";
     case RAFT_INSTANCE_HIST_NENTRIES_SYNC:
         return "nentries-per-sync";
+    case RAFT_INSTANCE_HIST_COALESCED_WR_CNT:
+        return "coalesced-wr-cnt";
     case RAFT_INSTANCE_HIST_CHKPT_LAT_USEC:
         return "checkpoint-latency-usec";
     default:
