@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"niovakv/niovakvlib"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func SendRequest(reqobj *niovakvlib.NiovaKV, addr, port string) error {

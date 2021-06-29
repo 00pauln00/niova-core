@@ -1,5 +1,7 @@
 module niovakv/httpserver
 
+go 1.16
+
 replace niova/go-pumicedb-lib/client => ../../../../client
 
 replace niova/go-pumicedb-lib/common => ../../../../common
@@ -7,8 +9,6 @@ replace niova/go-pumicedb-lib/common => ../../../../common
 replace niovakv/niovakvlib => ../../lib
 
 replace niovakv/niovakvpmdbclient => ../../pmdb/client
-
-go 1.16
 
 require (
 	github.com/sirupsen/logrus v1.8.1

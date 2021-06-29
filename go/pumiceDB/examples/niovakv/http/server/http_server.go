@@ -3,21 +3,21 @@ package httpserver
 import (
 	"encoding/json"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
 	"niovakv/niovakvlib"
-	log "github.com/sirupsen/logrus"
 	"niovakv/niovakvpmdbclient"
 )
 
 type HttpServerHandler struct {
 	//Exported
-	Addr       string
-	Port       string
+	Addr      string
+	Port      string
 	NKVCliObj *niovakvpmdbclient.NiovaKVClient
 	//Non-exported
 	server http.Server
-	rncui string
+	rncui  string
 }
 
 func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -43,7 +43,7 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if status != 0 {
 			log.Error("Operation failed.")
 		}
-		fmt.Println("Result of the operation is:",result)
+		log.Info("Result of the operation is:", result)
 
 		resp := niovakvlib.NiovaKVResponse{
 			RespStatus: status,
@@ -51,7 +51,7 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		response, err := json.Marshal(&resp)
 		_, errRes := fmt.Fprintf(w, "%s", response)
-		if errRes != nil{
+		if errRes != nil {
 			log.Error(errRes)
 		}
 	default:
