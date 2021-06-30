@@ -1,7 +1,8 @@
 package httpserver
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -23,39 +24,63 @@ type HttpServerHandler struct {
 }
 
 func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	var niovaobj niovakvlib.NiovaKV
+	fmt.Println("New request")
+	var requestobj niovakvlib.NiovaKV
 	switch r.Method {
 	case "GET":
 		reqBody, err := ioutil.ReadAll(r.Body)
-		json.Unmarshal(reqBody, &niovaobj)
+		dec := gob.NewDecoder(bytes.NewBuffer(reqBody))
+		err = dec.Decode(&requestobj)
 		if err != nil {
 			log.Error("GET request failed: ", err)
 		}
-		log.Info("Data recieved using GET is :", niovaobj)
+		//Perform the read/write operation on pmdb client
+		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
+		if err != nil {
+			log.Error("Operation failed: ", err)
+		} else {
+			log.Info("Result of the operation is:", result)
+			resp := niovakvlib.NiovaKVResponse{
+				RespStatus: 0,
+				RespValue:  result,
+			}
+			var response bytes.Buffer
+			enc := gob.NewEncoder(&response)
+			err = enc.Encode(resp)
+			_, errRes := fmt.Fprintf(w, "%s", response.String())
+			if errRes != nil {
+				log.Error(errRes)
+			}
+		}
+
 	case "PUT":
 		r.ParseForm()
 		reqBody, err := ioutil.ReadAll(r.Body)
-		json.Unmarshal(reqBody, &niovaobj)
+
+		dec := gob.NewDecoder(bytes.NewBuffer(reqBody))
+		err = dec.Decode(&requestobj)
 		if err != nil {
 			log.Error("PUT request failed: ", err)
 		}
 
-		h.NKVCliObj.ReqObj = &niovaobj
 		//Perform the read/write operation on pmdb client
-		result, status := h.NKVCliObj.ProcessRequest()
-		if status != 0 {
-			log.Error("Operation failed: ", status)
-		}
-		log.Info("Result of the operation is:", result)
+		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
+		if err != nil {
+			log.Error("Operation failed: ", err)
+		} else {
+			log.Info("Result of the operation is:", result)
 
-		resp := niovakvlib.NiovaKVResponse{
-			RespStatus: status,
-			RespValue:  result,
-		}
-		response, err := json.Marshal(&resp)
-		_, errRes := fmt.Fprintf(w, "%s", response)
-		if errRes != nil {
-			log.Error(errRes)
+			resp := niovakvlib.NiovaKVResponse{
+				RespStatus: 0,
+				RespValue:  result,
+			}
+			var response bytes.Buffer
+			enc := gob.NewEncoder(&response)
+			err = enc.Encode(resp)
+			_, errRes := fmt.Fprintf(w, "%s", response.String())
+			if errRes != nil {
+				log.Error(errRes)
+			}
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

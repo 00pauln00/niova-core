@@ -83,6 +83,21 @@ func getCmdParams() {
 	flag.Parse()
 }
 
+func getGossipData(niovakvpmdb *niovakvpmdbclient.NiovaKVClient,
+	serfAgentHandler *serfagenthandler.SerfAgentHandler) {
+	tag := make(map[string]string)
+	for {
+		leader, err := niovakvpmdb.ClientObj.PmdbGetLeader()
+		if err != nil {
+			log.Error(err)
+			return
+		}
+		tag["Leader UUID"] = leader.String()
+		serfAgentHandler.SetTags(tag)
+		time.Sleep(5 * time.Second)
+	}
+}
+
 func main() {
 
 	//Get commandline paraameters.
@@ -131,6 +146,9 @@ func main() {
 		log.Error(err)
 		os.Exit(1)
 	}
+
+	//Start the gossip routine
+	go getGossipData(nkvclientObj, &agentHandler)
 
 	//Start httpserver.
 	handlerobj := httpserver.HttpServerHandler{}

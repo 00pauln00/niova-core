@@ -1,4 +1,4 @@
-module niovakv/niovaclient
+module niovakv/niova_client
 
 replace niovakv/serfclienthandler => ../serf/client
 

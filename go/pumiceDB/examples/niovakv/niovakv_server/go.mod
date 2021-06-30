@@ -1,4 +1,4 @@
-module niovakv/niovakvserver
+module niovakv/niovakv_server
 
 replace niovakv/httpserver => ../http/server
 

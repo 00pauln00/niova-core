@@ -74,26 +74,27 @@ func main() {
 	ClientHandler.Retries = 5
 	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
 
-	reqObj := niovakvlib.NiovaKV{}
+	var reqObj *niovakvlib.NiovaKV
+	var doOperation func(*niovakvlib.NiovaKV, string, string) error
 	if operation == "write" {
 		reqObj.InputOps = operation
 		reqObj.InputKey = key
 		reqObj.InputValue = []byte(value)
+		doOperation = httpclient.WriteRequest
 	} else {
 		reqObj.InputOps = operation
 		reqObj.InputKey = key
+		doOperation = httpclient.ReadRequest
 	}
 
 	//Do upto 5 times if request failed
-	refresh := false
-	for i := 0; i < 5; i++ {
-		// Get the alive http server IP and port
-		addr, port := getServerAddr(refresh)
-		//Send the request over http
-		err := httpclient.SendRequest(&reqObj, addr, port)
+	addr, port := getServerAddr(false)
+	for j := 0; j < 5; j++ {
+		err := doOperation(reqObj, addr, port)
 		if err == nil {
 			break
 		}
-		refresh = true
+		addr, port = getServerAddr(true)
+		log.Error(err)
 	}
 }
