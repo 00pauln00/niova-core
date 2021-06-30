@@ -34,7 +34,7 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Error("GET request failed: ", err)
 		}
-		//Perform the read/write operation on pmdb client
+		//Perform the read operation on pmdb client
 		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
 		if err != nil {
 			log.Error("Operation failed: ", err)
@@ -63,7 +63,7 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			log.Error("PUT request failed: ", err)
 		}
 
-		//Perform the read/write operation on pmdb client
+		//Perform the write operation on pmdb client
 		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
 		if err != nil {
 			log.Error("Operation failed: ", err)

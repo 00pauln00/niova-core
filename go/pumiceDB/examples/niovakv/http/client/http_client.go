@@ -13,7 +13,7 @@ import (
 
 func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) error {
 	fmt.Println("Performing Http PUT Request...")
-	var Data bytes.Buffer // Stand-in for a network connection
+	var Data bytes.Buffer 
 	enc := gob.NewEncoder(&Data)
 
 	err := enc.Encode(reqobj)
