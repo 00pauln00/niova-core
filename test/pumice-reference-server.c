@@ -308,7 +308,7 @@ static void
 pmdbts_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s -r <UUID> -u <UUID>\n", argv[0]);
+            "Usage: %s -r <UUID> -u <UUID> [-c (coalesce-raft-writes)] [-a (async-raft-writes)]\n", argv[0]);
 
     exit(error);
 }
