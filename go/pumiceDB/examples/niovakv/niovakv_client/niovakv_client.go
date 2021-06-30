@@ -74,7 +74,7 @@ func main() {
 	ClientHandler.Retries = 5
 	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
 
-	var reqObj *niovakvlib.NiovaKV
+	var reqObj niovakvlib.NiovaKV
 	var doOperation func(*niovakvlib.NiovaKV, string, string) error
 	if operation == "write" {
 		reqObj.InputOps = operation
@@ -90,7 +90,7 @@ func main() {
 	//Do upto 5 times if request failed
 	addr, port := getServerAddr(false)
 	for j := 0; j < 5; j++ {
-		err := doOperation(reqObj, addr, port)
+		err := doOperation(&reqObj, addr, port)
 		if err == nil {
 			break
 		}
