@@ -98,7 +98,7 @@ func (nkvClient *NiovaKVClient) ProcessRequest(reqObj *niovakvlib.NiovaKV) ([]by
 	case "exit":
 		os.Exit(0)
 	default:
-		fmt.Print("\nEnter valid operation....")
+		log.Info("Enter valid operation....")
 	}
 	return value, err
 }
