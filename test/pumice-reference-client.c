@@ -422,6 +422,8 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     preq->preq_op_cnt = op_cnt;
     preq->preq_val_cnt = val_cnt;
     preq->preq_write_seqno = write_seqno;
+    //Pending seqno.
+    preq->preq_pmdb_seqno = write_seqno;
     niova_realtime_coarse_clock(&preq->preq_submitted);
 
     raft_net_client_user_id_copy(&preq->preq_rncui, rncui);
