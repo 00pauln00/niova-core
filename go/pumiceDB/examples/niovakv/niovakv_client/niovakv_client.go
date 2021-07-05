@@ -14,13 +14,13 @@ import (
 
 var (
 	ClientHandler                               serfclienthandler.SerfClientHandler
-	config_path, operation, key, value, logPath string
+	config_path, operation, key, value, logPath, logFilename string
 )
 
 //Create logfile for client.
 func initLogger() {
 
-	var filename string = logPath + "/" + "niovakvClient" + ".log"
+	var filename string = logPath + "/" + logFilename + ".log"
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -42,7 +42,8 @@ func initLogger() {
 //Function to get command line parameters while starting of the client.
 func getCmdParams() {
 	flag.StringVar(&config_path, "c", "./", "config file path")
-	flag.StringVar(&logPath, "l", ".", "log file path")
+	flag.StringVar(&logPath, "l", "/tmp", "log filepath")
+        flag.StringVar(&logFilename, "f", "niovakvClient", "log filename")
 	flag.StringVar(&operation, "o", "NULL", "write/read operation")
 	flag.StringVar(&key, "k", "NULL", "Key")
 	flag.StringVar(&value, "v", "NULL", "Value")

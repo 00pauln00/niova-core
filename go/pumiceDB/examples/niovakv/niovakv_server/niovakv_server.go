@@ -18,14 +18,14 @@ import (
 )
 
 var (
-	raftUuid, clientUuid, logPath, serfConfigPath string
-	configData                                    map[string]string
+	raftUuid, clientUuid, logPath, logFilename, serfConfigPath string
+	configData                                                 map[string]string
 )
 
 //Create logfile for client.
 func initLogger() {
 
-	var filename string = logPath + "/" + "niovaServer" + ".log"
+	var filename string = logPath + "/" + logFilename + ".log"
 	log.Info("logfile:", filename)
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
@@ -77,7 +77,8 @@ func getData() error {
 func getCmdParams() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "client uuid")
-	flag.StringVar(&logPath, "l", "./", "log filepath")
+	flag.StringVar(&logPath, "l", "/tmp", "log filepath")
+	flag.StringVar(&logFilename, "f", "niovaServer", "log filename")
 	flag.StringVar(&serfConfigPath, "c", "./", "serf config path")
 
 	flag.Parse()
@@ -119,7 +120,7 @@ func main() {
 	appUuid := uuid.NewV4().String()
 
 	//Store rncui in nkvclientObj.
-	nkvclientObj.Rncui = appUuid
+	nkvclientObj.AppUuid = appUuid
 
 	//get cmd line and config data
 	configData = make(map[string]string, 10)
