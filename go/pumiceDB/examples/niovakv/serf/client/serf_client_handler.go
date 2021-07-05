@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"math/rand"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/hashicorp/serf/client"
@@ -18,11 +19,9 @@ Methods:
 */
 type SerfClientHandler struct {
 	//Exported
-	AgentAddrs []string         //Holds all agent addr in cluster, initialized with few known agent addr
-	Retries    int              //No of retries to connect with any agent
-	AgentData  map[string]*Data //Holds data of each agent
-	RpcPort    string           //Port for rpc listner
-	Hport      string
+	Agents    []string         //Holds all agent names in cluster, initialized with few known agent names
+	Retries   int              //No of retries to connect with any agent
+	AgentData map[string]*Data //Holds data of each agent
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
@@ -36,6 +35,7 @@ type Data struct {
 	Name    string
 	Addr    string
 	IsAlive bool
+	Rport   string
 	Tags    map[string]string
 }
 
@@ -54,29 +54,28 @@ func (m *RetryLimitExceded) Error() string {
 	return "Retry Limit Exceded"
 }
 
-func getConfigData(serfConfigPath string) (string, string, string, error) {
-	configData := make(map[string]string)
+func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) {
+	//Get addrs and Rports and store it in AgentAddrs and
 	reader, err := os.Open(serfConfigPath)
 	if err != nil {
-		return "", "", "", err
+		return
 	}
 	filescanner := bufio.NewScanner(reader)
 	filescanner.Split(bufio.ScanLines)
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		if len(input) == 2 {
-			configData[input[0]] = input[1]
-		}
+		Handler.AgentData[input[0]] = &Data{}
+		Handler.AgentData[input[0]].Name = input[0]
+		Handler.AgentData[input[0]].Addr = input[1]
+		Handler.AgentData[input[0]].Rport = input[3]
+		Handler.AgentData[input[0]].IsAlive = false
+		Handler.Agents = append(Handler.Agents, input[0])
 	}
 
-	return configData["Addr"], configData["Rport"], configData["Hport"], err
 }
 
 func (Handler *SerfClientHandler) Initdata(configpath string) {
-	agentAddr, agentPort, hport, _ := getConfigData(configpath)
-	Handler.AgentAddrs = append(Handler.AgentAddrs, agentAddr)
-	Handler.RpcPort = agentPort
-	Handler.Hport = hport
+	Handler.getConfigData(configpath)
 }
 
 /*
@@ -89,6 +88,7 @@ persistConnection can be used if frequect updates are required.
 */
 func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 	var randomAddr string
+	var randomAgent string
 	var err error
 
 	//If no connection is persisted
@@ -97,20 +97,21 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 		//Retry with different agent addr till getting members list
 		for {
 			//Choose random addrs
-			if len(Handler.AgentAddrs) <= 0 {
+			if len(Handler.Agents) <= 0 {
 				//Custom error for no live agent to communicate
 				return &NoLiveAgents{}
 			}
-			randomIndex := rand.Intn(len(Handler.AgentAddrs))
-			randomAddr = Handler.AgentAddrs[randomIndex]
-			Handler.agentConnection, err = client.NewRPCClient(randomAddr + ":" + Handler.RpcPort)
+			randomIndex := rand.Intn(len(Handler.Agents))
+			randomAgent = Handler.Agents[randomIndex]
+			randomAddr = Handler.AgentData[randomAgent].Addr
+			Handler.agentConnection, err = client.NewRPCClient(randomAddr + ":" + Handler.AgentData[randomAgent].Rport)
 			if err == nil {
 				Handler.connectionExist = true
 				break
 			}
 			flag += 1
 			//Mark that node as unreachable
-			Handler.AgentAddrs = append(Handler.AgentAddrs[:randomIndex], Handler.AgentAddrs[randomIndex+1:]...)
+			Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
 			if flag >= Handler.Retries {
 				return &RetryLimitExceded{} //change return as custom error for limit exceeded
 			}
@@ -148,19 +149,21 @@ func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 	}
 
 	//Delete all addrs
-	Handler.AgentAddrs = nil
+	Handler.Agents = nil
 
 	//Update the Agent data(s)
 	for _, mems := range members {
-		if Handler.AgentData[mems.Name] == nil {
-			Handler.AgentData[mems.Name] = &Data{}
-			Handler.AgentData[mems.Name].Name = mems.Name
-			Handler.AgentData[mems.Name].Addr = mems.Addr.String()
+		nodeName := mems.Name
+		if Handler.AgentData[nodeName] == nil {
+			Handler.AgentData[nodeName] = &Data{}
+			Handler.AgentData[nodeName].Name = mems.Name
+			Handler.AgentData[nodeName].Addr = mems.Addr.String()
 		}
-		Handler.AgentData[mems.Name].IsAlive = true
-		Handler.AgentData[mems.Name].Tags = mems.Tags
+		Handler.AgentData[nodeName].IsAlive = true
+		Handler.AgentData[nodeName].Tags = mems.Tags
+		Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
 		//Keep only live members in the list
-		Handler.AgentAddrs = append(Handler.AgentAddrs, mems.Addr.String())
+		Handler.Agents = append(Handler.Agents, nodeName)
 	}
-
+	sort.Strings(Handler.Agents)
 }

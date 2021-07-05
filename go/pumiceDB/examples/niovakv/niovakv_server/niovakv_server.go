@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	defaultLog "log"
 	"os"
 	"strconv"
@@ -17,15 +18,45 @@ import (
 	"niovakvserver/serfagenthandler"
 )
 
-var (
-	raftUuid, clientUuid, logPath, serfConfigPath string
-	configData                                    map[string]string
-)
+type niovaKVServerHandler struct {
+	//Other
+	configPath string
+
+	//Niovakvserver
+	addr string
+
+	//Pmdb nivoa client
+	raftUUID     string
+	clientUUID   string
+	logPath      string
+	nkvClientObj *niovakvpmdbclient.NiovaKVClient
+
+	//Serf agent
+	agentName           string
+	agentPort           string
+	agentRPCPort        string
+	agentJoinAddrs      []string
+	serfAgentHandlerObj serfagenthandler.SerfAgentHandler
+
+	//Http
+	httpPort       string
+	httpHandlerObj httpserver.HttpServerHandler
+}
+
+//Function to get command line parameters while starting of the client.
+func (handler *niovaKVServerHandler) getCmdParams() {
+	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
+	flag.StringVar(&handler.clientUUID, "u", "NULL", "client uuid")
+	flag.StringVar(&handler.logPath, "l", "./", "log filepath")
+	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
+	flag.StringVar(&handler.agentName, "n", "./", "serf agent name")
+	flag.Parse()
+}
 
 //Create logfile for client.
-func initLogger() {
+func (handler *niovaKVServerHandler) initLogger() {
 
-	var filename string = logPath + "/" + "niovaServer" + ".log"
+	var filename string = handler.logPath + "/" + "niovaServer" + ".log"
 	log.Info("logfile:", filename)
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
@@ -47,20 +78,16 @@ func initLogger() {
 
 /*
 Config should contain following:
-Name, Addr, Aport, Rport, Hport, Jaddr
-
-Structure
-key value
+Name, Addr, Aport, Rport, Hport
 
 Name //For serf agent name, must be unique for each node
 Addr //Addr for serf agent and http listening
 Aport //Serf agent-agent communication
 Rport //Serf agent-client communication
 Hport //Http listener port
-Jaddr //Other serf agent addrs seprated with ,
 */
-func getData() error {
-	reader, err := os.Open(serfConfigPath)
+func (handler *niovaKVServerHandler) getConfigData() error {
+	reader, err := os.Open(handler.configPath)
 	if err != nil {
 		return err
 	}
@@ -68,97 +95,105 @@ func getData() error {
 	filescanner.Split(bufio.ScanLines)
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		configData[input[0]] = input[1]
+		if input[0] == handler.agentName {
+			handler.addr = input[1]
+			handler.agentPort = input[2]
+			handler.agentRPCPort = input[3]
+			handler.httpPort = input[4]
+		} else {
+			handler.agentJoinAddrs = append(handler.agentJoinAddrs, input[1]+":"+input[2])
+		}
 	}
 	return nil
 }
 
-//Function to get command line parameters while starting of the client.
-func getCmdParams() {
-	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&clientUuid, "u", "NULL", "client uuid")
-	flag.StringVar(&logPath, "l", "./", "log filepath")
-	flag.StringVar(&serfConfigPath, "c", "./", "serf config path")
-
-	flag.Parse()
+//start the Niovakvpmdbclient
+func (handler *niovaKVServerHandler) startNiovakvpmdbclient() {
+	//Get client object.
+	fmt.Println(handler.raftUUID, handler.clientUUID, handler.logPath)
+	handler.nkvClientObj = niovakvpmdbclient.GetNiovaKVClientObj(handler.raftUUID, handler.clientUUID, handler.logPath)
+	//Start pumicedb client.
+	handler.nkvClientObj.ClientObj.Start()
+	//Store rncui in nkvclientObj.
+	handler.nkvClientObj.Rncui = uuid.NewV4().String()
 }
 
-func getGossipData(niovakvpmdb *niovakvpmdbclient.NiovaKVClient,
-	serfAgentHandler *serfagenthandler.SerfAgentHandler) {
+//start the SerfAgentHandler
+func (handler *niovaKVServerHandler) startSerfAgentHandler() {
+	handler.serfAgentHandlerObj = serfagenthandler.SerfAgentHandler{}
+	handler.serfAgentHandlerObj.Name = handler.agentName
+	handler.serfAgentHandlerObj.BindAddr = handler.addr
+	handler.serfAgentHandlerObj.BindPort, _ = strconv.Atoi(handler.agentPort)
+	handler.serfAgentHandlerObj.AgentLogger = defaultLog.Default()
+	handler.serfAgentHandlerObj.RpcAddr = handler.addr
+	handler.serfAgentHandlerObj.RpcPort = handler.agentRPCPort
+	fmt.Println("Serf handler object : ", handler.serfAgentHandlerObj)
+	//Start serf agent
+	_, err := handler.serfAgentHandlerObj.Startup(handler.agentJoinAddrs)
+	if err != nil {
+		log.Error("Error when starting agents : ", err)
+	}
+}
+
+func (handler *niovaKVServerHandler) startHTTPServer() {
+	//Start httpserver.
+	handler.httpHandlerObj = httpserver.HttpServerHandler{}
+	handler.httpHandlerObj.Addr = handler.addr
+	handler.httpHandlerObj.Port = handler.httpPort
+	handler.httpHandlerObj.NKVCliObj = handler.nkvClientObj
+	fmt.Println("HTTP HANDLER OBJECT : ", handler.httpHandlerObj)
+	log.Info("Starting httpd server")
+	err := handler.httpHandlerObj.StartServer()
+	if err != nil {
+		log.Error(err)
+	}
+}
+
+//Get gossip data
+func (handler *niovaKVServerHandler) getGossipData() {
 	tag := make(map[string]string)
+	tag["Hport"] = handler.httpPort
+	tag["Aport"] = handler.agentPort
+	tag["Rport"] = handler.agentRPCPort
+	handler.serfAgentHandlerObj.SetTags(tag)
 	for {
-		leader, err := niovakvpmdb.ClientObj.PmdbGetLeader()
+		leader, err := handler.nkvClientObj.ClientObj.PmdbGetLeader()
 		if err != nil {
 			log.Error(err)
-			return
+			os.Exit(1)
 		}
 		tag["Leader UUID"] = leader.String()
-		serfAgentHandler.SetTags(tag)
+		fmt.Println(tag)
+		handler.serfAgentHandlerObj.SetTags(tag)
 		time.Sleep(5 * time.Second)
 	}
 }
 
+//Main func
 func main() {
-
+	niovaServerObj := niovaKVServerHandler{}
 	//Get commandline paraameters.
-	getCmdParams()
+	niovaServerObj.getCmdParams()
 
 	//Create log file.
-	initLogger()
-
-	//Get client object.
-	nkvclientObj := niovakvpmdbclient.GetNiovaKVClientObj(raftUuid, clientUuid, logPath)
-
-	//Start pumicedb client.
-	nkvclientObj.ClientObj.Start()
-
-	//Wait for starting pumicedb client.
-	time.Sleep(5 * time.Second)
-
-	//Generate uuid.
-	appUuid := uuid.NewV4().String()
-
-	//Store rncui in nkvclientObj.
-	nkvclientObj.Rncui = appUuid
+	niovaServerObj.initLogger()
 
 	//get cmd line and config data
-	configData = make(map[string]string, 10)
-	err := getData()
+	err := niovaServerObj.getConfigData()
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)
 	}
 
-	//Start serf agent
-	agentHandler := serfagenthandler.SerfAgentHandler{}
-	agentHandler.Name = configData["Name"]
-	agentHandler.BindAddr = configData["Addr"]
-	agentHandler.BindPort, _ = strconv.Atoi(configData["Aport"])
-	agentHandler.AgentLogger = defaultLog.Default()
-	agentHandler.RpcAddr = configData["Addr"]
-	agentHandler.RpcPort = configData["Rport"]
-	var joinaddr []string
-	if configData["Jaddr"] != "" {
-		joinaddr = append(joinaddr, strings.Split(configData["Jaddr"], ",")...)
-	}
-	_, err = agentHandler.Startup(joinaddr)
-	if err != nil {
-		log.Error(err)
-		os.Exit(1)
-	}
+	//Create a niovaKVServerHandler
+	niovaServerObj.startNiovakvpmdbclient()
 
+	//Start serf agent handler
+	niovaServerObj.startSerfAgentHandler()
 	//Start the gossip routine
-	go getGossipData(nkvclientObj, &agentHandler)
+	time.Sleep(5 * time.Second)
+	go niovaServerObj.getGossipData()
 
-	//Start httpserver.
-	handlerobj := httpserver.HttpServerHandler{}
-	handlerobj.Addr = configData["Addr"]
-	handlerobj.Port = configData["Hport"]
-	handlerobj.NKVCliObj = nkvclientObj
-
-	log.Info("Starting httpd server")
-	errServer := handlerobj.StartServer()
-	if errServer != nil {
-		log.Error(errServer)
-	}
+	//Start http server
+	niovaServerObj.startHTTPServer()
 }

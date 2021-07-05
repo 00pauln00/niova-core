@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"math/rand"
+	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -15,6 +15,7 @@ import (
 var (
 	ClientHandler                               serfclienthandler.SerfClientHandler
 	config_path, operation, key, value, logPath string
+	retries                                     int
 )
 
 //Create logfile for client.
@@ -52,12 +53,17 @@ func getCmdParams() {
 //Get any client addr
 func getServerAddr(refresh bool) (string, string) {
 	if refresh {
-		ClientHandler.GetData(true)
+		ClientHandler.GetData(false)
 	}
 	//Get random addr
-	randomIndex := rand.Intn(len(ClientHandler.AgentAddrs))
-	Addr := ClientHandler.AgentAddrs[randomIndex]
-	return Addr, ClientHandler.Hport
+	if len(ClientHandler.Agents) <= 0 {
+		log.Error("All servers are dead")
+		os.Exit(1)
+	}
+	//randomIndex := rand.Intn(len(ClientHandler.Agents))
+	randomNode := ClientHandler.Agents[retries%len(ClientHandler.Agents)]
+	retries += 1
+	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"]
 }
 
 func main() {
@@ -70,10 +76,9 @@ func main() {
 
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
-	ClientHandler.Initdata(config_path)
 	ClientHandler.Retries = 5
 	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
-
+	ClientHandler.Initdata(config_path)
 	var reqObj niovakvlib.NiovaKV
 	var doOperation func(*niovakvlib.NiovaKV, string, string) error
 	if operation == "write" {
@@ -88,13 +93,15 @@ func main() {
 	}
 
 	//Do upto 5 times if request failed
-	addr, port := getServerAddr(false)
-	for j := 0; j < 5; j++ {
+	addr, port := getServerAddr(true)
+	for j := 0; j < 2; j++ {
+		fmt.Println("HTTP addr : ", addr, port)
 		err := doOperation(&reqObj, addr, port)
+		fmt.Println(err)
 		if err == nil {
 			break
 		}
-		addr, port = getServerAddr(true)
+		addr, port = getServerAddr(false)
 		log.Error(err)
 	}
 }
