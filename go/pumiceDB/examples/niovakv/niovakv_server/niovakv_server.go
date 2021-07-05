@@ -29,6 +29,7 @@ type niovaKVServerHandler struct {
 	raftUUID     string
 	clientUUID   string
 	logPath      string
+	logFilename  string
 	nkvClientObj *niovakvpmdbclient.NiovaKVClient
 
 	//Serf agent
@@ -48,6 +49,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
 	flag.StringVar(&handler.clientUUID, "u", "NULL", "client uuid")
 	flag.StringVar(&handler.logPath, "l", "./", "log filepath")
+	flag.StringVar(&handler.logFilename, "f", "niovaServer", "log filename")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.agentName, "n", "./", "serf agent name")
 	flag.Parse()
@@ -56,7 +58,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 //Create logfile for client.
 func (handler *niovaKVServerHandler) initLogger() {
 
-	var filename string = handler.logPath + "/" + "niovaServer" + ".log"
+	var filename string = handler.logPath + "/" + handler.logFilename + ".log"
 	log.Info("logfile:", filename)
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
@@ -115,7 +117,7 @@ func (handler *niovaKVServerHandler) startNiovakvpmdbclient() {
 	//Start pumicedb client.
 	handler.nkvClientObj.ClientObj.Start()
 	//Store rncui in nkvclientObj.
-	handler.nkvClientObj.Rncui = uuid.NewV4().String()
+	handler.nkvClientObj.AppUuid = uuid.NewV4().String()
 }
 
 //start the SerfAgentHandler

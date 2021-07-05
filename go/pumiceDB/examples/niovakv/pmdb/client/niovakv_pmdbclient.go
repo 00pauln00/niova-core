@@ -13,7 +13,7 @@ import (
 //Structure definition for client.
 type NiovaKVClient struct {
 	ClientObj  *PumiceDBClient.PmdbClientObj
-	Rncui      string
+	AppUuid      string
 	rncui_lock sync.Mutex
 }
 
@@ -24,7 +24,7 @@ func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 	var errorMsg error
 	//Perform write operation.
 	nco.rncui_lock.Lock()
-	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, numWReq)
+	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, numWReq)
 	numWReq = numWReq + 1
 	nco.rncui_lock.Unlock()
 	err := nco.ClientObj.Write(ReqObj, rncui)
@@ -43,7 +43,7 @@ func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 
 	rop := &niovakvlib.NiovaKV{}
 	nco.rncui_lock.Lock()
-	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.Rncui, numRReq)
+	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, numRReq)
 	numRReq = numRReq + 1
 	nco.rncui_lock.Unlock()
 	err := nco.ClientObj.Read(ReqObj, rncui, rop)
@@ -98,7 +98,7 @@ func (nkvClient *NiovaKVClient) ProcessRequest(reqObj *niovakvlib.NiovaKV) ([]by
 	case "exit":
 		os.Exit(0)
 	default:
-		fmt.Print("\nEnter valid operation....")
+		log.Info("Enter valid operation....")
 	}
 	return value, err
 }
