@@ -51,7 +51,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "./", "log filepath")
 	flag.StringVar(&handler.logFilename, "f", "niovaServer", "log filename")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
-	flag.StringVar(&handler.agentName, "n", "./", "serf agent name")
+	flag.StringVar(&handler.agentName, "n", "Node", "serf agent name")
 	flag.Parse()
 }
 
@@ -143,7 +143,6 @@ func (handler *niovaKVServerHandler) startHTTPServer() {
 	handler.httpHandlerObj.Addr = handler.addr
 	handler.httpHandlerObj.Port = handler.httpPort
 	handler.httpHandlerObj.NKVCliObj = handler.nkvClientObj
-	fmt.Println("HTTP HANDLER OBJECT : ", handler.httpHandlerObj)
 	log.Info("Starting httpd server")
 	err := handler.httpHandlerObj.StartServer()
 	if err != nil {

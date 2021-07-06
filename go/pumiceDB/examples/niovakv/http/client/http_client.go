@@ -13,7 +13,7 @@ import (
 
 func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) error {
 	fmt.Println("Performing Http PUT Request...")
-	var Data bytes.Buffer 
+	var Data bytes.Buffer
 	enc := gob.NewEncoder(&Data)
 
 	err := enc.Encode(reqobj)
@@ -46,13 +46,8 @@ func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
 	err = dec.Decode(&responseObj)
 	if err == nil {
-		if reqobj.InputOps == "write" {
-			log.Info("Response after successful operation:  ", reqobj.InputOps)
-			log.Info("Status of write operation :", responseObj.RespStatus)
-		} else {
-			log.Info("Response after successful operation:  ", reqobj.InputOps)
-			log.Info("Value returned :", string(responseObj.RespValue))
-		}
+		log.Info("Response after successful operation:  ", reqobj.InputOps)
+		log.Info("Status of write operation :", responseObj.RespStatus)
 	}
 	return err
 }
@@ -92,13 +87,8 @@ func ReadRequest(reqobj *niovakvlib.NiovaKV, addr, port string) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
 	err = dec.Decode(&responseObj)
 	if err == nil {
-		if reqobj.InputOps == "write" {
-			log.Info("Response after successful operation:  ", reqobj.InputOps)
-			log.Info("Status of write operation :", responseObj.RespStatus)
-		} else {
-			log.Info("Response after successful operation:  ", reqobj.InputOps)
-			log.Info("Value returned :", string(responseObj.RespValue))
-		}
+		log.Info("Response after successful operation:  ", reqobj.InputOps)
+		log.Info("Value returned :", string(responseObj.RespValue))
 	}
 	return err
 }

@@ -3,17 +3,18 @@ package niovakvpmdbclient
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
-	"niova/go-pumicedb-lib/client"
+	PumiceDBClient "niova/go-pumicedb-lib/client"
 	"niovakv/niovakvlib"
 	"os"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 //Structure definition for client.
 type NiovaKVClient struct {
 	ClientObj  *PumiceDBClient.PmdbClientObj
-	AppUuid      string
+	AppUuid    string
 	rncui_lock sync.Mutex
 }
 
@@ -42,11 +43,12 @@ func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 
 	rop := &niovakvlib.NiovaKV{}
+	rncui := fmt.Sprintf("%s:0:0:0:0", nco.AppUuid)
+	log.Info("rncui is:", rncui)
+	log.Info("ReqObj:", ReqObj)
 	nco.rncui_lock.Lock()
-	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, numRReq)
-	numRReq = numRReq + 1
-	nco.rncui_lock.Unlock()
 	err := nco.ClientObj.Read(ReqObj, rncui, rop)
+	nco.rncui_lock.Unlock()
 	if err != nil {
 		log.Error("Read request failed !!", err)
 	} else {

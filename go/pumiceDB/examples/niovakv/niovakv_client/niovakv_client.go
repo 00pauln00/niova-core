@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"os"
 
 	log "github.com/sirupsen/logrus"
@@ -43,7 +42,7 @@ func initLogger() {
 //Function to get command line parameters while starting of the client.
 func getCmdParams() {
 	flag.StringVar(&config_path, "c", "./", "config file path")
-	flag.StringVar(&logPath, "l", "/tmp", "log filepath")
+	flag.StringVar(&logPath, "l", "./", "log filepath")
 	flag.StringVar(&logFilename, "f", "niovakvClient", "log filename")
 	flag.StringVar(&operation, "o", "NULL", "write/read operation")
 	flag.StringVar(&key, "k", "NULL", "Key")
@@ -96,9 +95,7 @@ func main() {
 	//Do upto 5 times if request failed
 	addr, port := getServerAddr(true)
 	for j := 0; j < 2; j++ {
-		fmt.Println("HTTP addr : ", addr, port)
 		err := doOperation(&reqObj, addr, port)
-		fmt.Println(err)
 		if err == nil {
 			break
 		}

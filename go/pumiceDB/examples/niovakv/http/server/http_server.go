@@ -24,7 +24,6 @@ type HttpServerHandler struct {
 }
 
 func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("New request")
 	var requestobj niovakvlib.NiovaKV
 	switch r.Method {
 	case "GET":
