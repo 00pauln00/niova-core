@@ -183,7 +183,8 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	if readErr == nil {
 		valType = []byte(readResult)
-		log.Info("Input value after read request:", valType)
+		inputVal := string(valType)
+		log.Info("Input value after read request:", inputVal)
 	}
 
 	resultReq := niovakvlib.NiovaKV{
