@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"flag"
+	"fmt"
 	defaultLog "log"
 	"os"
 	"strconv"
@@ -28,7 +29,6 @@ type niovaKVServerHandler struct {
 	raftUUID     string
 	clientUUID   string
 	logPath      string
-	logFilename  string
 	nkvClientObj *niovakvpmdbclient.NiovaKVClient
 
 	//Serf agent
@@ -45,10 +45,13 @@ type niovaKVServerHandler struct {
 
 //Function to get command line parameters while starting of the client.
 func (handler *niovaKVServerHandler) getCmdParams() {
+
+	//Prepare default logpath
+	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
+
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
 	flag.StringVar(&handler.clientUUID, "u", "NULL", "client uuid")
-	flag.StringVar(&handler.logPath, "l", "./", "log filepath")
-	flag.StringVar(&handler.logFilename, "f", "niovaServer", "log filename")
+	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.agentName, "n", "Node", "serf agent name")
 	flag.Parse()
@@ -57,8 +60,17 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 //Create logfile for client.
 func (handler *niovaKVServerHandler) initLogger() {
 
-	var filename string = handler.logPath + "/" + handler.logFilename + ".log"
-	log.Info("logfile:", filename)
+	// Split logpath name.
+	parts := strings.Split(handler.logPath, "/")
+	fname := parts[len(parts)-1]
+	dir := strings.TrimSuffix(handler.logPath, fname)
+
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.MkdirAll(dir, 0700) // Create directory
+	}
+
+	filename := dir + fname
+	fmt.Println("logfile:", filename)
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -111,7 +123,7 @@ func (handler *niovaKVServerHandler) getConfigData() error {
 //start the Niovakvpmdbclient
 func (handler *niovaKVServerHandler) startNiovakvpmdbclient() {
 	//Get client object.
-	log.Info(handler.raftUUID, handler.clientUUID, handler.logPath)
+	fmt.Println(handler.raftUUID, handler.clientUUID, handler.logPath)
 	handler.nkvClientObj = niovakvpmdbclient.GetNiovaKVClientObj(handler.raftUUID, handler.clientUUID, handler.logPath)
 	//Start pumicedb client.
 	handler.nkvClientObj.ClientObj.Start()
@@ -128,6 +140,7 @@ func (handler *niovaKVServerHandler) startSerfAgentHandler() {
 	handler.serfAgentHandlerObj.AgentLogger = defaultLog.Default()
 	handler.serfAgentHandlerObj.RpcAddr = handler.addr
 	handler.serfAgentHandlerObj.RpcPort = handler.agentRPCPort
+	fmt.Println("Serf handler object : ", handler.serfAgentHandlerObj)
 	//Start serf agent
 	_, err := handler.serfAgentHandlerObj.Startup(handler.agentJoinAddrs)
 	if err != nil {
@@ -162,6 +175,7 @@ func (handler *niovaKVServerHandler) getGossipData() {
 			os.Exit(1)
 		}
 		tag["Leader UUID"] = leader.String()
+		fmt.Println(tag)
 		handler.serfAgentHandlerObj.SetTags(tag)
 		time.Sleep(5 * time.Second)
 	}

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -38,11 +39,13 @@ func main() {
 
 	nso := parseArgs()
 
-	//Create log directory if not Exist.
-	makeDirectoryIfNotExists()
+	//If log path is not provided, it will use Default log path.
+	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
+	flag.StringVar(&logDir, "NULL", defaultLog, "log dir")
+	flag.Parse()
 
 	//Create log file.
-	initLogger(nso)
+	initLogger()
 
 	log.Info("Raft UUID: ", nso.raftUuid)
 	log.Info("Peer UUID: ", nso.peerUuid)
@@ -69,36 +72,31 @@ func main() {
 }
 
 func parseArgs() *NiovaKVServer {
+
 	nso := &NiovaKVServer{}
 
 	flag.StringVar(&nso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&nso.peerUuid, "u", "NULL", "peer uuid")
-	flag.StringVar(&logDir, "l", "/tmp/niovaCtlPlane", "log dir")
+	flag.StringVar(&logDir, "l", "NULL", "log dir")
 
 	flag.Parse()
 
 	return nso
 }
 
-/*If log directory is not exist it creates directory.
-  and if dir path is not passed then it will create
-  log file in "/tmp/niovaCtlPlane" path.
-*/
-func makeDirectoryIfNotExists() error {
+//Create logfile for each peer.
+func initLogger() {
 
-	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+	// Split log path
+	parts := strings.Split(logDir, "/")
+	fname := parts[len(parts)-1]
+	dir := strings.TrimSuffix(logDir, fname)
 
-		return os.Mkdir(logDir, os.ModeDir|0755)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.MkdirAll(dir, 0700) // Create directory
 	}
 
-	return nil
-}
-
-//Create logfile for each peer.
-func initLogger(nso *NiovaKVServer) {
-
-	var filename string = logDir + "/" + nso.peerUuid + ".log"
-
+	filename := dir + fname
 	fmt.Println("logfile:", filename)
 
 	//Create the log file if doesn't exist. And append to it if it already exists.
