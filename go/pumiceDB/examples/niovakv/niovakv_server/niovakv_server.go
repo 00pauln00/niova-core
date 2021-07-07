@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"
 	defaultLog "log"
 	"os"
 	"strconv"
@@ -112,7 +111,7 @@ func (handler *niovaKVServerHandler) getConfigData() error {
 //start the Niovakvpmdbclient
 func (handler *niovaKVServerHandler) startNiovakvpmdbclient() {
 	//Get client object.
-	fmt.Println(handler.raftUUID, handler.clientUUID, handler.logPath)
+	log.Info(handler.raftUUID, handler.clientUUID, handler.logPath)
 	handler.nkvClientObj = niovakvpmdbclient.GetNiovaKVClientObj(handler.raftUUID, handler.clientUUID, handler.logPath)
 	//Start pumicedb client.
 	handler.nkvClientObj.ClientObj.Start()
@@ -129,7 +128,6 @@ func (handler *niovaKVServerHandler) startSerfAgentHandler() {
 	handler.serfAgentHandlerObj.AgentLogger = defaultLog.Default()
 	handler.serfAgentHandlerObj.RpcAddr = handler.addr
 	handler.serfAgentHandlerObj.RpcPort = handler.agentRPCPort
-	fmt.Println("Serf handler object : ", handler.serfAgentHandlerObj)
 	//Start serf agent
 	_, err := handler.serfAgentHandlerObj.Startup(handler.agentJoinAddrs)
 	if err != nil {
@@ -164,7 +162,6 @@ func (handler *niovaKVServerHandler) getGossipData() {
 			os.Exit(1)
 		}
 		tag["Leader UUID"] = leader.String()
-		fmt.Println(tag)
 		handler.serfAgentHandlerObj.SetTags(tag)
 		time.Sleep(5 * time.Second)
 	}
