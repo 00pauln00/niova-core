@@ -35,21 +35,22 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		//Perform the read operation on pmdb client
 		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
+		var resp niovakvlib.NiovaKVResponse
 		if err != nil {
 			log.Error("Operation failed: ", err)
+			resp.RespStatus = -1
+			resp.RespValue = []byte(err.Error())
 		} else {
 			log.Info("Result of the operation is:", result)
-			resp := niovakvlib.NiovaKVResponse{
-				RespStatus: 0,
-				RespValue:  result,
-			}
-			var response bytes.Buffer
-			enc := gob.NewEncoder(&response)
-			err = enc.Encode(resp)
-			_, errRes := fmt.Fprintf(w, "%s", response.String())
-			if errRes != nil {
-				log.Error(errRes)
-			}
+			resp.RespStatus = 0
+			resp.RespValue = result
+		}
+		var response bytes.Buffer
+		enc := gob.NewEncoder(&response)
+		err = enc.Encode(resp)
+		_, errRes := fmt.Fprintf(w, "%s", response.String())
+		if errRes != nil {
+			log.Error(errRes)
 		}
 
 	case "PUT":
@@ -64,22 +65,22 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		//Perform the write operation on pmdb client
 		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
+		var resp niovakvlib.NiovaKVResponse
 		if err != nil {
 			log.Error("Operation failed: ", err)
+			resp.RespStatus = -1
+			resp.RespValue = []byte(err.Error())
 		} else {
 			log.Info("Result of the operation is:", result)
-
-			resp := niovakvlib.NiovaKVResponse{
-				RespStatus: 0,
-				RespValue:  result,
-			}
-			var response bytes.Buffer
-			enc := gob.NewEncoder(&response)
-			err = enc.Encode(resp)
-			_, errRes := fmt.Fprintf(w, "%s", response.String())
-			if errRes != nil {
-				log.Error(errRes)
-			}
+			resp.RespStatus = 0
+			resp.RespValue = result
+		}
+		var response bytes.Buffer
+		enc := gob.NewEncoder(&response)
+		err = enc.Encode(resp)
+		_, errRes := fmt.Fprintf(w, "%s", response.String())
+		if errRes != nil {
+			log.Error(errRes)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

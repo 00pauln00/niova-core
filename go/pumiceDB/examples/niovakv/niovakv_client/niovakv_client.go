@@ -1,8 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
+	"io/ioutil"
 	"os"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -16,6 +19,23 @@ var (
 	config_path, operation, key, value, logPath, logFilename string
 	retries                                                  int
 )
+
+type request struct {
+	Opcode    string `json:"Operation"`
+	Key       string `json:"Key"`
+	Value     string `json:"Value"`
+	Sent_to   string `json:Sent_to`
+	Timestamp string `json:"Request_timestamp"`
+}
+type response struct {
+	Status        int    `json:"Status"`
+	ResponseValue string `json:"Response"`
+	Timestamp     string `json:"Response_timestamp"`
+}
+type opData struct {
+	RequestData  request  `json:"Request"`
+	ResponseData response `json:"Response"`
+}
 
 //Create logfile for client.
 func initLogger() {
@@ -80,26 +100,57 @@ func main() {
 	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
 	ClientHandler.Initdata(config_path)
 	var reqObj niovakvlib.NiovaKV
-	var doOperation func(*niovakvlib.NiovaKV, string, string) error
+	var operationObj opData
+	var doOperation func(*niovakvlib.NiovaKV, string, string) (*niovakvlib.NiovaKVResponse, error)
+	operationObj.RequestData = request{
+		Opcode: operation,
+		Key:    key,
+	}
+	reqObj.InputOps = operation
+	reqObj.InputKey = key
 	if operation == "write" {
-		reqObj.InputOps = operation
-		reqObj.InputKey = key
+		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
 		doOperation = httpclient.WriteRequest
 	} else {
-		reqObj.InputOps = operation
-		reqObj.InputKey = key
 		doOperation = httpclient.ReadRequest
 	}
 
-	//Do upto 5 times if request failed
+	//Retry upto 5 times if request failed
 	addr, port := getServerAddr(true)
-	for j := 0; j < 2; j++ {
-		err := doOperation(&reqObj, addr, port)
+	operationObj.RequestData.Sent_to = addr + ":" + port
+	var send_stamp string
+	var recv_stamp string
+	var responseRecvd *niovakvlib.NiovaKVResponse
+	var err error
+	for j := 0; j < 5; j++ {
+		send_stamp = time.Now().String()
+		responseRecvd, err = doOperation(&reqObj, addr, port)
+		recv_stamp = time.Now().String()
 		if err == nil {
 			break
 		}
 		addr, port = getServerAddr(false)
 		log.Error(err)
 	}
+	operationObj.RequestData.Timestamp = send_stamp
+	operationObj.ResponseData = response{
+		Timestamp:     recv_stamp,
+		Status:        responseRecvd.RespStatus,
+		ResponseValue: string(responseRecvd.RespValue),
+	}
+	file, err := json.MarshalIndent(operationObj, "", " ")
+	_ = ioutil.WriteFile("operation.json", file, 0644)
+	/*
+		Following in the json file
+		Request
+			Operation type
+			Key
+			Value
+			Sent_Timestamp
+		Response
+			Status
+			Response
+			Recvd_Timestamp
+	*/
 }
