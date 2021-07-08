@@ -116,16 +116,12 @@ func main() {
 	}
 
 	//Retry upto 5 times if request failed
-<<<<<<< HEAD
 	addr, port, errAddr := getServerAddr(true)
 	if errAddr != nil {
 		log.Error(errAddr)
 		os.Exit(1)
 	}
 
-=======
-	addr, port := getServerAddr(true)
->>>>>>> test commit
 	operationObj.RequestData.Sent_to = addr + ":" + port
 	var send_stamp string
 	var recv_stamp string
@@ -134,10 +130,6 @@ func main() {
 		send_stamp = time.Now().String()
 		responseRecvd, err = doOperation(&reqObj, addr, port)
 		recv_stamp = time.Now().String()
-<<<<<<< HEAD
-
-=======
->>>>>>> test commit
 		if err == nil {
 			break
 		}
