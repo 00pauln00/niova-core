@@ -3,8 +3,10 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"strings"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -15,10 +17,15 @@ import (
 )
 
 var (
-	ClientHandler                                            serfclienthandler.SerfClientHandler
-	config_path, operation, key, value, logPath, logFilename string
-	retries                                                  int
+	ClientHandler                               serfclienthandler.SerfClientHandler
+	config_path, operation, key, value, logPath string
+	retries                                     int
 )
+
+func usage() {
+	fmt.Printf("usage : %s -c <serf configs> -l <log directory> -o <write/read> -k <key> -v <value>\n", os.Args[0])
+	os.Exit(0)
+}
 
 type request struct {
 	Opcode    string `json:"Operation"`
@@ -40,7 +47,18 @@ type opData struct {
 //Create logfile for client.
 func initLogger() {
 
-	var filename string = logPath + "/" + logFilename + ".log"
+	//Split log directory path.
+	parts := strings.Split(logPath, "/")
+	fname := parts[len(parts)-1]
+	dir := strings.TrimSuffix(logPath, fname)
+
+	//Create directory if not exist.
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		os.MkdirAll(dir, 0700) // Create directory
+	}
+
+	filename := dir + fname
+	log.Info("logfile:", filename)
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -63,7 +81,6 @@ func initLogger() {
 func getCmdParams() {
 	flag.StringVar(&config_path, "c", "./", "config file path")
 	flag.StringVar(&logPath, "l", "./", "log filepath")
-	flag.StringVar(&logFilename, "f", "niovakvClient", "log filename")
 	flag.StringVar(&operation, "o", "NULL", "write/read operation")
 	flag.StringVar(&key, "k", "NULL", "Key")
 	flag.StringVar(&value, "v", "NULL", "Value")
@@ -90,6 +107,14 @@ func main() {
 
 	//Get commandline parameters.
 	getCmdParams()
+
+	flag.Usage = usage
+	flag.Parse()
+
+	if flag.NFlag() == 0 {
+		usage()
+		os.Exit(-1)
+	}
 
 	//Create log file.
 	initLogger()
