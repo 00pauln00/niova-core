@@ -29,15 +29,15 @@ var colmfamily = "PMDBTS_CF"
 
 func main() {
 
-	//Print help message.
-	if len(os.Args) == 1 || os.Args[1] == "-help" || os.Args[1] == "-h" {
-		fmt.Println("Positional Arguments: \n		'-r' - RAFT UUID \n		'-u' - PEER UUID")
-		fmt.Println("Optional Arguments: \n		'-l' - Log Dir Path \n		-h, -help")
-		fmt.Println("niovactlserver -r <RAFT UUID> -u <PEER UUID> -l <log directory>")
-		os.Exit(0)
-	}
-
 	nso := parseArgs()
+
+	flag.Usage = usage
+	flag.Parse()
+
+	if flag.NFlag() == 0 {
+		usage()
+		os.Exit(-1)
+	}
 
 	//If log path is not provided, it will use Default log path.
 	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
@@ -71,6 +71,11 @@ func main() {
 	}
 }
 
+func usage() {
+	fmt.Printf("usage : %s -r <RAFT UUID> -u <PEER UUID> -l <log directory>\n", os.Args[0])
+	os.Exit(0)
+}
+
 func parseArgs() *NiovaKVServer {
 
 	nso := &NiovaKVServer{}
@@ -92,8 +97,9 @@ func initLogger() {
 	fname := parts[len(parts)-1]
 	dir := strings.TrimSuffix(logDir, fname)
 
+	// Create directory if not exist.
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0700) // Create directory
+		os.MkdirAll(dir, 0700)
 	}
 
 	filename := dir + fname

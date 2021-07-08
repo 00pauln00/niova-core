@@ -43,6 +43,11 @@ type niovaKVServerHandler struct {
 	httpHandlerObj httpserver.HttpServerHandler
 }
 
+func usage() {
+	fmt.Printf("usage : %s -r <RAFT UUID> -u <CLIENT UUID> -l <log directory> -c <serf configs> -n <node name>\n", os.Args[0])
+	os.Exit(0)
+}
+
 //Function to get command line parameters while starting of the client.
 func (handler *niovaKVServerHandler) getCmdParams() {
 
@@ -53,7 +58,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.clientUUID, "u", "NULL", "client uuid")
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
-	flag.StringVar(&handler.agentName, "n", "Node", "serf agent name")
+	flag.StringVar(&handler.agentName, "n", "NULL", "serf agent name")
 	flag.Parse()
 }
 
@@ -65,14 +70,15 @@ func (handler *niovaKVServerHandler) initLogger() {
 	fname := parts[len(parts)-1]
 	dir := strings.TrimSuffix(handler.logPath, fname)
 
+	// Create directory if not exist.
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0700) // Create directory
+		os.MkdirAll(dir, 0700)
 	}
 
 	filename := dir + fname
 	fmt.Println("logfile:", filename)
 
-	//Create the log file if doesn't exist. And append to it if it already exists.i
+	//Create the log file if doesn't exist. And append to it if it already exists.
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
 	Formatter := new(log.TextFormatter)
 
@@ -116,6 +122,10 @@ func (handler *niovaKVServerHandler) getConfigData() error {
 		} else {
 			handler.agentJoinAddrs = append(handler.agentJoinAddrs, input[1]+":"+input[2])
 		}
+	}
+	if handler.agentPort == "" {
+		log.Error("Agent name not provided or wrong agent name")
+		os.Exit(1)
 	}
 	return nil
 }
@@ -183,9 +193,18 @@ func (handler *niovaKVServerHandler) getGossipData() {
 
 //Main func
 func main() {
+
 	niovaServerObj := niovaKVServerHandler{}
 	//Get commandline paraameters.
 	niovaServerObj.getCmdParams()
+
+	flag.Usage = usage
+	flag.Parse()
+
+	if flag.NFlag() == 0 {
+		usage()
+		os.Exit(-1)
+	}
 
 	//Create log file.
 	niovaServerObj.initLogger()
