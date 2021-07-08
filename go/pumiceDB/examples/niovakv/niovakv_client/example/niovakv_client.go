@@ -128,8 +128,6 @@ func main() {
 		reqObj.InputValue = []byte(value)
 	}
 
-	//Retry upto 5 times if request failed
-
 	addr, port, errAddr := clientapi.GetServerAddr(true, config_path)
 
 	if errAddr != nil {
