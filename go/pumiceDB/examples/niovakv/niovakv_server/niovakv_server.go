@@ -190,14 +190,6 @@ func (handler *niovaKVServerHandler) getGossipData() {
 //Main func
 func main() {
 
-	/*flag.Usage = usage
-	  flag.Parse()
-
-	  if flag.NFlag() == 0 {
-	          usage()
-	          os.Exit(-1)
-	  }*/
-
 	niovaServerObj := niovaKVServerHandler{}
 	//Get commandline paraameters.
 	niovaServerObj.getCmdParams()
