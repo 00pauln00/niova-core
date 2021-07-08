@@ -130,6 +130,7 @@ func main() {
 		send_stamp = time.Now().String()
 		responseRecvd, err = doOperation(&reqObj, addr, port)
 		recv_stamp = time.Now().String()
+
 		if err == nil {
 			break
 		}
