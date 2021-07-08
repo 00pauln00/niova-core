@@ -53,7 +53,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.clientUUID, "u", "NULL", "client uuid")
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
-	flag.StringVar(&handler.agentName, "n", "Node", "serf agent name")
+	flag.StringVar(&handler.agentName, "n", "NULL", "serf agent name")
 	flag.Parse()
 }
 
@@ -116,6 +116,10 @@ func (handler *niovaKVServerHandler) getConfigData() error {
 		} else {
 			handler.agentJoinAddrs = append(handler.agentJoinAddrs, input[1]+":"+input[2])
 		}
+	}
+	if handler.agentPort == "" {
+		log.Error("Agent name not provided or wrong agent name")
+		os.Exit(1)
 	}
 	return nil
 }
