@@ -1,10 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
-	"fmt"
+	"io/ioutil"
 	"os"
-	"strings"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -14,25 +15,32 @@ import (
 )
 
 var (
-	ClientHandler                               serfclienthandler.SerfClientHandler
-	config_path, operation, key, value, logPath string
-	retries                                     int
+	ClientHandler                                            serfclienthandler.SerfClientHandler
+	config_path, operation, key, value, logPath, logFilename string
+	retries                                                  int
 )
+
+type request struct {
+	Opcode    string `json:"Operation"`
+	Key       string `json:"Key"`
+	Value     string `json:"Value"`
+	Sent_to   string `json:Sent_to`
+	Timestamp string `json:"Request_timestamp"`
+}
+type response struct {
+	Status        int    `json:"Status"`
+	ResponseValue string `json:"Response"`
+	Timestamp     string `json:"Response_timestamp"`
+}
+type opData struct {
+	RequestData  request  `json:"Request"`
+	ResponseData response `json:"Response"`
+}
 
 //Create logfile for client.
 func initLogger() {
 
-	// Split logpath
-	parts := strings.Split(logPath, "/")
-	fname := parts[len(parts)-1]
-	dir := strings.TrimSuffix(logPath, fname)
-
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0700) // Create directory
-	}
-
-	filename := dir + fname
-	fmt.Println("logfile:", filename)
+	var filename string = logPath + "/" + logFilename + ".log"
 
 	//Create the log file if doesn't exist. And append to it if it already exists.i
 	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
@@ -53,12 +61,9 @@ func initLogger() {
 
 //Function to get command line parameters while starting of the client.
 func getCmdParams() {
-
-	//If log path is not provided, it will use Default log path.
-	defaultLogPath := "/" + "tmp" + "/" + "niovaKVClient" + ".log"
-
 	flag.StringVar(&config_path, "c", "./", "config file path")
-	flag.StringVar(&logPath, "l", defaultLogPath, "log filepath")
+	flag.StringVar(&logPath, "l", "./", "log filepath")
+	flag.StringVar(&logFilename, "f", "niovakvClient", "log filename")
 	flag.StringVar(&operation, "o", "NULL", "write/read operation")
 	flag.StringVar(&key, "k", "NULL", "Key")
 	flag.StringVar(&value, "v", "NULL", "Value")
@@ -95,26 +100,57 @@ func main() {
 	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
 	ClientHandler.Initdata(config_path)
 	var reqObj niovakvlib.NiovaKV
-	var doOperation func(*niovakvlib.NiovaKV, string, string) error
+	var operationObj opData
+	var doOperation func(*niovakvlib.NiovaKV, string, string) (*niovakvlib.NiovaKVResponse, error)
+	operationObj.RequestData = request{
+		Opcode: operation,
+		Key:    key,
+	}
+	reqObj.InputOps = operation
+	reqObj.InputKey = key
 	if operation == "write" {
-		reqObj.InputOps = operation
-		reqObj.InputKey = key
+		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
 		doOperation = httpclient.WriteRequest
 	} else {
-		reqObj.InputOps = operation
-		reqObj.InputKey = key
 		doOperation = httpclient.ReadRequest
 	}
 
-	//Do upto 5 times if request failed
+	//Retry upto 5 times if request failed
 	addr, port := getServerAddr(true)
-	for j := 0; j < 2; j++ {
-		err := doOperation(&reqObj, addr, port)
+	operationObj.RequestData.Sent_to = addr + ":" + port
+	var send_stamp string
+	var recv_stamp string
+	var responseRecvd *niovakvlib.NiovaKVResponse
+	var err error
+	for j := 0; j < 5; j++ {
+		send_stamp = time.Now().String()
+		responseRecvd, err = doOperation(&reqObj, addr, port)
+		recv_stamp = time.Now().String()
 		if err == nil {
 			break
 		}
 		addr, port = getServerAddr(false)
 		log.Error(err)
 	}
+	operationObj.RequestData.Timestamp = send_stamp
+	operationObj.ResponseData = response{
+		Timestamp:     recv_stamp,
+		Status:        responseRecvd.RespStatus,
+		ResponseValue: string(responseRecvd.RespValue),
+	}
+	file, err := json.MarshalIndent(operationObj, "", " ")
+	_ = ioutil.WriteFile("operation.json", file, 0644)
+	/*
+		Following in the json file
+		Request
+			Operation type
+			Key
+			Value
+			Sent_Timestamp
+		Response
+			Status
+			Response
+			Recvd_Timestamp
+	*/
 }
