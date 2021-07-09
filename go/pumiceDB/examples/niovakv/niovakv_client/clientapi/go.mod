@@ -1,10 +1,10 @@
 module niovakv/clientapi
 
-replace niovakv/serfclienthandler => ../serf/client
+replace niovakv/serfclienthandler => ../../serf/client
 
-replace niovakv/httpclient => ../http/client
+replace niovakv/httpclient => ../../http/client
 
-replace niovakv/niovakvlib => ../lib
+replace niovakv/niovakvlib => ../../lib
 
 go 1.16
 

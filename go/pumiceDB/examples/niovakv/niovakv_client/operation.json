@@ -1,14 +1,14 @@
 {
  "Request": {
   "Operation": "read",
-  "Key": "kkvv",
+  "Key": "api",
   "Value": "",
   "Sent_to": "127.0.0.1:8000",
-  "Request_timestamp": "2021-07-08 10:05:03.134062649 -0400 EDT m=+0.003174595"
+  "Request_timestamp": "2021-07-08 23:13:39.281018351 -0400 EDT m=+0.002404189"
  },
  "Response": {
   "Status": 0,
-  "Response": "val",
-  "Response_timestamp": "2021-07-08 10:05:03.135826545 -0400 EDT m=+0.004938488"
+  "Response": "api_works",
+  "Response_timestamp": "2021-07-08 23:13:39.282274479 -0400 EDT m=+0.003660313"
  }
 }
