@@ -1,0 +1,14 @@
+{
+ "Request": {
+  "Operation": "read",
+  "Key": "dakey",
+  "Value": "",
+  "Sent_to": "127.0.0.1:8000",
+  "Request_timestamp": "2021-07-09 09:50:52.756955385 -0400 EDT m=+0.005275256"
+ },
+ "Response": {
+  "Status": 0,
+  "Response": "davalue",
+  "Response_timestamp": "2021-07-09 09:50:52.759998968 -0400 EDT m=+0.008318768"
+ }
+}
