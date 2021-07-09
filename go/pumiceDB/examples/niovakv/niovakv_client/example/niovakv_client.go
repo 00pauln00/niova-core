@@ -119,23 +119,8 @@ func main() {
 	//collect basic information for read/write
 	reqObj.InputOps = operation
 	reqObj.InputKey = key
-<<<<<<< HEAD
 
 	// operationObj.RequestData.Sent_to = addr + ":" + port
-=======
-	if operation == "write" {
-		operationObj.RequestData.Value = value
-		reqObj.InputValue = []byte(value)
-	}
-
-	addr, port, errAddr := clientapi.GetServerAddr(true, config_path)
-
-	if errAddr != nil {
-		log.Error(errAddr)
-		os.Exit(1)
-	}
-	operationObj.RequestData.Sent_to = addr + ":" + port
->>>>>>> test commit
 	var send_stamp string
 	var recv_stamp string
 	var responseRecvd niovakvlib.NiovaKVResponse
@@ -150,7 +135,6 @@ func main() {
 		send_stamp = time.Now().String()
 		responseRecvd.RespStatus = nkvc.Put()
 		recv_stamp = time.Now().String()
-
 	} else {
 		nkvc := clientapi.NiovakvClient{
 			ReqObj: &reqObj,

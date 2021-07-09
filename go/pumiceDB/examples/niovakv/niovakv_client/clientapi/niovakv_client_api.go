@@ -7,6 +7,7 @@ import (
 
 	"niovakv/httpclient"
 	"niovakv/niovakvlib"
+
 	"niovakv/serfclienthandler"
 )
 
@@ -17,33 +18,35 @@ type NiovakvClient struct {
 }
 
 func (nkvc *NiovakvClient) Put() int {
+	nkvc.ReqObj.InputOps = "write"
 	//Do upto 5 times if request failed
-	responseObj := niovakvlib.NiovaKVResponse{}
+	var responseRecvd *niovakvlib.NiovaKVResponse
 	for j := 0; j < 5; j++ {
 		var err error
-		responseObj, err = httpclient.WriteRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
+		responseRecvd, err = httpclient.WriteRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
 		if err == nil {
 			break
 		}
 		nkvc.Addr, nkvc.Port = GetServerAddr(true)
 		log.Error(err)
 	}
-	return responseObj.RespStatus
+	return responseRecvd.RespStatus
 }
 
 func (nkvc *NiovakvClient) Get() []byte {
+	nkvc.ReqObj.InputOps = "read"
 	//Do upto 5 times if request failed
-	responseObj := niovakvlib.NiovaKVResponse{}
+	var responseRecvd *niovakvlib.NiovaKVResponse
 	for j := 0; j < 5; j++ {
 		var err error
-		responseObj, err = httpclient.ReadRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
+		responseRecvd, err = httpclient.ReadRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
 		if err == nil {
 			break
 		}
 		nkvc.Addr, nkvc.Port = GetServerAddr(true)
 		log.Error(err)
 	}
-	return responseObj.RespValue
+	return responseRecvd.RespValue
 }
 
 func GetServerAddr(refresh bool) (string, string) {
