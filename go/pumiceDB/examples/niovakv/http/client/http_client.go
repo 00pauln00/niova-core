@@ -13,21 +13,19 @@ import (
 func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
 	var Data bytes.Buffer
 	responseObj := niovakvlib.NiovaKVResponse{}
-
 	enc := gob.NewEncoder(&Data)
 	err := enc.Encode(reqobj)
 	if err != nil {
 		log.Error(err)
 		return &responseObj, err
 	}
-
 	connString := "http://" + addr + ":" + port
 	req, err := http.NewRequest(http.MethodPut, connString, bytes.NewBuffer(Data.Bytes()))
 	if err != nil {
 		log.Error(err)
 		return &responseObj, err
 	}
-
+	log.Info("Write request sent for key : ", reqobj.InputKey)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -36,16 +34,26 @@ func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Ni
 		log.Error(err)
 		return &responseObj, err
 	}
-
-	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
-	//Unmarshal the response.
-	// Convert response body to reqobj struct
-	dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
-	err = dec.Decode(&responseObj)
-	if err == nil {
-		log.Info("Response after operation:  ", reqobj.InputOps)
-		log.Info("Status of write operation :", responseObj.RespStatus)
+	/*
+		Check if response if ok,
+		If not, fill the response obj with desired values
+		If so, fill the resp obj with received values
+	*/
+	log.Info("HTTP response status : ", resp.Status)
+	if resp.StatusCode == 503 {
+		//Service not found
+		responseObj.RespStatus = -1
+		responseObj.RespValue = []byte("Server timed out")
+	} else if resp.StatusCode == 202 {
+		//Serviced
+		defer resp.Body.Close()
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		//Unmarshal the response.
+		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
+		err = dec.Decode(&responseObj)
+		if err == nil {
+			log.Info("Status of write operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
+		}
 	}
 	return &responseObj, err
 }
@@ -77,15 +85,21 @@ func ReadRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Nio
 		return &responseObj, err
 	}
 
-	defer resp.Body.Close()
-	bodyBytes, _ := ioutil.ReadAll(resp.Body)
-	//Unmarshal the response.
-	// Convert response body to reqobj struct
-	dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
-	err = dec.Decode(&responseObj)
-	if err == nil {
-		log.Info("Response after operation:  ", reqobj.InputOps)
-		log.Info("Value returned :", string(responseObj.RespValue))
+	log.Info("HTTP response status : ", resp.Status)
+	if resp.StatusCode == 503 {
+		//Service not found
+		responseObj.RespStatus = -1
+		responseObj.RespValue = []byte("Server timed out")
+	} else if resp.StatusCode == 202 {
+		//Serviced
+		defer resp.Body.Close()
+		bodyBytes, _ := ioutil.ReadAll(resp.Body)
+		//Unmarshal the response.
+		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
+		err = dec.Decode(&responseObj)
+		if err == nil {
+			log.Info("Status of write operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
+		}
 	}
 	return &responseObj, err
 }

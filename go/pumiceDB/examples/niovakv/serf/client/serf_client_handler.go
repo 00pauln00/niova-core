@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"math/rand"
 	"os"
-	"sort"
 	"strings"
 
 	"github.com/hashicorp/serf/client"
@@ -74,8 +73,27 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) {
 
 }
 
+/*
+Type : SerfClientHandler
+Method : InitData
+Parameters : configPath string
+Return value : -
+Description : Get configuration data from config file
+*/
 func (Handler *SerfClientHandler) Initdata(configpath string) {
 	Handler.getConfigData(configpath)
+}
+
+func (Handler *SerfClientHandler) connect() (*client.RPCClient, error) {
+	randomIndex := rand.Intn(len(Handler.Agents))
+	randomAgent := Handler.Agents[randomIndex]
+	randomAddr := Handler.AgentData[randomAgent].Addr
+	connector, err := client.NewRPCClient(randomAddr + ":" + Handler.AgentData[randomAgent].Rport)
+	if err != nil {
+		//Delete the node from connection list
+		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
+	}
+	return connector, err
 }
 
 /*
@@ -87,40 +105,33 @@ Description : Gets data from a random agent, persist the agent connection if per
 persistConnection can be used if frequect updates are required.
 */
 func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
-	var randomAddr string
-	var randomAgent string
 	var err error
 
 	//If no connection is persisted
 	if !Handler.connectionExist {
-		flag := 0
-		//Retry with different agent addr till getting members list
-		for {
-			//Choose random addrs
+		//Retry with different agent addr till getting connected
+		for i := 0; i < Handler.Retries; i++ {
 			if len(Handler.Agents) <= 0 {
-				//Custom error for no live agent to communicate
 				return &NoLiveAgents{}
 			}
-			randomIndex := rand.Intn(len(Handler.Agents))
-			randomAgent = Handler.Agents[randomIndex]
-			randomAddr = Handler.AgentData[randomAgent].Addr
-			Handler.agentConnection, err = client.NewRPCClient(randomAddr + ":" + Handler.AgentData[randomAgent].Rport)
+			Handler.agentConnection, err = Handler.connect()
 			if err == nil {
 				Handler.connectionExist = true
 				break
 			}
-			flag += 1
-			//Mark that node as unreachable
-			Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
-			if flag >= Handler.Retries {
-				return &RetryLimitExceded{} //change return as custom error for limit exceeded
-			}
 		}
+	}
+
+	//If no connection is made
+	if !Handler.connectionExist {
+		return &RetryLimitExceded{}
 	}
 
 	//Get member data from connected agent
 	clientMembers, err := Handler.agentConnection.Members()
 	if err != nil {
+		_ = Handler.agentConnection.Close()
+		Handler.connectionExist = false
 		return err
 	}
 
@@ -165,5 +176,4 @@ func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 		//Keep only live members in the list
 		Handler.Agents = append(Handler.Agents, nodeName)
 	}
-	sort.Strings(Handler.Agents)
 }

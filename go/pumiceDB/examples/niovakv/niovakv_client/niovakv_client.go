@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"strings"
 	"time"
@@ -19,12 +20,12 @@ import (
 var (
 	ClientHandler                               serfclienthandler.SerfClientHandler
 	config_path, operation, key, value, logPath string
-	retries                                     int
 )
 
-func usage() {
-	fmt.Printf("usage : %s -c <serf configs> -l <log directory> -o <write/read> -k <key> -v <value>\n", os.Args[0])
-	os.Exit(0)
+type AllNodesDown struct{}
+
+func (m *AllNodesDown) Error() string {
+	return "All Nodes Down"
 }
 
 type request struct {
@@ -42,6 +43,11 @@ type response struct {
 type opData struct {
 	RequestData  request  `json:"Request"`
 	ResponseData response `json:"Response"`
+}
+
+func usage() {
+	fmt.Printf("usage : %s -c <serf configs> -l <log directory> -o <write/read> -k <key> -v <value>\n", os.Args[0])
+	os.Exit(0)
 }
 
 //Create logfile for client.
@@ -88,19 +94,20 @@ func getCmdParams() {
 }
 
 //Get any client addr
-func getServerAddr(refresh bool) (string, string) {
+func getServerAddr(refresh bool) (string, string, error) {
+	var err error
+	//If update data
 	if refresh {
 		ClientHandler.GetData(false)
 	}
 	//Get random addr
 	if len(ClientHandler.Agents) <= 0 {
-		log.Error("All servers are dead")
-		os.Exit(1)
+		log.Error("All nodes down")
+		err = &AllNodesDown{}
 	}
-	//randomIndex := rand.Intn(len(ClientHandler.Agents))
-	randomNode := ClientHandler.Agents[retries%len(ClientHandler.Agents)]
-	retries += 1
-	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"]
+	randomIndex := rand.Intn(len(ClientHandler.Agents))
+	randomNode := ClientHandler.Agents[randomIndex]
+	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"], err
 }
 
 func main() {
@@ -142,7 +149,12 @@ func main() {
 	}
 
 	//Retry upto 5 times if request failed
-	addr, port := getServerAddr(true)
+	addr, port, errAddr := getServerAddr(true)
+	if errAddr != nil {
+		log.Error(errAddr)
+		os.Exit(1)
+	}
+
 	operationObj.RequestData.Sent_to = addr + ":" + port
 	var send_stamp string
 	var recv_stamp string
@@ -155,8 +167,12 @@ func main() {
 		if err == nil {
 			break
 		}
-		addr, port = getServerAddr(false)
 		log.Error(err)
+		addr, port, err = getServerAddr(false)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
 	}
 	operationObj.RequestData.Timestamp = send_stamp
 	operationObj.ResponseData = response{
