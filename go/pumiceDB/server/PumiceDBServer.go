@@ -214,11 +214,7 @@ func PmdbLookupKey(key string, key_len int64,
 	C.rocksdb_readoptions_destroy(ropts)
 
 	if C_value != nil {
-		go_value := CToGoString(C_value)
-
-		go_value_len := CToGoInt64(C_value_len)
-		result = go_value
-		result = go_value[0:go_value_len]
+		result = C.GoStringN(C_value, C.int(C_value_len))
 		lookup_err = nil
 		FreeCMem(C_value)
 	} else {
