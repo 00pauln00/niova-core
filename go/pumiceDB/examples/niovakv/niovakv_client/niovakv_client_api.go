@@ -24,11 +24,16 @@ func (nkvc *NiovakvClient) Put() int {
 	for j := 0; j < 5; j++ {
 		var err error
 		responseRecvd, err = httpclient.WriteRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
+
 		if err == nil {
 			break
 		}
-		nkvc.Addr, nkvc.Port = GetServerAddr(true)
 		log.Error(err)
+		nkvc.Addr, nkvc.Port, err = GetServerAddr(false, "./config")
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
 	}
 	return responseRecvd.RespStatus
 }
@@ -40,18 +45,27 @@ func (nkvc *NiovakvClient) Get() []byte {
 	for j := 0; j < 5; j++ {
 		var err error
 		responseRecvd, err = httpclient.ReadRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
+
 		if err == nil {
 			break
 		}
-		nkvc.Addr, nkvc.Port = GetServerAddr(true)
 		log.Error(err)
+		nkvc.Addr, nkvc.Port, err = GetServerAddr(false, "./config")
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
 	}
 	return responseRecvd.RespValue
 }
 
-func GetServerAddr(refresh bool) (string, string) {
+func GetServerAddr(refresh bool, config_path string) (string, string, error) {
 	ClientHandler := serfclienthandler.SerfClientHandler{}
+	ClientHandler.Retries = 5
+	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
+	ClientHandler.Initdata(config_path)
 	retries := 5
+	var err error
 	if refresh {
 		ClientHandler.GetData(false)
 	}
@@ -63,5 +77,5 @@ func GetServerAddr(refresh bool) (string, string) {
 	//randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[retries%len(ClientHandler.Agents)]
 	retries += 1
-	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"]
+	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"], err
 }

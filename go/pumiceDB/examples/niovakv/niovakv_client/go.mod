@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-module niovakv/niovakv_client
-=======
 module niovakv/clientapi
->>>>>>> changed layout of niovakv_client directory
 
 replace niovakv/serfclienthandler => ../serf/client
 
