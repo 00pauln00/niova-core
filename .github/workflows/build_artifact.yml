@@ -66,17 +66,17 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
-
+      
+    - run: pwd
+    - run: cd ${{ github.workspace }} && pwd
+    - run: cd /home/runner/work/niovad/niovad/holon_log && pwd
+    
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
                              '/home/runner/work/niovad/niovad/holon_log' 5
 
-    - run: pwd
-    - run: cd ${{ github.workspace }} && pwd
-    - run: cd /home/runner/work/niovad/niovad/holon_log && pwd
-    
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
