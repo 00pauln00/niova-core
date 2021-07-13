@@ -138,8 +138,13 @@ func main() {
 	} else {
 		nkvc := clientapi.NiovakvClient{
 			ReqObj: &reqObj,
+<<<<<<< HEAD
 			// Addr:   addr,
 			// Port:   port,
+=======
+			Addr:   addr,
+			Port:   port,
+>>>>>>> rebased and getting niovakv_client to work with api again
 		}
 		nkvc.Start(stop)
 		send_stamp = time.Now().String()
@@ -152,8 +157,11 @@ func main() {
 		Status:        responseRecvd.RespStatus,
 		ResponseValue: string(responseRecvd.RespValue),
 	}
+<<<<<<< HEAD
 
 	stop <- 1
+=======
+>>>>>>> rebased and getting niovakv_client to work with api again
 	file, _ := json.MarshalIndent(operationObj, "", " ")
 	_ = ioutil.WriteFile("operation.json", file, 0644)
 	/*

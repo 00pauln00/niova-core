@@ -25,6 +25,7 @@ func (nkvc *NiovakvClient) Put() int {
 		var err error
 		responseRecvd, err = httpclient.WriteRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 		if err == nil {
 			break
@@ -36,12 +37,22 @@ func (nkvc *NiovakvClient) Put() int {
 			os.Exit(1)
 		}
 =======
+=======
+
+>>>>>>> rebased and getting niovakv_client to work with api again
 		if err == nil {
 			break
 		}
-		nkvc.Addr, nkvc.Port = GetServerAddr(true)
 		log.Error(err)
+<<<<<<< HEAD
 >>>>>>> changed layout of niovakv_client directory
+=======
+		nkvc.Addr, nkvc.Port, err = GetServerAddr(false, "./config")
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+>>>>>>> rebased and getting niovakv_client to work with api again
 	}
 	return responseRecvd.RespStatus
 }
@@ -54,6 +65,7 @@ func (nkvc *NiovakvClient) Get() []byte {
 		var err error
 		responseRecvd, err = httpclient.ReadRequest(nkvc.ReqObj, nkvc.Addr, nkvc.Port)
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 		if err == nil {
 			break
@@ -65,16 +77,27 @@ func (nkvc *NiovakvClient) Get() []byte {
 			os.Exit(1)
 		}
 =======
+=======
+
+>>>>>>> rebased and getting niovakv_client to work with api again
 		if err == nil {
 			break
 		}
-		nkvc.Addr, nkvc.Port = GetServerAddr(true)
 		log.Error(err)
+<<<<<<< HEAD
 >>>>>>> changed layout of niovakv_client directory
+=======
+		nkvc.Addr, nkvc.Port, err = GetServerAddr(false, "./config")
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+>>>>>>> rebased and getting niovakv_client to work with api again
 	}
 	return responseRecvd.RespValue
 }
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 func GetServerAddr(refresh bool, config_path string) (string, string, error) {
 	ClientHandler := serfclienthandler.SerfClientHandler{}
@@ -85,9 +108,19 @@ func GetServerAddr(refresh bool, config_path string) (string, string, error) {
 	var err error
 =======
 func GetServerAddr(refresh bool) (string, string) {
+=======
+func GetServerAddr(refresh bool, config_path string) (string, string, error) {
+>>>>>>> rebased and getting niovakv_client to work with api again
 	ClientHandler := serfclienthandler.SerfClientHandler{}
+	ClientHandler.Retries = 5
+	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
+	ClientHandler.Initdata(config_path)
 	retries := 5
+<<<<<<< HEAD
 >>>>>>> changed layout of niovakv_client directory
+=======
+	var err error
+>>>>>>> rebased and getting niovakv_client to work with api again
 	if refresh {
 		ClientHandler.GetData(false)
 	}
@@ -100,8 +133,12 @@ func GetServerAddr(refresh bool) (string, string) {
 	randomNode := ClientHandler.Agents[retries%len(ClientHandler.Agents)]
 	retries += 1
 <<<<<<< HEAD
+<<<<<<< HEAD
 	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"], err
 =======
 	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"]
 >>>>>>> changed layout of niovakv_client directory
+=======
+	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"], err
+>>>>>>> rebased and getting niovakv_client to work with api again
 }

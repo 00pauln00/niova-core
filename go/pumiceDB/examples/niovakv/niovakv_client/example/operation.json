@@ -2,6 +2,7 @@
  "Request": {
   "Operation": "read",
 <<<<<<< HEAD
+<<<<<<< HEAD
   "Key": "kkvv",
   "Value": "",
   "Sent_to": "127.0.0.1:8000",
@@ -13,14 +14,22 @@
   "Response_timestamp": "2021-07-13 00:06:16.190923438 -0400 EDT m=+0.004876805"
 =======
   "Key": "dakey",
+=======
+  "Key": "kkvv",
+>>>>>>> rebased and getting niovakv_client to work with api again
   "Value": "",
   "Sent_to": "127.0.0.1:8000",
-  "Request_timestamp": "2021-07-09 09:50:52.756955385 -0400 EDT m=+0.005275256"
+  "Request_timestamp": "2021-07-13 00:06:16.189361948 -0400 EDT m=+0.003315385"
  },
  "Response": {
   "Status": 0,
+<<<<<<< HEAD
   "Response": "davalue",
   "Response_timestamp": "2021-07-09 09:50:52.759998968 -0400 EDT m=+0.008318768"
 >>>>>>> changed layout of niovakv_client directory
+=======
+  "Response": "",
+  "Response_timestamp": "2021-07-13 00:06:16.190923438 -0400 EDT m=+0.004876805"
+>>>>>>> rebased and getting niovakv_client to work with api again
  }
 }
