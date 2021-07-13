@@ -73,16 +73,16 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
                              '/home/runner/work/niovad/niovad/holon_log' 5
 
+    - run: pwd
+    - run: cd ${{ github.workspace }} && pwd
+    - run: cd /home/runner/work/niovad/niovad/holon_log && pwd
+    
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$BUILD_NUMBER"
       if: failure()
-
-    - run: pwd
-    - run: cd ${{ github.workspace }} && pwd
-    - run: cd /home/runner/work/niovad/niovad/holon_log && pwd
-    
+      
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:
