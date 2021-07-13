@@ -1,0 +1,14 @@
+{
+ "Request": {
+  "Operation": "read",
+  "Key": "largekey",
+  "Value": "",
+  "Sent_to": "127.0.0.1:8000",
+  "Request_timestamp": "2021-07-13 10:51:59.769188448 -0400 EDT m=+0.003468397"
+ },
+ "Response": {
+  "Status": 0,
+  "Response": "",
+  "Response_timestamp": "2021-07-13 10:51:59.771069562 -0400 EDT m=+0.005349500"
+ }
+}

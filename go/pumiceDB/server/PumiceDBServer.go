@@ -215,9 +215,25 @@ func PmdbLookupKey(key string, key_len int64,
 	C.rocksdb_readoptions_destroy(ropts)
 
 	if C_value != nil {
+<<<<<<< HEAD
 
 		result = C.GoBytes(unsafe.Pointer(C_value), C.int(C_value_len))
 		lookup_err = nil
+=======
+		buffer_value := CToGoString(C_value)
+		buffer_value_len := int64(len(buffer_value))
+
+		return_value_len := CToGoInt64(C_value_len)
+
+		// Compare the buffer length with value length returned by C.rocksdb_get_cf
+		if buffer_value_len < return_value_len {
+			lookup_err = errors.New("Bad value")
+			result = ""
+		} else {
+			result = C.GoStringN(C_value, C.int(C_value_len))
+			lookup_err = nil
+		}
+>>>>>>> added patch 88 from manisha to PumiceDBServer.go. And set up niovakv_client.go with api
 		FreeCMem(C_value)
 	} else {
 		lookup_err = errors.New("Failed to lookup for key")
