@@ -66,7 +66,7 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
-
+    
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -78,12 +78,12 @@ jobs:
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$BUILD_NUMBER"
       if: failure()
-
+      
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:
          name: ${{ steps.prepare_artifact_filename.outputs.ARTIFACT_NAME }}
-         path: ${{ github.workspace }}
+         path: /home/runner/work/niovad/niovad/holon_log
       if: failure()
 
     - name: Build the Docker Image
