@@ -71,6 +71,8 @@ jobs:
     - run: cd ${{ github.workspace }} && pwd
     - run: cd /home/runner/work/niovad/niovad/holon_log && ls -l && pwd
     
+    - run: cd  ${{ github.workspace }}/../../niovad/niovad/holon_log && pwd
+    
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -87,7 +89,7 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
          name: ${{ steps.prepare_artifact_filename.outputs.ARTIFACT_NAME }}
-         path: /home/runner/work/niovad/niovad/holon_log
+         path: ${{ github.workspace }}/../../niovad/niovad/holon_log
       if: failure()
 
     - name: Build the Docker Image
