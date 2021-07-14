@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -29,7 +30,11 @@ var colmfamily = "PMDBTS_CF"
 
 func main() {
 
-	nso := parseArgs()
+	nso, pErr := parseArgs()
+	if pErr != nil {
+		log.Println(pErr)
+		return
+	}
 
 	flag.Usage = usage
 	flag.Parse()
@@ -76,7 +81,9 @@ func usage() {
 	os.Exit(0)
 }
 
-func parseArgs() *NiovaKVServer {
+func parseArgs() (*NiovaKVServer, error) {
+
+	var err error
 
 	nso := &NiovaKVServer{}
 
@@ -85,8 +92,13 @@ func parseArgs() *NiovaKVServer {
 	flag.StringVar(&logDir, "l", "NULL", "log dir")
 
 	flag.Parse()
+	if nso == nil {
+		err = errors.New("Not able to parse the arguments")
+	} else {
+		err = nil
+	}
 
-	return nso
+	return nso, err
 }
 
 //Create logfile for each peer.
