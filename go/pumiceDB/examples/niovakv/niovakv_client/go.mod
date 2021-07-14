@@ -1,16 +1,4 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 module niovakv/clientapi
-=======
-<<<<<<< HEAD
-module niovakv/niovakv_client
-=======
-module niovakv/clientapi
->>>>>>> changed layout of niovakv_client directory
->>>>>>> changed layout of niovakv_client directory
-=======
-module niovakv/clientapi
->>>>>>> rebased and getting niovakv_client to work with api again
 
 replace niovakv/serfclienthandler => ../serf/client
 

@@ -1,43 +1,14 @@
 {
  "Request": {
   "Operation": "read",
-<<<<<<< HEAD
-<<<<<<< HEAD
-<<<<<<< HEAD
-  "Key": "kkvv",
-=======
-  "Key": "iaintneverdone",
->>>>>>> added patch 88 from manisha to PumiceDBServer.go. And set up niovakv_client.go with api
+  "Key": "key.000068",
   "Value": "",
   "Sent_to": "127.0.0.1:8000",
-  "Request_timestamp": "2021-07-13 13:51:05.551771419 -0400 EDT m=+0.003294205"
+  "Request_timestamp": "2021-07-14 13:48:00.694397062 -0400 EDT m=+0.004096812"
  },
  "Response": {
   "Status": 0,
-  "Response": "",
-<<<<<<< HEAD
-  "Response_timestamp": "2021-07-13 00:06:16.190923438 -0400 EDT m=+0.004876805"
-=======
-  "Key": "dakey",
-=======
-  "Key": "kkvv",
->>>>>>> rebased and getting niovakv_client to work with api again
-  "Value": "",
-  "Sent_to": "127.0.0.1:8000",
-  "Request_timestamp": "2021-07-13 00:06:16.189361948 -0400 EDT m=+0.003315385"
- },
- "Response": {
-  "Status": 0,
-<<<<<<< HEAD
-  "Response": "davalue",
-  "Response_timestamp": "2021-07-09 09:50:52.759998968 -0400 EDT m=+0.008318768"
->>>>>>> changed layout of niovakv_client directory
-=======
-  "Response": "",
-  "Response_timestamp": "2021-07-13 00:06:16.190923438 -0400 EDT m=+0.004876805"
->>>>>>> rebased and getting niovakv_client to work with api again
-=======
-  "Response_timestamp": "2021-07-13 13:51:05.553420776 -0400 EDT m=+0.004943560"
->>>>>>> added patch 88 from manisha to PumiceDBServer.go. And set up niovakv_client.go with api
+  "Response": "\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffdS\ufffd\u0014\u0016\ufffd\ufffd/\ufffdSǡ",
+  "Response_timestamp": "2021-07-14 13:48:00.696145935 -0400 EDT m=+0.005845625"
  }
 }
