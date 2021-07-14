@@ -41,6 +41,8 @@ LREG_ROOT_ENTRY_GENERATE(ctlif_root_entry, LREG_USER_TYPE_CTL_INTERFACE);
 typedef void lctli_inotify_thread_t;
 typedef int  lctli_inotify_thread_int_t;
 
+struct epoll_handle;
+
 struct ctl_interface_op
 {
     char            cio_input_name[NAME_MAX + 1];
@@ -61,6 +63,7 @@ struct ctl_interface
     int                     lctli_input_dirfd;
     int                     lctli_output_dirfd;
     size_t                  lctli_op_cnt;
+    struct epoll_handle    *lctli_eph;
     struct lreg_node        lctli_lreg;
     struct thread_ctl       lctli_thr_ctl;
     struct ctl_interface_op lctli_cio[CTL_INTERFACE_COMPLETED_OP_CNT];
@@ -545,6 +548,22 @@ lctli_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+int
+lctli_util_thread_unregister(void)
+{
+    if (numLocalCtlIfs == 0)
+        return -EAGAIN;
+
+    if (numLocalCtlIfs != 1) // we only support on ctl-interface at this time
+        return -ERANGE;
+
+    struct ctl_interface *lctli = &localCtlIf[numLocalCtlIfs - 1];
+    if (lctli->lctli_eph == NULL)
+        return -EINVAL;
+
+    return util_thread_remove_event_src(lctli->lctli_eph);
+}
+
 static init_ctx_t NIOVA_CONSTRUCTOR(LCTLI_SUBSYS_CTOR_PRIORITY)
 lctli_subsystem_init(void)
 {
@@ -573,11 +592,14 @@ lctli_subsystem_init(void)
     FATAL_IF(rc, "lctli_prepare(): %s (path=%s)",
              strerror(-rc), lctli->lctli_path);
 
+    lctli->lctli_eph = NULL;
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
                                        lctli_epoll_mgr_cb, (void *)lctli,
-                                       NULL);
+                                       &lctli->lctli_eph);
 
     FATAL_IF(rc, "util_thread_install_event_src(): %s", strerror(-rc));
+    FATAL_IF((lctli->lctli_eph == NULL),
+             "util_thread_install_event_src(): NULL eph pointer");
 }
 
 /**

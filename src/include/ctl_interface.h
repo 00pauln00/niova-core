@@ -25,4 +25,7 @@ lctli_get_inotify_path(void);
 int
 lctli_init_subdir_rescan(enum lreg_user_types reg_type);
 
+int
+lctli_util_thread_unregister(void);
+
 #endif //_CTL_INTERFACE_

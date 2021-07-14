@@ -569,6 +569,7 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
      * 2 - this thread runs the registry subsys
      * 3 - the parent has yet to be installed and this child is a sub object of
      *     the parent's structure.
+     * 4 - xxx registry runs in single threaded (io-uring) mode
      */
     const bool install_here = (init_ctx() || lreg_thread_ctx() ||
                                (child->lrn_inlined_member &&

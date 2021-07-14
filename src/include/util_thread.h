@@ -27,4 +27,7 @@ util_thread_install_event_src(int fd, int events,
                               epoll_mgr_cb_t ut_cb,
                               void *arg, struct epoll_handle **ret_eph);
 
+int
+util_thread_remove_event_src(struct epoll_handle *eph);
+
 #endif

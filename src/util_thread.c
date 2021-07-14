@@ -38,6 +38,36 @@ util_thread_ctx(void)
 }
 
 int
+util_thread_remove_event_src(struct epoll_handle *eph)
+{
+    if (!eph)
+        return -EINVAL;
+
+    if (!utilThread.ut_started)
+        return -EAGAIN;
+
+    bool found = false;
+
+    pthread_mutex_lock(&utilThreadMutex);
+
+    for (int i = 0; i < utilThreadNumEpollHandles; i++)
+    {
+        if (eph == &utilThreadEpollHandles[i])
+        {
+            found = true;
+            break;
+        }
+    }
+
+    pthread_mutex_unlock(&utilThreadMutex);
+
+    if (!found)
+        return -ENOENT;
+
+    return epoll_handle_del(&utilThread.ut_epm, eph);
+}
+
+int
 util_thread_install_event_src(int fd, int events,
                               epoll_mgr_cb_t ut_cb,
                               void *arg, struct epoll_handle **ret_eph)
