@@ -30,6 +30,20 @@ static struct epoll_handle utilThreadEpollHandles[MAX_UT_EPOLL_HANDLES];
 static size_t utilThreadNumEpollHandles;
 static pthread_mutex_t utilThreadMutex = PTHREAD_MUTEX_INITIALIZER;
 
+int
+util_thread_get_id(pthread_t *id)
+{
+    if (!id)
+        return -EINVAL;
+
+    if (!utilThread.ut_started)
+        return -EAGAIN;
+
+    *id = utilThread.ut_tc.tc_thread_id;
+
+    return 0;
+}
+
 bool
 util_thread_ctx(void)
 {
@@ -162,6 +176,13 @@ util_thread_subsystem_init(void)
     FATAL_IF(rc, "thread_create(): %s", strerror(errno));
 
     thread_ctl_run(&utilThread.ut_tc);
+
+    pthread_t util_thread = 0;
+    rc = util_thread_get_id(&util_thread);
+    FATAL_IF((rc || !util_thread), "util_thread_get_id(): %s", strerror(-rc));
+
+    // Set the registry thread_ctx to the util_thread
+    lreg_set_thread_ctx(util_thread);
 }
 
 static destroy_ctx_t NIOVA_DESTRUCTOR(UTIL_THREAD_SUBSYS_CTOR_PRIORITY)

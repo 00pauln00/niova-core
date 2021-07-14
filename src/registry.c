@@ -24,6 +24,7 @@ static struct lreg_node lRegRootNode;
 static bool lRegInitialized = false;
 static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
 static struct ev_pipe lRegEVP;
+static pthread_t lRegThreadCtx;
 
 const char *lRegSeparatorString = "::";
 
@@ -35,6 +36,8 @@ struct lreg_node_lookup_handle
 
 #define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lRegMutex)
 #define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lRegMutex)
+
+
 
 /**
  * lreg_root_node_get - returns the root node of the local registry.
@@ -742,10 +745,16 @@ lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
     return 0;
 }
 
+void
+lreg_set_thread_ctx(pthread_t pthread_id)
+{
+    lRegThreadCtx = pthread_id;
+}
+
 bool
 lreg_thread_ctx(void)
 {
-    return (lRegInitialized && util_thread_ctx()) ? true : false;
+    return (lRegInitialized && pthread_self() == lRegThreadCtx) ? true : false;
 }
 
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
@@ -770,6 +779,11 @@ lreg_subsystem_init(void)
     FATAL_IF((rc), "util_thread_install_event_src(): %s", strerror(-rc));
 
     lRegInitialized = true;
+
+    /* NOTE:  util_thread_subsytem_init() calls lreg_set_thread_ctx().  This
+     *        is due to the constructor startup order which prioritizes
+     *        registry initialization.
+     */
 
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 }

@@ -986,6 +986,9 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
     return -ENOENT;
 }
 
+void
+lreg_set_thread_ctx(pthread_t pthread_id);
+
 bool
 lreg_thread_ctx(void);
 

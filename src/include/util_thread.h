@@ -19,6 +19,9 @@ typedef void util_thread_ctx_ctli_t;
 typedef int  util_thread_ctx_ctli_int_t;
 typedef char util_thread_ctx_ctli_char_t;
 
+int
+util_thread_get_id(pthread_t *id);
+
 bool
 util_thread_ctx(void);
 
