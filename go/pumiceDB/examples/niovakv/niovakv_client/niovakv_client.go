@@ -143,9 +143,9 @@ func main() {
 	if operation == "write" {
 		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
-		doOperation = httpclient.WriteRequest
+		doOperation = httpclient.PutRequest
 	} else {
-		doOperation = httpclient.ReadRequest
+		doOperation = httpclient.GetRequest
 	}
 
 	//Retry upto 5 times if request failed
@@ -180,7 +180,7 @@ func main() {
 		Status:        responseRecvd.RespStatus,
 		ResponseValue: string(responseRecvd.RespValue),
 	}
-	file, err := json.MarshalIndent(operationObj, "", " ")
+	file, _ := json.MarshalIndent(operationObj, "", " ")
 	_ = ioutil.WriteFile("operation.json", file, 0644)
 	/*
 		Following in the json file

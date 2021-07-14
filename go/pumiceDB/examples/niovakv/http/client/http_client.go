@@ -10,7 +10,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
 	var Data bytes.Buffer
 	responseObj := niovakvlib.NiovaKVResponse{}
 	enc := gob.NewEncoder(&Data)
@@ -44,7 +44,7 @@ func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Ni
 		//Service not found
 		responseObj.RespStatus = -1
 		responseObj.RespValue = []byte("Server timed out")
-	} else if resp.StatusCode == 202 {
+	} else {
 		//Serviced
 		defer resp.Body.Close()
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
@@ -58,7 +58,7 @@ func WriteRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Ni
 	return &responseObj, err
 }
 
-func ReadRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
 	var request bytes.Buffer
 	responseObj := niovakvlib.NiovaKVResponse{}
 
@@ -90,7 +90,7 @@ func ReadRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Nio
 		//Service not found
 		responseObj.RespStatus = -1
 		responseObj.RespValue = []byte("Server timed out")
-	} else if resp.StatusCode == 202 {
+	} else {
 		//Serviced
 		defer resp.Body.Close()
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
@@ -98,7 +98,7 @@ func ReadRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Nio
 		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
 		err = dec.Decode(&responseObj)
 		if err == nil {
-			log.Info("Status of write operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
+			log.Info("Status of read operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
 		}
 	}
 	return &responseObj, err
