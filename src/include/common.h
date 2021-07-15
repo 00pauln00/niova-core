@@ -67,6 +67,9 @@
 #define WORD_ALIGN_MEMBER(memb) \
     __attribute__((aligned(8))) memb
 
+#define ALIGN_MEMBER_TO_STRUCT(type, memb)    \
+    __attribute__ ((aligned(__alignof__(struct type)))) memb
+
 #define COMPILE_TIME_ASSERT(cond) \
     ((void)sizeof(char[1 - 2*!(cond)]))
 
