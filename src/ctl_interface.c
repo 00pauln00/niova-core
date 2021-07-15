@@ -155,7 +155,7 @@ lctli_process_request(struct ctl_interface *lctli,
     lctli_store_completed_op(lctli, cch, rc);
 }
 
-static util_thread_ctx_t
+static void
 lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
                                        char *buf, const ssize_t len)
 {
@@ -182,6 +182,18 @@ lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
             lctli_process_request(lctli, &cch);
         }
     }
+}
+
+void
+lctli_inotify_parse_buffer(char *buf, size_t len, void *arg)
+{
+    struct ctl_interface *lctli =
+        (struct ctl_interface *)(arg ? arg : &localCtlIf[LCTLI_DEFAULT_IDX]);
+
+    if (lctli != &localCtlIf[LCTLI_DEFAULT_IDX])
+        return;
+
+    lctli_inotify_thread_poll_parse_buffer(lctli, buf, len);
 }
 
 static util_thread_ctx_t

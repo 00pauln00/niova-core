@@ -28,4 +28,7 @@ lctli_init_subdir_rescan(enum lreg_user_types reg_type);
 int
 lctli_util_thread_unregister(void);
 
+void
+lctli_inotify_parse_buffer(char *buf, size_t len, void *arg);
+
 #endif //_CTL_INTERFACE_
