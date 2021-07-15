@@ -196,23 +196,27 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		int64(keyLen), colmfamily)
 
 	var valType []byte
+	var replySize int64
+	var copyErr error
 
 	if readErr == nil {
 		valType = []byte(readResult)
 		inputVal := string(valType)
 		log.Info("Input value after read request:", inputVal)
-	}
 
-	resultReq := niovakvlib.NiovaKV{
-		InputKey:   reqStruct.InputKey,
-		InputValue: valType,
-	}
+		resultReq := niovakvlib.NiovaKV{
+			InputKey:   reqStruct.InputKey,
+			InputValue: valType,
+		}
 
-	//Copy the encoded result in replyBuffer
-	replySize, copyErr := nso.pso.CopyDataToBuffer(resultReq, replyBuf)
-	if copyErr != nil {
-		log.Error("Failed to Copy result in the buffer: %s", copyErr)
-		return -1
+		//Copy the encoded result in replyBuffer
+		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq, replyBuf)
+		if copyErr != nil {
+			log.Error("Failed to Copy result in the buffer: %s", copyErr)
+			return -1
+		}
+	} else {
+		log.Error(readErr)
 	}
 
 	log.Info("Reply size: ", replySize)

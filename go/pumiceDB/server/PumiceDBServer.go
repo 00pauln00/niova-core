@@ -7,7 +7,8 @@ import (
 	"reflect"
 	"strconv"
 	"unsafe"
-	"log"
+
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -259,8 +260,12 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 	cf_handle := C.PmdbCfHandleLookup(cf)
 
 	//Calling pmdb library function to write Key-Value.
-	C.PmdbWriteKV(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, unsafe.Pointer(cf_handle))
+	rc := C.PmdbWriteKV(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, unsafe.Pointer(cf_handle))
 
+	go_rc := int(rc)
+	if go_rc != 0 {
+		log.Error("PmdbWriteKV failed with error: ", go_rc)
+	}
 	//Free C memory
 	FreeCMem(cf)
 	FreeCMem(C_key)
