@@ -228,6 +228,7 @@ func PmdbLookupKey(key string, key_len int64,
 		// Compare the buffer length with value length returned by C.rocksdb_get_cf
 		if buffer_value_len < return_value_len {
 			lookup_err = errors.New("Bad value")
+			log.Error("buffer value len: ", buffer_value_len, "return value len: ", return_value_len)
 			result = ""
 		} else {
 			result = C.GoStringN(C_value, C.int(C_value_len))
