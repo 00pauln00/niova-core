@@ -33,7 +33,6 @@ LREG_ROOT_ENTRY_GENERATE(ctlif_root_entry, LREG_USER_TYPE_CTL_INTERFACE);
 
 #define INOTIFY_POLLING_MSEC 1000
 #define INOTIFY_MAX_POLL_FDS 1
-#define INOTIFY_BUFFER_SIZE 4096
 
 #define LCTLI_MAX 1
 #define LCTLI_DEFAULT_IDX 0
@@ -109,6 +108,12 @@ const char *
 lctli_get_inotify_path(void)
 {
     return localCtlIf[LCTLI_DEFAULT_IDX].lctli_path;
+}
+
+int
+lctli_get_inotify_fd(void)
+{
+    return localCtlIf[LCTLI_DEFAULT_IDX].lctli_inotify_fd;
 }
 
 static struct ctl_interface *
