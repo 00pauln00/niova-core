@@ -219,13 +219,18 @@ struct {                                 \
     RB_FOREACH(x, _RT_##name, &(head)->rt_head)
 
 #define RT_FOREACH_SAFE_LOCKED(x, name, head, y) \
-    RB_FOREACH(x, _RT_##name, &(head)->rt_head)
+    RB_FOREACH_SAFE(x, _RT_##name, &(head)->rt_head)
 
 #define RT_FOREACH_REVERSE_LOCKED(x, name, head) \
     RB_FOREACH_REVERSE(x, _RT_##name, &(head)->rt_head)
 
 #define RT_FOREACH_REVERSE_SAFE_LOCKED(x, name, head, y) \
-    RB_FOREACH_REVERSE(x, _RT_##name, &(head)->rt_head, y)
+    RB_FOREACH_REVERSE_SAFE(x, _RT_##name, &(head)->rt_head, y)
+
+#define RT_FOREACH_SERIALIZED              RT_FOREACH_LOCKED
+#define RT_FOREACH_SAFE_SERIALIZED         RT_FOREACH_SAFE_LOCKED
+#define RT_FOREACH_REVERSE_SERIALIZED      RT_FOREACH_REVERSE_LOCKED
+#define RT_FOREACH_REVERSE_SAFE_SERIALIZED RT_FOREACH_REVERSE_SAFE_LOCKED
 
 #define RT_EMPTY(head) RB_EMPTY(&(head)->rt_head)
 #define RT_INIT(head) RB_INIT(&(head)->rt_head)
