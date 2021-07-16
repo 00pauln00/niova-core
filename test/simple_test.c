@@ -66,9 +66,9 @@ main(void)
     STDOUT_MSG("sizeof(struct sb_header_persistent) = %zd",
                sizeof(sbp));
 
-    struct vblkdev_metaroot_header mrh;
+    struct vdev_metaroot_header mrh;
 
-    STDOUT_MSG("sizeof(struct vblkdev_metaroot_header) = %zd",
+    STDOUT_MSG("sizeof(struct vdev_metaroot_header) = %zd",
                sizeof(mrh));
 
     struct generic_metablock_header_persistent gmh;

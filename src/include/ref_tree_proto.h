@@ -14,6 +14,14 @@
 
 #define REF_TREE_PROTOTYPE RB_PROTOTYPE
 
+#define REF_TREE_LOCK(head)                                             \
+    if (!(head)->bypass_mutex) pthread_mutex_lock(&(head)->mutex);
+
+#define REF_TREE_UNLOCK(head)                                           \
+    if (!(head)->bypass_mutex) pthread_mutex_unlock(&(head)->mutex);
+
+#define REF_TREE_SET_MUTEX_BYPASS(head) (head)->bypass_mutex = 1
+
 /**
  * REF_TREE_INIT_ALT_REF - "ALT_REF" means "use an alternate initial ref cnt".
  */
@@ -38,14 +46,15 @@
         pthread_mutex_destroy(&(rt)->mutex); \
     }
 
-#define REF_TREE_HEAD(name, type)                          \
-    RB_HEAD(_RT_##name, type);                             \
-    struct name                                            \
-    {                                                      \
-        struct _RT_##name rt_head;                         \
-        unsigned int    initial_ref_cnt;                   \
-        pthread_mutex_t mutex;                             \
-        void           *arg;                               \
+#define REF_TREE_HEAD(name, type)                                      \
+    RB_HEAD(_RT_##name, type);                                         \
+    struct name                                                        \
+    {                                                                  \
+        struct _RT_##name rt_head;                                     \
+        unsigned int    initial_ref_cnt:31;                            \
+        unsigned int    bypass_mutex:1;                                \
+        pthread_mutex_t mutex;                                         \
+        void           *arg;                                           \
         struct type  *(*constructor)(const struct type *, void *);     \
         int           (*destructor)(struct type *, void *);            \
     }
@@ -71,9 +80,9 @@
 // Take a ref on an already held element
 #define REF_TREE_REF_GET_ELEM(head, elm, field)     \
     do {                                            \
-        pthread_mutex_lock(&(head)->mutex);         \
+        REF_TREE_LOCK(head);                        \
         REF_TREE_REF_GET_ELEM_LOCKED(elm, field);   \
-        pthread_mutex_unlock(&(head)->mutex);       \
+        REF_TREE_UNLOCK(head);       \
     } while (0)
 
 #define REF_TREE_REF_PUT_ELEM_LOCKED(elm, field)    \
@@ -82,14 +91,25 @@
         (elm)->field.rte_ref_cnt--;                 \
     } while (0)
 
+#define REF_TREE_REF_GET_ELEM_SERIALIZED REF_TREE_REF_GET_ELEM_LOCKED
+#define REF_TREE_REF_PUT_ELEM_SERIALIZED REF_TREE_REF_PUT_ELEM_LOCKED
+
+// Must not release final reference
+#define REF_TREE_REF_PUT_ELEM(elm, field)               \
+    do {                                                \
+        REF_TREE_LOCK(head);                            \
+        REF_TREE_REF_PUT_ELEM_LOCKED(elm, field);       \
+        REF_TREE_UNLOCK(head);                          \
+    } while (0)
+
 #define REF_TREE_MIN(name, head, type, field)         \
     ({                                                \
         struct type *elm = NULL;                      \
-        pthread_mutex_lock(&(head)->mutex);           \
+        REF_TREE_LOCK(head);                          \
         elm = RB_MIN(_RT_##name, &(head)->rt_head);   \
         if (elm)                                      \
             REF_TREE_REF_GET_ELEM_LOCKED(elm, field); \
-        pthread_mutex_unlock(&(head)->mutex);         \
+        REF_TREE_UNLOCK(head);                        \
         elm;                                          \
     })
 
@@ -106,7 +126,7 @@ struct {                                 \
     name##_PUT(struct name *head, struct type *elm)                  \
     {                                                                \
         bool removed = false;                                        \
-        pthread_mutex_lock(&head->mutex);                            \
+        REF_TREE_LOCK(head);                            \
         REF_TREE_REF_PUT_ELEM_LOCKED(elm, field);                    \
         if (!elm->field.rte_ref_cnt)                                 \
         {                                                            \
@@ -115,7 +135,7 @@ struct {                                 \
             removed = true;                                          \
             NIOVA_ASSERT(elm == old);                                \
         }                                                            \
-        pthread_mutex_unlock(&head->mutex);                          \
+        REF_TREE_UNLOCK(head);                          \
         if (removed)                                                 \
             head->destructor(elm, head->arg);                        \
         return removed;                                              \
@@ -140,9 +160,9 @@ struct {                                 \
         if (ret)                                                     \
             *ret = 0;                                                \
                                                                      \
-        pthread_mutex_lock(&head->mutex);                            \
+        REF_TREE_LOCK(head);                            \
         struct type *elm = name##_LOOKUP_LOCKED(head, lookup_elm);   \
-        pthread_mutex_unlock(&head->mutex);                          \
+        REF_TREE_UNLOCK(head);                          \
                                                                      \
         if (elm || !add)                                             \
         {                                                            \
@@ -161,7 +181,7 @@ struct {                                 \
             return NULL;                                             \
         }                                                            \
                                                                      \
-        pthread_mutex_lock(&head->mutex);                            \
+        REF_TREE_LOCK(head);                                         \
                                                                      \
         struct type *already = RB_INSERT(_RT_##name, &head->rt_head, \
                                          elm);                       \
@@ -170,7 +190,7 @@ struct {                                 \
         else                                                         \
             elm->field.rte_ref_cnt = head->initial_ref_cnt;          \
                                                                      \
-        pthread_mutex_unlock(&head->mutex);                          \
+        REF_TREE_UNLOCK(head);                                       \
                                                                      \
         if (already)                                                 \
         {                                                            \
