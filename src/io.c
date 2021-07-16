@@ -263,6 +263,27 @@ niova_io_copy_to_iovs(const char *src, size_t src_size,
     return bytes_copied;
 }
 
+ssize_t
+niova_io_copy_from_iovs(char *dest, const size_t dest_size,
+                        const struct iovec *src_iovs, const size_t num_iovs)
+{
+    if (!dest || !dest_size || !src_iovs || !num_iovs)
+        return -EINVAL;
+
+    ssize_t cnt = 0;
+
+    for (size_t i = 0; i < num_iovs; i++)
+    {
+        if ((cnt + src_iovs[i].iov_len) > dest_size)
+            return -ENOSPC;
+
+        memcpy(&dest[cnt], src_iovs[i].iov_base, src_iovs[i].iov_len);
+        cnt += src_iovs[i].iov_len;
+    }
+
+    return cnt;
+}
+
 int
 niova_io_fd_nonblocking(int fd)
 {

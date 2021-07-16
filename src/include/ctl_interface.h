@@ -11,6 +11,8 @@
 #include "ctor.h"
 #include "registry.h"
 
+#define INOTIFY_BUFFER_SIZE 4096
+
 struct ctli_cmd_handle
 {
     enum lreg_user_types ctlih_reg_user_type;
@@ -19,10 +21,19 @@ struct ctli_cmd_handle
     const char          *ctlih_input_file_name;
 };
 
+int
+lctli_get_inotify_fd(void);
+
 const char *
 lctli_get_inotify_path(void);
 
 int
 lctli_init_subdir_rescan(enum lreg_user_types reg_type);
+
+int
+lctli_util_thread_unregister(void);
+
+void
+lctli_inotify_parse_buffer(char *buf, size_t len, void *arg);
 
 #endif //_CTL_INTERFACE_

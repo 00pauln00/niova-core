@@ -101,8 +101,12 @@ niova_io_iovs_map_consumed2(const struct iovec *src, struct iovec *dest,
 
 ssize_t
 niova_io_copy_to_iovs(const char *src, size_t src_size,
-                      struct iovec *dest_iovs,
+                      struct iovec *src_iovs,
                       const size_t num_iovs);
+
+ssize_t
+niova_io_copy_from_iovs(char *dest, const size_t dest_size,
+                        const struct iovec *dest_iovs, const size_t num_iovs);
 
 int
 niova_io_fd_nonblocking(int fd);

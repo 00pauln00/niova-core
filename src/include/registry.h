@@ -113,6 +113,7 @@ enum lreg_user_types
     LREG_USER_TYPE_UNIT_TEST3,
     LREG_USER_TYPE_UNIT_TEST4,
     LREG_USER_TYPE_NISD_IOMGR,
+    LREG_USER_TYPE_NISD,
     LREG_USER_TYPE_ANY,
     LREG_USER_TYPE_HISTOGRAM = LREG_USER_TYPE_HISTOGRAM0,
     LREG_USER_TYPE_HISTOGRAM__MIN = LREG_USER_TYPE_HISTOGRAM0,
@@ -984,6 +985,9 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
 
     return -ENOENT;
 }
+
+void
+lreg_set_thread_ctx(pthread_t pthread_id);
 
 bool
 lreg_thread_ctx(void);

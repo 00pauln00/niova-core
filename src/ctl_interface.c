@@ -33,13 +33,14 @@ LREG_ROOT_ENTRY_GENERATE(ctlif_root_entry, LREG_USER_TYPE_CTL_INTERFACE);
 
 #define INOTIFY_POLLING_MSEC 1000
 #define INOTIFY_MAX_POLL_FDS 1
-#define INOTIFY_BUFFER_SIZE 4096
 
 #define LCTLI_MAX 1
 #define LCTLI_DEFAULT_IDX 0
 
 typedef void lctli_inotify_thread_t;
 typedef int  lctli_inotify_thread_int_t;
+
+struct epoll_handle;
 
 struct ctl_interface_op
 {
@@ -61,6 +62,7 @@ struct ctl_interface
     int                     lctli_input_dirfd;
     int                     lctli_output_dirfd;
     size_t                  lctli_op_cnt;
+    struct epoll_handle    *lctli_eph;
     struct lreg_node        lctli_lreg;
     struct thread_ctl       lctli_thr_ctl;
     struct ctl_interface_op lctli_cio[CTL_INTERFACE_COMPLETED_OP_CNT];
@@ -108,6 +110,12 @@ lctli_get_inotify_path(void)
     return localCtlIf[LCTLI_DEFAULT_IDX].lctli_path;
 }
 
+int
+lctli_get_inotify_fd(void)
+{
+    return localCtlIf[LCTLI_DEFAULT_IDX].lctli_inotify_fd;
+}
+
 static struct ctl_interface *
 lctli_new(void)
 {
@@ -152,7 +160,7 @@ lctli_process_request(struct ctl_interface *lctli,
     lctli_store_completed_op(lctli, cch, rc);
 }
 
-static util_thread_ctx_t
+static void
 lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
                                        char *buf, const ssize_t len)
 {
@@ -179,6 +187,18 @@ lctli_inotify_thread_poll_parse_buffer(struct ctl_interface *lctli,
             lctli_process_request(lctli, &cch);
         }
     }
+}
+
+void
+lctli_inotify_parse_buffer(char *buf, size_t len, void *arg)
+{
+    struct ctl_interface *lctli =
+        (struct ctl_interface *)(arg ? arg : &localCtlIf[LCTLI_DEFAULT_IDX]);
+
+    if (lctli != &localCtlIf[LCTLI_DEFAULT_IDX])
+        return;
+
+    lctli_inotify_thread_poll_parse_buffer(lctli, buf, len);
 }
 
 static util_thread_ctx_t
@@ -545,6 +565,22 @@ lctli_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+int
+lctli_util_thread_unregister(void)
+{
+    if (numLocalCtlIfs == 0)
+        return -EAGAIN;
+
+    if (numLocalCtlIfs != 1) // we only support on ctl-interface at this time
+        return -ERANGE;
+
+    struct ctl_interface *lctli = &localCtlIf[numLocalCtlIfs - 1];
+    if (lctli->lctli_eph == NULL)
+        return -EINVAL;
+
+    return util_thread_remove_event_src(lctli->lctli_eph);
+}
+
 static init_ctx_t NIOVA_CONSTRUCTOR(LCTLI_SUBSYS_CTOR_PRIORITY)
 lctli_subsystem_init(void)
 {
@@ -573,11 +609,14 @@ lctli_subsystem_init(void)
     FATAL_IF(rc, "lctli_prepare(): %s (path=%s)",
              strerror(-rc), lctli->lctli_path);
 
+    lctli->lctli_eph = NULL;
     rc = util_thread_install_event_src(lctli->lctli_inotify_fd, EPOLLIN,
                                        lctli_epoll_mgr_cb, (void *)lctli,
-                                       NULL);
+                                       &lctli->lctli_eph);
 
     FATAL_IF(rc, "util_thread_install_event_src(): %s", strerror(-rc));
+    FATAL_IF((lctli->lctli_eph == NULL),
+             "util_thread_install_event_src(): NULL eph pointer");
 }
 
 /**

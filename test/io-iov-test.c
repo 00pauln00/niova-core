@@ -9,6 +9,31 @@
 #include "io.h"
 
 static int
+iov_test_copy_from_iovs(void)
+{
+#define TC_NIOVS 4
+    struct iovec iovs[TC_NIOVS] =
+        {
+          [0].iov_len = 1, [0].iov_base = (void *)"a",
+          [1].iov_len = 2, [1].iov_base = (void *)"bc",
+          [2].iov_len = 3, [2].iov_base = (void *)"def",
+          [3].iov_len = 4, [3].iov_base = (void *)"ghij",
+        };
+
+    char dest[10] = {0};
+
+    ssize_t rc = niova_io_copy_from_iovs(dest, 10, iovs, TC_NIOVS);
+    NIOVA_ASSERT(rc == 10);
+
+    for (int i = 0; i < 10; i++)
+    {
+        NIOVA_ASSERT(dest[i] == 'a' + i);
+    }
+
+    return 0;
+}
+
+static int
 iov_test_basic(void)
 {
     struct iovec iov = {0};
@@ -242,6 +267,7 @@ main(void)
     NIOVA_ASSERT(!iov_test());
     NIOVA_ASSERT(!iov_test_num_to_meet_size());
     NIOVA_ASSERT(!iov_test_map_consumed());
+    NIOVA_ASSERT(!iov_test_copy_from_iovs());
 
     return 0;
 }

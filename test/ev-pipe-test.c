@@ -159,5 +159,31 @@ main(void)
         free(item_sets[i].items);
     }
 
-    return 0;
+    rc = util_thread_remove_event_src(epollHandle);
+    if (!rc)
+    {
+        int rc_ebadf = util_thread_remove_event_src(epollHandle);
+        if (rc_ebadf != -EBADF)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "util_thread_remove_event_src(): %s",
+                           strerror(-rc_ebadf));
+            return -EINVAL;
+        }
+    }
+
+    pthread_t reg_thr;
+    rc = util_thread_get_id(&reg_thr);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "util_thread_get_id(): %s",
+                       strerror(-rc));
+        return rc;
+    }
+
+    NIOVA_ASSERT(!lreg_thread_ctx());
+
+    lreg_set_thread_ctx(pthread_self());
+    NIOVA_ASSERT(lreg_thread_ctx());
+
+    return rc;
 }
