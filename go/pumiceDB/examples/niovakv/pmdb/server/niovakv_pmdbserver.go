@@ -169,7 +169,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	var copyErr error
 
 	if readErr == nil {
-		valType = []byte(readResult)
+		valType = readResult
 		inputVal := string(valType)
 		log.Info("Input value after read request:", inputVal)
 
