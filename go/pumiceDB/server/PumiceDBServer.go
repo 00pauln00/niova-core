@@ -70,9 +70,8 @@ func CToGoInt64(cvalue C.size_t) int64 {
 }
 
 /* Type cast C char * to Go string */
-func CToGoString(cstring *C.char) string {
-	return C.GoString(cstring)
-}
+func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
+	return C.GoBytes(unsafe.Pointer(C_value), C_value_len)
 
 /*
  The following goApply and goRead functions are the exported
@@ -187,11 +186,11 @@ func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 
 // search a key in RocksDB
 func PmdbLookupKey(key string, key_len int64,
-	go_cf string) (string, error) {
+	go_cf string) ([]byte, error) {
 
 	var goerr string
 	var C_value_len C.size_t
-	var result string
+	var result []byte
 	var lookup_err error
 
 	err := GoToCString(goerr)
@@ -215,23 +214,15 @@ func PmdbLookupKey(key string, key_len int64,
 
 	if C_value != nil {
 
-		buffer_value := CToGoString(C_value)
-		buffer_value_len := int64(len(buffer_value))
+		buffer_value := CToGoBytes(C_value, C.int(C_value_len))
 
-		return_value_len := CToGoInt64(C_value_len)
+		log.Debug("C_value: ", C_value, " \nbuffer_value: ", buffer_value)
 
-		// Compare the buffer length with value length returned by C.rocksdb_get_cf
-		if buffer_value_len < return_value_len {
-			lookup_err = errors.New("Bad value")
-			result = ""
-		} else {
-			result = C.GoStringN(C_value, C.int(C_value_len))
-			lookup_err = nil
-		}
+		result = C.GoBytes(unsafe.Pointer(C_value), C.int(C_value_len))
+		lookup_err = nil
 		FreeCMem(C_value)
 	} else {
 		lookup_err = errors.New("Failed to lookup for key")
-		result = ""
 	}
 
 	//Free C memory
@@ -244,7 +235,7 @@ func PmdbLookupKey(key string, key_len int64,
 
 // Public method of PmdbLookupKey
 func (*PmdbServerObject) LookupKey(key string, key_len int64,
-	go_cf string) (string, error) {
+	go_cf string) ([]byte, error) {
 	return PmdbLookupKey(key, key_len, go_cf)
 }
 
@@ -285,7 +276,7 @@ func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) (string, error) {
+	key_len int64, gocolfamily string) ([]byte, error) {
 
 	go_value, err := PmdbLookupKey(key, key_len, gocolfamily)
 
@@ -295,7 +286,7 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 
 // Public method of PmdbReadKV
 func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) (string, error) {
+	key_len int64, gocolfamily string) ([]byte, error) {
 
 	return PmdbReadKV(app_id, key, key_len, gocolfamily)
 }
