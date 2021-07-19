@@ -126,8 +126,9 @@ struct {                                 \
     name##_PUT(struct name *head, struct type *elm)                  \
     {                                                                \
         bool removed = false;                                        \
-        REF_TREE_LOCK(head);                            \
-        REF_TREE_REF_PUT_ELEM_LOCKED(elm, field);                    \
+        REF_TREE_LOCK(head);                                         \
+        elm->field.rte_ref_cnt--;                                    \
+        NIOVA_ASSERT(elm->field.rte_ref_cnt >= 0);                   \
         if (!elm->field.rte_ref_cnt)                                 \
         {                                                            \
             struct type *old =                                       \
