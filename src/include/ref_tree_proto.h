@@ -87,8 +87,8 @@
 
 #define REF_TREE_REF_PUT_ELEM_LOCKED(elm, field)    \
     do {                                            \
-        NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0); \
         (elm)->field.rte_ref_cnt--;                 \
+        NIOVA_ASSERT((elm)->field.rte_ref_cnt > 0); \
     } while (0)
 
 #define REF_TREE_REF_GET_ELEM_SERIALIZED REF_TREE_REF_GET_ELEM_LOCKED
