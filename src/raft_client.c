@@ -982,13 +982,18 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
+    SIMPLE_LOG_MSG(LL_NOTIFY, "Iterate over the pending requests");
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
     {
         if (sa->rcsa_rh.rcrh_cancel ||     // already being canceled
             sa->rcsa_rh.rcrh_sendq ||      // the list entry is already in use
             sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
+        {
+            SIMPLE_LOG_MSG(LL_NOTIFY, "rcrh_cancel: %d, rcrh_sendq: %d, rcrh_initializing: %d",
+                                    sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq, sa->rcsa_rh.rcrh_initializing);
             continue;
+        }
 
         const long long queued_ms =
             timespec_2_msec(&now) -
@@ -997,6 +1002,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
             FAULT_INJECT(async_raft_client_request_expire))
         {
+            SIMPLE_LOG_MSG(LL_NOTIFY, "delete expired requests");
             // Detect and stash expired requests
             STAILQ_INSERT_HEAD(&expiredq, sa, rcsa_lentry);
 
