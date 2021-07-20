@@ -17,9 +17,13 @@ typedef uint64_t bitmap_word_t;
 #define NB_NUM_WORDS(nbits)  (NB_MAP_WORD_IDX(nbits) +                  \
                               ((nbits % NB_WORD_TYPE_SZ_BITS) ? 1 : 0))
 
+#define NB_NUM_WORDS_MAX  \
+    ((1ULL << (sizeof(unsigned int) * NBBY)) / NB_WORD_TYPE_SZ_BITS)
+
 struct niova_bitmap
 {
-    size_t         nb_nwords;
+    unsigned int   nb_nwords;
+    unsigned int   nb_alloc_hint;
     bitmap_word_t *nb_map;
 };
 
@@ -29,6 +33,9 @@ niova_bitmap_attach(struct niova_bitmap *nb, bitmap_word_t *map,
 {
     if (!nb || !map || !nwords)
         return -EINVAL;
+
+    if (nb->nb_nwords >= NB_NUM_WORDS_MAX)
+        return -E2BIG;
 
     nb->nb_nwords = nwords;
     nb->nb_map = map;
@@ -41,6 +48,9 @@ niova_bitmap_init(struct niova_bitmap *nb)
 {
     if (!nb || !nb->nb_map || !nb->nb_nwords)
         return -EINVAL;
+
+    if (nb->nb_nwords >= NB_NUM_WORDS_MAX)
+        return -E2BIG;
 
     memset(nb->nb_map, 0, nb->nb_nwords * NB_WORD_TYPE_SZ);
 
@@ -229,15 +239,20 @@ niova_bitmap_lowest_free_bit_assign(struct niova_bitmap *nb, unsigned int *idx)
     if (!nb || !idx)
         return -EINVAL;
 
+    const unsigned int start_idx =
+        nb->nb_nwords > nb->nb_alloc_hint ? nb->nb_alloc_hint : 0;
+
     unsigned int nw = nb->nb_nwords;
 
     for (unsigned int i = 0; i < nw; i++)
     {
-        if (nb->nb_map[i] != NB_WORD_ANY)
-        {
-            uint64_t x = lowest_bit_set_and_return(&nb->nb_map[i]);
+        unsigned int sii = (start_idx + i) % nw;
 
-            *idx = ((i * NB_WORD_TYPE_SZ_BITS) +
+        if (nb->nb_map[sii] != NB_WORD_ANY)
+        {
+            uint64_t x = lowest_bit_set_and_return(&nb->nb_map[sii]);
+
+            *idx = ((sii * NB_WORD_TYPE_SZ_BITS) +
                     (highest_set_bit_pos_from_val(x) - 1));
 
             return 0;

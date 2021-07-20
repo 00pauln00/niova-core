@@ -286,6 +286,42 @@ niova_bitmap_bulk_unset_test(void)
     FATAL_IF(rc, "niova_bitmap_inuse() returns non-zero (rc=%d)", rc);
 }
 
+static void
+niova_bitmap_size_test(void)
+{
+    bitmap_word_t x_map[1];
+    struct niova_bitmap x = {.nb_nwords = NB_NUM_WORDS_MAX, .nb_map = x_map};
+
+    NIOVA_ASSERT(niova_bitmap_init(&x) == -E2BIG);
+}
+
+static void
+niova_bitmap_alloc_hint_test(void)
+{
+#define BHAT_NWORDS 64
+
+    bitmap_word_t x_map[BHAT_NWORDS];
+
+    struct niova_bitmap x =
+        {.nb_nwords = BHAT_NWORDS, .nb_map = x_map,
+         .nb_alloc_hint = BHAT_NWORDS - 1};
+
+    NIOVA_ASSERT(!niova_bitmap_init(&x));
+
+    unsigned int idx = 0;
+
+    int rc = niova_bitmap_lowest_free_bit_assign(&x, &idx);
+    FATAL_IF((rc || idx != ((BHAT_NWORDS - 1) * NB_WORD_TYPE_SZ_BITS)),
+             "idx=%u rc=%d", idx, rc);
+
+    /* This should be overridden by niova_bitmap_lowest_free_bit_assign()
+     * since it overflows the bitmap.
+     */
+    x.nb_alloc_hint = BHAT_NWORDS;
+    rc = niova_bitmap_lowest_free_bit_assign(&x, &idx);
+    FATAL_IF((rc || idx != 0), "idx=%u rc=%d", idx, rc);
+}
+
 int
 main(void)
 {
@@ -296,6 +332,9 @@ main(void)
     NIOVA_ASSERT(NB_NUM_WORDS(1023) == 16);
     NIOVA_ASSERT(NB_NUM_WORDS(1024) == 16);
     NIOVA_ASSERT(NB_NUM_WORDS(1025) == 17);
+
+    niova_bitmap_size_test();
+    niova_bitmap_alloc_hint_test();
 
     niova_bitmap_tests(1UL);
     niova_bitmap_tests(7UL);
