@@ -72,6 +72,7 @@ func CToGoInt64(cvalue C.size_t) int64 {
 /* Type cast C char * to Go string */
 func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 	return C.GoBytes(unsafe.Pointer(C_value), C_value_len)
+}
 
 /*
  The following goApply and goRead functions are the exported
@@ -216,7 +217,7 @@ func PmdbLookupKey(key string, key_len int64,
 
 		buffer_value := CToGoBytes(C_value, C.int(C_value_len))
 
-		log.Debug("C_value: ", C_value, " \nbuffer_value: ", buffer_value)
+		log.Print("C_value: ", C_value, " \nbuffer_value: ", buffer_value)
 
 		result = C.GoBytes(unsafe.Pointer(C_value), C.int(C_value_len))
 		lookup_err = nil
