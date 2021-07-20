@@ -1,14 +1,14 @@
 {
  "Request": {
-  "Operation": "read",
-  "Key": "key.000068",
-  "Value": "",
-  "Sent_to": "127.0.0.1:8000",
-  "Request_timestamp": "2021-07-14 13:48:00.694397062 -0400 EDT m=+0.004096812"
+  "Operation": "write",
+  "Key": "kkvv",
+  "Value": "val",
+  "Sent_to": "",
+  "Request_timestamp": "2021-07-19 14:11:27.055966318 -0400 EDT m=+0.003850618"
  },
  "Response": {
   "Status": 0,
-  "Response": "\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffda\u0005\ufffd\ufffdS\ufffd\u0014\u0016\ufffd\ufffd/\ufffdSǡ",
-  "Response_timestamp": "2021-07-14 13:48:00.696145935 -0400 EDT m=+0.005845625"
+  "Response": "",
+  "Response_timestamp": "2021-07-19 14:11:27.163041648 -0400 EDT m=+0.110925982"
  }
 }

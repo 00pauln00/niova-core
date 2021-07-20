@@ -3,28 +3,28 @@ package PumiceDBServer
 import (
 	"errors"
 	"fmt"
+	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
-
-	/*
-	   #cgo LDFLAGS: -lniova -lniova_raft -lniova_pumice -lrocksdb
-	   #include <raft/pumice_db.h>
-	   #include <rocksdb/c.h>
-	   #include <raft/raft_net.h>
-	   #include <raft/pumice_db_client.h>
-	   extern void applyCgo(const struct raft_net_client_user_id *, const void *,
-	                        size_t, void *, void *);
-	   extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
-	                       size_t, void *, size_t, void *);
-	*/
-
-	gopointer "github.com/mattn/go-pointer"
 )
 
+/*
+#cgo LDFLAGS: -lniova -lniova_raft -lniova_pumice -lrocksdb
+#include <raft/pumice_db.h>
+#include <rocksdb/c.h>
+#include <raft/raft_net.h>
+#include <raft/pumice_db_client.h>
+extern void applyCgo(const struct raft_net_client_user_id *, const void *,
+                     size_t, void *, void *);
+extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
+                    size_t, void *, size_t, void *);
+*/
 import "C"
+
+import gopointer "github.com/mattn/go-pointer"
 
 type PmdbServerAPI interface {
 	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer)
