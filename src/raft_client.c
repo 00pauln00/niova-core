@@ -982,7 +982,6 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "Iterate over the pending requests");
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
     {
@@ -1002,10 +1001,10 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
             FAULT_INJECT(async_raft_client_request_expire))
         {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "delete expired requests");
             // Detect and stash expired requests
             STAILQ_INSERT_HEAD(&expiredq, sa, rcsa_lentry);
 
+            SIMPLE_LOG_MSG(LL_NOTIFY, "Request expired!");
             // Take ref to protect against concurrent cancel operations
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
