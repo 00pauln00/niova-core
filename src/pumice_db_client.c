@@ -279,10 +279,7 @@ pmdb_check_and_set_default_timeout(pmdb_request_opts_t *pmdb_req_opt)
 {
     if (pmdb_req_opt->pro_timeout.tv_sec == 0 &&
         pmdb_req_opt->pro_timeout.tv_nsec == 0)
-    {
-        struct timespec timeout = {pmdb_get_default_request_timeout(), 0};
-        CONST_OVERRIDE(struct timespec, pmdb_req_opt->pro_timeout, timeout);
-    }
+        pmdb_req_opt->pro_timeout.tv_sec = pmdb_get_default_request_timeout();
 }
 
 static int

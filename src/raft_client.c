@@ -1022,7 +1022,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
 
         DBG_RAFT_CLIENT_SUB_APP(
-            LL_WARN, sa,
+            LL_DEBUG, sa,
             "qms=%lld timeoms=%llu user-arg:tag=%p:%lu",
             queued_ms, timespec_2_msec(&sa->rcsa_rh.rcrh_timeout),
             sa->rcsa_rh.rcrh_arg, sa->rcsa_rh.rcrh_rpc_request.rcrm_user_tag);
@@ -1033,7 +1033,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             // Detect and stash expired requests
             STAILQ_INSERT_HEAD(&expiredq, sa, rcsa_lentry);
 
-            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "expired");
+            DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "expired");
 
             // Take ref to protect against concurrent cancel operations
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
@@ -1041,7 +1041,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         else if (leader_viable &&  // non-expired requests are queued for send
                  queued_ms > raftClientRetryTimeoutMS)
         {
-            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "re-queued");
+            DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
 
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
