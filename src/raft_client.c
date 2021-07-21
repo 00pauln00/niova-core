@@ -1718,14 +1718,15 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
     if (!sender_csn)
         return;
 
-    DBG_RAFT_CLIENT_RPC_SOCK(
-        (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG),
-        rcrm, from, "%s: type: %u",
-        rcrm->rcrm_sys_error
+    if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
+        DBG_RAFT_CLIENT_RPC_SOCK(
+            (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG),
+            rcrm, from, "%s: type: %u",
+            rcrm->rcrm_sys_error
             // Xxx rcrm_sys_error should replaced here with rcrm_raft_error
             ? raft_net_client_rpc_sys_error_2_string(rcrm->rcrm_sys_error)
             : "",
-        rcrm->rcrm_type
+            rcrm->rcrm_type
     );
 
     raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
