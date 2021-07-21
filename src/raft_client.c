@@ -987,6 +987,18 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
     {
+        if (sa->rcsa_rh.rcrh_cancel ||     // already being canceled
+            sa->rcsa_rh.rcrh_sendq ||      // the list entry is already in use
+            sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
+        {
+            DBG_RAFT_CLIENT_SUB_APP(
+                LL_WARN, sa,
+                "bypassing msg - cancel: %d, sendq: %d, initializing: %d",
+                sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq,
+                sa->rcsa_rh.rcrh_initializing);
+            continue;
+        }
+
         const long long queued_ms =
             timespec_2_msec(&now) -
             timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
@@ -997,31 +1009,29 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             queued_ms, timespec_2_msec(&sa->rcsa_rh.rcrh_timeout),
             sa->rcsa_rh.rcrh_arg, sa->rcsa_rh.rcrh_rpc_request.rcrm_user_tag);
 
-        if (sa->rcsa_rh.rcrh_cancel ||     // already being canceled
-            sa->rcsa_rh.rcrh_sendq ||      // the list entry is already in use
-            sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
-        {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "rcrh_cancel: %d, rcrh_sendq: %d, rcrh_initializing: %d",
-                                    sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq, sa->rcsa_rh.rcrh_initializing);
-            continue;
-        }
-
         if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
             FAULT_INJECT(async_raft_client_request_expire))
         {
             // Detect and stash expired requests
             STAILQ_INSERT_HEAD(&expiredq, sa, rcsa_lentry);
 
-            SIMPLE_LOG_MSG(LL_NOTIFY, "Request expired!");
+            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "expired");
+
             // Take ref to protect against concurrent cancel operations
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
         else if (leader_viable &&  // non-expired requests are queued for send
                  queued_ms > raftClientRetryTimeoutMS)
         {
+            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "re-queued");
+
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;
+        }
+        else
+        {
+            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "noop");
         }
     }
 

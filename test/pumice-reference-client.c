@@ -927,7 +927,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         break;
     }
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "rc=%d", rc);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "rc=%d tag=%lu", rc, preq->preq_last_tag);
 
     if (!use_async_requests)
     {
