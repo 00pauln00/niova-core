@@ -12,7 +12,7 @@ buffer_test(void)
 {
     NIOVA_ASSERT(buffer_page_size() == 0);
 
-    struct buffer_set bs;
+    struct buffer_set bs = {0};
 
     int rc = buffer_set_init(NULL, 0, 0, false);
     NIOVA_ASSERT(rc == -EINVAL);
