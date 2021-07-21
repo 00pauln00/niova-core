@@ -1011,13 +1011,10 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         else if (leader_viable &&  // non-expired requests are queued for send
                  queued_ms > raftClientRetryTimeoutMS)
         {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "queue requests for send!");
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;
         }
-        else
-            SIMPLE_LOG_MSG(LL_NOTIFY, "Do nothing!");
     }
 
     RCI_UNLOCK(rci);
