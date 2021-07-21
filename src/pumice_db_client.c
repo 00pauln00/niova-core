@@ -123,6 +123,7 @@ pmdb_client_request_cb(void *arg, ssize_t status, void *reply_buff)
 
     struct pmdb_client_request *pcreq = (struct pmdb_client_request *)arg;
 
+    SIMPLE_LOG_MSG(LL_NOTIFY, "Client request complete, status: %ld", status);
     if (status > 0) // status represents reply data size
     {
         const struct pmdb_msg *reply = &pcreq->pcreq_msg_reply;
