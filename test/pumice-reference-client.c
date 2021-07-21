@@ -876,7 +876,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     // Copy the pending seqno in the preq object stat.
     preq->preq_obj_stat.sequence_num = preq->preq_pmdb_seqno;
 
-    pmdb_request_opts_t pmdb_req;
+    pmdb_request_opts_t pmdb_req = {0};
 
     switch (preq->preq_op)
     {
