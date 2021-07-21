@@ -302,6 +302,8 @@ struct raft_client_instance
     struct lreg_node                       rci_lreg;
     struct raft_client_sub_app_req_history rci_recent_ops[
         RAFT_CLIENT_RECENT_OP_TYPE_MAX];
+//    struct raft_client_sub_app             rci_pending_ops[
+//        RAFT_CLIENT_MAX_SUB_APP_INSTANCES];
 };
 
 #define RCI_2_MUTEX(rci) &(rci)->rci_sub_apps.mutex
@@ -1028,10 +1030,6 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;
-        }
-        else
-        {
-            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "noop");
         }
     }
 
