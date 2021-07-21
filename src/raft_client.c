@@ -982,7 +982,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
-    SIMPLE_LOG_MSG(LL_WARN, "entering lock");
+    SIMPLE_LOG_MSG(LL_TRACE, "entering lock");
 
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
@@ -1027,7 +1027,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     RCI_UNLOCK(rci);
 
-    SIMPLE_LOG_MSG(LL_WARN, "exit lock");
+    SIMPLE_LOG_MSG(LL_TRACE, "exit lock");
 
     if (cnt) // Signal that a request has been queued.
         RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_EVP_CLIENT);
