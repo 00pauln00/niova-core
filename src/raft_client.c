@@ -2087,6 +2087,7 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME, //
     RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS, // unsigned
+    RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS,     // unsigned
     RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE,        // string
     RAFT_CLIENT_SUB_APP_REQ__MAX,
@@ -2102,6 +2103,8 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
 
     else if (lv->lrv_value_idx_in >= RAFT_CLIENT_SUB_APP_REQ__MAX)
         return -ERANGE;
+
+    struct timespec now = {0};
 
     switch (op)
     {
@@ -2140,13 +2143,25 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             break;
         case RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS:
             if (sa->rcsa_rh.rcrh_pending_op_cache)
-                lreg_value_fill_unsigned(
-                    lv, "timeout-ms",
-                    timespec_2_msec(&sa->rcsa_rh.rcrh_timeout));
+            {
+                niova_realtime_coarse_clock(&now);
+                lreg_value_fill_signed(
+                    lv, "remaining-time-ms",
+                    (int64_t)(timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) -
+                              (timespec_2_msec(&now) -
+                               timespec_2_msec(&sa->rcsa_rh.rcrh_submitted))));
+            }
             else
+            {
                 lreg_value_fill_unsigned(
                     lv, "completion-time-ms",
                     sa->rcsa_rh.rcrh_completion_latency_ms);
+            }
+            break;
+        case RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS:
+            lreg_value_fill_unsigned(
+                lv, "timeout-ms",
+                timespec_2_msec(&sa->rcsa_rh.rcrh_timeout));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS:
             lreg_value_fill_unsigned(lv, "attempts",
@@ -2158,6 +2173,8 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             break;
         case RAFT_CLIENT_SUB_APP_REQ_ERROR:
             lreg_value_fill_string(lv, "status",
+                                   sa->rcsa_rh.rcrh_pending_op_cache ?
+                                   "Pending" :
                                    strerror(-sa->rcsa_rh.rcrh_error));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE:
