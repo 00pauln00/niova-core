@@ -156,6 +156,7 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
     pmdb_req->pro_get_buffer = get_buffer;
     pmdb_req->pro_get_buffer_size = get_buffer_size;
     pmdb_req->pro_timeout.tv_sec = timeout_sec;
+    pmdb_req->pro_timeout.tv_nsec = 0;
 }
 
 #endif
