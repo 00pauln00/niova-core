@@ -982,9 +982,21 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
+    SIMPLE_LOG_MSG(LL_WARN, "entering lock");
+
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
     {
+        const long long queued_ms =
+            timespec_2_msec(&now) -
+            timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
+
+        DBG_RAFT_CLIENT_SUB_APP(
+            LL_WARN, sa,
+            "qms=%lld timeoms=%llu user-arg:tag=%p:%lu",
+            queued_ms, timespec_2_msec(&sa->rcsa_rh.rcrh_timeout),
+            sa->rcsa_rh.rcrh_arg, sa->rcsa_rh.rcrh_rpc_request.rcrm_user_tag);
+
         if (sa->rcsa_rh.rcrh_cancel ||     // already being canceled
             sa->rcsa_rh.rcrh_sendq ||      // the list entry is already in use
             sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
@@ -993,10 +1005,6 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                                     sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq, sa->rcsa_rh.rcrh_initializing);
             continue;
         }
-
-        const long long queued_ms =
-            timespec_2_msec(&now) -
-            timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
 
         if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
             FAULT_INJECT(async_raft_client_request_expire))
@@ -1018,6 +1026,8 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     }
 
     RCI_UNLOCK(rci);
+
+    SIMPLE_LOG_MSG(LL_WARN, "exit lock");
 
     if (cnt) // Signal that a request has been queued.
         RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_EVP_CLIENT);
@@ -1280,9 +1290,11 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
 
     RCI_UNLOCK(rci);
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "%s:%d canceled=%s (err=%d)",
+    DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa,
+                            "%s:%d canceled=%s (err=%d) user-arg:tag=%p:%lu",
                             func, lineno, rc == -ECANCELED ? "yes" : "no",
-                            error);
+                            error, rcrh->rcrh_arg,
+                            rcrh->rcrh_rpc_request.rcrm_user_tag);
 
     if (rc == -ECANCELED)
         raft_client_sub_app_done(rci, sa, func, lineno, wakeup, error);

@@ -43,6 +43,23 @@ struct pmdb_client_request
 #endif
 };
 
+#define DBG_PMDB_CLIENT_REQ(log_level, pcr, fmt, ...)                   \
+do {                                                                    \
+    char uuid_str[UUID_STR_LEN];                                        \
+    struct raft_net_client_user_id rncuid = {0};                        \
+    uuid_unparse(RAFT_NET_CLIENT_USER_ID_2_UUID(&rncuid, 0, 0), uuid_str); \
+    rncuid.rncui_key = (pcr)->pcreq_obj_id;                             \
+    LOG_MSG(                                                            \
+        log_level, "pcr@%p "RAFT_NET_CLIENT_USER_ID_FMT                 \
+        " op=%s tag=%lu timeo=%lu:%lu sz-rq:rp=%zu:%zu "fmt,            \
+        pcr,                                                            \
+        RAFT_NET_CLIENT_USER_ID_FMT_ARGS(&rncuid, uuid_str, 0),         \
+        pmdp_op_2_string((pcr)->pcreq_op), (pcr)->pcreq_tag,            \
+        (pcr)->pcreq_timeout.tv_sec, (pcr)->pcreq_timeout.tv_nsec,      \
+        (pcr)->pcreq_user_request_size, (pcr)->pcreq_user_reply_size,   \
+        ##__VA_ARGS__);                                                 \
+} while (0)
+
 static void
 pmdb_client_completion_fill_pmdb_stat(struct pmdb_client_request *pcreq,
                                       ssize_t status, void *reply_buff)
@@ -87,6 +104,9 @@ pmdb_client_request_lookup_completion(struct pmdb_client_request *pcreq,
         pmdb_client_completion_fill_pmdb_stat(pcreq, ret_status, NULL);
     }
 
+    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "pcreq_user_cb=%p status=%zd",
+                        pcreq->pcreq_user_cb, status);
+
     /* This function may be called from blocking request context as well.
      * In that case, there will be no user cb.
      */
@@ -102,6 +122,9 @@ pmdb_client_request_rw_completion(struct pmdb_client_request *pcreq,
                            pcreq->pcreq_op == pmdb_op_read));
 
     pmdb_client_completion_fill_pmdb_stat(pcreq, status, reply_buff);
+
+    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "pcreq_user_cb=%p status=%zd",
+                        pcreq->pcreq_user_cb, status);
 
     if (pcreq->pcreq_user_cb)
         pcreq->pcreq_user_cb(pcreq->pcreq_user_arg, status);
@@ -123,7 +146,8 @@ pmdb_client_request_cb(void *arg, ssize_t status, void *reply_buff)
 
     struct pmdb_client_request *pcreq = (struct pmdb_client_request *)arg;
 
-    SIMPLE_LOG_MSG(LL_NOTIFY, "Client request complete, status: %ld", status);
+    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "status=%zd", status);
+
     if (status > 0) // status represents reply data size
     {
         const struct pmdb_msg *reply = &pcreq->pcreq_msg_reply;
@@ -244,6 +268,8 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
     pcreq->pcreq_timeout = ts;
     pcreq->pcreq_user_cb = user_cb;
     pcreq->pcreq_user_arg = user_arg;
+
+    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "");
 
     return pcreq;
 }
@@ -558,7 +584,7 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
 
     pmdb_t pmdb = NULL;
 
-	SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbClientStart");
+    SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbClientStart");
     int rc = raft_client_init(raft_uuid_str, raft_client_uuid_str,
                               pmdb_obj_id_cb, &pmdb,
                               RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP);
