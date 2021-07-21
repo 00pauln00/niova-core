@@ -3940,7 +3940,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     int rc = raft_server_may_accept_client_request(ri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message, rc=%d", rc);
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message, rc=%d: msg-type=%u", rc, rcm->rcrm_type);
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
         goto out;
     }
