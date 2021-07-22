@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
+	"errors"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 
@@ -40,8 +40,12 @@ type niovaKVServerHandler struct {
 
 	//Http
 	httpPort       string
+	limit          string
 	httpHandlerObj httpserver.HttpServerHandler
 }
+
+
+
 
 func usage() {
 	fmt.Printf("usage : %s -r <RAFT UUID> -u <CLIENT UUID> -l <log directory> -c <serf configs> -n <node name>\n", os.Args[0])
@@ -50,20 +54,19 @@ func usage() {
 
 //Function to get command line parameters while starting of the client.
 func (handler *niovaKVServerHandler) getCmdParams() {
-
 	//Prepare default logpath
 	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
-
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
 	flag.StringVar(&handler.clientUUID, "u", "NULL", "client uuid")
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.agentName, "n", "NULL", "serf agent name")
+	flag.StringVar(&handler.limit, "e", "10", "No of concurrent request")
 	flag.Parse()
 }
 
 //Create logfile for client.
-func (handler *niovaKVServerHandler) initLogger() {
+func (handler *niovaKVServerHandler) initLogger() error{
 
 	// Split logpath name.
 	parts := strings.Split(handler.logPath, "/")
@@ -93,6 +96,7 @@ func (handler *niovaKVServerHandler) initLogger() {
 	} else {
 		log.SetOutput(f)
 	}
+	return err
 }
 
 /*
@@ -124,24 +128,26 @@ func (handler *niovaKVServerHandler) getConfigData() error {
 		}
 	}
 	if handler.agentPort == "" {
-		log.Error("Agent name not provided or wrong agent name")
-		os.Exit(1)
+		return errors.New("Agent name not matching or not provided")
 	}
 	return nil
 }
 
 //start the Niovakvpmdbclient
-func (handler *niovaKVServerHandler) startNiovakvpmdbclient() {
+func (handler *niovaKVServerHandler) startNiovakvpmdbclient() error{
+	var err error
 	//Get client object.
 	handler.nkvClientObj = niovakvpmdbclient.GetNiovaKVClientObj(handler.raftUUID, handler.clientUUID, handler.logPath)
 	//Start pumicedb client.
 	handler.nkvClientObj.ClientObj.Start()
 	//Store rncui in nkvclientObj.
 	handler.nkvClientObj.AppUuid = uuid.NewV4().String()
+	return err
+
 }
 
 //start the SerfAgentHandler
-func (handler *niovaKVServerHandler) startSerfAgentHandler() {
+func (handler *niovaKVServerHandler) startSerfAgentHandler() error{
 	handler.serfAgentHandlerObj = serfagenthandler.SerfAgentHandler{}
 	handler.serfAgentHandlerObj.Name = handler.agentName
 	handler.serfAgentHandlerObj.BindAddr = handler.addr
@@ -154,19 +160,22 @@ func (handler *niovaKVServerHandler) startSerfAgentHandler() {
 	if err != nil {
 		log.Error("Error when starting agents : ", err)
 	}
+	return err
 }
 
-func (handler *niovaKVServerHandler) startHTTPServer() {
+func (handler *niovaKVServerHandler) startHTTPServer() error{
 	//Start httpserver.
 	handler.httpHandlerObj = httpserver.HttpServerHandler{}
 	handler.httpHandlerObj.Addr = handler.addr
 	handler.httpHandlerObj.Port = handler.httpPort
 	handler.httpHandlerObj.NKVCliObj = handler.nkvClientObj
+	handler.httpHandlerObj.Limit, _ = strconv.Atoi(handler.limit)
 	log.Info("Starting httpd server")
 	err := handler.httpHandlerObj.StartServer()
 	if err != nil {
 		log.Error(err)
 	}
+	return err
 }
 
 //Get gossip data
@@ -198,19 +207,23 @@ func main() {
 
 	flag.Usage = usage
 	flag.Parse()
-
 	if flag.NFlag() == 0 {
 		usage()
 		os.Exit(-1)
 	}
 
+	var err error
 	//Create log file.
-	niovaServerObj.initLogger()
+	err = niovaServerObj.initLogger()
+	if err!=nil{
+		log.Error("Logger error : ",err)
+		os.Exit(1)
+	}
 
-	//get cmd line and config data
-	err := niovaServerObj.getConfigData()
+	//get config data
+	err = niovaServerObj.getConfigData()
 	if err != nil {
-		log.Error(err)
+		log.Error("Error while getting config data : ",err)
 		os.Exit(1)
 	}
 
@@ -218,11 +231,18 @@ func main() {
 	niovaServerObj.startNiovakvpmdbclient()
 
 	//Start serf agent handler
-	niovaServerObj.startSerfAgentHandler()
+	err=niovaServerObj.startSerfAgentHandler()
+	if err!=nil{
+		log.Error("Error while starting serf agent : ",err)
+		os.Exit(1)
+	}
 	//Start the gossip routine
 	time.Sleep(5 * time.Second)
 	go niovaServerObj.getGossipData()
 
 	//Start http server
-	niovaServerObj.startHTTPServer()
+	err=niovaServerObj.startHTTPServer()
+	if err!=nil{
+		log.Error("Error while starting http server : ",err)
+	}
 }

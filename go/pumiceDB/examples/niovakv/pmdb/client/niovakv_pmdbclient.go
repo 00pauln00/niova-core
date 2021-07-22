@@ -5,9 +5,7 @@ import (
 	"fmt"
 	PumiceDBClient "niova/go-pumicedb-lib/client"
 	"niovakv/niovakvlib"
-	"os"
 	"sync"
-
 	log "github.com/sirupsen/logrus"
 )
 
@@ -18,16 +16,16 @@ type NiovaKVClient struct {
 	rncui_lock sync.Mutex
 }
 
-var numWReq, numRReq int
+var numWReq int
 
 //Method for write operation.
 func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 	var errorMsg error
 	//Perform write operation.
 	nco.rncui_lock.Lock()
-	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, numWReq)
 	numWReq = numWReq + 1
 	nco.rncui_lock.Unlock()
+	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, numWReq)
 	err := nco.ClientObj.Write(ReqObj, rncui)
 	if err != nil {
 		log.Error("Write key-value failed : ", err)
@@ -97,10 +95,8 @@ func (nkvClient *NiovaKVClient) ProcessRequest(reqObj *niovakvlib.NiovaKV) ([]by
 			log.Info("Data received after read request:", value)
 		}
 
-	case "exit":
-		os.Exit(0)
 	default:
-		log.Info("Enter valid operation....")
+		err=errors.New("Operation not supported")
 	}
 	return value, err
 }

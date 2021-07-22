@@ -40,11 +40,7 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 		If so, fill the resp obj with received values
 	*/
 	log.Info("HTTP response status : ", resp.Status)
-	if resp.StatusCode == 503 {
-		//Service not found
-		responseObj.RespStatus = -1
-		responseObj.RespValue = []byte("Server timed out")
-	} else {
+	if resp.StatusCode != 503 {
 		//Serviced
 		defer resp.Body.Close()
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
@@ -54,6 +50,10 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 		if err == nil {
 			log.Info("Status of write operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
 		}
+	} else {
+		//Service not found
+		responseObj.RespStatus = -1
+		responseObj.RespValue = []byte("Server timed out")
 	}
 	return &responseObj, err
 }
@@ -86,11 +86,7 @@ func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 	}
 
 	log.Info("HTTP response status : ", resp.Status)
-	if resp.StatusCode == 503 {
-		//Service not found
-		responseObj.RespStatus = -1
-		responseObj.RespValue = []byte("Server timed out")
-	} else {
+	if resp.StatusCode != 503 {
 		//Serviced
 		defer resp.Body.Close()
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
@@ -100,6 +96,11 @@ func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 		if err == nil {
 			log.Info("Status of read operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
 		}
+		
+	} else {
+		//Service not found
+		responseObj.RespStatus = -1
+		responseObj.RespValue = []byte("Server timed out")
 	}
 	return &responseObj, err
 }

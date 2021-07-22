@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-
+	"errors"
 	"github.com/hashicorp/serf/client"
 )
 
@@ -40,7 +40,6 @@ type Data struct {
 
 /*
 Custom error(s)
-*/
 type NoLiveAgents struct{}
 
 func (m *NoLiveAgents) Error() string {
@@ -52,12 +51,13 @@ type RetryLimitExceded struct{}
 func (m *RetryLimitExceded) Error() string {
 	return "Retry Limit Exceded"
 }
+*/
 
-func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) {
+func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error{
 	//Get addrs and Rports and store it in AgentAddrs and
 	reader, err := os.Open(serfConfigPath)
 	if err != nil {
-		return
+		return err
 	}
 	filescanner := bufio.NewScanner(reader)
 	filescanner.Split(bufio.ScanLines)
@@ -70,18 +70,18 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) {
 		Handler.AgentData[input[0]].IsAlive = false
 		Handler.Agents = append(Handler.Agents, input[0])
 	}
-
+	return nil
 }
 
 /*
 Type : SerfClientHandler
 Method : InitData
 Parameters : configPath string
-Return value : -
+Return value : error
 Description : Get configuration data from config file
 */
-func (Handler *SerfClientHandler) Initdata(configpath string) {
-	Handler.getConfigData(configpath)
+func (Handler *SerfClientHandler) Initdata(configpath string) error{
+	return Handler.getConfigData(configpath)
 }
 
 func (Handler *SerfClientHandler) connect() (*client.RPCClient, error) {
@@ -112,7 +112,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 		//Retry with different agent addr till getting connected
 		for i := 0; i < Handler.Retries; i++ {
 			if len(Handler.Agents) <= 0 {
-				return &NoLiveAgents{}
+				return errors.New("No live agents")
 			}
 			Handler.agentConnection, err = Handler.connect()
 			if err == nil {
@@ -124,7 +124,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 
 	//If no connection is made
 	if !Handler.connectionExist {
-		return &RetryLimitExceded{}
+		return errors.New("Retry Limit Exceded")//&RetryLimitExceded{}
 	}
 
 	//Get member data from connected agent

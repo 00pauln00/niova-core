@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io/ioutil"
+	"errors"
 	"math/rand"
 	"os"
 	"strings"
@@ -22,11 +23,7 @@ var (
 	config_path, operation, key, value, logPath string
 )
 
-type AllNodesDown struct{}
 
-func (m *AllNodesDown) Error() string {
-	return "All Nodes Down"
-}
 
 type request struct {
 	Opcode    string `json:"Operation"`
@@ -51,7 +48,7 @@ func usage() {
 }
 
 //Create logfile for client.
-func initLogger() {
+func initLogger() error{
 
 	//Split log directory path.
 	parts := strings.Split(logPath, "/")
@@ -81,6 +78,7 @@ func initLogger() {
 	} else {
 		log.SetOutput(f)
 	}
+	return err
 }
 
 //Function to get command line parameters while starting of the client.
@@ -102,8 +100,7 @@ func getServerAddr(refresh bool) (string, string, error) {
 	}
 	//Get random addr
 	if len(ClientHandler.Agents) <= 0 {
-		log.Error("All nodes down")
-		err = &AllNodesDown{}
+		return "","",errors.New("All Nodes Down")
 	}
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[randomIndex]
@@ -111,6 +108,7 @@ func getServerAddr(refresh bool) (string, string, error) {
 }
 
 func main() {
+	var err error
 
 	//Get commandline parameters.
 	getCmdParams()
@@ -124,8 +122,10 @@ func main() {
 	}
 
 	//Create log file.
-	initLogger()
-
+	err=initLogger()
+	if err!=nil{
+		log.Error("Error with logger : ",err)
+	}
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
 	ClientHandler.Retries = 5
@@ -159,7 +159,6 @@ func main() {
 	var send_stamp string
 	var recv_stamp string
 	var responseRecvd *niovakvlib.NiovaKVResponse
-	var err error
 	for j := 0; j < 5; j++ {
 		send_stamp = time.Now().String()
 		responseRecvd, err = doOperation(&reqObj, addr, port)

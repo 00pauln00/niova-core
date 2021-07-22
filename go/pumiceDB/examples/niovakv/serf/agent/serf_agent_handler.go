@@ -128,7 +128,7 @@ func (Handler *SerfAgentHandler) Startup(joinaddrs []string) (int, error) {
 	}
 	//Join the cluster
 	if len(joinaddrs) != 0 {
-		memcount, err = Handler.join(joinaddrs)
+		memcount, _ = Handler.join(joinaddrs)
 	}
 	return memcount, err
 }
