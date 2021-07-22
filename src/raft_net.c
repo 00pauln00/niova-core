@@ -2269,7 +2269,7 @@ raft_net_client_user_id_parse(const char *in,
     }
 
     if (!rc)
-        SIMPLE_LOG_MSG(LL_WARN, RAFT_NET_CLIENT_USER_ID_FMT,
+        SIMPLE_LOG_MSG(LL_DEBUG, RAFT_NET_CLIENT_USER_ID_FMT,
                        RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
     else
         LOG_MSG(LL_ERROR, "parse failed for `%s'", local_str);
@@ -2351,9 +2351,10 @@ int entry_cnt;
 static init_ctx_t NIOVA_CONSTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
 raft_net_init(void)
 {
-    FUNC_ENTRY(LL_WARN);
-	if (entry_cnt++ > 0)
-		return;
+    FUNC_ENTRY(LL_NOTIFY);
+
+    if (entry_cnt++ > 0)
+        return;
 
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
@@ -2361,7 +2362,7 @@ raft_net_init(void)
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
     NIOVA_ASSERT(!rc);
 
-	FUNC_EXIT(LL_WARN);
+    FUNC_EXIT(LL_NOTIFY);
 
     return;
 }

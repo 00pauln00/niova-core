@@ -123,7 +123,7 @@ pmdb_client_request_rw_completion(struct pmdb_client_request *pcreq,
 
     pmdb_client_completion_fill_pmdb_stat(pcreq, status, reply_buff);
 
-    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "pcreq_user_cb=%p status=%zd",
+    DBG_PMDB_CLIENT_REQ(LL_DEBUG, pcreq, "pcreq_user_cb=%p status=%zd",
                         pcreq->pcreq_user_cb, status);
 
     if (pcreq->pcreq_user_cb)
@@ -146,7 +146,7 @@ pmdb_client_request_cb(void *arg, ssize_t status, void *reply_buff)
 
     struct pmdb_client_request *pcreq = (struct pmdb_client_request *)arg;
 
-    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "status=%zd", status);
+    DBG_PMDB_CLIENT_REQ(LL_DEBUG, pcreq, "status=%zd", status);
 
     if (status > 0) // status represents reply data size
     {
@@ -269,7 +269,7 @@ pmdb_client_request_new(const pmdb_obj_id_t *obj_id,
     pcreq->pcreq_user_cb = user_cb;
     pcreq->pcreq_user_arg = user_arg;
 
-    DBG_PMDB_CLIENT_REQ(LL_WARN, pcreq, "");
+    DBG_PMDB_CLIENT_REQ(LL_DEBUG, pcreq, "");
 
     return pcreq;
 }
