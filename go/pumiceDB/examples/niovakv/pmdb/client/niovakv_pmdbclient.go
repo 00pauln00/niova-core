@@ -31,7 +31,7 @@ func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 		log.Error("Write key-value failed : ", err)
 		errorMsg = errors.New("Write operation failed.")
 	} else {
-		log.Info("Pmdb Write successful!")
+		log.Info("Pmdb Write successful for key ",ReqObj.InputKey)
 		errorMsg = nil
 	}
 	return errorMsg

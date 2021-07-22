@@ -52,8 +52,7 @@ func main() {
 	//Create log file.
 	initLogger()
 
-	log.Info("Raft UUID: ", nso.raftUuid)
-	log.Info("Peer UUID: ", nso.peerUuid)
+	log.Info("Raft and Peer UUID: ", nso.raftUuid , nso.peerUuid)
 
 	/*
 	   Initialize the internal pmdb-server-object pointer.
