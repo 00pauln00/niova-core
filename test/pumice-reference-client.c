@@ -102,7 +102,6 @@ struct pmdbtc_request
     enum PmdbOpType                preq_op;
     size_t                         preq_op_cnt;
     size_t                         preq_val_cnt;
-    int64_t                        preq_write_seqno;
     int64_t                        preq_pmdb_seqno;
     STAILQ_ENTRY(pmdbtc_request)   preq_lentry;
     raft_net_request_tag_t         preq_last_tag;
@@ -287,7 +286,7 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         case PMDB_TEST_REQ_LREG_PMDB_REQ_SEQNO:
             lreg_value_fill_signed(lv, "pmdb-req-seqno",
-                                   preq->preq_write_seqno);
+                                   preq->preq_pmdb_seqno);
             break;
         case PMDB_TEST_REQ_LREG_PMDB_SEQNO:
             lreg_value_fill_signed(lv, "pmdb-seqno",
@@ -421,7 +420,8 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     preq->preq_op = op;
     preq->preq_op_cnt = op_cnt;
     preq->preq_val_cnt = val_cnt;
-    preq->preq_write_seqno = write_seqno;
+    //Pending seqno.
+    preq->preq_pmdb_seqno = write_seqno;
     niova_realtime_coarse_clock(&preq->preq_submitted);
 
     raft_net_client_user_id_copy(&preq->preq_rncui, rncui);
@@ -730,8 +730,8 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
     SIMPLE_LOG_MSG(LL_TRACE, "papp %p preq %p preparing %d values",
                    papp, preq, num_values);
 
-    if (preq->preq_write_seqno != papp->papp_rtv.rtv_seqno)
-        pmdbtc_app_rtv_fast_forward(papp, preq->preq_write_seqno);
+    if (preq->preq_pmdb_seqno != papp->papp_rtv.rtv_seqno)
+        pmdbtc_app_rtv_fast_forward(papp, preq->preq_pmdb_seqno);
 
     for (int i = 0; i < preq->preq_rtdb.rtdb_num_values; i++)
     {
@@ -839,10 +839,6 @@ pmdbtc_request_complete(struct pmdbtc_request *preq, int rc)
     // Makes a copy of the preq contents
     pmdbtc_app_history_add(preq);
 
-    // increment seqno after adding to history
-    if (preq->preq_op == pmdb_op_write)
-        preq->preq_write_seqno += preq->preq_rtdb.rtdb_num_values;
-
     preq->preq_op_cnt--;
     status = preq->preq_obj_stat.status;
 
@@ -931,7 +927,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
         break;
     }
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "rc=%d", rc);
+    SIMPLE_LOG_MSG(LL_NOTIFY, "rc=%d tag=%lu", rc, preq->preq_last_tag);
 
     if (!use_async_requests)
     {

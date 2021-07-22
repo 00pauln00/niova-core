@@ -39,6 +39,7 @@ enum raft_client_instance_lreg_values
     RAFT_CLIENT_LREG_LAST_REQUEST_ACKD,      //string
     RAFT_CLIENT_LREG_RECENT_WR_OPS,          //array
     RAFT_CLIENT_LREG_RECENT_RD_OPS,          //array
+    RAFT_CLIENT_LREG_PENDING_OPS,            //array
     RAFT_CLIENT_LREG__MAX,
 };
 
@@ -148,6 +149,7 @@ struct raft_client_request_handle
     uint8_t                    rcrh_cb_exec       : 1;
     uint8_t                    rcrh_op_wr         : 1;
     uint8_t                    rcrh_history_cache : 1;
+    uint8_t                    rcrh_pending_op_cache : 1;
     uint8_t                    rcrh_alloc_get_buffer_for_user : 1;
     int16_t                    rcrh_error;
     uint16_t                   rcrh_sin_reply_port;
@@ -281,6 +283,7 @@ enum raft_client_recent_op_types
     RAFT_CLIENT_RECENT_OP_TYPE_MIN = 0,
     RAFT_CLIENT_RECENT_OP_TYPE_READ = RAFT_CLIENT_RECENT_OP_TYPE_MIN,
     RAFT_CLIENT_RECENT_OP_TYPE_WRITE,
+    RAFT_CLIENT_RECENT_OP_TYPE_PENDING,
     RAFT_CLIENT_RECENT_OP_TYPE_MAX,
 };
 
@@ -623,6 +626,15 @@ raft_client_sub_app_add(struct raft_client_instance *rci,
 }
 
 static void
+raft_client_op_history_reset_cnt(struct raft_client_instance *rci,
+                                 enum raft_client_recent_op_types type)
+{
+    struct raft_client_sub_app_req_history *rh = &rci->rci_recent_ops[type];
+
+    niova_atomic_init(&rh->rcsarh_cnt, 0);
+}
+
+static void
 raft_client_op_history_add_item(struct raft_client_instance *rci,
                                 enum raft_client_recent_op_types type,
                                 struct raft_client_sub_app *item)
@@ -637,6 +649,9 @@ raft_client_op_history_add_item(struct raft_client_instance *rci,
     memcpy(&rh->rcsarh_sa[idx], item, sizeof(*item));
 
     rh->rcsarh_sa[idx].rcsa_rh.rcrh_history_cache = 1;
+
+    if (type == RAFT_CLIENT_RECENT_OP_TYPE_PENDING)
+        rh->rcsarh_sa[idx].rcsa_rh.rcrh_pending_op_cache = 1;
 }
 
 static void
@@ -982,17 +997,35 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
+    SIMPLE_LOG_MSG(LL_TRACE, "entering lock");
+
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
+
+    raft_client_op_history_reset_cnt(rci, RAFT_CLIENT_RECENT_OP_TYPE_PENDING);
+
     RT_FOREACH_LOCKED(sa, raft_client_sub_app_tree, &rci->rci_sub_apps)
     {
         if (sa->rcsa_rh.rcrh_cancel ||     // already being canceled
             sa->rcsa_rh.rcrh_sendq ||      // the list entry is already in use
             sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
+        {
+            DBG_RAFT_CLIENT_SUB_APP(
+                LL_WARN, sa,
+                "bypassing msg - cancel: %d, sendq: %d, initializing: %d",
+                sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq,
+                sa->rcsa_rh.rcrh_initializing);
             continue;
+        }
 
         const long long queued_ms =
             timespec_2_msec(&now) -
             timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
+
+        DBG_RAFT_CLIENT_SUB_APP(
+            LL_DEBUG, sa,
+            "qms=%lld timeoms=%llu user-arg:tag=%p:%lu",
+            queued_ms, timespec_2_msec(&sa->rcsa_rh.rcrh_timeout),
+            sa->rcsa_rh.rcrh_arg, sa->rcsa_rh.rcrh_rpc_request.rcrm_user_tag);
 
         if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
             FAULT_INJECT(async_raft_client_request_expire))
@@ -1000,19 +1033,28 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             // Detect and stash expired requests
             STAILQ_INSERT_HEAD(&expiredq, sa, rcsa_lentry);
 
+            DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "expired");
+
             // Take ref to protect against concurrent cancel operations
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
         else if (leader_viable &&  // non-expired requests are queued for send
                  queued_ms > raftClientRetryTimeoutMS)
         {
+            DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
+
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;
         }
+
+        raft_client_op_history_add_item(
+            rci, RAFT_CLIENT_RECENT_OP_TYPE_PENDING, sa);
     }
 
     RCI_UNLOCK(rci);
+
+    SIMPLE_LOG_MSG(LL_TRACE, "exit lock");
 
     if (cnt) // Signal that a request has been queued.
         RAFT_NET_EVP_NOTIFY_NO_FAIL(RCI_2_RI(rci), RAFT_EVP_CLIENT);
@@ -1275,9 +1317,11 @@ raft_client_sub_app_cancel_pending_req(struct raft_client_instance *rci,
 
     RCI_UNLOCK(rci);
 
-    DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa, "%s:%d canceled=%s (err=%d)",
+    DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa,
+                            "%s:%d canceled=%s (err=%d) user-arg:tag=%p:%lu",
                             func, lineno, rc == -ECANCELED ? "yes" : "no",
-                            error);
+                            error, rcrh->rcrh_arg,
+                            rcrh->rcrh_rpc_request.rcrm_user_tag);
 
     if (rc == -ECANCELED)
         raft_client_sub_app_done(rci, sa, func, lineno, wakeup, error);
@@ -1434,7 +1478,10 @@ raft_client_request_submit(raft_client_instance_t client_instance,
         raft_client_sub_app_add(rci, rncui, __func__, __LINE__);
 
     if (!sa)
+    {
+        LOG_MSG(LL_NOTIFY, "sub app already queued");
         return -EALREADY; // Each sub-app may only have 1 outstanding request.
+    }
 
     struct raft_client_request_handle *rcrh = &sa->rcsa_rh;
     struct timespec now;
@@ -1710,13 +1757,15 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
     if (!sender_csn)
         return;
 
-    DBG_RAFT_CLIENT_RPC_SOCK(
-        (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG),
-        rcrm, from, "%s",
-        rcrm->rcrm_sys_error
+    if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
+        DBG_RAFT_CLIENT_RPC_SOCK(
+            (rcrm->rcrm_sys_error ? LL_NOTIFY : LL_DEBUG),
+            rcrm, from, "%s: type: %u",
+            rcrm->rcrm_sys_error
             // Xxx rcrm_sys_error should replaced here with rcrm_raft_error
             ? raft_net_client_rpc_sys_error_2_string(rcrm->rcrm_sys_error)
-            : ""
+            : "",
+            rcrm->rcrm_type
     );
 
     raft_net_update_last_comm_time(ri, rcrm->rcrm_sender_id, false);
@@ -2038,7 +2087,9 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME, //
     RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS, // unsigned
+    RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS,     // unsigned
     RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ,       // unsigned
+    RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE,        // string
     RAFT_CLIENT_SUB_APP_REQ__MAX,
 };
 
@@ -2052,6 +2103,8 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
 
     else if (lv->lrv_value_idx_in >= RAFT_CLIENT_SUB_APP_REQ__MAX)
         return -ERANGE;
+
+    struct timespec now = {0};
 
     switch (op)
     {
@@ -2089,8 +2142,26 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
                                         sa->rcsa_rh.rcrh_submitted.tv_sec);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS:
-            lreg_value_fill_unsigned(lv, "completion-time-ms",
-                                     sa->rcsa_rh.rcrh_completion_latency_ms);
+            if (sa->rcsa_rh.rcrh_pending_op_cache)
+            {
+                niova_realtime_coarse_clock(&now);
+                lreg_value_fill_signed(
+                    lv, "remaining-time-ms",
+                    (int64_t)(timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) -
+                              (timespec_2_msec(&now) -
+                               timespec_2_msec(&sa->rcsa_rh.rcrh_submitted))));
+            }
+            else
+            {
+                lreg_value_fill_unsigned(
+                    lv, "completion-time-ms",
+                    sa->rcsa_rh.rcrh_completion_latency_ms);
+            }
+            break;
+        case RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS:
+            lreg_value_fill_unsigned(
+                lv, "timeout-ms",
+                timespec_2_msec(&sa->rcsa_rh.rcrh_timeout));
             break;
         case RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS:
             lreg_value_fill_unsigned(lv, "attempts",
@@ -2102,7 +2173,13 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             break;
         case RAFT_CLIENT_SUB_APP_REQ_ERROR:
             lreg_value_fill_string(lv, "status",
+                                   sa->rcsa_rh.rcrh_pending_op_cache ?
+                                   "Pending" :
                                    strerror(-sa->rcsa_rh.rcrh_error));
+            break;
+        case RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE:
+            lreg_value_fill_string(lv, "op",
+                                   sa->rcsa_rh.rcrh_op_wr ? "write" : "read");
             break;
         default:
             break;
@@ -2132,10 +2209,20 @@ raft_client_sub_app_req_history_lreg_cb(enum lreg_node_cb_ops op,
 
     const struct raft_client_sub_app_req_history *rh;
 
-    if (vd->lvd_user_type == LREG_USER_TYPE_RAFT_CLIENT_ROP_RD)
+    switch (vd->lvd_user_type)
+    {
+    case LREG_USER_TYPE_RAFT_CLIENT_ROP_RD:
         rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_READ];
-    else
+        break;
+    case LREG_USER_TYPE_RAFT_CLIENT_ROP_WR:
         rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_WRITE];
+        break;
+    case LREG_USER_TYPE_RAFT_CLIENT_PENDING_OP:
+        rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_PENDING];
+        break;
+    default:
+        return -EINVAL;
+    }
 
     if (vd->lvd_index >= rh->rcsarh_size)
         return -ERANGE;
@@ -2290,6 +2377,13 @@ raft_client_instance_lreg_multi_facet_cb(
             rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_WRITE];
             lreg_value_fill_varray(lv, "recent-ops-wr",
                                    LREG_USER_TYPE_RAFT_CLIENT_ROP_WR,
+                                   raft_client_sub_app_req_history_size(rh),
+                                   raft_client_sub_app_req_history_lreg_cb);
+            break;
+        case RAFT_CLIENT_LREG_PENDING_OPS:
+            rh = &rci->rci_recent_ops[RAFT_CLIENT_RECENT_OP_TYPE_PENDING];
+            lreg_value_fill_varray(lv, "pending-ops",
+                                   LREG_USER_TYPE_RAFT_CLIENT_PENDING_OP,
                                    raft_client_sub_app_req_history_size(rh),
                                    raft_client_sub_app_req_history_lreg_cb);
             break;

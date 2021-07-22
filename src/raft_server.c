@@ -3907,8 +3907,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
-        SIMPLE_LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
-                       recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
+        LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
+                recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
         return;
     }
 
@@ -3931,8 +3931,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     struct raft_net_client_request_handle rncr;
 
-    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, from, reply_buf,
-                                                   reply_size);
+    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, from,
+                                                   reply_buf, reply_size);
 
     /* Second set of checks which determine if this server is capable of
      * handling the request at this time.
@@ -3940,7 +3940,9 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     int rc = raft_server_may_accept_client_request(ri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot accept client message, rc=%d", rc);
+        SIMPLE_LOG_MSG(LL_NOTIFY,
+                       "cannot accept client message, rc=%d: msg-type=%u",
+                       rc, rcm->rcrm_type);
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
         goto out;
     }
