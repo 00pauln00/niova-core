@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unsafe"
 
 	"github.com/google/uuid"
 
@@ -20,6 +21,10 @@ import "C"
 
 var raft_uuid_go string
 var peer_uuid_go string
+
+type DictionaryAsync struct {
+	asyncObj *PumiceDBClient.PmdbAsyncReq
+}
 
 func main() {
 	//Parse the cmdline parameter
@@ -91,7 +96,15 @@ func pmdbDictClient() {
 					Dict_text:   input[2],
 					Dict_wcount: 0,
 				}
-				err = pmdb.Write(wr_req_dict, input[1])
+
+				areq := &DictionaryAsync{}
+				//Prepare Async request structure.
+				areq.asyncObj = &PumiceDBClient.PmdbAsyncReq{
+					CbArgs: unsafe.Pointer(&wr_req_dict),
+					PmdbAsyncCb: areq,
+				}
+
+				err = pmdb.Write(wr_req_dict, input[1], true, areq.asyncObj)
 				if err != nil {
 					fmt.Println("Write key-value failed : ", err)
 					continue
@@ -102,6 +115,7 @@ func pmdbDictClient() {
 					Dict_text:   input[2],
 					Dict_wcount: 0,
 				}
+
 				rd_op_dict := &DictAppLib.Dict_app{}
 				err = pmdb.Read(rd_req_dict, input[1], rd_op_dict)
 
@@ -115,4 +129,11 @@ func pmdbDictClient() {
 			}
 		}
 	}
+}
+
+func (arq *DictionaryAsync)AsyncCb(args unsafe.Pointer, rrc int64) {
+	fmt.Println("Inside async request Callback")
+	dictReq := (*DictAppLib.Dict_app)(args)
+	fmt.Println("Key :", dictReq.Dict_text)
+	fmt.Println("Value :", dictReq.Dict_wcount)
 }

@@ -20,6 +20,7 @@ var seqno = 0
 var raft_uuid_go string
 var peer_uuid_go string
 var word_map map[string]int
+var asyncWrites = false
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -46,6 +47,7 @@ func main() {
 		RaftUuid:       dso.raftUuid,
 		PeerUuid:       dso.peerUuid,
 		PmdbAPI:        dso,
+		AsyncWrites:    asyncWrites,
 	}
 
 	//Create empty word map

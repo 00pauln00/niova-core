@@ -16,8 +16,17 @@ import (
 #cgo LDFLAGS: -lniova -lniova_raft_client -lniova_pumice_client
 #include <raft/pumice_db_client.h>
 #include <raft/pumice_db_net.h>
+extern void asyncCbCgo(void *arg, ssize_t rrc);
 */
 import "C"
+
+import gopointer "github.com/mattn/go-pointer"
+
+//Async request callback function and its argument.
+type PmdbAsyncReq struct {
+	PmdbAsyncCb PmdbClientAsyncCb
+	CbArgs unsafe.Pointer
+}
 
 type PmdbClientObj struct {
 	initialized bool
@@ -61,9 +70,21 @@ func CToGoString(cstring *C.char) string {
 	return C.GoString(cstring)
 }
 
+//export goAsyncCb
+func goAsyncCb(user_data unsafe.Pointer, rrc C.ssize_t) {
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(user_data).(*PmdbAsyncReq)
+
+	//Convert buffer size from c data type size_t to golang int64.
+	rrc_go := int64(rrc)
+
+	//Calling the golang Application's Async callback function.
+	gcb.PmdbAsyncCb.AsyncCb(gcb.CbArgs, rrc_go)
+}
+
 //Write KV from client.
 func (obj *PmdbClientObj) Write(ed interface{},
-	rncui string) error {
+	rncui string, asyncWrites bool, asyncReqObj *PmdbAsyncReq) error {
 
 	var key_len int64
 
@@ -78,7 +99,7 @@ func (obj *PmdbClientObj) Write(ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	//Perform the write
-	return obj.writeKV(rncui, encoded_key, key_len)
+	return obj.writeKV(rncui, encoded_key, key_len, asyncWrites, asyncReqObj)
 }
 
 //Read the value of key on the client
@@ -154,9 +175,10 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
 //Call the pmdb C library function to write the application data.
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
-	key_len int64) error {
+	key_len int64, asyncWrites bool, asyncReq *PmdbAsyncReq) error {
 
 	var obj_stat C.pmdb_obj_stat_t
+	var rc C.int
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -170,7 +192,20 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
-	rc := C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
+	if !asyncWrites {
+		rc = C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
+	} else {
+
+		//Async write request
+		var pmdbReq C.pmdb_request_opts_t
+		// Create an opaque C pointer for cbs to pass to PmdbObjPutX
+		opa_ptr := gopointer.Save(asyncReq)
+		defer gopointer.Unref(opa_ptr)
+
+		C.pmdb_request_options_init(&pmdbReq, 1, 1, &obj_stat,
+			(*[0]byte)(C.asyncCbCgo), opa_ptr, nil, 0, 0)
+		rc = C.PmdbObjPutX(obj.pmdb, obj_id, key, c_key_len, &pmdbReq)
+	}
 
 	if rc != 0 {
 		var errno syscall.Errno
