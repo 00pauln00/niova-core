@@ -2094,10 +2094,8 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
 
 static raft_net_cb_ctx_t
 raft_server_leader_write_new_entry(
-    struct raft_instance *ri, const char *data,
-    uint32_t *wr_entry_sizes,
-    const uint32_t nentries,
-    enum raft_write_entry_opts opts,
+    struct raft_instance *ri, const char *data, uint32_t *wr_entry_sizes,
+    const uint32_t nentries, enum raft_write_entry_opts opts,
     const struct raft_net_sm_write_supplements *ws)
 {
 #if 1
@@ -2113,8 +2111,7 @@ raft_server_leader_write_new_entry(
      * rebuilding their log.
      */
     raft_server_write_next_entry(ri, ri->ri_log_hdr.rlh_term, data,
-                                 wr_entry_sizes, nentries, opts,
-                                 ws);
+                                 wr_entry_sizes, nentries, opts, ws);
 
     // Schedule ourselves to send this entry to the other members
     RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_REMOTE_SEND);
