@@ -1946,6 +1946,13 @@ raft_server_becomes_follower(struct raft_instance *ri,
     ri->ri_state = RAFT_STATE_FOLLOWER;
     ri->ri_follower_reason = reason;
 
+    /* If this node demoted from leader to follower, but has some
+     * coalesced writes buffered in ri_coalesced_wr, destroy the write
+     * supplement for them.
+     */
+    if (ri->ri_coalesced_wr)
+        raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
+
     /* Generally, in raft we become a follower when a higher term is observed.
      * However when 2 or more peers become candidates for the same term, the
      * losing peer may only be notified of a successful election completion
@@ -5475,13 +5482,6 @@ raft_server_main_loop(struct raft_instance *ri)
         if (rc == -EINTR)
             rc = 0;
 
-        /* If this node demoted from leader to follower, but has some
-         * coalesced writes buffered in ri_coalesced_wr, destroy the write
-         * supplement for them.
-         */
-        if (ri->ri_coalesced_wr->rcwi_nentries && !raft_instance_is_leader(ri))
-            raft_net_sm_write_supplement_destroy(
-                &ri->ri_coalesced_wr->rcwi_ws);
     } while (rc >= 0 && !raft_server_main_loop_exit_conditions(ri));
 
     SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",

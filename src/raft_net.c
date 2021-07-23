@@ -2327,6 +2327,7 @@ raft_net_sm_write_supplement_destroy(
     niova_free(rnsws->rnsws_ws);
 
     rnsws->rnsws_ws = NULL;
+    rnsws->rnsws_nitems = 0;
 }
 
 void
