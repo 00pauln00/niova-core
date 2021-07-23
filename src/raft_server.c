@@ -3962,8 +3962,9 @@ raft_server_write_coalesced_buffer(struct raft_instance *ri, const size_t len)
 {
     if ((!ri->ri_coalesced_writes && ri->ri_coalesced_wr->rcwi_nentries) ||
         (ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
-        ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri) ||
-        ri->ri_coalesced_wr->rcwi_total_size + len > RAFT_ENTRY_MAX_DATA_SIZE(ri)))
+         ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri) ||
+         (ri->ri_coalesced_wr->rcwi_total_size + len) >
+         RAFT_ENTRY_MAX_DATA_SIZE(ri)))
         /* Store the request as an entry in the Raft log.  Do not reply to
          * the client until the write is committed and applied!
          */
@@ -3983,8 +3984,9 @@ raft_server_write_coalesce_entry(struct raft_instance *ri,
     uint32_t nentries = ri->ri_coalesced_wr->rcwi_nentries;
     ri->ri_coalesced_wr->rcwi_entry_sizes[nentries] = len;
 
-    memcpy(ri->ri_coalesced_wr->rcwi_buffer + ri->ri_coalesced_wr->rcwi_total_size,
-           data, len);
+    memcpy((ri->ri_coalesced_wr->rcwi_buffer +
+            ri->ri_coalesced_wr->rcwi_total_size), data, len);
+
     ri->ri_coalesced_wr->rcwi_nentries++;
     ri->ri_coalesced_wr->rcwi_total_size += len;
 }
