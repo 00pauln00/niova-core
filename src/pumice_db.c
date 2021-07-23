@@ -636,19 +636,19 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
                                                      -EINPROGRESS, 0);
         }
-        else
+        else // Check if rncui is already part of coalesced_wr_tree
+
         {
-            /* Check if rncui is already part of coalesced_wr_tree */
             int error = 0;
             struct pmdb_cowr_sub_app *cowr_sa =
-            pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
-                              rncr->rncr_client_uuid, &error, __func__,
-                              __LINE__);
+                pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
+                                      rncr->rncr_client_uuid, &error, __func__,
+                                      __LINE__);
             if (!cowr_sa)
-            {
-                raft_client_net_request_handle_error_set(rncr, error, error, 0);
-            }
-            else // Request sequence test passes, request will enter the raft log.
+                raft_client_net_request_handle_error_set(
+                    rncr, error, error, 0);
+
+            else // Request sequence test passes, will enter the raft log.
                 pmdb_prep_raft_entry_write(rncr, &obj);
         }
     }
