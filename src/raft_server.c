@@ -3994,8 +3994,7 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
 // warning: buffers are statically allocated, so code is not multi-thread safe
 static raft_net_cb_ctx_t
 raft_server_client_recv_handler(struct raft_instance *ri,
-                                const char *recv_buffer,
-                                ssize_t recv_bytes,
+                                const char *recv_buffer, ssize_t recv_bytes,
                                 const struct sockaddr_in *from)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -4023,23 +4022,20 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         return;
     }
 
-    struct buffer_item *bi;
-    char *reply_buf;
     size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
 
-    bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+    struct buffer_item *bi =
+        buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
     NIOVA_ASSERT(bi);
 
-    reply_buf = (char *)bi->bi_iov.iov_base;
-
+    char *reply_buf = (char *)bi->bi_iov.iov_base;
     NIOVA_ASSERT(reply_buf);
 
     struct raft_net_client_request_handle rncr;
 
-    raft_server_net_client_request_init_client_rpc(ri, &rncr,
-                                                   &ri->ri_coalesced_wr->rcwi_ws,
-                                                   rcm, from, reply_buf,
-                                                   reply_size);
+    raft_server_net_client_request_init_client_rpc(
+        ri, &rncr, &ri->ri_coalesced_wr->rcwi_ws, rcm, from, reply_buf,
+        reply_size);
 
     /* Second set of checks which determine if this server is capable of
      * handling the request at this time.
