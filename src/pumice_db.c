@@ -46,11 +46,11 @@ pmdb_cowr_sub_app_cmp(const struct pmdb_cowr_sub_app *a,
 }
 
 REF_TREE_HEAD(pmdb_cowr_sub_app_tree, pmdb_cowr_sub_app);
-REF_TREE_GENERATE(pmdb_cowr_sub_app_tree, pmdb_cowr_sub_app,
-                  pcwsa_rtentry,
+REF_TREE_GENERATE(pmdb_cowr_sub_app_tree, pmdb_cowr_sub_app, pcwsa_rtentry,
                   pmdb_cowr_sub_app_cmp);
 
 static struct pmdb_cowr_sub_app_tree pmdb_cowr_sub_apps;
+
 struct pmdb_obj_extras_v0
 {
     uint64_t pmdb_oextra_commit_term;
@@ -107,7 +107,6 @@ struct pmdb_apply_handle
     const struct raft_net_client_user_id *pah_rncui;
     struct raft_net_sm_write_supplements *pah_ws;
 };
-
 
 #define PMDB_OBJ_DEBUG(log_level, pmdbo, fmt, ...)                          \
 do {                                                                        \
@@ -456,8 +455,7 @@ pmdb_cowr_sub_app_construct(const struct pmdb_cowr_sub_app *in, void *arg)
     if (!sa)
         return NULL;
 
-    raft_net_client_user_id_copy(&sa->pcwsa_rncui,
-                                 &in->pcwsa_rncui);
+    raft_net_client_user_id_copy(&sa->pcwsa_rncui, &in->pcwsa_rncui);
 
     uuid_copy(sa->pcwsa_client_uuid, in->pcwsa_client_uuid);
 
