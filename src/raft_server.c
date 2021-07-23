@@ -2086,13 +2086,10 @@ raft_server_write_next_entry(struct raft_instance *ri, const int64_t term,
                                "negative next-entry-idx=%ld", next_entry_idx);
 
     int rc = raft_server_entry_write(ri, next_entry_idx, term, data,
-                                     wr_entry_sizes, nentries, opts,
-                                     ws);
-    if (rc)
-        DBG_RAFT_INSTANCE(LL_FATAL, ri, "raft_server_entry_write(): %s",
-                          strerror(-rc));
-    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
-                               "raft_server_entry_write failed");
+                                     wr_entry_sizes, nentries, opts, ws);
+
+    DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_entry_write(): %s",
+                               strerror(-rc));
 }
 
 static raft_net_cb_ctx_t
@@ -5477,8 +5474,8 @@ raft_server_main_loop(struct raft_instance *ri)
          * supplement for them.
          */
         if (ri->ri_coalesced_wr->rcwi_nentries && !raft_instance_is_leader(ri))
-            raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
- 
+            raft_net_sm_write_supplement_destroy(
+                &ri->ri_coalesced_wr->rcwi_ws);
     } while (rc >= 0 && !raft_server_main_loop_exit_conditions(ri));
 
     SIMPLE_LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
