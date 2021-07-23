@@ -2517,15 +2517,10 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
-    // Only the valid leader shpuld write the coalesced entries.
-    int rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-        return;
-
-    //Do nothing if there no entries in the coalesced buffer
-    if (ri->ri_coalesced_wr->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
-        /* Issue the pending wr */
-        raft_server_write_coalesced_entries(ri);
+    // Only the valid leader holding pending entries should proceed.
+    if (raft_server_may_accept_client_request(ri) &&
+        ri->ri_coalesced_wr->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
+        raft_server_write_coalesced_entries(ri); // Issue the pending wr
 }
 
 static raft_net_timerfd_cb_ctx_t
@@ -3018,10 +3013,8 @@ raft_server_write_new_entry_from_leader(
         NIOVA_ASSERT(num_entries == 1);
 
     raft_server_write_next_entry(ri, raerq->raerqm_log_term,
-                                 raerq->raerqm_entries,
-                                 &raerq->raerqm_size_arr[0],
-                                 num_entries, opts,
-                                 NULL);
+                                 raerq->raerqm_entries, raerq->raerqm_size_arr,
+                                 num_entries, opts, NULL);
 }
 
 /**
