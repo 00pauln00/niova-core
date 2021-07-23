@@ -5440,6 +5440,13 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     raft_server_instance_buffer_set_destroy(ri);
 
+    // Release coalesce buffer
+    if (ri->ri_coalesced_wr)
+    {
+        niova_free(ri->ri_coalesced_wr);
+        ri->ri_coalesced_wr = NULL;
+    }
+
     return rc;
 }
 
@@ -5649,6 +5656,7 @@ raft_server_instance_run(const char *raft_uuid_str,
 
             size_t co_wr_info_size = sizeof(struct raft_instance_co_wr) +
                                      RAFT_ENTRY_MAX_DATA_SIZE(ri);
+
             // Allocate memory for coalesced write structure
             ri->ri_coalesced_wr = niova_malloc(co_wr_info_size);
             NIOVA_ASSERT(ri->ri_coalesced_wr);
