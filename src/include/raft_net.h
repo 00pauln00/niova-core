@@ -310,6 +310,7 @@ struct raft_net_client_request_handle
     uint64_t                              rncr_msg_id;
     struct raft_net_sm_write_supplements *rncr_sm_write_supp;
     uuid_t                                rncr_client_uuid;
+    void                                 *rncr_user_arg;
 };
 
 #define DBG_RAFT_CLIENT_RPC_SOCK(log_level, rcm, from, fmt, ...) \
