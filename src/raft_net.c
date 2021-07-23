@@ -994,9 +994,7 @@ raft_net_epoll_setup_timerfd(struct raft_instance *ri)
     else if (!ri->ri_timer_fd_cb)
         return 0;
 
-    return raft_net_epoll_handle_add(ri, ri->ri_timer_fd,
-                                       raft_net_timerfd_cb);
-
+    return raft_net_epoll_handle_add(ri, ri->ri_timer_fd, raft_net_timerfd_cb);
 }
 
 static int
