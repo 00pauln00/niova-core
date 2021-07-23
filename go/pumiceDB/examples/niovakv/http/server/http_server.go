@@ -26,7 +26,7 @@ type HttpServerHandler struct {
 	limiter chan int
 }
 
-func (h HttpServerHandler) serveRequest(r *http.Request) []byte{
+func (h HttpServerHandler) process(r *http.Request) []byte {
 	var requestobj niovakvlib.NiovaKV
 	var resp niovakvlib.NiovaKVResponse
 	var response bytes.Buffer
@@ -40,17 +40,17 @@ func (h HttpServerHandler) serveRequest(r *http.Request) []byte{
 		log.Error("Request failed: ", err)
 		resp.RespStatus = -1
 		resp.RespValue = []byte("Parsing request failed")
-	} else{
+	} else {
 		//Perform the read operation on pmdb client
-		log.Info("Received request", requestobj.InputOps,requestobj.InputKey,requestobj.InputValue)
+		log.Info("Received request, operation : ", requestobj.InputOps, " Key : ", requestobj.InputKey, " Value : ", requestobj.InputValue)
 		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
 		//If operation failed
 		if err != nil {
-			log.Error("Operation failed for key with error: ", requestobj.InputKey, err)
+			log.Error("Operation failed for key with error: ", requestobj.InputKey, " ", err)
 			resp.RespStatus = -1
 			resp.RespValue = []byte(err.Error())
 		} else {
-			log.Info("Result of the operation is:", requestobj.InputKey, result)
+			log.Info("Result of the operation is:", requestobj.InputKey, " ", result)
 			resp.RespStatus = 0
 			resp.RespValue = result
 		}
@@ -68,17 +68,12 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	switch r.Method {
 	case "GET":
-		respString:=h.serveRequest(r)
-		_, errRes := fmt.Fprintf(w, "%s", string(respString))
-		if errRes != nil {
-			log.Error("Error:",errRes)
-		}
-
+		fallthrough
 	case "PUT":
-		respString:=h.serveRequest(r)
+		respString := h.process(r)
 		_, errRes := fmt.Fprintf(w, "%s", string(respString))
 		if errRes != nil {
-			log.Error("Error:",errRes)
+			log.Error("Error:", errRes)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

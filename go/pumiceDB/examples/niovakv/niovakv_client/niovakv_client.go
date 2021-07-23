@@ -19,8 +19,8 @@ import (
 )
 
 var (
-	ClientHandler                               serfclienthandler.SerfClientHandler
-	config_path, operation, key, value, logPath string
+	ClientHandler                                            serfclienthandler.SerfClientHandler
+	config_path, operation, key, value, logPath, resultFile  string
 )
 
 
@@ -88,6 +88,7 @@ func getCmdParams() {
 	flag.StringVar(&operation, "o", "NULL", "write/read operation")
 	flag.StringVar(&key, "k", "NULL", "Key")
 	flag.StringVar(&value, "v", "NULL", "Value")
+	flag.StringVar(&resultFile,"r","operation","Result file")
 	flag.Parse()
 }
 
@@ -180,7 +181,7 @@ func main() {
 		ResponseValue: string(responseRecvd.RespValue),
 	}
 	file, _ := json.MarshalIndent(operationObj, "", " ")
-	_ = ioutil.WriteFile("operation.json", file, 0644)
+	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
 	/*
 		Following in the json file
 		Request

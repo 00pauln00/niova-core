@@ -10,26 +10,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
-	var Data bytes.Buffer
+func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
+
 	responseObj := niovakvlib.NiovaKVResponse{}
-	enc := gob.NewEncoder(&Data)
-	err := enc.Encode(reqobj)
-	if err != nil {
-		log.Error(err)
-		return &responseObj, err
-	}
-	connString := "http://" + addr + ":" + port
-	req, err := http.NewRequest(http.MethodPut, connString, bytes.NewBuffer(Data.Bytes()))
-	if err != nil {
-		log.Error(err)
-		return &responseObj, err
-	}
-	log.Info("Write request sent for key : ", reqobj.InputKey)
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	client := &http.Client{}
 	resp, err := client.Do(req)
-
 	if err != nil {
 		log.Error(err)
 		return &responseObj, err
@@ -48,7 +34,7 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
 		err = dec.Decode(&responseObj)
 		if err == nil {
-			log.Info("Status of write operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
+			log.Info("Status of operation for key :", responseObj.RespStatus)
 		}
 	} else {
 		//Service not found
@@ -58,49 +44,37 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 	return &responseObj, err
 }
 
-func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
 	var request bytes.Buffer
-	responseObj := niovakvlib.NiovaKVResponse{}
-
 	enc := gob.NewEncoder(&request)
 	err := enc.Encode(reqobj)
 	if err != nil {
 		log.Error(err)
-		return &responseObj, err
+		return nil, err
 	}
-
-	connString := "http://" + addr + ":" + port
-	req, err := http.NewRequest(http.MethodGet, connString, bytes.NewBuffer(request.Bytes()))
+	conn_addr := "http://" + addr + ":" + port
+	req, err := http.NewRequest(http.MethodPut, conn_addr, bytes.NewBuffer(request.Bytes()))
 	if err != nil {
 		log.Error(err)
-		return &responseObj, err
+		return nil, err
 	}
+	return serviceRequest(req)
+}
 
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	client := &http.Client{}
-	resp, err := client.Do(req)
-
+func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+	var request bytes.Buffer
+	enc := gob.NewEncoder(&request)
+	err := enc.Encode(reqobj)
 	if err != nil {
 		log.Error(err)
-		return &responseObj, err
+		return nil, err
 	}
 
-	log.Info("HTTP response status : ", resp.Status)
-	if resp.StatusCode != 503 {
-		//Serviced
-		defer resp.Body.Close()
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
-		//Unmarshal the response.
-		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
-		err = dec.Decode(&responseObj)
-		if err == nil {
-			log.Info("Status of read operation for key :", reqobj.InputKey, " ", responseObj.RespStatus)
-		}
-		
-	} else {
-		//Service not found
-		responseObj.RespStatus = -1
-		responseObj.RespValue = []byte("Server timed out")
+	conn_addr := "http://" + addr + ":" + port
+	req, err := http.NewRequest(http.MethodGet, conn_addr, bytes.NewBuffer(request.Bytes()))
+	if err != nil {
+		log.Error(err)
+		return nil, err
 	}
-	return &responseObj, err
+	return serviceRequest(req)
 }
