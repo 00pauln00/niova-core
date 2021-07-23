@@ -2492,20 +2492,21 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
 static void
 raft_server_write_coalesced_entries(struct raft_instance *ri)
 {
-	SIMPLE_LOG_MSG(LL_DEBUG, "Write coalesced entries: %u",
-                            ri->ri_coalesced_wr->rcwi_nentries);
+    SIMPLE_LOG_MSG(LL_DEBUG, "Write coalesced entries: %u",
+                   ri->ri_coalesced_wr->rcwi_nentries);
 
-    raft_server_leader_write_new_entry(ri,
-                                       &ri->ri_coalesced_wr->rcwi_buffer[0],
-                                       &ri->ri_coalesced_wr->rcwi_entry_sizes[0],
-                                       ri->ri_coalesced_wr->rcwi_nentries,
-                                       RAFT_WR_ENTRY_OPT_NONE,
-                                       &ri->ri_coalesced_wr->rcwi_ws);
+    raft_server_leader_write_new_entry(
+        ri, ri->ri_coalesced_wr->rcwi_buffer,
+        ri->ri_coalesced_wr->rcwi_entry_sizes,
+        ri->ri_coalesced_wr->rcwi_nentries, RAFT_WR_ENTRY_OPT_NONE,
+        &ri->ri_coalesced_wr->rcwi_ws);
 
     raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
-    /* Reinit the rec_co_wr_info after writing coalesced entried to backend */
+
+    // Reinit the rec_co_wr_info after writing coalesced entried to backend
     size_t co_wr_info_size = sizeof(struct raft_instance_co_wr) +
                                     RAFT_ENTRY_MAX_DATA_SIZE(ri);
+
     memset(ri->ri_coalesced_wr, 0, co_wr_info_size);
 }
 
@@ -3953,35 +3954,32 @@ raft_server_net_client_request_init_client_rpc(
                    RAFT_CLIENT_RPC_MSG_TYPE_REPLY));
 }
 
-/*
- * Write the coalesced buffer to backend if it's already full or
- * if coalesced writes are disabled.
- */
-static void
-raft_server_write_coalesced_buffer(struct raft_instance *ri, const size_t len)
-{
-    if ((!ri->ri_coalesced_writes && ri->ri_coalesced_wr->rcwi_nentries) ||
-        (ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
-         ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri) ||
-         (ri->ri_coalesced_wr->rcwi_total_size + len) >
-         RAFT_ENTRY_MAX_DATA_SIZE(ri)))
-        /* Store the request as an entry in the Raft log.  Do not reply to
-         * the client until the write is committed and applied!
-         */
-        raft_server_write_coalesced_entries(ri);
-}
-
-/*
+/**
+ * raft_server_write_coalesce_entry -
  * Keep collecting the incoming writes in re_coalesce_write raft_entry.
  */
 static void
-raft_server_write_coalesce_entry(struct raft_instance *ri,
-                                 const char *data, const size_t len,
-                                 const int64_t term,
+raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
+                                 const size_t len,
                                  enum raft_write_entry_opts opts)
 {
-    /* Store the new write entry at the free slot at ri->ri_coalesced_wr */
+    NIOVA_ASSERT(
+        ri && data && ri->ri_coalesced_wr &&
+        ri->ri_coalesced_wr->rcwi_nentries < RAFT_ENTRY_NUM_ENTRIES &&
+        ri->ri_coalesced_wr->rcwi_total_size < RAFT_ENTRY_MAX_DATA_SIZE(ri));
+
+    // Push out the current coalesce buffer immediately in these conditions
+    if (!ri->ri_coalesced_writes ||
+        ((len + ri->ri_coalesced_wr->rcwi_total_size) >
+         RAFT_ENTRY_MAX_DATA_SIZE(ri)))
+        raft_server_write_coalesced_entries(ri);
+
+    /* Store the new write entry at the free slot at ri->ri_coalesced_wr.
+     * NOTE: that raft_server_write_coalesced_entries() will have reset
+     *    nentries so be sure to take the tmp variable AFTER calling it.
+     */
     uint32_t nentries = ri->ri_coalesced_wr->rcwi_nentries;
+
     ri->ri_coalesced_wr->rcwi_entry_sizes[nentries] = len;
 
     memcpy((ri->ri_coalesced_wr->rcwi_buffer +
@@ -3989,6 +3987,11 @@ raft_server_write_coalesce_entry(struct raft_instance *ri,
 
     ri->ri_coalesced_wr->rcwi_nentries++;
     ri->ri_coalesced_wr->rcwi_total_size += len;
+
+    // Retest and push if the limits have been met.
+    if (ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
+        ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri))
+        raft_server_write_coalesced_entries(ri);
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -4054,11 +4057,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         goto out;
     }
 
-    /* Flush previously written entries if buffer is full or max number of
-     * entries are already written.
-     */
-    raft_server_write_coalesced_buffer(ri, rcm->rcrm_data_size);
-
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
@@ -4113,17 +4111,23 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     if (rncr.rncr_write_raft_entry)
     {
+        /* Store the request as an entry in the Raft log.  Do not reply to
+         * the client until the write is committed and applied!
+         *
+         * NOTE: that raft_server_write_coalesce_entry() is called regardless
+         *       of whether coalescing is enabling.  If disabled,
+         *       raft_server_write_coalesce_entry() will go directly to
+         *       raft_server_leader_write_new_entry()
+         */
         raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
                                          rcm->rcrm_data_size,
-                                         ri->ri_log_hdr.rlh_term,
                                          RAFT_WR_ENTRY_OPT_NONE);
     }
-
-    /* Read operation or an already committed + applied write
-     * operation.
-     */
     else
+    {
+        // Read operation or an already committed + applied write operation.
         raft_server_reply_to_client(ri, &rncr, csn);
+    }
 
 out:
     if (csn)
