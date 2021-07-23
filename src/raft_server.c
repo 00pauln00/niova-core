@@ -2105,6 +2105,10 @@ raft_server_leader_write_new_entry(
         return;
 #endif
 
+    // Leader change marker may not use a coalesce buffer
+    if (opts & RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER)
+        NIOVA_ASSERT(nentries == 1);
+
     /* The leader always appends to the end of its log so
      * ri->ri_log_hdr.rlh_term must be used.  This contrasts with recovering
      * followers which may not always be able to use the current term when
@@ -3009,6 +3013,9 @@ raft_server_write_new_entry_from_leader(
 
     enum raft_write_entry_opts opts = raerq->raerqm_leader_change_marker ?
         RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER : RAFT_WR_ENTRY_OPT_NONE;
+
+    if (opts & RAFT_WR_ENTRY_OPT_LEADER_CHANGE_MARKER)
+        NIOVA_ASSERT(num_entries == 1);
 
     raft_server_write_next_entry(ri, raerq->raerqm_log_term,
                                  raerq->raerqm_entries,
