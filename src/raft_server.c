@@ -2500,6 +2500,9 @@ raft_server_may_accept_client_request(struct raft_instance *ri)
 static void
 raft_server_write_coalesced_entries(struct raft_instance *ri)
 {
+    if (!ri->ri_coalesced_wr->rcwi_nentries)
+        return;
+
     SIMPLE_LOG_MSG(LL_DEBUG, "Write coalesced entries: %u",
                    ri->ri_coalesced_wr->rcwi_nentries);
 
