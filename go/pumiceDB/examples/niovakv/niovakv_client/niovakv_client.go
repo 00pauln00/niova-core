@@ -2,10 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"errors"
 	"math/rand"
 	"os"
 	"strings"
@@ -19,11 +19,9 @@ import (
 )
 
 var (
-	ClientHandler                                            serfclienthandler.SerfClientHandler
-	config_path, operation, key, value, logPath, resultFile  string
+	ClientHandler                                           serfclienthandler.SerfClientHandler
+	config_path, operation, key, value, logPath, resultFile string
 )
-
-
 
 type request struct {
 	Opcode    string `json:"Operation"`
@@ -48,7 +46,7 @@ func usage() {
 }
 
 //Create logfile for client.
-func initLogger() error{
+func initLogger() error {
 
 	//Split log directory path.
 	parts := strings.Split(logPath, "/")
@@ -88,7 +86,7 @@ func getCmdParams() {
 	flag.StringVar(&operation, "o", "NULL", "write/read operation")
 	flag.StringVar(&key, "k", "NULL", "Key")
 	flag.StringVar(&value, "v", "NULL", "Value")
-	flag.StringVar(&resultFile,"r","operation","Result file")
+	flag.StringVar(&resultFile, "r", "operation", "Result file")
 	flag.Parse()
 }
 
@@ -101,7 +99,7 @@ func getServerAddr(refresh bool) (string, string, error) {
 	}
 	//Get random addr
 	if len(ClientHandler.Agents) <= 0 {
-		return "","",errors.New("All Nodes Down")
+		return "", "", errors.New("All Nodes Down")
 	}
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[randomIndex]
@@ -123,15 +121,18 @@ func main() {
 	}
 
 	//Create log file.
-	err=initLogger()
-	if err!=nil{
-		log.Error("Error with logger : ",err)
+	err = initLogger()
+	if err != nil {
+		log.Error("Error with logger : ", err)
 	}
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
 	ClientHandler.Retries = 5
 	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
-	ClientHandler.Initdata(config_path)
+	err = ClientHandler.Initdata(config_path)
+	if err != nil {
+		log.Error("Error while trying to read config file : ", err)
+	}
 	var reqObj niovakvlib.NiovaKV
 	var operationObj opData
 	var doOperation func(*niovakvlib.NiovaKV, string, string) (*niovakvlib.NiovaKVResponse, error)

@@ -2,10 +2,12 @@ package serfclienthandler
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"strings"
-	"errors"
+
 	"github.com/hashicorp/serf/client"
 )
 
@@ -38,24 +40,12 @@ type Data struct {
 	Tags    map[string]string
 }
 
-/*
-Custom error(s)
-type NoLiveAgents struct{}
-
-func (m *NoLiveAgents) Error() string {
-	return "No live agents"
-}
-
-type RetryLimitExceded struct{}
-
-func (m *RetryLimitExceded) Error() string {
-	return "Retry Limit Exceded"
-}
-*/
-
-func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error{
+func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	//Get addrs and Rports and store it in AgentAddrs and
-	reader, err := os.Open(serfConfigPath)
+	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
+		return err
+	}
+	reader, err := os.OpenFile(serfConfigPath, os.O_RDONLY, 0444)
 	if err != nil {
 		return err
 	}
@@ -80,7 +70,7 @@ Parameters : configPath string
 Return value : error
 Description : Get configuration data from config file
 */
-func (Handler *SerfClientHandler) Initdata(configpath string) error{
+func (Handler *SerfClientHandler) Initdata(configpath string) error {
 	return Handler.getConfigData(configpath)
 }
 
@@ -124,7 +114,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 
 	//If no connection is made
 	if !Handler.connectionExist {
-		return errors.New("Retry Limit Exceded")//&RetryLimitExceded{}
+		return errors.New("Retry Limit Exceded") //&RetryLimitExceded{}
 	}
 
 	//Get member data from connected agent
@@ -172,6 +162,7 @@ func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 		}
 		Handler.AgentData[nodeName].IsAlive = true
 		Handler.AgentData[nodeName].Tags = mems.Tags
+		fmt.Println(mems.Tags)
 		Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
 		//Keep only live members in the list
 		Handler.Agents = append(Handler.Agents, nodeName)

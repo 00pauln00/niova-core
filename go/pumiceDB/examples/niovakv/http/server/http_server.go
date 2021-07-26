@@ -68,7 +68,12 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	switch r.Method {
 	case "GET":
-		fallthrough
+		//fallthrough
+		respString := h.process(r)
+		_, errRes := fmt.Fprintf(w, "%s", string(respString))
+		if errRes != nil {
+			log.Error("Error:", errRes)
+		}
 	case "PUT":
 		respString := h.process(r)
 		_, errRes := fmt.Fprintf(w, "%s", string(respString))
