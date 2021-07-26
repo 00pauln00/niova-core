@@ -3976,9 +3976,8 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
         ri->ri_coalesced_wr->rcwi_total_size < RAFT_ENTRY_MAX_DATA_SIZE(ri));
 
     // Push out the current coalesce buffer immediately in these conditions
-    if (!ri->ri_coalesced_writes ||
-        ((len + ri->ri_coalesced_wr->rcwi_total_size) >
-         RAFT_ENTRY_MAX_DATA_SIZE(ri)))
+    if ((len + ri->ri_coalesced_wr->rcwi_total_size) >
+         RAFT_ENTRY_MAX_DATA_SIZE(ri))
         raft_server_write_coalesced_entries(ri);
 
     /* Store the new write entry at the free slot at ri->ri_coalesced_wr.
@@ -3996,7 +3995,8 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
     ri->ri_coalesced_wr->rcwi_total_size += len;
 
     // Retest and push if the limits have been met.
-    if (ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
+    if (!ri->ri_coalesced_writes ||
+        ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
         ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri))
         raft_server_write_coalesced_entries(ri);
 }
