@@ -404,13 +404,9 @@ pmdb_prep_obj_write(struct raft_net_sm_write_supplements *ws,
 
 static void
 pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
-                           struct pmdb_object *obj,
-                           struct pmdb_cowr_sub_app *cowr_sa)
+                           struct pmdb_object *obj)
 {
     NIOVA_ASSERT(rncr && obj);
-
-    // Stash the cowr_sa so it can be unreferenced later
-    rncr->rncr_user_arg = cowr_sa;
 
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
@@ -487,7 +483,6 @@ pmdb_cowr_sub_app_put(struct pmdb_cowr_sub_app *sa,
     RT_PUT(pmdb_cowr_sub_app_tree, &pmdb_cowr_sub_apps, sa);
 }
 
-#if 0
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
                          const char *caller_func, const int caller_lineno)
@@ -503,7 +498,6 @@ pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
 
     return sa;
 }
-#endif
 
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
@@ -655,7 +649,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                     rncr, error, error, 0);
 
             else // Request sequence test passes, will enter the raft log.
-                pmdb_prep_raft_entry_write(rncr, &obj, cowr_sa);
+                pmdb_prep_raft_entry_write(rncr, &obj);
         }
     }
     else // Request sequence is too far ahead
@@ -878,8 +872,12 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
         pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
     }
 
+    /* We use an RB_TREE lookup here since the pointer cannot easily be stored
+     * elsewhere.  (ie the rncr presented here is not the one used in 'write').
+     */
     struct pmdb_cowr_sub_app *cowr_sa =
-        (struct pmdb_cowr_sub_app *)rncr->rncr_user_arg;
+        pmdb_cowr_sub_app_lookup(&pmdb_req->pmdbrm_user_id, __func__,
+                                 __LINE__);
 
     if (cowr_sa) // release the ref on the rncui from coalesced write RB tree
     {
@@ -891,8 +889,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
             !raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui));
 
         pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
-
-        rncr->rncr_user_arg = NULL;
+        pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
     }
 
     return rc;

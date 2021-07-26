@@ -95,7 +95,7 @@
 #define REF_TREE_REF_PUT_ELEM_SERIALIZED REF_TREE_REF_PUT_ELEM_LOCKED
 
 // Must not release final reference
-#define REF_TREE_REF_PUT_ELEM(elm, field)               \
+#define REF_TREE_REF_PUT_ELEM(head, elm, field)          \
     do {                                                \
         REF_TREE_LOCK(head);                            \
         REF_TREE_REF_PUT_ELEM_LOCKED(elm, field);       \
