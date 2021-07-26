@@ -9,9 +9,6 @@ import (
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
-
-	"niova/go-pumicedb-lib/server"
-	"niovakv/lib"
 )
 
 /*
@@ -52,7 +49,7 @@ func main() {
 	//Create log file.
 	initLogger()
 
-	log.Info("Raft and Peer UUID: ", nso.raftUuid , nso.peerUuid)
+	log.Info("Raft and Peer UUID: ", nso.raftUuid, " ", nso.peerUuid)
 
 	/*
 	   Initialize the internal pmdb-server-object pointer.

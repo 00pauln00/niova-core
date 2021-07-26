@@ -21,7 +21,6 @@ var numWReq int
 
 //Method for write operation.
 func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
-	var errorMsg error
 	var idq int
 	//Perform write operation.
 	nco.rncui_lock.Lock()
@@ -31,13 +30,11 @@ func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, idq)
 	err := nco.ClientObj.Write(ReqObj, rncui)
 	if err != nil {
-		log.Error("Write key-value failed : ", err)
-		errorMsg = errors.New("Write operation failed.")
+		log.Error("Write failed for key : ", ReqObj.InputValue, " ", err)
 	} else {
 		log.Info("Pmdb Write successful for key ", ReqObj.InputKey)
-		errorMsg = nil
 	}
-	return errorMsg
+	return err
 }
 
 //Method to perform read operation.
@@ -51,7 +48,7 @@ func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 	err := nco.ClientObj.Read(ReqObj, rncui, rop)
 	nco.rncui_lock.Unlock()
 	if err != nil {
-		log.Error("Read request failed !!", err)
+		log.Error("Read failed for key : ", rop.InputKey, " ", err)
 	} else {
 		log.Info("Result of the read request is:", rop)
 	}

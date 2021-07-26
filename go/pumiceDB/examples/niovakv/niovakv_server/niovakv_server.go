@@ -136,6 +136,9 @@ func (handler *niovaKVServerHandler) startNiovakvpmdbclient() error {
 	var err error
 	//Get client object.
 	handler.nkvClientObj = niovakvpmdbclient.GetNiovaKVClientObj(handler.raftUUID, handler.clientUUID, handler.logPath)
+	if handler.nkvClientObj == nil {
+		return errors.New("PMDB client object is empty")
+	}
 	//Start pumicedb client.
 	err = handler.nkvClientObj.ClientObj.Start()
 	if err != nil {
