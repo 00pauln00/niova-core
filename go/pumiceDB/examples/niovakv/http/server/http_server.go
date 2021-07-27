@@ -3,15 +3,14 @@ package httpserver
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
-	"time"
-
-	log "github.com/sirupsen/logrus"
-
 	"niovakv/niovakvlib"
 	"niovakv/niovakvpmdbclient"
+	"time"
 )
 
 type HttpServerHandler struct {
@@ -60,6 +59,17 @@ func (h HttpServerHandler) process(r *http.Request) []byte {
 	return response.Bytes()
 }
 
+func (h HttpServerHandler) ExecuteRequest(w http.ResponseWriter, r *http.Request) error {
+	var errExc error
+	respString := h.process(r)
+	_, errRes := fmt.Fprintf(w, "%s", string(respString))
+	if errRes != nil {
+		log.Error("Error:", errRes)
+		errExc = errors.New("ExecuteRequest method failed!")
+	}
+	return errExc
+}
+
 func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Blocks if more no specified no of request is already in the queue
 	h.limiter <- 1
@@ -68,17 +78,14 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	switch r.Method {
 	case "GET":
-		//fallthrough
-		respString := h.process(r)
-		_, errRes := fmt.Fprintf(w, "%s", string(respString))
-		if errRes != nil {
-			log.Error("Error:", errRes)
+		err := h.ExecuteRequest(w, r)
+		if err != nil {
+			log.Error(err)
 		}
 	case "PUT":
-		respString := h.process(r)
-		_, errRes := fmt.Fprintf(w, "%s", string(respString))
-		if errRes != nil {
-			log.Error("Error:", errRes)
+		err := h.ExecuteRequest(w, r)
+		if err != nil {
+			log.Error(err)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
