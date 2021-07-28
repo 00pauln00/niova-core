@@ -45,10 +45,10 @@ func main() {
 	/* If log path is not provided, it will use Default log path.
 	   default log path: /tmp/<peer-uuid>.log
 	*/
-	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
+	defaultLog := "/" + "tmp" + "/"
 	flag.StringVar(&logDir, "NULL", defaultLog, "log dir")
 	flag.Parse()
-
+	logDir = logDir + nso.raftUuid + "/" + nso.peerUuid + ".log"
 	//Create log file.
 	err := initlog.InitLogger(logDir)
 	if err != nil {
