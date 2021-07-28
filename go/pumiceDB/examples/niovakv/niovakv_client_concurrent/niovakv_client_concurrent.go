@@ -12,21 +12,20 @@ import (
 	"sync/atomic"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
+	"common_libs/initlog"
 	"niovakv/httpclient"
 	"niovakv/niovakvlib"
 	"niovakv/serfclienthandler"
 )
 
 var (
-	ClientHandler                                                  serfclienthandler.SerfClientHandler
-	config_path, operation, key, value, logPath, serial, noRequest string
-	reqobjs_write, reqobjs_read                                    []niovakvlib.NiovaKV
-	respFillerLock                                                 sync.Mutex
-	operationMetaObjs                                              []opData //For filling json
-	w                                                              sync.WaitGroup
-	requestSentCount, timeoutCount                                 *int32
+	ClientHandler                                       serfclienthandler.SerfClientHandler
+	config_path, key, value, logPath, serial, noRequest string
+	reqobjs_write, reqobjs_read                         []niovakvlib.NiovaKV
+	respFillerLock                                      sync.Mutex
+	operationMetaObjs                                   []opData //For filling json
+	w                                                   sync.WaitGroup
+	requestSentCount, timeoutCount                      *int32
 )
 
 type request struct {
@@ -53,26 +52,6 @@ func usage() {
 }
 
 //Create logfile for client.
-func initLogger() {
-
-	var filename string = logPath + "/" + "niovakvClient" + ".log"
-
-	//Create the log file if doesn't exist. And append to it if it already exists.i
-	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-	Formatter := new(log.TextFormatter)
-
-	//Set Timestamp format for logfile.
-	Formatter.TimestampFormat = "02-01-2006 15:04:05"
-	Formatter.FullTimestamp = true
-	log.SetFormatter(Formatter)
-
-	if err != nil {
-		// Cannot open log file. Logging to stderr
-		log.Error(err)
-	} else {
-		log.SetOutput(f)
-	}
-}
 
 //Function to get command line parameters while starting of the client.
 func getCmdParams() {
@@ -146,7 +125,7 @@ func main() {
 	}
 
 	//Create log file.
-	initLogger()
+	initlog.InitLogger(logPath)
 
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}

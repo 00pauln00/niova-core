@@ -1,13 +1,12 @@
 package main
 
 import (
+	"common_libs/initlog"
 	"errors"
 	"flag"
-	"fmt"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	niovakvlib "niovakv/lib"
 	"os"
-	"strings"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -44,14 +43,14 @@ func main() {
 	}
 
 	/* If log path is not provided, it will use Default log path.
-           default log path: /tmp/<peer-uuid>.log
-        */
+	   default log path: /tmp/<peer-uuid>.log
+	*/
 	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
 	flag.StringVar(&logDir, "NULL", defaultLog, "log dir")
 	flag.Parse()
 
 	//Create log file.
-	err := initLogger()
+	err := initlog.InitLogger(logDir)
 	if err != nil {
 		log.Error("Error while initating logger ", err)
 		os.Exit(1)
@@ -102,40 +101,6 @@ func parseArgs() (*NiovaKVServer, error) {
 	}
 
 	return nso, err
-}
-
-//Create logfile for each peer.
-func initLogger() error {
-
-	// Split log path
-	parts := strings.Split(logDir, "/")
-	fname := parts[len(parts)-1]
-	dir := strings.TrimSuffix(logDir, fname)
-
-	// Create directory if not exist.
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0700)
-	}
-
-	filename := dir + fname
-	fmt.Println("logfile:", filename)
-
-	//Create the log file if doesn't exist. And append to it if it already exists.
-	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-	Formatter := new(log.TextFormatter)
-
-	//Set Timestamp format for logfile.
-	Formatter.TimestampFormat = "02-01-2006 15:04:05"
-	Formatter.FullTimestamp = true
-	log.SetFormatter(Formatter)
-
-	if err != nil {
-		// Cannot open log file. Logging to stderr
-		fmt.Println(err)
-	} else {
-		log.SetOutput(f)
-	}
-	return err
 }
 
 type NiovaKVServer struct {
