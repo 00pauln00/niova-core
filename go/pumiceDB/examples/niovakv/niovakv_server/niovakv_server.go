@@ -5,13 +5,12 @@ import (
 	"errors"
 	"flag"
 	defaultLog "log"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
+	"niovakv/httpserver"
 	"os"
 	"strconv"
 	"strings"
 	"time"
-
-	"common_libs/initlog"
-	"niovakv/httpserver"
 
 	log "github.com/sirupsen/logrus"
 
@@ -186,7 +185,7 @@ func main() {
 
 	var err error
 	//Create log file.
-	err = initlog.InitLogger(niovaServerObj.logPath)
+	err = PumiceDBCommon.InitLogger(niovaServerObj.logPath)
 	if err != nil {
 		log.Error("Logger error : ", err)
 		os.Exit(1)

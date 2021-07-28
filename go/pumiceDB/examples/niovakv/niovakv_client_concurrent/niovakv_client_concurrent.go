@@ -6,16 +6,17 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
+	"niovakv/httpclient"
+	"niovakv/niovakvlib"
+	"niovakv/serfclienthandler"
 	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"common_libs/initlog"
-	"niovakv/httpclient"
-	"niovakv/niovakvlib"
-	"niovakv/serfclienthandler"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -125,7 +126,10 @@ func main() {
 	}
 
 	//Create log file.
-	initlog.InitLogger(logPath)
+	err := PumiceDBCommon.InitLogger(logPath)
+	if err != nil {
+		log.Error("Error while initializing the logger  ", err)
+	}
 
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}

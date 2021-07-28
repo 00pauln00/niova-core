@@ -1,9 +1,9 @@
 package main
 
 import (
-	"common_libs/initlog"
 	"errors"
 	"flag"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	niovakvlib "niovakv/lib"
 	"os"
@@ -45,12 +45,11 @@ func main() {
 	/* If log path is not provided, it will use Default log path.
 	   default log path: /tmp/<peer-uuid>.log
 	*/
-	defaultLog := "/" + "tmp" + "/"
+	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
 	flag.StringVar(&logDir, "NULL", defaultLog, "log dir")
 	flag.Parse()
-	logDir = logDir + nso.raftUuid + "/" + nso.peerUuid + ".log"
 	//Create log file.
-	err := initlog.InitLogger(logDir)
+	err := PumiceDBCommon.InitLogger(logDir)
 	if err != nil {
 		log.Error("Error while initating logger ", err)
 		os.Exit(1)

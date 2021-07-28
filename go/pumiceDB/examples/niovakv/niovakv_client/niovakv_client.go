@@ -9,7 +9,7 @@ import (
 	"os"
 	"time"
 
-	"common_libs/initlog"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"niovakv/httpclient"
 	"niovakv/niovakvlib"
 	"niovakv/serfclienthandler"
@@ -86,7 +86,7 @@ func main() {
 	}
 
 	//Create log file.
-	err = initlog.InitLogger(logPath)
+	err = PumiceDBCommon.InitLogger(logPath)
 	if err != nil {
 		log.Error("Error with logger : ", err)
 	}
