@@ -81,6 +81,7 @@ func main() {
 
 func usage() {
 	flag.PrintDefaults()
+	os.Exit(0)
 }
 
 func parseArgs() (*NiovaKVServer, error) {
