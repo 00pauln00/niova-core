@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -41,7 +40,7 @@ type opData struct {
 }
 
 func usage() {
-	fmt.Printf("usage : %s -c <serf configs> -l <log directory> -o <write/read> -k <key> -v <value>\n", os.Args[0])
+	flag.PrintDefaults()
 	os.Exit(0)
 }
 

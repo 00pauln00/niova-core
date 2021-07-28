@@ -72,12 +72,13 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fallthrough
 	case "PUT":
 		respString, err := h.process(r)
-		if err != nil {
+		if err == nil {
+			_, errRes := fmt.Fprintf(w, "%s", string(respString))
+			if errRes != nil {
+				log.Error("Writing to http response writer failed :", errRes)
+			}
+		} else {
 			log.Error("Encoding or response obj failed:", err)
-		}
-		_, errRes := fmt.Fprintf(w, "%s", string(respString))
-		if errRes != nil {
-			log.Error("Writing to http response writer failed :", errRes)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

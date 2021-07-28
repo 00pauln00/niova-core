@@ -47,6 +47,11 @@ type opData struct {
 	TimeDuration time.Duration `json:"Req_resolved_time"`
 }
 
+func usage() {
+	flag.PrintDefaults()
+	os.Exit(0)
+}
+
 //Create logfile for client.
 func initLogger() {
 
@@ -73,9 +78,8 @@ func initLogger() {
 func getCmdParams() {
 	flag.StringVar(&config_path, "c", "./", "config file path")
 	flag.StringVar(&logPath, "l", ".", "log file path")
-	flag.StringVar(&operation, "o", "NULL", "write/read operation")
-	flag.StringVar(&key, "k", "NULL", "Key")
-	flag.StringVar(&value, "v", "NULL", "Value")
+	flag.StringVar(&key, "k", "Key", "Key prefix")
+	flag.StringVar(&value, "v", "Value", "Value prefix")
 	flag.StringVar(&serial, "s", "no", "Serialized request or not")
 	flag.StringVar(&noRequest, "n", "5", "No of request")
 	flag.Parse()
@@ -133,6 +137,13 @@ func main() {
 	timeoutCount = &count3
 	//Get commandline parameters.
 	getCmdParams()
+	flag.Usage = usage
+	flag.Parse()
+
+	if flag.NFlag() == 0 {
+		usage()
+		os.Exit(-1)
+	}
 
 	//Create log file.
 	initLogger()
@@ -148,13 +159,13 @@ func main() {
 	for i := 0; i < n; i++ {
 		reqObj1 := niovakvlib.NiovaKV{}
 		reqObj1.InputOps = "write"
-		reqObj1.InputKey = "Key" + strconv.Itoa(i)
-		reqObj1.InputValue = []byte("Asia" + strconv.Itoa(i))
+		reqObj1.InputKey = key + strconv.Itoa(i)
+		reqObj1.InputValue = []byte(value + strconv.Itoa(i))
 		reqobjs_write = append(reqobjs_write, reqObj1)
 
 		reqObj2 := niovakvlib.NiovaKV{}
 		reqObj2.InputOps = "read"
-		reqObj2.InputKey = "Key" + strconv.Itoa(i)
+		reqObj2.InputKey = key + strconv.Itoa(i)
 		reqobjs_read = append(reqobjs_read, reqObj2)
 	}
 

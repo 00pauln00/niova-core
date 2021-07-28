@@ -46,7 +46,7 @@ type niovaKVServerHandler struct {
 }
 
 func usage() {
-	fmt.Printf("usage : %s -r <RAFT UUID> -u <CLIENT UUID> -l <log directory> -c <serf configs> -n <node name>\n", os.Args[0])
+	flag.PrintDefaults()
 	os.Exit(0)
 }
 
