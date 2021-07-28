@@ -49,7 +49,11 @@ func main() {
 	flag.Parse()
 
 	//Create log file.
-	initLogger()
+	err := initLogger()
+	if err != nil {
+		log.Error("Error while initating logger ", err)
+		os.Exit(1)
+	}
 
 	log.Info("Raft and Peer UUID: ", nso.raftUuid, " ", nso.peerUuid)
 
@@ -67,7 +71,7 @@ func main() {
 	}
 
 	// Start the pmdb server
-	err := nso.pso.Run()
+	err = nso.pso.Run()
 
 	if err != nil {
 		log.Error(err)
@@ -100,7 +104,7 @@ func parseArgs() (*NiovaKVServer, error) {
 }
 
 //Create logfile for each peer.
-func initLogger() {
+func initLogger() error {
 
 	// Split log path
 	parts := strings.Split(logDir, "/")
@@ -130,6 +134,7 @@ func initLogger() {
 	} else {
 		log.SetOutput(f)
 	}
+	return err
 }
 
 type NiovaKVServer struct {

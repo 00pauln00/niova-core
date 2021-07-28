@@ -6,12 +6,11 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"niovakv/niovakvlib"
+	"niovakv/niovakvpmdbclient"
 	"time"
 
 	log "github.com/sirupsen/logrus"
-
-	"niovakv/niovakvlib"
-	"niovakv/niovakvpmdbclient"
 )
 
 type HttpServerHandler struct {
@@ -30,11 +29,13 @@ func (h HttpServerHandler) process(r *http.Request) ([]byte, error) {
 	var requestobj niovakvlib.NiovaKV
 	var resp niovakvlib.NiovaKVResponse
 	var response bytes.Buffer
+	var err error
 
 	reqBody, err := ioutil.ReadAll(r.Body)
-	dec := gob.NewDecoder(bytes.NewBuffer(reqBody))
-	err = dec.Decode(&requestobj)
-
+	if err == nil {
+		dec := gob.NewDecoder(bytes.NewBuffer(reqBody))
+		err = dec.Decode(&requestobj)
+	}
 	//If error in parsing request
 	if err != nil {
 		log.Error("Request failed: ", err)
@@ -57,7 +58,7 @@ func (h HttpServerHandler) process(r *http.Request) ([]byte, error) {
 	}
 	enc := gob.NewEncoder(&response)
 	err = enc.Encode(resp)
-	return response.Bytes()
+	return response.Bytes(), err
 }
 
 func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -70,10 +71,13 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "GET":
 		fallthrough
 	case "PUT":
-		respString := h.process(r)
+		respString, err := h.process(r)
+		if err != nil {
+			log.Error("Encoding or response obj failed:", err)
+		}
 		_, errRes := fmt.Fprintf(w, "%s", string(respString))
 		if errRes != nil {
-			log.Error("Error:", errRes)
+			log.Error("Writing to http response writer failed :", errRes)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)

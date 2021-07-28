@@ -38,7 +38,7 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 			log.Info("Status of operation for key :", responseObj.RespStatus)
 		}
 	case 503:
-		//Service not found
+		//Service not found, returned for timeout
 		responseObj.RespStatus = -1
 		responseObj.RespValue = []byte("Server timed out")
 	default:
