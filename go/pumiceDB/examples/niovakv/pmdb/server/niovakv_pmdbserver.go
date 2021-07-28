@@ -41,7 +41,9 @@ func main() {
 		os.Exit(-1)
 	}
 
-	//If log path is not provided, it will use Default log path.
+	/* If log path is not provided, it will use Default log path.
+           default log path: /tmp/<peer-uuid>.log
+        */
 	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
 	flag.StringVar(&logDir, "NULL", defaultLog, "log dir")
 	flag.Parse()
@@ -73,8 +75,7 @@ func main() {
 }
 
 func usage() {
-	fmt.Printf("usage : %s -r <RAFT UUID> -u <PEER UUID> -l <log directory>\n", os.Args[0])
-	os.Exit(0)
+	flag.PrintDefaults()
 }
 
 func parseArgs() (*NiovaKVServer, error) {
