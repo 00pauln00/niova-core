@@ -26,7 +26,7 @@ type HttpServerHandler struct {
 	limiter chan int
 }
 
-func (h HttpServerHandler) process(r *http.Request) []byte {
+func (h HttpServerHandler) process(r *http.Request) ([]byte, error) {
 	var requestobj niovakvlib.NiovaKV
 	var resp niovakvlib.NiovaKVResponse
 	var response bytes.Buffer
@@ -68,12 +68,7 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}()
 	switch r.Method {
 	case "GET":
-		//fallthrough
-		respString := h.process(r)
-		_, errRes := fmt.Fprintf(w, "%s", string(respString))
-		if errRes != nil {
-			log.Error("Error:", errRes)
-		}
+		fallthrough
 	case "PUT":
 		respString := h.process(r)
 		_, errRes := fmt.Fprintf(w, "%s", string(respString))

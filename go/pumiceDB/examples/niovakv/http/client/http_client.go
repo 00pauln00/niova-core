@@ -26,7 +26,8 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 		If so, fill the resp obj with received values
 	*/
 	log.Info("HTTP response status : ", resp.Status)
-	if resp.StatusCode == 200 {
+	switch resp.StatusCode {
+	case 200:
 		//Serviced
 		defer resp.Body.Close()
 		bodyBytes, _ := ioutil.ReadAll(resp.Body)
@@ -36,11 +37,11 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 		if err == nil {
 			log.Info("Status of operation for key :", responseObj.RespStatus)
 		}
-	} else if resp.StatusCode == 503 {
+	case 503:
 		//Service not found
 		responseObj.RespStatus = -1
 		responseObj.RespValue = []byte("Server timed out")
-	} else {
+	default:
 		responseObj.RespStatus = -1
 		responseObj.RespValue = []byte(resp.Status)
 	}
