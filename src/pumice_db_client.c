@@ -581,7 +581,6 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
 
     pmdb_t pmdb = NULL;
 
-    SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbClientStart");
     int rc = raft_client_init(raft_uuid_str, raft_client_uuid_str,
                               pmdb_obj_id_cb, &pmdb,
                               RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP);
