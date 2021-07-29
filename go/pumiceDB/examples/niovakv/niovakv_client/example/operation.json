@@ -1,14 +1,14 @@
 {
  "Request": {
-  "Operation": "write",
-  "Key": "kkvv",
-  "Value": "val",
+  "Operation": "read",
+  "Key": "key",
+  "Value": "",
   "Sent_to": "",
-  "Request_timestamp": "2021-07-19 14:11:27.055966318 -0400 EDT m=+0.003850618"
+  "Request_timestamp": "2021-07-29 00:32:13.576974341 -0400 EDT m=+0.002044902"
  },
  "Response": {
   "Status": 0,
-  "Response": "",
-  "Response_timestamp": "2021-07-19 14:11:27.163041648 -0400 EDT m=+0.110925982"
+  "Response": "value",
+  "Response_timestamp": "2021-07-29 00:32:13.578583887 -0400 EDT m=+0.003654419"
  }
 }

@@ -26,6 +26,7 @@ type SerfClientHandler struct {
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
+	MemberMapPtr    *[]client.Member
 }
 
 /*
@@ -124,6 +125,8 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 		Handler.connectionExist = false
 		return err
 	}
+
+	Handler.MemberMapPtr = &clientMembers
 
 	//Close the agent client connection if not Persist connection
 	if !persistConnection {
