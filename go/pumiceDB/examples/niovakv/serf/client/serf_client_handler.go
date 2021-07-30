@@ -3,7 +3,6 @@ package serfclienthandler
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -165,7 +164,6 @@ func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 		}
 		Handler.AgentData[nodeName].IsAlive = true
 		Handler.AgentData[nodeName].Tags = mems.Tags
-		fmt.Println(mems.Tags)
 		Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
 		//Keep only live members in the list
 		Handler.Agents = append(Handler.Agents, nodeName)

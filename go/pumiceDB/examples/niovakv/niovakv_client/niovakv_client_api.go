@@ -17,13 +17,15 @@ type NiovakvClient struct {
 	ReqObj        *niovakvlib.NiovaKV
 	addr          string
 	port          string
-	addies        address
+	addies        config
 	ClientHandler serfclienthandler.SerfClientHandler
 }
 
-type address struct {
-	addr []string
-	port []string
+type config struct {
+	addr       []string
+	port       []string
+	updateAddr chan []string
+	updatePort chan []string
 }
 
 func (nkvc *NiovakvClient) Put() int {
@@ -39,6 +41,7 @@ func (nkvc *NiovakvClient) Put() int {
 		if err == nil {
 			break
 		}
+		nkvc.MemberUpdater()
 		log.Error(err)
 		nkvc.pickServer()
 	}
@@ -58,6 +61,7 @@ func (nkvc *NiovakvClient) Get() []byte {
 		if err == nil {
 			break
 		}
+		nkvc.MemberUpdater()
 		log.Error(err)
 		nkvc.pickServer()
 	}
@@ -94,7 +98,7 @@ func (nkvc *NiovakvClient) GetServerAddr(refresh bool) ([]string, []string) {
 	return addr, port
 }
 
-func (nkvc *NiovakvClient) MemberUpdater(stop chan int) {
+func (nkvc *NiovakvClient) MemberSearcher(stop chan int) {
 comparison:
 	for {
 		select {
@@ -102,45 +106,60 @@ comparison:
 			log.Info("stopping member updater")
 			break comparison
 		default:
+			var matchFound bool
+			var exists bool
+			var downLocation int
 			var newAddrs []string
 			var newPorts []string
 			newAddrs, newPorts = nkvc.GetServerAddr(true)
 			for i, newPortI := range newPorts {
-				var matchFound bool
 				for g, basePortG := range nkvc.addies.port {
-					var exists bool
 					if newPortI == basePortG {
 						matchFound = true
 					}
-					for _, newPortZ := range newPorts {
-
-						if newPortZ == basePortG {
-							exists = true
-						}
+					if basePortG == newPortI {
+						exists = true
+						downLocation = g
 					}
-					if !exists {
-						log.Info("a server is down")
-						nkvc.addies.addr = removeIndex(nkvc.addies.addr, g)
-						nkvc.addies.port = removeIndex(nkvc.addies.port, g)
-					}
+				}
+				if !exists {
+					log.Info("a server is down")
+					nkvc.addies.addr = removeIndex(nkvc.addies.addr, downLocation)
+					nkvc.addies.port = removeIndex(nkvc.addies.port, downLocation)
 				}
 				if !matchFound {
+					log.Info("new server")
 					nkvc.addies.addr = append(nkvc.addies.addr, newAddrs[i])
-					nkvc.addies.port = append(nkvc.addies.port, newPortI)
+					nkvc.addies.port = append(nkvc.addies.port, newPorts[i])
 				}
 			}
+			if exists || !matchFound {
+				nkvc.addies.updateAddr <- nkvc.addies.addr
+				nkvc.addies.updatePort <- nkvc.addies.port
+			}
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func (nkvc *NiovakvClient) MemberUpdater() {
+	nkvc.addies.addr = <-nkvc.addies.updateAddr
+	nkvc.addies.port = <-nkvc.addies.updatePort
 }
 
 func (nkvc *NiovakvClient) Start(stop chan int) {
 	nkvc.SerfClientInit()
 	nkvc.addies.addr, nkvc.addies.port = nkvc.GetServerAddr(true)
-	go nkvc.MemberUpdater(stop)
+	nkvc.addies.updateAddr = make(chan []string)
+	nkvc.addies.updatePort = make(chan []string)
+	go nkvc.MemberSearcher(stop)
 }
 
 func (nkvc *NiovakvClient) pickServer() {
+	if len(nkvc.addies.port) <= 0 {
+		log.Error("no servers in list")
+		os.Exit(1)
+	}
 	randomIndex := rand.Intn(len(nkvc.addies.addr))
 	nkvc.addr = nkvc.addies.addr[randomIndex]
 	nkvc.port = nkvc.addies.port[randomIndex]
