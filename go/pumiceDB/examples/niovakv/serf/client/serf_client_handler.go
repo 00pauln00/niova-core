@@ -3,7 +3,6 @@ package serfclienthandler
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -97,12 +96,12 @@ persistConnection can be used if frequect updates are required.
 func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 	var err error
 
-	//If no connection is persisted
+	//If no connection was persisted
 	if !Handler.connectionExist {
 		//Retry with different agent addr till getting connected
 		for i := 0; i < Handler.Retries; i++ {
 			if len(Handler.Agents) <= 0 {
-				return errors.New("No live agents")
+				return errors.New("no live agents")
 			}
 			Handler.agentConnection, err = Handler.connect()
 			if err == nil {
@@ -114,7 +113,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 
 	//If no connection is made
 	if !Handler.connectionExist {
-		return errors.New("Retry Limit Exceded") //&RetryLimitExceded{}
+		return errors.New("retry limit exceded") //&RetryLimitExceded{}
 	}
 
 	//Get member data from connected agent
@@ -125,7 +124,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 		return err
 	}
 
-	//Close the agent client connection if not Persist connection
+	//Close the agent client connection if not to Persist
 	if !persistConnection {
 		err = Handler.agentConnection.Close()
 		Handler.connectionExist = false
@@ -144,11 +143,6 @@ Return value : None
 Description : Updates the local data [node status and tags]
 */
 func (Handler *SerfClientHandler) updateTable(members []client.Member) {
-	//Mark all node as failed
-	for _, mems := range Handler.AgentData {
-		mems.IsAlive = false
-	}
-
 	//Delete all addrs
 	Handler.Agents = nil
 
@@ -160,11 +154,14 @@ func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 			Handler.AgentData[nodeName].Name = mems.Name
 			Handler.AgentData[nodeName].Addr = mems.Addr.String()
 		}
-		Handler.AgentData[nodeName].IsAlive = true
+		if mems.Status == "alive" {
+			Handler.AgentData[nodeName].IsAlive = true
+			Handler.Agents = append(Handler.Agents, nodeName)
+		} else {
+			Handler.AgentData[nodeName].IsAlive = false
+		}
 		Handler.AgentData[nodeName].Tags = mems.Tags
-		fmt.Println(mems.Tags)
 		Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
 		//Keep only live members in the list
-		Handler.Agents = append(Handler.Agents, nodeName)
 	}
 }
