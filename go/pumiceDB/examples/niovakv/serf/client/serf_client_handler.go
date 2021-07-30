@@ -19,9 +19,9 @@ Methods:
 */
 type SerfClientHandler struct {
 	//Exported
-	Agents    []string         //Holds all agent names in cluster, initialized with few known agent names
+	Agents    []string         //Holds all agent live names in cluster, initialized with few known agent names
 	Retries   int              //No of retries to connect with any agent
-	AgentData map[string]*Data //Holds data of each agent
+	AgentData map[string]*Data //Holds data of each agent was/is there in the cluster
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
@@ -101,7 +101,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 		//Retry with different agent addr till getting connected
 		for i := 0; i < Handler.Retries; i++ {
 			if len(Handler.Agents) <= 0 {
-				return errors.New("No live agents")
+				return errors.New("no live agents")
 			}
 			Handler.agentConnection, err = Handler.connect()
 			if err == nil {
@@ -113,7 +113,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 
 	//If no connection is made
 	if !Handler.connectionExist {
-		return errors.New("Retry Limit Exceded") //&RetryLimitExceded{}
+		return errors.New("retry limit exceded") //&RetryLimitExceded{}
 	}
 
 	//Get member data from connected agent
@@ -143,28 +143,28 @@ Return value : None
 Description : Updates the local data [node status and tags]
 */
 func (Handler *SerfClientHandler) updateTable(members []client.Member) {
-	//Mark all node as failed
-	for _, mems := range Handler.AgentData {
-		mems.IsAlive = false
-	}
 
 	//Delete all addrs
 	Handler.Agents = nil
 
 	//Update the Agent data(s)
 	for _, mems := range members {
+
+		nodeName := mems.Name
+		if Handler.AgentData[nodeName] == nil {
+			Handler.AgentData[nodeName] = &Data{}
+			Handler.AgentData[nodeName].Name = mems.Name
+			Handler.AgentData[nodeName].Addr = mems.Addr.String()
+		}
+
+		Handler.AgentData[nodeName].Tags = mems.Tags
+		Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
+		//Keep only live members in the list
 		if mems.Status == "alive" {
-			nodeName := mems.Name
-			if Handler.AgentData[nodeName] == nil {
-				Handler.AgentData[nodeName] = &Data{}
-				Handler.AgentData[nodeName].Name = mems.Name
-				Handler.AgentData[nodeName].Addr = mems.Addr.String()
-			}
 			Handler.AgentData[nodeName].IsAlive = true
-			Handler.AgentData[nodeName].Tags = mems.Tags
-			Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
-			//Keep only live members in the list
 			Handler.Agents = append(Handler.Agents, nodeName)
+		} else {
+			Handler.AgentData[nodeName].IsAlive = false
 		}
 	}
 }
