@@ -8,6 +8,8 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
+niovakv_all: compile pmdbserver niovakvserver niovakvclient copy_config
+
 compile:
 	echo "Compiling niovakv"
 
@@ -21,4 +23,5 @@ niovakvclient:
 	go build -o ${DIR}/niovakv_client niovakv_client/niovakv_client.go
 	go build -o ${DIR}/niovakv_client_concurrent niovakv_client_concurrent/niovakv_client_concurrent.go
 
-niovakv_all: compile pmdbserver niovakvserver niovakvclient
+copy_config:
+	cp niovakv_server/config ${DIR}
