@@ -64,7 +64,7 @@ func getServerAddr(refresh bool) (string, string, error) {
 	}
 	//Get random addr
 	if len(ClientHandler.Agents) <= 0 {
-		return "", "", errors.New("All Nodes Down")
+		return "", "", errors.New("all nodes down")
 	}
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[randomIndex]
@@ -107,44 +107,65 @@ func main() {
 	}
 	reqObj.InputOps = operation
 	reqObj.InputKey = key
-	if operation == "write" {
+
+	switch operation {
+	case "getLeader":
+		req := request{
+			Opcode: operation,
+		}
+		ClientHandler.GetData(false)
+		node := ClientHandler.Agents[0]
+		res := response{
+			ResponseValue: ClientHandler.AgentData[node].Tags["Leader UUID"],
+		}
+		operationObj.RequestData = req
+		operationObj.ResponseData = res
+
+	case "write":
 		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
 		doOperation = httpclient.PutRequest
-	} else {
+	case "read":
 		doOperation = httpclient.GetRequest
-	}
-
-	//Retry upto 5 times if request failed
-	addr, port, errAddr := getServerAddr(true)
-	if errAddr != nil {
-		log.Error(errAddr)
+	default:
+		log.Error("Enter valid operation")
 		os.Exit(1)
 	}
 
-	operationObj.RequestData.Sent_to = addr + ":" + port
-	var send_stamp string
-	var recv_stamp string
-	var responseRecvd *niovakvlib.NiovaKVResponse
-	for j := 0; j < 5; j++ {
-		send_stamp = time.Now().String()
-		responseRecvd, err = doOperation(&reqObj, addr, port)
-		recv_stamp = time.Now().String()
-		if err == nil {
-			break
-		}
-		log.Error(err)
-		addr, port, err = getServerAddr(false)
-		if err != nil {
-			log.Error(err)
+	//Only if read/write
+	if doOperation != nil {
+		addr, port, errAddr := getServerAddr(true)
+		if errAddr != nil {
+			log.Error(errAddr)
 			os.Exit(1)
 		}
-	}
-	operationObj.RequestData.Timestamp = send_stamp
-	operationObj.ResponseData = response{
-		Timestamp:     recv_stamp,
-		Status:        responseRecvd.RespStatus,
-		ResponseValue: string(responseRecvd.RespValue),
+
+		operationObj.RequestData.Sent_to = addr + ":" + port
+		var send_stamp string
+		var recv_stamp string
+		var responseRecvd *niovakvlib.NiovaKVResponse
+
+		//Retry upto 5 times if request failed
+		for j := 0; j < 5; j++ {
+			send_stamp = time.Now().String()
+			responseRecvd, err = doOperation(&reqObj, addr, port)
+			recv_stamp = time.Now().String()
+			if err == nil {
+				break
+			}
+			log.Error(err)
+			addr, port, err = getServerAddr(false)
+			if err != nil {
+				log.Error(err)
+				os.Exit(1)
+			}
+		}
+		operationObj.RequestData.Timestamp = send_stamp
+		operationObj.ResponseData = response{
+			Timestamp:     recv_stamp,
+			Status:        responseRecvd.RespStatus,
+			ResponseValue: string(responseRecvd.RespValue),
+		}
 	}
 	file, _ := json.MarshalIndent(operationObj, "", " ")
 	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
