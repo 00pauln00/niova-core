@@ -74,7 +74,7 @@ jobs:
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
     - name: List build directory for executables
-      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec
+      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
     
     - run: go version
     
