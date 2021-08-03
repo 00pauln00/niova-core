@@ -53,8 +53,10 @@ jobs:
     - run: go version
     - name: Install go 1.16
       run: sudo wget https://dl.google.com/go/go1.16.4.linux-amd64.tar.gz  &&
-           sudo tar -xvf go1.16.4.linux-amd64.tar.gz  &&
-           sudo mv go /usr/local 
+           sudo tar -xvf go1.16.4.linux-amd64.tar.gz  && 
+           sudo mv go /usr/local &&
+           export GOROOT=/usr/local/go &&
+           export PATH=$PATH:/usr/local/go/bin
            
     - run: go version
     - name: Build niovakv application
