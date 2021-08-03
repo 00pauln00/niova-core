@@ -43,9 +43,6 @@ jobs:
            make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
-
-    - name: list build dir
-      run: ls -l  /home/runner/work/niovad/niovad/build_dir/libexec
       
     - name: export env variables
       run: export CGO_LDFLAGS="-L/home/runner/work/niovad/niovad/build_dir/lib" &&
