@@ -119,10 +119,16 @@ struct pmdbtc_request
 #endif
 };
 
+struct pmdbtc_request_history
+{
+    struct pmdbtc_request prh_preq;
+    struct raft_test_values prh_last_rtv;
+};
+
 static util_thread_ctx_ctli_int_t pmdbtcNumApps;
 static util_thread_ctx_ctli_int_t pmdbtcHistoryCnt;
 static struct pmdbtc_app pmdbtcApps[PMDB_TEST_CLIENT_MAX_APPS];
-static struct pmdbtc_request pmdbtcReqHistory[PMDB_TEST_CLIENT_REQ_HIST_SZ];
+static struct pmdbtc_request_history pmdbtcReqHistory[PMDB_TEST_CLIENT_REQ_HIST_SZ];
 
 STAILQ_HEAD(pmdbtc_request_queue, pmdbtc_request);
 static struct pmdbtc_request_queue preqQueue =
@@ -251,7 +257,10 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
     if (vd->lvd_index >= pmdbtcHistoryCnt)
         return -ERANGE;
 
-    const struct pmdbtc_request *preq = &pmdbtcReqHistory[vd->lvd_index];
+    struct pmdbtc_request_history *req_hist = &pmdbtcReqHistory[vd->lvd_index];
+
+    const struct pmdbtc_request *preq = &req_hist->prh_preq;
+    const struct raft_test_values *last_rtv = &req_hist->prh_last_rtv;
 
     switch (op)
     {
@@ -313,11 +322,11 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
             break;
         case PMDB_TEST_REQ_LREG_APP_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",
-                                     preq->preq_rtv[0].rtv_seqno);
+                                     last_rtv->rtv_seqno);
             break;
         case PMDB_TEST_REQ_LREG_APP_VALUE:
             lreg_value_fill_unsigned(lv, "app-value",
-                                     preq->preq_rtv[0].rtv_request_value);
+                                     last_rtv->rtv_request_value);
             break;
         default:
             break;
@@ -381,12 +390,18 @@ pmdbtc_app_lookup(const struct raft_net_client_user_id *rncui, bool add)
 }
 
 static void
-pmdbtc_app_history_add(const struct pmdbtc_request *preq)
+pmdbtc_app_history_add(struct pmdbtc_request *preq)
 {
     if (preq)
     {
+        struct pmdbtc_request_history req_hist;
+
+        // Include last rtv to histogram
+        req_hist.prh_preq = *preq;
+        req_hist.prh_last_rtv = preq->preq_rtv[preq->preq_rtdb.rtdb_num_values - 1];
+
         const size_t idx = pmdbtcHistoryCnt++ % PMDB_TEST_CLIENT_REQ_HIST_SZ;
-        pmdbtcReqHistory[idx] = *preq;
+        pmdbtcReqHistory[idx] = req_hist;
     }
 }
 
