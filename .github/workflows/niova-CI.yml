@@ -54,7 +54,7 @@ jobs:
            export PATH=$PATH:/usr/local/go/bin
            
     - name: Build niovakv application
-      run: ls -l code/go/pumiceDB/examples
+      run: ls -l code/go/pumiceDB/examples/niovakv
            
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
@@ -75,11 +75,6 @@ jobs:
 
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
-
-    - name: List build directory for executables
-      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
-    
-    - run: go version
     
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
