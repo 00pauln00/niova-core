@@ -54,7 +54,7 @@ jobs:
            export PATH=$PATH:/usr/local/go/bin
            
     - name: Build niovakv application
-      run: ls -l code/ 
+      run: ls -l code/go
            
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
