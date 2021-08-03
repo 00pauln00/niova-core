@@ -53,6 +53,9 @@ jobs:
            export LD_LIBRARY_PATH=/home/runner/work/niovad/niovad/build_dir/lib &&
            export PATH=$PATH:/usr/local/go/bin
            
+   - name: Build niovakv application
+     run: ls -l 
+           
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
 
