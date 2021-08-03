@@ -23,7 +23,7 @@ var (
 	config_path, key, value, logPath, serial, noRequest, resultFile string
 	reqobjs_write, reqobjs_read                                     []niovakvlib.NiovaKV
 	respFillerLock                                                  sync.Mutex
-	operationMetaObjs                                               []opData //For filling json
+	operationMetaReadObjs, operationMetaWriteObjs                   []opData //For filling json
 	w                                                               sync.WaitGroup
 	requestSentCount, timeoutCount                                  *int32
 )
@@ -94,7 +94,13 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 		atomic.AddInt32(timeoutCount, 1)
 	}
 	respFillerLock.Lock()
-	operationMetaObjs = append(operationMetaObjs, operationObj)
+	if write {
+		operationMetaWriteObjs = append(operationMetaWriteObjs, operationObj)
+	} else {
+		operationMetaReadObjs = append(operationMetaReadObjs, operationObj)
+
+	}
+
 	respFillerLock.Unlock()
 }
 
@@ -198,17 +204,19 @@ func main() {
 	//Find avg response time
 	Writesum := 0
 	Readsum := 0
-	for _, ops := range operationMetaObjs {
-		if ops.RequestData.Opcode == "write" {
-			Writesum += int(ops.TimeDuration.Seconds())
-		} else {
-			Readsum += int(ops.TimeDuration.Seconds())
-		}
+	for _, ops := range operationMetaWriteObjs {
+		Writesum += int(ops.TimeDuration.Seconds())
+	}
+	for _, ops := range operationMetaReadObjs {
+		Readsum += int(ops.TimeDuration.Seconds())
 	}
 	log.Info("Avg write response time : ", Writesum/n, "sec")
 	log.Info("Avg read response time : ", Readsum/n, "sec")
 	log.Info("Avg response time : ", (Writesum+Readsum)/(2*n), "sec")
-	file, _ := json.MarshalIndent(operationMetaObjs, "", " ")
+	toJson := make(map[string][]opData)
+	toJson["write"] = operationMetaWriteObjs
+	toJson["read"] = operationMetaReadObjs
+	file, _ := json.MarshalIndent(toJson, "", " ")
 	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
 
 }

@@ -167,7 +167,9 @@ func main() {
 			ResponseValue: string(responseRecvd.RespValue),
 		}
 	}
-	file, _ := json.MarshalIndent(operationObj, "", " ")
+	toJson := make(map[string]opData)
+	toJson[operation] = operationObj
+	file, _ := json.MarshalIndent(toJson, "", " ")
 	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
 	/*
 		Following in the json file
