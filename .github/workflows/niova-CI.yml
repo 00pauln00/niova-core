@@ -45,8 +45,14 @@ jobs:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
     - name: list build dir
-      run: ls -l /home/runner/work/niovad/niovad/build_dir
+      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec
       
+    - name: export env variables
+      run: export CGO_LDFLAGS="-L/home/runner/work/niovad/niovad/build_dir/lib" &&
+           export CGO_CFLAGS="-I/home/runner/work/niovad/niovad/build_dir/include/niova" &&
+           export LD_LIBRARY_PATH=/home/runner/work/niovad/niovad/build_dir/lib &&
+           export PATH=$PATH:/usr/local/go/bin
+           
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
 
