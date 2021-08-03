@@ -49,15 +49,7 @@ jobs:
            export CGO_CFLAGS="-I/home/runner/work/niovad/niovad/build_dir/include/niova" &&
            export LD_LIBRARY_PATH=/home/runner/work/niovad/niovad/build_dir/lib &&
            export PATH=$PATH:/usr/local/go/bin
-           
-    - run: go version
-    - name: Install go 1.16
-      run: sudo wget https://dl.google.com/go/go1.16.4.linux-amd64.tar.gz  &&
-           sudo tar -xvf go1.16.4.linux-amd64.tar.gz  && 
-           sudo mv go /usr/local &&
-           export GOROOT=/usr/local/go &&
-           export PATH=$PATH:/usr/local/go/bin
-           
+                      
     - run: go version
     - name: Build niovakv application
       run: cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
