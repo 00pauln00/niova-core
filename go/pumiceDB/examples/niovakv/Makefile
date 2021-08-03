@@ -8,7 +8,7 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-niovakv_all: compile pmdbserver niovakvserver niovakvclient
+niovakv_all: compile pmdbserver niovakvserver niovakvclient install
 
 compile:
 	echo "Compiling niovakv"
