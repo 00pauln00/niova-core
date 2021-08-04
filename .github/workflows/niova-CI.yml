@@ -23,12 +23,10 @@ jobs:
       run: sudo apt update
     
     - run: which go && sudo rm -rf /usr/bin/go
-    - run: sudo apt install -y golang-1.16-go
-    - run: export PATH=$PATH:/usr/local/go/bin
-    - run: go version
     
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
+                                   golang-1.16-go
                                    uuid libuuid1
                                    libaio-dev libaio1
                                    libgcrypt20 openssl
