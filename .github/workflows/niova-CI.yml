@@ -43,7 +43,6 @@ jobs:
       run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
            sudo tar -C /usr/local -xzf  go1.16.6.linux-amd64.tar.gz &&
            export PATH=$PATH:/usr/local/go/bin &&
-           sudo source ~/.bashrc &&
            go version
            
     - name: make
