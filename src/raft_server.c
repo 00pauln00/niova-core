@@ -4408,7 +4408,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "");
 
-    if (FAULT_INJECT(raft_bypass_sm_apply) ||
+    if (FAULT_INJECT(raft_server_bypass_sm_apply) ||
         ri->ri_last_applied_idx == ri->ri_commit_idx)
         return;
 
@@ -4540,8 +4540,7 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 
     EV_PIPE_RESET(evp);
 
-    if (!FAULT_INJECT(raft_server_bypass_sm_apply))
-        raft_server_state_machine_apply(ri);
+    raft_server_state_machine_apply(ri);
 }
 
 static raft_server_epoll_t
