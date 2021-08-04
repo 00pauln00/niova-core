@@ -21,14 +21,12 @@ jobs:
 
     - name: apt update
       run: sudo apt update
-    - run: go version
-    - run: which go && sudo rm -rf /usr/bin/go
     
     - name: Install golang 1.16
-      run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+      run: sudo rm -rf /usr/bin/go &&
+           sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
            sudo tar -C /home/runner/work/go -xzf  go1.16.6.linux-amd64.tar.gz &&
-           ls -l /home/runner/work/go/go/bin &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
            
@@ -55,16 +53,14 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
            
-    - name: export env variables
+    - name: Build niovakv application
       run: export CGO_LDFLAGS="-L/home/runner/work/niovad/niovad/build_dir/lib" &&
            export CGO_CFLAGS="-I/home/runner/work/niovad/niovad/build_dir/include/niova" &&
            export LD_LIBRARY_PATH=/home/runner/work/niovad/niovad/build_dir/lib &&
-           export PATH=$PATH:/home/runner/work/go/go/bin
-                      
-    - run:  export PATH=$PATH:/home/runner/work/go/go/bin && go version
-    - name: Build niovakv application
-      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+     
+    - run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
            
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
