@@ -22,7 +22,9 @@ jobs:
     - name: apt update
       run: sudo apt update
     - run: go version && lsb_release -a
-    - run: which go
+    - run: which go && sudo rm -rf /usr/bin/go
+    - run: go version
+    
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
                                    uuid libuuid1
