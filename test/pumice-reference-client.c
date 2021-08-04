@@ -392,13 +392,15 @@ pmdbtc_app_lookup(const struct raft_net_client_user_id *rncui, bool add)
 static void
 pmdbtc_app_history_add(struct pmdbtc_request *preq)
 {
-    if (preq && preq->preq_rtdb.rtdb_num_values)
+    if (preq)
     {
-        struct pmdbtc_request_history req_hist;
+        struct pmdbtc_request_history req_hist = {0};
 
         // Include last rtv to histogram
         req_hist.prh_preq = *preq;
-        req_hist.prh_last_rtv = preq->preq_rtv[preq->preq_rtdb.rtdb_num_values - 1];
+        if (preq->preq_rtdb.rtdb_num_values)
+            req_hist.prh_last_rtv =
+                preq->preq_rtv[preq->preq_rtdb.rtdb_num_values - 1];
 
         const size_t idx = pmdbtcHistoryCnt++ % PMDB_TEST_CLIENT_REQ_HIST_SZ;
         pmdbtcReqHistory[idx] = req_hist;
