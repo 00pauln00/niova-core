@@ -21,9 +21,9 @@ jobs:
 
     - name: apt update
       run: sudo apt update
-    - run: go version && lsb_release -a
+    
     - run: which go && sudo rm -rf /usr/bin/go
-    - run: sudo apt install -y golang-1.16-go && which go
+    - run: sudo apt install -y golang-1.16-go
     - run: export PATH=$PATH:/usr/local/go/bin
     - run: go version
     
