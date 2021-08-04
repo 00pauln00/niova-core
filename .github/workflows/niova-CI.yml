@@ -45,8 +45,8 @@ jobs:
            export PATH=$PATH:/usr/local/go/bin &&
            go version
            
-    - run: ls -l /usr/local/go/bin
-    - run: which go
+    - run: ls -l /usr/local/go/bin/go
+    
     - run: go version
     - name: make
       run: cd ./code &&
