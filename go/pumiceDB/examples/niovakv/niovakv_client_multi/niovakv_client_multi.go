@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"math/rand"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -20,13 +19,13 @@ import (
 )
 
 var (
-	ClientHandler                                       serfclienthandler.SerfClientHandler
-	config_path, key, value, logPath, serial, noRequest string
-	reqobjs_write, reqobjs_read                         []niovakvlib.NiovaKV
-	respFillerLock                                      sync.Mutex
-	operationMetaObjs                                   []opData //For filling json
-	w                                                   sync.WaitGroup
-	requestSentCount, timeoutCount                      *int32
+	ClientHandler                                                   serfclienthandler.SerfClientHandler
+	config_path, key, value, logPath, serial, noRequest, resultFile string
+	reqobjs_write, reqobjs_read                                     []niovakvlib.NiovaKV
+	respFillerLock                                                  sync.Mutex
+	operationMetaReadObjs, operationMetaWriteObjs                   []opData //For filling json
+	w                                                               sync.WaitGroup
+	requestSentCount, timeoutCount                                  *int32
 )
 
 type request struct {
@@ -62,6 +61,7 @@ func getCmdParams() {
 	flag.StringVar(&value, "v", "Value", "Value prefix")
 	flag.StringVar(&serial, "s", "no", "Serialized request or not")
 	flag.StringVar(&noRequest, "n", "5", "No of request")
+	flag.StringVar(&resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.Parse()
 }
 
@@ -94,7 +94,13 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 		atomic.AddInt32(timeoutCount, 1)
 	}
 	respFillerLock.Lock()
-	operationMetaObjs = append(operationMetaObjs, operationObj)
+	if write {
+		operationMetaWriteObjs = append(operationMetaWriteObjs, operationObj)
+	} else {
+		operationMetaReadObjs = append(operationMetaReadObjs, operationObj)
+
+	}
+
 	respFillerLock.Unlock()
 }
 
@@ -104,6 +110,7 @@ func getServerAddr(refresh bool) (string, string) {
 		ClientHandler.GetData(false)
 	}
 	//Get random addr
+	log.Info(ClientHandler.Agents)
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	node := ClientHandler.Agents[randomIndex]
 	return ClientHandler.AgentData[node].Addr, ClientHandler.AgentData[node].Tags["Hport"]
@@ -153,10 +160,9 @@ func main() {
 	}
 
 	//Send request
-	refresh := true
-	addr, port := getServerAddr(refresh)
+	addr, port := getServerAddr(true)
 	for j := 0; j < n; j++ {
-		addr, port := getServerAddr(false)
+		addr, port := getServerAddr(true)
 		if serial == "no" {
 			w.Add(1)
 			go func(index int) {
@@ -169,15 +175,15 @@ func main() {
 	}
 
 	//Wait till all write are completed
-	fmt.Println("Waiting for writes to complete")
+	log.Info("Waiting for writes to complete")
 	w.Wait()
-	fmt.Println("Writes completed")
-	fmt.Println("No of request sent, no of time outs : ", count1, count3)
+	log.Info("Writes completed")
+	log.Info("No of request sent, no of time outs : ", count1, count3)
 	count1 = 0
 	count3 = 0
 
 	for j := n - 1; j >= 0; j-- {
-		addr, port = getServerAddr(false)
+		addr, port = getServerAddr(true)
 		if serial == "no" {
 			w.Add(1)
 			go func(index int) {
@@ -190,25 +196,27 @@ func main() {
 	}
 
 	//Wait till all reads are completed
-	fmt.Println("Waiting for read to complete")
+	log.Info("Waiting for read to complete")
 	w.Wait()
-	fmt.Println("Reads completed")
-	fmt.Println("No of request sent, no of time outs : ", count1, count3)
+	log.Info("Reads completed")
+	log.Info("No of request sent, no of time outs : ", count1, count3)
 
 	//Find avg response time
 	Writesum := 0
 	Readsum := 0
-	for _, ops := range operationMetaObjs {
-		if ops.RequestData.Opcode == "write" {
-			Writesum += int(ops.TimeDuration.Seconds())
-		} else {
-			Readsum += int(ops.TimeDuration.Seconds())
-		}
+	for _, ops := range operationMetaWriteObjs {
+		Writesum += int(ops.TimeDuration.Seconds())
 	}
-	fmt.Println("Avg write response time : ", Writesum/n, "sec")
-	fmt.Println("Avg read response time : ", Readsum/n, "sec")
-	fmt.Println("Avg response time : ", (Writesum+Readsum)/(2*n), "sec")
-	file, _ := json.MarshalIndent(operationMetaObjs, "", " ")
-	_ = ioutil.WriteFile("operation.json", file, 0644)
+	for _, ops := range operationMetaReadObjs {
+		Readsum += int(ops.TimeDuration.Seconds())
+	}
+	log.Info("Avg write response time : ", Writesum/n, "sec")
+	log.Info("Avg read response time : ", Readsum/n, "sec")
+	log.Info("Avg response time : ", (Writesum+Readsum)/(2*n), "sec")
+	toJson := make(map[string][]opData)
+	toJson["write"] = operationMetaWriteObjs
+	toJson["read"] = operationMetaReadObjs
+	file, _ := json.MarshalIndent(toJson, "", " ")
+	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
 
 }
