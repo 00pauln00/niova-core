@@ -45,6 +45,9 @@ jobs:
            export PATH=$PATH:/usr/local/go/bin &&
            go version
            
+    - run: ls -l /usr/local/go/bin
+    - run: which go
+    - run: go version
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
@@ -59,8 +62,6 @@ jobs:
            export LD_LIBRARY_PATH=/home/runner/work/niovad/niovad/build_dir/lib &&
            export PATH=$PATH:/usr/local/go/bin
                       
-    - run: go version && lsb_release -a
-    
     - name: Build niovakv application
       run: cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
            
