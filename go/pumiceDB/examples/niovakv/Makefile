@@ -21,8 +21,8 @@ niovakvserver:
 
 niovakvclient:
 	cd niovakv_client && go build niovakv_client.go
-	cd niovakv_client_concurrent && go build niovakv_client_concurrent.go
+	cd niovakv_client_multi && go build niovakv_client_multi.go
 
 install:
-	cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client niovakv_client_concurrent/niovakv_client_concurrent ${DIR}/libexec/niova
+	cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client niovakv_client_multi/niovakv_client_multi ${DIR}/libexec/niova
 	cp niovakv_server/config ${DIR}/libexec/niova/niovakv.config

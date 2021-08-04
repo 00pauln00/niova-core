@@ -64,8 +64,7 @@ jobs:
     - run:  export PATH=$PATH:/home/runner/work/go/go/bin && go version
     - name: Build niovakv application
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           ls -l code/go/pumiceDB/examples/niovakv/niovakv_client_concurrent &&
-           sudo cd code/go/pumiceDB/examples/niovakv && sudo make -e DIR=/home/runner/work/niovad/niovad/build_dir
+           cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
            
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
