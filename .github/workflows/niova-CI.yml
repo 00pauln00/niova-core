@@ -39,6 +39,13 @@ jobs:
     - name: Install Ansible
       run:  pip3 install ansible
 
+    - name: Install golang 1.16
+      run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+           sudo tar -C /usr/local -xzf  go1.16.6.linux-amd64.tar.gz &&
+           export PATH=$PATH:/usr/local/go/bin &&
+           sudo source ~/.bashrc &&
+           go version
+           
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
@@ -46,13 +53,6 @@ jobs:
            make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
-      
-    - run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
-           sha go1.16.6.linux-amd64.tar.gz &&
-           sudo tar -C /usr/local -xzf  go1.16.6.linux-amd64.tar.gz &&
-           export PATH=$PATH:/usr/local/go/bin &&
-           sudo source ~/.bashrc &&
-           go version
            
     - name: export env variables
       run: export CGO_LDFLAGS="-L/home/runner/work/niovad/niovad/build_dir/lib" &&
