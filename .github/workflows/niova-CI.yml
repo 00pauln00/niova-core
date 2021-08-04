@@ -26,7 +26,6 @@ jobs:
     
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
-                                   golang-1.16-go
                                    uuid libuuid1
                                    libaio-dev libaio1
                                    libgcrypt20 openssl
@@ -48,6 +47,13 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
       
+    - run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+           sha go1.16.6.linux-amd64.tar.gz &&
+           sudo tar -C /usr/local -xzf  go1.16.6.linux-amd64.tar.gz &&
+           export PATH=$PATH:/usr/local/go/bin &&
+           sudo source ~/.bashrc &&
+           go version
+           
     - name: export env variables
       run: export CGO_LDFLAGS="-L/home/runner/work/niovad/niovad/build_dir/lib" &&
            export CGO_CFLAGS="-I/home/runner/work/niovad/niovad/build_dir/include/niova" &&
