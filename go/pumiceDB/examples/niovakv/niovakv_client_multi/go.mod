@@ -1,4 +1,4 @@
-module niovakv/niovakv_client_concurrent
+module niovakv/niovakv_client_multi
 
 replace niovakv/serfclienthandler => ../serf/client
 
