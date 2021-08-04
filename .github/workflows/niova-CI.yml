@@ -23,9 +23,7 @@ jobs:
       run: sudo apt update
     - run: go version
     - run: which go && sudo rm -rf /usr/bin/go
-    - run: sudo apt install -y golang-1.16-go
-    - run: export PATH=$PATH:/usr/local/go/bin &&
-           go version
+    - run: go version
            
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
