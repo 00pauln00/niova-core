@@ -23,7 +23,9 @@ jobs:
       run: sudo apt update
     - run: go version && lsb_release -a
     - run: which go && sudo rm -rf /usr/bin/go
-    - run: sudo apt install -y  golang-1.16-go && which go && export PATH=$PATH:/usr/local/go/bin
+    - run: sudo apt install -y  golang-1.16-go 
+    - run: which go
+    - run: export PATH=$PATH:/usr/local/go/bin
     - run: go version
     
     - name: dpkg / rpm prep
