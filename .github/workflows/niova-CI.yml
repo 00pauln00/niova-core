@@ -28,7 +28,9 @@ jobs:
       run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
            sudo tar -C /home/runner/work/go -xzf  go1.16.6.linux-amd64.tar.gz &&
-           ls -l /home/runner/work/go/go
+           ls -l /home/runner/work/go/go/bin &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
+           go version
            
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
