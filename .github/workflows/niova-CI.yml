@@ -23,6 +23,7 @@ jobs:
       run: sudo apt update
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
+                                   go   
                                    uuid libuuid1
                                    libaio-dev libaio1
                                    libgcrypt20 openssl
@@ -51,13 +52,7 @@ jobs:
            export PATH=$PATH:/usr/local/go/bin
                       
     - run: go version && lsb_release -a
-    - name: Install go 1.16
-      run: sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
-           sudo tar -C /usr/local -xzf go1.16.6.linux-amd64.tar.gz &&
-           export PATH=$PATH:/usr/local/go/bin &&
-           source ~/.bashrc
-           
-    - run: go version
+    
     - name: Build niovakv application
       run: cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
            
