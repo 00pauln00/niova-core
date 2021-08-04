@@ -22,19 +22,11 @@ jobs:
     - name: apt update
       run: sudo apt update
     - run: go version
-    - name: Update golang
-      run: sudo apt-get purge golang* &&
-           sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
-           sudo tar -C /usr/local -xzf https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
-           sudo mkdir ~/.go &&
-           export GOROOT=/usr/local/go &&
-           export GOPATH=~/.go &&
-           export PATH=$PATH:$GOROOT/bin:$GOPATH/bin &&
-           sudo update-alternatives --install "/usr/bin/go" "go" "/usr/local/go/bin/go" 0 &&
-           sudo update-alternatives --set go /usr/local/go/bin/go
+    - run: which go && sudo rm -rf /usr/bin/go
+    - run: sudo apt install -y golang-1.16-go
+    - run: export PATH=$PATH:/usr/local/go/bin &&
+           go version
            
-    - run: go version
-    
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
                                    uuid libuuid1
