@@ -61,7 +61,7 @@ jobs:
            export LD_LIBRARY_PATH=/home/runner/work/niovad/niovad/build_dir/lib &&
            export PATH=$PATH:/home/runner/work/go/go/bin
                       
-    - run: go version
+    - run:  export PATH=$PATH:/home/runner/work/go/go/bin && go version
     - name: Build niovakv application
       run: cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
            
