@@ -19,6 +19,13 @@ declare -a recipe_list=("leader_overthrow.yml"
                         "completing_an_uncommitted_write_following_a_reboot.yml"
                         "election_timeout_modification.yml"
                         "pmdb_client_error_demonstration_standalone_client.yml"
+			"pmdb_multiple_clients_with_multiple_subapps_per_client.yml"
+                        "rebuild_by_commitee.yml"
+                        "quorum_consists_of_rebuild_followers.yml"
+                        "leader_has_wide_skew_bw_last_applied_and_commit_index_basic_version.yml"
+                        "leader_has_wide_skew_bw_last_applied_and_commit_index.yml"
+                        "partition_split_and_rejoin.yml"
+                        "pmdb_client_writes_tolerate_leader_changes.yml"
                        )
 
 for recipe in "${recipe_list[@]}"
