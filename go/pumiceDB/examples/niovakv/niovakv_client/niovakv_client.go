@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"os"
-	"time"
-
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"niovakv/httpclient"
 	"niovakv/niovakvlib"
 	"niovakv/serfclienthandler"
+	"os"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -171,6 +171,15 @@ func main() {
 	toJson[operation] = operationObj
 	file, _ := json.MarshalIndent(toJson, "", " ")
 	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+
+	switch operation {
+	case "write":
+		fmt.Printf("Request =>  Key : %s, Value : %s\n", operationObj.RequestData.Key, operationObj.RequestData.Value)
+		fmt.Printf("Response =>  Status : %d\n", operationObj.ResponseData.Status)
+	case "read":
+		fmt.Printf("Request =>  Key : %s \n", operationObj.RequestData.Key)
+		fmt.Printf("Response =>  Value : %s\n", operationObj.ResponseData.ResponseValue)
+	}
 	/*
 		Following in the json file
 		Request
