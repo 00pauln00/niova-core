@@ -113,7 +113,7 @@ func getServerAddr(refresh bool) (string, string) {
 	log.Info(ClientHandler.Agents)
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	node := ClientHandler.Agents[randomIndex]
-	return ClientHandler.AgentData[node].Addr, ClientHandler.AgentData[node].Tags["Hport"]
+	return node.Addr.String(), node.Tags["Hport"]
 }
 
 func main() {
@@ -140,7 +140,6 @@ func main() {
 
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
-	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
 	ClientHandler.Initdata(config_path)
 	ClientHandler.Retries = 5
 

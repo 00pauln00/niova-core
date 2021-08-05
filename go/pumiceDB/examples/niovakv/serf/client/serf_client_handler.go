@@ -19,9 +19,9 @@ Methods:
 */
 type SerfClientHandler struct {
 	//Exported
-	Agents    []string         //Holds all agent names in cluster, initialized with few known agent names
-	Retries   int              //No of retries to connect with any agent
-	AgentData map[string]*Data //Holds data of each agent
+	Agents    []client.Member //Holds all agent names in cluster, initialized with few known agent names
+	Retries   int             //No of retries to connect with any agent
+	AgentData []client.Member //Holds data of each agent
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
@@ -39,27 +39,23 @@ type Data struct {
 	Tags    map[string]string
 }
 
-func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
+func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) ([]string, error) {
 	//Get addrs and Rports and store it in AgentAddrs and
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
-		return err
+		return nil, err
 	}
 	reader, err := os.OpenFile(serfConfigPath, os.O_RDONLY, 0444)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	filescanner := bufio.NewScanner(reader)
 	filescanner.Split(bufio.ScanLines)
+	var addrs []string
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		Handler.AgentData[input[0]] = &Data{}
-		Handler.AgentData[input[0]].Name = input[0]
-		Handler.AgentData[input[0]].Addr = input[1]
-		Handler.AgentData[input[0]].Rport = input[3]
-		Handler.AgentData[input[0]].IsAlive = false
-		Handler.Agents = append(Handler.Agents, input[0])
+		addrs = append(addrs, input[1]+":"+input[3])
 	}
-	return nil
+	return addrs, nil
 }
 
 /*
@@ -70,14 +66,37 @@ Return value : error
 Description : Get configuration data from config file
 */
 func (Handler *SerfClientHandler) Initdata(configpath string) error {
-	return Handler.getConfigData(configpath)
+	var connectClient *client.RPCClient
+	addrs, err := Handler.getConfigData(configpath)
+	if err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		connectClient, err = Handler.connectWith(addr)
+		if err == nil {
+			break
+		}
+	}
+
+	if connectClient == nil {
+		return errors.New("no live agents")
+	}
+
+	clusterMembers, err := connectClient.Members()
+	Handler.updateTable(clusterMembers)
+
+	return err
 }
 
-func (Handler *SerfClientHandler) connect() (*client.RPCClient, error) {
+func (Handler *SerfClientHandler) connectWith(addr string) (*client.RPCClient, error) {
+	return client.NewRPCClient(addr)
+}
+func (Handler *SerfClientHandler) connectRandom() (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
-	randomAddr := Handler.AgentData[randomAgent].Addr
-	connector, err := client.NewRPCClient(randomAddr + ":" + Handler.AgentData[randomAgent].Rport)
+	randomAddr := randomAgent.Addr.String()
+	rPort := randomAgent.Tags["Rport"]
+	connector, err := Handler.connectWith(randomAddr + ":" + rPort)
 	if err != nil {
 		//Delete the node from connection list
 		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
@@ -103,7 +122,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 			if len(Handler.Agents) <= 0 {
 				return errors.New("no live agents")
 			}
-			Handler.agentConnection, err = Handler.connect()
+			Handler.agentConnection, err = Handler.connectRandom()
 			if err == nil {
 				Handler.connectionExist = true
 				break
@@ -145,23 +164,12 @@ Description : Updates the local data [node status and tags]
 func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 	//Delete all addrs
 	Handler.Agents = nil
-
+	Handler.AgentData = members
 	//Update the Agent data(s)
 	for _, mems := range members {
-		nodeName := mems.Name
-		if Handler.AgentData[nodeName] == nil {
-			Handler.AgentData[nodeName] = &Data{}
-			Handler.AgentData[nodeName].Name = mems.Name
-			Handler.AgentData[nodeName].Addr = mems.Addr.String()
-		}
 		if mems.Status == "alive" {
-			Handler.AgentData[nodeName].IsAlive = true
-			Handler.Agents = append(Handler.Agents, nodeName)
-		} else {
-			Handler.AgentData[nodeName].IsAlive = false
+			Handler.Agents = append(Handler.Agents, mems)
 		}
-		Handler.AgentData[nodeName].Tags = mems.Tags
-		Handler.AgentData[nodeName].Rport = mems.Tags["Rport"]
 		//Keep only live members in the list
 	}
 }
