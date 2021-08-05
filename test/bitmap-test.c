@@ -175,13 +175,13 @@ niova_bitmap_merge_test(void)
 {
     size_t size = 64;
 
-    struct niova_bitmap x;
+    struct niova_bitmap x = {0};
     bitmap_word_t x_map[size];
 
     int rc = niova_bitmap_attach_and_init(&x, x_map, size);
     NIOVA_ASSERT(!rc);
 
-    struct niova_bitmap y;
+    struct niova_bitmap y = {0};
     bitmap_word_t y_map[size];
 
     rc = niova_bitmap_attach_and_init(&y, y_map, size);
@@ -225,13 +225,13 @@ niova_bitmap_bulk_unset_test(void)
 {
     size_t size = 64;
 
-    struct niova_bitmap x;
+    struct niova_bitmap x = {0};
     bitmap_word_t x_map[size];
 
     int rc = niova_bitmap_attach_and_init(&x, x_map, size);
     NIOVA_ASSERT(!rc);
 
-    struct niova_bitmap y;
+    struct niova_bitmap y = {0};
     bitmap_word_t y_map[size];
 
     rc = niova_bitmap_attach_and_init(&y, y_map, size);
