@@ -14,7 +14,7 @@ jobs:
       with:
         path: ./code
         
-    - run: cat code/scripts/run_recipes.sh
+    - run: ll code 
 
     - name: Generate build number
       uses: einaregilsson/build-number@v3
