@@ -48,7 +48,7 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 	return &responseObj, err
 }
 
-func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func PutRequest(reqobj *niovakvlib.NiovaKV, addr string) (*niovakvlib.NiovaKVResponse, error) {
 	var request bytes.Buffer
 	enc := gob.NewEncoder(&request)
 	err := enc.Encode(reqobj)
@@ -56,7 +56,7 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 		log.Error(err)
 		return nil, err
 	}
-	conn_addr := "http://" + addr + ":" + port
+	conn_addr := "http://" + addr
 	req, err := http.NewRequest(http.MethodPut, conn_addr, bytes.NewBuffer(request.Bytes()))
 	if err != nil {
 		log.Error(err)
@@ -65,7 +65,7 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 	return serviceRequest(req)
 }
 
-func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func GetRequest(reqobj *niovakvlib.NiovaKV, addr string) (*niovakvlib.NiovaKVResponse, error) {
 	var request bytes.Buffer
 	enc := gob.NewEncoder(&request)
 	err := enc.Encode(reqobj)
@@ -74,7 +74,7 @@ func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 		return nil, err
 	}
 
-	conn_addr := "http://" + addr + ":" + port
+	conn_addr := "http://" + addr
 	req, err := http.NewRequest(http.MethodGet, conn_addr, bytes.NewBuffer(request.Bytes()))
 	if err != nil {
 		log.Error(err)

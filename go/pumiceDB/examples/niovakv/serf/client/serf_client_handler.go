@@ -25,7 +25,6 @@ type SerfClientHandler struct {
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
-	MemberMapPtr    *[]client.Member
 }
 
 /*

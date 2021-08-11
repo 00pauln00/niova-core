@@ -3,10 +3,8 @@ package main
 import (
 	"encoding/json"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"strings"
 	"time"
 
 	"niovakv/clientapi"
@@ -46,41 +44,8 @@ type opData struct {
 }
 
 func usage() {
-	fmt.Printf("usage : %s -c <serf configs> -l <log directory> -o <write/read> -k <key> -v <value>\n", os.Args[0])
+	flag.PrintDefaults()
 	os.Exit(0)
-}
-
-//Create logfile for client.
-func initLogger() {
-
-	//Split log directory path.
-	parts := strings.Split(logPath, "/")
-	fname := parts[len(parts)-1]
-	dir := strings.TrimSuffix(logPath, fname)
-
-	//Create directory if not exist.
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		os.MkdirAll(dir, 0700) // Create directory
-	}
-
-	filename := dir + fname
-	log.Info("logfile:", filename)
-
-	//Create the log file if doesn't exist. And append to it if it already exists.i
-	f, err := os.OpenFile(filename, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-	Formatter := new(log.TextFormatter)
-
-	//Set Timestamp format for logfile.
-	Formatter.TimestampFormat = "02-01-2006 15:04:05"
-	Formatter.FullTimestamp = true
-	log.SetFormatter(Formatter)
-
-	if err != nil {
-		// Cannot open log file. Logging to stderr
-		log.Error(err)
-	} else {
-		log.SetOutput(f)
-	}
 }
 
 //Function to get command line parameters while starting of the client.
@@ -135,8 +100,8 @@ func main() {
 	var send_stamp string
 	var recv_stamp string
 	var responseRecvd niovakvlib.NiovaKVResponse
-	stop := make(chan int)
 	nkvc := clientapi.NiovakvClient{}
+	stop := make(chan int)
 	nkvc.Start(stop)
 	switch operation {
 	case "getLeader":
@@ -170,18 +135,8 @@ func main() {
 		responseRecvd.RespValue = nkvc.Get(&reqObj)
 		recv_stamp = time.Now().String()
 	}
-	operationObj.RequestData.Timestamp = send_stamp
-	operationObj.ResponseData = response{
-		Timestamp:     recv_stamp,
-		Status:        responseRecvd.RespStatus,
-		ResponseValue: string(responseRecvd.RespValue),
-	}
 
-	stop <- 1
-	toJson := make(map[string]opData)
-	toJson[operation] = operationObj
-	file, _ := json.MarshalIndent(toJson, "", " ")
-	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+	//Result writing
 	/*
 		Following in the json file
 		Request
@@ -194,4 +149,17 @@ func main() {
 			Response
 			Recvd_Timestamp
 	*/
+	operationObj.RequestData.Timestamp = send_stamp
+	operationObj.ResponseData = response{
+		Timestamp:     recv_stamp,
+		Status:        responseRecvd.RespStatus,
+		ResponseValue: string(responseRecvd.RespValue),
+	}
+
+	stop <- 1
+	toJson := make(map[string]opData)
+	toJson[operation] = operationObj
+	file, _ := json.MarshalIndent(toJson, "", " ")
+	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+
 }
