@@ -20,6 +20,7 @@ enum fault_inject_entries
     FAULT_INJECT_raft_force_bulk_recovery,
     FAULT_INJECT_raft_server_main_loop_break,
     FAULT_INJECT_raft_leader_may_be_deposed,
+    FAULT_INJECT_raft_leader_deposed_with_cluster_healthy,
     FAULT_INJECT_raft_follower_ignores_AE,
     FAULT_INJECT_raft_candidate_state_disabled,
     FAULT_INJECT_raft_client_udp_recv_handler_bypass,

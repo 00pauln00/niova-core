@@ -3752,6 +3752,10 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
 static raft_net_timerfd_cb_ctx_bool_t
 raft_leader_check_quorum(struct raft_instance *ri)
 {
+    if (raft_instance_is_leader(ri) &&
+        FAULT_INJECT(raft_leader_deposed_with_cluster_healthy))
+        return true;
+
     bool quorum_intact =
         raft_leader_majority_followers_comm_window(
             ri, (raft_election_timeout_lower_bound(ri) *
