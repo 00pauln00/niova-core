@@ -16,9 +16,10 @@ import (
 )
 
 type NiovakvClient struct {
-	addies        []addrStruct
-	ClientHandler serfclienthandler.SerfClientHandler
-	addrTableLock sync.Mutex
+	addies         []addrStruct
+	ClientHandler  serfclienthandler.SerfClientHandler
+	addrTableLock  sync.Mutex
+	serfUpdateLock sync.Mutex
 }
 
 type addrStruct struct {
@@ -78,19 +79,22 @@ comparison:
 			break comparison
 		default:
 			log.Info("Member table update initiated")
-			err := nkvc.ClientHandler.GetData(false)
+			//Since we do update it continuesly, we persist the connection
+			nkvc.serfUpdateLock.Lock()
+			err := nkvc.ClientHandler.GetData(true)
+			nkvc.serfUpdateLock.Unlock()
 			if err != nil {
 				log.Error("Unable to connect with agents")
 				os.Exit(1)
 			}
 			var addies []addrStruct
-			for index, mems := range nkvc.ClientHandler.Agents {
-				if mems.Status == "alive" {
-					addies = append(addies, addrStruct{
-						addr: mems.Addr.String() + ":" + mems.Tags["Hport"],
-					})
-					atomic.StoreInt32(addies[index].failed, 0)
-				}
+			//Only alive addr will be there in Agents
+			for _, mems := range nkvc.ClientHandler.Agents {
+				a := int32(0)
+				addies = append(addies, addrStruct{
+					addr:   mems.Addr.String() + ":" + mems.Tags["Hport"],
+					failed: &a,
+				})
 			}
 			nkvc.addrTableLock.Lock()
 			nkvc.addies = addies
@@ -125,6 +129,13 @@ func (nkvc *NiovakvClient) pickServer() *addrStruct {
 	}
 
 	return &nkvc.addies[randomIndex]
+}
+
+//Returns raft leader's uuid
+func (nkvc *NiovakvClient) GetLeader() string {
+	nkvc.serfUpdateLock.Lock()
+	defer nkvc.serfUpdateLock.Unlock()
+	return nkvc.ClientHandler.Agents[0].Tags["Leader UUID"]
 }
 
 func removeIndex(s []addrStruct, index int) []addrStruct {
