@@ -68,7 +68,7 @@ func getServerAddr(refresh bool) (string, string, error) {
 	}
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[randomIndex]
-	return ClientHandler.AgentData[randomNode].Addr, ClientHandler.AgentData[randomNode].Tags["Hport"], err
+	return randomNode.Addr.String(), randomNode.Tags["Hport"], err
 }
 
 func main() {
@@ -93,7 +93,6 @@ func main() {
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
 	ClientHandler.Retries = 5
-	ClientHandler.AgentData = make(map[string]*serfclienthandler.Data)
 	err = ClientHandler.Initdata(config_path)
 	if err != nil {
 		log.Error("Error while trying to read config file : ", err)
@@ -113,14 +112,19 @@ func main() {
 		req := request{
 			Opcode: operation,
 		}
-		ClientHandler.GetData(false)
+		ClientHandler.GetData(true)
 		node := ClientHandler.Agents[0]
 		res := response{
-			ResponseValue: ClientHandler.AgentData[node].Tags["Leader UUID"],
+			ResponseValue: node.Tags["Leader UUID"],
 		}
 		operationObj.RequestData = req
 		operationObj.ResponseData = res
-
+	case "membership":
+		ClientHandler.GetData(true)
+		toJson := ClientHandler.GetMemberListMap()
+		file, _ := json.MarshalIndent(toJson, "", " ")
+		_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+		os.Exit(1)
 	case "write":
 		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
