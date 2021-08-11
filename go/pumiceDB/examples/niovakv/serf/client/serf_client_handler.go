@@ -173,3 +173,14 @@ func (Handler *SerfClientHandler) updateTable(members []client.Member) {
 		//Keep only live members in the list
 	}
 }
+
+/*
+Type : SerfClientHandler
+*/
+func (Handler *SerfClientHandler) GetMemberListMap() map[string]client.Member {
+	memberMap := make(map[string]client.Member)
+	for _, mems := range Handler.AgentData {
+		memberMap[mems.Name] = mems
+	}
+	return memberMap
+}

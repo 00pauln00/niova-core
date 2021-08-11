@@ -119,7 +119,12 @@ func main() {
 		}
 		operationObj.RequestData = req
 		operationObj.ResponseData = res
-
+	case "membership":
+		ClientHandler.GetData(true)
+		toJson := ClientHandler.GetMemberListMap()
+		file, _ := json.MarshalIndent(toJson, "", " ")
+		_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+		os.Exit(1)
 	case "write":
 		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
