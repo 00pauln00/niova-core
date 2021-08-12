@@ -62,11 +62,6 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
         .flti_when = FAULT_INJECT_PERIOD_every_time,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_leader_deposed_with_cluster_healthy] = {
-        .flti_name = "raft_leader_deposed_with_cluster_healthy",
-        .flti_when = FAULT_INJECT_PERIOD_every_time,
-        .flti_enabled = 0,
-    },
     [FAULT_INJECT_raft_follower_ignores_AE] = {
         .flti_name = "raft_follower_ignores_non_hb_AE_request",
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
