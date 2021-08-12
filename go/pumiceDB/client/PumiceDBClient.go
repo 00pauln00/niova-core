@@ -104,8 +104,7 @@ func (obj *PmdbClientObj) Write(ed interface{},
 
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
-	rncui string,
-	output_ed interface{}) error {
+	rncui string, output_ed interface{}) error {
 
 	var key_len int64
 	var reply_size int64
@@ -133,6 +132,35 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
 	return err
+}
+
+//Async Read the value of key on the client
+func (obj *PmdbClientObj) ReadX(input_ed interface{},
+	rncui string, async bool, asyncReqObj *PmdbAsyncReq,
+	output_ed interface{}) error {
+
+	var key_len int64
+	var reply_size int64
+
+	//Encode the data passed by application.
+	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
+	if err != nil {
+		return err
+	}
+
+	//Typecast the encoded key to char*
+	encoded_key := (*C.char)(ed_key)
+
+	var pmdbReq C.pmdb_request_opts_t
+
+	opa_ptr := gopointer.Save(asyncReq)
+	defer gopointer.Unref(opa_ptr)
+
+
+	C.pmdb_request_options_init(&pmdbReq, 1, 1, &obj_stat,
+			(*[0]byte)(C.asyncCbCgo),
+			opa_ptr, nil, 0, 0)
+
 }
 
 //Read the value of key on the client the application passed buffer
