@@ -267,7 +267,7 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 
 	if reply_buff == nil {
 		*reply_size = 0
-		err := errors.New("PmdbObjGet() failed")
+		err := errors.New("Key not found")
 		return nil, err
 	}
 

@@ -34,7 +34,7 @@ niova_bitmap_attach(struct niova_bitmap *nb, bitmap_word_t *map,
     if (!nb || !map || !nwords)
         return -EINVAL;
 
-    if (nb->nb_nwords >= NB_NUM_WORDS_MAX)
+    if (nwords >= NB_NUM_WORDS_MAX)
         return -E2BIG;
 
     nb->nb_nwords = nwords;
@@ -254,6 +254,8 @@ niova_bitmap_lowest_free_bit_assign(struct niova_bitmap *nb, unsigned int *idx)
 
             *idx = ((sii * NB_WORD_TYPE_SZ_BITS) +
                     (highest_set_bit_pos_from_val(x) - 1));
+
+            nb->nb_alloc_hint = sii;
 
             return 0;
         }

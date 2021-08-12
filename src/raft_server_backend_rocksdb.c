@@ -480,19 +480,22 @@ rsbr_write_supplements_put(const struct raft_net_sm_write_supplements *ws,
     {
         const struct raft_net_wr_supp *supp = &ws->rnsws_ws[i];
 
-        supp->rnws_handle ?
-        rocksdb_writebatch_putv_cf(
-            wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,
-            supp->rnws_nkv, (const char * const *)supp->rnws_keys,
-            supp->rnws_key_sizes, supp->rnws_nkv,
-            (const char * const *)supp->rnws_values,
-            supp->rnws_value_sizes)
-        :
-        rocksdb_writebatch_putv(wb, supp->rnws_nkv,
-                                (const char * const *)supp->rnws_keys,
-                                supp->rnws_key_sizes, supp->rnws_nkv,
-                                (const char * const *)supp->rnws_values,
-                                supp->rnws_value_sizes);
+        for (size_t j = 0; j < supp->rnws_nkv; j++)
+        {
+            supp->rnws_handle ?
+            rocksdb_writebatch_put_cf(
+                wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,
+                (const char *)supp->rnws_keys[j],
+                supp->rnws_key_sizes[j],
+                (const char *)supp->rnws_values[j],
+                supp->rnws_value_sizes[j])
+                :
+            rocksdb_writebatch_put(wb,
+                                   (const char *)supp->rnws_keys[j],
+                                   supp->rnws_key_sizes[j],
+                                   (const char *)supp->rnws_values[j],
+                                   supp->rnws_value_sizes[j]);
+        }
     }
 }
 
