@@ -11,8 +11,9 @@ import (
 
 	"niovakv/httpclient"
 	"niovakv/niovakvlib"
-
 	"niovakv/serfclienthandler"
+
+	"github.com/hashicorp/serf/client"
 )
 
 type NiovakvClient struct {
@@ -136,6 +137,10 @@ func (nkvc *NiovakvClient) GetLeader() string {
 	nkvc.serfUpdateLock.Lock()
 	defer nkvc.serfUpdateLock.Unlock()
 	return nkvc.ClientHandler.Agents[0].Tags["Leader UUID"]
+}
+
+func (nkvc *NiovakvClient) GetMembership() map[string]client.Member {
+	return nkvc.ClientHandler.GetMemberListMap()
 }
 
 func removeIndex(s []addrStruct, index int) []addrStruct {

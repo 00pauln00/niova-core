@@ -110,7 +110,7 @@ func main() {
 		operationObj.ResponseData = res
 
 	case "membership":
-		toJson := ClientHandler.GetMemberListMap()
+		toJson := nkvc.GetMembership()
 		file, _ := json.MarshalIndent(toJson, "", " ")
 		_ = ioutil.WriteFile(resultFile+".json", file, 0644)
 		os.Exit(1)
