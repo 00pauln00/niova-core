@@ -57,20 +57,17 @@ func getCmdParams() {
 	flag.StringVar(&value, "v", "NULL", "Value")
 	flag.StringVar(&resultFile, "r", "operation", "Request file")
 	flag.Parse()
+	flag.Usage = usage
+	if flag.NFlag() == 0 {
+		usage()
+		os.Exit(-1)
+	}
 }
 
 func main() {
 	var err error
 	//Get commandline parameters.
 	getCmdParams()
-
-	flag.Usage = usage
-	flag.Parse()
-
-	if flag.NFlag() == 0 {
-		usage()
-		os.Exit(-1)
-	}
 
 	//Create log file.
 	err = PumiceDBCommon.InitLogger(logPath)
@@ -80,24 +77,27 @@ func main() {
 
 	var reqObj niovakvlib.NiovaKV
 	var operationObj opData
-	// do operatin not needed
 	operationObj.RequestData = request{
 		Opcode: operation,
 		Key:    key,
 	}
-
-	//collect basic information for read/write
 	reqObj.InputOps = operation
 	reqObj.InputKey = key
 
 	var send_stamp string
 	var recv_stamp string
 	var responseRecvd niovakvlib.NiovaKVResponse
-	nkvc := clientapi.NiovakvClient{}
+	nkvc := clientapi.NiovakvClient{
+		Timeout: 10,
+	}
 	stop := make(chan int)
-	nkvc.Start(stop)
+	go func() {
+		err := nkvc.Start(stop, config_path)
+		log.Error(err)
+		os.Exit(1)
+	}()
+
 	//Wait for membership table to get updated
-	time.Sleep(2 * time.Second)
 	switch operation {
 	case "getLeader":
 		req := request{
@@ -128,7 +128,6 @@ func main() {
 			ResponseValue: string(responseRecvd.RespValue),
 		}
 	case "read":
-		nkvc.Start(stop)
 		send_stamp = time.Now().String()
 		responseRecvd.RespValue = nkvc.Get(&reqObj)
 		recv_stamp = time.Now().String()
@@ -140,20 +139,7 @@ func main() {
 		}
 	}
 
-	//Result writing
-	/*
-		Following in the json file
-		Request
-			Operation type
-			Key
-			Value
-			Sent_Timestamp
-		Response
-			Status
-			Response
-			Recvd_Timestamp
-	*/
-
+	//Stop the service and write to file
 	stop <- 1
 	toJson := make(map[string]opData)
 	toJson[operation] = operationObj

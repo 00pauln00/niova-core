@@ -16,9 +16,11 @@ import (
 )
 
 type NiovakvClient struct {
-	servers       []client.Member
-	clientHandler serfclienthandler.SerfClientHandler
-	//httpStatus     map[string]bool
+	//Exported
+	Timeout time.Duration //No of seconds for a request time out and membership table refresh
+	//UnExported
+	servers        []client.Member
+	clientHandler  serfclienthandler.SerfClientHandler
 	serfUpdateLock sync.Mutex
 	tableLock      sync.Mutex
 }
@@ -28,51 +30,49 @@ func getAddr(member *client.Member) string {
 	return httpAddr
 }
 
+func (nkvc *NiovakvClient) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
+	var responseRecvd *niovakvlib.NiovaKVResponse
+	timer := time.Tick(nkvc.Timeout)
+	for {
+		select {
+		case <-timer:
+			log.Error("Request timed at client side")
+		default:
+			var err error
+			toSend := nkvc.pickServer()
+			addr := getAddr(&toSend)
+			if write {
+				responseRecvd, err = httpclient.PutRequest(ReqObj, addr)
+			} else {
+				responseRecvd, err = httpclient.GetRequest(ReqObj, addr)
+			}
+			if err == nil {
+				break
+			}
+			log.Error(err)
+		}
+	}
+	return responseRecvd
+}
+
 func (nkvc *NiovakvClient) Put(ReqObj *niovakvlib.NiovaKV) int {
 	ReqObj.InputOps = "write"
-	// nkvc.SerfClientInit()
-	toSend := nkvc.pickServer()
-	//Do upto 5 times if request failed
-	var responseRecvd *niovakvlib.NiovaKVResponse
-	for j := 0; j < 5; j++ {
-		var err error
-		addr := getAddr(&toSend)
-		responseRecvd, err = httpclient.PutRequest(ReqObj, addr)
-		if err == nil {
-			break
-		}
-		log.Error(err)
-		toSend = nkvc.pickServer()
-	}
+	responseRecvd := nkvc.doOperation(ReqObj, true)
 	return responseRecvd.RespStatus
 }
 
 func (nkvc *NiovakvClient) Get(ReqObj *niovakvlib.NiovaKV) []byte {
 	ReqObj.InputOps = "read"
-	// nkvc.SerfClientInit()
-	toSend := nkvc.pickServer()
-
-	//Do upto 5 times if request failed
-	var responseRecvd *niovakvlib.NiovaKVResponse
-	for j := 0; j < 5; j++ {
-		var err error
-		addr := getAddr(&toSend)
-		responseRecvd, err = httpclient.GetRequest(ReqObj, addr)
-		if err == nil {
-			break
-		}
-		log.Error(err)
-		toSend = nkvc.pickServer()
-	}
+	responseRecvd := nkvc.doOperation(ReqObj, false)
 	return responseRecvd.RespValue
 }
 
-func (nkvc *NiovakvClient) SerfClientInit() {
+func (nkvc *NiovakvClient) serfClientInit(configPath string) error {
 	nkvc.clientHandler.Retries = 5
-	nkvc.clientHandler.Initdata("../config")
+	return nkvc.clientHandler.Initdata(configPath)
 }
 
-func (nkvc *NiovakvClient) MemberSearcher(stop chan int) {
+func (nkvc *NiovakvClient) memberSearcher(stop chan int) error {
 comparison:
 	for {
 		select {
@@ -87,19 +87,30 @@ comparison:
 			nkvc.serfUpdateLock.Unlock()
 			if err != nil {
 				log.Error("Unable to connect with agents")
-				os.Exit(1)
+				return err
 			}
 			nkvc.tableLock.Lock()
 			nkvc.servers = nkvc.clientHandler.Agents
 			nkvc.tableLock.Unlock()
-			time.Sleep(2 * time.Second)
+			time.Sleep(nkvc.Timeout)
 		}
 	}
+	return nil
 }
 
-func (nkvc *NiovakvClient) Start(stop chan int) {
-	nkvc.SerfClientInit()
-	go nkvc.MemberSearcher(stop)
+func (nkvc *NiovakvClient) Start(stop chan int, configPath string) error {
+	var err error
+	err = nkvc.serfClientInit(configPath)
+	if err != nil {
+		log.Error("Error while initializing the serf client")
+		return err
+	}
+	err = nkvc.memberSearcher(stop)
+	if err != nil {
+		log.Error("Error while starting the membership updater")
+		return err
+	}
+	return err
 }
 
 func (nkvc *NiovakvClient) pickServer() client.Member {
