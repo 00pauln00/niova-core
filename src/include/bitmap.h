@@ -12,6 +12,7 @@
 typedef uint64_t bitmap_word_t;
 #define NB_WORD_TYPE_SZ      (sizeof(bitmap_word_t))
 #define NB_WORD_ANY          -1ULL
+#define NB_MAX_IDX_ANY       -1U
 #define NB_WORD_TYPE_SZ_BITS (NB_WORD_TYPE_SZ * NBBY)
 #define NB_MAP_WORD_IDX(x)   ((x) / NB_WORD_TYPE_SZ_BITS)
 #define NB_NUM_WORDS(nbits)  (NB_MAP_WORD_IDX(nbits) +                  \
@@ -24,6 +25,7 @@ struct niova_bitmap
 {
     unsigned int   nb_nwords;
     unsigned int   nb_alloc_hint;
+    unsigned int   nb_max_idx;
     bitmap_word_t *nb_map;
 };
 
@@ -37,8 +39,58 @@ niova_bitmap_attach(struct niova_bitmap *nb, bitmap_word_t *map,
     if (nwords >= NB_NUM_WORDS_MAX)
         return -E2BIG;
 
+    nb->nb_max_idx = NB_MAX_IDX_ANY;
     nb->nb_nwords = nwords;
     nb->nb_map = map;
+
+    return 0;
+}
+
+static inline int
+niova_bitmap_attach_max_idx(struct niova_bitmap *nb, bitmap_word_t *map,
+                            unsigned int nwords, unsigned int max_idx)
+{
+    if (!nb || !map || !nwords)
+        return -EINVAL;
+
+    if (nwords >= NB_NUM_WORDS_MAX)
+        return -E2BIG;
+
+    if ((nwords * NB_WORD_TYPE_SZ_BITS) < max_idx)
+        return -EOVERFLOW;
+
+    nb->nb_max_idx = max_idx;
+    nb->nb_nwords = nwords;
+    nb->nb_map = map;
+
+    return 0;
+}
+
+static inline int
+niova_bitmap_set_unset(struct niova_bitmap *nb, unsigned int idx, bool set)
+{
+    if (!nb)
+        return -EINVAL;
+    if (idx >= (nb->nb_nwords * NB_WORD_TYPE_SZ_BITS))
+        return -ERANGE;
+
+    unsigned int word_idx = NB_MAP_WORD_IDX(idx);
+    bitmap_word_t mask = ((bitmap_word_t)1) << (idx % NB_WORD_TYPE_SZ_BITS);
+
+    if (set)
+    {
+        if (nb->nb_map[word_idx] & mask)
+            return -EBUSY;
+
+        nb->nb_map[word_idx] |= mask;
+    }
+    else
+    {
+        if (!(nb->nb_map[word_idx] & mask))
+            return -EALREADY;
+
+        nb->nb_map[word_idx] &= ~mask;
+    }
 
     return 0;
 }
@@ -52,7 +104,24 @@ niova_bitmap_init(struct niova_bitmap *nb)
     if (nb->nb_nwords >= NB_NUM_WORDS_MAX)
         return -E2BIG;
 
+    if (nb->nb_max_idx && nb->nb_max_idx != NB_MAX_IDX_ANY &&
+        (nb->nb_nwords * NB_WORD_TYPE_SZ_BITS) < nb->nb_max_idx)
+        return -EOVERFLOW;
+
     memset(nb->nb_map, 0, nb->nb_nwords * NB_WORD_TYPE_SZ);
+
+    if (nb->nb_max_idx && nb->nb_max_idx != NB_MAX_IDX_ANY)
+    {
+        unsigned int actual_max = nb->nb_nwords * NB_WORD_TYPE_SZ_BITS;
+
+        // Disable positions which are beyond the logical max
+        for (unsigned int x = nb->nb_max_idx; x < actual_max; x++)
+        {
+            int rc = niova_bitmap_set_unset(nb, x, true);
+            if (rc)
+                return rc;
+        }
+    }
 
     return 0;
 }
@@ -62,6 +131,16 @@ niova_bitmap_attach_and_init(struct niova_bitmap *nb, bitmap_word_t *map,
                              unsigned int nwords)
 {
     int rc = niova_bitmap_attach(nb, map, nwords);
+
+    return rc ? rc : niova_bitmap_init(nb);
+}
+
+static inline int
+niova_bitmap_attach_and_init_max_idx(struct niova_bitmap *nb,
+                                     bitmap_word_t *map, unsigned int nwords,
+                                     unsigned int max_idx)
+{
+    int rc = niova_bitmap_attach_max_idx(nb, map, nwords, max_idx);
 
     return rc ? rc : niova_bitmap_init(nb);
 }
@@ -114,43 +193,20 @@ niova_bitmap_is_set(const struct niova_bitmap *nb, unsigned int idx)
 }
 
 static inline int
-niova_bitmap_set_unset(struct niova_bitmap *nb, unsigned int idx, bool set)
-{
-    if (!nb)
-        return -EINVAL;
-    if (idx >= (nb->nb_nwords * NB_WORD_TYPE_SZ_BITS))
-        return -ERANGE;
-
-    unsigned int word_idx = NB_MAP_WORD_IDX(idx);
-    bitmap_word_t mask = ((bitmap_word_t)1) << (idx % NB_WORD_TYPE_SZ_BITS);
-
-    if (set)
-    {
-        if (nb->nb_map[word_idx] & mask)
-            return -EBUSY;
-
-        nb->nb_map[word_idx] |= mask;
-    }
-    else
-    {
-        if (!(nb->nb_map[word_idx] & mask))
-            return -EALREADY;
-
-        nb->nb_map[word_idx] &= ~mask;
-    }
-
-    return 0;
-}
-
-static inline int
 niova_bitmap_unset(struct niova_bitmap *nb, unsigned int idx)
 {
+    if (nb->nb_max_idx && idx >= nb->nb_max_idx)
+        return -EPERM;
+
     return niova_bitmap_set_unset(nb, idx, false);
 }
 
 static inline int
 niova_bitmap_set(struct niova_bitmap *nb, unsigned int idx)
 {
+    if (nb->nb_max_idx && idx >= nb->nb_max_idx)
+        return -EPERM;
+
     return niova_bitmap_set_unset(nb, idx, true);
 }
 
@@ -269,6 +325,10 @@ niova_bitmap_lowest_free_bit_release(struct niova_bitmap *nb,
 {
     if (!nb || !idx)
         return -EINVAL;
+
+    // xxx
+    if (nb->nb_max_idx != 0 && nb->nb_max_idx != NB_MAX_IDX_ANY)
+        return -EOPNOTSUPP;
 
     unsigned int nw = nb->nb_nwords;
 
