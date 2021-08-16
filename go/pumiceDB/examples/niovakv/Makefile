@@ -7,3 +7,12 @@ export CGO_LDFLAGS
 export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
+
+niovakv_all:
+        compile pmdbserver
+
+compile:
+        echo "Compiling niovakv"
+        
+pmdbserver:
+        cd pmdb/server && go build niovakv_pmdbserver.go
