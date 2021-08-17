@@ -22,10 +22,15 @@ import "C"
 
 import gopointer "github.com/mattn/go-pointer"
 
+type PmdbClientAsyncCb interface {
+	AsyncCb(args unsafe.Pointer, rrc int64, asyncChan chan int64)
+}
+
 //Async request callback function and its argument.
 type PmdbAsyncReq struct {
 	PmdbAsyncCb PmdbClientAsyncCb
 	CbArgs unsafe.Pointer
+	CbChan chan int64
 }
 
 type PmdbClientObj struct {
@@ -33,6 +38,7 @@ type PmdbClientObj struct {
 	pmdb        C.pmdb_t
 	raftUuid    string
 	myUuid      string
+	asyncData	PmdbAsyncReq
 }
 
 type RDZeroCopyObj struct {
@@ -70,6 +76,12 @@ func CToGoString(cstring *C.char) string {
 	return C.GoString(cstring)
 }
 
+func (obj *PmdbClientObj)AsyncCb(args unsafe.Pointer, rrc int64, asyncChan chan int64) {
+
+	//Pass the return code to waiting RW thread using channel.
+	asyncChan <- rrc
+}
+
 //export goAsyncCb
 func goAsyncCb(user_data unsafe.Pointer, rrc C.ssize_t) {
 	//Restore the golang function pointers stored in PmdbCallbacks.
@@ -79,12 +91,12 @@ func goAsyncCb(user_data unsafe.Pointer, rrc C.ssize_t) {
 	rrc_go := int64(rrc)
 
 	//Calling the golang Application's Async callback function.
-	gcb.PmdbAsyncCb.AsyncCb(gcb.CbArgs, rrc_go)
+	gcb.PmdbAsyncCb.AsyncCb(gcb.CbArgs, rrc_go, gcb.CbChan)
 }
 
 //Write KV from client.
 func (obj *PmdbClientObj) Write(ed interface{},
-	rncui string, asyncWrites bool, asyncReqObj *PmdbAsyncReq) error {
+	rncui string, asyncWrites bool) error {
 
 	var key_len int64
 
@@ -99,12 +111,12 @@ func (obj *PmdbClientObj) Write(ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	//Perform the write
-	return obj.writeKV(rncui, encoded_key, key_len, asyncWrites, asyncReqObj)
+	return obj.writeKV(rncui, encoded_key, key_len, asyncWrites)
 }
 
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
-	rncui string, output_ed interface{}) error {
+	rncui string, output_ed interface{}, asyncRead bool) error {
 
 	var key_len int64
 	var reply_size int64
@@ -119,7 +131,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	reply_buff, rd_err := obj.readKV(rncui, encoded_key,
-		key_len, &reply_size)
+		key_len, &reply_size, asyncRead)
 
 	if rd_err != nil {
 		return rd_err
@@ -132,35 +144,6 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
 	return err
-}
-
-//Async Read the value of key on the client
-func (obj *PmdbClientObj) ReadX(input_ed interface{},
-	rncui string, async bool, asyncReqObj *PmdbAsyncReq,
-	output_ed interface{}) error {
-
-	var key_len int64
-	var reply_size int64
-
-	//Encode the data passed by application.
-	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
-	if err != nil {
-		return err
-	}
-
-	//Typecast the encoded key to char*
-	encoded_key := (*C.char)(ed_key)
-
-	var pmdbReq C.pmdb_request_opts_t
-
-	opa_ptr := gopointer.Save(asyncReq)
-	defer gopointer.Unref(opa_ptr)
-
-
-	C.pmdb_request_options_init(&pmdbReq, 1, 1, &obj_stat,
-			(*[0]byte)(C.asyncCbCgo),
-			opa_ptr, nil, 0, 0)
-
 }
 
 //Read the value of key on the client the application passed buffer
@@ -203,7 +186,7 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
 //Call the pmdb C library function to write the application data.
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
-	key_len int64, asyncWrites bool, asyncReq *PmdbAsyncReq) error {
+	key_len int64, asyncWrites bool) error {
 
 	var obj_stat C.pmdb_obj_stat_t
 	var rc C.int
@@ -221,8 +204,21 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
 	if !asyncWrites {
+		//Synchronous write request
 		rc = C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
 	} else {
+		// Asynchronous write request
+
+		/* Create the channel which can be used to communicate between
+		 * current process and callback which will be executed on write
+		 * completion
+		 */
+		asyncChan := make(chan int64)
+		asyncReq := &PmdbAsyncReq{
+			CbArgs: unsafe.Pointer(key),
+			PmdbAsyncCb: obj,
+			CbChan: asyncChan,
+		}
 
 		//Async write request
 		var pmdbReq C.pmdb_request_opts_t
@@ -232,12 +228,17 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 
 		C.pmdb_request_options_init(&pmdbReq, 1, 1, &obj_stat,
 			(*[0]byte)(C.asyncCbCgo), opa_ptr, nil, 0, 0)
-		rc = C.PmdbObjPutX(obj.pmdb, obj_id, key, c_key_len, &pmdbReq)
+
+		//execute the PmdbObjPutX in goroutine.
+		go C.PmdbObjPutX(obj.pmdb, obj_id, key, c_key_len, &pmdbReq)
+
+		// Wait for the write to complete..
+		rc = C.int(<-asyncChan)
 	}
 
 	if rc != 0 {
 		var errno syscall.Errno
-		return fmt.Errorf("PmdbObjPut(): %d", errno)
+		return fmt.Errorf("PmdbObjPut/X() failed: %d", errno)
 	}
 
 	return nil
@@ -246,7 +247,7 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 //Call the pmdb C library function to read the value for the key.
 func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	key_len int64,
-	reply_size *int64) (unsafe.Pointer, error) {
+	reply_size *int64, asyncRead bool) (unsafe.Pointer, error) {
 
 	crncui_str := GoToCString(rncui)
 	defer FreeCMem(crncui_str)
@@ -261,18 +262,56 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
 	var actual_value_size C.size_t
+	var reply_buff unsafe.Pointer
 
-	reply_buff := C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
-		&actual_value_size)
+	if !asyncRead {
+		// Synchronous read request.
+		reply_buff = C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
+			&actual_value_size)
+		if reply_buff == nil {
+			*reply_size = 0
+			err := errors.New("Key not found")
+			return nil, err
+		}
 
-	if reply_buff == nil {
-		*reply_size = 0
-		err := errors.New("Key not found")
-		return nil, err
+		*reply_size = int64(actual_value_size)
+
+	} else {
+
+		// Async read request.
+		//Create channel to communicate between current process and callback.
+		asyncChan := make(chan int64)
+
+		asyncReq := &PmdbAsyncReq{
+			CbArgs: unsafe.Pointer(key),
+			PmdbAsyncCb: obj,
+			CbChan: asyncChan,
+		}
+
+		//Async write request
+		var obj_stat C.pmdb_obj_stat_t
+		var pmdb_req_opt C.pmdb_request_opts_t
+		// Create an opaque C pointer for cbs to pass to PmdbObjPutX
+		opa_ptr := gopointer.Save(asyncReq)
+		defer gopointer.Unref(opa_ptr)
+
+		C.pmdb_request_options_init(&pmdb_req_opt, 1, 1, &obj_stat,
+			(*[0]byte)(C.asyncCbCgo), opa_ptr, nil, 0, 0)
+
+		// execute PmdbObjGetX in goroutine.
+		go C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len, &pmdb_req_opt)
+
+		// Wait for the operation to complete
+		rc := C.int(<-asyncChan)
+
+		if rc != 0 {
+			var errno syscall.Errno
+			return nil, fmt.Errorf("PmdbObjGetX(): %d", errno)
+		}
+		// Get the reply buffer and reply size from obj_stat
+		reply_buff = unsafe.Pointer(obj_stat.reply_buffer)
+		*reply_size = int64(obj_stat.reply_size)
 	}
-
-	*reply_size = int64(actual_value_size)
-
 	return reply_buff, nil
 }
 
