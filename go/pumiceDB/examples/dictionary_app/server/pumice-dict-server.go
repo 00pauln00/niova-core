@@ -17,9 +17,8 @@ import (
 import "C"
 
 var seqno = 0
-var raft_uuid_go string
-var peer_uuid_go string
 var word_map map[string]int
+var async_ops = false
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -28,6 +27,7 @@ type DictionaryServer struct {
 	raftUuid       string
 	peerUuid       string
 	columnFamilies string
+	asyncOps		bool
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
@@ -45,6 +45,7 @@ func main() {
 		ColumnFamilies: colmfamily,
 		RaftUuid:       dso.raftUuid,
 		PeerUuid:       dso.peerUuid,
+		AsyncOps:		dso.asyncOps,
 		PmdbAPI:        dso,
 	}
 
@@ -64,10 +65,13 @@ func dictionaryServerNew() *DictionaryServer {
 
 	flag.StringVar(&dso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&dso.peerUuid, "u", "NULL", "peer uuid")
+	async_ptr := flag.Bool("a", false, "Async operation")
 
 	flag.Parse()
+	dso.asyncOps = *async_ptr
 	fmt.Println("Raft UUID: ", dso.raftUuid)
 	fmt.Println("Peer UUID: ", dso.peerUuid)
+	fmt.Println("Async: ", dso.asyncOps)
 
 	return dso
 }
@@ -107,7 +111,7 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 		prev_result, err := dso.pso.LookupKey(word, int64(go_key_len), colmfamily)
 		if err == nil {
 			//Convert the word count into string.
-			prev_result_int, _ := strconv.Atoi(prev_result)
+			prev_result_int, _ := strconv.Atoi(string(prev_result[:len(prev_result)]))
 			count = count + prev_result_int
 		}
 
@@ -144,7 +148,7 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 	/* typecast the output to int */
 	word_frequency := 0
 	if read_err == nil {
-		word_count, err := strconv.Atoi(result)
+		word_count, err := strconv.Atoi(string(result[:len(result)]))
 		if err != nil {
 			log.Fatal(err)
 		}

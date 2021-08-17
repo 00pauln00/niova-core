@@ -20,6 +20,7 @@ import "C"
 
 var raft_uuid_go string
 var peer_uuid_go string
+var async_ops = false
 
 func main() {
 	//Parse the cmdline parameter
@@ -33,10 +34,14 @@ func pmdb_dict_app_getopts() {
 
 	flag.StringVar(&raft_uuid_go, "r", "NULL", "raft uuid")
 	flag.StringVar(&peer_uuid_go, "u", "NULL", "peer uuid")
+	async_ptr := flag.Bool("a", false, "Async operation")
+	async_ops = *async_ptr
+	// Check if async option is passed.
 
 	flag.Parse()
 	fmt.Println("Raft UUID: ", raft_uuid_go)
 	fmt.Println("Peer UUID: ", peer_uuid_go)
+	fmt.Println("Async write/read: ", async_ops)
 }
 
 /*
@@ -91,7 +96,8 @@ func pmdbDictClient() {
 					Dict_text:   input[2],
 					Dict_wcount: 0,
 				}
-				err = pmdb.Write(wr_req_dict, input[1])
+
+				err = pmdb.Write(wr_req_dict, input[1], async_ops)
 				if err != nil {
 					fmt.Println("Write key-value failed : ", err)
 					continue
@@ -102,8 +108,9 @@ func pmdbDictClient() {
 					Dict_text:   input[2],
 					Dict_wcount: 0,
 				}
+
 				rd_op_dict := &DictAppLib.Dict_app{}
-				err = pmdb.Read(rd_req_dict, input[1], rd_op_dict)
+				err = pmdb.Read(rd_req_dict, input[1], rd_op_dict, async_ops)
 
 				if err != nil {
 					fmt.Println("Read request failed !!: ", err)
