@@ -2074,6 +2074,14 @@ raft_leader_has_applied_txn_in_my_term(struct raft_instance *ri)
     return false;
 }
 
+static void
+raft_server_update_follower_last_ack(struct raft_follower_info *rfi)
+{
+    NIOVA_ASSERT(rfi);
+
+    niova_realtime_coarse_clock(&rfi->rfi_last_ack);
+}
+
 /**
  * raft_server_leader_init_state - setup the raft instance for leader duties.
  */
@@ -2098,6 +2106,16 @@ raft_server_leader_init_state(struct raft_instance *ri)
     rls->rls_leader_term = ri->ri_log_hdr.rlh_term;
 
     const raft_peer_t num_raft_peers = raft_num_members_validate_and_get(ri);
+
+    const struct raft_candidate_state *rcs = &ri->ri_candidate;
+    for (raft_peer_t i = 0; i < num_raft_peers; i++)
+    {
+        // Update last-ack so that quorum checks won't immediately fail
+        if (rcs->rcs_results[i] == RAFT_VOTE_RESULT_YES ||
+            rcs->rcs_results[i] == RAFT_VOTE_RESULT_NO)
+            raft_server_update_follower_last_ack(
+                raft_server_get_follower_info(ri, i));
+    }
 
     /* Stash the current raft-entry index.  In general, this leader should
      * place the block @(current-raft-entry-idx + 1).  When this next index
@@ -3497,7 +3515,7 @@ raft_server_apply_append_entries_reply_result(
     struct timespec la = rfi->rfi_last_ack;
 
     // Update the last ack value for this follower.
-    niova_realtime_coarse_clock(&rfi->rfi_last_ack);
+    raft_server_update_follower_last_ack(rfi);
 
     DBG_RAFT_INSTANCE(
         (raerp->raerpm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
