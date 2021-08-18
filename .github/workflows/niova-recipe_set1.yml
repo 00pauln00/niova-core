@@ -1,4 +1,4 @@
-name: holon_niova_workflow
+name: holon_recipe_set1_workflow
 on:
   push:
     branches: [ master ]
