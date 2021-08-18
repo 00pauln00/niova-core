@@ -4,22 +4,15 @@ HOLON_LIBS=${1}
 BIN_PATH=${2}
 LOG_PATH=${3}
 NPEERS=${4}
+RECIPE_FILE=${5}
 
 export ANSIBLE_LOOKUP_PLUGINS=$HOLON_LIBS
 export PYTHONPATH=$HOLON_LIBS
 export NIOVA_BIN_PATH=$BIN_PATH
 
-declare -a recipe_list=("leader_overthrow.yml"
-                        "leader_self_depose.yml"
-                        "pmdb_client_request_timeout_modification_and_retry.yml"
-                        "pmdb_foreign_client_error_demonstration.yml"
-                        "promoting_the_most_qualified_peer_to_lead_multi_peer_recovery.yml"
-                        "rollback_during_startup.yml"
-                        "selecting_the_correct_leader_at_boot_time.yml"
-                        "completing_an_uncommitted_write_following_a_reboot.yml"
-                        "election_timeout_modification.yml"
-                        "pmdb_client_error_demonstration_standalone_client.yml"
-                       )
+while IFS= read -r line; do
+   recipe_list+=("$line")
+done <$RECIPE_FILE
 
 for recipe in "${recipe_list[@]}"
 do
