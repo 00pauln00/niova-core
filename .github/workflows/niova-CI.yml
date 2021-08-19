@@ -54,7 +54,8 @@ jobs:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
            
     - name: Build niovakv application
-      run: cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
            
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
