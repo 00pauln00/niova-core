@@ -5,7 +5,7 @@ import (
 	"flag"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
-	niovakvlib "niovakv/lib"
+	"niovakv/niovakvlib"
 	"os"
 	"unsafe"
 
