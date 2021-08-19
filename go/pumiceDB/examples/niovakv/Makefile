@@ -2,7 +2,7 @@ DIR=/usr/local/niova
 CGO_LDFLAGS=-L/${DIR}/lib/
 CGO_CFLAGS=-I/${DIR}/include/niova/
 LD_LIBRARY_PATH=/${DIR}/niova-core/lib/
-PATH=$PATH:/home/runner/work/go/go/bin
+PATH=/home/runner/work/go/go/bin
 
 export CGO_LDFLAGS
 export CGO_CFLAGS
