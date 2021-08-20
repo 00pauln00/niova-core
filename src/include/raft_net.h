@@ -43,6 +43,7 @@ typedef int      raft_net_cb_ctx_int_t;
 typedef bool     raft_net_cb_ctx_bool_t;
 typedef void     raft_net_timerfd_cb_ctx_t;
 typedef int      raft_net_timerfd_cb_ctx_int_t;
+typedef bool     raft_net_timerfd_cb_ctx_bool_t;
 
 typedef uint64_t raft_net_request_tag_t;
 #define RAFT_NET_TAG_NONE 0UL
