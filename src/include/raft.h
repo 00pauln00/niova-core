@@ -41,6 +41,9 @@
 #define RAFT_ELECTION_UPPER_TIME_MS 300
 #define RAFT_ELECTION_RANGE_DIVISOR 2.0
 
+// Leader steps down after this many cycles following quorum loss
+#define RAFT_ELECTION_CHECK_QUORUM_FACTOR 10
+
 #define RAFT_HEARTBEAT_FREQ_PER_ELECTION 10
 
 #define RAFT_MIN_APPEND_ENTRY_IDX -1
@@ -77,11 +80,13 @@ typedef raft_server_epoll_sm_apply_int_t raft_server_sm_apply_cb_int_t;
 enum raft_rpc_msg_type
 {
     RAFT_RPC_MSG_TYPE_INVALID                = 0,
-    RAFT_RPC_MSG_TYPE_VOTE_REQUEST           = 1,
-    RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 2,
-    RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 3,
-    RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 4,
-    RAFT_RPC_MSG_TYPE_ANY                    = 5,
+    RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST       = 1,
+    RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY         = 2,
+    RAFT_RPC_MSG_TYPE_VOTE_REQUEST           = 3,
+    RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 4,
+    RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 5,
+    RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 6,
+    RAFT_RPC_MSG_TYPE_ANY                    = 7,
 };
 
 struct raft_vote_request_msg
@@ -96,6 +101,7 @@ struct raft_vote_reply_msg
     uint8_t rvrpm_voted_granted;
     uint8_t rvrpm__pad[7];
     int64_t rvrpm_term;
+    uuid_t  rvrpm_current_leader;
 };
 
 struct raft_append_entries_request_msg
@@ -226,6 +232,7 @@ enum raft_state
     RAFT_STATE__NONE = 0,
     RAFT_STATE_LEADER,
     RAFT_STATE_FOLLOWER,
+    RAFT_STATE_CANDIDATE_PREVOTE,
     RAFT_STATE_CANDIDATE,
     RAFT_STATE_CLIENT,
 } PACKED;
@@ -250,14 +257,17 @@ enum raft_epoll_handles
 
 enum raft_vote_result
 {
-    RATE_VOTE_RESULT_UNKNOWN,
-    RATE_VOTE_RESULT_YES,
-    RATE_VOTE_RESULT_NO,
+    RAFT_VOTE_RESULT_UNKNOWN,
+    RAFT_PRE_VOTE_RESULT_YES,
+    RAFT_PRE_VOTE_RESULT_NO,
+    RAFT_VOTE_RESULT_YES,
+    RAFT_VOTE_RESULT_NO,
 } PACKED;
 
 struct raft_candidate_state
 {
     int64_t               rcs_term;
+    bool                  rcs_prevote;
     enum raft_vote_result rcs_results[CTL_SVC_MAX_RAFT_PEERS];
 };
 
@@ -459,6 +469,7 @@ struct raft_instance
     struct epoll_handle             ri_epoll_handles[RAFT_EPOLL_HANDLES_MAX];
     uint32_t                        ri_election_timeout_max_ms;
     uint32_t                        ri_heartbeat_freq_per_election_min;
+    uint32_t                        ri_check_quorum_timeout_factor;
     raft_net_timer_cb_t             ri_timer_fd_cb;
     raft_net_cb_t                   ri_client_recv_cb;
     raft_net_cb_t                   ri_server_recv_cb;
@@ -498,16 +509,18 @@ raft_compile_time_checks(void)
                         RAFT_HEARTBEAT__MIN_TIME_MS);
 }
 
-#define DBG_RAFT_MSG(log_level, rm, fmt, ...)                                                     \
-do {                                                                                                 \
+#define DBG_RAFT_MSG(log_level, rm, fmt, ...)                           \
+do {                                                                \
     DEBUG_BLOCK(log_level) {                                            \
         char __uuid_str[UUID_STR_LEN];                                  \
         uuid_unparse((rm)->rrm_sender_id, __uuid_str);                  \
         switch ((rm)->rrm_type)                                         \
         {                                                               \
-        case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:                            \
+        case RAFT_RPC_MSG_TYPE_VOTE_REQUEST:   /* fall through */       \
+        case RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST:                        \
             LOG_MSG(log_level,                                          \
-                    "VREQ nterm=%ld last=%ld:%ld %s "fmt,               \
+                    "%sVREQ nterm=%ld last=%ld:%ld %s "fmt,             \
+                    (rm)->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST ? "PRE-" : "", \
                     (rm)->rrm_vote_request.rvrqm_proposed_term,         \
                     (rm)->rrm_vote_request.rvrqm_last_log_term,         \
                     (rm)->rrm_vote_request.rvrqm_last_log_index,        \
@@ -515,8 +528,10 @@ do {                                                                            
                     ##__VA_ARGS__);                                     \
             break;                                                      \
         case RAFT_RPC_MSG_TYPE_VOTE_REPLY:                              \
+        case RAFT_RPC_MSG_TYPE_PRE_VOTE_REPLY:                          \
             LOG_MSG(log_level,                                          \
-                    "VREPLY term=%ld granted=%s %s "fmt,                \
+                    "%sVREPLY term=%ld granted=%s %s "fmt,              \
+                    (rm)->rrm_type == RAFT_RPC_MSG_TYPE_PRE_VOTE_REQUEST ? "PRE-" :	"", \
                     (rm)->rrm_vote_reply.rvrpm_term,                    \
                     ((rm)->rrm_vote_reply.rvrpm_voted_granted ?         \
                      "yes" : "no"),                                     \
@@ -631,6 +646,8 @@ raft_server_state_to_char(enum raft_state state)
         return 'F';
     case RAFT_STATE_CANDIDATE:
         return 'C';
+    case RAFT_STATE_CANDIDATE_PREVOTE:
+        return 'P';
     case RAFT_STATE_CLIENT:
         return 'c';
     default:
@@ -714,6 +731,8 @@ raft_server_state_to_string(enum raft_state state)
         return "leader";
     case RAFT_STATE_FOLLOWER:
         return "follower";
+    case RAFT_STATE_CANDIDATE_PREVOTE:
+        return "candidate-prevote";
     case RAFT_STATE_CANDIDATE:
         return "candidate";
     case RAFT_STATE_CLIENT:
@@ -752,6 +771,13 @@ raft_instance_is_candidate(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
     return ri->ri_state == RAFT_STATE_CANDIDATE ? true : false;
+}
+
+static inline bool
+raft_instance_is_candidate_prevote(const struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    return ri->ri_state == RAFT_STATE_CANDIDATE_PREVOTE ? true : false;
 }
 
 static inline bool
@@ -810,6 +836,21 @@ raft_num_members_validate_and_get(const struct raft_instance *ri)
              CTL_SVC_MAX_RAFT_PEERS);
 
     return num_peers;
+}
+
+static inline struct ctl_svc_node *
+raft_peer_uuid_to_csn(struct raft_instance *ri, const uuid_t peer_uuid)
+{
+    if (!ri || uuid_is_null(peer_uuid))
+        return NULL;
+
+    raft_peer_t npeers = raft_num_members_validate_and_get(ri);
+
+    for (raft_peer_t i = 0; i < npeers; i++)
+        if (!uuid_compare(ri->ri_csn_raft_peers[i]->csn_uuid, peer_uuid))
+            return ri->ri_csn_raft_peers[i];
+
+    return NULL;
 }
 
 static inline bool

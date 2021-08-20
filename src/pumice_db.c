@@ -551,12 +551,11 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
 
     if (!rrc)   // Ok.  Continue to read operation
     {
-        rrc =
-            pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
-                               pmdb_req->pmdbrm_data,
-                               pmdb_req->pmdbrm_data_size,
-                               pmdb_reply->pmdbrm_data, max_reply_size,
-                               pmdb_user_data);
+        rrc = pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
+                                 pmdb_req->pmdbrm_data,
+                                 pmdb_req->pmdbrm_data_size,
+                                 pmdb_reply->pmdbrm_data, max_reply_size,
+                                 pmdb_user_data);
     }
     //XXX fault injection needed
     if (rrc < 0)
