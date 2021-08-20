@@ -49,7 +49,7 @@ jobs:
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/recipe_list2.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/recipe_list3.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -73,7 +73,7 @@ jobs:
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/recipe_list2.txt'
+                             '/home/runner/work/niovad/niovad/build_dir/recipe_list3.txt'
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
