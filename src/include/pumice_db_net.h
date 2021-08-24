@@ -21,6 +21,8 @@
 #define PMDB_MAX_APP_RPC_PAYLOAD_SIZE PMDB_MAX_APP_RPC_PAYLOAD_SIZE_UDP
 #define PMDB_MAX_REQUEST_IOVS RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS
 
+extern const struct raft_net_client_user_key pmdbReadAnyRncuiKey;
+
 typedef raft_client_instance_t          pmdb_t;
 typedef struct raft_net_client_user_key pmdb_obj_id_t;
 
@@ -158,5 +160,39 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
     pmdb_req->pro_timeout.tv_sec = timeout_sec;
     pmdb_req->pro_timeout.tv_nsec = 0;
 }
+
+static inline int
+pmdb_rncui_set_read_any(struct raft_net_client_user_id *out)
+{
+    switch (out->rncui_version)
+    {
+    case 0:
+        memcpy(&out->rncui_key.v0, &pmdbReadAnyRncuiKey.v0,
+               sizeof(struct raft_net_client_user_key_v0));
+        return 0;
+    default:
+        break;
+    }
+
+    return -EOPNOTSUPP;;
+}
+
+
+static inline bool
+pmdb_rncui_is_read_any(const struct raft_net_client_user_id *in)
+{
+    switch (in->rncui_version)
+    {
+    case 0:
+        return memcmp(&in->rncui_key.v0, &pmdbReadAnyRncuiKey.v0,
+                      sizeof(struct raft_net_client_user_key_v0)) ?
+            false : true;
+    default:
+        break;
+    }
+
+    return false;
+}
+
 
 #endif
