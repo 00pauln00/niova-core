@@ -26,6 +26,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 static const struct PmdbAPI *pmdbApi;
 static void *pmdb_user_data = NULL;
+static bool dont_comp_rncui_for_rd = false;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -549,7 +550,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     ssize_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
-    if (!rrc)   // Ok.  Continue to read operation
+    if (!rrc || dont_comp_rncui_for_rd)   // Ok.  Continue to read operation
     {
         rrc = pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                  pmdb_req->pmdbrm_data,
@@ -563,7 +564,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
         pmdb_reply->pmdbrm_data_size = 0;
         raft_client_net_request_handle_error_set(rncr, rrc, 0, rrc);
 
-        DBG_RAFT_CLIENT_RPC(LL_NOTIFY, req,
+        DBG_RAFT_CLIENT_RPC(LL_WARN, req,
                             "pmdbApi::read(): %s", strerror(rrc));
     }
     else if (rrc > (ssize_t)max_reply_size)
@@ -902,9 +903,11 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf_names, bool use_synchronous_writes, void *user_data)
+         int num_cf_names, bool use_synchronous_writes,
+         bool ignore_rncui, void *user_data)
 {
     pmdb_user_data = user_data;
+    dont_comp_rncui_for_rd = ignore_rncui;
     return _PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
 					 num_cf_names, use_synchronous_writes);
 }
