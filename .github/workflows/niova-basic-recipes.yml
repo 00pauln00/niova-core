@@ -1,4 +1,4 @@
-name: holon_recipe_set2_workflow
+name: holon_basic_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -21,6 +21,15 @@ jobs:
 
     - name: apt update
       run: sudo apt update
+    
+    - name: Install golang 1.16
+      run: sudo rm -rf /usr/bin/go &&
+           sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+           sudo mkdir /home/runner/work/go &&
+           sudo tar -C /home/runner/work/go -xzf  go1.16.6.linux-amd64.tar.gz &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
+           go version
+           
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
                                    uuid libuuid1
@@ -43,19 +52,23 @@ jobs:
            make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
-
+           
+    - name: Build niovakv application
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+           
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/recipe_list2.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/basic_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       ref: prevote_support 
+       ref: prevote_support
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
@@ -64,16 +77,14 @@ jobs:
 
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
-
-    - name: List build directory
-      run: ls -l /home/runner/work/niovad/niovad/build_dir
     
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/recipe_list2.txt'
+                             '/home/runner/work/niovad/niovad/build_dir/basic_recipes.txt'
+                             'pumicedb'
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
