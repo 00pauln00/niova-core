@@ -83,7 +83,6 @@ func (obj *PmdbClientObj) Write(ed interface{},
 
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
-	rncui string,
 	output_ed interface{}) error {
 
 	var key_len int64
@@ -98,7 +97,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	reply_buff, rd_err := obj.readKV(rncui, encoded_key,
+	reply_buff, rd_err := obj.readKV(encoded_key,
 		key_len, &reply_size)
 
 	if rd_err != nil {
@@ -116,7 +115,6 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 
 //Read the value of key on the client the application passed buffer
 func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
-	rncui string,
 	zeroCopyObj *RDZeroCopyObj) error {
 
 	var key_len int64
@@ -130,7 +128,7 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	//Read the value of the key in application buffer
-	return obj.readKVZeroCopy(rncui, encoded_key,
+	return obj.readKVZeroCopy(encoded_key,
 		key_len, zeroCopyObj)
 
 }
@@ -181,18 +179,22 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 }
 
 //Call the pmdb C library function to read the value for the key.
-func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
+func (obj *PmdbClientObj) readKV(key *C.char,
 	key_len int64,
 	reply_size *int64) (unsafe.Pointer, error) {
 
-	crncui_str := GoToCString(rncui)
-	defer FreeCMem(crncui_str)
+	var rncui_id C.struct_raft_net_client_user_id
+
+	rncui_id.rncui_version = 0
+	rc := C.pmdb_rncui_set_read_any(&rncui_id)
+	if rc < 0 {
+		*reply_size = 0
+		err := errors.New("Failed to get magic rncui")
+		return nil, err
+	}
 
 	c_key_len := GoToCSize_t(key_len)
 
-	var rncui_id C.struct_raft_net_client_user_id
-
-	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
@@ -227,18 +229,20 @@ func (obj *RDZeroCopyObj) ReleaseCMem() {
  * Note the data is not decoded in this method. Application should
  * take care of decoding the buffer data.
  */
-func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
+func (obj *PmdbClientObj) readKVZeroCopy(key *C.char,
 	key_len int64,
 	zeroCopyObj *RDZeroCopyObj) error {
 
-	crncui_str := GoToCString(rncui)
-	defer FreeCMem(crncui_str)
+	var rncui_id C.struct_raft_net_client_user_id
+	rncui_id.rncui_version = 0
+
+	rc := C.pmdb_rncui_set_read_any(&rncui_id)
+	if rc < 0 {
+		return fmt.Errorf("Failed to get magic rncui: %d", rc)
+	}
 
 	c_key_len := GoToCSize_t(key_len)
 
-	var rncui_id C.struct_raft_net_client_user_id
-
-	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
@@ -249,7 +253,7 @@ func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	C.pmdb_request_options_init(&pmdb_req_opt, 1, 0, &stat, nil, nil,
 		zeroCopyObj.buffer, C.size_t(zeroCopyObj.buffer_len), 0)
 
-	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
+	rc = C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
 		&pmdb_req_opt)
 
 	if rc != 0 {

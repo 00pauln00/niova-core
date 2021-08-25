@@ -107,7 +107,7 @@ func (dso *DictionaryServer) Apply(app_id unsafe.Pointer,
 		prev_result, err := dso.pso.LookupKey(word, int64(go_key_len), colmfamily)
 		if err == nil {
 			//Convert the word count into string.
-			prev_result_int, _ := strconv.Atoi(prev_result)
+			prev_result_int, _ := strconv.Atoi(string(prev_result[:len(prev_result)]))
 			count = count + prev_result_int
 		}
 
@@ -144,7 +144,7 @@ func (dso *DictionaryServer) Read(app_id unsafe.Pointer,
 	/* typecast the output to int */
 	word_frequency := 0
 	if read_err == nil {
-		word_count, err := strconv.Atoi(result)
+		word_count, err := strconv.Atoi(string(result[:len(result)]))
 		if err != nil {
 			log.Fatal(err)
 		}

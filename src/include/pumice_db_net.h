@@ -21,7 +21,15 @@
 #define PMDB_MAX_APP_RPC_PAYLOAD_SIZE PMDB_MAX_APP_RPC_PAYLOAD_SIZE_UDP
 #define PMDB_MAX_REQUEST_IOVS RAFT_CLIENT_REQUEST_HANDLE_MAX_IOVS
 
-extern const struct raft_net_client_user_key pmdbReadAnyRncuiKey;
+//extern const struct raft_net_client_user_key pmdbReadAnyRncuiKey;
+/* pmdbReadAnyRncuiKey may be used by an application to bypass the pmdb object
+ * existence check on the server.  On the client, requests using this key may
+ * be done concurrently.  Note that writes attempting to this key will fail
+ * with -EPERM.
+ */
+static const struct raft_net_client_user_key pmdbReadAnyRncuiKey = {
+    .v0.rncui_v0_uint64 = { -1ULL, -1ULL, -1ULL, -1ULL, -1ULL, -1ULL},
+};
 
 typedef raft_client_instance_t          pmdb_t;
 typedef struct raft_net_client_user_key pmdb_obj_id_t;
