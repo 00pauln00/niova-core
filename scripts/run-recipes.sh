@@ -4,6 +4,8 @@ HOLON_LIBS=${1}
 BIN_PATH=${2}
 LOG_PATH=${3}
 NPEERS=${4}
+starting_port=4000
+ending_port=15000
 
 export ANSIBLE_LOOKUP_PLUGINS=$HOLON_LIBS
 export PYTHONPATH=$HOLON_LIBS
@@ -21,12 +23,19 @@ declare -a recipe_list=("leader_overthrow.yml"
                         "pmdb_client_error_demonstration_standalone_client.yml"
                        )
 
-#Check running peers list
-sudo netstat -tulpn | grep LISTEN
-
 for recipe in "${recipe_list[@]}"
 do
-   ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
+   echo "find an open port to use"
+   for i in $(seq $starting_port $ending_port); do
+        if ! lsof -Pi :$i; then
+            echo "$i not in use, choose this one!"
+            port_to_use=$i
+            ansible-playbook -e 'srv_port=$port_to_use' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=$port_to_use' -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
+        elif [ "$i" == "$ending_port" ]; then
+            echo "no port to use!"
+        fi
+   done
+
    if [ $? -ne 0 ]
    then
       echo "Recipe: $recipe failed"
