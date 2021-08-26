@@ -167,7 +167,7 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 
 	// Starting the pmdb server.
 	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true,
-		opa_ptr)
+		true, opa_ptr)
 	if rc != 0 {
 		return fmt.Errorf("PmdbExec() returned %d", rc)
 	}

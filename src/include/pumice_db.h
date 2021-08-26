@@ -87,7 +87,8 @@ PmdbWriteKV(const struct raft_net_client_user_id *, void *pmdb_handle,
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf, bool use_synchronous_writes, void *user_data);
+         int num_cf, bool use_synchronous_writes,
+         bool ignore_rncui, void *user_data);
 
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec
