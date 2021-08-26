@@ -75,6 +75,7 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 		Timestamp: time.Now(),
 	}
 	var resp *niovakvlib.NiovaKVResponse
+	log.Info("Send to addr : ",addr," ",port)
 	if write {
 		resp, _ = httpclient.PutRequest(req, addr, port)
 	} else {
@@ -113,6 +114,9 @@ func getServerAddr(refresh bool) (string, string) {
 	log.Info(ClientHandler.Agents)
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	node := ClientHandler.Agents[randomIndex]
+	if node.Tags["Hport"]==""{
+		return getServerAddr(true)
+	}
 	return node.Addr.String(), node.Tags["Hport"]
 }
 

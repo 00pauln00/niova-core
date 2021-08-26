@@ -68,6 +68,9 @@ func getServerAddr(refresh bool) (string, string, error) {
 	}
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[randomIndex]
+	if randomNode.Tags["Hport"]==""{
+		return getServerAddr(true)
+	}
 	return randomNode.Addr.String(), randomNode.Tags["Hport"], err
 }
 
@@ -112,10 +115,13 @@ func main() {
 		req := request{
 			Opcode: operation,
 		}
-		ClientHandler.GetData(true)
-		node := ClientHandler.Agents[0]
+		var leader string
+		for leader==""{
+		 ClientHandler.GetData(true)
+		 leader = ClientHandler.Agents[0].Tags["Leader UUID"]
+		}
 		res := response{
-			ResponseValue: node.Tags["Leader UUID"],
+			ResponseValue: leader,
 		}
 		operationObj.RequestData = req
 		operationObj.ResponseData = res
