@@ -21,6 +21,9 @@ declare -a recipe_list=("leader_overthrow.yml"
                         "pmdb_client_error_demonstration_standalone_client.yml"
                        )
 
+#Check running peers list
+sudo netstat -tulpn | grep LISTEN
+
 for recipe in "${recipe_list[@]}"
 do
    ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
