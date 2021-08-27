@@ -28,9 +28,8 @@ do
    echo "find an open port to use"
    for i in $(seq $starting_port $ending_port); do
         if ! lsof -Pi :$i; then
-            echo "$i not in use, choose this one!"
             port_to_use=$i
-            ansible-playbook -e 'srv_port=$port_to_use' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=$port_to_use' -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
+            ansible-playbook -e srv_port=$port_to_use -e npeers=$NPEERS -e dir_path=$LOG_PATH -e client_port=$port_to_use -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
         elif [ "$i" == "$ending_port" ]; then
             echo "no port to use!"
         fi
