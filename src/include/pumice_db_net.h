@@ -170,13 +170,16 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
 }
 
 static inline int
-pmdb_rncui_set_read_any(struct raft_net_client_user_id *out)
+pmdb_rncui_set_read_any(struct raft_net_client_user_id *out,
+                        uint64_t read_counter)
 {
     switch (out->rncui_version)
     {
     case 0:
         memcpy(&out->rncui_key.v0, &pmdbReadAnyRncuiKey.v0,
                sizeof(struct raft_net_client_user_key_v0));
+        // Assign application read_counter in the last part of rncui
+        out->rncui_key.v0.rncui_v0_uint64[5] = read_counter;
         return 0;
     default:
         break;
@@ -193,7 +196,7 @@ pmdb_rncui_is_read_any(const struct raft_net_client_user_id *in)
     {
     case 0:
         return memcmp(&in->rncui_key.v0, &pmdbReadAnyRncuiKey.v0,
-                      sizeof(struct raft_net_client_user_key_v0)) ?
+                      sizeof(struct raft_net_client_user_key_v0) - sizeof(uint64_t)) ?
             false : true;
     default:
         break;

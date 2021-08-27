@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"syscall"
 	"unsafe"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -24,6 +25,7 @@ type PmdbClientObj struct {
 	pmdb        C.pmdb_t
 	raftUuid    string
 	myUuid      string
+	readCnt		uint64
 }
 
 type RDZeroCopyObj struct {
@@ -185,8 +187,10 @@ func (obj *PmdbClientObj) readKV(key *C.char,
 
 	var rncui_id C.struct_raft_net_client_user_id
 
+	read_counter := C.uint64_t(atomic.AddUint64(&obj.readCnt, 1))
 	rncui_id.rncui_version = 0
-	rc := C.pmdb_rncui_set_read_any(&rncui_id)
+
+	rc := C.pmdb_rncui_set_read_any(&rncui_id, read_counter)
 	if rc < 0 {
 		*reply_size = 0
 		err := errors.New("Failed to get magic rncui")
@@ -236,7 +240,8 @@ func (obj *PmdbClientObj) readKVZeroCopy(key *C.char,
 	var rncui_id C.struct_raft_net_client_user_id
 	rncui_id.rncui_version = 0
 
-	rc := C.pmdb_rncui_set_read_any(&rncui_id)
+	read_counter := C.uint64_t(atomic.AddUint64(&obj.readCnt, 1))
+	rc := C.pmdb_rncui_set_read_any(&rncui_id, read_counter)
 	if rc < 0 {
 		return fmt.Errorf("Failed to get magic rncui: %d", rc)
 	}
@@ -322,6 +327,7 @@ func PmdbClientNew(Graft_uuid string, Gclient_uuid string) *PmdbClientObj {
 	client.initialized = false
 	client.raftUuid = Graft_uuid
 	client.myUuid = Gclient_uuid
+	client.readCnt = 0
 
 	return &client
 }
