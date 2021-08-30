@@ -4,8 +4,16 @@ HOLON_LIBS=${1}
 BIN_PATH=${2}
 LOG_PATH=${3}
 NPEERS=${4}
-starting_port=4000
-ending_port=15000
+starting_Sport=4000
+ending_Sport=4010
+starting_Cport=14000
+ending_Cport=14010
+
+declare -a sport=()
+declare -a cport=()
+
+list1=$(seq $starting_Sport $ending_Sport)
+list2=$(seq $starting_Cport $ending_Cport)
 
 export ANSIBLE_LOOKUP_PLUGINS=$HOLON_LIBS
 export PYTHONPATH=$HOLON_LIBS
@@ -23,18 +31,25 @@ declare -a recipe_list=("leader_overthrow.yml"
                         "pmdb_client_error_demonstration_standalone_client.yml"
                        )
 
+for i in ${list1[@]}
+do
+	if ! lsof -Pi :$i; then
+        	sport+=($i)
+        fi
+        for j in ${list2[@]}
+        do
+        	if ! lsof -Pi :$j; then
+                	cport+=($j)
+                fi
+        done
+done
+
+echo "Server Port: ${sport[0]}"
+echo "Client Port: ${cport[0]}"
+
 for recipe in "${recipe_list[@]}"
 do
-   echo "find an open port to use"
-   for i in $(seq $starting_port $ending_port); do
-        if ! lsof -Pi :$i; then
-            port_to_use=$i
-            ansible-playbook -e srv_port=$port_to_use -e npeers=$NPEERS -e dir_path=$LOG_PATH -e client_port=$port_to_use -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
-        elif [ "$i" == "$ending_port" ]; then
-            echo "no port to use!"
-        fi
-   done
-
+   ansible-playbook -e srv_port=${sport[0]} -e npeers=$NPEERS -e dir_path=$LOG_PATH -e client_port= -e recipe=${cport[0]} -e 'backend_type=pumicedb' holon.yml
    if [ $? -ne 0 ]
    then
       echo "Recipe: $recipe failed"
@@ -43,3 +58,4 @@ do
    echo "Recipe: $recipe completed successfully!"
    rm -rf $LOG_PATH/*
 done
+
