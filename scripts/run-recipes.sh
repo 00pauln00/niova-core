@@ -49,7 +49,7 @@ echo "Client Port: ${cport[0]}"
 
 for recipe in "${recipe_list[@]}"
 do
-   ansible-playbook -e srv_port=${sport[0]} -e npeers=$NPEERS -e dir_path=$LOG_PATH -e client_port= -e recipe=${cport[0]} -e 'backend_type=pumicedb' holon.yml
+   ansible-playbook -e srv_port=${sport[0]} -e npeers=$NPEERS -e dir_path=$LOG_PATH -e client_port=${cport[0]} -e recipe=$recipe -e 'backend_type=pumicedb' holon.yml
    if [ $? -ne 0 ]
    then
       echo "Recipe: $recipe failed"
