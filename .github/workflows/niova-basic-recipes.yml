@@ -14,11 +14,6 @@ jobs:
       with:
         path: ./code
 
-    - name: Generate build number
-      uses: einaregilsson/build-number@v3
-      with:
-        token: ${{secrets.github_token}}
-
     - name: apt update
       run: sudo apt update
     
@@ -89,7 +84,7 @@ jobs:
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
-        echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$BUILD_NUMBER"
+        echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
       if: failure()
       
     - name: Archive the test results
