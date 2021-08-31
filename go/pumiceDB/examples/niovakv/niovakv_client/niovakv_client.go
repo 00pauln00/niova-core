@@ -68,7 +68,7 @@ func getServerAddr(refresh bool) (string, string, error) {
 	}
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	randomNode := ClientHandler.Agents[randomIndex]
-	if randomNode.Tags["Hport"]==""{
+	if randomNode.Tags["Hport"] == "" {
 		return getServerAddr(true)
 	}
 	return randomNode.Addr.String(), randomNode.Tags["Hport"], err
@@ -79,10 +79,7 @@ func main() {
 
 	//Get commandline parameters.
 	getCmdParams()
-
 	flag.Usage = usage
-	flag.Parse()
-
 	if flag.NFlag() == 0 {
 		usage()
 		os.Exit(-1)
@@ -93,6 +90,7 @@ func main() {
 	if err != nil {
 		log.Error("Error with logger : ", err)
 	}
+
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
 	ClientHandler.Retries = 5
@@ -100,6 +98,8 @@ func main() {
 	if err != nil {
 		log.Error("Error while trying to read config file : ", err)
 	}
+
+	//Request processing
 	var reqObj niovakvlib.NiovaKV
 	var operationObj opData
 	var doOperation func(*niovakvlib.NiovaKV, string, string) (*niovakvlib.NiovaKVResponse, error)
@@ -116,9 +116,9 @@ func main() {
 			Opcode: operation,
 		}
 		var leader string
-		for leader==""{
-		 ClientHandler.GetData(true)
-		 leader = ClientHandler.Agents[0].Tags["Leader UUID"]
+		for leader == "" {
+			ClientHandler.GetData(true)
+			leader = ClientHandler.Agents[0].Tags["Leader UUID"]
 		}
 		res := response{
 			ResponseValue: leader,
@@ -170,6 +170,11 @@ func main() {
 				os.Exit(1)
 			}
 		}
+		if responseRecvd == nil {
+			log.Error("Request retry limit exceded")
+			os.Exit(1)
+		}
+
 		operationObj.RequestData.Timestamp = send_stamp
 		operationObj.ResponseData = response{
 			Timestamp:     recv_stamp,
@@ -177,6 +182,8 @@ func main() {
 			ResponseValue: string(responseRecvd.RespValue),
 		}
 	}
+
+	//Request summary
 	toJson := make(map[string]opData)
 	toJson[operation] = operationObj
 	file, _ := json.MarshalIndent(toJson, "", " ")

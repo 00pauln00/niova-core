@@ -12,20 +12,19 @@ import (
 
 func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 
-	responseObj := niovakvlib.NiovaKVResponse{}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Error(err)
-		return &responseObj, err
+		return nil, err
 	}
 	/*
 		Check if response if ok,
 		If not, fill the response obj with desired values
 		If so, fill the resp obj with received values
 	*/
-	log.Info("HTTP response status : ", resp.Status)
+	responseObj := niovakvlib.NiovaKVResponse{}
 	switch resp.StatusCode {
 	case 200:
 		//Serviced
@@ -34,9 +33,11 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 		//Unmarshal the response.
 		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
 		err = dec.Decode(&responseObj)
-		if err == nil {
-			log.Info("Status of operation for key :", responseObj.RespStatus)
-		}
+		/*
+			if err == nil {
+				log.Info("Status of operation for key :", responseObj.RespStatus)
+			}
+		*/
 	case 503:
 		//Service not found, returned for timeout
 		responseObj.RespStatus = -1

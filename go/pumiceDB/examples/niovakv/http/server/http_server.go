@@ -90,6 +90,7 @@ func (h HttpServerHandler) StartServer() error {
 	h.limiter = make(chan int, h.Limit)
 	h.server = http.Server{}
 	h.server.Addr = h.Addr + ":" + h.Port
+	//Update the timeout using little's fourmula
 	h.server.Handler = http.TimeoutHandler(h, 150*time.Second, "Server Timeout")
 	err := h.server.ListenAndServe()
 	return err

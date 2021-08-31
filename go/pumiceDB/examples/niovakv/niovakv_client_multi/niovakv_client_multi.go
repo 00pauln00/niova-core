@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"math/rand"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -66,7 +67,6 @@ func getCmdParams() {
 }
 
 func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
-	atomic.AddInt32(requestSentCount, 1)
 	requestMeta := request{
 		Opcode:    req.InputOps,
 		Key:       req.InputKey,
@@ -75,7 +75,6 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 		Timestamp: time.Now(),
 	}
 	var resp *niovakvlib.NiovaKVResponse
-	log.Info("Send to addr : ",addr," ",port)
 	if write {
 		resp, _ = httpclient.PutRequest(req, addr, port)
 	} else {
@@ -91,6 +90,7 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 		ResponseData: responseMeta,
 		TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
 	}
+	atomic.AddInt32(requestSentCount, 1)
 	if responseMeta.Status == -1 {
 		atomic.AddInt32(timeoutCount, 1)
 	}
@@ -105,32 +105,47 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 	respFillerLock.Unlock()
 }
 
+func printProgress(operation string, total int) {
+	fmt.Println(" ")
+	for atomic.LoadInt32(requestSentCount) != int32(total) {
+		fmt.Print("\033[G\033[K")
+		fmt.Print("\033[A")
+		fmt.Println(atomic.LoadInt32(requestSentCount), " / ", total, operation, "request completed")
+		time.Sleep(1 * time.Second)
+	}
+	fmt.Print("\033[G\033[K")
+	fmt.Print("\033[A")
+	fmt.Println(atomic.LoadInt32(requestSentCount), " / ", total, operation, "request completed")
+}
+
 //Get any client addr
 func getServerAddr(refresh bool) (string, string) {
 	if refresh {
 		ClientHandler.GetData(false)
 	}
 	//Get random addr
-	log.Info(ClientHandler.Agents)
+	if len(ClientHandler.Agents) <= 0 {
+		log.Error("No live agents")
+		os.Exit(1)
+	}
+
 	randomIndex := rand.Intn(len(ClientHandler.Agents))
 	node := ClientHandler.Agents[randomIndex]
-	if node.Tags["Hport"]==""{
+	if node.Tags["Hport"] == "" {
 		return getServerAddr(true)
 	}
 	return node.Addr.String(), node.Tags["Hport"]
 }
 
 func main() {
-	var count1, count3 int32
-	count1 = 0
-	count3 = 0
-	requestSentCount = &count1
-	timeoutCount = &count3
+	var total, failures int32
+	total = 0
+	failures = 0
+	requestSentCount = &total
+	timeoutCount = &failures
 	//Get commandline parameters.
 	getCmdParams()
 	flag.Usage = usage
-	flag.Parse()
-
 	if flag.NFlag() == 0 {
 		usage()
 		os.Exit(-1)
@@ -141,6 +156,8 @@ func main() {
 	if err != nil {
 		log.Error("Error while initializing the logger  ", err)
 	}
+
+	log.Info("----START OF LOG---")
 
 	//For serf client init
 	ClientHandler = serfclienthandler.SerfClientHandler{}
@@ -162,7 +179,8 @@ func main() {
 		reqobjs_read = append(reqobjs_read, reqObj2)
 	}
 
-	//Send request
+	//Send write request
+	go printProgress("write", n)
 	addr, port := getServerAddr(true)
 	for j := 0; j < n; j++ {
 		addr, port := getServerAddr(true)
@@ -176,15 +194,13 @@ func main() {
 			sendReq(&reqobjs_write[j], addr, port, true)
 		}
 	}
-
-	//Wait till all write are completed
-	log.Info("Waiting for writes to complete")
 	w.Wait()
-	log.Info("Writes completed")
-	log.Info("No of request sent, no of time outs : ", count1, count3)
-	count1 = 0
-	count3 = 0
+	log.Info("No of writes sent, no of failures : ", total, failures)
+	total = 0
+	failures = 0
 
+	//send read request
+	go printProgress("read", n)
 	for j := n - 1; j >= 0; j-- {
 		addr, port = getServerAddr(true)
 		if serial == "no" {
@@ -199,23 +215,22 @@ func main() {
 	}
 
 	//Wait till all reads are completed
-	log.Info("Waiting for read to complete")
+	//Bar to show how many reads have been completed
 	w.Wait()
-	log.Info("Reads completed")
-	log.Info("No of request sent, no of time outs : ", count1, count3)
+	log.Info("No of reads sent, no of failures : ", total, failures)
 
 	//Find avg response time
 	Writesum := 0
 	Readsum := 0
 	for _, ops := range operationMetaWriteObjs {
-		Writesum += int(ops.TimeDuration.Seconds())
+		Writesum += int(ops.TimeDuration.Milliseconds())
 	}
 	for _, ops := range operationMetaReadObjs {
-		Readsum += int(ops.TimeDuration.Seconds())
+		Readsum += int(ops.TimeDuration.Milliseconds())
 	}
-	log.Info("Avg write response time : ", Writesum/n, "sec")
-	log.Info("Avg read response time : ", Readsum/n, "sec")
-	log.Info("Avg response time : ", (Writesum+Readsum)/(2*n), "sec")
+	log.Info("Avg write response time : ", Writesum/n, " milli sec")
+	log.Info("Avg read response time : ", Readsum/n, " milli sec")
+	log.Info("----END OF LOG---")
 	toJson := make(map[string][]opData)
 	toJson["write"] = operationMetaWriteObjs
 	toJson["read"] = operationMetaReadObjs
