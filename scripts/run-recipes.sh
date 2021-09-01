@@ -5,9 +5,9 @@ BIN_PATH=${2}
 LOG_PATH=${3}
 NPEERS=${4}
 starting_Sport=4000
-ending_Sport=4010
+ending_Sport=4020
 starting_Cport=14000
-ending_Cport=14010
+ending_Cport=14020
 
 declare -a sport=()
 declare -a cport=()
