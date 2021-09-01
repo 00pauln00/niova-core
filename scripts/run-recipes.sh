@@ -57,5 +57,6 @@ do
    fi
    echo "Recipe: $recipe completed successfully!"
    rm -rf $LOG_PATH/*
+
 done
 
