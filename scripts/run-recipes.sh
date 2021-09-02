@@ -19,8 +19,8 @@ export ANSIBLE_LOOKUP_PLUGINS=$HOLON_LIBS
 export PYTHONPATH=$HOLON_LIBS
 export NIOVA_BIN_PATH=$BIN_PATH
 
-declare -a recipe_list=("leader_overthrow.yml"
-                        "completing_an_uncommitted_write_following_a_reboot.yml"
+declare -a recipe_list=("completing_an_uncommitted_write_following_a_reboot.yml"
+                        "leader_overthrow.yml"
                         "leader_self_depose.yml"
                         "pmdb_client_request_timeout_modification_and_retry.yml"
                         "pmdb_foreign_client_error_demonstration.yml"
