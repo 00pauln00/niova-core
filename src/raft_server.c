@@ -64,6 +64,7 @@ raft_server_may_accept_client_request_reason(struct raft_instance *ri);
 
 static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri);
+static raft_net_timerfd_cb_ctx_t
 raft_server_become_candidate(struct raft_instance *ri, bool prevote);
 
 static raft_peer_t
