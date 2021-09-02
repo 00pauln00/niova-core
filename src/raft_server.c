@@ -64,6 +64,7 @@ raft_server_may_accept_client_request_reason(struct raft_instance *ri);
 
 static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri);
+raft_server_become_candidate(struct raft_instance *ri, bool prevote);
 
 static raft_peer_t
 raft_server_instance_self_idx(const struct raft_instance *ri)
@@ -1870,9 +1871,16 @@ raft_server_vote_for_self(struct raft_instance *ri)
         yes_vote = RAFT_VOTE_RESULT_YES;
     }
 
-    return raft_server_candidate_reg_vote_result(ri,
+    int rc = raft_server_candidate_reg_vote_result(ri,
                                                  RAFT_INSTANCE_2_SELF_UUID(ri),
                                                  yes_vote);
+    if (FAULT_INJECT(raft_pvc_becomes_candidate))
+    {
+        /* Force the prevote candidate to go into candidate state */
+        raft_server_become_candidate(ri, false);
+        return 0;
+    }
+    return rc;
 }
 
 static void

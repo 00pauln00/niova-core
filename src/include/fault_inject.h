@@ -27,6 +27,7 @@ enum fault_inject_entries
     FAULT_INJECT_raft_server_bypass_sm_apply,
     FAULT_INJECT_coalesced_writes,
     FAULT_INJECT_ignore_einprogress,
+    FAULT_INJECT_raft_pvc_becomes_candidate,
     FAULT_INJECT__MAX,
     FAULT_INJECT__MIN = FAULT_INJECT_any,
 } PACKED;

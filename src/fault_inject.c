@@ -87,6 +87,11 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
+    [FAULT_INJECT_raft_pvc_becomes_candidate] = {
+        .flti_name = "raft_pvc_becomes_candidate",
+        .flti_when = FAULT_INJECT_PERIOD_one_time_only,
+        .flti_enabled = 0,
+    },
     [FAULT_INJECT_disabled] = {
         .flti_name = "disabled injection",
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,
