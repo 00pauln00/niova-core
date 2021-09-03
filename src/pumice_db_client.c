@@ -15,9 +15,11 @@
 #include "pumice_db_net.h"
 #include "pumice_db_client.h"
 #include "registry.h"
+#include "atomic.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+static niova_atomic32_t pmdb_read_any_cnt;
 struct pmdb_client_request
 {
     pmdb_obj_id_t          pcreq_obj_id;
@@ -541,6 +543,21 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
     return pmdb_stat.reply_buffer;
 }
 
+void *
+PmdbObjGetAny(pmdb_t pmdb, const char *key, size_t key_size, size_t *value_size)
+{
+    /* Use increamented atomic variable */
+    struct raft_net_client_user_id rncui;
+    pmdb_obj_id_t *obj_id;
+
+    int rc = pmdb_rncui_set_read_any(&rncui,
+                                     niova_atomic_inc(&pmdb_read_any_cnt));
+
+    obj_id = (pmdb_obj_id_t *)(&rncui.rncui_key);
+
+    return PmdbObjGet(pmdb, obj_id, key, key_size, value_size);
+}
+
 /**
  * pmdb_obj_id_cb - essential cb function which is passed into
  *    raft_client_init().  The role of this cb is to translate the private
@@ -593,6 +610,7 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
 
     NIOVA_ASSERT(pmdb);
 
+    niova_atomic_init(&pmdb_read_any_cnt, 0);
     return pmdb;
 }
 

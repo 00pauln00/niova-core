@@ -185,27 +185,10 @@ func (obj *PmdbClientObj) readKV(key *C.char,
 	key_len int64,
 	reply_size *int64) (unsafe.Pointer, error) {
 
-	var rncui_id C.struct_raft_net_client_user_id
-
-	read_counter := C.uint64_t(atomic.AddUint64(&obj.readCnt, 1))
-	rncui_id.rncui_version = 0
-
-	rc := C.pmdb_rncui_set_read_any(&rncui_id, read_counter)
-	if rc < 0 {
-		*reply_size = 0
-		err := errors.New("Failed to get magic rncui")
-		return nil, err
-	}
-
+	var actual_value_size C.size_t
 	c_key_len := GoToCSize_t(key_len)
 
-	var obj_id *C.pmdb_obj_id_t
-
-	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
-
-	var actual_value_size C.size_t
-
-	reply_buff := C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
+	reply_buff := C.PmdbObjGetAny(obj.pmdb, key, c_key_len,
 		&actual_value_size)
 
 	if reply_buff == nil {

@@ -26,6 +26,10 @@ void *
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
            size_t key_size, size_t *value_size);
 
+void *
+PmdbObjGetAny(pmdb_t pmdb, const char *key,
+              size_t key_size, size_t *value_size);
+
 int
 PmdbObjLookupX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
                pmdb_request_opts_t *pmdb_req);
