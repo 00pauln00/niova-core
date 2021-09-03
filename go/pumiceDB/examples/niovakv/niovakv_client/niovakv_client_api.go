@@ -1,8 +1,8 @@
 package clientapi
 
 import (
+	"errors"
 	"math/rand"
-	"os"
 	"sync"
 	"time"
 
@@ -33,13 +33,18 @@ func getAddr(member *client.Member) string {
 func (nkvc *NiovakvClient) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
 	var responseRecvd *niovakvlib.NiovaKVResponse
 	timer := time.Tick(nkvc.Timeout)
+time:
 	for {
 		select {
 		case <-timer:
 			log.Error("Request timed at client side")
+			break
 		default:
 			var err error
-			toSend := nkvc.pickServer()
+			toSend, err := nkvc.pickServer()
+			if err != nil {
+				return nil
+			}
 			addr := getAddr(&toSend)
 			if write {
 				responseRecvd, err = httpclient.PutRequest(ReqObj, addr)
@@ -47,7 +52,7 @@ func (nkvc *NiovakvClient) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *
 				responseRecvd, err = httpclient.GetRequest(ReqObj, addr)
 			}
 			if err == nil {
-				break
+				break time
 			}
 			log.Error(err)
 		}
@@ -113,18 +118,23 @@ func (nkvc *NiovakvClient) Start(stop chan int, configPath string) error {
 	return err
 }
 
-func (nkvc *NiovakvClient) pickServer() client.Member {
+func (nkvc *NiovakvClient) pickServer() (client.Member, error) {
 	nkvc.tableLock.Lock()
 	defer nkvc.tableLock.Unlock()
 
 	if len(nkvc.clientHandler.Agents) == 0 {
 		log.Error("no alive servers")
-		os.Exit(1)
+		err := errors.New("No alive servers")
+		return client.Member{}, err
 	}
 
 	//Get random addr and delete if its failed and provide with non-failed one!
 	var randomIndex int
 	for {
+		if len(nkvc.servers) == 0 {
+			log.Error("no alive servers")
+			return client.Member{}, errors.New("No alive servers")
+		}
 		randomIndex = rand.Intn(len(nkvc.servers))
 		if nkvc.servers[randomIndex].Status == "alive" {
 			break
@@ -132,12 +142,15 @@ func (nkvc *NiovakvClient) pickServer() client.Member {
 		nkvc.servers = removeIndex(nkvc.servers, randomIndex)
 	}
 
-	return nkvc.servers[randomIndex]
+	return nkvc.servers[randomIndex], nil
 }
 
 //Returns raft leader's uuid
 func (nkvc *NiovakvClient) GetLeader() string {
-	agent := nkvc.pickServer()
+	agent, err := nkvc.pickServer()
+	if err != nil {
+		return "Servers unreachable"
+	}
 	return agent.Tags["Leader UUID"]
 }
 

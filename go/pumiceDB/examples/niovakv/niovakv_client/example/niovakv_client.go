@@ -98,17 +98,10 @@ func main() {
 	}()
 
 	//Wait for membership table to get updated
+	send_stamp = time.Now().String()
 	switch operation {
 	case "getLeader":
-		req := request{
-			Opcode: operation,
-		}
-		res := response{
-			ResponseValue: nkvc.GetLeader(),
-		}
-		operationObj.RequestData = req
-		operationObj.ResponseData = res
-
+		responseRecvd.RespValue = []byte(nkvc.GetLeader())
 	case "membership":
 		toJson := nkvc.GetMembership()
 		file, _ := json.MarshalIndent(toJson, "", " ")
@@ -118,25 +111,18 @@ func main() {
 	case "write":
 		operationObj.RequestData.Value = value
 		reqObj.InputValue = []byte(value)
-		send_stamp = time.Now().String()
 		responseRecvd.RespStatus = nkvc.Put(&reqObj)
-		recv_stamp = time.Now().String()
-		operationObj.RequestData.Timestamp = send_stamp
-		operationObj.ResponseData = response{
-			Timestamp:     recv_stamp,
-			Status:        responseRecvd.RespStatus,
-			ResponseValue: string(responseRecvd.RespValue),
-		}
+
 	case "read":
-		send_stamp = time.Now().String()
 		responseRecvd.RespValue = nkvc.Get(&reqObj)
-		recv_stamp = time.Now().String()
-		operationObj.RequestData.Timestamp = send_stamp
-		operationObj.ResponseData = response{
-			Timestamp:     recv_stamp,
-			Status:        responseRecvd.RespStatus,
-			ResponseValue: string(responseRecvd.RespValue),
-		}
+	}
+
+	recv_stamp = time.Now().String()
+	operationObj.RequestData.Timestamp = send_stamp
+	operationObj.ResponseData = response{
+		Timestamp:     recv_stamp,
+		Status:        responseRecvd.RespStatus,
+		ResponseValue: string(responseRecvd.RespValue),
 	}
 
 	//Stop the service and write to file
