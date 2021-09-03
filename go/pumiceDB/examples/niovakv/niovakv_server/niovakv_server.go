@@ -60,7 +60,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.agentName, "n", "NULL", "serf agent name")
-	flag.StringVar(&handler.limit, "e", "10", "No of concurrent request")
+	flag.StringVar(&handler.limit, "e", "500", "No of concurrent request")
 	flag.Parse()
 }
 
@@ -160,12 +160,14 @@ func (handler *niovaKVServerHandler) getGossipData() {
 		leader, err := handler.nkvClientObj.ClientObj.PmdbGetLeader()
 		if err != nil {
 			log.Error(err)
-			os.Exit(1)
+			//Wait for sometime to pmdb client to establish connection with raft cluster
+			time.Sleep(5 * time.Second)
+			continue
 		}
 		tag["Leader UUID"] = leader.String()
 		log.Info(tag)
 		handler.serfAgentHandlerObj.SetTags(tag)
-		time.Sleep(5 * time.Second)
+		time.Sleep(300 * time.Millisecond)
 	}
 }
 
@@ -212,7 +214,6 @@ func main() {
 		os.Exit(1)
 	}
 	//Start the gossip routine
-	time.Sleep(5 * time.Second)
 	go niovaServerObj.getGossipData()
 
 	//Start http server
