@@ -33,6 +33,7 @@ static const struct raft_net_client_user_key pmdbReadAnyRncuiKey = {
 
 typedef raft_client_instance_t          pmdb_t;
 typedef struct raft_net_client_user_key pmdb_obj_id_t;
+static niova_atomic32_t pmdb_read_any_cnt = 0;
 
 enum PmdbOpType
 {
@@ -170,8 +171,7 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
 }
 
 static inline int
-pmdb_rncui_set_read_any(struct raft_net_client_user_id *out,
-                        uint64_t read_counter)
+pmdb_rncui_set_read_any(struct raft_net_client_user_id *out)
 {
     switch (out->rncui_version)
     {
@@ -179,7 +179,8 @@ pmdb_rncui_set_read_any(struct raft_net_client_user_id *out,
         memcpy(&out->rncui_key.v0, &pmdbReadAnyRncuiKey.v0,
                sizeof(struct raft_net_client_user_key_v0));
         // Assign application read_counter in the last part of rncui
-        out->rncui_key.v0.rncui_v0_uint64[5] = read_counter;
+        out->rncui_key.v0.rncui_v0_uint64[5] =
+                    niova_atomic_inc(&pmdb_read_any_cnt);
         return 0;
     default:
         break;

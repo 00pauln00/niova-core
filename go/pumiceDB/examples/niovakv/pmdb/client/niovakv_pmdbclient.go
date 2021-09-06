@@ -43,7 +43,7 @@ func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 
 	rop := &niovakvlib.NiovaKV{}
 	log.Info("ReqObj:", ReqObj)
-	err := nco.ClientObj.Read(ReqObj, rop)
+	err := nco.ClientObj.Read(ReqObj, "", rop)
 	if err != nil {
 		log.Error("Read failed for key : ", rop.InputKey, " ", err)
 	} else {

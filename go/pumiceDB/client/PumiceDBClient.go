@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"syscall"
 	"unsafe"
-	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -25,7 +24,6 @@ type PmdbClientObj struct {
 	pmdb        C.pmdb_t
 	raftUuid    string
 	myUuid      string
-	readCnt		uint64
 }
 
 type RDZeroCopyObj struct {
@@ -85,10 +83,13 @@ func (obj *PmdbClientObj) Write(ed interface{},
 
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
+	rncui string,
 	output_ed interface{}) error {
 
 	var key_len int64
 	var reply_size int64
+	var rd_err error
+	var reply_buff unsafe.Pointer
 
 	//Encode the data passed by application.
 	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
@@ -99,8 +100,13 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	reply_buff, rd_err := obj.readKV(encoded_key,
-		key_len, &reply_size)
+	if len(rncui) == 0 {
+		reply_buff, rd_err = obj.readKVAny(encoded_key,
+			key_len, &reply_size)
+	} else {
+		reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+			key_len, &reply_size)
+	}
 
 	if rd_err != nil {
 		return rd_err
@@ -117,6 +123,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 
 //Read the value of key on the client the application passed buffer
 func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
+	rncui string,
 	zeroCopyObj *RDZeroCopyObj) error {
 
 	var key_len int64
@@ -130,7 +137,7 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	//Read the value of the key in application buffer
-	return obj.readKVZeroCopy(encoded_key,
+	return obj.readKVZeroCopy(rncui, encoded_key,
 		key_len, zeroCopyObj)
 
 }
@@ -181,7 +188,40 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 }
 
 //Call the pmdb C library function to read the value for the key.
-func (obj *PmdbClientObj) readKV(key *C.char,
+func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
+	key_len int64,
+	reply_size *int64) (unsafe.Pointer, error) {
+
+	crncui_str := GoToCString(rncui)
+	defer FreeCMem(crncui_str)
+
+	c_key_len := GoToCSize_t(key_len)
+
+	var rncui_id C.struct_raft_net_client_user_id
+
+	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
+	var obj_id *C.pmdb_obj_id_t
+
+	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+
+	var actual_value_size C.size_t
+
+	reply_buff := C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
+		&actual_value_size)
+
+	if reply_buff == nil {
+		*reply_size = 0
+		err := errors.New("Key not found")
+		return nil, err
+	}
+
+	*reply_size = int64(actual_value_size)
+
+	return reply_buff, nil
+}
+
+//Call the pmdb C library function to read the value for the key.
+func (obj *PmdbClientObj) readKVAny(key *C.char,
 	key_len int64,
 	reply_size *int64) (unsafe.Pointer, error) {
 
@@ -216,21 +256,18 @@ func (obj *RDZeroCopyObj) ReleaseCMem() {
  * Note the data is not decoded in this method. Application should
  * take care of decoding the buffer data.
  */
-func (obj *PmdbClientObj) readKVZeroCopy(key *C.char,
+func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	key_len int64,
 	zeroCopyObj *RDZeroCopyObj) error {
 
-	var rncui_id C.struct_raft_net_client_user_id
-	rncui_id.rncui_version = 0
-
-	read_counter := C.uint64_t(atomic.AddUint64(&obj.readCnt, 1))
-	rc := C.pmdb_rncui_set_read_any(&rncui_id, read_counter)
-	if rc < 0 {
-		return fmt.Errorf("Failed to get magic rncui: %d", rc)
-	}
+	crncui_str := GoToCString(rncui)
+	defer FreeCMem(crncui_str)
 
 	c_key_len := GoToCSize_t(key_len)
 
+	var rncui_id C.struct_raft_net_client_user_id
+
+	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
@@ -241,7 +278,7 @@ func (obj *PmdbClientObj) readKVZeroCopy(key *C.char,
 	C.pmdb_request_options_init(&pmdb_req_opt, 1, 0, &stat, nil, nil,
 		zeroCopyObj.buffer, C.size_t(zeroCopyObj.buffer_len), 0)
 
-	rc = C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
+	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,
 		&pmdb_req_opt)
 
 	if rc != 0 {
@@ -310,7 +347,6 @@ func PmdbClientNew(Graft_uuid string, Gclient_uuid string) *PmdbClientObj {
 	client.initialized = false
 	client.raftUuid = Graft_uuid
 	client.myUuid = Gclient_uuid
-	client.readCnt = 0
 
 	return &client
 }

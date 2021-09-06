@@ -103,7 +103,7 @@ func pmdbDictClient() {
 					Dict_wcount: 0,
 				}
 				rd_op_dict := &DictAppLib.Dict_app{}
-				err = pmdb.Read(rd_req_dict, rd_op_dict)
+				err = pmdb.Read(rd_req_dict, "", rd_op_dict)
 
 				if err != nil {
 					fmt.Println("Read request failed !!: ", err)
