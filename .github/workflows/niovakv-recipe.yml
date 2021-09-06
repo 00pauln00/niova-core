@@ -39,6 +39,10 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
+    - name: Build niovakv application
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
 
@@ -62,7 +66,7 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
-    
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -76,7 +80,7 @@ jobs:
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
       if: failure()
-      
+
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:
@@ -87,5 +91,5 @@ jobs:
     - name: Build the Docker Image
       run: cd /home/runner/work/niovad/niovad/build_dir && docker build -t niova-holon:latest .
       if: success()
-      
+
     # TODO push the Docker image with holon repo and niova binaries on github registry.
