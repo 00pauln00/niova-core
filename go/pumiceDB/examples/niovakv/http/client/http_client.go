@@ -12,19 +12,19 @@ import (
 
 func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 
-	responseObj := niovakvlib.NiovaKVResponse{}
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
 		log.Error(err)
-		return &responseObj, err
+		return nil, err
 	}
 	/*
 		Check if response if ok,
 		If not, fill the response obj with desired values
 		If so, fill the resp obj with received values
 	*/
+	responseObj := niovakvlib.NiovaKVResponse{}
 	switch resp.StatusCode {
 	case 200:
 		//Serviced
