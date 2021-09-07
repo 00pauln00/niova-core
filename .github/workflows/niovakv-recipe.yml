@@ -84,6 +84,10 @@ jobs:
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/niovakv_recipes.txt'
                              'niovakv'
+                             '"-L/home/runner/work/niovad/niovad/build_dir/lib"'
+                             '"-I/home/runner/work/niovad/niovad/build_dir/include/niova"'
+                             '/home/runner/work/niovad/niovad/build_dir/lib'
+                             '$PATH:/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
