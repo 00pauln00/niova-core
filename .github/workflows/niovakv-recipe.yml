@@ -51,7 +51,7 @@ jobs:
 
     - name: Build niovakv application
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+           cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
@@ -80,14 +80,11 @@ jobs:
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
-                             '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
+                             '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/niovakv_recipes.txt'
                              'niovakv'
-                             '/home/runner/work/niovad/niovad/build_dir/lib'
-                             '/home/runner/work/niovad/niovad/build_dir/include/niova'
-                             '/home/runner/work/niovad/niovad/build_dir/lib'
-                             '$PATH:/home/runner/work/go/go/bin'
+                             '/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename

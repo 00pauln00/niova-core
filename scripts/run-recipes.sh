@@ -6,18 +6,15 @@ LOG_PATH=${3}
 NPEERS=${4}
 RECIPE_FILE=${5}
 APP_TYPE=${6}
-LDFLAGS=${7}
-CFLAGS=${8}
-LIBRARY_PATH=${9}
-GO_PATH=${10}
+GO_PATH=${7}
 
 export ANSIBLE_LOOKUP_PLUGINS=$HOLON_LIBS
 export PYTHONPATH=$HOLON_LIBS
-export NIOVA_BIN_PATH=$BIN_PATH
-export CGO_LDFLAGS="-L$LDFLAGS"
-export CGO_CFLAGS="-I$CFLAGS"
-export LD_LIBRARY_PATH=$LIBRARY_PATH
-export PATH=$GO_PATH
+export NIOVA_BIN_PATH="$BIN_PATH/libexec/niova"
+export CGO_LDFLAGS="-L$BIN_PATH/lib"
+export CGO_CFLAGS="-I$BIN_PATH/include/niova"
+export LD_LIBRARY_PATH="$BIN_PATH/lib"
+export PATH="$PATH:$GO_PATH"
 
 while IFS= read -r line; do
    recipe_list+=("$line")
