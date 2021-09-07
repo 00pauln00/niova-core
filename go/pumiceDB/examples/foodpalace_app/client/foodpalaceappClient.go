@@ -390,7 +390,7 @@ func (roe *readOne) exec() error {
 	var roerr error
 	//Perform read operation.
 	rop := &foodpalaceapplib.FoodpalaceData{}
-	err := roe.rq.clientObj.Read(roe.rq.foodpalaceData, roe.rq.rncui, rop)
+	err := roe.rq.clientObj.Read(roe.rq.foodpalaceData, "", rop)
 	if err != nil {
 		log.Error("Read request failed !!", err)
 		rdt := &foodpalaceRqOp{Status: -1}
@@ -527,7 +527,7 @@ func (rme *readMulti) exec() error {
 		for i := range rme.rmData {
 			//Perform read operation.
 			rmopDt := &foodpalaceapplib.FoodpalaceData{}
-			err := rme.rq.clientObj.Read(rme.rmData[i], rme.rmRncui[i], rmopDt)
+			err := rme.rq.clientObj.Read(rme.rmData[i], "", rmopDt)
 			if err != nil {
 				rmdte = &foodpalaceRqOp{Status: -1}
 				rmdte.fillRm(rme)

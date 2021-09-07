@@ -24,6 +24,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
+
 static const struct PmdbAPI *pmdbApi;
 static void *pmdb_user_data = NULL;
 
@@ -549,7 +550,10 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     ssize_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
-    if (!rrc)   // Ok.  Continue to read operation
+    if (pmdb_rncui_is_read_any(&pmdb_req->pmdbrm_user_id))
+        SIMPLE_LOG_MSG(LL_WARN, "The rncui is read any");
+
+    if (!rrc || pmdb_rncui_is_read_any(&pmdb_req->pmdbrm_user_id))   // Ok.  Continue to read operation
     {
         rrc = pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                  pmdb_req->pmdbrm_data,

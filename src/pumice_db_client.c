@@ -15,6 +15,7 @@
 #include "pumice_db_net.h"
 #include "pumice_db_client.h"
 #include "registry.h"
+#include "atomic.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -539,6 +540,20 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
         return NULL;
     }
     return pmdb_stat.reply_buffer;
+}
+
+void *
+PmdbObjGetAny(pmdb_t pmdb, const char *key, size_t key_size, size_t *value_size)
+{
+    /* Use increamented atomic variable */
+    struct raft_net_client_user_id rncui;
+    pmdb_obj_id_t *obj_id;
+
+    int rc = pmdb_rncui_set_read_any(&rncui);
+
+    obj_id = (pmdb_obj_id_t *)(&rncui.rncui_key);
+
+    return PmdbObjGet(pmdb, obj_id, key, key_size, value_size);
 }
 
 /**

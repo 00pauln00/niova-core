@@ -593,8 +593,8 @@ func (rdObj *rdOne) exec() error {
 	resStruct := &CovidAppLib.CovidLocale{}
 
 	//read Operation
-	err := rdObj.op.cliObj.Read(rdObj.op.covidData,
-		rdObj.op.rncui, resStruct)
+	err := rdObj.op.cliObj.Read(rdObj.op.covidData, "",
+		resStruct)
 
 	if err != nil {
 
@@ -788,7 +788,7 @@ func (rmObj *rdMul) exec() error {
 		for i := range rmObj.rdRncui {
 
 			resStruct := &CovidAppLib.CovidLocale{}
-			err := rmObj.op.cliObj.Read(rmObj.multiRead[i], rmObj.rdRncui[i], resStruct)
+			err := rmObj.op.cliObj.Read(rmObj.multiRead[i], "", resStruct)
 
 			if err != nil {
 

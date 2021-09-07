@@ -88,6 +88,8 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 
 	var key_len int64
 	var reply_size int64
+	var rd_err error
+	var reply_buff unsafe.Pointer
 
 	//Encode the data passed by application.
 	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
@@ -98,8 +100,13 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	reply_buff, rd_err := obj.readKV(rncui, encoded_key,
-		key_len, &reply_size)
+	if len(rncui) == 0 {
+		reply_buff, rd_err = obj.readKVAny(encoded_key,
+			key_len, &reply_size)
+	} else {
+		reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+			key_len, &reply_size)
+	}
 
 	if rd_err != nil {
 		return rd_err
@@ -200,6 +207,28 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 	var actual_value_size C.size_t
 
 	reply_buff := C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
+		&actual_value_size)
+
+	if reply_buff == nil {
+		*reply_size = 0
+		err := errors.New("Key not found")
+		return nil, err
+	}
+
+	*reply_size = int64(actual_value_size)
+
+	return reply_buff, nil
+}
+
+//Call the pmdb C library function to read the value for the key.
+func (obj *PmdbClientObj) readKVAny(key *C.char,
+	key_len int64,
+	reply_size *int64) (unsafe.Pointer, error) {
+
+	var actual_value_size C.size_t
+	c_key_len := GoToCSize_t(key_len)
+
+	reply_buff := C.PmdbObjGetAny(obj.pmdb, key, c_key_len,
 		&actual_value_size)
 
 	if reply_buff == nil {

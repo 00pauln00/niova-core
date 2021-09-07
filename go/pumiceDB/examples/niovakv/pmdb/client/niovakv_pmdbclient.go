@@ -42,12 +42,8 @@ func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 
 	rop := &niovakvlib.NiovaKV{}
-	rncui := fmt.Sprintf("%s:0:0:0:0", nco.AppUuid)
-	log.Info("rncui is:", rncui)
 	log.Info("ReqObj:", ReqObj)
-	nco.rncui_lock.Lock()
-	err := nco.ClientObj.Read(ReqObj, rncui, rop)
-	nco.rncui_lock.Unlock()
+	err := nco.ClientObj.Read(ReqObj, "", rop)
 	if err != nil {
 		log.Error("Read failed for key : ", rop.InputKey, " ", err)
 	} else {
