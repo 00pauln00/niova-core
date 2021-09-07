@@ -40,11 +40,9 @@ jobs:
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
-    # Install Serf
-    - name: Install Serf
-      run: sudo apt-get update -y &&
-           sudo apt-get install -y serf &&
-           serf --version
+    # Get serf version
+    - name: Serf Version
+      run: serf --version
 
     - name: make
       run: cd ./code &&
@@ -57,6 +55,7 @@ jobs:
     - name: Build niovakv application
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+           ls /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
