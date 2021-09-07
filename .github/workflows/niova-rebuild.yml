@@ -66,10 +66,11 @@ jobs:
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
-                             '/home/runner/work/niovad/niovad/build_dir/libexec/niova'
+                             '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/rebuild_recipes.txt'
                              'pumicedb'
+                             '/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
