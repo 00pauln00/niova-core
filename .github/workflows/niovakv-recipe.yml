@@ -44,7 +44,7 @@ jobs:
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
-           ./configure --prefix=/home/runner/work/niovad/niovad/build_dir/ --enable-asan --enable-devel &&
+           ./configure --prefix=/home/runner/work/niovad/niovad/build_dir/ --enable-devel &&
            make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
