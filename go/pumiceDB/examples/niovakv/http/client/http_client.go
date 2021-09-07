@@ -33,11 +33,6 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 		//Unmarshal the response.
 		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
 		err = dec.Decode(&responseObj)
-		/*
-			if err == nil {
-				log.Info("Status of operation for key :", responseObj.RespStatus)
-			}
-		*/
 	case 503:
 		//Service not found, returned for timeout
 		responseObj.RespStatus = -1
@@ -49,7 +44,7 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 	return &responseObj, err
 }
 
-func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func PutRequest(reqobj *niovakvlib.NiovaKV, addr string, port string) (*niovakvlib.NiovaKVResponse, error) {
 	var request bytes.Buffer
 	enc := gob.NewEncoder(&request)
 	err := enc.Encode(reqobj)
@@ -66,7 +61,7 @@ func PutRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.Niov
 	return serviceRequest(req)
 }
 
-func GetRequest(reqobj *niovakvlib.NiovaKV, addr, port string) (*niovakvlib.NiovaKVResponse, error) {
+func GetRequest(reqobj *niovakvlib.NiovaKV, addr string, port string) (*niovakvlib.NiovaKVResponse, error) {
 	var request bytes.Buffer
 	enc := gob.NewEncoder(&request)
 	err := enc.Encode(reqobj)
