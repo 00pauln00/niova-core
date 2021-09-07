@@ -19,9 +19,8 @@ Methods:
 */
 type SerfClientHandler struct {
 	//Exported
-	Agents    []client.Member //Holds all agent names in cluster, initialized with few known agent names
-	Retries   int             //No of retries to connect with any agent
-	AgentData []client.Member //Holds data of each agent
+	Agents  []client.Member //Holds all agent names in cluster, initialized with few known agent names
+	Retries int             //No of retries to connect with any agent
 	//Un-exported
 	agentConnection *client.RPCClient
 	connectionExist bool
@@ -83,7 +82,7 @@ func (Handler *SerfClientHandler) Initdata(configpath string) error {
 	}
 
 	clusterMembers, err := connectClient.Members()
-	Handler.updateTable(clusterMembers)
+	Handler.Agents = clusterMembers
 
 	return err
 }
@@ -136,12 +135,13 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 	}
 
 	//Get member data from connected agent
-	clientMembers, err := Handler.agentConnection.Members()
+	clusterMembers, err := Handler.agentConnection.Members()
 	if err != nil {
 		_ = Handler.agentConnection.Close()
 		Handler.connectionExist = false
 		return err
 	}
+	Handler.Agents = clusterMembers
 
 	//Close the agent client connection if not to Persist
 	if !persistConnection {
@@ -150,28 +150,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 	}
 
 	//Update the data
-	Handler.updateTable(clientMembers)
 	return err
-}
-
-/*
-Type : SerfClientHandler
-Method : updateTable
-Parameters : members []client.Member
-Return value : None
-Description : Updates the local data [node status and tags]
-*/
-func (Handler *SerfClientHandler) updateTable(members []client.Member) {
-	//Delete all addrs
-	Handler.Agents = nil
-	Handler.AgentData = members
-	//Update the Agent data(s)
-	for _, mems := range members {
-		if mems.Status == "alive" {
-			Handler.Agents = append(Handler.Agents, mems)
-		}
-		//Keep only live members in the list
-	}
 }
 
 /*
@@ -179,7 +158,7 @@ Type : SerfClientHandler
 */
 func (Handler *SerfClientHandler) GetMemberListMap() map[string]client.Member {
 	memberMap := make(map[string]client.Member)
-	for _, mems := range Handler.AgentData {
+	for _, mems := range Handler.Agents {
 		memberMap[mems.Name] = mems
 	}
 	return memberMap

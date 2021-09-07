@@ -216,6 +216,10 @@ func PmdbLookupKey(key string, key_len int64,
 
 	if C_value != nil {
 
+		buffer_value := CToGoBytes(C_value, C.int(C_value_len))
+
+		log.Debug("C_value: ", C_value, " \nbuffer_value: ", buffer_value)
+
 		result = C.GoBytes(unsafe.Pointer(C_value), C.int(C_value_len))
 		lookup_err = nil
 		FreeCMem(C_value)
