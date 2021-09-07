@@ -40,6 +40,12 @@ jobs:
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
+    # Install Serf
+    - name: Install Serf
+      run: sudo apt-get update -y &&
+           sudo apt-get install -y serf &&
+           serf --version
+
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
