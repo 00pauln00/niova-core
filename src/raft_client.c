@@ -1649,9 +1649,10 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
 
                 recv_iovs[1].iov_len = reply_size_error ? 0 : user_alloc_sz;
 
-                SIMPLE_LOG_MSG((reply_size_error ? LL_DEBUG : LL_WARN),
-                               "allocate buffer sz=%ld: %s",
-                               user_alloc_sz, strerror(reply_size_error));
+                SIMPLE_LOG_MSG((reply_size_error ? LL_WARN : LL_DEBUG),
+                               "allocate buffer sz=%ld err=%d: %s",
+                               user_alloc_sz, reply_size_error,
+                               strerror(-reply_size_error));
             }
         }
 
