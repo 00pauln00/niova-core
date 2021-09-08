@@ -124,3 +124,4 @@ niovaclient
 niovakv_client
 niovakv_client_multi
 niovakvserver
+niovakv_server
