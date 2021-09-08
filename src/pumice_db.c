@@ -550,8 +550,11 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
     ssize_t rrc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                     rncr->rncr_current_term);
 
+
     if (pmdb_rncui_is_read_any(&pmdb_req->pmdbrm_user_id))
-        SIMPLE_LOG_MSG(LL_WARN, "The rncui is read any");
+    {
+        LOG_MSG(LL_DEBUG, "rncui is read any");
+    }
 
     if (!rrc || pmdb_rncui_is_read_any(&pmdb_req->pmdbrm_user_id))   // Ok.  Continue to read operation
     {

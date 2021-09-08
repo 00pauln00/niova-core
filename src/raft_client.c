@@ -1010,7 +1010,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
         {
             DBG_RAFT_CLIENT_SUB_APP(
-                LL_WARN, sa,
+                LL_NOTIFY, sa,
                 "bypassing msg - cancel: %d, sendq: %d, initializing: %d",
                 sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq,
                 sa->rcsa_rh.rcrh_initializing);
