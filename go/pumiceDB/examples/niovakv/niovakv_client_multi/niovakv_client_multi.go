@@ -67,6 +67,7 @@ func getCmdParams() {
 }
 
 func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
+        w.Add(1)
 	requestMeta := request{
 		Opcode:    req.InputOps,
 		Key:       req.InputKey,
@@ -103,6 +104,7 @@ func sendReq(req *niovakvlib.NiovaKV, addr string, port string, write bool) {
 	}
 
 	respFillerLock.Unlock()
+        w.Done()
 }
 
 func printProgress(operation string, total int) {
@@ -183,16 +185,11 @@ func main() {
 	go printProgress("write", n)
 	addr, port := getServerAddr(true)
 	for j := 0; j < n; j++ {
-		addr, port := getServerAddr(true)
-		if serial == "no" {
-			w.Add(1)
-			go func(index int) {
-				sendReq(&reqobjs_write[index], addr, port, true)
-				w.Done()
-			}(j)
-		} else {
-			sendReq(&reqobjs_write[j], addr, port, true)
-		}
+		addr, port := getServerAddr(false)
+                go sendReq(&reqobjs_write[j], addr, port, true)
+		if serial == "yes" {
+                   w.Wait()
+                }
 	}
 	w.Wait()
 	log.Info("No of writes sent, no of failures : ", total, failures)
@@ -202,22 +199,18 @@ func main() {
 	//send read request
 	go printProgress("read", n)
 	for j := n - 1; j >= 0; j-- {
-		addr, port = getServerAddr(true)
-		if serial == "no" {
-			w.Add(1)
-			go func(index int) {
-				sendReq(&reqobjs_read[index], addr, port, false)
-				w.Done()
-			}(j)
-		} else {
-			sendReq(&reqobjs_read[j], addr, port, false)
-		}
+		addr, port = getServerAddr(false)
+                go sendReq(&reqobjs_read[j], addr, port, false)
+		if serial == "yes" {
+                   w.Wait()
+                }
 	}
 
 	//Wait till all reads are completed
+        w.Wait()
+
 	//Bar to show how many reads have been completed
-	w.Wait()
-	log.Info("No of reads sent, no of failures : ", total, failures)
+        log.Info("No of reads sent, no of failures : ", total, failures)
 
 	//Find avg response time
 	Writesum := 0
