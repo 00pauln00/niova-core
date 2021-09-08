@@ -186,7 +186,7 @@ pmdb_rncui_set_read_any(struct raft_net_client_user_id *out)
         break;
     }
 
-    return -EOPNOTSUPP;;
+    return -EOPNOTSUPP;
 }
 
 
