@@ -3887,7 +3887,7 @@ static raft_net_timerfd_cb_ctx_t
 raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
 {
     // Only the valid leader holding pending entries should proceed.
-    int rc = raft_server_may_accept_client_request(ri)
+    int rc = raft_server_may_accept_client_request(ri);
     if (rc)
         return;
 
