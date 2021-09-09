@@ -36,6 +36,7 @@ type PmdbServerObject struct {
 	RaftUuid       string
 	PeerUuid       string
 	ColumnFamilies string // XXX should be an array of strings
+        SyncWrites     bool
 }
 
 type charsSlice []*C.char
@@ -166,9 +167,9 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 	defer gopointer.Unref(opa_ptr)
 
 	// Starting the pmdb server.
-	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1, true,
-		true,
-		opa_ptr)
+	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1,
+              (C.bool)(pso.SyncWrites), true, opa_ptr)
+
 	if rc != 0 {
 		return fmt.Errorf("PmdbExec() returned %d", rc)
 	}

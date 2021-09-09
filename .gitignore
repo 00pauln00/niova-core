@@ -119,3 +119,8 @@ test/bitmap-test
 test/niova-bitmap-test
 test/io-iov-test
 test/buffer-test
+niovakv_pmdbserver
+niovaclient
+niovakv_client
+niovakv_client_multi
+niovakv_server
