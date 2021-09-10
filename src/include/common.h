@@ -137,6 +137,12 @@ number_of_ones_in_val(unsigned long long val)
 }
 
 static inline int
+number_of_ones_in_val32(unsigned int val)
+{
+    return __builtin_popcount(val);
+}
+
+static inline int
 nconsective_bits_assign(uint64_t *field, unsigned int nbits)
 {
     const unsigned int field_size = NBBY * sizeof(uint64_t);
