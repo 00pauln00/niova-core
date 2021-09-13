@@ -20,13 +20,13 @@ import (
 )
 
 var (
-	ClientHandler                                                   serfclienthandler.SerfClientHandler
-	config_path, key, value, logPath, serial, noRequest, resultFile string
-	reqobjs_write, reqobjs_read                                     []niovakvlib.NiovaKV
-	respFillerLock                                                  sync.Mutex
-	operationMetaReadObjs, operationMetaWriteObjs                   []opData //For filling json
-	w                                                               sync.WaitGroup
-	requestSentCount, timeoutCount                                  *int32
+	ClientHandler                                                              serfclienthandler.SerfClientHandler
+	config_path, key, value, logPath, serial, noRequest, resultFile, operation string
+	reqobjs_write, reqobjs_read                                                []niovakvlib.NiovaKV
+	respFillerLock                                                             sync.Mutex
+	operationMetaReadObjs, operationMetaWriteObjs                              []opData //For filling json
+	w                                                                          sync.WaitGroup
+	requestSentCount, timeoutCount                                             *int32
 )
 
 type request struct {
@@ -63,6 +63,7 @@ func getCmdParams() {
 	flag.StringVar(&serial, "s", "no", "Serialized request or not")
 	flag.StringVar(&noRequest, "n", "5", "No of request")
 	flag.StringVar(&resultFile, "r", "operation", "Path along with file name for the result file")
+	flag.StringVar(&operation, "o", "both", "Specify the opeation to perform in batch, leave it empty if both wites and reads are required")
 	flag.Parse()
 }
 
@@ -166,58 +167,75 @@ func main() {
 
 	//Create Write and read request
 	n, _ := strconv.Atoi(noRequest)
-	for i := 0; i < n; i++ {
-		reqObj1 := niovakvlib.NiovaKV{}
-		reqObj1.InputOps = "write"
-		reqObj1.InputKey = key + strconv.Itoa(i)
-		reqObj1.InputValue = []byte(value + strconv.Itoa(i))
-		reqobjs_write = append(reqobjs_write, reqObj1)
-
-		reqObj2 := niovakvlib.NiovaKV{}
-		reqObj2.InputOps = "read"
-		reqObj2.InputKey = key + strconv.Itoa(i)
-		reqobjs_read = append(reqobjs_read, reqObj2)
-	}
-
-	//Send write request
-	go printProgress("write", n)
-	addr, port := getServerAddr(true)
-	for j := 0; j < n; j++ {
-		addr, port := getServerAddr(true)
-		if serial == "no" {
-			w.Add(1)
-			go func(index int) {
-				sendReq(&reqobjs_write[index], addr, port, true)
-				w.Done()
-			}(j)
-		} else {
-			sendReq(&reqobjs_write[j], addr, port, true)
+	var fallthrough_flag bool
+	switch operation {
+	case "both":
+		fallthrough_flag = true
+	case "write":
+		for i := 0; i < n; i++ {
+			reqObj1 := niovakvlib.NiovaKV{}
+			reqObj1.InputOps = "write"
+			reqObj1.InputKey = key + strconv.Itoa(i)
+			reqObj1.InputValue = []byte(value + strconv.Itoa(i))
+			reqobjs_write = append(reqobjs_write, reqObj1)
+		}
+		if !fallthrough_flag {
+			break
+		}
+		fallthrough
+	case "read":
+		for i := 0; i < n; i++ {
+			reqObj2 := niovakvlib.NiovaKV{}
+			reqObj2.InputOps = "read"
+			reqObj2.InputKey = key + strconv.Itoa(i)
+			reqobjs_read = append(reqobjs_read, reqObj2)
 		}
 	}
-	w.Wait()
-	log.Info("No of writes sent, no of failures : ", total, failures)
-	total = 0
-	failures = 0
+
+	var addr, port string
+	if operation != "read" {
+		//Send write request
+		go printProgress("write", n)
+		addr, port = getServerAddr(true)
+		for j := 0; j < n; j++ {
+			addr, port := getServerAddr(true)
+			if serial == "no" {
+				w.Add(1)
+				go func(index int) {
+					sendReq(&reqobjs_write[index], addr, port, true)
+					w.Done()
+				}(j)
+			} else {
+				sendReq(&reqobjs_write[j], addr, port, true)
+			}
+		}
+		w.Wait()
+		log.Info("No of writes sent, no of failures : ", total, failures)
+		//reset the values
+		total = 0
+		failures = 0
+	}
 
 	//send read request
-	go printProgress("read", n)
-	for j := n - 1; j >= 0; j-- {
-		addr, port = getServerAddr(true)
-		if serial == "no" {
-			w.Add(1)
-			go func(index int) {
-				sendReq(&reqobjs_read[index], addr, port, false)
-				w.Done()
-			}(j)
-		} else {
-			sendReq(&reqobjs_read[j], addr, port, false)
+	if operation != "write" {
+		go printProgress("read", n)
+		for j := n - 1; j >= 0; j-- {
+			addr, port = getServerAddr(true)
+			if serial == "no" {
+				w.Add(1)
+				go func(index int) {
+					sendReq(&reqobjs_read[index], addr, port, false)
+					w.Done()
+				}(j)
+			} else {
+				sendReq(&reqobjs_read[j], addr, port, false)
+			}
 		}
-	}
 
-	//Wait till all reads are completed
-	//Bar to show how many reads have been completed
-	w.Wait()
-	log.Info("No of reads sent, no of failures : ", total, failures)
+		//Wait till all reads are completed
+		w.Wait()
+		log.Info("No of reads sent, no of failures : ", total, failures)
+	}
 
 	//Find avg response time
 	Writesum := 0
