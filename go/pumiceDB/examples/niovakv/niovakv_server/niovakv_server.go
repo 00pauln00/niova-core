@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"flag"
-	defaultLog "log"
+	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"niovakv/httpserver"
 	"os"
@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/sirupsen/logrus"
-
+	defaultLogger "log"
 	"niovakv/niovakvpmdbclient"
 	"niovakvserver/serfagenthandler"
+
+	log "github.com/sirupsen/logrus"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -23,7 +24,7 @@ import (
 type niovaKVServerHandler struct {
 	//Other
 	configPath string
-
+	logLevel   string
 	//Niovakvserver
 	addr string
 
@@ -38,6 +39,7 @@ type niovaKVServerHandler struct {
 	agentPort           string
 	agentRPCPort        string
 	agentJoinAddrs      []string
+	serfLogger          string
 	serfAgentHandlerObj serfagenthandler.SerfAgentHandler
 
 	//Http
@@ -61,6 +63,9 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.agentName, "n", "NULL", "serf agent name")
 	flag.StringVar(&handler.limit, "e", "500", "No of concurrent request")
+
+	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
+	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.Parse()
 }
 
@@ -119,11 +124,23 @@ func (handler *niovaKVServerHandler) startNiovakvpmdbclient() error {
 
 //start the SerfAgentHandler
 func (handler *niovaKVServerHandler) startSerfAgentHandler() error {
+	switch handler.serfLogger {
+	case "ignore":
+		defaultLogger.SetOutput(ioutil.Discard)
+	default:
+		f, err := os.OpenFile(handler.serfLogger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		if err != nil {
+			defaultLogger.SetOutput(os.Stderr)
+		} else {
+			defaultLogger.SetOutput(f)
+		}
+	}
+	defaultLogger.SetOutput(ioutil.Discard)
 	handler.serfAgentHandlerObj = serfagenthandler.SerfAgentHandler{}
 	handler.serfAgentHandlerObj.Name = handler.agentName
 	handler.serfAgentHandlerObj.BindAddr = handler.addr
 	handler.serfAgentHandlerObj.BindPort, _ = strconv.Atoi(handler.agentPort)
-	handler.serfAgentHandlerObj.AgentLogger = defaultLog.New(log.)
+	handler.serfAgentHandlerObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentHandlerObj.RpcAddr = handler.addr
 	handler.serfAgentHandlerObj.RpcPort = handler.agentRPCPort
 	//Start serf agent
@@ -181,6 +198,12 @@ func main() {
 	var err error
 	//Create log file.
 	err = PumiceDBCommon.InitLogger(niovaServerObj.logPath)
+	switch niovaServerObj.logLevel {
+	case "Info":
+		log.SetLevel(log.InfoLevel)
+	case "Trace":
+		log.SetLevel(log.TraceLevel)
+	}
 	if err != nil {
 		log.Error("(Niovakv Server) Logger error : ", err)
 	}
