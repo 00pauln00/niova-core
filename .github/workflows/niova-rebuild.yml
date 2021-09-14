@@ -50,7 +50,7 @@ jobs:
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+       ref: debug_recipes
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
@@ -62,7 +62,7 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
-    
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -77,7 +77,7 @@ jobs:
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
       if: failure()
-      
+
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:
@@ -88,5 +88,5 @@ jobs:
     - name: Build the Docker Image
       run: cd /home/runner/work/niovad/niovad/build_dir && docker build -t niova-holon:latest .
       if: success()
-      
+
     # TODO push the Docker image with holon repo and niova binaries on github registry.
