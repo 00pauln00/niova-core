@@ -59,16 +59,16 @@ time:
 	return responseRecvd
 }
 
-func (nkvc *NiovakvClient) Put(ReqObj *niovakvlib.NiovaKV) int {
+func (nkvc *NiovakvClient) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "write"
 	responseRecvd := nkvc.doOperation(ReqObj, true)
-	return responseRecvd.RespStatus
+	return responseRecvd.RespStatus, responseRecvd.RespValue
 }
 
-func (nkvc *NiovakvClient) Get(ReqObj *niovakvlib.NiovaKV) []byte {
+func (nkvc *NiovakvClient) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "read"
 	responseRecvd := nkvc.doOperation(ReqObj, false)
-	return responseRecvd.RespValue
+	return responseRecvd.RespStatus, responseRecvd.RespValue
 }
 
 func (nkvc *NiovakvClient) serfClientInit(configPath string) error {
@@ -105,12 +105,12 @@ func (nkvc *NiovakvClient) Start(stop chan int, configPath string) error {
 	var err error
 	err = nkvc.serfClientInit(configPath)
 	if err != nil {
-		log.Error("Error while initializing the serf client")
+		log.Error("Error while initializing the serf client ", err)
 		return err
 	}
 	err = nkvc.memberSearcher(stop)
 	if err != nil {
-		log.Error("Error while starting the membership updater")
+		log.Error("Error while starting the membership updater ", err)
 		return err
 	}
 	return err
@@ -119,13 +119,6 @@ func (nkvc *NiovakvClient) Start(stop chan int, configPath string) error {
 func (nkvc *NiovakvClient) pickServer() (client.Member, error) {
 	nkvc.tableLock.Lock()
 	defer nkvc.tableLock.Unlock()
-
-	if len(nkvc.clientHandler.Agents) == 0 {
-		log.Error("no alive servers")
-		err := errors.New("No alive servers")
-		return client.Member{}, err
-	}
-
 	//Get random addr and delete if its failed and provide with non-failed one!
 	var randomIndex int
 	for {

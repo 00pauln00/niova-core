@@ -2,6 +2,6 @@
 	path = modules/libbacktrace
 	url = https://github.com/ianlancetaylor/libbacktrace.git
 	ignore = dirty
-[submodule "go/pumiceDB/examples/niovakv/niovakv_client/lkvt"]
-	path = go/pumiceDB/examples/niovakv/niovakv_lkvt/lkvt
-	url = https://github.com/Lucusn/lkvt
+[submodule "go/pumiceDB/examples/niovakv/lkvt"]
+	path = go/pumiceDB/examples/niovakv/lkvt
+	url = http://github.com/00pauln00/lkvt
