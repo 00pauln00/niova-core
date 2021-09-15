@@ -15,7 +15,7 @@ import (
 	client "github.com/hashicorp/serf/client"
 )
 
-type NiovakvClient struct {
+type NiovakvClientAPI struct {
 	//Exported
 	Timeout time.Duration //No of seconds for a request time out and membership table refresh
 	//UnExported

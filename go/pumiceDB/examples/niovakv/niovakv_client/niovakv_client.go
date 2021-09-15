@@ -8,7 +8,6 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"niovakv/clientapi"
 	"niovakv/niovakvlib"
-	"niovakv/serfclienthandler"
 	"os"
 	"reflect"
 	"strconv"
@@ -19,16 +18,15 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-var (
-	ClientHandler                                                                          serfclienthandler.SerfClientHandler
+type client struct {
 	config_path, keyPrefix, valuePrefix, logPath, serial, noRequest, resultFile, operation string
 	reqobjs_write, reqobjs_read                                                            []niovakvlib.NiovaKV
 	respFillerLock                                                                         sync.Mutex
 	operationMetaReadObjs, operationMetaWriteObjs                                          []opData //For filling json
-	w                                                                                      sync.WaitGroup
+	operationsWait                                                                         sync.WaitGroup
 	requestSentCount, failedRequestCount                                                   *int32
-	nkvc                                                                                   *clientapi.NiovakvClient
-)
+	nkvc                                                                                   *clientapi.NiovakvClientAPI
+}
 
 type request struct {
 	Opcode    string    `json:"Operation"`
@@ -54,30 +52,28 @@ func usage() {
 	os.Exit(0)
 }
 
-//Create logfile for client.
-
 //Function to get command line parameters while starting of the client.
-func getCmdParams() {
-	flag.StringVar(&config_path, "c", "./", "config file path")
-	flag.StringVar(&logPath, "l", ".", "log file path")
-	flag.StringVar(&keyPrefix, "k", "Key", "Key prefix")
-	flag.StringVar(&valuePrefix, "v", "Value", "Value prefix")
-	flag.StringVar(&serial, "s", "no", "Serialized request or not")
-	flag.StringVar(&noRequest, "n", "5", "No of request")
-	flag.StringVar(&resultFile, "r", "operation", "Path along with file name for the result file")
-	flag.StringVar(&operation, "o", "both", "Specify the opeation to perform in batch, leave it empty if both wites and reads are required")
+func (cli client) getCmdParams() {
+	flag.StringVar(&cli.config_path, "c", "./", "config file path")
+	flag.StringVar(&cli.logPath, "l", ".", "log file path")
+	flag.StringVar(&cli.keyPrefix, "k", "Key", "Key prefix")
+	flag.StringVar(&cli.valuePrefix, "v", "Value", "Value prefix")
+	flag.StringVar(&cli.serial, "s", "no", "Serialized request or not")
+	flag.StringVar(&cli.noRequest, "n", "5", "No of request")
+	flag.StringVar(&cli.resultFile, "r", "operation", "Path along with file name for the result file")
+	flag.StringVar(&cli.operation, "o", "both", "Specify the opeation to perform in batch, leave it empty if both wites and reads are required")
 	flag.Parse()
 }
 
-func validate_read(key string, value []byte) bool {
-	key_prefix_len := len(keyPrefix)
+func (cli client) validate_read(key string, value []byte) bool {
+	key_prefix_len := len(cli.keyPrefix)
 	key_identifier := []byte(key[key_prefix_len:])
-	value_prefix_len := len(valuePrefix)
+	value_prefix_len := len(cli.valuePrefix)
 	value_identifier := value[value_prefix_len:]
 	return reflect.DeepEqual(key_identifier, value_identifier)
 }
 
-func sendReq(req *niovakvlib.NiovaKV, write bool) {
+func (cli client) sendReq(req *niovakvlib.NiovaKV, write bool) {
 	var (
 		status   int
 		resp     []byte
@@ -92,11 +88,11 @@ func sendReq(req *niovakvlib.NiovaKV, write bool) {
 	}
 
 	if write {
-		status, resp = nkvc.Put(req)
+		status, resp = cli.nkvc.Put(req)
 	} else {
-		status, resp = nkvc.Get(req)
+		status, resp = cli.nkvc.Get(req)
 		if status == 0 {
-			validate = validate_read(req.InputKey, resp)
+			validate = cli.validate_read(req.InputKey, resp)
 		}
 	}
 	responseMeta := response{
@@ -110,77 +106,77 @@ func sendReq(req *niovakvlib.NiovaKV, write bool) {
 		ResponseData: responseMeta,
 		TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
 	}
-	atomic.AddInt32(requestSentCount, 1)
+	atomic.AddInt32(cli.requestSentCount, 1)
 	if (responseMeta.Status == -1) || (validate) {
-		atomic.AddInt32(failedRequestCount, 1)
+		atomic.AddInt32(cli.failedRequestCount, 1)
 	}
-	respFillerLock.Lock()
+	cli.respFillerLock.Lock()
 	if write {
-		operationMetaWriteObjs = append(operationMetaWriteObjs, operationObj)
+		cli.operationMetaWriteObjs = append(cli.operationMetaWriteObjs, operationObj)
 	} else {
-		operationMetaReadObjs = append(operationMetaReadObjs, operationObj)
+		cli.operationMetaReadObjs = append(cli.operationMetaReadObjs, operationObj)
 
 	}
-	respFillerLock.Unlock()
-	w.Done()
+	cli.respFillerLock.Unlock()
+	cli.operationsWait.Done()
 }
 
-func doWrite_Read(reqs []niovakvlib.NiovaKV, n int, write bool) {
+//Do reads and write
+func (cli client) doWrite_Read(reqs []niovakvlib.NiovaKV, n int, write bool) {
 	for j := n - 1; j >= 0; j-- {
-		w.Add(1)
-		go sendReq(&reqs[j], write)
-		if serial == "yes" {
-			w.Wait()
+		cli.operationsWait.Add(1)
+		go cli.sendReq(&reqs[j], write)
+		if cli.serial == "yes" {
+			cli.operationsWait.Wait()
 		}
 	}
 	//Wait till all request are completed
-	w.Wait()
+	cli.operationsWait.Wait()
 }
 
-func logSummary(operationMetaObjs *[]opData, opcode string, n int) {
+//Log summary
+func (cli client) logSummary(operationMetaObjs *[]opData, opcode string, n int) {
 	sum := 0
 	for _, ops := range *operationMetaObjs {
 		sum += int(ops.TimeDuration.Milliseconds())
 	}
-	log.Info("Total no of operations and failed count in ", opcode, " : ", *requestSentCount, *failedRequestCount)
+	log.Info("Total no of operations and failed count in ", opcode, " : ", *cli.requestSentCount, *cli.failedRequestCount)
 	log.Info("Avg ", opcode, " response time : ", sum/n, " milli sec")
 }
 
-func write2Json(toJson map[string][]opData) {
+//Write to Json
+func (cli client) write2Json(toJson map[string][]opData) {
 	file, _ := json.MarshalIndent(toJson, "", " ")
-	_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
-func printProgress(operation string, total int) {
+//Print progress
+func (cli client) printProgress(operation string, total_no_request int) {
 	fmt.Println(" ")
-	for atomic.LoadInt32(requestSentCount) != int32(total) {
+	for atomic.LoadInt32(cli.requestSentCount) != int32(total_no_request) {
 		fmt.Print("\033[G\033[K")
 		fmt.Print("\033[A")
-		fmt.Println(atomic.LoadInt32(requestSentCount), " / ", total, operation, "request completed")
+		fmt.Println(atomic.LoadInt32(cli.requestSentCount), " / ", total_no_request, operation, "request completed")
 		time.Sleep(1 * time.Second)
 	}
 	fmt.Print("\033[G\033[K")
 	fmt.Print("\033[A")
-	fmt.Println(atomic.LoadInt32(requestSentCount), " / ", total, operation, "request completed")
+	fmt.Println(atomic.LoadInt32(cli.requestSentCount), " / ", total_no_request, operation, "request completed")
 }
 
 func main() {
-	var total, failures int32
-	total = 0
-	failures = 0
-	requestSentCount = &total
-	failedRequestCount = &failures
-
 	//Get commandline parameters.
-	getCmdParams()
+	clientObj := client{}
+
+	clientObj.getCmdParams()
 	flag.Usage = usage
 	if flag.NFlag() == 0 {
 		usage()
 		os.Exit(-1)
 	}
 
-	//Create log file.
-	err := PumiceDBCommon.InitLogger(logPath)
+	//Create logger.
+	err := PumiceDBCommon.InitLogger(clientObj.logPath)
 	if err != nil {
 		log.Error("Error while initializing the logger  ", err)
 	}
@@ -188,72 +184,77 @@ func main() {
 	log.Info("----START OF LOG---")
 
 	//To init clientapi
-	nkvc = &clientapi.NiovakvClient{
+	clientObj.nkvc = &clientapi.NiovakvClientAPI{
 		Timeout: 10,
 	}
 	stop := make(chan int)
 	go func() {
-		err := nkvc.Start(stop, config_path)
+		err := clientObj.nkvc.Start(stop, clientObj.config_path)
 		log.Error(err)
 		os.Exit(1)
 	}()
-
 	time.Sleep(5 * time.Second)
+
 	//Process request
-	n, _ := strconv.Atoi(noRequest)
+	n, _ := strconv.Atoi(clientObj.noRequest)
 	toJson := make(map[string][]opData)
 	var fallthrough_flag bool
-	switch operation {
+	var sent_count, failed_count int32
+	sent_count = 0
+	failed_count = 0
+	clientObj.requestSentCount = &sent_count
+	clientObj.failedRequestCount = &failed_count
+	switch clientObj.operation {
 	case "both":
 		fallthrough_flag = true
 		fallthrough
 
 	case "write":
-		go printProgress("write", n)
+		go clientObj.printProgress("write", n)
 		for i := 0; i < n; i++ {
 			reqObj1 := niovakvlib.NiovaKV{}
 			reqObj1.InputOps = "write"
-			reqObj1.InputKey = keyPrefix + strconv.Itoa(i)
-			reqObj1.InputValue = []byte(valuePrefix + strconv.Itoa(i))
-			reqobjs_write = append(reqobjs_write, reqObj1)
+			reqObj1.InputKey = clientObj.keyPrefix + strconv.Itoa(i)
+			reqObj1.InputValue = []byte(clientObj.valuePrefix + strconv.Itoa(i))
+			clientObj.reqobjs_write = append(clientObj.reqobjs_write, reqObj1)
 		}
-		doWrite_Read(reqobjs_write, n, true)
-		logSummary(&operationMetaWriteObjs, "write", n)
-		toJson["write"] = operationMetaWriteObjs
+		clientObj.doWrite_Read(clientObj.reqobjs_write, n, true)
+		clientObj.logSummary(&clientObj.operationMetaWriteObjs, "write", n)
+		toJson["write"] = clientObj.operationMetaWriteObjs
 
 		//If to continue with read
-		total = 0
-		failures = 0
 		if !fallthrough_flag {
-			write2Json(toJson)
+			clientObj.write2Json(toJson)
 			break
 		}
+		sent_count = 0
+		failed_count = 0
 		fallthrough
 
 	case "read":
-		go printProgress("read", n)
+		go clientObj.printProgress("read", n)
 		for i := 0; i < n; i++ {
 			reqObj2 := niovakvlib.NiovaKV{}
 			reqObj2.InputOps = "read"
-			reqObj2.InputKey = keyPrefix + strconv.Itoa(i)
-			reqobjs_read = append(reqobjs_read, reqObj2)
+			reqObj2.InputKey = clientObj.keyPrefix + strconv.Itoa(i)
+			clientObj.reqobjs_read = append(clientObj.reqobjs_read, reqObj2)
 		}
-		doWrite_Read(reqobjs_read, n, false)
-		logSummary(&operationMetaReadObjs, "read", n)
-		toJson["read"] = operationMetaReadObjs
-		write2Json(toJson)
+		clientObj.doWrite_Read(clientObj.reqobjs_read, n, false)
+		clientObj.logSummary(&clientObj.operationMetaReadObjs, "read", n)
+		toJson["read"] = clientObj.operationMetaReadObjs
+		clientObj.write2Json(toJson)
 
 	case "membership":
-		toJson := nkvc.GetMembership()
+		toJson := clientObj.nkvc.GetMembership()
 		file, _ := json.MarshalIndent(toJson, "", " ")
-		_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	case "leader":
-		data := nkvc.GetLeader()
+		data := clientObj.nkvc.GetLeader()
 		toJson := make(map[string]string, 1)
 		toJson["Leader-UUID"] = data
 		file, _ := json.MarshalIndent(toJson, "", " ")
-		_ = ioutil.WriteFile(resultFile+".json", file, 0644)
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 	}
 
 	log.Info("----END OF LOG---")
