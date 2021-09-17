@@ -1,4 +1,4 @@
-name: holon_rebuild_recipes_workflow
+name: holon_coalesced_wr_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -16,6 +16,15 @@ jobs:
 
     - name: apt update
       run: sudo apt update
+
+    - name: Install golang 1.16
+      run: sudo rm -rf /usr/bin/go &&
+           sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+           sudo mkdir /home/runner/work/go &&
+           sudo tar -C /home/runner/work/go -xzf  go1.16.6.linux-amd64.tar.gz &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
+           go version
+
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
                                    uuid libuuid1
@@ -44,7 +53,7 @@ jobs:
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/rebuild_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/coalesced_wr_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -60,17 +69,14 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
-    - name: List build directory
-      run: ls -l /home/runner/work/niovad/niovad/build_dir
-    
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/rebuild_recipes.txt'
+                             '/home/runner/work/niovad/niovad/build_dir/coalesced_wr_recipes.txt'
                              'pumicedb'
-                             '0'
+                             '1'
                              '/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
@@ -78,7 +84,7 @@ jobs:
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
       if: failure()
-      
+
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:
@@ -89,5 +95,5 @@ jobs:
     - name: Build the Docker Image
       run: cd /home/runner/work/niovad/niovad/build_dir && docker build -t niova-holon:latest .
       if: success()
-      
+
     # TODO push the Docker image with holon repo and niova binaries on github registry.

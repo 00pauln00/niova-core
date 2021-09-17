@@ -70,6 +70,7 @@ jobs:
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/failover_recipes.txt'
                              'pumicedb'
+                             '0'
                              '/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
