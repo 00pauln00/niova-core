@@ -4,36 +4,34 @@ import (
 	"errors"
 	"fmt"
 	PumiceDBClient "niova/go-pumicedb-lib/client"
+	"sync/atomic"
 
 	"niovakv/niovakvlib"
-	"sync"
 
 	log "github.com/sirupsen/logrus"
 )
 
 //Structure definition for client.
 type NiovaKVClient struct {
-	ClientObj  *PumiceDBClient.PmdbClientObj
-	AppUuid    string
-	rncui_lock sync.Mutex
+	ClientObj       *PumiceDBClient.PmdbClientObj
+	AppUuid         string
+	write_seqno     uint64
+	write_Seqno_Ptr *uint64
 }
-
-var numWReq int
 
 //Method for write operation.
 func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
-	var idq int
+
 	//Perform write operation.
-	nco.rncui_lock.Lock()
-	idq = numWReq
-	numWReq = numWReq + 1
-	nco.rncui_lock.Unlock()
+	idq := atomic.AddUint64(nco.write_Seqno_Ptr, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", nco.AppUuid, idq)
+
+	log.Trace("(PMDB Client) Request for Write : ", ReqObj)
 	err := nco.ClientObj.Write(ReqObj, rncui)
 	if err != nil {
-		log.Error("Write failed for key : ", ReqObj.InputValue, " ", err)
+		log.Error("(PMDB Client) Write failed for key : ", ReqObj.InputValue, " ", err)
 	} else {
-		log.Info("Pmdb Write successful for key ", ReqObj.InputKey)
+		log.Trace("(PMDB Client) Write successful for key ", ReqObj.InputKey)
 	}
 	return err
 }
@@ -42,17 +40,18 @@ func (nco *NiovaKVClient) Write(ReqObj *niovakvlib.NiovaKV) error {
 func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 
 	rop := &niovakvlib.NiovaKV{}
-	log.Info("ReqObj:", ReqObj)
+
+	log.Trace("(PMDB Client) Request for read : ", ReqObj)
 	err := nco.ClientObj.Read(ReqObj, "", rop)
 	if err != nil {
-		log.Error("Read failed for key : ", rop.InputKey, " ", err)
+		log.Error("(PMDB Client) Read failed for key : ", ReqObj.InputValue, " ", err)
 	} else {
-		log.Info("Result of the read request is:", rop)
+		log.Trace("(PMDB Client) Read successful for key ", rop.InputValue)
 	}
 	return rop.InputValue, err
 }
 
-//Function to get pumicedb client object.
+//Function to initialize pumicedb client object.
 func GetNiovaKVClientObj(raftUuid, clientUuid, logFilepath string) *NiovaKVClient {
 
 	//Create new client object.
@@ -62,6 +61,7 @@ func GetNiovaKVClientObj(raftUuid, clientUuid, logFilepath string) *NiovaKVClien
 	}
 	ncc := &NiovaKVClient{}
 	ncc.ClientObj = clientObj
+	ncc.write_Seqno_Ptr = &ncc.write_seqno
 	return ncc
 }
 
@@ -78,21 +78,12 @@ func (nkvClient *NiovaKVClient) ProcessRequest(reqObj *niovakvlib.NiovaKV) ([]by
 
 	case "write":
 		err = nkvClient.Write(reqObj)
-		if err != nil {
-			log.Error(err)
-		} else {
-			log.Info("Write operation successful")
-		}
 
 	case "read":
 		value, err = nkvClient.Read(reqObj)
-		if err != nil {
-			log.Error(err)
-		} else {
-			log.Info("Data received after read request:", value)
-		}
 
 	default:
+		log.Error("(PMDB Client) Recieved not supported operation")
 		err = errors.New("Operation not supported")
 	}
 	return value, err

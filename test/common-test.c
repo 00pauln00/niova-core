@@ -262,6 +262,22 @@ assign_release_nbits_test2(void)
 }
 
 static void
+number_of_set_bits32(void)
+{
+    uint32_t x = 1;
+    NIOVA_ASSERT(number_of_ones_in_val32(x) == 1);
+
+    x = 0;
+    NIOVA_ASSERT(number_of_ones_in_val32(x) == 0);
+
+    x = -1U;
+    NIOVA_ASSERT(number_of_ones_in_val32(x) == 32);
+
+    x = 0x55555555U;
+    NIOVA_ASSERT(number_of_ones_in_val(x) == 16);
+}
+
+static void
 lowest_bit_tests(void)
 {
     uint64_t val = 1;
@@ -327,6 +343,7 @@ main(void)
     highest_set_bit_pos_from_val_test();
     highest_power_of_two_test();
     ssize_t_checks();
+    number_of_set_bits32();
     lowest_bit_tests();
 
     return 0;

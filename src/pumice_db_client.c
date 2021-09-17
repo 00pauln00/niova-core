@@ -546,12 +546,13 @@ void *
 PmdbObjGetAny(pmdb_t pmdb, const char *key, size_t key_size, size_t *value_size)
 {
     /* Use increamented atomic variable */
-    struct raft_net_client_user_id rncui;
-    pmdb_obj_id_t *obj_id;
+    struct raft_net_client_user_id rncui = {.rncui_version = 0};
 
     int rc = pmdb_rncui_set_read_any(&rncui);
+    if (rc)
+        return NULL;
 
-    obj_id = (pmdb_obj_id_t *)(&rncui.rncui_key);
+    pmdb_obj_id_t *obj_id = (pmdb_obj_id_t *)(&rncui.rncui_key);
 
     return PmdbObjGet(pmdb, obj_id, key, key_size, value_size);
 }

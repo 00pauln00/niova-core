@@ -1010,7 +1010,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             sa->rcsa_rh.rcrh_initializing) // entry is not yet initialized
         {
             DBG_RAFT_CLIENT_SUB_APP(
-                LL_WARN, sa,
+                LL_NOTIFY, sa,
                 "bypassing msg - cancel: %d, sendq: %d, initializing: %d",
                 sa->rcsa_rh.rcrh_cancel, sa->rcsa_rh.rcrh_sendq,
                 sa->rcsa_rh.rcrh_initializing);
@@ -1649,9 +1649,10 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
 
                 recv_iovs[1].iov_len = reply_size_error ? 0 : user_alloc_sz;
 
-                SIMPLE_LOG_MSG((reply_size_error ? LL_DEBUG : LL_WARN),
-                               "allocate buffer sz=%ld: %s",
-                               user_alloc_sz, strerror(reply_size_error));
+                SIMPLE_LOG_MSG((reply_size_error ? LL_WARN : LL_DEBUG),
+                               "allocate buffer sz=%ld err=%d: %s",
+                               user_alloc_sz, reply_size_error,
+                               strerror(-reply_size_error));
             }
         }
 

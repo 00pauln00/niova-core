@@ -68,6 +68,7 @@ func main() {
 		RaftUuid:       nso.raftUuid,
 		PeerUuid:       nso.peerUuid,
 		PmdbAPI:        nso,
+                SyncWrites:     false,
 	}
 
 	// Start the pmdb server

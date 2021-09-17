@@ -10,6 +10,8 @@
 #include "log.h"
 
 typedef uint64_t bitmap_word_t;
+typedef uint32_t bitmap_word32_t;
+
 #define NB_WORD_TYPE_SZ      (sizeof(bitmap_word_t))
 #define NB_WORD_ANY          -1ULL
 #define NB_MAX_IDX_ANY       -1U
@@ -347,4 +349,26 @@ niova_bitmap_lowest_free_bit_release(struct niova_bitmap *nb,
     return -ENOENT;
 }
 
+static inline int
+niova_bitmap_get_32bit_word(const struct niova_bitmap *nb, unsigned int idx32,
+                            unsigned int *ret_u32)
+{
+    if (!nb || !ret_u32)
+        return -EINVAL;
+
+    if (idx32 >= (nb->nb_nwords * 2))
+        return -ERANGE;
+
+    const uint32_t *map_u32 = (uint32_t *)nb->nb_map;
+
+    *ret_u32 = map_u32[idx32];
+
+    return 0;
+}
+
+static inline void
+niova_bitmap_compile_time_asserts(void)
+{
+    COMPILE_TIME_ASSERT(NB_WORD_TYPE_SZ_BITS == 64);
+}
 #endif
