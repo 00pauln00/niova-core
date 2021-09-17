@@ -1,0 +1,47 @@
+services:
+    niovakv1:
+        build: ./
+        image: niovakv_server
+        network_mode: host
+        environment:
+            ID : 1
+        volumes:
+            - ./docker/Node1/niovakv_server_logs:/usr/niovakv_server/logs
+            - ./docker/Node1/pmdb_server_logs:/usr/pmdb_server/logs
+        
+
+    niovakv2:
+        image: niovakv_server
+        network_mode: host
+        environment:
+            ID : 2
+        volumes:
+            - ./docker/Node2/niovakv_server_logs:/usr/niovakv_server/logs
+            - ./docker/Node2/pmdb_server_logs:/usr/pmdb_server/logs
+    
+    niovakv3:
+        image: niovakv_server
+        network_mode: host
+        environment:
+            ID : 3
+        volumes:
+            - ./docker/Node3/niovakv_server_logs:/usr/niovakv_server/logs
+            - ./docker/Node3/pmdb_server_logs:/usr/pmdb_server/logs
+
+    niovakv4:
+        image: niovakv_server
+        network_mode: host
+        environment:
+            ID : 4
+        volumes:
+            - ./docker/Node4/niovakv_server_logs:/usr/niovakv_server/logs
+            - ./docker/Node4/pmdb_server_logs:/usr/pmdb_server/logs
+
+    niovakv5:
+        image: niovakv_server
+        network_mode: host
+        environment:
+            ID : 5
+        volumes:
+            - ./docker/Node5/niovakv_server_logs:/usr/niovakv_server/logs
+            - ./docker/Node5/pmdb_server_logs:/usr/pmdb_server/logs
