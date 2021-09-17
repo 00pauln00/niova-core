@@ -15,7 +15,7 @@ import (
 	client "github.com/hashicorp/serf/client"
 )
 
-type NiovakvClient struct {
+type ClientAPI struct {
 	//Exported
 	Timeout time.Duration //No of seconds for a request time out and membership table refresh
 	//UnExported
@@ -23,13 +23,14 @@ type NiovakvClient struct {
 	clientHandler  serfclienthandler.SerfClientHandler
 	serfUpdateLock sync.Mutex
 	tableLock      sync.Mutex
+	ready          bool
 }
 
 func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
 }
 
-func (nkvc *NiovakvClient) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
+func (nkvc *ClientAPI) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
 	var responseRecvd *niovakvlib.NiovaKVResponse
 	timer := time.Tick(nkvc.Timeout)
 time:
@@ -59,24 +60,24 @@ time:
 	return responseRecvd
 }
 
-func (nkvc *NiovakvClient) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
+func (nkvc *ClientAPI) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "write"
 	responseRecvd := nkvc.doOperation(ReqObj, true)
 	return responseRecvd.RespStatus, responseRecvd.RespValue
 }
 
-func (nkvc *NiovakvClient) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
+func (nkvc *ClientAPI) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "read"
 	responseRecvd := nkvc.doOperation(ReqObj, false)
 	return responseRecvd.RespStatus, responseRecvd.RespValue
 }
 
-func (nkvc *NiovakvClient) serfClientInit(configPath string) error {
+func (nkvc *ClientAPI) serfClientInit(configPath string) error {
 	nkvc.clientHandler.Retries = 5
 	return nkvc.clientHandler.Initdata(configPath)
 }
 
-func (nkvc *NiovakvClient) memberSearcher(stop chan int) error {
+func (nkvc *ClientAPI) memberSearcher(stop chan int) error {
 comparison:
 	for {
 		select {
@@ -95,13 +96,14 @@ comparison:
 			nkvc.tableLock.Lock()
 			nkvc.servers = nkvc.clientHandler.Agents
 			nkvc.tableLock.Unlock()
+			nkvc.ready = true
 			time.Sleep(nkvc.Timeout)
 		}
 	}
 	return nil
 }
 
-func (nkvc *NiovakvClient) Start(stop chan int, configPath string) error {
+func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
 	var err error
 	err = nkvc.serfClientInit(configPath)
 	if err != nil {
@@ -116,7 +118,7 @@ func (nkvc *NiovakvClient) Start(stop chan int, configPath string) error {
 	return err
 }
 
-func (nkvc *NiovakvClient) pickServer() (client.Member, error) {
+func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 	nkvc.tableLock.Lock()
 	defer nkvc.tableLock.Unlock()
 	//Get random addr and delete if its failed and provide with non-failed one!
@@ -137,7 +139,7 @@ func (nkvc *NiovakvClient) pickServer() (client.Member, error) {
 }
 
 //Returns raft leader's uuid
-func (nkvc *NiovakvClient) GetLeader() string {
+func (nkvc *ClientAPI) GetLeader() string {
 	agent, err := nkvc.pickServer()
 	if err != nil {
 		return "Servers unreachable"
@@ -145,10 +147,16 @@ func (nkvc *NiovakvClient) GetLeader() string {
 	return agent.Tags["Leader UUID"]
 }
 
-func (nkvc *NiovakvClient) GetMembership() map[string]client.Member {
+func (nkvc *ClientAPI) GetMembership() map[string]client.Member {
 	nkvc.serfUpdateLock.Lock()
 	defer nkvc.serfUpdateLock.Unlock()
 	return nkvc.clientHandler.GetMemberListMap()
+}
+
+func (nkvc *ClientAPI) Tillready() {
+	for !nkvc.ready {
+
+	}
 }
 
 func removeIndex(s []client.Member, index int) []client.Member {
