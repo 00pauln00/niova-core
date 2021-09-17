@@ -8,7 +8,7 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-niovakv_all: compile pmdbserver niovakvserver niovakvclient install
+niovakv_all: compile pmdbserver niovakvserver niovakvclient lkvt_module install
 
 compile:
 	echo "Compiling niovakv"
@@ -21,8 +21,10 @@ niovakvserver:
 
 niovakvclient:
 	cd niovakv_client && go build niovakv_client.go
-	cd niovakv_client_multi && go build niovakv_client_multi.go
+
+lkvt_module:
+	cd lkvt && git submodule init && git submodule update && git checkout lkvt_changes && go build
 
 install:
-	sudo cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client niovakv_client_multi/niovakv_client_multi ${DIR}/libexec/niova
+	sudo cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client lkvt/lkvt ${DIR}/libexec/niova
 	sudo cp niovakv_server/config ${DIR}/libexec/niova/niovakv.config

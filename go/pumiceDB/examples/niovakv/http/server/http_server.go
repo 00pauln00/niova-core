@@ -38,20 +38,18 @@ func (h HttpServerHandler) process(r *http.Request) ([]byte, error) {
 	}
 	//If error in parsing request
 	if err != nil {
-		log.Error("Request failed: ", err)
+		log.Error("(HTTP Server) Parsing request failed: ", err)
 		resp.RespStatus = -1
 		resp.RespValue = []byte("Parsing request failed")
 	} else {
 		//Perform the read operation on pmdb client
-		log.Info("Received request, operation : ", requestobj.InputOps, " Key : ", requestobj.InputKey, " Value : ", requestobj.InputValue)
+		log.Trace("(HTTP Server) Received request; operation : ", requestobj.InputOps, " Key : ", requestobj.InputKey, " Value : ", requestobj.InputValue)
 		result, err := h.NKVCliObj.ProcessRequest(&requestobj)
 		//If operation failed
 		if err != nil {
-			log.Error("Operation failed for key with error: ", requestobj.InputKey, " ", err)
 			resp.RespStatus = -1
 			resp.RespValue = []byte(err.Error())
 		} else {
-			log.Info("Result of the operation is:", requestobj.InputKey, " ", result)
 			resp.RespStatus = 0
 			resp.RespValue = result
 		}
@@ -75,10 +73,10 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			_, errRes := fmt.Fprintf(w, "%s", string(respString))
 			if errRes != nil {
-				log.Error("Writing to http response writer failed :", errRes)
+				log.Error("(HTTP Server) Writing to http response writer failed :", errRes)
 			}
 		} else {
-			log.Error("Encoding or response obj failed:", err)
+			log.Error("(HTTP Server) Encoding or response obj failed:", err)
 		}
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
