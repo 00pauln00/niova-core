@@ -1,4 +1,4 @@
-name: holon_basic_recipes_workflow
+name: holon_coalesced_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -53,13 +53,13 @@ jobs:
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/basic_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/coalesced_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+       ref: coalesced_feature
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
@@ -74,7 +74,7 @@ jobs:
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/basic_recipes.txt'
+                             '/home/runner/work/niovad/niovad/build_dir/coalesced_recipes.txt'
                              'pumicedb'
                              '/home/runner/work/go/go/bin'
 
