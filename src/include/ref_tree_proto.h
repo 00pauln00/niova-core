@@ -228,6 +228,12 @@ struct {                                 \
 #define RT_FOREACH_REVERSE_SAFE_LOCKED(x, name, head, y) \
     RB_FOREACH_REVERSE_SAFE(x, _RT_##name, &(head)->rt_head, y)
 
+#define RT_MIN_SERIALIZED_NOREF(name, head)     \
+    RB_MIN(__RT_##name, &(head)->rt_head)
+
+#define RT_NEXT_SERIALIZED_NOREF(name, x)       \
+    RB_NEXT(__RT_##name, y)
+
 #define RT_FOREACH_SERIALIZED              RT_FOREACH_LOCKED
 #define RT_FOREACH_SAFE_SERIALIZED         RT_FOREACH_SAFE_LOCKED
 #define RT_FOREACH_REVERSE_SERIALIZED      RT_FOREACH_REVERSE_LOCKED
