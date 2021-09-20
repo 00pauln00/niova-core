@@ -378,10 +378,12 @@ rsbp_header_write(struct raft_instance *ri)
 
     struct raft_entry *re = &entry_and_header.re;
 
+    uint32_t len = sizeof(struct raft_log_header);
+
     raft_server_entry_init_for_log_header(ri, re, re_idx,
                                           ri->ri_log_hdr.rlh_term,
                                           (const char *)&ri->ri_log_hdr,
-                                          sizeof(struct raft_log_header));
+                                          len);
 
     const ssize_t write_sz =
         niova_io_pwrite(rip->rip_fd, (const char *)&entry_and_header,

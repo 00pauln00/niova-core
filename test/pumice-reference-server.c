@@ -17,12 +17,13 @@
 #include "raft_test.h"
 #include "pumice_db.h"
 
-#define OPTS "u:r:ha"
+#define OPTS "u:r:hac"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static const char *pmdbts_column_family_name = "PMDBTS_CF";
 static bool syncPMDBWrites = true;
+static bool coalescedWrites = false;
 const char *raft_uuid_str;
 const char *my_uuid_str;
 
@@ -307,7 +308,7 @@ static void
 pmdbts_print_help(const int error, char **argv)
 {
     fprintf(error ? stderr : stdout,
-            "Usage: %s -r <UUID> -u <UUID>\n", argv[0]);
+            "Usage: %s -r <UUID> -u <UUID> [-c (coalesce-raft-writes)] [-a (async-raft-writes)]\n", argv[0]);
 
     exit(error);
 }
@@ -326,6 +327,9 @@ pmdbts_getopt(int argc, char **argv)
         {
         case 'a':
             syncPMDBWrites = false;
+            break;
+        case 'c':
+            coalescedWrites = true;
             break;
         case 'r':
             raft_uuid_str = optarg;
@@ -359,5 +363,5 @@ main(int argc, char **argv)
     const char *cf_names[1] = {pmdbts_column_family_name};
 
     return PmdbExec(raft_uuid_str, my_uuid_str, &api, cf_names, 1,
-                    syncPMDBWrites, NULL);
+                    syncPMDBWrites, coalescedWrites, NULL);
 }

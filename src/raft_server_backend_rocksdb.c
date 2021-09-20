@@ -482,6 +482,7 @@ rsbr_write_supplements_put(const struct raft_net_sm_write_supplements *ws,
 
         for (size_t j = 0; j < supp->rnws_nkv; j++)
         {
+
             supp->rnws_handle ?
             rocksdb_writebatch_put_cf(
                 wb, (rocksdb_column_family_handle_t *)supp->rnws_handle,
@@ -576,7 +577,7 @@ rsbr_sm_apply_opt(struct raft_instance *ri,
     if (!ws)
         return;
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "idx=%ld cumu-crc=%x",
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "idx=%ld cumu-crc=%x",
                       ri->ri_last_applied_idx,
                       ri->ri_last_applied_cumulative_crc);
 

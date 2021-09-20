@@ -97,6 +97,16 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,
         .flti_enabled = 0,
     },
+    [FAULT_INJECT_coalesced_writes] = {
+        .flti_name = "coalesced_writes",
+        .flti_when = FAULT_INJECT_PERIOD_every_time,
+        .flti_enabled = 0,
+    },
+    [FAULT_INJECT_ignore_einprogress] = {
+        .flti_name = "ignore_einprogress",
+        .flti_when = FAULT_INJECT_PERIOD_every_time,
+        .flti_enabled = 0,
+    },
 };
 
 struct fault_injection *

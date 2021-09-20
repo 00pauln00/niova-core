@@ -2147,6 +2147,8 @@ raft_net_write_supp_destroy(struct raft_net_wr_supp *ws)
         niova_free(ws->rnws_values[i]);
     }
 
+    ws->rnws_nkv = 0;
+
     niova_free(ws->rnws_keys);
     niova_free(ws->rnws_values);
     niova_free(ws->rnws_key_sizes);
@@ -2325,6 +2327,7 @@ raft_net_sm_write_supplement_destroy(
     niova_free(rnsws->rnsws_ws);
 
     rnsws->rnsws_ws = NULL;
+    rnsws->rnsws_nitems = 0;
 }
 
 void

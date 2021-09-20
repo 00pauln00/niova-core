@@ -83,11 +83,13 @@ PmdbWriteKV(const struct raft_net_client_user_id *, void *pmdb_handle,
  * @cf_names:  Array of RocksDB column family names to be used by application
  * @num_cf_names:  Size of cf_names[] array,
  * @use_synchronous_writes:  RocksDB uses synchronous writes
+ * @use_coalesced_writes: Enabled coalesced writes.
  */
 int
 PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          const struct PmdbAPI *pmdb_api, const char *cf_names[],
-         int num_cf, bool use_synchronous_writes, void *user_data);
+         int num_cf, bool use_synchronous_writes,
+         bool use_coalesced_writes, void *user_data);
 
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec

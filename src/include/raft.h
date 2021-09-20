@@ -22,12 +22,14 @@
 #include "tcp_mgr.h"
 #include "udp.h"
 #include "util.h"
+#include "buffer.h"
 
-#define RAFT_ENTRY_PAD_SIZE 47
+#define RAFT_ENTRY_NUM_ENTRIES 100
+#define RAFT_ENTRY_PAD_SIZE 6
 #define RAFT_ENTRY_MAGIC  0x1a2b3c4dd4c3b2a1
 #define RAFT_HEADER_MAGIC 0xafaeadacabaaa9a8
 
-#define RAFT_ENTRY_HEADER_RESERVE 128
+#define RAFT_ENTRY_HEADER_RESERVE 488
 
 #define RAFT_ENTRY_SIZE_MIN        65536
 
@@ -89,6 +91,25 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_ANY                    = 7,
 };
 
+enum raft_buf_set_type
+{
+    RAFT_BUF_SET_SMALL  = 0,
+    RAFT_BUF_SET_LARGE  = 1,
+    RAFT_BUF_SET_MAX    = 2,
+};
+
+enum raft_buf_set_size
+{
+    RAFT_BS_SMALL_SZ = 4096,
+    RAFT_BS_LARGE_SZ = 4194304,
+};
+
+enum raft_buf_set_nbuf
+{
+    RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
+    RAFT_BS_LARGE_NBUF = 2,
+};
+
 struct raft_vote_request_msg
 {
     int64_t rvrqm_proposed_term;
@@ -116,11 +137,13 @@ struct raft_append_entries_request_msg
     int64_t  raerqm_prev_log_index;
     uint32_t raerqm_prev_idx_crc;
     uint32_t raerqm_this_idx_crc;
+    uint32_t raerqm_size_arr[RAFT_ENTRY_NUM_ENTRIES];
     uint32_t raerqm_entries_sz;
+    uint32_t raerqm_num_entries;
     uint8_t  raerqm_heartbeat_msg;
     uint8_t  raerqm_leader_change_marker;
     uint8_t  raerqm_entry_out_of_range;
-    uint8_t  raerqm__pad[1];
+    uint8_t  raerqm__pad[5];
     char     WORD_ALIGN_MEMBER(raerqm_entries[]); // Must be last
 };
 
@@ -191,7 +214,9 @@ struct raft_entry_header
     raft_entry_idx_t reh_index;
     int64_t          reh_term; // Term in which entry was originally written
     uuid_t           reh_raft_uuid; // UUID of raft instance
+    uint32_t         reh_entry_sz[RAFT_ENTRY_NUM_ENTRIES];
     uint8_t          reh_leader_change_marker; // noop
+    uint8_t          reh_num_entries; // number of raft entries
     uint8_t          reh_pad[RAFT_ENTRY_PAD_SIZE];
 };
 
@@ -312,8 +337,9 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_DEV_WRITE_LAT_USEC = 3,
     RAFT_INSTANCE_HIST_DEV_SYNC_LAT_USEC  = 4,
     RAFT_INSTANCE_HIST_NENTRIES_SYNC      = 5,
-    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 6,
-    RAFT_INSTANCE_HIST_MAX                = 7,
+    RAFT_INSTANCE_HIST_COALESCED_WR_CNT   = 6,
+    RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 7,
+    RAFT_INSTANCE_HIST_MAX                = 8,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -407,11 +433,16 @@ struct raft_instance_buffer
     bool     ribuf_free;
 };
 
-#define RAFT_INSTANCE_NUM_BUFS 2UL
-struct raft_instance_buf_pool
+/*
+ * coalesced write information stored on the leader.
+ */
+struct raft_instance_co_wr
 {
-    size_t                      ribufp_nbufs;
-    struct raft_instance_buffer ribufp_bufs[RAFT_INSTANCE_NUM_BUFS];
+    uint32_t                              rcwi_nentries;
+    uint32_t                              rcwi_entry_sizes[RAFT_ENTRY_NUM_ENTRIES];
+    size_t                                rcwi_total_size;
+    struct raft_net_sm_write_supplements  rcwi_ws;
+    char                                  rcwi_buffer[];
 };
 
 struct raft_instance
@@ -436,6 +467,7 @@ struct raft_instance
     enum raft_instance_store_type   ri_store_type;
     bool                            ri_ignore_timerfd;
     bool                            ri_synchronous_writes;
+    bool                            ri_coalesced_writes;
     bool                            ri_user_requested_checkpoint;
     bool                            ri_user_requested_reap;
     bool                            ri_auto_checkpoints_enabled;
@@ -489,7 +521,8 @@ struct raft_instance
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
     struct raft_recovery_handle     ri_recovery_handle;
-    struct raft_instance_buf_pool  *ri_buf_pool;
+    struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
+    struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member
 };
 
 static inline struct raft_recovery_handle *
@@ -540,7 +573,7 @@ do {                                                                \
             break;                                                      \
         case RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST:                  \
             LOG_MSG(log_level,                                          \
-                    "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
+                    "AE_REQ t=%ld lt=%ld ci=%ld li:%ld pl=%ld:%ld sz=%u nen=%u hb=%hhx lcm=%hhx oor=%hhx crc=%u:%u %s "fmt, \
                     (rm)->rrm_append_entries_request.raerqm_leader_term, \
                     (rm)->rrm_append_entries_request.raerqm_log_term,   \
                     (rm)->rrm_append_entries_request.raerqm_commit_index, \
@@ -548,6 +581,7 @@ do {                                                                \
                     (rm)->rrm_append_entries_request.raerqm_prev_log_term, \
                     (rm)->rrm_append_entries_request.raerqm_prev_log_index, \
                     (rm)->rrm_append_entries_request.raerqm_entries_sz, \
+                    (rm)->rrm_append_entries_request.raerqm_num_entries, \
                     (rm)->rrm_append_entries_request.raerqm_heartbeat_msg, \
                     (rm)->rrm_append_entries_request.raerqm_leader_change_marker, \
                     (rm)->rrm_append_entries_request.raerqm_entry_out_of_range, \
@@ -714,6 +748,8 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "dev-sync-latency-usec";
     case RAFT_INSTANCE_HIST_NENTRIES_SYNC:
         return "nentries-per-sync";
+    case RAFT_INSTANCE_HIST_COALESCED_WR_CNT:
+        return "coalesced-wr-cnt";
     case RAFT_INSTANCE_HIST_CHKPT_LAT_USEC:
         return "checkpoint-latency-usec";
     default:
@@ -1040,7 +1076,8 @@ raft_server_entry_init_for_log_header(const struct raft_instance *ri,
                                       struct raft_entry *re,
                                       const raft_entry_idx_t re_idx,
                                       const uint64_t current_term,
-                                      const char *data, const size_t len);
+                                      const char *data,
+                                      uint32_t entry_sizes);
 
 void
 raft_server_backend_use_posix(struct raft_instance *ri);

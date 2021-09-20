@@ -130,11 +130,12 @@ raft_net_max_rpc_size(enum raft_instance_store_type be_type)
 // Options for raft_server_instance_run()
 enum raft_instance_options
 {
-    RAFT_INSTANCE_OPTIONS_NONE            = 0,
-    RAFT_INSTANCE_OPTIONS_SYNC_WRITES     = 1 << 0,
-    RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT = 1 << 1,
-    RAFT_INSTANCE_OPTIONS_DISABLE_UDP     = 1 << 2,
-    RAFT_INSTANCE_OPTIONS_DISABLE_TCP     = 1 << 3,
+    RAFT_INSTANCE_OPTIONS_NONE                 = 0,
+    RAFT_INSTANCE_OPTIONS_SYNC_WRITES          = 1 << 0,
+    RAFT_INSTANCE_OPTIONS_COALESCED_WRITES     = 1 << 1,
+    RAFT_INSTANCE_OPTIONS_AUTO_CHECKPOINT      = 1 << 2,
+    RAFT_INSTANCE_OPTIONS_DISABLE_UDP          = 1 << 3,
+    RAFT_INSTANCE_OPTIONS_DISABLE_TCP          = 1 << 4,
 };
 
 enum raft_udp_listen_sockets
@@ -294,22 +295,22 @@ struct raft_net_sm_write_supplements
 
 struct raft_net_client_request_handle
 {
-    enum raft_net_client_request_type    rncr_type;  // may be set by sm callback
-    bool                                 rncr_write_raft_entry;
-    bool                                 rncr_is_leader;
-    int                                  rncr_op_error;
-    int64_t                              rncr_entry_term;
-    int64_t                              rncr_current_term;
-    raft_entry_idx_t                     rncr_pending_apply_idx;
-    const struct raft_client_rpc_msg    *rncr_request;
-    const char                          *rncr_request_or_commit_data;
-    const size_t                         rncr_request_or_commit_data_size;
-    struct raft_client_rpc_msg          *rncr_reply;
-    const size_t                         rncr_reply_data_max_size;
-    size_t                               rncr_reply_data_size;
-    uint64_t                             rncr_msg_id;
-    struct raft_net_sm_write_supplements rncr_sm_write_supp;
-    uuid_t                               rncr_client_uuid;
+    enum raft_net_client_request_type     rncr_type;  // may be set by sm cb
+    bool                                  rncr_write_raft_entry;
+    bool                                  rncr_is_leader;
+    int                                   rncr_op_error;
+    int64_t                               rncr_entry_term;
+    int64_t                               rncr_current_term;
+    raft_entry_idx_t                      rncr_pending_apply_idx;
+    const struct raft_client_rpc_msg     *rncr_request;
+    const char                           *rncr_request_or_commit_data;
+    const size_t                          rncr_request_or_commit_data_size;
+    struct raft_client_rpc_msg           *rncr_reply;
+    const size_t                          rncr_reply_data_max_size;
+    size_t                                rncr_reply_data_size;
+    uint64_t                              rncr_msg_id;
+    struct raft_net_sm_write_supplements *rncr_sm_write_supp;
+    uuid_t                                rncr_client_uuid;
 };
 
 #define DBG_RAFT_CLIENT_RPC_SOCK(log_level, rcm, from, fmt, ...) \
