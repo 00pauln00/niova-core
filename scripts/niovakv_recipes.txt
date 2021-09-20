@@ -1,3 +1,4 @@
 niovakv_seq_rdwr_operation.yml
 niovakv_concurrent_rdwr_operation.yml
 niovakv_surf_membership_check.yml
+basic_recipe_for_lkvt_client.yml
