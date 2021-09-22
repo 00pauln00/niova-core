@@ -209,7 +209,7 @@ func (nkvc *ClientAPI) pickServer(removeName string) (client.Member, error) {
                                 if removeName!=""{
                                         log.Info(removeName)
                                 }
-				
+
 				//Check if node is alive, check if gossip is available and http server of that node is not reported down!
                                 if ((nkvc.servers[randomIndex].Status == "alive") && (isGossipAvailable(nkvc.servers[randomIndex])) && (removeName != nkvc.servers[randomIndex].Name)) {
                                         break
