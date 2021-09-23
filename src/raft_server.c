@@ -4154,11 +4154,6 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
         ri->ri_coalesced_wr->rcwi_nentries < RAFT_ENTRY_NUM_ENTRIES &&
         ri->ri_coalesced_wr->rcwi_total_size < RAFT_ENTRY_MAX_DATA_SIZE(ri));
 
-    // Push out the current coalesce buffer immediately in these conditions
-    if ((len + ri->ri_coalesced_wr->rcwi_total_size) >
-         RAFT_ENTRY_MAX_DATA_SIZE(ri))
-        raft_server_write_coalesced_entries(ri);
-
     /* Store the new write entry at the free slot at ri->ri_coalesced_wr.
      * NOTE: that raft_server_write_coalesced_entries() will have reset
      *    nentries so be sure to take the tmp variable AFTER calling it.
@@ -4211,6 +4206,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         return;
     }
 
+
     size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
 
     struct buffer_item *bi =
@@ -4239,12 +4235,19 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         goto out;
     }
 
+
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
         raft_server_reply_to_client(ri, &rncr, csn);
         goto out;
     }
+
+    // Push out the current coalesce buffer immediately in these conditions
+    // but the current write request gets added to the rncr->rncr_sm_write_supp
+    if ((rcm->rcrm_data_size + ri->ri_coalesced_wr->rcwi_total_size) >
+         RAFT_ENTRY_MAX_DATA_SIZE(ri))
+        raft_server_write_coalesced_entries(ri);
 
     // rncr.rncr_type was set by the callback!
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
