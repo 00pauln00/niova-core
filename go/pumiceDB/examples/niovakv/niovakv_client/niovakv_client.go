@@ -20,9 +20,11 @@ import (
 
 type niovakv_client struct {
 	config_path, keyPrefix, valuePrefix, logPath, serial, noRequest, resultFile, operation string
+	concurrency									       int
 	respFillerLock                                                                         sync.Mutex
 	operationMetaObjs                                                                      []opData //For filling json data
 	operationsWait                                                                         sync.WaitGroup
+	concurrency_channel								       chan int
 	requestSentCount, failedRequestCount                                                   *int32
 	nkvc                                                                                   *clientapi.ClientAPI
 }
@@ -61,6 +63,7 @@ func (cli *niovakv_client) getCmdParams() {
 	flag.StringVar(&cli.noRequest, "n", "5", "No of request")
 	flag.StringVar(&cli.resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.StringVar(&cli.operation, "o", "both", "Specify the opeation to perform in batch, leave it empty if both wites and reads are required")
+	flag.IntVar(&cli.concurrency,"p",1,"No of concurrent execution")
 	flag.Parse()
 }
 
@@ -141,7 +144,11 @@ func (cli *niovakv_client) doWrite_Read(n int, write bool) []opData {
 
 		//Send the request object
 		cli.operationsWait.Add(1)
-		go cli.sendReq(&requestObj, write)
+		cli.concurrency_channel <- 1
+		go func(){
+			cli.sendReq(&requestObj, write)
+			_ = <-cli.concurrency_channel
+		}()
 		if cli.serial == "yes" {
 			cli.operationsWait.Wait()
 		}
@@ -188,7 +195,7 @@ func (cli *niovakv_client) printProgress(operation string, total_no_request int)
 func main() {
 	//Intialize client object
 	clientObj := niovakv_client{}
-
+	
 	//Get commandline parameters.
 	clientObj.getCmdParams()
 	flag.Usage = usage
@@ -196,7 +203,7 @@ func main() {
 		usage()
 		os.Exit(-1)
 	}
-
+	clientObj.concurrency_channel=make(chan int,clientObj.concurrency)
 	//Create logger
 	err := PumiceDBCommon.InitLogger(clientObj.logPath)
 	if err != nil {
