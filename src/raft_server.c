@@ -4927,6 +4927,15 @@ raft_server_instance_restore_init_values(struct raft_instance *ri,
 
     // ignore_timerfd may have been set at startup
     ri->ri_ignore_timerfd = save->ri_ignore_timerfd;
+
+    // bulk recovery items
+    ri->ri_max_scan_entries = save->ri_max_scan_entries;
+    ri->ri_log_reap_factor = save->ri_log_reap_factor;
+    ri->ri_num_checkpoints = save->ri_num_checkpoints;
+
+    ri->ri_election_timeout_max_ms = save->ri_election_timeout_max_ms;
+    ri->ri_heartbeat_freq_per_election_min =
+        save->ri_heartbeat_freq_per_election_min;
 }
 
 static void
