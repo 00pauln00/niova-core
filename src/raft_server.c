@@ -2997,9 +2997,10 @@ raft_server_append_entry_log_prepare_and_check(
         rc = -EEXIST;
 
     DBG_RAFT_INSTANCE((raerq->raerqm_heartbeat_msg ? LL_DEBUG : LL_NOTIFY), ri,
-                      "rci=%ld leader-prev-[idx:term]=%ld:%ld rc=%d",
+                      "rci=%ld leader-prev-[idx:term]=%ld:%ld (range=%hhu) rc=%d",
                       reh.reh_index, raerq->raerqm_prev_log_index,
-                      raerq->raerqm_prev_log_term, rc);
+                      raerq->raerqm_prev_log_term,
+                      raerq->raerqm_entry_out_of_range, rc);
 
     return rc;
 }
