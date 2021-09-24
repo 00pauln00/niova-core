@@ -1220,6 +1220,13 @@ raft_server_backend_sync(struct raft_instance *ri, const char *caller)
         NIOVA_ASSERT(ri->ri_backend->rib_backend_sync);
     }
 
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+    // Serialize this function
+    NIOVA_ASSERT(!pthread_mutex_lock(&mutex));
+
+    // copy last_applied_idx since it be incremented outside this thread
+    const int64_t my_last_applied_idx = ri->ri_last_applied_idx;
+
     // Grab the unsync'd header contents
     struct raft_entry_header unsync_reh = {0};
     raft_instance_get_newest_header(ri, &unsync_reh, RI_NEHDR_UNSYNC);
@@ -1252,8 +1259,11 @@ raft_server_backend_sync(struct raft_instance *ri, const char *caller)
 
     // update the last-applied-syncd-idx
     NIOVA_ASSERT(ri->ri_last_applied_idx >= ri->ri_last_applied_synced_idx);
-    if (ri->ri_last_applied_synced_idx < ri->ri_last_applied_idx)
-        ri->ri_last_applied_synced_idx = ri->ri_last_applied_idx;
+    NIOVA_ASSERT(my_last_applied_idx >= ri->ri_last_applied_synced_idx);
+    if (ri->ri_last_applied_synced_idx < my_last_applied_idx)
+        ri->ri_last_applied_synced_idx = my_last_applied_idx;
+
+    NIOVA_ASSERT(!pthread_mutex_unlock(&mutex));
 
     return rc;
 }
@@ -5341,7 +5351,9 @@ raft_server_chkpt_thread(void *arg)
         const raft_entry_idx_t num_entries_since_last_chkpt =
             max_idx - ri->ri_checkpoint_last_idx;
 
-        NIOVA_ASSERT(num_entries_since_last_chkpt >= 0);
+        DBG_RAFT_INSTANCE_FATAL_IF(num_entries_since_last_chkpt < 0, ri,
+                                   "max-idx=%lu ri_checkpoint_last_idx=%llu",
+                                   max_idx, ri->ri_checkpoint_last_idx);
 
         DBG_RAFT_INSTANCE((num_entries_since_last_chkpt ? LL_DEBUG : LL_TRACE),
                           ri, "entries_since_last_chkpt=%zd user-req=%s",
