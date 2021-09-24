@@ -156,7 +156,8 @@ struct raft_append_entries_reply_msg
     uint8_t raerpm_err_stale_term;
     uint8_t raerpm_err_non_matching_prev_term;
     uint8_t raerpm_newly_initialized_peer;
-    uint8_t raerpm__pad[4];
+    uint8_t raerpm_update_sli;
+    uint8_t raerpm__pad[3];
 };
 
 struct raft_sync_idx_update_msg
