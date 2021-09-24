@@ -223,17 +223,20 @@ func main() {
 	}
 
 	//Start serf agent handler
-	err = niovaServerObj.startSerfAgentHandler()
-	if err != nil {
-		log.Panic("Error while starting serf agent : ", err)
-		os.Exit(1)
-	}
-	//Start the gossip routine
-	go niovaServerObj.getGossipData()
+        err = niovaServerObj.startSerfAgentHandler()
+        if err != nil {
+                log.Panic("Error while starting serf agent : ", err)
+                os.Exit(1)
+        }
 
 	//Start http server
-	err = niovaServerObj.startHTTPServer()
-	if err != nil {
-		log.Panic("Error while starting http server : ", err)
-	}
-}
+	go func(){
+		err = niovaServerObj.startHTTPServer()
+		if err != nil {
+			log.Panic("Error while starting http server : ", err)
+		}
+	}()
+	
+	//Start the gossip
+	niovaServerObj.getGossipData()
+}	
