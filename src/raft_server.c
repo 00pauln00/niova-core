@@ -5382,11 +5382,7 @@ raft_server_chkpt_thread(void *arg)
             NIOVA_ASSERT(ri->ri_log_reap_factor > 0); // sanity
 
             ssize_t num_keep_entries =
-                ri->ri_log_reap_factor *
-                ((ri->ri_max_scan_entries >
-                  RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES)
-                 ? ri->ri_max_scan_entries
-                 : RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES);
+                ri->ri_log_reap_factor * ri->ri_max_scan_entries;
 
             raft_server_reap_log(ri, num_keep_entries);
         }
