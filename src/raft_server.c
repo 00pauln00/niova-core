@@ -4887,11 +4887,11 @@ raft_server_instance_init_rocksdb_persistent_app(struct raft_instance *ri)
 
         if (!ri->ri_log_reap_factor)
             raft_server_set_log_reap_factor(
-                ri, RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR);
+                ri, RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_DEFAULT);
 
         if (!ri->ri_num_checkpoints)
             raft_server_set_num_checkpoints(
-                ri, RAFT_INSTANCE_PERSISTENT_APP_CHKPT);
+                ri, RAFT_INSTANCE_PERSISTENT_APP_CHKPT_DEFAULT);
     }
 }
 
