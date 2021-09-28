@@ -23,7 +23,7 @@ niovakvclient:
 	cd niovakv_client && go build niovakv_client.go
 
 lkvt_module:
-	cd lkvt && git submodule init && git submodule update && git checkout lkvt_changes && go build
+	cd lkvt && git submodule init && git submodule update && go build
 
 install:
 	sudo cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client lkvt/lkvt ${DIR}/libexec/niova

@@ -41,7 +41,7 @@ time:
 			break time
 		default:
 			var err error
-			toSend, err := nkvc.pickServer()
+			toSend, err := nkvc.pickServer( )
 			if err != nil {
 				return nil
 			}
@@ -124,6 +124,13 @@ func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
 	return err
 }
 
+func isGossipAvailable(member client.Member) bool{
+	if member.Tags["Hport"] == ""{
+		return false
+	}
+	return true
+}
+
 func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 	nkvc.tableLock.Lock()
 	defer nkvc.tableLock.Unlock()
@@ -135,7 +142,7 @@ func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 			return client.Member{}, errors.New("No alive servers")
 		}
 		randomIndex = rand.Intn(len(nkvc.servers))
-		if nkvc.servers[randomIndex].Status == "alive" {
+		if ((nkvc.servers[randomIndex].Status == "alive")&&(isGossipAvailable(nkvc.servers[randomIndex]))) {
 			break
 		}
 		nkvc.servers = removeIndex(nkvc.servers, randomIndex)

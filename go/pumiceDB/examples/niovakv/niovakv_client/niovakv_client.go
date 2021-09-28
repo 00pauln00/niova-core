@@ -127,6 +127,7 @@ func (cli *niovakv_client) sendReq(req *niovakvlib.NiovaKV, write bool) {
 //Do reads and write
 func (cli *niovakv_client) doWrite_Read(n int, write bool) []opData {
 	var operation string
+	cli.operationMetaObjs = nil
 	if write {
 		operation = "write"
 	} else {
@@ -254,8 +255,8 @@ func main() {
 		fallthrough
 
 	case "read":
-		go clientObj.printProgress("read", n)
-		toJson["read"] = clientObj.doWrite_Read(n, false)
+		go clientObj.printProgress("read", n) 
+		toJson["read"]=clientObj.doWrite_Read(n, false)
 		clientObj.write2Json(toJson)
 
 	case "membership":
