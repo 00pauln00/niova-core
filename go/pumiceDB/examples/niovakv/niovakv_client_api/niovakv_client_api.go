@@ -41,7 +41,7 @@ time:
 			break time
 		default:
 			var err error
-			toSend, err := nkvc.pickServer( )
+			toSend, err := nkvc.pickServer()
 			if err != nil {
 				return nil
 			}
@@ -136,7 +136,7 @@ func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 			return client.Member{}, errors.New("No alive servers")
 		}
 		randomIndex = rand.Intn(len(nkvc.servers))
-		if ((nkvc.servers[randomIndex].Status == "alive")&&(isGossipAvailable(nkvc.servers[randomIndex]))) {
+		if ((nkvc.servers[randomIndex].Status == "alive") && (isGossipAvailable(nkvc.servers[randomIndex]))) {
 			break
 		}
 		nkvc.servers = removeIndex(nkvc.servers, randomIndex)
