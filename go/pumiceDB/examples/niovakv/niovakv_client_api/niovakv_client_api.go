@@ -232,7 +232,6 @@ func (nkvc *ClientAPI) pickServer(removeName string) (client.Member, error) {
                         for _,member := range nkvc.servers{
                                 if member.Name == nkvc.UseSpecificServerName{
                                         serverChoosen = &member
-                                        log.Info(member)
                                         break
                                 }
                         }
