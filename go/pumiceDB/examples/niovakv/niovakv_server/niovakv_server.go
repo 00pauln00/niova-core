@@ -228,12 +228,16 @@ func main() {
 		log.Panic("Error while starting serf agent : ", err)
 		os.Exit(1)
 	}
-	//Start the gossip routine
-	go niovaServerObj.getGossipData()
 
 	//Start http server
-	err = niovaServerObj.startHTTPServer()
-	if err != nil {
-		log.Panic("Error while starting http server : ", err)
-	}
+	go func() {
+		err = niovaServerObj.startHTTPServer()
+		if err != nil {
+			log.Panic("Error while starting http server : ", err)
+		}
+	}()
+
+	//Start the gossip routine
+        niovaServerObj.getGossipData()
+
 }

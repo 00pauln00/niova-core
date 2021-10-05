@@ -113,14 +113,20 @@ time:
 
 func (nkvc *ClientAPI) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "write"
-	responseRecvd := nkvc.doOperation(ReqObj, true)
-	return responseRecvd.RespStatus, responseRecvd.RespValue
+	response := nkvc.doOperation(ReqObj, true)
+	if response == nil {
+		return -1, nil
+	}
+	return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "read"
-	responseRecvd := nkvc.doOperation(ReqObj, false)
-	return responseRecvd.RespStatus, responseRecvd.RespValue
+	response := nkvc.doOperation(ReqObj, false)
+	if response == nil {
+                return -1, nil
+        }
+	return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) serfClientInit(configPath string) error {
@@ -151,6 +157,7 @@ comparison:
 			time.Sleep(nkvc.Timeout)
 		}
 	}
+
 	return nil
 }
 
@@ -169,6 +176,15 @@ func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
 	return err
 }
 
+
+func isGossipAvailable(member client.Member) bool{
+	if member.Tags["Hport"] == "" {
+		return false
+	}
+	return true
+}
+
+
 func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 	nkvc.tableLock.Lock()
 	defer nkvc.tableLock.Unlock()
@@ -180,7 +196,7 @@ func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 			return client.Member{}, errors.New("No alive servers")
 		}
 		randomIndex = rand.Intn(len(nkvc.servers))
-		if nkvc.servers[randomIndex].Status == "alive" {
+		if ((nkvc.servers[randomIndex].Status == "alive") && (isGossipAvailable(nkvc.servers[randomIndex]))) {
 			break
 		}
 		nkvc.servers = removeIndex(nkvc.servers, randomIndex)
@@ -188,6 +204,7 @@ func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 
 	return nkvc.servers[randomIndex], nil
 }
+
 
 //Returns raft leader's uuid
 func (nkvc *ClientAPI) GetLeader() string {
