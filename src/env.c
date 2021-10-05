@@ -131,7 +131,7 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_subsystem = NIOVA_ENV_SUBSYSTEM_NET,
         .nev_var_num   = NIOVA_ENV_VAR_tcp_enable,
         .nev_type      = NIOVA_ENV_VAR_TYPE_NONE,
-        .nev_present   = false,
+        .nev_present   = true,
     },
 };
 
