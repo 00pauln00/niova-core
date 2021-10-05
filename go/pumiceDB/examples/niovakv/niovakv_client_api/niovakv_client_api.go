@@ -18,13 +18,38 @@ import (
 type ClientAPI struct {
 	//Exported
 	Timeout time.Duration //No of seconds for a request time out and membership table refresh
+
+	//Stat
+        RequestDistribution   map[string]ServerRequestStat
+        RequestSentCount      int64
+        RequestSuccessCount   int64
+        RequestFailedCount    int64
+        IsStatRequired        bool
+
 	//UnExported
-	servers        []client.Member
-	clientHandler  serfclienthandler.SerfClientHandler
-	serfUpdateLock sync.Mutex
-	tableLock      sync.Mutex
-	ready          bool
+	servers           []client.Member
+	clientHandler     serfclienthandler.SerfClientHandler
+	serfUpdateLock    sync.Mutex
+	tableLock         sync.Mutex
+	requestUpdateLock sync.Mutex
+	ready             bool
 }
+
+type ServerRequestStat struct{
+        Count   int64
+        Success int64
+        Failed  int64
+}
+
+func (stat ServerRequestStat) updateStat(ok bool) {
+        stat.Count += int64(1)
+        if ok{
+                stat.Success += int64(1)
+        } else{
+                stat.Failed += int64(1)
+        }
+}
+
 
 func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
@@ -41,6 +66,8 @@ time:
 			break time
 		default:
 			var err error
+			var ok bool
+
 			toSend, err := nkvc.pickServer()
 			if err != nil {
 				return nil
@@ -51,12 +78,36 @@ time:
 			} else {
 				responseRecvd, err = httpclient.GetRequest(ReqObj, addr, port)
 			}
+
 			if err == nil {
+                                ok = true
+                        }
+
+                        if nkvc.IsStatRequired {
+                                nkvc.requestUpdateLock.Lock()
+                                if _,present := nkvc.RequestDistribution[toSend.Name]; !present{
+                                        nkvc.RequestDistribution[toSend.Name] = ServerRequestStat{}
+                                }
+                                nkvc.RequestDistribution[toSend.Name].updateStat(ok)
+                                nkvc.requestUpdateLock.Unlock()
+                        }
+
+			if ok {
 				break time
 			}
 			log.Error(err)
 		}
 	}
+
+	if nkvc.IsStatRequired {
+                nkvc.RequestSentCount += int64(1)
+                if responseRecvd!=nil{
+                        nkvc.RequestSuccessCount += int64(1)
+                } else{
+                        nkvc.RequestFailedCount += int64(1)
+                }
+        }
+
 	return responseRecvd
 }
 
