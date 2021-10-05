@@ -100,6 +100,7 @@ comparison:
 			time.Sleep(nkvc.Timeout)
 		}
 	}
+
 	return nil
 }
 
@@ -118,6 +119,15 @@ func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
 	return err
 }
 
+
+func isGossipAvailable(member client.Member) bool{
+	if member.Tags["Hport"] == "" {
+		return false
+	}
+	return true
+}
+
+
 func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 	nkvc.tableLock.Lock()
 	defer nkvc.tableLock.Unlock()
@@ -129,7 +139,7 @@ func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 			return client.Member{}, errors.New("No alive servers")
 		}
 		randomIndex = rand.Intn(len(nkvc.servers))
-		if nkvc.servers[randomIndex].Status == "alive" {
+		if ((nkvc.servers[randomIndex].Status == "alive") && (isGossipAvailable(nkvc.servers[randomIndex]))) {
 			break
 		}
 		nkvc.servers = removeIndex(nkvc.servers, randomIndex)
@@ -137,6 +147,7 @@ func (nkvc *ClientAPI) pickServer() (client.Member, error) {
 
 	return nkvc.servers[randomIndex], nil
 }
+
 
 //Returns raft leader's uuid
 func (nkvc *ClientAPI) GetLeader() string {
