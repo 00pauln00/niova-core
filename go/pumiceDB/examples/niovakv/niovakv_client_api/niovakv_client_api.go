@@ -32,7 +32,7 @@ func getAddr(member *client.Member) (string, string) {
 
 func (nkvc *ClientAPI) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
 	var responseRecvd *niovakvlib.NiovaKVResponse
-	timer := time.Tick(nkvc.Timeout)
+	timer := time.Tick(nkvc.Timeout * time.Second)
 time:
 	for {
 		select {
