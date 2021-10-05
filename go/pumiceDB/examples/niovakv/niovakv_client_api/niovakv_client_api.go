@@ -62,14 +62,20 @@ time:
 
 func (nkvc *ClientAPI) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "write"
-	responseRecvd := nkvc.doOperation(ReqObj, true)
-	return responseRecvd.RespStatus, responseRecvd.RespValue
+	response := nkvc.doOperation(ReqObj, true)
+	if response == nil {
+		return -1, ""
+	}
+	return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "read"
-	responseRecvd := nkvc.doOperation(ReqObj, false)
-	return responseRecvd.RespStatus, responseRecvd.RespValue
+	response := nkvc.doOperation(ReqObj, false)
+	if response == nil {
+                return -1, ""
+        }
+	return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) serfClientInit(configPath string) error {
