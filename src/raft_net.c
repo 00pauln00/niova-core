@@ -27,6 +27,7 @@
 #include "regex_defines.h"
 #include "udp.h"
 #include "util_thread.h"
+#include "fault_inject.h"
 
 #define DEFAULT_BULK_CREDITS 32
 #define DEFAULT_INCOMING_CREDITS 32
@@ -229,6 +230,12 @@ raft_net_set_max_scan_entries(struct raft_instance *ri,
         ri->ri_max_scan_entries =
             MAX(max_scan_entries,
                 RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES);
+
+    // If ri_max_scan_entries needs to be set lower than MIN_SCAN_ENTRIES
+    // through fault injection
+    if (ri->ri_max_scan_entries > max_scan_entries &&
+        FAULT_INJECT(raft_force_set_max_scan_entries))
+        ri->ri_max_scan_entries = max_scan_entries;
 
     SIMPLE_LOG_MSG(LL_WARN, "max_scan_entries=%zd", ri->ri_max_scan_entries);
 }
