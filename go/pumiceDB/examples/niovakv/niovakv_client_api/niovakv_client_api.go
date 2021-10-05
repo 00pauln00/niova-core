@@ -64,7 +64,7 @@ func (nkvc *ClientAPI) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "write"
 	response := nkvc.doOperation(ReqObj, true)
 	if response == nil {
-		return -1, ""
+		return -1, nil
 	}
 	return response.RespStatus, response.RespValue
 }
@@ -73,7 +73,7 @@ func (nkvc *ClientAPI) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "read"
 	response := nkvc.doOperation(ReqObj, false)
 	if response == nil {
-                return -1, ""
+                return -1, nil
         }
 	return response.RespStatus, response.RespValue
 }
