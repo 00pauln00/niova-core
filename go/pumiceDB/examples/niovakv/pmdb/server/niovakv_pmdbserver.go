@@ -101,7 +101,7 @@ func parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&nso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&nso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "NULL", "log dir")
-	flag.StringVar(&logLevel,"ll","INFO","Log level")
+	flag.StringVar(&logLevel,"ll","Info","Log level")
 	flag.Parse()
 	if nso == nil {
 		err = errors.New("Not able to parse the arguments")
