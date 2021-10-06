@@ -195,7 +195,8 @@ func (handler *niovaKVServerHandler) killSignalHandler() {
 		<-sigs
                 json_data, _ := json.MarshalIndent(handler.HttpHandler.Stat, "", " ")
                 _ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
-                os.Exit(1)
+                log.Info("(NIOVAKV SERVER) Received a kill signal")
+		os.Exit(1)
         }()
 }
 
