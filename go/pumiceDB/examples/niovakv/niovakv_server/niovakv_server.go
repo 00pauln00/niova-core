@@ -45,6 +45,7 @@ type niovaKVServerHandler struct {
 	//Http
 	httpPort       string
 	limit          string
+	needStats      string
 	httpHandlerObj httpserver.HttpServerHandler
 }
 
@@ -63,7 +64,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.agentName, "n", "NULL", "serf agent name")
 	flag.StringVar(&handler.limit, "e", "500", "No of concurrent request")
-
+	flag.StringVar(&handler.needStats, "s", "0", "If need to get request stat")
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.Parse()
@@ -154,6 +155,9 @@ func (handler *niovaKVServerHandler) startHTTPServer() error {
 	handler.httpHandlerObj.Addr = handler.addr
 	handler.httpHandlerObj.Port = handler.httpPort
 	handler.httpHandlerObj.NKVCliObj = handler.nkvClientObj
+	if handler.needStats != "0" {
+		handler.httpHandlerObj.NeedStats = true
+	} 
 	handler.httpHandlerObj.Limit, _ = strconv.Atoi(handler.limit)
 	err := handler.httpHandlerObj.StartServer()
 	return err
