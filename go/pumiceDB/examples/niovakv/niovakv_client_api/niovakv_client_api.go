@@ -160,7 +160,7 @@ comparison:
 			nkvc.servers = nkvc.clientHandler.Agents
 			nkvc.tableLock.Unlock()
 			nkvc.ready = true
-			time.Sleep(nkvc.Timeout)
+			time.Sleep(1 * time.Second)
 		}
 	}
 
