@@ -18,13 +18,42 @@ import (
 type ClientAPI struct {
 	//Exported
 	Timeout time.Duration //No of seconds for a request time out and membership table refresh
+	ServerChooseAlgorithm int
+        UseSpecificServerName string
+
+	//Stat
+        RequestDistribution   map[string]*ServerRequestStat
+        RequestSentCount      int64
+        RequestSuccessCount   int64
+        RequestFailedCount    int64
+        IsStatRequired        bool
+
 	//UnExported
-	servers        []client.Member
-	clientHandler  serfclienthandler.SerfClientHandler
-	serfUpdateLock sync.Mutex
-	tableLock      sync.Mutex
-	ready          bool
+	servers           []client.Member
+	clientHandler     serfclienthandler.SerfClientHandler
+	serfUpdateLock    sync.Mutex
+	tableLock         sync.Mutex
+	requestUpdateLock sync.Mutex
+	ready             bool
+	specificServer    *client.Member
+        roundRobinPtr     int
 }
+
+type ServerRequestStat struct{
+        Count   int64
+        Success int64
+        Failed  int64
+}
+
+func (stat *ServerRequestStat) updateStat(ok bool) {
+        stat.Count += int64(1)
+        if ok{
+                stat.Success += int64(1)
+        } else{
+                stat.Failed += int64(1)
+        }
+}
+
 
 func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
@@ -32,44 +61,78 @@ func getAddr(member *client.Member) (string, string) {
 
 func (nkvc *ClientAPI) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
 	var responseRecvd *niovakvlib.NiovaKVResponse
-	timer := time.Tick(nkvc.Timeout)
+	var toSend client.Member
+	Qtimer := time.Tick(nkvc.Timeout * time.Second)
 time:
 	for {
 		select {
-		case <-timer:
+		case <-Qtimer:
 			log.Error("Request timed at client side")
 			break time
 		default:
 			var err error
-			toSend, err := nkvc.pickServer()
+			var ok bool
+
+			toSend, err = nkvc.pickServer(toSend.Name)
 			if err != nil {
-				return nil
+				break time
 			}
+
 			addr, port := getAddr(&toSend)
 			if write {
 				responseRecvd, err = httpclient.PutRequest(ReqObj, addr, port)
 			} else {
 				responseRecvd, err = httpclient.GetRequest(ReqObj, addr, port)
 			}
+
 			if err == nil {
+                                ok = true
+                        }
+
+                        if nkvc.IsStatRequired {
+                                nkvc.requestUpdateLock.Lock()
+                                if _,present := nkvc.RequestDistribution[toSend.Name]; !present{
+                                        nkvc.RequestDistribution[toSend.Name] = &ServerRequestStat{}
+                                }
+				nkvc.RequestDistribution[toSend.Name].updateStat(ok)
+                                nkvc.requestUpdateLock.Unlock()
+                        }
+
+			if ok {
 				break time
 			}
 			log.Error(err)
 		}
 	}
+
+	if nkvc.IsStatRequired {
+                nkvc.RequestSentCount += int64(1)
+                if responseRecvd!=nil{
+                        nkvc.RequestSuccessCount += int64(1)
+                } else{
+                        nkvc.RequestFailedCount += int64(1)
+                }
+        }
+
 	return responseRecvd
 }
 
 func (nkvc *ClientAPI) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "write"
-	responseRecvd := nkvc.doOperation(ReqObj, true)
-	return responseRecvd.RespStatus, responseRecvd.RespValue
+	response := nkvc.doOperation(ReqObj, true)
+	if response == nil {
+		return -1, nil
+	}
+	return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
 	ReqObj.InputOps = "read"
-	responseRecvd := nkvc.doOperation(ReqObj, false)
-	return responseRecvd.RespStatus, responseRecvd.RespValue
+	response := nkvc.doOperation(ReqObj, false)
+	if response == nil {
+                return -1, nil
+        }
+	return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) serfClientInit(configPath string) error {
@@ -97,14 +160,16 @@ comparison:
 			nkvc.servers = nkvc.clientHandler.Agents
 			nkvc.tableLock.Unlock()
 			nkvc.ready = true
-			time.Sleep(nkvc.Timeout)
+			time.Sleep(1 * time.Second)
 		}
 	}
+
 	return nil
 }
 
 func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
 	var err error
+	nkvc.RequestDistribution = make(map[string]*ServerRequestStat)
 	err = nkvc.serfClientInit(configPath)
 	if err != nil {
 		log.Error("Error while initializing the serf client ", err)
@@ -118,29 +183,66 @@ func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
 	return err
 }
 
-func (nkvc *ClientAPI) pickServer() (client.Member, error) {
-	nkvc.tableLock.Lock()
-	defer nkvc.tableLock.Unlock()
-	//Get random addr and delete if its failed and provide with non-failed one!
-	var randomIndex int
-	for {
-		if len(nkvc.servers) == 0 {
-			log.Error("no alive servers")
-			return client.Member{}, errors.New("No alive servers")
-		}
-		randomIndex = rand.Intn(len(nkvc.servers))
-		if nkvc.servers[randomIndex].Status == "alive" {
-			break
-		}
-		nkvc.servers = removeIndex(nkvc.servers, randomIndex)
-	}
 
-	return nkvc.servers[randomIndex], nil
+func isGossipAvailable(member client.Member) bool{
+	if member.Tags["Hport"] == "" {
+		return false
+	}
+	return true
+}
+
+
+func (nkvc *ClientAPI) pickServer(removeName string) (client.Member, error) {
+        nkvc.tableLock.Lock()
+        defer nkvc.tableLock.Unlock()
+        var serverChoosen *client.Member
+        switch nkvc.ServerChooseAlgorithm {
+                case 0:
+                        //Random
+                        var randomIndex int
+                        for {
+                                if len(nkvc.servers) == 0 {
+                                        log.Error("(CLIENT API MODULE) no alive servers")
+                                        return client.Member{}, errors.New("No alive servers")
+                                }
+                                randomIndex = rand.Intn(len(nkvc.servers))
+                                if removeName!=""{
+                                        log.Info(removeName)
+                                }
+				
+				//Check if node is alive, check if gossip is available and http server of that node is not reported down!
+                                if ((nkvc.servers[randomIndex].Status == "alive") && (isGossipAvailable(nkvc.servers[randomIndex])) && (removeName != nkvc.servers[randomIndex].Name)) {
+                                        break
+                                }
+                                nkvc.servers = removeIndex(nkvc.servers, randomIndex)
+                        }
+
+                        serverChoosen = &nkvc.servers[randomIndex]
+                case 1:
+                        //Round-Robin
+                        nkvc.roundRobinPtr %= len(nkvc.servers)
+                        serverChoosen = &nkvc.servers[nkvc.roundRobinPtr]
+                        nkvc.roundRobinPtr += 1
+                case 2:
+                        //Specific
+                        if nkvc.specificServer != nil{
+                                serverChoosen = nkvc.specificServer
+                                break
+                        }
+                        for _,member := range nkvc.servers{
+                                if member.Name == nkvc.UseSpecificServerName{
+                                        serverChoosen = &member
+                                        break
+                                }
+                        }
+        }
+
+        return *serverChoosen, nil
 }
 
 //Returns raft leader's uuid
 func (nkvc *ClientAPI) GetLeader() string {
-	agent, err := nkvc.pickServer()
+	agent, err := nkvc.pickServer("")
 	if err != nil {
 		return "Servers unreachable"
 	}

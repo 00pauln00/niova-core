@@ -4249,10 +4249,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
          RAFT_ENTRY_MAX_DATA_SIZE(ri))
         raft_server_write_coalesced_entries(ri);
 
-    // rncr.rncr_type was set by the callback!
-    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
-        true : false;
-
     /* Call into the application state machine logic.  There are several
      * outcomes here:
      * 1. SM detects a new write, here it may store sender info for reply
@@ -4266,6 +4262,10 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     int cb_rc = ri->ri_server_sm_request_cb(&rncr);
 
     enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
+
+    // rncr.rncr_type was set by the callback!
+    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
+        true : false;
 
     DBG_RAFT_CLIENT_RPC(log_level, rcm,
                         "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
