@@ -309,7 +309,7 @@ struct raft_net_client_request_handle
     const size_t                          rncr_reply_data_max_size;
     size_t                                rncr_reply_data_size;
     uint64_t                              rncr_msg_id;
-    struct raft_net_sm_write_supplements *rncr_sm_write_supp;
+    struct raft_net_sm_write_supplements  rncr_sm_write_supp;
     uuid_t                                rncr_client_uuid;
 };
 
@@ -630,13 +630,17 @@ raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws);
 
 void
 raft_net_sm_write_supplement_destroy(
-    struct raft_net_sm_write_supplements *rnsws);
+    struct raft_net_sm_write_supplements *rnsws, bool complete_destroy);
 
 int
 raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
                                  void *handle, void (*rnws_comp_cb)(void *),
                                  const char *key, const size_t key_size,
                                  const char *value, const size_t value_size);
+
+int
+raft_net_sm_write_supplement_merge(struct raft_net_sm_write_supplements *dest,
+                                   struct raft_net_sm_write_supplements *src);
 
 // Raft Net User ID API
 static inline void
