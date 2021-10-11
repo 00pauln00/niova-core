@@ -881,7 +881,8 @@ pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
         // Guarantee that the cowr_sa affiliation
         if (uuid_compare(cowr_sa->pcwsa_client_uuid,
                          rncr->rncr_client_uuid) ||
-            raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui))
+            raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui) ||
+            cowr_sa->pcwsa_current_term != rncr->rncr_current_term)
         {
             // Print some details to the log before aborting
             DECLARE_AND_INIT_UUID_STR(cowr_uuid,
@@ -897,7 +898,7 @@ pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
 
             FATAL_IF(
                 1, "unmatching client / cowr (%s, %s) uuid or rncui (%s, %s),"
-                " cowr_sa term: %ld/ rncr term: %ld",
+                " or cowr_sa term: %ld/ rncr term: %ld",
                 cowr_uuid, client_uuid, cowr_rncui_str, rncr_rncui_str,
                 cowr_sa->pcwsa_current_term, rncr->rncr_current_term);
         }
