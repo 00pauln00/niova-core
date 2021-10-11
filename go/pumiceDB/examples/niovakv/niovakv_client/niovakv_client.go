@@ -20,10 +20,12 @@ import (
 
 type niovakv_client struct {
 	config_path, keyPrefix, valuePrefix, logPath, serial, noRequest, resultFile, operation string
+	concurrency									       int
 	respFillerLock                                                                         sync.Mutex
 	operationMetaObjs                                                                      []opData //For filling json data
 	operationsWait                                                                         sync.WaitGroup
-	requestSentCount, failedRequestCount                                                   *int32
+	concurrency_channel								       chan int
+	requestSentCount, failedRequestCount                                                   int64
 	nkvc                                                                                   *clientapi.ClientAPI
 }
 
@@ -61,6 +63,7 @@ func (cli *niovakv_client) getCmdParams() {
 	flag.StringVar(&cli.noRequest, "n", "5", "No of request")
 	flag.StringVar(&cli.resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.StringVar(&cli.operation, "o", "both", "Specify the opeation to perform in batch, leave it empty if both wites and reads are required")
+	flag.IntVar(&cli.concurrency, "p", 10, "No of concurrent execution")
 	flag.Parse()
 }
 
@@ -109,10 +112,12 @@ func (cli *niovakv_client) sendReq(req *niovakvlib.NiovaKV, write bool) {
 		ResponseData: responseMeta,
 		TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
 	}
-	atomic.AddInt32(cli.requestSentCount, 1)
+
+	atomic.AddInt64(&cli.requestSentCount, 1)
 	if (responseMeta.Status == -1) || (!validate) {
-		atomic.AddInt32(cli.failedRequestCount, 1)
+		atomic.AddInt64(&cli.failedRequestCount, int64(1))
 	}
+
 	//Lock the array to place the response
 	cli.respFillerLock.Lock()
 	cli.operationMetaObjs = append(cli.operationMetaObjs, operationObj)
@@ -142,10 +147,11 @@ func (cli *niovakv_client) doWrite_Read(n int, write bool) []opData {
 
 		//Send the request object
 		cli.operationsWait.Add(1)
-		go cli.sendReq(&requestObj, write)
-		if cli.serial == "yes" {
-			cli.operationsWait.Wait()
-		}
+		cli.concurrency_channel <- 1
+		go func(){
+			cli.sendReq(&requestObj, write)
+			_ = <-cli.concurrency_channel
+		}()
 	}
 
 	//Wait till all request are completed
@@ -162,7 +168,7 @@ func (cli *niovakv_client) logSummary(opcode string, n int) {
 	for _, ops := range cli.operationMetaObjs {
 		sum += int(ops.TimeDuration.Milliseconds())
 	}
-	log.Info("Total no of operations and failed count in ", opcode, " : ", *cli.requestSentCount, *cli.failedRequestCount)
+	log.Info("Total no of operations and failed count in ", opcode, " : ", cli.requestSentCount, cli.failedRequestCount)
 	log.Info("Avg ", opcode, " response time : ", sum/n, " milli sec")
 }
 
@@ -175,15 +181,15 @@ func (cli *niovakv_client) write2Json(toJson map[string][]opData) {
 //Print progress
 func (cli *niovakv_client) printProgress(operation string, total_no_request int) {
 	fmt.Println(" ")
-	for atomic.LoadInt32(cli.requestSentCount) != int32(total_no_request) {
+	for cli.requestSentCount != int64(total_no_request) {
 		fmt.Print("\033[G\033[K")
 		fmt.Print("\033[A")
-		fmt.Println(atomic.LoadInt32(cli.requestSentCount), " / ", total_no_request, operation, "request completed")
+		fmt.Println(cli.requestSentCount, " / ", total_no_request, operation, "request completed")
 		time.Sleep(1 * time.Second)
 	}
 	fmt.Print("\033[G\033[K")
 	fmt.Print("\033[A")
-	fmt.Println(atomic.LoadInt32(cli.requestSentCount), " / ", total_no_request, operation, "request completed")
+	fmt.Println(cli.requestSentCount, " / ", total_no_request, operation, "request completed")
 }
 
 func main() {
@@ -194,9 +200,15 @@ func main() {
 	clientObj.getCmdParams()
 	flag.Usage = usage
 	if flag.NFlag() == 0 {
-		usage()
-		os.Exit(-1)
+               usage()
+               os.Exit(-1)
 	}
+
+	//If serial set the concurrency level to 1
+	if clientObj.serial=="y" {
+		clientObj.concurrency = 1
+	}
+	clientObj.concurrency_channel=make(chan int,clientObj.concurrency)
 
 	//Create logger
 	err := PumiceDBCommon.InitLogger(clientObj.logPath)
@@ -224,9 +236,6 @@ func main() {
 	//Decl and init required variables
 	toJson := make(map[string][]opData)
 	var fallthrough_flag bool
-	var sent_count, failed_count int32
-	clientObj.requestSentCount = &sent_count
-	clientObj.failedRequestCount = &failed_count
 
 	switch clientObj.operation {
 	case "both":
@@ -243,12 +252,12 @@ func main() {
 			break
 		}
 
-		sent_count = 0
-		failed_count = 0
+		clientObj.requestSentCount = 0
+		clientObj.failedRequestCount = 0
 		fallthrough
 
 	case "read":
-		go clientObj.printProgress("read", n) 
+		go clientObj.printProgress("read", n)
 		toJson["read"]=clientObj.doWrite_Read(n, false)
 		clientObj.write2Json(toJson)
 

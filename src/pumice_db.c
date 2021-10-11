@@ -484,6 +484,23 @@ pmdb_cowr_sub_app_put(struct pmdb_cowr_sub_app *sa,
     RT_PUT(pmdb_cowr_sub_app_tree, &pmdb_cowr_sub_apps, sa);
 }
 
+static void
+pmdb_cowr_sub_app_release_all(void)
+{
+    struct pmdb_cowr_sub_app *sa =
+        REF_TREE_MIN(pmdb_cowr_sub_app_tree, &pmdb_cowr_sub_apps,
+                     pmdb_cowr_sub_app, pcwsa_rtentry);
+
+    while (sa)
+    {
+        pmdb_cowr_sub_app_put(sa, __func__, __LINE__);
+        pmdb_cowr_sub_app_put(sa, __func__, __LINE__);
+
+        sa = REF_TREE_MIN(pmdb_cowr_sub_app_tree, &pmdb_cowr_sub_apps,
+                          pmdb_cowr_sub_app, pcwsa_rtentry);
+    }
+}
+
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
                          const char *caller_func, const int caller_lineno)
@@ -812,6 +829,63 @@ pmdb_init_net_client_request_from_obj(
         rncr, pmdb_obj->pmdb_obj_client_uuid, pmdb_obj->pmdb_obj_msg_id);
 }
 
+static raft_server_sm_apply_cb_t
+pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
+    const struct pmdb_msg *pmdb_req,
+    struct raft_net_client_request_handle *rncr)
+{
+    NIOVA_ASSERT(pmdb_req && rncr);
+
+    if (!rncr->rncr_is_leader)
+    {
+        /* Ensure the tree is empty.  If this peer was previously a leader
+         * remove any / all stale entries.
+         */
+        pmdb_cowr_sub_app_release_all();
+        return;
+    }
+
+    // Else 'leader'
+    /* We use an RB_TREE lookup here since the pointer cannot easily be
+     * stored elsewhere.  (ie the rncr presented here is not the one used
+     * in 'write').
+     */
+    struct pmdb_cowr_sub_app *cowr_sa =
+        pmdb_cowr_sub_app_lookup(&pmdb_req->pmdbrm_user_id, __func__,
+                                 __LINE__);
+
+    if (cowr_sa) // release ref on the rncui from coalesced write RB tree
+    {
+        const struct raft_net_client_user_id *rncui =
+            &pmdb_req->pmdbrm_user_id;
+
+        // Guarantee that the cowr_sa affiliation
+        if (uuid_compare(cowr_sa->pcwsa_client_uuid,
+                         rncr->rncr_client_uuid) ||
+            raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui))
+        {
+            // Print some details to the log before aborting
+            DECLARE_AND_INIT_UUID_STR(cowr_uuid,
+                                      cowr_sa->pcwsa_client_uuid);
+            DECLARE_AND_INIT_UUID_STR(client_uuid, rncr->rncr_client_uuid);
+
+            char cowr_rncui_str[129];
+            char rncr_rncui_str[129];
+
+            raft_net_client_user_id_to_string(&cowr_sa->pcwsa_rncui,
+                                              cowr_rncui_str, 129);
+            raft_net_client_user_id_to_string(rncui, rncr_rncui_str, 129);
+
+            FATAL_IF(
+                1, "unmatching client / cowr (%s, %s) uuid or rncui (%s, %s)",
+                cowr_uuid, client_uuid, cowr_rncui_str, rncr_rncui_str);
+        }
+
+        pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
+        pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
+    }
+}
+
 /**
  * pmdb_sm_handler_pmdb_sm_apply - ri_server_sm_request apply cb for pumiceDB.
  *   This function has 2 primary roles:  1) updating (if leader), or creating
@@ -878,25 +952,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
         pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
     }
 
-    /* We use an RB_TREE lookup here since the pointer cannot easily be stored
-     * elsewhere.  (ie the rncr presented here is not the one used in 'write').
-     */
-    struct pmdb_cowr_sub_app *cowr_sa =
-        pmdb_cowr_sub_app_lookup(&pmdb_req->pmdbrm_user_id, __func__,
-                                 __LINE__);
-
-    if (cowr_sa) // release the ref on the rncui from coalesced write RB tree
-    {
-        // Guarantee that the cowr_sa affiliation
-        NIOVA_ASSERT(
-            !uuid_compare(cowr_sa->pcwsa_client_uuid, rncr->rncr_client_uuid));
-
-        NIOVA_ASSERT(
-            !raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui));
-
-        pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
-        pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
-    }
+    pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
 
     return rc;
 }

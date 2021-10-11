@@ -234,10 +234,14 @@ struct {                                 \
 #define RT_NEXT_SERIALIZED_NOREF(name, x)       \
     RB_NEXT(__RT_##name, y)
 
+#define RT_REMOVE_IGNORE_REF_LOCKED(name, head, elm)    \
+    RB_REMOVE(_RT_##name, &(head)->rt_head, elm);
+
 #define RT_FOREACH_SERIALIZED              RT_FOREACH_LOCKED
 #define RT_FOREACH_SAFE_SERIALIZED         RT_FOREACH_SAFE_LOCKED
 #define RT_FOREACH_REVERSE_SERIALIZED      RT_FOREACH_REVERSE_LOCKED
 #define RT_FOREACH_REVERSE_SAFE_SERIALIZED RT_FOREACH_REVERSE_SAFE_LOCKED
+#define RT_REMOVE_IGNORE_REF_SERIALIZED    RT_REMOVE_IGNORE_REF_LOCKED
 
 #define RT_EMPTY(head) RB_EMPTY(&(head)->rt_head)
 #define RT_INIT(head) RB_INIT(&(head)->rt_head)
