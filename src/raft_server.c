@@ -2028,7 +2028,7 @@ raft_server_becomes_follower(struct raft_instance *ri,
      * supplement for them.
      */
     if (ri->ri_coalesced_wr)
-        raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws, true);
+        raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
 
     /* Generally, in raft we become a follower when a higher term is observed.
      * However when 2 or more peers become candidates for the same term, the
@@ -2556,7 +2556,7 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
         ri->ri_coalesced_wr->rcwi_nentries, RAFT_WR_ENTRY_OPT_NONE,
         &ri->ri_coalesced_wr->rcwi_ws);
 
-    raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws, true);
+    raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
 
     // Reinit the rec_co_wr_info after writing coalesced entried to backend
     size_t co_wr_info_size = sizeof(struct raft_instance_co_wr) +
@@ -4304,8 +4304,10 @@ raft_server_client_recv_handler(struct raft_instance *ri,
          *       of whether coalescing is enabling.  If disabled,
          *       raft_server_write_coalesce_entry() will go directly to
          *       raft_server_leader_write_new_entry()
+         * Merge the rncr write supplement into coalesced write supplement.
+         * rncr_sm_write_supp will be destroyed once it is merged into
+         * ri_coalesced_wr->rcwi_ws.
          */
-        /* merge the rncr write supplement into coalesced write supplement. */
         raft_net_sm_write_supplement_merge(&ri->ri_coalesced_wr->rcwi_ws,
                                            &rncr.rncr_sm_write_supp);
         raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
@@ -4319,7 +4321,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     }
 
 out:
-    raft_net_sm_write_supplement_destroy(&rncr.rncr_sm_write_supp, false);
     if (csn)
         ctl_svc_node_put(csn);
 
@@ -4698,13 +4699,11 @@ raft_server_state_machine_apply(struct raft_instance *ri)
              raft_net_client_request_handle_has_reply_info(rncr_ptr))
             raft_server_client_reply_init(
                 ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
-         raft_net_sm_write_supplement_destroy(&rncr_ptr->rncr_sm_write_supp,
-                                              false);
     }
 
     // All rncr entries were using single ws structure.
     // The destructor may issue a callback into the SM.
-    raft_net_sm_write_supplement_destroy(&coalesced_ws, true);
+    raft_net_sm_write_supplement_destroy(&coalesced_ws);
 
     if (!reh.reh_leader_change_marker && !reh.reh_data_size)
         DBG_RAFT_ENTRY(LL_WARN, &reh, "application entry contains no data!");

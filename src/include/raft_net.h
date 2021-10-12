@@ -630,7 +630,7 @@ raft_net_sm_write_supplement_init(struct raft_net_sm_write_supplements *rnsws);
 
 void
 raft_net_sm_write_supplement_destroy(
-    struct raft_net_sm_write_supplements *rnsws, bool complete_destroy);
+    struct raft_net_sm_write_supplements *rnsws);
 
 int
 raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,

@@ -2136,18 +2136,21 @@ raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
 }
 
 static void
-raft_net_write_supp_destroy(struct raft_net_wr_supp *ws, bool complete_destroy)
+raft_net_write_supp_destroy(struct raft_net_wr_supp *ws)
 {
     if (!ws || !ws->rnws_nkv)
         return;
 
-    if (complete_destroy)
+    bool skip_cb = false;
+
+    // nkv would be zero if ws was merged in coalesced buffer ws..
+    if (!ws->rnws_nkv)
+        skip_cb = true;
+
+    for (size_t i = 0; i < ws->rnws_nkv; i++)
     {
-        for (size_t i = 0; i < ws->rnws_nkv; i++)
-        {
-            niova_free(ws->rnws_keys[i]);
-            niova_free(ws->rnws_values[i]);
-        }
+        niova_free(ws->rnws_keys[i]);
+        niova_free(ws->rnws_values[i]);
     }
 
     ws->rnws_nkv = 0;
@@ -2157,8 +2160,30 @@ raft_net_write_supp_destroy(struct raft_net_wr_supp *ws, bool complete_destroy)
     niova_free(ws->rnws_key_sizes);
     niova_free(ws->rnws_value_sizes);
 
-    if (complete_destroy && ws->rnws_comp_cb)
+    if (!skip_cb && ws->rnws_comp_cb)
         ws->rnws_comp_cb(ws->rnws_handle);
+}
+
+static int
+raft_net_write_supp_array_alloc(struct raft_net_wr_supp *ws, size_t count)
+{
+    int rc = niova_reallocarray(ws->rnws_keys, char *, count + 1UL);
+    if (rc)
+        return rc;
+
+    rc = niova_reallocarray(ws->rnws_key_sizes, size_t, count + 1UL);
+    if (rc)
+        return rc;
+
+    rc = niova_reallocarray(ws->rnws_values, char *, count + 1UL);
+    if (rc)
+        return rc;
+
+    rc = niova_reallocarray(ws->rnws_value_sizes, size_t, count + 1UL);
+    if (rc)
+        return rc;
+
+    return 0;
 }
 
 static int
@@ -2176,19 +2201,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 
     size_t n = ws->rnws_nkv;
 
-    int rc = niova_reallocarray(ws->rnws_keys, char *, n + 1UL);
-    if (rc)
-        return rc;
-
-    rc = niova_reallocarray(ws->rnws_key_sizes, size_t, n + 1UL);
-    if (rc)
-        return rc;
-
-    rc = niova_reallocarray(ws->rnws_values, char *, n + 1UL);
-    if (rc)
-        return rc;
-
-    rc = niova_reallocarray(ws->rnws_value_sizes, size_t, n + 1UL);
+    int rc = raft_net_write_supp_array_alloc(ws, n);
     if (rc)
         return rc;
 
@@ -2227,37 +2240,36 @@ raft_net_sm_write_supplement_merge(struct raft_net_sm_write_supplements *dest,
 
     struct raft_net_wr_supp *dest_ws = raft_net_write_supp_get(dest,
                                         (void *)src->rnsws_ws->rnws_handle);
-    size_t n = dest_ws->rnws_nkv;
 
-    int rc = niova_reallocarray(dest_ws->rnws_keys, char *, n + 1UL);
-    if (rc)
-        return rc;
-
-    rc = niova_reallocarray(dest_ws->rnws_key_sizes, size_t, n + 1UL);
-    if (rc)
-        return rc;
-
-    rc = niova_reallocarray(dest_ws->rnws_values, char *, n + 1UL);
-    if (rc)
-        return rc;
-
-    rc = niova_reallocarray(dest_ws->rnws_value_sizes, size_t, n + 1UL);
+    int rc = raft_net_write_supp_array_alloc(dest_ws, dest_ws->rnws_nkv);
     if (rc)
         return rc;
 
     struct raft_net_wr_supp *src_ws = src->rnsws_ws;
 
-    dest_ws->rnws_keys[n] = src_ws->rnws_keys[0];
-	dest_ws->rnws_values[n] = src_ws->rnws_values[0];
-    dest_ws->rnws_key_sizes[n] = src_ws->rnws_key_sizes[0];
-    dest_ws->rnws_value_sizes[n] = src_ws->rnws_value_sizes[0];
-    dest_ws->rnws_nkv++;
-    SIMPLE_LOG_MSG(LL_DEBUG, "Merging ws : nkv: %ld, key: %s, value: %s, key_size: %ld,"
-                            " value_size: %ld", n, dest_ws->rnws_keys[n],
+
+    size_t n;
+    for (size_t i = 0; i < src_ws->rnws_nkv; i++)
+    {
+        n = dest_ws->rnws_nkv;
+        dest_ws->rnws_keys[n] = src_ws->rnws_keys[i];
+	    dest_ws->rnws_values[n] = src_ws->rnws_values[i];
+        dest_ws->rnws_key_sizes[n] = src_ws->rnws_key_sizes[i];
+        dest_ws->rnws_value_sizes[n] = src_ws->rnws_value_sizes[i];
+        dest_ws->rnws_nkv++;
+        src_ws->rnws_nkv--;
+        SIMPLE_LOG_MSG(LL_DEBUG, "Merging ws :dest  nkv: %ld, key: %s, value: "
+                            "%s, key_size: %ld, value_size: %ld",
+                            n, dest_ws->rnws_keys[n],
                             dest_ws->rnws_values[n], dest_ws->rnws_key_sizes[n],
                             dest_ws->rnws_value_sizes[n]);
+    }
 
-   return 0;
+    NIOVA_ASSERT(!src_ws->rnws_nkv);
+
+    // Once all the src_ws entries are merged into dest_ws, destroy the src
+    raft_net_sm_write_supplement_destroy(src);
+    return 0;
 }
 
 int
@@ -2362,14 +2374,13 @@ raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
 
 void
 raft_net_sm_write_supplement_destroy(
-    struct raft_net_sm_write_supplements *rnsws,
-    bool complete_destroy)
+    struct raft_net_sm_write_supplements *rnsws)
 {
     if (!rnsws || !rnsws->rnsws_nitems)
         return;
 
     for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
-        raft_net_write_supp_destroy(&rnsws->rnsws_ws[i], complete_destroy);
+        raft_net_write_supp_destroy(&rnsws->rnsws_ws[i]);
 
     niova_free(rnsws->rnsws_ws);
 
