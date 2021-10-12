@@ -463,6 +463,8 @@ pmdb_cowr_sub_app_construct(const struct pmdb_cowr_sub_app *in, void *arg)
 
     uuid_copy(sa->pcwsa_client_uuid, in->pcwsa_client_uuid);
 
+    sa->pcwsa_current_term = in->pcwsa_current_term;
+
     return sa;
 }
 
