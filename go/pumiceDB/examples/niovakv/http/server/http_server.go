@@ -3,13 +3,14 @@ package httpserver
 import (
 	"bytes"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"niovakv/niovakvlib"
 	"niovakv/niovakvpmdbclient"
 	"time"
-
+	"sync/atomic"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,16 +20,29 @@ type HttpServerHandler struct {
 	Port      string
 	NKVCliObj *niovakvpmdbclient.NiovaKVClient
 	Limit     int
+
 	//Non-exported
 	server  http.Server
 	rncui   string
 	limiter chan int
+
+	//For stats
+	NeedStats bool
+	Stat      HttpServerStat
 }
 
-func (h HttpServerHandler) process(r *http.Request) ([]byte, error) {
+type HttpServerStat struct {
+        GetCount int64
+        PutCount int64
+        GetSuccessCount int64
+        PutSuccessCount int64
+}
+
+func (h HttpServerHandler) process(r *http.Request) ([]byte, error,bool) {
 	var requestobj niovakvlib.NiovaKV
 	var resp niovakvlib.NiovaKVResponse
 	var response bytes.Buffer
+	var success bool
 	var err error
 
 	reqBody, err := ioutil.ReadAll(r.Body)
@@ -52,24 +66,40 @@ func (h HttpServerHandler) process(r *http.Request) ([]byte, error) {
 		} else {
 			resp.RespStatus = 0
 			resp.RespValue = result
+			success = true
 		}
 	}
 	enc := gob.NewEncoder(&response)
 	err = enc.Encode(resp)
-	return response.Bytes(), err
+	return response.Bytes(), err, success
 }
 
 func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
+	if (r.URL.Path == "/stat") && (h.NeedStats) {
+		stat, err := json.MarshalIndent(h.Stat, "", " ")
+		if err != nil {
+                        log.Error("(HTTP Server) Writing to http response writer failed :", err)
+                }
+		_, err = fmt.Fprintf(w, "%s", string(stat))
+                if err != nil {
+			log.Error("(HTTP Server) Writing to http response writer failed :", err)
+                }
+		return
+	}
+
 	//Blocks if more no specified no of request is already in the queue
 	h.limiter <- 1
 	defer func() {
 		<-h.limiter
 	}()
+	var success bool
 	switch r.Method {
 	case "GET":
 		fallthrough
 	case "PUT":
-		respString, err := h.process(r)
+		respString, err, state := h.process(r)
+		success = state
 		if err == nil {
 			_, errRes := fmt.Fprintf(w, "%s", string(respString))
 			if errRes != nil {
@@ -81,6 +111,22 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
+
+	if h.NeedStats{
+		switch r.Method{
+		case "GET":
+			atomic.AddInt64(&h.Stat.GetCount,int64(1))
+			if success{
+				atomic.AddInt64(&h.Stat.GetSuccessCount,int64(1))
+			}
+		case "PUT":
+                        atomic.AddInt64(&h.Stat.PutCount,int64(1))
+                        if success{
+                                atomic.AddInt64(&h.Stat.PutSuccessCount,int64(1))
+                        }
+		}
+	}
+
 }
 
 //Blocking func

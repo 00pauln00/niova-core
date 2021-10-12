@@ -91,9 +91,3 @@ jobs:
          name: ${{ steps.prepare_artifact_filename.outputs.ARTIFACT_NAME }}
          path: /home/runner/work/niovad/niovad/holon_log
       if: failure()
-
-    - name: Build the Docker Image
-      run: cd /home/runner/work/niovad/niovad/build_dir && docker build -t niova-holon:latest .
-      if: success()
-
-    # TODO push the Docker image with holon repo and niova binaries on github registry.

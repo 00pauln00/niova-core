@@ -19,10 +19,12 @@ import (
 import "C"
 
 var seqno = 0
-var raftUuid string
-var peerUuid string
-var logDir string
-
+var (
+	raftUuid string
+	peerUuid string
+	logDir string
+	logLevel string
+)
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
@@ -36,7 +38,12 @@ func main() {
 
 	flag.Usage = usage
 	flag.Parse()
-
+	switch logLevel{
+	case "Info":
+		log.SetLevel(log.InfoLevel)
+	case "Trace":
+		log.SetLevel(log.TraceLevel)
+	}
 	if flag.NFlag() == 0 {
 		usage()
 		os.Exit(-1)
@@ -94,7 +101,7 @@ func parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&nso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&nso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "NULL", "log dir")
-
+	flag.StringVar(&logLevel,"ll","Info","Log level")
 	flag.Parse()
 	if nso == nil {
 		err = errors.New("Not able to parse the arguments")
@@ -115,7 +122,7 @@ type NiovaKVServer struct {
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) {
 
-	log.Info("NiovaCtlPlane server: Apply request received")
+	log.Trace("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
 	applyNiovaKV := &niovakvlib.NiovaKV{}
@@ -126,7 +133,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		return
 	}
 
-	log.Info("Key passed by client: ", applyNiovaKV.InputKey)
+	log.Trace("Key passed by client: ", applyNiovaKV.InputKey)
 
 	// length of key.
 	keyLength := len(applyNiovaKV.InputKey)
@@ -136,7 +143,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Length of value.
 	valLen := len(byteToStr)
 
-	log.Info("Write the KeyValue by calling PmdbWriteKV")
+	log.Trace("Write the KeyValue by calling PmdbWriteKV")
 	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
@@ -146,7 +153,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
-	log.Info("NiovaCtlPlane server: Read request received")
+	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
 	reqStruct := &niovakvlib.NiovaKV{}
@@ -157,10 +164,10 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Info("Key passed by client: ", reqStruct.InputKey)
+	log.Trace("Key passed by client: ", reqStruct.InputKey)
 
 	keyLen := len(reqStruct.InputKey)
-	log.Info("Key length: ", keyLen)
+	log.Trace("Key length: ", keyLen)
 
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.InputKey,
@@ -173,7 +180,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	if readErr == nil {
 		valType = readResult
 		inputVal := string(valType)
-		log.Info("Input value after read request:", inputVal)
+		log.Trace("Input value after read request:", inputVal)
 
 		resultReq := niovakvlib.NiovaKV{
 			InputKey:   reqStruct.InputKey,
@@ -190,7 +197,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Error(readErr)
 	}
 
-	log.Info("Reply size: ", replySize)
+	log.Trace("Reply size: ", replySize)
 
 	return replySize
 }
