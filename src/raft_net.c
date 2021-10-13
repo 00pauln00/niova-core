@@ -2237,35 +2237,37 @@ int
 raft_net_sm_write_supplement_merge(struct raft_net_sm_write_supplements *dest,
                                    struct raft_net_sm_write_supplements *src)
 {
-
-    struct raft_net_wr_supp *dest_ws = raft_net_write_supp_get(dest,
-                                        (void *)src->rnsws_ws->rnws_handle);
-
-    int rc = raft_net_write_supp_array_alloc(dest_ws, dest_ws->rnws_nkv);
-    if (rc)
-        return rc;
-
-    struct raft_net_wr_supp *src_ws = src->rnsws_ws;
-
-
-    size_t n;
-    for (size_t i = 0; i < src_ws->rnws_nkv; i++)
+    for (size_t i = 0; i < src->rnsws_nitems; i ++)
     {
-        n = dest_ws->rnws_nkv;
-        dest_ws->rnws_keys[n] = src_ws->rnws_keys[i];
-	    dest_ws->rnws_values[n] = src_ws->rnws_values[i];
-        dest_ws->rnws_key_sizes[n] = src_ws->rnws_key_sizes[i];
-        dest_ws->rnws_value_sizes[n] = src_ws->rnws_value_sizes[i];
-        dest_ws->rnws_nkv++;
-        src_ws->rnws_nkv--;
-        SIMPLE_LOG_MSG(LL_DEBUG, "Merging ws :dest  nkv: %ld, key: %s, value: "
+        struct raft_net_wr_supp *dest_ws = raft_net_write_supp_get(dest,
+                                        (void *)src->rnsws_ws[i].rnws_handle);
+
+        int rc = raft_net_write_supp_array_alloc(dest_ws, dest_ws->rnws_nkv);
+        if (rc)
+           return rc;
+
+        struct raft_net_wr_supp *src_ws = &src->rnsws_ws[i];
+
+        size_t n;
+        for (size_t k = 0; k < src_ws->rnws_nkv; k++)
+        {
+            // Copying only the pointers for key and value
+            n = dest_ws->rnws_nkv;
+            dest_ws->rnws_keys[n] = src_ws->rnws_keys[k];
+	        dest_ws->rnws_values[n] = src_ws->rnws_values[k];
+            dest_ws->rnws_key_sizes[n] = src_ws->rnws_key_sizes[k];
+            dest_ws->rnws_value_sizes[n] = src_ws->rnws_value_sizes[k];
+            dest_ws->rnws_nkv++;
+            src_ws->rnws_nkv--;
+            SIMPLE_LOG_MSG(LL_DEBUG, "Merging ws :dest  nkv: %ld, key: %s, value: "
                             "%s, key_size: %ld, value_size: %ld",
                             n, dest_ws->rnws_keys[n],
                             dest_ws->rnws_values[n], dest_ws->rnws_key_sizes[n],
                             dest_ws->rnws_value_sizes[n]);
-    }
+        }
 
-    NIOVA_ASSERT(!src_ws->rnws_nkv);
+        NIOVA_ASSERT(!src_ws->rnws_nkv);
+    }
 
     // Once all the src_ws entries are merged into dest_ws, destroy the src
     raft_net_sm_write_supplement_destroy(src);
