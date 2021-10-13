@@ -53,6 +53,9 @@ jobs:
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
 
+    - name: list binaries
+      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
+
     - name: Copy Docker file
       run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
 
