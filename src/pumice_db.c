@@ -35,6 +35,7 @@ struct pmdb_cowr_sub_app
 {
     struct raft_net_client_user_id    pcwsa_rncui; // Must be the first memb!
     uuid_t                            pcwsa_client_uuid; // client UUID
+    int64_t                           pcwsa_current_term;
     REF_TREE_ENTRY(pmdb_cowr_sub_app) pcwsa_rtentry;
 };
 
@@ -51,6 +52,8 @@ REF_TREE_GENERATE(pmdb_cowr_sub_app_tree, pmdb_cowr_sub_app, pcwsa_rtentry,
                   pmdb_cowr_sub_app_cmp);
 
 static struct pmdb_cowr_sub_app_tree pmdb_cowr_sub_apps;
+static int64_t pmdb_cowr_tree_term = -1;  // All the entries in cowr RB tree should
+                                     // be from same term.
 
 struct pmdb_obj_extras_v0
 {
@@ -460,6 +463,8 @@ pmdb_cowr_sub_app_construct(const struct pmdb_cowr_sub_app *in, void *arg)
 
     uuid_copy(sa->pcwsa_client_uuid, in->pcwsa_client_uuid);
 
+    sa->pcwsa_current_term = in->pcwsa_current_term;
+
     return sa;
 }
 
@@ -499,6 +504,7 @@ pmdb_cowr_sub_app_release_all(void)
         sa = REF_TREE_MIN(pmdb_cowr_sub_app_tree, &pmdb_cowr_sub_apps,
                           pmdb_cowr_sub_app, pcwsa_rtentry);
     }
+    pmdb_cowr_tree_term = -1;
 }
 
 static struct pmdb_cowr_sub_app *
@@ -519,7 +525,8 @@ pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
 
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
-                      const uuid_t client_uuid, int *ret_error,
+                      const uuid_t client_uuid, const int current_term,
+                      int *ret_error,
                       const char *caller_func, const int caller_lineno)
 {
     NIOVA_ASSERT(rncui);
@@ -527,7 +534,12 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
     struct pmdb_cowr_sub_app cowr = {0};
     raft_net_client_user_id_copy(&cowr.pcwsa_rncui, rncui);
     uuid_copy(cowr.pcwsa_client_uuid, client_uuid);
+    cowr.pcwsa_current_term = current_term;
     int error = 0;
+
+    // If there are any stale entries in cowr RB tree, release them all.
+    if (pmdb_cowr_tree_term != current_term)
+        pmdb_cowr_sub_app_release_all();
 
     struct pmdb_cowr_sub_app *subapp = RT_GET_ADD(pmdb_cowr_sub_app_tree,
                                                   &pmdb_cowr_sub_apps, &cowr,
@@ -564,6 +576,11 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
     }
 
     PMDB_STR_DEBUG(LL_DEBUG, &subapp->pcwsa_rncui, "RNCUI added successfully");
+    NIOVA_ASSERT(pmdb_cowr_tree_term == -1 || pmdb_cowr_tree_term == current_term);
+
+    if (pmdb_cowr_tree_term == -1)
+        pmdb_cowr_tree_term = current_term;
+
     return subapp;
 }
 
@@ -660,7 +677,9 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             int error = 0;
             struct pmdb_cowr_sub_app *cowr_sa =
                 pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
-                                      rncr->rncr_client_uuid, &error, __func__,
+                                      rncr->rncr_client_uuid,
+                                      rncr->rncr_current_term,
+                                      &error, __func__,
                                       __LINE__);
             if (!cowr_sa)
                 raft_client_net_request_handle_error_set(
@@ -845,6 +864,8 @@ pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
         return;
     }
 
+    NIOVA_ASSERT(pmdb_cowr_tree_term == -1 || pmdb_cowr_tree_term == rncr->rncr_current_term);
+
     // Else 'leader'
     /* We use an RB_TREE lookup here since the pointer cannot easily be
      * stored elsewhere.  (ie the rncr presented here is not the one used
@@ -862,7 +883,8 @@ pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
         // Guarantee that the cowr_sa affiliation
         if (uuid_compare(cowr_sa->pcwsa_client_uuid,
                          rncr->rncr_client_uuid) ||
-            raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui))
+            raft_net_client_user_id_cmp(&cowr_sa->pcwsa_rncui, rncui) ||
+            cowr_sa->pcwsa_current_term != rncr->rncr_current_term)
         {
             // Print some details to the log before aborting
             DECLARE_AND_INIT_UUID_STR(cowr_uuid,
@@ -877,8 +899,10 @@ pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
             raft_net_client_user_id_to_string(rncui, rncr_rncui_str, 129);
 
             FATAL_IF(
-                1, "unmatching client / cowr (%s, %s) uuid or rncui (%s, %s)",
-                cowr_uuid, client_uuid, cowr_rncui_str, rncr_rncui_str);
+                1, "unmatching client / cowr (%s, %s) uuid or rncui (%s, %s),"
+                " or cowr_sa term: %ld/ rncr term: %ld",
+                cowr_uuid, client_uuid, cowr_rncui_str, rncr_rncui_str,
+                cowr_sa->pcwsa_current_term, rncr->rncr_current_term);
         }
 
         pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
