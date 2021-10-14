@@ -2371,7 +2371,7 @@ raft_server_refresh_follower_prev_log_term(struct raft_instance *ri,
 
     NIOVA_ASSERT(rfi->rfi_next_idx >= 0);
 
-    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
+//    const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
 
     const raft_entry_idx_t my_raft_idx =
         raft_server_get_current_raft_entry_index(ri, RI_NEHDR_UNSYNC);
