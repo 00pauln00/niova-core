@@ -315,6 +315,7 @@ func getInput(keyText string) ([]string, error) {
 	key := bufio.NewReader(os.Stdin)
 
 	keyText, _ = key.ReadString('\n')
+	fmt.Println("\nkeyText:", keyText)
 
 	// convert CRLF to LF
 	keyText = strings.Replace(keyText, "\n", "", -1)
@@ -327,7 +328,7 @@ func getInput(keyText string) ([]string, error) {
 	for i := range input {
 		input[i] = strings.TrimSpace(input[i])
 	}
-	fmt.Println("\nIn getInput , input:",input)
+	fmt.Println("In getInput , input:",input)
 
 	if len(input) == 1 {
 		return nil, errors.New("delimiter not found")
