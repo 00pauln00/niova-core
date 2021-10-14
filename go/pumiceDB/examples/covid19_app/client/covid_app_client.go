@@ -60,10 +60,12 @@ func main() {
 	if clientObj == nil {
 		return
 	}
-
+	fmt.Println("client obj:",clientObj)
 	//Start the client
 	clientObj.Start()
 	defer clientObj.Stop()
+
+	fmt.Println("Client process started")
 
 	fmt.Println("=================Format to pass write-read entries================")
 	fmt.Println("Single write format ==> WriteOne#rncui#key#Val0#Val1#Val2#outfile_name")
