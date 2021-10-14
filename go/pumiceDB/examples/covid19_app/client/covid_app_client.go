@@ -81,9 +81,11 @@ func main() {
 
 		//Split the inout string.
 		input, err := getInput(str)
+		fmt.Println("input: ",input)
 		fmt.Printf("err: %v\n", err)
 
 		ops := input[0]
+		fmt.Println("ops:",ops)
 
 		//Create and Initialize map for write-read oufile.
 		rwMap = make(map[string]map[string]string)
@@ -325,6 +327,7 @@ func getInput(keyText string) ([]string, error) {
 	for i := range input {
 		input[i] = strings.TrimSpace(input[i])
 	}
+	fmt.Println("\nIn getInput , input:",input)
 
 	if len(input) == 1 {
 		return nil, errors.New("delimiter not found")
