@@ -2361,7 +2361,7 @@ raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
 
     const size_t new_total = dest->rnsws_nitems + src->rnsws_nitems;
 
-    // Prevent raft_net_write_supp_get() from asserting on RAFT_NET_WR_SUPP_MAX.
+    // Prevent raft_net_write_supp_new() from asserting on RAFT_NET_WR_SUPP_MAX.
     if (new_total > RAFT_NET_WR_SUPP_MAX)
         return -E2BIG;
 
