@@ -27,6 +27,7 @@
 #include "regex_defines.h"
 #include "udp.h"
 #include "util_thread.h"
+#include "fault_inject.h"
 
 #define DEFAULT_BULK_CREDITS 32
 #define DEFAULT_INCOMING_CREDITS 32
@@ -230,6 +231,12 @@ raft_net_set_max_scan_entries(struct raft_instance *ri,
             MAX(max_scan_entries,
                 RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES);
 
+    // If ri_max_scan_entries needs to be set lower than MIN_SCAN_ENTRIES
+    // through fault injection
+    if (ri->ri_max_scan_entries > max_scan_entries &&
+        FAULT_INJECT(raft_force_set_max_scan_entries))
+        ri->ri_max_scan_entries = max_scan_entries;
+
     SIMPLE_LOG_MSG(LL_WARN, "max_scan_entries=%zd", ri->ri_max_scan_entries);
 }
 
@@ -261,8 +268,10 @@ raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor)
 {
     NIOVA_ASSERT(ri);
 
-    ri->ri_log_reap_factor = MIN(log_reap_factor,
-                                 RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX);
+    ri->ri_log_reap_factor =
+        MIN(MAX(log_reap_factor,
+                RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MIN),
+            RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX);
 
     SIMPLE_LOG_MSG(LL_WARN, "log_reap_factor=%zu", ri->ri_log_reap_factor);
 }
@@ -274,7 +283,7 @@ raft_net_lreg_set_log_reap_factor(struct raft_instance *ri,
     if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
         return -EINVAL;
 
-    size_t lrf = RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR;
+    size_t lrf = RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_DEFAULT;
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
@@ -313,7 +322,7 @@ raft_net_lreg_set_num_checkpoints(struct raft_instance *ri,
     if (!ri || !lv || LREG_VALUE_TO_REQ_TYPE_IN(lv) != LREG_VAL_TYPE_STRING)
         return -EINVAL;
 
-    size_t nchkpt = RAFT_INSTANCE_PERSISTENT_APP_CHKPT;
+    size_t nchkpt = RAFT_INSTANCE_PERSISTENT_APP_CHKPT_DEFAULT;
 
     if (strncmp(LREG_VALUE_TO_IN_STR(lv), "default", 7))
     {
