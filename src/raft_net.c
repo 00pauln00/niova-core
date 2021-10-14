@@ -2102,19 +2102,16 @@ raft_net_udp_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 /**
- * raft_net_write_supp_get - looks up a supplment pointer base on the value
- *    of the provided handle.  Note, that a NULL handle is permitted.
+ * raft_net_write_supp_new - allocate a new raft_net_wr_supp and attach it to
+ *   the raft_net_sm_write_supplements.
  */
 static struct raft_net_wr_supp *
-raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
+raft_net_write_supp_new(struct raft_net_sm_write_supplements *rnsws,
                         void *handle)
 {
     NIOVA_ASSERT(rnsws->rnsws_nitems < RAFT_NET_WR_SUPP_MAX);
 
-    for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
-        if (handle == rnsws->rnsws_ws[i].rnws_handle)
-            return &rnsws->rnsws_ws[i];
-
+    // Don't add more items if we're at the max
     if (rnsws->rnsws_nitems == RAFT_NET_WR_SUPP_MAX)
         return NULL;
 
@@ -2296,17 +2293,20 @@ raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
                                  const char *value, const size_t value_size)
 {
     if (!rnsws || !key || !key_size)
-	{
-		SIMPLE_LOG_MSG(LL_WARN, "Return error EINVAL");
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "Return error EINVAL");
         return -EINVAL;
-	}
+    }
 
-    struct raft_net_wr_supp *ws = raft_net_write_supp_get(rnsws, handle);
+    if (rnsws->rnsws_nitems >= RAFT_NET_WR_SUPP_MAX)
+        return -ENOSPC;
+
+    struct raft_net_wr_supp *ws = raft_net_write_supp_new(rnsws, handle);
     if (!ws)
-	{
-		SIMPLE_LOG_MSG(LL_WARN, "Return error ENOMEM");
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "Return error ENOMEM");
         return -ENOMEM;
-	}
+    }
 
     if (rnws_comp_cb) // Apply the callback if it was specified
         ws->rnws_comp_cb = rnws_comp_cb;

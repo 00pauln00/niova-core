@@ -279,8 +279,8 @@ raft_client_rpc_msg_size_is_valid(enum raft_instance_store_type store_type,
 struct raft_net_wr_supp
 {
     size_t  rnws_nkv;
-    void   *rnws_handle;  //rocksdb cfh
-    void    (*rnws_comp_cb)(void *);
+    void   *rnws_handle; // rocksdb cfhandle
+    void  (*rnws_comp_cb)(void *);
     char  **rnws_keys;
     size_t *rnws_key_sizes;
     char  **rnws_values;
