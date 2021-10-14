@@ -757,4 +757,8 @@ raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor);
 void
 raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts);
 
+int
+raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
+                                    struct raft_net_sm_write_supplements *src);
+
 #endif
