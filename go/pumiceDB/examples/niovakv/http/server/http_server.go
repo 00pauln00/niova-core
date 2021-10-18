@@ -10,6 +10,7 @@ import (
 	"niovakv/niovakvlib"
 	"niovakv/niovakvpmdbclient"
 	"time"
+	"sync"
 	"sync/atomic"
 	log "github.com/sirupsen/logrus"
 )
@@ -29,16 +30,26 @@ type HttpServerHandler struct {
 	//For stats
 	NeedStats bool
 	Stat      HttpServerStat
+	statLock  sync.Mutex
 }
 
 type HttpServerStat struct {
         GetCount int64
         PutCount int64
-        GetSuccessCount int64
+	GetSuccessCount int64
         PutSuccessCount int64
+	Queued int64
+	ReceivedCount int64
+	FinishedCount int64
+	StatusMap []*RequestStatus
 }
 
-func (h HttpServerHandler) process(r *http.Request) ([]byte, error,bool) {
+type RequestStatus struct {
+	Request niovakvlib.NiovaKV
+	Status	string
+} 
+
+func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus) ([]byte, error,bool) {
 	var requestobj niovakvlib.NiovaKV
 	var resp niovakvlib.NiovaKVResponse
 	var response bytes.Buffer
@@ -50,6 +61,13 @@ func (h HttpServerHandler) process(r *http.Request) ([]byte, error,bool) {
 		dec := gob.NewDecoder(bytes.NewBuffer(reqBody))
 		err = dec.Decode(&requestobj)
 	}
+
+	if h.NeedStats {
+		requestStat.Request = requestobj
+		requestStat.Status = "processing"
+		atomic.AddInt64(&h.Stat.Queued,int64(-1))
+	}
+
 	//If error in parsing request
 	if err != nil {
 		log.Error("(HTTP Server) Parsing request failed: ", err)
@@ -74,9 +92,9 @@ func (h HttpServerHandler) process(r *http.Request) ([]byte, error,bool) {
 	return response.Bytes(), err, success
 }
 
-func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
+func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
+		log.Info(h.Stat)
 		stat, err := json.MarshalIndent(h.Stat, "", " ")
 		if err != nil {
                         log.Error("(HTTP Server) Writing to http response writer failed :", err)
@@ -89,16 +107,26 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	//Blocks if more no specified no of request is already in the queue
+	var thisRequestStat *RequestStatus
+	if (h.NeedStats) {
+		atomic.AddInt64(&h.Stat.ReceivedCount,int64(1))
+		atomic.AddInt64(&h.Stat.Queued,int64(1))
+		thisRequestStat = &RequestStatus{
+			Status : "Queued",
+		}
+		h.Stat.StatusMap = append(h.Stat.StatusMap,thisRequestStat)
+	}
 	h.limiter <- 1
 	defer func() {
 		<-h.limiter
 	}()
+
 	var success bool
 	switch r.Method {
 	case "GET":
 		fallthrough
 	case "PUT":
-		respString, err, state := h.process(r)
+		respString, err, state := h.process(r,thisRequestStat)
 		success = state
 		if err == nil {
 			_, errRes := fmt.Fprintf(w, "%s", string(respString))
@@ -111,8 +139,9 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-
+	thisRequestStat.Status = "Completed"
 	if h.NeedStats{
+		atomic.AddInt64(&h.Stat.FinishedCount,int64(1))
 		switch r.Method{
 		case "GET":
 			atomic.AddInt64(&h.Stat.GetCount,int64(1))
@@ -130,12 +159,13 @@ func (h HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 //Blocking func
-func (h HttpServerHandler) StartServer() error {
+func (h *HttpServerHandler) StartServer() error {
 	h.limiter = make(chan int, h.Limit)
 	h.server = http.Server{}
 	h.server.Addr = h.Addr + ":" + h.Port
 	//Update the timeout using little's fourmula
 	h.server.Handler = http.TimeoutHandler(h, 150*time.Second, "Server Timeout")
+	h.Stat = HttpServerStat{}
 	err := h.server.ListenAndServe()
 	return err
 }
