@@ -78,6 +78,9 @@ jobs:
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
+    - name: list binaries
+      run: ls -l  /home/runner/work/niovad/niovad/build_dir/libexec/niova
+
     - name:  run recipe for covid application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
