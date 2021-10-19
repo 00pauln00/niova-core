@@ -41,6 +41,7 @@ type HttpServerStat struct {
 	Queued int64
 	ReceivedCount int64
 	FinishedCount int64
+	syncRequest   int64
 	StatusMap []*RequestStatus
 }
 
@@ -93,6 +94,8 @@ func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus)
 }
 
 func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	//Go followes causually consistent memory model, so require sync among stat and normal request to get consistent stat data
+	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
 		log.Info(h.Stat)
 		stat, err := json.MarshalIndent(h.Stat, "", " ")
