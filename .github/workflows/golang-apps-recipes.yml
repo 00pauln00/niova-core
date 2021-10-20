@@ -81,10 +81,6 @@ jobs:
     - name: list binaries
       run: ls -l  /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
-    - run: sudo apt list --installed
-
-    - run: sudo apt list --installed | grep fcntl
-
     - name:  run recipe for covid application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
