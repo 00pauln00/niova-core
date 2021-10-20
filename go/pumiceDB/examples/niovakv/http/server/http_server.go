@@ -42,12 +42,12 @@ type HttpServerStat struct {
 	ReceivedCount int64
 	FinishedCount int64
 	syncRequest   int64
-	StatusMap []*RequestStatus
+	StatusMap map[int64]*RequestStatus
 }
 
 type RequestStatus struct {
-	Request niovakvlib.NiovaKV
-	Status	string
+	RequestHash [16]byte
+	Status	    string
 } 
 
 func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus) ([]byte, error,bool) {
@@ -64,7 +64,7 @@ func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus)
 	}
 
 	if h.NeedStats {
-		requestStat.Request = requestobj
+		requestStat.RequestHash = requestobj.CheckSum
 		requestStat.Status = "processing"
 		atomic.AddInt64(&h.Stat.Queued,int64(-1))
 	}
@@ -111,13 +111,14 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	//Blocks if more no specified no of request is already in the queue
 	var thisRequestStat *RequestStatus
+	var id int64
 	if (h.NeedStats) {
-		atomic.AddInt64(&h.Stat.ReceivedCount,int64(1))
+		id = atomic.AddInt64(&h.Stat.ReceivedCount,int64(1))
 		atomic.AddInt64(&h.Stat.Queued,int64(1))
 		thisRequestStat = &RequestStatus{
 			Status : "Queued",
 		}
-		h.Stat.StatusMap = append(h.Stat.StatusMap,thisRequestStat)
+		h.Stat.StatusMap[id] = thisRequestStat
 	}
 	h.limiter <- 1
 	defer func() {
@@ -142,7 +143,8 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-	thisRequestStat.Status = "Completed"
+	//thisRequestStat.Status = "Completed"
+	delete(h.Stat.StatusMap,id)
 	if h.NeedStats{
 		atomic.AddInt64(&h.Stat.FinishedCount,int64(1))
 		switch r.Method{
@@ -168,7 +170,7 @@ func (h *HttpServerHandler) StartServer() error {
 	h.server.Addr = h.Addr + ":" + h.Port
 	//Update the timeout using little's fourmula
 	h.server.Handler = http.TimeoutHandler(h, 150*time.Second, "Server Timeout")
-	h.Stat = HttpServerStat{}
+	h.Stat.StatusMap = make(map[int64]*RequestStatus)
 	err := h.server.ListenAndServe()
 	return err
 }
