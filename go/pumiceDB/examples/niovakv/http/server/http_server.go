@@ -97,7 +97,7 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Go followes causually consistent memory model, so require sync among stat and normal request to get consistent stat data
 	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
-		log.Info(h.Stat)
+		log.Trace(h.Stat)
 		stat, err := json.MarshalIndent(h.Stat, "", " ")
 		if err != nil {
                         log.Error("(HTTP Server) Writing to http response writer failed :", err)
@@ -112,13 +112,19 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Blocks if more no specified no of request is already in the queue
 	var thisRequestStat *RequestStatus
 	var id int64
+
 	if (h.NeedStats) {
-		id = atomic.AddInt64(&h.Stat.ReceivedCount,int64(1))
-		atomic.AddInt64(&h.Stat.Queued,int64(1))
+		h.statLock.Lock()
+		h.Stat.ReceivedCount += 1
+		id = h.Stat.ReceivedCount
+		h.Stat.Queued += 1
+		//id = atomic.AddInt64(&h.Stat.ReceivedCount,int64(1))
+		//atomic.AddInt64(&h.Stat.Queued,int64(1))
 		thisRequestStat = &RequestStatus{
 			Status : "Queued",
 		}
 		h.Stat.StatusMap[id] = thisRequestStat
+		h.statLock.Unlock()
 	}
 	h.limiter <- 1
 	defer func() {
