@@ -80,18 +80,18 @@ func main() {
 		fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
 
 		//Get console input string
-		var str string
+		var ops, str string
 		var input []string
 		for input != nil{
 			//Split the inout string.
 			input, err := getInput(str)
 			fmt.Println("input: ",input)
 			fmt.Printf("err: %v\n", err)
+			ops := input[0]
+			fmt.Println("ops:",ops)
 		}
-		ops := input[0]
-		fmt.Println("ops:",ops)
 
-		//Create and Initialize map for write-read oufile.
+		//Create and Initialize map for write-read outfile.
 		rwMap = make(map[string]map[string]string)
 
 		//Create and Initialize the map for WriteMulti
