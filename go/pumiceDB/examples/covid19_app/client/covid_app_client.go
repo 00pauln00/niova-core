@@ -81,12 +81,13 @@ func main() {
 
 		//Get console input string
 		var str string
-
-		//Split the inout string.
-		input, err := getInput(str)
-		fmt.Println("input: ",input)
-		fmt.Printf("err: %v\n", err)
-
+		var input []string
+		for input != nil{
+			//Split the inout string.
+			input, err := getInput(str)
+			fmt.Println("input: ",input)
+			fmt.Printf("err: %v\n", err)
+		}
 		ops := input[0]
 		fmt.Println("ops:",ops)
 
