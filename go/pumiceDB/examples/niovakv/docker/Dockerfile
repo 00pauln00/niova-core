@@ -2,11 +2,11 @@ FROM ubuntu:18.04
 
 #Create dir for niovakv_server and pmdb_server
 RUN apt-get update -y \
-    && apt-get -y install librocksdb5.8
-RUN mkdir /usr/niovakv_server 
-RUN mkdir /usr/pmdb_server 
-RUN mkdir /opt/niova
-RUN mkdir /opt/niova/lib
+    && apt-get -y install librocksdb5.8 \
+    && mkdir /usr/niovakv_server \
+    && mkdir /usr/pmdb_server \
+    && mkdir /opt/niova \
+    && mkdir /opt/niova/lib
 
 #copy libs,configs and executables
 COPY libexec/niova/niovakv_server /usr/niovakv_server
