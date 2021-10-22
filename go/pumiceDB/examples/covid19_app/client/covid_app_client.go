@@ -80,97 +80,100 @@ func main() {
 		fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
 
 		//Get console input string
-		var ops, str string
-		var input []string
+		var str string
+		//Split the input string.
+		input, err := getInput(str)
+		fmt.Println("input:",input)
+		fmt.Println("err:",err)
 		for input != nil{
-			//Split the inout string.
-			input, err := getInput(str)
+
 			fmt.Println("input: ",input)
 			fmt.Printf("err: %v\n", err)
 			ops := input[0]
 			fmt.Println("ops:",ops)
-		}
 
-		//Create and Initialize map for write-read outfile.
-		rwMap = make(map[string]map[string]string)
 
-		//Create and Initialize the map for WriteMulti
-		writeMultiMap = make(map[CovidAppLib.CovidLocale]string)
+			//Create and Initialize map for write-read outfile.
+			rwMap = make(map[string]map[string]string)
 
-		///Create temporary UUID
-		tempUuid := uuid.New()
-		tempUuidStr := tempUuid.String()
+			//Create and Initialize the map for WriteMulti
+			writeMultiMap = make(map[CovidAppLib.CovidLocale]string)
 
-		var opIface Operation
+			///Create temporary UUID
+			tempUuid := uuid.New()
+			tempUuidStr := tempUuid.String()
 
-		switch ops {
-		case "WriteOne":
-			opIface = &wrOne{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[6],
-					key:          input[2],
-					rncui:        input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
+			var opIface Operation
+
+			switch ops {
+			case "WriteOne":
+				opIface = &wrOne{
+					op: opInfo{
+						outfileUuid:  tempUuidStr,
+						jsonFileName: input[6],
+						key:          input[2],
+						rncui:        input[1],
+						inputStr:     input,
+						cliObj:       clientObj,
+					},
+				}
+			case "ReadOne":
+				opIface = &rdOne{
+					op: opInfo{
+						outfileUuid:  tempUuidStr,
+						jsonFileName: input[3],
+						key:          input[1],
+						rncui:        input[2],
+						inputStr:     input,
+						cliObj:       clientObj,
+					},
+				}
+			case "WriteMulti":
+				opIface = &wrMul{
+					csvFile: input[1],
+					op: opInfo{
+						outfileUuid:  tempUuidStr,
+						jsonFileName: input[2],
+						inputStr:     input,
+						cliObj:       clientObj,
+					},
+				}
+			case "ReadMulti":
+				opIface = &rdMul{
+					op: opInfo{
+						outfileUuid:  tempUuidStr,
+						jsonFileName: input[1],
+						inputStr:     input,
+						cliObj:       clientObj,
+					},
+				}
+			case "GetLeader":
+				opIface = &getLeader{
+					op: opInfo{
+						jsonFileName: input[1],
+						inputStr:     input,
+						cliObj:       clientObj,
+					},
+				}
+			default:
+				fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
+				continue
 			}
-		case "ReadOne":
-			opIface = &rdOne{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[3],
-					key:          input[1],
-					rncui:        input[2],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
+			prepErr := opIface.prepare()
+			if prepErr != nil {
+				log.Error("error to call prepare() method")
+				os.Exit(0)
 			}
-		case "WriteMulti":
-			opIface = &wrMul{
-				csvFile: input[1],
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[2],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
+			execErr := opIface.exec()
+			if execErr != nil {
+				log.Error("error to call exec() method")
+				os.Exit(0)
 			}
-		case "ReadMulti":
-			opIface = &rdMul{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
+			compErr := opIface.complete()
+			if compErr != nil {
+				log.Error("error to call complete() method")
+				os.Exit(0)
 			}
-		case "GetLeader":
-			opIface = &getLeader{
-				op: opInfo{
-					jsonFileName: input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		default:
-			fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
-			continue
-		}
-		prepErr := opIface.prepare()
-		if prepErr != nil {
-			log.Error("error to call prepare() method")
-			os.Exit(0)
-		}
-		execErr := opIface.exec()
-		if execErr != nil {
-			log.Error("error to call exec() method")
-			os.Exit(0)
-		}
-		compErr := opIface.complete()
-		if compErr != nil {
-			log.Error("error to call complete() method")
-			os.Exit(0)
 		}
 	}
 }
