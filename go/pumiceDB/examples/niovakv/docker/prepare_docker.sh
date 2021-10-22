@@ -1,5 +1,6 @@
 rm -rf Node*
-cp -r $LD_LIBRARY_PATH ./
+mkdir logs
+cd logs
 for i in 1 2 3 4 5
 do 
     mkdir "Node"$i
@@ -8,5 +9,6 @@ do
     mkdir pmdb_server_logs
     cd ..
 done
+cd ..
 sudo docker-compose build
 sudo docker-compose up
