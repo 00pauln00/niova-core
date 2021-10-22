@@ -8,6 +8,5 @@ do
     mkdir pmdb_server_logs
     cd ..
 done
-cd .. 
 sudo docker-compose build
 sudo docker-compose up
