@@ -28,3 +28,4 @@ lkvt_module:
 install:
 	sudo cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client lkvt/lkvt ${DIR}/libexec/niova
 	sudo cp niovakv_server/config ${DIR}/libexec/niova/niovakv.config
+	sudo cp Dockerfile docker-compose.yml docker/prepare_docker.sh docker/starter.sh ${DIR}/libexec/niova
