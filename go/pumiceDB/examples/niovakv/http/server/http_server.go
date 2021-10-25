@@ -118,8 +118,6 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Stat.ReceivedCount += 1
 		id = h.Stat.ReceivedCount
 		h.Stat.Queued += 1
-		//id = atomic.AddInt64(&h.Stat.ReceivedCount,int64(1))
-		//atomic.AddInt64(&h.Stat.Queued,int64(1))
 		thisRequestStat = &RequestStatus{
 			Status : "Queued",
 		}
@@ -149,22 +147,23 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
-	//thisRequestStat.Status = "Completed"
-	delete(h.Stat.StatusMap,id)
 	if h.NeedStats{
-		atomic.AddInt64(&h.Stat.FinishedCount,int64(1))
+		h.statLock.Lock()
+		delete(h.Stat.StatusMap,id)
+		h.Stat.FinishedCount += int64(1)
 		switch r.Method{
 		case "GET":
-			atomic.AddInt64(&h.Stat.GetCount,int64(1))
+			h.Stat.GetCount += int64(1)
 			if success{
-				atomic.AddInt64(&h.Stat.GetSuccessCount,int64(1))
+				h.Stat.GetSuccessCount += int64(1)
 			}
 		case "PUT":
-                        atomic.AddInt64(&h.Stat.PutCount,int64(1))
+                        h.Stat.PutCount += int64(1)
                         if success{
-                                atomic.AddInt64(&h.Stat.PutSuccessCount,int64(1))
+                                h.Stat.PutSuccessCount += int64(1)
                         }
 		}
+		h.statLock.Unlock()
 	}
 
 }
