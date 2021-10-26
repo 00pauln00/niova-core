@@ -39,9 +39,6 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-    - name: Copy Docker file
-      run: cp ./code/Dockerfile /home/runner/work/niovad/niovad/build_dir/
-
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/failover_recipes.txt /home/runner/work/niovad/niovad/build_dir/
