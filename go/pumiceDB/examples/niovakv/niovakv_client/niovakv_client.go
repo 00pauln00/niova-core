@@ -33,6 +33,7 @@ type request struct {
 	Opcode    string    `json:"Operation"`
 	Key       string    `json:"Key"`
 	Value     string    `json:"Value"`
+	Hash	  [16]byte  `json:"CheckSum"`
 	Timestamp time.Time `json:"Request_timestamp"`
 }
 
@@ -84,12 +85,7 @@ func (cli *niovakv_client) sendReq(req *niovakvlib.NiovaKV, write bool) {
 		validate bool
 	)
 
-	requestMeta := request{
-		Opcode:    req.InputOps,
-		Key:       req.InputKey,
-		Value:     string(req.InputValue),
-		Timestamp: time.Now(),
-	}
+	sendTime := time.Now()
 
 	if write {
 		status, resp = cli.nkvc.Put(req)
@@ -100,6 +96,14 @@ func (cli *niovakv_client) sendReq(req *niovakvlib.NiovaKV, write bool) {
 			validate = cli.validate_read(req.InputKey, resp)
 		}
 	}
+
+	requestMeta := request{
+                Opcode:    req.InputOps,
+                Key:       req.InputKey,
+                Value:     string(req.InputValue),
+		Hash:	   req.CheckSum,
+                Timestamp: sendTime,
+        }
 
 	responseMeta := response{
 		Timestamp:     time.Now(),
