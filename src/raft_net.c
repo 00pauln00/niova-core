@@ -2111,19 +2111,16 @@ raft_net_udp_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 /**
- * raft_net_write_supp_get - looks up a supplment pointer base on the value
- *    of the provided handle.  Note, that a NULL handle is permitted.
+ * raft_net_write_supp_new - allocate a new raft_net_wr_supp and attach it to
+ *   the raft_net_sm_write_supplements.
  */
 static struct raft_net_wr_supp *
-raft_net_write_supp_get(struct raft_net_sm_write_supplements *rnsws,
+raft_net_write_supp_new(struct raft_net_sm_write_supplements *rnsws,
                         void *handle)
 {
     NIOVA_ASSERT(rnsws->rnsws_nitems < RAFT_NET_WR_SUPP_MAX);
 
-    for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
-        if (handle == rnsws->rnsws_ws[i].rnws_handle)
-            return &rnsws->rnsws_ws[i];
-
+    // Don't add more items if we're at the max
     if (rnsws->rnsws_nitems == RAFT_NET_WR_SUPP_MAX)
         return NULL;
 
@@ -2305,17 +2302,20 @@ raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
                                  const char *value, const size_t value_size)
 {
     if (!rnsws || !key || !key_size)
-	{
-		SIMPLE_LOG_MSG(LL_WARN, "Return error EINVAL");
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "Return error EINVAL");
         return -EINVAL;
-	}
+    }
 
-    struct raft_net_wr_supp *ws = raft_net_write_supp_get(rnsws, handle);
+    if (rnsws->rnsws_nitems >= RAFT_NET_WR_SUPP_MAX)
+        return -ENOSPC;
+
+    struct raft_net_wr_supp *ws = raft_net_write_supp_new(rnsws, handle);
     if (!ws)
-	{
-		SIMPLE_LOG_MSG(LL_WARN, "Return error ENOMEM");
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "Return error ENOMEM");
         return -ENOMEM;
-	}
+    }
 
     if (rnws_comp_cb) // Apply the callback if it was specified
         ws->rnws_comp_cb = rnws_comp_cb;
@@ -2323,20 +2323,63 @@ raft_net_sm_write_supplement_add(struct raft_net_sm_write_supplements *rnsws,
     return raft_net_write_supp_add(ws, key, key_size, value, value_size);
 }
 
-void
-raft_net_sm_write_supplement_destroy(
-    struct raft_net_sm_write_supplements *rnsws)
+static void
+raft_net_sm_write_supplement_destroy_internal(
+    struct raft_net_sm_write_supplements *rnsws, bool ws_destroy)
 {
     if (!rnsws || !rnsws->rnsws_nitems)
         return;
 
-    for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
-        raft_net_write_supp_destroy(&rnsws->rnsws_ws[i]);
+    if  (ws_destroy)
+    {
+        for (size_t i = 0; i < rnsws->rnsws_nitems; i++)
+            raft_net_write_supp_destroy(&rnsws->rnsws_ws[i]);
+    }
 
     niova_free(rnsws->rnsws_ws);
 
     rnsws->rnsws_ws = NULL;
     rnsws->rnsws_nitems = 0;
+}
+
+void
+raft_net_sm_write_supplement_destroy(
+    struct raft_net_sm_write_supplements *rnsws)
+{
+    return raft_net_sm_write_supplement_destroy_internal(rnsws, true);
+}
+
+int
+raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
+                                    struct raft_net_sm_write_supplements *src)
+{
+    if (!dest || !src)
+        return -EINVAL;
+
+    if (!src->rnsws_nitems)
+        return 0;
+
+    const size_t new_total = dest->rnsws_nitems + src->rnsws_nitems;
+
+    // Prevent raft_net_write_supp_new() from asserting on RAFT_NET_WR_SUPP_MAX.
+    if (new_total > RAFT_NET_WR_SUPP_MAX)
+        return -E2BIG;
+
+    int rc =
+        niova_reallocarray(dest->rnsws_ws, struct raft_net_wr_supp, new_total);
+
+    if (rc)
+        return rc;
+
+    for (size_t i = 0; i < src->rnsws_nitems; i++)
+        dest->rnsws_ws[dest->rnsws_nitems + i] = src->rnsws_ws[i];
+
+    dest->rnsws_nitems = new_total;
+
+    // Release only the src's rnsws_ws array, leaving the merged items intact
+    raft_net_sm_write_supplement_destroy_internal(src, false);
+
+    return 0;
 }
 
 void
