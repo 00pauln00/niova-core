@@ -715,8 +715,7 @@ func main() {
 
 	opsSplit := strings.Split(cmd, "#")
 	ops := opsSplit[0]
-	fmt.Println("\nin main",cmd,ops)
-	fmt.Println("\nopsSplit",opsSplit)
+
 	//Make the required maps.
 	data = make(map[string]map[string]string)
 
@@ -797,6 +796,4 @@ func main() {
 		log.Error(cerr)
 		os.Exit(0)
 	}
-
-
 }
