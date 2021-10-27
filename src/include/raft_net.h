@@ -25,13 +25,14 @@ struct epoll_handle;
 struct ctl_svc_node;
 struct sockaddr_in;
 
-#define RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES 1000000
-#define RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES 10000
-#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR 2
-#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX 100
-#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT 5
+#define RAFT_INSTANCE_PERSISTENT_APP_SCAN_ENTRIES     100000
+#define RAFT_INSTANCE_PERSISTENT_APP_MIN_SCAN_ENTRIES 5000
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX  100
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MIN  2
+#define RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_DEFAULT 5
 #define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX 100
-#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN 1
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN 2
+#define RAFT_INSTANCE_PERSISTENT_APP_CHKPT_DEFAULT 5
 
 #define RAFT_NET_BINARY_HIST_SIZE 20
 
@@ -279,8 +280,8 @@ raft_client_rpc_msg_size_is_valid(enum raft_instance_store_type store_type,
 struct raft_net_wr_supp
 {
     size_t  rnws_nkv;
-    void   *rnws_handle;  //rocksdb cfh
-    void    (*rnws_comp_cb)(void *);
+    void   *rnws_handle; // rocksdb cfhandle
+    void  (*rnws_comp_cb)(void *);
     char  **rnws_keys;
     size_t *rnws_key_sizes;
     char  **rnws_values;
@@ -410,6 +411,16 @@ raft_net_compile_time_assert(void)
     COMPILE_TIME_ASSERT(
         sizeof(raft_net_request_tag_t) <=
         sizeof((struct raft_client_rpc_msg *)0)->rcrm_user_tag);
+
+    COMPILE_TIME_ASSERT((RAFT_INSTANCE_PERSISTENT_APP_CHKPT_DEFAULT >=
+                         RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MIN) &&
+                        (RAFT_INSTANCE_PERSISTENT_APP_CHKPT_DEFAULT <=
+                         RAFT_INSTANCE_PERSISTENT_APP_CHKPT_MAX));
+
+    COMPILE_TIME_ASSERT((RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_DEFAULT >=
+                         RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MIN) &&
+                        (RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_DEFAULT <=
+                         RAFT_INSTANCE_PERSISTENT_APP_REAP_FACTOR_MAX));
 }
 
 struct raft_instance *
@@ -745,5 +756,9 @@ raft_net_set_log_reap_factor(struct raft_instance *ri, size_t log_reap_factor);
 
 void
 raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts);
+
+int
+raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
+                                    struct raft_net_sm_write_supplements *src);
 
 #endif

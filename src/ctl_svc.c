@@ -285,7 +285,7 @@ ctl_svc_parse_input_file_name(struct ctl_svc_node *csn,
     if (!csn || !input_file_name)
         return -EINVAL;
 
-    else if (strnlen(input_file_name, PATH_MAX) < UUID_STR_LEN ||
+    else if (strnlen(input_file_name, NAME_MAX) < UUID_STR_LEN ||
              input_file_name[UUID_STR_LEN - 1] != '.')
         return -EBADMSG;
 

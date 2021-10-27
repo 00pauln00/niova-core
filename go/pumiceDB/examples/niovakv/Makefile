@@ -27,10 +27,11 @@ covid_foodpalace_apps:
 
 
 lkvt_module:
-	cd lkvt && git submodule init && git submodule update && go build
+	cd lkvt && git submodule init && git submodule update && git checkout main && go build
 
 install:
 	sudo cp pmdb/server/niovakv_pmdbserver niovakv_server/niovakv_server niovakv_client/niovakv_client lkvt/lkvt ${DIR}/libexec/niova
 	sudo cp niovakv_server/config ${DIR}/libexec/niova/niovakv.config
 	sudo cp ../covid19_app/server/covid_app_server ../covid19_app/client/covid_app_client ../covid19_app/client/vaccinations.csv ${DIR}/libexec/niova
 	sudo cp ../foodpalace_app/server/foodpalaceappserver ../foodpalace_app/client/foodpalaceappclient ../foodpalace_app/client/foodpalace.csv ${DIR}/libexec/niova
+	sudo cp docker/* ${DIR}

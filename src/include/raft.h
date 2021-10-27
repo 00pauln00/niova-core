@@ -156,7 +156,8 @@ struct raft_append_entries_reply_msg
     uint8_t raerpm_err_stale_term;
     uint8_t raerpm_err_non_matching_prev_term;
     uint8_t raerpm_newly_initialized_peer;
-    uint8_t raerpm__pad[4];
+    uint8_t raerpm_update_sli;
+    uint8_t raerpm__pad[3];
 };
 
 struct raft_sync_idx_update_msg
@@ -534,6 +535,10 @@ raft_instance_2_recovery_handle(struct raft_instance *ri)
 static inline void
 raft_compile_time_checks(void)
 {
+    /* RAFT_NET_WR_SUPP_MAX must hold at least one write supplement per
+     * coalesce write entry.
+     */
+    COMPILE_TIME_ASSERT(RAFT_ENTRY_NUM_ENTRIES < RAFT_NET_WR_SUPP_MAX);
     COMPILE_TIME_ASSERT(RAFT_ELECTION_UPPER_TIME_MS > 0);
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
@@ -1103,9 +1108,9 @@ raft_server_init_recovery_handle_from_marker(struct raft_instance *ri,
                                              const char *db_uuid_str);
 
 /**
- * raft_server_instance_chkpt_compact_max_idx - return the value which
+ * raft_server_instance_chkpt_compact_max_idx - return the value
  *    representing the raft-entry-idx which will not be rolled back.
- *    Here we choosed the ri_last_applied_idx over ri_commmit_idx to remove
+ *    Here we choose the ri_last_applied_idx over ri_commmit_idx to remove
  *    the possibility of compaction occurring on entries which have yet to be
  *    applied.
  */

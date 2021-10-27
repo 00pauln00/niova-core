@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
-
+	"crypto/md5"
 	log "github.com/sirupsen/logrus"
 
 	"niovakv/httpclient"
@@ -117,23 +117,31 @@ time:
 	return responseRecvd
 }
 
+
+func md5CheckSum(data []byte) [16]byte {
+	return md5.Sum(data)
+}
+
 func (nkvc *ClientAPI) Put(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
-	ReqObj.InputOps = "write"
-	response := nkvc.doOperation(ReqObj, true)
-	if response == nil {
-		return -1, nil
-	}
-	return response.RespStatus, response.RespValue
+        ReqObj.InputOps = "write"
+        ReqObj.CheckSum = md5CheckSum(append(ReqObj.InputValue , []byte(ReqObj.InputKey)...))
+        response := nkvc.doOperation(ReqObj, true)
+        if response == nil {
+                return -1, nil
+        }
+        return response.RespStatus, response.RespValue
 }
 
 func (nkvc *ClientAPI) Get(ReqObj *niovakvlib.NiovaKV) (int, []byte) {
-	ReqObj.InputOps = "read"
+        ReqObj.InputOps = "read"
+        ReqObj.CheckSum = md5CheckSum(append(ReqObj.InputValue , []byte(ReqObj.InputKey)...))
 	response := nkvc.doOperation(ReqObj, false)
-	if response == nil {
+        if response == nil {
                 return -1, nil
         }
-	return response.RespStatus, response.RespValue
+        return response.RespStatus, response.RespValue
 }
+
 
 func (nkvc *ClientAPI) serfClientInit(configPath string) error {
 	nkvc.clientHandler.Retries = 5
@@ -209,7 +217,7 @@ func (nkvc *ClientAPI) pickServer(removeName string) (client.Member, error) {
                                 if removeName!=""{
                                         log.Info(removeName)
                                 }
-				
+
 				//Check if node is alive, check if gossip is available and http server of that node is not reported down!
                                 if ((nkvc.servers[randomIndex].Status == "alive") && (isGossipAvailable(nkvc.servers[randomIndex])) && (removeName != nkvc.servers[randomIndex].Name)) {
                                         break
