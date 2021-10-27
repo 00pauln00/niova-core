@@ -27,6 +27,7 @@ var (
 	raftUuid      string
 	clientUuid    string
 	jsonFilePath  string
+	cmd	      string
 	rwMap         map[string]map[string]string
 	keyRncuiMap   map[string]string
 	writeMultiMap map[CovidAppLib.CovidLocale]string
@@ -55,6 +56,7 @@ func main() {
 	log.Info("Client UUID: ", clientUuid)
 	log.Info("Outfile Path: ", jsonFilePath)
 
+
 	//Create new client object.
 	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
 	if clientObj == nil {
@@ -72,100 +74,96 @@ func main() {
 	fmt.Println("Multiple read format ==> ReadMulti#outfile_name")
 	fmt.Println("Get Leader format ==> GetLeader#outfile_name")
 
-	for {
 
-		fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
+	fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
 
-		//Get console input string
-		var str string
+	//Get console input string
+	var str string
 
-		//Split the inout string.
-		input, err := getInput(str)
-		fmt.Printf("err: %v\n", err)
+	//Split the inout string.
+	input, err := getInput(str)
+	fmt.Printf("err: %v\n", err)
+	ops := input[0]
 
-		ops := input[0]
+	//Create and Initialize map for write-read oufile.
+	rwMap = make(map[string]map[string]string)
 
-		//Create and Initialize map for write-read oufile.
-		rwMap = make(map[string]map[string]string)
+	//Create and Initialize the map for WriteMulti
+	writeMultiMap = make(map[CovidAppLib.CovidLocale]string)
 
-		//Create and Initialize the map for WriteMulti
-		writeMultiMap = make(map[CovidAppLib.CovidLocale]string)
+	///Create temporary UUID
+	tempUuid := uuid.New()
+	tempUuidStr := tempUuid.String()
 
-		///Create temporary UUID
-		tempUuid := uuid.New()
-		tempUuidStr := tempUuid.String()
+	var opIface Operation
 
-		var opIface Operation
-
-		switch ops {
-		case "WriteOne":
-			opIface = &wrOne{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[6],
-					key:          input[2],
-					rncui:        input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "ReadOne":
-			opIface = &rdOne{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[3],
-					key:          input[1],
-					rncui:        input[2],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "WriteMulti":
-			opIface = &wrMul{
-				csvFile: input[1],
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[2],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "ReadMulti":
-			opIface = &rdMul{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "GetLeader":
-			opIface = &getLeader{
-				op: opInfo{
-					jsonFileName: input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		default:
-			fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
-			continue
+	switch ops {
+	case "WriteOne":
+		opIface = &wrOne{
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[6],
+				key:          input[2],
+				rncui:        input[1],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
-		prepErr := opIface.prepare()
-		if prepErr != nil {
-			log.Error("error to call prepare() method")
-			os.Exit(0)
+	case "ReadOne":
+		opIface = &rdOne{
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[3],
+				key:          input[1],
+				rncui:        input[2],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
-		execErr := opIface.exec()
-		if execErr != nil {
-			log.Error("error to call exec() method")
-			os.Exit(0)
+	case "WriteMulti":
+		opIface = &wrMul{
+			csvFile: input[1],
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[2],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
-		compErr := opIface.complete()
-		if compErr != nil {
-			log.Error("error to call complete() method")
-			os.Exit(0)
+	case "ReadMulti":
+		opIface = &rdMul{
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[1],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
+	case "GetLeader":
+		opIface = &getLeader{
+			op: opInfo{
+				jsonFileName: input[1],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
+		}
+	default:
+		fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
+	}
+	prepErr := opIface.prepare()
+	if prepErr != nil {
+		log.Error("error to call prepare() method")
+		os.Exit(0)
+	}
+	execErr := opIface.exec()
+	if execErr != nil {
+		log.Error("error to call exec() method")
+		os.Exit(0)
+	}
+	compErr := opIface.complete()
+	if compErr != nil {
+		log.Error("error to call complete() method")
+		os.Exit(0)
 	}
 }
 
@@ -175,7 +173,7 @@ func parseArgs() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&jsonFilePath, "l", "/tmp/covidAppLog", "json outfile path")
-
+	flag.StringVar(&cmd, "c","NULL","Provide command to execute, with # as delimiter")
 	flag.Parse()
 }
 
@@ -308,18 +306,20 @@ func (cvd *covidVaxData) dumpIntoJson(outfileUuid string) string {
 
 //read console input.
 func getInput(keyText string) ([]string, error) {
-
+	/*
 	//Read the key from console
 	key := bufio.NewReader(os.Stdin)
 
 	keyText, _ = key.ReadString('\n')
-
+	*/
 	// convert CRLF to LF
-	keyText = strings.Replace(keyText, "\n", "", -1)
-
+	keyText = strings.Replace(cmd, "\n", "", -1)
+	
+	/*
 	if keyText == "exit" {
 		os.Exit(0)
 	}
+	*/
 
 	input := strings.Split(keyText, "#")
 	for i := range input {
