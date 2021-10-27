@@ -655,7 +655,7 @@ func getCmdParams() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "client uuid")
 	flag.StringVar(&jsonOutFpath, "l", "./", "json_outfilepath")
-	flag.StringVar(&cmd,"cmd","NULL","command")
+	flag.StringVar(&cmd,"c","NULL","command")
 	flag.Parse()
 	log.Info("Raft UUID: ", raftUuid)
 	log.Info("Client UUID: ", clientUuid)
