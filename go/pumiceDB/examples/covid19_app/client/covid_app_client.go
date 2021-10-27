@@ -27,6 +27,7 @@ var (
 	raftUuid      string
 	clientUuid    string
 	jsonFilePath  string
+	cmd	      string
 	rwMap         map[string]map[string]string
 	keyRncuiMap   map[string]string
 	writeMultiMap map[CovidAppLib.CovidLocale]string
@@ -184,7 +185,7 @@ func parseArgs() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&jsonFilePath, "l", "/tmp/covidAppLog", "json outfile path")
-
+	flag.StringVar(&cmd, "c", "NULL", "Command to pass")
 	flag.Parse()
 }
 
@@ -319,17 +320,20 @@ func (cvd *covidVaxData) dumpIntoJson(outfileUuid string) string {
 func getInput(keyText string) ([]string, error) {
 
 	//Read the key from console
+	/*
 	key := bufio.NewReader(os.Stdin)
 
 	keyText, _ = key.ReadString('\n')
 	fmt.Println("\nkeyText:", keyText)
-
+	*/
 	// convert CRLF to LF
-	keyText = strings.Replace(keyText, "\n", "", -1)
-
+	keyText = strings.Replace(cmd, "\n", "", -1)
+	
+	/*
 	if keyText == "exit" {
 		os.Exit(0)
 	}
+	*/
 
 	input := strings.Split(keyText, "#")
 	for i := range input {
