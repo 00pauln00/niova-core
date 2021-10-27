@@ -25,6 +25,7 @@ var (
 	raftUuid     string
 	clientUuid   string
 	jsonOutFpath string
+	cmd          string
 	data         map[string]map[string]string
 )
 
@@ -338,6 +339,7 @@ func (woexc *writeOne) exec() error {
 	var errorMsg error
 	var wrStrdtCmd foodpalaceRqOp
 	//Perform write operation.
+	fmt.Println("\n",woexc.rq.foodpalaceData, woexc.args[1])
 	err := woexc.rq.clientObj.Write(woexc.rq.foodpalaceData, woexc.args[1])
 	if err != nil {
 		log.Error("Write key-value failed : ", err)
@@ -653,11 +655,12 @@ func getCmdParams() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "client uuid")
 	flag.StringVar(&jsonOutFpath, "l", "./", "json_outfilepath")
-
+	flag.StringVar(&cmd,"cmd","NULL","command")
 	flag.Parse()
 	log.Info("Raft UUID: ", raftUuid)
 	log.Info("Client UUID: ", clientUuid)
 	log.Info("Outfile path: ", jsonOutFpath)
+	log.Info("Command:",cmd)
 }
 
 //Creates log directory if it doesn't exist.
@@ -694,9 +697,13 @@ func main() {
 		return
 	}
 	log.Info("Starting client: ", clientUuid)
+
 	//Start the client.
 	clientObj.Start()
 	defer clientObj.Stop()
+
+	//Wait for client to boot up properly.
+	time.Sleep(3 * time.Second)
 
 	fmt.Print("\n**********Format for performing operations**********")
 	fmt.Print("\nFor WriteOne Operation   => WriteOne#rncui#restaurant id#restaurant name#city#cuisines#ratings text#votes#outfilename")
@@ -705,95 +712,91 @@ func main() {
 	fmt.Print("\nFor ReadMulti Operation  => ReadMulti#outfilename")
 	fmt.Print("\nFor Get Leader Operation => GetLeader#outfilename")
 
-	for {
-		fmt.Print("\nEnter operation (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader /exit): ")
-		input := bufio.NewReader(os.Stdin)
-		cmd, _ := input.ReadString('\n')
-		cmdS := strings.Replace(cmd, "\n", "", -1)
-		opsSplit := strings.Split(cmdS, "#")
-		ops := opsSplit[0]
 
-		//Make the required maps.
-		data = make(map[string]map[string]string)
+	opsSplit := strings.Split(cmd, "#")
+	ops := opsSplit[0]
+	fmt.Println("\nin main",cmd,ops)
+	fmt.Println("\nopsSplit",opsSplit)
+	//Make the required maps.
+	data = make(map[string]map[string]string)
 
-		//Generate uuid for temporary json file.
-		outfUuid := uuid.NewV4().String()
+	//Generate uuid for temporary json file.
+	outfUuid := uuid.NewV4().String()
 
-		//Declare interface variable.
-		var fpci FoodpalaceCli
+	//Declare interface variable.
+	var fpci FoodpalaceCli
 
-		switch ops {
-		case "WriteOne":
-			fpci = &writeOne{
-				args: opsSplit,
-				rq: &rqInfo{
-					outfileUuid: outfUuid,
-					clientObj:   clientObj,
-				},
-			}
-		case "ReadOne":
-			fpci = &readOne{
-				rq: &rqInfo{
-					key:         opsSplit[1],
-					rncui:       opsSplit[2],
-					jsonFname:   opsSplit[3],
-					operation:   ops,
-					outfileUuid: outfUuid,
-					clientObj:   clientObj,
-				},
-			}
-		case "WriteMulti":
-			fpci = &writeMulti{
-				csvFpath: opsSplit[1],
-				rq: &rqInfo{
-					operation:   ops,
-					jsonFname:   opsSplit[2],
-					outfileUuid: outfUuid,
-					clientObj:   clientObj,
-				},
-			}
-		case "ReadMulti":
-			fpci = &readMulti{
-				rq: &rqInfo{
-					operation:   ops,
-					jsonFname:   opsSplit[1],
-					outfileUuid: outfUuid,
-					clientObj:   clientObj,
-				},
-			}
-		case "GetLeader":
-			fpci = &getLeader{
-				rq: &rqInfo{
-					operation: ops,
-					jsonFname: opsSplit[1],
-					clientObj: clientObj,
-				},
-			}
-		case "exit":
-			os.Exit(0)
-		default:
-			fmt.Println("Enter valid operation: (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader /exit)")
-			continue
+	switch ops {
+	case "WriteOne":
+		fpci = &writeOne{
+			args: opsSplit,
+			rq: &rqInfo{
+				outfileUuid: outfUuid,
+				clientObj:   clientObj,
+			},
 		}
-
-		//Perform Operations.
-		prerr := fpci.prepare()
-		if prerr != nil {
-			log.Error(prerr)
-			os.Exit(0)
+	case "ReadOne":
+		fpci = &readOne{
+			rq: &rqInfo{
+				key:         opsSplit[1],
+				rncui:       opsSplit[2],
+				jsonFname:   opsSplit[3],
+				operation:   ops,
+				outfileUuid: outfUuid,
+				clientObj:   clientObj,
+			},
 		}
-
-		excerr := fpci.exec()
-		if excerr != nil {
-			log.Error(excerr)
-			os.Exit(0)
+	case "WriteMulti":
+		fpci = &writeMulti{
+			csvFpath: opsSplit[1],
+			rq: &rqInfo{
+				operation:   ops,
+				jsonFname:   opsSplit[2],
+				outfileUuid: outfUuid,
+				clientObj:   clientObj,
+			},
 		}
-
-		cerr := fpci.complete()
-		if cerr != nil {
-			log.Error(cerr)
-			os.Exit(0)
+	case "ReadMulti":
+		fpci = &readMulti{
+			rq: &rqInfo{
+				operation:   ops,
+				jsonFname:   opsSplit[1],
+				outfileUuid: outfUuid,
+				clientObj:   clientObj,
+			},
 		}
+	case "GetLeader":
+		fpci = &getLeader{
+			rq: &rqInfo{
+				operation: ops,
+				jsonFname: opsSplit[1],
+				clientObj: clientObj,
+			},
+		}
+	case "exit":
+		os.Exit(0)
+	default:
+		fmt.Println("Enter valid operation: (WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ get_leader /exit)")
 	}
+
+	//Perform Operations.
+	prerr := fpci.prepare()
+	if prerr != nil {
+		log.Error(prerr)
+		os.Exit(0)
+	}
+
+	excerr := fpci.exec()
+	if excerr != nil {
+		log.Error(excerr)
+		os.Exit(0)
+	}
+
+	cerr := fpci.complete()
+	if cerr != nil {
+		log.Error(cerr)
+		os.Exit(0)
+	}
+
 
 }
