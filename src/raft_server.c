@@ -2276,6 +2276,10 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
 
     raft_server_set_leader_csn(ri, ri->ri_csn_this_peer);
 
+    // cleanup any stale cowr sub app entries in the tree
+    if (ri->ri_server_cowr_sa_cleanup_handler)
+        ri->ri_server_cowr_sa_cleanup_handler();
+
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
 
@@ -4986,6 +4990,7 @@ raft_server_instance_init(struct raft_instance *ri,
                           const char *raft_uuid_str,
                           const char *this_peer_uuid_str,
                           raft_sm_request_handler_t sm_request_handler,
+                          raft_cowr_sa_cleanup_handler_t cowr_sa_cleanup_handler,
                           enum raft_instance_options opts, void *arg)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -5018,6 +5023,7 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
+    ri->ri_server_cowr_sa_cleanup_handler = cowr_sa_cleanup_handler;
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes =
         opts & RAFT_INSTANCE_OPTIONS_SYNC_WRITES ? true : false;
@@ -5825,6 +5831,7 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
+                         raft_cowr_sa_cleanup_handler_t cowr_sa_cleanup_handler,
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg)
 {
@@ -5871,7 +5878,7 @@ raft_server_instance_run(const char *raft_uuid_str,
 
         // Initialization - this resets the raft instance's contents
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
-                                  sm_request_handler,
+                                  sm_request_handler, cowr_sa_cleanup_handler,
                                   opts, arg);
 
         // Raft net startup
