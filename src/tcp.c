@@ -108,6 +108,9 @@ tcp_socket_setup(struct tcp_socket_handle *tsh)
     return rc;
 }
 
+// disabling it now, as non-blocking tcp with large data shows crc
+//mismatch on followers
+#if 0
 static int
 tcp_socket_set_nonblocking(struct tcp_socket_handle *tsh)
 {
@@ -115,6 +118,7 @@ tcp_socket_set_nonblocking(struct tcp_socket_handle *tsh)
 
     return fcntl(tsh->tsh_socket, F_SETFL, O_NONBLOCK);
 }
+#endif
 
 /**
  * tcp_socket_bind - called at some point after tcp_socket_setup() to complete
@@ -152,7 +156,6 @@ tcp_socket_bind(struct tcp_socket_handle *tsh)
         goto out;
     }
 
-    tcp_socket_set_nonblocking(tsh);
 
     rc = listen(tsh->tsh_socket, NIOVA_TCP_LISTEN_DEPTH);
     if (rc)
@@ -357,8 +360,6 @@ tcp_socket_connect(struct tcp_socket_handle *tsh)
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "tcp_socket_connect() fd:%d host: %s:%d",
                    tsh->tsh_socket, tsh->tsh_ipaddr, tsh->tsh_port);
-
-    tcp_socket_set_nonblocking(tsh);
 
     int rc = connect(tsh->tsh_socket, (struct sockaddr *)&addr_in,
                      sizeof(struct sockaddr_in));
