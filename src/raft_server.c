@@ -2279,6 +2279,10 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
 
     raft_server_set_leader_csn(ri, ri->ri_csn_this_peer);
 
+    // cleanup any stale cowr sub app entries in the tree
+    if (ri->ri_leader_prep_cb)
+        ri->ri_leader_prep_cb();
+
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
 
@@ -2764,10 +2768,13 @@ raft_server_append_entry_check_already_stored(
             return false;
 
         FATAL_IF((!raerq->raerqm_entry_out_of_range &&
-                  raerq->raerqm_this_idx_crc != reh.reh_crc),
-                 "crc (%u) does not match leader (%u) for idx=%ld",
+                  raerq->raerqm_this_idx_crc != reh.reh_crc &&
+                  !raerq->raerqm_heartbeat_msg),
+                 "crc (%u) does not match leader (%u) for idx=%ld,"
+                 " is_heartbeat=%d",
                  reh.reh_crc, raerq->raerqm_this_idx_crc,
-                 leaders_next_idx_for_me);
+                 leaders_next_idx_for_me,
+                 raerq->raerqm_heartbeat_msg);
     }
     else
     {
@@ -4090,7 +4097,6 @@ static void // raft_net_cb_ctx_t or raft_server_epoll_sm_apply_bool_t
 raft_server_net_client_request_init(
     const struct raft_instance *ri,
     struct raft_net_client_request_handle *rncr,
-    struct raft_net_sm_write_supplements *ws,
     enum raft_net_client_request_type type,
     const struct raft_client_rpc_msg *rpc_request,  const char *commit_data,
     const size_t commit_data_size, const struct sockaddr_in *from,
@@ -4125,7 +4131,6 @@ raft_server_net_client_request_init(
     CONST_OVERRIDE(size_t, rncr->rncr_reply_data_max_size,
                    (reply_buf_size - sizeof(struct raft_client_rpc_msg)));
 
-    rncr->rncr_sm_write_supp = ws;
 
     if (rpc_request)
     {
@@ -4161,14 +4166,13 @@ raft_server_net_client_request_init(
 static raft_net_cb_ctx_t
 raft_server_net_client_request_init_client_rpc(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
-    struct raft_net_sm_write_supplements *ws,
     const struct raft_client_rpc_msg *rpc_request,
     const struct sockaddr_in *from, char *reply_buf,
     const size_t reply_buf_size)
 {
     NIOVA_ASSERT(ri && rncr && rpc_request);
 
-    raft_server_net_client_request_init(ri, rncr, ws,
+    raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_NONE,
                                         rpc_request, NULL, 0, from, reply_buf,
                                         reply_buf_size);
@@ -4193,10 +4197,12 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
         ri->ri_coalesced_wr->rcwi_nentries < RAFT_ENTRY_NUM_ENTRIES &&
         ri->ri_coalesced_wr->rcwi_total_size < RAFT_ENTRY_MAX_DATA_SIZE(ri));
 
-    // Push out the current coalesce buffer immediately in these conditions
-    if ((len + ri->ri_coalesced_wr->rcwi_total_size) >
-         RAFT_ENTRY_MAX_DATA_SIZE(ri))
-        raft_server_write_coalesced_entries(ri);
+    // Buffer should have space to accomodate this request.
+    FATAL_IF((len + ri->ri_coalesced_wr->rcwi_total_size) >
+             RAFT_ENTRY_MAX_DATA_SIZE(ri),
+             "Coalesced buffer shouldn't be full here!. rcwi_total_size: %ld,"
+             " len: %ld",
+             ri->ri_coalesced_wr->rcwi_total_size, len);
 
     /* Store the new write entry at the free slot at ri->ri_coalesced_wr.
      * NOTE: that raft_server_write_coalesced_entries() will have reset
@@ -4262,7 +4268,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     struct raft_net_client_request_handle rncr;
 
     raft_server_net_client_request_init_client_rpc(
-        ri, &rncr, &ri->ri_coalesced_wr->rcwi_ws, rcm, from, reply_buf,
+        ri, &rncr, rcm, from, reply_buf,
         reply_size);
 
     /* Second set of checks which determine if this server is capable of
@@ -4319,6 +4325,15 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         goto out;
     }
 
+    /* For write operation, check if the coalesced buffer is sufficient for
+     * accomodating this request. Otherwise first flush the entries in
+     * coalesced buffer.
+     */
+    if (write_op && ((rcm->rcrm_data_size +
+                     ri->ri_coalesced_wr->rcwi_total_size) >
+                     RAFT_ENTRY_MAX_DATA_SIZE(ri)))
+        raft_server_write_coalesced_entries(ri);
+
     /* cb's may run for a long time and the server may have been deposed
      * Xxx note that SM write requests left in this state may require
      *   cleanup.
@@ -4339,7 +4354,12 @@ raft_server_client_recv_handler(struct raft_instance *ri,
          *       of whether coalescing is enabling.  If disabled,
          *       raft_server_write_coalesce_entry() will go directly to
          *       raft_server_leader_write_new_entry()
+         * Merge the rncr write supplement into coalesced write supplement.
+         * rncr_sm_write_supp will be destroyed once it is merged into
+         * ri_coalesced_wr->rcwi_ws.
          */
+        raft_net_sm_write_supplements_merge(&ri->ri_coalesced_wr->rcwi_ws,
+                                            &rncr.rncr_sm_write_supp);
         raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
                                          rcm->rcrm_data_size,
                                          RAFT_WR_ENTRY_OPT_NONE);
@@ -4555,13 +4575,12 @@ raft_server_sm_apply_opt(struct raft_instance *ri,
 static raft_server_epoll_sm_apply_bool_t
 raft_server_net_client_request_init_sm_apply(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
-    struct raft_net_sm_write_supplements *ws,
     char *commit_data, const size_t commit_data_size, char *reply_buf,
     const size_t reply_buf_size)
 {
     NIOVA_ASSERT(ri && rncr && commit_data);
 
-    raft_server_net_client_request_init(ri, rncr, ws,
+    raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
                                         NULL, commit_data, commit_data_size,
                                         NULL, reply_buf, reply_buf_size);
@@ -4665,12 +4684,13 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     uint32_t offset = 0;
     char *sink_buf = (char *)sink_bi->bi_iov.iov_base;
     char *reply_buf;
+    struct raft_net_client_request_handle *rncr_ptr;
 
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
         reply_buf = (char *)reply_bi[i]->bi_iov.iov_base;
-        raft_server_net_client_request_init_sm_apply(ri, &rncr[i],
-                                                     &coalesced_ws,
+        rncr_ptr = &rncr[i];
+        raft_server_net_client_request_init_sm_apply(ri, rncr_ptr,
                                                      sink_buf + offset,
                                                      reh.reh_entry_sz[i],
                                                      reply_buf,
@@ -4679,6 +4699,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
         if (rc_arr[i])
             failed = true;
+        else
+            raft_net_sm_write_supplements_merge(&coalesced_ws,
+                                               &rncr_ptr->rncr_sm_write_supp);
 
         offset += reh.reh_entry_sz[i];
     }
@@ -4972,6 +4995,7 @@ raft_server_instance_init(struct raft_instance *ri,
                           const char *raft_uuid_str,
                           const char *this_peer_uuid_str,
                           raft_sm_request_handler_t sm_request_handler,
+                          raft_leader_prep_cb_t leader_prep_handler,
                           enum raft_instance_options opts, void *arg)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -5004,6 +5028,7 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
+    ri->ri_leader_prep_cb = leader_prep_handler;
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes =
         opts & RAFT_INSTANCE_OPTIONS_SYNC_WRITES ? true : false;
@@ -5811,6 +5836,7 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
+                         raft_leader_prep_cb_t leader_prep_handler,
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg)
 {
@@ -5857,7 +5883,7 @@ raft_server_instance_run(const char *raft_uuid_str,
 
         // Initialization - this resets the raft instance's contents
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
-                                  sm_request_handler,
+                                  sm_request_handler, leader_prep_handler,
                                   opts, arg);
 
         // Raft net startup
