@@ -45,7 +45,7 @@ typedef bool     raft_net_cb_ctx_bool_t;
 typedef void     raft_net_timerfd_cb_ctx_t;
 typedef int      raft_net_timerfd_cb_ctx_int_t;
 typedef bool     raft_net_timerfd_cb_ctx_bool_t;
-typedef void     raft_net_cowr_sa_cleanup_t;
+typedef void     raft_net_leader_prep_cb_ctx_t;
 
 typedef uint64_t raft_net_request_tag_t;
 #define RAFT_NET_TAG_NONE 0UL
@@ -87,8 +87,8 @@ typedef raft_net_cb_ctx_int_t
 (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
 
 // cleanup the cowr subapp tree on getting elected as leader
-typedef raft_net_cowr_sa_cleanup_t
-(*raft_cowr_sa_cleanup_handler_t)(void);
+typedef raft_net_leader_prep_cb_ctx_t
+(*raft_leader_prep_cb_t)(void);
 
 typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
 typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
