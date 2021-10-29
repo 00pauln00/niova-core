@@ -48,7 +48,7 @@ type HttpServerStat struct {
 type RequestStatus struct {
 	RequestHash [16]byte
 	Status	    string
-} 
+}
 
 func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus) ([]byte, error,bool) {
 	var requestobj niovakvlib.NiovaKV
@@ -97,8 +97,10 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Go followes causually consistent memory model, so require sync among stat and normal request to get consistent stat data
 	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
+                h.statLock.Lock()
 		log.Trace(h.Stat)
 		stat, err := json.MarshalIndent(h.Stat, "", " ")
+                h.statLock.Unlock()
 		if err != nil {
                         log.Error("(HTTP Server) Writing to http response writer failed :", err)
                 }
