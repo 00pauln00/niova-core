@@ -3,6 +3,7 @@
 #include "alloc.h"
 #include "log.h"
 #include "epoll_mgr.h"
+#include "io.h"
 #include "tcp.h"
 #include "tcp_mgr.h"
 #include "util.h"
@@ -885,10 +886,17 @@ tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
     if (rc < 0)
         return rc;
 
-    rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
+    const ssize_t total_size = niova_io_iovs_total_size_get(iov, niovs);
 
-    if (rc == -ENOTCONN || rc == -ECONNRESET)
+    ssize_t send_rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
+
+    if (send_rc != total_size)
+    {
+        DBG_TCP_MGR_CXN(LL_WARN, tmc,
+                        "tcp_socket_send(): returns=%zd, expected=%zd",
+                        send_rc, total_size);
         tcp_mgr_connection_close(tmc);
+    }
 
     return rc;
 }
@@ -898,4 +906,3 @@ tcp_mgr_connection_close(struct tcp_mgr_connection *tmc)
 {
     tcp_mgr_connection_epoll_ctx_run(tmc, tcp_mgr_connection_close_internal);
 };
-

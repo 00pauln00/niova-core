@@ -320,8 +320,8 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
         sendmsg_rc = sendmsg(tsh->tsh_socket, &msg, MSG_NOSIGNAL);
         if (sendmsg_rc < 0)
         {
-            if (errno == EINTR) // retry the send.
-                continue;
+            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+                continue; // retry the send.
 
             rc = -errno;
 
@@ -339,7 +339,7 @@ tcp_socket_send(const struct tcp_socket_handle *tsh, const struct iovec *iov,
     }
 
     if (!rc && total_size != total_sent)
-        LOG_MSG(LL_NOTIFY, "incomplete send to %s:%u (%zd:%zd)",
+        LOG_MSG(LL_WARN, "incomplete send to %s:%u (%zd:%zd)",
                 tsh->tsh_ipaddr, tsh->tsh_port,
                 total_sent, total_size);
 

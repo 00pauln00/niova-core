@@ -1499,12 +1499,14 @@ raft_server_entries_scan(struct raft_instance *ri)
 
     const raft_entry_idx_t lowest_idx = niova_atomic_read(&ri->ri_lowest_idx);
 
-    const raft_entry_idx_t starting_entry =
-        (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP &&
-         ri->ri_max_scan_entries > 0 &&
-         entry_max_idx > ri->ri_max_scan_entries)
-        ? entry_max_idx - ri->ri_max_scan_entries
-        : MAX(0, lowest_idx);
+    raft_entry_idx_t starting_entry = MAX(0, lowest_idx);
+
+    // Try to raise the starting_entry if conditions allow
+    if (ri->ri_store_type == RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP &&
+        ri->ri_max_scan_entries > 0 &&
+        entry_max_idx > ri->ri_max_scan_entries)
+        starting_entry = MAX(lowest_idx,
+                             entry_max_idx - ri->ri_max_scan_entries);
 
     /* Ensure the start of the key space is intact since it may not be
      * otherwise checked due to ri_max_scan_entries.
@@ -1513,7 +1515,8 @@ raft_server_entries_scan(struct raft_instance *ri)
     {
 #define LOG_INITIAL_SCAN_SZ 1000UL
         int rc = raft_server_entries_scan_internal(
-            ri, lowest_idx, lowest_idx + LOG_INITIAL_SCAN_SZ);
+            ri, lowest_idx,
+            MIN((lowest_idx + LOG_INITIAL_SCAN_SZ), entry_max_idx));
         if (rc)
             return rc;
 
