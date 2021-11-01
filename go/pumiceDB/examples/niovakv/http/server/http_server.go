@@ -98,7 +98,9 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
 		log.Trace(h.Stat)
+		h.statLock.Lock()
 		stat, err := json.MarshalIndent(h.Stat, "", " ")
+		h.statLock.Unlock()
 		if err != nil {
                         log.Error("(HTTP Server) Writing to http response writer failed :", err)
                 }
