@@ -71,6 +71,9 @@ struct buffer_item *
 buffer_set_allocate_item_from_pending(struct buffer_set *bs);
 
 int
+buffer_set_release_pending_alloc(struct buffer_set *bc, const size_t nitems);
+
+int
 buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems);
 
 int
