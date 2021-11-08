@@ -4699,13 +4699,16 @@ raft_server_state_machine_apply(struct raft_instance *ri)
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
 
         /*
-         * ri_server_sm_request_cb() may return error for follower as
-         * it's expected for pmdb_object_lookup() to fail for followers.
+         * On ri_server_sm_request_cb() failure, memory for write
+         * supplement would have not been allocated and ws merge
+         * should not happen.
+         * XXX Should we fail the entire coalesced write transaction
+         * in case any of the write transaction fails?
          */
         if (rc_arr[i])
             failed = true;
-
-        raft_net_sm_write_supplements_merge(&coalesced_ws,
+        else
+            raft_net_sm_write_supplements_merge(&coalesced_ws,
                                             &rncr_ptr->rncr_sm_write_supp);
 
         offset += reh.reh_entry_sz[i];

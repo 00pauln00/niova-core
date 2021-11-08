@@ -937,9 +937,12 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
                        "pmdb_object_lookup(): %s", strerror(-rc));
 
         /* Since the KV is being rewritten, replace the errors with -ESTALE
+         * only for leader (as pmdb object was written only on leader as marker in
+         * the write phase. For followers it would fail with ENOENT)
          * so that upper layer will not attempt to issue a reply.
          */
-        rc = -ESTALE;
+        if (rncr->rncr_is_leader)
+            rc = -ESTALE;
 
         /* Initialize the object as best we can given that reply information
          * is not present since this raft instance did not accept the initial
