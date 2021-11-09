@@ -45,6 +45,7 @@ typedef bool     raft_net_cb_ctx_bool_t;
 typedef void     raft_net_timerfd_cb_ctx_t;
 typedef int      raft_net_timerfd_cb_ctx_int_t;
 typedef bool     raft_net_timerfd_cb_ctx_bool_t;
+typedef void     raft_net_leader_prep_cb_ctx_t;
 
 typedef uint64_t raft_net_request_tag_t;
 #define RAFT_NET_TAG_NONE 0UL
@@ -84,6 +85,10 @@ typedef raft_net_timerfd_cb_ctx_t
 // State machine request handler - reads, writes, and commits
 typedef raft_net_cb_ctx_int_t
 (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
+
+// cleanup the cowr subapp tree on getting elected as leader
+typedef raft_net_leader_prep_cb_ctx_t
+(*raft_leader_prep_cb_t)(void);
 
 typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
 typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
@@ -310,7 +315,7 @@ struct raft_net_client_request_handle
     const size_t                          rncr_reply_data_max_size;
     size_t                                rncr_reply_data_size;
     uint64_t                              rncr_msg_id;
-    struct raft_net_sm_write_supplements *rncr_sm_write_supp;
+    struct raft_net_sm_write_supplements  rncr_sm_write_supp;
     uuid_t                                rncr_client_uuid;
 };
 

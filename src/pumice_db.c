@@ -420,7 +420,7 @@ pmdb_prep_raft_entry_write(struct raft_net_client_request_handle *rncr,
     raft_net_client_request_handle_set_write_raft_entry(rncr);
 
     // Mark that the object is pending a write in this leader's term.
-    pmdb_prep_obj_write(rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
+    pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, rncr->rncr_current_term);
 
     PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
@@ -439,7 +439,7 @@ pmdb_prep_sm_apply_write(struct raft_net_client_request_handle *rncr,
     obj->pmdb_obj_commit_seqno++;
 
     // Reset the pending term value with -1
-    pmdb_prep_obj_write(rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
+    pmdb_prep_obj_write(&rncr->rncr_sm_write_supp, &pmdb_req->pmdbrm_user_id,
                         obj, ID_ANY_64bit);
 
     PMDB_OBJ_DEBUG(LL_DEBUG, obj, "");
@@ -957,7 +957,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
      */
     pmdb_prep_sm_apply_write(rncr, &obj);
 
-    struct raft_net_sm_write_supplements *ws = rncr->rncr_sm_write_supp;
+    struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
     struct pmdb_apply_handle pah = {.pah_rncui = rncui, .pah_ws = ws};
 
     // Call into the application so it may emplace its own KVs.
@@ -1146,6 +1146,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
+                                  pmdb_cowr_sub_app_release_all,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 
