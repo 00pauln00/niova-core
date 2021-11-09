@@ -2214,8 +2214,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 
     ws->rnws_nkv++;
 
-    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s val=%s", ws, ws->rnws_nkv, key,
-            value);
+    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s", ws, ws->rnws_nkv, key);
 
     return 0;
 }
