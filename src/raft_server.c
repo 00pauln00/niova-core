@@ -4697,11 +4697,12 @@ raft_server_state_machine_apply(struct raft_instance *ri)
                                                      reply_buf_sz);
 
         rc_arr[i] = ri->ri_server_sm_request_cb(&rncr[i]);
+
         if (rc_arr[i])
             failed = true;
-        else
-            raft_net_sm_write_supplements_merge(&coalesced_ws,
-                                               &rncr_ptr->rncr_sm_write_supp);
+
+        raft_net_sm_write_supplements_merge(&coalesced_ws,
+                                            &rncr_ptr->rncr_sm_write_supp);
 
         offset += reh.reh_entry_sz[i];
     }
@@ -4744,7 +4745,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
           * is a follower.  Therefore, udp init should be bypassed if this
           * node is not the leader.
           */
-         if (!rc_arr[i] &&
+         if (!rc_arr[i] && raft_instance_is_leader(ri) &&
              raft_net_client_request_handle_has_reply_info(&rncr[i]))
             raft_server_client_reply_init(
                 ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
