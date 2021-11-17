@@ -28,4 +28,7 @@ random_create_seed_from_uuid(const uuid_t uuid);
 unsigned int
 random_create_seed_from_uuid_and_tid(const uuid_t uuid);
 
+unsigned char
+random_get_u8(void);
+
 #endif
