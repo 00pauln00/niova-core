@@ -1,4 +1,4 @@
-name: holon_niovakv_recipes_workflow
+name: holon_golang_apps_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -49,13 +49,14 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-    - name: Build niovakv application
+    - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/pumiceDB/examples/niovakv && make -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/niovakv_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/niovakv_recipes.txt /home/runner/work/niovad/niovad/build_dir/ &&
+           cp ./code/scripts/covid_app_recipe.txt ./code/scripts/foodpalaceapp_recipe.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -74,7 +75,27 @@ jobs:
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
-    - name:  run recipes
+    - name:  run recipe for covid application
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
+                             '/home/runner/work/niovad/niovad/build_dir'
+                             '/home/runner/work/niovad/niovad/holon_log' 5
+                             '/home/runner/work/niovad/niovad/build_dir/covid_app_recipe.txt'
+                             'covid'
+                             '0'
+                             '/home/runner/work/go/go/bin'
+
+    - name:  run recipe for foodpalace application
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
+                             '/home/runner/work/niovad/niovad/build_dir'
+                             '/home/runner/work/niovad/niovad/holon_log' 5
+                             '/home/runner/work/niovad/niovad/build_dir/foodpalaceapp_recipe.txt'
+                             'foodpalace'
+                             '0'
+                             '/home/runner/work/go/go/bin'
+
+    - name:  run recipes for niovakv application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
