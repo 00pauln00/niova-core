@@ -1738,7 +1738,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
     if (size_rc == msg_size)
         raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
-    return size_rc == msg_size ? 0 : -ECOMM;
+    return size_rc == msg_size ? 0 : size_rc;
 }
 
 int
