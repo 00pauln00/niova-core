@@ -1859,7 +1859,8 @@ raft_client_rpc_sendq_dequeue_head_and_send(struct raft_client_instance *rci)
     {
         rc = raft_client_rpc_launch(rci, sa);
 
-        if (rc)
+        // Dont' mark rcrh_cancel if rc is EAGAIN.
+        if (rc && rc != -EAGAIN)
         {
             cancel = true;
             /* msg failed to send - notify the app layer.  Use the RCI_LOCK on
