@@ -557,9 +557,10 @@ raft_net_sockets_close(struct raft_instance *ri)
 static int
 raft_net_tcp_sockets_bind(struct raft_instance *ri)
 {
-    int rc = tcp_mgr_sockets_bind(&ri->ri_peer_tcp_mgr);
-
-    return rc ? rc : tcp_mgr_sockets_bind(&ri->ri_client_tcp_mgr);
+    if (raft_instance_is_client(ri))
+        return tcp_mgr_sockets_bind(&ri->ri_client_tcp_mgr);
+    else
+        return tcp_mgr_sockets_bind(&ri->ri_peer_tcp_mgr);
 }
 
 static int
@@ -610,9 +611,13 @@ raft_net_tcp_sockets_setup(struct raft_instance *ri)
     int peer_port = ctl_svc_node_peer_2_port(ri->ri_csn_this_peer);
     int client_port = ctl_svc_node_peer_2_client_port(ri->ri_csn_this_peer);
 
-    int rc = tcp_mgr_sockets_setup(&ri->ri_peer_tcp_mgr, ipaddr, peer_port);
-    return rc ? rc
-        : tcp_mgr_sockets_setup(&ri->ri_client_tcp_mgr, ipaddr, client_port);
+    int rc;
+    if (raft_instance_is_client(ri))
+        rc = tcp_mgr_sockets_setup(&ri->ri_client_tcp_mgr, ipaddr, client_port);
+    else
+        rc = tcp_mgr_sockets_setup(&ri->ri_peer_tcp_mgr, ipaddr, peer_port);
+
+    return rc;
 }
 
 static int
