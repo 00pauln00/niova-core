@@ -154,7 +154,7 @@ func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	if err == nil {
 
 		//Get TotalVaccinations value and PeopleVaccinated value by splitting prevResult.
-		splitVal := strings.Split(prevResult, " ")
+		splitVal := strings.Split(string(prevResult), " ")
 
 		//Convert data type to int64.
 		tvInt, _ := strconv.ParseInt(splitVal[len(splitVal)-2], 10, 64)
@@ -208,7 +208,7 @@ func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	if readErr == nil {
 		//split space separated values.
-		splitValues = strings.Split(readRsult, " ")
+		splitValues = strings.Split(string(readRsult), " ")
 	}
 
 	//Convert TotalVaccinations and PeopleVaccinated into int64 type

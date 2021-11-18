@@ -1738,7 +1738,7 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
     if (size_rc == msg_size)
         raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
-    return size_rc == msg_size ? 0 : -ECOMM;
+    return size_rc == msg_size ? 0 : size_rc;
 }
 
 int
@@ -2214,8 +2214,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 
     ws->rnws_nkv++;
 
-    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s val=%s", ws, ws->rnws_nkv, key,
-            value);
+    LOG_MSG(LL_DEBUG, "ws=%p nkv=%zu key=%s", ws, ws->rnws_nkv, key);
 
     return 0;
 }

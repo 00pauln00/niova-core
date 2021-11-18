@@ -369,11 +369,9 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 40858,The Golden Wok,Mumbai,Chinese,Very Good,726
 18291385,Navjeevan,Mumbai,"Chinese, Mughlai, North Indian",Very Good,1273
 18237762,Singh Saab,Mumbai,"North Indian, Asian",Excellent,2505
-18281055,Kook,Mumbai,"North Indian, Chinese, Mughlai, Seafood",Good,1683
 39339,KFC,Mumbai,"Burger, Fast Food",Good,747
 36511,Kings Snack Bar,Mumbai,"North Indian, Chinese, Mughlai",Good,829
 18794327,Millennials Eatery and Bar,Mumbai,"Continental, American, Italian, Finger Food, Pizza",Excellent,748
-18532715,Ustaadi,Mumbai,"Mughlai, North Indian, Chinese, Continental",Very Good,1177
 34396,Pizza By The Bay,Mumbai,Italian,Very Good,6100
 17806979,Burger King,Mumbai,"Burger, Fast Food, Beverages",Good,1177
 18583325,Angrezi Dhaba,Mumbai,"North Indian, Chinese, Thai, European",Very Good,2726
@@ -446,7 +444,6 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18357374,Veranda,Mumbai,Modern Indian,Excellent,1961
 18704922,House Of Tipsy,Mumbai,"Mediterranean, Italian, North Indian",Very Good,1958
 18548856,The Bandra Project by PizzaExpress,Mumbai,"Italian, Pizza, Continental",Very Good,5033
-18291385,Navjeevan,Mumbai,"Chinese, Mughlai, North Indian",Çok iyi,1273
 18281055,Kook,Mumbai,"North Indian, Chinese, Mughlai, Seafood",İyi,1683
 38405,Guru Kripa,Mumbai,"Fast Food, Street Food, South Indian, North Indian",Very Good,3682
 40853,Hardeep Punjab,Mumbai,"North Indian, Chinese, Mughlai, Seafood",Very Good,1035
@@ -502,6 +499,7 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 18624821,The Market Project by PizzaExpress,Mumbai,"Italian, Continental",Very Good,2787
 16508778,Pop Tate's,Mumbai,"Italian, Continental, Chinese",Very Good,1368
 39685,Rajdhani,Mumbai,"Gujarati, Rajasthani, North Indian",Excellent,928
+
 18667008,Cafe Delhi Heights,Mumbai,"Continental, Italian, Seafood, North Indian, Cafe",Very Good,623
 18357341,BAR BAR,Mumbai,"North Indian, Chinese, Finger Food, Thai",Good,1290
 18388642,Grandmama's Cafe,Mumbai,"Cafe, American, Desserts",Very Good,3610
@@ -642,7 +640,6 @@ RestaurantID,RestaurantName,City,Cuisines,Rating_text,Votes
 19055358,Sri Sampoorna Bhavan (Non Veg),Hosur,"South Indian, North Indian, Modern Indian, Fast Food, Beverages, Arabian, Chinese",Good,2
 19058691,New Lucky Darbar,Hosur,"Fast Food, Biryani",Good,2
 19063310,Maa Reddy's Hyderabad Biryani House,Hosur,"South Indian, North Indian, Modern Indian, Fast Food, Biryani",Good,2
-18430785,Communiti,Bangalore,"Continental, BBQ",Eccellente,5264
 3100876,Onesta,Mangalore,"Pizza, Italian, Fast Food, Beverages, Desserts",Excellent,2314
 3100010,Diesel Cafe,Mangalore,"American, Italian, Pizza, Sandwich",Very Good,579
 3100753,Bamboo Restaurant,Mangalore,"Biryani, North Indian",Very Good,671

@@ -11,6 +11,7 @@ import (
 	"niovakv/niovakvpmdbclient"
 	"time"
 	"sync"
+	"encoding/hex"
 	"sync/atomic"
 	log "github.com/sirupsen/logrus"
 )
@@ -46,7 +47,7 @@ type HttpServerStat struct {
 }
 
 type RequestStatus struct {
-	RequestHash [16]byte
+	RequestHash string
 	Status	    string
 } 
 
@@ -64,7 +65,7 @@ func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus)
 	}
 
 	if h.NeedStats {
-		requestStat.RequestHash = requestobj.CheckSum
+		requestStat.RequestHash = hex.EncodeToString(requestobj.CheckSum[:])
 		requestStat.Status = "processing"
 		atomic.AddInt64(&h.Stat.Queued,int64(-1))
 	}
@@ -98,7 +99,9 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
 		log.Trace(h.Stat)
+		h.statLock.Lock()
 		stat, err := json.MarshalIndent(h.Stat, "", " ")
+		h.statLock.Unlock()
 		if err != nil {
                         log.Error("(HTTP Server) Writing to http response writer failed :", err)
                 }

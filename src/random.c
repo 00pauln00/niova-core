@@ -75,3 +75,13 @@ random_get(void)
 
     return result;
 }
+
+unsigned char
+random_get_u8(void)
+{
+    unsigned int x = random_get();
+
+    const unsigned char *y = (const unsigned char *)&x;
+
+    return y[0] ^ y[1] ^ y[2] ^ y[3];
+}

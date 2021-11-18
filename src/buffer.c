@@ -95,6 +95,20 @@ buffer_set_allocate_item_from_pending(struct buffer_set *bs)
 }
 
 int
+buffer_set_release_pending_alloc(struct buffer_set *bs, const size_t nitems)
+{
+    if (!bs || nitems > bs->bs_num_bufs)
+        return -EINVAL;
+
+    if (nitems > bs->bs_num_pndg_alloc)
+        return -EOVERFLOW;
+
+    bs->bs_num_pndg_alloc -= nitems;
+
+    return 0;
+}
+
+int
 buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems)
 {
     if (!bs || !nitems)

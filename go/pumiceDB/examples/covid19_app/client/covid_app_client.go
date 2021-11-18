@@ -12,7 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
 	"covidapplib/lib"
 	"encoding/csv"
 	"encoding/json"
@@ -27,6 +26,7 @@ var (
 	raftUuid      string
 	clientUuid    string
 	jsonFilePath  string
+	cmd	      string
 	rwMap         map[string]map[string]string
 	keyRncuiMap   map[string]string
 	writeMultiMap map[CovidAppLib.CovidLocale]string
@@ -60,10 +60,12 @@ func main() {
 	if clientObj == nil {
 		return
 	}
-
 	//Start the client
 	clientObj.Start()
 	defer clientObj.Stop()
+
+	//Wait for client to boot up.
+	time.Sleep(5 * time.Second)
 
 	fmt.Println("=================Format to pass write-read entries================")
 	fmt.Println("Single write format ==> WriteOne#rncui#key#Val0#Val1#Val2#outfile_name")
@@ -72,100 +74,93 @@ func main() {
 	fmt.Println("Multiple read format ==> ReadMulti#outfile_name")
 	fmt.Println("Get Leader format ==> GetLeader#outfile_name")
 
-	for {
 
-		fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
+	fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
 
-		//Get console input string
-		var str string
+	//Get console input string
+	var str string
+	//Split the input string.
+	input, _:= getInput(str)
+	ops := input[0]
 
-		//Split the inout string.
-		input, err := getInput(str)
-		fmt.Printf("err: %v\n", err)
+	//Create and Initialize map for write-read outfile.
+	rwMap = make(map[string]map[string]string)
+	//Create and Initialize the map for WriteMulti
+	writeMultiMap = make(map[CovidAppLib.CovidLocale]string)
 
-		ops := input[0]
+	///Create temporary UUID
+	tempUuid := uuid.New()
+	tempUuidStr := tempUuid.String()
 
-		//Create and Initialize map for write-read oufile.
-		rwMap = make(map[string]map[string]string)
+	var opIface Operation
 
-		//Create and Initialize the map for WriteMulti
-		writeMultiMap = make(map[CovidAppLib.CovidLocale]string)
-
-		///Create temporary UUID
-		tempUuid := uuid.New()
-		tempUuidStr := tempUuid.String()
-
-		var opIface Operation
-
-		switch ops {
-		case "WriteOne":
-			opIface = &wrOne{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[6],
-					key:          input[2],
-					rncui:        input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "ReadOne":
-			opIface = &rdOne{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[3],
-					key:          input[1],
-					rncui:        input[2],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "WriteMulti":
-			opIface = &wrMul{
-				csvFile: input[1],
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[2],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "ReadMulti":
-			opIface = &rdMul{
-				op: opInfo{
-					outfileUuid:  tempUuidStr,
-					jsonFileName: input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		case "GetLeader":
-			opIface = &getLeader{
-				op: opInfo{
-					jsonFileName: input[1],
-					inputStr:     input,
-					cliObj:       clientObj,
-				},
-			}
-		default:
-			fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
-			continue
+	switch ops {
+	case "WriteOne":
+		opIface = &wrOne{
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[6],
+				key:          input[2],
+				rncui:        input[1],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
-		prepErr := opIface.prepare()
-		if prepErr != nil {
-			log.Error("error to call prepare() method")
-			os.Exit(0)
+	case "ReadOne":
+		opIface = &rdOne{
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[3],
+				key:          input[1],
+				rncui:        input[2],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
-		execErr := opIface.exec()
-		if execErr != nil {
-			log.Error("error to call exec() method")
-			os.Exit(0)
+	case "WriteMulti":
+		opIface = &wrMul{
+			csvFile: input[1],
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[2],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
-		compErr := opIface.complete()
-		if compErr != nil {
-			log.Error("error to call complete() method")
-			os.Exit(0)
+	case "ReadMulti":
+		opIface = &rdMul{
+			op: opInfo{
+				outfileUuid:  tempUuidStr,
+				jsonFileName: input[1],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
 		}
+	case "GetLeader":
+		opIface = &getLeader{
+			op: opInfo{
+				jsonFileName: input[1],
+				inputStr:     input,
+				cliObj:       clientObj,
+			},
+		}
+	default:
+		fmt.Println("\nEnter valid Operation: WriteOne/ReadOne/WriteMulti/ReadMulti/GetLeader/exit")
+	}
+	prepErr := opIface.prepare()
+	if prepErr != nil {
+		log.Error("error to call prepare() method")
+		os.Exit(0)
+	}
+	execErr := opIface.exec()
+	if execErr != nil {
+		log.Error("error to call exec() method")
+		os.Exit(0)
+	}
+	compErr := opIface.complete()
+	if compErr != nil {
+		log.Error("error to call complete() method")
+		os.Exit(0)
 	}
 }
 
@@ -175,7 +170,7 @@ func parseArgs() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&jsonFilePath, "l", "/tmp/covidAppLog", "json outfile path")
-
+	flag.StringVar(&cmd, "c", "NULL", "Command to pass")
 	flag.Parse()
 }
 
@@ -287,6 +282,13 @@ type covidVaxData struct {
 	Data      map[string]map[string]string
 }
 
+/*
+ Structue to fill map in json file.
+*/
+type KeyRncuiData struct{
+	KRMap map[string]string
+}
+
 //Function to read-write data into map.
 func fillDataToMap(mp map[string]string, rncui string) {
 
@@ -309,17 +311,8 @@ func (cvd *covidVaxData) dumpIntoJson(outfileUuid string) string {
 //read console input.
 func getInput(keyText string) ([]string, error) {
 
-	//Read the key from console
-	key := bufio.NewReader(os.Stdin)
-
-	keyText, _ = key.ReadString('\n')
-
 	// convert CRLF to LF
-	keyText = strings.Replace(keyText, "\n", "", -1)
-
-	if keyText == "exit" {
-		os.Exit(0)
-	}
+	keyText = strings.Replace(cmd, "\n", "", -1)
 
 	input := strings.Split(keyText, "#")
 	for i := range input {
@@ -686,14 +679,12 @@ func (wmObj *wrMul) prepare() error {
 
 		//Fill the map for each structure of csv record.
 		writeMultiMap[*cwr] = "record_struct"
-
 		if writeMultiMap == nil {
 			err = errors.New("prepare() method failed for WriteMulti Operation.")
 		} else {
 			err = nil
 		}
 	}
-
 	return err
 }
 
@@ -711,7 +702,6 @@ func (wmObj *wrMul) exec() error {
 		wmObj.op.key = csvStruct.Location
 		wmObj.op.rncui = rncui
 		err := wmObj.op.cliObj.Write(&csvStruct, rncui)
-
 		if err != nil {
 			wmData.Status = -1
 			log.Info("Write key-value failed : ", err)
@@ -726,6 +716,14 @@ func (wmObj *wrMul) exec() error {
 
 	//Dump structure into json.
 	wmObj.op.outfileName = wmData.dumpIntoJson(wmObj.op.outfileUuid)
+	KeyRncuiData := &KeyRncuiData{
+		KRMap:keyRncuiMap,
+	}
+
+	//Fill map in json file.
+        kRFname := jsonFilePath + "/" + "keyRncui.json"
+        file, _ := json.MarshalIndent(KeyRncuiData, "", "\t")
+        _ = ioutil.WriteFile(kRFname, file, 0644)
 
 	return wErr
 }
@@ -754,6 +752,14 @@ func (rmObj *rdMul) prepare() error {
 	var err error
 	var rmRncui []string
 	var rmData []*CovidAppLib.CovidLocale
+	var kRData KeyRncuiData
+
+	//Read json file.
+	kRFname := jsonFilePath + "/" + "keyRncui.json"
+	jsonFile,_ := os.Open(kRFname)
+	data, err := ioutil.ReadAll(jsonFile)
+	json.Unmarshal(data, &kRData)
+	keyRncuiMap = kRData.KRMap
 
 	for key, rncui := range keyRncuiMap {
 		log.Info(key, ":", rncui)
