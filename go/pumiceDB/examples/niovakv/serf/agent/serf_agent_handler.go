@@ -1,8 +1,12 @@
 package serfagenthandler
 
 import (
+	"bufio"
+	"fmt"
 	"log"
 	"net"
+	"os"
+	"strings"
 
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
@@ -109,11 +113,11 @@ func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
 /*
 Type : SerfAgentHandler
 Method name : Startup
-Parameters : joinaddrs []string
+Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) Startup(joinaddrs []string) (int, error) {
+func (Handler *SerfAgentHandler) Startup(staticSerfConfigPath string) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -126,6 +130,11 @@ func (Handler *SerfAgentHandler) Startup(joinaddrs []string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+
+	// call func to get address 
+	var joinaddrs, _ = Handler.getServerAddress(staticSerfConfigPath)
+	fmt.Println(joinaddrs)
+
 	//Join the cluster
 	if len(joinaddrs) != 0 {
 		memcount, _ = Handler.join(joinaddrs)
@@ -172,4 +181,34 @@ func (Handler *SerfAgentHandler) Close() error {
 	Handler.agentIPCObj.Shutdown()
 	err := Handler.agentObj.Shutdown()
 	return err
+}
+
+/*
+Type : SerfAgentHandler
+Method name : getServerAddress
+Parameters : staticSerfConfigPath
+Return Value : list of addrs
+Description : Get the list of teh addresses to join the cluster.
+*/
+
+func (Handler *SerfAgentHandler) getServerAddress(staticSerfConfigPath string) ([]string, error) {
+	//Get addrs and Rports and store it in AgentAddrs and
+	fmt.Println(staticSerfConfigPath)
+
+	if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
+		return nil, err
+	}
+	reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
+	if err != nil {
+		return nil, err
+	}
+	filescanner := bufio.NewScanner(reader)
+	filescanner.Split(bufio.ScanLines)
+	var addrs []string
+	for filescanner.Scan() {
+		input := strings.Split(filescanner.Text(), " ")
+		addrs = append(addrs, input[0]+":"+input[1])
+		fmt.Println("address is " , addrs)
+	}
+	return addrs, nil
 }
