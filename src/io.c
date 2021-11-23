@@ -264,6 +264,25 @@ niova_io_copy_to_iovs(const char *src, size_t src_size,
 }
 
 ssize_t
+niova_io_memset_iovs(struct iovec *iovs, size_t num_iovs, int c, size_t len)
+{
+    if (!len || !iovs || !num_iovs)
+        return -EINVAL;
+
+    size_t remaining = len;
+
+    for (size_t i = 0; i < num_iovs && remaining; i++)
+    {
+        size_t x = MIN(remaining, iovs[i].iov_len);
+        memset(iovs[i].iov_base, c, x);
+
+        remaining -= x;
+    }
+
+    return len - remaining;
+}
+
+ssize_t
 niova_io_copy_from_iovs(char *dest, const size_t dest_size,
                         const struct iovec *src_iovs, const size_t num_iovs)
 {

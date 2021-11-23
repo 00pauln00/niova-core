@@ -260,6 +260,38 @@ iov_test_map_consumed(void)
     return 0;
 }
 
+static int
+iov_test_iovs_memset(void)
+{
+    struct iovec iovs[TC_NIOVS];
+    char *cptr[TC_NIOVS];
+
+    for (int i = 0; i < TC_NIOVS; i++)
+    {
+        iovs[i].iov_base = malloc(i + 1);
+        iovs[i].iov_len = i + 1;
+        memset(iovs[i].iov_base, i + 1, i + 1);
+
+        cptr[i] = (char *)iovs[i].iov_base;
+    }
+
+    // Memset the first 2 iovs entirely and the first byte of the 3rd
+    ssize_t rc = niova_io_memset_iovs(iovs, TC_NIOVS, 0, 4);
+    NIOVA_ASSERT(rc == 4);
+
+    NIOVA_ASSERT(cptr[0][0] == 0);
+    NIOVA_ASSERT(cptr[1][0] == 0);
+    NIOVA_ASSERT(cptr[1][1] == 0);
+    NIOVA_ASSERT(cptr[2][0] == 0);
+    NIOVA_ASSERT(cptr[2][1] == 3);
+    NIOVA_ASSERT(cptr[3][0] == 4);
+
+    for (int i = 0; i < TC_NIOVS; i++)
+        free(iovs[i].iov_base);
+
+    return 0;
+}
+
 int
 main(void)
 {
@@ -268,6 +300,7 @@ main(void)
     NIOVA_ASSERT(!iov_test_num_to_meet_size());
     NIOVA_ASSERT(!iov_test_map_consumed());
     NIOVA_ASSERT(!iov_test_copy_from_iovs());
+    NIOVA_ASSERT(!iov_test_iovs_memset());
 
     return 0;
 }
