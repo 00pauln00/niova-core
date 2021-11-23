@@ -751,7 +751,7 @@ raft_client_leader_is_viable(const struct raft_client_instance *rci)
 
     if (rci && RCI_2_RI(rci))
     {
-        DBG_RAFT_INSTANCE(LL_TRACE, RCI_2_RI(rci),
+        DBG_RAFT_INSTANCE(LL_WARN, RCI_2_RI(rci),
                           "leader_csn(rci:ri)=%p:%p cnt=%zu viable=%d",
                           rci->rci_leader_csn, RCI_2_RI(rci)->ri_csn_leader,
                           rci->rci_leader_alive_cnt, viable);
