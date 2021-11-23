@@ -29,6 +29,7 @@ enum fault_inject_entries
     FAULT_INJECT_ignore_einprogress,
     FAULT_INJECT_raft_force_set_max_scan_entries,
     FAULT_INJECT_raft_pvc_becomes_candidate,
+    FAULT_INJECT_raft_limit_rsync_bw,
     FAULT_INJECT__MAX,
     FAULT_INJECT__MIN = FAULT_INJECT_any,
 } PACKED;
