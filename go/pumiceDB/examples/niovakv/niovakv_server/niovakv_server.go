@@ -38,7 +38,7 @@ type niovaKVServerHandler struct {
 	agentName           string
 	agentPort           string
 	agentRPCPort        string
-	agentJoinAddrs      []string
+	peerAddrsFilePath   string
 	serfLogger          string
 	serfAgentHandler    serfagenthandler.SerfAgentHandler
 
@@ -67,6 +67,7 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.StringVar(&handler.requireStat , "s","0","If required server stat about request enter 1")
+	flag.StringVar(&handler.peerAddrsFilePath , "pa", "NULL", "Path to pmdb server gossip addrs")
 	flag.Parse()
 }
 
@@ -94,8 +95,6 @@ func (handler *niovaKVServerHandler) getConfigData() error {
 			handler.agentPort = input[2]
 			handler.agentRPCPort = input[3]
 			handler.httpPort = input[4]
-		} else {
-			handler.agentJoinAddrs = append(handler.agentJoinAddrs, input[1]+":"+input[2])
 		}
 	}
 	if handler.agentPort == "" {
@@ -139,7 +138,7 @@ func (handler *niovaKVServerHandler) startSerfAgent() error {
 			defaultLogger.SetOutput(f)
 		}
 	}
-	defaultLogger.SetOutput(ioutil.Discard)
+
 	handler.serfAgentHandler = serfagenthandler.SerfAgentHandler{}
 	handler.serfAgentHandler.Name = handler.agentName
 	handler.serfAgentHandler.BindAddr = handler.addr
@@ -147,9 +146,21 @@ func (handler *niovaKVServerHandler) startSerfAgent() error {
 	handler.serfAgentHandler.AgentLogger = defaultLogger.Default()
 	handler.serfAgentHandler.RpcAddr = handler.addr
 	handler.serfAgentHandler.RpcPort = handler.agentRPCPort
+	joinAddrs, err := serfagenthandler.GetPeerAddress(handler.peerAddrsFilePath)
+	if err != nil {
+		return err
+	}
 	//Start serf agent
-	_, err := handler.serfAgentHandler.Startup(handler.agentJoinAddrs)
+	_, err = handler.serfAgentHandler.Startup(joinAddrs, true)
+
 	return err
+}
+
+func (handler *niovaKVServerHandler) getConfigData_Gossip() {
+	Data := handler.serfAgentHandler.GetTags()
+	log.Info(Data)
+	JsonString, _ := json.MarshalIndent(Data,""," ")
+	 _ = ioutil.WriteFile("config.json", JsonString, 0644)
 }
 
 func (handler *niovaKVServerHandler) startHTTPServer() error {
@@ -234,6 +245,16 @@ func main() {
 		log.Panic("(Niovakv Server) Error while getting config data : ", err)
 		os.Exit(1)
 	}
+	
+	//Start serf agent handler
+        err = niovaServer.startSerfAgent()
+        if err != nil {
+                log.Panic("Error while starting serf agent : ", err)
+                os.Exit(1)
+        }
+
+
+	niovaServer.getConfigData_Gossip()
 
 	//Create a niovaKVServerHandler
 	err = niovaServer.startPMDBclient()
@@ -241,13 +262,6 @@ func main() {
 		log.Panic("(Niovakv Server) Error while starting pmdb client : ", err)
 		os.Exit(1)
 	}
-
-	//Start serf agent handler
-        err = niovaServer.startSerfAgent()
-        if err != nil {
-                log.Panic("Error while starting serf agent : ", err)
-                os.Exit(1)
-        }
 
 	//Start http server
 	go func(){

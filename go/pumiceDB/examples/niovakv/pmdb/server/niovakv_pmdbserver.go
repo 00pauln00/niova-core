@@ -6,9 +6,14 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"niovakv/niovakvlib"
+	"pmdbServer/serfagenthandler"
 	"os"
 	"unsafe"
-
+	"io/ioutil"
+	"bufio"
+	"strings"
+	"strconv"
+	defaultLogger "log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -19,51 +24,47 @@ import (
 import "C"
 
 var seqno = 0
-var (
-	raftUuid string
-	peerUuid string
-	logDir string
-	logLevel string
-)
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
-func main() {
+type pmdbServerHandler struct{
+	raftUUID string
+        peerUUID string
+        logDir string
+        logLevel string
+        aport string
+	configData map[string]string
+}
 
-	nso, pErr := parseArgs()
+
+func main() {
+	serverHandler := pmdbServerHandler{}
+	nso, pErr := serverHandler.parseArgs()
 	if pErr != nil {
 		log.Println(pErr)
 		return
 	}
 
-	flag.Usage = usage
-	flag.Parse()
-	switch logLevel{
-	case "Info":
-		log.SetLevel(log.InfoLevel)
-	case "Trace":
-		log.SetLevel(log.TraceLevel)
-	}
-	if flag.NFlag() == 0 {
-		usage()
-		os.Exit(-1)
+	switch serverHandler.logLevel{
+		case "Info":
+			log.SetLevel(log.InfoLevel)
+		case "Trace":
+			log.SetLevel(log.TraceLevel)
 	}
 
-	/* If log path is not provided, it will use Default log path.
-	   default log path: /tmp/<peer-uuid>.log
-	*/
-	defaultLog := "/" + "tmp" + "/" + nso.peerUuid + ".log"
-	flag.StringVar(&logDir, "NULL", defaultLog, "log dir")
-	flag.Parse()
-	//Create log file.
-	err := PumiceDBCommon.InitLogger(logDir)
+	//Create log file
+	err := PumiceDBCommon.InitLogger(serverHandler.logDir)
 	if err != nil {
 		log.Error("Error while initating logger ", err)
 		os.Exit(1)
 	}
 
-	log.Info("Raft and Peer UUID: ", nso.raftUuid, " ", nso.peerUuid)
+	err = serverHandler.startSerfAgent()
+	if err != nil {
+		log.Fatal("Error while initializing serf agent ",err)
+	}
 
+	log.Info("Raft and Peer UUID: ", nso.raftUuid, " ", nso.peerUuid)
 	/*
 	   Initialize the internal pmdb-server-object pointer.
 	   Assign the Directionary object to PmdbAPI so the apply and
@@ -92,17 +93,26 @@ func usage() {
 	os.Exit(0)
 }
 
-func parseArgs() (*NiovaKVServer, error) {
+func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 
 	var err error
 
-	nso := &NiovaKVServer{}
+	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
+	flag.StringVar(&handler.peerUUID, "u", "NULL", "peer uuid")
 
-	flag.StringVar(&nso.raftUuid, "r", "NULL", "raft uuid")
-	flag.StringVar(&nso.peerUuid, "u", "NULL", "peer uuid")
-	flag.StringVar(&logDir, "l", "NULL", "log dir")
-	flag.StringVar(&logLevel,"ll","Info","Log level")
+	/* If log path is not provided, it will use Default log path.
+           default log path: /tmp/<peer-uuid>.log
+        */
+	defaultLog := "/" + "tmp" + "/" + handler.peerUUID + ".log"
+	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
+	flag.StringVar(&handler.logLevel,"ll","Info","Log level")
+	flag.StringVar(&handler.aport,"p","NULL","Serf agent port")
 	flag.Parse()
+
+	nso := &NiovaKVServer{}
+	nso.raftUuid = handler.raftUUID
+	nso.peerUuid = handler.peerUUID
+
 	if nso == nil {
 		err = errors.New("Not able to parse the arguments")
 	} else {
@@ -111,6 +121,58 @@ func parseArgs() (*NiovaKVServer, error) {
 
 	return nso, err
 }
+
+func (handler *pmdbServerHandler) readConfig() {
+	folder := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
+	file := folder+"/"+handler.peerUUID+".peer"
+	f,_ := os.Open(file)
+        scanner := bufio.NewScanner(f)
+        handler.configData = make(map[string]string)
+
+	for scanner.Scan() {
+                        text := scanner.Text()
+                        lastIndex := len(strings.Split(text," "))-1
+                        key := strings.Split(text," ")[0]
+                        value := strings.Split(text," ")[lastIndex]
+                        handler.configData[key] = value
+         }
+}
+
+func  (handler *pmdbServerHandler) startSerfAgent() error {
+
+	serfLog := "00"
+
+	switch serfLog{
+        case "ignore":
+                defaultLogger.SetOutput(ioutil.Discard)
+        default:
+                f, err := os.OpenFile("serfLog.log", os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+                if err != nil {
+                        defaultLogger.SetOutput(os.Stderr)
+                } else {
+                        defaultLogger.SetOutput(f)
+                }
+	}
+
+        //defaultLogger.SetOutput(ioutil.Discard)
+	serfAgentHandler := serfagenthandler.SerfAgentHandler{
+		Name: handler.peerUUID,
+		BindAddr: "127.0.0.1",
+	}
+        serfAgentHandler.BindPort, _ = strconv.Atoi(handler.aport)
+        serfAgentHandler.AgentLogger = defaultLogger.Default()
+	//Start serf agent
+        agentJoinAddrs := []string{"127.0.0.1:8505","127.0.0.1:8501","127.0.0.1:8502","127.0.0.1:8503","127.0.0.1:8504"}
+	_, err := serfAgentHandler.Startup(agentJoinAddrs, true)
+
+	handler.readConfig()
+        handler.configData["Type"] = "PMDB_SERVER"
+        serfAgentHandler.SetTags(handler.configData)
+
+	return err
+}
+
+
 
 type NiovaKVServer struct {
 	raftUuid       string
@@ -150,6 +212,36 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 }
 
+/*
+func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
+	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
+
+	log.Trace("NiovaCtlPlane server: Read request received")
+
+
+	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
+	if decodeErr != nil {
+		log.Error("Failed to decode the application data")
+		return
+	}
+
+	log.Trace("Key passed by client: ", applyNiovaKV.InputKey)
+
+	// length of key.
+	keyLength := len(applyNiovaKV.InputKey)
+
+	byteToStr := string(applyNiovaKV.InputValue)
+
+	// Length of value.
+	valLen := len(byteToStr)
+
+	log.Trace("Write the KeyValue by calling PmdbWriteKV")
+	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
+		int64(keyLength), byteToStr,
+		int64(valLen), colmfamily)
+
+}
+*/
 func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
@@ -172,7 +264,6 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.InputKey,
 		int64(keyLen), colmfamily)
-
 	var valType []byte
 	var replySize int64
 	var copyErr error

@@ -2,14 +2,13 @@ package serfagenthandler
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"net"
-	"os"
-	"strings"
-
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
+	"os"
+	"strings"
+	"fmt"
 )
 
 /*
@@ -71,7 +70,12 @@ Parameters : None
 Return Value : error
 Description : Starts the created agent in setup, and listenes on rpc channel
 */
-func (Handler *SerfAgentHandler) start() error {
+func (Handler *SerfAgentHandler) start(requireRPC bool) error {	
+	err := Handler.agentObj.Start()
+
+	if !requireRPC{
+		return err
+	}
 
 	//Create func handler for rpc, client handlers are binded to rpc.
 	FuncHandler := &agent.ScriptEventHandler{
@@ -80,7 +84,6 @@ func (Handler *SerfAgentHandler) start() error {
 		Logger:   Handler.AgentLogger,
 	}
 	Handler.agentObj.RegisterEventHandler(FuncHandler)
-	err := Handler.agentObj.Start()
 
 	//Return if error in starting the agent
 	if err != nil {
@@ -106,8 +109,29 @@ Return value : int, error
 Description : Joins the cluster
 */
 func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
+	//fmt.Println(Handler.agentObj)
 	no_of_nodes, err := Handler.agentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
 	return no_of_nodes, err
+}
+
+
+func GetPeerAddress(staticSerfConfigPath string) ([]string, error) {
+        //Get addrs and Rports and store it in AgentAddrs and
+        if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
+                return nil, err
+        }
+        reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
+        if err != nil {
+                return nil, err
+        }
+        filescanner := bufio.NewScanner(reader)
+        filescanner.Split(bufio.ScanLines)
+        var addrs []string
+        for filescanner.Scan() {
+                input := strings.Split(filescanner.Text(), " ")
+                addrs = append(addrs, input[0]+":"+input[1])
+        }
+        return addrs, nil
 }
 
 /*
@@ -117,7 +141,7 @@ Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) Startup(staticSerfConfigPath string) (int, error) {
+func (Handler *SerfAgentHandler) Startup(joinAddrs []string,rpcRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -126,18 +150,14 @@ func (Handler *SerfAgentHandler) Startup(staticSerfConfigPath string) (int, erro
 		return 0, err
 	}
 	//Start agent and RPC server
-	err = Handler.start()
+	err = Handler.start(rpcRequired)
 	if err != nil {
 		return 0, err
 	}
 
-	// call func to get address 
-	var joinaddrs, _ = Handler.getServerAddress(staticSerfConfigPath)
-	fmt.Println(joinaddrs)
-
 	//Join the cluster
-	if len(joinaddrs) != 0 {
-		memcount, _ = Handler.join(joinaddrs)
+	if len(joinAddrs) != 0 {
+		memcount, _ = Handler.join(joinAddrs)
 	}
 	return memcount, err
 }
@@ -168,6 +188,17 @@ Description : Update tags, its incremental type update
 func (Handler *SerfAgentHandler) SetTags(tags map[string]string) error {
 	err := Handler.agentObj.SetTags(tags)
 	return err
+}
+
+func (Handler *SerfAgentHandler) GetTags() map[string]map[string]string {
+	members := Handler.agentObj.Serf().Members()
+	data := make(map[string]map[string]string)
+	for _,mem := range members {
+		if mem.Tags["Type"]=="PMDB_SERVER" {
+			data[mem.Name]=mem.Tags
+		}
+	}
+	return data
 }
 
 /*
