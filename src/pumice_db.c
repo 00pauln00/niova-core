@@ -969,18 +969,21 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
                             pmdb_req->pmdbrm_data_size, (void *)&pah,
                             pmdb_user_data);
 
-    // rc of 0 means the client will get a reply and only leader should send the
-    // reply back to client.
-    if (!rc && rncr->rncr_is_leader)
+    // rc of 0 means the client will get a reply and removal of coalesced
+    // tree item only leader should send the reply back to client.
+    if (!rc)
     {
-        struct pmdb_msg *pmdb_reply =
-            RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+        if (rncr->rncr_is_leader)
+        {
+            struct pmdb_msg *pmdb_reply =
+                RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
 
-        // Pass in ID_ANY_64bit since this is a reply.
-        pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+            // Pass in ID_ANY_64bit since this is a reply.
+            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+        }
+        pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
     }
 
-    pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
 
     return rc;
 }
