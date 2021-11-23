@@ -83,4 +83,21 @@ int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
                 bool use_posix_memalign);
 
+static inline ssize_t
+buffer_user_list_total_bytes(const struct buffer_user_slist *bus)
+{
+    if (!bus)
+        return -EINVAL;
+
+    const struct buffer_item *bi = NULL;
+    ssize_t total = 0;
+
+    SLIST_FOREACH(bi, bus, bi_user_slentry)
+    {
+        total += bi->bi_iov_save.iov_len;
+    }
+
+    return total;
+}
+
 #endif
