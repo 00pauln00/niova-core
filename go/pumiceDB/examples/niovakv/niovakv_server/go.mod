@@ -1,6 +1,6 @@
 module niovakv/niovakv_server
 
-replace niovakv/httpserver => ../http/server
+replace niovakv/httpserver => ../../common/http/server
 
 replace niovakv/niovakvlib => ../lib
 
@@ -10,7 +10,7 @@ replace niova/go-pumicedb-lib/common => ../../../common
 
 replace niovakv/niovakvclient => ../pmdb/client
 
-replace niovakvserver/serfagenthandler => ../serf/agent
+replace niovakvserver/serfagenthandler => ../../common/serf/agent
 
 replace niovakv/niovakvpmdbclient => ../pmdb/client
 

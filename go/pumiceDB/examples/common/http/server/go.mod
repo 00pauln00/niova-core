@@ -6,9 +6,9 @@ replace niova/go-pumicedb-lib/client => ../../../../client
 
 replace niova/go-pumicedb-lib/common => ../../../../common
 
-replace niovakv/niovakvlib => ../../lib
+replace niovakv/niovakvlib => ../../../niovakv/lib
 
-replace niovakv/niovakvpmdbclient => ../../pmdb/client
+replace niovakv/niovakvpmdbclient => ../../../niovakv/pmdb/client
 
 require (
 	github.com/sirupsen/logrus v1.8.1

@@ -2,7 +2,7 @@ module niovakv/httpclient
 
 go 1.16
 
-replace niovakv/niovakvlib => ../../lib
+replace niovakv/niovakvlib => ../../../niovakv/lib
 
 require (
 	github.com/sirupsen/logrus v1.8.1
