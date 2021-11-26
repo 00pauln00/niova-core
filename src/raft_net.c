@@ -1190,6 +1190,15 @@ raft_net_instance_shutdown(struct raft_instance *ri)
 
     int rc = 0;
 
+    int sockets_close_rc = raft_net_sockets_close(ri);
+    if (sockets_close_rc)
+    {
+        SIMPLE_LOG_MSG(ll, "raft_net_sockets_close(): %s",
+                       strerror(-sockets_close_rc));
+        if (!rc)
+            rc = sockets_close_rc;
+    }
+
     int epoll_close_rc = raft_net_epoll_cleanup(ri);
     if (epoll_close_rc)
     {
@@ -1208,14 +1217,6 @@ raft_net_instance_shutdown(struct raft_instance *ri)
             rc = shutdown_cb_rc;
     }
 
-    int sockets_close_rc = raft_net_sockets_close(ri);
-    if (sockets_close_rc)
-    {
-        SIMPLE_LOG_MSG(ll, "raft_net_sockets_close(): %s",
-                       strerror(-sockets_close_rc));
-        if (!rc)
-            rc = sockets_close_rc;
-    }
 
     int timerfd_close_rc = raft_net_timerfd_close(ri);
     if (timerfd_close_rc)
