@@ -7,11 +7,11 @@ import (
 	"time"
 	"crypto/md5"
 	log "github.com/sirupsen/logrus"
-
+	"encoding/gob"
 	"niovakv/httpclient"
 	"niovakv/niovakvlib"
 	"niovakv/serfclienthandler"
-
+	"bytes"
 	client "github.com/hashicorp/serf/client"
 )
 
@@ -62,6 +62,16 @@ func getAddr(member *client.Member) (string, string) {
 func (nkvc *ClientAPI) doOperation(ReqObj *niovakvlib.NiovaKV, write bool) *niovakvlib.NiovaKVResponse {
 	var responseRecvd *niovakvlib.NiovaKVResponse
 	var toSend client.Member
+	var response []byte
+	/*Encoding request to byte array*/
+	var request bytes.Buffer
+	enc := gob.NewEncoder(&request)
+	err := enc.Encode(ReqObj)
+	if err!=nil{
+		log.Error("(NIOVAKV CLIENT API)",err)
+		return nil
+	}
+
 	Qtimer := time.Tick(nkvc.Timeout * time.Second)
 time:
 	for {
@@ -79,12 +89,7 @@ time:
 			}
 
 			addr, port := getAddr(&toSend)
-			if write {
-				responseRecvd, err = httpclient.PutRequest(ReqObj, addr, port)
-			} else {
-				responseRecvd, err = httpclient.GetRequest(ReqObj, addr, port)
-			}
-
+		        response, err = httpclient.Request(request.Bytes(), addr, port, write)
 			if err == nil {
                                 ok = true
                         }
@@ -99,6 +104,11 @@ time:
                         }
 
 			if ok {
+				dec := gob.NewDecoder(bytes.NewBuffer(response))
+				err = dec.Decode(&responseRecvd)
+				if err != nil{
+					log.Error("(NIOVAKV CLIENT API)",err)
+				}
 				break time
 			}
 			log.Error(err)

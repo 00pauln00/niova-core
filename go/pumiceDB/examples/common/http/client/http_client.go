@@ -2,15 +2,13 @@ package httpclient
 
 import (
 	"bytes"
-	"encoding/gob"
 	"io/ioutil"
 	"net/http"
-	"niovakv/niovakvlib"
-
+	"errors"
 	log "github.com/sirupsen/logrus"
 )
 
-func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
+func serviceRequest(req *http.Request) ([]byte, error) {
 
 	req.Header.Set("Content-Type", "application/json; charset=utf-8")
 	client := &http.Client{}
@@ -24,54 +22,28 @@ func serviceRequest(req *http.Request) (*niovakvlib.NiovaKVResponse, error) {
 		If not, fill the response obj with desired values
 		If so, fill the resp obj with received values
 	*/
-	responseObj := niovakvlib.NiovaKVResponse{}
 	switch resp.StatusCode {
 	case 200:
 		//Serviced
 		defer resp.Body.Close()
-		bodyBytes, _ := ioutil.ReadAll(resp.Body)
-		//Unmarshal the response.
-		dec := gob.NewDecoder(bytes.NewBuffer(bodyBytes))
-		err = dec.Decode(&responseObj)
+		return ioutil.ReadAll(resp.Body)
 	case 503:
 		//Service not found, returned for timeout
-		responseObj.RespStatus = -1
-		responseObj.RespValue = []byte("Server timed out")
-	default:
-		responseObj.RespStatus = -1
-		responseObj.RespValue = []byte(resp.Status)
+		return nil,errors.New("Server timed out")
 	}
-	return &responseObj, err
+	return nil,nil
 }
 
-func PutRequest(reqobj *niovakvlib.NiovaKV, addr string, port string) (*niovakvlib.NiovaKVResponse, error) {
-	var request bytes.Buffer
-	enc := gob.NewEncoder(&request)
-	err := enc.Encode(reqobj)
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-	conn_addr := "http://" + addr + ":" + port
-	req, err := http.NewRequest(http.MethodPut, conn_addr, bytes.NewBuffer(request.Bytes()))
-	if err != nil {
-		log.Error(err)
-		return nil, err
-	}
-	return serviceRequest(req)
-}
+func Request(reqByteArray []byte, addr string, port string, put bool) ([]byte, error) {
+	var req *http.Request
+	var err error
 
-func GetRequest(reqobj *niovakvlib.NiovaKV, addr string, port string) (*niovakvlib.NiovaKVResponse, error) {
-	var request bytes.Buffer
-	enc := gob.NewEncoder(&request)
-	err := enc.Encode(reqobj)
-	if err != nil {
-		log.Error(err)
-		return nil, err
+	connection_addr := "http://" + addr + ":" + port
+	if put {
+		req, err = http.NewRequest(http.MethodPut, connection_addr, bytes.NewBuffer(reqByteArray))
+	} else {
+		req, err = http.NewRequest(http.MethodGet, connection_addr, bytes.NewBuffer(reqByteArray))
 	}
-
-	conn_addr := "http://" + addr + ":" + port
-	req, err := http.NewRequest(http.MethodGet, conn_addr, bytes.NewBuffer(request.Bytes()))
 	if err != nil {
 		log.Error(err)
 		return nil, err
