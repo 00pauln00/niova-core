@@ -899,7 +899,8 @@ pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(
             raft_net_client_user_id_to_string(rncui, rncr_rncui_str, 129);
 
             FATAL_IF(
-                1, "unmatching client / cowr (%s, %s) uuid or rncui (%s, %s),"
+                1, "unmatching cowr client / rncr client (%s, %s),"
+                " or cowr rncui / rncr rncui (%s, %s),"
                 " or cowr_sa term: %ld/ rncr term: %ld",
                 cowr_uuid, client_uuid, cowr_rncui_str, rncr_rncui_str,
                 cowr_sa->pcwsa_current_term, rncr->rncr_current_term);
@@ -969,18 +970,21 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
                             pmdb_req->pmdbrm_data_size, (void *)&pah,
                             pmdb_user_data);
 
-    // rc of 0 means the client will get a reply and only leader should send the
-    // reply back to client.
-    if (!rc && rncr->rncr_is_leader)
+    // rc of 0 means the client will get a reply and removal of coalesced
+    // tree item only leader should send the reply back to client.
+    if (!rc)
     {
-        struct pmdb_msg *pmdb_reply =
-            RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+        if (rncr->rncr_is_leader)
+        {
+            struct pmdb_msg *pmdb_reply =
+                RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
 
-        // Pass in ID_ANY_64bit since this is a reply.
-        pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+            // Pass in ID_ANY_64bit since this is a reply.
+            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+        }
+        pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
     }
 
-    pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
 
     return rc;
 }

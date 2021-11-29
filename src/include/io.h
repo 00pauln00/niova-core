@@ -120,4 +120,7 @@ int
 niova_io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
                      const struct iovec *save_iov);
 
+ssize_t
+niova_io_memset_iovs(struct iovec *iovs, size_t num_iovs, int c, size_t len);
+
 #endif

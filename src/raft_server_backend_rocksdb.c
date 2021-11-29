@@ -31,6 +31,7 @@
 #include "raft_server_backend_rocksdb.h"
 #include "regex_defines.h"
 #include "registry.h"
+#include "fault_inject.h"
 
 #define RAFT_ROCKSDB_KEY_LEN_MAX 256UL
 
@@ -1856,7 +1857,13 @@ rsbr_bulk_recover_xfer_rsync(struct raft_recovery_handle *rrh,
     /* Ensure that a '/' is appended to the remote path so that rsync does
      * not apply the remote's parent directory to the local path.
      */
-    int rc = snprintf(cmd, PATH_MAX, "rsync -a --info=progress2 %s/ %s 2>&1",
+    int rc;
+    if (FAULT_INJECT(raft_limit_rsync_bw))
+        rc = snprintf(cmd, PATH_MAX,
+                      "rsync -a --bwlimit=1 --info=progress2 %s/ %s 2>&1",
+                      remote_path, local_path);
+    else
+        rc = snprintf(cmd, PATH_MAX, "rsync -a --info=progress2 %s/ %s 2>&1",
                       remote_path, local_path);
     if (rc > PATH_MAX)
         return -ENAMETOOLONG;
