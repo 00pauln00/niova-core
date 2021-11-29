@@ -41,8 +41,7 @@ jobs:
       run:  pip3 install ansible
 
     - name: Allow localhost to ssh to itself for rsync to work
-      run: cd ~ && ls .ssh/ &&
-           cat .ssh/id_rsa.pub >> .ssh/authorized_keys &&
+      run: cd ~ && mkdir .ssh/ &&
            echo "NoHostAuthenticationForLocalhost yes" > .ssh/config
 
     - name: make
