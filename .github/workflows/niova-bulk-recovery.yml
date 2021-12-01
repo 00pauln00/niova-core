@@ -40,10 +40,6 @@ jobs:
     - name: Install Ansible
       run:  pip3 install ansible
 
-    - name: Allow localhost to ssh to itself for rsync to work
-      run: ssh-keygen -t rsa -b 4096 -N '' <<<$'\ny\n' &&
-           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys &&
-           echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config
 
     - name: make
       run: cd ./code &&
@@ -70,6 +66,14 @@ jobs:
 
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
+
+    - name: Print working directory
+      run: pwd
+
+    - name: Allow localhost to ssh to itself for rsync to work
+      run: ssh-keygen -N '' <<<$'\ny\n' &&
+           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys &&
+           echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config
 
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
