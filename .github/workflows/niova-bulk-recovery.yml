@@ -71,7 +71,8 @@ jobs:
     - name: Allow localhost to ssh to itself for rsync to work
       run: ssh-keygen -N '' <<<$'\ny\n' &&
            cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys &&
-           echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config
+           echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config &&
+           echo "StrictHostKeyChecking no" >> ~/.ssh/config
 
     - name: check authorized_keys
       run: cat ~/.ssh/authorized_keys &&
