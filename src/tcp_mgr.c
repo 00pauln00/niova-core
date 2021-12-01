@@ -632,7 +632,6 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 
     rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, &tmc->tmc_header_size,
                                tmc->tmc_tsh.tsh_socket, iov.iov_base, rc);
-    NIOVA_ASSERT(new_tmc);
 
     tcp_mgr_handshake_iov_fini(&iov);
 
