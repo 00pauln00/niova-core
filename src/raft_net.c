@@ -548,11 +548,15 @@ raft_net_udp_sockets_close(struct raft_instance *ri)
 static int
 raft_net_sockets_close(struct raft_instance *ri)
 {
-    int rc, rc2;
+    int rc = 0, rc2;
 
-    rc = raft_net_udp_sockets_close(ri);
-    if (raft_net_tcp_disabled())
-        return rc;
+    // udp sockets are used only by servers.
+    if (!raft_instance_is_client(ri))
+    {
+        rc = raft_net_udp_sockets_close(ri);
+        if (raft_net_tcp_disabled())
+            return rc;
+    }
 
     rc2 = raft_net_tcp_sockets_close(ri);
 
@@ -562,13 +566,13 @@ raft_net_sockets_close(struct raft_instance *ri)
 static int
 raft_net_tcp_sockets_bind(struct raft_instance *ri)
 {
-    if (raft_instance_is_client(ri))
-        return tcp_mgr_sockets_bind(&ri->ri_client_tcp_mgr);
-    else
+    // udp sockets are used only by servers.
+    if (!raft_instance_is_client(ri))
     {
         int rc = tcp_mgr_sockets_bind(&ri->ri_peer_tcp_mgr);
         return rc ? rc : tcp_mgr_sockets_bind(&ri->ri_client_tcp_mgr);
     }
+    return 0;
 }
 
 static int
@@ -576,14 +580,12 @@ raft_net_udp_sockets_bind(struct raft_instance *ri)
 {
     int rc = 0;
 
+    if (raft_instance_is_client(ri))
+        return -EINVAL;
+
     for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
          i < RAFT_UDP_LISTEN_MAX && !rc; i++)
-    {
-        if (raft_instance_is_client(ri) && i == RAFT_UDP_LISTEN_SERVER)
-            continue;
-
         rc = udp_socket_bind(&ri->ri_ush[i]);
-    }
 
     if (rc)
         raft_net_udp_sockets_close(ri);
@@ -597,6 +599,9 @@ raft_net_sockets_bind(struct raft_instance *ri)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     int rc;
+
+    if (raft_instance_is_client(ri))
+        return 0;
 
     rc = raft_net_udp_sockets_bind(ri);
     if (rc || raft_net_tcp_disabled())
@@ -624,7 +629,7 @@ raft_net_tcp_sockets_setup(struct raft_instance *ri)
         return tcp_mgr_sockets_setup(&ri->ri_client_tcp_mgr, ipaddr, client_port);
     else
     {
-        int rc = tcp_mgr_sockets_setup(&ri->ri_peer_tcp_mgr, ipaddr, peer_port);
+        rc = tcp_mgr_sockets_setup(&ri->ri_peer_tcp_mgr, ipaddr, peer_port);
         return rc ? rc
             : tcp_mgr_sockets_setup(&ri->ri_client_tcp_mgr, ipaddr, client_port);
     }
@@ -638,6 +643,9 @@ raft_net_udp_sockets_setup(struct raft_instance *ri)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     if (!ri)
+        return -EINVAL;
+
+    if (raft_instance_is_client(ri))
         return -EINVAL;
 
     int rc = 0;
@@ -689,9 +697,12 @@ raft_net_sockets_setup(struct raft_instance *ri)
 {
     int rc;
 
-    rc = raft_net_udp_sockets_setup(ri);
-    if (rc || raft_net_tcp_disabled())
-        return rc;
+    if (!raft_instance_is_client(ri))
+    {
+        rc = raft_net_udp_sockets_setup(ri);
+        if (rc || raft_net_tcp_disabled())
+            return rc;
+    }
 
     rc = raft_net_tcp_sockets_setup(ri);
 
@@ -835,14 +846,13 @@ raft_epoll_setup_udp(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
+    if (raft_instance_is_client(ri))
+        return -EINVAL;
     int rc = 0;
 
     for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
          i < RAFT_UDP_LISTEN_MAX && !rc; i++)
     {
-        if (raft_instance_is_client(ri) && i == RAFT_UDP_LISTEN_SERVER)
-            continue;
-
         rc = raft_net_epoll_handle_add(ri, ri->ri_ush[i].ush_socket,
                                        raft_net_udp_cb);
     }
@@ -855,17 +865,23 @@ raft_epoll_setup_net(struct raft_instance *ri)
 {
     int rc;
 
-    rc = raft_epoll_setup_udp(ri);
-    if (rc || raft_net_tcp_disabled())
-        return rc;
+    if (!raft_instance_is_client(ri))
+    {
+        rc = raft_epoll_setup_udp(ri);
+        if (rc || raft_net_tcp_disabled())
+            return rc;
+    }
 
     if (raft_instance_is_client(ri))
-        return tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr);
+        return tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr,
+                                   true);
     else
     {
-        rc = tcp_mgr_epoll_setup(&ri->ri_peer_tcp_mgr, &ri->ri_epoll_mgr);
+        rc = tcp_mgr_epoll_setup(&ri->ri_peer_tcp_mgr, &ri->ri_epoll_mgr,
+                                 false);
         return rc ? rc
-            : tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr);
+            : tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr,
+                                  false);
     }
 }
 
@@ -1747,7 +1763,10 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
     }
     else
     {
-        if (msg_size <= udp_get_max_size())
+        // communication from and to client should be through tcp.
+        if (raft_instance_is_client(ri) || sock_src == RAFT_UDP_LISTEN_CLIENT)
+            size_rc = raft_net_send_tcp(ri, csn, iov, niovs);
+        else if (msg_size <= udp_get_max_size())
             size_rc = raft_net_send_udp(ri, csn, iov, niovs, sock_src);
         else if (!raft_net_tcp_disabled() && msg_size <= tcp_get_max_size())
             size_rc = raft_net_send_tcp(ri, csn, iov, niovs);

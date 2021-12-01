@@ -686,12 +686,17 @@ tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
 
 /* must call sockets_setup and sockets_bind first */
 int
-tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr)
+tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr,
+                    bool is_client)
 {
     if (!tmi || !epoll_mgr)
         return -EINVAL;
 
     tmi->tmi_epoll_mgr = epoll_mgr;
+
+    // raft client do not need listen socket.
+    if (is_client)
+        return 0;
 
     int rc = epoll_handle_init(&tmi->tmi_listen_eph,
                                tmi->tmi_listen_socket.tsh_socket, EPOLLIN,
