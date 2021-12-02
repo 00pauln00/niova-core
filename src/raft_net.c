@@ -567,7 +567,9 @@ static int
 raft_net_tcp_sockets_bind(struct raft_instance *ri)
 {
     // udp sockets are used only by servers.
-    if (!raft_instance_is_client(ri))
+    if (raft_instance_is_client(ri))
+        return -EOPNOTSUPP;
+    else
     {
         int rc = tcp_mgr_sockets_bind(&ri->ri_peer_tcp_mgr);
         return rc ? rc : tcp_mgr_sockets_bind(&ri->ri_client_tcp_mgr);
@@ -581,7 +583,7 @@ raft_net_udp_sockets_bind(struct raft_instance *ri)
     int rc = 0;
 
     if (raft_instance_is_client(ri))
-        return -EINVAL;
+        return -EOPNOTSUPP;
 
     for (enum raft_udp_listen_sockets i = RAFT_UDP_LISTEN_MIN;
          i < RAFT_UDP_LISTEN_MAX && !rc; i++)
@@ -601,7 +603,7 @@ raft_net_sockets_bind(struct raft_instance *ri)
     int rc;
 
     if (raft_instance_is_client(ri))
-        return 0;
+        return -EOPNOTSUPP;
 
     rc = raft_net_udp_sockets_bind(ri);
     if (rc || raft_net_tcp_disabled())
@@ -865,6 +867,7 @@ raft_epoll_setup_net(struct raft_instance *ri)
 {
     int rc;
 
+    // udp is only supported for raft servers.
     if (!raft_instance_is_client(ri))
     {
         rc = raft_epoll_setup_udp(ri);
@@ -874,14 +877,14 @@ raft_epoll_setup_net(struct raft_instance *ri)
 
     if (raft_instance_is_client(ri))
         return tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr,
-                                   true);
+                                   false);
     else
     {
         rc = tcp_mgr_epoll_setup(&ri->ri_peer_tcp_mgr, &ri->ri_epoll_mgr,
-                                 false);
+                                 true);
         return rc ? rc
             : tcp_mgr_epoll_setup(&ri->ri_client_tcp_mgr, &ri->ri_epoll_mgr,
-                                  false);
+                                  true);
     }
 }
 
@@ -1562,18 +1565,21 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
         }
     }
 
-    /* bind() after adding the socket to the epoll set.
+    /* bind() (only for servers) after adding the socket to the epoll set.
      */
-    rc = raft_net_sockets_bind(ri);
-
-    if (rc)
+    if (!raft_instance_is_client(ri))
     {
-        SIMPLE_LOG_MSG(LL_WARN, "raft_net_sockets_bind(): %s", strerror(-rc));
+        rc = raft_net_sockets_bind(ri);
 
-        if (ri->ri_shutdown_cb)
-            ri->ri_shutdown_cb(ri);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "raft_net_sockets_bind(): %s", strerror(-rc));
 
-        return rc;
+            if (ri->ri_shutdown_cb)
+                ri->ri_shutdown_cb(ri);
+
+            return rc;
+        }
     }
 
     raft_net_ctl_svc_nodes_setup(ri);
