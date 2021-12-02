@@ -22,13 +22,13 @@ while IFS= read -r line; do
 done <$RECIPE_FILE
 
 # Generate ssh-keys
-ssh-keygen -N '' <<<$'\ny\n'
+#ssh-keygen -N '' <<<$'\ny\n'
 
 # Copy pub key to authorized_keys
-cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+#cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
 # NoHostAuthenticationForLocalhost
-echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config
+#echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config
 
 for recipe in "${recipe_list[@]}"
 do
