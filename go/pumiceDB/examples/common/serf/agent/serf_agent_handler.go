@@ -1,11 +1,13 @@
 package serfagenthandler
 
 import (
+	"bufio"
 	"log"
 	"net"
-
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
+	"os"
+	"strings"
 )
 
 /*
@@ -67,7 +69,12 @@ Parameters : None
 Return Value : error
 Description : Starts the created agent in setup, and listenes on rpc channel
 */
-func (Handler *SerfAgentHandler) start() error {
+func (Handler *SerfAgentHandler) start(requireRPC bool) error {	
+	err := Handler.agentObj.Start()
+
+	if !requireRPC{
+		return err
+	}
 
 	//Create func handler for rpc, client handlers are binded to rpc.
 	FuncHandler := &agent.ScriptEventHandler{
@@ -76,7 +83,6 @@ func (Handler *SerfAgentHandler) start() error {
 		Logger:   Handler.AgentLogger,
 	}
 	Handler.agentObj.RegisterEventHandler(FuncHandler)
-	err := Handler.agentObj.Start()
 
 	//Return if error in starting the agent
 	if err != nil {
@@ -102,18 +108,39 @@ Return value : int, error
 Description : Joins the cluster
 */
 func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
+	//fmt.Println(Handler.agentObj)
 	no_of_nodes, err := Handler.agentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
 	return no_of_nodes, err
+}
+
+
+func GetPeerAddress(staticSerfConfigPath string) ([]string, error) {
+        //Get addrs and Rports and store it in AgentAddrs and
+        if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
+                return nil, err
+        }
+        reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
+        if err != nil {
+                return nil, err
+        }
+        filescanner := bufio.NewScanner(reader)
+        filescanner.Split(bufio.ScanLines)
+        var addrs []string
+        for filescanner.Scan() {
+                input := strings.Split(filescanner.Text(), " ")
+                addrs = append(addrs, input[0]+":"+input[1])
+        }
+        return addrs, nil
 }
 
 /*
 Type : SerfAgentHandler
 Method name : Startup
-Parameters : joinaddrs []string
+Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) Startup(joinaddrs []string) (int, error) {
+func (Handler *SerfAgentHandler) Startup(joinAddrs []string,rpcRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -122,13 +149,14 @@ func (Handler *SerfAgentHandler) Startup(joinaddrs []string) (int, error) {
 		return 0, err
 	}
 	//Start agent and RPC server
-	err = Handler.start()
+	err = Handler.start(rpcRequired)
 	if err != nil {
 		return 0, err
 	}
+
 	//Join the cluster
-	if len(joinaddrs) != 0 {
-		memcount, _ = Handler.join(joinaddrs)
+	if len(joinAddrs) != 0 {
+		memcount, _ = Handler.join(joinAddrs)
 	}
 	return memcount, err
 }
@@ -161,6 +189,16 @@ func (Handler *SerfAgentHandler) SetTags(tags map[string]string) error {
 	return err
 }
 
+func (Handler *SerfAgentHandler) GetPMDBServerConfig() (string,string) {
+	members := Handler.agentObj.Serf().Members()
+	for _,mem := range members {
+		if mem.Tags["Type"]=="PMDB_SERVER" {
+			return mem.Tags["PC"],mem.Tags["RU"]
+		}
+	}
+	return "",""
+}
+
 /*
 Type : SerfAgentHandler
 Method name : Close
@@ -172,4 +210,32 @@ func (Handler *SerfAgentHandler) Close() error {
 	Handler.agentIPCObj.Shutdown()
 	err := Handler.agentObj.Shutdown()
 	return err
+}
+
+/*
+Type : SerfAgentHandler
+Method name : getServerAddress
+Parameters : staticSerfConfigPath
+Return Value : list of addrs
+Description : Get the list of teh addresses to join the cluster.
+*/
+
+func (Handler *SerfAgentHandler) getServerAddress(staticSerfConfigPath string) ([]string, error) {
+	//Get addrs and Rports and store it in AgentAddrs and
+
+	if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
+		return nil, err
+	}
+	reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
+	if err != nil {
+		return nil, err
+	}
+	filescanner := bufio.NewScanner(reader)
+	filescanner.Split(bufio.ScanLines)
+	var addrs []string
+	for filescanner.Scan() {
+		input := strings.Split(filescanner.Text(), " ")
+		addrs = append(addrs, input[0]+":"+input[1])
+	}
+	return addrs, nil
 }

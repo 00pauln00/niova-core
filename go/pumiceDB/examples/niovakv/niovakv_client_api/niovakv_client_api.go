@@ -89,7 +89,7 @@ time:
 			}
 
 			addr, port := getAddr(&toSend)
-		        response, err = httpclient.Request(request.Bytes(), addr, port, write)
+			response, err = httpclient.Request(request.Bytes(), addr+":"+port, write)
 			if err == nil {
                                 ok = true
                         }

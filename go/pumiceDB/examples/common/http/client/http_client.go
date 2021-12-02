@@ -34,11 +34,11 @@ func serviceRequest(req *http.Request) ([]byte, error) {
 	return nil,nil
 }
 
-func Request(reqByteArray []byte, addr string, port string, put bool) ([]byte, error) {
+func Request(reqByteArray []byte, addr string, put bool) ([]byte, error) {
 	var req *http.Request
 	var err error
 
-	connection_addr := "http://" + addr + ":" + port
+	connection_addr := "http://" + addr
 	if put {
 		req, err = http.NewRequest(http.MethodPut, connection_addr, bytes.NewBuffer(reqByteArray))
 	} else {
