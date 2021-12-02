@@ -98,7 +98,7 @@ func (h *HttpServerHandler) process(r *http.Request, requestStat *RequestStatus)
 func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Go followes causually consistent memory model, so require sync among stat and normal request to get consistent stat data
 	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
-	if (r.URL.Path == "/config/PmdbServer") {
+	if (r.URL.Path == "/config") {
 		fmt.Fprintf(w,"%s",h.PMDBServerConfig)
 		return
 	}
