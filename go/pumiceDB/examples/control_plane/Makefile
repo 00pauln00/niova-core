@@ -1,0 +1,42 @@
+DIR=/tmp/
+CGO_LDFLAGS=-L/${DIR}/lib/
+CGO_CFLAGS=-I/${DIR}/include/niova/
+LD_LIBRARY_PATH=/${DIR}/niova-core/lib/
+
+export CGO_LDFLAGS
+export CGO_CFLAGS
+export LD_LIBRARY_PATH
+export PATH
+
+install_all: compile pmdbserver proxy install docker_support
+
+compile:
+	echo "Compiling niovakv"
+
+pmdbserver:
+	cd pmdb/server && go build niovakv_pmdbserver.go
+
+proxy:
+	cd proxy && go build proxy.go
+
+install:
+	cp pmdb/server/niovakv_pmdbserver proxy/proxy ${DIR}/libexec/niova/
+	
+	cp proxy/config ${DIR}/libexec/niova/niovakv.config
+	
+	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
+
+docker_support:
+	cp -r docker/* ${DIR}
+	
+	cp pmdb/server/niovakv_pmdbserver  ${DIR}/PMDBServerContents/libexec/niova/
+
+	cp proxy/proxy ${DIR}/ProxyContents/libexec/niova/
+
+	cp proxy/config ${DIR}/ProxyContents/libexec/niova/niovakv.config
+        
+	cp proxy/gossipNodes ${DIR}/ProxyContents/libexec/niova/gossipNodes
+
+	cp -r ${DIR}/lib ${DIR}/raftconfig ${DIR}/ProxyContents
+
+	cp -r ${DIR}/lib ${DIR}/raftconfig ${DIR}/PMDBServerContents
