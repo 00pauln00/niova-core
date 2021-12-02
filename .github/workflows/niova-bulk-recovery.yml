@@ -67,17 +67,28 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: Create ssh key
+      run: >
+           ssh-keygen -t rsa -b 4096 -N '' -f ~/.ssh/id_rsa
 
-    - name: Allow localhost to ssh to itself for rsync to work
-      run: ssh-keygen -N '' <<<$'\ny\n' &&
-           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys &&
-           echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config &&
-           echo "StrictHostKeyChecking no" >> ~/.ssh/config
+    - name: Add key to auth file
+      run: >
+           cat ~/.ssh/id_rsa.pub | tee -a ~/.ssh/authorized_keys
 
-    - name: check authorized_keys
-      run: cat ~/.ssh/authorized_keys &&
-           cat ~/.ssh/config
+    - name: Allow localhost authentication
+      run: >
+           echo "NoHostAuthenticationForLocalhost yes" > ~/.ssh/config
 
+    - name: Ensure the owner of the key is correct
+      run: |
+           chmod 600 ~/.ssh/authorized_keys
+           chmod 700 ~/.ssh
+           sudo chmod -c 0755 ~/
+           ls -la ~/.ssh
+
+    - name: Test SSH connection to localhost
+      run: >
+           ssh -vvv -i ~/.ssh/id_rsa -o BatchMode=yes -o StrictHostKeyChecking=no $(whoami)@localhost
 
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
