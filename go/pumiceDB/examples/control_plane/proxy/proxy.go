@@ -33,7 +33,7 @@ type niovaKVServerHandler struct {
 	clientUUID		  string
 	logPath			  string
 	PMDBServerConfigArray     []PeerConfigData
-	PMDBServerConfigByteArray []byte
+	PMDBServerConfigByteMap   map[string][]byte
 	pmdbClient		  *niovakvpmdbclient.NiovaKVClient
 
 	//Serf agent
@@ -186,12 +186,14 @@ func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
 				Port = element
 		}
 		if flag{
-			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, PeerConfigData{
+			peerConfig := PeerConfigData{
 				PeerUUID : PeerUUID,
 				IPAddr : IPAddr,
-				Port :   Port,
+				Port : Port,
 				ClientPort : ClientPort,
-			})
+			}
+			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray,peerConfig)
+			handler.PMDBServerConfigByteMap[PeerUUID],_=json.Marshal(peerConfig)
 			flag = false
 		}
 	}
@@ -258,7 +260,7 @@ func (handler *niovaKVServerHandler) startHTTPServer() error {
 	handler.HttpHandler.Port = handler.httpPort
 	handler.HttpHandler.NKVCliObj = handler.pmdbClient
 	handler.HttpHandler.Limit, _ = strconv.Atoi(handler.limit)
-	handler.HttpHandler.PMDBServerConfig = handler.PMDBServerConfigByteArray
+	handler.HttpHandler.PMDBServerConfig = handler.PMDBServerConfigByteMap
 	if handler.requireStat != "0" {
 		handler.HttpHandler.NeedStats = true
 	}

@@ -22,7 +22,7 @@ type HttpServerHandler struct {
 	Port      string
 	NKVCliObj *niovakvpmdbclient.NiovaKVClient
 	Limit     int
-	PMDBServerConfig []byte
+	PMDBServerConfig map[string][]byte
 
 	//Non-exported
 	server  http.Server
@@ -99,7 +99,12 @@ func (h *HttpServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	//Go followes causually consistent memory model, so require sync among stat and normal request to get consistent stat data
 	atomic.AddInt64(&h.Stat.syncRequest,int64(1))
 	if (r.URL.Path == "/config") {
-		fmt.Fprintf(w,"%s",h.PMDBServerConfig)
+		uuid, err := ioutil.ReadAll(r.Body)
+		if err!=nil{
+			fmt.Fprintf(w,"Unable to get the uuid")
+		}
+		data := h.PMDBServerConfig[string(uuid)]
+		fmt.Fprintf(w,"%s",data)
 		return
 	}
 	if (r.URL.Path == "/stat") && (h.NeedStats) {
