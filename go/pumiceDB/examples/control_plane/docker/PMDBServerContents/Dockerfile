@@ -8,7 +8,7 @@ RUN apt-get update -y \
     && mkdir /opt/niova/lib
 
 #copy libs,configs and executables
-COPY libexec/niova/niovakv_pmdbserver /usr/pmdb_server
+COPY niovakv_pmdbserver /usr/pmdb_server
 COPY PMDBServerStarter.sh /usr/starter.sh
 ADD  raftconfig /usr/pmdb_server/raftconfig
 ADD  lib /opt/niova/lib

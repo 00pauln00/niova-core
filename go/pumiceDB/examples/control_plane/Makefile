@@ -8,7 +8,7 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-install_all: compile pmdbserver proxy install docker_support
+install_all: compile pmdbserver proxyserver install docker_support
 
 compile:
 	echo "Compiling niovakv"
@@ -16,7 +16,7 @@ compile:
 pmdbserver:
 	cd pmdb/server && go build niovakv_pmdbserver.go
 
-proxy:
+proxyserver:
 	cd proxy && go build proxy.go
 
 install:
@@ -29,13 +29,13 @@ install:
 docker_support:
 	cp -r docker/* ${DIR}
 	
-	cp pmdb/server/niovakv_pmdbserver  ${DIR}/PMDBServerContents/libexec/niova/
+	cp pmdb/server/niovakv_pmdbserver  ${DIR}/PMDBServerContents/
 
-	cp proxy/proxy ${DIR}/ProxyContents/libexec/niova/
+	cp proxy/proxy ${DIR}/ProxyContents/
 
-	cp proxy/config ${DIR}/ProxyContents/libexec/niova/niovakv.config
+	cp proxy/config ${DIR}/ProxyContents/niovakv.config
         
-	cp proxy/gossipNodes ${DIR}/ProxyContents/libexec/niova/gossipNodes
+	cp proxy/gossipNodes ${DIR}/ProxyContents/gossipNodes
 
 	cp -r ${DIR}/lib ${DIR}/raftconfig ${DIR}/ProxyContents
 

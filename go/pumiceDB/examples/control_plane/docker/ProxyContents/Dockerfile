@@ -8,9 +8,9 @@ RUN apt-get update -y \
     && mkdir /opt/niova/lib
 
 #copy libs,configs and executables
-COPY libexec/niova/proxy /usr/niovakv_server/proxy
-COPY libexec/niova/niovakv.config /usr/niovakv_server/config
-COPY libexec/niova/gossipNodes /usr/niovakv_server/gossipNodes
+COPY proxy /usr/niovakv_server/proxy
+COPY niovakv.config /usr/niovakv_server/config
+COPY gossipNodes /usr/niovakv_server/gossipNodes
 COPY proxyStarter.sh /usr/starter.sh
 ADD  lib /opt/niova/lib
 
