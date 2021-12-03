@@ -9,6 +9,7 @@ RUN apt-get update -y \
 
 #copy libs,configs and executables
 COPY niovakv_pmdbserver /usr/pmdb_server
+COPY gossipNodes /usr/pmdb_server
 COPY PMDBServerStarter.sh /usr/starter.sh
 ADD  raftconfig /usr/pmdb_server/raftconfig
 ADD  lib /opt/niova/lib

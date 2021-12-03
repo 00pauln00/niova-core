@@ -1,4 +1,4 @@
-DIR=/tmp/
+DIR=/home/sshivkumar/niovacorelibs
 CGO_LDFLAGS=-L/${DIR}/lib/
 CGO_CFLAGS=-I/${DIR}/include/niova/
 LD_LIBRARY_PATH=/${DIR}/niova-core/lib/
@@ -30,6 +30,8 @@ docker_support:
 	cp -r docker/* ${DIR}
 	
 	cp pmdb/server/niovakv_pmdbserver  ${DIR}/PMDBServerContents/
+
+	cp proxy/gossipNodes ${DIR}/PMDBServerContents/ 
 
 	cp proxy/proxy ${DIR}/ProxyContents/
 

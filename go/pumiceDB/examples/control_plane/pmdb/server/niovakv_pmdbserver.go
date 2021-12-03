@@ -29,14 +29,18 @@ var seqno = 0
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct{
-	raftUUID string
-        peerUUID string
-        logDir string
-        logLevel string
-        aport string
-	GossipData map[string]string
-	ConfigString string
-	ConfigData []PeerConfigData
+	raftUUID           string
+        peerUUID           string
+        logDir             string
+        logLevel           string
+        gossipClusterFile  string
+	gossipClusterNodes []string
+	aport		   string
+	rport		   string
+	addr		   string
+	GossipData         map[string]string
+	ConfigString       string
+	ConfigData         []PeerConfigData
 }
 type PeerConfigData struct{
 	ClientPort string
@@ -113,7 +117,7 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	defaultLog := "/" + "tmp" + "/" + handler.peerUUID + ".log"
 	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&handler.logLevel,"ll","Info","Log level")
-	flag.StringVar(&handler.aport,"p","NULL","Serf agent port")
+	flag.StringVar(&handler.gossipClusterFile,"g","NULL","Serf agent port")
 	flag.Parse()
 
 	nso := &NiovaKVServer{}
@@ -129,7 +133,7 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	return nso, err
 }
 
-func (handler *pmdbServerHandler) readConfig() {
+func (handler *pmdbServerHandler) readPMDBServerConfig() {
 	folder := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	files, err := ioutil.ReadDir(folder+"/")
 	if err!= nil{
@@ -165,10 +169,39 @@ func (handler *pmdbServerHandler) readConfig() {
 	}
 }
 
+func (handler *pmdbServerHandler) readGossipClusterFile() error{
+	f,err := os.Open(handler.gossipClusterFile)
+	if err != nil {
+		return err
+	}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan(){
+		text := scanner.Text()
+		splitData := strings.Split(text," ")
+		addr := splitData[0]
+		aport := splitData[1]
+		rport := splitData[2]
+		uuid := splitData[3]
+		if uuid == handler.peerUUID{
+			handler.aport = aport
+			handler.rport = rport
+			handler.addr = addr
+		} else {
+			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
+		}
+	}
+	log.Info("Cluster nodes : ",handler.gossipClusterNodes)
+	log.Info("Node serf info : ",handler.addr,handler.aport,handler.rport)
+	return nil
+}
+
+
 func  (handler *pmdbServerHandler) startSerfAgent() error {
-
+	err := handler.readGossipClusterFile()
+	if err != nil{
+		return err
+	}
 	serfLog := "00"
-
 	switch serfLog{
         case "ignore":
                 defaultLogger.SetOutput(ioutil.Discard)
@@ -184,15 +217,16 @@ func  (handler *pmdbServerHandler) startSerfAgent() error {
         //defaultLogger.SetOutput(ioutil.Discard)
 	serfAgentHandler := serfagenthandler.SerfAgentHandler{
 		Name: handler.peerUUID,
-		BindAddr: "127.0.0.1",
+		BindAddr: handler.addr,
 	}
         serfAgentHandler.BindPort, _ = strconv.Atoi(handler.aport)
         serfAgentHandler.AgentLogger = defaultLogger.Default()
+	serfAgentHandler.RpcAddr = handler.addr
+        serfAgentHandler.RpcPort = handler.rport
 	//Start serf agent
-        agentJoinAddrs := []string{"127.0.0.1:8505","127.0.0.1:8501","127.0.0.1:8502","127.0.0.1:8503","127.0.0.1:8504"}
-	_, err := serfAgentHandler.Startup(agentJoinAddrs, true)
+	_, err = serfAgentHandler.Startup(handler.gossipClusterNodes, true)
 
-	handler.readConfig()
+	handler.readPMDBServerConfig()
 	handler.GossipData = make(map[string]string)
 	handler.GossipData["Type"] = "PMDB_SERVER"
 	handler.GossipData["PC"] = handler.ConfigString

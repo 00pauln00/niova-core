@@ -9,8 +9,5 @@ IFS=" " read -r -a serv <<< $server
 SERVER_UUID=${serv[1]}
 echo $SERVER_UUID
 
-PORT="850"$ID
-echo $PORT
-
 cd pmdb_server
-./niovakv_pmdbserver -p ${PORT} -r ${RAFT_UUID} -u ${SERVER_UUID} -l "logs/pmdb_server.log" > "logs/pmdb_output.log" 2>&1
+./niovakv_pmdbserver -g gossipNodes -r ${RAFT_UUID} -u ${SERVER_UUID} -l "logs/pmdb_server.log" > "logs/pmdb_output.log" 2>&1
