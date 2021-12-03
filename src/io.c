@@ -332,14 +332,24 @@ niova_io_fd_nonblocking(int fd)
  *    original state.
  */
 ssize_t
-niova_io_iovs_advance(struct iovec *iovs, size_t niovs, off_t bytes_already_consumed,
-                      struct iovec *save_iov)
+niova_io_iovs_advance(struct iovec *iovs, size_t niovs,
+                      off_t bytes_already_consumed, struct iovec *save_iov)
 {
     if (!iovs || !niovs || bytes_already_consumed < 0)
         return -EINVAL;
 
     if (save_iov >= &iovs[0] && save_iov <= &iovs[niovs - 1])
         return -EFAULT;
+
+    if (bytes_already_consumed == 0) // noop
+    {
+        if (save_iov)
+        {
+            save_iov->iov_base = iovs[0].iov_base;
+            save_iov->iov_len = iovs[0].iov_len;
+        }
+        return 0;
+    }
 
     ssize_t idx;
     for (idx = 0; idx < niovs && bytes_already_consumed; idx++)
