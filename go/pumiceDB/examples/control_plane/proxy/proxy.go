@@ -168,6 +168,7 @@ func (handler *niovaKVServerHandler) startSerfAgent() error {
 func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
 
 	peerConfig,raftUUID:=handler.serfAgentHandler.GetPMDBServerConfig()
+	log.Info("PMDB config recvd from gossip : ", peerConfig)
 	handler.raftUUID = raftUUID
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 

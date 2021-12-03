@@ -1,4 +1,4 @@
-DIR=/home/sshivkumar/niovacorelibs
+DIR=/tmp/
 CGO_LDFLAGS=-L/${DIR}/lib/
 CGO_CFLAGS=-I/${DIR}/include/niova/
 LD_LIBRARY_PATH=/${DIR}/niova-core/lib/
