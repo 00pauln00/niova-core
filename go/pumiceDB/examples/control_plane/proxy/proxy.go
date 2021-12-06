@@ -220,7 +220,7 @@ func (handler *niovaKVServerHandler) dumpConfigToFile(outfilepath string) {
         raftClient_file.Sync()
         raftClient_file.Close()
 
-        files, err := os.ReadDir("PMDBConfig")
+        //files, err := os.ReadDir("PMDBConfig")
         if err != nil {
                 log.Fatal(err)
         }
