@@ -1,9 +1,10 @@
 FROM ubuntu:18.04
 
-#Create dir for niovakv_server and pmdb_server
+#Creae dir for niovakv_server and pmdb_server
 RUN apt-get update -y \
     && apt-get -y install librocksdb5.8 \
     && mkdir /usr/niovakv_server \
+    && mkdir /usr/niovakv_server/PMDBConfig \
     && mkdir /opt/niova \
     && mkdir /opt/niova/lib
 
@@ -12,6 +13,7 @@ COPY proxy /usr/niovakv_server/proxy
 COPY niovakv.config /usr/niovakv_server/config
 COPY gossipNodes /usr/niovakv_server/gossipNodes
 COPY proxyStarter.sh /usr/starter.sh
+COPY raftconfig/configs/* /usr/niovakv_server/PMDBConfig/
 ADD  lib /opt/niova/lib
 
 #Set environmental variable

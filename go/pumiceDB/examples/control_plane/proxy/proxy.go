@@ -199,76 +199,71 @@ func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
 			flag = false
 		}
 	}
-	os.Mkdir("PMDBConfig", os.ModePerm)
-	handler.dumpConfigToFile("PMDBConfig/")
+	//os.Mkdir("PMDBConfig", os.ModePerm)
+	//handler.dumpConfigToFile("PMDBConfig/")
 }
 
 func (handler *niovaKVServerHandler) dumpConfigToFile(outfilepath string) {
-    //Generate .raft
-    raft_file, err := os.Create(outfilepath + handler.raftUUID+".raft")
-    if err != nil {
-        log.Error(err)
-    }
-
-    _, errFile := raft_file.WriteString("RAFT " + handler.raftUUID+"\n")
-    if errFile != nil {
-        log.Error(errFile)
-    }
-
-    for _, peer := range handler.PMDBServerConfigArray {
-        raft_file.WriteString("PEER " + peer.PeerUUID+"\n")
-    }
-
-    raft_file.Sync()
-    raft_file.Close()
-
-
-    //Generate .peer
-    for _, peer := range handler.PMDBServerConfigArray {
-        peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
-	if err != nil {
+	//Generate .raft_client
+        raftClient_file, err := os.Create(outfilepath + handler.clientUUID+ ".raft_client" )
+        if err != nil {
             log.Error(err)
         }
+        _, error := raftClient_file.WriteString(
+            "RAFT              " + handler.raftUUID +
+            "\nIPADDR            " + "127.0.0.1"  +
+            "\nCLIENT_PORT       " + "13910\n")
 
-        _, errFile := peer_file.WriteString(
+        if error != nil {
+                log.Error(error)
+        }
+        raftClient_file.Sync()
+        raftClient_file.Close()
+
+        files, err := os.ReadDir("PMDBConfig")
+        if err != nil {
+                log.Fatal(err)
+        }
+
+	//Generate .raft
+    	raft_file, err := os.Create(outfilepath + handler.raftUUID+".raft")
+    	if err != nil {
+        	log.Error(err)
+    	}
+
+    	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID+"\n")
+    	if errFile != nil {
+        	log.Error(errFile)
+    	}
+
+    	for _, peer := range handler.PMDBServerConfigArray {
+        	raft_file.WriteString("PEER " + peer.PeerUUID+"\n")
+    	}
+
+    	raft_file.Sync()
+    	raft_file.Close()
+
+
+    	//Generate .peer
+    	for _, peer := range handler.PMDBServerConfigArray {
+        	peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
+		if err != nil {
+            		log.Error(err)
+        	}
+
+        	_, errFile := peer_file.WriteString(
             "RAFT         " + handler.raftUUID +
             "\nIPADDR       " + peer.IPAddr +
             "\nPORT         " + peer.Port +
             "\nCLIENT_PORT  " + peer.ClientPort +
             "\nSTORE        /home/sshivkumar/configs/e3658ee4-eba6-11eb-853e-9b8cfb7c3b6b/raftdb/e3e86a1c-eba6-11eb-a887-63a2043653ba.raftdb\n")
 
-        if errFile != nil {
-            log.Error(errFile)
-        }
-	peer_file.Sync()
-	peer_file.Close()
-    }
-
-
-    //Generate .raft_client
-    raftClient_file, err := os.Create(outfilepath + handler.clientUUID+ ".raft_client" )
-    if err != nil {
-            log.Error(err)
-    }
-    _, error := raftClient_file.WriteString(
-            "RAFT              " + handler.raftUUID +
-            "\nIPADDR            " + "127.0.0.1"  +
-            "\nCLIENT_PORT       " + "13910\n")
-
-    if error != nil {
-        log.Error(errFile)
-    }
-    raftClient_file.Sync()
-    raftClient_file.Close()
-
-	files, err := os.ReadDir("PMDBConfig")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, file := range files {
-		log.Info(file.Name())
-	}
+        	if errFile != nil {
+            		log.Error(errFile)
+        	}
+		peer_file.Sync()
+		peer_file.Close()
+    	}
 }
 
 
