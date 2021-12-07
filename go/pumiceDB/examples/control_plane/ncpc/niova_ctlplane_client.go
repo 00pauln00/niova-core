@@ -23,7 +23,6 @@ type ncp_client struct {
 	ncpc clientapi.ClientAPI
 }
 
-
 func usage() {
         flag.PrintDefaults()
         os.Exit(0)
@@ -94,5 +93,7 @@ func main() {
 	case "config":
 		clientObj.ncpc.Request([]byte(clientObj.reqKey), "/config", false)
         }
+
+	clientObj.ncpc.DumpIntoJson("./")
 
 }

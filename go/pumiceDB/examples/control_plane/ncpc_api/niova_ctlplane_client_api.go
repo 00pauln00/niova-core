@@ -4,6 +4,8 @@ import (
         "errors"
         "math/rand"
         "sync"
+	"encoding/json"
+	"io/ioutil"
         "time"
         log "github.com/sirupsen/logrus"
         "niovakv/httpclient"
@@ -50,6 +52,16 @@ func (stat *ServerRequestStat) updateStat(ok bool) {
                 stat.Failed += int64(1)
         }
 }
+
+func (ncpcClientAPIObj *ClientAPI) DumpIntoJson(outfilepath string){
+
+        //prepare path for temporary json file.
+        tempOutfileName := outfilepath+"/"+"reqdistribution"+".json"
+        file, _ := json.MarshalIndent(ncpcClientAPIObj, "", "\t")
+        _ = ioutil.WriteFile(tempOutfileName, file, 0644)
+
+}
+
 
 func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
