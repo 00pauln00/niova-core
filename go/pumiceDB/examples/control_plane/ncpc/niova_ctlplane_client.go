@@ -1,6 +1,7 @@
 package main
 
 import (
+	"time"
         "flag"
         "fmt"
         PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -30,7 +31,6 @@ func usage() {
 
 //Function to get command line parameters
 func (cli *ncp_client) getCmdParams() {
-        flag.StringVar(&cli.addr, "a", "NULL", "IP address")
         flag.StringVar(&cli.reqKey, "k", "Key", "Key prefix")
         flag.StringVar(&cli.reqValue, "v", "Value", "Value prefix")
         flag.StringVar(&cli.configPath, "c", "./gossipConfig", "Raft peer config")
@@ -71,7 +71,7 @@ func main() {
                         os.Exit(1)
                 }
         }()
-
+	time.Sleep(6*time.Second)
 	//Send request
         var write bool
 	requestObj := niovakvlib.NiovaKV{}
@@ -80,6 +80,7 @@ func main() {
         case "write":
 		requestObj.InputValue = []byte(clientObj.reqValue)
 		write = true
+		fallthrough
 
 	case "read":
                 requestObj.InputKey = clientObj.reqKey
@@ -88,10 +89,11 @@ func main() {
                 enc := gob.NewEncoder(&request)
                 enc.Encode(requestObj)
 		response := clientObj.ncpc.Request(request.Bytes(), "", write)
-		fmt.Println("Response:", response)
+		fmt.Println("Response:", string(response))
 
 	case "config":
 		clientObj.ncpc.Request([]byte(clientObj.reqKey), "/config", false)
+		fmt.Println("Response : ", string(response))
         }
 
 	clientObj.ncpc.DumpIntoJson("./")
