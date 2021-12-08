@@ -10,7 +10,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
-	"time"
 )
 
 type ncp_client struct {
@@ -30,7 +29,6 @@ func usage() {
 
 //Function to get command line parameters
 func (cli *ncp_client) getCmdParams() {
-	flag.StringVar(&cli.addr, "a", "NULL", "IP address")
 	flag.StringVar(&cli.reqKey, "k", "Key", "Key prefix")
 	flag.StringVar(&cli.reqValue, "v", "Value", "Value prefix")
 	flag.StringVar(&cli.configPath, "c", "./gossipNodes", "Raft peer config")
@@ -71,12 +69,12 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	//clientObj.ncpc.Till_ready()
-	time.Sleep(5 * time.Second)
+	clientObj.ncpc.Till_ready()
+	//time.Sleep(5 * time.Second)
 	//Send request
 	var write bool
 	requestObj := niovakvlib.NiovaKV{}
-
+	response := niovakvlib.NiovaKVResponse{}
 	switch clientObj.operation {
 	case "write":
 		requestObj.InputValue = []byte(clientObj.reqValue)
@@ -89,12 +87,16 @@ func main() {
 		var request bytes.Buffer
 		enc := gob.NewEncoder(&request)
 		enc.Encode(requestObj)
-		response := clientObj.ncpc.Request(request.Bytes(), "", write)
+		responseByteArray := clientObj.ncpc.Request(request.Bytes(), "", write)
+		dec := gob.NewDecoder(bytes.NewBuffer(responseByteArray))
+		err = dec.Decode(&response)
 		fmt.Println("Response:", response)
 
 	case "config":
-		response := clientObj.ncpc.Request([]byte(clientObj.reqKey), "/config", false)
-		fmt.Println("Response : ", string(response))
-	}
+		responseByteArray := clientObj.ncpc.Request([]byte(clientObj.reqKey), "/config", false)
+		fmt.Println("Response : ", string(responseByteArray))
+        }
+
+	clientObj.ncpc.DumpIntoJson("./execution_summary.json")
 
 }
