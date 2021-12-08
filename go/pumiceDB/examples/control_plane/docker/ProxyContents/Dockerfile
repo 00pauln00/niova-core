@@ -13,7 +13,6 @@ COPY proxy /usr/niovakv_server/proxy
 COPY niovakv.config /usr/niovakv_server/config
 COPY gossipNodes /usr/niovakv_server/gossipNodes
 COPY proxyStarter.sh /usr/starter.sh
-COPY raftconfig/configs/* /usr/niovakv_server/PMDBConfig/
 ADD  lib /opt/niova/lib
 
 #Set environmental variable

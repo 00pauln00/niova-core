@@ -1,54 +1,54 @@
 package clientapi
 
 import (
-        "errors"
-        "math/rand"
-        "sync"
-        "time"
-        log "github.com/sirupsen/logrus"
-        "niovakv/httpclient"
-        "niovakv/serfclienthandler"
+	"errors"
+	log "github.com/sirupsen/logrus"
+	"math/rand"
+	"niovakv/httpclient"
+	"niovakv/serfclienthandler"
+	"sync"
+	"time"
 
-        client "github.com/hashicorp/serf/client"
+	client "github.com/hashicorp/serf/client"
 )
 
 type ClientAPI struct {
-        //Exported
-        Timeout time.Duration //No of seconds for a request time out and membership table refresh
-        ServerChooseAlgorithm int
-        UseSpecificServerName string
+	//Exported
+	Timeout               time.Duration //No of seconds for a request time out and membership table refresh
+	ServerChooseAlgorithm int
+	UseSpecificServerName string
 
-        //Stat
-        RequestDistribution   map[string]*ServerRequestStat
-        RequestSentCount      int64
-        RequestSuccessCount   int64
-        RequestFailedCount    int64
-        IsStatRequired        bool
+	//Stat
+	RequestDistribution map[string]*ServerRequestStat
+	RequestSentCount    int64
+	RequestSuccessCount int64
+	RequestFailedCount  int64
+	IsStatRequired      bool
 
-        //UnExported
-        servers           []client.Member
-        clientHandler     serfclienthandler.SerfClientHandler
-        serfUpdateLock    sync.Mutex
-        tableLock         sync.Mutex
-        requestUpdateLock sync.Mutex
-        ready             bool
-        specificServer    *client.Member
-        roundRobinPtr     int
+	//UnExported
+	servers           []client.Member
+	clientHandler     serfclienthandler.SerfClientHandler
+	serfUpdateLock    sync.Mutex
+	tableLock         sync.Mutex
+	requestUpdateLock sync.Mutex
+	ready             bool
+	specificServer    *client.Member
+	roundRobinPtr     int
 }
 
-type ServerRequestStat struct{
-        Count   int64
-        Success int64
-        Failed  int64
+type ServerRequestStat struct {
+	Count   int64
+	Success int64
+	Failed  int64
 }
 
 func (stat *ServerRequestStat) updateStat(ok bool) {
-        stat.Count += int64(1)
-        if ok{
-                stat.Success += int64(1)
-        } else{
-                stat.Failed += int64(1)
-        }
+	stat.Count += int64(1)
+	if ok {
+		stat.Success += int64(1)
+	} else {
+		stat.Failed += int64(1)
+	}
 }
 
 func getAddr(member *client.Member) (string, string) {
@@ -77,17 +77,17 @@ time:
 			addr, port := getAddr(&toSend)
 			response, err = httpclient.Request(payload, addr+":"+port+suburl, write)
 			if err == nil {
-                                ok = true
-                        }
+				ok = true
+			}
 
-                        if ncpc.IsStatRequired {
-                                ncpc.requestUpdateLock.Lock()
-                                if _,present := ncpc.RequestDistribution[toSend.Name]; !present{
-                                        ncpc.RequestDistribution[toSend.Name] = &ServerRequestStat{}
-                                }
+			if ncpc.IsStatRequired {
+				ncpc.requestUpdateLock.Lock()
+				if _, present := ncpc.RequestDistribution[toSend.Name]; !present {
+					ncpc.RequestDistribution[toSend.Name] = &ServerRequestStat{}
+				}
 				ncpc.RequestDistribution[toSend.Name].updateStat(ok)
-                                ncpc.requestUpdateLock.Unlock()
-                        }
+				ncpc.requestUpdateLock.Unlock()
+			}
 
 			if ok {
 				break time
@@ -97,130 +97,132 @@ time:
 	}
 
 	if ncpc.IsStatRequired {
-                ncpc.RequestSentCount += int64(1)
-                if response != nil{
-                        ncpc.RequestSuccessCount += int64(1)
-                } else{
-                        ncpc.RequestFailedCount += int64(1)
-                }
-        }
+		ncpc.RequestSentCount += int64(1)
+		if response != nil {
+			ncpc.RequestSuccessCount += int64(1)
+		} else {
+			ncpc.RequestFailedCount += int64(1)
+		}
+	}
 
 	return response
 }
 
-func isValidNodeData(member client.Member) bool{
-	if ((member.Status != "alive") && (member.Tags["Hport"] == "") && (member.Tags["Type"]!="PMDBServer")) {
-                return false
-        }
-        return true
+func isValidNodeData(member client.Member) bool {
+	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] == "PMDB_SERVER") {
+		return false
+	}
+	return true
 }
 
 func (ncpc *ClientAPI) pickServer(removeName string) (client.Member, error) {
-        ncpc.tableLock.Lock()
-        defer ncpc.tableLock.Unlock()
-        var serverChoosen *client.Member
-        switch ncpc.ServerChooseAlgorithm {
-                case 0:
-                        //Random
-                        var randomIndex int
-                        for {
-                                if len(ncpc.servers) == 0 {
-                                        log.Error("(CLIENT API MODULE) no alive servers")
-                                        return client.Member{}, errors.New("No alive servers")
-                                }
-                                randomIndex = rand.Intn(len(ncpc.servers))
-                                if removeName!=""{
-                                        log.Info(removeName)
-                                }
+	ncpc.tableLock.Lock()
+	defer ncpc.tableLock.Unlock()
+	var serverChoosen *client.Member
+	switch ncpc.ServerChooseAlgorithm {
+	case 0:
+		//Random
+		var randomIndex int
+		for {
+			if len(ncpc.servers) == 0 {
+				log.Error("(CLIENT API MODULE) no alive servers")
+				return client.Member{}, errors.New("No alive servers")
+			}
+			randomIndex = rand.Intn(len(ncpc.servers))
+			if removeName != "" {
+				log.Info(removeName)
+			}
 
-                                //Check if node is alive, check if gossip is available and http server of that node is not reported down!
-                                if ((isValidNodeData(ncpc.servers[randomIndex])) && (removeName != ncpc.servers[randomIndex].Name)) {
-                                        break
-                                }
-                                ncpc.servers = removeIndex(ncpc.servers, randomIndex)
-                        }
+			//Check if node is alive, check if gossip is available and http server of that node is not reported down!
+			if (isValidNodeData(ncpc.servers[randomIndex])) && (removeName != ncpc.servers[randomIndex].Name) {
+				break
+			}
+			ncpc.servers = removeIndex(ncpc.servers, randomIndex)
+		}
 
-                        serverChoosen = &ncpc.servers[randomIndex]
-                case 1:
-                        //Round-Robin
-                        ncpc.roundRobinPtr %= len(ncpc.servers)
-                        serverChoosen = &ncpc.servers[ncpc.roundRobinPtr]
-                        ncpc.roundRobinPtr += 1
-		case 2:
-                        //Specific
-                        if ncpc.specificServer != nil{
-                                serverChoosen = ncpc.specificServer
-                                break
-                        }
-                        for _,member := range ncpc.servers{
-                                if member.Name == ncpc.UseSpecificServerName{
-                                        serverChoosen = &member
-                                        break
-                                }
-                        }
-        }
-
-        return *serverChoosen, nil
+		serverChoosen = &ncpc.servers[randomIndex]
+	case 1:
+		//Round-Robin
+		ncpc.roundRobinPtr %= len(ncpc.servers)
+		serverChoosen = &ncpc.servers[ncpc.roundRobinPtr]
+		ncpc.roundRobinPtr += 1
+	case 2:
+		//Specific
+		if ncpc.specificServer != nil {
+			serverChoosen = ncpc.specificServer
+			break
+		}
+		for _, member := range ncpc.servers {
+			if member.Name == ncpc.UseSpecificServerName {
+				serverChoosen = &member
+				break
+			}
+		}
+	}
+	return *serverChoosen, nil
 }
 
 func (nkvc *ClientAPI) serfClientInit(configPath string) error {
-        nkvc.clientHandler.Retries = 5
-        return nkvc.clientHandler.Initdata(configPath)
+	nkvc.clientHandler.Retries = 5
+	return nkvc.clientHandler.Initdata(configPath)
 }
 
 func (nkvc *ClientAPI) memberSearcher(stop chan int) error {
 comparison:
-        for {
-                select {
-                case <-stop:
-                        log.Info("stopping member updater")
-                        break comparison
-                default:
-                        //Since we do update it continuesly, we persist the connection
-                        nkvc.serfUpdateLock.Lock()
-                        err := nkvc.clientHandler.GetData(true)
-                        nkvc.serfUpdateLock.Unlock()
-                        if err != nil {
-                                log.Error("Unable to connect with agents")
-                                return err
-                        }
-                        nkvc.tableLock.Lock()
-                        nkvc.servers = nkvc.clientHandler.Agents
-                        nkvc.tableLock.Unlock()
-                        nkvc.ready = true
-                        time.Sleep(1 * time.Second)
-                }
-        }
+	for {
+		select {
+		case <-stop:
+			log.Info("stopping member updater")
+			break comparison
+		default:
+			//Since we do update it continuesly, we persist the connection
+			nkvc.serfUpdateLock.Lock()
+			err := nkvc.clientHandler.GetData(true)
+			nkvc.serfUpdateLock.Unlock()
+			if err != nil {
+				log.Error("Unable to connect with agents")
+				return err
+			}
+			nkvc.tableLock.Lock()
+			nkvc.servers = nkvc.clientHandler.Agents
+			nkvc.tableLock.Unlock()
+			nkvc.ready = true
+			time.Sleep(1 * time.Second)
+		}
+	}
 
-        return nil
+	return nil
 }
 
 func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
-        var err error
-        nkvc.RequestDistribution = make(map[string]*ServerRequestStat)
-        err = nkvc.serfClientInit(configPath)
-        if err != nil {
-                log.Error("Error while initializing the serf client ", err)
-                return err
-        }
-        err = nkvc.memberSearcher(stop)
-        if err != nil {
-                log.Error("Error while starting the membership updater ", err)
-                return err
-        }
-        return err
+	var err error
+	nkvc.RequestDistribution = make(map[string]*ServerRequestStat)
+	err = nkvc.serfClientInit(configPath)
+	if err != nil {
+		log.Error("Error while initializing the serf client ", err)
+		return err
+	}
+	err = nkvc.memberSearcher(stop)
+	if err != nil {
+		log.Error("Error while starting the membership updater ", err)
+		return err
+	}
+	return err
 }
 
-
 func removeIndex(s []client.Member, index int) []client.Member {
-        ret := make([]client.Member, 0)
-        ret = append(ret, s[:index]...)
-        return append(ret, s[index+1:]...)
+	ret := make([]client.Member, 0)
+	ret = append(ret, s[:index]...)
+	return append(ret, s[index+1:]...)
 }
 
 func (nkvc *ClientAPI) GetConfig(configPath string) error {
-        nkvc.clientHandler.Retries = 5
-        return nkvc.clientHandler.Initdata(configPath)
+	nkvc.clientHandler.Retries = 5
+	return nkvc.clientHandler.Initdata(configPath)
 }
 
+func (nkvc *ClientAPI) Till_ready() {
+	for !nkvc.ready {
 
+	}
+}

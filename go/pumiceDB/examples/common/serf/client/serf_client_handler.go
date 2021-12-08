@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-
 	"github.com/hashicorp/serf/client"
 )
 
@@ -52,7 +51,7 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) ([]string
 	var addrs []string
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
-		addrs = append(addrs, input[1]+":"+input[3])
+		addrs = append(addrs, input[0]+":"+input[2])
 	}
 	return addrs, nil
 }

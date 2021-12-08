@@ -2,23 +2,23 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+	defaultLogger "log"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"niovakv/httpserver"
-	"os"
-	"strconv"
-	"strings"
-	"time"
-	"encoding/json"
-	"os/signal"
-	"syscall"
-	defaultLogger "log"
 	"niovakv/niovakvpmdbclient"
 	"niovakvserver/serfagenthandler"
-	log "github.com/sirupsen/logrus"
-	uuid "github.com/satori/go.uuid"
+	"os"
+	"os/signal"
+	"strconv"
+	"strings"
+	"syscall"
+	"time"
 )
 
 type niovaKVServerHandler struct {
@@ -29,33 +29,33 @@ type niovaKVServerHandler struct {
 	addr string
 
 	//Pmdb nivoa client
-	raftUUID		  string
-	clientUUID		  string
-	logPath			  string
-	PMDBServerConfigArray     []PeerConfigData
-	PMDBServerConfigByteMap   map[string][]byte
-	pmdbClient		  *niovakvpmdbclient.NiovaKVClient
+	raftUUID                string
+	clientUUID              string
+	logPath                 string
+	PMDBServerConfigArray   []PeerConfigData
+	PMDBServerConfigByteMap map[string][]byte
+	pmdbClient              *niovakvpmdbclient.NiovaKVClient
 
 	//Serf agent
-	agentName           string
-	agentPort           string
-	agentRPCPort        string
-	peerAddrsFilePath   string
-	serfLogger          string
-	serfAgentHandler    serfagenthandler.SerfAgentHandler
+	agentName         string
+	agentPort         string
+	agentRPCPort      string
+	peerAddrsFilePath string
+	serfLogger        string
+	serfAgentHandler  serfagenthandler.SerfAgentHandler
 
 	//Http
-	httpPort       string
-	limit          string
-	requireStat    string
-	HttpHandler    httpserver.HttpServerHandler
+	httpPort    string
+	limit       string
+	requireStat string
+	HttpHandler httpserver.HttpServerHandler
 }
 
-type PeerConfigData struct{
-	PeerUUID string
+type PeerConfigData struct {
+	PeerUUID   string
 	ClientPort string
-	Port	string
-	IPAddr	string
+	Port       string
+	IPAddr     string
 }
 
 func usage() {
@@ -75,8 +75,8 @@ func (handler *niovaKVServerHandler) getCmdParams() {
 	flag.StringVar(&handler.limit, "e", "500", "No of concurrent request")
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
-	flag.StringVar(&handler.requireStat , "s","0","If required server stat about request enter 1")
-	flag.StringVar(&handler.peerAddrsFilePath , "pa", "NULL", "Path to pmdb server gossip addrs")
+	flag.StringVar(&handler.requireStat, "s", "0", "If required server stat about request enter 1")
+	flag.StringVar(&handler.peerAddrsFilePath, "pa", "NULL", "Path to pmdb server gossip addrs")
 	flag.Parse()
 }
 
@@ -166,106 +166,109 @@ func (handler *niovaKVServerHandler) startSerfAgent() error {
 }
 
 func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
-
-	peerConfig,raftUUID:=handler.serfAgentHandler.GetPMDBServerConfig()
+	var raftUUID, peerConfig string
+	for raftUUID == "" {
+		peerConfig, raftUUID = handler.serfAgentHandler.GetPMDBServerConfig()
+		log.Info("Peer config and RaftUUID", peerConfig, raftUUID)
+		time.Sleep(2 * time.Second)
+	}
 	log.Info("PMDB config recvd from gossip : ", peerConfig)
 	handler.raftUUID = raftUUID
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 
-	splitData := strings.Split(peerConfig,"/")
-	var PeerUUID,ClientPort,Port,IPAddr string
+	splitData := strings.Split(peerConfig, "/")
+	var PeerUUID, ClientPort, Port, IPAddr string
 	flag := false
-	for  i,element := range splitData{
-		switch (i%4) {
-			case 0:
-				PeerUUID = element
-			case 1:
-				IPAddr = element
-			case 2:
-				ClientPort = element
-			case 3:
-				flag = true
-				Port = element
+	for i, element := range splitData {
+		switch i % 4 {
+		case 0:
+			PeerUUID = element
+		case 1:
+			IPAddr = element
+		case 2:
+			ClientPort = element
+		case 3:
+			flag = true
+			Port = element
 		}
-		if flag{
+		if flag {
 			peerConfig := PeerConfigData{
-				PeerUUID : PeerUUID,
-				IPAddr : IPAddr,
-				Port : Port,
-				ClientPort : ClientPort,
+				PeerUUID:   PeerUUID,
+				IPAddr:     IPAddr,
+				Port:       Port,
+				ClientPort: ClientPort,
 			}
-			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray,peerConfig)
-			handler.PMDBServerConfigByteMap[PeerUUID],_=json.Marshal(peerConfig)
+			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
+			handler.PMDBServerConfigByteMap[PeerUUID], _ = json.Marshal(peerConfig)
 			flag = false
 		}
 	}
-	//os.Mkdir("PMDBConfig", os.ModePerm)
-	//handler.dumpConfigToFile("PMDBConfig/")
+	os.Mkdir("PMDBConfig", os.ModePerm)
+	handler.dumpConfigToFile("PMDBConfig/")
 }
 
 func (handler *niovaKVServerHandler) dumpConfigToFile(outfilepath string) {
 	//Generate .raft_client
-        raftClient_file, err := os.Create(outfilepath + handler.clientUUID+ ".raft_client" )
-        if err != nil {
-            log.Error(err)
-        }
-        _, error := raftClient_file.WriteString(
-            "RAFT              " + handler.raftUUID +
-            "\nIPADDR            " + "127.0.0.1"  +
-            "\nCLIENT_PORT       " + "13910\n")
+	/*
+	   raftClient_file, err := os.Create(outfilepath + handler.clientUUID+ ".raft_client" )
+	   if err != nil {
+	       log.Error(err)
+	   }
+	   _, error := raftClient_file.WriteString(
+	       "RAFT              " + handler.raftUUID +
+	       "\nIPADDR            " + "127.0.0.1"  +
+	       "\nCLIENT_PORT       " + "13910\n")
 
-        if error != nil {
-                log.Error(error)
-        }
-        raftClient_file.Sync()
-        raftClient_file.Close()
+	   if error != nil {
+	           log.Error(error)
+	   }
+	   raftClient_file.Sync()
+	   raftClient_file.Close()
 
-        //files, err := os.ReadDir("PMDBConfig")
-        if err != nil {
-                log.Fatal(err)
-        }
-
+	   //files, err := os.ReadDir("PMDBConfig")
+	   if err != nil {
+	           log.Fatal(err)
+	   }
+	*/
 	//Generate .raft
-    	raft_file, err := os.Create(outfilepath + handler.raftUUID+".raft")
-    	if err != nil {
-        	log.Error(err)
-    	}
+	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
+	if err != nil {
+		log.Error(err)
+	}
 
-    	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID+"\n")
-    	if errFile != nil {
-        	log.Error(errFile)
-    	}
+	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID + "\n")
+	if errFile != nil {
+		log.Error(errFile)
+	}
 
-    	for _, peer := range handler.PMDBServerConfigArray {
-        	raft_file.WriteString("PEER " + peer.PeerUUID+"\n")
-    	}
+	for _, peer := range handler.PMDBServerConfigArray {
+		raft_file.WriteString("PEER " + peer.PeerUUID + "\n")
+	}
 
-    	raft_file.Sync()
-    	raft_file.Close()
+	raft_file.Sync()
+	raft_file.Close()
 
-
-    	//Generate .peer
-    	for _, peer := range handler.PMDBServerConfigArray {
-        	peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
+	//Generate .peer
+	for _, peer := range handler.PMDBServerConfigArray {
+		peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
 		if err != nil {
-            		log.Error(err)
-        	}
+			log.Error(err)
+		}
 
-        	_, errFile := peer_file.WriteString(
-            "RAFT         " + handler.raftUUID +
-            "\nIPADDR       " + peer.IPAddr +
-            "\nPORT         " + peer.Port +
-            "\nCLIENT_PORT  " + peer.ClientPort +
-            "\nSTORE        /home/sshivkumar/configs/e3658ee4-eba6-11eb-853e-9b8cfb7c3b6b/raftdb/e3e86a1c-eba6-11eb-a887-63a2043653ba.raftdb\n")
+		_, errFile := peer_file.WriteString(
+			"RAFT         " + handler.raftUUID +
+				"\nIPADDR       " + peer.IPAddr +
+				"\nPORT         " + peer.Port +
+				"\nCLIENT_PORT  " + peer.ClientPort +
+				"\nSTORE        /home/sshivkumar/configs/e3658ee4-eba6-11eb-853e-9b8cfb7c3b6b/raftdb/e3e86a1c-eba6-11eb-a887-63a2043653ba.raftdb\n")
 
-        	if errFile != nil {
-            		log.Error(errFile)
-        	}
+		if errFile != nil {
+			log.Error(errFile)
+		}
 		peer_file.Sync()
 		peer_file.Close()
-    	}
+	}
 }
-
 
 func (handler *niovaKVServerHandler) startHTTPServer() error {
 	//Start httpserver.
@@ -305,15 +308,15 @@ func (handler *niovaKVServerHandler) setGossipData() {
 }
 
 func (handler *niovaKVServerHandler) killSignalHandler() {
-	sigs := make(chan os.Signal,1)
-        signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-        go func() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
 		<-sigs
-                json_data, _ := json.MarshalIndent(handler.HttpHandler.Stat, "", " ")
-                _ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
-                log.Info("(NIOVAKV SERVER) Received a kill signal")
+		json_data, _ := json.MarshalIndent(handler.HttpHandler.Stat, "", " ")
+		_ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
+		log.Info("(NIOVAKV SERVER) Received a kill signal")
 		os.Exit(1)
-        }()
+	}()
 }
 
 //Main func
@@ -352,11 +355,11 @@ func main() {
 	}
 
 	//Start serf agent handler
-        err = niovaServer.startSerfAgent()
-        if err != nil {
-		log.Error("Error while starting serf agent : ",err)
-                os.Exit(1)
-        }
+	err = niovaServer.startSerfAgent()
+	if err != nil {
+		log.Error("Error while starting serf agent : ", err)
+		os.Exit(1)
+	}
 
 	//Get PMDB server config data
 	niovaServer.getPMDBServerConfigData()
@@ -369,7 +372,8 @@ func main() {
 	}
 
 	//Start http server
-	go func(){
+	go func() {
+		log.Info("Starting HTTP server")
 		err = niovaServer.startHTTPServer()
 		if err != nil {
 			log.Error("Error while starting http server : ", err)
@@ -380,7 +384,6 @@ func main() {
 	if niovaServer.requireStat != "0" {
 		go niovaServer.killSignalHandler()
 	}
-
 
 	//Start the gossip
 	niovaServer.setGossipData()
