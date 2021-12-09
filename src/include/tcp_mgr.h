@@ -25,7 +25,7 @@ typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *);
 typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *,
-                          int fd, void *, size_t);
+                          int fd, char *ip_addr, void *, size_t);
 typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_handshake_fill_t)(void *, struct tcp_mgr_connection *,
                             void *, size_t);

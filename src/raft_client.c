@@ -21,6 +21,7 @@
 #include "ref_tree_proto.h"
 #include "registry.h"
 #include "util_thread.h"
+#include "ctl_svc.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -2530,6 +2531,7 @@ raft_client_instance_assign(void)
 
 int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
+                 const char *raft_client_ipv4_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
                  raft_client_instance_t *raft_client_instance,
                  enum raft_instance_store_type server_store_type)
@@ -2537,6 +2539,22 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     if (!raft_uuid_str || !raft_client_uuid_str || !obj_id_cb ||
         !raft_client_instance)
         return -EINVAL;
+
+    /*
+     * Scan the config directory if ip_address is provided from cmdline.
+     * That means pmdb server config files were created after pmdb client
+     * boots up and raft client config files are not present at all.
+     */
+
+    if (raft_client_ipv4_str)
+    {
+        int rc = ctl_svc_scan();
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "ctl_svc_scan failed with rc: %d", rc);
+            return rc;
+        }
+    }
 
     // Assign an instance before obtaining the raft_instance object.
     struct raft_client_instance *rci = raft_client_instance_assign();
@@ -2552,6 +2570,7 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = raft_client_uuid_str;
+    ri->ri_this_peer_ipv4_str = raft_client_ipv4_str;
     ri->ri_store_type = server_store_type;
 
     NIOVA_ASSERT(!ri->ri_client_arg);

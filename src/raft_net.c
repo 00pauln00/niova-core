@@ -1120,12 +1120,25 @@ raft_net_conf_init(struct raft_instance *ri)
                                            &ri->ri_csn_this_peer);
     if (rc)
     {
-        LOG_MSG(LL_ERROR,
-                "ctl_svc_node_lookup() failed to find self UUID=%s\n"
-                "Please check the local-control-service directory: %s",
-                ri->ri_this_peer_uuid_str, ctl_svc_get_local_dir());
+        if (raft_instance_is_client(ri))
+        {
+            uuid_t client_uuid, raft_uuid;
+            uuid_parse(ri->ri_this_peer_uuid_str, client_uuid);
+            uuid_parse(ri->ri_raft_uuid_str, raft_uuid);
+            rc = ctl_svc_client_node_add(client_uuid,
+                                         raft_uuid,
+                                         ri->ri_this_peer_ipv4_str,
+                                         &ri->ri_csn_this_peer);
+        }
+        if (rc)
+        {
+            LOG_MSG(LL_ERROR,
+                    "ctl_svc_node_lookup() failed to find self UUID=%s\n"
+                    "Please check the local-control-service directory: %s",
+                    ri->ri_this_peer_uuid_str, ctl_svc_get_local_dir());
 
-        goto cleanup;
+            goto cleanup;
+        }
     }
 
     /* Lookup the raft ctl-svc object.
@@ -1371,11 +1384,33 @@ raft_net_tcp_handshake_fill(struct raft_instance *ri,
     return raft_net_connection_header_size(ri, csn);
 }
 
+static int
+raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
+{
+    NIOVA_ASSERT(csn && ctl_svc_node_is_peer(csn));
+
+    struct raft_instance *ri = data;
+    bool is_client_cxn = raft_net_is_client_connection(ri, csn);
+    struct tcp_mgr_instance *tmi = is_client_cxn ? &ri->ri_client_tcp_mgr
+                                                 : &ri->ri_peer_tcp_mgr;
+
+    const char *ipaddr = ctl_svc_node_peer_2_ipaddr(csn);
+    int port = is_client_cxn ? ctl_svc_node_peer_2_client_port(csn)
+                             : ctl_svc_node_peer_2_port(csn);
+
+    SIMPLE_LOG_MSG(LL_WARN, "is_client %d, ip: %s, port: %d", is_client_cxn, ipaddr, port);
+    tcp_mgr_connection_setup(&csn->csn_peer.csnp_net_data, tmi, ipaddr, port);
+
+    return 0;
+}
+
+
 static tcp_mgr_ctx_int_t
 raft_net_tcp_handshake_cb(struct raft_instance *ri,
                           struct tcp_mgr_connection **tmc_out,
                           size_t *header_size_out,
-                          int fd, struct raft_rpc_msg *handshake, size_t size)
+                          int fd, char *ip_addr,
+                          struct raft_rpc_msg *handshake, size_t size)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && handshake && size == sizeof(struct raft_rpc_msg));
@@ -1407,8 +1442,19 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
     ctl_svc_node_lookup(handshake->rrm_sender_id, &csn);
     if (!csn)
     {
-        DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection, fd: %d", fd);
-        return -ENOENT;
+        ctl_svc_client_node_add(handshake->rrm_sender_id,
+                                handshake->rrm_raft_id, ip_addr, &csn);
+        if (!csn)
+        {
+            DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection, fd: %d", fd);
+            return -ENOENT;
+        }
+        int rc = raft_net_csn_setup(csn, ri);
+        if (rc)
+        {
+            DBG_RAFT_MSG(LL_ERROR, handshake, "raft_net_csn_setup failed, rc: %d", rc);
+            return rc;
+        }
     }
 
     *header_size_out = raft_net_connection_header_size(ri, csn);
@@ -1449,6 +1495,7 @@ raft_net_peer_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
         : msg->rrm_append_entries_request.raerqm_entries_sz;
 }
 
+#if 0
 static int
 raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
 {
@@ -1463,10 +1510,12 @@ raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
     int port = is_client_cxn ? ctl_svc_node_peer_2_client_port(csn)
                              : ctl_svc_node_peer_2_port(csn);
 
+    SIMPLE_LOG_MSG(LL_WARN, "is_client %d, ip: %s, port: %d", is_client_cxn, ipaddr, port);
     tcp_mgr_connection_setup(&csn->csn_peer.csnp_net_data, tmi, ipaddr, port);
 
     return 0;
 }
+#endif
 
 static void
 raft_net_ctl_svc_nodes_setup(struct raft_instance *ri)

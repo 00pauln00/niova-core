@@ -39,7 +39,8 @@ PmdbObjPutX(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
             size_t kv_size, pmdb_request_opts_t *pmdb_req);
 
 pmdb_t
-PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str);
+PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str,
+                const char *ip_addr_str);
 
 int
 PmdbClientDestroy(pmdb_t pmdb);

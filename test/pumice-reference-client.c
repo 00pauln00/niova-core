@@ -662,7 +662,7 @@ main(int argc, char **argv)
 {
     pmdbtc_getopt(argc, argv);
 
-    pmdbtcPMDB = PmdbClientStart(raft_uuid_str, my_uuid_str);
+    pmdbtcPMDB = PmdbClientStart(raft_uuid_str, my_uuid_str, "127.0.0.1");
     if (!pmdbtcPMDB)
         exit(-errno);
 

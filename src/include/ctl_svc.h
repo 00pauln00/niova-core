@@ -270,8 +270,15 @@ int
 ctl_svc_node_lookup(const uuid_t lookup_uuid, struct ctl_svc_node **ret_csn);
 
 int
+ctl_svc_client_node_add(const uuid_t client_uuid, const uuid_t raft_uuid,
+                        const char *ip_addr_str,
+                        struct ctl_svc_node **ret_csn);
+int
 ctl_svc_node_lookup_by_string(const char *uuid_str,
                               struct ctl_svc_node **ret_csn);
+
+int
+ctl_svc_scan(void);
 
 void
 ctl_svc_node_get(struct ctl_svc_node *csn);

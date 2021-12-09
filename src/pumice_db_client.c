@@ -587,7 +587,8 @@ PmdbClientDestroy(pmdb_t pmdb)
  * PmdbClientStart - public initialization routine.
  */
 pmdb_t
-PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
+PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str,
+                const char *raft_client_ipv4_str)
 {
     if (!raft_uuid_str || !raft_client_uuid_str)
     {
@@ -599,6 +600,7 @@ PmdbClientStart(const char *raft_uuid_str, const char *raft_client_uuid_str)
 
     SIMPLE_LOG_MSG(LL_WARN, "Inside PmdbClientStart");
     int rc = raft_client_init(raft_uuid_str, raft_client_uuid_str,
+                              raft_client_ipv4_str,
                               pmdb_obj_id_cb, &pmdb,
                               RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP);
     if (rc)

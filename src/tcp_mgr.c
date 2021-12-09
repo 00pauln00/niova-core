@@ -631,7 +631,8 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
     struct tcp_mgr_connection *new_tmc = NULL;
 
     rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, &tmc->tmc_header_size,
-                               tmc->tmc_tsh.tsh_socket, iov.iov_base, rc);
+                               tmc->tmc_tsh.tsh_socket, tmc->tmc_tsh.tsh_ipaddr,
+                               iov.iov_base, rc);
 
     tcp_mgr_handshake_iov_fini(&iov);
 
