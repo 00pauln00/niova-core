@@ -1120,7 +1120,7 @@ raft_net_conf_init(struct raft_instance *ri)
                                            &ri->ri_csn_this_peer);
     if (rc)
     {
-        if (raft_instance_is_client(ri))
+        if (raft_instance_is_client(ri) && ri->ri_this_peer_ipv4_str)
         {
             uuid_t client_uuid, raft_uuid;
             uuid_parse(ri->ri_this_peer_uuid_str, client_uuid);

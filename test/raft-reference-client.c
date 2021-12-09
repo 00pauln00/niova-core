@@ -100,6 +100,7 @@ LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_client_app,
 
 const char *raft_uuid_str;
 const char *my_uuid_str;
+const char *my_ip_addr_str = "127.0.0.1";
 
 static const struct ctl_svc_node *leaderCsn;
 static size_t leaderAliveCount;
@@ -1380,6 +1381,7 @@ main(int argc, char **argv)
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = my_uuid_str;
+    ri->ri_this_peer_ipv4_str = my_ip_addr_str;
     ri->ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE;
 
     raft_net_instance_apply_callbacks(ri, rsc_timerfd_cb,
