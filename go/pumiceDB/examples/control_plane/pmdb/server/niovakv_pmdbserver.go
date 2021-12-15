@@ -193,9 +193,9 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	}
 
 	if handler.addr == "" {
-                log.Error("Peer UUID not matching with gossipNodes config file")
-                return errors.New("UUID not matching")
-        }
+		log.Error("Peer UUID not matching with gossipNodes config file")
+		return errors.New("UUID not matching")
+	}
 
 	log.Info("Cluster nodes : ", handler.gossipClusterNodes)
 	log.Info("Node serf info : ", handler.addr, handler.aport, handler.rport)
@@ -231,7 +231,9 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	serfAgentHandler.RpcPort = handler.rport
 	//Start serf agent
 	_, err = serfAgentHandler.Startup(handler.gossipClusterNodes, true)
-
+	if err != nil {
+		log.Error("Error while starting serf agent ", err)
+	}
 	handler.readPMDBServerConfig()
 	handler.GossipData = make(map[string]string)
 	handler.GossipData["Type"] = "PMDB_SERVER"

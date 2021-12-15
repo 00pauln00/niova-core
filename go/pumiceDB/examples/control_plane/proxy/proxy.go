@@ -169,7 +169,6 @@ func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
 	var raftUUID, peerConfig string
 	for raftUUID == "" {
 		peerConfig, raftUUID = handler.serfAgentHandler.GetPMDBServerConfig()
-		log.Info("Peer config and RaftUUID", peerConfig, raftUUID)
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", peerConfig)
@@ -203,33 +202,19 @@ func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
 			flag = false
 		}
 	}
-	os.Mkdir("PMDBConfig", os.ModePerm)
-	handler.dumpConfigToFile("PMDBConfig/")
+	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
+	os.Mkdir(path+"/"+handler.clientUUID,os.ModePerm)
+	log.Info("Peer UUID : ",handler.clientUUID)
+	path += "/" + handler.clientUUID
+	os.Mkdir(path+"/PMDBConfig", os.ModePerm)
+	path += "/PMDBConfig/"
+
+	log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
+	os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
+	handler.dumpConfigToFile(path)
 }
 
 func (handler *niovaKVServerHandler) dumpConfigToFile(outfilepath string) {
-	//Generate .raft_client
-	/*
-	   raftClient_file, err := os.Create(outfilepath + handler.clientUUID+ ".raft_client" )
-	   if err != nil {
-	       log.Error(err)
-	   }
-	   _, error := raftClient_file.WriteString(
-	       "RAFT              " + handler.raftUUID +
-	       "\nIPADDR            " + "127.0.0.1"  +
-	       "\nCLIENT_PORT       " + "13910\n")
-
-	   if error != nil {
-	           log.Error(error)
-	   }
-	   raftClient_file.Sync()
-	   raftClient_file.Close()
-
-	   //files, err := os.ReadDir("PMDBConfig")
-	   if err != nil {
-	           log.Fatal(err)
-	   }
-	*/
 	//Generate .raft
 	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
 	if err != nil {
