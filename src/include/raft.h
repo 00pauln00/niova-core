@@ -459,7 +459,6 @@ struct raft_instance
     struct timespec                 ri_last_recv[CTL_SVC_MAX_RAFT_PEERS];
     const char                     *ri_raft_uuid_str;
     const char                     *ri_this_peer_uuid_str;
-    const char                     *ri_this_peer_ipv4_str;
     uuid_t                          ri_db_uuid; // set by backend
     uuid_t                          ri_db_recovery_uuid; // set by backend
     struct raft_candidate_state     ri_candidate;

@@ -2531,10 +2531,10 @@ raft_client_instance_assign(void)
 
 int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
-                 const char *raft_client_ipv4_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
                  raft_client_instance_t *raft_client_instance,
-                 enum raft_instance_store_type server_store_type)
+                 enum raft_instance_store_type server_store_type,
+                 bool scan_config_dir)
 {
     if (!raft_uuid_str || !raft_client_uuid_str || !obj_id_cb ||
         !raft_client_instance)
@@ -2546,7 +2546,7 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
      * boots up and raft client config files are not present at all.
      */
 
-    if (raft_client_ipv4_str)
+    if (scan_config_dir)
     {
         int rc = ctl_svc_scan();
         if (rc)
@@ -2570,7 +2570,6 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
 
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = raft_client_uuid_str;
-    ri->ri_this_peer_ipv4_str = raft_client_ipv4_str;
     ri->ri_store_type = server_store_type;
 
     NIOVA_ASSERT(!ri->ri_client_arg);

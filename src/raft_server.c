@@ -4053,7 +4053,6 @@ raft_server_client_recv_ignore_request(
             SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_lookup(): %d uuid %s",
                            rc, sender_uuid);
             rc = ctl_svc_client_node_add(rcm->rcrm_sender_id, rcm->rcrm_raft_id,
-                                         inet_ntoa((from)->sin_addr),
                                          &client_csn);
             if (rc)
                 return false;

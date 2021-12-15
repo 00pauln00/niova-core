@@ -1008,7 +1008,6 @@ ctl_svc_node_destruct(struct ctl_svc_node *destroy, void *arg)
 
 int
 ctl_svc_client_node_add(const uuid_t client_uuid, const uuid_t raft_uuid,
-                        const char *ip_addr_str,
                         struct ctl_svc_node **ret_csn)
 {
     struct ctl_svc_node  csn = {0};
@@ -1018,8 +1017,6 @@ ctl_svc_client_node_add(const uuid_t client_uuid, const uuid_t raft_uuid,
     // Populate the fields for csn
     csn.csn_type = CTL_SVC_NODE_TYPE_RAFT_CLIENT;
     uuid_copy(csn.csn_peer.csnp_raft_info.csnrp_member.csrm_peer, raft_uuid);
-    strncpy(csn.csn_peer.csnp_ipv4, ip_addr_str, IPV4_STRLEN);
-    csn.csn_peer.csnp_ipv4[IPV4_STRLEN - 1] = '\0';
 
     uuid_copy(csn.csn_uuid, client_uuid);
 

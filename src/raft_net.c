@@ -1120,14 +1120,13 @@ raft_net_conf_init(struct raft_instance *ri)
                                            &ri->ri_csn_this_peer);
     if (rc)
     {
-        if (raft_instance_is_client(ri) && ri->ri_this_peer_ipv4_str)
+        if (raft_instance_is_client(ri))
         {
             uuid_t client_uuid, raft_uuid;
             uuid_parse(ri->ri_this_peer_uuid_str, client_uuid);
             uuid_parse(ri->ri_raft_uuid_str, raft_uuid);
             rc = ctl_svc_client_node_add(client_uuid,
                                          raft_uuid,
-                                         ri->ri_this_peer_ipv4_str,
                                          &ri->ri_csn_this_peer);
         }
         if (rc)
@@ -1443,7 +1442,7 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
     if (!csn)
     {
         ctl_svc_client_node_add(handshake->rrm_sender_id,
-                                handshake->rrm_raft_id, ip_addr, &csn);
+                                handshake->rrm_raft_id, &csn);
         if (!csn)
         {
             DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection, fd: %d", fd);

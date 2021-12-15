@@ -20,7 +20,7 @@
 #include "thread.h"
 #include "util_thread.h"
 
-#define OPTS "au:r:h"
+#define OPTS "asu:r:h"
 
 #define PMDB_TEST_CLIENT_MAX_APPS 1024
 #define PMDB_TEST_CLIENT_REQ_HIST_SZ 1024
@@ -31,6 +31,7 @@ static regex_t pmdbtcCmdRegex;
 static const char *raft_uuid_str;
 static const char *my_uuid_str;
 static bool use_async_requests = false;
+static bool scan_config_dir = false;
 
 static pmdb_t pmdbtcPMDB;
 
@@ -644,6 +645,9 @@ pmdbtc_getopt(int argc, char **argv)
         case 'u':
             my_uuid_str = optarg;
             break;
+        case 's':
+            scan_config_dir = true;
+            break;
         case 'h':
             pmdbtc_print_help(0, argv);
             break;
@@ -662,7 +666,7 @@ main(int argc, char **argv)
 {
     pmdbtc_getopt(argc, argv);
 
-    pmdbtcPMDB = PmdbClientStart(raft_uuid_str, my_uuid_str, "127.0.0.1");
+    pmdbtcPMDB = PmdbClientStart(raft_uuid_str, my_uuid_str, scan_config_dir);
     if (!pmdbtcPMDB)
         exit(-errno);
 

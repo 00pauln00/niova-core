@@ -44,10 +44,10 @@ typedef int (*raft_client_data_2_obj_id_t)(const char *, const size_t,
 typedef void (*raft_client_user_cb_t)(void *, ssize_t, void *);
 int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
-                 const char *ipv4_addr_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
                  raft_client_instance_t *client_instance,
-                 enum raft_instance_store_type server_store_type);
+                 enum raft_instance_store_type server_store_type,
+                 bool scan_config_dir);
 
 int
 raft_client_destroy(raft_client_instance_t client_instance);
