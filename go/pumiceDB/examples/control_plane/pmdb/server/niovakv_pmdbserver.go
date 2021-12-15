@@ -179,10 +179,10 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	for scanner.Scan() {
 		text := scanner.Text()
 		splitData := strings.Split(text, " ")
-		addr := splitData[0]
-		aport := splitData[1]
-		rport := splitData[2]
-		uuid := splitData[3]
+		addr := splitData[1]
+		aport := splitData[2]
+		rport := splitData[3]
+		uuid := splitData[0]
 		if uuid == handler.peerUUID {
 			handler.aport = aport
 			handler.rport = rport

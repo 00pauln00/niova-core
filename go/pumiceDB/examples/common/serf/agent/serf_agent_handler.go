@@ -128,7 +128,7 @@ func GetPeerAddress(staticSerfConfigPath string) ([]string, error) {
         var addrs []string
         for filescanner.Scan() {
                 input := strings.Split(filescanner.Text(), " ")
-                addrs = append(addrs, input[0]+":"+input[1])
+                addrs = append(addrs, input[1]+":"+input[2])
         }
         return addrs, nil
 }

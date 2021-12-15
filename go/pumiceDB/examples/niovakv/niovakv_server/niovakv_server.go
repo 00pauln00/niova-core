@@ -148,7 +148,7 @@ func (handler *niovaKVServerHandler) startSerfAgent() error {
 	handler.serfAgentHandler.RpcAddr = handler.addr
 	handler.serfAgentHandler.RpcPort = handler.agentRPCPort
 	//Start serf agent
-	_, err := handler.serfAgentHandler.Startup(handler.agentJoinAddrs)
+	_, err := handler.serfAgentHandler.Startup(handler.agentJoinAddrs,true)
 	return err
 }
 
