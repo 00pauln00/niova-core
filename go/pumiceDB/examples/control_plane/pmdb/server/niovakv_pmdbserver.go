@@ -191,6 +191,12 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
 		}
 	}
+
+	if handler.addr == "" {
+                log.Error("Peer UUID not matching with gossipNodes config file")
+                return errors.New("UUID not matching")
+        }
+
 	log.Info("Cluster nodes : ", handler.gossipClusterNodes)
 	log.Info("Node serf info : ", handler.addr, handler.aport, handler.rport)
 	return nil
