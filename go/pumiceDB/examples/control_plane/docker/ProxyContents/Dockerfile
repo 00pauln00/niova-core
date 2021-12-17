@@ -16,7 +16,7 @@ COPY proxyStarter.sh /usr/starter.sh
 ADD  lib /opt/niova/lib
 
 #Set environmental variable
-ENV NIOVA_LOCAL_CTL_SVC_DIR="/usr/niovakv_server"
+ENV NIOVA_LOCAL_CTL_SVC_DIR="/usr/niovakv_server/PMDBConfig"
 ENV LD_LIBRARY_PATH="/opt/niova/lib"
 
 #Run pmdb server

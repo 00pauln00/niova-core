@@ -203,15 +203,15 @@ func (handler *niovaKVServerHandler) getPMDBServerConfigData() {
 		}
 	}
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
-	os.Mkdir(path+"/"+handler.clientUUID,os.ModePerm)
-	log.Info("Peer UUID : ",handler.clientUUID)
-	path += "/" + handler.clientUUID
-	os.Mkdir(path+"/PMDBConfig", os.ModePerm)
-	path += "/PMDBConfig/"
+	//os.Mkdir(path+"/"+handler.clientUUID,os.ModePerm)
+	//log.Info("Peer UUID : ",handler.clientUUID)
+	//path += "/" + handler.clientUUID
+	os.Mkdir(path, os.ModePerm)
+	//path += "/PMDBConfig/"
 
-	log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
-	os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
-	handler.dumpConfigToFile(path)
+	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
+	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
+	handler.dumpConfigToFile(path+"/")
 }
 
 func (handler *niovaKVServerHandler) dumpConfigToFile(outfilepath string) {
