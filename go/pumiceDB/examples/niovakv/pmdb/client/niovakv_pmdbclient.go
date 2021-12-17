@@ -55,7 +55,7 @@ func (nco *NiovaKVClient) Read(ReqObj *niovakvlib.NiovaKV) ([]byte, error) {
 func GetNiovaKVClientObj(raftUuid, clientUuid, logFilepath string) *NiovaKVClient {
 
 	//Create new client object.
-	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
+	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid, false)
 	if clientObj == nil {
 		return nil
 	}

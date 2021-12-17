@@ -20,10 +20,11 @@ import (
 import "C"
 
 type PmdbClientObj struct {
-	initialized bool
-	pmdb        C.pmdb_t
-	raftUuid    string
-	myUuid      string
+	initialized   bool
+	scanConfDir   bool
+	pmdb          C.pmdb_t
+	raftUuid      string
+	myUuid        string
 }
 
 type RDZeroCopyObj struct {
@@ -332,7 +333,7 @@ func (obj *PmdbClientObj) Start() error {
 	defer FreeCMem(clientUuid)
 
 	//Start the client
-	obj.pmdb = C.PmdbClientStart(raftUuid, clientUuid)
+	obj.pmdb = C.PmdbClientStart(raftUuid, clientUuid, (C.bool)(obj.scanConfDir))
 	if obj.pmdb == nil {
 		var errno syscall.Errno
 		return fmt.Errorf("PmdbClientStart(): %d", errno)
@@ -341,12 +342,13 @@ func (obj *PmdbClientObj) Start() error {
 	return nil
 }
 
-func PmdbClientNew(Graft_uuid string, Gclient_uuid string) *PmdbClientObj {
+func PmdbClientNew(Graft_uuid string, Gclient_uuid string, GscanConfDir bool) *PmdbClientObj {
 	var client PmdbClientObj
 
 	client.initialized = false
 	client.raftUuid = Graft_uuid
 	client.myUuid = Gclient_uuid
+	client.scanConfDir = GscanConfDir
 
 	return &client
 }
