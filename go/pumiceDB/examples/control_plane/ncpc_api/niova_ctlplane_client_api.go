@@ -4,6 +4,7 @@ import (
         "errors"
         "math/rand"
         "sync"
+	"strings"
 	"encoding/json"
 	"io/ioutil"
         "time"
@@ -231,6 +232,46 @@ func removeIndex(s []client.Member, index int) []client.Member {
 func (nkvc *ClientAPI) GetConfig(configPath string) error {
 	nkvc.clientHandler.Retries = 5
 	return nkvc.clientHandler.Initdata(configPath)
+}
+
+func (nkvc *ClientAPI) GetPMDBServerConfig() ([]byte,error){
+	type PeerConfigData struct{
+		PeerUUID   string
+		IPAddr     string
+		Port       string
+		ClientPort string
+	}
+        var PeerUUID, ClientPort, Port, IPAddr string
+	PMDBServerConfigMap := make(map[string]PeerConfigData)
+
+	allConfig := nkvc.clientHandler.GetPMDBConfig()
+	splitData := strings.Split(allConfig, "/")
+	flag := false
+        for i, element := range splitData {
+                switch i % 4 {
+                case 0:
+                        PeerUUID = element
+                case 1:
+                        IPAddr = element
+                case 2:
+                        ClientPort = element
+                case 3:
+                        flag = true
+                        Port = element
+                }
+                if flag {
+                        peerConfig := PeerConfigData{
+                                PeerUUID:   PeerUUID,
+                                IPAddr:     IPAddr,
+                                Port:       Port,
+                                ClientPort: ClientPort,
+                        }
+                        PMDBServerConfigMap[PeerUUID] = peerConfig
+                        flag = false
+                }
+        }
+
+	return json.MarshalIndent(PMDBServerConfigMap," ","")
 }
 
 func (nkvc *ClientAPI) Till_ready() {

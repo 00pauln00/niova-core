@@ -112,35 +112,8 @@ func main() {
 
 	switch clientObj.operation {
 	case "write":
-		requestObj.InputOps = clientObj.operation
-		requestObj.InputKey = clientObj.reqKey
 		requestObj.InputValue = []byte(clientObj.reqValue)
 		write = true
-
-		sendTime := time.Now()
-		requestMeta := request{
-			Opcode:    requestObj.InputOps,
-			Key:       requestObj.InputKey,
-			Value:     string(requestObj.InputValue),
-			Timestamp: sendTime,
-		}
-
-		responseMeta := response{
-			Timestamp:     time.Now(),
-			Status:        responseObj.RespStatus,
-			ResponseValue: string(responseObj.RespValue),
-		}
-		operationObj := opData{
-			RequestData:  requestMeta,
-			ResponseData: responseMeta,
-			TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
-		}
-
-		//Lock the array to place the response
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-
-		toJson["write"] = clientObj.operationMetaObjs
-		clientObj.write2Json(toJson)
 		fallthrough
 
 	case "read":
@@ -149,13 +122,13 @@ func main() {
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)
+		//Send the write
 		responseByteArray := clientObj.ncpc.Request(requestByte.Bytes(), "", write)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseByteArray))
 		err = dec.Decode(&responseObj)
 		fmt.Println("Response:", string(responseObj.RespValue))
 
 		sendTime := time.Now()
-
 		requestMeta := request{
 			Opcode:    requestObj.InputOps,
 			Key:       requestObj.InputKey,
@@ -176,19 +149,20 @@ func main() {
 		}
 
 		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-
-		toJson["read"] = clientObj.operationMetaObjs
+		if write{
+			toJson["write"] = clientObj.operationMetaObjs
+		} else{
+			toJson["read"] = clientObj.operationMetaObjs
+		}
 		clientObj.write2Json(toJson)
 
 	case "config":
-		responseByteArray := clientObj.ncpc.Request([]byte(clientObj.reqKey), "/config", false)
+		responseByteArray,err:= clientObj.ncpc.GetPMDBServerConfig()
 		fmt.Println("Response : ", string(responseByteArray))
-
-		marshal_data, err := json.MarshalIndent(string(responseByteArray), "", " ")
 		if err != nil {
-			log.Error("Unable to parse the data")
+			log.Error("Unable to get the config data")
 		}
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", marshal_data, 0644)
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", responseByteArray, 0644)
 
 	}
 

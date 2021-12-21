@@ -152,6 +152,15 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 	return err
 }
 
+func (Handler *SerfClientHandler) GetPMDBConfig() string{
+        for _,mem := range Handler.Agents {
+                if mem.Tags["Type"]=="PMDB_SERVER" {
+                        return mem.Tags["PC"]
+                }
+        }
+        return ""
+}
+
 /*
 Type : SerfClientHandler
 */
