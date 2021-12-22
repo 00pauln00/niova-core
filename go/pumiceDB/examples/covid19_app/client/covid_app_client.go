@@ -56,7 +56,7 @@ func main() {
 	log.Info("Outfile Path: ", jsonFilePath)
 
 	//Create new client object.
-	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid, false)
+	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
 	if clientObj == nil {
 		return
 	}

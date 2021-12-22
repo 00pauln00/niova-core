@@ -1007,22 +1007,32 @@ ctl_svc_node_destruct(struct ctl_svc_node *destroy, void *arg)
 }
 
 int
-ctl_svc_client_node_add(const uuid_t client_uuid, const uuid_t raft_uuid,
-                        struct ctl_svc_node **ret_csn)
+ctl_svc_node_init(struct ctl_svc_node *csn,
+                         const uuid_t raft_uuid,
+                         const uuid_t node_uuid,
+                         enum ctl_svc_node_type node_type)
 {
-    struct ctl_svc_node  csn = {0};
+    if (!csn)
+        return -EINVAL;
 
-    SIMPLE_LOG_MSG(LL_WARN, "Inside ctl_svc_client_node_add");
+    csn->csn_type = node_type;
+    uuid_copy(csn->csn_peer.csnp_raft_info.csnrp_member.csrm_peer, raft_uuid);
+    uuid_copy(csn->csn_uuid, node_uuid);
 
-    // Populate the fields for csn
-    csn.csn_type = CTL_SVC_NODE_TYPE_RAFT_CLIENT;
-    uuid_copy(csn.csn_peer.csnp_raft_info.csnrp_member.csrm_peer, raft_uuid);
+    return 0;
+}
 
-    uuid_copy(csn.csn_uuid, client_uuid);
+int
+ctl_svc_node_add(struct ctl_svc_node *csn,
+                 struct ctl_svc_node **ret_csn)
+{
+
+    if (!csn)
+        return -EINVAL;
 
     // Add the node to the tree
     int rc, rt_ret = 0;
-    rc = ctl_svc_node_tree_add(&csn, &rt_ret);
+    rc = ctl_svc_node_tree_add(csn, &rt_ret);
 
     if (rc)
     {
@@ -1032,8 +1042,7 @@ ctl_svc_client_node_add(const uuid_t client_uuid, const uuid_t raft_uuid,
     }
 
     //XXX return ret_csn from ctl_svc_node_tree_add itself
-    ctl_svc_node_lookup(client_uuid, ret_csn);
-    return 0;
+    return ctl_svc_node_lookup(csn->csn_uuid, ret_csn);
 }
 
 int

@@ -692,7 +692,7 @@ func main() {
 	initLogger()
 
 	//Create new client object.
-	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid, false)
+	clientObj := PumiceDBClient.PmdbClientNew(raftUuid, clientUuid)
 	if clientObj == nil {
 		return
 	}

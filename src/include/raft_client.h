@@ -46,8 +46,7 @@ int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
                  raft_client_instance_t *client_instance,
-                 enum raft_instance_store_type server_store_type,
-                 bool scan_config_dir);
+                 enum raft_instance_store_type server_store_type);
 
 int
 raft_client_destroy(raft_client_instance_t client_instance);

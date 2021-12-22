@@ -2533,27 +2533,21 @@ int
 raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
                  raft_client_data_2_obj_id_t obj_id_cb,
                  raft_client_instance_t *raft_client_instance,
-                 enum raft_instance_store_type server_store_type,
-                 bool scan_config_dir)
+                 enum raft_instance_store_type server_store_type)
 {
     if (!raft_uuid_str || !raft_client_uuid_str || !obj_id_cb ||
         !raft_client_instance)
         return -EINVAL;
 
     /*
-     * Scan the config directory if ip_address is provided from cmdline.
-     * That means pmdb server config files were created after pmdb client
-     * boots up and raft client config files are not present at all.
+     * Scan the config directory once again in case some config files
+     * are created later in the client execution.
      */
-
-    if (scan_config_dir)
+    int rc = ctl_svc_scan();
+    if (rc)
     {
-        int rc = ctl_svc_scan();
-        if (rc)
-        {
-            SIMPLE_LOG_MSG(LL_ERROR, "ctl_svc_scan failed with rc: %d", rc);
-            return rc;
-        }
+        SIMPLE_LOG_MSG(LL_ERROR, "ctl_svc_scan failed with rc: %d", rc);
+        return rc;
     }
 
     // Assign an instance before obtaining the raft_instance object.
@@ -2585,8 +2579,8 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
                                       raft_client_recv_handler,
                                       raft_client_recv_handler);
 
-    int rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
-                                   "raft_client", (void *)rci, NULL);
+    rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
+                               "raft_client", (void *)rci, NULL);
 
     FATAL_IF(rc, "pthread_create(): %s", strerror(-rc));
 

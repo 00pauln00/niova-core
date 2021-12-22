@@ -1120,14 +1120,19 @@ raft_net_conf_init(struct raft_instance *ri)
                                            &ri->ri_csn_this_peer);
     if (rc)
     {
+        // If node's ctl-svc object is not present, create one.
         if (raft_instance_is_client(ri))
         {
             uuid_t client_uuid, raft_uuid;
             uuid_parse(ri->ri_this_peer_uuid_str, client_uuid);
             uuid_parse(ri->ri_raft_uuid_str, raft_uuid);
-            rc = ctl_svc_client_node_add(client_uuid,
-                                         raft_uuid,
-                                         &ri->ri_csn_this_peer);
+            struct ctl_svc_node  csn = {0};
+
+            rc = ctl_svc_node_init(&csn, raft_uuid, client_uuid,
+                                   CTL_SVC_NODE_TYPE_RAFT_CLIENT);
+
+            if (!rc)
+                rc = ctl_svc_node_add(&csn, &ri->ri_csn_this_peer);
         }
         if (rc)
         {
@@ -1408,7 +1413,7 @@ static tcp_mgr_ctx_int_t
 raft_net_tcp_handshake_cb(struct raft_instance *ri,
                           struct tcp_mgr_connection **tmc_out,
                           size_t *header_size_out,
-                          int fd, char *ip_addr,
+                          int fd,
                           struct raft_rpc_msg *handshake, size_t size)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -1437,18 +1442,25 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
 
     SIMPLE_LOG_MSG(LL_TRACE, "handshake validated");
 
-    struct ctl_svc_node *csn = NULL;
-    ctl_svc_node_lookup(handshake->rrm_sender_id, &csn);
-    if (!csn)
+    struct ctl_svc_node *csn_ptr = NULL;
+    ctl_svc_node_lookup(handshake->rrm_sender_id, &csn_ptr);
+    if (!csn_ptr)
     {
-        ctl_svc_client_node_add(handshake->rrm_sender_id,
-                                handshake->rrm_raft_id, &csn);
-        if (!csn)
+        struct ctl_svc_node  csn = {0};
+
+        int rc = ctl_svc_node_init(&csn, handshake->rrm_raft_id,
+                                   handshake->rrm_sender_id,
+                                   CTL_SVC_NODE_TYPE_RAFT_CLIENT);
+
+        if (!rc)
+            rc = ctl_svc_node_add(&csn, &csn_ptr);
+
+        if (!csn_ptr || rc)
         {
             DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection, fd: %d", fd);
             return -ENOENT;
         }
-        int rc = raft_net_csn_setup(csn, ri);
+        rc = raft_net_csn_setup(csn_ptr, ri);
         if (rc)
         {
             DBG_RAFT_MSG(LL_ERROR, handshake, "raft_net_csn_setup failed, rc: %d", rc);
@@ -1456,8 +1468,8 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
         }
     }
 
-    *header_size_out = raft_net_connection_header_size(ri, csn);
-    *tmc_out = &csn->csn_peer.csnp_net_data;
+    *header_size_out = raft_net_connection_header_size(ri, csn_ptr);
+    *tmc_out = &csn_ptr->csn_peer.csnp_net_data;
 
     return 0;
 }

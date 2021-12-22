@@ -333,7 +333,7 @@ func (obj *PmdbClientObj) Start() error {
 	defer FreeCMem(clientUuid)
 
 	//Start the client
-	obj.pmdb = C.PmdbClientStart(raftUuid, clientUuid, (C.bool)(obj.scanConfDir))
+	obj.pmdb = C.PmdbClientStart(raftUuid, clientUuid)
 	if obj.pmdb == nil {
 		var errno syscall.Errno
 		return fmt.Errorf("PmdbClientStart(): %d", errno)
@@ -342,13 +342,12 @@ func (obj *PmdbClientObj) Start() error {
 	return nil
 }
 
-func PmdbClientNew(Graft_uuid string, Gclient_uuid string, GscanConfDir bool) *PmdbClientObj {
+func PmdbClientNew(Graft_uuid string, Gclient_uuid string) *PmdbClientObj {
 	var client PmdbClientObj
 
 	client.initialized = false
 	client.raftUuid = Graft_uuid
 	client.myUuid = Gclient_uuid
-	client.scanConfDir = GscanConfDir
 
 	return &client
 }
