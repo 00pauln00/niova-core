@@ -234,6 +234,12 @@ func (nkvc *ClientAPI) GetConfig(configPath string) error {
 	return nkvc.clientHandler.Initdata(configPath)
 }
 
+func (nkvc *ClientAPI) GetMembership() map[string]client.Member {
+        nkvc.serfUpdateLock.Lock()
+        defer nkvc.serfUpdateLock.Unlock()
+        return nkvc.clientHandler.GetMemberListMap()
+}
+
 func (nkvc *ClientAPI) GetPMDBServerConfig() ([]byte,error){
 	type PeerConfigData struct{
 		PeerUUID   string

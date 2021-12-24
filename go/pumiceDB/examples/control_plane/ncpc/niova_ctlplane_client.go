@@ -164,6 +164,11 @@ func main() {
 		}
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", responseByteArray, 0644)
 
+	case "membership":
+                toJson := clientObj.ncpc.GetMembership()
+                file, _ := json.MarshalIndent(toJson, "", " ")
+                _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+
 	}
 
 	clientObj.ncpc.DumpIntoJson("./execution_summary.json")
