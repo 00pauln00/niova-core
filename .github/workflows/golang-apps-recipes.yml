@@ -56,13 +56,14 @@ jobs:
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/niovakv_recipes.txt /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/covid_app_recipe.txt ./code/scripts/foodpalaceapp_recipe.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/covid_app_recipe.txt ./code/scripts/foodpalaceapp_recipe.txt /home/runner/work/niovad/niovad/build_dir/ &&
+           cp ./code/scripts/control_plane_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+       ref: control_plane_recipes
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
@@ -104,6 +105,17 @@ jobs:
                              'niovakv'
                              '0'
                              '/home/runner/work/go/go/bin'
+
+    - name:  run recipes for controlplane application
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
+                             '/home/runner/work/niovad/niovad/build_dir'
+                             '/home/runner/work/niovad/niovad/holon_log' 5
+                             '/home/runner/work/niovad/niovad/build_dir/control_plane_recipes.txt'
+                             'controlplane'
+                             '0'
+                             '/home/runner/work/go/go/bin'
+
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
