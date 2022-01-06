@@ -14,6 +14,12 @@ jobs:
       with:
         path: ./code
 
+    - name: Extract branch
+      uses: actions/checkout@v2
+      with:
+       ref: no_raft_client_config
+       path: ./code
+
     - name: apt update
       run: sudo apt update
 
