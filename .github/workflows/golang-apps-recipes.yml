@@ -56,7 +56,7 @@ jobs:
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/niovakv_recipes.txt /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/covid_app_recipe.txt ./code/scripts/foodpalaceapp_recipe.txt /home/runner/work/niovad/niovad/build_dir/ &&
+           cp ./code/scripts/covid_app_recipe.txt ./code/scripts/foodpalaceapp_recipe.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
