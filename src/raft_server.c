@@ -4061,7 +4061,7 @@ raft_server_client_recv_ignore_request(
             //fallthrough. ignore_request will be set to true.
         }
 
-        if (client_csn)
+        if (!rc && client_csn)
         {
             if (client_csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT)
             {
