@@ -1465,7 +1465,8 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
         rc = raft_net_csn_setup(csn_ptr, ri);
         if (rc)
         {
-            DBG_RAFT_MSG(LL_ERROR, handshake, "raft_net_csn_setup failed, rc: %d", rc);
+            DBG_RAFT_MSG(LL_ERROR, handshake,
+                         "raft_net_csn_setup failed, rc: %d", rc);
             return rc;
         }
     }
