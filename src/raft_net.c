@@ -1402,7 +1402,9 @@ raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
     int port = is_client_cxn ? ctl_svc_node_peer_2_client_port(csn)
                              : ctl_svc_node_peer_2_port(csn);
 
-    SIMPLE_LOG_MSG(LL_WARN, "is_client %d, ip: %s, port: %d", is_client_cxn, ipaddr, port);
+    SIMPLE_LOG_MSG(LL_DEBUG, "is_client %d, ip: %s, port: %d",
+                   is_client_cxn, ipaddr, port);
+
     tcp_mgr_connection_setup(&csn->csn_peer.csnp_net_data, tmi, ipaddr, port);
 
     return 0;
