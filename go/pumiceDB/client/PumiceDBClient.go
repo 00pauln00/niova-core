@@ -20,10 +20,11 @@ import (
 import "C"
 
 type PmdbClientObj struct {
-	initialized bool
-	pmdb        C.pmdb_t
-	raftUuid    string
-	myUuid      string
+	initialized   bool
+	scanConfDir   bool
+	pmdb          C.pmdb_t
+	raftUuid      string
+	myUuid        string
 }
 
 type RDZeroCopyObj struct {

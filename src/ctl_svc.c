@@ -950,6 +950,17 @@ out_close_dir:
     return rc;
 }
 
+int
+ctl_svc_scan(void)
+{
+    int rc = ctl_svc_init_scan_entries();
+
+    if (rc)
+        SIMPLE_LOG_MSG(LL_NOTIFY, "ctl_svc_init_scan_entries() again: %s",
+                       strerror(-rc));
+    return rc;
+}
+
 static struct ctl_svc_node *
 ctl_svc_node_construct(const struct ctl_svc_node *in, void *arg)
 {
@@ -993,6 +1004,45 @@ ctl_svc_node_destruct(struct ctl_svc_node *destroy, void *arg)
     niova_free(destroy);
 
     return 0;
+}
+
+int
+ctl_svc_node_init(struct ctl_svc_node *csn,
+                         const uuid_t raft_uuid,
+                         const uuid_t node_uuid,
+                         enum ctl_svc_node_type node_type)
+{
+    if (!csn)
+        return -EINVAL;
+
+    csn->csn_type = node_type;
+    uuid_copy(csn->csn_peer.csnp_raft_info.csnrp_member.csrm_peer, raft_uuid);
+    uuid_copy(csn->csn_uuid, node_uuid);
+
+    return 0;
+}
+
+int
+ctl_svc_node_add(struct ctl_svc_node *csn,
+                 struct ctl_svc_node **ret_csn)
+{
+
+    if (!csn)
+        return -EINVAL;
+
+    // Add the node to the tree
+    int rc, rt_ret = 0;
+    rc = ctl_svc_node_tree_add(csn, &rt_ret);
+
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_tree_add failed: %d, rt_ret: %d",
+                       rc, rt_ret);
+        return rc;
+    }
+
+    //XXX return ret_csn from ctl_svc_node_tree_add itself
+    return ctl_svc_node_lookup(csn->csn_uuid, ret_csn);
 }
 
 int
