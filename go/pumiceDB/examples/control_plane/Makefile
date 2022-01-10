@@ -8,9 +8,9 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-install_all: compile pmdbserver proxyserver install docker_support
+install_all: compile pmdbserver proxyserver ncpc install docker_support
 
-install_only: compile pmdbserver proxyserver install
+install_only: compile pmdbserver proxyserver ncpc install
 
 compile:
 	echo "Compiling niovakv"
@@ -21,8 +21,11 @@ pmdbserver:
 proxyserver:
 	cd proxy && go build proxy.go
 
+ncpc:
+	cd ncpc && go build niova_ctlplane_client.go
+
 install:
-	cp pmdb/server/niovakv_pmdbserver proxy/proxy ${DIR}/libexec/niova/
+	cp pmdb/server/niovakv_pmdbserver proxy/proxy ncpc/niova_ctlplane_client ${DIR}/libexec/niova/
 
 	cp proxy/config ${DIR}/libexec/niova/niovakv.config
 
@@ -36,6 +39,8 @@ docker_support:
 	cp proxy/gossipNodes ${DIR}/PMDBServerContents/
 
 	cp proxy/proxy ${DIR}/ProxyContents/
+
+        cp ncpc/niova_ctlplane_client ${DIR}/ProxyContents/
 
 	cp proxy/config ${DIR}/ProxyContents/niovakv.config
 
