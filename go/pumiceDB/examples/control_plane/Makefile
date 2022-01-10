@@ -40,7 +40,7 @@ docker_support:
 
 	cp proxy/proxy ${DIR}/ProxyContents/
 
-        cp ncpc/niova_ctlplane_client ${DIR}/ProxyContents/
+	cp ncpc/niova_ctlplane_client ${DIR}/ProxyContents/
 
 	cp proxy/config ${DIR}/ProxyContents/niovakv.config
 
