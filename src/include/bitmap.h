@@ -150,23 +150,38 @@ niova_bitmap_attach_and_init_max_idx(struct niova_bitmap *nb,
 static inline size_t
 niova_bitmap_size_bits(const struct niova_bitmap *nb)
 {
-    return nb ? (nb->nb_nwords * NB_WORD_TYPE_SZ_BITS) : 0;
+    if (!nb)
+        return NB_MAX_IDX_ANY;
+
+    return (nb->nb_max_idx && nb->nb_max_idx != NB_MAX_IDX_ANY) ?
+        nb->nb_max_idx : (nb->nb_nwords * NB_WORD_TYPE_SZ_BITS);
 }
 
 static inline size_t
 niova_bitmap_inuse(const struct niova_bitmap *nb)
 {
     size_t total = 0;
+    size_t non_counted_bits = 0;
 
-    if (nb)
+    if (!nb)
+        return NB_MAX_IDX_ANY;
+
+    // Calc the number of bits past max_idx
+    if (nb->nb_max_idx && nb->nb_max_idx != NB_MAX_IDX_ANY)
     {
-        unsigned int nw = nb->nb_nwords;
+        size_t max_bits = nb->nb_nwords * NB_WORD_TYPE_SZ_BITS;
+        if (nb->nb_max_idx > max_bits)
+            return NB_MAX_IDX_ANY;
 
-        for (unsigned int i = 0; i < nw; i++)
-            total += number_of_ones_in_val(nb->nb_map[i]);
+        non_counted_bits = max_bits - nb->nb_max_idx;
     }
 
-    return total;
+    unsigned int nw = nb->nb_nwords;
+
+    for (unsigned int i = 0; i < nw; i++)
+        total += number_of_ones_in_val(nb->nb_map[i]);
+
+    return total - non_counted_bits;
 }
 
 static inline size_t
