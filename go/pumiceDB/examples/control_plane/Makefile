@@ -10,7 +10,7 @@ export PATH
 
 install_all: compile pmdbserver proxyserver ncpc install docker_support
 
-install_only: compile pmdbserver proxyserver ncpc install
+install_only: compile pmdbserver proxyserver ncpcclient install
 
 compile:
 	echo "Compiling niovakv"
@@ -21,7 +21,7 @@ pmdbserver:
 proxyserver:
 	cd proxy && go build proxy.go
 
-ncpc:
+ncpcclient:
 	cd ncpc && go build niova_ctlplane_client.go
 
 install:
@@ -40,7 +40,7 @@ docker_support:
 
 	cp proxy/proxy ${DIR}/ProxyContents/
 
-	cp ncpc/ncpc ${DIR}/ProxyContents/
+	cp ncpc/niova_ctlplane_client ${DIR}/ProxyContents/
 
 	cp proxy/config ${DIR}/ProxyContents/niovakv.config
 
