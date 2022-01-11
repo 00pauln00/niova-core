@@ -1,4 +1,4 @@
-module niovakv/httpclient
+module common/httpClient
 
 go 1.16
 

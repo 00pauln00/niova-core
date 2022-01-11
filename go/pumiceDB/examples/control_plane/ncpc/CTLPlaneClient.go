@@ -2,8 +2,8 @@ package main
 
 import (
 	"bytes"
-	"ctlplane/clientapi"
-	"ctlplane/niovakvlib"
+	"common/clientAPI"
+	"common/requestResponseLib"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
@@ -15,16 +15,16 @@ import (
 	"time"
 )
 
-type ncp_client struct {
-	reqKey            string
-	reqValue          string
+type clientHandler struct {
+	requestKey        string
+	requestValue      string
 	addr              string
 	operation         string
 	configPath        string
 	logPath           string
 	resultFile        string
 	operationMetaObjs []opData //For filling json data
-	ncpc              clientapi.ClientAPI
+	clientAPIObj      clientAPI.ClientAPIHandler
 }
 
 type request struct {
@@ -52,25 +52,25 @@ func usage() {
 }
 
 //Function to get command line parameters
-func (cli *ncp_client) getCmdParams() {
-	flag.StringVar(&cli.reqKey, "k", "Key", "Key prefix")
-	flag.StringVar(&cli.reqValue, "v", "Value", "Value prefix")
-	flag.StringVar(&cli.configPath, "c", "./gossipNodes", "Raft peer config")
-	flag.StringVar(&cli.logPath, "l", "/tmp/temp.log", "Log path")
-	flag.StringVar(&cli.operation, "o", "NULL", "Specify the opeation to perform")
-	flag.StringVar(&cli.resultFile, "r", "operation", "Path along with file name for the result file")
+func (handler *clientHandler) getCmdParams() {
+	flag.StringVar(&handler.requestKey, "k", "Key", "Key")
+	flag.StringVar(&handler.requestValue, "v", "Value", "Value")
+	flag.StringVar(&handler.configPath, "c", "./gossipNodes", "gossip nodes file path")
+	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
+	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
+	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.Parse()
 }
 
 //Write to Json
-func (cli *ncp_client) write2Json(toJson map[string][]opData) {
+func (cli *clientHandler) write2Json(toJson map[string][]opData) {
 	file, _ := json.MarshalIndent(toJson, "", " ")
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
 func main() {
 	//Intialize client object
-	clientObj := ncp_client{}
+	clientObj := clientHandler{}
 
 	//Get commandline parameters.
 	clientObj.getCmdParams()
@@ -89,57 +89,58 @@ func main() {
 	log.Info("----START OF EXECUTION---")
 
 	//Init niovakv client API
-	clientObj.ncpc = clientapi.ClientAPI{
+	clientObj.clientAPIObj = clientAPI.ClientAPIHandler{
 		Timeout: 10,
 	}
 	stop := make(chan int)
 	go func() {
-		err := clientObj.ncpc.Start(stop, clientObj.configPath)
+		err := clientObj.clientAPIObj.Start_ClientAPI(stop, clientObj.configPath)
 		if err != nil {
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
-	clientObj.ncpc.Till_ready()
-	//time.Sleep(5 * time.Second)
+	clientObj.clientAPIObj.Till_ready()
+
 	//Send request
 	var write bool
-	requestObj := niovakvlib.NiovaKV{}
-	responseObj := niovakvlib.NiovaKVResponse{}
+	requestObj := requestResponseLib.KVRequest{}
+	responseObj := requestResponseLib.KVResponse{}
 
 	//Decl and init required variables
 	toJson := make(map[string][]opData)
 
 	switch clientObj.operation {
 	case "write":
-		requestObj.InputValue = []byte(clientObj.reqValue)
+		requestObj.Value = []byte(clientObj.requestValue)
 		write = true
 		fallthrough
 
 	case "read":
-		requestObj.InputKey = clientObj.reqKey
-		requestObj.InputOps = clientObj.operation
+		requestObj.Key = clientObj.requestKey
+		requestObj.Operation = clientObj.operation
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)
 		//Send the write
-		responseByteArray := clientObj.ncpc.Request(requestByte.Bytes(), "", write)
-		dec := gob.NewDecoder(bytes.NewBuffer(responseByteArray))
+		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
-		fmt.Println("Response:", string(responseObj.RespValue))
+		fmt.Println("Response:", string(responseObj.Value))
 
+		//Creation of output json
 		sendTime := time.Now()
 		requestMeta := request{
-			Opcode:    requestObj.InputOps,
-			Key:       requestObj.InputKey,
-			Value:     string(responseObj.RespValue),
+			Opcode:    requestObj.Operation,
+			Key:       requestObj.Key,
+			Value:     string(responseObj.Value),
 			Timestamp: sendTime,
 		}
 
 		responseMeta := response{
 			Timestamp:     time.Now(),
-			Status:        responseObj.RespStatus,
-			ResponseValue: string(responseObj.RespValue),
+			Status:        responseObj.Status,
+			ResponseValue: string(responseObj.Value),
 		}
 
 		operationObj := opData{
@@ -157,20 +158,20 @@ func main() {
 		clientObj.write2Json(toJson)
 
 	case "config":
-		responseByteArray,err:= clientObj.ncpc.GetPMDBServerConfig()
-		fmt.Println("Response : ", string(responseByteArray))
+		responseBytes,err:= clientObj.clientAPIObj.Get_PMDBServer_Config()
+		log.Info("Response : ", string(responseBytes))
 		if err != nil {
 			log.Error("Unable to get the config data")
 		}
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", responseByteArray, 0644)
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
 	case "membership":
-                toJson := clientObj.ncpc.GetMembership()
+                toJson := clientObj.clientAPIObj.Get_Membership()
                 file, _ := json.MarshalIndent(toJson, "", " ")
                 _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	}
 
-	clientObj.ncpc.DumpIntoJson("./execution_summary.json")
+	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
 
 }

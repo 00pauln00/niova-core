@@ -7,15 +7,15 @@ import (
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
-	"niovakv/niovakvlib"
+	"common/requestResponseLib"
 	"os"
-	"pmdbServer/serfagenthandler"
+	"common/serfAgent"
 	"strings"
 	"unsafe"
 	//"encoding/json"
 	log "github.com/sirupsen/logrus"
 	defaultLogger "log"
-	"strconv"
+	//"strconv"
 )
 
 /*
@@ -221,16 +221,16 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	}
 
 	//defaultLogger.SetOutput(ioutil.Discard)
-	serfAgentHandler := serfagenthandler.SerfAgentHandler{
+	serfAgentHandler := serfAgent.SerfAgentHandler{
 		Name:     handler.peerUUID,
 		BindAddr: handler.addr,
 	}
-	serfAgentHandler.BindPort, _ = strconv.Atoi(handler.aport)
+	serfAgentHandler.BindPort = handler.aport
 	serfAgentHandler.AgentLogger = defaultLogger.Default()
 	serfAgentHandler.RpcAddr = handler.addr
 	serfAgentHandler.RpcPort = handler.rport
 	//Start serf agent
-	_, err = serfAgentHandler.Startup(handler.gossipClusterNodes, true)
+	_, err = serfAgentHandler.Serf_agent_startup(handler.gossipClusterNodes, true)
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
@@ -240,7 +240,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	handler.GossipData["Rport"] = handler.rport
 	handler.GossipData["PC"] = handler.ConfigString
 	handler.GossipData["RU"] = handler.raftUUID
-	serfAgentHandler.SetTags(handler.GossipData)
+	serfAgentHandler.Set_node_tags(handler.GossipData)
 	return err
 }
 
@@ -257,7 +257,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
-	applyNiovaKV := &niovakvlib.NiovaKV{}
+	applyNiovaKV := &requestResponseLib.KVRequest{}
 
 	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
 	if decodeErr != nil {
@@ -265,18 +265,18 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		return
 	}
 
-	log.Trace("Key passed by client: ", applyNiovaKV.InputKey)
+	log.Trace("Key passed by client: ", applyNiovaKV.Key)
 
 	// length of key.
-	keyLength := len(applyNiovaKV.InputKey)
+	keyLength := len(applyNiovaKV.Key)
 
-	byteToStr := string(applyNiovaKV.InputValue)
+	byteToStr := string(applyNiovaKV.Value)
 
 	// Length of value.
 	valLen := len(byteToStr)
 
 	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
+	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
@@ -318,7 +318,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
-	reqStruct := &niovakvlib.NiovaKV{}
+	reqStruct := &requestResponseLib.KVRequest{}
 	decodeErr := nso.pso.Decode(requestBuf, reqStruct, requestBufSize)
 
 	if decodeErr != nil {
@@ -326,13 +326,13 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", reqStruct.InputKey)
+	log.Trace("Key passed by client: ", reqStruct.Key)
 
-	keyLen := len(reqStruct.InputKey)
+	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.InputKey,
+	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.Key,
 		int64(keyLen), colmfamily)
 	var valType []byte
 	var replySize int64
@@ -343,9 +343,9 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		inputVal := string(valType)
 		log.Trace("Input value after read request:", inputVal)
 
-		resultReq := niovakvlib.NiovaKV{
-			InputKey:   reqStruct.InputKey,
-			InputValue: valType,
+		resultReq := requestResponseLib.KVRequest{
+			Key:   reqStruct.Key,
+			Value: valType,
 		}
 
 		//Copy the encoded result in replyBuffer

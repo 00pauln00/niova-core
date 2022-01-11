@@ -1,21 +1,18 @@
-module ctlplane/ncpc_api
+module common/clientAPI
 
-replace niovakv/serfclienthandler => ../../common/serf/client
+replace common/serfClient => ../Serf/client
 
 replace niova/go-pumicedb-lib/common => ../../../common
 
-replace niovakv/httpclient => ../../common/http/client
-
-replace ctlplane/ctlplanelib => ../lib
+replace common/httpClient => ../HTTP/client
 
 go 1.17
 
 require (
-	ctlplane/ctlplanelib v0.0.0-00010101000000-000000000000
+	common/httpClient v0.0.0-00010101000000-000000000000
+	common/serfClient v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/serf v0.9.6
 	github.com/sirupsen/logrus v1.8.1
-	niovakv/httpclient v0.0.0-00010101000000-000000000000
-	niovakv/serfclienthandler v0.0.0-00010101000000-000000000000
 )
 
 require (

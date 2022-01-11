@@ -1,4 +1,4 @@
-module niovakv.com/serfagenthandler
+module common/serfAgent
 
 go 1.16
 

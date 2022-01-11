@@ -1,14 +1,14 @@
 module ctlplane/ncpc
 
-replace niovakv/serfclienthandler => ../../common/serf/client
+replace common/serfClient => ../../common/Serf/client
 
 replace niova/go-pumicedb-lib/common => ../../../common
 
-replace niovakv/httpclient => ../../common/http/client
+replace common/httpClient => ../../common/HTTP/client
 
-replace ctlplane/niovakvlib => ../lib
+replace common/requestResponseLib => ../../common/RequestResponselib
 
-replace ctlplane/clientapi => ../ncpc_api
+replace common/clientAPI => ../../common/ClientAPI
 
 go 1.17
 
@@ -18,8 +18,10 @@ require (
 )
 
 require (
-	ctlplane/clientapi v0.0.0-00010101000000-000000000000 // indirect
-	ctlplane/niovakvlib v0.0.0-00010101000000-000000000000 // indirect
+	common/clientAPI v0.0.0-00010101000000-000000000000 // indirect
+	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
+	common/requestResponseLib v0.0.0-00010101000000-000000000000 // indirect
+	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
@@ -33,8 +35,7 @@ require (
 	github.com/hashicorp/serf v0.9.6 // indirect
 	github.com/miekg/dns v1.1.41 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
+	github.com/stretchr/testify v1.4.0 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
 	golang.org/x/sys v0.0.0-20210330210617-4fbd30eecc44 // indirect
-	niovakv/httpclient v0.0.0-00010101000000-000000000000 // indirect
-	niovakv/serfclienthandler v0.0.0-00010101000000-000000000000 // indirect
 )

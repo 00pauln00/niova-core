@@ -1,4 +1,4 @@
-module niovakv.com/serfclienthandler
+module common/serfClient
 
 go 1.16
 

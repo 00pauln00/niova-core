@@ -1,4 +1,4 @@
-package clientapi
+package clientAPI
 
 import (
         "errors"
@@ -9,13 +9,13 @@ import (
 	"io/ioutil"
         "time"
         log "github.com/sirupsen/logrus"
-        "niovakv/httpclient"
-        "niovakv/serfclienthandler"
+        "common/httpClient"
+        "common/serfClient"
 
         client "github.com/hashicorp/serf/client"
 )
 
-type ClientAPI struct {
+type ClientAPIHandler struct {
 	//Exported
 	Timeout               time.Duration //No of seconds for a request time out and membership table refresh
 	ServerChooseAlgorithm int
@@ -30,7 +30,7 @@ type ClientAPI struct {
 
 	//UnExported
 	servers           []client.Member
-	clientHandler     serfclienthandler.SerfClientHandler
+	serfClientObj     serfClient.SerfClientHandler
 	serfUpdateLock    sync.Mutex
 	tableLock         sync.Mutex
 	requestUpdateLock sync.Mutex
@@ -45,20 +45,20 @@ type ServerRequestStat struct {
 	Failed  int64
 }
 
-func (stat *ServerRequestStat) updateStat(ok bool) {
-	stat.Count += int64(1)
+func (handler *ServerRequestStat) update_Stat(ok bool) {
+	handler.Count += int64(1)
 	if ok {
-		stat.Success += int64(1)
+		handler.Success += int64(1)
 	} else {
-		stat.Failed += int64(1)
+		handler.Failed += int64(1)
 	}
 }
 
-func (ncpcClientAPIObj *ClientAPI) DumpIntoJson(outfilepath string){
+func (handler *ClientAPIHandler) Dump_Into_Json(outfilepath string){
 
         //prepare path for temporary json file.
         tempOutfileName := outfilepath+"/"+"reqdistribution"+".json"
-        file, _ := json.MarshalIndent(ncpcClientAPIObj, "", "\t")
+        file, _ := json.MarshalIndent(handler, "", "\t")
         _ = ioutil.WriteFile(tempOutfileName, file, 0644)
 
 }
@@ -68,10 +68,10 @@ func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
 }
 
-func (ncpc *ClientAPI) Request(payload []byte, suburl string, write bool) []byte {
+func (handler *ClientAPIHandler) Request(payload []byte, suburl string, write bool) []byte {
 	var toSend client.Member
 	var response []byte
-	Qtimer := time.Tick(ncpc.Timeout * time.Second)
+	Qtimer := time.Tick(handler.Timeout * time.Second)
 time:
 	for {
 		select {
@@ -82,24 +82,24 @@ time:
 			var err error
 			var ok bool
 
-			toSend, err = ncpc.pickServer(toSend.Name)
+			toSend, err = handler.pick_Server(toSend.Name)
 			if err != nil {
 				break time
 			}
 
 			addr, port := getAddr(&toSend)
-			response, err = httpclient.Request(payload, addr+":"+port+suburl, write)
+			response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
 			if err == nil {
 				ok = true
 			}
 
-			if ncpc.IsStatRequired {
-				ncpc.requestUpdateLock.Lock()
-				if _, present := ncpc.RequestDistribution[toSend.Name]; !present {
-					ncpc.RequestDistribution[toSend.Name] = &ServerRequestStat{}
+			if handler.IsStatRequired {
+				handler.requestUpdateLock.Lock()
+				if _, present := handler.RequestDistribution[toSend.Name]; !present {
+					handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
 				}
-				ncpc.RequestDistribution[toSend.Name].updateStat(ok)
-				ncpc.requestUpdateLock.Unlock()
+				handler.RequestDistribution[toSend.Name].update_Stat(ok)
+				handler.requestUpdateLock.Unlock()
 			}
 
 			if ok {
@@ -109,64 +109,64 @@ time:
 		}
 	}
 
-	if ncpc.IsStatRequired {
-		ncpc.RequestSentCount += int64(1)
+	if handler.IsStatRequired {
+		handler.RequestSentCount += int64(1)
 		if response != nil {
-			ncpc.RequestSuccessCount += int64(1)
+			handler.RequestSuccessCount += int64(1)
 		} else {
-			ncpc.RequestFailedCount += int64(1)
+			handler.RequestFailedCount += int64(1)
 		}
 	}
 
 	return response
 }
 
-func isValidNodeData(member client.Member) bool {
+func is_Valid_NodeData(member client.Member) bool {
 	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] == "PMDB_SERVER") {
 		return false
 	}
 	return true
 }
 
-func (ncpc *ClientAPI) pickServer(removeName string) (client.Member, error) {
-	ncpc.tableLock.Lock()
-	defer ncpc.tableLock.Unlock()
+func (handler *ClientAPIHandler) pick_Server(removeName string) (client.Member, error) {
+	handler.tableLock.Lock()
+	defer handler.tableLock.Unlock()
 	var serverChoosen *client.Member
-	switch ncpc.ServerChooseAlgorithm {
+	switch handler.ServerChooseAlgorithm {
 	case 0:
 		//Random
 		var randomIndex int
 		for {
-			if len(ncpc.servers) == 0 {
+			if len(handler.servers) == 0 {
 				log.Error("(CLIENT API MODULE) no alive servers")
 				return client.Member{}, errors.New("No alive servers")
 			}
-			randomIndex = rand.Intn(len(ncpc.servers))
+			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
 				log.Info(removeName)
 			}
 
 			//Check if node is alive, check if gossip is available and http server of that node is not reported down!
-			if (isValidNodeData(ncpc.servers[randomIndex])) && (removeName != ncpc.servers[randomIndex].Name) {
+			if (is_Valid_NodeData(handler.servers[randomIndex])) && (removeName != handler.servers[randomIndex].Name) {
 				break
 			}
-			ncpc.servers = removeIndex(ncpc.servers, randomIndex)
+			handler.servers = removeIndex(handler.servers, randomIndex)
 		}
 
-		serverChoosen = &ncpc.servers[randomIndex]
+		serverChoosen = &handler.servers[randomIndex]
 	case 1:
 		//Round-Robin
-		ncpc.roundRobinPtr %= len(ncpc.servers)
-		serverChoosen = &ncpc.servers[ncpc.roundRobinPtr]
-		ncpc.roundRobinPtr += 1
+		handler.roundRobinPtr %= len(handler.servers)
+		serverChoosen = &handler.servers[handler.roundRobinPtr]
+		handler.roundRobinPtr += 1
 	case 2:
 		//Specific
-		if ncpc.specificServer != nil {
-			serverChoosen = ncpc.specificServer
+		if handler.specificServer != nil {
+			serverChoosen = handler.specificServer
 			break
 		}
-		for _, member := range ncpc.servers {
-			if member.Name == ncpc.UseSpecificServerName {
+		for _, member := range handler.servers {
+			if member.Name == handler.UseSpecificServerName {
 				serverChoosen = &member
 				break
 			}
@@ -175,12 +175,12 @@ func (ncpc *ClientAPI) pickServer(removeName string) (client.Member, error) {
 	return *serverChoosen, nil
 }
 
-func (nkvc *ClientAPI) serfClientInit(configPath string) error {
-	nkvc.clientHandler.Retries = 5
-	return nkvc.clientHandler.Initdata(configPath)
+func (handler *ClientAPIHandler) init_serfClient(configPath string) error {
+	handler.serfClientObj.Retries = 5
+	return handler.serfClientObj.Init_data(configPath)
 }
 
-func (nkvc *ClientAPI) memberSearcher(stop chan int) error {
+func (handler *ClientAPIHandler) member_Searcher(stop chan int) error {
 comparison:
 	for {
 		select {
@@ -189,17 +189,17 @@ comparison:
 			break comparison
 		default:
 			//Since we do update it continuesly, we persist the connection
-			nkvc.serfUpdateLock.Lock()
-			err := nkvc.clientHandler.GetData(true)
-			nkvc.serfUpdateLock.Unlock()
+			handler.serfUpdateLock.Lock()
+			err := handler.serfClientObj.Update_SerfClient(true)
+			handler.serfUpdateLock.Unlock()
 			if err != nil {
 				log.Error("Unable to connect with agents")
 				return err
 			}
-			nkvc.tableLock.Lock()
-			nkvc.servers = nkvc.clientHandler.Agents
-			nkvc.tableLock.Unlock()
-			nkvc.ready = true
+			handler.tableLock.Lock()
+			handler.servers = handler.serfClientObj.Agents
+			handler.tableLock.Unlock()
+			handler.ready = true
 			time.Sleep(1 * time.Second)
 		}
 	}
@@ -207,15 +207,15 @@ comparison:
 	return nil
 }
 
-func (nkvc *ClientAPI) Start(stop chan int, configPath string) error {
+func (handler *ClientAPIHandler) Start_ClientAPI(stop chan int, configPath string) error {
 	var err error
-	nkvc.RequestDistribution = make(map[string]*ServerRequestStat)
-	err = nkvc.serfClientInit(configPath)
+	handler.RequestDistribution = make(map[string]*ServerRequestStat)
+	err = handler.init_serfClient(configPath)
 	if err != nil {
 		log.Error("Error while initializing the serf client ", err)
 		return err
 	}
-	err = nkvc.memberSearcher(stop)
+	err = handler.member_Searcher(stop)
 	if err != nil {
 		log.Error("Error while starting the membership updater ", err)
 		return err
@@ -229,18 +229,18 @@ func removeIndex(s []client.Member, index int) []client.Member {
 	return append(ret, s[index+1:]...)
 }
 
-func (nkvc *ClientAPI) GetConfig(configPath string) error {
-	nkvc.clientHandler.Retries = 5
-	return nkvc.clientHandler.Initdata(configPath)
+func (handler *ClientAPIHandler) Get_Config(configPath string) error {
+	handler.serfClientObj.Retries = 5
+	return handler.serfClientObj.Init_data(configPath)
 }
 
-func (nkvc *ClientAPI) GetMembership() map[string]client.Member {
-        nkvc.serfUpdateLock.Lock()
-        defer nkvc.serfUpdateLock.Unlock()
-        return nkvc.clientHandler.GetMemberListMap()
+func (handler *ClientAPIHandler) Get_Membership() map[string]client.Member {
+        handler.serfUpdateLock.Lock()
+        defer handler.serfUpdateLock.Unlock()
+        return handler.serfClientObj.Get_MemberList()
 }
 
-func (nkvc *ClientAPI) GetPMDBServerConfig() ([]byte,error){
+func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte,error){
 	type PeerConfigData struct{
 		PeerUUID   string
 		IPAddr     string
@@ -250,7 +250,7 @@ func (nkvc *ClientAPI) GetPMDBServerConfig() ([]byte,error){
         var PeerUUID, ClientPort, Port, IPAddr string
 	PMDBServerConfigMap := make(map[string]PeerConfigData)
 
-	allConfig := nkvc.clientHandler.GetPMDBConfig()
+	allConfig := handler.serfClientObj.Get_PMDBConfig()
 	splitData := strings.Split(allConfig, "/")
 	flag := false
         for i, element := range splitData {
@@ -280,8 +280,8 @@ func (nkvc *ClientAPI) GetPMDBServerConfig() ([]byte,error){
 	return json.MarshalIndent(PMDBServerConfigMap," ","")
 }
 
-func (nkvc *ClientAPI) Till_ready() {
-	for !nkvc.ready {
+func (handler *ClientAPIHandler) Till_ready() {
+	for !handler.ready {
 
 	}
 }

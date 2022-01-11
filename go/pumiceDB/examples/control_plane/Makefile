@@ -14,13 +14,13 @@ compile:
 	echo "Compiling niovakv"
 
 pmdbserver:
-	cd pmdb/server && go build niovakv_pmdbserver.go
+	cd ../common/PMDB/server && go build pmdbServer.go
 
 proxyserver:
 	cd proxy && go build proxy.go
 
 install:
-	cp pmdb/server/niovakv_pmdbserver proxy/proxy ${DIR}/libexec/niova/
+	cp ../common/PMDB/server/pmdbServer proxy/proxy ${DIR}/libexec/niova/
 	
 	cp proxy/config ${DIR}/libexec/niova/niovakv.config
 	
@@ -29,7 +29,7 @@ install:
 docker_support:
 	cp -r docker/* ${DIR}
 	
-	cp pmdb/server/niovakv_pmdbserver  ${DIR}/PMDBServerContents/
+	cp ../common/PMDB/server/pmdbServer  ${DIR}/PMDBServerContents/
 
 	cp proxy/gossipNodes ${DIR}/PMDBServerContents/ 
 

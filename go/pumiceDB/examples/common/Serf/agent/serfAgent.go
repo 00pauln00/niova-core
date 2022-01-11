@@ -1,4 +1,4 @@
-package serfagenthandler
+package serfAgent
 
 import (
 	"bufio"
@@ -7,6 +7,7 @@ import (
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -26,10 +27,9 @@ type SerfAgentHandler struct {
 	//Exported
 	Name     string //Name of the agent
 	BindAddr string //Addr for inter agent communcations
-	BindPort int    //Port for inter agent communcations
+	BindPort string //Port for inter agent communcations
 	RpcAddr  string //Addr for agent-client communication
-	RpcPort  string //Port for agent-client communication
-	//Tags        map[string]string //Meta data for the agent, which is replication on all agents in the cluster
+	RpcPort  string //Port for agent-client communicaton
 	AgentLogger *log.Logger
 
 	//non-exported
@@ -40,7 +40,7 @@ type SerfAgentHandler struct {
 
 /*
 Type : SerfAgentHandler
-Method name : Setup
+Method name : setup
 Parameters : None
 Return values : error
 Description : Creates agent with configurations mentioned in structure and returns error if any, it dosent start the agent
@@ -51,7 +51,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr                               //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort = Handler.BindPort                               //Agent bind port
+	serfconfig.MemberlistConfig.BindPort, _ = strconv.Atoi(Handler.BindPort)              //Agent bind port
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 
@@ -69,7 +69,7 @@ Parameters : None
 Return Value : error
 Description : Starts the created agent in setup, and listenes on rpc channel
 */
-func (Handler *SerfAgentHandler) start(requireRPC bool) error {	
+func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	err := Handler.agentObj.Start()
 
 	if !requireRPC{
@@ -114,7 +114,7 @@ func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
 }
 
 
-func GetPeerAddress(staticSerfConfigPath string) ([]string, error) {
+func Get_PeerAddress(staticSerfConfigPath string) ([]string, error) {
         //Get addrs and Rports and store it in AgentAddrs and
         if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
                 return nil, err
@@ -140,7 +140,7 @@ Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) Startup(joinAddrs []string,rpcRequired bool) (int, error) {
+func (Handler *SerfAgentHandler) Serf_agent_startup(joinAddrs []string,RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -149,7 +149,7 @@ func (Handler *SerfAgentHandler) Startup(joinAddrs []string,rpcRequired bool) (i
 		return 0, err
 	}
 	//Start agent and RPC server
-	err = Handler.start(rpcRequired)
+	err = Handler.start(RPCRequired)
 	if err != nil {
 		return 0, err
 	}
@@ -168,7 +168,7 @@ Parameters : None
 Return value : Members []string
 Description : Returns addr of nodes in the cluster
 */
-func (Handler *SerfAgentHandler) GetMembers() []string {
+func (Handler *SerfAgentHandler) Get_membership() []string {
 	var membersAddr []string
 	members := Handler.agentObj.Serf().Members()
 	for _, mems := range members {
@@ -184,12 +184,12 @@ Parameters : tags (map[string]string)
 Return value : error
 Description : Update tags, its incremental type update
 */
-func (Handler *SerfAgentHandler) SetTags(tags map[string]string) error {
+func (Handler *SerfAgentHandler) Set_node_tags(tags map[string]string) error {
 	err := Handler.agentObj.SetTags(tags)
 	return err
 }
 
-func (Handler *SerfAgentHandler) GetPMDBServerConfig() (string,string) {
+func (Handler *SerfAgentHandler) Get_tags() (string,string) {
 	members := Handler.agentObj.Serf().Members()
 	for _,mem := range members {
 		if mem.Tags["Type"]=="PMDB_SERVER" {

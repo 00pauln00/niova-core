@@ -1,4 +1,4 @@
-package serfclienthandler
+package serfClient
 
 import (
 	"bufio"
@@ -28,16 +28,16 @@ type SerfClientHandler struct {
 /*
 Type : Data
 Descirption : Holds data about each agent in the cluster
-*/
-type Data struct {
+
+type AgentData struct {
 	Name    string
 	Addr    string
 	IsAlive bool
 	Rport   string
 	Tags    map[string]string
 }
-
-func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) ([]string, error) {
+*/
+func (Handler *SerfClientHandler) get_ConfigData(serfConfigPath string) ([]string, error) {
 	//Get addrs and Rports and store it in AgentAddrs and
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
 		return nil, err
@@ -63,14 +63,14 @@ Parameters : configPath string
 Return value : error
 Description : Get configuration data from config file
 */
-func (Handler *SerfClientHandler) Initdata(configpath string) error {
+func (Handler *SerfClientHandler) Init_data(configpath string) error {
 	var connectClient *client.RPCClient
-	addrs, err := Handler.getConfigData(configpath)
+	addrs, err := Handler.get_ConfigData(configpath)
 	if err != nil {
 		return err
 	}
 	for _, addr := range addrs {
-		connectClient, err = Handler.connectWith(addr)
+		connectClient, err = Handler.connect_addr(addr)
 		if err == nil {
 			break
 		}
@@ -86,15 +86,15 @@ func (Handler *SerfClientHandler) Initdata(configpath string) error {
 	return err
 }
 
-func (Handler *SerfClientHandler) connectWith(addr string) (*client.RPCClient, error) {
+func (Handler *SerfClientHandler) connect_addr(addr string) (*client.RPCClient, error) {
 	return client.NewRPCClient(addr)
 }
-func (Handler *SerfClientHandler) connectRandom() (*client.RPCClient, error) {
+func (Handler *SerfClientHandler) connect_random_node() (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
 	randomAddr := randomAgent.Addr.String()
 	rPort := randomAgent.Tags["Rport"]
-	connector, err := Handler.connectWith(randomAddr + ":" + rPort)
+	connector, err := Handler.connect_addr(randomAddr + ":" + rPort)
 	if err != nil {
 		//Delete the node from connection list
 		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
@@ -110,7 +110,7 @@ Return value : error
 Description : Gets data from a random agent, persist the agent connection if persistConnection is true.
 persistConnection can be used if frequect updates are required.
 */
-func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
+func (Handler *SerfClientHandler) Update_SerfClient(persistConnection bool) error {
 	var err error
 
 	//If no connection was persisted
@@ -120,7 +120,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 			if len(Handler.Agents) <= 0 {
 				return errors.New("no live agents")
 			}
-			Handler.agentConnection, err = Handler.connectRandom()
+			Handler.agentConnection, err = Handler.connect_random_node()
 			if err == nil {
 				Handler.connectionExist = true
 				break
@@ -152,7 +152,7 @@ func (Handler *SerfClientHandler) GetData(persistConnection bool) error {
 	return err
 }
 
-func (Handler *SerfClientHandler) GetPMDBConfig() string{
+func (Handler *SerfClientHandler) Get_PMDBConfig() string{
         for _,mem := range Handler.Agents {
                 if mem.Tags["Type"]=="PMDB_SERVER" {
                         return mem.Tags["PC"]
@@ -164,7 +164,7 @@ func (Handler *SerfClientHandler) GetPMDBConfig() string{
 /*
 Type : SerfClientHandler
 */
-func (Handler *SerfClientHandler) GetMemberListMap() map[string]client.Member {
+func (Handler *SerfClientHandler) Get_MemberList() map[string]client.Member {
 	memberMap := make(map[string]client.Member)
 	for _, mems := range Handler.Agents {
 		memberMap[mems.Name] = mems

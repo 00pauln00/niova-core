@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"syscall"
 	"unsafe"
-
+	"bytes"
 	"github.com/google/uuid"
 
 	"niova/go-pumicedb-lib/common"
@@ -81,6 +81,15 @@ func (obj *PmdbClientObj) Write(ed interface{},
 	return obj.writeKV(rncui, encoded_key, key_len)
 }
 
+//WriteEncoded
+func (obj *PmdbClientObj) WriteEncoded(request []byte,rncui string) error {
+	requestLen := int64(len(request))
+        //Convert it to unsafe pointer (void * for C function)
+        encodedData := unsafe.Pointer(&request[0])
+	encodedRequest := (*C.char)(encodedData)
+	return obj.writeKV(rncui, encodedRequest, requestLen)
+}
+
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,
@@ -119,6 +128,39 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
 	return err
+}
+
+//ReadEncoded
+func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte,rncui string) error{
+	var reply_size int64
+        var rd_err error
+        var reply_buff unsafe.Pointer
+
+	requestLen := int64(len(request))
+	//Typecast the encoded key to char*
+	encodedData := unsafe.Pointer(&request[0])
+        encoded_key := (*C.char)(encodedData)
+
+        if len(rncui) == 0 {
+                reply_buff, rd_err = obj.readKVAny(encoded_key,
+                        requestLen, &reply_size)
+        } else {
+                reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+                        requestLen, &reply_size)
+        }
+
+        if rd_err != nil {
+                return rd_err
+        }
+
+        if reply_buff != nil {
+                bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
+		buffer := bytes.NewBuffer(bytes_data)
+		*response = buffer.Bytes()
+        }
+        //Free the buffer allocated by C library.
+        C.free(reply_buff)
+        return nil
 }
 
 //Read the value of key on the client the application passed buffer
