@@ -22,7 +22,7 @@ proxyserver:
 	cd proxy && go build proxy.go
 
 ncpcclient:
-	cd ncpc && go build niova_ctlplane_client.go
+	cd ncpc && go build CTLPlaneClient.go
 
 install:
 	cp ../common/PMDB/server/pmdbServer proxy/proxy ncpc/ncpc ${DIR}/libexec/niova/
@@ -40,7 +40,7 @@ docker_support:
 
 	cp proxy/proxy ${DIR}/ProxyContents/
 
-	cp ncpc/niova_ctlplane_client ${DIR}/ProxyContents/
+	cp ncpc/ncpc ${DIR}/ProxyContents/
 
 	cp proxy/config ${DIR}/ProxyContents/niovakv.config
 

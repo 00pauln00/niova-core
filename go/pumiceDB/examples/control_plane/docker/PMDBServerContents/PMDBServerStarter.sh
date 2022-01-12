@@ -10,4 +10,4 @@ SERVER_UUID=${serv[1]}
 echo $SERVER_UUID
 
 cd pmdb_server
-./niovakv_pmdbserver -g gossipNodes -r ${RAFT_UUID} -u ${SERVER_UUID} -l "logs/pmdb_server.log" > "logs/pmdb_output.log" 2>&1
+./pmdbServer -g gossipNodes -r ${RAFT_UUID} -u ${SERVER_UUID} -l "logs/pmdb_server.log" > "logs/pmdb_output.log" 2>&1

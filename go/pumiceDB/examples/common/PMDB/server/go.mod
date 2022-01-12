@@ -1,4 +1,4 @@
-module common/PMDB_server
+module common/pmdbServer
 
 go 1.16
 
