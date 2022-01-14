@@ -21,6 +21,7 @@
 #include "ref_tree_proto.h"
 #include "registry.h"
 #include "util_thread.h"
+#include "ctl_svc.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -2538,6 +2539,17 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
         !raft_client_instance)
         return -EINVAL;
 
+    /*
+     * Scan the config directory once again in case some config files
+     * are created later in the client execution.
+     */
+    int rc = ctl_svc_scan();
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "ctl_svc_scan failed with rc: %d", rc);
+        return rc;
+    }
+
     // Assign an instance before obtaining the raft_instance object.
     struct raft_client_instance *rci = raft_client_instance_assign();
     if (!rci)
@@ -2567,8 +2579,8 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
                                       raft_client_recv_handler,
                                       raft_client_recv_handler);
 
-    int rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
-                                   "raft_client", (void *)rci, NULL);
+    rc = thread_create_watched(raft_client_thread, &rci->rci_thr_ctl,
+                               "raft_client", (void *)rci, NULL);
 
     FATAL_IF(rc, "pthread_create(): %s", strerror(-rc));
 

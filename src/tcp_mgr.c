@@ -632,7 +632,6 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 
     rc = tmi->tmi_handshake_cb(tmi->tmi_data, &new_tmc, &tmc->tmc_header_size,
                                tmc->tmc_tsh.tsh_socket, iov.iov_base, rc);
-    NIOVA_ASSERT(new_tmc);
 
     tcp_mgr_handshake_iov_fini(&iov);
 
@@ -686,12 +685,17 @@ tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
 
 /* must call sockets_setup and sockets_bind first */
 int
-tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr)
+tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr,
+                    bool tmi_listen)
 {
     if (!tmi || !epoll_mgr)
         return -EINVAL;
 
     tmi->tmi_epoll_mgr = epoll_mgr;
+
+    // raft client do not need listen socket.
+    if (!tmi_listen)
+        return 0;
 
     int rc = epoll_handle_init(&tmi->tmi_listen_eph,
                                tmi->tmi_listen_socket.tsh_socket, EPOLLIN,

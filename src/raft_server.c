@@ -4052,10 +4052,16 @@ raft_server_client_recv_ignore_request(
                                       rcm->rcrm_sender_id);
             SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_lookup(): %d uuid %s",
                            rc, sender_uuid);
-            return false;
+            struct ctl_svc_node csn = {0};
+
+            rc = ctl_svc_node_init(&csn, rcm->rcrm_raft_id, rcm->rcrm_sender_id,
+                                   CTL_SVC_NODE_TYPE_RAFT_CLIENT);
+            if (!rc)
+                rc = ctl_svc_node_add(&csn, &client_csn);
+            //fallthrough. ignore_request will be set to true.
         }
 
-        if (client_csn)
+        if (!rc && client_csn)
         {
             if (client_csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT)
             {

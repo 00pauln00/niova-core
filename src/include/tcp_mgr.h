@@ -109,7 +109,8 @@ int
 tcp_mgr_sockets_bind(struct tcp_mgr_instance *tmi);
 
 int
-tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr);
+tcp_mgr_epoll_setup(struct tcp_mgr_instance *tmi, struct epoll_mgr *epoll_mgr,
+                    bool is_raft_client);
 
 static inline void
 tcp_mgr_connection_header_size_set(struct tcp_mgr_connection *tmc,
