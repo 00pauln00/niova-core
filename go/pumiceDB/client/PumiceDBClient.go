@@ -8,7 +8,8 @@ import (
 	"unsafe"
 	"bytes"
 	"github.com/google/uuid"
-
+	"sync/atomic"
+	//"fmt"
 	"niova/go-pumicedb-lib/common"
 )
 
@@ -24,6 +25,8 @@ type PmdbClientObj struct {
 	pmdb        C.pmdb_t
 	raftUuid    string
 	myUuid      string
+	AppUUID     string
+	writeSeqNo  uint64
 }
 
 type RDZeroCopyObj struct {
@@ -82,13 +85,16 @@ func (obj *PmdbClientObj) Write(ed interface{},
 }
 
 //WriteEncoded
-func (obj *PmdbClientObj) WriteEncoded(request []byte,rncui string) error {
+func (obj *PmdbClientObj) WriteEncoded(request []byte) error {
+	idq := atomic.AddUint64(&obj.writeSeqNo,uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d",obj.AppUUID,idq)
 	requestLen := int64(len(request))
         //Convert it to unsafe pointer (void * for C function)
         encodedData := unsafe.Pointer(&request[0])
 	encodedRequest := (*C.char)(encodedData)
 	return obj.writeKV(rncui, encodedRequest, requestLen)
 }
+
 
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
@@ -131,11 +137,11 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 }
 
 //ReadEncoded
-func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte,rncui string) error{
+func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte) error{
 	var reply_size int64
         var rd_err error
         var reply_buff unsafe.Pointer
-
+	rncui := ""
 	requestLen := int64(len(request))
 	//Typecast the encoded key to char*
 	encodedData := unsafe.Pointer(&request[0])

@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	//"common/requestResponseLib"
-	"common/pmdbClient"
+	pmdbClient "niova/go-pumicedb-lib/client"
 	"time"
 	"sync"
 	//"encoding/hex"
@@ -20,7 +20,7 @@ type HTTPServerHandler struct {
 	//Exported
 	Addr			string
 	Port			string
-	PMDBClientHandlerObj    *pmdbClient.PMDBClientHandler
+	PMDBClientHandlerObj    *pmdbClient.PmdbClientObj
 	HTTPConnectionLimit     int
 	PMDBServerConfig	map[string][]byte
 
@@ -154,12 +154,12 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 	switch reader.Method {
 	case "GET":
 		thisRequestStat.Status = "Processing"
-		result, err = handler.PMDBClientHandlerObj.Read(requestBytes)
+		err = handler.PMDBClientHandlerObj.ReadEncoded(requestBytes,&result)
 		fallthrough
 	case "PUT":
 		if thisRequestStat.Status == "Queued" {
 			thisRequestStat.Status = "Processing"
-			result, err = handler.PMDBClientHandlerObj.Write(requestBytes)
+			err = handler.PMDBClientHandlerObj.WriteEncoded(requestBytes)
 		}
 		if err == nil {
 			success = true

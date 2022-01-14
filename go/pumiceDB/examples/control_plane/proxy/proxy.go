@@ -9,9 +9,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
+	pmdbClient "niova/go-pumicedb-lib/client"
+	"niova/go-pumicedb-lib/common"
 	"common/httpServer"
-	"common/pmdbClient"
+	//"common/pmdbClient"
 	"common/serfAgent"
 	"os"
 	"os/signal"
@@ -35,7 +36,7 @@ type proxyHandler struct {
 	logPath                 string
 	PMDBServerConfigArray   []PeerConfigData
 	PMDBServerConfigByteMap map[string][]byte
-	pmdbClientObj           *pmdbClient.PMDBClientHandler
+	pmdbClientObj           *pmdbClient.PmdbClientObj
 
 	//Serf agent
 	serfAgentName         string
@@ -118,19 +119,19 @@ func (handler *proxyHandler) start_PMDBClient() error {
 	var err error
 
 	//Get client object.
-	handler.pmdbClientObj = pmdbClient.Get_PMDBClient_Obj(handler.raftUUID, handler.clientUUID, handler.logPath)
+	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID, handler.clientUUID)
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB client object is empty")
 	}
 
 	//Start pumicedb client.
-	err = handler.pmdbClientObj.ClientObj.Start()
+	err = handler.pmdbClientObj.Start()
 	if err != nil {
 		return err
 	}
 
-	//Store rncui in nkvclientObj.
-	handler.pmdbClientObj.AppUuid = uuid.NewV4().String()
+	//Store rncui in nkvclientObj.i
+	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
 
 }
@@ -279,7 +280,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	tag["Rport"] = handler.serfAgentRPCPort
 	handler.serfAgentObj.Set_node_tags(tag)
 	for {
-		leader, err := handler.pmdbClientObj.ClientObj.PmdbGetLeader()
+		leader, err := handler.pmdbClientObj.PmdbGetLeader()
 		if err != nil {
 			log.Error(err)
 			//Wait for sometime to pmdb client to establish connection with raft cluster or raft cluster to appoint a leader
@@ -288,7 +289,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 		}
 		tag["Leader UUID"] = leader.String()
 		handler.serfAgentObj.Set_node_tags(tag)
-		log.Trace("(Niovakv Server)", tag)
+		log.Trace("(Proxy)", tag)
 		time.Sleep(300 * time.Millisecond)
 	}
 }
@@ -300,7 +301,7 @@ func (handler *proxyHandler) killSignal_Handler() {
 		<-sigs
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
 		_ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
-		log.Info("(NIOVAKV SERVER) Received a kill signal")
+		log.Info("(Proxy) Received a kill signal")
 		os.Exit(1)
 	}()
 }
