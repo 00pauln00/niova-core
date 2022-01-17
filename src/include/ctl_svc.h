@@ -269,9 +269,21 @@ ctl_svc_get_local_dir(void);
 int
 ctl_svc_node_lookup(const uuid_t lookup_uuid, struct ctl_svc_node **ret_csn);
 
+
+int
+ctl_svc_node_init(struct ctl_svc_node *csn, const uuid_t raft_uuid,
+                  const uuid_t node_uuid, enum ctl_svc_node_type node_type);
+
+int
+ctl_svc_node_add(struct ctl_svc_node *csn,
+                 struct ctl_svc_node **ret_csn);
+
 int
 ctl_svc_node_lookup_by_string(const char *uuid_str,
                               struct ctl_svc_node **ret_csn);
+
+int
+ctl_svc_scan(void);
 
 void
 ctl_svc_node_get(struct ctl_svc_node *csn);

@@ -443,6 +443,10 @@ lreg_node_remove_internal(struct lreg_node *child)
     DBG_LREG_NODE(LL_DEBUG, child, "child");
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
 
+#if 1 // Be extra paranoid
+    NIOVA_ASSERT(CIRCLEQ_ENTRY_IS_MEMBER(&parent->lrn_head, child, lrn_lentry));
+#endif
+
     CIRCLEQ_REMOVE(&parent->lrn_head, child, lrn_lentry);
 
     const bool uninstalled_ok = lreg_node_set_uninstalled(child);
