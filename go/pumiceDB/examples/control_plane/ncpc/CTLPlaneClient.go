@@ -19,6 +19,7 @@ type clientHandler struct {
 	requestKey        string
 	requestValue      string
 	addr              string
+	port		  string
 	operation         string
 	configPath        string
 	logPath           string
@@ -54,7 +55,9 @@ func usage() {
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.requestKey, "k", "Key", "Key")
-	flag.StringVar(&handler.requestValue, "v", "Value", "Value")
+	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
+	flag.StringVar(&handler.port, "p", "1999", "Port value")
+	flag.StringVar(&handler.requestValue, "v", "NULL", "Value")
 	flag.StringVar(&handler.configPath, "c", "./gossipNodes", "gossip nodes file path")
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
@@ -109,10 +112,17 @@ func main() {
 
 	//Decl and init required variables
 	toJson := make(map[string][]opData)
-
+	value := make(map[string]string)
+	value["IP_ADDR"] = clientObj.addr
+	value["Port"] = clientObj.port
+	valueByte,_ := json.Marshal(value)
 	switch clientObj.operation {
 	case "write":
-		requestObj.Value = []byte(clientObj.requestValue)
+		if clientObj.requestValue != "NULL" {
+			requestObj.Value = []byte(clientObj.requestValue)
+		} else {
+			requestObj.Value = valueByte
+		}
 		write = true
 		fallthrough
 
@@ -169,7 +179,6 @@ func main() {
                 toJson := clientObj.clientAPIObj.Get_Membership()
                 file, _ := json.MarshalIndent(toJson, "", " ")
                 _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
-
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
