@@ -210,11 +210,23 @@ comparison:
 func (handler *ClientAPIHandler) Start_ClientAPI(stop chan int, configPath string) error {
 	var err error
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
-	err = handler.init_serfClient(configPath)
-	if err != nil {
+
+	//Retry initial serf connect for 5 times
+	for i:=0;i<5;i++ {
+		err = handler.init_serfClient(configPath)
+		if err == nil {
+			break
+		}
+		//Wait for 3 seconds before retrying the connection
+		log.Info("Retrying serf agent connection : ",i)
+		time.Sleep(3 * time.Second)
+	}
+	//Return if error persists
+	if err!=nil {
 		log.Error("Error while initializing the serf client ", err)
 		return err
 	}
+
 	err = handler.member_Searcher(stop)
 	if err != nil {
 		log.Error("Error while starting the membership updater ", err)

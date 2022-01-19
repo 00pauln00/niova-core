@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"flag"
+	"strings"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -179,6 +180,69 @@ func main() {
                 toJson := clientObj.clientAPIObj.Get_Membership()
                 file, _ := json.MarshalIndent(toJson, "", " ")
                 _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+
+	case "genral":
+		fmt.Printf("\033[2J")
+		fmt.Printf("\033[2;0H")
+		fmt.Print("UUID")
+		fmt.Printf("\033[2;38H")
+		fmt.Print("Type")
+		fmt.Printf("\033[2;50H")
+		fmt.Println("Status")
+		offset := 3
+		for {
+			lineCounter := 0
+			data := clientObj.clientAPIObj.Get_Membership()
+			for _,node := range data{
+				currentLine := offset+lineCounter
+				fmt.Print(node.Name)
+				fmt.Printf("\033[%d;38H",currentLine)
+				fmt.Print(node.Tags["Type"])
+				fmt.Printf("\033[%d;50H",currentLine)
+				fmt.Println(node.Status)
+				lineCounter += 1
+			}
+			time.Sleep(2*time.Second)
+			fmt.Printf("\033[3;0H")
+			for i:=0;i<lineCounter;i++{
+				fmt.Println("                                                       ")
+			}
+			fmt.Printf("\033[3;0H")
+		}
+	case "nisd":
+		fmt.Printf("\033[2J")
+                fmt.Printf("\033[2;0H")
+                fmt.Println("NISD_UUID")
+                fmt.Printf("\033[2;38H")
+                fmt.Print("Status")
+                fmt.Printf("\033[2;45H")
+                fmt.Println("Parent_UUID(Lookout)")
+		offset := 3
+		for {
+                        lineCounter := 0
+			data := clientObj.clientAPIObj.Get_Membership()
+			for _,node := range data{
+				if (node.Tags["Type"] == "LOOKOUT")&&(node.Status == "alive") {
+					for uuid,value := range node.Tags{
+						if uuid != "Type"{
+							currentLine := offset+lineCounter
+							fmt.Print(uuid)
+							fmt.Printf("\033[%d;38H",currentLine)
+							fmt.Print(strings.Split(value,"_")[0])
+							fmt.Printf("\033[%d;45H",currentLine)
+							fmt.Println(node.Name)
+							lineCounter += 1
+						}
+					}
+				}
+			}
+			time.Sleep(2*time.Second)
+                        fmt.Printf("\033[3;0H")
+                        for i:=0;i<lineCounter;i++{
+                                fmt.Println("                                                       ")
+                        }
+                        fmt.Printf("\033[3;0H")
+		}
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")

@@ -77,7 +77,7 @@ func (Handler *SerfClientHandler) Init_data(configpath string) error {
 	}
 
 	if connectClient == nil {
-		return errors.New("no live agents")
+		return errors.New("No live serf agents")
 	}
 
 	clusterMembers, err := connectClient.Members()

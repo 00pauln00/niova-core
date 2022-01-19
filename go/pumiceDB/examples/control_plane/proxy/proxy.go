@@ -210,7 +210,6 @@ func (handler *proxyHandler) get_PMDBServer_Config() {
 	//path += "/" + handler.clientUUID
 	os.Mkdir(path, os.ModePerm)
 	//path += "/PMDBConfig/"
-
 	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
 	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
 	handler.dump_ConfigToFile(path+"/")
@@ -278,6 +277,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	tag["Hport"] = handler.httpPort
 	tag["Aport"] = handler.serfAgentPort
 	tag["Rport"] = handler.serfAgentRPCPort
+	tag["Type"]  = "PROXY"
 	handler.serfAgentObj.Set_node_tags(tag)
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
