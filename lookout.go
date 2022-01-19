@@ -255,12 +255,22 @@ func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 	//Get uuid from the byte array
 	data := udpInfo.message
-	uuid := string(data[:36])
+	uuidString := string(data[:36])
+
+	uuidHex, _ := uuid.Parse(uuidString)
+	nisd, ok := epc.EpMap[uuidHex]
+	if ok{
+		if !nisd.Alive{
+			nisd.pendingCmds = make(map[string]*epCommand)
+			nisd.Alive = true
+			nisd.LastReport = time.Now()
+		}
+	}
 
 	//Send config read request to PMDB server
 	request := requestResponseLib.KVRequest{
 		Operation: "read",
-		Key : string(uuid),
+		Key : string(uuidString),
 	}
 	var requestByte bytes.Buffer
         enc := gob.NewEncoder(&requestByte)
@@ -278,7 +288,7 @@ func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 
 	//Fill C structure,Add statement for deleting the allocatted buffer
 	nisd_peer_config := C.struct_nisd_config{}
-	C.strncpy(&(nisd_peer_config.nisd_uuid[0]), C.CString(uuid), C.ulong(len(uuid)+1))
+	C.strncpy(&(nisd_peer_config.nisd_uuid[0]), C.CString(uuidString), C.ulong(len(uuidString)+1))
 	C.strncpy(&(nisd_peer_config.nisd_ipaddr[0]), C.CString(ipaddr), C.ulong(len(ipaddr)+1))
 	nisd_peer_config.nisdc_addr_len = C.int(len(ipaddr))
 	nisd_peer_config.nisd_port = C.int(port)
@@ -409,15 +419,16 @@ func (epc *epContainer) serfAgentStart() error{
 }
 
 func (epc *epContainer) setTags() {
-	sample := make(map[string]string)
+	tagData := make(map[string]string)
+	tagData["Type"] = "LOOKOUT"
 	for _,nisd := range epc.EpMap{
 		status := "Dead"
 		if nisd.Alive{
 			status = "Alive"
 		}
-		sample[nisd.Uuid.String()] = status+"_"+nisd.LastReport.String()
+		tagData[nisd.Uuid.String()] = status+"_"+nisd.LastReport.String()
 	}
-	epc.serfHandler.SetTags(sample)
+	epc.serfHandler.SetTags(tagData)
 }
 
 
@@ -468,10 +479,8 @@ func main() {
 	if err := epc.Init(*endpointRoot); err != nil {
 		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
 	}
-
 	epc.Scan()
 	epc.udpEvent = make(chan udpMessage, 10)
-
 	go epc.serveHttp()
 
 	epc.startClientAPI()

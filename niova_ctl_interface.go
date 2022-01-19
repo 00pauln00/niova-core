@@ -1,7 +1,6 @@
 package main // niova control interface
 
 import (
-	//	"fmt"
 	//	"math/rand"
 	"encoding/json"
 	"io/ioutil"
@@ -11,7 +10,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
 	"github.com/google/uuid"
 )
 
@@ -241,7 +239,6 @@ func (cmd *epCommand) submit() {
 	if err := cmd.ep.mayQueueCmd(); err == false {
 		return
 	}
-
 	cmd.prep()
 	cmd.write()
 }
@@ -271,9 +268,11 @@ func (ep *NcsiEP) addCmd(cmd *epCommand) error {
 
 func (ep *NcsiEP) removeCmd(cmdName string) *epCommand {
 	ep.Mutex.Lock()
-	cmd := ep.pendingCmds[cmdName]
-	delete(ep.pendingCmds, cmdName)
-	cmd.ep.Mutex.Unlock()
+	cmd,ok := ep.pendingCmds[cmdName]
+	if ok {
+		delete(ep.pendingCmds, cmdName)
+	}
+	ep.Mutex.Unlock()
 
 	return cmd
 }
@@ -341,19 +340,18 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 }
 
 func (ep *NcsiEP) Detect() error {
-	err := ep.getSysinfo()
-	if err == nil {
-		err = ep.getRaftinfo()
-	}
+	if ep.Alive{
+		err := ep.getSysinfo()
+		if err == nil {
+			err = ep.getRaftinfo()
+		}
 
-	// Alive state should be maintained regardless of the error code
-	if time.Since(ep.LastReport) > time.Second*EPtimeoutSec {
-		ep.Alive = false
-	} else if !ep.Alive {
-		ep.Alive = true
+		if (time.Since(ep.LastReport) > time.Second*EPtimeoutSec) {
+			ep.Alive = false
+		}
+		return err
 	}
-
-	return err
+	return nil
 }
 
 func (ep *NcsiEP) Check() error {
