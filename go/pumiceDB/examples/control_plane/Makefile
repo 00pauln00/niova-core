@@ -8,7 +8,7 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-install_all: compile pmdbserver proxyserver ncpc install docker_support
+install_all: compile pmdbserver proxyserver ncpcclient install docker_support
 
 install_only: compile pmdbserver proxyserver ncpcclient install
 
