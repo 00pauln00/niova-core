@@ -148,17 +148,23 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 	}()
 
 	var success bool
+	var read bool
 	var result []byte
 	var err error
 	requestBytes, err := ioutil.ReadAll(reader.Body)
 	switch reader.Method {
 	case "GET":
-		thisRequestStat.Status = "Processing"
+		if (handler.StatsRequired) {
+			thisRequestStat.Status = "Processing"
+		}
 		err = handler.PMDBClientHandlerObj.ReadEncoded(requestBytes,&result)
+		read = true
 		fallthrough
 	case "PUT":
-		if thisRequestStat.Status == "Queued" {
-			thisRequestStat.Status = "Processing"
+		if !read {
+			if handler.StatsRequired {
+				thisRequestStat.Status = "Processing"
+			}
 			err = handler.PMDBClientHandlerObj.WriteEncoded(requestBytes)
 		}
 		if err == nil {

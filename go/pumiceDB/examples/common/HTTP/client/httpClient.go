@@ -15,7 +15,7 @@ func service_Request(request *http.Request) ([]byte, error) {
 
 	response, err := httpClient.Do(request)
 	if err != nil {
-		log.Error(err)
+		log.Error("(HTTP CLIENT DO)",err)
 		return nil, err
 	}
 
