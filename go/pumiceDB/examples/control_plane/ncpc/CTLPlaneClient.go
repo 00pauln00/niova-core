@@ -181,7 +181,7 @@ func main() {
                 file, _ := json.MarshalIndent(toJson, "", " ")
                 _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
-	case "genral":
+	case "general":
 		fmt.Printf("\033[2J")
 		fmt.Printf("\033[2;0H")
 		fmt.Print("UUID")
