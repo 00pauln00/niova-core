@@ -72,7 +72,7 @@ func usage(rc int) {
 
 func init() {
 	endpointRoot = flag.String("dir", "/tmp/.niova", "endpoint directory root")
-	httpPort = flag.Int("port", 8080, "http listen port")
+	httpPort = flag.Int("port", 8081, "http listen port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
 
@@ -426,7 +426,7 @@ func (epc *epContainer) setTags() {
 		if nisd.Alive{
 			status = "Alive"
 		}
-		tagData[nisd.Uuid.String()] = status+"_"+nisd.LastReport.String()
+		tagData[nisd.Uuid.String()] = status
 	}
 	epc.serfHandler.SetTags(tagData)
 }
