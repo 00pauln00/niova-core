@@ -9,9 +9,9 @@ RUN apt-get update -y \
     && mkdir /opt/niova/lib
 
 #copy libs,configs and executables
-COPY libexec/niova/niovakv_server /usr/niovakv_server
+COPY libexec/niova/proxy /usr/niovakv_server
 COPY libexec/niova/niovakv.config /usr/niovakv_server/config
-COPY libexec/niova/niovakv_pmdbserver /usr/pmdb_server
+COPY libexec/niova/pmdbServer /usr/pmdb_server
 COPY starter.sh /usr/
 ADD  raftconfig /usr/pmdb_server/raftconfig
 ADD  lib /opt/niova/lib

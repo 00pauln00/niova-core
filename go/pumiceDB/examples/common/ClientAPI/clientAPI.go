@@ -81,7 +81,7 @@ time:
 		default:
 			var err error
 			var ok bool
-
+			log.Info("ExxxxE")
 			toSend, err = handler.pick_Server(toSend.Name)
 			if err != nil {
 				break time
@@ -92,7 +92,7 @@ time:
 			if err == nil {
 				ok = true
 			}
-
+			log.Info("BCCCCMC")
 			if handler.IsStatRequired {
 				handler.requestUpdateLock.Lock()
 				if _, present := handler.RequestDistribution[toSend.Name]; !present {
@@ -290,6 +290,15 @@ func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte,error){
         }
 
 	return json.MarshalIndent(PMDBServerConfigMap," ","")
+}
+
+//Returns raft leader's uuid
+func (handler *ClientAPIHandler) Get_Leader() string {
+	agent, err := handler.pick_Server("")
+	if err != nil {
+		return "Servers unreachable"
+	}
+	return agent.Tags["Leader UUID"]
 }
 
 func (handler *ClientAPIHandler) Till_ready() {

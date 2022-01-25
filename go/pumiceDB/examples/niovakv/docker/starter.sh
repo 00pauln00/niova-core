@@ -18,6 +18,6 @@ NODE_NAME=Node$ID
 echo $NODE_NAME
 
 cd pmdb_server
-./niovakv_pmdbserver -r ${RAFT_UUID} -u ${SERVER_UUID} -l "logs/pmdb_server.log" > "logs/pmdb_output.log" 2>&1 &
+./pmdbServer -r ${RAFT_UUID} -u ${SERVER_UUID} -l "logs/pmdb_server.log" > "logs/pmdb_output.log" 2>&1 &
 cd ../niovakv_server
-./niovakv_server -e 4000 -r ${RAFT_UUID} -u ${CLIENT_UUID} -l "logs/niovakv_server.log" -c ./config -n ${NODE_NAME}  > "logs/niovakv_server_output.log" 2>&1
+./proxy -e 4000 -r ${RAFT_UUID} -u ${CLIENT_UUID} -l "logs/niovakv_server.log" -c ./config -n ${NODE_NAME}  > "logs/niovakv_server_output.log" 2>&1
