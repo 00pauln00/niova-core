@@ -22,7 +22,7 @@ proxyserver:
 	cd proxy && go build proxy.go
 
 ncpcclient:
-	cd ncpc && go build CTLPlaneClient.go
+	cd ncpc && go build ncpc.go
 
 install:
 	cp ../common/PMDB/server/pmdbServer proxy/proxy ncpc/ncpc ${DIR}/libexec/niova/
