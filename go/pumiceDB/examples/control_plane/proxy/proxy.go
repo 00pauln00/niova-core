@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"common/httpServer"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -11,7 +12,6 @@ import (
 	defaultLogger "log"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	"niova/go-pumicedb-lib/common"
-	"common/httpServer"
 	//"common/pmdbClient"
 	"common/serfAgent"
 	"os"
@@ -26,7 +26,7 @@ type proxyHandler struct {
 	//Other
 	configPath string
 	logLevel   string
-	
+
 	//Niovakvserver
 	addr string
 
@@ -39,12 +39,12 @@ type proxyHandler struct {
 	pmdbClientObj           *pmdbClient.PmdbClientObj
 
 	//Serf agent
-	serfAgentName         string
-	serfAgentPort         string
-	serfAgentRPCPort      string
-	serfPeersFilePath     string
-	serfLogger            string
-	serfAgentObj          serfAgent.SerfAgentHandler
+	serfAgentName     string
+	serfAgentPort     string
+	serfAgentRPCPort  string
+	serfPeersFilePath string
+	serfLogger        string
+	serfAgentObj      serfAgent.SerfAgentHandler
 
 	//Http
 	httpPort      string
@@ -212,7 +212,7 @@ func (handler *proxyHandler) get_PMDBServer_Config() {
 	//path += "/PMDBConfig/"
 	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
 	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
-	handler.dump_ConfigToFile(path+"/")
+	handler.dump_ConfigToFile(path + "/")
 }
 
 func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) {
@@ -277,7 +277,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	tag["Hport"] = handler.httpPort
 	tag["Aport"] = handler.serfAgentPort
 	tag["Rport"] = handler.serfAgentRPCPort
-	tag["Type"]  = "PROXY"
+	tag["Type"] = "PROXY"
 	handler.serfAgentObj.Set_node_tags(tag)
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()

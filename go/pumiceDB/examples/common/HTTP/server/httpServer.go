@@ -74,7 +74,7 @@ func (handler *HTTPServerHandler) statHandler(writer http.ResponseWriter, reader
 	return
 }
 
-func (handler *HTTPServerHandler) updateStat(id int64,success bool,read bool) {
+func (handler *HTTPServerHandler) updateStat(id int64, success bool, read bool) {
 	handler.statLock.Lock()
 	defer handler.statLock.Unlock()
 	delete(handler.Stat.StatusMap, id)
@@ -92,81 +92,81 @@ func (handler *HTTPServerHandler) updateStat(id int64,success bool,read bool) {
 	}
 }
 
-func (handler *HTTPServerHandler) createStat(requestStatHandler *RequestStatus) int64{
+func (handler *HTTPServerHandler) createStat(requestStatHandler *RequestStatus) int64 {
 	handler.statLock.Lock()
 	defer handler.statLock.Unlock()
 
 	handler.Stat.ReceivedCount += 1
 	id := handler.Stat.ReceivedCount
-        handler.Stat.Queued += 1
+	handler.Stat.Queued += 1
 	requestStatHandler = &RequestStatus{
 		Status: "Queued",
-        }
-        handler.Stat.StatusMap[id] = requestStatHandler
+	}
+	handler.Stat.StatusMap[id] = requestStatHandler
 	return id
 }
 
 func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, reader *http.Request) {
 	var thisRequestStat *RequestStatus
-        var id int64
+	var id int64
 
 	//Create stat for the request
-        if handler.StatsRequired {
-                id = handler.createStat(thisRequestStat)
-        }
+	if handler.StatsRequired {
+		id = handler.createStat(thisRequestStat)
+	}
 
-        //HTTP connections limiter
-        handler.connectionLimiter <- 1
-        defer func() {
-                <-handler.connectionLimiter
-        }()
+	//HTTP connections limiter
+	handler.connectionLimiter <- 1
+	defer func() {
+		<-handler.connectionLimiter
+	}()
 
-        var success bool
-        var read bool
-        var result []byte
-        var err error
+	var success bool
+	var read bool
+	var result []byte
+	var err error
 
 	//Handle the KV request
-        requestBytes, err := ioutil.ReadAll(reader.Body)
-        switch reader.Method {
-        case "GET":
-                if handler.StatsRequired {
-                        thisRequestStat.Status = "Processing"
-                }
-                err = handler.PMDBClientHandlerObj.ReadEncoded(requestBytes, &result)
+	requestBytes, err := ioutil.ReadAll(reader.Body)
+	switch reader.Method {
+	case "GET":
+		if handler.StatsRequired {
+			thisRequestStat.Status = "Processing"
+		}
+		err = handler.PMDBClientHandlerObj.ReadEncoded(requestBytes, &result)
 		read = true
-                fallthrough
-        case "PUT":
-                if !read {
-                        if handler.StatsRequired {
-                                thisRequestStat.Status = "Processing"
-                        }
-                        err = handler.PMDBClientHandlerObj.WriteEncoded(requestBytes)
-                }
-                if err == nil {
-                        success = true
-                }
-                fmt.Fprintf(writer, "%s", string(result))
-        default:
-                writer.WriteHeader(http.StatusMethodNotAllowed)
-        }
+		fallthrough
+	case "PUT":
+		if !read {
+			if handler.StatsRequired {
+				thisRequestStat.Status = "Processing"
+			}
+			err = handler.PMDBClientHandlerObj.WriteEncoded(requestBytes)
+		}
+		if err == nil {
+			success = true
+		}
+		fmt.Fprintf(writer, "%s", string(result))
+	default:
+		writer.WriteHeader(http.StatusMethodNotAllowed)
+	}
 
-        //Update status
-        if handler.StatsRequired {
-                handler.updateStat(id,success,read)
-        }
+	//Update status
+	if handler.StatsRequired {
+		handler.updateStat(id, success, read)
+	}
 }
 
 //HTTP server handler called when request is received
 func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *http.Request) {
 	//Go follows causually consistent memory model, so require sync among stat and normal request to get consistent stat data
 	//atomic.AddInt64(&handler.Stat.syncRequest,int64(1))
-	if (reader.URL.Path == "/config") {
-		handler.configHandler(writer,reader)
-	} else if ((reader.URL.Path == "/stat") && (handler.StatsRequired)) {
-		handler.statHandler(writer,reader)
+	if reader.URL.Path == "/config" {
+		handler.configHandler(writer, reader)
+	} else if (reader.URL.Path == "/stat") && (handler.StatsRequired) {
+		handler.statHandler(writer, reader)
 	} else {
-		handler.kvRequestHandler(writer,reader)
+		handler.kvRequestHandler(writer, reader)
 	}
 }
 

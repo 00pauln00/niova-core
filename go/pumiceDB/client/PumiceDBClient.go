@@ -1,14 +1,14 @@
 package PumiceDBClient
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
 	"strconv"
+	"sync/atomic"
 	"syscall"
 	"unsafe"
-	"bytes"
-	"github.com/google/uuid"
-	"sync/atomic"
 	//"fmt"
 	"niova/go-pumicedb-lib/common"
 )
@@ -89,15 +89,14 @@ func (obj *PmdbClientObj) Write(ed interface{},
 WriteEncoded allows client to pass the encoded KV struct for writing
 */
 func (obj *PmdbClientObj) WriteEncoded(request []byte) error {
-	idq := atomic.AddUint64(&obj.writeSeqNo,uint64(1))
-	rncui := fmt.Sprintf("%s:0:0:0:%d",obj.AppUUID,idq)
+	idq := atomic.AddUint64(&obj.writeSeqNo, uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d", obj.AppUUID, idq)
 	requestLen := int64(len(request))
-        //Convert it to unsafe pointer (void * for C function)
-        encodedData := unsafe.Pointer(&request[0])
+	//Convert it to unsafe pointer (void * for C function)
+	encodedData := unsafe.Pointer(&request[0])
 	encodedRequest := (*C.char)(encodedData)
 	return obj.writeKV(rncui, encodedRequest, requestLen)
 }
-
 
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
@@ -143,36 +142,36 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 /*
 ReadEncoded allows client to pass the encoded KV struct for reading
 */
-func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte) error{
+func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte) error {
 	var reply_size int64
-        var rd_err error
-        var reply_buff unsafe.Pointer
+	var rd_err error
+	var reply_buff unsafe.Pointer
 	rncui := ""
 	requestLen := int64(len(request))
 	//Typecast the encoded key to char*
 	encodedData := unsafe.Pointer(&request[0])
-        encoded_key := (*C.char)(encodedData)
+	encoded_key := (*C.char)(encodedData)
 
-        if len(rncui) == 0 {
-                reply_buff, rd_err = obj.readKVAny(encoded_key,
-                        requestLen, &reply_size)
-        } else {
-                reply_buff, rd_err = obj.readKV(rncui, encoded_key,
-                        requestLen, &reply_size)
-        }
+	if len(rncui) == 0 {
+		reply_buff, rd_err = obj.readKVAny(encoded_key,
+			requestLen, &reply_size)
+	} else {
+		reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+			requestLen, &reply_size)
+	}
 
-        if rd_err != nil {
-                return rd_err
-        }
+	if rd_err != nil {
+		return rd_err
+	}
 
-        if reply_buff != nil {
-                bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
+	if reply_buff != nil {
+		bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
 		buffer := bytes.NewBuffer(bytes_data)
 		*response = buffer.Bytes()
-        }
-        //Free the buffer allocated by C library.
-        C.free(reply_buff)
-        return nil
+	}
+	//Free the buffer allocated by C library.
+	C.free(reply_buff)
+	return nil
 }
 
 //Read the value of key on the client the application passed buffer
