@@ -246,7 +246,7 @@ func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) {
 				"\nIPADDR       " + peer.IPAddr +
 				"\nPORT         " + peer.Port +
 				"\nCLIENT_PORT  " + peer.ClientPort +
-				"\nSTORE        /home/sshivkumar/configs/e3658ee4-eba6-11eb-853e-9b8cfb7c3b6b/raftdb/e3e86a1c-eba6-11eb-a887-63a2043653ba.raftdb\n")
+				"\nSTORE        ./*.raftdb\n")
 
 		if errFile != nil {
 			log.Error(errFile)

@@ -85,6 +85,9 @@ func (obj *PmdbClientObj) Write(ed interface{},
 }
 
 //WriteEncoded
+/*
+WriteEncoded allows client to pass the encoded KV struct for writing
+*/
 func (obj *PmdbClientObj) WriteEncoded(request []byte) error {
 	idq := atomic.AddUint64(&obj.writeSeqNo,uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d",obj.AppUUID,idq)
@@ -137,6 +140,9 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 }
 
 //ReadEncoded
+/*
+ReadEncoded allows client to pass the encoded KV struct for reading
+*/
 func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte) error{
 	var reply_size int64
         var rd_err error
