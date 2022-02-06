@@ -99,7 +99,7 @@ buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
     SLIST_FOREACH(bi, bus, bi_user_slentry)
     {
         total += bi->bi_iov_save.iov_len;
-        *nitems++;
+        (*nitems)++;
     }
 
     return total;
