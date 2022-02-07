@@ -60,7 +60,6 @@ var(
 	addr	        string
 	agentPort	string
 	agentRPCPort    string
-	udpPort         string
 	gossipNodesPath string
 	serfLogger      string
 )
@@ -81,7 +80,6 @@ func init() {
 	flag.StringVar(&addr,"a", "127.0.0.1","Agent addr")
 	flag.StringVar(&agentPort,"p","3991","Agent port for serf")
 	flag.StringVar(&agentRPCPort,"r","3992","Agent RPC port")
-	flag.StringVar(&udpPort,"u","1053","UDP port for nisd communication")
 	flag.StringVar(&gossipNodesPath,"c","./gossipNodes","PMDB server gossip info")
 	flag.StringVar(&serfLogger,"s","serf.log","Serf logs")
 	flag.Parse()
@@ -122,8 +120,8 @@ type Nisd_config struct{
 }
 
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
-	_,ok := epc.EpMap[uuid]
-	if !ok{
+	lns := epc.EpMap[uuid]
+	if lns == nil {
 		newlns := NcsiEP{
 			Uuid:         uuid,
 			Path:         epc.Path + "/" + uuid.String(),
@@ -148,6 +146,20 @@ func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	}
 }
 
+func (epc *epContainer) Scan() {
+	files, err := ioutil.ReadDir(epc.Path)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, file := range files {
+		// Need to support removal of stale items
+		if uuid, err := uuid.Parse(file.Name()); err == nil {
+			epc.tryAdd(uuid)
+		}
+	}
+}
+
 func (epc *epContainer) Monitor() error {
 	var err error = nil
 	err = epc.serfAgentStart()
@@ -163,6 +175,11 @@ func (epc *epContainer) Monitor() error {
 		if err != nil {
 			log.Printf("syscall.Stat('%s'): %s", epc.Path, err)
 			break
+		}
+
+		if tmp_stb.Mtim != epc.Statb.Mtim {
+			epc.Statb = tmp_stb
+			epc.Scan()
 		}
 
 		// Query for liveness
@@ -246,9 +263,7 @@ func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 			nisd.pendingCmds = make(map[string]*epCommand)
 			nisd.Alive = true
 			nisd.LastReport = time.Now()
-		} //Add to increase the frequency of ctl-interface checking!
-	} else{
-		epc.tryAdd(uuidHex)
+		}
 	}
 
 	//Send config read request to PMDB server
@@ -439,7 +454,7 @@ func (epc *epContainer) startUDPListner() {
 	fmt.Println("Starting udp listner")
 	//epc.udpEvent = make(chan udpMessage, 10)
 	var err error
-	epc.udpSocket, err = net.ListenPacket("udp", ":"+udpPort)
+	epc.udpSocket, err = net.ListenPacket("udp", ":1053")
 	if err != nil {
 		fmt.Println("UDP listner failed : ",err)
 	}
@@ -465,7 +480,7 @@ func main() {
 	if err := epc.Init(*endpointRoot); err != nil {
 		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
 	}
-
+	epc.Scan()
 	epc.udpEvent = make(chan udpMessage, 10)
 	go epc.serveHttp()
 
