@@ -239,7 +239,6 @@ func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 	//Get uuid from the byte array
 	data := udpInfo.message
 	uuidString := string(data[:36])
-
 	uuidHex, _ := uuid.Parse(uuidString)
 	nisd, ok := epc.EpMap[uuidHex]
 	if ok{
@@ -413,7 +412,10 @@ func (epc *epContainer) setTags() {
 		}
 		tagData[nisd.Uuid.String()] = status
 	}
-	epc.serfHandler.SetTags(tagData)
+	err := epc.serfHandler.SetTags(tagData)
+	if err!= nil{
+		fmt.Println(err)
+	}
 }
 
 
@@ -455,7 +457,6 @@ func (epc *epContainer) startUDPListner() {
 		}
 		go epc.getConfigNSend(udpInfo)
 	}
-	fmt.Println("Ended")
 }
 
 func main() {
