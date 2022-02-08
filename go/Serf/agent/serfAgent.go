@@ -2,10 +2,10 @@ package serfAgent
 
 import (
 	"bufio"
-	"log"
-	"net"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
+	"log"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -25,11 +25,11 @@ Methods:
 */
 type SerfAgentHandler struct {
 	//Exported
-	Name     string //Name of the agent
-	BindAddr string //Addr for inter agent communcations
-	BindPort string //Port for inter agent communcations
-	RpcAddr  string //Addr for agent-client communication
-	RpcPort  string //Port for agent-client communicaton
+	Name        string //Name of the agent
+	BindAddr    string //Addr for inter agent communcations
+	BindPort    string //Port for inter agent communcations
+	RpcAddr     string //Addr for agent-client communication
+	RpcPort     string //Port for agent-client communicaton
 	AgentLogger *log.Logger
 
 	//non-exported
@@ -72,7 +72,7 @@ Description : Starts the created agent in setup, and listenes on rpc channel
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	err := Handler.agentObj.Start()
 
-	if !requireRPC{
+	if !requireRPC {
 		return err
 	}
 
@@ -113,24 +113,23 @@ func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
 	return no_of_nodes, err
 }
 
-
 func Get_PeerAddress(staticSerfConfigPath string) ([]string, error) {
-        //Get addrs and Rports and store it in AgentAddrs and
-        if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
-                return nil, err
-        }
-        reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
-        if err != nil {
-                return nil, err
-        }
-        filescanner := bufio.NewScanner(reader)
-        filescanner.Split(bufio.ScanLines)
-        var addrs []string
-        for filescanner.Scan() {
-                input := strings.Split(filescanner.Text(), " ")
-                addrs = append(addrs, input[1]+":"+input[2])
-        }
-        return addrs, nil
+	//Get addrs and Rports and store it in AgentAddrs and
+	if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
+		return nil, err
+	}
+	reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
+	if err != nil {
+		return nil, err
+	}
+	filescanner := bufio.NewScanner(reader)
+	filescanner.Split(bufio.ScanLines)
+	var addrs []string
+	for filescanner.Scan() {
+		input := strings.Split(filescanner.Text(), " ")
+		addrs = append(addrs, input[1]+":"+input[2])
+	}
+	return addrs, nil
 }
 
 /*
@@ -140,7 +139,7 @@ Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) Serf_agent_startup(joinAddrs []string,RPCRequired bool) (int, error) {
+func (Handler *SerfAgentHandler) Serf_agent_startup(joinAddrs []string, RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -189,14 +188,14 @@ func (Handler *SerfAgentHandler) Set_node_tags(tags map[string]string) error {
 	return err
 }
 
-func (Handler *SerfAgentHandler) Get_tags() (string,string) {
+func (Handler *SerfAgentHandler) Get_tags() (string, string) {
 	members := Handler.agentObj.Serf().Members()
-	for _,mem := range members {
-		if mem.Tags["Type"]=="PMDB_SERVER" {
-			return mem.Tags["PC"],mem.Tags["RU"]
+	for _, mem := range members {
+		if mem.Tags["Type"] == "PMDB_SERVER" {
+			return mem.Tags["PC"], mem.Tags["RU"]
 		}
 	}
-	return "",""
+	return "", ""
 }
 
 /*

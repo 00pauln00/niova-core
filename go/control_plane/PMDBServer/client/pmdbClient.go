@@ -3,20 +3,20 @@ package pmdbClient
 import (
 	//"errors"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	PumiceClient "niova/go-pumicedb-lib/client"
 	"sync/atomic"
-	log "github.com/sirupsen/logrus"
 )
 
 //Structure definition for client.
 type PMDBClientHandler struct {
-	ClientObj       *PumiceClient.PmdbClientObj
-	AppUuid         string
-	writeSeqno      uint64
+	ClientObj  *PumiceClient.PmdbClientObj
+	AppUuid    string
+	writeSeqno uint64
 }
 
 //Method for write operation.
-func (handler *PMDBClientHandler) Write(request []byte) ([]byte,error) {
+func (handler *PMDBClientHandler) Write(request []byte) ([]byte, error) {
 	//Perform write operation.
 	idq := atomic.AddUint64(&handler.writeSeqno, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.AppUuid, idq)
@@ -31,17 +31,17 @@ func (handler *PMDBClientHandler) Write(request []byte) ([]byte,error) {
 	}
 	var response []byte
 	/*
-	respone := requestResponseLib.KVResponse{
-		Status : status
-	}
+		respone := requestResponseLib.KVResponse{
+			Status : status
+		}
 	*/
-	return response,err
+	return response, err
 }
 
 //Method to perform read operation.
 func (handler *PMDBClientHandler) Read(request []byte) ([]byte, error) {
 	var response []byte
-	err := handler.ClientObj.ReadEncoded(request, &response,"")
+	err := handler.ClientObj.ReadEncoded(request, &response, "")
 	if err != nil {
 		log.Error("(PMDB Client) Read failed : ", err)
 	} else {

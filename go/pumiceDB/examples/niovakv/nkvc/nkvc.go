@@ -1,40 +1,40 @@
 package main
 
 import (
+	"bytes"
+	"common/clientAPI"
+	"common/requestResponseLib"
+	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
-	"common/clientAPI"
-	"common/requestResponseLib"
 	"os"
 	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
-	"encoding/gob"
-	"bytes"
-	log "github.com/sirupsen/logrus"
 )
 
 type clientHandler struct {
 	configPath, keyPrefix, valuePrefix, logPath, serial, noRequest, resultFile, operation string
-	concurrency									       int
-	respFillerLock                                                                         sync.Mutex
-	operationMetaObjs                                                                      []opData //For filling json data
-	operationsWait                                                                         sync.WaitGroup
-	concurrencyChannel								       chan int
-	requestSentCount, failedRequestCount                                                   int64
-	clientAPIObj                                                                           *clientAPI.ClientAPIHandler
+	concurrency                                                                           int
+	respFillerLock                                                                        sync.Mutex
+	operationMetaObjs                                                                     []opData //For filling json data
+	operationsWait                                                                        sync.WaitGroup
+	concurrencyChannel                                                                    chan int
+	requestSentCount, failedRequestCount                                                  int64
+	clientAPIObj                                                                          *clientAPI.ClientAPIHandler
 }
 
 type request struct {
 	Opcode    string    `json:"Operation"`
 	Key       string    `json:"Key"`
 	Value     string    `json:"Value"`
-	Hash	  [16]byte  `json:"CheckSum"`
+	Hash      [16]byte  `json:"CheckSum"`
 	Timestamp time.Time `json:"Request_timestamp"`
 }
 
@@ -92,7 +92,7 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 	enc := gob.NewEncoder(&requestByte)
 	enc.Encode(req)
 
-	responseBytes := handler.clientAPIObj.Request(requestByte.Bytes(),"",write)
+	responseBytes := handler.clientAPIObj.Request(requestByte.Bytes(), "", write)
 	var responseObj requestResponseLib.KVResponse
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	dec.Decode(&responseObj)
@@ -103,12 +103,12 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 	}
 
 	requestMeta := request{
-                Opcode:    req.Operation,
-                Key:       req.Key,
-                Value:     string(req.Value),
-		Hash:	   req.CheckSum,
-                Timestamp: sendTime,
-        }
+		Opcode:    req.Operation,
+		Key:       req.Key,
+		Value:     string(req.Value),
+		Hash:      req.CheckSum,
+		Timestamp: sendTime,
+	}
 
 	responseMeta := response{
 		Timestamp:     time.Now(),
@@ -157,7 +157,7 @@ func (handler *clientHandler) do_WriteNRead(n int, write bool) []opData {
 		//Send the request object
 		handler.operationsWait.Add(1)
 		handler.concurrencyChannel <- 1
-		go func(){
+		go func() {
 			handler.sendReq(&requestObj, write)
 			_ = <-handler.concurrencyChannel
 		}()
@@ -209,15 +209,15 @@ func main() {
 	clientObj.getCmdParams()
 	flag.Usage = usage
 	if flag.NFlag() == 0 {
-               usage()
-               os.Exit(-1)
+		usage()
+		os.Exit(-1)
 	}
 
 	//If serial set the concurrency level to 1
-	if clientObj.serial=="y" {
+	if clientObj.serial == "y" {
 		clientObj.concurrency = 1
 	}
-	clientObj.concurrencyChannel=make(chan int,clientObj.concurrency)
+	clientObj.concurrencyChannel = make(chan int, clientObj.concurrency)
 
 	//Create logger
 	err := PumiceDBCommon.InitLogger(clientObj.logPath)
@@ -267,7 +267,7 @@ func main() {
 
 	case "read":
 		go clientObj.print_progress("read", n)
-		toJson["read"]=clientObj.do_WriteNRead(n, false)
+		toJson["read"] = clientObj.do_WriteNRead(n, false)
 		clientObj.write_Json(toJson)
 
 	case "membership":
