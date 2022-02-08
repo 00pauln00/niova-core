@@ -16,7 +16,7 @@ compile:
 	echo "Compiling niovakv"
 
 pmdbserver:
-	cd ../common/PMDB/server && go build pmdbServer.go
+	cd ../PMDBServer && go build pmdbServer.go
 
 proxyserver:
 	cd proxy && go build proxy.go

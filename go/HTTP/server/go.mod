@@ -2,9 +2,9 @@ module common/httpServer
 
 go 1.16
 
-replace niova/go-pumicedb-lib/client => ../../../../client
+replace niova/go-pumicedb-lib/client => ../../pumiceDB/client
 
-replace niova/go-pumicedb-lib/common => ../../../../common
+replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 
 replace common/requestResponseLib => ../../RequestResponselib
 

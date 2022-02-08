@@ -1,10 +1,10 @@
 package requestResponseLib
 
 type KVRequest struct {
-	Operation   string
-	Key         string
-	Value       []byte
-	CheckSum    [16]byte
+	Operation string
+	Key       string
+	Value     []byte
+	CheckSum  [16]byte
 }
 
 type KVResponse struct {

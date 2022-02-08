@@ -2,9 +2,14 @@ package main
 
 import (
 	"bufio"
+	"covidapplib/lib"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	"io"
 	"io/ioutil"
 	"os"
@@ -12,11 +17,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"covidapplib/lib"
-	"encoding/csv"
-	"encoding/json"
-	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 
 	"niova/go-pumicedb-lib/client"
 	"niova/go-pumicedb-lib/common"
@@ -26,7 +26,7 @@ var (
 	raftUuid      string
 	clientUuid    string
 	jsonFilePath  string
-	cmd	      string
+	cmd           string
 	rwMap         map[string]map[string]string
 	keyRncuiMap   map[string]string
 	writeMultiMap map[CovidAppLib.CovidLocale]string
@@ -74,13 +74,12 @@ func main() {
 	fmt.Println("Multiple read format ==> ReadMulti#outfile_name")
 	fmt.Println("Get Leader format ==> GetLeader#outfile_name")
 
-
 	fmt.Print("Enter Operation(WriteOne/ WriteMulti/ ReadOne/ ReadMulti/ GetLeader/ exit): ")
 
 	//Get console input string
 	var str string
 	//Split the input string.
-	input, _:= getInput(str)
+	input, _ := getInput(str)
 	ops := input[0]
 
 	//Create and Initialize map for write-read outfile.
@@ -285,7 +284,7 @@ type covidVaxData struct {
 /*
  Structue to fill map in json file.
 */
-type KeyRncuiData struct{
+type KeyRncuiData struct {
 	KRMap map[string]string
 }
 
@@ -697,7 +696,7 @@ func (wmObj *wrMul) exec() error {
 	var wErr error
 	var wmData = &covidVaxData{}
 
-	for csvStruct, _ := range writeMultiMap {
+	for csvStruct := range writeMultiMap {
 		rncui := getRncui(keyRncuiMap, &csvStruct)
 		wmObj.op.key = csvStruct.Location
 		wmObj.op.rncui = rncui
@@ -717,13 +716,13 @@ func (wmObj *wrMul) exec() error {
 	//Dump structure into json.
 	wmObj.op.outfileName = wmData.dumpIntoJson(wmObj.op.outfileUuid)
 	KeyRncuiData := &KeyRncuiData{
-		KRMap:keyRncuiMap,
+		KRMap: keyRncuiMap,
 	}
 
 	//Fill map in json file.
-        kRFname := jsonFilePath + "/" + "keyRncui.json"
-        file, _ := json.MarshalIndent(KeyRncuiData, "", "\t")
-        _ = ioutil.WriteFile(kRFname, file, 0644)
+	kRFname := jsonFilePath + "/" + "keyRncui.json"
+	file, _ := json.MarshalIndent(KeyRncuiData, "", "\t")
+	_ = ioutil.WriteFile(kRFname, file, 0644)
 
 	return wErr
 }
@@ -756,7 +755,7 @@ func (rmObj *rdMul) prepare() error {
 
 	//Read json file.
 	kRFname := jsonFilePath + "/" + "keyRncui.json"
-	jsonFile,_ := os.Open(kRFname)
+	jsonFile, _ := os.Open(kRFname)
 	data, err := ioutil.ReadAll(jsonFile)
 	json.Unmarshal(data, &kRData)
 	keyRncuiMap = kRData.KRMap

@@ -2,10 +2,10 @@ package httpClient
 
 import (
 	"bytes"
-	"io/ioutil"
-	"net/http"
 	"errors"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
+	"net/http"
 )
 
 func service_Request(request *http.Request) ([]byte, error) {
@@ -15,7 +15,7 @@ func service_Request(request *http.Request) ([]byte, error) {
 
 	response, err := httpClient.Do(request)
 	if err != nil {
-		log.Error("(HTTP CLIENT DO)",err)
+		log.Error("(HTTP CLIENT DO)", err)
 		return nil, err
 	}
 
@@ -26,9 +26,9 @@ func service_Request(request *http.Request) ([]byte, error) {
 		return ioutil.ReadAll(response.Body)
 	case 503:
 		//Service not found, returned for timeout
-		return nil,errors.New("Server timed out")
+		return nil, errors.New("Server timed out")
 	}
-	return nil,nil
+	return nil, nil
 }
 
 func HTTP_Request(requestBody []byte, address string, put bool) ([]byte, error) {

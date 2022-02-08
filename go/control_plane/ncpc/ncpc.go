@@ -7,12 +7,12 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"flag"
-	"strings"
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -20,7 +20,7 @@ type clientHandler struct {
 	requestKey        string
 	requestValue      string
 	addr              string
-	port		  string
+	port              string
 	operation         string
 	configPath        string
 	logPath           string
@@ -116,7 +116,7 @@ func main() {
 	value := make(map[string]string)
 	value["IP_ADDR"] = clientObj.addr
 	value["Port"] = clientObj.port
-	valueByte,_ := json.Marshal(value)
+	valueByte, _ := json.Marshal(value)
 	switch clientObj.operation {
 	case "write":
 		if clientObj.requestValue != "NULL" {
@@ -161,15 +161,15 @@ func main() {
 		}
 
 		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-		if write{
+		if write {
 			toJson["write"] = clientObj.operationMetaObjs
-		} else{
+		} else {
 			toJson["read"] = clientObj.operationMetaObjs
 		}
 		clientObj.write2Json(toJson)
 
 	case "config":
-		responseBytes,err:= clientObj.clientAPIObj.Get_PMDBServer_Config()
+		responseBytes, err := clientObj.clientAPIObj.Get_PMDBServer_Config()
 		log.Info("Response : ", string(responseBytes))
 		if err != nil {
 			log.Error("Unable to get the config data")
@@ -177,9 +177,9 @@ func main() {
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
 	case "membership":
-                toJson := clientObj.clientAPIObj.Get_Membership()
-                file, _ := json.MarshalIndent(toJson, "", " ")
-                _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+		toJson := clientObj.clientAPIObj.Get_Membership()
+		file, _ := json.MarshalIndent(toJson, "", " ")
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	case "general":
 		fmt.Printf("\033[2J")
@@ -193,55 +193,55 @@ func main() {
 		for {
 			lineCounter := 0
 			data := clientObj.clientAPIObj.Get_Membership()
-			for _,node := range data{
-				currentLine := offset+lineCounter
+			for _, node := range data {
+				currentLine := offset + lineCounter
 				fmt.Print(node.Name)
-				fmt.Printf("\033[%d;38H",currentLine)
+				fmt.Printf("\033[%d;38H", currentLine)
 				fmt.Print(node.Tags["Type"])
-				fmt.Printf("\033[%d;50H",currentLine)
+				fmt.Printf("\033[%d;50H", currentLine)
 				fmt.Println(node.Status)
 				lineCounter += 1
 			}
-			time.Sleep(2*time.Second)
+			time.Sleep(2 * time.Second)
 			fmt.Printf("\033[3;0H")
-			for i:=0;i<lineCounter;i++{
+			for i := 0; i < lineCounter; i++ {
 				fmt.Println("                                                       ")
 			}
 			fmt.Printf("\033[3;0H")
 		}
 	case "nisd":
 		fmt.Printf("\033[2J")
-                fmt.Printf("\033[2;0H")
-                fmt.Println("NISD_UUID")
-                fmt.Printf("\033[2;38H")
-                fmt.Print("Status")
-                fmt.Printf("\033[2;45H")
-                fmt.Println("Parent_UUID(Lookout)")
+		fmt.Printf("\033[2;0H")
+		fmt.Println("NISD_UUID")
+		fmt.Printf("\033[2;38H")
+		fmt.Print("Status")
+		fmt.Printf("\033[2;45H")
+		fmt.Println("Parent_UUID(Lookout)")
 		offset := 3
 		for {
-                        lineCounter := 0
+			lineCounter := 0
 			data := clientObj.clientAPIObj.Get_Membership()
-			for _,node := range data{
-				if (node.Tags["Type"] == "LOOKOUT")&&(node.Status == "alive") {
-					for uuid,value := range node.Tags{
-						if uuid != "Type"{
-							currentLine := offset+lineCounter
+			for _, node := range data {
+				if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
+					for uuid, value := range node.Tags {
+						if uuid != "Type" {
+							currentLine := offset + lineCounter
 							fmt.Print(uuid)
-							fmt.Printf("\033[%d;38H",currentLine)
-							fmt.Print(strings.Split(value,"_")[0])
-							fmt.Printf("\033[%d;45H",currentLine)
+							fmt.Printf("\033[%d;38H", currentLine)
+							fmt.Print(strings.Split(value, "_")[0])
+							fmt.Printf("\033[%d;45H", currentLine)
 							fmt.Println(node.Name)
 							lineCounter += 1
 						}
 					}
 				}
 			}
-			time.Sleep(2*time.Second)
-                        fmt.Printf("\033[3;0H")
-                        for i:=0;i<lineCounter;i++{
-                                fmt.Println("                                                       ")
-                        }
-                        fmt.Printf("\033[3;0H")
+			time.Sleep(2 * time.Second)
+			fmt.Printf("\033[3;0H")
+			for i := 0; i < lineCounter; i++ {
+				fmt.Println("                                                       ")
+			}
+			fmt.Printf("\033[3;0H")
 		}
 	}
 

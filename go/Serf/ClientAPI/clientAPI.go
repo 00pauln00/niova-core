@@ -1,18 +1,18 @@
 package clientAPI
 
 import (
-        "errors"
-        "math/rand"
-        "sync"
-	"strings"
+	"common/httpClient"
+	"common/serfClient"
 	"encoding/json"
+	"errors"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-        "time"
-        log "github.com/sirupsen/logrus"
-        "common/httpClient"
-        "common/serfClient"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
 
-        client "github.com/hashicorp/serf/client"
+	client "github.com/hashicorp/serf/client"
 )
 
 type ClientAPIHandler struct {
@@ -54,15 +54,14 @@ func (handler *ServerRequestStat) update_Stat(ok bool) {
 	}
 }
 
-func (handler *ClientAPIHandler) Dump_Into_Json(outfilepath string){
+func (handler *ClientAPIHandler) Dump_Into_Json(outfilepath string) {
 
-        //prepare path for temporary json file.
-        tempOutfileName := outfilepath+"/"+"reqdistribution"+".json"
-        file, _ := json.MarshalIndent(handler, "", "\t")
-        _ = ioutil.WriteFile(tempOutfileName, file, 0644)
+	//prepare path for temporary json file.
+	tempOutfileName := outfilepath + "/" + "reqdistribution" + ".json"
+	file, _ := json.MarshalIndent(handler, "", "\t")
+	_ = ioutil.WriteFile(tempOutfileName, file, 0644)
 
 }
-
 
 func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
@@ -212,17 +211,17 @@ func (handler *ClientAPIHandler) Start_ClientAPI(stop chan int, configPath strin
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
 
 	//Retry initial serf connect for 5 times
-	for i:=0;i<5;i++ {
+	for i := 0; i < 5; i++ {
 		err = handler.init_serfClient(configPath)
 		if err == nil {
 			break
 		}
 		//Wait for 3 seconds before retrying the connection
-		log.Info("Retrying serf agent connection : ",i)
+		log.Info("Retrying serf agent connection : ", i)
 		time.Sleep(3 * time.Second)
 	}
 	//Return if error persists
-	if err!=nil {
+	if err != nil {
 		log.Error("Error while initializing the serf client ", err)
 		return err
 	}
@@ -247,49 +246,49 @@ func (handler *ClientAPIHandler) Get_Config(configPath string) error {
 }
 
 func (handler *ClientAPIHandler) Get_Membership() map[string]client.Member {
-        handler.serfUpdateLock.Lock()
-        defer handler.serfUpdateLock.Unlock()
-        return handler.serfClientObj.Get_MemberList()
+	handler.serfUpdateLock.Lock()
+	defer handler.serfUpdateLock.Unlock()
+	return handler.serfClientObj.Get_MemberList()
 }
 
-func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte,error){
-	type PeerConfigData struct{
+func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte, error) {
+	type PeerConfigData struct {
 		PeerUUID   string
 		IPAddr     string
 		Port       string
 		ClientPort string
 	}
-        var PeerUUID, ClientPort, Port, IPAddr string
+	var PeerUUID, ClientPort, Port, IPAddr string
 	PMDBServerConfigMap := make(map[string]PeerConfigData)
 
 	allConfig := handler.serfClientObj.Get_PMDBConfig()
 	splitData := strings.Split(allConfig, "/")
 	flag := false
-        for i, element := range splitData {
-                switch i % 4 {
-                case 0:
-                        PeerUUID = element
-                case 1:
-                        IPAddr = element
-                case 2:
-                        ClientPort = element
-                case 3:
-                        flag = true
-                        Port = element
-                }
-                if flag {
-                        peerConfig := PeerConfigData{
-                                PeerUUID:   PeerUUID,
-                                IPAddr:     IPAddr,
-                                Port:       Port,
-                                ClientPort: ClientPort,
-                        }
-                        PMDBServerConfigMap[PeerUUID] = peerConfig
-                        flag = false
-                }
-        }
+	for i, element := range splitData {
+		switch i % 4 {
+		case 0:
+			PeerUUID = element
+		case 1:
+			IPAddr = element
+		case 2:
+			ClientPort = element
+		case 3:
+			flag = true
+			Port = element
+		}
+		if flag {
+			peerConfig := PeerConfigData{
+				PeerUUID:   PeerUUID,
+				IPAddr:     IPAddr,
+				Port:       Port,
+				ClientPort: ClientPort,
+			}
+			PMDBServerConfigMap[PeerUUID] = peerConfig
+			flag = false
+		}
+	}
 
-	return json.MarshalIndent(PMDBServerConfigMap," ","")
+	return json.MarshalIndent(PMDBServerConfigMap, " ", "")
 }
 
 //Returns raft leader's uuid

@@ -3,10 +3,10 @@ package serfClient
 import (
 	"bufio"
 	"errors"
+	"github.com/hashicorp/serf/client"
 	"math/rand"
 	"os"
 	"strings"
-	"github.com/hashicorp/serf/client"
 )
 
 /*
@@ -152,13 +152,13 @@ func (Handler *SerfClientHandler) Update_SerfClient(persistConnection bool) erro
 	return err
 }
 
-func (Handler *SerfClientHandler) Get_PMDBConfig() string{
-        for _,mem := range Handler.Agents {
-                if mem.Tags["Type"]=="PMDB_SERVER" {
-                        return mem.Tags["PC"]
-                }
-        }
-        return ""
+func (Handler *SerfClientHandler) Get_PMDBConfig() string {
+	for _, mem := range Handler.Agents {
+		if mem.Tags["Type"] == "PMDB_SERVER" {
+			return mem.Tags["PC"]
+		}
+	}
+	return ""
 }
 
 /*

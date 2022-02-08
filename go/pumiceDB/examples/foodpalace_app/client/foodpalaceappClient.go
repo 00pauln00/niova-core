@@ -339,7 +339,7 @@ func (woexc *writeOne) exec() error {
 	var errorMsg error
 	var wrStrdtCmd foodpalaceRqOp
 	//Perform write operation.
-	fmt.Println("\n",woexc.rq.foodpalaceData, woexc.args[1])
+	fmt.Println("\n", woexc.rq.foodpalaceData, woexc.args[1])
 	err := woexc.rq.clientObj.Write(woexc.rq.foodpalaceData, woexc.args[1])
 	if err != nil {
 		log.Error("Write key-value failed : ", err)
@@ -655,12 +655,12 @@ func getCmdParams() {
 	flag.StringVar(&raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&clientUuid, "u", "NULL", "client uuid")
 	flag.StringVar(&jsonOutFpath, "l", "./", "json_outfilepath")
-	flag.StringVar(&cmd,"c","NULL","command")
+	flag.StringVar(&cmd, "c", "NULL", "command")
 	flag.Parse()
 	log.Info("Raft UUID: ", raftUuid)
 	log.Info("Client UUID: ", clientUuid)
 	log.Info("Outfile path: ", jsonOutFpath)
-	log.Info("Command:",cmd)
+	log.Info("Command:", cmd)
 }
 
 //Creates log directory if it doesn't exist.
@@ -711,7 +711,6 @@ func main() {
 	fmt.Print("\nFor WriteMulti Operation => WriteMulti#filename(.csv)#outfilename")
 	fmt.Print("\nFor ReadMulti Operation  => ReadMulti#outfilename")
 	fmt.Print("\nFor Get Leader Operation => GetLeader#outfilename")
-
 
 	opsSplit := strings.Split(cmd, "#")
 	ops := opsSplit[0]

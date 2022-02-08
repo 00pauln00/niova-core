@@ -73,7 +73,7 @@ func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Point
 	//If previous value is not null, update value of votes.
 	if err == nil {
 
-		prevValString := string(prevValue[:len(prevValue)])
+		prevValString := string(prevValue[:])
 		//Split the prev_data_value.
 		resData := strings.Split(prevValString, "_")
 
@@ -114,7 +114,7 @@ func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Poi
 	result, readErr := fpso.pso.ReadKV(appUuid, fappKey, int64(fappKeyLen), colmfamily)
 	if readErr == nil {
 		//Split the result to get respective values.
-		resultStr := string(result[:len(result)])
+		resultStr := string(result[:])
 		resultSplt = strings.Split(resultStr, "_")
 	}
 
