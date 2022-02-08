@@ -6,7 +6,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
-	pmdbClient "niova/go-pumicedb-lib/client"
 	"sync"
 	"time"
 )
@@ -15,7 +14,8 @@ type HTTPServerHandler struct {
 	//Exported
 	Addr                 string
 	Port                 string
-	PMDBClientHandlerObj *pmdbClient.PmdbClientObj
+	GETHandler	     func([]byte,*[]byte) error
+	PUTHandler	     func([]byte) error
 	HTTPConnectionLimit  int
 	PMDBServerConfig     map[string][]byte
 	//Non-exported
@@ -133,7 +133,7 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 		if handler.StatsRequired {
 			thisRequestStat.Status = "Processing"
 		}
-		err = handler.PMDBClientHandlerObj.ReadEncoded(requestBytes, &result)
+		err = handler.GETHandler(requestBytes, &result)
 		read = true
 		fallthrough
 	case "PUT":
@@ -141,7 +141,7 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 			if handler.StatsRequired {
 				thisRequestStat.Status = "Processing"
 			}
-			err = handler.PMDBClientHandlerObj.WriteEncoded(requestBytes)
+			err = handler.PUTHandler(requestBytes)
 		}
 		if err == nil {
 			success = true

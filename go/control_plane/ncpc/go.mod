@@ -1,6 +1,6 @@
 module ctlplane/ncpc
 
-replace common/serfClient => ../../common/Serf/client
+replace common/serfClient => ../../Serf/client
 
 replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 

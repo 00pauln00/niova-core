@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"common/httpServer"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -12,7 +11,7 @@ import (
 	defaultLogger "log"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	"niova/go-pumicedb-lib/common"
-	//"common/pmdbClient"
+	"common/httpServer"
 	"common/serfAgent"
 	"os"
 	"os/signal"
@@ -39,12 +38,11 @@ type proxyHandler struct {
 	pmdbClientObj           *pmdbClient.PmdbClientObj
 
 	//Serf agent
-	serfAgentName     string
-	serfAgentPort     string
-	serfAgentRPCPort  string
-	serfPeersFilePath string
-	serfLogger        string
-	serfAgentObj      serfAgent.SerfAgentHandler
+	serfAgentName         string
+	serfAgentPort         string
+	serfAgentRPCPort      string
+	serfLogger            string
+	serfAgentObj          serfAgent.SerfAgentHandler
 
 	//Http
 	httpPort      string
@@ -78,7 +76,6 @@ func (handler *proxyHandler) get_CmdParams() {
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.StringVar(&handler.requireStat, "s", "0", "If required server stat about request enter 1")
-	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server gossip addrs")
 	flag.Parse()
 }
 
@@ -157,7 +154,7 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
-	joinAddrs, err := serfAgent.Get_PeerAddress(handler.serfPeersFilePath)
+	joinAddrs, err := serfAgent.Get_PeerAddress(handler.configPath)
 	if err != nil {
 		return err
 	}
@@ -165,95 +162,6 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	_, err = handler.serfAgentObj.Serf_agent_startup(joinAddrs, true)
 
 	return err
-}
-
-func (handler *proxyHandler) get_PMDBServer_Config() {
-	var raftUUID, peerConfig string
-	for raftUUID == "" {
-		peerConfig, raftUUID = handler.serfAgentObj.Get_tags()
-		time.Sleep(2 * time.Second)
-	}
-	log.Info("PMDB config recvd from gossip : ", peerConfig)
-	handler.raftUUID = raftUUID
-	handler.PMDBServerConfigByteMap = make(map[string][]byte)
-
-	splitData := strings.Split(peerConfig, "/")
-	var PeerUUID, ClientPort, Port, IPAddr string
-	flag := false
-	for i, element := range splitData {
-		switch i % 4 {
-		case 0:
-			PeerUUID = element
-		case 1:
-			IPAddr = element
-		case 2:
-			ClientPort = element
-		case 3:
-			flag = true
-			Port = element
-		}
-		if flag {
-			peerConfig := PeerConfigData{
-				PeerUUID:   PeerUUID,
-				IPAddr:     IPAddr,
-				Port:       Port,
-				ClientPort: ClientPort,
-			}
-			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
-			handler.PMDBServerConfigByteMap[PeerUUID], _ = json.Marshal(peerConfig)
-			flag = false
-		}
-	}
-	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
-	//os.Mkdir(path+"/"+handler.clientUUID,os.ModePerm)
-	//log.Info("Peer UUID : ",handler.clientUUID)
-	//path += "/" + handler.clientUUID
-	os.Mkdir(path, os.ModePerm)
-	//path += "/PMDBConfig/"
-	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
-	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
-	handler.dump_ConfigToFile(path + "/")
-}
-
-func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) {
-	//Generate .raft
-	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
-	if err != nil {
-		log.Error(err)
-	}
-
-	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID + "\n")
-	if errFile != nil {
-		log.Error(errFile)
-	}
-
-	for _, peer := range handler.PMDBServerConfigArray {
-		raft_file.WriteString("PEER " + peer.PeerUUID + "\n")
-	}
-
-	raft_file.Sync()
-	raft_file.Close()
-
-	//Generate .peer
-	for _, peer := range handler.PMDBServerConfigArray {
-		peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
-		if err != nil {
-			log.Error(err)
-		}
-
-		_, errFile := peer_file.WriteString(
-			"RAFT         " + handler.raftUUID +
-				"\nIPADDR       " + peer.IPAddr +
-				"\nPORT         " + peer.Port +
-				"\nCLIENT_PORT  " + peer.ClientPort +
-				"\nSTORE        ./*.raftdb\n")
-
-		if errFile != nil {
-			log.Error(errFile)
-		}
-		peer_file.Sync()
-		peer_file.Close()
-	}
 }
 
 func (handler *proxyHandler) start_HTTPServer() error {
@@ -278,7 +186,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	tag["Hport"] = handler.httpPort
 	tag["Aport"] = handler.serfAgentPort
 	tag["Rport"] = handler.serfAgentRPCPort
-	tag["Type"] = "PROXY"
+	tag["Type"]  = "PROXY"
 	handler.serfAgentObj.Set_node_tags(tag)
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
@@ -348,9 +256,6 @@ func main() {
 		log.Error("Error while starting serf agent : ", err)
 		os.Exit(1)
 	}
-
-	//Get PMDB server config data
-	proxyObj.get_PMDBServer_Config()
 
 	//Create a niovaKVServerHandler
 	err = proxyObj.start_PMDBClient()

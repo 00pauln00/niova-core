@@ -1,14 +1,14 @@
 module controlplane/proxy
 
-replace common/httpServer => ../../HTTP/server
+replace common/httpServer => ../../../../HTTP/server
 
-replace common/requestResponseLib => ../RequestResponselib
+replace common/requestResponseLib => ../../common/RequestResponselib
 
-replace niova/go-pumicedb-lib/client => ../../pumiceDB/client
+replace niova/go-pumicedb-lib/client => ../../../client
 
-replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
+replace niova/go-pumicedb-lib/common => ../../../common
 
-replace common/serfAgent => ../../Serf/agent
+replace common/serfAgent => ../../../../Serf/agent
 
 go 1.16
 
