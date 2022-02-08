@@ -3,30 +3,29 @@ package main
 //import _ "net/http/pprof"
 
 import (
+	"bytes"
+	"common/requestResponseLib"
+	"controlplane/serfagenthandler"
+	"ctlplane/client_api"
+	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
-	"bytes"
 	"strconv"
 	"strings"
 	"sync"
 	"syscall"
 	"time"
-	"net"
-	"encoding/gob"
 	"unsafe"
-	"controlplane/serfagenthandler"
-	"github.com/fsnotify/fsnotify"
-	"github.com/google/uuid"
-	"ctlplane/client_api"
-	"common/requestResponseLib"
 )
-
 
 // #include <unistd.h>
 // #include <string.h>
@@ -49,16 +48,16 @@ func mlongsleep() {
 	C.usleep(500000)
 }
 
-var(
-	endpointRoot  *string // flag
-	httpPort      *int    // flag
-	showHelp      *bool   //flag
-	showHelpShort *bool   //flag
-
+var (
+	endpointRoot    *string // flag
+	httpPort        *int    // flag
+	showHelp        *bool   //flag
+	showHelpShort   *bool   //flag
+	udpPort         string  //flag
 	agentHandler    serfagenthandler.SerfAgentHandler
 	agentName       string
-	addr	        string
-	agentPort	string
+	addr            string
+	agentPort       string
 	agentRPCPort    string
 	gossipNodesPath string
 	serfLogger      string
@@ -75,13 +74,13 @@ func init() {
 	httpPort = flag.Int("port", 8081, "http listen port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
-
-	flag.StringVar(&agentName,"n", uuid.New().String(), "Agent name")
-	flag.StringVar(&addr,"a", "127.0.0.1","Agent addr")
-	flag.StringVar(&agentPort,"p","3991","Agent port for serf")
-	flag.StringVar(&agentRPCPort,"r","3992","Agent RPC port")
-	flag.StringVar(&gossipNodesPath,"c","./gossipNodes","PMDB server gossip info")
-	flag.StringVar(&serfLogger,"s","serf.log","Serf logs")
+	flag.StringVar(&udpPort, "u", "1053", "UDP port for NISD communication")
+	flag.StringVar(&agentName, "n", uuid.New().String(), "Agent name")
+	flag.StringVar(&addr, "a", "127.0.0.1", "Agent addr")
+	flag.StringVar(&agentPort, "p", "3991", "Agent port for serf")
+	flag.StringVar(&agentRPCPort, "r", "3992", "Agent RPC port")
+	flag.StringVar(&gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
+	flag.StringVar(&serfLogger, "s", "serf.log", "Serf logs")
 	flag.Parse()
 
 	nonParsed := flag.Args()
@@ -96,16 +95,16 @@ func init() {
 }
 
 type epContainer struct {
-	EpMap          map[uuid.UUID]*NcsiEP
-	Mutex          sync.Mutex
-	Path           string
-	run            bool
-	Statb          syscall.Stat_t
-	EpWatcher      *fsnotify.Watcher
-	serfHandler    serfagenthandler.SerfAgentHandler
-	udpEvent       chan udpMessage
-	storageClient  client_api.ClientAPI
-	udpSocket      net.PacketConn
+	EpMap         map[uuid.UUID]*NcsiEP
+	Mutex         sync.Mutex
+	Path          string
+	run           bool
+	Statb         syscall.Stat_t
+	EpWatcher     *fsnotify.Watcher
+	serfHandler   serfagenthandler.SerfAgentHandler
+	udpEvent      chan udpMessage
+	storageClient client_api.ClientAPI
+	udpSocket     net.PacketConn
 }
 
 type udpMessage struct {
@@ -113,7 +112,7 @@ type udpMessage struct {
 	message []byte
 }
 
-type Nisd_config struct{
+type Nisd_config struct {
 	Uuid   string
 	Ipaddr string
 	Port   int
@@ -163,7 +162,7 @@ func (epc *epContainer) Scan() {
 func (epc *epContainer) Monitor() error {
 	var err error = nil
 	err = epc.serfAgentStart()
-	if err != nil{
+	if err != nil {
 		log.Printf("Serf error : %s", err)
 		return err
 	}
@@ -258,8 +257,8 @@ func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 	uuidString := string(data[:36])
 	uuidHex, _ := uuid.Parse(uuidString)
 	nisd, ok := epc.EpMap[uuidHex]
-	if ok{
-		if !nisd.Alive{
+	if ok {
+		if !nisd.Alive {
 			nisd.pendingCmds = make(map[string]*epCommand)
 			nisd.Alive = true
 			nisd.LastReport = time.Now()
@@ -269,21 +268,21 @@ func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 	//Send config read request to PMDB server
 	request := requestResponseLib.KVRequest{
 		Operation: "read",
-		Key : string(uuidString),
+		Key:       string(uuidString),
 	}
 	var requestByte bytes.Buffer
-        enc := gob.NewEncoder(&requestByte)
-        enc.Encode(request)
+	enc := gob.NewEncoder(&requestByte)
+	enc.Encode(request)
 	responseByte := epc.storageClient.Request(requestByte.Bytes(), "", false)
 
 	//Decode response to IPAddr and Port
 	responseObj := requestResponseLib.KVResponse{}
 	dec := gob.NewDecoder(bytes.NewBuffer(responseByte))
-        dec.Decode(&responseObj)
+	dec.Decode(&responseObj)
 	var value map[string]string
 	json.Unmarshal(responseObj.Value, &value)
 	ipaddr := value["IP_ADDR"]
-	port,_ := strconv.Atoi(value["Port"])
+	port, _ := strconv.Atoi(value["Port"])
 
 	//Fill C structure,Add statement for deleting the allocatted buffer
 	nisd_peer_config := C.struct_nisd_config{}
@@ -291,10 +290,10 @@ func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
 	C.strncpy(&(nisd_peer_config.nisd_ipaddr[0]), C.CString(ipaddr), C.ulong(len(ipaddr)+1))
 	nisd_peer_config.nisdc_addr_len = C.int(len(ipaddr))
 	nisd_peer_config.nisd_port = C.int(port)
-	returnData := C.GoBytes(unsafe.Pointer(&nisd_peer_config),C.sizeof_struct_nisd_config)
+	returnData := C.GoBytes(unsafe.Pointer(&nisd_peer_config), C.sizeof_struct_nisd_config)
 
 	//Send the data to the node
-	epc.udpSocket.WriteTo(returnData,udpInfo.addr)
+	epc.udpSocket.WriteTo(returnData, udpInfo.addr)
 }
 
 func (epc *epContainer) epOutputWatcher() {
@@ -312,7 +311,7 @@ func (epc *epContainer) epOutputWatcher() {
 			fmt.Println("ERROR", err)
 
 		case udpInfo := <-epc.udpEvent:
-			fmt.Println("Message : " , udpInfo)
+			fmt.Println("Message : ", udpInfo)
 			go epc.getConfigNSend(udpInfo)
 
 		}
@@ -388,75 +387,74 @@ func (epc *epContainer) serveHttp() {
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
 }
 
-func (epc *epContainer) serfAgentStart() error{
+func (epc *epContainer) serfAgentStart() error {
 	switch serfLogger {
-        case "ignore":
-                log.SetOutput(ioutil.Discard)
-        default:
-                f, err := os.OpenFile(serfLogger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-                if err != nil {
-                        log.SetOutput(os.Stderr)
-                } else {
-                        log.SetOutput(f)
-                }
-        }
+	case "ignore":
+		log.SetOutput(ioutil.Discard)
+	default:
+		f, err := os.OpenFile(serfLogger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		if err != nil {
+			log.SetOutput(os.Stderr)
+		} else {
+			log.SetOutput(f)
+		}
+	}
 
-        epc.serfHandler = serfagenthandler.SerfAgentHandler{}
-        epc.serfHandler.Name = agentName
-        epc.serfHandler.BindAddr = addr
-        epc.serfHandler.BindPort, _ = strconv.Atoi(agentPort)
-        epc.serfHandler.AgentLogger = log.Default()
-        epc.serfHandler.RpcAddr = addr
-        epc.serfHandler.RpcPort = agentRPCPort
-        joinAddrs, err := serfagenthandler.GetPeerAddress(gossipNodesPath)
-        if err != nil {
-                return err
-        }
-        //Start serf agent
-        _, err = epc.serfHandler.Startup(joinAddrs, true)
-        return err
+	epc.serfHandler = serfagenthandler.SerfAgentHandler{}
+	epc.serfHandler.Name = agentName
+	epc.serfHandler.BindAddr = addr
+	epc.serfHandler.BindPort, _ = strconv.Atoi(agentPort)
+	epc.serfHandler.AgentLogger = log.Default()
+	epc.serfHandler.RpcAddr = addr
+	epc.serfHandler.RpcPort = agentRPCPort
+	joinAddrs, err := serfagenthandler.GetPeerAddress(gossipNodesPath)
+	if err != nil {
+		return err
+	}
+	//Start serf agent
+	_, err = epc.serfHandler.Startup(joinAddrs, true)
+	return err
 }
 
 func (epc *epContainer) setTags() {
 	tagData := make(map[string]string)
 	tagData["Type"] = "LOOKOUT"
-	for _,nisd := range epc.EpMap{
+	for _, nisd := range epc.EpMap {
 		status := "Dead"
-		if nisd.Alive{
+		if nisd.Alive {
 			status = "Alive"
 		}
 		tagData[nisd.Uuid.String()] = status
 	}
 	err := epc.serfHandler.SetTags(tagData)
-	if err!= nil{
+	if err != nil {
 		fmt.Println(err)
 	}
 }
 
-
 func (epc *epContainer) startClientAPI() {
 	//Init niovakv client API
-        epc.storageClient = client_api.ClientAPI{
-                Timeout: 10,
-        }
-        stop := make(chan int)
-        go func() {
-                err := epc.storageClient.Start(stop, gossipNodesPath)
-                if err != nil {
-                        fmt.Println("Error while starting client API : ", err)
+	epc.storageClient = client_api.ClientAPI{
+		Timeout: 10,
+	}
+	stop := make(chan int)
+	go func() {
+		err := epc.storageClient.Start(stop, gossipNodesPath)
+		if err != nil {
+			fmt.Println("Error while starting client API : ", err)
 			os.Exit(1)
-                }
-        }()
-        epc.storageClient.Till_ready()
+		}
+	}()
+	epc.storageClient.Till_ready()
 }
 
 func (epc *epContainer) startUDPListner() {
 	fmt.Println("Starting udp listner")
 	//epc.udpEvent = make(chan udpMessage, 10)
 	var err error
-	epc.udpSocket, err = net.ListenPacket("udp", ":1053")
+	epc.udpSocket, err = net.ListenPacket("udp", ":"+udpPort)
 	if err != nil {
-		fmt.Println("UDP listner failed : ",err)
+		fmt.Println("UDP listner failed : ", err)
 	}
 
 	defer epc.udpSocket.Close()
@@ -466,9 +464,9 @@ func (epc *epContainer) startUDPListner() {
 		if err != nil {
 			continue
 		}
-		udpInfo :=  udpMessage{
-			addr     : addr,
-			message  : buf,
+		udpInfo := udpMessage{
+			addr:    addr,
+			message: buf,
 		}
 		go epc.getConfigNSend(udpInfo)
 	}
