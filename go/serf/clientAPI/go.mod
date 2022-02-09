@@ -4,7 +4,7 @@ replace common/serfClient => ../client
 
 replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 
-replace common/httpClient => ../../HTTP/client
+replace common/httpClient => ../../http/client
 
 go 1.17
 
