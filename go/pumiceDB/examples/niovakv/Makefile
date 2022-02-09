@@ -8,19 +8,19 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-niovakv_all: compile pmdbserver niovakvserver niovakvclient lkvt_module covid_foodpalace_apps install
+niovakv_all: compile pmdbserver proxy nkvc lkvt_module covid_foodpalace_apps install
 
 compile:
 	echo "Compiling niovakv"
 
 pmdbserver:
-	cd pmdb/server && go build niovakv_pmdbserver.go
+	cd PMDBServer && go build pmdbServer.go
 
-niovakvserver:
-	cd niovakv_server && go build niovakv_server.go
+proxy:
+	cd proxy && go build proxy.go
 
-niovakvclient:
-	cd niovakv_client && go build niovakv_client.go
+nkvc:
+	cd nkvc && go build nkvc.go
 
 covid_foodpalace_apps:
 	cd ../covid19_app/server && go build && cd ../../niovakv/ && cd ../covid19_app/client && go build && cd ../../niovakv/ && cd ../foodpalace_app/server && go build && cd ../../niovakv/ && cd ../foodpalace_app/client && go build
