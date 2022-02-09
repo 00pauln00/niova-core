@@ -71,7 +71,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	//err = serverHandler.startSerfAgent()
+	err = serverHandler.startSerfAgent()
 	if err != nil {
 		log.Fatal("Error while initializing serf agent ", err)
 	}
