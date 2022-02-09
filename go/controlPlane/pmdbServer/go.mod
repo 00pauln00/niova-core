@@ -6,9 +6,9 @@ replace niova/go-pumicedb-lib/server => ../../pumiceDB/server
 
 replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 
-replace common/serfAgent => ../../Serf/agent
+replace common/serfAgent => ../../serf/agent
 
-replace common/requestResponseLib => ../RequestResponselib
+replace common/requestResponseLib => ../requestResponseLib
 
 require (
 	common/requestResponseLib v0.0.0-00010101000000-000000000000 // indirect
