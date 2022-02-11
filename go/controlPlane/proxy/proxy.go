@@ -336,13 +336,12 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
 		if err != nil {
 			log.Error(err)
-			//Wait for sometime to pmdb client to establish connection with raft cluster or raft cluster to appoint a leader
-			time.Sleep(5 * time.Second)
-			continue
+		} else {
+			tag["Leader UUID"] = leader.String()
+			handler.serfAgentObj.Set_node_tags(tag)
+			log.Trace("(Proxy)", tag)
 		}
-		tag["Leader UUID"] = leader.String()
-		handler.serfAgentObj.Set_node_tags(tag)
-		log.Trace("(Proxy)", tag)
+		//Wait for sometime to pmdb client to establish connection with raft cluster or raft cluster to appoint a leader
 		time.Sleep(300 * time.Millisecond)
 	}
 }
