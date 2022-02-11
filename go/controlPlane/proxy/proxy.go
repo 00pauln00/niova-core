@@ -177,32 +177,32 @@ func Validate_tags(configPeer string) error {
 	for i := 0; i < len(configPeerSplit); i = i + 4 {
 		_, err := uuid.Parse(configPeerSplit[i])
 		if err != nil {
-			return errors.New("UUID is malformed")
+			return errors.New("Validation fail - UUID is malformed")
 		}
 	}
 	// validate IP address
 	for i := 1; i < len(configPeerSplit); i = i + 4 {
 		ret := new.ParseIP(configPeerSplit[i])
 		if ret == nil {
-			return errors.New("IP malformed")
+			return errors.New("Validation fail - IP malformed")
 		}
 	}
 	// validate port numbers
 	for i := 2; i < len(configPeerSplit); i = i + 4 {
 		configPort1, err := strconv.Atoi(configPeerSplit[i])
 		if err != nil {
-			return errors.New("PORT malformed")
+			return errors.New("Validation fail - PORT malformed")
 		}
 		if configPort1 < 1000 || configPort1 > 60000 {
-			return errors.New("PORT out of range")
+			return errors.New("Validation fail - PORT out of range")
 		}
 
 		configPort2, err := strconv.Atoi(configPeerSplit[i])
 		if err != nil {
-			return errors.New("PORT malformed")
+			return errors.New("Validation fail - PORT malformed")
 		}
 		if configPort2 < 1000 || configPort2 > 60000 {
-			return errors.New("PORT out of range")
+			return errors.New("Validation fail - PORT out of range")
 		}
 	}
 	log.Info("Validated PMDB Config")
@@ -404,7 +404,7 @@ func main() {
 	//Get PMDB server config data
 	err = proxyObj.get_PMDBServer_Config()
 	if err != nil {
-		log.Error("Could not validate PMDB Server config data : ", err)
+		log.Error("Could not get PMDB Server config data : ", err)
 		os.Exit(1)
 	}
 	//Create a niovaKVServerHandler
