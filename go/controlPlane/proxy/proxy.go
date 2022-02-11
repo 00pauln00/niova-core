@@ -258,20 +258,24 @@ func (handler *proxyHandler) get_PMDBServer_Config() error {
 	//path += "/PMDBConfig/"
 	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
 	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
-	handler.dump_ConfigToFile(path + "/")
+	err := handler.dump_ConfigToFile(path + "/")
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
-func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) {
+func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) error {
 	//Generate .raft
 	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
 	if err != nil {
-		log.Error(err)
+		return err
 	}
 
 	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID + "\n")
 	if errFile != nil {
-		log.Error(errFile)
+		return err
 	}
 
 	for _, peer := range handler.PMDBServerConfigArray {
@@ -296,11 +300,12 @@ func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) {
 				"\nSTORE        ./*.raftdb\n")
 
 		if errFile != nil {
-			log.Error(errFile)
+			return errFile
 		}
 		peer_file.Sync()
 		peer_file.Close()
 	}
+	return nil
 }
 
 func (handler *proxyHandler) start_HTTPServer() error {
