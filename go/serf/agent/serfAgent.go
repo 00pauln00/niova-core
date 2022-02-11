@@ -2,13 +2,14 @@ package serfAgent
 
 import (
 	"bufio"
-	"github.com/hashicorp/serf/cmd/serf/command/agent"
-	"github.com/hashicorp/serf/serf"
 	"log"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/hashicorp/serf/cmd/serf/command/agent"
+	"github.com/hashicorp/serf/serf"
 )
 
 /*
