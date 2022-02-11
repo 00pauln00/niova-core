@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	pmdbClient "niova/go-pumicedb-lib/client"
-	"niova/go-pumicedb-lib/common"
+
+	"github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
+
 	//"common/pmdbClient"
 	"common/serfAgent"
 	"os"
@@ -167,10 +169,54 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	return err
 }
 
-func (handler *proxyHandler) get_PMDBServer_Config() {
+// Validate PMDB Server tags
+func Validate_tags(configPeer string) error {
+	log.Info("Validating PMDB Config..")
+	configPeerSplit := strings.Split(configPeer, "/")
+	// validate UUIDs
+	for i := 0; i < len(configPeerSplit); i = i + 4 {
+		_, err := uuid.Parse(configPeerSplit[i])
+		if err != nil {
+			return errors.New("UUID is malformed")
+		}
+	}
+	// validate IP address
+	for i := 1; i < len(configPeerSplit); i = i + 4 {
+		ret := new.ParseIP(configPeerSplit[i])
+		if ret == nil {
+			return errors.New("IP malformed")
+		}
+	}
+	// validate port numbers
+	for i := 2; i < len(configPeerSplit); i = i + 4 {
+		configPort1, err := strconv.Atoi(configPeerSplit[i])
+		if err != nil {
+			return errors.New("PORT malformed")
+		}
+		if configPort1 < 1000 || configPort1 > 60000 {
+			return errors.New("PORT out of range")
+		}
+
+		configPort2, err := strconv.Atoi(configPeerSplit[i])
+		if err != nil {
+			return errors.New("PORT malformed")
+		}
+		if configPort2 < 1000 || configPort2 > 60000 {
+			return errors.New("PORT out of range")
+		}
+	}
+	log.Info("Validated PMDB Config")
+	return nil
+}
+
+func (handler *proxyHandler) get_PMDBServer_Config() error {
 	var raftUUID, peerConfig string
 	for raftUUID == "" {
 		peerConfig, raftUUID = handler.serfAgentObj.Get_tags()
+		err := Validate_tags(peerConfig)
+		if err != nil {
+			return err
+		}
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", peerConfig)
@@ -213,6 +259,7 @@ func (handler *proxyHandler) get_PMDBServer_Config() {
 	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
 	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
 	handler.dump_ConfigToFile(path + "/")
+	return nil
 }
 
 func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) {
@@ -350,8 +397,11 @@ func main() {
 	}
 
 	//Get PMDB server config data
-	proxyObj.get_PMDBServer_Config()
-
+	err = proxyObj.get_PMDBServer_Config()
+	if err != nil {
+		log.Error("Could not validate PMDB Server config data : ", err)
+		os.Exit(1)
+	}
 	//Create a niovaKVServerHandler
 	err = proxyObj.start_PMDBClient()
 	if err != nil {
