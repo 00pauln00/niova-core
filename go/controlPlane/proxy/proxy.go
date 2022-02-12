@@ -62,6 +62,9 @@ type PeerConfigData struct {
 	IPAddr     string
 }
 
+var MaxPort = 60000
+var MinPort = 1000
+
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -193,7 +196,7 @@ func Validate_tags(configPeer string) error {
 		if err != nil {
 			return errors.New("Validation fail - PORT malformed")
 		}
-		if configPort1 < 1000 || configPort1 > 60000 {
+		if configPort1 < MinPort || configPort1 > MaxPort {
 			return errors.New("Validation fail - PORT out of range")
 		}
 
@@ -201,7 +204,7 @@ func Validate_tags(configPeer string) error {
 		if err != nil {
 			return errors.New("Validation fail - PORT malformed")
 		}
-		if configPort2 < 1000 || configPort2 > 60000 {
+		if configPort2 < MinPort || configPort2 > MaxPort {
 			return errors.New("Validation fail - PORT out of range")
 		}
 	}
