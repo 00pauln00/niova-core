@@ -11,7 +11,6 @@ import (
 	pmdbClient "niova/go-pumicedb-lib/client"
 
 	"github.com/google/uuid"
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 
 	//"common/pmdbClient"
