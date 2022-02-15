@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
+	"net"
 	pmdbClient "niova/go-pumicedb-lib/client"
-
-	"github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 
 	//"common/pmdbClient"
 	"common/serfAgent"
@@ -177,14 +178,14 @@ func Validate_tags(configPeer string) error {
 	configPeerSplit := strings.Split(configPeer, "/")
 	// validate UUIDs
 	for i := 0; i < len(configPeerSplit); i = i + 4 {
-		_, err := uuid.Parse(configPeerSplit[i])
+		_, err := uuid.FromString(configPeerSplit[i])
 		if err != nil {
 			return errors.New("Validation fail - UUID is malformed")
 		}
 	}
 	// validate IP address
 	for i := 1; i < len(configPeerSplit); i = i + 4 {
-		ret := new.ParseIP(configPeerSplit[i])
+		ret := net.ParseIP(configPeerSplit[i])
 		if ret == nil {
 			return errors.New("Validation fail - IP malformed")
 		}
