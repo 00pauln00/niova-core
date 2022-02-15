@@ -111,6 +111,9 @@ niova_vbasic_alloc_test(void)
     int rc = niova_vbasic_init(nvba, 4001);
     NIOVA_ASSERT(!rc);
 
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size + 1) == -E2BIG);
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == 0);
 
     char *ptr = NULL;
@@ -130,6 +133,7 @@ niova_vbasic_alloc_test(void)
                  ptr == &nvba->nvba_region[0]);
     // enospc test
     NIOVA_ASSERT(niova_vbasic_malloc(nvba, 1, (void *)&ptr) == -ENOSPC);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == -ENOSPC);
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == NIOVA_VBA_MAX_BITS);
 
     // free it
