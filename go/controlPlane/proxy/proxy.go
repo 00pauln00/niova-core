@@ -12,10 +12,15 @@ import (
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 
+<<<<<<< Updated upstream
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 
 	//"common/pmdbClient"
+=======
+	"fmt"
+	"sync/atomic"
+>>>>>>> Stashed changes
 	"common/serfAgent"
 	"os"
 	"os/signal"
@@ -312,13 +317,23 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	return nil
 }
 
+func (handler *proxyHandler) WriteCallBack(request []byte) error{
+	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
+        rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
+	return handler.pmdbClientObj.WriteEncoded(request,rncui)
+}
+
+func (handler *proxyHandler) ReadCallBack(request []byte,response *[]byte) error{
+	return handler.pmdbClientObj.ReadEncoded(request,response)
+}
+
 func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
 	handler.httpServerObj = httpServer.HTTPServerHandler{}
 	handler.httpServerObj.Addr = handler.addr
 	handler.httpServerObj.Port = handler.httpPort
-	handler.httpServerObj.PUTHandler = handler.pmdbClientObj.WriteEncoded
-	handler.httpServerObj.GETHandler = handler.pmdbClientObj.ReadEncoded
+	handler.httpServerObj.PUTHandler = handler.WriteCallBack
+	handler.httpServerObj.GETHandler = handler.ReadCallBack
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
 	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
 	if handler.requireStat != "0" {

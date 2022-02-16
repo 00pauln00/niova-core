@@ -14,6 +14,8 @@ import (
 	"common/httpServer"
 	"common/serfAgent"
 	"os"
+	"fmt"
+	"sync/atomic"
 	"os/signal"
 	"strconv"
 	"strings"
@@ -26,7 +28,7 @@ type proxyHandler struct {
 	configPath string
 	logLevel   string
 
-	//Niovakvserver
+	//Proxy
 	addr string
 
 	//Pmdb nivoa client
@@ -63,8 +65,8 @@ func usage() {
 	os.Exit(0)
 }
 
-//Function to get command line parameters while starting of the client.
-func (handler *proxyHandler) get_CmdParams() {
+//Function to get command line arguments
+func (handler *proxyHandler) getCmdLineArgs() {
 	//Prepare default logpath
 	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
@@ -89,7 +91,27 @@ Aport //Serf agent-agent communication
 Rport //Serf agent-client communication
 Hport //Http listener port
 */
-func (handler *proxyHandler) get_ConfigData() error {
+
+/*
+Function name : getProxyConfigData
+
+Description : 
+Parses the config file and get the proxy's configutation data
+and other serf agent address to join in the gossip mesh	
+
+Config should contain following:
+Name, Addr, Aport, Rport, Hport
+Name //For serf agent name, must be unique for each node
+Addr //Addr for serf agent and http listening
+Aport //Serf agent-agent communication
+Rport //Serf agent-client communication
+Hport //Http listener port
+
+Parameters : nil
+
+Return : error
+*/
+func (handler *proxyHandler) getProxyConfigData() error {
 	reader, err := os.Open(handler.configPath)
 	if err != nil {
 		return err
@@ -111,8 +133,16 @@ func (handler *proxyHandler) get_ConfigData() error {
 	return nil
 }
 
-//start the Niovakvpmdbclient
-func (handler *proxyHandler) start_PMDBClient() error {
+/*
+Function name : startPMDBClient
+
+Description : Initialize PMDB Client
+
+Parameters : nil
+
+Return : error
+*/
+func (handler *proxyHandler) startPMDBClient() error {
 	var err error
 
 	//Get client object.
@@ -133,7 +163,7 @@ func (handler *proxyHandler) start_PMDBClient() error {
 
 }
 
-//start the SerfAgentHandler
+//Start the serf agent
 func (handler *proxyHandler) start_SerfAgent() error {
 	switch handler.serfLogger {
 	case "ignore":
@@ -164,13 +194,25 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	return err
 }
 
+//Write callback definition for HTTP server
+func (handler *proxyHandler) WriteCallBack(request []byte) error{
+        idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
+        rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
+        return handler.pmdbClientObj.WriteEncoded(request,rncui)
+}
+
+//Read call definition for HTTP server
+func (handler *proxyHandler) ReadCallBack(request []byte,response *[]byte) error{
+        return handler.pmdbClientObj.ReadEncoded(request,response)
+}
+
 func (handler *proxyHandler) start_HTTPServer() error {
-	//Start httpserver.
+	//Start httpserver
 	handler.httpServerObj = httpServer.HTTPServerHandler{}
 	handler.httpServerObj.Addr = handler.addr
 	handler.httpServerObj.Port = handler.httpPort
-	handler.httpServerObj.PUTHandler = handler.pmdbClientObj.WriteEncoded
-	handler.httpServerObj.GETHandler = handler.pmdbClientObj.ReadEncoded
+	handler.httpServerObj.PUTHandler = handler.WriteCallBack
+	handler.httpServerObj.GETHandler = handler.ReadCallBack
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
 	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
 	if handler.requireStat != "0" {
@@ -222,7 +264,7 @@ func main() {
 
 	proxyObj := proxyHandler{}
 	//Get commandline paraameters.
-	proxyObj.get_CmdParams()
+	proxyObj.getCmdLineArgs()
 
 	flag.Usage = usage
 	flag.Parse()
@@ -244,7 +286,7 @@ func main() {
 	}
 
 	//get config data
-	err = proxyObj.get_ConfigData()
+	err = proxyObj.getProxyConfigData()
 	if err != nil {
 		log.Error("(Proxy) Error while getting config data : ", err)
 		os.Exit(1)
@@ -258,7 +300,7 @@ func main() {
 	}
 
 	//Create a niovaKVServerHandler
-	err = proxyObj.start_PMDBClient()
+	err = proxyObj.startPMDBClient()
 	if err != nil {
 		log.Error("(Niovakv Server) Error while starting pmdb client : ", err)
 		os.Exit(1)

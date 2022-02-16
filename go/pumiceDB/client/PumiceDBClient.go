@@ -6,10 +6,8 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"strconv"
-	"sync/atomic"
 	"syscall"
 	"unsafe"
-	//"fmt"
 	"niova/go-pumicedb-lib/common"
 )
 
@@ -26,7 +24,7 @@ type PmdbClientObj struct {
 	raftUuid    string
 	myUuid      string
 	AppUUID     string
-	writeSeqNo  uint64
+	WriteSeqNo  uint64
 }
 
 type RDZeroCopyObj struct {
@@ -88,9 +86,7 @@ func (obj *PmdbClientObj) Write(ed interface{},
 /*
 WriteEncoded allows client to pass the encoded KV struct for writing
 */
-func (obj *PmdbClientObj) WriteEncoded(request []byte) error {
-	idq := atomic.AddUint64(&obj.writeSeqNo, uint64(1))
-	rncui := fmt.Sprintf("%s:0:0:0:%d", obj.AppUUID, idq)
+func (obj *PmdbClientObj) WriteEncoded(request []byte,rncui string) error {
 	requestLen := int64(len(request))
 	//Convert it to unsafe pointer (void * for C function)
 	encodedData := unsafe.Pointer(&request[0])
