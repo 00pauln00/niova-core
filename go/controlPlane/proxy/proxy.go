@@ -6,13 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 
 	//"common/pmdbClient"
 	"common/serfAgent"
@@ -71,7 +72,7 @@ func usage() {
 }
 
 //Function to get command line parameters while starting of the client.
-func (handler *proxyHandler) get_CmdParams() {
+func (handler *proxyHandler) getCmdParams() {
 	//Prepare default logpath
 	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
@@ -97,7 +98,7 @@ Aport //Serf agent-agent communication
 Rport //Serf agent-client communication
 Hport //Http listener port
 */
-func (handler *proxyHandler) get_ConfigData() error {
+func (handler *proxyHandler) getConfigData() error {
 	reader, err := os.Open(handler.configPath)
 	if err != nil {
 		return err
@@ -120,7 +121,7 @@ func (handler *proxyHandler) get_ConfigData() error {
 }
 
 //start the Niovakvpmdbclient
-func (handler *proxyHandler) start_PMDBClient() error {
+func (handler *proxyHandler) startPMDBClient() error {
 	var err error
 
 	//Get client object.
@@ -142,7 +143,7 @@ func (handler *proxyHandler) start_PMDBClient() error {
 }
 
 //start the SerfAgentHandler
-func (handler *proxyHandler) start_SerfAgent() error {
+func (handler *proxyHandler) startSerfAgent() error {
 	switch handler.serfLogger {
 	case "ignore":
 		defaultLogger.SetOutput(ioutil.Discard)
@@ -173,7 +174,7 @@ func (handler *proxyHandler) start_SerfAgent() error {
 }
 
 // Validate PMDB Server tags
-func Validate_tags(configPeer string) error {
+func validateTags(configPeer string) error {
 	log.Info("Validating PMDB Config..")
 	configPeerSplit := strings.Split(configPeer, "/")
 	// validate UUIDs
@@ -212,11 +213,11 @@ func Validate_tags(configPeer string) error {
 	return nil
 }
 
-func (handler *proxyHandler) get_PMDBServer_Config() error {
+func (handler *proxyHandler) getPMDBServerConfig() error {
 	var raftUUID, peerConfig string
 	for raftUUID == "" {
 		peerConfig, raftUUID = handler.serfAgentObj.Get_tags()
-		err := Validate_tags(peerConfig)
+		err := validateTags(peerConfig)
 		if err != nil {
 			return err
 		}
@@ -261,7 +262,7 @@ func (handler *proxyHandler) get_PMDBServer_Config() error {
 	//path += "/PMDBConfig/"
 	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
 	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
-	err := handler.dump_ConfigToFile(path + "/")
+	err := handler.dumpConfigToFile(path + "/")
 	if err != nil {
 		return err
 	}
@@ -269,7 +270,7 @@ func (handler *proxyHandler) get_PMDBServer_Config() error {
 	return nil
 }
 
-func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) error {
+func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	//Generate .raft
 	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
 	if err != nil {
@@ -311,7 +312,7 @@ func (handler *proxyHandler) dump_ConfigToFile(outfilepath string) error {
 	return nil
 }
 
-func (handler *proxyHandler) start_HTTPServer() error {
+func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
 	handler.httpServerObj = httpServer.HTTPServerHandler{}
 	handler.httpServerObj.Addr = handler.addr
@@ -328,7 +329,7 @@ func (handler *proxyHandler) start_HTTPServer() error {
 }
 
 //Get gossip data
-func (handler *proxyHandler) set_Serf_GossipData() {
+func (handler *proxyHandler) setSerfGossipData() {
 	tag := make(map[string]string)
 	tag["Hport"] = handler.httpPort
 	tag["Aport"] = handler.serfAgentPort
@@ -349,7 +350,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	}
 }
 
-func (handler *proxyHandler) killSignal_Handler() {
+func (handler *proxyHandler) killSignalHandler() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -368,7 +369,7 @@ func main() {
 
 	proxyObj := proxyHandler{}
 	//Get commandline paraameters.
-	proxyObj.get_CmdParams()
+	proxyObj.getCmdParams()
 
 	flag.Usage = usage
 	flag.Parse()
@@ -390,27 +391,27 @@ func main() {
 	}
 
 	//get config data
-	err = proxyObj.get_ConfigData()
+	err = proxyObj.getConfigData()
 	if err != nil {
 		log.Error("(Proxy) Error while getting config data : ", err)
 		os.Exit(1)
 	}
 
 	//Start serf agent handler
-	err = proxyObj.start_SerfAgent()
+	err = proxyObj.startSerfAgent()
 	if err != nil {
 		log.Error("Error while starting serf agent : ", err)
 		os.Exit(1)
 	}
 
 	//Get PMDB server config data
-	err = proxyObj.get_PMDBServer_Config()
+	err = proxyObj.getPMDBServerConfig()
 	if err != nil {
 		log.Error("Could not get PMDB Server config data : ", err)
 		os.Exit(1)
 	}
 	//Create a niovaKVServerHandler
-	err = proxyObj.start_PMDBClient()
+	err = proxyObj.startPMDBClient()
 	if err != nil {
 		log.Error("(Niovakv Server) Error while starting pmdb client : ", err)
 		os.Exit(1)
@@ -419,7 +420,7 @@ func main() {
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
-		err = proxyObj.start_HTTPServer()
+		err = proxyObj.startHTTPServer()
 		if err != nil {
 			log.Error("Error while starting http server : ", err)
 		}
@@ -427,9 +428,9 @@ func main() {
 
 	//Stat maker
 	if proxyObj.requireStat != "0" {
-		go proxyObj.killSignal_Handler()
+		go proxyObj.killSignalHandler()
 	}
 
 	//Start the gossip
-	proxyObj.set_Serf_GossipData()
+	proxyObj.setSerfGossipData()
 }
