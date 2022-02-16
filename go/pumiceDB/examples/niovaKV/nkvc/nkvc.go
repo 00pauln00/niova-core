@@ -82,7 +82,6 @@ func (handler *clientHandler) validate_read(key string, value []byte) bool {
 func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write bool) {
 	var (
 		status   int
-		resp     []byte
 		validate bool
 	)
 
@@ -96,7 +95,7 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 	var responseObj requestResponseLib.KVResponse
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	dec.Decode(&responseObj)
-	if write {
+	if !write {
 		if status == 0 {
 			validate = handler.validate_read(req.Key, responseObj.Value)
 		}
@@ -114,7 +113,7 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 		Timestamp:     time.Now(),
 		Status:        status,
 		Validate:      validate,
-		ResponseValue: string(resp),
+		ResponseValue: string(responseObj.Value),
 	}
 	operationObj := opData{
 		RequestData:  requestMeta,
