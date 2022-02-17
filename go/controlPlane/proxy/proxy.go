@@ -11,16 +11,11 @@ import (
 	"net"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
-
-<<<<<<< Updated upstream
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-
-	//"common/pmdbClient"
-=======
-	"fmt"
-	"sync/atomic"
->>>>>>> Stashed changes
+	"encoding/gob"
+	"bytes"
+	"common/requestResponseLib"
 	"common/serfAgent"
 	"os"
 	"os/signal"
@@ -318,9 +313,15 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 }
 
 func (handler *proxyHandler) WriteCallBack(request []byte) error{
-	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
-        rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
-	return handler.pmdbClientObj.WriteEncoded(request,rncui)
+	//idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
+        //rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
+	requestObj := requestResponseLib.KVRequest{}
+	dec := gob.NewDecoder(bytes.NewBuffer(request))
+	err := dec.Decode(&requestObj)
+	if err != nil{
+		return err
+	}
+	return handler.pmdbClientObj.WriteEncoded(request,requestObj.Rncui)
 }
 
 func (handler *proxyHandler) ReadCallBack(request []byte,response *[]byte) error{
