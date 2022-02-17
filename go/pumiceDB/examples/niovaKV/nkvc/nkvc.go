@@ -276,7 +276,7 @@ func main() {
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	case "leader":
-		data := clientObj.clientAPIObj.getLeader()
+		data := clientObj.clientAPIObj.GetLeader()
 		toJson := make(map[string]string, 1)
 		toJson["Leader-UUID"] = data
 		file, _ := json.MarshalIndent(toJson, "", " ")

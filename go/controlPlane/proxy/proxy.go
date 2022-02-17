@@ -256,7 +256,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	}
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
-	err := handler.dumpConfigToFile(path + "/")
+	err = handler.dumpConfigToFile(path + "/")
 	if err != nil {
 		return err
 	}

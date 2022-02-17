@@ -291,7 +291,7 @@ func (handler *ClientAPIHandler) GetPMDBServerConfig() ([]byte, error) {
 }
 
 //Returns raft leader's uuid
-func (handler *ClientAPIHandler) getLeader() string {
+func (handler *ClientAPIHandler) GetLeader() string {
 	agent, err := handler.pickServer("")
 	if err != nil {
 		return "Servers unreachable"
