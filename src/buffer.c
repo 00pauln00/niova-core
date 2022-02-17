@@ -205,6 +205,7 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
 
         bi->bi_bs = bs;
         bi->bi_iov.iov_len = buf_size;
+        bi->bi_register_idx = -1;
 
         if (use_posix_memalign)
         {
