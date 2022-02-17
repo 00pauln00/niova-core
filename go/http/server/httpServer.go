@@ -107,12 +107,12 @@ func (handler *HTTPServerHandler) createStat(requestStatHandler *RequestStatus) 
 }
 
 func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, reader *http.Request) {
-	var thisRequestStat *RequestStatus
+	var thisRequestStat RequestStatus
 	var id int64
 
 	//Create stat for the request
 	if handler.StatsRequired {
-		id = handler.createStat(thisRequestStat)
+		id = handler.createStat(&thisRequestStat)
 	}
 
 	//HTTP connections limiter
