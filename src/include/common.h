@@ -76,9 +76,6 @@
 #define CONST_OVERRIDE(type, var, value) \
     *(type *)&(var) = value;
 
-//#define CONST_OVERRIDE2(var, value)           \
-//    *(typeof(*var) *)&(var) = value;
-
 #define NUM_HEX_CHARS(type) \
     sizeof(type) * 2
 
