@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"flag"
+	uuid "github.com/satori/go.uuid"
 	"fmt"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -26,6 +27,7 @@ type clientHandler struct {
 	configPath        string
 	logPath           string
 	resultFile        string
+	rncui		  string
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      clientAPI.ClientAPIHandler
 }
@@ -64,6 +66,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
+	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+"0:0:0:1", "RNCUI for request")
 	flag.Parse()
 }
 
@@ -125,6 +128,7 @@ func main() {
 		} else {
 			requestObj.Value = valueByte
 		}
+		requestObj.Rncui = clientObj.rncui
 		write = true
 		fallthrough
 

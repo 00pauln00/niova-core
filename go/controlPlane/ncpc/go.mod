@@ -34,6 +34,7 @@ require (
 	github.com/hashicorp/memberlist v0.3.0 // indirect
 	github.com/hashicorp/serf v0.9.6 // indirect
 	github.com/miekg/dns v1.1.41 // indirect
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/stretchr/testify v1.4.0 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
