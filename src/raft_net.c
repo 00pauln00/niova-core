@@ -1423,13 +1423,13 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
 
     *tmc_out = NULL;
 
+    DECLARE_AND_INIT_UUID_STR(hs_sender_uuid, handshake->rrm_sender_id);
     int raft_uuid_comp = uuid_compare(handshake->rrm_raft_id,
                                       RAFT_INSTANCE_2_RAFT_UUID(ri));
     if (raft_uuid_comp ||
         handshake->rrm_type != RAFT_RPC_MSG_TYPE_ANY ||
         handshake->rrm_version != 0)
     {
-        DECLARE_AND_INIT_UUID_STR(hs_sender_uuid, handshake->rrm_sender_id);
         DECLARE_AND_INIT_UUID_STR(hs_raft_uuid, handshake->rrm_raft_id);
 
         DBG_RAFT_MSG(LL_ERROR, handshake, "invalid raft handshake from %s",
@@ -1462,6 +1462,7 @@ raft_net_tcp_handshake_cb(struct raft_instance *ri,
             DBG_RAFT_MSG(LL_ERROR, handshake, "invalid connection, fd: %d", fd);
             return -ENOENT;
         }
+        SIMPLE_LOG_MSG(LL_WARN, "raft_net_csn_setup for sender: %s", hs_sender_uuid);
         rc = raft_net_csn_setup(csn_ptr, ri);
         if (rc)
         {
