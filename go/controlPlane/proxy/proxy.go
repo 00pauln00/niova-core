@@ -217,12 +217,12 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	var raftUUID, peerConfig string
 	for raftUUID == "" {
 		peerConfig, raftUUID = handler.serfAgentObj.GetTags()
-		err := validateTags(peerConfig)
-		if err != nil {
-			return err
-		}
 		time.Sleep(2 * time.Second)
 	}
+	err := validateTags(peerConfig)
+        if err != nil {
+		return err
+        }
 	log.Info("PMDB config recvd from gossip : ", peerConfig)
 	handler.raftUUID = raftUUID
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
@@ -255,13 +255,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		}
 	}
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
-	//os.Mkdir(path+"/"+handler.clientUUID,os.ModePerm)
-	//log.Info("Peer UUID : ",handler.clientUUID)
-	//path += "/" + handler.clientUUID
 	os.Mkdir(path, os.ModePerm)
-	//path += "/PMDBConfig/"
-	//log.Info("Altered NIOVA_LOCAL_CTL_SVC_DIR is ", path)
-	//os.Setenv("NIOVA_LOCAL_CTL_SVC_DIR",path)
 	err := handler.dumpConfigToFile(path + "/")
 	if err != nil {
 		return err
@@ -313,8 +307,6 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 }
 
 func (handler *proxyHandler) WriteCallBack(request []byte) error{
-	//idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
-        //rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
 	requestObj := requestResponseLib.KVRequest{}
 	dec := gob.NewDecoder(bytes.NewBuffer(request))
 	err := dec.Decode(&requestObj)
