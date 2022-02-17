@@ -5,12 +5,13 @@ import (
 	"common/serfClient"
 	"encoding/json"
 	"errors"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 
 	client "github.com/hashicorp/serf/client"
 )
@@ -45,7 +46,7 @@ type ServerRequestStat struct {
 	Failed  int64
 }
 
-func (handler *ServerRequestStat) update_Stat(ok bool) {
+func (handler *ServerRequestStat) updateStat(ok bool) {
 	handler.Count += int64(1)
 	if ok {
 		handler.Success += int64(1)
@@ -54,7 +55,7 @@ func (handler *ServerRequestStat) update_Stat(ok bool) {
 	}
 }
 
-func (handler *ClientAPIHandler) Dump_Into_Json(outfilepath string) {
+func (handler *ClientAPIHandler) dumpIntoJson(outfilepath string) {
 
 	//prepare path for temporary json file.
 	tempOutfileName := outfilepath + "/" + "reqdistribution" + ".json"
@@ -80,7 +81,7 @@ time:
 		default:
 			var err error
 			var ok bool
-			toSend, err = handler.pick_Server(toSend.Name)
+			toSend, err = handler.pickServer(toSend.Name)
 			if err != nil {
 				break time
 			}
@@ -95,7 +96,7 @@ time:
 				if _, present := handler.RequestDistribution[toSend.Name]; !present {
 					handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
 				}
-				handler.RequestDistribution[toSend.Name].update_Stat(ok)
+				handler.RequestDistribution[toSend.Name].updateStat(ok)
 				handler.requestUpdateLock.Unlock()
 			}
 
@@ -118,14 +119,14 @@ time:
 	return response
 }
 
-func is_Valid_NodeData(member client.Member) bool {
+func isValidNodeData(member client.Member) bool {
 	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] == "PMDB_SERVER") {
 		return false
 	}
 	return true
 }
 
-func (handler *ClientAPIHandler) pick_Server(removeName string) (client.Member, error) {
+func (handler *ClientAPIHandler) pickServer(removeName string) (client.Member, error) {
 	handler.tableLock.Lock()
 	defer handler.tableLock.Unlock()
 	var serverChoosen *client.Member
@@ -144,7 +145,7 @@ func (handler *ClientAPIHandler) pick_Server(removeName string) (client.Member, 
 			}
 
 			//Check if node is alive, check if gossip is available and http server of that node is not reported down!
-			if (is_Valid_NodeData(handler.servers[randomIndex])) && (removeName != handler.servers[randomIndex].Name) {
+			if (isValidNodeData(handler.servers[randomIndex])) && (removeName != handler.servers[randomIndex].Name) {
 				break
 			}
 			handler.servers = removeIndex(handler.servers, randomIndex)
@@ -172,12 +173,12 @@ func (handler *ClientAPIHandler) pick_Server(removeName string) (client.Member, 
 	return *serverChoosen, nil
 }
 
-func (handler *ClientAPIHandler) init_serfClient(configPath string) error {
+func (handler *ClientAPIHandler) initSerfClient(configPath string) error {
 	handler.serfClientObj.Retries = 5
-	return handler.serfClientObj.Init_data(configPath)
+	return handler.serfClientObj.initData(configPath)
 }
 
-func (handler *ClientAPIHandler) member_Searcher(stop chan int) error {
+func (handler *ClientAPIHandler) memberSearcher(stop chan int) error {
 comparison:
 	for {
 		select {
@@ -187,7 +188,7 @@ comparison:
 		default:
 			//Since we do update it continuesly, we persist the connection
 			handler.serfUpdateLock.Lock()
-			err := handler.serfClientObj.Update_SerfClient(true)
+			err := handler.serfClientObj.updateSerfClient(true)
 			handler.serfUpdateLock.Unlock()
 			if err != nil {
 				log.Error("Unable to connect with agents")
@@ -204,13 +205,13 @@ comparison:
 	return nil
 }
 
-func (handler *ClientAPIHandler) Start_ClientAPI(stop chan int, configPath string) error {
+func (handler *ClientAPIHandler) startClientAPI(stop chan int, configPath string) error {
 	var err error
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
 
 	//Retry initial serf connect for 5 times
 	for i := 0; i < 5; i++ {
-		err = handler.init_serfClient(configPath)
+		err = handler.initSerfClient(configPath)
 		if err == nil {
 			break
 		}
@@ -224,7 +225,7 @@ func (handler *ClientAPIHandler) Start_ClientAPI(stop chan int, configPath strin
 		return err
 	}
 
-	err = handler.member_Searcher(stop)
+	err = handler.memberSearcher(stop)
 	if err != nil {
 		log.Error("Error while starting the membership updater ", err)
 		return err
@@ -238,18 +239,18 @@ func removeIndex(s []client.Member, index int) []client.Member {
 	return append(ret, s[index+1:]...)
 }
 
-func (handler *ClientAPIHandler) Get_Config(configPath string) error {
+func (handler *ClientAPIHandler) getConfig(configPath string) error {
 	handler.serfClientObj.Retries = 5
-	return handler.serfClientObj.Init_data(configPath)
+	return handler.serfClientObj.initData(configPath)
 }
 
-func (handler *ClientAPIHandler) Get_Membership() map[string]client.Member {
+func (handler *ClientAPIHandler) getMembership() map[string]client.Member {
 	handler.serfUpdateLock.Lock()
 	defer handler.serfUpdateLock.Unlock()
-	return handler.serfClientObj.Get_MemberList()
+	return handler.serfClientObj.getMemberList()
 }
 
-func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte, error) {
+func (handler *ClientAPIHandler) getPMDBServerConfig() ([]byte, error) {
 	type PeerConfigData struct {
 		PeerUUID   string
 		IPAddr     string
@@ -259,7 +260,7 @@ func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte, error) {
 	var PeerUUID, ClientPort, Port, IPAddr string
 	PMDBServerConfigMap := make(map[string]PeerConfigData)
 
-	allConfig := handler.serfClientObj.Get_PMDBConfig()
+	allConfig := handler.serfClientObj.getPMDBConfig()
 	splitData := strings.Split(allConfig, "/")
 	flag := false
 	for i, element := range splitData {
@@ -290,15 +291,15 @@ func (handler *ClientAPIHandler) Get_PMDBServer_Config() ([]byte, error) {
 }
 
 //Returns raft leader's uuid
-func (handler *ClientAPIHandler) Get_Leader() string {
-	agent, err := handler.pick_Server("")
+func (handler *ClientAPIHandler) getLeader() string {
+	agent, err := handler.pickServer("")
 	if err != nil {
 		return "Servers unreachable"
 	}
 	return agent.Tags["Leader UUID"]
 }
 
-func (handler *ClientAPIHandler) Till_ready() {
+func (handler *ClientAPIHandler) tillReady() {
 	for !handler.ready {
 
 	}

@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
@@ -17,6 +16,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type clientHandler struct {
@@ -231,13 +232,13 @@ func main() {
 	}
 	stop := make(chan int)
 	go func() {
-		err := clientObj.clientAPIObj.Start_ClientAPI(stop, clientObj.configPath)
+		err := clientObj.clientAPIObj.startClientAPI(stop, clientObj.configPath)
 		if err != nil {
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.Till_ready()
+	clientObj.clientAPIObj.tillReady()
 
 	//Process the request
 	n, _ := strconv.Atoi(clientObj.noRequest)
@@ -270,12 +271,12 @@ func main() {
 		clientObj.write_Json(toJson)
 
 	case "membership":
-		toJson := clientObj.clientAPIObj.Get_Membership()
+		toJson := clientObj.clientAPIObj.getMembership()
 		file, _ := json.MarshalIndent(toJson, "", " ")
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	case "leader":
-		data := clientObj.clientAPIObj.Get_Leader()
+		data := clientObj.clientAPIObj.getLeader()
 		toJson := make(map[string]string, 1)
 		toJson["Leader-UUID"] = data
 		file, _ := json.MarshalIndent(toJson, "", " ")

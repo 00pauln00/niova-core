@@ -114,7 +114,7 @@ func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
 	return no_of_nodes, err
 }
 
-func Get_PeerAddress(staticSerfConfigPath string) ([]string, error) {
+func getPeerAddress(staticSerfConfigPath string) ([]string, error) {
 	//Get addrs and Rports and store it in AgentAddrs and
 	if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
 		return nil, err
@@ -140,7 +140,7 @@ Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) Serf_agent_startup(joinAddrs []string, RPCRequired bool) (int, error) {
+func (Handler *SerfAgentHandler) serfAgentStartup(joinAddrs []string, RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -168,7 +168,7 @@ Parameters : None
 Return value : Members []string
 Description : Returns addr of nodes in the cluster
 */
-func (Handler *SerfAgentHandler) Get_membership() []string {
+func (Handler *SerfAgentHandler) getMembership() []string {
 	var membersAddr []string
 	members := Handler.agentObj.Serf().Members()
 	for _, mems := range members {
@@ -184,12 +184,12 @@ Parameters : tags (map[string]string)
 Return value : error
 Description : Update tags, its incremental type update
 */
-func (Handler *SerfAgentHandler) Set_node_tags(tags map[string]string) error {
+func (Handler *SerfAgentHandler) setNodeTags(tags map[string]string) error {
 	err := Handler.agentObj.SetTags(tags)
 	return err
 }
 
-func (Handler *SerfAgentHandler) Get_tags() (string, string) {
+func (Handler *SerfAgentHandler) getTags() (string, string) {
 	members := Handler.agentObj.Serf().Members()
 	for _, mem := range members {
 		if mem.Tags["Type"] == "PMDB_SERVER" {

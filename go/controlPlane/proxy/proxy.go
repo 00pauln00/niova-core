@@ -168,12 +168,12 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
-	joinAddrs, err := serfAgent.Get_PeerAddress(handler.serfPeersFilePath)
+	joinAddrs, err := serfAgent.getPeerAddress(handler.serfPeersFilePath)
 	if err != nil {
 		return err
 	}
 	//Start serf agent
-	_, err = handler.serfAgentObj.Serf_agent_startup(joinAddrs, true)
+	_, err = handler.serfAgentObj.serfAgentStartup(joinAddrs, true)
 
 	return err
 }
@@ -221,7 +221,7 @@ func validateTags(configPeer string) error {
 func (handler *proxyHandler) getPMDBServerConfig() error {
 	var raftUUID, peerConfig string
 	for raftUUID == "" {
-		peerConfig, raftUUID = handler.serfAgentObj.Get_tags()
+		peerConfig, raftUUID = handler.serfAgentObj.getTags()
 		err := validateTags(peerConfig)
 		if err != nil {
 			return err
@@ -350,14 +350,14 @@ func (handler *proxyHandler) setSerfGossipData() {
 	tag["Aport"] = handler.serfAgentPort
 	tag["Rport"] = handler.serfAgentRPCPort
 	tag["Type"] = "PROXY"
-	handler.serfAgentObj.Set_node_tags(tag)
+	handler.serfAgentObj.setNodeTags(tag)
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
 		if err != nil {
 			log.Error(err)
 		} else {
 			tag["Leader UUID"] = leader.String()
-			handler.serfAgentObj.Set_node_tags(tag)
+			handler.serfAgentObj.setNodeTags(tag)
 			log.Trace("(Proxy)", tag)
 		}
 		//Wait for sometime to pmdb client to establish connection with raft cluster or raft cluster to appoint a leader

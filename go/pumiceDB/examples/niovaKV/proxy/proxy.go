@@ -2,25 +2,25 @@ package main
 
 import (
 	"bufio"
+	"common/httpServer"
+	"common/serfAgent"
 	"encoding/json"
 	"errors"
 	"flag"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"fmt"
 	"io/ioutil"
 	defaultLogger "log"
 	pmdbClient "niova/go-pumicedb-lib/client"
-	"niova/go-pumicedb-lib/common"
-	"common/httpServer"
-	"common/serfAgent"
 	"os"
-	"fmt"
-	"sync/atomic"
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type proxyHandler struct {
@@ -40,11 +40,11 @@ type proxyHandler struct {
 	pmdbClientObj           *pmdbClient.PmdbClientObj
 
 	//Serf agent
-	serfAgentName         string
-	serfAgentPort         string
-	serfAgentRPCPort      string
-	serfLogger            string
-	serfAgentObj          serfAgent.SerfAgentHandler
+	serfAgentName    string
+	serfAgentPort    string
+	serfAgentRPCPort string
+	serfLogger       string
+	serfAgentObj     serfAgent.SerfAgentHandler
 
 	//Http
 	httpPort      string
@@ -95,9 +95,9 @@ Hport //Http listener port
 /*
 Function name : getProxyConfigData
 
-Description : 
+Description :
 Parses the config file and get the proxy's configutation data
-and other serf agent address to join in the gossip mesh	
+and other serf agent address to join in the gossip mesh
 
 Config should contain following:
 Name, Addr, Aport, Rport, Hport
@@ -184,26 +184,26 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
-	joinAddrs, err := serfAgent.Get_PeerAddress(handler.configPath)
+	joinAddrs, err := serfAgent.getPeerAddress(handler.configPath)
 	if err != nil {
 		return err
 	}
 	//Start serf agent
-	_, err = handler.serfAgentObj.Serf_agent_startup(joinAddrs, true)
+	_, err = handler.serfAgentObj.serfAgentStartup(joinAddrs, true)
 
 	return err
 }
 
 //Write callback definition for HTTP server
-func (handler *proxyHandler) WriteCallBack(request []byte) error{
-        idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
-        rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
-        return handler.pmdbClientObj.WriteEncoded(request,rncui)
+func (handler *proxyHandler) WriteCallBack(request []byte) error {
+	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
+	return handler.pmdbClientObj.WriteEncoded(request, rncui)
 }
 
 //Read call definition for HTTP server
-func (handler *proxyHandler) ReadCallBack(request []byte,response *[]byte) error{
-        return handler.pmdbClientObj.ReadEncoded(request,response)
+func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
+	return handler.pmdbClientObj.ReadEncoded(request, response)
 }
 
 func (handler *proxyHandler) start_HTTPServer() error {
@@ -228,8 +228,8 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	tag["Hport"] = handler.httpPort
 	tag["Aport"] = handler.serfAgentPort
 	tag["Rport"] = handler.serfAgentRPCPort
-	tag["Type"]  = "PROXY"
-	handler.serfAgentObj.Set_node_tags(tag)
+	tag["Type"] = "PROXY"
+	handler.serfAgentObj.setNodeTags(tag)
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
 		if err != nil {
@@ -239,7 +239,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 			continue
 		}
 		tag["Leader UUID"] = leader.String()
-		handler.serfAgentObj.Set_node_tags(tag)
+		handler.serfAgentObj.setNodeTags(tag)
 		log.Trace("(Proxy)", tag)
 		time.Sleep(300 * time.Millisecond)
 	}

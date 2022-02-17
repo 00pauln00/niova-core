@@ -230,7 +230,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	serfAgentHandler.RpcAddr = handler.addr
 	serfAgentHandler.RpcPort = handler.rport
 	//Start serf agent
-	_, err = serfAgentHandler.Serf_agent_startup(handler.gossipClusterNodes, true)
+	_, err = serfAgentHandler.serfAgentStartup(handler.gossipClusterNodes, true)
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
@@ -240,7 +240,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	handler.GossipData["Rport"] = handler.rport
 	handler.GossipData["PC"] = handler.ConfigString
 	handler.GossipData["RU"] = handler.raftUUID
-	serfAgentHandler.Set_node_tags(handler.GossipData)
+	serfAgentHandler.setNodeTags(handler.GossipData)
 	return err
 }
 
