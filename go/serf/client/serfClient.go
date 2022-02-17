@@ -64,7 +64,7 @@ Parameters : configPath string
 Return value : error
 Description : Get configuration data from config file
 */
-func (Handler *SerfClientHandler) initData(configpath string) error {
+func (Handler *SerfClientHandler) InitData(configpath string) error {
 	var connectClient *client.RPCClient
 	addrs, err := Handler.getConfigData(configpath)
 	if err != nil {
@@ -111,7 +111,7 @@ Return value : error
 Description : Gets data from a random agent, persist the agent connection if persistConnection is true.
 persistConnection can be used if frequect updates are required.
 */
-func (Handler *SerfClientHandler) updateSerfClient(persistConnection bool) error {
+func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error {
 	var err error
 
 	//If no connection was persisted
@@ -153,7 +153,7 @@ func (Handler *SerfClientHandler) updateSerfClient(persistConnection bool) error
 	return err
 }
 
-func (Handler *SerfClientHandler) getPMDBConfig() string {
+func (Handler *SerfClientHandler) GetPMDBConfig() string {
 	for _, mem := range Handler.Agents {
 		if mem.Tags["Type"] == "PMDB_SERVER" {
 			return mem.Tags["PC"]
@@ -165,7 +165,7 @@ func (Handler *SerfClientHandler) getPMDBConfig() string {
 /*
 Type : SerfClientHandler
 */
-func (Handler *SerfClientHandler) getMemberList() map[string]client.Member {
+func (Handler *SerfClientHandler) GetMemberList() map[string]client.Member {
 	memberMap := make(map[string]client.Member)
 	for _, mems := range Handler.Agents {
 		memberMap[mems.Name] = mems

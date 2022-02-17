@@ -232,13 +232,13 @@ func main() {
 	}
 	stop := make(chan int)
 	go func() {
-		err := clientObj.clientAPIObj.startClientAPI(stop, clientObj.configPath)
+		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.tillReady()
+	clientObj.clientAPIObj.TillReady()
 
 	//Process the request
 	n, _ := strconv.Atoi(clientObj.noRequest)
@@ -271,7 +271,7 @@ func main() {
 		clientObj.write_Json(toJson)
 
 	case "membership":
-		toJson := clientObj.clientAPIObj.getMembership()
+		toJson := clientObj.clientAPIObj.GetMembership()
 		file, _ := json.MarshalIndent(toJson, "", " ")
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 

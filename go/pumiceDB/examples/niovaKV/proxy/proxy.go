@@ -18,7 +18,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-
+	"niova/go-pumicedb-lib/common"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -184,12 +184,12 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
-	joinAddrs, err := serfAgent.getPeerAddress(handler.configPath)
+	joinAddrs, err := serfAgent.GetPeerAddress(handler.configPath)
 	if err != nil {
 		return err
 	}
 	//Start serf agent
-	_, err = handler.serfAgentObj.serfAgentStartup(joinAddrs, true)
+	_, err = handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
 
 	return err
 }
@@ -229,7 +229,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 	tag["Aport"] = handler.serfAgentPort
 	tag["Rport"] = handler.serfAgentRPCPort
 	tag["Type"] = "PROXY"
-	handler.serfAgentObj.setNodeTags(tag)
+	handler.serfAgentObj.SetNodeTags(tag)
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
 		if err != nil {
@@ -239,7 +239,7 @@ func (handler *proxyHandler) set_Serf_GossipData() {
 			continue
 		}
 		tag["Leader UUID"] = leader.String()
-		handler.serfAgentObj.setNodeTags(tag)
+		handler.serfAgentObj.SetNodeTags(tag)
 		log.Trace("(Proxy)", tag)
 		time.Sleep(300 * time.Millisecond)
 	}

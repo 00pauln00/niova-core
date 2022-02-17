@@ -175,7 +175,7 @@ func (handler *ClientAPIHandler) pickServer(removeName string) (client.Member, e
 
 func (handler *ClientAPIHandler) initSerfClient(configPath string) error {
 	handler.serfClientObj.Retries = 5
-	return handler.serfClientObj.initData(configPath)
+	return handler.serfClientObj.InitData(configPath)
 }
 
 func (handler *ClientAPIHandler) memberSearcher(stop chan int) error {
@@ -188,7 +188,7 @@ comparison:
 		default:
 			//Since we do update it continuesly, we persist the connection
 			handler.serfUpdateLock.Lock()
-			err := handler.serfClientObj.updateSerfClient(true)
+			err := handler.serfClientObj.UpdateSerfClient(true)
 			handler.serfUpdateLock.Unlock()
 			if err != nil {
 				log.Error("Unable to connect with agents")
@@ -205,7 +205,7 @@ comparison:
 	return nil
 }
 
-func (handler *ClientAPIHandler) startClientAPI(stop chan int, configPath string) error {
+func (handler *ClientAPIHandler) StartClientAPI(stop chan int, configPath string) error {
 	var err error
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
 
@@ -241,16 +241,16 @@ func removeIndex(s []client.Member, index int) []client.Member {
 
 func (handler *ClientAPIHandler) getConfig(configPath string) error {
 	handler.serfClientObj.Retries = 5
-	return handler.serfClientObj.initData(configPath)
+	return handler.serfClientObj.InitData(configPath)
 }
 
-func (handler *ClientAPIHandler) getMembership() map[string]client.Member {
+func (handler *ClientAPIHandler) GetMembership() map[string]client.Member {
 	handler.serfUpdateLock.Lock()
 	defer handler.serfUpdateLock.Unlock()
-	return handler.serfClientObj.getMemberList()
+	return handler.serfClientObj.GetMemberList()
 }
 
-func (handler *ClientAPIHandler) getPMDBServerConfig() ([]byte, error) {
+func (handler *ClientAPIHandler) GetPMDBServerConfig() ([]byte, error) {
 	type PeerConfigData struct {
 		PeerUUID   string
 		IPAddr     string
@@ -260,7 +260,7 @@ func (handler *ClientAPIHandler) getPMDBServerConfig() ([]byte, error) {
 	var PeerUUID, ClientPort, Port, IPAddr string
 	PMDBServerConfigMap := make(map[string]PeerConfigData)
 
-	allConfig := handler.serfClientObj.getPMDBConfig()
+	allConfig := handler.serfClientObj.GetPMDBConfig()
 	splitData := strings.Split(allConfig, "/")
 	flag := false
 	for i, element := range splitData {
@@ -299,7 +299,7 @@ func (handler *ClientAPIHandler) getLeader() string {
 	return agent.Tags["Leader UUID"]
 }
 
-func (handler *ClientAPIHandler) tillReady() {
+func (handler *ClientAPIHandler) TillReady() {
 	for !handler.ready {
 
 	}

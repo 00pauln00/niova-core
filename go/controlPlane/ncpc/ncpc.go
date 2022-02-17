@@ -102,13 +102,13 @@ func main() {
 	}
 	stop := make(chan int)
 	go func() {
-		err := clientObj.clientAPIObj.startClientAPI(stop, clientObj.configPath)
+		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.tillReady()
+	clientObj.clientAPIObj.TillReady()
 
 	//Send request
 	var write bool
@@ -174,7 +174,7 @@ func main() {
 		clientObj.write2Json(toJson)
 
 	case "config":
-		responseBytes, err := clientObj.clientAPIObj.getPMDBServerConfig()
+		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
 		log.Info("Response : ", string(responseBytes))
 		if err != nil {
 			log.Error("Unable to get the config data")
@@ -182,7 +182,7 @@ func main() {
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
 	case "membership":
-		toJson := clientObj.clientAPIObj.getMembership()
+		toJson := clientObj.clientAPIObj.GetMembership()
 		file, _ := json.MarshalIndent(toJson, "", " ")
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
@@ -197,7 +197,7 @@ func main() {
 		offset := 3
 		for {
 			lineCounter := 0
-			data := clientObj.clientAPIObj.getMembership()
+			data := clientObj.clientAPIObj.GetMembership()
 			for _, node := range data {
 				currentLine := offset + lineCounter
 				fmt.Print(node.Name)
@@ -225,7 +225,7 @@ func main() {
 		offset := 3
 		for {
 			lineCounter := 0
-			data := clientObj.clientAPIObj.getMembership()
+			data := clientObj.clientAPIObj.GetMembership()
 			for _, node := range data {
 				if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
 					for uuid, value := range node.Tags {
