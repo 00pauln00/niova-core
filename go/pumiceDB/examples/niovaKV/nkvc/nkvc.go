@@ -28,7 +28,7 @@ type clientHandler struct {
 	operationsWait                                                                        sync.WaitGroup
 	concurrencyChannel                                                                    chan int
 	requestSentCount, failedRequestCount                                                  int64
-	clientAPIObj                                                                          *clientAPI.ClientAPIHandler
+	clientAPIObj                                                                          *serviceDiscovery.ServiceDiscoveryHandler
 }
 
 type request struct {
@@ -227,7 +227,7 @@ func main() {
 
 	log.Info("----START OF EXECUTION---")
 	//Init niovakv client API
-	clientObj.clientAPIObj = &clientAPI.ClientAPIHandler{
+	clientObj.clientAPIObj = &serviceDiscovery.ServiceDiscoveryHandler{
 		Timeout: 10,
 	}
 	stop := make(chan int)

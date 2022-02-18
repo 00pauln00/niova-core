@@ -1,4 +1,4 @@
-package clientAPI
+package serviceDiscovery
 
 import (
 	"common/httpClient"
@@ -16,7 +16,7 @@ import (
 	client "github.com/hashicorp/serf/client"
 )
 
-type ClientAPIHandler struct {
+type ServiceDiscoveryHandler struct {
 	//Exported
 	Timeout               time.Duration //No of seconds for a request time out and membership table refresh
 	ServerChooseAlgorithm int
@@ -55,7 +55,7 @@ func (handler *ServerRequestStat) updateStat(ok bool) {
 	}
 }
 
-func (handler *ClientAPIHandler) dumpIntoJson(outfilepath string) {
+func (handler *ServiceDiscoveryHandler) dumpIntoJson(outfilepath string) {
 
 	//prepare path for temporary json file.
 	tempOutfileName := outfilepath + "/" + "reqdistribution" + ".json"
@@ -68,7 +68,7 @@ func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
 }
 
-func (handler *ClientAPIHandler) Request(payload []byte, suburl string, write bool) []byte {
+func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) []byte {
 	var toSend client.Member
 	var response []byte
 	Qtimer := time.Tick(handler.Timeout * time.Second)
@@ -126,7 +126,7 @@ func isValidNodeData(member client.Member) bool {
 	return true
 }
 
-func (handler *ClientAPIHandler) pickServer(removeName string) (client.Member, error) {
+func (handler *ServiceDiscoveryHandler)pickServer(removeName string) (client.Member, error) {
 	handler.tableLock.Lock()
 	defer handler.tableLock.Unlock()
 	var serverChoosen *client.Member
@@ -173,12 +173,12 @@ func (handler *ClientAPIHandler) pickServer(removeName string) (client.Member, e
 	return *serverChoosen, nil
 }
 
-func (handler *ClientAPIHandler) initSerfClient(configPath string) error {
+func (handler *ServiceDiscoveryHandler) initSerfClient(configPath string) error {
 	handler.serfClientObj.Retries = 5
 	return handler.serfClientObj.InitData(configPath)
 }
 
-func (handler *ClientAPIHandler) memberSearcher(stop chan int) error {
+func (handler *ServiceDiscoveryHandler)memberSearcher(stop chan int) error {
 comparison:
 	for {
 		select {
@@ -205,7 +205,7 @@ comparison:
 	return nil
 }
 
-func (handler *ClientAPIHandler) StartClientAPI(stop chan int, configPath string) error {
+func (handler *ServiceDiscoveryHandler) StartClientAPI(stop chan int, configPath string) error {
 	var err error
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
 
@@ -239,18 +239,18 @@ func removeIndex(s []client.Member, index int) []client.Member {
 	return append(ret, s[index+1:]...)
 }
 
-func (handler *ClientAPIHandler) getConfig(configPath string) error {
+func (handler *ServiceDiscoveryHandler) getConfig(configPath string) error {
 	handler.serfClientObj.Retries = 5
 	return handler.serfClientObj.InitData(configPath)
 }
 
-func (handler *ClientAPIHandler) GetMembership() map[string]client.Member {
+func (handler *ServiceDiscoveryHandler) GetMembership() map[string]client.Member {
 	handler.serfUpdateLock.Lock()
 	defer handler.serfUpdateLock.Unlock()
 	return handler.serfClientObj.GetMemberList()
 }
 
-func (handler *ClientAPIHandler) GetPMDBServerConfig() ([]byte, error) {
+func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 	type PeerConfigData struct {
 		PeerUUID   string
 		IPAddr     string
@@ -291,7 +291,7 @@ func (handler *ClientAPIHandler) GetPMDBServerConfig() ([]byte, error) {
 }
 
 //Returns raft leader's uuid
-func (handler *ClientAPIHandler) GetLeader() string {
+func (handler *ServiceDiscoveryHandler) GetLeader() string {
 	agent, err := handler.pickServer("")
 	if err != nil {
 		return "Servers unreachable"
@@ -299,7 +299,7 @@ func (handler *ClientAPIHandler) GetLeader() string {
 	return agent.Tags["Leader UUID"]
 }
 
-func (handler *ClientAPIHandler) TillReady() {
+func (handler *ServiceDiscoveryHandler) TillReady() {
 	for !handler.ready {
 
 	}
