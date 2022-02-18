@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/uuid"
+	"niova/go-pumicedb-lib/common"
 	"strconv"
 	"syscall"
 	"unsafe"
-	"niova/go-pumicedb-lib/common"
 )
 
 /*
@@ -86,7 +86,7 @@ func (obj *PmdbClientObj) Write(ed interface{},
 /*
 WriteEncoded allows client to pass the encoded KV struct for writing
 */
-func (obj *PmdbClientObj) WriteEncoded(request []byte,rncui string) error {
+func (obj *PmdbClientObj) WriteEncoded(request []byte, rncui string) error {
 	requestLen := int64(len(request))
 	//Convert it to unsafe pointer (void * for C function)
 	encodedData := unsafe.Pointer(&request[0])

@@ -126,7 +126,7 @@ func isValidNodeData(member client.Member) bool {
 	return true
 }
 
-func (handler *ServiceDiscoveryHandler)pickServer(removeName string) (client.Member, error) {
+func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Member, error) {
 	handler.tableLock.Lock()
 	defer handler.tableLock.Unlock()
 	var serverChoosen *client.Member
@@ -178,7 +178,7 @@ func (handler *ServiceDiscoveryHandler) initSerfClient(configPath string) error 
 	return handler.serfClientObj.InitData(configPath)
 }
 
-func (handler *ServiceDiscoveryHandler)memberSearcher(stop chan int) error {
+func (handler *ServiceDiscoveryHandler) memberSearcher(stop chan int) error {
 comparison:
 	for {
 		select {

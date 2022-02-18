@@ -8,9 +8,12 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	pmdbClient "niova/go-pumicedb-lib/client"
+	"niova/go-pumicedb-lib/common"
 	"os"
 	"os/signal"
 	"strconv"
@@ -18,9 +21,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
-	"niova/go-pumicedb-lib/common"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 )
 
 type proxyHandler struct {

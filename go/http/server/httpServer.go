@@ -12,12 +12,12 @@ import (
 
 type HTTPServerHandler struct {
 	//Exported
-	Addr                 string
-	Port                 string
-	GETHandler	     func([]byte,*[]byte) error
-	PUTHandler	     func([]byte) error
-	HTTPConnectionLimit  int
-	PMDBServerConfig     map[string][]byte
+	Addr                string
+	Port                string
+	GETHandler          func([]byte, *[]byte) error
+	PUTHandler          func([]byte) error
+	HTTPConnectionLimit int
+	PMDBServerConfig    map[string][]byte
 	//Non-exported
 	HTTPServer        http.Server
 	rncui             string

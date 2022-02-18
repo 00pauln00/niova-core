@@ -2,21 +2,21 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"common/httpServer"
+	"common/requestResponseLib"
+	"common/serfAgent"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"flag"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
-	"encoding/gob"
-	"bytes"
-	"common/requestResponseLib"
-	"common/serfAgent"
 	"os"
 	"os/signal"
 	"strconv"
@@ -220,9 +220,9 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		time.Sleep(2 * time.Second)
 	}
 	err := validateTags(peerConfig)
-        if err != nil {
+	if err != nil {
 		return err
-        }
+	}
 	log.Info("PMDB config recvd from gossip : ", peerConfig)
 	handler.raftUUID = raftUUID
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
@@ -306,18 +306,18 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	return nil
 }
 
-func (handler *proxyHandler) WriteCallBack(request []byte) error{
+func (handler *proxyHandler) WriteCallBack(request []byte) error {
 	requestObj := requestResponseLib.KVRequest{}
 	dec := gob.NewDecoder(bytes.NewBuffer(request))
 	err := dec.Decode(&requestObj)
-	if err != nil{
+	if err != nil {
 		return err
 	}
-	return handler.pmdbClientObj.WriteEncoded(request,requestObj.Rncui)
+	return handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui)
 }
 
-func (handler *proxyHandler) ReadCallBack(request []byte,response *[]byte) error{
-	return handler.pmdbClientObj.ReadEncoded(request,response)
+func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
+	return handler.pmdbClientObj.ReadEncoded(request, response)
 }
 
 func (handler *proxyHandler) startHTTPServer() error {

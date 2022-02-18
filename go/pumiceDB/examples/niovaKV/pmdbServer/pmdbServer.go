@@ -4,11 +4,11 @@ import (
 	"common/requestResponseLib"
 	"errors"
 	"flag"
+	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"unsafe"
-	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -23,10 +23,10 @@ var seqno = 0
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct {
-	raftUUID           string
-	peerUUID           string
-	logDir             string
-	logLevel           string
+	raftUUID string
+	peerUUID string
+	logDir   string
+	logLevel string
 }
 
 func main() {
@@ -111,7 +111,6 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 
 	return nso, err
 }
-
 
 type NiovaKVServer struct {
 	raftUuid       string

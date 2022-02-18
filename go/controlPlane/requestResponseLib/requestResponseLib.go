@@ -4,7 +4,7 @@ type KVRequest struct {
 	Operation string
 	Key       string
 	Value     []byte
-	Rncui	  string
+	Rncui     string
 	CheckSum  [16]byte
 }
 

@@ -7,8 +7,8 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"flag"
-	uuid "github.com/satori/go.uuid"
 	"fmt"
+	uuid "github.com/satori/go.uuid"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
@@ -27,7 +27,7 @@ type clientHandler struct {
 	configPath        string
 	logPath           string
 	resultFile        string
-	rncui		  string
+	rncui             string
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 }
