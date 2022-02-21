@@ -176,7 +176,9 @@ func (handler *proxyHandler) startSerfAgent() error {
 // Validate PMDB Server tags
 func validateTags(configPeer string) error {
 	log.Info("Validating PMDB Config..")
-	configPeerSplit := strings.Split(configPeer, "/")
+	trimmedConfigPeer := strings.Trim(configPeer, "/")
+	configPeerSplit := strings.Split(trimmedConfigPeer, "/")
+
 	// validate UUIDs
 	for i := 0; i < len(configPeerSplit); i = i + 4 {
 		_, err := uuid.FromString(configPeerSplit[i])
