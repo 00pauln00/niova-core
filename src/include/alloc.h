@@ -123,8 +123,27 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba,
 }
 
 static inline int
+niova_vbasic_space_avail(const struct niova_vbasic_allocator *nvba,
+                         size_t size_in_bytes)
+{
+    if (!nvba || !size_in_bytes)
+        return -EINVAL;
+
+    const unsigned int nunits =
+        (size_in_bytes / nvba->nvba_unit_size +
+         (size_in_bytes % nvba->nvba_unit_size ? 1 : 0));
+
+    if (nunits > NIOVA_VBA_MAX_BITS)
+        return -E2BIG;
+
+    int rc = nconsective_bits_avail(&nvba->nvba_bitmap, nunits);
+
+    return rc >= 0 ? 0 : rc; // return '0' on successful_ping_until_viable
+}
+
+static inline int
 niova_vbasic_malloc(struct niova_vbasic_allocator *nvba, size_t size_in_bytes,
-                   void **ret_ptr)
+                    void **ret_ptr)
 {
     if (!nvba || !size_in_bytes || !ret_ptr)
         return -EINVAL;

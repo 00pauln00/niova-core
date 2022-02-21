@@ -21,9 +21,9 @@ struct buffer_item
     CIRCLEQ_ENTRY(buffer_item) bi_lentry;
     SLIST_ENTRY(buffer_item)   bi_user_slentry;
     const char                *bi_allocator_func;
-    unsigned long int          bi_alloc_lineno:32;
-    unsigned long int          bi_num:31;
-    unsigned long int          bi_allocated:1;
+    unsigned int               bi_alloc_lineno:31;
+    unsigned int               bi_allocated:1;
+    int                        bi_register_idx;
 };
 
 CIRCLEQ_HEAD(buffer_list, buffer_item);
@@ -84,10 +84,14 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
                 bool use_posix_memalign);
 
 static inline ssize_t
-buffer_user_list_total_bytes(const struct buffer_user_slist *bus)
+buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
+                             size_t *nitems)
 {
     if (!bus)
         return -EINVAL;
+
+    if (*nitems)
+        *nitems = 0;
 
     const struct buffer_item *bi = NULL;
     ssize_t total = 0;
@@ -95,6 +99,7 @@ buffer_user_list_total_bytes(const struct buffer_user_slist *bus)
     SLIST_FOREACH(bi, bus, bi_user_slentry)
     {
         total += bi->bi_iov_save.iov_len;
+        (*nitems)++;
     }
 
     return total;
