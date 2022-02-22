@@ -66,7 +66,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
-	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+"0:0:0:1", "RNCUI for request")
+	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+":0:0:0:1", "RNCUI for request")
 	flag.Parse()
 }
 
