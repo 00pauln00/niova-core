@@ -71,7 +71,7 @@ jobs:
        repository: 00pauln00/niova-lookout
        ref: nisd_communication
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
-       path: ./niova-lookout
+       path: ./lookout
 
     - name: Compile niova-lookout
       run: cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir && cd -
