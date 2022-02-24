@@ -53,6 +53,10 @@ type SystemInfo struct {
 	RusageInvolCtsw         int       `json:"rusage.invol_ctsw"`
 }
 
+type NISDInfo struct {
+	ReadBytes	int	`json:"dev-bytes-read"`
+	WriteBytes	int	`json:"dev-bytes-write"`
+}
 type Histogram struct {
 	Num1       int `json:"1,omitempty"`
 	Num2       int `json:"2,omitempty"`
@@ -106,8 +110,9 @@ type RaftInfo struct {
 }
 
 type CtlIfOut struct {
-	SysInfo       SystemInfo `json:"system_info,omitempty"`
-	RaftRootEntry []RaftInfo `json:"raft_root_entry,omitempty"`
+	SysInfo		SystemInfo `json:"system_info,omitempty"`
+	RaftRootEntry	[]RaftInfo `json:"raft_root_entry,omitempty"`
+	NISDInformation	NISDInfo `json:"niorq_mgr_root_entry,omitempty"`
 }
 
 type NcsiEP struct {
@@ -128,6 +133,7 @@ type EPcmdType uint32
 const (
 	RaftInfoOp   EPcmdType = 1
 	SystemInfoOp EPcmdType = 2
+	NISDInfoOp   EPcmdType = 3
 )
 
 type epCommand struct {
@@ -295,6 +301,12 @@ func (ep *NcsiEP) getSysinfo() error {
 	return cmd.err
 }
 
+func (ep *NcsiEP) getNISDinfo() error {
+	cmd := epCommand{ep: ep, cmd: "GET /niorq_mgr_root_entry/.*", op: NISDInfoOp}
+	cmd.submit()
+	return cmd.err
+}
+
 func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 	switch op {
 	case RaftInfoOp:
@@ -304,6 +316,9 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 		ep.EPInfo.SysInfo = ctlData.SysInfo
 		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
 		//		log.Printf("update-sys %+v \n", ctlData.SysInfo)
+	case NISDInfoOp:
+		//update
+		ep.EPInfo.NISDInformation = ctlData.NISDInformation
 	default:
 		log.Printf("invalid op=%d \n", op)
 	}
@@ -339,11 +354,18 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 	return nil
 }
 
-func (ep *NcsiEP) Detect() error {
+func (ep *NcsiEP) Detect(appType string) error {
 	if ep.Alive{
-		err := ep.getSysinfo()
-		if err == nil {
-			err = ep.getRaftinfo()
+		var err error
+		switch appType {
+			case "NISD":
+				ep.getNISDinfo()
+			case "PMDB":
+				err = ep.getSysinfo()
+				if err == nil{
+					err = ep.getRaftinfo()
+				}
+
 		}
 
 		if (time.Since(ep.LastReport) > time.Second*EPtimeoutSec) {

@@ -21,6 +21,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	compressionLib "common/specificCompressionLib"
 	"sync"
 	"syscall"
 	"time"
@@ -61,6 +62,7 @@ var (
 	agentRPCPort    string
 	gossipNodesPath string
 	serfLogger      string
+	appType		string
 )
 
 func usage(rc int) {
@@ -81,6 +83,7 @@ func init() {
 	flag.StringVar(&agentRPCPort, "r", "3992", "Agent RPC port")
 	flag.StringVar(&gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
 	flag.StringVar(&serfLogger, "s", "serf.log", "Serf logs")
+	flag.StringVar(&appType, "ap", "NISD", "App type [PMDB,NISD]")
 	flag.Parse()
 
 	nonParsed := flag.Args()
@@ -183,7 +186,7 @@ func (epc *epContainer) Monitor() error {
 
 		// Query for liveness
 		for _, ep := range epc.EpMap {
-			ep.Detect()
+			ep.Detect(appType)
 		}
 
 		//Update tags
@@ -416,16 +419,33 @@ func (epc *epContainer) serfAgentStart() error {
 	return err
 }
 
-func (epc *epContainer) setTags() {
-	tagData := make(map[string]string)
-	tagData["Type"] = "LOOKOUT"
-	for _, nisd := range epc.EpMap {
-		status := "Dead"
-		if nisd.Alive {
-			status = "Alive"
+func (epc *epContainer) getCompressedGossipDataNISD() map[string]string {
+	volMax := 10000
+	returnMap := make(map[string]string)
+	for _,nisd := range epc.EpMap{
+		//Get data from map
+		uuid := nisd.Uuid.String()
+		status := nisd.Alive
+		volume := nisd.EPInfo.NISDInformation.WriteBytes
+		volumePercentage := (volume/volMax)*100
+
+		//Compact the data
+		cuuid, _ := compressionLib.CompressUUID(uuid)
+		cstatus := "0"
+		if status {
+			cstatus = "1"
 		}
-		tagData[nisd.Uuid.String()] = status
+		cvolumePercentage, _ := compressionLib.CompressNumber(volumePercentage,2)
+		//Fill map
+		returnMap[cuuid] = cstatus + cvolumePercentage + "00000"
 	}
+	returnMap["Type"] = "LOOKOUT"
+	fmt.Println(returnMap)
+	return returnMap
+}
+
+func (epc *epContainer) setTags() {
+	tagData := epc.getCompressedGossipDataNISD()
 	err := epc.serfHandler.SetTags(tagData)
 	if err != nil {
 		fmt.Println(err)
@@ -483,10 +503,9 @@ func main() {
 	go epc.serveHttp()
 
 	epc.startClientAPI()
-	//log.Info("Started client API")
+	log.Info("Started client API")
 
 	go epc.startUDPListner()
-	//log.Info("Listening UDP packets")
 
 	epc.Monitor()
 }
