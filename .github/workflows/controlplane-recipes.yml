@@ -62,7 +62,7 @@ jobs:
       with:
        repository: 00pauln00/holon
        ref: control_plane_recipes
-       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
        path: ./holon
 
     - name: Checkout niova-lookout repository
@@ -70,11 +70,27 @@ jobs:
       with:
        repository: 00pauln00/niova-lookout
        ref: nisd_communication
-       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
        path: ./lookout
 
     - name: Compile niova-lookout
-      run: cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir && cd -
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir && cd -
+
+    - name: Checkout niova-block repository
+      uses: actions/checkout@v2
+      with:
+       repository: 00pauln00/niova-block
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
+       path: ./niova-block
+
+    - name: make
+      run: cd ./code &&
+           ./prepare.sh &&
+           ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir/ --prefix=/home/runner/work/niovad/niovad/build_dir/ --enable-devel &&
+           make clean && make && make install
+      env:
+        LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
