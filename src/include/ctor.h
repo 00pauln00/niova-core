@@ -12,6 +12,8 @@
 #define NIOVA_DESTRUCTOR(priority) \
     __attribute__ ((destructor (priority)))
 
+#define NIOVA_CTOR_DEF_EXT_ENTRIES 100
+
 /* -- constructor_priorities --
  * Startup (and shutdown) order for NIOVA subsystems.
  */
@@ -34,6 +36,8 @@ enum constructor_priorities {
     LCTLI_SUBSYS_ENABLE_CTOR_PRIORITY,
     UNIT_TEST_CTOR_PRIORITY,
     INIT_COMPLETE_CTOR_PRIORITY,
+    NISD_CTOR_RANGE_START,
+    NISD_CTOR_RANGE_END = (NISD_CTOR_RANGE_START + NIOVA_CTOR_DEF_EXT_ENTRIES),
 };
 
 #endif
