@@ -87,10 +87,16 @@ jobs:
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
-           ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir/libexec/niova  --prefix=/home/runner/work/niovad/niovad/build_dir/libexec/niova                 --enable-devel &&
+           ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir/  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&
            make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
+
+    - name: List build directory
+      run: ls -l ./niova-block
+
+    - name: copy binaries of niova block to /home/runner/work/niovad/niovad/build_dir
+      run: cp -r ./niova-block  /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
