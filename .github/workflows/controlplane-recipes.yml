@@ -93,10 +93,10 @@ jobs:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
     - name: List build directory
-      run: ls -l ./niova-block
+      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: copy binaries of niova block to /home/runner/work/niovad/niovad/build_dir
-      run: cp -r ./niova-block  /home/runner/work/niovad/niovad/build_dir/libexec/niova
+      run: cp -r /home/runner/work/niovad/niovad/build_dir/bin/niova-block-ctl /home/runner/work/niovad/niovad/build_dir/bin/nisd  /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
