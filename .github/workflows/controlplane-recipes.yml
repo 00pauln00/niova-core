@@ -84,22 +84,21 @@ jobs:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
        path: ./niova-block
 
-    - name: make
-      run: cd ./code &&
+    - name: Compile niova-block
+      run: cd  ./niova-block &&
            ./prepare.sh &&
-           ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir/  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&
-           make clean && make && make install
+           ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&  make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-    - name: List build directory
+    - name: List build directory libexec
       run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir/
 
-    - name: copy binaries of niova block to /home/runner/work/niovad/niovad/build_dir
-      run: cp -r /home/runner/work/niovad/niovad/build_dir/bin/niova-block-ctl /home/runner/work/niovad/niovad/build_dir/bin/nisd  /home/runner/work/niovad/niovad/build_dir/libexec/niova
+    #- name: copy binaries of niova block to /home/runner/work/niovad/niovad/build_dir
+        #run: cp -r /home/runner/work/niovad/niovad/build_dir/bin/niova-block-ctl /home/runner/work/niovad/niovad/build_dir/bin/nisd  /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
