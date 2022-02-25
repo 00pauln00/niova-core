@@ -17,6 +17,9 @@ jobs:
     - name: apt update
       run: sudo apt update
 
+    - name: ubuntu version
+      run: lsb_release -a
+
     # Install golang
     - name: Install golang 1.16
       run: sudo rm -rf /usr/bin/go &&
