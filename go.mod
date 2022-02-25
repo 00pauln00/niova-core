@@ -10,6 +10,8 @@ replace ctlplane/httpclient => ./http/client/
 
 replace common/requestResponseLib => ./RequestResponseLib/
 
+replace common/specificCompressionLib => ./specificCompressionLib/
+
 go 1.17
 
 require (
@@ -21,6 +23,7 @@ require (
 
 require (
 	common/requestResponseLib v0.0.0-00010101000000-000000000000 // indirect
+	common/specificCompressionLib v0.0.0-00010101000000-000000000000 // indirect
 	ctlplane/httpclient v0.0.0-00010101000000-000000000000 // indirect
 	ctlplane/serfclienthandler v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e // indirect
