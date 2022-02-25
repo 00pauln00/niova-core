@@ -1,3 +1,3 @@
-basic_recipe_for_controlplane.yml
-control_plane_recipe.yml
-control_plane_multiple_proxyservers.yml
+control_plane_check_meminfo_after_kill.yml
+basic_niova_block_recipe.yml
+niova_block_gossip_info_check.yml
