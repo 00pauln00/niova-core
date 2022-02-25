@@ -18,7 +18,7 @@ jobs:
       run: sudo apt update
 
     # Install golang
-    - name: Install golang 1.17
+    - name: Install golang 1.16
       run: sudo rm -rf /usr/bin/go &&
            sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
