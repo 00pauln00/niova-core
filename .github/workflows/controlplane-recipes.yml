@@ -74,7 +74,8 @@ jobs:
        path: ./lookout
 
     - name: Compile niova-lookout
-      run: cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir && cd -
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir && cd -
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
