@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"common/requestResponseLib"
 	"common/serfAgent"
+	compressionLib "common/specificCompressionLib"
 	"errors"
 	"flag"
 	"io/ioutil"
@@ -12,7 +13,6 @@ import (
 	"os"
 	"strings"
 	"unsafe"
-	compressionLib "common/specificCompressionLib"
 	//"encoding/json"
 	log "github.com/sirupsen/logrus"
 	defaultLogger "log"
@@ -29,26 +29,6 @@ var seqno = 0
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
-
-type pmdbServerHandler struct {
-	raftUUID           string
-	peerUUID           string
-	logDir             string
-	logLevel           string
-	gossipClusterFile  string
-	gossipClusterNodes []string
-	aport              string
-	rport              string
-	addr               string
-	GossipData         map[string]string
-	ConfigString       string
-	ConfigData         []PeerConfigData
-}
-type PeerConfigData struct {
-	ClientPort string
-	Port       string
-	IPAddr     string
-}
 
 func main() {
 	serverHandler := pmdbServerHandler{}
@@ -148,7 +128,7 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() {
 			scanner := bufio.NewScanner(f)
 			peerData := PeerConfigData{}
 			uuid := file.Name()[:len(file.Name())-5] + "/"
-			cuuid,_ := compressionLib.CompressUUID(uuid)
+			cuuid, _ := compressionLib.CompressUUID(uuid)
 			handler.GossipData[cuuid] = ""
 			for scanner.Scan() {
 				text := scanner.Text()
@@ -158,16 +138,16 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() {
 				switch key {
 				case "CLIENT_PORT":
 					peerData.ClientPort = value
-					compressedData,_ := compressionLib.CompressStringNumber(value,2)
+					compressedData, _ := compressionLib.CompressStringNumber(value, 2)
 					handler.GossipData[cuuid] += compressedData
 				case "IPADDR":
 					peerData.IPAddr = value
-					compressedData,_ := compressionLib.CompressIPV4(value)
-                                        handler.GossipData[cuuid] += compressedData
+					compressedData, _ := compressionLib.CompressIPV4(value)
+					handler.GossipData[cuuid] += compressedData
 				case "PORT":
 					peerData.Port = value
-					compressedCport,_ := compressionLib.CompressStringNumber(value,2)
-                                        handler.GossipData[cuuid] += compressedCport
+					compressedCport, _ := compressionLib.CompressStringNumber(value, 2)
+					handler.GossipData[cuuid] += compressedCport
 				}
 			}
 			f.Close()
