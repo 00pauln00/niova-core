@@ -87,11 +87,11 @@ jobs:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
        path: ./niova-block
 
-    - name: Install liburing before installing niova-block
-      run: cd ./niova-block && git submodule init && git submodule update && ./configure && make && sudo make install
+         #    - name: Install liburing before installing niova-block
+         # run: cd ./niova-block && git submodule init && git submodule update && ./configure && make && sudo make install
 
     - name: Compile niova-block
-      run: cd ./niova-block &&
+      run: cd ./niova-block && git submodule init && git submodule update &&
            ./prepare.sh &&
            ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&  make clean && make && make install
       env:
