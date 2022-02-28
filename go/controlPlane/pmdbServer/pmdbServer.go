@@ -44,7 +44,9 @@ type pmdbServerHandler struct {
 	ConfigString       string
 	ConfigData         []PeerConfigData
 }
+
 type PeerConfigData struct {
+	UUID	   string
 	ClientPort string
 	Port       string
 	IPAddr     string
@@ -135,45 +137,74 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	return nso, err
 }
 
-func (handler *pmdbServerHandler) readPMDBServerConfig() {
+
+func extractPMDBServerConfigfromFile(path string) (*PeerConfigData, string, error) {
+	f, err := os.Open(path)
+        if err!= nil {
+		return nil, "", err
+	}
+	scanner := bufio.NewScanner(f)
+        peerData := PeerConfigData{}
+        var compressedConfigString, data string
+
+	for scanner.Scan() {
+        	text := scanner.Text()
+                lastIndex := len(strings.Split(text, " ")) - 1
+                key := strings.Split(text, " ")[0]
+                value := strings.Split(text, " ")[lastIndex]
+                switch key {
+                	case "CLIENT_PORT":
+                        	peerData.ClientPort = value
+                                data,err = compressionLib.CompressStringNumber(value,2)
+                                compressedConfigString += data
+                        case "IPADDR":
+                                peerData.IPAddr = value
+                                data,err = compressionLib.CompressIPV4(value)
+                                compressedConfigString += data
+                	case "PORT":
+                                peerData.Port = value
+                        	data,err = compressionLib.CompressStringNumber(value,2)
+               			compressedConfigString += data
+        	}
+		if err!= nil {
+			return nil, "", err
+		}
+        }
+	f.Close()
+
+	return &peerData, compressedConfigString, err
+}
+
+func (handler *pmdbServerHandler) readPMDBServerConfig() error {
 	folder := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	files, err := ioutil.ReadDir(folder + "/")
 	if err != nil {
-		return
+		return err
 	}
+	handler.GossipData = make(map[string]string)
 
 	for _, file := range files {
 		if strings.Contains(file.Name(), ".peer") {
-			f, _ := os.Open(folder + "/" + file.Name())
-			scanner := bufio.NewScanner(f)
-			peerData := PeerConfigData{}
-			uuid := file.Name()[:len(file.Name())-5] + "/"
-			cuuid,_ := compressionLib.CompressUUID(uuid)
-			handler.GossipData[cuuid] = ""
-			for scanner.Scan() {
-				text := scanner.Text()
-				lastIndex := len(strings.Split(text, " ")) - 1
-				key := strings.Split(text, " ")[0]
-				value := strings.Split(text, " ")[lastIndex]
-				switch key {
-				case "CLIENT_PORT":
-					peerData.ClientPort = value
-					compressedData,_ := compressionLib.CompressStringNumber(value,2)
-					handler.GossipData[cuuid] += compressedData
-				case "IPADDR":
-					peerData.IPAddr = value
-					compressedData,_ := compressionLib.CompressIPV4(value)
-                                        handler.GossipData[cuuid] += compressedData
-				case "PORT":
-					peerData.Port = value
-					compressedCport,_ := compressionLib.CompressStringNumber(value,2)
-                                        handler.GossipData[cuuid] += compressedCport
-				}
+			//Extract required config from the file
+			path := folder+"/"+file.Name()
+			peerData, compressedConfigString, err := extractPMDBServerConfigfromFile(path) 
+			if err != nil{
+				return err
 			}
-			f.Close()
-			handler.ConfigData = append(handler.ConfigData, peerData)
+
+			uuid := file.Name()[:len(file.Name())-5]
+        		cuuid,err := compressionLib.CompressUUID(uuid)
+			if err != nil{
+				return err
+			}
+
+			handler.GossipData[cuuid] = compressedConfigString
+			peerData.UUID = uuid
+			handler.ConfigData = append(handler.ConfigData, *peerData)
 		}
 	}
+
+	return nil
 }
 
 func (handler *pmdbServerHandler) readGossipClusterFile() error {
@@ -241,10 +272,10 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		log.Error("Error while starting serf agent ", err)
 	}
 	handler.readPMDBServerConfig()
-	handler.GossipData = make(map[string]string)
 	handler.GossipData["Type"] = "PMDB_SERVER"
 	handler.GossipData["Rport"] = handler.rport
 	handler.GossipData["RU"] = handler.raftUUID
+	log.Info(handler.GossipData)
 	serfAgentHandler.SetNodeTags(handler.GossipData)
 	return err
 }
