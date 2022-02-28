@@ -1,6 +1,7 @@
 package main
 
 import (
+	compressionLib "common/specificCompressionLib"
 	"encoding/json"
 	"io/ioutil"
 )
