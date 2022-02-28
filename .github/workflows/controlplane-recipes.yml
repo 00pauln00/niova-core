@@ -85,19 +85,16 @@ jobs:
       with:
        repository: 00pauln00/niova-block
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
+       submodules: recursive
        path: ./niova-block
 
-         #    - name: Install liburing before installing niova-block
-         # run: cd ./niova-block && git submodule init && git submodule update && ./configure && make && sudo make install
-
     - name: Compile niova-block
-      run: cd ./niova-block && git submodule init && git submodule update &&
+      run: cd ./niova-block &&
            ./prepare.sh &&
            ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&  make clean && make && make install
-      token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }}
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
-
+    
     - name: List build directory libexec
       run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
