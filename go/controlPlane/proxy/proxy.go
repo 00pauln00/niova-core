@@ -237,7 +237,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	//Parse data from gossip
 	for key, value := range pmdbServerGossip {
 		uuid, err := compressionLib.DecompressUUID(key)
-		if err != nil {
+		if err == nil {
 			IPAddr := compressionLib.DecompressIPV4(value[:4])
 			Port := compressionLib.DecompressNumber(value[4:6])
 			ClientPort := compressionLib.DecompressNumber(value[6:8])
@@ -251,7 +251,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 			handler.PMDBServerConfigByteMap[uuid], _ = json.Marshal(peerConfig)
 		}
 	}
-	
+
 	log.Info("Decompressed PMDB server config array : ",handler.PMDBServerConfigArray)
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
