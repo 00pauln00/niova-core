@@ -87,16 +87,15 @@ func (cli *clientHandler) putNISDInfo() map[string]nisdData {
 	nisdDataMap := make(map[string]nisdData)
 	for _, node := range data {
 		if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
-			for uuid, value := range node.Tags {
-				if uuid != "Type" {
-					CompressedNISDUUID := uuid
+			for cuuid, value := range node.Tags {
+				uuid, err := compressionLib.DecompressUUID(cuuid)
+				if err != nil {
 					CompressedStatus := value[1]
 					CompressedWriteMeta := value[1:3]
 
 					//Decompress
-					nisdUUID := compressionLib.DecompressUUID(CompressedNISDUUID)
 					thisNISDData := nisdData{}
-					thisNISDData.UUID = nisdUUID
+					thisNISDData.UUID = uuid
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
@@ -104,13 +103,14 @@ func (cli *clientHandler) putNISDInfo() map[string]nisdData {
 					}
 
 					thisNISDData.WriteSize = compressionLib.DecompressNumber(CompressedWriteMeta)
-					nisdDataMap[nisdUUID] = thisNISDData
+					nisdDataMap[uuid] = thisNISDData
 				}
 			}
 		}
 	}
 	return nisdDataMap
 }
+
 func main() {
 	//Intialize client object
 	clientObj := clientHandler{}

@@ -4,10 +4,11 @@ import (
 	"encoding/hex"
 	"strings"
 	"strconv"
+	"errors"
 )
 
 
-func CompressUUID(uuid string) (string,error){
+func CompressUUID(uuid string) (string,error) {
 	replaced := strings.Replace(uuid,"-","",4)
 	byteArray, err := hex.DecodeString(replaced)
         if err!= nil{
@@ -17,12 +18,15 @@ func CompressUUID(uuid string) (string,error){
 	return string(byteArray),nil
 }
 
-func DecompressUUID(cUUID string) string {
+func DecompressUUID(cUUID string) (string,error) {
+	if len(cUUID) < 16 {
+		return "", errors.New("Failed to parse compressed UUID")
+	}
 	uByteArray := []byte(cUUID)
         uhex := hex.EncodeToString(uByteArray)
 	//Put "-" seprator
 	uuid := uhex[:8]+"-"+uhex[8:12]+"-"+uhex[12:16]+"-"+uhex[16:20]+"-"+uhex[20:]
-	return uuid
+	return uuid, nil
 }
 
 func CompressIPV4(ip string) (string,error) {
@@ -95,4 +99,3 @@ func DecompressNumber(cnumber string) string{
 	number,_ := strconv.ParseInt(binseq,2,64)
 	return strconv.Itoa(int(number))
 }
-

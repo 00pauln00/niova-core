@@ -7,10 +7,9 @@ import (
 	"errors"
 	"io/ioutil"
 	"math/rand"
-	"strings"
 	"sync"
 	"time"
-
+	compressionLib "common/specificCompressionLib"
 	log "github.com/sirupsen/logrus"
 
 	client "github.com/hashicorp/serf/client"
@@ -250,6 +249,14 @@ func (handler *ServiceDiscoveryHandler) GetMembership() map[string]client.Member
 	return handler.serfClientObj.GetMemberList()
 }
 
+
+func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
+        for _,v := range mapSample {
+                return v
+        }
+        return nil
+}
+
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 	type PeerConfigData struct {
 		PeerUUID   string
@@ -257,36 +264,26 @@ func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 		Port       string
 		ClientPort string
 	}
-	var PeerUUID, ClientPort, Port, IPAddr string
-	PMDBServerConfigMap := make(map[string]PeerConfigData)
 
-	allConfig := handler.serfClientObj.GetPMDBConfig()
-	splitData := strings.Split(allConfig, "/")
-	flag := false
-	for i, element := range splitData {
-		switch i % 4 {
-		case 0:
-			PeerUUID = element
-		case 1:
-			IPAddr = element
-		case 2:
-			ClientPort = element
-		case 3:
-			flag = true
-			Port = element
-		}
-		if flag {
+	PMDBServerConfigMap := make(map[string]PeerConfigData)
+	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
+        pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
+
+	for key, value := range pmdbServerGossip {
+		uuid, err := compressionLib.DecompressUUID(key)
+                if err != nil {
+                        IPAddr := compressionLib.DecompressIPV4(value[:4])
+                        Port := compressionLib.DecompressNumber(value[4:6])
+                        ClientPort := compressionLib.DecompressNumber(value[6:8])
 			peerConfig := PeerConfigData{
-				PeerUUID:   PeerUUID,
+				PeerUUID:   uuid,
 				IPAddr:     IPAddr,
 				Port:       Port,
 				ClientPort: ClientPort,
 			}
-			PMDBServerConfigMap[PeerUUID] = peerConfig
-			flag = false
+			PMDBServerConfigMap[uuid] = peerConfig
 		}
 	}
-
 	return json.MarshalIndent(PMDBServerConfigMap, " ", "")
 }
 

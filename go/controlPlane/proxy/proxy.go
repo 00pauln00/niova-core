@@ -15,6 +15,7 @@ import (
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
+	compressionLib "common/specificCompressionLib"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
@@ -215,55 +216,46 @@ func validateTags(configPeer string) error {
 	return nil
 }
 
+func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
+	for _,v := range mapSample {
+		return v
+	}
+	return nil
+}
+
 func (handler *proxyHandler) GetPMDBServerConfig() error {
-	var raftUUID, peerConfig string
-	for raftUUID == "" {
-		peerConfig, raftUUID = handler.serfAgentObj.GetTags()
+	var allPmdbServerGossip map[string]map[string]string
+	for  len(allPmdbServerGossip) == 0{
+		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type","PMDB_SERVER")
 		time.Sleep(2 * time.Second)
 	}
-	err := validateTags(peerConfig)
-	if err != nil {
-		return err
-	}
-	log.Info("PMDB config recvd from gossip : ", peerConfig)
-	handler.raftUUID = raftUUID
+	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
+
+	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
+	handler.raftUUID = pmdbServerGossip["RU"]
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 
-	splitData := strings.Split(peerConfig, "/")
-	var PeerUUID, ClientPort, Port, IPAddr string
-	flag := false
-	for i, element := range splitData {
-		switch i % 4 {
-		case 0:
-			PeerUUID = element
-		case 1:
-			IPAddr = element
-		case 2:
-			ClientPort = element
-		case 3:
-			flag = true
-			Port = element
-		}
-		if flag {
+	//Parse data from gossip
+	for key, value := range pmdbServerGossip {
+		uuid, err := compressionLib.DecompressUUID(key)
+		if err != nil {
+			IPAddr := compressionLib.DecompressIPV4(value[:4])
+			Port := compressionLib.DecompressNumber(value[4:6])
+			ClientPort := compressionLib.DecompressNumber(value[6:8])
 			peerConfig := PeerConfigData{
-				PeerUUID:   PeerUUID,
+				PeerUUID:   uuid,
 				IPAddr:     IPAddr,
 				Port:       Port,
 				ClientPort: ClientPort,
 			}
 			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
-			handler.PMDBServerConfigByteMap[PeerUUID], _ = json.Marshal(peerConfig)
-			flag = false
+			handler.PMDBServerConfigByteMap[uuid], _ = json.Marshal(peerConfig)
 		}
 	}
+
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
-	err = handler.dumpConfigToFile(path + "/")
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return handler.dumpConfigToFile(path + "/")
 }
 
 func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {

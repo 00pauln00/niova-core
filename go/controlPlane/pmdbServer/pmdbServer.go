@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"unsafe"
+	compressionLib "common/specificCompressionLib"
 	//"encoding/json"
 	log "github.com/sirupsen/logrus"
 	defaultLogger "log"
@@ -146,7 +147,9 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() {
 			f, _ := os.Open(folder + "/" + file.Name())
 			scanner := bufio.NewScanner(f)
 			peerData := PeerConfigData{}
-			handler.ConfigString += file.Name()[:len(file.Name())-5] + "/"
+			uuid := file.Name()[:len(file.Name())-5] + "/"
+			cuuid,_ := compressionLib.CompressUUID(uuid)
+			handler.GossipData[cuuid] = ""
 			for scanner.Scan() {
 				text := scanner.Text()
 				lastIndex := len(strings.Split(text, " ")) - 1
@@ -155,13 +158,16 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() {
 				switch key {
 				case "CLIENT_PORT":
 					peerData.ClientPort = value
-					handler.ConfigString += value + "/"
+					compressedData,_ := compressionLib.CompressStringNumber(value,2)
+					handler.GossipData[cuuid] += compressedData
 				case "IPADDR":
 					peerData.IPAddr = value
-					handler.ConfigString += value + "/"
+					compressedData,_ := compressionLib.CompressIPV4(value)
+                                        handler.GossipData[cuuid] += compressedData
 				case "PORT":
 					peerData.Port = value
-					handler.ConfigString += value + "/"
+					compressedCport,_ := compressionLib.CompressStringNumber(value,2)
+                                        handler.GossipData[cuuid] += compressedCport
 				}
 			}
 			f.Close()
@@ -238,7 +244,6 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	handler.GossipData = make(map[string]string)
 	handler.GossipData["Type"] = "PMDB_SERVER"
 	handler.GossipData["Rport"] = handler.rport
-	handler.GossipData["PC"] = handler.ConfigString
 	handler.GossipData["RU"] = handler.raftUUID
 	serfAgentHandler.SetNodeTags(handler.GossipData)
 	return err
