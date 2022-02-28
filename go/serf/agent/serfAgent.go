@@ -189,14 +189,15 @@ func (Handler *SerfAgentHandler) SetNodeTags(tags map[string]string) error {
 	return err
 }
 
-func (Handler *SerfAgentHandler) GetTags() (string, string) {
+func (Handler *SerfAgentHandler) GetTags(filterKey string,filterValue string) map[string]map[string]string {
 	members := Handler.agentObj.Serf().Members()
+	returnMap := make(map[string]map[string]string)
 	for _, mem := range members {
-		if mem.Tags["Type"] == "PMDB_SERVER" {
-			return mem.Tags["PC"], mem.Tags["RU"]
+		if mem.Tags[filterKey] == filterValue {
+			returnMap[mem.Name] = mem.Tags
 		}
 	}
-	return "", ""
+	return returnMap
 }
 
 /*

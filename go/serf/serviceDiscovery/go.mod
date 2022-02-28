@@ -1,9 +1,12 @@
 module serviceDiscorvery
 
 go 1.17
+
 replace common/serfClient => ../client
 
 replace common/httpClient => ../../http/client
+
+replace common/specificCompressionLib => ../../specificCompressionLib
 
 require (
 	github.com/hashicorp/serf v0.9.7
@@ -11,6 +14,9 @@ require (
 )
 
 require (
+	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
+	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
+	common/specificCompressionLib v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect

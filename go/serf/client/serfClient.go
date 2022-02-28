@@ -6,7 +6,6 @@ import (
 	"math/rand"
 	"os"
 	"strings"
-
 	"github.com/hashicorp/serf/client"
 )
 
@@ -160,6 +159,17 @@ func (Handler *SerfClientHandler) GetPMDBConfig() string {
 		}
 	}
 	return ""
+}
+
+
+func (Handler *SerfClientHandler) GetTags(filterKey string, filterValue string) map[string]map[string]string {
+        returnMap := make(map[string]map[string]string)
+        for _, mem := range Handler.Agents {
+                if mem.Tags[filterKey] == filterValue {
+                        returnMap[mem.Name] = mem.Tags
+                }
+        }
+        return returnMap
 }
 
 /*

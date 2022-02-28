@@ -10,6 +10,8 @@ replace common/requestResponseLib => ../requestResponseLib
 
 replace common/clientAPI => ../../serf/serviceDiscovery
 
+replace common/specificCompressionLib => ../../specificCompressionLib/
+
 go 1.17
 
 require (
@@ -23,6 +25,7 @@ require (
 	common/clientAPI v0.0.0-00010101000000-000000000000 // indirect
 	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
+	common/specificCompressionLib v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
