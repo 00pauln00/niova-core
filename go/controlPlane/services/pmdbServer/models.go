@@ -1,5 +1,7 @@
 package main
 
+import PumiceDBServer "niova/go-pumicedb-lib/server"
+
 type pmdbServerHandler struct {
 	raftUUID           string
 	peerUUID           string
@@ -18,4 +20,11 @@ type PeerConfigData struct {
 	ClientPort string
 	Port       string
 	IPAddr     string
+}
+
+type NiovaKVServer struct {
+	raftUuid       string
+	peerUuid       string
+	columnFamilies string
+	pso            *PumiceDBServer.PmdbServerObject
 }
