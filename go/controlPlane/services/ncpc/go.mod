@@ -1,16 +1,16 @@
 module ctlplane/ncpc
 
-replace common/serfClient => ../../serf/client
+replace common/serfClient => ../../../serf/client
 
-replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
+replace niova/go-pumicedb-lib/common => ../../../pumiceDB/common
 
-replace common/httpClient => ../../http/client
+replace common/httpClient => ../../../http/client
 
 replace common/requestResponseLib => ../requestResponseLib
 
-replace common/clientAPI => ../../serf/serviceDiscovery
+replace common/clientAPI => ../../../serf/serviceDiscovery
 
-replace common/specificCompressionLib => ../../specificCompressionLib/
+replace common/specificCompressionLib => ../../../specificCompressionLib/
 
 go 1.17
 

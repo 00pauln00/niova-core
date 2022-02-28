@@ -1,8 +1,9 @@
 package main
 
 import (
-	"time"
 	"common/clientAPI"
+	"time"
+)
 
 type clientHandler struct {
 	requestKey        string

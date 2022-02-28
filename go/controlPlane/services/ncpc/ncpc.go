@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"common/requestResponseLib"
+	"common/clientAPI"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"

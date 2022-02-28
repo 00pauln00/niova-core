@@ -16,35 +16,35 @@ compile:
 	echo "Compiling niovakv"
 
 pmdbserver:
-	cd pmdbServer && go build pmdbServer.go
+	cd services/pmdbServer && go build
 
 proxyserver:
-	cd proxy && go build proxy.go
+	cd services/proxy && go build
 
 ncpcclient:
-	cd ncpc && go build ncpc.go
+	cd services/ncpc && go build
 
 install:
-	cp pmdbServer/pmdbServer proxy/proxy ncpc/ncpc ${DIR}/libexec/niova/
+	cp services/pmdbServer/pmdbServer services/proxy/proxy services/ncpc/ncpc ${DIR}/libexec/niova/
 	
-	cp proxy/config ${DIR}/libexec/niova/niovakv.config
+	cp services/proxy/config ${DIR}/libexec/niova/niovakv.config
 
-	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
+	cp services/proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
 
 docker_support:
 	cp -r docker/* ${DIR}
 	
-	cp pmdbServer/pmdbServer  ${DIR}/PMDBServerContents/
+	cp services/pmdbServer/pmdbServer  ${DIR}/PMDBServerContents/
 
-	cp proxy/gossipNodes ${DIR}/PMDBServerContents/
+	cp services/proxy/gossipNodes ${DIR}/PMDBServerContents/
 
-	cp proxy/proxy ${DIR}/ProxyContents/
+	cp services/proxy/proxy ${DIR}/ProxyContents/
 
-	cp ncpc/ncpc ${DIR}/ProxyContents/
+	cp services/ncpc/ncpc ${DIR}/ProxyContents/
 
-	cp proxy/config ${DIR}/ProxyContents/niovakv.config
+	cp services/proxy/config ${DIR}/ProxyContents/niovakv.config
 
-	cp proxy/gossipNodes ${DIR}/ProxyContents/gossipNodes
+	cp services/proxy/gossipNodes ${DIR}/ProxyContents/gossipNodes
 
 	cp -r ${DIR}/lib ${DIR}/raftconfig ${DIR}/ProxyContents
 
