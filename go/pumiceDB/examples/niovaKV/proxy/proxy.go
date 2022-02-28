@@ -203,7 +203,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte) error {
 
 //Read call definition for HTTP server
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	return handler.pmdbClientObj.ReadEncoded(request, response)
+	return handler.pmdbClientObj.ReadEncoded(request, "", response)
 }
 
 func (handler *proxyHandler) start_HTTPServer() error {

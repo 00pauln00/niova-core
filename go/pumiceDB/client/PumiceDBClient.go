@@ -138,11 +138,11 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 /*
 ReadEncoded allows client to pass the encoded KV struct for reading
 */
-func (obj *PmdbClientObj) ReadEncoded(request []byte, response *[]byte) error {
+func (obj *PmdbClientObj) ReadEncoded(request []byte, rncui string, response *[]byte) error {
 	var reply_size int64
 	var rd_err error
 	var reply_buff unsafe.Pointer
-	rncui := ""
+
 	requestLen := int64(len(request))
 	//Typecast the encoded key to char*
 	encodedData := unsafe.Pointer(&request[0])

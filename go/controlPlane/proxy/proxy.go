@@ -125,19 +125,19 @@ func (handler *proxyHandler) getConfigData() error {
 func (handler *proxyHandler) startPMDBClient() error {
 	var err error
 
-	//Get client object.
+	//Get client object
 	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID, handler.clientUUID)
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB client object is empty")
 	}
 
-	//Start pumicedb client.
+	//Start pumicedb client
 	err = handler.pmdbClientObj.Start()
 	if err != nil {
 		return err
 	}
 
-	//Store rncui in nkvclientObj.i
+	//Store rncui in nkvclientObj
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
 
@@ -170,7 +170,6 @@ func (handler *proxyHandler) startSerfAgent() error {
 	}
 	//Start serf agent
 	_, err = handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
-
 	return err
 }
 
@@ -311,7 +310,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte) error {
 }
 
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	return handler.pmdbClientObj.ReadEncoded(request, response)
+	return handler.pmdbClientObj.ReadEncoded(request, "", response)
 }
 
 func (handler *proxyHandler) startHTTPServer() error {
