@@ -88,10 +88,10 @@ jobs:
        path: ./niova-block
 
     - name: Install liburing before installing niova-block
-      run: git submodule init && git submodule update && ./configure && make && sudo make install
+      run: cd ./niova-block && git submodule init && git submodule update && ./configure && make && sudo make install
 
     - name: Compile niova-block
-      run: cd  ./niova-block &&
+      run: cd ./niova-block &&
            ./prepare.sh &&
            ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&  make clean && make && make install
       env:
