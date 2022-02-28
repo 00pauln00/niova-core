@@ -251,7 +251,8 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 			handler.PMDBServerConfigByteMap[uuid], _ = json.Marshal(peerConfig)
 		}
 	}
-
+	
+	log.Info("Decompressed PMDB server config array : ",handler.PMDBServerConfigArray)
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
 	return handler.dumpConfigToFile(path + "/")
@@ -306,7 +307,9 @@ func (handler *proxyHandler) WriteCallBack(request []byte) error {
 	if err != nil {
 		return err
 	}
-	return handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui)
+
+	err = handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui)
+	return err
 }
 
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
