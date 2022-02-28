@@ -82,7 +82,7 @@ func (cli *clientHandler) write2Json(toJson map[string][]opData) {
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
-func (cli *clientHandler) putNISDInfo() map[string]nisdData {
+func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	data := cli.clientAPIObj.GetMembership()
 	nisdDataMap := make(map[string]nisdData)
 	for _, node := range data {
@@ -285,7 +285,7 @@ func main() {
 		}
 
 	case "NISDGossip":
-		nisdDataMap := clientObj.putNISDInfo()
+		nisdDataMap := clientObj.getNISDInfo()
 		file, _ := json.MarshalIndent(nisdDataMap, "", " ")
 		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 	}
