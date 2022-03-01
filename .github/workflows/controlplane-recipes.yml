@@ -113,6 +113,9 @@ jobs:
     - name: copy binaries of niova block to /home/runner/work/niovad/niovad/build_dir
       run: cp -r /home/runner/work/niovad/niovad/build_dir/bin/niova-block-ctl /home/runner/work/niovad/niovad/build_dir/bin/nisd  /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
+    - name: compile niova-block-test
+      run: cp ./niova-block/test/niova-block-test   /home/runner/work/niovad/niovad/build_dir/libexec/niova
+
     - name: List build directory after libexec
       run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
