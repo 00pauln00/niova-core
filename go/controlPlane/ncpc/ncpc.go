@@ -89,7 +89,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 		if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
 			for cuuid, value := range node.Tags {
 				uuid, err := compressionLib.DecompressUUID(cuuid)
-				if err != nil {
+				if err == nil {
 					CompressedStatus := value[1]
 					CompressedWriteMeta := value[1:3]
 
