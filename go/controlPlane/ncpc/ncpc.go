@@ -90,7 +90,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 			for cuuid, value := range node.Tags {
 				uuid, err := compressionLib.DecompressUUID(cuuid)
 				if err == nil {
-					CompressedStatus := value[1]
+					CompressedStatus := value[0]
 					CompressedWriteMeta := value[1:3]
 
 					//Decompress
