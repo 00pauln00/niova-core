@@ -110,7 +110,10 @@ jobs:
 
     - name: copy niova-block-test binaries
       run: cp ./niova-block/test/niova-block-test   /home/runner/work/niovad/niovad/build_dir/libexec/niova
-    
+
+    - name: List build directory of binaries
+      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
+
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
 
