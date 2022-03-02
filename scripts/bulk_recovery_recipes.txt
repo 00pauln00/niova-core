@@ -3,4 +3,3 @@ bulk_recovery_with_staleDB.yml
 bulk_recovery3.yml
 bulk_recovery_killing_leader.yml
 bulk_recovery_rsync_process.yml
-peer_recovery_interrupted_long_enough.yml
