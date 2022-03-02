@@ -78,7 +78,7 @@ jobs:
 
     - name: Compile niova-lookout
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir && cd -
+           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
 
     # Checkout niova-block repository       
     - name: Checkout niova-block repository
