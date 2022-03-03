@@ -303,7 +303,6 @@ func (epc *epContainer) epOutputWatcher() {
 	for {
 		select {
 		case event := <-epc.EpWatcher.Events:
-			//fmt.Printf("EVENT! %#v\n", event)
 
 			if event.Op == fsnotify.Create {
 				epc.processInotifyEvent(&event)
@@ -314,7 +313,6 @@ func (epc *epContainer) epOutputWatcher() {
 			fmt.Println("ERROR", err)
 
 		case udpInfo := <-epc.udpEvent:
-			fmt.Println("Message : ", udpInfo)
 			go epc.getConfigNSend(udpInfo)
 
 		}
@@ -420,14 +418,11 @@ func (epc *epContainer) serfAgentStart() error {
 }
 
 func (epc *epContainer) getCompressedGossipDataNISD() map[string]string {
-	volMax := 10000
 	returnMap := make(map[string]string)
 	for _,nisd := range epc.EpMap{
 		//Get data from map
 		uuid := nisd.Uuid.String()
 		status := nisd.Alive
-		volume := nisd.EPInfo.NISDInformation.WriteBytes
-		volumePercentage := (volume/volMax)*100
 
 		//Compact the data
 		cuuid, _ := compressionLib.CompressUUID(uuid)
@@ -435,12 +430,11 @@ func (epc *epContainer) getCompressedGossipDataNISD() map[string]string {
 		if status {
 			cstatus = "1"
 		}
-		cvolumePercentage, _ := compressionLib.CompressNumber(volumePercentage,2)
-		//Fill map
-		returnMap[cuuid] = cstatus + cvolumePercentage + "00000"
+
+		//Fill map; will add extra info in future
+		returnMap[cuuid] = cstatus
 	}
 	returnMap["Type"] = "LOOKOUT"
-	fmt.Println(returnMap)
 	return returnMap
 }
 
@@ -498,12 +492,13 @@ func main() {
 	if err := epc.Init(*endpointRoot); err != nil {
 		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
 	}
+
 	epc.Scan()
 	epc.udpEvent = make(chan udpMessage, 10)
 	go epc.serveHttp()
 
 	epc.startClientAPI()
-	log.Info("Started client API")
+	//log.Info("Started client API")
 
 	go epc.startUDPListner()
 

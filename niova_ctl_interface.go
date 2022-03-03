@@ -112,7 +112,7 @@ type RaftInfo struct {
 type CtlIfOut struct {
 	SysInfo		SystemInfo `json:"system_info,omitempty"`
 	RaftRootEntry	[]RaftInfo `json:"raft_root_entry,omitempty"`
-	NISDInformation	NISDInfo `json:"niorq_mgr_root_entry,omitempty"`
+	NISDInformation	[]NISDInfo `json:"niorq_mgr_root_entry,omitempty"`
 }
 
 type NcsiEP struct {
@@ -314,7 +314,7 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 		//		log.Printf("update-raft %+v \n", ctlData.RaftRootEntry)
 	case SystemInfoOp:
 		ep.EPInfo.SysInfo = ctlData.SysInfo
-		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
+		//ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
 		//		log.Printf("update-sys %+v \n", ctlData.SysInfo)
 	case NISDInfoOp:
 		//update
@@ -322,6 +322,7 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 	default:
 		log.Printf("invalid op=%d \n", op)
 	}
+	ep.LastReport = time.Now()
 }
 
 func (ep *NcsiEP) Complete(cmdName string) error {
@@ -345,10 +346,8 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 			log.Printf("Other error: %s\n", err)
 			log.Printf("Contents: %s\n", string(cmd.getOutJSON()))
 		}
-
 		return err
 	}
-
 	ep.update(&ctlifout, cmd.op)
 
 	return nil
