@@ -91,18 +91,17 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 				uuid, err := compressionLib.DecompressUUID(cuuid)
 				if err == nil {
 					CompressedStatus := value[0]
-					CompressedWriteMeta := value[1:3]
 
 					//Decompress
 					thisNISDData := nisdData{}
 					thisNISDData.UUID = uuid
+					fmt.Println("NISD Status : " ,CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
 						thisNISDData.Status = "Dead"
 					}
 
-					thisNISDData.WriteSize = compressionLib.DecompressNumber(CompressedWriteMeta)
 					nisdDataMap[uuid] = thisNISDData
 				}
 			}
