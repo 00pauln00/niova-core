@@ -498,7 +498,6 @@ func main() {
 	go epc.serveHttp()
 
 	epc.startClientAPI()
-	//log.Info("Started client API")
 
 	go epc.startUDPListner()
 
