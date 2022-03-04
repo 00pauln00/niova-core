@@ -23,7 +23,7 @@ const (
 	maxOutFileSize    = 4*1024 ^ 2
 	outFileTimeoutSec = 2
 	outFilePollMsec   = 1
-	EPtimeoutSec      = 10.0
+	EPtimeoutSec      = 5.0
 )
 
 type Time struct {
