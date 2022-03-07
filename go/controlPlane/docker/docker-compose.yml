@@ -1,0 +1,51 @@
+services:
+    pmdb_server1:
+        build: ./PMDBServerContents/
+        image: pmdb_server
+        network_mode: host
+        environment:
+            ID : 1
+        volumes:
+            - ./logs/Node1/pmdb_server_logs:/usr/pmdb_server/logs
+        
+
+    pmdb_server2:
+        image: pmdb_server
+        network_mode: host
+        environment:
+            ID : 2
+        volumes:
+            - ./logs/Node2/pmdb_server_logs:/usr/pmdb_server/logs
+    
+    pmdb_server3:
+        image: pmdb_server
+        network_mode: host
+        environment:
+            ID : 3
+        volumes:
+            - ./logs/Node3/pmdb_server_logs:/usr/pmdb_server/logs
+
+    pmdb_server4:
+        image: pmdb_server
+        network_mode: host
+        environment:
+            ID : 4
+        volumes:
+            - ./logs/Node4/pmdb_server_logs:/usr/pmdb_server/logs
+
+    pmdb_server5:        
+        image: pmdb_server
+        network_mode: host
+        environment:
+            ID : 5
+        volumes:
+            - ./logs/Node5/pmdb_server_logs:/usr/pmdb_server/logs
+
+    proxy1:
+        build: ./ProxyContents/
+        image: proxy
+        network_mode: host
+        environment:
+            ID : 1
+        volumes:
+            - ./logs/Node1/proxy_logs:/usr/niovakv_server/logs

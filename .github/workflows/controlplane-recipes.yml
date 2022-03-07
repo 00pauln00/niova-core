@@ -1,4 +1,4 @@
-name: holon_golang_apps_recipes_workflow
+name: holon_controlplane_app_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -34,10 +34,11 @@ jobs:
                                    libssl-dev python3-pip
                                    python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
 
+    # Install python libraies
     - name: Install python libraries
       run:  pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath
 
-      # Install Ansible
+    # Install Ansible
     - name: Install Ansible
       run:  pip3 install ansible
 
@@ -51,20 +52,66 @@ jobs:
 
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/pumiceDB/examples/niovaKV && make -e DIR=/home/runner/work/niovad/niovad/build_dir
+           cd code/go/controlPlane && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/niovakv_recipes.txt /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/covid_app_recipe.txt ./code/scripts/foodpalaceapp_recipe.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/control_plane_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
+    # Checkout control-plane branch       
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
+
+    # Checkout niova-lookout
+    - name: Checkout niova-lookout repository
+      uses: actions/checkout@v2
+      with:
+       repository: 00pauln00/niova-lookout
+       ref: nisd_communication
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
+       path: ./lookout
+
+    - name: Compile niova-lookout
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
+
+    # Checkout niova-block repository       
+    - name: Checkout niova-block repository
+      uses: actions/checkout@v2
+      with:
+       repository: 00pauln00/niova-block
+       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
+       submodules: recursive
+       path: ./niova-block
+
+    # niova-block submodule init
+    - name: submodule init (niova-block)
+      run: cd ./niova-block && git submodule init && git submodule update
+
+    # build liburing
+    - name: liburing build
+      run: cd ./niova-block/modules/liburing &&
+           ./configure && make && sudo make install
+
+    - name: Compile niova-block
+      run: cd ./niova-block &&
+           ./prepare.sh &&
+           ./configure --with-niova=/home/runner/work/niovad/niovad/build_dir  --prefix=/home/runner/work/niovad/niovad/build_dir                                        --enable-devel &&  make clean && make && make install
+      env:
+        LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
+
+    - name: copy binaries of niova block to /home/runner/work/niovad/niovad/build_dir
+      run: cp -r /home/runner/work/niovad/niovad/build_dir/bin/niova-block-ctl /home/runner/work/niovad/niovad/build_dir/bin/nisd                           /home/runner/work/niovad/niovad/build_dir/libexec/niova
+
+    - name: copy niova-block-test binaries
+      run: cp ./niova-block/test/niova-block-test   /home/runner/work/niovad/niovad/build_dir/libexec/niova
+
+    - name: List build directory of binaries
+      run: ls -l /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
@@ -75,33 +122,13 @@ jobs:
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
-    - name:  run recipe for covid application
+    - name:  run recipes for controlplane application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/covid_app_recipe.txt'
-                             'covid'
-                             '0'
-                             '/home/runner/work/go/go/bin'
-
-    - name:  run recipe for foodpalace application
-      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
-           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
-                             '/home/runner/work/niovad/niovad/build_dir'
-                             '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/foodpalaceapp_recipe.txt'
-                             'foodpalace'
-                             '0'
-                             '/home/runner/work/go/go/bin'
-
-    - name:  run recipes for niovakv application
-      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
-           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
-                             '/home/runner/work/niovad/niovad/build_dir'
-                             '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/niovakv_recipes.txt'
-                             'niovakv'
+                             '/home/runner/work/niovad/niovad/build_dir/control_plane_recipes.txt'
+                             'controlplane'
                              '0'
                              '/home/runner/work/go/go/bin'
 

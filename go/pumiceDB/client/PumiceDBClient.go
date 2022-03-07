@@ -1,15 +1,14 @@
 package PumiceDBClient
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	"niova/go-pumicedb-lib/common"
 	"strconv"
 	"syscall"
 	"unsafe"
-
-	"github.com/google/uuid"
-
-	"niova/go-pumicedb-lib/common"
 )
 
 /*
@@ -20,11 +19,12 @@ import (
 import "C"
 
 type PmdbClientObj struct {
-	initialized   bool
-	scanConfDir   bool
-	pmdb          C.pmdb_t
-	raftUuid      string
-	myUuid        string
+	initialized bool
+	pmdb        C.pmdb_t
+	raftUuid    string
+	myUuid      string
+	AppUUID     string
+	WriteSeqNo  uint64
 }
 
 type RDZeroCopyObj struct {
@@ -82,6 +82,18 @@ func (obj *PmdbClientObj) Write(ed interface{},
 	return obj.writeKV(rncui, encoded_key, key_len)
 }
 
+//WriteEncoded
+/*
+WriteEncoded allows client to pass the encoded KV struct for writing
+*/
+func (obj *PmdbClientObj) WriteEncoded(request []byte, rncui string) error {
+	requestLen := int64(len(request))
+	//Convert it to unsafe pointer (void * for C function)
+	encodedData := unsafe.Pointer(&request[0])
+	encodedRequest := (*C.char)(encodedData)
+	return obj.writeKV(rncui, encodedRequest, requestLen)
+}
+
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,
@@ -120,6 +132,42 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
 	return err
+}
+
+//ReadEncoded
+/*
+ReadEncoded allows client to pass the encoded KV struct for reading
+*/
+func (obj *PmdbClientObj) ReadEncoded(request []byte, rncui string, response *[]byte) error {
+	var reply_size int64
+	var rd_err error
+	var reply_buff unsafe.Pointer
+
+	requestLen := int64(len(request))
+	//Typecast the encoded key to char*
+	encodedData := unsafe.Pointer(&request[0])
+	encoded_key := (*C.char)(encodedData)
+
+	if len(rncui) == 0 {
+		reply_buff, rd_err = obj.readKVAny(encoded_key,
+			requestLen, &reply_size)
+	} else {
+		reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+			requestLen, &reply_size)
+	}
+
+	if rd_err != nil {
+		return rd_err
+	}
+
+	if reply_buff != nil {
+		bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
+		buffer := bytes.NewBuffer(bytes_data)
+		*response = buffer.Bytes()
+	}
+	//Free the buffer allocated by C library.
+	C.free(reply_buff)
+	return nil
 }
 
 //Read the value of key on the client the application passed buffer

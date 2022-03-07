@@ -3,12 +3,12 @@ package PumiceDBCommon
 import (
 	"bytes"
 	"encoding/gob"
-	"io"
-	"unsafe"
 	"fmt"
+	log "github.com/sirupsen/logrus"
+	"io"
 	"os"
 	"strings"
-	log "github.com/sirupsen/logrus"
+	"unsafe"
 )
 
 /*
@@ -18,9 +18,9 @@ import (
 import "C"
 
 type PMDBInfo struct {
-        RaftUUID   string
-        ClientUUID string
-        LeaderUUID string
+	RaftUUID   string
+	ClientUUID string
+	LeaderUUID string
 }
 
 //Func for initializing the logger
