@@ -353,6 +353,29 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 	return nil
 }
 
+func (ep *NcsiEP) removeFiles(folder string) {
+	files, err := ioutil.ReadDir(folder)
+	if err != nil {
+		return
+	}
+
+	for _, file := range files {
+                if _, ok := ep.pendingCmds[file.Name()]; !ok {
+			os.Remove(folder+file.Name())
+		}
+        }
+}
+
+func (ep *NcsiEP) Remove() {
+	//Remove stale ctl files
+	input_path := ep.Path+"/input/"
+	ep.removeFiles(input_path)
+	//output files
+	output_path := ep.Path+"/output/"
+	ep.removeFiles(output_path)
+}
+
+
 func (ep *NcsiEP) Detect(appType string) error {
 	if ep.Alive{
 		var err error

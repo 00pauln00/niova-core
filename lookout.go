@@ -186,6 +186,7 @@ func (epc *epContainer) Monitor() error {
 
 		// Query for liveness
 		for _, ep := range epc.EpMap {
+			ep.Remove()
 			ep.Detect(appType)
 		}
 
@@ -423,7 +424,6 @@ func (epc *epContainer) getCompressedGossipDataNISD() map[string]string {
 		//Get data from map
 		uuid := nisd.Uuid.String()
 		status := nisd.Alive
-
 		//Compact the data
 		cuuid, _ := compressionLib.CompressUUID(uuid)
 		cstatus := "0"
