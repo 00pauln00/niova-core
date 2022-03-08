@@ -1,4 +1,4 @@
-name: holon_basic_recipes_workflow
+name: holon_controlplane_app_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -18,6 +18,7 @@ jobs:
     - name: apt update
       run: sudo apt update
 
+    # Install golang
     - name: Install golang 1.16
       run: sudo rm -rf /usr/bin/go &&
            sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
@@ -44,20 +45,24 @@ jobs:
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
-           ./configure --prefix=/home/runner/work/niovad/niovad/build_dir/ --enable-asan --enable-devel &&
+           ./configure --prefix=/home/runner/work/niovad/niovad/build_dir/ --enable-devel &&
            make clean && make && make install
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
+    - name: Build go applications using makefile
+      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+           cd code/go/controlPlane && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
+
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/basic_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/control_plane_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+       ref: control_plane_recipes
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
@@ -67,15 +72,19 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
-    - name:  run recipes
+    - name: List build directory
+      run: ls -l /home/runner/work/niovad/niovad/build_dir
+
+    - name:  run recipes for controlplane application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/basic_recipes.txt'
-                             'pumicedb'
+                             '/home/runner/work/niovad/niovad/build_dir/control_plane_recipes.txt'
+                             'controlplane'
                              '0'
                              '/home/runner/work/go/go/bin'
+
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
