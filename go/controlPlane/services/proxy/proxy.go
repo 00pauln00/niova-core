@@ -6,6 +6,7 @@ import (
 	"common/httpServer"
 	"common/requestResponseLib"
 	"common/serfAgent"
+	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,6 @@ import (
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
-	compressionLib "common/specificCompressionLib"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
@@ -26,43 +26,6 @@ import (
 	"time"
 )
 
-type proxyHandler struct {
-	//Other
-	configPath string
-	logLevel   string
-
-	//Niovakvserver
-	addr string
-
-	//Pmdb nivoa client
-	raftUUID                string
-	clientUUID              string
-	logPath                 string
-	PMDBServerConfigArray   []PeerConfigData
-	PMDBServerConfigByteMap map[string][]byte
-	pmdbClientObj           *pmdbClient.PmdbClientObj
-
-	//Serf agent
-	serfAgentName     string
-	serfAgentPort     string
-	serfAgentRPCPort  string
-	serfPeersFilePath string
-	serfLogger        string
-	serfAgentObj      serfAgent.SerfAgentHandler
-
-	//Http
-	httpPort      string
-	limit         string
-	requireStat   string
-	httpServerObj httpServer.HTTPServerHandler
-}
-
-type PeerConfigData struct {
-	PeerUUID   string
-	ClientPort string
-	Port       string
-	IPAddr     string
-}
 
 var MaxPort = 60000
 var MinPort = 1000
@@ -215,17 +178,10 @@ func validateTags(configPeer string) error {
 	return nil
 }
 
-func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
-	for _,v := range mapSample {
-		return v
-	}
-	return nil
-}
-
 func (handler *proxyHandler) GetPMDBServerConfig() error {
 	var allPmdbServerGossip map[string]map[string]string
-	for  len(allPmdbServerGossip) == 0{
-		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type","PMDB_SERVER")
+	for len(allPmdbServerGossip) == 0 {
+		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type", "PMDB_SERVER")
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
@@ -253,52 +209,10 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		}
 	}
 
-	log.Info("Decompressed PMDB server config array : ",handler.PMDBServerConfigArray)
+	log.Info("Decompressed PMDB server config array : ", handler.PMDBServerConfigArray)
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
 	return handler.dumpConfigToFile(path + "/")
-}
-
-func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
-	//Generate .raft
-	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
-	if err != nil {
-		return err
-	}
-
-	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID + "\n")
-	if errFile != nil {
-		return err
-	}
-
-	for _, peer := range handler.PMDBServerConfigArray {
-		raft_file.WriteString("PEER " + peer.PeerUUID + "\n")
-	}
-
-	raft_file.Sync()
-	raft_file.Close()
-
-	//Generate .peer
-	for _, peer := range handler.PMDBServerConfigArray {
-		peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
-		if err != nil {
-			log.Error(err)
-		}
-
-		_, errFile := peer_file.WriteString(
-			"RAFT         " + handler.raftUUID +
-				"\nIPADDR       " + peer.IPAddr +
-				"\nPORT         " + peer.Port +
-				"\nCLIENT_PORT  " + peer.ClientPort +
-				"\nSTORE        ./*.raftdb\n")
-
-		if errFile != nil {
-			return errFile
-		}
-		peer_file.Sync()
-		peer_file.Close()
-	}
-	return nil
 }
 
 func (handler *proxyHandler) WriteCallBack(request []byte) error {
