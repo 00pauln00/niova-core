@@ -16,13 +16,13 @@ compile:
 	echo "Compiling niovakv"
 
 pmdbserver:
-	cd services/pmdbServer && go build pmdbServer.go
+	cd services/pmdbServer && go build
 
 proxyserver:
-	cd services/proxy && go build proxy.go
+	cd services/proxy && go build
 
 ncpcclient:
-	cd services/ncpc && go build ncpc.go
+	cd services/ncpc && go build
 
 install:
 	cp services/pmdbServer/pmdbServer services/proxy/proxy services/ncpc/ncpc ${DIR}/libexec/niova/
