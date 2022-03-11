@@ -53,8 +53,7 @@ jobs:
            cp ./code/scripts/basic_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Copy script to run recipes
-      run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/basic_recipes_with_sync.txt /home/runner/work/niovad/niovad/build_dir/
+      run: cp ./code/scripts/basic_recipes_with_sync.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
