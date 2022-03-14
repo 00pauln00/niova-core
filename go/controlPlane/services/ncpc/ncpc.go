@@ -4,58 +4,20 @@ import (
 	"bytes"
 	"common/clientAPI"
 	"common/requestResponseLib"
-	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"strings"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
-type clientHandler struct {
-	requestKey        string
-	requestValue      string
-	addr              string
-	port              string
-	operation         string
-	configPath        string
-	logPath           string
-	resultFile        string
-	rncui             string
-	operationMetaObjs []opData //For filling json data
-	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
-}
-
-type request struct {
-	Opcode    string    `json:"Operation"`
-	Key       string    `json:"Key"`
-	Value     string    `json:"Value"`
-	Timestamp time.Time `json:"Request_timestamp"`
-}
-
-type response struct {
-	Status        int       `json:"Status"`
-	ResponseValue string    `json:"Response"`
-	validate      bool      `json:"validate"`
-	Timestamp     time.Time `json:"Response_timestamp"`
-}
-type opData struct {
-	RequestData  request       `json:"Request"`
-	ResponseData response      `json:"Response"`
-	TimeDuration time.Duration `json:"Req_resolved_time"`
-}
-
-type nisdData struct {
-	UUID      string `json:"UUID"`
-	Status    string `json:"Status"`
-	WriteSize string `json:"WriteSize"`
-}
 
 func usage() {
 	flag.PrintDefaults()
@@ -76,39 +38,6 @@ func (handler *clientHandler) getCmdParams() {
 	flag.Parse()
 }
 
-//Write to Json
-func (cli *clientHandler) write2Json(toJson map[string][]opData) {
-	file, _ := json.MarshalIndent(toJson, "", " ")
-	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
-}
-
-func (cli *clientHandler) getNISDInfo() map[string]nisdData {
-	data := cli.clientAPIObj.GetMembership()
-	nisdDataMap := make(map[string]nisdData)
-	for _, node := range data {
-		if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
-			for cuuid, value := range node.Tags {
-				uuid, err := compressionLib.DecompressUUID(cuuid)
-				if err == nil {
-					CompressedStatus := value[0]
-
-					//Decompress
-					thisNISDData := nisdData{}
-					thisNISDData.UUID = uuid
-					fmt.Println("NISD Status : " ,CompressedStatus)
-					if string(CompressedStatus) == "1" {
-						thisNISDData.Status = "Alive"
-					} else {
-						thisNISDData.Status = "Dead"
-					}
-
-					nisdDataMap[uuid] = thisNISDData
-				}
-			}
-		}
-	}
-	return nisdDataMap
-}
 
 func main() {
 	//Intialize client object
