@@ -5,8 +5,108 @@ import (
 	"strings"
 	"strconv"
 	"errors"
+	"bytes"
+	"reflect"
 )
 
+type UUID string
+type IPV4 string
+type Num_1 string
+type Num_2 string
+
+
+func CompressStructure(StructData interface{}) (string, error) {
+        structExtract := reflect.ValueOf(StructData)
+        var compressedString string
+
+        for i := 0; i < structExtract.NumField(); i++ {
+                class := structExtract.Field(i).Type()
+                value := structExtract.Field(i).String()
+                dataType, size := sizeOfType(class.String())
+
+                var compressedEntity string
+                var err error
+                switch dataType {
+                case "UUID":
+                        compressedEntity, err = CompressUUID(value)
+
+                case "IPV4":
+                        compressedEntity, err = CompressIPV4(value)
+
+                case "Num":
+                        compressedEntity, err = CompressStringNumber(value, size)
+                }
+
+                if err != nil {
+                        return compressedString, err
+                }
+                compressedString += compressedEntity
+        }
+        return compressedString, nil
+}
+
+func sizeOfType(compossedDataType string) (string, int) {
+        dataTypeWSize := strings.Split(compossedDataType, ".")[1]
+        dataTypeSlice := strings.Split(dataTypeWSize, "_")
+        dataType := dataTypeSlice[0]
+        var size int
+        switch dataType {
+        case "UUID":
+                size = 16
+        case "IPV4":
+                size = 4
+        case "Num":
+                size, _ = strconv.Atoi(dataTypeSlice[1])
+        }
+        return dataType, size
+}
+
+func extractBytes(data string, offset *int, size int) []byte {
+        var addon, addonPrev int
+        var returnBytes []byte
+        checkByte195 := []byte{byte(195)}
+        checkByte194 := []byte{byte(194)}
+        for {
+                returnBytes = []byte(data[*offset : *offset+size])
+                //Check if val has 194 or 195
+                addon = bytes.Count(returnBytes, checkByte195) + bytes.Count(returnBytes, checkByte194)
+                if addon == addonPrev {
+                        break
+                }
+                size += addon
+                addonPrev = addon
+        }
+        *offset = *offset + size
+        return returnBytes
+}
+
+func DecompressStructure(StructData interface{}, compressedData string) {
+        structExtract := reflect.ValueOf(StructData).Elem()
+        offset := 0
+        for i := 0; i < structExtract.NumField(); i++ {
+                class := structExtract.Field(i).Type()
+                dataType, size := sizeOfType(class.String())
+                fieldValueBytes := extractBytes(compressedData, &offset, size)
+
+                //Decompress data
+                var stringData string
+                switch dataType {
+                case "UUID":
+                        stringData, _ = DecompressUUID(string(fieldValueBytes))
+                case "IPV4":
+                        stringData = DecompressIPV4(string(fieldValueBytes))
+                case "Num":
+                        stringData = DecompressNumber(string(fieldValueBytes))
+                }
+
+                //Fill the struct
+                value := reflect.ValueOf(stringData).Convert(class)
+                field := structExtract.FieldByName(structExtract.Type().Field(i).Name)
+                if field.CanSet() {
+                        field.Set(value)
+                }
+        }
+}
 
 func CompressUUID(uuid string) (string,error) {
 	replaced := strings.Replace(uuid,"-","",4)
