@@ -35,8 +35,8 @@ type proxyHandler struct {
 	addr string
 
 	//Pmdb nivoa client
-	raftUUID                string
-	clientUUID              string
+	raftUUID                uuid.UUID 
+	clientUUID              uuid.UUID
 	logPath                 string
 	PMDBServerConfigArray   []PeerConfigData
 	PMDBServerConfigByteMap map[string][]byte
@@ -58,7 +58,7 @@ type proxyHandler struct {
 }
 
 type PeerConfigData struct {
-	PeerUUID   string
+	PeerUUID   uuid.UUID
 	ClientPort string
 	Port       string
 	IPAddr     string
@@ -77,7 +77,7 @@ func (handler *proxyHandler) getCmdParams() {
 	//Prepare default logpath
 	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
-	flag.StringVar(&handler.clientUUID, "u", uuid.NewV4().String(), "client uuid")
+	flag.StringVar(&handler.clientUUID, "u", uuid.NewV4(), "client uuid")
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.serfAgentName, "n", "NULL", "serf agent name")
@@ -126,7 +126,7 @@ func (handler *proxyHandler) startPMDBClient() error {
 	var err error
 
 	//Get client object
-	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID, handler.clientUUID)
+	handler.pmdbClientObj = pmdbClient.PmdbClientNew(string(handler.raftUUID), string(handler.clientUUID))
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB client object is empty")
 	}
@@ -242,7 +242,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 			Port := compressionLib.DecompressNumber(value[4:7])
 			ClientPort := compressionLib.DecompressNumber(value[7:10])
 			peerConfig := PeerConfigData{
-				PeerUUID:   uuid,
+				PeerUUID:   uuid.FromString(uuid),
 				IPAddr:     IPAddr,
 				Port:       Port,
 				ClientPort: ClientPort,
@@ -261,18 +261,18 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 
 func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	//Generate .raft
-	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
+	raft_file, err := os.Create(outfilepath + string(handler.raftUUID) + ".raft")
 	if err != nil {
 		return err
 	}
 
-	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID + "\n")
+	_, errFile := raft_file.WriteString("RAFT " + string(handler.raftUUID) + "\n")
 	if errFile != nil {
 		return err
 	}
 
 	for _, peer := range handler.PMDBServerConfigArray {
-		raft_file.WriteString("PEER " + peer.PeerUUID + "\n")
+		raft_file.WriteString("PEER " + string(peer.PeerUUID) + "\n")
 	}
 
 	raft_file.Sync()
@@ -280,13 +280,13 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 
 	//Generate .peer
 	for _, peer := range handler.PMDBServerConfigArray {
-		peer_file, err := os.Create(outfilepath + peer.PeerUUID + ".peer")
+		peer_file, err := os.Create(outfilepath + string(peer.PeerUUID) + ".peer")
 		if err != nil {
 			log.Error(err)
 		}
 
 		_, errFile := peer_file.WriteString(
-			"RAFT         " + handler.raftUUID +
+			"RAFT         " + string(handler.raftUUID) +
 				"\nIPADDR       " + peer.IPAddr +
 				"\nPORT         " + peer.Port +
 				"\nCLIENT_PORT  " + peer.ClientPort +
