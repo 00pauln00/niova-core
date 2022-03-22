@@ -21,21 +21,32 @@ func CompressStructure(StructData interface{}) (string, error) {
 
         for i := 0; i < structExtract.NumField(); i++ {
                 class := structExtract.Field(i).Type()
-                value := structExtract.Field(i).String()
+                value := structExtract.Field(i)
                 dataType, size := sizeOfType(class.String())
 
                 var compressedEntity string
                 var err error
                 switch dataType {
                 case "UUID":
-                        compressedEntity, err = CompressUUID(value)
+                        compressedEntity, err = CompressUUID(value.String())
 
                 case "IPV4":
-                        compressedEntity, err = CompressIPV4(value)
+                        compressedEntity, err = CompressIPV4(value.String())
 
                 case "Num":
-                        compressedEntity, err = CompressStringNumber(value, size)
-                }
+                        compressedEntity, err = CompressStringNumber(value.String(), size)
+
+		case "uint8":
+                        if size > 1 {
+                                byteArray := value.Interface().([16]uint8)
+                                compressedEntity = string(byteArray[:])
+                                break
+                        }
+                        compressedEntity = string(value.Uint())
+
+		case "uint16":
+                        compressedEntity, err = CompressNumber(int(value.Uint()),size)
+		}
 
                 if err != nil {
                         return compressedString, err
@@ -46,9 +57,24 @@ func CompressStructure(StructData interface{}) (string, error) {
 }
 
 func sizeOfType(compossedDataType string) (string, int) {
-        dataTypeWSize := strings.Split(compossedDataType, ".")[1]
-        dataTypeSlice := strings.Split(dataTypeWSize, "_")
-        dataType := dataTypeSlice[0]
+	dataTypeWLib := strings.Split(compossedDataType, ".")
+        var dataType, dataTypeCount string
+        if len(dataTypeWLib) > 1 {
+                dataTypeSlice := strings.Split(dataTypeWLib[1], "_")
+                dataType = dataTypeSlice[0]
+                if len(dataTypeSlice) > 1 {
+                        dataTypeCount = dataTypeSlice[1]
+                }
+        } else {
+                dataTypeSlice := strings.Split(dataTypeWLib[0], "]")
+                if len(dataTypeSlice) > 1 {
+                        dataType = dataTypeSlice[1]
+                        dataTypeCount = dataTypeSlice[0][1:]
+                } else {
+                        dataType = dataTypeSlice[0]
+                }
+        }
+
         var size int
         switch dataType {
         case "UUID":
@@ -56,26 +82,22 @@ func sizeOfType(compossedDataType string) (string, int) {
         case "IPV4":
                 size = 4
         case "Num":
-                size, _ = strconv.Atoi(dataTypeSlice[1])
+                size, _ = strconv.Atoi(dataTypeCount)
+        case "uint8":
+                size = 1
+                multiplier, err := strconv.Atoi(dataTypeCount)
+                if err == nil {
+                        size = size*multiplier
+                }
+        case "uint16":
+                size = 2
         }
         return dataType, size
 }
 
 func extractBytes(data string, offset *int, size int) []byte {
-        var addon, addonPrev int
         var returnBytes []byte
-        checkByte195 := []byte{byte(195)}
-        checkByte194 := []byte{byte(194)}
-        for {
-                returnBytes = []byte(data[*offset : *offset+size])
-                //Check if val has 194 or 195
-                addon = bytes.Count(returnBytes, checkByte195) + bytes.Count(returnBytes, checkByte194)
-                if addon == addonPrev {
-                        break
-                }
-                size += addon
-                addonPrev = addon
-        }
+        returnBytes = []byte(data[*offset : *offset+size])
         *offset = *offset + size
         return returnBytes
 }
@@ -89,7 +111,7 @@ func DecompressStructure(StructData interface{}, compressedData string) {
                 fieldValueBytes := extractBytes(compressedData, &offset, size)
 
                 //Decompress data
-                var stringData string
+                var stringData interface{}
                 switch dataType {
                 case "UUID":
                         stringData, _ = DecompressUUID(string(fieldValueBytes))
@@ -97,7 +119,18 @@ func DecompressStructure(StructData interface{}, compressedData string) {
                         stringData = DecompressIPV4(string(fieldValueBytes))
                 case "Num":
                         stringData = DecompressNumber(string(fieldValueBytes))
-                }
+                case "uint8":
+                        if size > 1 {
+                                var array [16]uint8
+                                copy(array[:],fieldValueBytes)
+                                stringData = array
+                        } else {
+                                stringData = fieldValueBytes[0]
+                        }
+                case "uint16":
+                        val := DecompressNumber(string(fieldValueBytes))
+                        stringData, _ = strconv.Atoi(val)
+		}
 
                 //Fill the struct
                 value := reflect.ValueOf(stringData).Convert(class)
@@ -162,40 +195,42 @@ func CompressStringNumber(snumber string,nobytes int) (string,error){
 
 func CompressNumber(number int,nobytes int) (string,error){
 	//Convert to binary sequence
-	binseq := strconv.FormatInt(int64(number),2)
-	if (len(binseq)%8 != 0) {
-		binseq = strings.Repeat("0",8-len(binseq)%8) + binseq
-	}
-	var outstring string
-	for i := 0; i < len(binseq)/8; i++{
-		start := i*8
-		end := (i+1)*8
-		intrep,err := strconv.ParseInt(binseq[start:end],2,64)
-		if err != nil {
-			return "",nil
-		}
-		outstring += string(intrep)
-	}
-	if (len(outstring) < nobytes) {
-		outstring = strings.Repeat(string(0),nobytes-len(outstring))+ outstring
-	}
-	return outstring,nil
+	binseq := strconv.FormatInt(int64(number), 2)
+        if len(binseq)%8 != 0 {
+                binseq = strings.Repeat("0", 8-len(binseq)%8) + binseq
+        }
+        var outByte []byte
+        for i := 0; i < len(binseq)/8; i++ {
+                start := i * 8
+                end := (i + 1) * 8
+                intrep, err := strconv.ParseInt(binseq[start:end], 2, 64)
+                if err != nil {
+                        return "", nil
+                }
+                outByte = append(outByte,byte(uint8(intrep)))
+        }
+        if len(outByte) < nobytes {
+                byte0 := []byte{0}
+                outByte = append(bytes.Repeat(byte0, nobytes-len(outByte)),outByte...)
+        }
+
+        return string(outByte), nil
 }
 
 func DecompressNumber(cnumber string) string{
 	var binseq string
-	flag := true
-	for _,char := range cnumber{
-		if ((flag == true) && (string(char) == string(0))){
-			continue
-		}
-		flag = false
-		seq := strconv.FormatInt(int64(byte(char)),2)
-		if (len(seq)%8 != 0){
-			seq = strings.Repeat("0",8-len(seq)%8) + seq
-		}
-		binseq += seq
-	}
-	number,_ := strconv.ParseInt(binseq,2,64)
-	return strconv.Itoa(int(number))
+        flag := true
+        for _, char := range []byte(cnumber) {
+                if flag && (string(char) == string(0)) {
+                        continue
+                }
+                flag = false
+                seq := strconv.FormatInt(int64(char), 2)
+                if len(seq)%8 != 0 {
+                        seq = strings.Repeat("0", 8-len(seq)%8) + seq
+                }
+                binseq += seq
+        }
+        number, _ := strconv.ParseInt(binseq, 2, 64)
+        return strconv.Itoa(int(number))
 }
