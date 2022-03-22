@@ -259,10 +259,10 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 	type PeerConfigData struct {
-		PeerUUID   string
-		IPAddr     string
-		Port       string
-		ClientPort string
+		PeerUUID   compressionLib.UUID
+		IPAddr     compressionLib.IPV4
+		Port       compressionLib.Num_2
+		ClientPort compressionLib.Num_2
 	}
 
 	PMDBServerConfigMap := make(map[string]PeerConfigData)
@@ -272,15 +272,8 @@ func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 	for key, value := range pmdbServerGossip {
 		uuid, err := compressionLib.DecompressUUID(key)
                 if err != nil {
-                        IPAddr := compressionLib.DecompressIPV4(value[:4])
-                        Port := compressionLib.DecompressNumber(value[4:6])
-                        ClientPort := compressionLib.DecompressNumber(value[6:8])
-			peerConfig := PeerConfigData{
-				PeerUUID:   uuid,
-				IPAddr:     IPAddr,
-				Port:       Port,
-				ClientPort: ClientPort,
-			}
+			peerConfig := PeerConfigData{}
+			compressionLib.DecompressStructure(&peerConfig,key+value)
 			PMDBServerConfigMap[uuid] = peerConfig
 		}
 	}
