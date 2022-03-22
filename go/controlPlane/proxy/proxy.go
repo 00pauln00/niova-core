@@ -35,8 +35,8 @@ type proxyHandler struct {
 	addr string
 
 	//Pmdb nivoa client
-	raftUUID                string
-	clientUUID              string
+	raftUUID                uuid.UUID 
+	clientUUID              uuid.UUID
 	logPath                 string
 	PMDBServerConfigArray   []PeerConfigData
 	PMDBServerConfigByteMap map[string][]byte
@@ -58,7 +58,7 @@ type proxyHandler struct {
 }
 
 type PeerConfigData struct {
-	PeerUUID       compressionLib.UUID
+	PeerUUID       [16]byte
 	IPAddr         compressionLib.IPV4
 	Port           compressionLib.Num_2
 	ClientPort     compressionLib.Num_2
@@ -74,10 +74,12 @@ func usage() {
 
 //Function to get command line parameters while starting of the client.
 func (handler *proxyHandler) getCmdParams() {
+	var tempRaftUUID, tempClientUUID string
+
 	//Prepare default logpath
 	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
-	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
-	flag.StringVar(&handler.clientUUID, "u", uuid.NewV4().String(), "client uuid")
+	flag.StringVar(&tempRaftUUID, "r", "NULL", "raft uuid")
+	flag.StringVar(&tempClientUUID, "u", uuid.NewV4().String(), "client uuid")
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
 	flag.StringVar(&handler.serfAgentName, "n", "NULL", "serf agent name")
@@ -87,6 +89,8 @@ func (handler *proxyHandler) getCmdParams() {
 	flag.StringVar(&handler.requireStat, "s", "0", "If required server stat about request enter 1")
 	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server gossip addrs")
 	flag.Parse()
+	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
+	handler.clientUUID, _ = uuid.FromString(tempClientUUID)
 }
 
 /*
@@ -126,7 +130,7 @@ func (handler *proxyHandler) startPMDBClient() error {
 	var err error
 
 	//Get client object
-	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID, handler.clientUUID)
+	handler.pmdbClientObj = pmdbClient.PmdbClientNew((handler.raftUUID.String()), (handler.clientUUID.String()))
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB client object is empty")
 	}
@@ -231,7 +235,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
 
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
-	handler.raftUUID = pmdbServerGossip["RU"]
+	handler.raftUUID, _ = uuid.FromString(pmdbServerGossip["RU"])
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 
 	//Parse data from gossip
@@ -254,18 +258,18 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 
 func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	//Generate .raft
-	raft_file, err := os.Create(outfilepath + handler.raftUUID + ".raft")
+	raft_file, err := os.Create(outfilepath + (handler.raftUUID.String()) + ".raft")
 	if err != nil {
 		return err
 	}
 
-	_, errFile := raft_file.WriteString("RAFT " + handler.raftUUID + "\n")
+	_, errFile := raft_file.WriteString("RAFT " + (handler.raftUUID.String()) + "\n")
 	if errFile != nil {
 		return err
 	}
 
 	for _, peer := range handler.PMDBServerConfigArray {
-		raft_file.WriteString("PEER " + string(peer.PeerUUID) + "\n")
+		raft_file.WriteString("PEER " + (uuid.UUID(peer.PeerUUID).String()) + "\n")
 	}
 
 	raft_file.Sync()
@@ -273,13 +277,13 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 
 	//Generate .peer
 	for _, peer := range handler.PMDBServerConfigArray {
-		peer_file, err := os.Create(outfilepath + string(peer.PeerUUID) + ".peer")
+		peer_file, err := os.Create(outfilepath + (uuid.UUID(peer.PeerUUID).String()) + ".peer")
 		if err != nil {
 			log.Error(err)
 		}
 
 		_, errFile := peer_file.WriteString(
-			"RAFT         " + handler.raftUUID +
+			"RAFT         " + (handler.raftUUID.String()) +
 				"\nIPADDR       " + string(peer.IPAddr) +
 				"\nPORT         " + string(peer.Port) +
 				"\nCLIENT_PORT  " + string(peer.ClientPort) +
@@ -354,7 +358,7 @@ func (handler *proxyHandler) killSignalHandler() {
 	go func() {
 		<-sigs
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
-		_ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
+		_ = ioutil.WriteFile((handler.clientUUID.String())+".json", json_data, 0644)
 		log.Info("(Proxy) Received a kill signal")
 		os.Exit(1)
 	}()
