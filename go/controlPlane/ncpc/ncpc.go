@@ -52,7 +52,7 @@ type opData struct {
 }
 
 type nisdData struct {
-	UUID      string `json:"UUID"`
+	UUID      uuid.UUID `json:"UUID"`
 	Status    string `json:"Status"`
 	WriteSize string `json:"WriteSize"`
 }
@@ -93,13 +93,13 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	for _, node := range data {
 		if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
 			for cuuid, value := range node.Tags {
-				uuid, err := compressionLib.DecompressUUID(cuuid)
+				d_uuid, err := compressionLib.DecompressUUID(cuuid)
 				if err == nil {
 					CompressedStatus 	  := value[0]
 					//CompressedWritePercentage := value[1:3]
 					//Decompress
 					thisNISDData := nisdData{}
-					thisNISDData.UUID = uuid
+					thisNISDData.UUID, _ = uuid.FromString(d_uuid)
 					fmt.Println("NISD Status : " ,CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
@@ -107,7 +107,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 						thisNISDData.Status = "Dead"
 					}
 
-					nisdDataMap[uuid] = thisNISDData
+					nisdDataMap[d_uuid] = thisNISDData
 				}
 			}
 		}
