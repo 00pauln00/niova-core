@@ -115,7 +115,7 @@ type udpMessage struct {
 	message []byte
 }
 
-type Nisd_config struct {
+type NisdConfig struct {
 	Uuid   string
 	Ipaddr string
 	Port   int
