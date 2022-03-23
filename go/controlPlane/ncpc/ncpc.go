@@ -57,12 +57,6 @@ type nisdData struct {
 	WriteSize string    `json:"WriteSize"`
 }
 
-type pmdbConfig struct {
-	UUID  string
-	SPort compressionLib.Num_2
-	CPort compressionLib.Num_2
-}
-
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
