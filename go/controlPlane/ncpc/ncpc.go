@@ -100,7 +100,10 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 					//CompressedWritePercentage := value[1:3]
 					//Decompress
 					thisNISDData := nisdData{}
-					thisNISDData.UUID, _ = uuid.FromString(d_uuid)
+					thisNISDData.UUID, err = uuid.FromString(d_uuid)
+					if err != nil {
+						log.Error(err)
+					}
 					fmt.Println("NISD Status : ", CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
