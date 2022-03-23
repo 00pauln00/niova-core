@@ -1,7 +1,6 @@
 package main // niova control interface
 
 import (
-	//	"fmt"
 	//	"math/rand"
 	"encoding/json"
 	"io/ioutil"
@@ -11,7 +10,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
 	"github.com/google/uuid"
 )
 
@@ -25,7 +23,7 @@ const (
 	maxOutFileSize    = 4*1024 ^ 2
 	outFileTimeoutSec = 2
 	outFilePollMsec   = 1
-	EPtimeoutSec      = 10.0
+	EPtimeoutSec      = 5.0
 )
 
 type Time struct {
@@ -55,6 +53,10 @@ type SystemInfo struct {
 	RusageInvolCtsw         int       `json:"rusage.invol_ctsw"`
 }
 
+type NISDInfo struct {
+	ReadBytes	int	`json:"dev-bytes-read"`
+	WriteBytes	int	`json:"dev-bytes-write"`
+}
 type Histogram struct {
 	Num1       int `json:"1,omitempty"`
 	Num2       int `json:"2,omitempty"`
@@ -108,8 +110,9 @@ type RaftInfo struct {
 }
 
 type CtlIfOut struct {
-	SysInfo       SystemInfo `json:"system_info,omitempty"`
-	RaftRootEntry []RaftInfo `json:"raft_root_entry,omitempty"`
+	SysInfo		SystemInfo `json:"system_info,omitempty"`
+	RaftRootEntry	[]RaftInfo `json:"raft_root_entry,omitempty"`
+	NISDInformation	[]NISDInfo `json:"niorq_mgr_root_entry,omitempty"`
 }
 
 type NcsiEP struct {
@@ -130,6 +133,7 @@ type EPcmdType uint32
 const (
 	RaftInfoOp   EPcmdType = 1
 	SystemInfoOp EPcmdType = 2
+	NISDInfoOp   EPcmdType = 3
 )
 
 type epCommand struct {
@@ -241,7 +245,6 @@ func (cmd *epCommand) submit() {
 	if err := cmd.ep.mayQueueCmd(); err == false {
 		return
 	}
-
 	cmd.prep()
 	cmd.write()
 }
@@ -271,9 +274,11 @@ func (ep *NcsiEP) addCmd(cmd *epCommand) error {
 
 func (ep *NcsiEP) removeCmd(cmdName string) *epCommand {
 	ep.Mutex.Lock()
-	cmd := ep.pendingCmds[cmdName]
-	delete(ep.pendingCmds, cmdName)
-	cmd.ep.Mutex.Unlock()
+	cmd,ok := ep.pendingCmds[cmdName]
+	if ok {
+		delete(ep.pendingCmds, cmdName)
+	}
+	ep.Mutex.Unlock()
 
 	return cmd
 }
@@ -296,6 +301,12 @@ func (ep *NcsiEP) getSysinfo() error {
 	return cmd.err
 }
 
+func (ep *NcsiEP) getNISDinfo() error {
+	cmd := epCommand{ep: ep, cmd: "GET /niorq_mgr_root_entry/.*", op: NISDInfoOp}
+	cmd.submit()
+	return cmd.err
+}
+
 func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 	switch op {
 	case RaftInfoOp:
@@ -303,11 +314,15 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 		//		log.Printf("update-raft %+v \n", ctlData.RaftRootEntry)
 	case SystemInfoOp:
 		ep.EPInfo.SysInfo = ctlData.SysInfo
-		ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
+		//ep.LastReport = ep.EPInfo.SysInfo.CurrentTime.WrappedTime
 		//		log.Printf("update-sys %+v \n", ctlData.SysInfo)
+	case NISDInfoOp:
+		//update
+		ep.EPInfo.NISDInformation = ctlData.NISDInformation
 	default:
 		log.Printf("invalid op=%d \n", op)
 	}
+	ep.LastReport = time.Now()
 }
 
 func (ep *NcsiEP) Complete(cmdName string) error {
@@ -331,29 +346,56 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 			log.Printf("Other error: %s\n", err)
 			log.Printf("Contents: %s\n", string(cmd.getOutJSON()))
 		}
-
 		return err
 	}
-
 	ep.update(&ctlifout, cmd.op)
 
 	return nil
 }
 
-func (ep *NcsiEP) Detect() error {
-	err := ep.getSysinfo()
-	if err == nil {
-		err = ep.getRaftinfo()
+func (ep *NcsiEP) removeFiles(folder string) {
+	files, err := ioutil.ReadDir(folder)
+	if err != nil {
+		return
 	}
 
-	// Alive state should be maintained regardless of the error code
-	if time.Since(ep.LastReport) > time.Second*EPtimeoutSec {
-		ep.Alive = false
-	} else if !ep.Alive {
-		ep.Alive = true
-	}
+	for _, file := range files {
+                if _, ok := ep.pendingCmds[file.Name()]; !ok {
+			os.Remove(folder+file.Name())
+		}
+        }
+}
 
-	return err
+func (ep *NcsiEP) Remove() {
+	//Remove stale ctl files
+	input_path := ep.Path+"/input/"
+	ep.removeFiles(input_path)
+	//output files
+	output_path := ep.Path+"/output/"
+	ep.removeFiles(output_path)
+}
+
+
+func (ep *NcsiEP) Detect(appType string) error {
+	if ep.Alive{
+		var err error
+		switch appType {
+			case "NISD":
+				ep.getNISDinfo()
+			case "PMDB":
+				err = ep.getSysinfo()
+				if err == nil{
+					err = ep.getRaftinfo()
+				}
+
+		}
+
+		if (time.Since(ep.LastReport) > time.Second*EPtimeoutSec) {
+			ep.Alive = false
+		}
+		return err
+	}
+	return nil
 }
 
 func (ep *NcsiEP) Check() error {
