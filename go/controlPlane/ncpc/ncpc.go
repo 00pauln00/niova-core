@@ -53,8 +53,8 @@ type opData struct {
 
 type nisdData struct {
 	UUID      uuid.UUID `json:"UUID"`
-	Status    string `json:"Status"`
-	WriteSize string `json:"WriteSize"`
+	Status    string    `json:"Status"`
+	WriteSize string    `json:"WriteSize"`
 }
 
 type pmdbConfig struct {
@@ -62,6 +62,7 @@ type pmdbConfig struct {
 	SPort compressionLib.Num_2
 	CPort compressionLib.Num_2
 }
+
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -95,12 +96,12 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 			for cuuid, value := range node.Tags {
 				d_uuid, err := compressionLib.DecompressUUID(cuuid)
 				if err == nil {
-					CompressedStatus 	  := value[0]
+					CompressedStatus := value[0]
 					//CompressedWritePercentage := value[1:3]
 					//Decompress
 					thisNISDData := nisdData{}
 					thisNISDData.UUID, _ = uuid.FromString(d_uuid)
-					fmt.Println("NISD Status : " ,CompressedStatus)
+					fmt.Println("NISD Status : ", CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
@@ -303,7 +304,7 @@ func main() {
 	case "PMDBGossip":
 		fileData, err := clientObj.clientAPIObj.GetPMDBServerConfig()
 		if err != nil {
-			log.Error("Error while getting pmdb server config data : ",err)
+			log.Error("Error while getting pmdb server config data : ", err)
 			break
 		}
 		if passNext {
@@ -311,7 +312,7 @@ func main() {
 			f.WriteString(string(fileData))
 			break
 		}
-		 _ = ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")

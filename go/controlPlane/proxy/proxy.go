@@ -6,6 +6,7 @@ import (
 	"common/httpServer"
 	"common/requestResponseLib"
 	"common/serfAgent"
+	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -15,7 +16,6 @@ import (
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
-	compressionLib "common/specificCompressionLib"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
@@ -35,7 +35,7 @@ type proxyHandler struct {
 	addr string
 
 	//Pmdb nivoa client
-	raftUUID                uuid.UUID 
+	raftUUID                uuid.UUID
 	clientUUID              uuid.UUID
 	logPath                 string
 	PMDBServerConfigArray   []PeerConfigData
@@ -58,10 +58,10 @@ type proxyHandler struct {
 }
 
 type PeerConfigData struct {
-	PeerUUID       [16]byte
-	IPAddr         compressionLib.IPV4
-	Port           compressionLib.Num_2
-	ClientPort     compressionLib.Num_2
+	PeerUUID   [16]byte
+	IPAddr     compressionLib.IPV4
+	Port       compressionLib.Num_2
+	ClientPort compressionLib.Num_2
 }
 
 var MaxPort = 60000
@@ -220,7 +220,7 @@ func validateTags(configPeer string) error {
 }
 
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
-	for _,v := range mapSample {
+	for _, v := range mapSample {
 		return v
 	}
 	return nil
@@ -228,8 +228,8 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 
 func (handler *proxyHandler) GetPMDBServerConfig() error {
 	var allPmdbServerGossip map[string]map[string]string
-	for  len(allPmdbServerGossip) == 0{
-		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type","PMDB_SERVER")
+	for len(allPmdbServerGossip) == 0 {
+		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type", "PMDB_SERVER")
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
@@ -243,14 +243,14 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		uuid, err := compressionLib.DecompressUUID(key)
 		if err == nil {
 			peerConfig := PeerConfigData{}
-			compressionLib.DecompressStructure(&peerConfig,key+value)
+			compressionLib.DecompressStructure(&peerConfig, key+value)
 			log.Info("Peer config : ", peerConfig)
 			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
 			handler.PMDBServerConfigByteMap[uuid], _ = json.Marshal(peerConfig)
 		}
 	}
 
-	log.Info("Decompressed PMDB server config array : ",handler.PMDBServerConfigArray)
+	log.Info("Decompressed PMDB server config array : ", handler.PMDBServerConfigArray)
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
 	return handler.dumpConfigToFile(path + "/")
