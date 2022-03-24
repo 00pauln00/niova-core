@@ -233,12 +233,13 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
-
+	
+	var err error
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
-	{
+	if err != nil{
 		log.Error("Error :",err)
-		break
+		return err
 	}
 	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 
