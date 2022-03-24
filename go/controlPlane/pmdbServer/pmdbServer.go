@@ -4,15 +4,16 @@ import (
 	"bufio"
 	"common/requestResponseLib"
 	"common/serfAgent"
+	compressionLib "common/specificCompressionLib"
 	"errors"
 	"flag"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
+	uuid "github.com/satori/go.uuid"
 	"strings"
 	"unsafe"
-	compressionLib "common/specificCompressionLib"
 	//"encoding/json"
 	log "github.com/sirupsen/logrus"
 	defaultLogger "log"
@@ -31,25 +32,25 @@ var seqno = 0
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct {
-	raftUUID           string
-	peerUUID           string
+	raftUUID           uuid.UUID
+	peerUUID           uuid.UUID
 	logDir             string
 	logLevel           string
 	gossipClusterFile  string
 	gossipClusterNodes []string
-	aport              string
-	rport              string
-	addr               string
+	serfAgentPort      string
+	serfRPCPort        string
+	nodeAddr           string
 	GossipData         map[string]string
 	ConfigString       string
 	ConfigData         []PeerConfigData
 }
 
 type PeerConfigData struct {
-	UUID	       compressionLib.UUID
-	IPAddr         compressionLib.IPV4
-	Port           compressionLib.Num_2
-	ClientPort     compressionLib.Num_2
+	UUID       [16]byte
+	IPAddr     compressionLib.IPV4
+	Port       compressionLib.Num_2
+	ClientPort compressionLib.Num_2
 }
 
 func main() {
@@ -88,8 +89,8 @@ func main() {
 	*/
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
-		RaftUuid:       nso.raftUuid,
-		PeerUuid:       nso.peerUuid,
+		RaftUuid:       nso.raftUuid.String(),
+		PeerUuid:       nso.peerUuid.String(),
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
@@ -109,21 +110,23 @@ func usage() {
 }
 
 func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
-
+	var tempRaftUUID,tempPeerUUID string
 	var err error
 
-	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
-	flag.StringVar(&handler.peerUUID, "u", "NULL", "peer uuid")
+	flag.StringVar(&tempRaftUUID, "r", "NULL", "raft uuid")
+	flag.StringVar(&tempPeerUUID, "u", "NULL", "peer uuid")
 
 	/* If log path is not provided, it will use Default log path.
 	   default log path: /tmp/<peer-uuid>.log
-	   */
-	defaultLog := "/" + "tmp" + "/" + handler.peerUUID + ".log"
+	*/
+	defaultLog := "/" + "tmp" + "/" + handler.peerUUID.String() + ".log"
 	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
 	flag.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
 	flag.Parse()
 
+	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
+	handler.peerUUID, _ = uuid.FromString(tempPeerUUID)
 	nso := &NiovaKVServer{}
 	nso.raftUuid = handler.raftUUID
 	nso.peerUuid = handler.peerUUID
@@ -137,39 +140,28 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	return nso, err
 }
 
-
 func extractPMDBServerConfigfromFile(path string) (*PeerConfigData, error) {
 	f, err := os.Open(path)
-        if err!= nil {
+	if err != nil {
 		return nil, err
 	}
 	scanner := bufio.NewScanner(f)
-        peerData := PeerConfigData{}
-        //var compressedConfigString, data string
+	peerData := PeerConfigData{}
 
 	for scanner.Scan() {
-        	text := scanner.Text()
-                lastIndex := len(strings.Split(text, " ")) - 1
-                key := strings.Split(text, " ")[0]
-                value := strings.Split(text, " ")[lastIndex]
-                switch key {
-                	case "CLIENT_PORT":
-                        	peerData.ClientPort = compressionLib.Num_2(value)
-                                //data,err = compressionLib.CompressStringNumber(value,2)
-                                //compressedConfigString += data
-                        case "IPADDR":
-                                peerData.IPAddr = compressionLib.IPV4(value)
-                                //data,err = compressionLib.CompressIPV4(value)
-                                //compressedConfigString += data
-                	case "PORT":
-                                peerData.Port = compressionLib.Num_2(value)
-                        	//data,err = compressionLib.CompressStringNumber(value,2)
-               			//compressedConfigString += data
-        	}
-		if err!= nil {
-			return nil, err
+		text := scanner.Text()
+		lastIndex := len(strings.Split(text, " ")) - 1
+		key := strings.Split(text, " ")[0]
+		value := strings.Split(text, " ")[lastIndex]
+		switch key {
+		case "CLIENT_PORT":
+			peerData.ClientPort = compressionLib.Num_2(value)
+		case "IPADDR":
+			peerData.IPAddr = compressionLib.IPV4(value)
+		case "PORT":
+			peerData.Port = compressionLib.Num_2(value)
 		}
-        }
+	}
 	f.Close()
 
 	return &peerData, err
@@ -186,20 +178,21 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() error {
 	for _, file := range files {
 		if strings.Contains(file.Name(), ".peer") {
 			//Extract required config from the file
-			path := folder+"/"+file.Name()
-			peerData, err := extractPMDBServerConfigfromFile(path) 
-			if err != nil{
+			path := folder + "/" + file.Name()
+			peerData, err := extractPMDBServerConfigfromFile(path)
+			if err != nil {
 				return err
 			}
 
 			uuid := file.Name()[:len(file.Name())-5]
-        		cuuid,err := compressionLib.CompressUUID(uuid)
-			if err != nil{
+			cuuid, err := compressionLib.CompressUUID(uuid)
+			if err != nil {
 				return err
 			}
 
 			handler.GossipData[cuuid], _ = compressionLib.CompressStructure(*peerData)
-			peerData.UUID = compressionLib.UUID(uuid)
+			//Since the uuid filled after compression, the cuuid wont be included in compressed string
+			copy(peerData.UUID[:], []byte(cuuid))
 			handler.ConfigData = append(handler.ConfigData, *peerData)
 		}
 	}
@@ -220,22 +213,22 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		aport := splitData[2]
 		rport := splitData[3]
 		uuid := splitData[0]
-		if uuid == handler.peerUUID {
-			handler.aport = aport
-			handler.rport = rport
-			handler.addr = addr
+		if uuid == handler.peerUUID.String() {
+			handler.serfAgentPort = aport
+			handler.serfRPCPort = rport
+			handler.nodeAddr = addr
 		} else {
 			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
 		}
 	}
 
-	if handler.addr == "" {
+	if handler.nodeAddr == "" {
 		log.Error("Peer UUID not matching with gossipNodes config file")
 		return errors.New("UUID not matching")
 	}
 
 	log.Info("Cluster nodes : ", handler.gossipClusterNodes)
-	log.Info("Node serf info : ", handler.addr, handler.aport, handler.rport)
+	log.Info("Node serf info : ", handler.nodeAddr, handler.serfAgentPort, handler.serfRPCPort)
 	return nil
 }
 
@@ -259,13 +252,13 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 
 	//defaultLogger.SetOutput(ioutil.Discard)
 	serfAgentHandler := serfAgent.SerfAgentHandler{
-		Name:     handler.peerUUID,
-		BindAddr: handler.addr,
+		Name:     handler.peerUUID.String(),
+		BindAddr: handler.nodeAddr,
 	}
-	serfAgentHandler.BindPort = handler.aport
+	serfAgentHandler.BindPort = handler.serfAgentPort
 	serfAgentHandler.AgentLogger = defaultLogger.Default()
-	serfAgentHandler.RpcAddr = handler.addr
-	serfAgentHandler.RpcPort = handler.rport
+	serfAgentHandler.RpcAddr = handler.nodeAddr
+	serfAgentHandler.RpcPort = handler.serfRPCPort
 	//Start serf agent
 	_, err = serfAgentHandler.SerfAgentStartup(handler.gossipClusterNodes, true)
 	if err != nil {
@@ -273,16 +266,16 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	}
 	handler.readPMDBServerConfig()
 	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = handler.rport
-	handler.GossipData["RU"] = handler.raftUUID
+	handler.GossipData["Rport"] = handler.serfRPCPort
+	handler.GossipData["RU"] = handler.raftUUID.String()
 	log.Info(handler.GossipData)
 	serfAgentHandler.SetNodeTags(handler.GossipData)
 	return err
 }
 
 type NiovaKVServer struct {
-	raftUuid       string
-	peerUuid       string
+	raftUuid       uuid.UUID
+	peerUuid       uuid.UUID
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
 }
