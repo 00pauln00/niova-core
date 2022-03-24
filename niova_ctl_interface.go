@@ -360,9 +360,10 @@ func (ep *NcsiEP) removeFiles(folder string) {
 		return
 	}
 	//Clear after an hr
-	checkTime := ep.LastClear.Add(time.Hour * time.Duration(int(1)))
+	checkTime := ep.LastClear.Local().Add(time.Hour)
 	for _, file := range files {
-                if time.Now().After(checkTime) {
+		if time.Now().After(checkTime) {
+			ep.LastClear = time.Now()
 			os.Remove(folder+file.Name())
 		}
         }

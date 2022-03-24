@@ -76,7 +76,7 @@ func init() {
 	httpPort = flag.Int("port", 8081, "http listen port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
-	flag.StringVar(&udpPort, "u", "1053", "UDP port for NISD communication")
+	flag.StringVar(&udpPort, "u", "1054", "UDP port for NISD communication")
 	flag.StringVar(&agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&addr, "a", "127.0.0.1", "Agent addr")
 	flag.StringVar(&agentPort, "p", "3991", "Agent port for serf")
@@ -131,6 +131,7 @@ func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 			NiovaSvcType: "raft",
 			Port:         6666,
 			LastReport:   time.Now(),
+			LastClear:    time.Now(),
 			Alive:        true,
 			pendingCmds:  make(map[string]*epCommand),
 		}
