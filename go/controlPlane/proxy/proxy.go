@@ -9,6 +9,7 @@ import (
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"
+	"hash/crc32"
 	"errors"
 	"flag"
 	uuid "github.com/satori/go.uuid"
@@ -233,9 +234,20 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
-	
+
 	var err error
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
+
+	//Handle checksum
+	recvCheckSum := pmdbServerGossip["CS"]
+	delete(pmdbServerGossip,"CS")
+	byteGossipMap, _ := json.Marshal(pmdbServerGossip)
+	checksum := crc32.ChecksumIEEE(byteGossipMap)
+	stringCheckSum, _ := compressionLib.CompressNumber(int(checksum), 4)
+	if recvCheckSum != stringCheckSum {
+		return errors.New("Gossip checksum mismatch")
+	}
+
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
 	if err != nil{
 		log.Error("Error :",err)

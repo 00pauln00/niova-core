@@ -14,7 +14,8 @@ import (
 	uuid "github.com/satori/go.uuid"
 	"strings"
 	"unsafe"
-	//"encoding/json"
+	"hash/crc32"
+	"encoding/json"
 	log "github.com/sirupsen/logrus"
 	defaultLogger "log"
 	//"strconv"
@@ -268,6 +269,9 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	handler.GossipData["Type"] = "PMDB_SERVER"
 	handler.GossipData["Rport"] = handler.serfRPCPort
 	handler.GossipData["RU"] = handler.raftUUID.String()
+	gossipByteMap, err := json.Marshal(handler.GossipData)
+	checksum := crc32.ChecksumIEEE(gossipByteMap)
+	handler.GossipData["CS"], _ = compressionLib.CompressNumber(int(checksum),4)
 	log.Info(handler.GossipData)
 	serfAgentHandler.SetNodeTags(handler.GossipData)
 	return err
