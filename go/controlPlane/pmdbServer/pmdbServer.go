@@ -5,20 +5,26 @@ import (
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
+	"encoding/json"
 	"errors"
 	"flag"
+	"hash/crc32"
 	"io/ioutil"
+	defaultLogger "log"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
+<<<<<<< HEAD
 	"sort"
 	uuid "github.com/satori/go.uuid"
+=======
+	"strconv"
+>>>>>>> 6daca607f1870aafc6161235a9877df02958e98a
 	"strings"
 	"unsafe"
-	"hash/crc32"
-	"encoding/json"
+
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	defaultLogger "log"
 	//"strconv"
 )
 
@@ -40,8 +46,8 @@ type pmdbServerHandler struct {
 	logLevel           string
 	gossipClusterFile  string
 	gossipClusterNodes []string
-	serfAgentPort      string
-	serfRPCPort        string
+	serfAgentPort      uint16
+	serfRPCPort        uint16
 	nodeAddr           string
 	GossipData         map[string]string
 	ConfigString       string
@@ -112,7 +118,7 @@ func usage() {
 }
 
 func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
-	var tempRaftUUID,tempPeerUUID string
+	var tempRaftUUID, tempPeerUUID string
 	var err error
 
 	flag.StringVar(&tempRaftUUID, "r", "NULL", "raft uuid")
@@ -217,8 +223,14 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		rport := splitData[3]
 		uuid := splitData[0]
 		if uuid == handler.peerUUID.String() {
-			handler.serfAgentPort = aport
-			handler.serfRPCPort = rport
+			handler.serfAgentPort, err = strconv.ParseUint(aport, 10, 16)
+			if err != nil {
+				return errors.New("Agent port is out of range :" + err)
+			}
+			handler.serfRPCPort = strconv.ParseUint(rport, 10, 16)
+			if err != nil {
+				return errors.New("RPC port is out of range :" + err)
+			}
 			handler.nodeAddr = addr
 		} else {
 			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
@@ -288,13 +300,12 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	}
 	handler.readPMDBServerConfig()
 	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = handler.serfRPCPort
+	handler.GossipData["Rport"] = strconv.Itoa(handler.serfRPCPort)
 	handler.GossipData["RU"] = handler.raftUUID.String()
 	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
 	if err != nil {
 		return err
 	}
-
 	log.Info(handler.GossipData)
 	serfAgentHandler.SetNodeTags(handler.GossipData)
 	return err
