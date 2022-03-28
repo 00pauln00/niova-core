@@ -11,6 +11,7 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
+	"sort"
 	uuid "github.com/satori/go.uuid"
 	"strings"
 	"unsafe"
@@ -234,6 +235,25 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	return nil
 }
 
+
+func generateCheckSum(data map[string]string) (string, error) {
+	keys := make([]string, 0, len(data))
+	var allDataArray []string
+	for k := range data {
+       		keys = append(keys, k)
+    	}
+    	sort.Strings(keys)
+ 
+    	for _, k := range keys {
+        	allDataArray = append(allDataArray, k+data[k])
+    	}
+
+	byteArray, err := json.Marshal(allDataArray)
+        checksum := crc32.ChecksumIEEE(byteArray)
+        stringCheckSum, err := compressionLib.CompressNumber(int(checksum),4)
+	return stringCheckSum, err
+}
+
 func (handler *pmdbServerHandler) startSerfAgent() error {
 	err := handler.readGossipClusterFile()
 	if err != nil {
@@ -270,9 +290,11 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	handler.GossipData["Type"] = "PMDB_SERVER"
 	handler.GossipData["Rport"] = handler.serfRPCPort
 	handler.GossipData["RU"] = handler.raftUUID.String()
-	gossipByteMap, err := json.Marshal(handler.GossipData)
-	checksum := crc32.ChecksumIEEE(gossipByteMap)
-	handler.GossipData["CS"], _ = compressionLib.CompressNumber(int(checksum),4)
+	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
+	if err != nil {
+		return err
+	}
+
 	log.Info(handler.GossipData)
 	serfAgentHandler.SetNodeTags(handler.GossipData)
 	return err

@@ -12,6 +12,7 @@ import (
 	"hash/crc32"
 	"errors"
 	"flag"
+	"sort"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -225,6 +226,32 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 		return v
 	}
 	return nil
+}
+
+
+func validateCheckSum(data map[string]string, checksum string) error {
+	keys := make([]string, 0, len(data))
+        var allDataArray []string
+        for k := range data {
+                keys = append(keys, k)
+        }
+        sort.Strings(keys)
+        for _, k := range keys {
+                allDataArray = append(allDataArray, k+data[k])
+        }
+	byteArray, err := json.Marshal(allDataArray)
+        if err != nil {
+		return err
+	}
+	recvdCheckSum := crc32.ChecksumIEEE(byteArray)
+        stringCheckSum, err := compressionLib.CompressNumber(int(recvdCheckSum),4)
+	if err != nil {
+		return err
+	}
+	if stringCheckSum != checksum {
+		return errors.New("Checksum mismatch")
+	}
+        return nil
 }
 
 func (handler *proxyHandler) GetPMDBServerConfig() error {
