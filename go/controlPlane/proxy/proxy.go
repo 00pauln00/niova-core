@@ -257,13 +257,13 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 
 	//Parse data from gossip
 	for key, value := range pmdbServerGossip {
-		uuid, err := compressionLib.DecompressUUID(key)
+		decompressedUUID, err := compressionLib.DecompressUUID(key)
 		if err == nil {
 			peerConfig := PeerConfigData{}
-			compressionLib.DecompressStructure(&peerConfig, key+value)
+			compressionLib.DecompressStructure(&peerConfig, key + value)
 			log.Info("Peer config : ", peerConfig)
 			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
-			handler.PMDBServerConfigByteMap[uuid], _ = json.Marshal(peerConfig)
+			handler.PMDBServerConfigByteMap[decompressedUUID], _ = json.Marshal(peerConfig)
 		}
 	}
 

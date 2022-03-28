@@ -191,7 +191,8 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() error {
 				return err
 			}
 
-			handler.GossipData[cuuid], _ = compressionLib.CompressStructure(*peerData)
+			tempGossipData, _ := compressionLib.CompressStructure(*peerData)
+			handler.GossipData[cuuid] = tempGossipData[16:]
 			//Since the uuid filled after compression, the cuuid wont be included in compressed string
 			copy(peerData.UUID[:], []byte(cuuid))
 			handler.ConfigData = append(handler.ConfigData, *peerData)

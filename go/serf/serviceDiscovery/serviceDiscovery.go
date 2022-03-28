@@ -267,11 +267,11 @@ func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 
 	PMDBServerConfigMap := make(map[string]PeerConfigData)
 	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
-        pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
+	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
 	for key, value := range pmdbServerGossip {
 		uuid, err := compressionLib.DecompressUUID(key)
-                if err != nil {
+                if err == nil {
 			peerConfig := PeerConfigData{}
 			compressionLib.DecompressStructure(&peerConfig,key+value)
 			PMDBServerConfigMap[uuid] = peerConfig
