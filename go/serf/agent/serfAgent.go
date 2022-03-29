@@ -52,7 +52,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr                               //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort = Handler.BindPort                               //Agent bind port
+	serfconfig.MemberlistConfig.BindPort = int(Handler.BindPort)                          //Agent bind port
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 

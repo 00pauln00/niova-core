@@ -33,7 +33,7 @@ func CompressStructure(StructData interface{}) (string, error) {
 			compressedEntity, err = CompressIPV4(value.String())
 
 		case "Num":
-			compressedEntity, err = CompressStringNumber(value.String(), size)
+			compressedEntity, err = CompressStringInteger(value.String(), size)
 
 		case "uint8":
 			if size > 1 {
@@ -44,7 +44,7 @@ func CompressStructure(StructData interface{}) (string, error) {
 			compressedEntity = string(value.Uint())
 
 		case "uint16":
-			compressedEntity, err = CompressNumber(int(value.Uint()), size)
+			compressedEntity, err = CompressInteger(int(value.Uint()), size)
 		}
 
 		if err != nil {
@@ -55,8 +55,8 @@ func CompressStructure(StructData interface{}) (string, error) {
 	return compressedString, nil
 }
 
-func sizeOfType(compossedDataType string) (string, int) {
-	dataTypeWLib := strings.Split(compossedDataType, ".")
+func sizeOfType(composedDataType string) (string, int) {
+	dataTypeWLib := strings.Split(composedDataType, ".")
 	var dataType, dataTypeCount string
 	if len(dataTypeWLib) > 1 {
 		dataTypeSlice := strings.Split(dataTypeWLib[1], "_")
@@ -117,7 +117,7 @@ func DecompressStructure(StructData interface{}, compressedData string) {
 		case "IPV4":
 			stringData = DecompressIPV4(string(fieldValueBytes))
 		case "Num":
-			stringData = DecompressNumber(string(fieldValueBytes))
+			stringData = DecompressInteger(string(fieldValueBytes))
 		case "uint8":
 			if size > 1 {
 				var array [16]uint8
@@ -127,7 +127,7 @@ func DecompressStructure(StructData interface{}, compressedData string) {
 				stringData = fieldValueBytes[0]
 			}
 		case "uint16":
-			val := DecompressNumber(string(fieldValueBytes))
+			val := DecompressInteger(string(fieldValueBytes))
 			stringData, _ = strconv.Atoi(val)
 		}
 
@@ -184,15 +184,15 @@ func DecompressIPV4(cIPV4 string) string {
 	return ipAddr[:len(ipAddr)-1]
 }
 
-func CompressStringNumber(snumber string, nobytes int) (string, error) {
+func CompressStringInteger(snumber string, nobytes int) (string, error) {
 	number, err := strconv.Atoi(snumber)
 	if err != nil {
 		return "", err
 	}
-	return CompressNumber(number, nobytes)
+	return CompressInteger(number, nobytes)
 }
 
-func CompressNumber(number int, nobytes int) (string, error) {
+func CompressInteger(number int, nobytes int) (string, error) {
 	//Convert to binary sequence
 	binseq := strconv.FormatInt(int64(number), 2)
 	if len(binseq)%8 != 0 {
@@ -216,7 +216,7 @@ func CompressNumber(number int, nobytes int) (string, error) {
 	return string(outByte), nil
 }
 
-func DecompressNumber(cnumber string) string {
+func DecompressInteger(cnumber string) string {
 	var binseq string
 	flag := true
 	for _, char := range []byte(cnumber) {

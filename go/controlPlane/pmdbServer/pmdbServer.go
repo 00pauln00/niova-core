@@ -14,16 +14,11 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-<<<<<<< HEAD
 	"sort"
 	uuid "github.com/satori/go.uuid"
-=======
 	"strconv"
->>>>>>> 6daca607f1870aafc6161235a9877df02958e98a
 	"strings"
 	"unsafe"
-
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	//"strconv"
 )
@@ -57,8 +52,8 @@ type pmdbServerHandler struct {
 type PeerConfigData struct {
 	UUID       [16]byte
 	IPAddr     compressionLib.IPV4
-	Port       compressionLib.Num_2
-	ClientPort compressionLib.Num_2
+	Port       uint16
+	ClientPort uint16
 }
 
 func main() {
@@ -163,11 +158,19 @@ func extractPMDBServerConfigfromFile(path string) (*PeerConfigData, error) {
 		value := strings.Split(text, " ")[lastIndex]
 		switch key {
 		case "CLIENT_PORT":
-			peerData.ClientPort = compressionLib.Num_2(value)
+			 buffer, err := strconv.ParseUint(value, 10, 16)
+			 peerData.ClientPort = uint16(buffer)
+			 if err != nil {
+                                return nil, errors.New("Client Port is out of range")
+                        }
 		case "IPADDR":
 			peerData.IPAddr = compressionLib.IPV4(value)
 		case "PORT":
-			peerData.Port = compressionLib.Num_2(value)
+			buffer, err := strconv.ParseUint(value, 10, 16)
+                        peerData.Port = uint16(buffer)
+			if err != nil {
+                                return nil, errors.New("Port is out of range")
+                        }
 		}
 	}
 	f.Close()
@@ -223,13 +226,15 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		rport := splitData[3]
 		uuid := splitData[0]
 		if uuid == handler.peerUUID.String() {
-			handler.serfAgentPort, err = strconv.ParseUint(aport, 10, 16)
+			buffer, err := strconv.ParseUint(aport, 10, 16)
+			handler.serfAgentPort = uint16(buffer)
 			if err != nil {
-				return errors.New("Agent port is out of range :" + err)
+				return errors.New("Agent port is out of range")
 			}
-			handler.serfRPCPort = strconv.ParseUint(rport, 10, 16)
+			buffer, err = strconv.ParseUint(rport, 10, 16)
+			handler.serfAgentPort = uint16(buffer)
 			if err != nil {
-				return errors.New("RPC port is out of range :" + err)
+				return errors.New("RPC port is out of range")
 			}
 			handler.nodeAddr = addr
 		} else {
@@ -262,7 +267,7 @@ func generateCheckSum(data map[string]string) (string, error) {
 
 	byteArray, err := json.Marshal(allDataArray)
         checksum := crc32.ChecksumIEEE(byteArray)
-        stringCheckSum, err := compressionLib.CompressNumber(int(checksum),4)
+        stringCheckSum, err := compressionLib.CompressInteger(int(checksum),4)
 	return stringCheckSum, err
 }
 
@@ -300,7 +305,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	}
 	handler.readPMDBServerConfig()
 	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = strconv.Itoa(handler.serfRPCPort)
+	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
 	handler.GossipData["RU"] = handler.raftUUID.String()
 	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
 	if err != nil {

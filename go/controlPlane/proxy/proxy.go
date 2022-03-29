@@ -46,8 +46,8 @@ type proxyHandler struct {
 
 	//Serf agent
 	serfAgentName     string
-	serfAgentPort     string
-	serfAgentRPCPort  string
+	serfAgentPort     uint16
+	serfAgentRPCPort  uint16
 	serfPeersFilePath string
 	serfLogger        string
 	serfAgentObj      serfAgent.SerfAgentHandler
@@ -62,8 +62,8 @@ type proxyHandler struct {
 type PeerConfigData struct {
 	PeerUUID   [16]byte
 	IPAddr     compressionLib.IPV4
-	Port       compressionLib.Num_2
-	ClientPort compressionLib.Num_2
+	Port       uint16
+	ClientPort uint16
 }
 
 var MaxPort = 60000
@@ -116,12 +116,24 @@ func (handler *proxyHandler) getConfigData() error {
 		input := strings.Split(filescanner.Text(), " ")
 		if input[0] == handler.serfAgentName {
 			handler.addr = input[1]
-			handler.serfAgentPort = input[2]
-			handler.serfAgentRPCPort = input[3]
+			aport := input[2]
+			buffer, err := strconv.ParseUint(aport, 10, 16)
+                        handler.serfAgentPort = uint16(buffer)
+			if err != nil {
+                                return errors.New("Agent port is out of range")
+                        }
+
+			rport := input[3]
+                        buffer, err = strconv.ParseUint(rport, 10, 16)
+			if err != nil {
+                                return errors.New("Agent port is out of range")
+                        }
+
+			handler.serfAgentPort = uint16(buffer)
 			handler.httpPort = input[4]
 		}
 	}
-	if handler.serfAgentPort == "" {
+	if handler.addr == "" {
 		return errors.New("Agent name not matching or not provided")
 	}
 	return nil
@@ -244,7 +256,7 @@ func validateCheckSum(data map[string]string, checksum string) error {
 		return err
 	}
 	recvdCheckSum := crc32.ChecksumIEEE(byteArray)
-        stringCheckSum, err := compressionLib.CompressNumber(int(recvdCheckSum),4)
+        stringCheckSum, err := compressionLib.CompressInteger(int(recvdCheckSum),4)
 	if err != nil {
 		return err
 	}
@@ -268,11 +280,9 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	//Handle checksum
 	recvCheckSum := pmdbServerGossip["CS"]
 	delete(pmdbServerGossip,"CS")
-	byteGossipMap, _ := json.Marshal(pmdbServerGossip)
-	checksum := crc32.ChecksumIEEE(byteGossipMap)
-	stringCheckSum, _ := compressionLib.CompressNumber(int(checksum), 4)
-	if recvCheckSum != stringCheckSum {
-		return errors.New("Gossip checksum mismatch")
+	err = validateCheckSum(pmdbServerGossip, recvCheckSum)
+	if err != nil {
+		return err
 	}
 
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
@@ -329,8 +339,8 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 		_, errFile := peer_file.WriteString(
 			"RAFT         " + (handler.raftUUID.String()) +
 				"\nIPADDR       " + string(peer.IPAddr) +
-				"\nPORT         " + string(peer.Port) +
-				"\nCLIENT_PORT  " + string(peer.ClientPort) +
+				"\nPORT         " + strconv.Itoa(int(peer.Port)) +
+				"\nCLIENT_PORT  " + strconv.Itoa(int(peer.ClientPort)) +
 				"\nSTORE        ./*.raftdb\n")
 
 		if errFile != nil {
@@ -378,8 +388,8 @@ func (handler *proxyHandler) startHTTPServer() error {
 func (handler *proxyHandler) setSerfGossipData() {
 	tag := make(map[string]string)
 	tag["Hport"] = handler.httpPort
-	tag["Aport"] = handler.serfAgentPort
-	tag["Rport"] = handler.serfAgentRPCPort
+	tag["Aport"] = strconv.Itoa(int(handler.serfAgentPort))
+	tag["Rport"] = strconv.Itoa(int(handler.serfAgentRPCPort))
 	tag["Type"] = "PROXY"
 	handler.serfAgentObj.SetNodeTags(tag)
 	for {
