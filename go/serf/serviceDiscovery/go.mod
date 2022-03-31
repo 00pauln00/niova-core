@@ -8,6 +8,8 @@ replace common/httpClient => ../../http/client
 
 replace common/specificCompressionLib => ../../specificCompressionLib
 
+replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
+
 require (
 	common/httpClient v0.0.0-00010101000000-000000000000
 	common/serfClient v0.0.0-00010101000000-000000000000

@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	compressionLib "common/specificCompressionLib"
 	log "github.com/sirupsen/logrus"
 
@@ -258,21 +259,22 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 }
 
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
+	/*
 	type PeerConfigData struct {
-		PeerUUID   compressionLib.UUID
-		IPAddr     compressionLib.IPV4
-		Port       compressionLib.Num_2
-		ClientPort compressionLib.Num_2
+		PeerUUID   compressionLib.StringUUID
+		IPAddr     compressionLib.StringIPV4
+		Port       uint16
+		ClientPort uint16
 	}
-
-	PMDBServerConfigMap := make(map[string]PeerConfigData)
+	*/
+	PMDBServerConfigMap := make(map[string]PumiceDBCommon.PeerConfigData)
 	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
 	for key, value := range pmdbServerGossip {
 		uuid, err := compressionLib.DecompressUUID(key)
                 if err == nil {
-			peerConfig := PeerConfigData{}
+			peerConfig := PumiceDBCommon.PeerConfigData{}
 			compressionLib.DecompressStructure(&peerConfig,key+value)
 			PMDBServerConfigMap[uuid] = peerConfig
 		}

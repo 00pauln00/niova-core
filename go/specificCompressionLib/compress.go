@@ -9,10 +9,8 @@ import (
 	"strings"
 )
 
-type UUID string
-type IPV4 string
-type Num_1 string
-type Num_2 string
+type StringUUID string
+type StringIPV4 string
 
 func CompressStructure(StructData interface{}) (string, error) {
 	structExtract := reflect.ValueOf(StructData)
@@ -26,14 +24,11 @@ func CompressStructure(StructData interface{}) (string, error) {
 		var compressedEntity string
 		var err error
 		switch dataType {
-		case "UUID":
+		case "StringUUID":
 			compressedEntity, err = CompressUUID(value.String())
 
-		case "IPV4":
+		case "StringIPV4":
 			compressedEntity, err = CompressIPV4(value.String())
-
-		case "Num":
-			compressedEntity, err = CompressStringInteger(value.String(), size)
 
 		case "uint8":
 			if size > 1 {
@@ -54,6 +49,7 @@ func CompressStructure(StructData interface{}) (string, error) {
 	}
 	return compressedString, nil
 }
+
 
 func sizeOfType(composedDataType string) (string, int) {
 	dataTypeWLib := strings.Split(composedDataType, ".")
@@ -76,23 +72,26 @@ func sizeOfType(composedDataType string) (string, int) {
 
 	var size int
 	switch dataType {
-	case "UUID":
+	case "StringUUID":
 		size = 16
-	case "IPV4":
+
+	case "StringIPV4":
 		size = 4
-	case "Num":
-		size, _ = strconv.Atoi(dataTypeCount)
+
 	case "uint8":
 		size = 1
 		multiplier, err := strconv.Atoi(dataTypeCount)
 		if err == nil {
 			size = size * multiplier
 		}
+
 	case "uint16":
 		size = 2
 	}
+
 	return dataType, size
 }
+
 
 func extractBytes(data string, offset *int, size int) []byte {
 	var returnBytes []byte
@@ -100,6 +99,7 @@ func extractBytes(data string, offset *int, size int) []byte {
 	*offset = *offset + size
 	return returnBytes
 }
+
 
 func DecompressStructure(StructData interface{}, compressedData string) {
 	structExtract := reflect.ValueOf(StructData).Elem()

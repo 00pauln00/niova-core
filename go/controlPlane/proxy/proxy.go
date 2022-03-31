@@ -40,7 +40,7 @@ type proxyHandler struct {
 	raftUUID                uuid.UUID
 	clientUUID              uuid.UUID
 	logPath                 string
-	PMDBServerConfigArray   []PeerConfigData
+	PMDBServerConfigArray   []PumiceDBCommon.PeerConfigData
 	PMDBServerConfigByteMap map[string][]byte
 	pmdbClientObj           *pmdbClient.PmdbClientObj
 
@@ -57,13 +57,6 @@ type proxyHandler struct {
 	limit         string
 	requireStat   string
 	httpServerObj httpServer.HTTPServerHandler
-}
-
-type PeerConfigData struct {
-	PeerUUID   [16]byte
-	IPAddr     compressionLib.IPV4
-	Port       uint16
-	ClientPort uint16
 }
 
 var MaxPort = 60000
@@ -296,7 +289,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	for key, value := range pmdbServerGossip {
 		decompressedUUID, err := compressionLib.DecompressUUID(key)
 		if err == nil {
-			peerConfig := PeerConfigData{}
+			peerConfig := PumiceDBCommon.PeerConfigData{}
 			compressionLib.DecompressStructure(&peerConfig, key + value)
 			log.Info("Peer config : ", peerConfig)
 			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
@@ -323,7 +316,7 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	}
 
 	for _, peer := range handler.PMDBServerConfigArray {
-		raft_file.WriteString("PEER " + (uuid.UUID(peer.PeerUUID).String()) + "\n")
+		raft_file.WriteString("PEER " + (uuid.UUID(peer.UUID).String()) + "\n")
 	}
 
 	raft_file.Sync()
@@ -331,7 +324,7 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 
 	//Generate .peer
 	for _, peer := range handler.PMDBServerConfigArray {
-		peer_file, err := os.Create(outfilepath + (uuid.UUID(peer.PeerUUID).String()) + ".peer")
+		peer_file, err := os.Create(outfilepath + (uuid.UUID(peer.UUID).String()) + ".peer")
 		if err != nil {
 			log.Error(err)
 		}

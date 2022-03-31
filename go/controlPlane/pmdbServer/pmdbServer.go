@@ -46,14 +46,7 @@ type pmdbServerHandler struct {
 	nodeAddr           string
 	GossipData         map[string]string
 	ConfigString       string
-	ConfigData         []PeerConfigData
-}
-
-type PeerConfigData struct {
-	UUID       [16]byte
-	IPAddr     compressionLib.IPV4
-	Port       uint16
-	ClientPort uint16
+	ConfigData         []PumiceDBCommon.PeerConfigData
 }
 
 func main() {
@@ -143,13 +136,13 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	return nso, err
 }
 
-func extractPMDBServerConfigfromFile(path string) (*PeerConfigData, error) {
+func extractPMDBServerConfigfromFile(path string) (*PumiceDBCommon.PeerConfigData, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	scanner := bufio.NewScanner(f)
-	peerData := PeerConfigData{}
+	peerData := PumiceDBCommon.PeerConfigData{}
 
 	for scanner.Scan() {
 		text := scanner.Text()
@@ -164,7 +157,7 @@ func extractPMDBServerConfigfromFile(path string) (*PeerConfigData, error) {
                                 return nil, errors.New("Client Port is out of range")
                         }
 		case "IPADDR":
-			peerData.IPAddr = compressionLib.IPV4(value)
+			peerData.IPAddr = compressionLib.StringIPV4(value)
 		case "PORT":
 			buffer, err := strconv.ParseUint(value, 10, 16)
                         peerData.Port = uint16(buffer)
