@@ -25,8 +25,12 @@ ncpcclient:
 	cd ncpc && go build ncpc.go
 
 install:
-	cp pmdbServer/pmdbServer proxy/proxy ncpc/ncpc ${DIR}/libexec/niova/
+	cp pmdbServer/pmdbServer ${DIR}/libexec/niova/CTLPlane_pmdbServer
+
+	cp proxy/proxy ${DIR}/libexec/niova/CTLPlane_proxy
 	
+	cp ncpc/ncpc ${DIR}/libexec/niova/ncpc
+
 	cp proxy/config ${DIR}/libexec/niova/niovakv.config
 
 	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
@@ -34,11 +38,11 @@ install:
 docker_support:
 	cp -r docker/* ${DIR}
 	
-	cp pmdbServer/pmdbServer  ${DIR}/PMDBServerContents/
+	cp pmdbServer/pmdbServer  ${DIR}/PMDBServerContents/CTLPlane_pmdbServer
 
 	cp proxy/gossipNodes ${DIR}/PMDBServerContents/
 
-	cp proxy/proxy ${DIR}/ProxyContents/
+	cp proxy/proxy ${DIR}/ProxyContents/CTLPlane_proxy
 
 	cp ncpc/ncpc ${DIR}/ProxyContents/
 
