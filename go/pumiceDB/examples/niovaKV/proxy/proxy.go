@@ -41,8 +41,8 @@ type proxyHandler struct {
 
 	//Serf agent
 	serfAgentName    string
-	serfAgentPort    string
-	serfAgentRPCPort string
+	serfAgentPort    uint16
+	serfAgentRPCPort uint16
 	serfLogger       string
 	serfAgentObj     serfAgent.SerfAgentHandler
 
@@ -122,12 +122,24 @@ func (handler *proxyHandler) getProxyConfigData() error {
 		input := strings.Split(filescanner.Text(), " ")
 		if input[0] == handler.serfAgentName {
 			handler.addr = input[1]
-			handler.serfAgentPort = input[2]
-			handler.serfAgentRPCPort = input[3]
+			aport := input[2]
+                        buffer, err := strconv.ParseUint(aport, 10, 16)
+                        handler.serfAgentPort = uint16(buffer)
+                        if err != nil {
+                                return errors.New("Agent port is out of range")
+                        }
+
+                        rport := input[3]
+                        buffer, err = strconv.ParseUint(rport, 10, 16)
+                        if err != nil {
+                                return errors.New("Agent port is out of range")
+                        }
+
+                        handler.serfAgentPort = uint16(buffer)
 			handler.httpPort = input[4]
 		}
 	}
-	if handler.serfAgentPort == "" {
+	if handler.addr == "" {
 		return errors.New("Agent name not matching or not provided")
 	}
 	return nil
@@ -226,8 +238,8 @@ func (handler *proxyHandler) start_HTTPServer() error {
 func (handler *proxyHandler) set_Serf_GossipData() {
 	tag := make(map[string]string)
 	tag["Hport"] = handler.httpPort
-	tag["Aport"] = handler.serfAgentPort
-	tag["Rport"] = handler.serfAgentRPCPort
+	tag["Aport"] = strconv.Itoa(int(handler.serfAgentPort))
+	tag["Rport"] = strconv.Itoa(int(handler.serfAgentRPCPort))
 	tag["Type"] = "PROXY"
 	handler.serfAgentObj.SetNodeTags(tag)
 	for {
