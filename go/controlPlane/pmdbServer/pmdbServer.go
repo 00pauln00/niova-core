@@ -14,6 +14,7 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
+	"net"
 	"sort"
 	uuid "github.com/satori/go.uuid"
 	"strconv"
@@ -43,7 +44,7 @@ type pmdbServerHandler struct {
 	gossipClusterNodes []string
 	serfAgentPort      uint16
 	serfRPCPort        uint16
-	nodeAddr           string
+	nodeAddr           net.IP
 	GossipData         map[string]string
 	ConfigString       string
 	ConfigData         []PumiceDBCommon.PeerConfigData
@@ -157,7 +158,7 @@ func extractPMDBServerConfigfromFile(path string) (*PumiceDBCommon.PeerConfigDat
                                 return nil, errors.New("Client Port is out of range")
                         }
 		case "IPADDR":
-			peerData.IPAddr = compressionLib.StringIPV4(value)
+			peerData.IPAddr = net.ParseIP(value)
 		case "PORT":
 			buffer, err := strconv.ParseUint(value, 10, 16)
                         peerData.Port = uint16(buffer)
@@ -211,6 +212,7 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		return err
 	}
 	scanner := bufio.NewScanner(f)
+	var flag bool
 	for scanner.Scan() {
 		text := scanner.Text()
 		splitData := strings.Split(text, " ")
@@ -229,13 +231,14 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 			if err != nil {
 				return errors.New("RPC port is out of range")
 			}
-			handler.nodeAddr = addr
+			handler.nodeAddr = net.ParseIP(addr)
+			flag = true
 		} else {
 			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
 		}
 	}
 
-	if handler.nodeAddr == "" {
+	if !flag {
 		log.Error("Peer UUID not matching with gossipNodes config file")
 		return errors.New("UUID not matching")
 	}

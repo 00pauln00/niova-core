@@ -9,7 +9,7 @@ import (
 	"os"
 	"strings"
 	"unsafe"
-	compressionLib "common/specificCompressionLib"
+	"net"
 )
 
 /*
@@ -26,7 +26,7 @@ type PMDBInfo struct {
 
 type PeerConfigData struct {
         UUID       [16]byte
-        IPAddr     compressionLib.StringIPV4
+        IPAddr     net.IP
         Port       uint16
         ClientPort uint16
 }

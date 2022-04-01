@@ -34,7 +34,7 @@ type proxyHandler struct {
 	logLevel   string
 
 	//Niovakvserver
-	addr string
+	addr net.IP
 
 	//Pmdb nivoa client
 	raftUUID                uuid.UUID
@@ -105,10 +105,11 @@ func (handler *proxyHandler) getConfigData() error {
 	}
 	filescanner := bufio.NewScanner(reader)
 	filescanner.Split(bufio.ScanLines)
+	var flag bool
 	for filescanner.Scan() {
 		input := strings.Split(filescanner.Text(), " ")
 		if input[0] == handler.serfAgentName {
-			handler.addr = input[1]
+			handler.addr = net.ParseIP(input[1])
 			aport := input[2]
 			buffer, err := strconv.ParseUint(aport, 10, 16)
                         handler.serfAgentPort = uint16(buffer)
@@ -124,11 +125,15 @@ func (handler *proxyHandler) getConfigData() error {
 
 			handler.serfAgentPort = uint16(buffer)
 			handler.httpPort = input[4]
+
+			flag = true
 		}
 	}
-	if handler.addr == "" {
+
+	if !flag {
 		return errors.New("Agent name not matching or not provided")
 	}
+
 	return nil
 }
 

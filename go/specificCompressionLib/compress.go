@@ -9,8 +9,6 @@ import (
 	"strings"
 )
 
-type StringUUID string
-type StringIPV4 string
 
 func CompressStructure(StructData interface{}) (string, error) {
 	structExtract := reflect.ValueOf(StructData)
@@ -19,24 +17,12 @@ func CompressStructure(StructData interface{}) (string, error) {
 	for i := 0; i < structExtract.NumField(); i++ {
 		class := structExtract.Field(i).Type()
 		value := structExtract.Field(i)
-		dataType, size := sizeOfType(class.String())
-
+		size := int(class.Size())
 		var compressedEntity string
 		var err error
-		switch dataType {
-		case "StringUUID":
-			compressedEntity, err = CompressUUID(value.String())
-
-		case "StringIPV4":
-			compressedEntity, err = CompressIPV4(value.String())
-
+		switch strings.Split(class.String(),"]")[1] {
 		case "uint8":
-			if size > 1 {
-				byteArray := value.Interface().([16]uint8)
-				compressedEntity = string(byteArray[:])
-				break
-			}
-			compressedEntity = string(value.Uint())
+			compressedEntity = value.String()
 
 		case "uint16":
 			compressedEntity, err = CompressInteger(int(value.Uint()), size)
@@ -48,48 +34,6 @@ func CompressStructure(StructData interface{}) (string, error) {
 		compressedString += compressedEntity
 	}
 	return compressedString, nil
-}
-
-
-func sizeOfType(composedDataType string) (string, int) {
-	dataTypeWLib := strings.Split(composedDataType, ".")
-	var dataType, dataTypeCount string
-	if len(dataTypeWLib) > 1 {
-		dataTypeSlice := strings.Split(dataTypeWLib[1], "_")
-		dataType = dataTypeSlice[0]
-		if len(dataTypeSlice) > 1 {
-			dataTypeCount = dataTypeSlice[1]
-		}
-	} else {
-		dataTypeSlice := strings.Split(dataTypeWLib[0], "]")
-		if len(dataTypeSlice) > 1 {
-			dataType = dataTypeSlice[1]
-			dataTypeCount = dataTypeSlice[0][1:]
-		} else {
-			dataType = dataTypeSlice[0]
-		}
-	}
-
-	var size int
-	switch dataType {
-	case "StringUUID":
-		size = 16
-
-	case "StringIPV4":
-		size = 4
-
-	case "uint8":
-		size = 1
-		multiplier, err := strconv.Atoi(dataTypeCount)
-		if err == nil {
-			size = size * multiplier
-		}
-
-	case "uint16":
-		size = 2
-	}
-
-	return dataType, size
 }
 
 
@@ -106,19 +50,14 @@ func DecompressStructure(StructData interface{}, compressedData string) {
 	offset := 0
 	for i := 0; i < structExtract.NumField(); i++ {
 		class := structExtract.Field(i).Type()
-		dataType, size := sizeOfType(class.String())
+		size := int(class.Size())
 		fieldValueBytes := extractBytes(compressedData, &offset, size)
 
 		//Decompress data
 		var stringData interface{}
-		switch dataType {
-		case "UUID":
-			stringData, _ = DecompressUUID(string(fieldValueBytes))
-		case "IPV4":
-			stringData = DecompressIPV4(string(fieldValueBytes))
-		case "Num":
-			stringData = DecompressInteger(string(fieldValueBytes))
+		switch strings.Split(class.String(),"]")[1] {
 		case "uint8":
+			//Will work on this array size hardcoded limitation
 			if size > 1 {
 				var array [16]uint8
 				copy(array[:], fieldValueBytes)
