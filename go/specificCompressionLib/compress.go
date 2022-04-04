@@ -65,16 +65,11 @@ func DecompressStructure(StructData interface{}, compressedData string) {
                         stringIP := DecompressIPV4(string(fieldValueBytes))
                         stringData = net.ParseIP(stringIP)
                 case "[16]uint8":
-                        fallthrough
+                        var array [16]uint8
+                        copy(array[:], fieldValueBytes)
+                        stringData = array
 		case "uint8":
-			//Will work on this array size hardcoded limitation
-			if size > 1 {
-				var array [16]uint8
-				copy(array[:], fieldValueBytes)
-				stringData = array
-			} else {
-				stringData = fieldValueBytes[0]
-			}
+			stringData = fieldValueBytes[0]
 		case "uint16":
 			val := DecompressInteger(string(fieldValueBytes))
 			stringData, _ = strconv.Atoi(val)
