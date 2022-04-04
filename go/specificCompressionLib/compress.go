@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"reflect"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -20,10 +21,13 @@ func CompressStructure(StructData interface{}) (string, error) {
 		size := int(class.Size())
 		var compressedEntity string
 		var err error
-		switch strings.Split(class.String(),"]")[1] {
+		switch class.String() {
+		case "net.IP":
+                        compressedEntity, err = CompressIPV4(value.MethodByName("String").Call(nil)[0].String())
+                case "[16]uint8":
+                        fallthrough
 		case "uint8":
 			compressedEntity = value.String()
-
 		case "uint16":
 			compressedEntity, err = CompressInteger(int(value.Uint()), size)
 		}
@@ -55,7 +59,13 @@ func DecompressStructure(StructData interface{}, compressedData string) {
 
 		//Decompress data
 		var stringData interface{}
-		switch strings.Split(class.String(),"]")[1] {
+		switch class.String() {
+		case "net.IP":
+                        fieldValueBytes := extractBytes(compressedData, &offset, net.IPv4len)
+                        stringIP := DecompressIPV4(string(fieldValueBytes))
+                        stringData = net.ParseIP(stringIP)
+                case "[16]uint8":
+                        fallthrough
 		case "uint8":
 			//Will work on this array size hardcoded limitation
 			if size > 1 {
