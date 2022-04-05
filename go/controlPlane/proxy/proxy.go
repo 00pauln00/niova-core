@@ -13,6 +13,7 @@ import (
 	"errors"
 	"flag"
 	"sort"
+	"encoding/binary"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
@@ -253,12 +254,11 @@ func validateCheckSum(data map[string]string, checksum string) error {
         if err != nil {
 		return err
 	}
-	recvdCheckSum := crc32.ChecksumIEEE(byteArray)
-        stringCheckSum, err := compressionLib.CompressInteger(int(recvdCheckSum),4)
-	if err != nil {
-		return err
-	}
-	if stringCheckSum != checksum {
+	calculatedCheckSum := crc32.ChecksumIEEE(byteArray)
+	checkSumByteArray := make([]byte,4)
+        binary.LittleEndian.PutUint32(checkSumByteArray,uint32(calculatedCheckSum))
+
+	if string(calculatedCheckSum) != checksum {
 		return errors.New("Checksum mismatch")
 	}
         return nil

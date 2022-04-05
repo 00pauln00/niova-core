@@ -1,7 +1,6 @@
 package specificCompressionLib
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/binary"
 	"errors"
@@ -26,7 +25,7 @@ uint16 //2bytes
 func CompressStructure(StructData interface{}) (string, error) {
 	//Representing in reflect format to get struct fields
 	structExtract := reflect.ValueOf(StructData)
-	var compressedByteOutput string
+	var compressedOutput string
 
 	//Iterating over fields and compress their values
 	for i := 0; i < structExtract.NumField(); i++ {
@@ -34,7 +33,7 @@ func CompressStructure(StructData interface{}) (string, error) {
 		class := structExtract.Field(i).Type()
 		value := structExtract.Field(i)
 
-		var data []byte
+		var data string
 		var err error
 		switch class.String() {
 		case "net.IP":
@@ -55,7 +54,7 @@ func CompressStructure(StructData interface{}) (string, error) {
 		case "uint16":
 			//Following does coversion of uint16 from base 10 to base 256
 			tempByteArray := make([]byte,2)
-			binary.LittleEndian.PutUint16(data, uint16(value.Uint()))
+			binary.LittleEndian.PutUint16(tempByteArray, uint16(value.Uint()))
 			data = string(tempByteArray)
 		}
 

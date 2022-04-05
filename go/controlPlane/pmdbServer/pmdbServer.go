@@ -10,6 +10,7 @@ import (
 	"flag"
 	"hash/crc32"
 	"io/ioutil"
+	"encoding/binary"
 	defaultLogger "log"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
@@ -263,8 +264,9 @@ func generateCheckSum(data map[string]string) (string, error) {
 
 	byteArray, err := json.Marshal(allDataArray)
         checksum := crc32.ChecksumIEEE(byteArray)
-        stringCheckSum, err := compressionLib.CompressInteger(int(checksum),4)
-	return stringCheckSum, err
+	checkSumByteArray := make([]byte,4)
+	binary.LittleEndian.PutUint32(checkSumByteArray,uint32(checksum))
+	return string(checkSumByteArray), err
 }
 
 func (handler *pmdbServerHandler) startSerfAgent() error {
