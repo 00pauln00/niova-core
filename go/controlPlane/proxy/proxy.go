@@ -29,6 +29,8 @@ import (
 	"time"
 )
 
+
+//Structure for proxy
 type proxyHandler struct {
 	//Other
 	configPath string
@@ -67,29 +69,42 @@ func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
 }
+/*
+Structure : proxyHandler
+Method    : getCmdParams
+Arguments : None
+Return(s) : None
 
-//Function to get command line parameters while starting of the client.
+Description : Function to get command line parameters while starting of the proxy.
+*/
 func (handler *proxyHandler) getCmdParams() {
 	var tempRaftUUID, tempClientUUID string
 
 	//Prepare default logpath
 	defaultLogPath := "/" + "tmp" + "/" + "niovaKVServer" + ".log"
-	flag.StringVar(&tempRaftUUID, "r", "NULL", "raft uuid")
-	flag.StringVar(&tempClientUUID, "u", uuid.NewV4().String(), "client uuid")
-	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
-	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
-	flag.StringVar(&handler.serfAgentName, "n", "NULL", "serf agent name")
-	flag.StringVar(&handler.limit, "e", "500", "No of concurrent request")
-	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
+	flag.StringVar(&tempRaftUUID, "r", "NULL", "Raft UUID")
+	flag.StringVar(&tempClientUUID, "u", uuid.NewV4().String(), "Client UUID")
+	flag.StringVar(&handler.logPath, "l", defaultLogPath, "Log filepath")
+	flag.StringVar(&handler.configPath, "c", "./", "Configuration file path")
+	flag.StringVar(&handler.serfAgentName, "n", "NULL", "Serf agent name")
+	flag.StringVar(&handler.limit, "e", "500", "Number of concurrent HTTP connections")
+	flag.StringVar(&handler.serfLogger, "sl", "ignore", "Serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
-	flag.StringVar(&handler.requireStat, "s", "0", "If required server stat about request enter 1")
-	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server gossip addrs")
+	flag.StringVar(&handler.requireStat, "s", "0", "HTTP server stat : provides status of requests, If needed provide 1")
+	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server serf configuration file")
 	flag.Parse()
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
 	handler.clientUUID, _ = uuid.FromString(tempClientUUID)
 }
 
 /*
+Structure : proxyHandler
+Method    : getConfigData
+Arguments : None
+Return(s) : error
+
+Description : Parses proxy's configuration file
+
 Config should contain following:
 Name, Addr, Aport, Rport, Hport
 
@@ -138,7 +153,14 @@ func (handler *proxyHandler) getConfigData() error {
 	return nil
 }
 
-//start the Niovakvpmdbclient
+/*
+Structure : proxyHandler
+Method    : startPMDBClient
+Arguments : None
+Return(s) : error
+
+Description : Starts PMDB client
+*/
 func (handler *proxyHandler) startPMDBClient() error {
 	var err error
 
@@ -160,8 +182,16 @@ func (handler *proxyHandler) startPMDBClient() error {
 
 }
 
-//start the SerfAgentHandler
+/*
+Structure : proxyHandler
+Method    : startSerfAgent
+Arguments : None
+Return(s) : error
+
+Description : Starts Serf Agent
+*/
 func (handler *proxyHandler) startSerfAgent() error {
+	//Setup serf logger if passed in cmd line args
 	switch handler.serfLogger {
 	case "ignore":
 		defaultLogger.SetOutput(ioutil.Discard)
@@ -174,6 +204,7 @@ func (handler *proxyHandler) startSerfAgent() error {
 		}
 	}
 
+	//Fill serf agent configuration
 	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
 	handler.serfAgentObj.Name = handler.serfAgentName
 	handler.serfAgentObj.BindAddr = handler.addr
@@ -182,56 +213,22 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
-	if err != nil {
+	if err != nil {:
 		return err
 	}
+
 	//Start serf agent
 	_, err = handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
 	return err
 }
 
-// Validate PMDB Server tags
-func validateTags(configPeer string) error {
-	log.Info("Validating PMDB Config..")
-	trimmedConfigPeer := strings.Trim(configPeer, "/")
-	configPeerSplit := strings.Split(trimmedConfigPeer, "/")
+/*
+Func      : getAnyEntryFromStringMap
+Arguments : map[string]map[string]string
+Return(s) : map[string]string
 
-	// validate UUIDs
-	for i := 0; i < len(configPeerSplit); i = i + 4 {
-		_, err := uuid.FromString(configPeerSplit[i])
-		if err != nil {
-			return errors.New("Validation fail - UUID is malformed")
-		}
-	}
-	// validate IP address
-	for i := 1; i < len(configPeerSplit); i = i + 4 {
-		ret := net.ParseIP(configPeerSplit[i])
-		if ret == nil {
-			return errors.New("Validation fail - IP malformed")
-		}
-	}
-	// validate port numbers
-	for i := 2; i < len(configPeerSplit); i = i + 4 {
-		configPort1, err := strconv.Atoi(configPeerSplit[i])
-		if err != nil {
-			return errors.New("Validation fail - PORT malformed")
-		}
-		if configPort1 < MinPort || configPort1 > MaxPort {
-			return errors.New("Validation fail - PORT out of range")
-		}
-
-		configPort2, err := strconv.Atoi(configPeerSplit[i])
-		if err != nil {
-			return errors.New("Validation fail - PORT malformed")
-		}
-		if configPort2 < MinPort || configPort2 > MaxPort {
-			return errors.New("Validation fail - PORT out of range")
-		}
-	}
-	log.Info("Validated PMDB Config")
-	return nil
-}
-
+Description : A helper func to get a entry from nested string map;
+*/
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
 	for _, v := range mapSample {
 		return v
@@ -239,43 +236,69 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 	return nil
 }
 
+/*
+Func      : validateCheckSum
+Arguments : map[string]string, string
+Return(s) : error
 
+Description : A helper func to validate recieved checksum with checksum of the data(map[string]string).
+*/
 func validateCheckSum(data map[string]string, checksum string) error {
 	keys := make([]string, 0, len(data))
         var allDataArray []string
+
+	//Append map keys to key array
         for k := range data {
                 keys = append(keys, k)
         }
+
+	//Sort the key array to ensure uniformity 
         sort.Strings(keys)
+	//Iterate over the sorted keys and append the value to array
         for _, k := range keys {
                 allDataArray = append(allDataArray, k+data[k])
         }
+
+	//Convert value array to byte slice
 	byteArray, err := json.Marshal(allDataArray)
         if err != nil {
 		return err
 	}
-	calculatedCheckSum := crc32.ChecksumIEEE(byteArray)
-	checkSumByteArray := make([]byte,4)
-        binary.LittleEndian.PutUint32(checkSumByteArray,uint32(calculatedCheckSum))
 
-	if string(calculatedCheckSum) != checksum {
+	//Calculate checksum for the byte slice
+	calculatedChecksum := crc32.ChecksumIEEE(byteArray)
+
+	//Convert the checksum to uint32 and compare with identified checksum
+	convertedCheckSum = binary.LittleEndian.Uint32(checksum)
+	if string(calculatedChecksum) != covertedChecksum {
 		return errors.New("Checksum mismatch")
 	}
         return nil
 }
 
+/*
+Structure : proxyHandler
+Method    : GetPMDBServerConfig
+Arguments : None
+Return(s) : error
+
+Description : Get PMDB server configs from serf gossip and store in file. The generated PMDB config 
+file is used by PMDB client to connet to the PMDB cluster.
+*/
 func (handler *proxyHandler) GetPMDBServerConfig() error {
 	var allPmdbServerGossip map[string]map[string]string
+
+	//Iterate till getting PMDB config data from serf gossip
 	for len(allPmdbServerGossip) == 0 {
 		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type", "PMDB_SERVER")
 		time.Sleep(2 * time.Second)
 	}
-	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
+	log.Info("PMDB config from gossip : ", allPmdbServerGossip)
 
 	var err error
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
-	//Handle checksum
+	//Validate checksum; Get checksum entry from Map and delete that entry
 	recvCheckSum := pmdbServerGossip["CS"]
 	delete(pmdbServerGossip,"CS")
 	err = validateCheckSum(pmdbServerGossip, recvCheckSum)
@@ -283,14 +306,15 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		return err
 	}
 
+	//Get Raft UUID from the map
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
 	if err != nil{
 		log.Error("Error :",err)
 		return err
 	}
-	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 
-	//Parse data from gossip
+	//Get PMDB config from the map
+	handler.PMDBServerConfigByteMap = make(map[string][]byte)
 	for key, value := range pmdbServerGossip {
 		decompressedUUID, err := compressionLib.DecompressUUID(key)
 		if err == nil {
@@ -304,10 +328,20 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 
 	log.Info("Decompressed PMDB server config array : ", handler.PMDBServerConfigArray)
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
+	//Create PMDB server config dir
 	os.Mkdir(path, os.ModePerm)
 	return handler.dumpConfigToFile(path + "/")
 }
 
+
+/*
+Structure : proxyHandler
+Method    : dumpConfigToFile
+Arguments : string
+Return(s) : error
+
+Description : Dump PMDB server configs from map to file 
+*/
 func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	//Generate .raft
 	raft_file, err := os.Create(outfilepath + (handler.raftUUID.String()) + ".raft")
@@ -350,6 +384,14 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	return nil
 }
 
+/*
+Structure : proxyHandler
+Method    : WriteCallBack
+Arguments : []byte
+Return(s) : error
+
+Description : Call back for PMDB writes requests to HTTP server.
+*/
 func (handler *proxyHandler) WriteCallBack(request []byte) error {
 	requestObj := requestResponseLib.KVRequest{}
 	dec := gob.NewDecoder(bytes.NewBuffer(request))
@@ -362,10 +404,28 @@ func (handler *proxyHandler) WriteCallBack(request []byte) error {
 	return err
 }
 
+
+/*
+Structure : proxyHandler
+Method    : ReadCallBack
+Arguments : []byte
+Return(s) : error
+
+Description : Call back for PMDB read requests to HTTP server.
+*/
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
 	return handler.pmdbClientObj.ReadEncoded(request, "", response)
 }
 
+
+/*
+Structure : proxyHandler
+Method    : startHTTPServer
+Arguments : None
+Return(s) : error
+
+Description : Starts HTTP server.
+*/
 func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
 	handler.httpServerObj = httpServer.HTTPServerHandler{}
@@ -382,14 +442,24 @@ func (handler *proxyHandler) startHTTPServer() error {
 	return err
 }
 
-//Get gossip data
+/*
+Structure : proxyHandler
+Method    : setSerfGossipData
+Arguments : None
+Return(s) : None
+
+Description : Set gossip data for proxy
+*/
 func (handler *proxyHandler) setSerfGossipData() {
 	tag := make(map[string]string)
+	//Static tags
 	tag["Hport"] = handler.httpPort
 	tag["Aport"] = strconv.Itoa(int(handler.serfAgentPort))
 	tag["Rport"] = strconv.Itoa(int(handler.serfAgentRPCPort))
 	tag["Type"] = "PROXY"
 	handler.serfAgentObj.SetNodeTags(tag)
+
+	//Dynamic tag : Leader UUID of PMDB cluster
 	for {
 		leader, err := handler.pmdbClientObj.PmdbGetLeader()
 		if err != nil {
@@ -404,6 +474,14 @@ func (handler *proxyHandler) setSerfGossipData() {
 	}
 }
 
+/*
+Structure : proxyHandler
+Method    : killSignalHandler
+Arguments : None
+Return(s) : None
+
+Description : Generates HTTP request status file on kill signal
+*/
 func (handler *proxyHandler) killSignalHandler() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
@@ -416,7 +494,7 @@ func (handler *proxyHandler) killSignalHandler() {
 	}()
 }
 
-//Main func
+
 func main() {
 
 	var err error
