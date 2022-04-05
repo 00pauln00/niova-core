@@ -54,8 +54,6 @@ func DecompressStructure(StructData interface{}, compressedData string) {
 	offset := 0
 	for i := 0; i < structExtract.NumField(); i++ {
 		class := structExtract.Field(i).Type()
-		size := int(class.Size())
-		fieldValueBytes := extractBytes(compressedData, &offset, size)
 
 		//Decompress data
 		var stringData interface{}
@@ -65,12 +63,15 @@ func DecompressStructure(StructData interface{}, compressedData string) {
                         stringIP := DecompressIPV4(string(fieldValueBytes))
                         stringData = net.ParseIP(stringIP)
                 case "[16]uint8":
-                        var array [16]uint8
+                        fieldValueBytes := extractBytes(compressedData, &offset, int(class.Size()))
+			var array [16]uint8
                         copy(array[:], fieldValueBytes)
                         stringData = array
 		case "uint8":
+			fieldValueBytes := extractBytes(compressedData, &offset, int(class.Size()))
 			stringData = fieldValueBytes[0]
 		case "uint16":
+			fieldValueBytes := extractBytes(compressedData, &offset, int(class.Size()))
 			val := DecompressInteger(string(fieldValueBytes))
 			stringData, _ = strconv.Atoi(val)
 		}
