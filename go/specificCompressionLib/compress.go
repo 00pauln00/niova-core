@@ -3,6 +3,7 @@ package specificCompressionLib
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/binary"
 	"errors"
 	"reflect"
 	"net"
@@ -11,36 +12,68 @@ import (
 )
 
 
-func CompressStructure(StructData interface{}) (string, error) {
-	structExtract := reflect.ValueOf(StructData)
-	var compressedString string
+/*
+Func name : CompressStructure
+Description : This function compress the structure data to string. The size of the string 
+matches the actual information entropy.
 
+Allowed data types:
+net.IP (Only IPV4) //4bytes
+[16]uint8 //16bytes
+uint8 //1byte
+uint16 //2bytes
+*/
+func CompressStructure(StructData interface{}) (string, error) {
+	//Representing in reflect format to get struct fields
+	structExtract := reflect.ValueOf(StructData)
+	var compressedByteOutput string
+
+	//Iterating over fields and compress their values
 	for i := 0; i < structExtract.NumField(); i++ {
+		//Get data type and value of the field
 		class := structExtract.Field(i).Type()
 		value := structExtract.Field(i)
-		size := int(class.Size())
-		var compressedEntity string
+
+		var data []byte
 		var err error
 		switch class.String() {
 		case "net.IP":
-                        compressedEntity, err = CompressIPV4(value.MethodByName("String").Call(nil)[0].String())
+			//Currently provision is made only for IPV4
+			//Following converts net.IP to string representation
+			//Reflect calls net.IP.String() method to get string representation
+			reflectValueFormatIPV4 := value.MethodByName("String").Call(nil)[0]
+			stringIPV4 := reflectValueFormatIPV4.String()
+			data, err = CompressIPV4(stringIPV4)
                 case "[16]uint8":
-                        fallthrough
-		case "uint8":
-			compressedEntity = value.String()
+			//Reflect value format is converted to interface then to [16]uint8 array
+                        byteArray := value.Interface().([16]uint8)
+			//Then [16]uint8 array is converted to uint8 slice and then to string
+                        data = string(byteArray[:])
+                case "uint8":
+			//uint8 datatype is directly converted to string
+                        data = string(value.Uint())
 		case "uint16":
-			compressedEntity, err = CompressInteger(int(value.Uint()), size)
+			//Following does coversion of uint16 from base 10 to base 256
+			tempByteArray := make([]byte,2)
+			binary.LittleEndian.PutUint16(data, uint16(value.Uint()))
+			data = string(tempByteArray)
 		}
 
 		if err != nil {
-			return compressedString, err
+			return compressedOutput, err
 		}
-		compressedString += compressedEntity
+		compressedOutput += data
 	}
-	return compressedString, nil
+	return compressedOutput, nil
 }
 
 
+/*
+Func name : extractBytes
+Description : Extracts the child byte slice from the specified position from
+the parent string. It increments the offset, so that it points to next field's
+start position.
+*/
 func extractBytes(data string, offset *int, size int) []byte {
 	var returnBytes []byte
 	returnBytes = []byte(data[*offset : *offset+size])
@@ -48,43 +81,52 @@ func extractBytes(data string, offset *int, size int) []byte {
 	return returnBytes
 }
 
-
+/*
+Func name : DecompressStructure
+Description : Decompress the string data to structure data
+*/
 func DecompressStructure(StructData interface{}, compressedData string) {
+	//Convert the structure passed to reflect value
 	structExtract := reflect.ValueOf(StructData).Elem()
 	offset := 0
+
 	for i := 0; i < structExtract.NumField(); i++ {
 		class := structExtract.Field(i).Type()
-
-		//Decompress data
-		var stringData interface{}
+		var data interface{}
 		switch class.String() {
 		case "net.IP":
                         fieldValueBytes := extractBytes(compressedData, &offset, net.IPv4len)
                         stringIP := DecompressIPV4(string(fieldValueBytes))
-                        stringData = net.ParseIP(stringIP)
+                        data = net.ParseIP(stringIP)
                 case "[16]uint8":
                         fieldValueBytes := extractBytes(compressedData, &offset, int(class.Size()))
 			var array [16]uint8
                         copy(array[:], fieldValueBytes)
-                        stringData = array
+                        data = array
 		case "uint8":
 			fieldValueBytes := extractBytes(compressedData, &offset, int(class.Size()))
-			stringData = fieldValueBytes[0]
+			data = fieldValueBytes[0]
 		case "uint16":
 			fieldValueBytes := extractBytes(compressedData, &offset, int(class.Size()))
-			val := DecompressInteger(string(fieldValueBytes))
-			stringData, _ = strconv.Atoi(val)
+			data = binary.LittleEndian.Uint16(fieldValueBytes)
 		}
 
-		//Fill the struct
-		value := reflect.ValueOf(stringData).Convert(class)
+		//Fill the field
+		//Coversion if interface type to field type
+		value := reflect.ValueOf(data).Convert(class)
 		field := structExtract.FieldByName(structExtract.Type().Field(i).Name)
+		//Set field value
 		if field.CanSet() {
 			field.Set(value)
 		}
 	}
 }
 
+/*
+Func name : CompressUUID
+Description : Compress 36bytes string representation of UUID to
+16bytes string
+*/
 func CompressUUID(uuid string) (string, error) {
 	replaced := strings.Replace(uuid, "-", "", 4)
 	byteArray, err := hex.DecodeString(replaced)
@@ -129,52 +171,3 @@ func DecompressIPV4(cIPV4 string) string {
 	return ipAddr[:len(ipAddr)-1]
 }
 
-func CompressStringInteger(snumber string, nobytes int) (string, error) {
-	number, err := strconv.Atoi(snumber)
-	if err != nil {
-		return "", err
-	}
-	return CompressInteger(number, nobytes)
-}
-
-func CompressInteger(number int, nobytes int) (string, error) {
-	//Convert to binary sequence
-	binseq := strconv.FormatInt(int64(number), 2)
-	if len(binseq)%8 != 0 {
-		binseq = strings.Repeat("0", 8-len(binseq)%8) + binseq
-	}
-	var outByte []byte
-	for i := 0; i < len(binseq)/8; i++ {
-		start := i * 8
-		end := (i + 1) * 8
-		intrep, err := strconv.ParseInt(binseq[start:end], 2, 64)
-		if err != nil {
-			return "", nil
-		}
-		outByte = append(outByte, byte(uint8(intrep)))
-	}
-	if len(outByte) < nobytes {
-		byte0 := []byte{0}
-		outByte = append(bytes.Repeat(byte0, nobytes-len(outByte)), outByte...)
-	}
-
-	return string(outByte), nil
-}
-
-func DecompressInteger(cnumber string) string {
-	var binseq string
-	flag := true
-	for _, char := range []byte(cnumber) {
-		if flag && (string(char) == string(0)) {
-			continue
-		}
-		flag = false
-		seq := strconv.FormatInt(int64(char), 2)
-		if len(seq)%8 != 0 {
-			seq = strings.Repeat("0", 8-len(seq)%8) + seq
-		}
-		binseq += seq
-	}
-	number, _ := strconv.ParseInt(binseq, 2, 64)
-	return strconv.Itoa(int(number))
-}
