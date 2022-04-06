@@ -213,7 +213,7 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
-	if err != nil {:
+	if err != nil {
 		return err
 	}
 
@@ -269,8 +269,8 @@ func validateCheckSum(data map[string]string, checksum string) error {
 	calculatedChecksum := crc32.ChecksumIEEE(byteArray)
 
 	//Convert the checksum to uint32 and compare with identified checksum
-	convertedCheckSum = binary.LittleEndian.Uint32(checksum)
-	if string(calculatedChecksum) != covertedChecksum {
+	convertedCheckSum := binary.LittleEndian.Uint32([]byte(checksum))
+	if calculatedChecksum != convertedCheckSum {
 		return errors.New("Checksum mismatch")
 	}
         return nil
