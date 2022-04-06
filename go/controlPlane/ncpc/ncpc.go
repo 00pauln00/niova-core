@@ -2,20 +2,21 @@ package main
 
 import (
 	"bytes"
-	"common/clientAPI"
+	serviceDiscovery "common/clientAPI"
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"strings"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type clientHandler struct {
@@ -28,6 +29,7 @@ type clientHandler struct {
 	logPath           string
 	resultFile        string
 	rncui             string
+	rangeQuery        bool
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 }
@@ -62,6 +64,18 @@ func usage() {
 	os.Exit(0)
 }
 
+func getKeyType(key string) string {
+	switch key[:2] {
+	case "vd":
+		return "vdevKey"
+	case "ni":
+		return "nisdKey"
+	case "no":
+		return "nodeKey"
+	}
+	return ""
+}
+
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.requestKey, "k", "Key", "Key")
@@ -73,6 +87,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+":0:0:0:0", "RNCUI for request")
+	flag.Bool("ra", false, "Wether the query is range query or not")
 	flag.Parse()
 }
 
@@ -95,7 +110,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 					//Decompress
 					thisNISDData := nisdData{}
 					thisNISDData.UUID = uuid
-					fmt.Println("NISD Status : " ,CompressedStatus)
+					fmt.Println("NISD Status : ", CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
@@ -169,6 +184,7 @@ func main() {
 	case "read":
 		requestObj.Key = clientObj.requestKey
 		requestObj.Operation = clientObj.operation
+		requestObj.RangeQuery = clientObj.rangeQuery
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)

@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
+
 )
 
 /*
@@ -38,6 +39,10 @@ type PmdbServerObject struct {
 	ColumnFamilies string // XXX should be an array of strings
 	SyncWrites     bool
 	CoalescedWrite bool
+}
+
+type Iterator struct {
+	c *C.rocksdb_iterator_t
 }
 
 type charsSlice []*C.char
@@ -298,6 +303,77 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 	key_len int64, gocolfamily string) ([]byte, error) {
 
 	return PmdbReadKV(app_id, key, key_len, gocolfamily)
+}
+
+func byteToChar(b []byte) *C.char {
+	var c *C.char
+	if len(b) > 0 {
+		c = (*C.char)(unsafe.Pointer(&b[0]))
+	}
+	return c
+}
+
+func NewNativeIterator(c unsafe.Pointer) *Iterator {
+	log.Info("Inside new iterator")
+	return &Iterator{(*C.rocksdb_iterator_t)(c)}
+}
+
+func (iter *Iterator) Seek(key string) {
+	cKey := byteToChar([]byte(key))
+	log.Info("Inside seek", key)
+	log.Info("cKey -> ", cKey)
+	C.rocksdb_iter_seek(iter.c, cKey, C.size_t(len([]byte(key))))
+	return
+}
+
+func (iter *Iterator) Key() string {
+	var cLen C.size_t
+	log.Info("Inside key")
+	cKey := C.rocksdb_iter_key(iter.c, &cLen)
+	if cKey == nil {
+		return ""
+	}
+	return C.GoString(cKey)
+}
+
+func (iter *Iterator) Value() string {
+	var cLen C.size_t
+	log.Info("Inside value")
+	cVal := C.rocksdb_iter_value(iter.c, &cLen)
+	if cVal == nil {
+		return ""
+	}
+	return C.GoString(cVal)
+}
+
+func PmdbRangeLookupKey(key string, key_len int64,
+	go_cf string) ([]byte, error) {
+	var result []byte
+	var lookup_err error
+	var ptr unsafe.Pointer
+
+	log.Info("Inside pmdbRangeLookupKey")
+	itr := NewNativeIterator(ptr)
+
+	itr.Seek(key)
+	result = []byte(itr.Value())
+	fmt.Println(result)
+	return result, lookup_err
+
+}
+
+func PmdbRangeReadKV(app_id unsafe.Pointer, key string,
+	key_len int64, gocolfamily string) ([]byte, error) {
+	log.Info("Inside pmdbRangeReadKV")
+	go_value, err := PmdbRangeLookupKey(key, key_len, gocolfamily)
+	//Get the result
+	return go_value, err
+}
+
+func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
+	key_len int64, gocolfamily string) ([]byte, error) {
+	log.Info("Inside RangeReadKV")
+	return PmdbRangeReadKV(app_id, key, key_len, gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer
