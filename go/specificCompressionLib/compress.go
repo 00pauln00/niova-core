@@ -50,7 +50,7 @@ func CompressStructure(StructData interface{}) (string, error) {
                         data = string(byteArray[:])
                 case "uint8":
 			//uint8 datatype is directly converted to string
-                        data = string(value.Uint())
+                        data = string(uint8(value.Uint()))
 		case "uint16":
 			//Following does coversion of uint16 from base 10 to base 256
 			tempByteArray := make([]byte,2)
