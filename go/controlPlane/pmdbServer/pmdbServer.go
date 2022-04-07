@@ -6,6 +6,7 @@ import (
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
 	"errors"
+	"fmt"
 	"flag"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -68,6 +69,8 @@ func main() {
 	case "Trace":
 		log.SetLevel(log.TraceLevel)
 	}
+
+	fmt.Println(serverHandler.logDir)
 
 	//Create log file
 	err := PumiceDBCommon.InitLogger(serverHandler.logDir)

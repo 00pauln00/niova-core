@@ -3,15 +3,14 @@ package PumiceDBServer
 import (
 	"errors"
 	"fmt"
-	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"unsafe"
-
+	"niova/go-pumicedb-lib/common"
 	log "github.com/sirupsen/logrus"
 
+	gopointer "github.com/mattn/go-pointer"
 )
-
 /*
 #cgo LDFLAGS: -lniova -lniova_raft -lniova_pumice -lrocksdb
 #include <raft/pumice_db.h>
@@ -22,10 +21,9 @@ extern void applyCgo(const struct raft_net_client_user_id *, const void *,
                      size_t, void *, void *);
 extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
                     size_t, void *, size_t, void *);
-*/
+	*/
 import "C"
 
-import gopointer "github.com/mattn/go-pointer"
 
 type PmdbServerAPI interface {
 	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer)
@@ -41,9 +39,6 @@ type PmdbServerObject struct {
 	CoalescedWrite bool
 }
 
-type Iterator struct {
-	c *C.rocksdb_iterator_t
-}
 
 type charsSlice []*C.char
 
@@ -239,7 +234,7 @@ func PmdbLookupKey(key string, key_len int64,
 	FreeCMem(err)
 	FreeCMem(cf)
 	FreeCMem(C_key)
-
+	log.Info("Result is :",result)
 	return result, lookup_err
 }
 
@@ -256,10 +251,12 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 	cf := GoToCString(gocolfamily)
 
 	C_key := GoToCString(key)
+	log.Info("WRITE - c_key", C_key)
 
 	C_key_len := GoToCSize_t(key_len)
 
 	C_value := GoToCString(value)
+	log.Info("WRITE - c_value", C_value)
 
 	C_value_len := GoToCSize_t(value_len)
 
@@ -305,6 +302,8 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 	return PmdbReadKV(app_id, key, key_len, gocolfamily)
 }
 
+// Methods for range iterator
+
 func byteToChar(b []byte) *C.char {
 	var c *C.char
 	if len(b) > 0 {
@@ -313,52 +312,36 @@ func byteToChar(b []byte) *C.char {
 	return c
 }
 
-func NewNativeIterator(c unsafe.Pointer) *Iterator {
-	log.Info("Inside new iterator")
-	return &Iterator{(*C.rocksdb_iterator_t)(c)}
-}
-
-func (iter *Iterator) Seek(key string) {
-	cKey := byteToChar([]byte(key))
-	log.Info("Inside seek", key)
-	log.Info("cKey -> ", cKey)
-	C.rocksdb_iter_seek(iter.c, cKey, C.size_t(len([]byte(key))))
-	return
-}
-
-func (iter *Iterator) Key() string {
-	var cLen C.size_t
-	log.Info("Inside key")
-	cKey := C.rocksdb_iter_key(iter.c, &cLen)
-	if cKey == nil {
-		return ""
-	}
-	return C.GoString(cKey)
-}
-
-func (iter *Iterator) Value() string {
-	var cLen C.size_t
-	log.Info("Inside value")
-	cVal := C.rocksdb_iter_value(iter.c, &cLen)
-	if cVal == nil {
-		return ""
-	}
-	return C.GoString(cVal)
-}
-
 func PmdbRangeLookupKey(key string, key_len int64,
 	go_cf string) ([]byte, error) {
-	var result []byte
 	var lookup_err error
-	var ptr unsafe.Pointer
+	// var ptr unsafe.Pointer
+	cKey := GoToCString(key)
+	cLen := GoToCSize_t(key_len)
+	var cLenVal C.size_t
+	var cLenKey C.size_t
 
+	//(C.PmdbGetRocksDB(),
+	ropts := C.rocksdb_readoptions_create()
+	log.Info("Key passed is:", key)
+	log.Info("cKey is :", cKey)
+
+	itr := C.rocksdb_create_iterator(C.PmdbGetRocksDB(), ropts)
 	log.Info("Inside pmdbRangeLookupKey")
-	itr := NewNativeIterator(ptr)
+	//itr := NewNativeIterator(ptr)
 
-	itr.Seek(key)
-	result = []byte(itr.Value())
-	fmt.Println(result)
-	return result, lookup_err
+	C.rocksdb_iter_seek(itr, cKey, cLen)
+	log.Info("after seek")
+	//itr.Seek(key)
+	cResultKey := C.rocksdb_iter_key(itr, &cLenKey)
+	log.Info("Between key and val")
+	cResultVal := C.rocksdb_iter_value(itr, &cLenVal)
+	//result = []byte(itr.Value())
+	log.Info("Printing range key here ",C.GoString(cResultKey))
+	log.Info("Printing range value here",C.GoString(cResultVal))
+	log.Info("Key is :", string(CToGoBytes(cResultKey, C.int(cLenKey))))
+	log.Info("Value is :", string(CToGoBytes(cResultVal, C.int(cLenVal))))
+	return C.GoBytes(unsafe.Pointer(cResultVal), C.int(cLenVal)) ,lookup_err
 
 }
 
