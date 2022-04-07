@@ -379,8 +379,8 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		inputVal := string(valType)
 		log.Trace("Input value after read request:", inputVal)
 
-		resultReq := requestResponseLib.KVRequest{
-			Key:   reqStruct.Key,
+		resultReq := requestResponseLib.KVResponse{
+			Status: 0,
 			Value: valType,
 		}
 
