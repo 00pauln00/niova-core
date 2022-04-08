@@ -294,7 +294,7 @@ type NiovaKVServer struct {
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) {
 
-	log.Trace("NiovaCtlPlane server: Apply request received")
+	log.Info("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
@@ -305,7 +305,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		return
 	}
 
-	log.Trace("Key passed by client: ", applyNiovaKV.Key)
+	log.Info("Key passed by client: ", applyNiovaKV.Key)
 
 	// length of key.
 	keyLength := len(applyNiovaKV.Key)
@@ -315,7 +315,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Length of value.
 	valLen := len(byteToStr)
 
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
+	log.Info("Write the KeyValue by calling PmdbWriteKV")
 	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
@@ -366,7 +366,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", reqStruct.Key)
+	log.Info("Key passed by client: ", reqStruct.Key)
 
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
@@ -385,7 +385,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	if readErr == nil {
 		valType = readResult
 		inputVal := string(valType)
-		log.Trace("Input value after read request:", inputVal)
+		log.Info("Input value after read request:", inputVal)
 
 		resultReq := requestResponseLib.KVRequest{
 			Key:   reqStruct.Key,

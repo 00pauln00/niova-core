@@ -315,32 +315,30 @@ func byteToChar(b []byte) *C.char {
 func PmdbRangeLookupKey(key string, key_len int64,
 	go_cf string) ([]byte, error) {
 	var lookup_err error
-	// var ptr unsafe.Pointer
 	cKey := GoToCString(key)
 	cLen := GoToCSize_t(key_len)
 	var cLenVal C.size_t
 	var cLenKey C.size_t
+	cf := GoToCString(go_cf)
 
-	//(C.PmdbGetRocksDB(),
 	ropts := C.rocksdb_readoptions_create()
 	log.Info("Key passed is:", key)
 	log.Info("cKey is :", cKey)
 
-	itr := C.rocksdb_create_iterator(C.PmdbGetRocksDB(), ropts)
-	log.Info("Inside pmdbRangeLookupKey")
-	//itr := NewNativeIterator(ptr)
+	cf_handle := C.PmdbCfHandleLookup(cf)
+	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
 
 	C.rocksdb_iter_seek(itr, cKey, cLen)
-	log.Info("after seek")
-	//itr.Seek(key)
 	cResultKey := C.rocksdb_iter_key(itr, &cLenKey)
-	log.Info("Between key and val")
 	cResultVal := C.rocksdb_iter_value(itr, &cLenVal)
-	//result = []byte(itr.Value())
-	log.Info("Printing range key here ",C.GoString(cResultKey))
-	log.Info("Printing range value here",C.GoString(cResultVal))
-	log.Info("Key is :", string(CToGoBytes(cResultKey, C.int(cLenKey))))
-	log.Info("Value is :", string(CToGoBytes(cResultVal, C.int(cLenVal))))
+
+	// TODO
+	// Loop to dump key-values into buffer till the data is exhasted
+	// or the buffer is full. return the data if the buffer is full
+	//
+	// rocksdb_iter_next() to get the next key
+	// check return values for info about the keys-values left
+
 	return C.GoBytes(unsafe.Pointer(cResultVal), C.int(cLenVal)) ,lookup_err
 
 }
