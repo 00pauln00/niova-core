@@ -5,6 +5,7 @@ import (
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"flag"
@@ -376,12 +377,15 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	log.Info("Calling range query")
 	readResult, readErr = nso.pso.RangeReadKV(appId, reqStruct.Key,
-			int64(keyLen), colmfamily)
-
+				int64(keyLen), colmfamily)
 	var valType []byte
 	var replySize int64
 	var copyErr error
 
+	var temp = make(map[string]string)
+	_ = json.Unmarshal(readResult, &temp)
+
+	log.Info(temp)
 	if readErr == nil {
 		valType = readResult
 		inputVal := string(valType)
@@ -390,6 +394,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		resultReq := requestResponseLib.KVRequest{
 			Key:   reqStruct.Key,
 			Value: valType,
+			//XXX return lastKey as well
 		}
 
 		//Copy the encoded result in replyBuffer

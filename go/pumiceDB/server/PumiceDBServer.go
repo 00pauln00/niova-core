@@ -2,6 +2,7 @@ package PumiceDBServer
 
 import (
 	"errors"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -304,55 +305,67 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 
 // Methods for range iterator
 
-func byteToChar(b []byte) *C.char {
-	var c *C.char
-	if len(b) > 0 {
-		c = (*C.char)(unsafe.Pointer(&b[0]))
-	}
-	return c
-}
-
 func PmdbRangeLookupKey(key string, key_len int64,
-	go_cf string) ([]byte, error) {
+	lastReadKey string, lastKeyLen int64, go_cf string) ([]byte, error) {
 	var lookup_err error
-	cKey := GoToCString(key)
-	cLen := GoToCSize_t(key_len)
 	var cLenVal C.size_t
 	var cLenKey C.size_t
+
 	cf := GoToCString(go_cf)
 
 	ropts := C.rocksdb_readoptions_create()
 	log.Info("Key passed is:", key)
-	log.Info("cKey is :", cKey)
 
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
+	if lastReadKey == "" {
+		cKey := GoToCString(key)
+		cLen := GoToCSize_t(key_len)
+		C.rocksdb_iter_seek(itr, cKey, cLen)
+	}else{
+		cKey := GoToCString(lastReadKey)
+		cLen := GoToCSize_t(lastKeyLen)
+		C.rocksdb_iter_seek(itr, cKey, cLen)
 
-	C.rocksdb_iter_seek(itr, cKey, cLen)
-	cResultKey := C.rocksdb_iter_key(itr, &cLenKey)
-	cResultVal := C.rocksdb_iter_value(itr, &cLenVal)
-
+	var testMap = make(map[string]string)
 	// TODO
 	// Loop to dump key-values into buffer till the data is exhasted
 	// or the buffer is full. return the data if the buffer is full
-	//
+	for (C.rocksdb_iter_valid(itr) != 0){
+		ptr := C.strstr(C.rocksdb_iter_key(itr, &cLenKey),cKey)
+		if (C.GoString(ptr) == ""){
+			break
+		}
+		tKey := C.GoString(C.rocksdb_iter_key(itr, &cLenKey))
+		tVal := C.GoString(C.rocksdb_iter_value(itr, &cLenVal))
+		testMap[tKey] = tVal
+		C.rocksdb_iter_next(itr)
+	}
+
+	//XXX destroy the iter
+	C.rocksdb_iter_destroy(itr)
+	// XXX convert the map to bytearray.
+	buff, _ := json.Marshal(testMap)
 	// rocksdb_iter_next() to get the next key
 	// check return values for info about the keys-values left
+	// CToGoBytes(C_value, C.int(C_value_len))
+	//C.GoBytes(unsafe.Pointer(C_value), C.int(C_value_len))
+	log.Info("Fetched key and val are\n:",testMap)
 
-	return C.GoBytes(unsafe.Pointer(cResultVal), C.int(cLenVal)) ,lookup_err
 
+	return buff, lookup_err
 }
 
 func PmdbRangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) ([]byte, error) {
+	key_len int64, lastKeyRead string, lastKeyLen int64, gocolfamily string) ([]byte, error) {
 	log.Info("Inside pmdbRangeReadKV")
-	go_value, err := PmdbRangeLookupKey(key, key_len, gocolfamily)
+	go_value, lastKeyRead, err := PmdbRangeLookupKey(key, key_len, lastKeyRead, lastKeyLen, gocolfamily)
 	//Get the result
-	return go_value, err
+	return go_value, lastKeyRead, err
 }
-
+// Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) ([]byte, error) {
+	key_len int64, lastKeyRead string, lastKeyLen int64 gocolfamily string) ([]byte,[]byte, error) {
 	log.Info("Inside RangeReadKV")
 	return PmdbRangeReadKV(app_id, key, key_len, gocolfamily)
 }
