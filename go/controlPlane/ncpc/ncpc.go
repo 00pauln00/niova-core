@@ -172,13 +172,9 @@ func main() {
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)
-<<<<<<< Updated upstream
-		//Send the write
-		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
-=======
+
 		//Send the request
-		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", passNext)
->>>>>>> Stashed changes
+		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		fmt.Println("Response:", string(responseObj.Value))
