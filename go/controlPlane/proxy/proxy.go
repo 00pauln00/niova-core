@@ -239,8 +239,8 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		uuid, err := compressionLib.DecompressUUID(key)
 		if err == nil {
 			IPAddr := compressionLib.DecompressIPV4(value[:4])
-			Port := compressionLib.DecompressNumber(value[4:7])
-			ClientPort := compressionLib.DecompressNumber(value[7:10])
+			Port := compressionLib.DecompressNumber(value[4:6])
+			ClientPort := compressionLib.DecompressNumber(value[6:8])
 			peerConfig := PeerConfigData{
 				PeerUUID:   uuid,
 				IPAddr:     IPAddr,
