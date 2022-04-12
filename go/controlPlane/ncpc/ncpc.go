@@ -30,22 +30,23 @@ type clientHandler struct {
 	resultFile        string
 	rncui             string
 	rangeQuery        bool
+	lastKey           string
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 }
 
 type request struct {
-	Opcode    string    `json:"Operation"`
-	Key       string    `json:"Key"`
-	Value     string    `json:"Value"`
-	Timestamp time.Time `json:"Request_timestamp"`
+	Opcode    string            `json:"Operation"`
+	Key       string            `json:"Key"`
+	Value     map[string]string `json:"Value"`
+	Timestamp time.Time         `json:"Request_timestamp"`
 }
 
 type response struct {
-	Status        int       `json:"Status"`
-	ResponseValue string    `json:"Response"`
-	validate      bool      `json:"validate"`
-	Timestamp     time.Time `json:"Response_timestamp"`
+	Status        int               `json:"Status"`
+	ResponseValue map[string]string `json:"Response"`
+	validate      bool              `json:"validate"`
+	Timestamp     time.Time         `json:"Response_timestamp"`
 }
 type opData struct {
 	RequestData  request       `json:"Request"`
@@ -87,7 +88,8 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+":0:0:0:0", "RNCUI for request")
-	flag.Bool("ra", false, "Wether the query is range query or not")
+	flag.BoolVar(&handler.rangeQuery, "ra", false, "Wether the query is range query or not")
+	flag.StringVar(&handler.lastKey, "lk", "", "Last key read by the range query")
 	flag.Parse()
 }
 
@@ -192,21 +194,21 @@ func main() {
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
-		fmt.Println("Response:", string(responseObj.Value))
+		fmt.Println("Response:", (responseObj.Value))
 
 		//Creation of output json
 		sendTime := time.Now()
 		requestMeta := request{
 			Opcode:    requestObj.Operation,
 			Key:       requestObj.Key,
-			Value:     string(responseObj.Value),
+			Value:     responseObj.Value,
 			Timestamp: sendTime,
 		}
 
 		responseMeta := response{
 			Timestamp:     time.Now(),
 			Status:        responseObj.Status,
-			ResponseValue: string(responseObj.Value),
+			ResponseValue: responseObj.Value,
 		}
 
 		operationObj := opData{

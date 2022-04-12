@@ -5,7 +5,6 @@ import (
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"flag"
@@ -368,32 +367,34 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	}
 
 	log.Info("Key passed by client: ", reqStruct.Key)
-
+	log.Info("Last Key Read by client: ", reqStruct.LastKeyRead)
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 
-	var readResult []byte
+	var readResult = make(map[string]string)
+	var lastKey string
 	var readErr error
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	log.Info("Calling range query")
-	readResult, readErr = nso.pso.RangeReadKV(appId, reqStruct.Key,
-				int64(keyLen), colmfamily)
-	var valType []byte
+	log.Info("reqStruct.RangeQuery = ", reqStruct.RangeQuery)
+	if reqStruct.RangeQuery {
+		log.Info("Calling range query")
+		lastKeyLen := len(reqStruct.LastKeyRead)
+		readResult, lastKey, readErr = nso.pso.RangeReadKV(appId, reqStruct.Key, int64(keyLen), reqStruct.LastKeyRead, int64(lastKeyLen), replyBufSize, colmfamily)
+	}else{
+		log.Info("Calling point query")
+		readResult, readErr = nso.pso.ReadKV(appId, reqStruct.Key, int64(keyLen), colmfamily)
+	}
 	var replySize int64
 	var copyErr error
 
-	var temp = make(map[string]string)
-	_ = json.Unmarshal(readResult, &temp)
 
-	log.Info(temp)
+	log.Info(readResult)
 	if readErr == nil {
-		valType = readResult
-		inputVal := string(valType)
-		log.Info("Input value after read request:", inputVal)
 
-		resultReq := requestResponseLib.KVRequest{
-			Key:   reqStruct.Key,
-			Value: valType,
+		resultReq := requestResponseLib.KVResponse{
+			Status: 0,
+			Value: readResult,
+			LastKeyRead: lastKey,
 			//XXX return lastKey as well
 		}
 
