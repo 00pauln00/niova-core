@@ -344,23 +344,19 @@ func PmdbRangeLookupKey(key string, key_len int64,
 		resultMap[string(keyBytes)] = string(valueBytes)
 		C.rocksdb_iter_next(itr)
 	}
-
+	// temporarily storing lastkey as nil
+	// till we add buffer functionality
+	lastKey := ""
 	C.rocksdb_iter_destroy(itr)
 	log.Info("RangeRead returning : ", resultMap)
 	return resultMap, lastKey, lookup_err
 }
 
-func PmdbRangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, lastKeyRead string, lastKeyLen int64, bufSize int64, gocolfamily string) (map[string]string, string, error) {
-	go_value, lastKey, err := PmdbRangeLookupKey(key, key_len, lastKeyRead, lastKeyLen, bufSize, gocolfamily)
-	//Get the result
-	return go_value, lastKey, err
-}
-
 // Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
 	key_len int64, lastKeyRead string, lastKeyLen int64, bufSize int64, gocolfamily string) (map[string]string, string, error) {
-	return PmdbRangeReadKV(app_id, key, key_len, lastKeyRead, lastKeyLen, bufSize, gocolfamily)
+
+	return PmdbRangeLookupKey(key, key_len, lastKeyRead, lastKeyLen, bufSize, gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer
