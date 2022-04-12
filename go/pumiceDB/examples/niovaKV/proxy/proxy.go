@@ -137,7 +137,7 @@ func (handler *proxyHandler) getProxyConfigData() error {
                                 return errors.New("Agent port is out of range")
                         }
 
-                        handler.serfRPCPort = uint16(buffer)
+                        handler.serfAgentRPCPort = uint16(buffer)
 			handler.httpPort = input[4]
 			flag = true
 		}

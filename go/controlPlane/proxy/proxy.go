@@ -370,7 +370,7 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 
 		_, errFile := peer_file.WriteString(
 			"RAFT         " + (handler.raftUUID.String()) +
-				"\nIPADDR       " + string(peer.IPAddr) +
+				"\nIPADDR       " + peer.IPAddr.String() +
 				"\nPORT         " + strconv.Itoa(int(peer.Port)) +
 				"\nCLIENT_PORT  " + strconv.Itoa(int(peer.ClientPort)) +
 				"\nSTORE        ./*.raftdb\n")
