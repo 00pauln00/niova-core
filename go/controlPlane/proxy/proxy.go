@@ -7,15 +7,14 @@ import (
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
-	"hash/crc32"
 	"errors"
 	"flag"
-	"sort"
-	"encoding/binary"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	"hash/crc32"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
@@ -23,12 +22,12 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 )
-
 
 //Structure for proxy
 type proxyHandler struct {
@@ -69,6 +68,7 @@ func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
 }
+
 /*
 Structure : proxyHandler
 Method    : getCmdParams
@@ -128,16 +128,16 @@ func (handler *proxyHandler) getConfigData() error {
 			handler.addr = net.ParseIP(input[1])
 			aport := input[2]
 			buffer, err := strconv.ParseUint(aport, 10, 16)
-                        handler.serfAgentPort = uint16(buffer)
+			handler.serfAgentPort = uint16(buffer)
 			if err != nil {
-                                return errors.New("Agent port is out of range")
-                        }
+				return errors.New("Agent port is out of range")
+			}
 
 			rport := input[3]
-                        buffer, err = strconv.ParseUint(rport, 10, 16)
+			buffer, err = strconv.ParseUint(rport, 10, 16)
 			if err != nil {
-                                return errors.New("Agent port is out of range")
-                        }
+				return errors.New("Agent port is out of range")
+			}
 
 			handler.serfAgentRPCPort = uint16(buffer)
 			handler.httpPort = input[4]
@@ -245,23 +245,23 @@ Description : A helper func to validate recieved checksum with checksum of the d
 */
 func validateCheckSum(data map[string]string, checksum string) error {
 	keys := make([]string, 0, len(data))
-        var allDataArray []string
+	var allDataArray []string
 
 	//Append map keys to key array
-        for k := range data {
-                keys = append(keys, k)
-        }
+	for k := range data {
+		keys = append(keys, k)
+	}
 
-	//Sort the key array to ensure uniformity 
-        sort.Strings(keys)
+	//Sort the key array to ensure uniformity
+	sort.Strings(keys)
 	//Iterate over the sorted keys and append the value to array
-        for _, k := range keys {
-                allDataArray = append(allDataArray, k+data[k])
-        }
+	for _, k := range keys {
+		allDataArray = append(allDataArray, k+data[k])
+	}
 
 	//Convert value array to byte slice
 	byteArray, err := json.Marshal(allDataArray)
-        if err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -273,7 +273,7 @@ func validateCheckSum(data map[string]string, checksum string) error {
 	if calculatedChecksum != convertedCheckSum {
 		return errors.New("Checksum mismatch")
 	}
-        return nil
+	return nil
 }
 
 /*
@@ -282,7 +282,7 @@ Method    : GetPMDBServerConfig
 Arguments : None
 Return(s) : error
 
-Description : Get PMDB server configs from serf gossip and store in file. The generated PMDB config 
+Description : Get PMDB server configs from serf gossip and store in file. The generated PMDB config
 file is used by PMDB client to connet to the PMDB cluster.
 */
 func (handler *proxyHandler) GetPMDBServerConfig() error {
@@ -300,7 +300,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 
 	//Validate checksum; Get checksum entry from Map and delete that entry
 	recvCheckSum := pmdbServerGossip["CS"]
-	delete(pmdbServerGossip,"CS")
+	delete(pmdbServerGossip, "CS")
 	err = validateCheckSum(pmdbServerGossip, recvCheckSum)
 	if err != nil {
 		return err
@@ -308,8 +308,8 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 
 	//Get Raft UUID from the map
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
-	if err != nil{
-		log.Error("Error :",err)
+	if err != nil {
+		log.Error("Error :", err)
 		return err
 	}
 
@@ -319,7 +319,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		decompressedUUID, err := compressionLib.DecompressUUID(key)
 		if err == nil {
 			peerConfig := PumiceDBCommon.PeerConfigData{}
-			compressionLib.DecompressStructure(&peerConfig, key + value)
+			compressionLib.DecompressStructure(&peerConfig, key+value)
 			log.Info("Peer config : ", peerConfig)
 			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
 			handler.PMDBServerConfigByteMap[decompressedUUID], _ = json.Marshal(peerConfig)
@@ -333,14 +333,13 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	return handler.dumpConfigToFile(path + "/")
 }
 
-
 /*
 Structure : proxyHandler
 Method    : dumpConfigToFile
 Arguments : string
 Return(s) : error
 
-Description : Dump PMDB server configs from map to file 
+Description : Dump PMDB server configs from map to file
 */
 func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	//Generate .raft
@@ -404,7 +403,6 @@ func (handler *proxyHandler) WriteCallBack(request []byte) error {
 	return err
 }
 
-
 /*
 Structure : proxyHandler
 Method    : ReadCallBack
@@ -416,7 +414,6 @@ Description : Call back for PMDB read requests to HTTP server.
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
 	return handler.pmdbClientObj.ReadEncoded(request, "", response)
 }
-
 
 /*
 Structure : proxyHandler
@@ -493,7 +490,6 @@ func (handler *proxyHandler) killSignalHandler() {
 		os.Exit(1)
 	}()
 }
-
 
 func main() {
 

@@ -5,23 +5,23 @@ import (
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 	"hash/crc32"
 	"io/ioutil"
-	"encoding/binary"
 	defaultLogger "log"
+	"net"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-	"net"
 	"sort"
-	uuid "github.com/satori/go.uuid"
 	"strconv"
 	"strings"
 	"unsafe"
-	log "github.com/sirupsen/logrus"
 	//"strconv"
 )
 
@@ -153,19 +153,19 @@ func extractPMDBServerConfigfromFile(path string) (*PumiceDBCommon.PeerConfigDat
 		value := strings.Split(text, " ")[lastIndex]
 		switch key {
 		case "CLIENT_PORT":
-			 buffer, err := strconv.ParseUint(value, 10, 16)
-			 peerData.ClientPort = uint16(buffer)
-			 if err != nil {
-                                return nil, errors.New("Client Port is out of range")
-                        }
+			buffer, err := strconv.ParseUint(value, 10, 16)
+			peerData.ClientPort = uint16(buffer)
+			if err != nil {
+				return nil, errors.New("Client Port is out of range")
+			}
 		case "IPADDR":
 			peerData.IPAddr = net.ParseIP(value)
 		case "PORT":
 			buffer, err := strconv.ParseUint(value, 10, 16)
-                        peerData.Port = uint16(buffer)
+			peerData.Port = uint16(buffer)
 			if err != nil {
-                                return nil, errors.New("Port is out of range")
-                        }
+				return nil, errors.New("Port is out of range")
+			}
 		}
 	}
 	f.Close()
@@ -249,23 +249,22 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	return nil
 }
 
-
 func generateCheckSum(data map[string]string) (string, error) {
 	keys := make([]string, 0, len(data))
 	var allDataArray []string
 	for k := range data {
-       		keys = append(keys, k)
-    	}
-    	sort.Strings(keys)
- 
-    	for _, k := range keys {
-        	allDataArray = append(allDataArray, k+data[k])
-    	}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		allDataArray = append(allDataArray, k+data[k])
+	}
 
 	byteArray, err := json.Marshal(allDataArray)
-        checksum := crc32.ChecksumIEEE(byteArray)
-	checkSumByteArray := make([]byte,4)
-	binary.LittleEndian.PutUint32(checkSumByteArray,uint32(checksum))
+	checksum := crc32.ChecksumIEEE(byteArray)
+	checkSumByteArray := make([]byte, 4)
+	binary.LittleEndian.PutUint32(checkSumByteArray, uint32(checksum))
 	return string(checkSumByteArray), err
 }
 

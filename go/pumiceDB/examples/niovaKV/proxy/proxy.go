@@ -12,8 +12,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
-	pmdbClient "niova/go-pumicedb-lib/client"
 	"net"
+	pmdbClient "niova/go-pumicedb-lib/client"
 	"niova/go-pumicedb-lib/common"
 	"os"
 	"os/signal"
@@ -125,19 +125,19 @@ func (handler *proxyHandler) getProxyConfigData() error {
 		if input[0] == handler.serfAgentName {
 			handler.addr = net.ParseIP(input[1])
 			aport := input[2]
-                        buffer, err := strconv.ParseUint(aport, 10, 16)
-                        handler.serfAgentPort = uint16(buffer)
-                        if err != nil {
-                                return errors.New("Agent port is out of range")
-                        }
+			buffer, err := strconv.ParseUint(aport, 10, 16)
+			handler.serfAgentPort = uint16(buffer)
+			if err != nil {
+				return errors.New("Agent port is out of range")
+			}
 
-                        rport := input[3]
-                        buffer, err = strconv.ParseUint(rport, 10, 16)
-                        if err != nil {
-                                return errors.New("Agent port is out of range")
-                        }
+			rport := input[3]
+			buffer, err = strconv.ParseUint(rport, 10, 16)
+			if err != nil {
+				return errors.New("Agent port is out of range")
+			}
 
-                        handler.serfAgentRPCPort = uint16(buffer)
+			handler.serfAgentRPCPort = uint16(buffer)
 			handler.httpPort = input[4]
 			flag = true
 		}
