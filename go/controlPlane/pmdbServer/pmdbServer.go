@@ -228,7 +228,7 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 				return errors.New("Agent port is out of range")
 			}
 			buffer, err = strconv.ParseUint(rport, 10, 16)
-			handler.serfAgentPort = uint16(buffer)
+			handler.serfRPCPort = uint16(buffer)
 			if err != nil {
 				return errors.New("RPC port is out of range")
 			}
