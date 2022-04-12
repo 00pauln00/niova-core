@@ -6,8 +6,8 @@ import (
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
 	"errors"
-	"fmt"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
@@ -380,20 +380,19 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Info("Calling range query")
 		lastKeyLen := len(reqStruct.LastKeyRead)
 		readResult, lastKey, readErr = nso.pso.RangeReadKV(appId, reqStruct.Key, int64(keyLen), reqStruct.LastKeyRead, int64(lastKeyLen), replyBufSize, colmfamily)
-	}else{
+	} else {
 		log.Info("Calling point query")
 		readResult, readErr = nso.pso.ReadKV(appId, reqStruct.Key, int64(keyLen), colmfamily)
 	}
 	var replySize int64
 	var copyErr error
 
-
 	log.Info(readResult)
 	if readErr == nil {
 
 		resultReq := requestResponseLib.KVResponse{
-			Status: 0,
-			Value: readResult,
+			Status:      0,
+			Value:       readResult,
 			LastKeyRead: lastKey,
 			//XXX return lastKey as well
 		}
