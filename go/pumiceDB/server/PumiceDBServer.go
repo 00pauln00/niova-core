@@ -300,7 +300,7 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 
 // Methods for range iterator
 
-func PmdbRangeLookupKey(key string, key_len int64,
+func pmdbFetchRange(key string, key_len int64,
 	lastKeyRead string, lastKeyLen int64, bufSize int64, go_cf string) (map[string]string, string, error) {
 	var lookup_err error
 	var cLenVal C.size_t
@@ -312,7 +312,7 @@ func PmdbRangeLookupKey(key string, key_len int64,
 	cf := GoToCString(go_cf)
 
 	ropts := C.rocksdb_readoptions_create()
-	log.Info("Key passed is:", key)
+	log.Trace("RangeQuery - Key passed is:", key)
 
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
@@ -340,7 +340,6 @@ func PmdbRangeLookupKey(key string, key_len int64,
 			C.rocksdb_iter_next(itr)
 			continue
 		}
-		log.Info("\nkeyBytes is: ", string(keyBytes), "\ntvalBytes is: ", (valueBytes))
 		resultMap[string(keyBytes)] = string(valueBytes)
 		C.rocksdb_iter_next(itr)
 	}
@@ -348,7 +347,7 @@ func PmdbRangeLookupKey(key string, key_len int64,
 	// till we add buffer functionality
 	lastKey := ""
 	C.rocksdb_iter_destroy(itr)
-	log.Info("RangeRead returning : ", resultMap)
+	log.Info("RangeQuery returning : ", resultMap)
 	return resultMap, lastKey, lookup_err
 }
 
@@ -356,7 +355,7 @@ func PmdbRangeLookupKey(key string, key_len int64,
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
 	key_len int64, lastKeyRead string, lastKeyLen int64, bufSize int64, gocolfamily string) (map[string]string, string, error) {
 
-	return PmdbRangeLookupKey(key, key_len, lastKeyRead, lastKeyLen, bufSize, gocolfamily)
+	return pmdbFetchRange(key, key_len, lastKeyRead, lastKeyLen, bufSize, gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer

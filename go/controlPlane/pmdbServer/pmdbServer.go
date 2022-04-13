@@ -7,7 +7,6 @@ import (
 	compressionLib "common/specificCompressionLib"
 	"errors"
 	"flag"
-	"fmt"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
@@ -70,7 +69,7 @@ func main() {
 		log.SetLevel(log.TraceLevel)
 	}
 
-	fmt.Println(serverHandler.logDir)
+	log.Info("Log Dir - ", serverHandler.logDir)
 
 	//Create log file
 	err := PumiceDBCommon.InitLogger(serverHandler.logDir)
@@ -294,7 +293,7 @@ type NiovaKVServer struct {
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) {
 
-	log.Info("NiovaCtlPlane server: Apply request received")
+	log.Trace("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
@@ -305,7 +304,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		return
 	}
 
-	log.Info("Key passed by client: ", applyNiovaKV.Key)
+	log.Trace("Key passed by client: ", applyNiovaKV.Key)
 
 	// length of key.
 	keyLength := len(applyNiovaKV.Key)
@@ -366,8 +365,8 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Info("Key passed by client: ", reqStruct.Key)
-	log.Info("Last Key Read by client: ", reqStruct.LastKeyRead)
+	log.Trace("Key passed by client: ", reqStruct.Key)
+	log.Trace("Last Key Read by client: ", reqStruct.LastKeyRead)
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 

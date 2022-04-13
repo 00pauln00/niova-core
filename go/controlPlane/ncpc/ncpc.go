@@ -112,7 +112,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 					//Decompress
 					thisNISDData := nisdData{}
 					thisNISDData.UUID = uuid
-					fmt.Println("NISD Status : ", CompressedStatus)
+					log.Info("NISD Status : ", CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
@@ -194,8 +194,7 @@ func main() {
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
-		fmt.Println("Response:", (responseObj.Value))
-
+		fmt.Println(responseObj.Value)
 		//Creation of output json
 		sendTime := time.Now()
 		requestMeta := request{
