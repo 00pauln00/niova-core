@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"common/requestResponseLib"
 	"common/serfAgent"
+	compressionLib "common/specificCompressionLib"
 	"errors"
 	"flag"
 	"io/ioutil"
@@ -12,7 +13,6 @@ import (
 	"os"
 	"strings"
 	"unsafe"
-	compressionLib "common/specificCompressionLib"
 	//"encoding/json"
 	log "github.com/sirupsen/logrus"
 	defaultLogger "log"
@@ -46,7 +46,7 @@ type pmdbServerHandler struct {
 }
 
 type PeerConfigData struct {
-	UUID	   string
+	UUID       string
 	ClientPort string
 	Port       string
 	IPAddr     string
@@ -137,39 +137,38 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	return nso, err
 }
 
-
 func extractPMDBServerConfigfromFile(path string) (*PeerConfigData, string, error) {
 	f, err := os.Open(path)
-        if err!= nil {
+	if err != nil {
 		return nil, "", err
 	}
 	scanner := bufio.NewScanner(f)
-        peerData := PeerConfigData{}
-        var compressedConfigString, data string
+	peerData := PeerConfigData{}
+	var compressedConfigString, data string
 
 	for scanner.Scan() {
-        	text := scanner.Text()
-                lastIndex := len(strings.Split(text, " ")) - 1
-                key := strings.Split(text, " ")[0]
-                value := strings.Split(text, " ")[lastIndex]
-                switch key {
-                	case "CLIENT_PORT":
-                        	peerData.ClientPort = value
-                                data,err = compressionLib.CompressStringNumber(value,2)
-                                compressedConfigString += data
-                        case "IPADDR":
-                                peerData.IPAddr = value
-                                data,err = compressionLib.CompressIPV4(value)
-                                compressedConfigString += data
-                	case "PORT":
-                                peerData.Port = value
-                        	data,err = compressionLib.CompressStringNumber(value,2)
-               			compressedConfigString += data
-        	}
-		if err!= nil {
+		text := scanner.Text()
+		lastIndex := len(strings.Split(text, " ")) - 1
+		key := strings.Split(text, " ")[0]
+		value := strings.Split(text, " ")[lastIndex]
+		switch key {
+		case "CLIENT_PORT":
+			peerData.ClientPort = value
+			data, err = compressionLib.CompressStringNumber(value, 2)
+			compressedConfigString += data
+		case "IPADDR":
+			peerData.IPAddr = value
+			data, err = compressionLib.CompressIPV4(value)
+			compressedConfigString += data
+		case "PORT":
+			peerData.Port = value
+			data, err = compressionLib.CompressStringNumber(value, 2)
+			compressedConfigString += data
+		}
+		if err != nil {
 			return nil, "", err
 		}
-        }
+	}
 	f.Close()
 
 	return &peerData, compressedConfigString, err
@@ -186,15 +185,15 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() error {
 	for _, file := range files {
 		if strings.Contains(file.Name(), ".peer") {
 			//Extract required config from the file
-			path := folder+"/"+file.Name()
-			peerData, compressedConfigString, err := extractPMDBServerConfigfromFile(path) 
-			if err != nil{
+			path := folder + "/" + file.Name()
+			peerData, compressedConfigString, err := extractPMDBServerConfigfromFile(path)
+			if err != nil {
 				return err
 			}
 
 			uuid := file.Name()[:len(file.Name())-5]
-        		cuuid,err := compressionLib.CompressUUID(uuid)
-			if err != nil{
+			cuuid, err := compressionLib.CompressUUID(uuid)
+			if err != nil {
 				return err
 			}
 
