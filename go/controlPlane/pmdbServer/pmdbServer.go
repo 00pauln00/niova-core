@@ -366,23 +366,41 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 
+	var readErr error
+	var resultReq requestResponseLib.KVResponse
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.Key,
-		int64(keyLen), colmfamily)
-	var valType []byte
+	if reqStruct.Operation == "read" {
+
+		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
+			int64(keyLen), colmfamily)
+		resultReq = requestResponseLib.KVResponse{
+                        Key:   reqStruct.Key,
+                        Value: readResult,
+                }
+		readErr = err
+
+	} else if reqStruct.Operation == "range" {
+
+		lastKeyLen := len(reqStruct.LastKey)
+		readResult, lastKey, err := nso.pso.RangeKV(appId, reqStruct.Key,
+                        int64(keyLen), reqStruct.LastKey, int64(lastKeyLen),colmfamily)
+		var cRead bool
+                if lastKey != nil {
+                        cRead = true
+                }
+		resultReq = requestResponseLib.KVResponse{
+                        Key:   reqStruct.Key,
+			RangeMap: readResult,
+			ContinueRead: cRead,
+			LastKey: lastKey,
+                }
+		readErr = err
+	}
+
+	log.Trace("Response trace : ", resultReq)
 	var replySize int64
 	var copyErr error
-
 	if readErr == nil {
-		valType = readResult
-		inputVal := string(valType)
-		log.Trace("Input value after read request:", inputVal)
-
-		resultReq := requestResponseLib.KVRequest{
-			Key:   reqStruct.Key,
-			Value: valType,
-		}
-
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq, replyBuf)
 		if copyErr != nil {
