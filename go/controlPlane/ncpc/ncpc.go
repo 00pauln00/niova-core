@@ -95,7 +95,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 					//Decompress
 					thisNISDData := nisdData{}
 					thisNISDData.UUID = uuid
-					fmt.Println("NISD Status : " ,CompressedStatus)
+					fmt.Println("NISD Status : ", CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
@@ -207,32 +207,35 @@ func main() {
 		clientObj.write2Json(toJson)
 
 	case "range":
-                requestObj.Key = clientObj.requestKey
-                requestObj.Operation = clientObj.operation
+		requestObj.Key = clientObj.requestKey
+		requestObj.Operation = clientObj.operation
 		var requestByte bytes.Buffer
-                enc := gob.NewEncoder(&requestByte)
-                enc.Encode(requestObj)
-                //Send the range request
-                responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-                dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-                err = dec.Decode(&responseObj)
+		enc := gob.NewEncoder(&requestByte)
+		enc.Encode(requestObj)
+
+		//Send the range request
+		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
 		if err != nil {
-                	log.Error(err)
-                        break
-                }
+			log.Error(err)
+			break
+		}
+
 		for responseObj.ContinueRead {
 			requestObj.LastKey = responseObj.LastKey
 			enc.Encode(requestObj)
 			//Send the range request
-                	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-                	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-                	err = dec.Decode(&responseObj)
+			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+			err = dec.Decode(&responseObj)
 			fmt.Println(responseObj.Value)
 			if err != nil {
 				log.Error(err)
 				break
 			}
 		}
+
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
 		log.Info("Response : ", string(responseBytes))
