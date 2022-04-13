@@ -182,7 +182,6 @@ func main() {
 		requestObj.Rncui = clientObj.rncui
 		write = true
 		fallthrough
-
 	case "read":
 		requestObj.Key = clientObj.requestKey
 		requestObj.Operation = clientObj.operation
@@ -223,6 +222,36 @@ func main() {
 			toJson["read"] = clientObj.operationMetaObjs
 		}
 		clientObj.write2Json(toJson)
+
+	case "range":
+		requestObj.Key = clientObj.requestKey
+		requestObj.Operation = clientObj.operation
+		var requestByte bytes.Buffer
+		enc := gob.NewEncoder(&requestByte)
+		enc.Encode(requestObj)
+
+		//Send the range request
+		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error(err)
+			break
+		}
+
+		for responseObj.ContinueRead {
+			requestObj.LastKey = responseObj.LastKey
+			enc.Encode(requestObj)
+			//Send the range request
+			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+			err = dec.Decode(&responseObj)
+			fmt.Println(responseObj.Value)
+			if err != nil {
+				log.Error(err)
+				break
+			}
+		}
 
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()

@@ -6,16 +6,14 @@ import (
 	"common/httpServer"
 	"common/requestResponseLib"
 	"common/serfAgent"
+	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"flag"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
-	compressionLib "common/specificCompressionLib"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
@@ -24,6 +22,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type proxyHandler struct {
@@ -216,7 +217,7 @@ func validateTags(configPeer string) error {
 }
 
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
-	for _,v := range mapSample {
+	for _, v := range mapSample {
 		return v
 	}
 	return nil
@@ -224,8 +225,8 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 
 func (handler *proxyHandler) GetPMDBServerConfig() error {
 	var allPmdbServerGossip map[string]map[string]string
-	for  len(allPmdbServerGossip) == 0{
-		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type","PMDB_SERVER")
+	for len(allPmdbServerGossip) == 0 {
+		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type", "PMDB_SERVER")
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config recvd from gossip : ", allPmdbServerGossip)
@@ -253,7 +254,7 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 		}
 	}
 
-	log.Info("Decompressed PMDB server config array : ",handler.PMDBServerConfigArray)
+	log.Info("Decompressed PMDB server config array : ", handler.PMDBServerConfigArray)
 	path := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	os.Mkdir(path, os.ModePerm)
 	return handler.dumpConfigToFile(path + "/")

@@ -13,7 +13,10 @@ import (
 	"os"
 	"strings"
 	"unsafe"
+<<<<<<< HEAD
 
+=======
+>>>>>>> origin/pmdb_range_client
 	//"encoding/json"
 	defaultLogger "log"
 
@@ -370,32 +373,41 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 
-	var readResult = make(map[string]string)
-	var lastKey string
 	var readErr error
+	var resultReq requestResponseLib.KVResponse
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	log.Info("reqStruct.RangeQuery = ", reqStruct.RangeQuery)
-	if reqStruct.RangeQuery {
-		log.Info("Calling range query")
-		lastKeyLen := len(reqStruct.LastKeyRead)
-		readResult, lastKey, readErr = nso.pso.RangeReadKV(appId, reqStruct.Key, int64(keyLen), reqStruct.LastKeyRead, int64(lastKeyLen), replyBufSize, colmfamily)
-	} else {
-		log.Info("Calling point query")
-		readResult, readErr = nso.pso.ReadKV(appId, reqStruct.Key, int64(keyLen), colmfamily)
+	if reqStruct.Operation == "read" {
+
+		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
+			int64(keyLen), colmfamily)
+		resultReq = requestResponseLib.KVResponse{
+                        Key:   reqStruct.Key,
+                        Value: readResult,
+                }
+		readErr = err
+
+	} else if reqStruct.Operation == "range" {
+
+		lastKeyLen := len(reqStruct.LastKey)
+		readResult, lastKey, err := nso.pso.RangeKV(appId, reqStruct.Key,
+                        int64(keyLen), reqStruct.LastKey, int64(lastKeyLen),colmfamily)
+		var cRead bool
+                if lastKey != nil {
+                        cRead = true
+                }
+		resultReq = requestResponseLib.KVResponse{
+                        Key:   reqStruct.Key,
+			RangeMap: readResult,
+			ContinueRead: cRead,
+			LastKey: lastKey,
+                }
+		readErr = err
 	}
+
+	log.Trace("Response trace : ", resultReq)
 	var replySize int64
 	var copyErr error
-
-	log.Info(readResult)
 	if readErr == nil {
-
-		resultReq := requestResponseLib.KVResponse{
-			Status:      0,
-			Value:       readResult,
-			LastKeyRead: lastKey,
-			//XXX return lastKey as well
-		}
-
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq, replyBuf)
 		if copyErr != nil {

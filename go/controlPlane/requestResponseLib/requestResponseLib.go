@@ -1,17 +1,19 @@
 package requestResponseLib
 
 type KVRequest struct {
-	Operation  string
-	RangeQuery bool
-	Key        string
-	LastKeyRead string
-	Value      []byte
-	Rncui      string
-	CheckSum   [16]byte
+	Operation string
+	Key       string
+	LastKey   string
+	Value     []byte
+	Rncui     string
+	CheckSum  [16]byte
 }
 
 type KVResponse struct {
-	Status int
-	Value map[string]string 
-	LastKeyRead string
+	Status       int
+	Key          string
+	Value        []byte
+	RangeMap     map[string]string
+	ContinueRead bool
+	LastKey      string
 }
