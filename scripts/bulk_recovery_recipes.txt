@@ -1,4 +1,3 @@
-bulk_recovery_with_emptyDB.yml
 bulk_recovery_with_staleDB.yml
 bulk_recovery3.yml
 bulk_recovery_killing_leader.yml
