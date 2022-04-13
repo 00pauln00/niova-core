@@ -13,10 +13,6 @@ import (
 	"os"
 	"strings"
 	"unsafe"
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/pmdb_range_client
 	//"encoding/json"
 	defaultLogger "log"
 
@@ -369,7 +365,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	}
 
 	log.Trace("Key passed by client: ", reqStruct.Key)
-	log.Trace("Last Key Read by client: ", reqStruct.LastKeyRead)
+	log.Trace("Last Key Read by client: ", reqStruct.LastKey)
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 
@@ -389,10 +385,10 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	} else if reqStruct.Operation == "range" {
 
 		lastKeyLen := len(reqStruct.LastKey)
-		readResult, lastKey, err := nso.pso.RangeKV(appId, reqStruct.Key,
-                        int64(keyLen), reqStruct.LastKey, int64(lastKeyLen),colmfamily)
+		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
+                        int64(keyLen), reqStruct.LastKey, int64(lastKeyLen), replyBufSize, colmfamily)
 		var cRead bool
-                if lastKey != nil {
+                if lastKey != "" {
                         cRead = true
                 }
 		resultReq = requestResponseLib.KVResponse{
@@ -400,6 +396,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 			RangeMap: readResult,
 			ContinueRead: cRead,
 			LastKey: lastKey,
+			Prefix: reqStruct.Key,
                 }
 		readErr = err
 	}

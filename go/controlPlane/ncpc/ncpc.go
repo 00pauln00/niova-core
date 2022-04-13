@@ -38,13 +38,13 @@ type clientHandler struct {
 type request struct {
 	Opcode    string            `json:"Operation"`
 	Key       string            `json:"Key"`
-	Value     map[string]string `json:"Value"`
+	Value     []byte            `json:"Value"`
 	Timestamp time.Time         `json:"Request_timestamp"`
 }
 
 type response struct {
 	Status        int               `json:"Status"`
-	ResponseValue map[string]string `json:"Response"`
+	ResponseValue []byte            `json:"Response"`
 	validate      bool              `json:"validate"`
 	Timestamp     time.Time         `json:"Response_timestamp"`
 }
@@ -185,7 +185,6 @@ func main() {
 	case "read":
 		requestObj.Key = clientObj.requestKey
 		requestObj.Operation = clientObj.operation
-		requestObj.RangeQuery = clientObj.rangeQuery
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)
@@ -193,7 +192,7 @@ func main() {
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
-		fmt.Println(responseObj.Value)
+		fmt.Println(string(responseObj.Value))
 		//Creation of output json
 		sendTime := time.Now()
 		requestMeta := request{
@@ -240,7 +239,7 @@ func main() {
 		}
 
 		for responseObj.ContinueRead {
-			requestObj.LastKey = responseObj.LastKey
+			requestObj.Key = responseObj.LastKey
 			enc.Encode(requestObj)
 			//Send the range request
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
@@ -252,6 +251,8 @@ func main() {
 				break
 			}
 		}
+		fmt.Println(responseObj.RangeMap)
+
 
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()

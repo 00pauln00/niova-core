@@ -3,7 +3,7 @@ package requestResponseLib
 type KVRequest struct {
 	Operation string
 	Key       string
-	LastKey   string
+	Prefix   string
 	Value     []byte
 	Rncui     string
 	CheckSum  [16]byte
@@ -16,4 +16,5 @@ type KVResponse struct {
 	RangeMap     map[string]string
 	ContinueRead bool
 	LastKey      string
+	Prefix       string
 }
