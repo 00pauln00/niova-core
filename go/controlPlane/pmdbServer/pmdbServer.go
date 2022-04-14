@@ -384,18 +384,16 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	} else if reqStruct.Operation == "range" {
 
-		lastKeyLen := len(reqStruct.LastKey)
 		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
-                        int64(keyLen), reqStruct.LastKey, int64(lastKeyLen), replyBufSize, colmfamily)
+                        int64(keyLen), reqStruct.Prefix, replyBufSize, colmfamily)
 		var cRead bool
                 if lastKey != "" {
                         cRead = true
                 }
 		resultReq = requestResponseLib.KVResponse{
-                        Key:   reqStruct.Key,
+                        Key:   lastKey,
 			RangeMap: readResult,
 			ContinueRead: cRead,
-			LastKey: lastKey,
 			Prefix: reqStruct.Key,
                 }
 		readErr = err

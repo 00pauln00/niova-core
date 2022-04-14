@@ -223,6 +223,7 @@ func main() {
 		clientObj.write2Json(toJson)
 
 	case "range":
+		requestObj.Prefix = clientObj.requestKey
 		requestObj.Key = clientObj.requestKey
 		requestObj.Operation = clientObj.operation
 		var requestByte bytes.Buffer
@@ -239,7 +240,7 @@ func main() {
 		}
 
 		for responseObj.ContinueRead {
-			requestObj.Key = responseObj.LastKey
+			requestObj.Key = responseObj.Key
 			enc.Encode(requestObj)
 			//Send the range request
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
