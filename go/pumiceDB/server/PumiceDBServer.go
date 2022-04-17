@@ -313,13 +313,12 @@ func pmdbFetchRange(key string, key_len int64,
 	cf := GoToCString(go_cf)
 
 	ropts := C.rocksdb_readoptions_create()
-	log.Trace("RangeQuery - Key passed is:", key)
-
+	log.Info("RangeQuery - Key passed is: ", key)
+	log.Info("RangeQuery - Prefix passed is: ", prefix)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
 	// Iterate to lastKeyPassed or first key
 	cKey = GoToCString(key)
-	cLen = GoToCSize_t(lastKeyLen)
 	C.rocksdb_iter_seek(itr, cKey, cLen)
 
 	// iterate over keys store them in map if prefix
@@ -329,6 +328,7 @@ func pmdbFetchRange(key string, key_len int64,
 		C_value := C.rocksdb_iter_value(itr, &cLenVal)
 		keyBytes := CToGoBytes(C_key, C.int(cLenKey))
 		valueBytes := CToGoBytes(C_value, C.int(cLenVal))
+		log.Info("RangeQuery - Seeked to : ", string(keyBytes))
 		// check if passed key is prefix of fetched key
 		ret := strings.HasPrefix(string(keyBytes), prefix)
 		if !ret {
