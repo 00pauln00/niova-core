@@ -365,7 +365,6 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	}
 
 	log.Trace("Key passed by client: ", reqStruct.Key)
-	log.Trace("Last Key Read by client: ", reqStruct.LastKey)
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
 
@@ -383,7 +382,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		readErr = err
 
 	} else if reqStruct.Operation == "range" {
-
+		reqStruct.Prefix = reqStruct.Key
 		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
                         int64(keyLen), reqStruct.Prefix, replyBufSize, colmfamily)
 		var cRead bool

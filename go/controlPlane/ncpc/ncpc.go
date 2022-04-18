@@ -267,7 +267,6 @@ func main() {
 	case "range":
 		requestObj.Prefix = clientObj.requestKey
 		requestObj.Key = clientObj.requestKey
-		requestObj.Prefix = clientObj.requestKey
 		requestObj.Operation = clientObj.operation
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
