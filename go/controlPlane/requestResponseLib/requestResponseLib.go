@@ -15,6 +15,5 @@ type KVResponse struct {
 	Value        []byte
 	RangeMap     map[string]string
 	ContinueRead bool
-	LastKey      string
 	Prefix       string
 }

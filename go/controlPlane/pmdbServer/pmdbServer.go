@@ -390,10 +390,10 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
                         cRead = true
                 }
 		resultReq = requestResponseLib.KVResponse{
-                        Key:   reqStruct.Key,
+                        Prefix:   reqStruct.Prefix,
 			RangeMap: readResult,
 			ContinueRead: cRead,
-			Prefix: reqStruct.Key,
+			Key: lastKey,
                 }
 		readErr = err
 	}
