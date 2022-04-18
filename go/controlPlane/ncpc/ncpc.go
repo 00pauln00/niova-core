@@ -177,7 +177,6 @@ func main() {
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		Timeout: 10,
 	}
-	/*
 	stop := make(chan int)
 	go func() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
@@ -187,7 +186,7 @@ func main() {
 		}
 	}()
 	clientObj.clientAPIObj.TillReady()
-	*/
+
 	//Send request
 	var write bool
 	requestObj := requestResponseLib.KVRequest{}
