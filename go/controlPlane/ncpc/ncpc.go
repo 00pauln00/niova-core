@@ -8,14 +8,15 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"flag"
+	"math/rand"
 	"fmt"
 	"io/ioutil"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"strings"
 	"time"
-
-	uuid "github.com/satori/go.uuid"
+	"strconv"
+	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -77,6 +78,33 @@ func getKeyType(key string) string {
 	return ""
 }
 
+
+func generateVdevRange(seed int64) map[string]string {
+	kvMap := make(map[string]string)
+	r := rand.New(rand.NewSource(seed))
+	noUUID := r.Int63n(10)
+	for i := int64(0); i < noUUID; i++ {
+		randUUID, _ := uuid.NewRandomFromReader(r)
+		prefix := "v."+randUUID.String()
+		kvMap[prefix] = "val1"
+
+		noChunck := r.Int31n(5)
+		Cprefix := prefix + ".c"
+		for j := int32(0); j < noChunck; j++ {
+			Chunckprefix := Cprefix + strconv.Itoa(int(j))
+			kvMap[Chunckprefix] = "val2"
+		}
+
+		noSeq := rand.Int31n(5)
+		Sprefix := prefix + ".s"
+		for k := int32(0); k < noSeq; k++ {
+			SeqPrefix := Sprefix + strconv.Itoa(int(k))
+			kvMap[SeqPrefix] = "val3"
+		}
+	}
+	return kvMap
+}
+
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.requestKey, "k", "Key", "Key")
@@ -87,9 +115,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
-	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+":0:0:0:0", "RNCUI for request")
-	flag.BoolVar(&handler.rangeQuery, "ra", false, "Wether the query is range query or not")
-	flag.StringVar(&handler.lastKey, "lk", "", "Last key read by the range query")
+	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request")
 	flag.Parse()
 }
 
@@ -151,6 +177,7 @@ func main() {
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		Timeout: 10,
 	}
+	/*
 	stop := make(chan int)
 	go func() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
@@ -160,12 +187,11 @@ func main() {
 		}
 	}()
 	clientObj.clientAPIObj.TillReady()
-
+	*/
 	//Send request
 	var write bool
 	requestObj := requestResponseLib.KVRequest{}
 	responseObj := requestResponseLib.KVResponse{}
-
 	//Decl and init required variables
 	toJson := make(map[string][]opData)
 	value := make(map[string]string)
@@ -222,9 +248,26 @@ func main() {
 		}
 		clientObj.write2Json(toJson)
 
+	case "rangeWrite":
+		kvMap := generateVdevRange(10)
+		//requestObj.Operation = "write"
+		//var requestByte bytes.Buffer
+		for key1, _ := range kvMap {
+			fmt.Println(key1, kvMap[key1])
+			/*
+			requestObj.Key = key
+			requestObj.Value = []byte(kvMap[key])
+			requestObj.Rncui = uuid.New().String()+":0:0:0:0"
+			enc := gob.NewEncoder(&requestByte)
+			enc.Encode(requestObj)
+			clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+			*/
+		}
+
 	case "range":
 		requestObj.Prefix = clientObj.requestKey
 		requestObj.Key = clientObj.requestKey
+		requestObj.Prefix = clientObj.requestKey
 		requestObj.Operation = clientObj.operation
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
