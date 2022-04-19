@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"unsafe"
+	"net"
 )
 
 /*
@@ -21,6 +22,13 @@ type PMDBInfo struct {
 	RaftUUID   string
 	ClientUUID string
 	LeaderUUID string
+}
+
+type PeerConfigData struct {
+        UUID       [16]byte
+        IPAddr     net.IP
+        Port       uint16
+        ClientPort uint16
 }
 
 //Func for initializing the logger

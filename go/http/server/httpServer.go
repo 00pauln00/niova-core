@@ -7,12 +7,13 @@ import (
 	"io/ioutil"
 	"net/http"
 	"sync"
+	"net"
 	"time"
 )
 
 type HTTPServerHandler struct {
 	//Exported
-	Addr                string
+	Addr                net.IP
 	Port                string
 	GETHandler          func([]byte, *[]byte) error
 	PUTHandler          func([]byte) error
@@ -174,7 +175,7 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 func (handler *HTTPServerHandler) Start_HTTPServer() error {
 	handler.connectionLimiter = make(chan int, handler.HTTPConnectionLimit)
 	handler.HTTPServer = http.Server{}
-	handler.HTTPServer.Addr = handler.Addr + ":" + handler.Port
+	handler.HTTPServer.Addr = handler.Addr.String() + ":" + handler.Port
 
 	//Update the timeout using little's fourmula
 	handler.HTTPServer.Handler = http.TimeoutHandler(handler, 150*time.Second, "Server Timeout")

@@ -52,9 +52,9 @@ type opData struct {
 }
 
 type nisdData struct {
-	UUID      string `json:"UUID"`
-	Status    string `json:"Status"`
-	WriteSize string `json:"WriteSize"`
+	UUID      uuid.UUID `json:"UUID"`
+	Status    string    `json:"Status"`
+	WriteSize string    `json:"WriteSize"`
 }
 
 func usage() {
@@ -88,21 +88,24 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	for _, node := range data {
 		if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
 			for cuuid, value := range node.Tags {
-				uuid, err := compressionLib.DecompressUUID(cuuid)
+				d_uuid, err := compressionLib.DecompressUUID(cuuid)
 				if err == nil {
 					CompressedStatus := value[0]
-
+					//CompressedWritePercentage := value[1:3]
 					//Decompress
 					thisNISDData := nisdData{}
-					thisNISDData.UUID = uuid
-					fmt.Println("NISD Status : " ,CompressedStatus)
+					thisNISDData.UUID, err = uuid.FromString(d_uuid)
+					if err != nil {
+						log.Error(err)
+					}
+					fmt.Println("NISD Status : ", CompressedStatus)
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
 						thisNISDData.Status = "Dead"
 					}
 
-					nisdDataMap[uuid] = thisNISDData
+					nisdDataMap[d_uuid] = thisNISDData
 				}
 			}
 		}
@@ -145,7 +148,7 @@ func main() {
 	clientObj.clientAPIObj.TillReady()
 
 	//Send request
-	var write bool
+	var passNext bool
 	requestObj := requestResponseLib.KVRequest{}
 	responseObj := requestResponseLib.KVResponse{}
 
@@ -163,7 +166,7 @@ func main() {
 			requestObj.Value = valueByte
 		}
 		requestObj.Rncui = clientObj.rncui
-		write = true
+		passNext = true
 		fallthrough
 
 	case "read":
@@ -173,7 +176,7 @@ func main() {
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)
 		//Send the write
-		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
+		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", passNext)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		fmt.Println("Response:", string(responseObj.Value))
@@ -200,7 +203,7 @@ func main() {
 		}
 
 		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-		if write {
+		if passNext {
 			toJson["write"] = clientObj.operationMetaObjs
 		} else {
 			toJson["read"] = clientObj.operationMetaObjs
@@ -283,10 +286,30 @@ func main() {
 			fmt.Printf("\033[3;0H")
 		}
 
+	case "Gossip":
+		passNext = true
+
 	case "NISDGossip":
 		nisdDataMap := clientObj.getNISDInfo()
-		file, _ := json.MarshalIndent(nisdDataMap, "", " ")
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+		fileData, _ := json.MarshalIndent(nisdDataMap, "", " ")
+		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		if !passNext {
+			break
+		}
+		fallthrough
+
+	case "PMDBGossip":
+		fileData, err := clientObj.clientAPIObj.GetPMDBServerConfig()
+		if err != nil {
+			log.Error("Error while getting pmdb server config data : ", err)
+			break
+		}
+		if passNext {
+			f, _ := os.OpenFile(clientObj.resultFile+".json", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+			f.WriteString(string(fileData))
+			break
+		}
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
