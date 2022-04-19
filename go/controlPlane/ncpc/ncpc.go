@@ -250,16 +250,16 @@ func main() {
 	case "rangeWrite":
 		kvMap := generateVdevRange(10)
 		requestObj.Operation = "write"
-		var requestByte bytes.Buffer
 		for key, _ := range kvMap {
+		        var requestByte bytes.Buffer
 			requestObj.Key = key
 			requestObj.Value = []byte(kvMap[key])
 			requestObj.Rncui = uuid.New().String()+":0:0:0:0"
 			enc := gob.NewEncoder(&requestByte)
 			enc.Encode(requestObj)
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-                	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-                	err = dec.Decode(&responseObj)
+			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+			err = dec.Decode(&responseObj)
 			log.Info(key, responseObj.Status)
 		}
 
