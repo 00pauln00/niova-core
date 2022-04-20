@@ -31,6 +31,8 @@ type clientHandler struct {
 	resultFile        string
 	rncui             string
 	rangeQuery        bool
+	count		  int
+	seed		  int
 	lastKey           string
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
@@ -79,28 +81,57 @@ func getKeyType(key string) string {
 }
 
 
-func generateVdevRange(seed int64) map[string]string {
+func generateVdevRange(count int, seed int64) map[string]string {
 	kvMap := make(map[string]string)
 	r := rand.New(rand.NewSource(seed))
-	noUUID := r.Int63n(10)
+	byteSlice := make([]byte,4)
+
+	//Vdev
+	noVdev := int64(float64(count) * float64(0.5))
+	noUUID := r.Int63n(noVdev)
 	for i := int64(0); i < noUUID; i++ {
 		randUUID, _ := uuid.NewRandomFromReader(r)
 		prefix := "v."+randUUID.String()
-		kvMap[prefix] = "val1"
+		r.Read(byteSlice)
+		kvMap[prefix] = string(byteSlice)
 
 		noChunck := r.Int31n(5)
 		Cprefix := prefix + ".c"
 		for j := int32(0); j < noChunck; j++ {
-			Chunckprefix := Cprefix + strconv.Itoa(int(j))
-			kvMap[Chunckprefix] = "val2"
+			randUUID, _ := uuid.NewRandomFromReader(r)
+			Chunckprefix := Cprefix + strconv.Itoa(int(j))+"."+randUUID.String()
+			r.Read(byteSlice)
+			kvMap[Chunckprefix] = string(byteSlice)
 		}
 
 		noSeq := rand.Int31n(5)
 		Sprefix := prefix + ".s"
 		for k := int32(0); k < noSeq; k++ {
 			SeqPrefix := Sprefix + strconv.Itoa(int(k))
-			kvMap[SeqPrefix] = "val3"
+			r.Read(byteSlice)
+			kvMap[SeqPrefix] = string(byteSlice)
 		}
+	}
+
+	//NISD
+	noNISD := int64(float64(count) * float64(0.5))
+	noUUID = r.Int63n(noNISD)
+        for i := int64(0); i < noUUID; i++ {
+                randUUID, _ := uuid.NewRandomFromReader(r)
+                prefix := "nisd."+randUUID.String()
+
+                noNode := r.Int31n(5)
+                nodePrefix := prefix + "."
+                for j := int32(0); j < noNode; j++ {
+                        randUUID, _ := uuid.NewRandomFromReader(r)
+                        partNodePrefix := nodePrefix + randUUID.String()
+			r.Read(byteSlice)
+                        kvMap[partNodePrefix] = string(byteSlice)
+		}
+
+		configInfo := prefix+".Config-Info"
+		r.Read(byteSlice)
+                kvMap[configInfo] = string(byteSlice)
 	}
 	return kvMap
 }
@@ -116,6 +147,8 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.operation, "o", "NULL", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "r", "operation", "Path along with file name for the result file")
 	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request")
+	flag.IntVar(&handler.count, "n", 1000, "Range write count")
+	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.Parse()
 }
 
@@ -177,6 +210,7 @@ func main() {
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		Timeout: 10,
 	}
+	/*
 	stop := make(chan int)
 	go func() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
@@ -186,7 +220,7 @@ func main() {
 		}
 	}()
 	clientObj.clientAPIObj.TillReady()
-
+	*/
 	//Send request
 	var write bool
 	requestObj := requestResponseLib.KVRequest{}
@@ -248,10 +282,10 @@ func main() {
 		clientObj.write2Json(toJson)
 
 	case "rangeWrite":
-		kvMap := generateVdevRange(10)
+		kvMap := generateVdevRange(clientObj.count,int64(clientObj.seed))
 		requestObj.Operation = "write"
 		for key, _ := range kvMap {
-		        var requestByte bytes.Buffer
+			var requestByte bytes.Buffer
 			requestObj.Key = key
 			requestObj.Value = []byte(kvMap[key])
 			requestObj.Rncui = uuid.New().String()+":0:0:0:0"
