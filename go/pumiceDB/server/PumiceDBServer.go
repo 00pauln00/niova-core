@@ -191,11 +191,11 @@ func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 
 // search a key in RocksDB
 func PmdbLookupKey(key string, key_len int64,
-	go_cf string) ([]byte, error) {
+	go_cf string) (map[string]string, error) {
 
 	var goerr string
 	var C_value_len C.size_t
-	var result []byte
+	var result = make(map[string]string)
 	var lookup_err error
 
 	err := GoToCString(goerr)
@@ -219,9 +219,9 @@ func PmdbLookupKey(key string, key_len int64,
 
 	if C_value != nil {
 
-		buffer_value := CToGoBytes(C_value, C.int(C_value_len))
-		result = C.GoBytes(unsafe.Pointer(C_value),C.int(C_value_len))
-		log.Debug("C_value: ", C_value, " \nbuffer_value: ", buffer_value)
+		valBytes := CToGoBytes(C_value, C.int(C_value_len))
+		result[key] = string(valBytes)
+		log.Debug("C_value: ", C_value, " \nvalBytes: ", string(valBytes))
 		lookup_err = nil
 		FreeCMem(C_value)
 	} else {
@@ -309,6 +309,8 @@ func pmdbFetchRange(key string, key_len int64,
 	var cKey *C.char
 	var cLen C.size_t
 	var resultMap = make(map[string]string)
+	var mapSize int
+	var lastKey string
 
 	cf := GoToCString(go_cf)
 
@@ -337,12 +339,26 @@ func pmdbFetchRange(key string, key_len int64,
 			C.rocksdb_iter_next(itr)
 			break
 		}
-		resultMap[string(keyBytes)] = string(valueBytes)
-		C.rocksdb_iter_next(itr)
+		// check if the key-val can be stored in the buffer
+		entrySize := len(keyBytes) + len(valueBytes)
+		if (int64(mapSize) + int64(entrySize)) <= bufSize {
+			mapSize = mapSize + entrySize
+			log.Info("XXX Buffer Size remaining : ", mapSize)
+			resultMap[string(keyBytes)] = string(valueBytes)
+			C.rocksdb_iter_next(itr)
+		} else {
+			log.Info("Reply buffer is full - dumping map to client")
+			lastKey = string(keyBytes)
+			break
+		}
+		// calculate the size for encoded STRUCT
+		// compare with the bufSize
+		// if bufSize limit is hit then dump keys
+		// and set lastKey
+
 	}
 	// temporarily storing lastkey as nil
 	// till we add buffer functionality
-	lastKey := ""
 	C.rocksdb_iter_destroy(itr)
 	log.Trace("RangeQuery returning : ", resultMap)
 	return resultMap, lastKey, lookup_err
