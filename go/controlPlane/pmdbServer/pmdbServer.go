@@ -369,28 +369,36 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	log.Trace("Key length: ", keyLen)
 
 	var readErr error
-	var resultReq requestResponseLib.KVResponse
+	var resultResponse requestResponseLib.KVResponse
+	//var resultReq requestResponseLib.KVResponse
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	if reqStruct.Operation == "read" {
 
 		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
 			int64(keyLen), colmfamily)
-		resultReq = requestResponseLib.KVResponse{
+		resultResponse = requestResponseLib.KVResponse{
                         Key:   reqStruct.Key,
-                        Value: readResult,
+                        RangeMap: readResult,
                 }
 		readErr = err
 
 	} else if reqStruct.Operation == "range" {
-		reqStruct.Prefix = reqStruct.Key
+		log.Info("Control in PMDBSERVER")
+		reqStruct.Prefix = reqStruct.Prefix
+		log.Info("XXX Key passed is - ", reqStruct.Key)
+		log.Info("XXX Prefix passed is - ", reqStruct.Prefix)
+		replyBufSize = 50
 		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
                         int64(keyLen), reqStruct.Prefix, replyBufSize, colmfamily)
 		var cRead bool
                 if lastKey != "" {
                         cRead = true
-                }
-		resultReq = requestResponseLib.KVResponse{
-                        Prefix:   reqStruct.Prefix,
+                }else {
+			cRead = false
+		}
+		log.Info("cRead is ", cRead)
+		resultResponse = requestResponseLib.KVResponse{
+                        Prefix:   reqStruct.Key,
 			RangeMap: readResult,
 			ContinueRead: cRead,
 			Key: lastKey,
@@ -398,12 +406,12 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		readErr = err
 	}
 
-	log.Trace("Response trace : ", resultReq)
+	log.Info("Response trace : ", resultResponse)
 	var replySize int64
 	var copyErr error
 	if readErr == nil {
 		//Copy the encoded result in replyBuffer
-		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq, replyBuf)
+		replySize, copyErr = nso.pso.CopyDataToBuffer(resultResponse, replyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
@@ -412,7 +420,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Error(readErr)
 	}
 
-	log.Trace("Reply size: ", replySize)
+	log.Info("Reply size: ", replySize)
 
 	return replySize
 }

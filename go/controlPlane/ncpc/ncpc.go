@@ -210,7 +210,6 @@ func main() {
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		Timeout: 10,
 	}
-	/*
 	stop := make(chan int)
 	go func() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
@@ -220,7 +219,6 @@ func main() {
 		}
 	}()
 	clientObj.clientAPIObj.TillReady()
-	*/
 	//Send request
 	var write bool
 	requestObj := requestResponseLib.KVRequest{}
@@ -298,36 +296,38 @@ func main() {
 		}
 
 	case "range":
-		requestObj.Prefix = clientObj.requestKey
-		requestObj.Key = clientObj.requestKey
-		requestObj.Operation = clientObj.operation
-		var requestByte bytes.Buffer
-		enc := gob.NewEncoder(&requestByte)
-		enc.Encode(requestObj)
-
-		//Send the range request
-		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
-		if err != nil {
-			log.Error(err)
-			break
-		}
-
-		for responseObj.ContinueRead {
-			requestObj.Key = responseObj.Key
+		var Prefix, Key, Operation string
+		Prefix = clientObj.requestKey
+		Key = clientObj.requestKey
+		Operation = clientObj.operation
+		for {
+			rangeResponseObj := requestResponseLib.KVResponse{}
+			requestObj.Prefix = Prefix
+			requestObj.Key = Key
+			requestObj.Operation = Operation
+			var requestByte bytes.Buffer
+			enc := gob.NewEncoder(&requestByte)
 			enc.Encode(requestObj)
+
 			//Send the range request
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-			err = dec.Decode(&responseObj)
-			fmt.Println(responseObj.Value)
+			err = dec.Decode(&rangeResponseObj)
 			if err != nil {
 				log.Error(err)
 				break
 			}
+			fmt.Println("RangeMap - ", rangeResponseObj.RangeMap , "\n Continue Read - ", rangeResponseObj.ContinueRead)
+			if !rangeResponseObj.ContinueRead {
+				log.Info("Breaking the loop as continue read is false")
+				break
+			}
+			Prefix = clientObj.requestKey
+			Key = rangeResponseObj.Key
+
+
 		}
-		fmt.Println(responseObj.RangeMap)
+		log.Info("XXX OUTSIDE RANGE LOOP")
 
 
 	case "config":

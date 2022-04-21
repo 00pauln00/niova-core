@@ -238,7 +238,7 @@ func PmdbLookupKey(key string, key_len int64,
 
 // Public method of PmdbLookupKey
 func (*PmdbServerObject) LookupKey(key string, key_len int64,
-	go_cf string) ([]byte, error) {
+	go_cf string) (map[string]string, error) {
 	return PmdbLookupKey(key, key_len, go_cf)
 }
 
@@ -284,7 +284,7 @@ func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) ([]byte, error) {
+	key_len int64, gocolfamily string) (map[string]string, error) {
 
 	go_value, err := PmdbLookupKey(key, key_len, gocolfamily)
 
@@ -294,7 +294,7 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 
 // Public method of PmdbReadKV
 func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) ([]byte, error) {
+	key_len int64, gocolfamily string) (map[string]string, error) {
 
 	return PmdbReadKV(app_id, key, key_len, gocolfamily)
 }
@@ -313,10 +313,9 @@ func pmdbFetchRange(key string, key_len int64,
 	var lastKey string
 
 	cf := GoToCString(go_cf)
-
 	ropts := C.rocksdb_readoptions_create()
-	log.Trace("RangeQuery - Key passed is: ", key)
-	log.Trace("RangeQuery - Prefix passed is: ", prefix)
+	log.Info("RangeQuery - Key passed is: ", key)
+	log.Info("RangeQuery - Prefix passed is: ", prefix)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
 	// Iterate to lastKeyPassed or first key
@@ -360,7 +359,8 @@ func pmdbFetchRange(key string, key_len int64,
 	// temporarily storing lastkey as nil
 	// till we add buffer functionality
 	C.rocksdb_iter_destroy(itr)
-	log.Trace("RangeQuery returning : ", resultMap)
+	log.Info("RangeQuery - LastKey ", lastKey)
+	log.Info("RangeQuery returning : ", resultMap)
 	return resultMap, lastKey, lookup_err
 }
 
