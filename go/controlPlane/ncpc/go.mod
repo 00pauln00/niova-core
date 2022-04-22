@@ -12,7 +12,7 @@ replace common/clientAPI => ../../serf/serviceDiscovery
 
 replace common/specificCompressionLib => ../../specificCompressionLib/
 
-go 1.17
+go 1.18
 
 require (
 	common/clientAPI v0.0.0-00010101000000-000000000000
@@ -40,6 +40,7 @@ require (
 	github.com/hashicorp/serf v0.9.7 // indirect
 	github.com/miekg/dns v1.1.41 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
+	golang.org/x/exp v0.0.0-20220414153411-bcd21879b8fd // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
-	golang.org/x/sys v0.0.0-20210330210617-4fbd30eecc44 // indirect
+	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654 // indirect
 )

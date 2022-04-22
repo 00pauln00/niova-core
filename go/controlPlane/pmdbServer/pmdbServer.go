@@ -382,7 +382,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
                 }
 		readErr = err
 
-	} else if reqStruct.Operation == "range" {
+	} else if reqStruct.Operation == "rangeRead" {
 		reqStruct.Prefix = reqStruct.Prefix
 		replyBufSize = 512
 		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,

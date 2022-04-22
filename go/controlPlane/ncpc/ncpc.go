@@ -15,7 +15,9 @@ import (
 	"os"
 	"strings"
 	"time"
+	"reflect"
 	"strconv"
+	maps "golang.org/x/exp/maps"
 	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -134,6 +136,17 @@ func generateVdevRange(count int, seed int64) map[string]string {
                 kvMap[configInfo] = string(byteSlice)
 	}
 	return kvMap
+}
+
+func filterKVPrefix(kvMap map[string]string, prefix string) map[string]string {
+	resultantMap := make(map[string]string)
+	for key, value := range kvMap {
+		if strings.HasPrefix(key, prefix) {
+			resultantMap[key] = value
+		}
+	}
+
+	return resultantMap
 }
 
 //Function to get command line parameters
@@ -299,8 +312,10 @@ func main() {
 		var Prefix, Key, Operation string
 		Prefix = clientObj.requestKey
 		Key = clientObj.requestKey
-		Operation = clientObj.operation
+		Operation = "rangeRead"
 		//Keep calling range request till ContinueRead is true
+		resultMap := make(map[string]string)
+		var count int
 		for {
 			rangeResponseObj := requestResponseLib.KVResponse{}
 			requestObj.Prefix = Prefix
@@ -318,14 +333,26 @@ func main() {
 				log.Error(err)
 				break
 			}
-			fmt.Println(rangeResponseObj.ResultMap)
+			maps.Copy(resultMap, rangeResponseObj.ResultMap)
+			for key, value := range rangeResponseObj.ResultMap {
+				fmt.Println(key, " : ", value)
+			}
+			count += 1
+			fmt.Println("Repeted range request count : ", count)
 			if !rangeResponseObj.ContinueRead {
 				break
 			}
 			Prefix = clientObj.requestKey
 			Key = rangeResponseObj.Key
 		}
-
+		genKVMap := generateVdevRange(clientObj.count,int64(clientObj.seed))
+		filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)
+		compare := reflect.DeepEqual(resultMap, filteredMap)
+		if compare {
+			fmt.Println("Got expected output")
+		} else {
+			fmt.Println("Range read failure")
+		}
 
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
