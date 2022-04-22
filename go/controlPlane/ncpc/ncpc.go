@@ -318,7 +318,10 @@ func main() {
 				log.Error(err)
 				break
 			}
-			fmt.Println(rangeResponseObj.ResultMap)
+			fmt.Println("Read Req Number - ", count)
+			for key, value := range rangeResponseObj.ResultMap {
+				fmt.Println("key - ", key, " : ", value)
+			}
 			if !rangeResponseObj.ContinueRead {
 				break
 			}
