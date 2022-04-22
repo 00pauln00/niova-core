@@ -82,11 +82,20 @@ func getKeyType(key string) string {
 	return ""
 }
 
+var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randSeq(n int, r *rand.Rand) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letters[r.Intn(len(letters))]
+	}
+	return string(b)
+}
 
 func generateVdevRange(count int, seed int64) map[string]string {
 	kvMap := make(map[string]string)
 	r := rand.New(rand.NewSource(seed))
-	byteSlice := make([]byte,4)
+	r1 := rand.New(rand.NewSource(seed))
 
 	//Vdev
 	noVdev := int64(float64(count) * float64(0.5))
@@ -94,24 +103,21 @@ func generateVdevRange(count int, seed int64) map[string]string {
 	for i := int64(0); i < noUUID; i++ {
 		randUUID, _ := uuid.NewRandomFromReader(r)
 		prefix := "v."+randUUID.String()
-		r.Read(byteSlice)
-		kvMap[prefix] = string(byteSlice)
+		kvMap[prefix] = randSeq(4, r1)
 
 		noChunck := r.Int31n(5)
 		Cprefix := prefix + ".c"
 		for j := int32(0); j < noChunck; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
 			Chunckprefix := Cprefix + strconv.Itoa(int(j))+"."+randUUID.String()
-			r.Read(byteSlice)
-			kvMap[Chunckprefix] = string(byteSlice)
+			kvMap[Chunckprefix] = randSeq(4, r1)
 		}
 
-		noSeq := rand.Int31n(5)
+		noSeq := r.Int31n(5)
 		Sprefix := prefix + ".s"
 		for k := int32(0); k < noSeq; k++ {
 			SeqPrefix := Sprefix + strconv.Itoa(int(k))
-			r.Read(byteSlice)
-			kvMap[SeqPrefix] = string(byteSlice)
+			kvMap[SeqPrefix] = randSeq(4, r1)
 		}
 	}
 
@@ -127,13 +133,11 @@ func generateVdevRange(count int, seed int64) map[string]string {
                 for j := int32(0); j < noNode; j++ {
                         randUUID, _ := uuid.NewRandomFromReader(r)
                         partNodePrefix := nodePrefix + randUUID.String()
-			r.Read(byteSlice)
-                        kvMap[partNodePrefix] = string(byteSlice)
+                        kvMap[partNodePrefix] = randSeq(4, r1)
 		}
 
 		configInfo := prefix+".Config-Info"
-		r.Read(byteSlice)
-                kvMap[configInfo] = string(byteSlice)
+                kvMap[configInfo] = randSeq(4, r1)
 	}
 	return kvMap
 }
@@ -340,7 +344,6 @@ func main() {
 			}
 
 			count += 1
-			fmt.Println("Repeted range request count : ", count)
 			if !rangeResponseObj.ContinueRead {
 				break
 			}
@@ -355,6 +358,7 @@ func main() {
 		} else {
 			fmt.Println("Range read failure")
 		}
+		fmt.Println("Called range query", count, "times")
 
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
