@@ -13,7 +13,7 @@ type KVResponse struct {
 	Status       int
 	Key          string
 	Value        []byte
-	RangeMap     map[string]string
+	ResultMap     map[string]string
 	ContinueRead bool
 	Prefix       string
 }

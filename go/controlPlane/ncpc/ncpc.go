@@ -249,7 +249,7 @@ func main() {
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
-		fmt.Println(string(responseObj.Value))
+		fmt.Println(responseObj.ResultMap)
 		//Creation of output json
 		sendTime := time.Now()
 		requestMeta := request{
@@ -318,7 +318,7 @@ func main() {
 				log.Error(err)
 				break
 			}
-			fmt.Println(rangeResponseObj.RangeMap)
+			fmt.Println(rangeResponseObj.ResultMap)
 			if !rangeResponseObj.ContinueRead {
 				break
 			}
