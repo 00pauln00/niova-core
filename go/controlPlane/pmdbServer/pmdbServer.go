@@ -383,10 +383,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		readErr = err
 
 	} else if reqStruct.Operation == "range" {
-		log.Info("Control in PMDBSERVER")
 		reqStruct.Prefix = reqStruct.Prefix
-		log.Info("XXX Key passed is - ", reqStruct.Key)
-		log.Info("XXX Prefix passed is - ", reqStruct.Prefix)
 		replyBufSize = 50
 		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
                         int64(keyLen), reqStruct.Prefix, replyBufSize, colmfamily)
@@ -396,7 +393,6 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
                 }else {
 			cRead = false
 		}
-		log.Info("cRead is ", cRead)
 		resultResponse = requestResponseLib.KVResponse{
                         Prefix:   reqStruct.Key,
 			RangeMap: readResult,
@@ -406,7 +402,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		readErr = err
 	}
 
-	log.Info("Response trace : ", resultResponse)
+	log.Trace("Response trace : ", resultResponse)
 	var replySize int64
 	var copyErr error
 	if readErr == nil {
@@ -420,7 +416,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Error(readErr)
 	}
 
-	log.Info("Reply size: ", replySize)
+	log.Trace("Reply size: ", replySize)
 
 	return replySize
 }

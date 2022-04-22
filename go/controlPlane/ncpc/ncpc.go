@@ -300,6 +300,7 @@ func main() {
 		Prefix = clientObj.requestKey
 		Key = clientObj.requestKey
 		Operation = clientObj.operation
+		//Keep calling range request till ContinueRead is true
 		for {
 			rangeResponseObj := requestResponseLib.KVResponse{}
 			requestObj.Prefix = Prefix
@@ -317,17 +318,13 @@ func main() {
 				log.Error(err)
 				break
 			}
-			fmt.Println("RangeMap - ", rangeResponseObj.RangeMap , "\n Continue Read - ", rangeResponseObj.ContinueRead)
+			log.Trace("RangeMap - ", rangeResponseObj.RangeMap , "\n Continue Read - ", rangeResponseObj.ContinueRead)
 			if !rangeResponseObj.ContinueRead {
-				log.Info("Breaking the loop as continue read is false")
 				break
 			}
 			Prefix = clientObj.requestKey
 			Key = rangeResponseObj.Key
-
-
 		}
-		log.Info("XXX OUTSIDE RANGE LOOP")
 
 
 	case "config":

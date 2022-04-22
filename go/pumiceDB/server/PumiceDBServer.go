@@ -314,8 +314,8 @@ func pmdbFetchRange(key string, key_len int64,
 
 	cf := GoToCString(go_cf)
 	ropts := C.rocksdb_readoptions_create()
-	log.Info("RangeQuery - Key passed is: ", key)
-	log.Info("RangeQuery - Prefix passed is: ", prefix)
+	log.Trace("RangeQuery - Key passed is: ", key)
+	log.Trace("RangeQuery - Prefix passed is: ", prefix)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
 	// Iterate to lastKeyPassed or first key
@@ -342,25 +342,17 @@ func pmdbFetchRange(key string, key_len int64,
 		entrySize := len(keyBytes) + len(valueBytes)
 		if (int64(mapSize) + int64(entrySize)) <= bufSize {
 			mapSize = mapSize + entrySize
-			log.Info("XXX Buffer Size remaining : ", mapSize)
 			resultMap[string(keyBytes)] = string(valueBytes)
 			C.rocksdb_iter_next(itr)
 		} else {
-			log.Info("Reply buffer is full - dumping map to client")
+			log.Trace("Reply buffer is full - dumping map to client")
 			lastKey = string(keyBytes)
 			break
 		}
-		// calculate the size for encoded STRUCT
-		// compare with the bufSize
-		// if bufSize limit is hit then dump keys
-		// and set lastKey
 
 	}
-	// temporarily storing lastkey as nil
-	// till we add buffer functionality
 	C.rocksdb_iter_destroy(itr)
-	log.Info("RangeQuery - LastKey ", lastKey)
-	log.Info("RangeQuery returning : ", resultMap)
+	log.Trace("RangeQuery returning : ", resultMap)
 	return resultMap, lastKey, lookup_err
 }
 
