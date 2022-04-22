@@ -318,7 +318,7 @@ func main() {
 				log.Error(err)
 				break
 			}
-			log.Trace("RangeMap - ", rangeResponseObj.RangeMap , "\n Continue Read - ", rangeResponseObj.ContinueRead)
+			fmt.Println(rangeResponseObj.RangeMap)
 			if !rangeResponseObj.ContinueRead {
 				break
 			}
