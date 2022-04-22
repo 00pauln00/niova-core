@@ -334,9 +334,11 @@ func main() {
 				break
 			}
 			maps.Copy(resultMap, rangeResponseObj.ResultMap)
+
 			for key, value := range rangeResponseObj.ResultMap {
 				fmt.Println(key, " : ", value)
 			}
+
 			count += 1
 			fmt.Println("Repeted range request count : ", count)
 			if !rangeResponseObj.ContinueRead {
