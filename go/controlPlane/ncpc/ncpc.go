@@ -8,18 +8,18 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"flag"
-	"math/rand"
 	"fmt"
-	"io/ioutil"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
-	"os"
-	"strings"
-	"time"
-	"reflect"
-	"strconv"
-	maps "golang.org/x/exp/maps"
 	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
+	maps "golang.org/x/exp/maps"
+	"io/ioutil"
+	"math/rand"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
+	"os"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
 )
 
 type clientHandler struct {
@@ -33,25 +33,25 @@ type clientHandler struct {
 	resultFile        string
 	rncui             string
 	rangeQuery        bool
-	count		  int
-	seed		  int
+	count             int
+	seed              int
 	lastKey           string
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 }
 
 type request struct {
-	Opcode    string            `json:"Operation"`
-	Key       string            `json:"Key"`
-	Value     []byte            `json:"Value"`
-	Timestamp time.Time         `json:"Request_timestamp"`
+	Opcode    string    `json:"Operation"`
+	Key       string    `json:"Key"`
+	Value     []byte    `json:"Value"`
+	Timestamp time.Time `json:"Request_timestamp"`
 }
 
 type response struct {
-	Status        int               `json:"Status"`
-	ResponseValue []byte            `json:"Response"`
-	validate      bool              `json:"validate"`
-	Timestamp     time.Time         `json:"Response_timestamp"`
+	Status        int       `json:"Status"`
+	ResponseValue []byte    `json:"Response"`
+	validate      bool      `json:"validate"`
+	Timestamp     time.Time `json:"Response_timestamp"`
 }
 type opData struct {
 	RequestData  request       `json:"Request"`
@@ -60,9 +60,9 @@ type opData struct {
 }
 
 type nisdData struct {
-	UUID      string `json:"UUID"`
-	Status    string `json:"Status"`
-	WriteSize string `json:"WriteSize"`
+	UUID      uuid.UUID `json:"UUID"`
+	Status    string    `json:"Status"`
+	WriteSize string    `json:"WriteSize"`
 }
 
 func usage() {
@@ -102,14 +102,14 @@ func generateVdevRange(count int, seed int64) map[string]string {
 	noUUID := r.Int63n(noVdev)
 	for i := int64(0); i < noUUID; i++ {
 		randUUID, _ := uuid.NewRandomFromReader(r)
-		prefix := "v."+randUUID.String()
+		prefix := "v." + randUUID.String()
 		kvMap[prefix] = randSeq(4, r1)
 
 		noChunck := r.Int31n(5)
 		Cprefix := prefix + ".c"
 		for j := int32(0); j < noChunck; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
-			Chunckprefix := Cprefix + strconv.Itoa(int(j))+"."+randUUID.String()
+			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
 			kvMap[Chunckprefix] = randSeq(4, r1)
 		}
 
@@ -124,20 +124,20 @@ func generateVdevRange(count int, seed int64) map[string]string {
 	//NISD
 	noNISD := int64(float64(count) * float64(0.5))
 	noUUID = r.Int63n(noNISD)
-        for i := int64(0); i < noUUID; i++ {
-                randUUID, _ := uuid.NewRandomFromReader(r)
-                prefix := "nisd."+randUUID.String()
+	for i := int64(0); i < noUUID; i++ {
+		randUUID, _ := uuid.NewRandomFromReader(r)
+		prefix := "nisd." + randUUID.String()
 
-                noNode := r.Int31n(5)
-                nodePrefix := prefix + "."
-                for j := int32(0); j < noNode; j++ {
-                        randUUID, _ := uuid.NewRandomFromReader(r)
-                        partNodePrefix := nodePrefix + randUUID.String()
-                        kvMap[partNodePrefix] = randSeq(4, r1)
+		noNode := r.Int31n(5)
+		nodePrefix := prefix + "."
+		for j := int32(0); j < noNode; j++ {
+			randUUID, _ := uuid.NewRandomFromReader(r)
+			partNodePrefix := nodePrefix + randUUID.String()
+			kvMap[partNodePrefix] = randSeq(4, r1)
 		}
 
-		configInfo := prefix+".Config-Info"
-                kvMap[configInfo] = randSeq(4, r1)
+		configInfo := prefix + ".Config-Info"
+		kvMap[configInfo] = randSeq(4, r1)
 	}
 	return kvMap
 }
@@ -181,21 +181,22 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	for _, node := range data {
 		if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
 			for cuuid, value := range node.Tags {
-				uuid, err := compressionLib.DecompressUUID(cuuid)
+				d_uuid, err := compressionLib.DecompressUUID(cuuid)
 				if err == nil {
 					CompressedStatus := value[0]
-
 					//Decompress
 					thisNISDData := nisdData{}
-					thisNISDData.UUID = uuid
-					log.Info("NISD Status : ", CompressedStatus)
+					thisNISDData.UUID, err = uuid.Parse(d_uuid)
+					if err != nil {
+						log.Error(err)
+					}
 					if string(CompressedStatus) == "1" {
 						thisNISDData.Status = "Alive"
 					} else {
 						thisNISDData.Status = "Dead"
 					}
 
-					nisdDataMap[uuid] = thisNISDData
+					nisdDataMap[d_uuid] = thisNISDData
 				}
 			}
 		}
@@ -237,7 +238,7 @@ func main() {
 	}()
 	clientObj.clientAPIObj.TillReady()
 	//Send request
-	var write bool
+	var passNext bool
 	requestObj := requestResponseLib.KVRequest{}
 	responseObj := requestResponseLib.KVResponse{}
 	//Decl and init required variables
@@ -254,7 +255,7 @@ func main() {
 			requestObj.Value = valueByte
 		}
 		requestObj.Rncui = clientObj.rncui
-		write = true
+		passNext = true
 		fallthrough
 	case "read":
 		requestObj.Key = clientObj.requestKey
@@ -263,7 +264,7 @@ func main() {
 		enc := gob.NewEncoder(&requestByte)
 		enc.Encode(requestObj)
 		//Send the write
-		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", write)
+		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", passNext)
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		fmt.Println(responseObj.ResultMap)
@@ -289,7 +290,7 @@ func main() {
 		}
 
 		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-		if write {
+		if passNext {
 			toJson["write"] = clientObj.operationMetaObjs
 		} else {
 			toJson["read"] = clientObj.operationMetaObjs
@@ -297,13 +298,13 @@ func main() {
 		clientObj.write2Json(toJson)
 
 	case "rangeWrite":
-		kvMap := generateVdevRange(clientObj.count,int64(clientObj.seed))
+		kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
 		requestObj.Operation = "write"
 		for key, _ := range kvMap {
 			var requestByte bytes.Buffer
 			requestObj.Key = key
 			requestObj.Value = []byte(kvMap[key])
-			requestObj.Rncui = uuid.New().String()+":0:0:0:0"
+			requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
 			enc := gob.NewEncoder(&requestByte)
 			enc.Encode(requestObj)
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
@@ -350,7 +351,7 @@ func main() {
 			Prefix = clientObj.requestKey
 			Key = rangeResponseObj.Key
 		}
-		genKVMap := generateVdevRange(clientObj.count,int64(clientObj.seed))
+		genKVMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
 		filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)
 		compare := reflect.DeepEqual(resultMap, filteredMap)
 		if compare {
@@ -436,10 +437,30 @@ func main() {
 			fmt.Printf("\033[3;0H")
 		}
 
+	case "Gossip":
+		passNext = true
+
 	case "NISDGossip":
 		nisdDataMap := clientObj.getNISDInfo()
-		file, _ := json.MarshalIndent(nisdDataMap, "", " ")
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+		fileData, _ := json.MarshalIndent(nisdDataMap, "", " ")
+		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		if !passNext {
+			break
+		}
+		fallthrough
+
+	case "PMDBGossip":
+		fileData, err := clientObj.clientAPIObj.GetPMDBServerConfig()
+		if err != nil {
+			log.Error("Error while getting pmdb server config data : ", err)
+			break
+		}
+		if passNext {
+			f, _ := os.OpenFile(clientObj.resultFile+".json", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+			f.WriteString(string(fileData))
+			break
+		}
+		_ = ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")

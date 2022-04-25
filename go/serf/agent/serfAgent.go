@@ -27,10 +27,10 @@ Methods:
 type SerfAgentHandler struct {
 	//Exported
 	Name        string //Name of the agent
-	BindAddr    string //Addr for inter agent communcations
-	BindPort    string //Port for inter agent communcations
-	RpcAddr     string //Addr for agent-client communication
-	RpcPort     string //Port for agent-client communicaton
+	BindAddr    net.IP //Addr for inter agent communcations
+	BindPort    uint16 //Port for inter agent communcations
+	RpcAddr     net.IP //Addr for agent-client communication
+	RpcPort     uint16 //Port for agent-client communicaton
 	AgentLogger *log.Logger
 
 	//non-exported
@@ -51,8 +51,8 @@ func (Handler *SerfAgentHandler) setup() error {
 	//Init an agent
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
-	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr                               //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort, _ = strconv.Atoi(Handler.BindPort)              //Agent bind port
+	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr.String()                      //Agent bind addr
+	serfconfig.MemberlistConfig.BindPort = int(Handler.BindPort)                          //Agent bind port
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 
@@ -92,7 +92,7 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 
 	//Start a RPC listener
 	agentLog := agent.NewLogWriter(10) //Need change for logging
-	rpcListener, err := net.Listen("tcp", Handler.RpcAddr+":"+Handler.RpcPort)
+	rpcListener, err := net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
 	if err != nil {
 		return err
 	}
@@ -189,7 +189,7 @@ func (Handler *SerfAgentHandler) SetNodeTags(tags map[string]string) error {
 	return err
 }
 
-func (Handler *SerfAgentHandler) GetTags(filterKey string,filterValue string) map[string]map[string]string {
+func (Handler *SerfAgentHandler) GetTags(filterKey string, filterValue string) map[string]map[string]string {
 	members := Handler.agentObj.Serf().Members()
 	returnMap := make(map[string]map[string]string)
 	for _, mem := range members {
