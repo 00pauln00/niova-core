@@ -18,7 +18,9 @@ import (
 	"os"
 	"reflect"
 	"strconv"
+	"hash/crc32"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -299,19 +301,39 @@ func main() {
 
 	case "rangeWrite":
 		kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
-		requestObj.Operation = "write"
+		var wg sync.WaitGroup
 		for key, _ := range kvMap {
-			var requestByte bytes.Buffer
-			requestObj.Key = key
-			requestObj.Value = []byte(kvMap[key])
-			requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
-			enc := gob.NewEncoder(&requestByte)
-			enc.Encode(requestObj)
-			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-			err = dec.Decode(&responseObj)
-			log.Info(key, responseObj.Status)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				startTime := time.Now() //Start time
+				request := requestResponseLib.KVRequest{}
+				response := requestResponseLib.KVResponse{}
+				var requestByte bytes.Buffer
+				request.Operation = "write"
+				request.Key = key
+				request.Value = []byte(kvMap[key])
+				request.Rncui = uuid.New().String() + ":0:0:0:0"
+				enc := gob.NewEncoder(&requestByte)
+				enc.Encode(request)
+				beforeSendTime := time.Now() //Before time
+
+				//Send the write request
+				responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+
+				recvResponseTime := time.Now() //Response time
+				//Decode the request
+				dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+				err = dec.Decode(&response)
+				log.Info(key, response.Status)
+
+				//Get hash for bytes
+                                checkSum := crc32.ChecksumIEEE(requestByte.Bytes())
+				elapsedTime := recvResponseTime.Sub(beforeSendTime)
+				log.Info(";Request time ;",checkSum ,";",startTime, ";", beforeSendTime, ";",recvResponseTime, ";",elapsedTime)
+			}()
 		}
+		wg.Wait()
 
 	case "range":
 		var Prefix, Key, Operation string
