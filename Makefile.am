@@ -90,7 +90,10 @@ src_libniova_la_LDFLAGS = \
 src_libniova_la_SOURCES = $(CORE_SOURCES)
 
 ## Non-library sources
-non_library_common_SOURCES = src/niova_backtrace.c \
+lib_LTLIBRARIES += src/libniova_bt.la
+src_libniova_bt_la_LDFLAGS = \
+	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
+src_libniova_bt_la_SOURCES = src/niova_backtrace.c \
 	src/include/src/niova_backtrace.h
 
 ## Raft
@@ -135,15 +138,15 @@ src_libniova_raft_client_la_LIBADD = src/libniova.la
 src_libniova_raft_client_la_SOURCES = $(RAFT_CLIENT_CORE_SOURCES)
 
 my_libexec_PROGRAMS += test/raft-reference-client
-test_raft_reference_client_SOURCES = $(non_library_common_SOURCES) \
-	test/raft-reference-client.c
-test_raft_reference_client_LDADD = src/libniova.la src/libniova_raft_client.la
+test_raft_reference_client_SOURCES = test/raft-reference-client.c
+test_raft_reference_client_LDADD = \
+	src/libniova.la src/libniova_raft_client.la src/libniova_bt.la
 
 my_libexec_PROGRAMS += test/raft-reference-server
-test_raft_reference_server_SOURCES = $(non_library_common_SOURCES) \
+test_raft_reference_server_SOURCES =  \
 	test/raft-reference-server.c
 test_raft_reference_server_LDADD = \
-	src/libniova.la src/libniova_raft.la $(ROCKSDB_LIBS)
+	src/libniova.la src/libniova_raft.la $(ROCKSDB_LIBS) src/libniova_bt.la
 ## end Raft
 
 ## Pumice
@@ -165,20 +168,22 @@ src_libniova_pumice_client_la_SOURCES = \
 	src/pumice_db_client.c
 
 my_libexec_PROGRAMS += test/pumice-reference-client
-test_pumice_reference_client_SOURCES = $(non_library_common_SOURCES) \
+test_pumice_reference_client_SOURCES =  \
 	test/pumice-reference-client.c
 test_pumice_reference_client_LDADD = \
 	src/libniova.la \
 	src/libniova_raft_client.la \
-	src/libniova_pumice_client.la
+	src/libniova_pumice_client.la \
+	src/libniova_bt.la
 
 my_libexec_PROGRAMS += test/pumice-reference-server
-test_pumice_reference_server_SOURCES =  $(non_library_common_SOURCES) \
+test_pumice_reference_server_SOURCES =  \
 	test/pumice-reference-server.c
 test_pumice_reference_server_LDADD = \
 	src/libniova.la \
 	src/libniova_raft.la \
-	src/libniova_pumice.la $(ROCKSDB_LIBS)
+	src/libniova_pumice.la \
+	src/libniova_bt.la	$(ROCKSDB_LIBS)
 
 raft_include_HEADERS += src/include/pumice_db_net.h \
 	src/include/pumice_db_client.h \
@@ -193,8 +198,8 @@ test_ref_tree_test_LDADD = src/libniova.la
 TESTS += test/ref-tree-test
 
 noinst_PROGRAMS += test/ev-pipe-test
-test_ev_pipe_test_SOURCES = $(non_library_common_SOURCES) test/ev-pipe-test.c
-test_ev_pipe_test_LDADD = src/libniova.la
+test_ev_pipe_test_SOURCES =  test/ev-pipe-test.c
+test_ev_pipe_test_LDADD = src/libniova.la src/libniova_bt.la
 TESTS += test/ev-pipe-test
 
 noinst_PROGRAMS += test/work-dispatch-test
@@ -230,7 +235,7 @@ TESTS += test/buffer-test
 noinst_PROGRAMS += test/registry-test
 # Use CORE_SOURCES so that this binary's constructor runs inside of niova
 # init_ctx()
-test_registry_test_SOURCES = $(non_library_common_SOURCES) $(CORE_SOURCES) \
+test_registry_test_SOURCES = $(src_libniova_bt_la_SOURCES) $(CORE_SOURCES) \
 	test/registry-test.c
 # See: https://www.gnu.org/software/automake/manual/html_node/Objects-created-both-with-libtool-and-without.html
 test_registry_test_CFLAGS = $(AM_CFLAGS)
@@ -240,17 +245,17 @@ TESTS += test/registry-test
 
 noinst_PROGRAMS += test/config-token-test
 test_config_token_test_SOURCES = test/config-token-test.c
-test_config_token_test_LDADD = src/libniova.la
+test_config_token_test_LDADD = src/libniova.la src/libniova_bt.la
 TESTS += test/config-token-test
 
 noinst_PROGRAMS += test/tcp-test
-test_tcp_test_SOURCES = $(non_library_common_SOURCES) test/tcp-test.c
-test_tcp_test_LDADD = src/libniova.la
+test_tcp_test_SOURCES =  test/tcp-test.c
+test_tcp_test_LDADD = src/libniova.la src/libniova_bt.la
 TESTS += test/tcp-test
 
 noinst_PROGRAMS += test/udp-test
-test_udp_test_SOURCES = $(non_library_common_SOURCES) test/udp-test.c
-test_udp_test_LDADD = src/libniova.la
+test_udp_test_SOURCES =  test/udp-test.c
+test_udp_test_LDADD = src/libniova.la src/libniova_bt.la
 TESTS += test/udp-test
 
 noinst_PROGRAMS += test/random-test
@@ -274,15 +279,15 @@ test_regex_test_LDADD = src/libniova.la
 TESTS += test/regex-test
 
 noinst_PROGRAMS += test/epoll-mgr-test
-test_epoll_mgr_test_SOURCES = $(non_library_common_SOURCES) \
+test_epoll_mgr_test_SOURCES =  \
 	test/epoll-mgr-test.c
-test_epoll_mgr_test_LDADD = src/libniova.la
+test_epoll_mgr_test_LDADD = src/libniova.la src/libniova_bt.la
 TESTS += test/epoll-mgr-test
 
 noinst_PROGRAMS += test/raft-net-test
-test_raft_net_test_SOURCES =  $(non_library_common_SOURCES) \
+test_raft_net_test_SOURCES =   \
 	$(RAFT_NET_CORE_SOURCES) test/raft-net-test.c
-test_raft_net_test_LDADD = src/libniova.la
+test_raft_net_test_LDADD = src/libniova.la src/libniova_bt.la
 test_raft_net_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/raft-net-test
 
