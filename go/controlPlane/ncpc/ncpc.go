@@ -304,7 +304,7 @@ func main() {
 		var wg sync.WaitGroup
 		for key, _ := range kvMap {
 			wg.Add(1)
-			go func() {
+			go func(key string, val []byte) {
 				defer wg.Done()
 				startTime := time.Now() //Start time
 				request := requestResponseLib.KVRequest{}
@@ -312,7 +312,7 @@ func main() {
 				var requestByte bytes.Buffer
 				request.Operation = "write"
 				request.Key = key
-				request.Value = []byte(kvMap[key])
+				request.Value = val
 				request.Rncui = uuid.New().String() + ":0:0:0:0"
 				enc := gob.NewEncoder(&requestByte)
 				enc.Encode(request)
@@ -331,7 +331,7 @@ func main() {
                                 checkSum := crc32.ChecksumIEEE(requestByte.Bytes())
 				elapsedTime := recvResponseTime.Sub(beforeSendTime)
 				log.Info(";Request time ;",checkSum ,";",startTime, ";", beforeSendTime, ";",recvResponseTime, ";",elapsedTime)
-			}()
+			}(key, []byte(kvMap[key]))
 		}
 		wg.Wait()
 
