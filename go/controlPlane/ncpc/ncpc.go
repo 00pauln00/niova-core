@@ -302,17 +302,17 @@ func main() {
 	case "rangeWrite":
 		kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
 		var wg sync.WaitGroup
+		start_time := time.Now()
 		for key, _ := range kvMap {
 			wg.Add(1)
-			go func() {
+			go func(key string, value string) {
 				defer wg.Done()
-				startTime := time.Now() //Start time
 				request := requestResponseLib.KVRequest{}
 				response := requestResponseLib.KVResponse{}
 				var requestByte bytes.Buffer
 				request.Operation = "write"
 				request.Key = key
-				request.Value = []byte(kvMap[key])
+				request.Value = []byte(value)
 				request.Rncui = uuid.New().String() + ":0:0:0:0"
 				enc := gob.NewEncoder(&requestByte)
 				enc.Encode(request)
@@ -330,10 +330,16 @@ func main() {
 				//Get hash for bytes
                                 checkSum := crc32.ChecksumIEEE(requestByte.Bytes())
 				elapsedTime := recvResponseTime.Sub(beforeSendTime)
-				log.Info(";Request time ;",checkSum ,";",startTime, ";", beforeSendTime, ";",recvResponseTime, ";",elapsedTime)
-			}()
+				log.Info("; Application ;",checkSum ,";", beforeSendTime, ";",recvResponseTime, ";",elapsedTime)
+			}(key, kvMap[key])
+			//wg.Wait()
 		}
 		wg.Wait()
+		end_time := time.Now()
+		elapsedTime := end_time.Sub(start_time)
+		fmt.Println("Total time taken for ", clientObj.count ," requests : ", elapsedTime)
+		file, _ := json.MarshalIndent(kvMap, "", " ")
+                _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	case "range":
 		var Prefix, Key, Operation string
@@ -382,6 +388,8 @@ func main() {
 			fmt.Println("Range read failure")
 		}
 		fmt.Println("Called range query", count, "times")
+		file, _ := json.MarshalIndent(resultMap, "", " ")
+                _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
