@@ -305,14 +305,14 @@ func main() {
 		start_time := time.Now()
 		for key, _ := range kvMap {
 			wg.Add(1)
-			go func(key string, value string) {
+			go func(key string, val []byte) {
 				defer wg.Done()
 				request := requestResponseLib.KVRequest{}
 				response := requestResponseLib.KVResponse{}
 				var requestByte bytes.Buffer
 				request.Operation = "write"
 				request.Key = key
-				request.Value = []byte(value)
+				request.Value = val
 				request.Rncui = uuid.New().String() + ":0:0:0:0"
 				enc := gob.NewEncoder(&requestByte)
 				enc.Encode(request)
@@ -331,8 +331,8 @@ func main() {
                                 checkSum := crc32.ChecksumIEEE(requestByte.Bytes())
 				elapsedTime := recvResponseTime.Sub(beforeSendTime)
 				log.Info("; Application ;",checkSum ,";", beforeSendTime, ";",recvResponseTime, ";",elapsedTime)
-			}(key, kvMap[key])
-			//wg.Wait()
+			}(key, []byte(kvMap[key]))
+			//wg.Wait() //Uncomment if need to serialize
 		}
 		wg.Wait()
 		end_time := time.Now()
