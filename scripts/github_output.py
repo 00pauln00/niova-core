@@ -1,7 +1,7 @@
 import os, json, csv, base64, requests, sys
 from datetime import datetime
 import subprocess
-from slugify import slugify
+import slugify
 from requests.structures import CaseInsensitiveDict
 
 # path were we will store the output 
@@ -22,33 +22,35 @@ date_path = os.path.join(path, date_time_str)
 if not(os.path.exists(date_path)):
     os.mkdir(date_path)
 
-# it will curl the runs form the github api and store that output into result_workflow
-url = "https://api.github.com/repos/00pauln00/niova-core/actions/runs?page=1&per_page=100"
-login_info = sys.argv[1]
+flag = False
+PageNo = 1
 
-headers = CaseInsensitiveDict()
-sample_string_bytes = login_info.encode("ascii")
-base64_bytes = base64.b64encode(sample_string_bytes)
+while(not flag):    
+    # it will curl the runs form the github api and store that output
+    url = "https://api.github.com/repos/00pauln00/niova-core/actions/runs?page={}&per_page=100".format(PageNo)
+    login_info = sys.argv[1]
 
-headers["Authorization"] = "Basic " + str(base64_bytes[1:])
-headers["Accept"] = "application/vnd.github.v3+json"
+    headers = CaseInsensitiveDict()
+    sample_string_bytes = login_info.encode("ascii")
+    base64_bytes = base64.b64encode(sample_string_bytes)
 
-resp = requests.get(url, headers=headers)
+    headers["Authorization"] = "Basic " + str(base64_bytes[1:])
+    headers["Accept"] = "application/vnd.github.v3+json"
 
-filePath = date_path + "/result_workflow.json" 
-with open( filePath, 'w') as outfile:
-    outfile.write(str(resp.text))
+    resp = requests.get(url, headers=headers)
 
-# reading the data from result_workflow.json
-f = open(filePath)
-data = json.load(f)
+    data = json.loads(resp.text)
 
-# appending key as run_id and value as workflow_name and branch_name in dictionary
-dict_values = {}
-for i in data['workflow_runs']:
-    extracted_date =  i['updated_at']
-    if extracted_date[0:10] == date_time_str :
-        dict_values.update({i["id"]: [i["name"], i["head_branch"]]})
+    # appending key as run_id and value as workflow_name and branch_name in dictionary
+    dict_values = {}
+    for i in data['workflow_runs']:
+        extracted_date =  i['updated_at']
+        if extracted_date[0:10] == "2022-04-28" :
+            dict_values.update({i["id"]: [i["name"], i["head_branch"]]})
+        else: 
+            flag = True
+            break
+        PageNo += 1
 
 # for every key in the dictionary it will give workflow job 
 for key in dict_values:
@@ -79,7 +81,7 @@ for key in dict_values:
     f.close()
     
     # creating the file in desired branch 
-    myfile = open(date_path+ "/" + dict_values[key][1] + "-parsed.csv", 'a', newline='')
+    myfile = open(date_path+ "/" + dict_values[key][1] +"/" + dict_values[key][1] +"-parsed.csv", 'a', newline='')
     
     wr = csv.writer(myfile, quoting=csv.QUOTE_ALL)
     headerList = ['WorkflowName', 'WorkFlowStartTime', 'WorkFlowCompletedTime', 
@@ -106,6 +108,4 @@ for key in dict_values:
     wr.writerow('')
     myfile.flush()
     myfile.close()
-    
-
-    
+ 
