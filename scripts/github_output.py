@@ -45,7 +45,7 @@ while(not flag):
     dict_values = {}
     for i in data['workflow_runs']:
         extracted_date =  i['updated_at']
-        if extracted_date[0:10] == "2022-04-28" :
+        if extracted_date[0:10] == date_time_str :
             dict_values.update({i["id"]: [i["name"], i["head_branch"]]})
         else: 
             flag = True
