@@ -1,7 +1,7 @@
 import os, json, csv, base64, requests, sys
 from datetime import datetime
 import subprocess
-import slugify
+from slugify import slugify
 from requests.structures import CaseInsensitiveDict
 
 # path were we will store the output 
@@ -10,23 +10,11 @@ path = "/home/apatil/outputgithub"
 if not(os.path.exists(path)):
     os.mkdir(path)
 
-# current dateTime
-now = datetime.now()
-
-# convert to string
-date_time_str = now.strftime("%Y-%m-%d")
-
-# path till where we need to make date dir
-date_path = os.path.join(path, date_time_str) 
-
-if not(os.path.exists(date_path)):
-    os.mkdir(date_path)
-
 flag = False
 PageNo = 1
 
 while(not flag):    
-    # it will curl the runs form the github api and store that output
+    # it will curl the runs form the github api and store that output into result_workflow
     url = "https://api.github.com/repos/00pauln00/niova-core/actions/runs?page={}&per_page=100".format(PageNo)
     login_info = sys.argv[1]
 
@@ -40,12 +28,24 @@ while(not flag):
     resp = requests.get(url, headers=headers)
 
     data = json.loads(resp.text)
-
+    
     # appending key as run_id and value as workflow_name and branch_name in dictionary
     dict_values = {}
     for i in data['workflow_runs']:
+        # current dateTime
+        now = datetime.now()
+        # convert to string
+        date_time_str = now.strftime("%Y-%m-%d")
+
         extracted_date =  i['updated_at']
-        if extracted_date[0:10] == date_time_str :
+        
+        if extracted_date[0:10] == date_time_str : 
+            # path till where we need to make date dir
+            date_path = os.path.join(path, date_time_str)
+
+            if not(os.path.exists(date_path)):
+                os.mkdir(date_path)
+
             dict_values.update({i["id"]: [i["name"], i["head_branch"]]})
         else: 
             flag = True
@@ -107,5 +107,5 @@ for key in dict_values:
     
     wr.writerow('')
     myfile.flush()
-    myfile.close()
- 
+    myfile.close()    
+    # end of script
