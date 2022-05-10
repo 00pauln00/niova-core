@@ -189,7 +189,7 @@ fault_injection_evaluate(struct fault_injection *flti)
 
 #define FAULT_INJECT(id) FAULT_INJECT_CB(id, )
 
-init_ctx_int_t
+int
 fault_inject_set_install(struct fault_injection *finj_set, size_t set_size,
                          bool append);
 
