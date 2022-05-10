@@ -16,6 +16,10 @@ static const bool faultInjectionEnabled = true;
 static const bool faultInjectionEnabled = false;
 #endif
 
+static bool faultInjectionInit = false;
+
+#define FAULT_INJECT_SET_SIZE_MAX 128
+
 LREG_ROOT_ENTRY_GENERATE(fault_injection_points, LREG_USER_TYPE_FAULT_INJECT);
 
 enum fault_inject_reg_keys
@@ -35,7 +39,15 @@ enum fault_inject_reg_keys
     FAULT_INJECT_REG_KEY__MAX,
 };
 
-static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
+struct fault_injection_set
+{
+    struct fault_injection *finj_set;
+    size_t                  finj_set_size;
+};
+
+#define FAULT_INJECTION_SET_MAX 8
+
+static struct fault_injection coreFaultInjections[] =
 {
     [FAULT_INJECT_any] = {
         .flti_name = "any injection",
@@ -119,13 +131,25 @@ static struct fault_injection faultInjections[FAULT_INJECT__MAX] =
     },
 };
 
+static struct fault_injection_set
+faultInjectionSets[FAULT_INJECTION_SET_MAX] = {
+    [0].finj_set = coreFaultInjections,
+    [0].finj_set_size = ARRAY_SIZE(coreFaultInjections),
+};
+static size_t numFaultInjectionSets = 1;
+
 struct fault_injection *
-fault_injection_lookup(const enum fault_inject_entries id)
+fault_injection_lookup(const size_t id, const int module)
 {
-    if (id >= FAULT_INJECT__MAX || faultInjections[id].flti_file)
+    if (module >= FAULT_INJECTION_SET_MAX ||
+        faultInjectionSets[module].finj_set == NULL ||
+        id >= faultInjectionSets[module].finj_set_size)
+        return NULL;
+
+    if (faultInjectionSets[module].finj_set[id].flti_file)
         return NULL;               /* already installed        */
 
-    return &faultInjections[id];
+    return &faultInjectionSets[module].finj_set[id];
 }
 
 static util_thread_ctx_reg_int_t
@@ -239,18 +263,15 @@ fault_injection_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
-static init_ctx_t NIOVA_CONSTRUCTOR(FAULT_INJECT_CTOR_PRIORITY)
-fault_injection_init(void)
+static void
+fault_inject_set_lreg_install(struct fault_injection_set *fis)
 {
-    if (!faultInjectionEnabled)
-        return;
+    NIOVA_ASSERT(fis);
+    SIMPLE_LOG_MSG(LL_WARN, "size=%zu", fis->finj_set_size);
 
-    LREG_ROOT_ENTRY_INSTALL(fault_injection_points);
-
-    for (enum fault_inject_entries i = FAULT_INJECT__MIN;
-         i < FAULT_INJECT__MAX; i++)
+    for (int i = 0; i < fis->finj_set_size; i++)
     {
-        struct lreg_node *lrn = &faultInjections[i].flti_lrn;
+        struct lreg_node *lrn = &fis->finj_set[i].flti_lrn;
 
         lreg_node_init(lrn, LREG_USER_TYPE_FAULT_INJECT,
                        fault_injection_lreg_cb, NULL, LREG_INIT_OPT_NONE);
@@ -260,4 +281,75 @@ fault_injection_init(void)
 
         FATAL_IF(rc, "lreg_node_install() %s", strerror(-rc));
     }
+}
+
+// Append of 'false' will overwrite the first entry
+int
+fault_inject_set_install(struct fault_injection *finj_set, size_t set_size,
+                         bool append)
+{
+//    if (!init_ctx())
+//        return -EBUSY;
+
+    if (!faultInjectionInit)
+        return -ENODEV;
+
+    if (!faultInjectionEnabled)
+        return 0;
+
+    if (!finj_set || !set_size)
+        return -EINVAL;
+
+    if (set_size > FAULT_INJECT_SET_SIZE_MAX)
+        return -E2BIG;
+
+    int idx = 0;
+
+    // Note this does not support reuse of slots
+    if (append)
+    {
+        for (; idx < FAULT_INJECTION_SET_MAX; idx++)
+            if (faultInjectionSets[idx].finj_set == NULL)
+                break;
+
+        if (idx == FAULT_INJECTION_SET_MAX)
+            return -ENOSPC;
+
+        numFaultInjectionSets = idx + 1;
+    }
+    else // Remove the items residing at index@0
+    {
+        struct fault_injection_set *fis = &faultInjectionSets[idx];
+
+        for (int i = 0; i < fis->finj_set_size; i++)
+        {
+            struct lreg_node *lrn = &fis->finj_set[i].flti_lrn;
+
+            int rc = lreg_node_remove(
+                lrn, LREG_ROOT_ENTRY_PTR(fault_injection_points));
+
+            FATAL_IF(rc, "lreg_node_remove() %s", strerror(-rc));
+        }
+    }
+
+    faultInjectionSets[idx].finj_set = finj_set;
+    faultInjectionSets[idx].finj_set_size = set_size;
+
+    fault_inject_set_lreg_install(&faultInjectionSets[idx]);
+
+    return 0;
+}
+
+static init_ctx_t NIOVA_CONSTRUCTOR(FAULT_INJECT_CTOR_PRIORITY)
+fault_injection_init(void)
+{
+    if (faultInjectionInit || !faultInjectionEnabled)
+        return;
+
+    faultInjectionInit = true;
+
+    LREG_ROOT_ENTRY_INSTALL(fault_injection_points);
+
+    for (size_t n = 0; n < numFaultInjectionSets; n++)
+        fault_inject_set_lreg_install(&faultInjectionSets[n]);
 }
