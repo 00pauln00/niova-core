@@ -318,8 +318,6 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	for key, value := range pmdbServerGossip {
 		decompressedUUID, err := compressionLib.DecompressUUID(key)
 		if err == nil {
-			peerConfig := PumiceDBCommon.PeerConfigData{}
-			compressionLib.DecompressStructure(&peerConfig, key+value)
 			log.Info("Peer config : ", peerConfig)
 			handler.PMDBServerConfigArray = append(handler.PMDBServerConfigArray, peerConfig)
 			handler.PMDBServerConfigByteMap[decompressedUUID], _ = json.Marshal(peerConfig)
