@@ -18,12 +18,10 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-	"time"
 	"sort"
 	"strconv"
 	"strings"
 	"unsafe"
-	//"strconv"
 )
 
 /*
@@ -333,8 +331,6 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
 	bytes_data := C.GoBytes(unsafe.Pointer(inputBuf), C.int(inputBufSize))
-	checkSum := crc32.ChecksumIEEE(bytes_data)
-	startTime := time.Now()
 	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
@@ -355,10 +351,6 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	log.Info(";Request time ;",checkSum, ";",startTime, ";",endTime, ";",elapsedTime)
-
 }
 
 /*

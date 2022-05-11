@@ -302,7 +302,6 @@ func main() {
 	case "rangeWrite":
 		kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
 		var wg sync.WaitGroup
-		start_time := time.Now()
 		for key, _ := range kvMap {
 			wg.Add(1)
 			go func(key string, val []byte) {
@@ -316,7 +315,6 @@ func main() {
 				request.Rncui = uuid.New().String() + ":0:0:0:0"
 				enc := gob.NewEncoder(&requestByte)
 				enc.Encode(request)
-				beforeSendTime := time.Now() //Before time
 
 				//Send the write request
 				responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
@@ -326,18 +324,10 @@ func main() {
 				dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 				err = dec.Decode(&response)
 				log.Info(key, response.Status)
-
-				//Get hash for bytes
-                                checkSum := crc32.ChecksumIEEE(requestByte.Bytes())
-				elapsedTime := recvResponseTime.Sub(beforeSendTime)
-				log.Info("; Application ;",checkSum ,";", beforeSendTime, ";",recvResponseTime, ";",elapsedTime)
 			}(key, []byte(kvMap[key]))
 			//wg.Wait() //Uncomment if need to serialize
 		}
 		wg.Wait()
-		end_time := time.Now()
-		elapsedTime := end_time.Sub(start_time)
-		fmt.Println("Total time taken for ", clientObj.count ," requests : ", elapsedTime)
 		file, _ := json.MarshalIndent(kvMap, "", " ")
                 _ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
 

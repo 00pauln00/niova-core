@@ -141,7 +141,6 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 	case "PUT":
 		//Get checkSum
 		checkSum := crc32.ChecksumIEEE(requestBytes)
-		startTime := time.Now()
 		log.Info()
 		if !read {
 			if handler.StatsRequired {
@@ -149,13 +148,10 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 			}
 			err = handler.PUTHandler(requestBytes)
 		}
-		endTime := time.Now()
 		if err == nil {
 			success = true
 		}
 		fmt.Fprintf(writer, "%s", string(result))
-		elapsedTime := endTime.Sub(startTime)
-		log.Info(";Request time ;",checkSum, ";",startTime, ";",endTime, ";",elapsedTime)
 	default:
 		writer.WriteHeader(http.StatusMethodNotAllowed)
 	}
