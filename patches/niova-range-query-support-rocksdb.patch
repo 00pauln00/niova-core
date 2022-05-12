@@ -1,0 +1,411 @@
+diff --git a/Makefile b/Makefile
+index 93a67b654..96230d52f 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1902,7 +1902,7 @@ cache_reservation_manager_test: $(OBJ_DIR)/cache/cache_reservation_manager_test.
+ 	$(AM_LINK)
+ #-------------------------------------------------
+ # make install related stuff
+-PREFIX ?= /usr/local
++PREFIX ?= /usr
+ LIBDIR ?= $(PREFIX)/lib
+ INSTALL_LIBDIR = $(DESTDIR)$(LIBDIR)
+ 
+diff --git a/db/c.cc b/db/c.cc
+index 0a6ae8562..73e71c292 100644
+--- a/db/c.cc
++++ b/db/c.cc
+@@ -1277,6 +1277,16 @@ rocksdb_iterator_t* rocksdb_create_iterator_cf(
+   return result;
+ }
+ 
++rocksdb_iterator_t* rocksdb_create_iterator_for_seqnum_cf(
++    rocksdb_t* db,
++    const rocksdb_readoptions_t* options,
++    uint64_t seq_number,
++    rocksdb_column_family_handle_t* column_family) {
++  rocksdb_iterator_t* result = new rocksdb_iterator_t;
++  result->rep = db->rep->NewIteratorWithSeqNum(options->rep, seq_number, column_family->rep);
++  return result;
++}
++
+ void rocksdb_create_iterators(
+     rocksdb_t *db,
+     rocksdb_readoptions_t* opts,
+diff --git a/db/c_test.c b/db/c_test.c
+index 2a0bc8d5e..aaa5b8811 100644
+--- a/db/c_test.c
++++ b/db/c_test.c
+@@ -1351,14 +1351,103 @@ int main(int argc, char** argv) {
+     rocksdb_iter_seek_to_first(iter);
+     CheckCondition(rocksdb_iter_valid(iter));
+ 
++    const char *key;
++    size_t len;
+     for (i = 0; rocksdb_iter_valid(iter) != 0; rocksdb_iter_next(iter)) {
++      fprintf(stderr, "Deleting key: %s and value: %s\n", rocksdb_iter_key(iter, &len),
++                       rocksdb_iter_value(iter, &len));
++      key = rocksdb_iter_key(iter, &len); 
++      rocksdb_delete_cf(db, woptions, handles[1], key, len, &err);
+       i++;
+     }
++
+     CheckCondition(i == 3);
+     rocksdb_iter_get_error(iter, &err);
+     CheckNoError(err);
+     rocksdb_iter_destroy(iter);
+ 
++    rocksdb_put_cf(db, woptions, handles[1], "foo.U1", 6, "foo.U1", 6, &err);
++    CheckNoError(err);
++    rocksdb_put_cf(db, woptions, handles[1], "foo.U1.c.0", 10, "foo.U1.c.0", 10, &err);
++    CheckNoError(err);
++    rocksdb_put_cf(db, woptions, handles[1], "foo.U2.c.0", 10, "foo.U2.c.0", 10, &err);
++    CheckNoError(err);
++    rocksdb_put_cf(db, woptions, handles[1], "bar.V1", 6, "bar.V1", 6, &err);
++    CheckNoError(err);
++    rocksdb_put_cf(db, woptions, handles[1], "bar.V1.c.0", 10, "bar.V1.c.0", 10, &err);
++    CheckNoError(err);
++    rocksdb_put_cf(db, woptions, handles[1], "bar.V1.c.1", 10, "bar.V1.c.1", 10, &err);
++    CheckNoError(err);
++    rocksdb_put_cf(db, woptions, handles[1], "bar.V2.c.0", 10, "bar.V2.c.0", 10, &err);
++    CheckNoError(err);
++    {
++      iter = rocksdb_create_iterator_cf(db, roptions, handles[1]);
++
++      rocksdb_iter_seek_to_first(iter);
++      CheckCondition(rocksdb_iter_valid(iter));
++
++      int cnt = 0;
++      const char *value;
++      while (rocksdb_iter_valid(iter)) {
++        ++cnt;
++        key = rocksdb_iter_key(iter, &len);
++        fprintf(stderr, "Key is: %s\n", key);
++        value = rocksdb_iter_value(iter, &len);
++        fprintf(stderr, "Value is: %s\n", value);
++
++        rocksdb_iter_next(iter);
++      }
++
++      CheckCondition(cnt == 7);
++      fprintf(stderr, "Total number of entries are: %d\n", cnt);
++      rocksdb_iter_destroy(iter);
++    }
++    fprintf(stderr, "Get latest seq number\n");
++    uint64_t seq_number = rocksdb_get_latest_sequence_number(db);
++    fprintf(stderr, "latest seq number is: %lu\n", seq_number);
++
++    // Perform few more writes.
++    // Insert new key
++    rocksdb_put_cf(db, woptions, handles[1], "bar.V3.c.0", 10, "bar.V3.c.0", 10, &err);
++    CheckNoError(err);
++    // Overwrite existing key
++    rocksdb_put_cf(db, woptions, handles[1], "bar.V1.c.0", 10, "bar.V1.c.1", 10, &err);
++    CheckNoError(err);
++
++    // Create iterator with specific sequence number
++    rocksdb_iterator_t* iter_with_seq = rocksdb_create_iterator_for_seqnum_cf(db,
++                                            roptions, seq_number, handles[1]);
++
++    rocksdb_iter_seek(iter_with_seq, "bar.", 4);
++    CheckCondition(rocksdb_iter_valid(iter_with_seq));
++
++    const char *value;
++    size_t key_len
++    while (rocksdb_iter_valid(iter_with_seq)) {
++      key = rocksdb_iter_key(iter_with_seq, &key_len);
++      fprintf(stderr, "Key is with seq: %s\n", key);
++      value = rocksdb_iter_value(iter_with_seq, &len);
++      fprintf(stderr, "Value is with seq: %s\n", value);
++
++      ret = strstr(key, "bar.");
++      if (!ret)
++      {
++         fprintf(stdout, "Key prefix mismatch: %s, break the loop\n", key);
++         break;
++      }
++
++      // Make sure newly inserted key is not part of this iterator
++      ret = memcmp(key, "bar.V3.c.0", 10);
++      CheckCondition(ret != 0);
++
++      // Make sure over-write of bar.V1.c.0 is not part of this iterator
++      ret = memcmp(key, "bar.V1.c.0", 10);
++      if (!ret)
++      {
++         CheckEqual(value, "bar.V1.c.0", 10);
++      }
++      rocksdb_iter_next(iter_with_seq);
++    }
+     rocksdb_drop_column_family(db, handles[1], &err);
+     CheckNoError(err);
+     for (i = 0; i < 2; i++) {
+diff --git a/db/db_impl/db_impl.cc b/db/db_impl/db_impl.cc
+index 62589ba1d..b5e91789d 100644
+--- a/db/db_impl/db_impl.cc
++++ b/db/db_impl/db_impl.cc
+@@ -2996,6 +2996,60 @@ Iterator* DBImpl::NewIterator(const ReadOptions& read_options,
+   return result;
+ }
+ 
++Iterator* DBImpl::NewIteratorWithSeqNum(const ReadOptions& read_options,
++                              SequenceNumber seq_number,
++                              ColumnFamilyHandle* column_family) {
++  if (read_options.managed) {
++    return NewErrorIterator(
++        Status::NotSupported("Managed iterator is not supported anymore."));
++  }
++  Iterator* result = nullptr;
++  if (read_options.read_tier == kPersistedTier) {
++    return NewErrorIterator(Status::NotSupported(
++        "ReadTier::kPersistedData is not yet supported in iterators."));
++  }
++
++  assert(column_family);
++
++  if (read_options.timestamp) {
++    const Status s =
++        FailIfTsSizesMismatch(column_family, *(read_options.timestamp));
++    if (!s.ok()) {
++      return NewErrorIterator(s);
++    }
++  } else {
++    const Status s = FailIfCfHasTs(column_family);
++    if (!s.ok()) {
++      return NewErrorIterator(s);
++    }
++  }
++
++  auto cfh = static_cast_with_check<ColumnFamilyHandleImpl>(column_family);
++  ColumnFamilyData* cfd = cfh->cfd();
++  assert(cfd != nullptr);
++  ReadCallback* read_callback = nullptr;  // No read callback provided.
++  if (read_options.tailing) {
++#ifdef ROCKSDB_LITE
++    // not supported in lite version
++    result = nullptr;
++
++#else
++    SuperVersion* sv = cfd->GetReferencedSuperVersion(this);
++    auto iter = new ForwardIterator(this, read_options, cfd, sv,
++                                    /* allow_unprepared_value */ true);
++    result = NewDBIterator(
++        env_, read_options, *cfd->ioptions(), sv->mutable_cf_options,
++        cfd->user_comparator(), iter, sv->current, seq_number,
++        sv->mutable_cf_options.max_sequential_skip_in_iterations, read_callback,
++        this, cfd);
++#endif
++  } else {
++    result = NewIteratorImpl(read_options, cfd, seq_number,
++                             read_callback);
++  }
++  return result;
++}
++
+ ArenaWrappedDBIter* DBImpl::NewIteratorImpl(const ReadOptions& read_options,
+                                             ColumnFamilyData* cfd,
+                                             SequenceNumber snapshot,
+diff --git a/db/db_impl/db_impl.h b/db/db_impl/db_impl.h
+index 339399bbb..eabcc980f 100644
+--- a/db/db_impl/db_impl.h
++++ b/db/db_impl/db_impl.h
+@@ -283,6 +283,12 @@ class DBImpl : public DB {
+ 
+   virtual const Snapshot* GetSnapshot() override;
+   virtual void ReleaseSnapshot(const Snapshot* snapshot) override;
++
++
++  using DB::NewIteratorWithSeqNum;
++  virtual Iterator* NewIteratorWithSeqNum(const ReadOptions& options,
++                                          SequenceNumber seq_number,
++                                          ColumnFamilyHandle* column_family) override;
+   using DB::GetProperty;
+   virtual bool GetProperty(ColumnFamilyHandle* column_family,
+                            const Slice& property, std::string* value) override;
+diff --git a/db/db_impl/db_impl_readonly.cc b/db/db_impl/db_impl_readonly.cc
+index 96d409e8a..d829fec0b 100644
+--- a/db/db_impl/db_impl_readonly.cc
++++ b/db/db_impl/db_impl_readonly.cc
+@@ -113,6 +113,34 @@ Iterator* DBImplReadOnly::NewIterator(const ReadOptions& read_options,
+   return db_iter;
+ }
+ 
++Iterator* DBImplReadOnly::NewIteratorWithSeqNum(const ReadOptions& read_options,
++                                                SequenceNumber read_seq,
++                                                ColumnFamilyHandle* column_family) {
++  assert(column_family);
++  const Comparator* ucmp = column_family->GetComparator();
++  assert(ucmp);
++  if (ucmp->timestamp_size() || read_options.timestamp) {
++    // TODO: support timestamp
++    return NewErrorIterator(Status::NotSupported());
++  }
++  auto cfh = static_cast_with_check<ColumnFamilyHandleImpl>(column_family);
++  auto cfd = cfh->cfd();
++  SuperVersion* super_version = cfd->GetSuperVersion()->Ref();
++  //XXX validate the read_seq passed.
++  ReadCallback* read_callback = nullptr;  // No read callback provided.
++  auto db_iter = NewArenaWrappedDbIterator(
++      env_, read_options, *cfd->ioptions(), super_version->mutable_cf_options,
++      super_version->current, read_seq,
++      super_version->mutable_cf_options.max_sequential_skip_in_iterations,
++      super_version->version_number, read_callback);
++  auto internal_iter = NewInternalIterator(
++      db_iter->GetReadOptions(), cfd, super_version, db_iter->GetArena(),
++      db_iter->GetRangeDelAggregator(), read_seq,
++      /* allow_unprepared_value */ true);
++  db_iter->SetIterUnderDBIter(internal_iter);
++  return db_iter;
++}
++
+ Status DBImplReadOnly::NewIterators(
+     const ReadOptions& read_options,
+     const std::vector<ColumnFamilyHandle*>& column_families,
+diff --git a/db/db_impl/db_impl_readonly.h b/db/db_impl/db_impl_readonly.h
+index 090d67d0f..7c3f0e628 100644
+--- a/db/db_impl/db_impl_readonly.h
++++ b/db/db_impl/db_impl_readonly.h
+@@ -39,6 +39,11 @@ class DBImplReadOnly : public DBImpl {
+       const std::vector<ColumnFamilyHandle*>& column_families,
+       std::vector<Iterator*>* iterators) override;
+ 
++  using DBImpl::NewIteratorWithSeqNum;
++  virtual Iterator* NewIteratorWithSeqNum(const ReadOptions&,
++                                          SequenceNumber seq_number,
++                                          ColumnFamilyHandle* column_family) override;
++
+   using DBImpl::Put;
+   virtual Status Put(const WriteOptions& /*options*/,
+                      ColumnFamilyHandle* /*column_family*/,
+diff --git a/db/db_impl/db_impl_secondary.cc b/db/db_impl/db_impl_secondary.cc
+index fb93a4408..3f02c22f8 100644
+--- a/db/db_impl/db_impl_secondary.cc
++++ b/db/db_impl/db_impl_secondary.cc
+@@ -441,6 +441,27 @@ Iterator* DBImplSecondary::NewIterator(const ReadOptions& read_options,
+   return result;
+ }
+ 
++Iterator* DBImplSecondary::NewIteratorWithSeqNum(const ReadOptions& read_options,
++                                                 SequenceNumber read_seq,
++                                                 ColumnFamilyHandle* column_family) {
++  Iterator* result = nullptr;
++  auto cfh = static_cast_with_check<ColumnFamilyHandleImpl>(column_family);
++  auto cfd = cfh->cfd();
++  ReadCallback* read_callback = nullptr;  // No read callback provided.
++  if (read_options.tailing) {
++    return NewErrorIterator(Status::NotSupported(
++        "tailing iterator not supported in secondary mode"));
++  } else if (read_options.snapshot != nullptr || read_seq != kMaxSequenceNumber) {
++    // TODO (yanqin) support snapshot.
++    return NewErrorIterator(
++        Status::NotSupported("snapshot not supported in secondary mode"));
++  } else {
++    SequenceNumber snapshot(kMaxSequenceNumber);
++    result = NewIteratorImpl(read_options, cfd, snapshot, read_callback);
++  }
++  return result; 
++}
++
+ ArenaWrappedDBIter* DBImplSecondary::NewIteratorImpl(
+     const ReadOptions& read_options, ColumnFamilyData* cfd,
+     SequenceNumber snapshot, ReadCallback* read_callback,
+diff --git a/db/db_impl/db_impl_secondary.h b/db/db_impl/db_impl_secondary.h
+index d3a7940b5..066436eca 100644
+--- a/db/db_impl/db_impl_secondary.h
++++ b/db/db_impl/db_impl_secondary.h
+@@ -96,6 +96,10 @@ class DBImplSecondary : public DBImpl {
+   Iterator* NewIterator(const ReadOptions&,
+                         ColumnFamilyHandle* column_family) override;
+ 
++  using DBImpl::NewIteratorWithSeqNum;
++  Iterator* NewIteratorWithSeqNum(const ReadOptions&,
++                                  SequenceNumber seq_number,
++                                  ColumnFamilyHandle* column_family) override;
+   ArenaWrappedDBIter* NewIteratorImpl(const ReadOptions& read_options,
+                                       ColumnFamilyData* cfd,
+                                       SequenceNumber snapshot,
+diff --git a/include/rocksdb/c.h b/include/rocksdb/c.h
+index 1456c15a6..eaea16531 100644
+--- a/include/rocksdb/c.h
++++ b/include/rocksdb/c.h
+@@ -466,6 +466,11 @@ extern ROCKSDB_LIBRARY_API rocksdb_iterator_t* rocksdb_create_iterator_cf(
+     rocksdb_t* db, const rocksdb_readoptions_t* options,
+     rocksdb_column_family_handle_t* column_family);
+ 
++extern ROCKSDB_LIBRARY_API rocksdb_iterator_t* rocksdb_create_iterator_for_seqnum_cf(
++    rocksdb_t* db, const rocksdb_readoptions_t* options,
++    uint64_t seq_number,
++    rocksdb_column_family_handle_t* column_family);
++
+ extern ROCKSDB_LIBRARY_API void rocksdb_create_iterators(
+     rocksdb_t *db, rocksdb_readoptions_t* opts,
+     rocksdb_column_family_handle_t** column_families,
+diff --git a/include/rocksdb/db.h b/include/rocksdb/db.h
+index 1a6401442..b7dd48c0b 100644
+--- a/include/rocksdb/db.h
++++ b/include/rocksdb/db.h
+@@ -811,6 +811,13 @@ class DB {
+       const std::vector<ColumnFamilyHandle*>& column_families,
+       std::vector<Iterator*>* iterators) = 0;
+ 
++  // Returns iterators for the specific sequence number.
++  virtual Iterator* NewIteratorWithSeqNum(const ReadOptions& options,
++                                          SequenceNumber seq_number,
++                                          ColumnFamilyHandle* column_family) {
++      return NewIteratorWithSeqNum(options, seq_number, column_family);
++  }
++
+   // Return a handle to the current DB state.  Iterators created with
+   // this handle will all observe a stable snapshot of the current DB
+   // state.  The caller must call ReleaseSnapshot(result) when the
+diff --git a/include/rocksdb/utilities/stackable_db.h b/include/rocksdb/utilities/stackable_db.h
+index 5bdd8d4a6..c0ef2c5b5 100644
+--- a/include/rocksdb/utilities/stackable_db.h
++++ b/include/rocksdb/utilities/stackable_db.h
+@@ -218,6 +218,13 @@ class StackableDB : public DB {
+     return db_->NewIterators(options, column_families, iterators);
+   }
+ 
++  using DB::NewIteratorWithSeqNum;
++  virtual Iterator* NewIteratorWithSeqNum(const ReadOptions& opts,
++                                          SequenceNumber seq_number,
++                                          ColumnFamilyHandle* column_family) override {
++    return db_->NewIteratorWithSeqNum(opts, seq_number, column_family);
++  }
++
+   virtual const Snapshot* GetSnapshot() override { return db_->GetSnapshot(); }
+ 
+   virtual void ReleaseSnapshot(const Snapshot* snapshot) override {
+diff --git a/utilities/ttl/db_ttl_impl.cc b/utilities/ttl/db_ttl_impl.cc
+index 1c2c6daa1..0f0c957f0 100644
+--- a/utilities/ttl/db_ttl_impl.cc
++++ b/utilities/ttl/db_ttl_impl.cc
+@@ -595,6 +595,12 @@ Iterator* DBWithTTLImpl::NewIterator(const ReadOptions& opts,
+   return new TtlIterator(db_->NewIterator(opts, column_family));
+ }
+ 
++Iterator* DBWithTTLImpl::NewIteratorWithSeqNum(const ReadOptions& opts,
++                                               SequenceNumber seq_number,
++                                               ColumnFamilyHandle* column_family) {
++  return new TtlIterator(db_->NewIteratorWithSeqNum(opts, seq_number, column_family));
++}
++
+ void DBWithTTLImpl::SetTtl(ColumnFamilyHandle *h, int32_t ttl) {
+   std::shared_ptr<TtlCompactionFilterFactory> filter;
+   Options opts;
+diff --git a/utilities/ttl/db_ttl_impl.h b/utilities/ttl/db_ttl_impl.h
+index 7c43501a4..60593c488 100644
+--- a/utilities/ttl/db_ttl_impl.h
++++ b/utilities/ttl/db_ttl_impl.h
+@@ -82,6 +82,11 @@ class DBWithTTLImpl : public DBWithTTL {
+   virtual Iterator* NewIterator(const ReadOptions& opts,
+                                 ColumnFamilyHandle* column_family) override;
+ 
++  using StackableDB::NewIteratorWithSeqNum;
++  virtual Iterator* NewIteratorWithSeqNum(const ReadOptions& opts,
++                                          SequenceNumber seq_number,
++                                          ColumnFamilyHandle* column_family) override;
++
+   virtual DB* GetBaseDB() override { return db_; }
+ 
+   static bool IsStale(const Slice& value, int32_t ttl, SystemClock* clock);
