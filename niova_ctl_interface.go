@@ -122,6 +122,7 @@ type NcsiEP struct {
 	NiovaSvcType string                `json:"type"`
 	Port         int                   `json:"port"`
 	LastReport   time.Time             `json:"-"`
+	LastClear    time.Time		   `json:"-"`
 	Alive        bool                  `json:"responsive"`
 	EPInfo       CtlIfOut              `json:"ep_info"`
 	pendingCmds  map[string]*epCommand `json:"-"`
@@ -358,9 +359,11 @@ func (ep *NcsiEP) removeFiles(folder string) {
 	if err != nil {
 		return
 	}
-
+	//Clear after an hr
+	checkTime := ep.LastClear.Local().Add(time.Hour)
 	for _, file := range files {
-                if _, ok := ep.pendingCmds[file.Name()]; !ok {
+		if time.Now().After(checkTime) {
+			ep.LastClear = time.Now()
 			os.Remove(folder+file.Name())
 		}
         }
