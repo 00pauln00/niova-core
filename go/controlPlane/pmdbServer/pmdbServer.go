@@ -18,7 +18,6 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-	"time"
 	"sort"
 	"strconv"
 	"strings"
@@ -332,9 +331,6 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
-	bytes_data := C.GoBytes(unsafe.Pointer(inputBuf), C.int(inputBufSize))
-	checkSum := crc32.ChecksumIEEE(bytes_data)
-	startTime := time.Now()
 	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
@@ -355,12 +351,9 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
-	endTime := time.Now()
-	elapsedTime := endTime.Sub(startTime)
-	log.Info(";Request time ;",checkSum, ";",startTime, ";",endTime, ";",elapsedTime)
 
 }
-
+// FIXME remove this
 /*
 func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
@@ -415,6 +408,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	if reqStruct.Operation == "read" {
 
+		log.Trace("pmdServer single read - ", reqStruct.SeqNum)
 		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
 			int64(keyLen), colmfamily)
 		resultResponse = requestResponseLib.KVResponse{
@@ -428,8 +422,9 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		// FIXME Temporarily setting bufffer to 512 bytets
 		// we should fetch the buffer size from the pmdbClient
 		replyBufSize = 512
-		readResult, lastKey, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
-			int64(keyLen), reqStruct.Prefix, replyBufSize, colmfamily)
+		log.Trace("The pmdServer sequence number received is - ", reqStruct.SeqNum)
+		readResult, lastKey, seqNum, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
+			int64(keyLen), reqStruct.Prefix, replyBufSize, reqStruct.SeqNum, colmfamily)
 		var cRead bool
 		if lastKey != "" {
 			cRead = true
@@ -441,6 +436,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 			ResultMap:    readResult,
 			ContinueRead: cRead,
 			Key:          lastKey,
+			SeqNum:	      seqNum,
 		}
 		readErr = err
 	}

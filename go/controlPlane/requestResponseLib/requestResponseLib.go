@@ -7,6 +7,7 @@ type KVRequest struct {
 	Value     []byte
 	Rncui     string
 	CheckSum  [16]byte
+	SeqNum	  uint64
 }
 
 type KVResponse struct {
@@ -16,4 +17,5 @@ type KVResponse struct {
 	ResultMap     map[string]string
 	ContinueRead bool
 	Prefix       string
+	SeqNum	     uint64
 }

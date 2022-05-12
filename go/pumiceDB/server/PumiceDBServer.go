@@ -5,6 +5,7 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"niova/go-pumicedb-lib/common"
+	"math"
 	"reflect"
 	"strconv"
 	"strings"
@@ -263,7 +264,8 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 
 	//Calling pmdb library function to write Key-Value.
 	rc := C.PmdbWriteKV(capp_id, pmdb_handle, C_key, C_key_len, C_value, C_value_len, nil, unsafe.Pointer(cf_handle))
-
+	seqNum := int64(C.rocksdb_get_latest_sequence_number(C.PmdbGetRocksDB()))
+	log.Info("Seq Num for this write is - ", seqNum)
 	go_rc := int(rc)
 	if go_rc != 0 {
 		log.Error("PmdbWriteKV failed with error: ", go_rc)
@@ -302,7 +304,7 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 // Methods for range iterator
 
 func pmdbFetchRange(key string, key_len int64,
-	prefix string, bufSize int64, go_cf string) (map[string]string, string, error) {
+	prefix string, bufSize int64, seqNum uint64, go_cf string) (map[string]string, string, uint64, error) {
 	var lookup_err error
 	var cLenVal C.size_t
 	var cLenKey C.size_t
@@ -311,19 +313,25 @@ func pmdbFetchRange(key string, key_len int64,
 	var resultMap = make(map[string]string)
 	var mapSize int
 	var lastKey string
+	var itr *C.rocksdb_iterator_t
 
 	cf := GoToCString(go_cf)
 	ropts := C.rocksdb_readoptions_create()
 	log.Trace("RangeQuery - Key passed is: ", key)
 	log.Trace("RangeQuery - Prefix passed is: ", prefix)
+	log.Trace("RangeQuery - SeqNum passed is: ",seqNum)
 	cf_handle := C.PmdbCfHandleLookup(cf)
-	itr := C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
+	// Check if it's the first iteration of the range loop
+	if seqNum == math.MaxUint64 {
+		seqNum = uint64(C.rocksdb_get_latest_sequence_number(C.PmdbGetRocksDB()))
+	}
+	// Create iterator with the particular sequence number
+	itr = C.rocksdb_create_iterator_impl_cf(C.PmdbGetRocksDB(), ropts, C.ulong(seqNum), cf_handle)
+	log.Trace("Seq Num is - ", seqNum)
 	// Iterate to lastKeyPassed or first key
 	cKey = GoToCString(key)
 	cLen = GoToCSize_t(key_len)
 	C.rocksdb_iter_seek(itr, cKey, cLen)
-
-
 	// iterate over keys store them in map if prefix
 	for C.rocksdb_iter_valid(itr) != 0 {
 		// fetch key-val
@@ -349,18 +357,18 @@ func pmdbFetchRange(key string, key_len int64,
 			lastKey = string(keyBytes)
 			break
 		}
-
 	}
 	C.rocksdb_iter_destroy(itr)
-	log.Trace("RangeQuery returning : ", resultMap)
-	return resultMap, lastKey, lookup_err
+	FreeCMem(cf)
+	log.Trace("RangeQuery returning : ", resultMap, "\nSeq num returning ", seqNum)
+	return resultMap, lastKey, seqNum, lookup_err
 }
 
 // Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, prefix string, bufSize int64, gocolfamily string) (map[string]string, string, error) {
+	key_len int64, prefix string, bufSize int64, seqNum uint64, gocolfamily string) (map[string]string, string, uint64, error) {
 
-	return pmdbFetchRange(key, key_len, prefix, bufSize, gocolfamily)
+	return pmdbFetchRange(key, key_len, prefix, bufSize, seqNum ,gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer
