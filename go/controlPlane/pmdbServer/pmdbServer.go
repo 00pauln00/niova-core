@@ -22,7 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
-	//"strconv"
 )
 
 /*
@@ -351,39 +350,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
-
 }
-// FIXME remove this
-/*
-func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
-	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
-
-	log.Trace("NiovaCtlPlane server: Read request received")
-
-
-	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
-	if decodeErr != nil {
-		log.Error("Failed to decode the application data")
-		return
-	}
-
-	log.Trace("Key passed by client: ", applyNiovaKV.InputKey)
-
-	// length of key.
-	keyLength := len(applyNiovaKV.InputKey)
-
-	byteToStr := string(applyNiovaKV.InputValue)
-
-	// Length of value.
-	valLen := len(byteToStr)
-
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
-		int64(keyLength), byteToStr,
-		int64(valLen), colmfamily)
-
-}
-*/
 func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
