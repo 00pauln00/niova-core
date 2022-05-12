@@ -326,7 +326,7 @@ func pmdbFetchRange(key string, key_len int64,
 		seqNum = uint64(C.rocksdb_get_latest_sequence_number(C.PmdbGetRocksDB()))
 	}
 	// Create iterator with the particular sequence number
-	itr = C.rocksdb_create_iterator_impl_cf(C.PmdbGetRocksDB(), ropts, C.ulong(seqNum), cf_handle)
+	itr = C.rocksdb_create_iterator_for_seqnum_cf(C.PmdbGetRocksDB(), ropts, C.ulong(seqNum), cf_handle)
 	log.Trace("Seq Num is - ", seqNum)
 	// Iterate to lastKeyPassed or first key
 	cKey = GoToCString(key)

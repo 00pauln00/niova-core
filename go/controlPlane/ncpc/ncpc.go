@@ -45,15 +45,16 @@ type clientHandler struct {
 type request struct {
 	Opcode    string    `json:"Operation"`
 	Key       string    `json:"Key"`
-	Value     []byte    `json:"Value"`
+	Value     interface{}    `json:"Value"`
 	Timestamp time.Time `json:"Request_timestamp"`
 }
 
 type response struct {
-	Status        int       `json:"Status"`
-	ResponseValue []byte    `json:"Response"`
-	validate      bool      `json:"validate"`
-	Timestamp     time.Time `json:"Response_timestamp"`
+	Status         int       `json:"Status"`
+	ResponseValue  interface{}    `json:"Response"`
+	SequenceNumber uint64    `json:"Sequence_number"`
+	validate       bool      `json:"validate"`
+	Timestamp      time.Time `json:"Response_timestamp"`
 }
 type opData struct {
 	RequestData  request       `json:"Request"`
@@ -173,9 +174,31 @@ func (handler *clientHandler) getCmdParams() {
 }
 
 //Write to Json
-func (cli *clientHandler) write2Json(toJson map[string][]opData) {
+func (cli *clientHandler) write2Json(toJson interface{}) {
 	file, _ := json.MarshalIndent(toJson, "", " ")
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
+}
+
+func fillOperationData(requestObj *requestResponseLib.KVRequest, responseObj *requestResponseLib.KVResponse, startTime time.Time, endTime time.Time) (*opData) {
+        requestMeta := request{
+			Opcode:    requestObj.Operation,
+                        Key:       requestObj.Key,
+                        Value:     string(responseObj.Value),
+                        Timestamp: startTime,
+        }
+
+        responseMeta := response{
+                        Timestamp:     endTime,
+                        Status:        responseObj.Status,
+                        ResponseValue: responseObj.ResultMap[requestObj.Key],
+        }
+
+        operationObj := opData{
+                        RequestData:  requestMeta,
+                        ResponseData: responseMeta,
+                        TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
+        }
+	return &operationObj
 }
 
 func (cli *clientHandler) getNISDInfo() map[string]nisdData {
@@ -207,70 +230,108 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	return nisdDataMap
 }
 
-func singleWriteRequest(clientObj *clientHandler, requestObj *requestResponseLib.KVRequest, responseObj *requestResponseLib.KVResponse, valueByte []byte) {
+func (clientObj *clientHandler) singleWriteRequest() {
+	var requestObj *requestResponseLib.KVRequest
+        var responseObj *requestResponseLib.KVResponse
 	if clientObj.requestValue != "NULL" {
 		requestObj.Value = []byte(clientObj.requestValue)
 	} else {
+		value := make(map[string]string)
+        	value["IP_ADDR"] = clientObj.addr
+        	value["Port"] = clientObj.port
+        	valueByte, _ := json.Marshal(value)
 		requestObj.Value = valueByte
 	}
+
 	requestObj.Rncui = clientObj.rncui
 	requestObj.Key = clientObj.requestKey
 	requestObj.Operation = clientObj.operation
 	var requestByte bytes.Buffer
 	enc := gob.NewEncoder(&requestByte)
 	enc.Encode(requestObj)
+
+	//send the write request
+	startTime := time.Now()
 	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+	endTime := time.Now()
+
+	//Decode the response
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
+
+	operationStat := fillOperationData(requestObj, responseObj, startTime, endTime)
+	clientObj.write2Json(operationStat)
 	fmt.Println(responseObj.ResultMap)
 }
 
-func multipleWriteRequest(clientObj *clientHandler, requestObj *requestResponseLib.KVRequest, responseObj *requestResponseLib.KVResponse, valueByte []byte) {
+func (clientObj *clientHandler) multipleWriteRequest() {
 	kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
+	operationStatSlice:= make([]*opData, len(kvMap))
+	var index int
 	var wg sync.WaitGroup
-	for key, _ := range kvMap {
+	for key, val := range kvMap {
 		wg.Add(1)
-		go func(key string, val []byte) {
+		index += 1
+		go func(index int, key string, val []byte) {
 			defer wg.Done()
-			request := requestResponseLib.KVRequest{}
-			response := requestResponseLib.KVResponse{}
+			var requestObj *requestResponseLib.KVRequest
+			var responseObj *requestResponseLib.KVResponse
 			var requestByte bytes.Buffer
-			request.Operation = "write"
-			request.Key = key
-			request.Value = val
-			request.Rncui = uuid.New().String() + ":0:0:0:0"
+			requestObj.Operation = "write"
+			requestObj.Key = key
+			requestObj.Value = val
+			requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
 			enc := gob.NewEncoder(&requestByte)
-			enc.Encode(request)
+			enc.Encode(requestObj)
 			//Send the write request
+			startTime := time.Now()
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+			endTime := time.Now()
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-			_ = dec.Decode(&response)
-			log.Info(key, response.Status)
-		}(key, []byte(kvMap[key]))
+			_ = dec.Decode(&responseObj)
+			operationStat := fillOperationData(requestObj, responseObj, startTime, endTime)
+			//Append operationStat to a slice
+			operationStatSlice[index] = operationStat
+		}(index, key, []byte(val))
+
 	}
 	wg.Wait()
+	clientObj.write2Json(operationStatSlice)
 }
 
 
-func singleReadRequest(clientObj *clientHandler, requestObj *requestResponseLib.KVRequest, responseObj *requestResponseLib.KVResponse, valueByte []byte) {
+func (clientObj *clientHandler) singleReadRequest() {
+	var requestObj *requestResponseLib.KVRequest
+	var responseObj *requestResponseLib.KVResponse
+
 	requestObj.Key = clientObj.requestKey
 	requestObj.Operation = clientObj.operation
 	var requestByte bytes.Buffer
 	enc := gob.NewEncoder(&requestByte)
 	enc.Encode(requestObj)
-	//Send the write
+
+	//Send the request
+	startTime := time.Now()
 	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+	endTime := time.Now()
+
+	//Decode the request
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
+
+	operationStat := fillOperationData(requestObj, responseObj, startTime, endTime)
+	clientObj.write2Json(operationStat)
 	fmt.Println(responseObj.ResultMap)
 }
 
 
 
-func multipleReadRequest(clientObj *clientHandler, requestObj *requestResponseLib.KVRequest, responseObj *requestResponseLib.KVResponse, valueByte []byte) {
+func (clientObj *clientHandler) multipleReadRequest() {
 	var Prefix, Key, Operation string
 	var seqNum uint64
+	var requestObj requestResponseLib.KVRequest
+
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	Key = clientObj.requestKey[:len(clientObj.requestKey)-1]
 
@@ -350,7 +411,7 @@ func main() {
 
 	log.Info("----START OF EXECUTION---")
 
-	//Init niovakv client API
+	//Init service discovery
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		Timeout: 10,
 	}
@@ -362,84 +423,30 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	var passNext bool
 	clientObj.clientAPIObj.TillReady()
-	//Send request
-	requestObj := requestResponseLib.KVRequest{}
-	responseObj := requestResponseLib.KVResponse{}
-	//Decl and init required variables
-	toJson := make(map[string][]opData)
-	value := make(map[string]string)
-	value["IP_ADDR"] = clientObj.addr
-	value["Port"] = clientObj.port
-	valueByte, _ := json.Marshal(value)
+
+	var passNext bool
 	switch clientObj.operation {
 	case "rw":
 		log.Info("Defaulting to write and read")
 		clientObj.operation = "write"
-		singleWriteRequest(&clientObj, &requestObj, &responseObj, valueByte)
+		clientObj.singleWriteRequest()
 		clientObj.operation = "read"
-		singleReadRequest(&clientObj, &requestObj, &responseObj, valueByte)
+		clientObj.singleReadRequest()
+
 	case "write":
 		if clientObj.count == 1 {
-			singleWriteRequest(&clientObj, &requestObj, &responseObj, valueByte)
+			clientObj.singleWriteRequest()
 		} else {
-			multipleWriteRequest(&clientObj, &requestObj, &responseObj, valueByte)
+			clientObj.multipleWriteRequest()
 		}
-		// Create output json file
-		sendTime := time.Now()
-		requestMeta := request{
-			Opcode:		requestObj.Operation,
-			Key:		requestObj.Key,
-			Value:		responseObj.Value,
-			Timestamp:	sendTime,
-		}
-		responseMeta := response{
-			Timestamp:     time.Now(),
-			Status:        responseObj.Status,
-			ResponseValue: responseObj.Value,
-		}
-
-		operationObj := opData{
-			RequestData:  requestMeta,
-			ResponseData: responseMeta,
-			TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
-		}
-
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-		toJson["write"] = clientObj.operationMetaObjs
-		clientObj.write2Json(toJson)
-
 
 	case "read":
 		if !isRangeRequest(clientObj.requestKey){
-			singleReadRequest(&clientObj, &requestObj, &responseObj, valueByte)
+			clientObj.singleReadRequest()
 		} else {
-			multipleReadRequest(&clientObj, &requestObj, &responseObj, valueByte)
+			clientObj.multipleReadRequest()
 		}
-		//Creation of output json
-		sendTime := time.Now()
-		requestMeta := request{
-			Opcode:    requestObj.Operation,
-			Key:       requestObj.Key,
-			Value:     responseObj.Value,
-			Timestamp: sendTime,
-		}
-		responseMeta := response{
-			Timestamp:     time.Now(),
-			Status:        responseObj.Status,
-			ResponseValue: responseObj.Value,
-		}
-
-		operationObj := opData{
-			RequestData:  requestMeta,
-			ResponseData: responseMeta,
-			TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
-		}
-
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, operationObj)
-		toJson["read"] = clientObj.operationMetaObjs
-		clientObj.write2Json(toJson)
 
 	case "config":
 		responseBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
