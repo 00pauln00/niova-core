@@ -179,18 +179,19 @@ func (cli *clientHandler) write2Json(toJson interface{}) {
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
-func fillOperationData(requestObj *requestResponseLib.KVRequest, responseObj *requestResponseLib.KVResponse, startTime time.Time, endTime time.Time) (*opData) {
+func fillOperationData(startTime time.Time, endTime time.Time, status int, operation string, key string, value interface{}, seqNo uint64) (*opData) {
         requestMeta := request{
-			Opcode:    requestObj.Operation,
-                        Key:       requestObj.Key,
-                        Value:     string(responseObj.Value),
+			Opcode:    operation,
+                        Key:       key,
+                        Value:     value,
                         Timestamp: startTime,
         }
 
         responseMeta := response{
                         Timestamp:     endTime,
-                        Status:        responseObj.Status,
-                        ResponseValue: responseObj.ResultMap[requestObj.Key],
+			SequenceNumber: seqNo,
+                        Status:        status,
+                        ResponseValue: value,
         }
 
         operationObj := opData{
@@ -231,8 +232,8 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 }
 
 func (clientObj *clientHandler) singleWriteRequest() {
-	var requestObj *requestResponseLib.KVRequest
-        var responseObj *requestResponseLib.KVResponse
+	var requestObj requestResponseLib.KVRequest
+        var responseObj requestResponseLib.KVResponse
 	if clientObj.requestValue != "NULL" {
 		requestObj.Value = []byte(clientObj.requestValue)
 	} else {
@@ -259,7 +260,7 @@ func (clientObj *clientHandler) singleWriteRequest() {
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
 
-	operationStat := fillOperationData(requestObj, responseObj, startTime, endTime)
+	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
 	fmt.Println(responseObj.ResultMap)
 }
@@ -271,11 +272,10 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 	var wg sync.WaitGroup
 	for key, val := range kvMap {
 		wg.Add(1)
-		index += 1
 		go func(index int, key string, val []byte) {
 			defer wg.Done()
-			var requestObj *requestResponseLib.KVRequest
-			var responseObj *requestResponseLib.KVResponse
+			var requestObj requestResponseLib.KVRequest
+			var responseObj requestResponseLib.KVResponse
 			var requestByte bytes.Buffer
 			requestObj.Operation = "write"
 			requestObj.Key = key
@@ -290,11 +290,11 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 			_ = dec.Decode(&responseObj)
-			operationStat := fillOperationData(requestObj, responseObj, startTime, endTime)
+			operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", key, val, 0)
 			//Append operationStat to a slice
 			operationStatSlice[index] = operationStat
 		}(index, key, []byte(val))
-
+		index += 1
 	}
 	wg.Wait()
 	clientObj.write2Json(operationStatSlice)
@@ -302,8 +302,8 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 
 
 func (clientObj *clientHandler) singleReadRequest() {
-	var requestObj *requestResponseLib.KVRequest
-	var responseObj *requestResponseLib.KVResponse
+	var requestObj requestResponseLib.KVRequest
+	var responseObj requestResponseLib.KVResponse
 
 	requestObj.Key = clientObj.requestKey
 	requestObj.Operation = clientObj.operation
@@ -320,7 +320,7 @@ func (clientObj *clientHandler) singleReadRequest() {
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
 
-	operationStat := fillOperationData(requestObj, responseObj, startTime, endTime)
+	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
 	fmt.Println(responseObj.ResultMap)
 }
@@ -341,6 +341,7 @@ func (clientObj *clientHandler) multipleReadRequest() {
 	//Keep calling range request till ContinueRead is true
 	resultMap := make(map[string]string)
 	var count int
+	startTime := time.Now()
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
 		requestObj.Prefix = Prefix
@@ -374,6 +375,10 @@ func (clientObj *clientHandler) multipleReadRequest() {
 		Key = rangeResponseObj.Key
 		seqNum = rangeResponseObj.SeqNum
 	}
+	endTime := time.Now()
+	//Get status from response
+	operationStat := fillOperationData(startTime, endTime, 0, "range", requestObj.Key, resultMap, seqNum)
+        clientObj.write2Json(operationStat)
 	// FIXME Failing
 	/*genKVMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
 	filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)
