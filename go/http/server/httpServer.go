@@ -3,12 +3,13 @@ package httpServer
 import (
 	"encoding/json"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"sync"
-	"net"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type HTTPServerHandler struct {

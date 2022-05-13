@@ -15,6 +15,7 @@ import (
 	"net"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	"niova/go-pumicedb-lib/common"
+	"github.com/aybabtme/uniplot/histogram"
 	"os"
 	"os/signal"
 	"strconv"
@@ -51,6 +52,7 @@ type proxyHandler struct {
 	httpPort      string
 	limit         string
 	requireStat   string
+	opTime        opTime
 	httpServerObj httpServer.HTTPServerHandler
 }
 
@@ -59,6 +61,11 @@ type PeerConfigData struct {
 	ClientPort string
 	Port       string
 	IPAddr     string
+}
+
+type opTime struct {
+	putTimes         []time.Duration
+	getTimes         []time.Duration
 }
 
 func usage() {
@@ -211,14 +218,22 @@ func (handler *proxyHandler) start_SerfAgent() error {
 
 //Write callback definition for HTTP server
 func (handler *proxyHandler) WriteCallBack(request []byte) error {
+	timer := time.Now()
 	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
-	return handler.pmdbClientObj.WriteEncoded(request, rncui)
+	write := handler.pmdbClientObj.WriteEncoded(request, rncui)
+	stopPutTime := time.Since(timer)
+	handler.opTime.putTimes = append(handler.opTime.putTimes, stopPutTime)
+	return write
 }
 
 //Read call definition for HTTP server
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	return handler.pmdbClientObj.ReadEncoded(request, "", response)
+	timer := time.Now()
+	read := handler.pmdbClientObj.ReadEncoded(request, "", response)
+	stopGetTime := time.Since(timer)
+	handler.opTime.getTimes = append(handler.opTime.getTimes, stopGetTime)
+	return read
 }
 
 func (handler *proxyHandler) start_HTTPServer() error {
@@ -265,6 +280,20 @@ func (handler *proxyHandler) killSignal_Handler() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
+		var floatPut = make([]float64, len(handler.opTime.putTimes))
+		for i := 0; i < len(floatPut); i++ {
+			floatPut[i] = float64(handler.opTime.putTimes[i].Milliseconds())
+		}
+		var floatGet = make([]float64, len(handler.opTime.getTimes))
+		for i := 0; i < len(floatGet); i++ {
+			floatGet[i] = float64(handler.opTime.getTimes[i].Milliseconds())
+		}
+		hPut := histogram.Hist(9, floatPut)
+		hGet := histogram.Hist(9, floatGet)
+		read_data, _ := json.MarshalIndent(hGet, "", " ")
+		_ = ioutil.WriteFile(handler.clientUUID+"read.json", read_data, 0644)
+		write_data, _ := json.MarshalIndent(hPut, "", " ")
+		_ = ioutil.WriteFile(handler.clientUUID+"write.json", write_data, 0644)
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
 		_ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
 		log.Info("(Proxy) Received a kill signal")

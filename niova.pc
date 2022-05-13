@@ -1,0 +1,10 @@
+prefix=/usr/local/niova
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+ 
+Name: niova_core
+Description: Niova core library
+Version: 0.1.0
+Libs: -L${libdir} -lniova -lniova_pumice -lniova_pumice_client -lniova_raft -lniova_raft_client -lrocksdb
+Cflags: -I${includedir}/niova
