@@ -5,7 +5,7 @@ from slugify import slugify
 from requests.structures import CaseInsensitiveDict
 
 # path were we will store the output 
-path = "/home/apatil/outputgithub"
+path = sys.argv[1]
 
 if not(os.path.exists(path)):
     os.mkdir(path)
@@ -16,7 +16,7 @@ PageNo = 1
 while(not flag):    
     # it will curl the runs form the github api and store that output into result_workflow
     url = "https://api.github.com/repos/00pauln00/niova-core/actions/runs?page={}&per_page=100".format(PageNo)
-    login_info = sys.argv[1]
+    login_info = sys.argv[2]
 
     headers = CaseInsensitiveDict()
     sample_string_bytes = login_info.encode("ascii")
