@@ -95,45 +95,42 @@ func randSeq(n int, r *rand.Rand) string {
 	return string(b)
 }
 
-func generateVdevRange(count int, seed int64) map[string]string {
+func generateVdevRange(count int64, seed int64) map[string]string {
 	kvMap := make(map[string]string)
 	r := rand.New(rand.NewSource(seed))
 	r1 := rand.New(rand.NewSource(seed))
 
 	//Vdev
-	noVdev := int64(float64(count) * float64(0.5))
-	noUUID := r.Int63n(noVdev)
+	noUUID := count
 	for i := int64(0); i < noUUID; i++ {
 		randUUID, _ := uuid.NewRandomFromReader(r)
 		prefix := "v." + randUUID.String()
 		kvMap[prefix] = randSeq(4, r1)
 
-		noChunck := r.Int31n(5)
+		noChunck := count
 		Cprefix := prefix + ".c"
-		for j := int32(0); j < noChunck; j++ {
+		for j := int64(0); j < noChunck; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
 			kvMap[Chunckprefix] = randSeq(4, r1)
 		}
 
-		noSeq := r.Int31n(5)
+		noSeq := count
 		Sprefix := prefix + ".s"
-		for k := int32(0); k < noSeq; k++ {
+		for k := int64(0); k < noSeq; k++ {
 			SeqPrefix := Sprefix + strconv.Itoa(int(k))
 			kvMap[SeqPrefix] = randSeq(4, r1)
 		}
 	}
 
 	//NISD
-	noNISD := int64(float64(count) * float64(0.5))
-	noUUID = r.Int63n(noNISD)
 	for i := int64(0); i < noUUID; i++ {
 		randUUID, _ := uuid.NewRandomFromReader(r)
 		prefix := "nisd." + randUUID.String()
 
-		noNode := r.Int31n(5)
+		noNode := count
 		nodePrefix := prefix + "."
-		for j := int32(0); j < noNode; j++ {
+		for j := int64(0); j < noNode; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
 			partNodePrefix := nodePrefix + randUUID.String()
 			kvMap[partNodePrefix] = randSeq(4, r1)
@@ -267,7 +264,7 @@ func (clientObj *clientHandler) singleWriteRequest() {
 }
 
 func (clientObj *clientHandler) multipleWriteRequest() {
-	kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
+	kvMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed))
 	operationStatSlice := make([]*opData, len(kvMap))
 	var index int
 	var wg sync.WaitGroup
