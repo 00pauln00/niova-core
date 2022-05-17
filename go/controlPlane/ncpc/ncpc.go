@@ -61,6 +61,10 @@ type opData struct {
 	ResponseData response      `json:"Response"`
 	TimeDuration time.Duration `json:"Req_resolved_time"`
 }
+type multiWriteStatus struct {
+	Status int
+	Value interface{}
+}
 
 type nisdData struct {
 	UUID      uuid.UUID `json:"UUID"`
@@ -265,12 +269,12 @@ func (clientObj *clientHandler) singleWriteRequest() {
 
 func (clientObj *clientHandler) multipleWriteRequest() {
 	kvMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed))
-	operationStatSlice := make([]*opData, len(kvMap))
-	var index int
+	operationStatSlice := make(map[string]*multiWriteStatus)
+	var mut sync.Mutex
 	var wg sync.WaitGroup
 	for key, val := range kvMap {
 		wg.Add(1)
-		go func(index int, key string, val []byte) {
+		go func(key string, val []byte) {
 			defer wg.Done()
 			var requestObj requestResponseLib.KVRequest
 			var responseObj requestResponseLib.KVResponse
@@ -282,17 +286,19 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 			enc := gob.NewEncoder(&requestByte)
 			enc.Encode(requestObj)
 			//Send the write request
-			startTime := time.Now()
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-			endTime := time.Now()
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 			_ = dec.Decode(&responseObj)
-			operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", key, val, 0)
-			//Append operationStat to a slice
-			operationStatSlice[index] = operationStat
-		}(index, key, []byte(val))
-		index += 1
+
+			operationStat := multiWriteStatus{
+				Status : responseObj.Status,
+				Value: string(val),
+			}
+			mut.Lock()
+			operationStatSlice[key] = &operationStat
+			mut.Unlock()
+		}(key, []byte(val))
 	}
 	wg.Wait()
 	log.Info("Request completed")
