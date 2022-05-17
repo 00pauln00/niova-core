@@ -1,7 +1,7 @@
 /* Copyright (C) NIOVA Systems, Inc - All Rights Reserved
  * Unauthorized copying of this file, via any medium is strictly prohibited
  * Proprietary and confidential
- * Written by Paul Nowoczynski <00pauln00@gmail.com> 2020
+ * Written by Paul Nowoczynski <pauln@niova.io> 2022
  */
 #ifndef NIOVA_FAULT_INJECT_H
 #define NIOVA_FAULT_INJECT_H 1
@@ -98,7 +98,7 @@ fault_injection_when_2_str(const struct fault_injection *flti)
 }
 
 struct fault_injection *
-fault_injection_lookup(const enum fault_inject_entries id);
+fault_injection_lookup(const size_t id, const int module);
 
 static inline void
 fault_injection_apply_info(struct fault_injection *flt, const char *file,
@@ -165,7 +165,7 @@ fault_injection_evaluate(struct fault_injection *flti)
         if (!fis.fis_atomic && niova_atomic_cas(&fis.fis_atomic, 0, 1))  \
         {                                                                \
             NIOVA_ASSERT(!fis.fis_flti);                                 \
-            fis.fis_flti = fault_injection_lookup(FAULT_INJECT_##id);    \
+            fis.fis_flti = fault_injection_lookup(FAULT_INJECT_##id, 0);  \
             NIOVA_ASSERT(fis.fis_flti);                                  \
             fault_injection_apply_info(fis.fis_flti, __FILE__, __func__, \
                                        __LINE__);                        \
@@ -188,5 +188,9 @@ fault_injection_evaluate(struct fault_injection *flti)
 #endif
 
 #define FAULT_INJECT(id) FAULT_INJECT_CB(id, )
+
+int
+fault_inject_set_install(struct fault_injection *finj_set, size_t set_size,
+                         bool append);
 
 #endif
