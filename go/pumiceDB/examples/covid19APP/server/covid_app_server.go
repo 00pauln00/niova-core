@@ -127,7 +127,7 @@ type CovidServer struct {
 }
 
 func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, pmdbHandle unsafe.Pointer) {
+	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 
 	log.Info("Covid19_Data app server: Apply request received")
 
@@ -137,7 +137,7 @@ func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	decodeErr := cso.pso.Decode(inputBuf, applyCovid, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
-		return
+		return -1
 	}
 
 	log.Info("Key passed by client: ", applyCovid.Location)
@@ -175,10 +175,11 @@ func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	log.Info("Current covideData values: ", covidDataVal)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
-	cso.pso.WriteKV(appId, pmdbHandle, applyCovid.Location,
+	rc := cso.pso.WriteKV(appId, pmdbHandle, applyCovid.Location,
 		int64(keyLength), covidDataVal,
 		int64(covidDataLen), colmfamily)
 
+	return rc
 }
 
 func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
