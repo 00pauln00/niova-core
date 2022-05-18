@@ -196,7 +196,7 @@ func PmdbLookupKey(key string, key_len int64,
 
 	var goerr string
 	var C_value_len C.size_t
-	var result []byte 
+	var result []byte
 	var lookup_err error
 
 	err := GoToCString(goerr)
@@ -317,9 +317,7 @@ func pmdbFetchRange(key string, key_len int64,
 
 	cf := GoToCString(go_cf)
 	ropts := C.rocksdb_readoptions_create()
-	log.Trace("RangeQuery - Key passed is: ", key)
-	log.Trace("RangeQuery - Prefix passed is: ", prefix)
-	log.Trace("RangeQuery - SeqNum passed is: ",seqNum)
+	log.Trace("RangeQuery - Key passed is: ", key, "Prefix passed is : ", prefix, "Seq No passed is : ", seqNum)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	// Check if it's the first iteration of the range loop
 	if seqNum == math.MaxUint64 {
@@ -327,7 +325,6 @@ func pmdbFetchRange(key string, key_len int64,
 	}
 	// Create iterator with the particular sequence number
 	itr = C.rocksdb_create_iterator_for_seqnum_cf(C.PmdbGetRocksDB(), ropts, C.ulong(seqNum), cf_handle)
-	log.Trace("Seq Num is - ", seqNum)
 	// Iterate to lastKeyPassed or first key
 	cKey = GoToCString(key)
 	cLen = GoToCSize_t(key_len)
@@ -341,22 +338,19 @@ func pmdbFetchRange(key string, key_len int64,
 		valueBytes := CToGoBytes(C_value, C.int(cLenVal))
 		log.Trace("RangeQuery - Seeked to : ", string(keyBytes))
 		// check if passed key is prefix of fetched key
-		ret := strings.HasPrefix(string(keyBytes), prefix)
-		if !ret {
-			C.rocksdb_iter_next(itr)
+		if !(strings.HasPrefix(string(keyBytes), prefix)) {
 			break
 		}
 		// check if the key-val can be stored in the buffer
 		entrySize := len(keyBytes) + len(valueBytes)
-		if (int64(mapSize) + int64(entrySize)) <= bufSize {
-			mapSize = mapSize + entrySize
-			resultMap[string(keyBytes)] = string(valueBytes)
-			C.rocksdb_iter_next(itr)
-		} else {
+		if (int64(mapSize) + int64(entrySize)) > bufSize {
 			log.Trace("Reply buffer is full - dumping map to client")
 			lastKey = string(keyBytes)
 			break
 		}
+		mapSize = mapSize + entrySize
+		resultMap[string(keyBytes)] = string(valueBytes)
+		C.rocksdb_iter_next(itr)
 	}
 	C.rocksdb_iter_destroy(itr)
 	FreeCMem(cf)
