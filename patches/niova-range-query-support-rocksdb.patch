@@ -1,21 +1,19 @@
-diff --git a/Makefile b/Makefile
-index 93a67b654..96230d52f 100644
---- a/Makefile
-+++ b/Makefile
-@@ -1902,7 +1902,7 @@ cache_reservation_manager_test: $(OBJ_DIR)/cache/cache_reservation_manager_test.
- 	$(AM_LINK)
- #-------------------------------------------------
- # make install related stuff
--PREFIX ?= /usr/local
-+PREFIX ?= /usr
- LIBDIR ?= $(PREFIX)/lib
- INSTALL_LIBDIR = $(DESTDIR)$(LIBDIR)
- 
 diff --git a/db/c.cc b/db/c.cc
-index 0a6ae8562..73e71c292 100644
+index 0a6ae8562..b25961e89 100644
 --- a/db/c.cc
 +++ b/db/c.cc
-@@ -1277,6 +1277,16 @@ rocksdb_iterator_t* rocksdb_create_iterator_cf(
+@@ -1268,6 +1268,10 @@ uint64_t rocksdb_get_latest_sequence_number (rocksdb_t *db) {
+     return db->rep->GetLatestSequenceNumber();
+ }
+ 
++uint64_t rocksdb_get_snapshot_sequence_number(const rocksdb_snapshot_t* snap) {
++    return snap->rep->GetSequenceNumber();
++}
++
+ rocksdb_iterator_t* rocksdb_create_iterator_cf(
+     rocksdb_t* db,
+     const rocksdb_readoptions_t* options,
+@@ -1277,6 +1281,16 @@ rocksdb_iterator_t* rocksdb_create_iterator_cf(
    return result;
  }
  
@@ -33,10 +31,10 @@ index 0a6ae8562..73e71c292 100644
      rocksdb_t *db,
      rocksdb_readoptions_t* opts,
 diff --git a/db/c_test.c b/db/c_test.c
-index 2a0bc8d5e..aaa5b8811 100644
+index 2a0bc8d5e..b33684c26 100644
 --- a/db/c_test.c
 +++ b/db/c_test.c
-@@ -1351,14 +1351,103 @@ int main(int argc, char** argv) {
+@@ -1351,14 +1351,113 @@ int main(int argc, char** argv) {
      rocksdb_iter_seek_to_first(iter);
      CheckCondition(rocksdb_iter_valid(iter));
  
@@ -45,7 +43,7 @@ index 2a0bc8d5e..aaa5b8811 100644
      for (i = 0; rocksdb_iter_valid(iter) != 0; rocksdb_iter_next(iter)) {
 +      fprintf(stderr, "Deleting key: %s and value: %s\n", rocksdb_iter_key(iter, &len),
 +                       rocksdb_iter_value(iter, &len));
-+      key = rocksdb_iter_key(iter, &len); 
++      key = rocksdb_iter_key(iter, &len);
 +      rocksdb_delete_cf(db, woptions, handles[1], key, len, &err);
        i++;
      }
@@ -91,8 +89,14 @@ index 2a0bc8d5e..aaa5b8811 100644
 +      fprintf(stderr, "Total number of entries are: %d\n", cnt);
 +      rocksdb_iter_destroy(iter);
 +    }
-+    fprintf(stderr, "Get latest seq number\n");
-+    uint64_t seq_number = rocksdb_get_latest_sequence_number(db);
++
++    // Create snapshot
++    const rocksdb_snapshot_t* snap;
++    snap = rocksdb_create_snapshot(db);
++    rocksdb_readoptions_set_snapshot(roptions, snap);
++
++    fprintf(stderr, "Get the seq number of the snapshot\n");
++    uint64_t seq_number = rocksdb_get_snapshot_sequence_number(snap);
 +    fprintf(stderr, "latest seq number is: %lu\n", seq_number);
 +
 +    // Perform few more writes.
@@ -111,22 +115,22 @@ index 2a0bc8d5e..aaa5b8811 100644
 +    CheckCondition(rocksdb_iter_valid(iter_with_seq));
 +
 +    const char *value;
-+    size_t key_len
++    size_t key_len;
 +    while (rocksdb_iter_valid(iter_with_seq)) {
 +      key = rocksdb_iter_key(iter_with_seq, &key_len);
 +      fprintf(stderr, "Key is with seq: %s\n", key);
 +      value = rocksdb_iter_value(iter_with_seq, &len);
 +      fprintf(stderr, "Value is with seq: %s\n", value);
 +
-+      ret = strstr(key, "bar.");
-+      if (!ret)
++      char * result = strstr(key, "bar.");
++      if (!result)
 +      {
 +         fprintf(stdout, "Key prefix mismatch: %s, break the loop\n", key);
 +         break;
 +      }
 +
 +      // Make sure newly inserted key is not part of this iterator
-+      ret = memcmp(key, "bar.V3.c.0", 10);
++      int ret = memcmp(key, "bar.V3.c.0", 10);
 +      CheckCondition(ret != 0);
 +
 +      // Make sure over-write of bar.V1.c.0 is not part of this iterator
@@ -137,6 +141,10 @@ index 2a0bc8d5e..aaa5b8811 100644
 +      }
 +      rocksdb_iter_next(iter_with_seq);
 +    }
++    rocksdb_iter_destroy(iter_with_seq);
++    rocksdb_readoptions_set_snapshot(roptions, NULL);
++    rocksdb_release_snapshot(db, snap);
++
      rocksdb_drop_column_family(db, handles[1], &err);
      CheckNoError(err);
      for (i = 0; i < 2; i++) {
@@ -325,7 +333,7 @@ index d3a7940b5..066436eca 100644
                                        ColumnFamilyData* cfd,
                                        SequenceNumber snapshot,
 diff --git a/include/rocksdb/c.h b/include/rocksdb/c.h
-index 1456c15a6..eaea16531 100644
+index 1456c15a6..acbe0da39 100644
 --- a/include/rocksdb/c.h
 +++ b/include/rocksdb/c.h
 @@ -466,6 +466,11 @@ extern ROCKSDB_LIBRARY_API rocksdb_iterator_t* rocksdb_create_iterator_cf(
@@ -340,6 +348,14 @@ index 1456c15a6..eaea16531 100644
  extern ROCKSDB_LIBRARY_API void rocksdb_create_iterators(
      rocksdb_t *db, rocksdb_readoptions_t* opts,
      rocksdb_column_family_handle_t** column_families,
+@@ -584,6 +589,7 @@ extern ROCKSDB_LIBRARY_API unsigned char rocksdb_wal_iter_valid(
+ extern ROCKSDB_LIBRARY_API void rocksdb_wal_iter_status (const rocksdb_wal_iterator_t* iter, char** errptr) ;
+ extern ROCKSDB_LIBRARY_API rocksdb_writebatch_t* rocksdb_wal_iter_get_batch (const rocksdb_wal_iterator_t* iter, uint64_t* seq) ;
+ extern ROCKSDB_LIBRARY_API uint64_t rocksdb_get_latest_sequence_number (rocksdb_t *db);
++extern ROCKSDB_LIBRARY_API uint64_t rocksdb_get_snapshot_sequence_number (const rocksdb_snapshot_t *);
+ extern ROCKSDB_LIBRARY_API void rocksdb_wal_iter_destroy (const rocksdb_wal_iterator_t* iter) ;
+ 
+ /* Write batch */
 diff --git a/include/rocksdb/db.h b/include/rocksdb/db.h
 index 1a6401442..b7dd48c0b 100644
 --- a/include/rocksdb/db.h
