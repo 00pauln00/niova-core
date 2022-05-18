@@ -378,9 +378,11 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Trace("pmdServer single read - ", reqStruct.SeqNum)
 		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
 			int64(keyLen), colmfamily)
+			singleReadMap := make(map[string]string)
+			singleReadMap[reqStruct.Key] = string(readResult)
 		resultResponse = requestResponseLib.KVResponse{
 			Key:       reqStruct.Key,
-			ResultMap: readResult,
+			ResultMap: singleReadMap,
 		}
 		readErr = err
 

@@ -192,11 +192,11 @@ func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 
 // search a key in RocksDB
 func PmdbLookupKey(key string, key_len int64,
-	go_cf string) (map[string]string, error) {
+	go_cf string) ([]byte, error) {
 
 	var goerr string
 	var C_value_len C.size_t
-	var result = make(map[string]string)
+	var result []byte 
 	var lookup_err error
 
 	err := GoToCString(goerr)
@@ -220,9 +220,9 @@ func PmdbLookupKey(key string, key_len int64,
 
 	if C_value != nil {
 
-		valBytes := CToGoBytes(C_value, C.int(C_value_len))
-		result[key] = string(valBytes)
-		log.Debug("C_value: ", C_value, " \nvalBytes: ", string(valBytes))
+		buffer_value := CToGoBytes(C_value, C.int(C_value_len))
+		result = C.GoBytes(unsafe.Pointer(C_value), C.int(C_value_len))
+		log.Debug("C_value: ", C_value, " \nvalBytes: ", string(buffer_value))
 		lookup_err = nil
 		FreeCMem(C_value)
 	} else {
@@ -239,7 +239,7 @@ func PmdbLookupKey(key string, key_len int64,
 
 // Public method of PmdbLookupKey
 func (*PmdbServerObject) LookupKey(key string, key_len int64,
-	go_cf string) (map[string]string, error) {
+	go_cf string) ([]byte, error) {
 	return PmdbLookupKey(key, key_len, go_cf)
 }
 
@@ -286,7 +286,7 @@ func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 }
 
 func PmdbReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) (map[string]string, error) {
+	key_len int64, gocolfamily string) ([]byte, error) {
 
 	go_value, err := PmdbLookupKey(key, key_len, gocolfamily)
 
@@ -296,7 +296,7 @@ func PmdbReadKV(app_id unsafe.Pointer, key string,
 
 // Public method of PmdbReadKV
 func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, gocolfamily string) (map[string]string, error) {
+	key_len int64, gocolfamily string) ([]byte, error) {
 
 	return PmdbReadKV(app_id, key, key_len, gocolfamily)
 }
