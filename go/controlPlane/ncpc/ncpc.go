@@ -260,11 +260,9 @@ func (clientObj *clientHandler) singleWriteRequest() {
 	//Decode the response
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
-	log.Info("Request completed")
 	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
 	fmt.Println(responseObj.ResultMap)
-	log.Info("Result file generated")
 }
 
 func (clientObj *clientHandler) multipleWriteRequest() {
@@ -307,9 +305,7 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 		}(key, []byte(val))
 	}
 	wg.Wait()
-	log.Info("Request completed")
 	clientObj.write2Json(operationStatSlice)
-	log.Info("Result file generated")
 }
 
 func (clientObj *clientHandler) readRequest() {
@@ -331,10 +327,8 @@ func (clientObj *clientHandler) readRequest() {
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
 
-	log.Info("Request completed")
 	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
-	log.Info("Result file generated")
 }
 
 func (clientObj *clientHandler) rangeRequest() {
@@ -372,21 +366,17 @@ func (clientObj *clientHandler) rangeRequest() {
 			break
 		}
 		maps.Copy(resultMap, rangeResponseObj.ResultMap)
-
+		seqNum = rangeResponseObj.SeqNum
 		count += 1
 		if !rangeResponseObj.ContinueRead {
 			break
 		}
-		//Prefix = clientObj.requestKey
 		Key = rangeResponseObj.Key
-		seqNum = rangeResponseObj.SeqNum
 	}
 	endTime := time.Now()
 	//Get status from response
-	log.Info("Request completed")
 	operationStat := fillOperationData(startTime, endTime, 0, "range", requestObj.Key, resultMap, seqNum)
 	clientObj.write2Json(operationStat)
-	log.Info("Result file generated")
 	// FIXME Failing
 	/*genKVMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
 	filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)

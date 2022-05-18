@@ -388,9 +388,6 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	} else if reqStruct.Operation == "rangeRead" {
 		reqStruct.Prefix = reqStruct.Prefix
-		// FIXME Temporarily setting bufffer to 512 bytets
-		// we should fetch the buffer size from the pmdbClient
-		replyBufSize = 512
 		log.Trace("The pmdServer sequence number received is - ", reqStruct.SeqNum)
 		readResult, lastKey, seqNum, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
 			int64(keyLen), reqStruct.Prefix, replyBufSize, reqStruct.SeqNum, colmfamily)
