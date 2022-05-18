@@ -89,10 +89,10 @@ func getKeyType(key string) string {
 	return ""
 }
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func randSeq(n int, r *rand.Rand) string {
-	b := make([]rune, n)
+	b := make([]byte, n)
 	for i := range b {
 		b[i] = letters[r.Intn(len(letters))]
 	}
@@ -103,12 +103,30 @@ func generateVdevRange(count int64, seed int64) map[string]string {
 	kvMap := make(map[string]string)
 	r := rand.New(rand.NewSource(seed))
 	r1 := rand.New(rand.NewSource(seed))
+	var nisdUUID []string
+
+	//NISD
+	noUUID := count
+        for i := int64(0); i < noUUID; i++ {
+                randUUID, _ := uuid.NewRandomFromReader(r)
+                nisdUUID = append(nisdUUID, randUUID.String())
+		prefix := "nisd." + randUUID.String()
+
+                noNode := count
+                nodePrefix := prefix + "."
+                for j := int64(0); j < noNode; j++ {
+                        randUUID, _ := uuid.NewRandomFromReader(r)
+                        partNodePrefix := nodePrefix + randUUID.String()
+                        kvMap[partNodePrefix] = randSeq(4, r1)
+                }
+
+                configInfo := prefix + ".Config-Info"
+                kvMap[configInfo] = randSeq(4, r1)
+        }
 
 	//Vdev
-	noUUID := count
 	for i := int64(0); i < noUUID; i++ {
-		randUUID, _ := uuid.NewRandomFromReader(r)
-		prefix := "v." + randUUID.String()
+		prefix := "v." + nisdUUID[i]
 		kvMap[prefix] = randSeq(4, r1)
 
 		noChunck := count
@@ -127,22 +145,6 @@ func generateVdevRange(count int64, seed int64) map[string]string {
 		}
 	}
 
-	//NISD
-	for i := int64(0); i < noUUID; i++ {
-		randUUID, _ := uuid.NewRandomFromReader(r)
-		prefix := "nisd." + randUUID.String()
-
-		noNode := count
-		nodePrefix := prefix + "."
-		for j := int64(0); j < noNode; j++ {
-			randUUID, _ := uuid.NewRandomFromReader(r)
-			partNodePrefix := nodePrefix + randUUID.String()
-			kvMap[partNodePrefix] = randSeq(4, r1)
-		}
-
-		configInfo := prefix + ".Config-Info"
-		kvMap[configInfo] = randSeq(4, r1)
-	}
 	return kvMap
 }
 
@@ -262,7 +264,6 @@ func (clientObj *clientHandler) singleWriteRequest() {
 	_ = dec.Decode(&responseObj)
 	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
-	fmt.Println(responseObj.ResultMap)
 }
 
 func (clientObj *clientHandler) multipleWriteRequest() {
