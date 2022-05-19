@@ -8,14 +8,11 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	"niova/go-pumicedb-lib/common"
-	"github.com/aybabtme/uniplot/histogram"
 	"os"
 	"os/signal"
 	"strconv"
@@ -23,6 +20,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type proxyHandler struct {
@@ -52,8 +52,8 @@ type proxyHandler struct {
 	httpPort      string
 	limit         string
 	requireStat   string
-	opTime        opTime
 	httpServerObj httpServer.HTTPServerHandler
+	buckets		  int64
 }
 
 type PeerConfigData struct {
@@ -61,11 +61,6 @@ type PeerConfigData struct {
 	ClientPort string
 	Port       string
 	IPAddr     string
-}
-
-type opTime struct {
-	putTimes         []time.Duration
-	getTimes         []time.Duration
 }
 
 func usage() {
@@ -86,6 +81,7 @@ func (handler *proxyHandler) getCmdLineArgs() {
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.StringVar(&handler.requireStat, "s", "0", "If required server stat about request enter 1")
+	flag.Int64Var(&handler.buckets, "b", 24, "If required server stat, number of buckets in historgam")
 	flag.Parse()
 }
 
@@ -218,22 +214,14 @@ func (handler *proxyHandler) start_SerfAgent() error {
 
 //Write callback definition for HTTP server
 func (handler *proxyHandler) WriteCallBack(request []byte) error {
-	timer := time.Now()
 	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
-	write := handler.pmdbClientObj.WriteEncoded(request, rncui)
-	stopPutTime := time.Since(timer)
-	handler.opTime.putTimes = append(handler.opTime.putTimes, stopPutTime)
-	return write
+	return handler.pmdbClientObj.WriteEncoded(request, rncui)
 }
 
 //Read call definition for HTTP server
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	timer := time.Now()
-	read := handler.pmdbClientObj.ReadEncoded(request, "", response)
-	stopGetTime := time.Since(timer)
-	handler.opTime.getTimes = append(handler.opTime.getTimes, stopGetTime)
-	return read
+	return handler.pmdbClientObj.ReadEncoded(request, "", response)
 }
 
 func (handler *proxyHandler) start_HTTPServer() error {
@@ -245,6 +233,7 @@ func (handler *proxyHandler) start_HTTPServer() error {
 	handler.httpServerObj.GETHandler = handler.ReadCallBack
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
 	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
+	handler.httpServerObj.Buckets = handler.buckets
 	if handler.requireStat != "0" {
 		handler.httpServerObj.StatsRequired = true
 	}
@@ -280,20 +269,6 @@ func (handler *proxyHandler) killSignal_Handler() {
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigs
-		var floatPut = make([]float64, len(handler.opTime.putTimes))
-		for i := 0; i < len(floatPut); i++ {
-			floatPut[i] = float64(handler.opTime.putTimes[i].Milliseconds())
-		}
-		var floatGet = make([]float64, len(handler.opTime.getTimes))
-		for i := 0; i < len(floatGet); i++ {
-			floatGet[i] = float64(handler.opTime.getTimes[i].Milliseconds())
-		}
-		hPut := histogram.Hist(9, floatPut)
-		hGet := histogram.Hist(9, floatGet)
-		read_data, _ := json.MarshalIndent(hGet, "", " ")
-		_ = ioutil.WriteFile(handler.clientUUID+"read.json", read_data, 0644)
-		write_data, _ := json.MarshalIndent(hPut, "", " ")
-		_ = ioutil.WriteFile(handler.clientUUID+"write.json", write_data, 0644)
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
 		_ = ioutil.WriteFile(handler.clientUUID+".json", json_data, 0644)
 		log.Info("(Proxy) Received a kill signal")
