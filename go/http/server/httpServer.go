@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -237,16 +239,30 @@ func (handler *HTTPServerHandler) makehist() []int64{
 func (handler *HTTPServerHandler) makemap(ar []int64) map[string]int64{
 	m := make(map[string]int64)
 	v:=2
-	for i := 0; i < len(handler.Stat.writeStats.OpTimeMicroSec)-1; i++ {
-		zeroPad:=fmt.Sprintf("%08d",v)
-		m[zeroPad]=ar[i]
-		v=v*2
-		if i== len(handler.Stat.writeStats.OpTimeMicroSec)-2{
+	padLen:=numOfDig(int(math.Pow(2,float64(handler.Buckets-1))))+1
+	pad:="%"+strconv.Itoa(padLen)+"d"
+	for i := 0; i < len(ar)-1; i++ {
+		zeroPad:=fmt.Sprintf(pad,v)
+		if ar[i] != 0 {
+			m[zeroPad]=ar[i]
+		}
+		if i == len(ar)-2 && ar[i+1] != 0{
 			m[zeroPad+"+"]=ar[i+1]
 		}
+		v=v*2
 	}
 	return m
 }
+
+//find the number of digits in a number
+func numOfDig(n int) int{
+	if n < 10 {
+        return 1
+    } else {
+        return 1 + numOfDig(n/10)
+    }
+}
+
 //HTTP server handler called when request is received
 func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *http.Request) {
 	//Go follows causually consistent memory model, so require sync among stat and normal request to get consistent stat data
