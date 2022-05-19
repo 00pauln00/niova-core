@@ -40,6 +40,7 @@ type clientHandler struct {
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 	seqNum            uint64
+	valSize		  int
 }
 
 type request struct {
@@ -98,7 +99,7 @@ func randSeq(n int, r *rand.Rand) string {
 	return string(b)
 }
 
-func generateVdevRange(count int64, seed int64) map[string]string {
+func generateVdevRange(count int64, seed int64, valSize int) map[string]string {
 	kvMap := make(map[string]string)
 	r := rand.New(rand.NewSource(seed))
 	r1 := rand.New(rand.NewSource(seed))
@@ -116,31 +117,31 @@ func generateVdevRange(count int64, seed int64) map[string]string {
                 for j := int64(0); j < noNode; j++ {
                         randUUID, _ := uuid.NewRandomFromReader(r)
                         partNodePrefix := nodePrefix + randUUID.String()
-                        kvMap[partNodePrefix] = randSeq(4, r1)
+                        kvMap[partNodePrefix] = randSeq(valSize, r1)
                 }
 
                 configInfo := prefix + ".Config-Info"
-                kvMap[configInfo] = randSeq(4, r1)
+                kvMap[configInfo] = randSeq(valSize, r1)
         }
 
 	//Vdev
 	for i := int64(0); i < noUUID; i++ {
 		prefix := "v." + nisdUUID[i]
-		kvMap[prefix] = randSeq(4, r1)
+		kvMap[prefix] = randSeq(valSize, r1)
 
 		noChunck := count
 		Cprefix := prefix + ".c"
 		for j := int64(0); j < noChunck; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
-			kvMap[Chunckprefix] = randSeq(4, r1)
+			kvMap[Chunckprefix] = randSeq(valSize, r1)
 		}
 
 		noSeq := count
 		Sprefix := prefix + ".s"
 		for k := int64(0); k < noSeq; k++ {
 			SeqPrefix := Sprefix + strconv.Itoa(int(k))
-			kvMap[SeqPrefix] = randSeq(4, r1)
+			kvMap[SeqPrefix] = randSeq(valSize, r1)
 		}
 	}
 
@@ -171,6 +172,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request")
 	flag.IntVar(&handler.count, "n", 1, "Number of key-value write count")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
+	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
 	flag.Uint64Var(&handler.seqNum, "S", math.MaxUint64, "Sequence Number for read")
 	flag.Parse()
 }
@@ -266,7 +268,7 @@ func (clientObj *clientHandler) singleWriteRequest() {
 }
 
 func (clientObj *clientHandler) multipleWriteRequest() {
-	kvMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed))
+	kvMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 	operationStatSlice := make(map[string]*multiWriteStatus)
 	var mut sync.Mutex
 	var wg sync.WaitGroup
