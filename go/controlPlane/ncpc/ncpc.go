@@ -88,8 +88,7 @@ func getKeyType(key string) string {
 	}
 	return ""
 }
-
-var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randSeq(n int, r *rand.Rand) string {
 	b := make([]byte, n)
