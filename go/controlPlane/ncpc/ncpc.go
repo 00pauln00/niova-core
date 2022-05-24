@@ -273,13 +273,12 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	// Create a int channel of fixed size to enqueue max requests
-	requestLimiter := make(chan int, 10)
+	requestLimiter := make(chan int, 100)
 	for key, val := range kvMap {
 		wg.Add(1)
+		requestLimiter <- 1
 		go func(key string, val []byte) {
-			requestLimiter <- 1
 			defer func() {
-				<-requestLimiter
 				wg.Done()
 			}()
 			var requestObj requestResponseLib.KVRequest
@@ -304,6 +303,7 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 			mut.Lock()
 			operationStatSlice[key] = &operationStat
 			mut.Unlock()
+			<-requestLimiter
 		}(key, []byte(val))
 	}
 	wg.Wait()
