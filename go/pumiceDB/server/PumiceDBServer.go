@@ -27,6 +27,9 @@ extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
 */
 import "C"
 
+// The encoding overhead for a single key-val entry is 2 bytes
+var encodingOverhead int = 2
+
 type PmdbServerAPI interface {
 	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer)
 	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
@@ -342,13 +345,13 @@ func pmdbFetchRange(key string, key_len int64,
 			break
 		}
 		// check if the key-val can be stored in the buffer
-		entrySize := len(keyBytes) + len(valueBytes)
+		entrySize := len(keyBytes) + len(valueBytes) + encodingOverhead
 		if (int64(mapSize) + int64(entrySize)) > bufSize {
 			log.Trace("Reply buffer is full - dumping map to client")
 			lastKey = string(keyBytes)
 			break
 		}
-		mapSize = mapSize + entrySize
+		mapSize = mapSize + entrySize + encodingOverhead
 		resultMap[string(keyBytes)] = string(valueBytes)
 		C.rocksdb_iter_next(itr)
 	}
