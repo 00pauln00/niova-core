@@ -17,6 +17,7 @@ import (
 	"math/rand"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -380,7 +381,7 @@ func (clientObj *clientHandler) rangeRequest() {
 	operationStat := fillOperationData(startTime, endTime, 0, "range", requestObj.Key, resultMap, seqNum)
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
-	/*genKVMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
+	genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 	filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)
 	compare := reflect.DeepEqual(resultMap, filteredMap)
 	if compare {
@@ -389,7 +390,6 @@ func (clientObj *clientHandler) rangeRequest() {
 		fmt.Println("Range read failure")
 	}
 	fmt.Println("Called range query", count, "times")
-	*/
 }
 
 func isRangeRequest(requestKey string) bool {
