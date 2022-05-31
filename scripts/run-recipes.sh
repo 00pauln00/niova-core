@@ -26,10 +26,10 @@ do
    if [ $# -eq 8 ]
    then
       #If the condition match run recipes in async.
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR holon.yml -vvv
    else
       #else run recipes in sync
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC holon.yml -vvv
    fi
 
    if [ $? -ne 0 ]
