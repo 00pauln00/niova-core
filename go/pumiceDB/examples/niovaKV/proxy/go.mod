@@ -2,7 +2,7 @@ module controlplane/proxy
 
 replace common/httpServer => ../../../../http/server
 
-replace common/requestResponseLib => ../../common/requestResponseLib
+replace common/requestResponseLib => ../../requestResponseLib
 
 replace niova/go-pumicedb-lib/client => ../../../client
 
