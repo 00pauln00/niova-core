@@ -16,6 +16,7 @@ import (
 	client "github.com/hashicorp/serf/client"
 )
 
+
 type ServiceDiscoveryHandler struct {
 	//Exported
 	Timeout               time.Duration //No of seconds for a request time out and membership table refresh
@@ -33,8 +34,8 @@ type ServiceDiscoveryHandler struct {
 	servers           []client.Member
 	serfClientObj     serfClient.SerfClientHandler
 	serfUpdateLock    sync.Mutex
-	tableLock         sync.Mutex
-	requestUpdateLock sync.Mutex
+	agentTableLock    sync.Mutex
+	statUpdateLock    sync.Mutex
 	ready             bool
 	specificServer    *client.Member
 	roundRobinPtr     int
@@ -72,38 +73,46 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 	var toSend client.Member
 	var response []byte
 	Qtimer := time.Tick(handler.Timeout * time.Second)
-time:
+retry:
 	for {
 		select {
 		case <-Qtimer:
-			log.Error("Request timed at client side")
-			break time
+			log.Error("Request timed out at client side")
+			break retry
 		default:
 			var err error
 			var ok bool
+
+			//Get proxy node to send request to
 			toSend, err = handler.pickServer(toSend.Name)
 			if err != nil {
-				break time
+				break retry
 			}
 
+			//Get proxy node's http address
 			addr, port := getAddr(&toSend)
 			response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
 			if err == nil {
 				ok = true
 			}
+
+			//Update request stat
 			if handler.IsStatRequired {
-				handler.requestUpdateLock.Lock()
+				handler.statUpdateLock.Lock()
 				if _, present := handler.RequestDistribution[toSend.Name]; !present {
 					handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
 				}
 				handler.RequestDistribution[toSend.Name].updateStat(ok)
-				handler.requestUpdateLock.Unlock()
+				handler.statUpdateLock.Unlock()
 			}
 
+			//Break from retry loop
 			if ok {
-				break time
+				break retry
 			}
-			log.Error(err)
+
+			log.Error("Error in HTTP request : ", err)
+			log.Trace("Retrying HTTP request with different proxy")
 		}
 	}
 
@@ -127,17 +136,16 @@ func isValidNodeData(member client.Member) bool {
 }
 
 func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Member, error) {
-	handler.tableLock.Lock()
-	defer handler.tableLock.Unlock()
+	handler.agentTableLock.Lock()
+	defer handler.agentTableLock.Unlock()
 	var serverChoosen *client.Member
 	switch handler.ServerChooseAlgorithm {
 	case 0:
-		//Random
+		//Random proxy chooser
 		var randomIndex int
 		for {
 			if len(handler.servers) == 0 {
-				log.Error("(CLIENT API MODULE) no alive servers")
-				return client.Member{}, errors.New("No alive servers")
+				return client.Member{}, errors.New("Proxies not available")
 			}
 			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
@@ -153,12 +161,12 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 
 		serverChoosen = &handler.servers[randomIndex]
 	case 1:
-		//Round-Robin
+		//Round-Robin based proxy chooser
 		handler.roundRobinPtr %= len(handler.servers)
 		serverChoosen = &handler.servers[handler.roundRobinPtr]
 		handler.roundRobinPtr += 1
 	case 2:
-		//Specific
+		//Specific proxy chooser
 		if handler.specificServer != nil {
 			serverChoosen = handler.specificServer
 			break
@@ -186,17 +194,18 @@ comparison:
 			log.Info("stopping member updater")
 			break comparison
 		default:
-			//Since we do update it continuesly, we persist the connection
+			//Get latest membership data
 			handler.serfUpdateLock.Lock()
 			err := handler.serfClientObj.UpdateSerfClient(true)
 			handler.serfUpdateLock.Unlock()
 			if err != nil {
-				log.Error("Unable to connect with agents")
 				return err
 			}
-			handler.tableLock.Lock()
+
+			//Update local agent table
+			handler.agentTableLock.Lock()
 			handler.servers = handler.serfClientObj.Agents
-			handler.tableLock.Unlock()
+			handler.agentTableLock.Unlock()
 			handler.ready = true
 			time.Sleep(1 * time.Second)
 		}
@@ -209,25 +218,15 @@ func (handler *ServiceDiscoveryHandler) StartClientAPI(stop chan int, configPath
 	var err error
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
 
-	//Retry initial serf connect for 5 times
-	for i := 0; i < 5; i++ {
-		err = handler.initSerfClient(configPath)
-		if err == nil {
-			break
-		}
-		//Wait for 3 seconds before retrying the connection
-		log.Info("Retrying serf agent connection : ", i)
-		time.Sleep(3 * time.Second)
-	}
-	//Return if error persists
+	//Connect with serf agent to get mesh details
+	err = handler.initSerfClient(configPath)
 	if err != nil {
-		log.Error("Error while initializing the serf client ", err)
 		return err
 	}
 
+	//Search mesh for proxy to handle KV request
 	err = handler.memberSearcher(stop)
 	if err != nil {
-		log.Error("Error while starting the membership updater ", err)
 		return err
 	}
 	return err
@@ -291,6 +290,7 @@ func (handler *ServiceDiscoveryHandler) GetLeader() string {
 	return agent.Tags["Leader UUID"]
 }
 
+//Wait till connect
 func (handler *ServiceDiscoveryHandler) TillReady() {
 	for !handler.ready {
 

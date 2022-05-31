@@ -16,6 +16,8 @@ Methods:
 1. GetData
 2. updateTable
 */
+
+//FIXME : Have loaded serf agent addrs persistent
 type SerfClientHandler struct {
 	//Exported
 	Agents  []client.Member //Holds all agent names in cluster, initialized with few known agent names
@@ -25,18 +27,6 @@ type SerfClientHandler struct {
 	connectionExist bool
 }
 
-/*
-Type : Data
-Descirption : Holds data about each agent in the cluster
-
-type AgentData struct {
-	Name    string
-	Addr    string
-	IsAlive bool
-	Rport   string
-	Tags    map[string]string
-}
-*/
 func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) ([]string, error) {
 	//Get addrs and Rports and store it in AgentAddrs and
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
@@ -89,6 +79,7 @@ func (Handler *SerfClientHandler) InitData(configpath string) error {
 func (Handler *SerfClientHandler) connectAddr(addr string) (*client.RPCClient, error) {
 	return client.NewRPCClient(addr)
 }
+
 func (Handler *SerfClientHandler) connectRandomNode() (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
@@ -118,7 +109,7 @@ func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error
 		//Retry with different agent addr till getting connected
 		for i := 0; i < Handler.Retries; i++ {
 			if len(Handler.Agents) <= 0 {
-				return errors.New("no live agents")
+				return errors.New("No live serf agents")
 			}
 			Handler.agentConnection, err = Handler.connectRandomNode()
 			if err == nil {
@@ -130,7 +121,7 @@ func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error
 
 	//If no connection is made
 	if !Handler.connectionExist {
-		return errors.New("retry limit exceded") //&RetryLimitExceded{}
+		return errors.New("serf agent connection retry limit exceded")
 	}
 
 	//Get member data from connected agent

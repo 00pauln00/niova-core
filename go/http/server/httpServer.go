@@ -17,7 +17,7 @@ type HTTPServerHandler struct {
 	Addr                net.IP
 	Port                string
 	GETHandler          func([]byte, *[]byte) error
-	PUTHandler          func([]byte) error
+	PUTHandler          func([]byte, *[]byte) error
 	HTTPConnectionLimit int
 	PMDBServerConfig    map[string][]byte
 	//Non-exported
@@ -147,12 +147,13 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 			if handler.StatsRequired {
 				thisRequestStat.Status = "Processing"
 			}
-			err = handler.PUTHandler(requestBytes)
+			err = handler.PUTHandler(requestBytes, &result)
 		}
 		endTime := time.Now()
 		if err == nil {
 			success = true
 		}
+		//FIXME assign without conversion
 		fmt.Fprintf(writer, "%s", string(result))
 		elapsedTime := endTime.Sub(startTime)
 		log.Info(";Request time ;",checkSum, ";",startTime, ";",endTime, ";",elapsedTime)
