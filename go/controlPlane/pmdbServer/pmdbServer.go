@@ -32,6 +32,8 @@ import "C"
 
 var seqno = 0
 
+var encodingOverhead = 256
+
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
@@ -390,7 +392,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		reqStruct.Prefix = reqStruct.Prefix
 		log.Trace("The pmdServer sequence number received is - ", reqStruct.SeqNum)
 		readResult, lastKey, seqNum, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
-			int64(keyLen), reqStruct.Prefix, replyBufSize, reqStruct.SeqNum, colmfamily)
+			int64(keyLen), reqStruct.Prefix, (replyBufSize - int64(encodingOverhead)), reqStruct.SeqNum, colmfamily)
 		var cRead bool
 		if lastKey != "" {
 			cRead = true
@@ -425,3 +427,5 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	return replySize
 }
+
+
