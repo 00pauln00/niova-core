@@ -43,6 +43,15 @@ jobs:
     - name: Install Ansible
       run:  pip3 install ansible
 
+    - name:  Increase memlock limit
+      run: echo '*             hard memlock 65536' >> /etc/security/limits.conf
+
+    - name:  Dump /etc/security/limits.conf
+      run: cat /etc/security/limits.conf
+
+    - name:  Check memlock limit
+      run:   ulimit -l
+
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
