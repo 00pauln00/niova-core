@@ -41,7 +41,7 @@ type clientHandler struct {
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 	seqNum            uint64
-	valSize		  int
+	valSize           int
 }
 
 type request struct {
@@ -67,7 +67,7 @@ type opData struct {
 
 type multiWriteStatus struct {
 	Status int
-	Value interface{}
+	Value  interface{}
 }
 
 type nisdData struct {
@@ -92,6 +92,7 @@ func getKeyType(key string) string {
 	}
 	return ""
 }
+
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randSeq(n int, r *rand.Rand) string {
@@ -102,34 +103,82 @@ func randSeq(n int, r *rand.Rand) string {
 	return string(b)
 }
 
-func generateVdevRange(count int64, seed int64, valSize int) map[string]string {
-	kvMap := make(map[string]string)
+func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
+	kvMap := make(map[string][]byte)
 	r := rand.New(rand.NewSource(seed))
-	var nisdUUID []string
-
-	//NISD
+	var nodeUUID []string
+	nodeNisdMap := make(map[string][]string)
+	//Node UUID
+	/*
+		FailureDomain
+		Info
+		State
+		HostName
+		NISD-UUIDs
+	*/
 	noUUID := count
-        for i := int64(0); i < noUUID; i++ {
-                randUUID, _ := uuid.NewRandomFromReader(r)
-                nisdUUID = append(nisdUUID, randUUID.String())
-		prefix := "nisd." + randUUID.String()
+	for i := int64(0); i < noUUID; i++ {
+		randomNodeUUID, _ := uuid.NewRandomFromReader(r)
+		nodeUUID = append(nodeUUID, randomNodeUUID.String())
+		prefix := "node." + randomNodeUUID.String()
+		//FDK
 
-                noNode := count
-                nodePrefix := prefix + "."
-                for j := int64(0); j < noNode; j++ {
-                        randUUID, _ := uuid.NewRandomFromReader(r)
-                        partNodePrefix := nodePrefix + randUUID.String()
-                        kvMap[partNodePrefix] = randSeq(valSize, r)
-                }
+		//NISD-UUIDs
+		for j := int64(0); i < noUUID; i++ {
+			randUUID, _ := uuid.NewRandomFromReader(r)
+			nodeNisdMap[randomNodeUUID.String()] = append(nodeNisdMap[randomNodeUUID.String()], randUUID.String())
+		}
+		kvMap[prefix+".NISD-UUIDs"], _ = json.Marshal(nodeNisdMap[randomNodeUUID.String()])
 
-                configInfo := prefix + ".Config-Info"
-                kvMap[configInfo] = randSeq(valSize, r)
-        }
+	}
+	//NISD
+	/*
+		Node-UUID
+		Config-Info
+		Device-Type
+		Device-Path
+		Device-Status
+		Device-Info
+		Device-Size
+		Provisioned-Size
+		VDEV-UUID.Chunk-Number.Chunk-Component-UUID
+	*/
+	for node, nisds := range nodeNisdMap {
+		for _, nisd := range nisds {
+			prefix := "nisd." + nisd
+
+			//Node-UUID
+			kvMap[prefix+".Node-UUID"] = []byte(node)
+
+			for j := int64(0); j < noNode; j++ {
+				randUUID, _ := uuid.NewRandomFromReader(r)
+				partNodePrefix := nodePrefix + randUUID.String()
+				kvMap[partNodePrefix] = randSeq(valSize, r)
+			}
+
+			//Config-Info
+			configInfo := prefix + ".Config-Info"
+			kvMap[configInfo] = randSeq(valSize, r)
+
+			//VDEV-UUID
+			for j := int64(0); j < noNode; j++ {
+				randUUID, _ := uuid.NewRandomFromReader(r)
+				partNodePrefix := nodePrefix + randUUID.String()
+				kvMap[partNodePrefix] = randSeq(valSize, r)
+			}
+		}
+	}
 
 	//Vdev
+	/*
+		User-Token
+		Snapshots-Txn-Seqno
+		Chunk-Number.Chunk-Component-UUID
+	*/
 	for i := int64(0); i < noUUID; i++ {
-		prefix := "v." + nisdUUID[i]
-		kvMap[prefix] = randSeq(valSize, r)
+		randomVdevUUID, _ := uuid.NewRandomFromReader(r)
+		prefix := "v." + randomVdevUUID.String()
+		kvMap[prefix+".User-Token"] = randSeq(valSize, r)
 
 		noChunck := count
 		Cprefix := prefix + ".c"
@@ -137,13 +186,6 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string]string {
 			randUUID, _ := uuid.NewRandomFromReader(r)
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
 			kvMap[Chunckprefix] = randSeq(valSize, r)
-		}
-
-		noSeq := count
-		Sprefix := prefix + ".s"
-		for k := int64(0); k < noSeq; k++ {
-			SeqPrefix := Sprefix + strconv.Itoa(int(k))
-			kvMap[SeqPrefix] = randSeq(valSize, r)
 		}
 	}
 	return kvMap
@@ -312,8 +354,8 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 
 			//Request status filler
 			operationStat := multiWriteStatus{
-				Status : responseObj.Status,
-				Value: string(val),
+				Status: responseObj.Status,
+				Value:  string(val),
 			}
 			mut.Lock()
 			operationStatSlice[key] = &operationStat
@@ -386,7 +428,7 @@ func (clientObj *clientHandler) rangeRequest() {
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&rangeResponseObj)
 		if err != nil {
-			log.Error("Decoding error : ",err)
+			log.Error("Decoding error : ", err)
 			break
 		}
 
