@@ -475,7 +475,8 @@ func main() {
 
 	//Init service discovery
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
-		Timeout: 10,
+		HTTPRetry: 10,
+		SerfRetry: 5,
 	}
 	stop := make(chan int)
 	go func() {

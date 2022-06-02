@@ -19,7 +19,8 @@ import (
 
 type ServiceDiscoveryHandler struct {
 	//Exported
-	Timeout               time.Duration //No of seconds for a request time out and membership table refresh
+	HTTPRetry             int //No of seconds for a request time out and membership table refresh
+	SerfRetry	      int
 	ServerChooseAlgorithm int
 	UseSpecificServerName string
 
@@ -72,48 +73,41 @@ func getAddr(member *client.Member) (string, string) {
 func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) []byte {
 	var toSend client.Member
 	var response []byte
-	Qtimer := time.Tick(handler.Timeout * time.Second)
-retry:
-	for {
-		select {
-		case <-Qtimer:
-			log.Error("Request timed out at client side")
-			break retry
-		default:
-			var err error
-			var ok bool
 
-			//Get proxy node to send request to
-			toSend, err = handler.pickServer(toSend.Name)
-			if err != nil {
-				break retry
-			}
+	for i := 0; i < handler.HTTPRetry; i++ {
+		var err error
+		var ok bool
 
-			//Get proxy node's http address
-			addr, port := getAddr(&toSend)
-			response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
-			if err == nil {
-				ok = true
-			}
-
-			//Update request stat
-			if handler.IsStatRequired {
-				handler.statUpdateLock.Lock()
-				if _, present := handler.RequestDistribution[toSend.Name]; !present {
-					handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
-				}
-				handler.RequestDistribution[toSend.Name].updateStat(ok)
-				handler.statUpdateLock.Unlock()
-			}
-
-			//Break from retry loop
-			if ok {
-				break retry
-			}
-
-			log.Error("Error in HTTP request : ", err)
-			log.Trace("Retrying HTTP request with different proxy")
+		//Get proxy node to send request to
+		toSend, err = handler.pickServer(toSend.Name)
+		if err != nil {
+			break
 		}
+
+		//Get proxy node's http address
+		addr, port := getAddr(&toSend)
+		response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
+		if err == nil {
+			ok = true
+		}
+
+		//Update request stat
+		if handler.IsStatRequired {
+			handler.statUpdateLock.Lock()
+			if _, present := handler.RequestDistribution[toSend.Name]; !present {
+				handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
+			}
+			handler.RequestDistribution[toSend.Name].updateStat(ok)
+			handler.statUpdateLock.Unlock()
+		}
+
+		//Break from retry loop
+		if ok {
+			break
+		}
+
+		log.Error("Error in HTTP request : ", err)
+		log.Trace("Retrying HTTP request with different proxy")
 	}
 
 	if handler.IsStatRequired {
@@ -182,7 +176,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 }
 
 func (handler *ServiceDiscoveryHandler) initSerfClient(configPath string) error {
-	handler.serfClientObj.Retries = 5
+	handler.serfClientObj.Retries = handler.SerfRetry
 	return handler.serfClientObj.InitData(configPath)
 }
 
