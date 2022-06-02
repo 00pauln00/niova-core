@@ -95,12 +95,12 @@ func getKeyType(key string) string {
 
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-func randSeq(n int, r *rand.Rand) string {
+func randSeq(n int, r *rand.Rand) []byte {
 	b := make([]byte, n)
 	for i := range b {
 		b[i] = letters[r.Intn(len(letters))]
 	}
-	return string(b)
+	return b
 }
 
 func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
@@ -124,7 +124,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		//FDK
 
 		//NISD-UUIDs
-		for j := int64(0); i < noUUID; i++ {
+		for j := int64(0); j < noUUID; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
 			nodeNisdMap[randomNodeUUID.String()] = append(nodeNisdMap[randomNodeUUID.String()], randUUID.String())
 		}
@@ -150,20 +150,14 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 			//Node-UUID
 			kvMap[prefix+".Node-UUID"] = []byte(node)
 
-			for j := int64(0); j < noNode; j++ {
-				randUUID, _ := uuid.NewRandomFromReader(r)
-				partNodePrefix := nodePrefix + randUUID.String()
-				kvMap[partNodePrefix] = randSeq(valSize, r)
-			}
-
 			//Config-Info
 			configInfo := prefix + ".Config-Info"
 			kvMap[configInfo] = randSeq(valSize, r)
 
 			//VDEV-UUID
-			for j := int64(0); j < noNode; j++ {
+			for j := int64(0); j < noUUID; j++ {
 				randUUID, _ := uuid.NewRandomFromReader(r)
-				partNodePrefix := nodePrefix + randUUID.String()
+				partNodePrefix := prefix +"."+randUUID.String()
 				kvMap[partNodePrefix] = randSeq(valSize, r)
 			}
 		}
@@ -191,8 +185,8 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	return kvMap
 }
 
-func filterKVPrefix(kvMap map[string]string, prefix string) map[string]string {
-	resultantMap := make(map[string]string)
+func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
+	resultantMap := make(map[string][]byte)
 	for key, value := range kvMap {
 		if strings.HasPrefix(key, prefix) {
 			resultantMap[key] = value
@@ -360,7 +354,7 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 			mut.Lock()
 			operationStatSlice[key] = &operationStat
 			mut.Unlock()
-		}(key, []byte(val))
+		}(key, val)
 	}
 	wg.Wait()
 	clientObj.write2Json(operationStatSlice)
