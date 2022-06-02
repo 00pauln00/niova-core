@@ -400,15 +400,19 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 	}
 
 	err = handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui)
+
+	var responseObj requestResponseLib.KVResponse
 	if err != nil {
-		responseObj := requestResponseLib.KVResponse {
-			Status : 1,
-		}
-		var responseBuffer bytes.Buffer
-		enc := gob.NewEncoder(&responseBuffer)
-		err = enc.Encode(responseObj)
-		*response = responseBuffer.Bytes()
+		responseObj.Status = 1
+	} else {
+		responseObj.Status = 0
 	}
+
+	var responseBuffer bytes.Buffer
+	enc := gob.NewEncoder(&responseBuffer)
+	err = enc.Encode(responseObj)
+	*response = responseBuffer.Bytes()
+
 	return err
 }
 
