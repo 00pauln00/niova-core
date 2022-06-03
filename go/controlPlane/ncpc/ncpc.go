@@ -300,7 +300,7 @@ func (clientObj *clientHandler) singleWriteRequest() {
 	//Decode the response
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	_ = dec.Decode(&responseObj)
-	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", requestObj.Key, requestObj.Value, 0)
+	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
 	clientObj.write2Json(operationStat)
 }
 

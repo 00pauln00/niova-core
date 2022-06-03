@@ -81,6 +81,7 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 		//Get proxy node to send request to
 		toSend, err = handler.pickServer(toSend.Name)
 		if err != nil {
+			log.Error("Error while choosing proxy : ", err)
 			break
 		}
 
