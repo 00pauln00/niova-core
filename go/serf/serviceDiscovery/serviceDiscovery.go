@@ -78,14 +78,14 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 		var err error
 		var ok bool
 
-		//Get proxy node to send request to
+		//Get node to send request to
 		toSend, err = handler.pickServer(toSend.Name)
 		if err != nil {
-			log.Error("Error while choosing proxy : ", err)
+			log.Error("Error while choosing node : ", err)
 			break
 		}
 
-		//Get proxy node's http address
+		//Get node's http address
 		addr, port := getAddr(&toSend)
 		response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
 		if err == nil {
@@ -124,7 +124,7 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 }
 
 func isValidNodeData(member client.Member) bool {
-	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] == "PMDB_SERVER") {
+	if ((member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] != "PROXY")) {
 		return false
 	}
 	return true
@@ -140,7 +140,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 		var randomIndex int
 		for {
 			if len(handler.servers) == 0 {
-				return client.Member{}, errors.New("Proxies not available")
+				return nil, errors.New("Proxies not available")
 			}
 			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
@@ -153,15 +153,27 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 			}
 			handler.servers = removeIndex(handler.servers, randomIndex)
 		}
-
 		serverChoosen = &handler.servers[randomIndex]
+
 	case 1:
 		//Round-Robin based proxy chooser
-		handler.roundRobinPtr %= len(handler.servers)
-		serverChoosen = &handler.servers[handler.roundRobinPtr]
-		handler.roundRobinPtr += 1
+		for {
+			handler.roundRobinPtr %= len(handler.servers)
+			serverChoosen = &handler.servers[handler.roundRobinPtr]
+			if (isValidNodeData(handler.servers[randomIndex])) {
+				handler.roundRobinPtr += 1
+				break
+			}
+			handler.servers = removeIndex(handler.servers, randomIndex)
+			handler.roundRobinPtr += 1
+		}
+
 	case 2:
-		//Specific proxy chooser
+		//Specific node chooser
+		if handler.UseSpecificServerName == removeName {
+			log.Error("(Service discovery) Unable to connect with specified server")
+			return nil, errors.New("Unable to connect with specified server")
+		}
 		if handler.specificServer != nil {
 			serverChoosen = handler.specificServer
 			break
@@ -253,14 +265,6 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 }
 
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
-	/*
-	type PeerConfigData struct {
-		PeerUUID   compressionLib.StringUUID
-		IPAddr     compressionLib.StringIPV4
-		Port       uint16
-		ClientPort uint16
-	}
-	*/
 	PMDBServerConfigMap := make(map[string]PumiceDBCommon.PeerConfigData)
 	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
