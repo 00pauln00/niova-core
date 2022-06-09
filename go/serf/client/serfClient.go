@@ -17,24 +17,24 @@ Methods:
 2. updateTable
 */
 
-//FIXME : Have loaded serf agent addrs persistent
 type SerfClientHandler struct {
 	//Exported
 	Agents  []client.Member //Holds all agent names in cluster, initialized with few known agent names
 	Retries int             //No of retries to connect with any agent
 	//Un-exported
-	agentConnection *client.RPCClient
-	connectionExist bool
+	loadedGossipNodes	[]string
+	agentConnection		*client.RPCClient
+	connectionExist		bool
 }
 
-func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) ([]string, error) {
+func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	//Get addrs and Rports and store it in AgentAddrs and
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
-		return nil, err
+		return err
 	}
 	reader, err := os.OpenFile(serfConfigPath, os.O_RDONLY, 0444)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	filescanner := bufio.NewScanner(reader)
 	filescanner.Split(bufio.ScanLines)
@@ -43,7 +43,8 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) ([]string
 		input := strings.Split(filescanner.Text(), " ")
 		addrs = append(addrs, input[1]+":"+input[3])
 	}
-	return addrs, nil
+	Handler.loadedGossipNodes = addrs
+	return nil
 }
 
 /*
@@ -55,13 +56,14 @@ Description : Get configuration data from config file
 */
 func (Handler *SerfClientHandler) InitData(configpath string) error {
 	var connectClient *client.RPCClient
-	addrs, err := Handler.getConfigData(configpath)
+	err := Handler.getConfigData(configpath)
 	if err != nil {
 		return err
 	}
-	for _, addr := range addrs {
+	for _, addr := range Handler.loadedGossipNodes {
 		connectClient, err = Handler.connectAddr(addr)
 		if err == nil {
+			fmt.Println(err)
 			break
 		}
 	}
