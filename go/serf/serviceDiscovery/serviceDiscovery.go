@@ -140,7 +140,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 		var randomIndex int
 		for {
 			if len(handler.servers) == 0 {
-				return nil, errors.New("(Service discovery) Server not available")
+				return client.Member{}, errors.New("(Service discovery) Server not available")
 			}
 			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
@@ -159,15 +159,15 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 		//Round-Robin based proxy chooser
 		for {
 			if len(handler.servers) == 0 {
-                                return nil, errors.New("(Service discovery) Server not available")
+                                return client.Member{}, errors.New("(Service discovery) Server not available")
                         }
 			handler.roundRobinPtr %= len(handler.servers)
 			serverChoosen = &handler.servers[handler.roundRobinPtr]
-			if (isValidNodeData(handler.servers[randomIndex])) {
+			if (isValidNodeData(handler.servers[handler.roundRobinPtr])) {
 				handler.roundRobinPtr += 1
 				break
 			}
-			handler.servers = removeIndex(handler.servers, randomIndex)
+			handler.servers = removeIndex(handler.servers, handler.roundRobinPtr)
 			handler.roundRobinPtr += 1
 		}
 
@@ -175,7 +175,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 		//Specific node chooser
 		if handler.UseSpecificServerName == removeName {
 			log.Error("(Service discovery) Unable to connect with specified server")
-			return nil, errors.New("Unable to connect with specified server")
+			return client.Member{}, errors.New("Unable to connect with specified server")
 		}
 		if handler.specificServer != nil {
 			serverChoosen = handler.specificServer
