@@ -8,8 +8,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
@@ -22,6 +20,9 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 type proxyHandler struct {
@@ -52,6 +53,7 @@ type proxyHandler struct {
 	limit         string
 	requireStat   string
 	httpServerObj httpServer.HTTPServerHandler
+	buckets		  int64
 }
 
 type PeerConfigData struct {
@@ -79,6 +81,7 @@ func (handler *proxyHandler) getCmdLineArgs() {
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.StringVar(&handler.requireStat, "s", "0", "If required server stat about request enter 1")
+	flag.Int64Var(&handler.buckets, "b", 24, "If required server stat, number of buckets in historgam")
 	flag.Parse()
 }
 
@@ -230,6 +233,7 @@ func (handler *proxyHandler) start_HTTPServer() error {
 	handler.httpServerObj.GETHandler = handler.ReadCallBack
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
 	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
+	handler.httpServerObj.Buckets = handler.buckets
 	if handler.requireStat != "0" {
 		handler.httpServerObj.StatsRequired = true
 	}
