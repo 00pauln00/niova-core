@@ -98,6 +98,13 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 int
 PmdbClose(void);
 
+rocksdb_readoptions_t *
+PmdbGetRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui,
+                            int *ret_err);
+
+void
+PmdbPutRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui);
+
 rocksdb_t *
 PmdbGetRocksDB(void);
 

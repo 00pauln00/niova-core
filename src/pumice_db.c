@@ -31,6 +31,39 @@ static void *pmdb_user_data = NULL;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
+struct pmdb_range_read_req
+{
+    struct raft_net_client_user_id      prrq_rncui; // Must be the first memb!
+    const rocksdb_snapshot_t*           prrq_snap;
+    rocksdb_readoptions_t*              prrq_roptions;
+    int64_t                             prrq_term;
+    struct timespec                     prrq_create_time;
+    REF_TREE_ENTRY(pmdb_range_read_req) prrq_rtentry;
+    STAILQ_ENTRY(pmdb_range_read_req)   prrq_lentry;
+};
+
+STAILQ_HEAD(pmdb_range_read_req_queue, pmdb_range_read_req);
+
+static int
+pmdb_range_read_req_cmp(const struct pmdb_range_read_req *a,
+                        const struct pmdb_range_read_req *b)
+{
+    return raft_net_client_user_id_cmp(&a->prrq_rncui,
+                                       &b->prrq_rncui);
+}
+
+REF_TREE_HEAD(pmdb_range_read_req_tree, pmdb_range_read_req);
+REF_TREE_GENERATE(pmdb_range_read_req_tree, pmdb_range_read_req, prrq_rtentry,
+                  pmdb_range_read_req_cmp);
+
+static struct pmdb_range_read_req_tree pmdb_range_read_req;
+static int64_t pmdb_range_read_tree_term = -1; // All entries in the range read
+                                               // should be from same term value.
+
+static int64_t pmdb_current_term = -1;
+
+static struct pmdb_range_read_req_queue prrq_queue;
+
 struct pmdb_cowr_sub_app
 {
     struct raft_net_client_user_id    pcwsa_rncui; // Must be the first memb!
@@ -507,6 +540,7 @@ pmdb_cowr_sub_app_release_all(void)
     pmdb_cowr_tree_term = -1;
 }
 
+
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
                          const char *caller_func, const int caller_lineno)
@@ -582,6 +616,150 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
         pmdb_cowr_tree_term = current_term;
 
     return subapp;
+}
+
+static struct pmdb_range_read_req *
+pmdb_range_read_req_construct(const struct pmdb_range_read_req *in, void *arg)
+{
+    (void)arg;
+
+    if (!in)
+        return NULL;
+
+    struct pmdb_range_read_req *rr =
+        niova_calloc_can_fail((size_t)1, sizeof(struct pmdb_range_read_req));
+
+    if (!rr)
+        return NULL;
+
+    raft_net_client_user_id_copy(&rr->prrq_rncui, &in->prrq_rncui);
+
+    rr->prrq_term = in->prrq_term;
+    rr->prrq_roptions = rocksdb_readoptions_create();
+    rr->prrq_snap = rocksdb_create_snapshot(PmdbGetRocksDB());
+    rocksdb_readoptions_set_snapshot(in->prrq_roptions, rr->prrq_snap);
+
+    // Get the timestamp for snapshot creation.
+    niova_realtime_coarse_clock(&rr->prrq_create_time);
+    STAILQ_INSERT_TAIL(&prrq_queue, rr, prrq_lentry);
+
+    return rr;
+}
+
+static int
+pmdb_range_read_req_destruct(struct pmdb_range_read_req *destroy, void *arg)
+{
+    (void)arg;
+
+    if (!destroy)
+        return -EINVAL;
+
+    //release snapshot
+    rocksdb_readoptions_set_snapshot(destroy->prrq_roptions, NULL);
+    rocksdb_readoptions_destroy(destroy->prrq_roptions);
+    rocksdb_release_snapshot(PmdbGetRocksDB(), destroy->prrq_snap);
+
+    // Remove the entry from request list as well
+    STAILQ_REMOVE(&prrq_queue, destroy, pmdb_range_read_req, prrq_lentry);
+
+    niova_free(destroy);
+
+    return 0;
+}
+
+static void
+pmdb_range_read_req_put(struct pmdb_range_read_req *rr,
+                        const char *caller_func, const int caller_lineno)
+{
+    SIMPLE_LOG_MSG(LL_DEBUG, "%s:%d", caller_func, caller_lineno);
+    RT_PUT(pmdb_range_read_req_tree, &pmdb_range_read_req, rr);
+}
+
+static void
+pmdb_range_read_req_release_all(void)
+{
+    struct pmdb_range_read_req *rr =
+        REF_TREE_MIN(pmdb_range_read_req_tree, &pmdb_range_read_req,
+                     pmdb_range_read_req, prrq_rtentry);
+
+    while (rr)
+    {
+        STAILQ_REMOVE(&prrq_queue, rr, pmdb_range_read_req, prrq_lentry);
+
+        pmdb_range_read_req_put(rr, __func__, __LINE__);
+        pmdb_range_read_req_put(rr, __func__, __LINE__);
+
+        rr = REF_TREE_MIN(pmdb_range_read_req_tree, &pmdb_range_read_req,
+                          pmdb_range_read_req, prrq_rtentry);
+    }
+    pmdb_range_read_tree_term = -1;
+}
+
+static struct pmdb_range_read_req *
+pmdb_range_read_req_lookup(const struct raft_net_client_user_id *rncui,
+                           const char *caller_func, const int caller_lineno)
+{
+    NIOVA_ASSERT(rncui);
+
+    struct pmdb_range_read_req *rr =
+        RT_LOOKUP(pmdb_range_read_req_tree, &pmdb_range_read_req,
+                  (const struct pmdb_range_read_req *)rncui);
+
+    if (rr)
+        SIMPLE_LOG_MSG(LL_DEBUG, "%s:%d", caller_func, caller_lineno);
+
+    return rr;
+}
+
+static struct pmdb_range_read_req *
+pmdb_range_read_req_add(const struct raft_net_client_user_id *rncui,
+                        const int64_t current_term,
+                        int *ret_error,
+                        const char *caller_func, const int caller_lineno)
+{
+    NIOVA_ASSERT(rncui);
+
+
+    // If there are any stale entries in range read req RB tree, release them all.
+    if (pmdb_range_read_tree_term != current_term)
+        pmdb_range_read_req_release_all();
+
+    if (pmdb_range_read_tree_term == -1)
+        pmdb_range_read_tree_term = current_term;
+
+    NIOVA_ASSERT(pmdb_range_read_tree_term == current_term);
+
+    struct pmdb_range_read_req prrq = {0};
+    raft_net_client_user_id_copy(&prrq.prrq_rncui, rncui);
+    prrq.prrq_term = pmdb_range_read_tree_term;
+
+    int error = 0;
+    *ret_error = 0;
+
+    prrq.prrq_snap = NULL;
+
+    struct pmdb_range_read_req *rr_req = RT_GET_ADD(pmdb_range_read_req_tree,
+                                                    &pmdb_range_read_req, &prrq,
+                                                    &error);
+
+    if (!rr_req)
+    {
+        LOG_MSG(LL_WARN, "Can not add RB entry pmdb_range_read_req_add(): %s",
+                strerror(-error));
+
+        return NULL;
+    }
+
+    if (error) // The entry already existed
+    {
+        PMDB_STR_DEBUG(LL_WARN, &rr_req->prrq_rncui, "Snapshot for RNCUI already exists: %p", rr_req->prrq_snap);
+        *ret_error = error;
+        return rr_req;
+    }
+
+    PMDB_STR_DEBUG(LL_WARN, &rr_req->prrq_rncui, "Snapshot for RNCUI added successfully");
+
+    return rr_req;
 }
 
 /**
@@ -737,6 +915,11 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
 
     if (!rrc || pmdb_rncui_is_read_any(&pmdb_req->pmdbrm_user_id))   // Ok.  Continue to read operation
     {
+        // FIXME Get the current term value here.
+        if (rncr->rncr_current_term != pmdb_current_term)
+            pmdb_current_term = rncr->rncr_current_term;
+
+        // If there are stale range read snapshot, destroy those.
         rrc = pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
                                  pmdb_req->pmdbrm_data,
                                  pmdb_req->pmdbrm_data_size,
@@ -846,6 +1029,22 @@ pmdb_init_net_client_request_from_obj(
 
     raft_net_client_request_handle_set_reply_info(
         rncr, pmdb_obj->pmdb_obj_client_uuid, pmdb_obj->pmdb_obj_msg_id);
+}
+
+static raft_server_sm_apply_cb_t
+pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(
+    struct raft_net_client_request_handle *rncr)
+{
+    NIOVA_ASSERT(rncr);
+
+    if (!rncr->rncr_is_leader)
+    {
+        /*
+         * remove any stale range read snapshot entries from the tree
+         */
+        pmdb_range_read_req_release_all();
+    }
+    return;
 }
 
 static raft_server_sm_apply_cb_t
@@ -983,6 +1182,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
             pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
         }
         pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
+        pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(rncr);
     }
 
 
@@ -1076,6 +1276,36 @@ pmdb_handle_verify(const struct raft_net_client_user_id *app_id,
             raft_net_client_user_id_cmp(app_id, pah->pah_rncui)) ? -EINVAL : 0;
 }
 
+static void
+pmdb_ref_tree_release_all(void)
+{
+    pmdb_cowr_sub_app_release_all();
+    pmdb_range_read_req_release_all();
+}
+
+void
+PmdbPutRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui)
+{
+    struct pmdb_range_read_req *prrq;
+
+    prrq = pmdb_range_read_req_lookup(rncui, __func__, __LINE__);
+    // One put is for lookup above and another put is the actual reference drop.
+    pmdb_range_read_req_put(prrq, __func__, __LINE__);
+    pmdb_range_read_req_put(prrq, __func__, __LINE__);
+}
+
+rocksdb_readoptions_t *
+PmdbGetRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui,
+                            int *ret_err)
+{
+    struct pmdb_range_read_req *prrq;
+
+    prrq = pmdb_range_read_req_add(rncui, pmdb_current_term, ret_err, __func__,
+                                   __LINE__);
+
+    return prrq->prrq_roptions;
+}
+
 /**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'
  *    context only.  This call is used by the application to stage KVs for
@@ -1132,6 +1362,11 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     REF_TREE_INIT(&pmdb_cowr_sub_apps, pmdb_cowr_sub_app_construct,
                   pmdb_cowr_sub_app_destruct, NULL);
 
+    REF_TREE_INIT(&pmdb_range_read_req, pmdb_range_read_req_construct,
+                  pmdb_range_read_req_destruct, NULL);
+
+    STAILQ_INIT(&prrq_queue);
+
     int rc = raft_server_rocksdb_add_cf_name(
         &pmdbCFT, PMDB_COLUMN_FAMILY_NAME,
         strnlen(PMDB_COLUMN_FAMILY_NAME, RAFT_ROCKSDB_MAX_CF_NAME_LEN));
@@ -1154,7 +1389,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
-                                  pmdb_cowr_sub_app_release_all,
+                                  pmdb_ref_tree_release_all,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 
