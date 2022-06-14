@@ -33,7 +33,7 @@ static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
 struct pmdb_range_read_req
 {
-    struct raft_net_client_user_id      prrq_rncui; // Must be the first memb!
+    uint64_t                            prrq_seq; // Must be the first memb!
     const rocksdb_snapshot_t*           prrq_snap;
     rocksdb_readoptions_t*              prrq_roptions;
     int64_t                             prrq_term;
@@ -48,8 +48,7 @@ static int
 pmdb_range_read_req_cmp(const struct pmdb_range_read_req *a,
                         const struct pmdb_range_read_req *b)
 {
-    return raft_net_client_user_id_cmp(&a->prrq_rncui,
-                                       &b->prrq_rncui);
+    return a->prrq_seq == b->prrq_seq ? 0 : 1;
 }
 
 REF_TREE_HEAD(pmdb_range_read_req_tree, pmdb_range_read_req);
@@ -632,12 +631,12 @@ pmdb_range_read_req_construct(const struct pmdb_range_read_req *in, void *arg)
     if (!rr)
         return NULL;
 
-    raft_net_client_user_id_copy(&rr->prrq_rncui, &in->prrq_rncui);
+    rr->prrq_seq = in->prrq_seq;
 
     rr->prrq_term = in->prrq_term;
     rr->prrq_roptions = rocksdb_readoptions_create();
     rr->prrq_snap = rocksdb_create_snapshot(PmdbGetRocksDB());
-    rocksdb_readoptions_set_snapshot(in->prrq_roptions, rr->prrq_snap);
+    rocksdb_readoptions_set_snapshot(rr->prrq_roptions, rr->prrq_snap);
 
     // Get the timestamp for snapshot creation.
     niova_realtime_coarse_clock(&rr->prrq_create_time);
@@ -684,9 +683,6 @@ pmdb_range_read_req_release_all(void)
 
     while (rr)
     {
-        STAILQ_REMOVE(&prrq_queue, rr, pmdb_range_read_req, prrq_lentry);
-
-        pmdb_range_read_req_put(rr, __func__, __LINE__);
         pmdb_range_read_req_put(rr, __func__, __LINE__);
 
         rr = REF_TREE_MIN(pmdb_range_read_req_tree, &pmdb_range_read_req,
@@ -696,14 +692,12 @@ pmdb_range_read_req_release_all(void)
 }
 
 static struct pmdb_range_read_req *
-pmdb_range_read_req_lookup(const struct raft_net_client_user_id *rncui,
+pmdb_range_read_req_lookup(const uint64_t seq_number,
                            const char *caller_func, const int caller_lineno)
 {
-    NIOVA_ASSERT(rncui);
-
     struct pmdb_range_read_req *rr =
         RT_LOOKUP(pmdb_range_read_req_tree, &pmdb_range_read_req,
-                  (const struct pmdb_range_read_req *)rncui);
+                  (const struct pmdb_range_read_req *)&seq_number);
 
     if (rr)
         SIMPLE_LOG_MSG(LL_DEBUG, "%s:%d", caller_func, caller_lineno);
@@ -712,14 +706,11 @@ pmdb_range_read_req_lookup(const struct raft_net_client_user_id *rncui,
 }
 
 static struct pmdb_range_read_req *
-pmdb_range_read_req_add(const struct raft_net_client_user_id *rncui,
+pmdb_range_read_req_add(const uint64_t seq_number,
                         const int64_t current_term,
                         int *ret_error,
                         const char *caller_func, const int caller_lineno)
 {
-    NIOVA_ASSERT(rncui);
-
-
     // If there are any stale entries in range read req RB tree, release them all.
     if (pmdb_range_read_tree_term != current_term)
         pmdb_range_read_req_release_all();
@@ -730,7 +721,7 @@ pmdb_range_read_req_add(const struct raft_net_client_user_id *rncui,
     NIOVA_ASSERT(pmdb_range_read_tree_term == current_term);
 
     struct pmdb_range_read_req prrq = {0};
-    raft_net_client_user_id_copy(&prrq.prrq_rncui, rncui);
+    prrq.prrq_seq = seq_number;
     prrq.prrq_term = pmdb_range_read_tree_term;
 
     int error = 0;
@@ -752,12 +743,17 @@ pmdb_range_read_req_add(const struct raft_net_client_user_id *rncui,
 
     if (error) // The entry already existed
     {
-        PMDB_STR_DEBUG(LL_WARN, &rr_req->prrq_rncui, "Snapshot for RNCUI already exists: %p", rr_req->prrq_snap);
+        pmdb_range_read_req_put(rr_req, __func__, __LINE__);
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "Snapshot for sequence number (%lu) already exists: %p",
+                       rr_req->prrq_seq,
+                       rr_req->prrq_snap);
         *ret_error = error;
         return rr_req;
     }
 
-    PMDB_STR_DEBUG(LL_WARN, &rr_req->prrq_rncui, "Snapshot for RNCUI added successfully");
+    SIMPLE_LOG_MSG(LL_WARN, "Snapshot for sequence number (%lu) added successfully",
+                   rr_req->prrq_seq);
 
     return rr_req;
 }
@@ -1284,23 +1280,23 @@ pmdb_ref_tree_release_all(void)
 }
 
 void
-PmdbPutRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui)
+PmdbPutRoptionsWithSnapshot(const uint64_t seq_number)
 {
     struct pmdb_range_read_req *prrq;
 
-    prrq = pmdb_range_read_req_lookup(rncui, __func__, __LINE__);
+    prrq = pmdb_range_read_req_lookup(seq_number, __func__, __LINE__);
     // One put is for lookup above and another put is the actual reference drop.
     pmdb_range_read_req_put(prrq, __func__, __LINE__);
     pmdb_range_read_req_put(prrq, __func__, __LINE__);
 }
 
 rocksdb_readoptions_t *
-PmdbGetRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui,
+PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
                             int *ret_err)
 {
     struct pmdb_range_read_req *prrq;
 
-    prrq = pmdb_range_read_req_add(rncui, pmdb_current_term, ret_err, __func__,
+    prrq = pmdb_range_read_req_add(seq_number, pmdb_current_term, ret_err, __func__,
                                    __LINE__);
 
     return prrq->prrq_roptions;

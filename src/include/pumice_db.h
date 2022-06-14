@@ -99,11 +99,10 @@ int
 PmdbClose(void);
 
 rocksdb_readoptions_t *
-PmdbGetRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui,
-                            int *ret_err);
+PmdbGetRoptionsWithSnapshot(const uint64_t seq_number, int *ret_err);
 
 void
-PmdbPutRoptionsWithSnapshot(const struct raft_net_client_user_id *rncui);
+PmdbPutRoptionsWithSnapshot(const uint64_t seq_number);
 
 rocksdb_t *
 PmdbGetRocksDB(void);
