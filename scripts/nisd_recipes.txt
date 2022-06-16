@@ -4,3 +4,4 @@ nisd_dpblk_tracking_with_overwrites_and_chunk_merging_version3.yml
 nisd_out_of_order_metablock_sync.yml
 nisd_multiple_writes_into_single_metablock.yml
 nisd_stale_cme_removal.yml
+nisd_merge_yields_to_read_operation.yml
