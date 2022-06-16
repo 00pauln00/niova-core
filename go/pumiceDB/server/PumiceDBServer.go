@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	log "github.com/sirupsen/logrus"
-	"math"
 	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
@@ -74,6 +73,11 @@ func GoToCSize_t(glen int64) C.size_t {
 /* Typecast C size_t to Go int64 */
 func CToGoInt64(cvalue C.size_t) int64 {
 	return int64(cvalue)
+}
+
+/* Typecast C uint64_t to Go uint64*/
+func CToGoUint64(cvalue C.ulong) uint64 {
+	return uint64(cvalue)
 }
 
 /* Type cast C char * to Go string */
@@ -343,17 +347,21 @@ func pmdbFetchRange(key string, key_len int64,
 	var mapSize int
 	var retErr C.int
 	var lastKey string
+	var retSeqNum C.ulong
 	var itr *C.rocksdb_iterator_t
+	var ropts *C.rocksdb_readoptions_t
 
 	log.Trace("RangeQuery - Key passed is: ", key, " Prefix passed is : ", prefix,
 		" Seq No passed is : ", seqNum)
 
-	// Check if it's the first iteration of the range loop
-	if seqNum == math.MaxUint64 {
-		seqNum = uint64(C.rocksdb_get_latest_sequence_number(C.PmdbGetRocksDB()))
+	// get the readoptions and create/fetch seq num for snapshot
+	ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retErr, &retSeqNum)
+	if seqNum != CToGoUint64(retSeqNum){
+		seqNum = CToGoUint64(retSeqNum)
 	}
+	snapDestroyed = false
 
-	ropts := C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retErr)
+	// create iterator
 	cf := GoToCString(go_cf)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr = C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)

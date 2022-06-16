@@ -398,8 +398,8 @@ func (clientObj *clientHandler) rangeRequest() {
 
 	Operation = "rangeRead"
 	// get sequence number from arguments
-	//seqNum = clientObj.seqNum
-	//Keep calling range request till ContinueRead is true
+	seqNum := clientObj.seqNum
+	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string]string)
 	var count int
 	startTime := time.Now()
@@ -408,8 +408,10 @@ func (clientObj *clientHandler) rangeRequest() {
 		requestObj.Prefix = Prefix
 		requestObj.Key = Key
 		requestObj.Operation = Operation
-		//requestObj.SeqNum = seqNum
+		requestObj.SeqNum = seqNum
 		var requestByte bytes.Buffer
+
+		// encode the requestObj
 		enc := gob.NewEncoder(&requestByte)
 		err := enc.Encode(requestObj)
 		if err != nil {
@@ -419,19 +421,23 @@ func (clientObj *clientHandler) rangeRequest() {
 
 		//Send the range request
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+
+		// decode the responseObj
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&rangeResponseObj)
 		if err != nil {
 			log.Error("Decoding error : ", err)
 			break
 		}
-
+		// copy result to global result variable
 		maps.Copy(resultMap, rangeResponseObj.ResultMap)
 		count += 1
 		if !rangeResponseObj.ContinueRead {
 			break
 		}
+		// set key and seqNum for next iteration of range request
 		Key = rangeResponseObj.Key
+		seqNum = rangeResponseObj.SeqNum
 	}
 	endTime := time.Now()
 	//Get status from response
@@ -439,7 +445,8 @@ func (clientObj *clientHandler) rangeRequest() {
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
 	genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
-	filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)
+	tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
+	filteredMap := filterKVPrefix(genKVMap, tPrefix)
 	compare := reflect.DeepEqual(resultMap, filteredMap)
 	if compare {
 		fmt.Println("Got expected output")
