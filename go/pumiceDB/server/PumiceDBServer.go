@@ -345,7 +345,6 @@ func pmdbFetchRange(key string, key_len int64,
 	var snapDestroyed bool
 	var resultMap = make(map[string]string)
 	var mapSize int
-	var retErr C.int
 	var lastKey string
 	var retSeqNum C.ulong
 	var itr *C.rocksdb_iterator_t
@@ -355,7 +354,7 @@ func pmdbFetchRange(key string, key_len int64,
 		" Seq No passed is : ", seqNum)
 
 	// get the readoptions and create/fetch seq num for snapshot
-	ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retErr, &retSeqNum)
+	ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retSeqNum)
 	if seqNum != CToGoUint64(retSeqNum){
 		seqNum = CToGoUint64(retSeqNum)
 	}
