@@ -25,6 +25,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 #define PMDB_COLUMN_FAMILY_NAME "pumiceDB_private"
 
+#define PMDB_SNAPSHOT_MAX_OPEN_TIME_SEC 60
 
 static const struct PmdbAPI *pmdbApi;
 static void *pmdb_user_data = NULL;
@@ -675,6 +676,27 @@ pmdb_range_read_req_put(struct pmdb_range_read_req *rr,
 }
 
 static void
+pmdb_range_read_release_old_snapshots(void)
+{
+    struct pmdb_range_read_req *rr, *tmp_rr;
+    struct timespec now;
+    niova_realtime_coarse_clock(&now);
+
+    STAILQ_FOREACH_SAFE(rr, &prrq_queue, prrq_lentry, tmp_rr)
+    {
+        /* If snapshot was open for more than 60secs, release the snapshot */
+        if ((now.tv_sec - rr->prrq_create_time.tv_sec) >=
+             PMDB_SNAPSHOT_MAX_OPEN_TIME_SEC)
+        {
+             pmdb_range_read_req_put(rr, __func__, __LINE__);
+        }
+        else
+            // List sorted with time.
+            break;
+    }
+}
+
+static void
 pmdb_range_read_req_release_all(void)
 {
     struct pmdb_range_read_req *rr =
@@ -1008,6 +1030,9 @@ pmdb_sm_handler_client_rw_op(struct raft_net_client_request_handle *rncr)
     default:
         break;
     }
+    // Check if there are any stale or really old snapshot in the range read
+    // tree and release them.
+    pmdb_range_read_release_old_snapshots();
 
     return -EOPNOTSUPP;
 }
@@ -1292,12 +1317,17 @@ PmdbPutRoptionsWithSnapshot(const uint64_t seq_number)
 
 rocksdb_readoptions_t *
 PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
-                            int *ret_err)
+                            int *ret_err,
+                            uint64_t *ret_seq)
 {
     struct pmdb_range_read_req *prrq;
 
     prrq = pmdb_range_read_req_add(seq_number, pmdb_current_term, ret_err, __func__,
                                    __LINE__);
+
+    // Return the sequence numner if the new snapshot needs to be created as
+    // original snapshot was destroyed.
+    *ret_seq = prrq->prrq_seq;
 
     return prrq->prrq_roptions;
 }

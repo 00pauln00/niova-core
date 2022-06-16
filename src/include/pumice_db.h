@@ -99,7 +99,8 @@ int
 PmdbClose(void);
 
 rocksdb_readoptions_t *
-PmdbGetRoptionsWithSnapshot(const uint64_t seq_number, int *ret_err);
+PmdbGetRoptionsWithSnapshot(const uint64_t seq_number, int *ret_err,
+                            uint64_t *ret_seq);
 
 void
 PmdbPutRoptionsWithSnapshot(const uint64_t seq_number);
