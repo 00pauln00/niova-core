@@ -730,7 +730,6 @@ pmdb_range_read_req_lookup(const uint64_t seq_number,
 static struct pmdb_range_read_req *
 pmdb_range_read_req_add(const uint64_t seq_number,
                         const int64_t current_term,
-                        int *ret_error,
                         const char *caller_func, const int caller_lineno)
 {
     // If there are any stale entries in range read req RB tree, release them all.
@@ -747,7 +746,6 @@ pmdb_range_read_req_add(const uint64_t seq_number,
     prrq.prrq_term = pmdb_range_read_tree_term;
 
     int error = 0;
-    *ret_error = 0;
 
     prrq.prrq_snap = NULL;
 
@@ -770,7 +768,6 @@ pmdb_range_read_req_add(const uint64_t seq_number,
                        "Snapshot for sequence number (%lu) already exists: %p",
                        rr_req->prrq_seq,
                        rr_req->prrq_snap);
-        *ret_error = error;
         return rr_req;
     }
 
@@ -1317,7 +1314,6 @@ PmdbPutRoptionsWithSnapshot(const uint64_t seq_number)
 
 rocksdb_readoptions_t *
 PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
-                            int *ret_err,
                             uint64_t *ret_seq)
 {
     struct pmdb_range_read_req *prrq = NULL;
@@ -1331,7 +1327,7 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
     {
         // Get the latest sequence number and create snapshot against it.
         uint64_t new_seq = rocksdb_get_latest_sequence_number(PmdbGetRocksDB());
-        prrq = pmdb_range_read_req_add(new_seq, pmdb_current_term, ret_err, __func__,
+        prrq = pmdb_range_read_req_add(new_seq, pmdb_current_term, __func__,
                                        __LINE__);
     }
 
