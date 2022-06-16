@@ -1320,10 +1320,20 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
                             int *ret_err,
                             uint64_t *ret_seq)
 {
-    struct pmdb_range_read_req *prrq;
+    struct pmdb_range_read_req *prrq = NULL;
 
-    prrq = pmdb_range_read_req_add(seq_number, pmdb_current_term, ret_err, __func__,
-                                   __LINE__);
+
+    // Check if snapshot with the given seq_number is already created.
+    if (seq_number >= 0)
+        prrq = pmdb_range_read_req_lookup(seq_number, __func__, __LINE__);
+
+    if (!prrq)
+    {
+        // Get the latest sequence number and create snapshot against it.
+        uint64_t new_seq = rocksdb_get_latest_sequence_number(PmdbGetRocksDB());
+        prrq = pmdb_range_read_req_add(new_seq, pmdb_current_term, ret_err, __func__,
+                                       __LINE__);
+    }
 
     // Return the sequence numner if the new snapshot needs to be created as
     // original snapshot was destroyed.
