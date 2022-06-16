@@ -3,6 +3,7 @@ package serfClient
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"math/rand"
 	"os"
 	"strings"
