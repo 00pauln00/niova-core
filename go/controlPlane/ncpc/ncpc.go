@@ -169,6 +169,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		Snapshots-Txn-Seqno
 		Chunk-Number.Chunk-Component-UUID
 	*/
+	// FIXME Use the vdev uuid from above loop
 	for i := int64(0); i < noUUID; i++ {
 		randomVdevUUID, _ := uuid.NewRandomFromReader(r)
 		prefix := "v." + randomVdevUUID.String()
@@ -272,41 +273,17 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	return nisdDataMap
 }
 
-func (clientObj *clientHandler) singleWriteRequest() {
-	var requestObj requestResponseLib.KVRequest
-	var responseObj requestResponseLib.KVResponse
-	if clientObj.requestValue != "NULL" {
-		requestObj.Value = []byte(clientObj.requestValue)
+
+func (clientObj *clientHandler) write() {
+	kvMap := make(map[string][]byte)
+	// Fill kvMap with key/val from user or generate keys/vals
+	if clientObj.count > 1 {
+		kvMap = generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 	} else {
-		value := make(map[string]string)
-		value["IP_ADDR"] = clientObj.addr
-		value["Port"] = clientObj.port
-		valueByte, _ := json.Marshal(value)
-		requestObj.Value = valueByte
+		kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
 	}
-
-	requestObj.Rncui = clientObj.rncui
-	requestObj.Key = clientObj.requestKey
-	requestObj.Operation = clientObj.operation
-	var requestByte bytes.Buffer
-	enc := gob.NewEncoder(&requestByte)
-	enc.Encode(requestObj)
-
-	//send the write request
-	startTime := time.Now()
-	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-	endTime := time.Now()
-
-	//Decode the response
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	_ = dec.Decode(&responseObj)
-	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
-	clientObj.write2Json(operationStat)
-}
-
-func (clientObj *clientHandler) multipleWriteRequest() {
-	kvMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 	operationStatSlice := make(map[string]*multiWriteStatus)
+	var operationStat interface{}
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	// Create a int channel of fixed size to enqueue max requests
@@ -336,8 +313,9 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 			}
 
 			//Send the write request
+			startTime := time.Now()
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-
+			endTime := time.Now()
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 			err = dec.Decode(&responseObj)
@@ -347,20 +325,25 @@ func (clientObj *clientHandler) multipleWriteRequest() {
 			}
 
 			//Request status filler
-			operationStat := multiWriteStatus{
-				Status: responseObj.Status,
-				Value:  string(val),
+			if clientObj.count == 1 {
+				operationStat = fillOperationData(startTime, endTime, responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+			} else {
+				operationStatMulti := multiWriteStatus{
+					Status: responseObj.Status,
+					Value:  string(val),
+				}
+				mut.Lock()
+				operationStatSlice[key] = &operationStatMulti
+				operationStat = operationStatSlice
+				mut.Unlock()
 			}
-			mut.Lock()
-			operationStatSlice[key] = &operationStat
-			mut.Unlock()
 		}(key, val)
 	}
 	wg.Wait()
-	clientObj.write2Json(operationStatSlice)
+	clientObj.write2Json(operationStat)
 }
 
-func (clientObj *clientHandler) readRequest() {
+func (clientObj *clientHandler) read() {
 	var requestObj requestResponseLib.KVRequest
 	var responseObj requestResponseLib.KVResponse
 
@@ -389,7 +372,7 @@ func (clientObj *clientHandler) readRequest() {
 	clientObj.write2Json(operationStat)
 }
 
-func (clientObj *clientHandler) rangeRequest() {
+func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
 	var requestObj requestResponseLib.KVRequest
 
@@ -421,7 +404,10 @@ func (clientObj *clientHandler) rangeRequest() {
 
 		//Send the range request
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-
+		if len(responseBytes) == 0 {
+			log.Error("Key not found")
+			break
+		}
 		// decode the responseObj
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&rangeResponseObj)
@@ -500,22 +486,18 @@ func main() {
 	case "rw":
 		log.Info("Defaulting to write and read")
 		clientObj.operation = "write"
-		clientObj.singleWriteRequest()
+		clientObj.write()
 		clientObj.operation = "read"
-		clientObj.readRequest()
+		clientObj.read()
 
 	case "write":
-		if clientObj.count == 1 {
-			clientObj.singleWriteRequest()
-		} else {
-			clientObj.multipleWriteRequest()
-		}
+		clientObj.write()
 
 	case "read":
 		if !isRangeRequest(clientObj.requestKey) {
-			clientObj.readRequest()
+			clientObj.read()
 		} else {
-			clientObj.rangeRequest()
+			clientObj.rangeRead()
 		}
 
 	case "config":

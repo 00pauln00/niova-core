@@ -377,7 +377,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	if reqStruct.Operation == "read" {
 
-		log.Trace("pmdServer single read - ", reqStruct.SeqNum)
+		log.Trace("read - ", reqStruct.SeqNum)
 		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
 			int64(keyLen), colmfamily)
 			singleReadMap := make(map[string]string)
@@ -390,7 +390,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	} else if reqStruct.Operation == "rangeRead" {
 		reqStruct.Prefix = reqStruct.Prefix
-		log.Trace("The pmdServer sequence number received is - ", reqStruct.SeqNum)
+		log.Trace("sequence number - ", reqStruct.SeqNum)
 		readResult, lastKey, seqNum, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
 			int64(keyLen), reqStruct.Prefix, (replyBufSize - int64(encodingOverhead)), reqStruct.SeqNum, colmfamily)
 		var cRead bool
