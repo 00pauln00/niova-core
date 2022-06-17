@@ -222,16 +222,14 @@ func (cli *clientHandler) write2Json(toJson interface{}) {
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
-func fillOperationData(startTime *time.Time, endTime *time.Time, status int, operation string, key string, value interface{}, seqNo uint64) *opData {
+func fillOperationData(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
 	requestMeta := request{
 		Opcode:    operation,
 		Key:       key,
 		Value:     value,
-		Timestamp: *startTime,
 	}
 
 	responseMeta := response{
-		Timestamp:      *endTime,
 		SequenceNumber: seqNo,
 		Status:         status,
 		ResponseValue:  value,
@@ -240,7 +238,6 @@ func fillOperationData(startTime *time.Time, endTime *time.Time, status int, ope
 	operationObj := opData{
 		RequestData:  requestMeta,
 		ResponseData: responseMeta,
-		TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
 	}
 	return &operationObj
 }
@@ -325,7 +322,7 @@ func (clientObj *clientHandler) write() {
 
 			//Request status filler
 			if clientObj.count == 1 {
-				operationStat = fillOperationData(nil, nil, responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+				operationStat = fillOperationData(responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
 			} else {
 				operationStatMulti := multiWriteStatus{
 					Status: responseObj.Status,
@@ -365,7 +362,7 @@ func (clientObj *clientHandler) read() {
 		log.Error("Decoding error : ", err)
 	}
 
-	operationStat := fillOperationData(nil, nil, responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
+	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
 }
 
@@ -426,7 +423,7 @@ func (clientObj *clientHandler) rangeRead() {
 		seqNum = rangeResponseObj.SeqNum
 	}
 	//Get status from response
-	operationStat := fillOperationData(nil, nil, 0, "range", requestObj.Key, resultMap, 0)
+	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, 0)
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
 	if reqStatus == nil {
