@@ -229,7 +229,6 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	rc := C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
 
 	if rc != 0 {
-		var errno syscall.Errno
 		return fmt.Errorf("PmdbObjPut(): %d", rc)
 	}
 
