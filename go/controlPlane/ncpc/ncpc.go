@@ -222,16 +222,16 @@ func (cli *clientHandler) write2Json(toJson interface{}) {
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
-func fillOperationData(startTime time.Time, endTime time.Time, status int, operation string, key string, value interface{}, seqNo uint64) *opData {
+func fillOperationData(startTime *time.Time, endTime *time.Time, status int, operation string, key string, value interface{}, seqNo uint64) *opData {
 	requestMeta := request{
 		Opcode:    operation,
 		Key:       key,
 		Value:     value,
-		Timestamp: startTime,
+		Timestamp: *startTime,
 	}
 
 	responseMeta := response{
-		Timestamp:      endTime,
+		Timestamp:      *endTime,
 		SequenceNumber: seqNo,
 		Status:         status,
 		ResponseValue:  value,
@@ -314,9 +314,7 @@ func (clientObj *clientHandler) write() {
 			}
 
 			//Send the write request
-			startTime := time.Now()
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-			endTime := time.Now()
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 			err = dec.Decode(&responseObj)
@@ -327,7 +325,7 @@ func (clientObj *clientHandler) write() {
 
 			//Request status filler
 			if clientObj.count == 1 {
-				operationStat = fillOperationData(startTime, endTime, responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+				operationStat = fillOperationData(nil, nil, responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
 			} else {
 				operationStatMulti := multiWriteStatus{
 					Status: responseObj.Status,
@@ -358,9 +356,7 @@ func (clientObj *clientHandler) read() {
 	}
 
 	//Send the request
-	startTime := time.Now()
 	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-	endTime := time.Now()
 
 	//Decode the request
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
@@ -369,7 +365,7 @@ func (clientObj *clientHandler) read() {
 		log.Error("Decoding error : ", err)
 	}
 
-	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
+	operationStat := fillOperationData(nil, nil, responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
 }
 
@@ -387,7 +383,6 @@ func (clientObj *clientHandler) rangeRead() {
 	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string]string)
 	var count int
-	startTime := time.Now()
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
 		requestObj.Prefix = Prefix
@@ -430,9 +425,8 @@ func (clientObj *clientHandler) rangeRead() {
 		Key = rangeResponseObj.Key
 		seqNum = rangeResponseObj.SeqNum
 	}
-	endTime := time.Now()
 	//Get status from response
-	operationStat := fillOperationData(startTime, endTime, 0, "range", requestObj.Key, resultMap, 0)
+	operationStat := fillOperationData(nil, nil, 0, "range", requestObj.Key, resultMap, 0)
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
 	if reqStatus == nil {
