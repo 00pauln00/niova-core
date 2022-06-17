@@ -18,3 +18,9 @@ type KVResponse struct {
 	Prefix       string
 	SeqNum	     uint64
 }
+
+type LookoutRequest struct {
+	NISD	[16]byte
+	Cmd	string
+}
+
