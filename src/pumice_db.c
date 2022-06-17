@@ -38,12 +38,12 @@ struct pmdb_range_read_req
     const rocksdb_snapshot_t*           prrq_snap;
     rocksdb_readoptions_t*              prrq_roptions;
     int64_t                             prrq_term;
-    struct timespec                     prrq_create_time;
+    struct timespec                     prrq_snap_atime; // snapshot access time
     REF_TREE_ENTRY(pmdb_range_read_req) prrq_rtentry;
-    STAILQ_ENTRY(pmdb_range_read_req)   prrq_lentry;
+    CIRCLEQ_ENTRY(pmdb_range_read_req)  prrq_lentry;
 };
 
-STAILQ_HEAD(pmdb_range_read_req_queue, pmdb_range_read_req);
+CIRCLEQ_HEAD(pmdb_range_read_req_queue, pmdb_range_read_req);
 
 static int
 pmdb_range_read_req_cmp(const struct pmdb_range_read_req *a,
@@ -640,8 +640,8 @@ pmdb_range_read_req_construct(const struct pmdb_range_read_req *in, void *arg)
     rocksdb_readoptions_set_snapshot(rr->prrq_roptions, rr->prrq_snap);
 
     // Get the timestamp for snapshot creation.
-    niova_realtime_coarse_clock(&rr->prrq_create_time);
-    STAILQ_INSERT_TAIL(&prrq_queue, rr, prrq_lentry);
+    niova_realtime_coarse_clock(&rr->prrq_snap_atime);
+    CIRCLEQ_INSERT_TAIL(&prrq_queue, rr, prrq_lentry);
 
     return rr;
 }
@@ -660,7 +660,7 @@ pmdb_range_read_req_destruct(struct pmdb_range_read_req *destroy, void *arg)
     rocksdb_release_snapshot(PmdbGetRocksDB(), destroy->prrq_snap);
 
     // Remove the entry from request list as well
-    STAILQ_REMOVE(&prrq_queue, destroy, pmdb_range_read_req, prrq_lentry);
+    CIRCLEQ_REMOVE(&prrq_queue, destroy, prrq_lentry);
 
     niova_free(destroy);
 
@@ -682,10 +682,10 @@ pmdb_range_read_release_old_snapshots(void)
     struct timespec now;
     niova_realtime_coarse_clock(&now);
 
-    STAILQ_FOREACH_SAFE(rr, &prrq_queue, prrq_lentry, tmp_rr)
+    CIRCLEQ_FOREACH_SAFE(rr, &prrq_queue, prrq_lentry, tmp_rr)
     {
         /* If snapshot was open for more than 60secs, release the snapshot */
-        if ((now.tv_sec - rr->prrq_create_time.tv_sec) >=
+        if ((now.tv_sec - rr->prrq_snap_atime.tv_sec) >=
              PMDB_SNAPSHOT_MAX_OPEN_TIME_SEC)
         {
              pmdb_range_read_req_put(rr, __func__, __LINE__);
@@ -722,7 +722,16 @@ pmdb_range_read_req_lookup(const uint64_t seq_number,
                   (const struct pmdb_range_read_req *)&seq_number);
 
     if (rr)
+    {
         SIMPLE_LOG_MSG(LL_DEBUG, "%s:%d", caller_func, caller_lineno);
+        /*
+         * As snapshot is being reused, move it to prrq_queue tail and change
+         * its access time.
+         */
+        niova_realtime_coarse_clock(&rr->prrq_snap_atime);
+        CIRCLEQ_REMOVE(&prrq_queue, rr, prrq_lentry);
+        CIRCLEQ_INSERT_TAIL(&prrq_queue, rr, prrq_lentry);
+    }
 
     return rr;
 }
@@ -1397,7 +1406,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     REF_TREE_INIT(&pmdb_range_read_req, pmdb_range_read_req_construct,
                   pmdb_range_read_req_destruct, NULL);
 
-    STAILQ_INIT(&prrq_queue);
+    CIRCLEQ_INIT(&prrq_queue);
 
     int rc = raft_server_rocksdb_add_cf_name(
         &pmdbCFT, PMDB_COLUMN_FAMILY_NAME,
