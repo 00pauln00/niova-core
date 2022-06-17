@@ -86,3 +86,7 @@ jobs:
       run: ps auxfw
     - name: cpu
       run: cat /proc/cpuinfo
+    - name: ulimit
+      run: ulimit -a
+    - name: limits.conf
+      run: cat /etc/security/limits.conf

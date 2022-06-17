@@ -1522,7 +1522,7 @@ raft_client_incorporate_ack_measurement(struct raft_client_instance *rci,
 
     const long long elapsed_msec =
         (long long)(timespec_2_msec(&rci->rci_last_msg_recvd) -
-                    timespec_2_msec(&rcrh->rcrh_last_send));
+                    timespec_2_msec(&rcrh->rcrh_submitted));
 
     if (elapsed_msec < 0 || elapsed_msec > (3600 * 1000 * 24))
     {
