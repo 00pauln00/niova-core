@@ -6,6 +6,7 @@ import (
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
+	"errors"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -374,6 +375,7 @@ func (clientObj *clientHandler) read() {
 
 func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
+	var reqStatus error
 	var requestObj requestResponseLib.KVRequest
 
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
@@ -398,6 +400,7 @@ func (clientObj *clientHandler) rangeRead() {
 		enc := gob.NewEncoder(&requestByte)
 		err := enc.Encode(requestObj)
 		if err != nil {
+			reqStatus = err
 			log.Error("Encoding error : ", err)
 			break
 		}
@@ -405,13 +408,15 @@ func (clientObj *clientHandler) rangeRead() {
 		//Send the range request
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
 		if len(responseBytes) == 0 {
-			log.Error("Key not found")
+			reqStatus = errors.New("Key not found")
+			log.Error(reqStatus)
 			break
 		}
 		// decode the responseObj
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&rangeResponseObj)
 		if err != nil {
+			reqStatus = err
 			log.Error("Decoding error : ", err)
 			break
 		}
@@ -430,16 +435,20 @@ func (clientObj *clientHandler) rangeRead() {
 	operationStat := fillOperationData(startTime, endTime, 0, "range", requestObj.Key, resultMap, 0)
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
-	genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
-	tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
-	filteredMap := filterKVPrefix(genKVMap, tPrefix)
-	compare := reflect.DeepEqual(resultMap, filteredMap)
-	if compare {
-		fmt.Println("Got expected output")
-	} else {
-		fmt.Println("Range read failure")
+	if reqStatus == nil {
+		fmt.Println("Generate the Data for read validation")
+		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+
+		// Get the expected data for read operation and compare against the output.
+		tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
+		filteredMap := filterKVPrefix(genKVMap, tPrefix)
+
+		compare := reflect.DeepEqual(resultMap, filteredMap)
+		if !compare {
+			fmt.Println("Range verification read failure")
+		}
+		fmt.Println("The range query was completed in", count, "iterations")
 	}
-	fmt.Println("Called range query", count, "times")
 }
 
 func isRangeRequest(requestKey string) bool {
