@@ -207,6 +207,9 @@ niova_io_iovs_map_consumed2(const struct iovec *src, struct iovec *dest,
         (src > dest && src < &dest[num_dest_iovs]))
         return -EINVAL;
 
+    if (max_bytes <= 0 && num_src_iovs > num_dest_iovs)
+        return -EOVERFLOW;
+
     ssize_t xdest_niovs = 0;
     ssize_t bytes_remaining = max_bytes;
 
@@ -216,7 +219,7 @@ niova_io_iovs_map_consumed2(const struct iovec *src, struct iovec *dest,
         {
             const size_t idx = xdest_niovs++;
 
-            if (idx >= xdest_niovs)
+            if (idx >= num_dest_iovs)
                 break;
 
             dest[idx].iov_len = src[i].iov_len - bytes_already_consumed;
