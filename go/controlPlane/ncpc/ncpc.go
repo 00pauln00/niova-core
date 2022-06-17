@@ -206,7 +206,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "j", "json_output", "Path along with file name for the resultant json file")
-	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request")
+	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request / Lookout uuid")
 	flag.IntVar(&handler.count, "n", 1, "Number of key-value write count")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
@@ -617,7 +617,31 @@ func main() {
 			f.WriteString(string(fileData))
 			break
 		}
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+
+	case "ProxyStat":
+                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+                clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
+                responseBytes := clientObj.clientAPIObj.Request(nil, "/stat", false)
+                ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
+
+        case "LookoutInfo":
+                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+                clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
+                //Request obj
+                var requestObj requestResponseLib.LookoutRequest
+
+                //Parse UUID
+                requestObj.NISD, _ = uuid.Parse(clientObj.requestKey)
+                requestObj.Cmd = clientObj.requestValue
+                var requestByte bytes.Buffer
+                enc := gob.NewEncoder(&requestByte)
+                err := enc.Encode(requestObj)
+                if err != nil {
+                        log.Info("Encoding error")
+                }
+                responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+                clientObj.write2Json(responseBytes)
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
