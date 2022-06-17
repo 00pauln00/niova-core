@@ -10,6 +10,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
+	"strings"
 	"github.com/google/uuid"
 )
 
@@ -225,7 +226,7 @@ func (cmd *epCommand) loadOutfile() {
 
 // Makes a 'unique' filename for the command and adds it to the map
 func (cmd *epCommand) prep() {
-	cmd.fn = "ncsiep_" + strconv.FormatInt(int64(os.Getpid()), 10) +
+	cmd.fn = "lookout_ncsiep_" + strconv.FormatInt(int64(os.Getpid()), 10) +
 		"_" + strconv.FormatInt(int64(time.Now().Nanosecond()), 10)
 
 	cmd.cmd = cmd.cmd + "\nOUTFILE /" + cmd.fn + "\n"
@@ -355,17 +356,18 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 }
 
 func (ep *NcsiEP) removeFiles(folder string) {
-	files, err := ioutil.ReadDir(folder)
-	if err != nil {
-		return
-	}
-	//Clear after an hr
-	checkTime := ep.LastClear.Local().Add(time.Hour)
-	for _, file := range files {
-		if time.Now().After(checkTime) {
-			ep.LastClear = time.Now()
-			os.Remove(folder+file.Name())
-		}
+        files, err := ioutil.ReadDir(folder)
+        if err != nil {
+                return
+        }
+
+        for _, file := range files {
+                if strings.Contains(file.Name(),"lookout") {
+                        checkTime := file.ModTime().Local().Add(time.Hour)
+                        if time.Now().After(checkTime) {
+                                os.Remove(folder+file.Name())
+                        }
+                }
         }
 }
 
