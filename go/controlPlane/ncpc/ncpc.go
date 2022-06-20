@@ -108,6 +108,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	kvMap := make(map[string][]byte)
 	r := rand.New(rand.NewSource(seed))
 	var nodeUUID []string
+	var vdevUUID []string
 	nodeNisdMap := make(map[string][]string)
 	//Node UUID
 	/*
@@ -122,7 +123,6 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		randomNodeUUID, _ := uuid.NewRandomFromReader(r)
 		nodeUUID = append(nodeUUID, randomNodeUUID.String())
 		prefix := "node." + randomNodeUUID.String()
-		//FDK
 
 		//NISD-UUIDs
 		for j := int64(0); j < noUUID; j++ {
@@ -144,8 +144,8 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		Provisioned-Size
 		VDEV-UUID.Chunk-Number.Chunk-Component-UUID
 	*/
-	for node, nisds := range nodeNisdMap {
-		for _, nisd := range nisds {
+	for _, node := range nodeUUID {
+		for _, nisd := range nodeNisdMap[node] {
 			prefix := "nisd." + nisd
 
 			//Node-UUID
@@ -160,6 +160,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 				randUUID, _ := uuid.NewRandomFromReader(r)
 				partNodePrefix := prefix +"."+randUUID.String()
 				kvMap[partNodePrefix] = randSeq(valSize, r)
+				vdevUUID = append(vdevUUID, randUUID.String())
 			}
 		}
 	}
@@ -170,10 +171,8 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		Snapshots-Txn-Seqno
 		Chunk-Number.Chunk-Component-UUID
 	*/
-	// FIXME Use the vdev uuid from above loop
-	for i := int64(0); i < noUUID; i++ {
-		randomVdevUUID, _ := uuid.NewRandomFromReader(r)
-		prefix := "v." + randomVdevUUID.String()
+	for i := int64(0); i < int64(len(vdevUUID)); i++ {
+		prefix := "v." + vdevUUID[i]
 		kvMap[prefix+".User-Token"] = randSeq(valSize, r)
 
 		noChunck := count
