@@ -82,18 +82,6 @@ func usage() {
 	os.Exit(0)
 }
 
-func getKeyType(key string) string {
-	switch key[:2] {
-	case "vd":
-		return "vdevKey"
-	case "ni":
-		return "nisdKey"
-	case "no":
-		return "nodeKey"
-	}
-	return ""
-}
-
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randSeq(n int, r *rand.Rand) []byte {
