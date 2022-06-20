@@ -16,9 +16,11 @@ import (
 	client "github.com/hashicorp/serf/client"
 )
 
+
 type ServiceDiscoveryHandler struct {
 	//Exported
-	Timeout               time.Duration //No of seconds for a request time out and membership table refresh
+	HTTPRetry             int //No of seconds for a request time out and membership table refresh
+	SerfRetry	      int
 	ServerChooseAlgorithm int
 	UseSpecificServerName string
 
@@ -33,8 +35,8 @@ type ServiceDiscoveryHandler struct {
 	servers           []client.Member
 	serfClientObj     serfClient.SerfClientHandler
 	serfUpdateLock    sync.Mutex
-	tableLock         sync.Mutex
-	requestUpdateLock sync.Mutex
+	agentTableLock    sync.Mutex
+	statUpdateLock    sync.Mutex
 	ready             bool
 	specificServer    *client.Member
 	roundRobinPtr     int
@@ -71,40 +73,42 @@ func getAddr(member *client.Member) (string, string) {
 func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) []byte {
 	var toSend client.Member
 	var response []byte
-	Qtimer := time.Tick(handler.Timeout * time.Second)
-time:
-	for {
-		select {
-		case <-Qtimer:
-			log.Error("Request timed at client side")
-			break time
-		default:
-			var err error
-			var ok bool
-			toSend, err = handler.pickServer(toSend.Name)
-			if err != nil {
-				break time
-			}
 
-			addr, port := getAddr(&toSend)
-			response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
-			if err == nil {
-				ok = true
-			}
-			if handler.IsStatRequired {
-				handler.requestUpdateLock.Lock()
-				if _, present := handler.RequestDistribution[toSend.Name]; !present {
-					handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
-				}
-				handler.RequestDistribution[toSend.Name].updateStat(ok)
-				handler.requestUpdateLock.Unlock()
-			}
+	for i := 0; i < handler.HTTPRetry; i++ {
+		var err error
+		var ok bool
 
-			if ok {
-				break time
-			}
-			log.Error(err)
+		//Get node to send request to
+		toSend, err = handler.pickServer(toSend.Name)
+		if err != nil {
+			log.Error("Error while choosing node : ", err)
+			break
 		}
+
+		//Get node's http address
+		addr, port := getAddr(&toSend)
+		response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
+		if err == nil {
+			ok = true
+		}
+
+		//Update request stat
+		if handler.IsStatRequired {
+			handler.statUpdateLock.Lock()
+			if _, present := handler.RequestDistribution[toSend.Name]; !present {
+				handler.RequestDistribution[toSend.Name] = &ServerRequestStat{}
+			}
+			handler.RequestDistribution[toSend.Name].updateStat(ok)
+			handler.statUpdateLock.Unlock()
+		}
+
+		//Break from retry loop
+		if ok {
+			break
+		}
+
+		log.Error("Error in HTTP request : ", err)
+		log.Trace("Retrying HTTP request with different proxy")
 	}
 
 	if handler.IsStatRequired {
@@ -120,24 +124,23 @@ time:
 }
 
 func isValidNodeData(member client.Member) bool {
-	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] == "PMDB_SERVER") {
+	if ((member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] != "PROXY")) {
 		return false
 	}
 	return true
 }
 
 func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Member, error) {
-	handler.tableLock.Lock()
-	defer handler.tableLock.Unlock()
+	handler.agentTableLock.Lock()
+	defer handler.agentTableLock.Unlock()
 	var serverChoosen *client.Member
 	switch handler.ServerChooseAlgorithm {
 	case 0:
-		//Random
+		//Random proxy chooser
 		var randomIndex int
 		for {
 			if len(handler.servers) == 0 {
-				log.Error("(CLIENT API MODULE) no alive servers")
-				return client.Member{}, errors.New("No alive servers")
+				return client.Member{}, errors.New("(Service discovery) Server not available")
 			}
 			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
@@ -150,15 +153,30 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 			}
 			handler.servers = removeIndex(handler.servers, randomIndex)
 		}
-
 		serverChoosen = &handler.servers[randomIndex]
+
 	case 1:
-		//Round-Robin
-		handler.roundRobinPtr %= len(handler.servers)
-		serverChoosen = &handler.servers[handler.roundRobinPtr]
-		handler.roundRobinPtr += 1
+		//Round-Robin based proxy chooser
+		for {
+			if len(handler.servers) == 0 {
+                                return client.Member{}, errors.New("(Service discovery) Server not available")
+                        }
+			handler.roundRobinPtr %= len(handler.servers)
+			serverChoosen = &handler.servers[handler.roundRobinPtr]
+			if (isValidNodeData(handler.servers[handler.roundRobinPtr])) {
+				handler.roundRobinPtr += 1
+				break
+			}
+			handler.servers = removeIndex(handler.servers, handler.roundRobinPtr)
+			handler.roundRobinPtr += 1
+		}
+
 	case 2:
-		//Specific
+		//Specific node chooser
+		if handler.UseSpecificServerName == removeName {
+			log.Error("(Service discovery) Unable to connect with specified server")
+			return client.Member{}, errors.New("Unable to connect with specified server")
+		}
 		if handler.specificServer != nil {
 			serverChoosen = handler.specificServer
 			break
@@ -174,7 +192,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 }
 
 func (handler *ServiceDiscoveryHandler) initSerfClient(configPath string) error {
-	handler.serfClientObj.Retries = 5
+	handler.serfClientObj.Retries = handler.SerfRetry
 	return handler.serfClientObj.InitData(configPath)
 }
 
@@ -186,17 +204,18 @@ comparison:
 			log.Info("stopping member updater")
 			break comparison
 		default:
-			//Since we do update it continuesly, we persist the connection
+			//Get latest membership data
 			handler.serfUpdateLock.Lock()
 			err := handler.serfClientObj.UpdateSerfClient(true)
 			handler.serfUpdateLock.Unlock()
 			if err != nil {
-				log.Error("Unable to connect with agents")
 				return err
 			}
-			handler.tableLock.Lock()
+
+			//Update local agent table
+			handler.agentTableLock.Lock()
 			handler.servers = handler.serfClientObj.Agents
-			handler.tableLock.Unlock()
+			handler.agentTableLock.Unlock()
 			handler.ready = true
 			time.Sleep(1 * time.Second)
 		}
@@ -209,25 +228,15 @@ func (handler *ServiceDiscoveryHandler) StartClientAPI(stop chan int, configPath
 	var err error
 	handler.RequestDistribution = make(map[string]*ServerRequestStat)
 
-	//Retry initial serf connect for 5 times
-	for i := 0; i < 5; i++ {
-		err = handler.initSerfClient(configPath)
-		if err == nil {
-			break
-		}
-		//Wait for 3 seconds before retrying the connection
-		log.Info("Retrying serf agent connection : ", i)
-		time.Sleep(3 * time.Second)
-	}
-	//Return if error persists
+	//Connect with serf agent to get mesh details
+	err = handler.initSerfClient(configPath)
 	if err != nil {
-		log.Error("Error while initializing the serf client ", err)
 		return err
 	}
 
+	//Search mesh for proxy to handle KV request
 	err = handler.memberSearcher(stop)
 	if err != nil {
-		log.Error("Error while starting the membership updater ", err)
 		return err
 	}
 	return err
@@ -259,14 +268,6 @@ func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string
 }
 
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
-	/*
-	type PeerConfigData struct {
-		PeerUUID   compressionLib.StringUUID
-		IPAddr     compressionLib.StringIPV4
-		Port       uint16
-		ClientPort uint16
-	}
-	*/
 	PMDBServerConfigMap := make(map[string]PumiceDBCommon.PeerConfigData)
 	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
@@ -291,6 +292,7 @@ func (handler *ServiceDiscoveryHandler) GetLeader() string {
 	return agent.Tags["Leader UUID"]
 }
 
+//Wait till connect
 func (handler *ServiceDiscoveryHandler) TillReady() {
 	for !handler.ready {
 

@@ -228,7 +228,8 @@ func main() {
 	log.Info("----START OF EXECUTION---")
 	//Init niovakv client API
 	clientObj.clientAPIObj = &serviceDiscovery.ServiceDiscoveryHandler{
-		Timeout: 10,
+		HTTPRetry : 10,
+		SerfRetry : 5,
 	}
 	stop := make(chan int)
 	go func() {
