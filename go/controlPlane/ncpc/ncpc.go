@@ -82,18 +82,6 @@ func usage() {
 	os.Exit(0)
 }
 
-func getKeyType(key string) string {
-	switch key[:2] {
-	case "vd":
-		return "vdevKey"
-	case "ni":
-		return "nisdKey"
-	case "no":
-		return "nodeKey"
-	}
-	return ""
-}
-
 const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 func randSeq(n int, r *rand.Rand) []byte {
@@ -414,15 +402,15 @@ func (clientObj *clientHandler) rangeRead() {
 		// copy result to global result variable
 		maps.Copy(resultMap, rangeResponseObj.ResultMap)
 		count += 1
+		seqNum = rangeResponseObj.SeqNum
 		if !rangeResponseObj.ContinueRead {
 			break
 		}
 		// set key and seqNum for next iteration of range request
 		Key = rangeResponseObj.Key
-		seqNum = rangeResponseObj.SeqNum
 	}
 	//Get status from response
-	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, 0)
+	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, seqNum)
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
 	if reqStatus == nil {
