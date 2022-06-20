@@ -141,6 +141,80 @@ iov_test(void)
 }
 
 static int
+iov_test_num_to_meet_size2(void)
+{
+    NIOVA_ASSERT(
+        niova_io_iovs_num_to_meet_size2(NULL, 0, 0, 0, NULL, NULL) == -EINVAL);
+
+    struct iovec iov = {0};
+    NIOVA_ASSERT(
+        niova_io_iovs_num_to_meet_size2(&iov, 0, 0, 0, NULL, NULL) == -EINVAL);
+
+    NIOVA_ASSERT(
+        niova_io_iovs_num_to_meet_size2(&iov, 1, 0, 0, 0, NULL) == -EINVAL);
+
+    off_t ret_idx = -1;
+
+    iov.iov_len = 2;
+    size_t prune_cnt = 0;
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     &iov, 1, 1, 0, &ret_idx, &prune_cnt) == 1);
+    NIOVA_ASSERT(prune_cnt == 1);
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     &iov, 1, 1, 1, &ret_idx, &prune_cnt) == 1);
+    FATAL_IF(prune_cnt != 0, "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
+
+    // bytes_already_consumed + requested_size exceeds total
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     &iov, 1, 1, 2, &ret_idx, &prune_cnt) == -EOVERFLOW);
+
+    size_t iovX_len = 10;
+    struct iovec iovX[2] = {[0].iov_len = 10, [1].iov_len = 10};
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     iovX, 2, 1, 0, &ret_idx, &prune_cnt) == 1);
+    FATAL_IF(prune_cnt != 9, "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     iovX, 2, 1, 0, &ret_idx, &prune_cnt) == 1);
+    FATAL_IF(prune_cnt != 9, "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
+
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     iovX, 2, 1, 8, &ret_idx, &prune_cnt) == 1);
+    FATAL_IF(prune_cnt != 1, "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
+
+    // Move to the 2nd byte in the 1st iov
+    size_t r = iovX_len - (iovX_len - 1);
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     iovX, 2, 1, 0, &ret_idx, &prune_cnt) == 1);
+    FATAL_IF(prune_cnt != (iovX_len - 1), "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
+
+    // Move to the 2nd byte in the 2nd iov
+    r = iovX_len + 1;
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
+                     iovX, 2, r, 0, &ret_idx, &prune_cnt) == 2);
+    FATAL_IF(prune_cnt != iovX_len - 1, "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != (r / iovX_len), "ret_idx=%ld", ret_idx);
+
+
+    int rc = niova_io_iovs_num_to_meet_size2(iovX, 2, 1, (2 * iovX_len) - 1,
+                                             &ret_idx, &prune_cnt);
+    FATAL_IF(rc != 2, "rc=%d", rc);
+    FATAL_IF(prune_cnt != 0, "prune_cnt=%lu", prune_cnt);
+    FATAL_IF(ret_idx != 1, "ret_idx=%ld", ret_idx);
+
+    return 0;
+}
+
+static int
 iov_test_num_to_meet_size(void)
 {
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(NULL, 0, 0, NULL) == -EINVAL);
@@ -154,13 +228,13 @@ iov_test_num_to_meet_size(void)
     NIOVA_ASSERT(niova_io_iovs_map_consumed(&iov, NULL, 0, 0, 0) == -EINVAL);
     NIOVA_ASSERT(niova_io_iovs_map_consumed(&iov, &iov, 1, 0, 0) == -EINVAL);
 
-    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == -EINVAL);
     NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 0) == 1);
 
     iov.iov_len = 2;
     size_t prune_cnt = 0;
 
-    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == 1);
+    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 0, NULL) == -EINVAL);
     NIOVA_ASSERT(niova_io_iovs_num_already_consumed(&iov, 1, 0) == 0);
 
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size(&iov, 1, 1, &prune_cnt) == 1 &&
@@ -366,6 +440,7 @@ main(void)
     NIOVA_ASSERT(!iov_test_basic());
     NIOVA_ASSERT(!iov_test());
     NIOVA_ASSERT(!iov_test_num_to_meet_size());
+    NIOVA_ASSERT(!iov_test_num_to_meet_size2());
     NIOVA_ASSERT(!iov_test_map_consumed());
     NIOVA_ASSERT(!iov_test_map_consumed2());
     NIOVA_ASSERT(!iov_test_copy_from_iovs());

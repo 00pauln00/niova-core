@@ -68,7 +68,7 @@ static inline ssize_t
 niova_io_iovs_num_to_meet_size(const struct iovec *iovs, const size_t iovlen,
                                size_t requested_size, size_t *prune_cnt)
 {
-    if (!iovs || !iovlen)
+    if (!iovs || !iovlen || !requested_size)
         return -EINVAL;
 
     size_t tally = 0;
@@ -80,6 +80,40 @@ niova_io_iovs_num_to_meet_size(const struct iovec *iovs, const size_t iovlen,
         {
             if (prune_cnt)
                 *prune_cnt = tally - requested_size;
+
+            return (ssize_t)(i + 1);
+        }
+    }
+
+    return -EOVERFLOW;
+}
+
+static inline ssize_t
+niova_io_iovs_num_to_meet_size2(const struct iovec *iovs, const size_t iovlen,
+                                size_t requested_size,
+                                size_t bytes_already_consumed,
+                                off_t *ret_idx, size_t *prune_cnt)
+{
+    if (!iovs || !iovlen || !requested_size)
+        return -EINVAL;
+
+    ssize_t tally = -bytes_already_consumed;
+    const ssize_t my_rq_size = requested_size;
+    size_t idx = 0;
+
+    for (size_t i = 0; i < iovlen; i++)
+    {
+        tally += iovs[i].iov_len;
+        if (tally > 0)
+            idx = i;
+
+        if (tally >= my_rq_size)
+        {
+            if (ret_idx)
+                *ret_idx = idx;
+
+            if (prune_cnt)
+                *prune_cnt = tally - my_rq_size;
 
             return (ssize_t)(i + 1);
         }
