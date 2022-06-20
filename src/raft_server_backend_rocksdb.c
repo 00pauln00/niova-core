@@ -2590,9 +2590,9 @@ rsbr_db_open_internal(const struct raft_instance *ri,
         for (int i = 0; i < cft->rsrcfe_num_cf; i++)
             cft_opts[i] = rir->rir_options;
     }
-
+    // Set prefix extractor for range queries 
+    rocksdb_options_set_prefix_extractor(rir->rir_options, NULL);
     char *err = NULL;
-
     rir->rir_db = (cft && cft->rsrcfe_num_cf) ?
         rocksdb_open_column_families(rir->rir_options, rocksdb_dir,
                                      cft->rsrcfe_num_cf, cft->rsrcfe_cf_names,

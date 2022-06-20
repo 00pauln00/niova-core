@@ -1,8 +1,8 @@
-FROM ubuntu:18.04
+FROM ubuntu:21.10
 
 #Creae dir for niovakv_server and pmdb_server
 RUN apt-get update -y \
-    && apt-get -y install librocksdb5.8 \
+    && apt-get -y install librocksdb6.10 \
     && mkdir /usr/niovakv_server \
     && mkdir /usr/niovakv_server/PMDBConfig \
     && mkdir /opt/niova \

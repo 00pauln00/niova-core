@@ -17,11 +17,14 @@ import (
 	"niova/go-pumicedb-lib/common"
 	"os"
 	"os/signal"
+	"common/requestResponseLib"
 	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
 	"time"
+	"bytes"
+	"encoding/gob"
 )
 
 type proxyHandler struct {
@@ -210,10 +213,20 @@ func (handler *proxyHandler) start_SerfAgent() error {
 }
 
 //Write callback definition for HTTP server
-func (handler *proxyHandler) WriteCallBack(request []byte) error {
+func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) error {
 	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
-	return handler.pmdbClientObj.WriteEncoded(request, rncui)
+	err := handler.pmdbClientObj.WriteEncoded(request, rncui)
+	if err != nil {
+                responseObj := requestResponseLib.KVResponse {
+                        Status : 1,
+                }
+                var responseBuffer bytes.Buffer
+                enc := gob.NewEncoder(&responseBuffer)
+                err = enc.Encode(responseObj)
+                *response = responseBuffer.Bytes()
+        }
+	return err
 }
 
 //Read call definition for HTTP server
