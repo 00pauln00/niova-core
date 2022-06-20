@@ -11,3 +11,8 @@ type KVResponse struct {
 	Status int
 	Value  []byte
 }
+
+type LookoutRequest struct {
+	NISD	[16]byte
+	Cmd	string
+}

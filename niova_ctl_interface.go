@@ -136,6 +136,7 @@ const (
 	RaftInfoOp   EPcmdType = 1
 	SystemInfoOp EPcmdType = 2
 	NISDInfoOp   EPcmdType = 3
+	Custom	     EPcmdType = 4
 )
 
 type epCommand struct {
@@ -226,10 +227,11 @@ func (cmd *epCommand) loadOutfile() {
 
 // Makes a 'unique' filename for the command and adds it to the map
 func (cmd *epCommand) prep() {
-	cmd.fn = "lookout_ncsiep_" + strconv.FormatInt(int64(os.Getpid()), 10) +
-		"_" + strconv.FormatInt(int64(time.Now().Nanosecond()), 10)
-
-	cmd.cmd = cmd.cmd + "\nOUTFILE /" + cmd.fn + "\n"
+	if cmd.fn == "" {
+		cmd.fn = "lookout_ncsiep_" + strconv.FormatInt(int64(os.Getpid()), 10) +
+			"_" + strconv.FormatInt(int64(time.Now().Nanosecond()), 10)
+	}
+	cmd.cmd = cmd.cmd + "\nOUTFILE /" + cmd.fn +"\n"
 
 	// Add the cmd into the endpoint's pending cmd map
 	cmd.ep.addCmd(cmd)
@@ -309,6 +311,12 @@ func (ep *NcsiEP) getNISDinfo() error {
 	return cmd.err
 }
 
+func (ep *NcsiEP) CustomQuery(customCMD string, ID string) error {
+	cmd := epCommand{ep: ep, cmd: customCMD, op: Custom, fn: ID}
+        cmd.submit()
+        return cmd.err
+}
+
 func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 	switch op {
 	case RaftInfoOp:
@@ -321,13 +329,14 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 	case NISDInfoOp:
 		//update
 		ep.EPInfo.NISDInformation = ctlData.NISDInformation
+
 	default:
 		log.Printf("invalid op=%d \n", op)
 	}
 	ep.LastReport = time.Now()
 }
 
-func (ep *NcsiEP) Complete(cmdName string) error {
+func (ep *NcsiEP) Complete(cmdName string, output *[]byte) error {
 	cmd := ep.removeCmd(cmdName)
 	if cmd == nil {
 		return syscall.ENOENT
@@ -336,6 +345,12 @@ func (ep *NcsiEP) Complete(cmdName string) error {
 	cmd.loadOutfile()
 	if cmd.err != nil {
 		return cmd.err
+	}
+
+	//Add here to break for custom command
+	if cmd.op == Custom {
+		*output = cmd.getOutJSON()
+		return nil
 	}
 
 	var err error
