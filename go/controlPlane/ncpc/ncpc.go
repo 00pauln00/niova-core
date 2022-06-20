@@ -18,7 +18,6 @@ import (
 	"math/rand"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -356,13 +355,14 @@ func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
 	var reqStatus error
 	var requestObj requestResponseLib.KVRequest
+	var seqNum uint64
 
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	Key = clientObj.requestKey[:len(clientObj.requestKey)-1]
 
 	Operation = "rangeRead"
 	// get sequence number from arguments
-	seqNum := math.MaxUint64
+	seqNum = math.MaxUint64
 	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string]string)
 	var count int
