@@ -19,6 +19,7 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"strconv"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -297,6 +298,7 @@ func (clientObj *clientHandler) write() {
 
 			//Send the write request
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 			err = dec.Decode(&responseObj)
@@ -364,7 +366,7 @@ func (clientObj *clientHandler) rangeRead() {
 	// get sequence number from arguments
 	seqNum = math.MaxUint64
 	// Keep calling range request till ContinueRead is true
-	resultMap := make(map[string]string)
+	resultMap := make(map[string][]byte)
 	var count int
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
@@ -412,7 +414,6 @@ func (clientObj *clientHandler) rangeRead() {
 	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, seqNum)
 	clientObj.write2Json(operationStat)
 	// FIXME Failing
-	/*
 	if reqStatus == nil {
 		fmt.Println("Generate the Data for read validation")
 		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
@@ -427,7 +428,6 @@ func (clientObj *clientHandler) rangeRead() {
 		}
 		fmt.Println("The range query was completed in", count, "iterations")
 	}
-	*/
 }
 
 func isRangeRequest(requestKey string) bool {
