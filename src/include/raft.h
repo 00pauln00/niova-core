@@ -33,6 +33,8 @@
 
 #define RAFT_ENTRY_SIZE_MIN        65536
 
+#define RAFT_NUM_READ_THREADS 10
+
 // Raft election timeout upper and lower bounds
 #define	RAFT_ELECTION__MAX_TIME_MS 100000
 #define	RAFT_ELECTION__MIN_TIME_MS 100
@@ -446,6 +448,16 @@ struct raft_instance_co_wr
     char                                  rcwi_buffer[];
 };
 
+STAILQ_HEAD(raft_read_queue, raft_net_client_request_handle);
+
+struct raft_read_thread
+{
+    struct thread_ctl               rrt_ctl;
+    pthread_mutex_t                 rrt_mutex;
+    struct raft_read_queue          rrt_queue;
+    struct raft_instance            *rrt_ri; 
+};
+
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -508,6 +520,7 @@ struct raft_instance
     raft_net_cb_t                   ri_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;
     raft_leader_prep_cb_t           ri_leader_prep_cb;
+    raft_is_read_op_t               ri_is_read_op_cb;
     raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
     raft_net_shutdown_cb_t          ri_shutdown_cb;
     struct raft_evp                 ri_evps[RAFT_EVP_HANDLES_MAX];
@@ -522,6 +535,7 @@ struct raft_instance
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
+    struct raft_read_thread         ri_read_thread[RAFT_NUM_READ_THREADS];
     struct raft_recovery_handle     ri_recovery_handle;
     struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member
@@ -1096,6 +1110,7 @@ raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
                          raft_leader_prep_cb_t leader_prep_handler,
+                         raft_is_read_op_t is_read_op, 
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg);
 
