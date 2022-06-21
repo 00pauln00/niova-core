@@ -208,6 +208,17 @@ func (cli *clientHandler) write2Json(toJson interface{}) {
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
+//Converts map[string][]byte to map[string]string
+func convMapToStr(map1 map[string][]byte) map[string]string {
+	map2 := make(map[string]string)
+
+	for k, v := range map1 {
+		map2[k] = string(v)
+	}
+
+	return map2
+}
+
 func fillOperationData(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
 	requestMeta := request{
 		Opcode:    operation,
@@ -411,7 +422,8 @@ func (clientObj *clientHandler) rangeRead() {
 		Key = rangeResponseObj.Key
 	}
 	//Get status from response
-	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, seqNum)
+	strResultMap := convMapToStr(resultMap)
+	operationStat := fillOperationData(0, "range", requestObj.Key, strResultMap, seqNum)
 	clientObj.write2Json(operationStat)
 
 	//Validate range response§
