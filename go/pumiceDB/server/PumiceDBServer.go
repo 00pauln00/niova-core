@@ -340,7 +340,7 @@ func getKeyVal(itr *C.rocksdb_iterator_t) (string, []byte) {
 }
 
 func pmdbFetchRange(key string, key_len int64,
-	prefix string, bufSize int64, seqNum uint64, go_cf string) (map[string][]byte, string, uint64, error) {
+	prefix string, bufSize int64, consistent bool, seqNum uint64, go_cf string) (map[string][]byte, string, uint64, bool, error) {
 	var lookup_err error
 	var snapDestroyed bool
 	var resultMap = make(map[string][]byte)
@@ -349,15 +349,26 @@ func pmdbFetchRange(key string, key_len int64,
 	var retSeqNum C.ulong
 	var itr *C.rocksdb_iterator_t
 	var ropts *C.rocksdb_readoptions_t
+	var isConsistent bool
 	log.Trace("RangeQuery - Key passed is: ", key, " Prefix passed is : ", prefix,
 		" Seq No passed is : ", seqNum)
 
 	// get the readoptions and create/fetch seq num for snapshot
-	ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retSeqNum)
-	if seqNum != CToGoUint64(retSeqNum){
-		seqNum = CToGoUint64(retSeqNum)
+	if consistent {
+		ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retSeqNum)
+		if seqNum != CToGoUint64(retSeqNum){
+			seqNum = CToGoUint64(retSeqNum)
+		} else {
+			//Seqnumber of the snapshot matches with seq number passed by request
+			//FIXME : In the init request the isConsistent will be set to false
+			isConsistent = true
+		}
+	} else {
+		//ropts without snapshot
+		ropts = C.PmdbGetRoptions()
+		snapDestroyed = true
 	}
-	snapDestroyed = false
+
 
 	// create iterator
 	cf := GoToCString(go_cf)
@@ -373,6 +384,9 @@ func pmdbFetchRange(key string, key_len int64,
 
 		// check if passed key is prefix of fetched key or exit
 		if !(strings.HasPrefix(fKey, prefix)) {
+			if !consistent {
+                                break
+                        }
 			log.Trace("RangeQuery - Destroying snapshot, seqNum is - ", seqNum)
 			snapDestroyed = true
 			C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
@@ -402,14 +416,14 @@ func pmdbFetchRange(key string, key_len int64,
 	} else {
 		lookup_err = nil
 	}
-	return resultMap, lastKey, seqNum, lookup_err
+	return resultMap, lastKey, seqNum, isConsistent, lookup_err
 }
 
 // Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, prefix string, bufSize int64, seqNum uint64, gocolfamily string) (map[string][]byte, string, uint64, error) {
+	key_len int64, prefix string, bufSize int64, consistent bool, seqNum uint64, gocolfamily string) (map[string][]byte, string, uint64, bool, error) {
 
-	return pmdbFetchRange(key, key_len, prefix, bufSize, seqNum, gocolfamily)
+	return pmdbFetchRange(key, key_len, prefix, bufSize, consistent, seqNum, gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer
