@@ -182,8 +182,5 @@ main(void)
 
     NIOVA_ASSERT(!lreg_thread_ctx());
 
-    lreg_set_thread_ctx(pthread_self());
-    NIOVA_ASSERT(lreg_thread_ctx());
-
     return rc;
 }

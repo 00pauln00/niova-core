@@ -183,6 +183,8 @@ util_thread_subsystem_init(void)
 
     // Set the registry thread_ctx to the util_thread
     lreg_set_thread_ctx(util_thread);
+
+    thread_creator_wait_until_ctl_loop_reached(&utilThread.ut_tc);
 }
 
 static destroy_ctx_t NIOVA_DESTRUCTOR(UTIL_THREAD_SUBSYS_CTOR_PRIORITY)

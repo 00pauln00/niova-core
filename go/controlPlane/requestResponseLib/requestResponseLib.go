@@ -13,9 +13,14 @@ type KVRequest struct {
 type KVResponse struct {
 	Status       int
 	Key          string
-	Value        []byte
 	ResultMap     map[string]string
 	ContinueRead bool
 	Prefix       string
 	SeqNum	     uint64
 }
+
+type LookoutRequest struct {
+	NISD	[16]byte
+	Cmd	string
+}
+

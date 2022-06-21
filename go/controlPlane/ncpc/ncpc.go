@@ -6,6 +6,7 @@ import (
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
+	"errors"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -40,6 +41,7 @@ type clientHandler struct {
 	operationMetaObjs []opData //For filling json data
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 	seqNum            uint64
+	valSize           int
 }
 
 type request struct {
@@ -56,10 +58,16 @@ type response struct {
 	validate       bool        `json:"validate"`
 	Timestamp      time.Time   `json:"Response_timestamp"`
 }
+
 type opData struct {
 	RequestData  request       `json:"Request"`
 	ResponseData response      `json:"Response"`
 	TimeDuration time.Duration `json:"Req_resolved_time"`
+}
+
+type multiWriteStatus struct {
+	Status int
+	Value  interface{}
 }
 
 type nisdData struct {
@@ -73,80 +81,100 @@ func usage() {
 	os.Exit(0)
 }
 
-func getKeyType(key string) string {
-	switch key[:2] {
-	case "vd":
-		return "vdevKey"
-	case "ni":
-		return "nisdKey"
-	case "no":
-		return "nodeKey"
-	}
-	return ""
-}
+const letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randSeq(n int, r *rand.Rand) string {
-	b := make([]rune, n)
+func randSeq(n int, r *rand.Rand) []byte {
+	b := make([]byte, n)
 	for i := range b {
 		b[i] = letters[r.Intn(len(letters))]
 	}
-	return string(b)
+	return b
 }
 
-func generateVdevRange(count int, seed int64) map[string]string {
-	kvMap := make(map[string]string)
+func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
+	kvMap := make(map[string][]byte)
 	r := rand.New(rand.NewSource(seed))
-	r1 := rand.New(rand.NewSource(seed))
-
-	//Vdev
-	noVdev := int64(float64(count) * float64(0.5))
-	noUUID := r.Int63n(noVdev)
+	var nodeUUID []string
+	var vdevUUID []string
+	nodeNisdMap := make(map[string][]string)
+	//Node UUID
+	/*
+		FailureDomain
+		Info
+		State
+		HostName
+		NISD-UUIDs
+	*/
+	noUUID := count
 	for i := int64(0); i < noUUID; i++ {
-		randUUID, _ := uuid.NewRandomFromReader(r)
-		prefix := "v." + randUUID.String()
-		kvMap[prefix] = randSeq(4, r1)
+		randomNodeUUID, _ := uuid.NewRandomFromReader(r)
+		nodeUUID = append(nodeUUID, randomNodeUUID.String())
+		prefix := "node." + randomNodeUUID.String()
 
-		noChunck := r.Int31n(5)
-		Cprefix := prefix + ".c"
-		for j := int32(0); j < noChunck; j++ {
+		//NISD-UUIDs
+		for j := int64(0); j < noUUID; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
-			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
-			kvMap[Chunckprefix] = randSeq(4, r1)
+			nodeNisdMap[randomNodeUUID.String()] = append(nodeNisdMap[randomNodeUUID.String()], randUUID.String())
 		}
+		kvMap[prefix+".NISD-UUIDs"], _ = json.Marshal(nodeNisdMap[randomNodeUUID.String()])
 
-		noSeq := r.Int31n(5)
-		Sprefix := prefix + ".s"
-		for k := int32(0); k < noSeq; k++ {
-			SeqPrefix := Sprefix + strconv.Itoa(int(k))
-			kvMap[SeqPrefix] = randSeq(4, r1)
+	}
+	//NISD
+	/*
+		Node-UUID
+		Config-Info
+		Device-Type
+		Device-Path
+		Device-Status
+		Device-Info
+		Device-Size
+		Provisioned-Size
+		VDEV-UUID.Chunk-Number.Chunk-Component-UUID
+	*/
+	for _, node := range nodeUUID {
+		for _, nisd := range nodeNisdMap[node] {
+			prefix := "nisd." + nisd
+
+			//Node-UUID
+			kvMap[prefix+".Node-UUID"] = []byte(node)
+
+			//Config-Info
+			configInfo := prefix + ".Config-Info"
+			kvMap[configInfo] = randSeq(valSize, r)
+
+			//VDEV-UUID
+			for j := int64(0); j < noUUID; j++ {
+				randUUID, _ := uuid.NewRandomFromReader(r)
+				partNodePrefix := prefix +"."+randUUID.String()
+				kvMap[partNodePrefix] = randSeq(valSize, r)
+				vdevUUID = append(vdevUUID, randUUID.String())
+			}
 		}
 	}
 
-	//NISD
-	noNISD := int64(float64(count) * float64(0.5))
-	noUUID = r.Int63n(noNISD)
-	for i := int64(0); i < noUUID; i++ {
-		randUUID, _ := uuid.NewRandomFromReader(r)
-		prefix := "nisd." + randUUID.String()
+	//Vdev
+	/*
+		User-Token
+		Snapshots-Txn-Seqno
+		Chunk-Number.Chunk-Component-UUID
+	*/
+	for i := int64(0); i < int64(len(vdevUUID)); i++ {
+		prefix := "v." + vdevUUID[i]
+		kvMap[prefix+".User-Token"] = randSeq(valSize, r)
 
-		noNode := r.Int31n(5)
-		nodePrefix := prefix + "."
-		for j := int32(0); j < noNode; j++ {
+		noChunck := count
+		Cprefix := prefix + ".c"
+		for j := int64(0); j < noChunck; j++ {
 			randUUID, _ := uuid.NewRandomFromReader(r)
-			partNodePrefix := nodePrefix + randUUID.String()
-			kvMap[partNodePrefix] = randSeq(4, r1)
+			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
+			kvMap[Chunckprefix] = randSeq(valSize, r)
 		}
-
-		configInfo := prefix + ".Config-Info"
-		kvMap[configInfo] = randSeq(4, r1)
 	}
 	return kvMap
 }
 
-func filterKVPrefix(kvMap map[string]string, prefix string) map[string]string {
-	resultantMap := make(map[string]string)
+func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
+	resultantMap := make(map[string][]byte)
 	for key, value := range kvMap {
 		if strings.HasPrefix(key, prefix) {
 			resultantMap[key] = value
@@ -158,7 +186,7 @@ func filterKVPrefix(kvMap map[string]string, prefix string) map[string]string {
 
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
-	flag.StringVar(&handler.requestKey, "k", "Key", "Key")
+	flag.StringVar(&handler.requestKey, "k", "Key", "Key - For ReadRange pass '<prefix>*' e.g. : -k 'vdev.*'")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
 	flag.StringVar(&handler.port, "p", "1999", "Port value")
 	flag.StringVar(&handler.requestValue, "v", "NULL", "Value")
@@ -166,10 +194,10 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "j", "json_output", "Path along with file name for the resultant json file")
-	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request")
-	flag.IntVar(&handler.count, "n", 1, "Number of key-value write count")
+	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request / Lookout uuid")
+	flag.IntVar(&handler.count, "n", 1, "Write number of key/value pairs per key type (Default 1 will write the passed key/value)")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
-	flag.Uint64Var(&handler.seqNum, "S", math.MaxUint64, "Sequence Number for read")
+	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
 	flag.Parse()
 }
 
@@ -179,16 +207,14 @@ func (cli *clientHandler) write2Json(toJson interface{}) {
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 }
 
-func fillOperationData(startTime time.Time, endTime time.Time, status int, operation string, key string, value interface{}, seqNo uint64) *opData {
+func fillOperationData(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
 	requestMeta := request{
 		Opcode:    operation,
 		Key:       key,
 		Value:     value,
-		Timestamp: startTime,
 	}
 
 	responseMeta := response{
-		Timestamp:      endTime,
 		SequenceNumber: seqNo,
 		Status:         status,
 		ResponseValue:  value,
@@ -197,7 +223,6 @@ func fillOperationData(startTime time.Time, endTime time.Time, status int, opera
 	operationObj := opData{
 		RequestData:  requestMeta,
 		ResponseData: responseMeta,
-		TimeDuration: responseMeta.Timestamp.Sub(requestMeta.Timestamp),
 	}
 	return &operationObj
 }
@@ -231,79 +256,75 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	return nisdDataMap
 }
 
-func (clientObj *clientHandler) singleWriteRequest() {
-	var requestObj requestResponseLib.KVRequest
-	var responseObj requestResponseLib.KVResponse
-	if clientObj.requestValue != "NULL" {
-		requestObj.Value = []byte(clientObj.requestValue)
+
+func (clientObj *clientHandler) write() {
+	kvMap := make(map[string][]byte)
+	// Fill kvMap with key/val from user or generate keys/vals
+	if clientObj.count > 1 {
+		kvMap = generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 	} else {
-		value := make(map[string]string)
-		value["IP_ADDR"] = clientObj.addr
-		value["Port"] = clientObj.port
-		valueByte, _ := json.Marshal(value)
-		requestObj.Value = valueByte
+		kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
 	}
-
-	requestObj.Rncui = clientObj.rncui
-	requestObj.Key = clientObj.requestKey
-	requestObj.Operation = clientObj.operation
-	var requestByte bytes.Buffer
-	enc := gob.NewEncoder(&requestByte)
-	enc.Encode(requestObj)
-
-	//send the write request
-	startTime := time.Now()
-	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-	endTime := time.Now()
-
-	//Decode the response
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	_ = dec.Decode(&responseObj)
-	log.Info("Request completed")
-	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
-	clientObj.write2Json(operationStat)
-	fmt.Println(responseObj.ResultMap)
-	log.Info("Result file generated")
-}
-
-func (clientObj *clientHandler) multipleWriteRequest() {
-	kvMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
-	operationStatSlice := make([]*opData, len(kvMap))
-	var index int
+	operationStatSlice := make(map[string]*multiWriteStatus)
+	var operationStat interface{}
+	var mut sync.Mutex
 	var wg sync.WaitGroup
+	// Create a int channel of fixed size to enqueue max requests
+	requestLimiter := make(chan int, 100)
 	for key, val := range kvMap {
 		wg.Add(1)
-		go func(index int, key string, val []byte) {
-			defer wg.Done()
+		requestLimiter <- 1
+		go func(key string, val []byte) {
+			defer func() {
+				wg.Done()
+				<-requestLimiter
+			}()
 			var requestObj requestResponseLib.KVRequest
 			var responseObj requestResponseLib.KVResponse
 			var requestByte bytes.Buffer
+
+			//Fill the request object
 			requestObj.Operation = "write"
 			requestObj.Key = key
 			requestObj.Value = val
 			requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
 			enc := gob.NewEncoder(&requestByte)
-			enc.Encode(requestObj)
+			err := enc.Encode(requestObj)
+			if err != nil {
+				log.Error("Encoding error : ", err)
+				return
+			}
+
 			//Send the write request
-			startTime := time.Now()
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
-			endTime := time.Now()
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-			_ = dec.Decode(&responseObj)
-			operationStat := fillOperationData(startTime, endTime, responseObj.Status, "write", key, val, 0)
-			//Append operationStat to a slice
-			operationStatSlice[index] = operationStat
-		}(index, key, []byte(val))
-		index += 1
+			err = dec.Decode(&responseObj)
+			if err != nil {
+				log.Error("Decoding error : ", err)
+				return
+			}
+
+			//Request status filler
+			if clientObj.count == 1 {
+				operationStat = fillOperationData(responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+			} else {
+				operationStatMulti := multiWriteStatus{
+					Status: responseObj.Status,
+					Value:  string(val),
+				}
+				mut.Lock()
+				operationStatSlice[key] = &operationStatMulti
+				operationStat = operationStatSlice
+				mut.Unlock()
+			}
+		}(key, val)
 	}
 	wg.Wait()
-	log.Info("Request completed")
-	clientObj.write2Json(operationStatSlice)
-	log.Info("Result file generated")
+	clientObj.write2Json(operationStat)
 }
 
-func (clientObj *clientHandler) readRequest() {
+func (clientObj *clientHandler) read() {
 	var requestObj requestResponseLib.KVRequest
 	var responseObj requestResponseLib.KVResponse
 
@@ -311,38 +332,40 @@ func (clientObj *clientHandler) readRequest() {
 	requestObj.Operation = clientObj.operation
 	var requestByte bytes.Buffer
 	enc := gob.NewEncoder(&requestByte)
-	enc.Encode(requestObj)
+	err := enc.Encode(requestObj)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+	}
 
 	//Send the request
-	startTime := time.Now()
 	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-	endTime := time.Now()
 
 	//Decode the request
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	_ = dec.Decode(&responseObj)
+	err = dec.Decode(&responseObj)
+	if err != nil {
+		log.Error("Decoding error : ", err)
+	}
 
-	log.Info("Request completed")
-	operationStat := fillOperationData(startTime, endTime, responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
+	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
 	clientObj.write2Json(operationStat)
-	log.Info("Result file generated")
 }
 
-func (clientObj *clientHandler) rangeRequest() {
+func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
-	var seqNum uint64
+	var reqStatus error
 	var requestObj requestResponseLib.KVRequest
+	var seqNum uint64
 
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	Key = clientObj.requestKey[:len(clientObj.requestKey)-1]
 
 	Operation = "rangeRead"
 	// get sequence number from arguments
-	seqNum = clientObj.seqNum
-	//Keep calling range request till ContinueRead is true
+	seqNum = math.MaxUint64
+	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string]string)
 	var count int
-	startTime := time.Now()
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
 		requestObj.Prefix = Prefix
@@ -350,44 +373,60 @@ func (clientObj *clientHandler) rangeRequest() {
 		requestObj.Operation = Operation
 		requestObj.SeqNum = seqNum
 		var requestByte bytes.Buffer
+
+		// encode the requestObj
 		enc := gob.NewEncoder(&requestByte)
-		enc.Encode(requestObj)
-		log.Trace("Sequence Number in requestObj - ", requestObj.SeqNum)
+		err := enc.Encode(requestObj)
+		if err != nil {
+			reqStatus = err
+			log.Error("Encoding error : ", err)
+			break
+		}
 
 		//Send the range request
 		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err := dec.Decode(&rangeResponseObj)
-		if err != nil {
-			log.Error(err)
+		if len(responseBytes) == 0 {
+			reqStatus = errors.New("Key not found")
+			log.Error(reqStatus)
 			break
 		}
+		// decode the responseObj
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&rangeResponseObj)
+		if err != nil {
+			reqStatus = err
+			log.Error("Decoding error : ", err)
+			break
+		}
+		// copy result to global result variable
 		maps.Copy(resultMap, rangeResponseObj.ResultMap)
-
 		count += 1
+		seqNum = rangeResponseObj.SeqNum
 		if !rangeResponseObj.ContinueRead {
 			break
 		}
-		//Prefix = clientObj.requestKey
+		// set key and seqNum for next iteration of range request
 		Key = rangeResponseObj.Key
-		seqNum = rangeResponseObj.SeqNum
 	}
-	endTime := time.Now()
 	//Get status from response
-	log.Info("Request completed")
-	operationStat := fillOperationData(startTime, endTime, 0, "range", requestObj.Key, resultMap, seqNum)
+	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, seqNum)
 	clientObj.write2Json(operationStat)
-	log.Info("Result file generated")
 	// FIXME Failing
-	/*genKVMap := generateVdevRange(clientObj.count, int64(clientObj.seed))
-	filteredMap := filterKVPrefix(genKVMap, clientObj.requestKey)
-	compare := reflect.DeepEqual(resultMap, filteredMap)
-	if compare {
-		fmt.Println("Got expected output")
-	} else {
-		fmt.Println("Range read failure")
+	/*
+	if reqStatus == nil {
+		fmt.Println("Generate the Data for read validation")
+		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+
+		// Get the expected data for read operation and compare against the output.
+		tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
+		filteredMap := filterKVPrefix(genKVMap, tPrefix)
+
+		compare := reflect.DeepEqual(resultMap, filteredMap)
+		if !compare {
+			fmt.Println("Range verification read failure")
+		}
+		fmt.Println("The range query was completed in", count, "iterations")
 	}
-	fmt.Println("Called range query", count, "times")
 	*/
 }
 
@@ -417,7 +456,8 @@ func main() {
 
 	//Init service discovery
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
-		Timeout: 10,
+		HTTPRetry: 10,
+		SerfRetry: 5,
 	}
 	stop := make(chan int)
 	go func() {
@@ -434,22 +474,18 @@ func main() {
 	case "rw":
 		log.Info("Defaulting to write and read")
 		clientObj.operation = "write"
-		clientObj.singleWriteRequest()
+		clientObj.write()
 		clientObj.operation = "read"
-		clientObj.readRequest()
+		clientObj.read()
 
 	case "write":
-		if clientObj.count == 1 {
-			clientObj.singleWriteRequest()
-		} else {
-			clientObj.multipleWriteRequest()
-		}
+		clientObj.write()
 
 	case "read":
 		if !isRangeRequest(clientObj.requestKey) {
-			clientObj.readRequest()
+			clientObj.read()
 		} else {
-			clientObj.rangeRequest()
+			clientObj.rangeRead()
 		}
 
 	case "config":
@@ -551,7 +587,31 @@ func main() {
 			f.WriteString(string(fileData))
 			break
 		}
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+
+	case "ProxyStat":
+                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+                clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
+                responseBytes := clientObj.clientAPIObj.Request(nil, "/stat", false)
+                ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
+
+        case "LookoutInfo":
+                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+                clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
+                //Request obj
+                var requestObj requestResponseLib.LookoutRequest
+
+                //Parse UUID
+                requestObj.NISD, _ = uuid.Parse(clientObj.requestKey)
+                requestObj.Cmd = clientObj.requestValue
+                var requestByte bytes.Buffer
+                enc := gob.NewEncoder(&requestByte)
+                err := enc.Encode(requestObj)
+                if err != nil {
+                        log.Info("Encoding error")
+                }
+                responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+                clientObj.write2Json(responseBytes)
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")

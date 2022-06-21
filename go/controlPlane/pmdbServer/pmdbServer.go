@@ -32,6 +32,8 @@ import "C"
 
 var seqno = 0
 
+var encodingOverhead = 256
+
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
@@ -375,23 +377,22 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	if reqStruct.Operation == "read" {
 
-		log.Trace("pmdServer single read - ", reqStruct.SeqNum)
+		log.Trace("read - ", reqStruct.SeqNum)
 		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
 			int64(keyLen), colmfamily)
+			singleReadMap := make(map[string]string)
+			singleReadMap[reqStruct.Key] = string(readResult)
 		resultResponse = requestResponseLib.KVResponse{
 			Key:       reqStruct.Key,
-			ResultMap: readResult,
+			ResultMap: singleReadMap,
 		}
 		readErr = err
 
 	} else if reqStruct.Operation == "rangeRead" {
 		reqStruct.Prefix = reqStruct.Prefix
-		// FIXME Temporarily setting bufffer to 512 bytets
-		// we should fetch the buffer size from the pmdbClient
-		replyBufSize = 512
-		log.Trace("The pmdServer sequence number received is - ", reqStruct.SeqNum)
+		log.Trace("sequence number - ", reqStruct.SeqNum)
 		readResult, lastKey, seqNum, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
-			int64(keyLen), reqStruct.Prefix, replyBufSize, reqStruct.SeqNum, colmfamily)
+			int64(keyLen), reqStruct.Prefix, (replyBufSize - int64(encodingOverhead)), reqStruct.SeqNum, colmfamily)
 		var cRead bool
 		if lastKey != "" {
 			cRead = true
@@ -426,3 +427,5 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	return replySize
 }
+
+
