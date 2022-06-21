@@ -413,7 +413,8 @@ func (clientObj *clientHandler) rangeRead() {
 	//Get status from response
 	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, seqNum)
 	clientObj.write2Json(operationStat)
-	// FIXME Failing
+
+	//Validate range response§
 	if reqStatus == nil {
 		fmt.Println("Generate the Data for read validation")
 		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
