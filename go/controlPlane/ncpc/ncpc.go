@@ -360,7 +360,7 @@ func (clientObj *clientHandler) read() {
 		log.Error("Decoding error : ", err)
 	}
 
-	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
+	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, string(responseObj.ResultMap[responseObj.Key]), 0)
 	clientObj.write2Json(operationStat)
 }
 
