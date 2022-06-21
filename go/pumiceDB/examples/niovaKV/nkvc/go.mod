@@ -15,13 +15,13 @@ replace common/specificCompressionLib => ../../../../specificCompressionLib
 go 1.17
 
 require (
+	common/clientAPI v0.0.0-00010101000000-000000000000
 	common/requestResponseLib v0.0.0-00010101000000-000000000000
 	github.com/sirupsen/logrus v1.8.1
 	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000
 )
 
 require (
-	common/clientAPI v0.0.0-00010101000000-000000000000 // indirect
 	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000 // indirect
@@ -38,7 +38,6 @@ require (
 	github.com/hashicorp/serf v0.9.7 // indirect
 	github.com/miekg/dns v1.1.41 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/stretchr/testify v1.4.0 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
 	golang.org/x/sys v0.0.0-20210330210617-4fbd30eecc44 // indirect
 )

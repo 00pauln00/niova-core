@@ -6,6 +6,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
+	"hash/crc32"
 	"sync"
 	"net"
 	"time"
@@ -16,7 +17,7 @@ type HTTPServerHandler struct {
 	Addr                net.IP
 	Port                string
 	GETHandler          func([]byte, *[]byte) error
-	PUTHandler          func([]byte) error
+	PUTHandler          func([]byte, *[]byte) error
 	HTTPConnectionLimit int
 	PMDBServerConfig    map[string][]byte
 	//Non-exported
@@ -137,17 +138,28 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 		err = handler.GETHandler(requestBytes, &result)
 		read = true
 		fallthrough
+
 	case "PUT":
+		//Get checkSum
+		checkSum := crc32.ChecksumIEEE(requestBytes)
+		startTime := time.Now()
+		log.Info()
 		if !read {
 			if handler.StatsRequired {
 				thisRequestStat.Status = "Processing"
 			}
-			err = handler.PUTHandler(requestBytes)
+			err = handler.PUTHandler(requestBytes, &result)
 		}
+		endTime := time.Now()
 		if err == nil {
 			success = true
 		}
-		fmt.Fprintf(writer, "%s", string(result))
+
+		//Write the output to HTTP response buffer
+		writer.Write(result)
+		elapsedTime := endTime.Sub(startTime)
+		log.Info(";Request time ;",checkSum, ";",startTime, ";",endTime, ";",elapsedTime)
+
 	default:
 		writer.WriteHeader(http.StatusMethodNotAllowed)
 	}
@@ -160,8 +172,6 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 
 //HTTP server handler called when request is received
 func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *http.Request) {
-	//Go follows causually consistent memory model, so require sync among stat and normal request to get consistent stat data
-	//atomic.AddInt64(&handler.Stat.syncRequest,int64(1))
 	if reader.URL.Path == "/config" {
 		handler.configHandler(writer, reader)
 	} else if (reader.URL.Path == "/stat") && (handler.StatsRequired) {
