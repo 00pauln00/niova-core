@@ -7,7 +7,6 @@ type KVRequest struct {
 	Value     []byte
 	Rncui     string
 	CheckSum  [16]byte
-	Consistent bool
 	SeqNum	  uint64
 }
 
@@ -17,7 +16,6 @@ type KVResponse struct {
 	ResultMap    map[string][]byte
 	ContinueRead bool
 	Prefix       string
-	IsConsistent bool
 	SeqNum	     uint64
 }
 
