@@ -19,8 +19,3 @@ replace niovakvserver/serfagenthandler => ../../../serf/agent
 replace niovakv/serfclienthandler => ../../../serf/client
 
 replace niovakv/httpclient => ../../../http/client
-
-require (
-	github.com/aybabtme/uniplot v0.0.0-20151203143629-039c559e5e7e // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
-)
