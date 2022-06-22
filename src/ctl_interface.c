@@ -25,6 +25,7 @@
 #include "system_info.h"
 #include "thread.h"
 #include "util_thread.h"
+#include "registry.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 LREG_ROOT_ENTRY_GENERATE(ctlif_root_entry, LREG_USER_TYPE_CTL_INTERFACE);
@@ -565,6 +566,14 @@ lctli_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+/**
+ * lctli_util_thread_unregister - uninstall the ctl interface from the utility
+ *    thread.  This removes both 'sides' of the interface - meaning the user
+ *    side, which communicates using inotify, as well as the lreg handling.
+ *    Once this function has successfully completed, neither user inputs nor
+ *    lreg_node install / removals will be processed until new handlers are
+ *    assigned.
+ */
 int
 lctli_util_thread_unregister(void)
 {
@@ -578,7 +587,17 @@ lctli_util_thread_unregister(void)
     if (lctli->lctli_eph == NULL)
         return -EINVAL;
 
-    return util_thread_remove_event_src(lctli->lctli_eph);
+    lreg_notify();
+
+    int rc = util_thread_remove_event_src(lctli->lctli_eph);
+    if (rc)
+        return rc;
+
+    rc = lreg_remove_event_src();
+    if (rc)
+        return rc;
+
+    return 0;
 }
 
 static init_ctx_t NIOVA_CONSTRUCTOR(LCTLI_SUBSYS_CTOR_PRIORITY)

@@ -275,12 +275,20 @@ struct lreg_vnode_data
     };
 };
 
+/* LREG_NODE_NOT_INSTALLED and LREG_NODE_REMOVED purposely exist so that
+ * lreg_node_wait_for_install_state_change() will not remain waiting while
+ * another thread transitions the node through all it states.  Therefore,
+ * the final state for a node is 'LREG_NODE_REMOVED'. Users seeking to reinstall
+ * nodes must be mindful that nothing uses the node so that the node can be
+ * safely transitioned from LREG_NODE_REMOVED -> LREG_NODE_NOT_INSTALLED.
+ */
 enum lreg_node_states
 {
-    LREG_NODE_NOT_INSTALLED,
-    LREG_NODE_INSTALLING,
-    LREG_NODE_INSTALLED,
-    LREG_NODE_REMOVING,
+    LREG_NODE_NOT_INSTALLED = 0,
+    LREG_NODE_INSTALLING    = (1 << 0),
+    LREG_NODE_INSTALLED     = (1 << 1),
+    LREG_NODE_REMOVING      = (1 << 2),
+    LREG_NODE_REMOVED       = (1 << 3)
 } PACKED;
 
 struct lreg_node;
@@ -478,7 +486,7 @@ static inline bool
 lreg_node_set_uninstalled(struct lreg_node *lrn)
 {
     return niova_atomic_cas(&lrn->lrn_install_state, LREG_NODE_REMOVING,
-                            LREG_NODE_NOT_INSTALLED) ? true : false;
+                            LREG_NODE_REMOVED) ? true : false;
 }
 
 static inline bool
@@ -998,5 +1006,24 @@ lreg_thread_ctx(void);
 
 lreg_install_int_ctx_t
 lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install);
+
+bool
+lreg_install_has_queued_nodes(void);
+
+int
+lreg_notify(void);
+
+int
+lreg_remove_event_src(void);
+
+int
+lreg_util_processor(void);
+
+int
+lreg_get_eventfd(void);
+
+int
+lreg_node_wait_for_install_state(const struct lreg_node *lrn,
+                                 enum lreg_node_states state);
 
 #endif //_REGISTRY_H
