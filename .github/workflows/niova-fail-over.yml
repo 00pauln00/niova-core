@@ -15,6 +15,10 @@ jobs:
       with:
         path: ./code
 
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
     - name: apt update
       run: sudo apt update
     - name: dpkg / rpm prep
@@ -30,7 +34,7 @@ jobs:
 
       # Install Ansible
     - name: Install Ansible
-      run:  pip3 install ansible
+      run:  pip3 install ansible==2.10.7
 
     - name: make
       run: cd ./code &&
@@ -60,7 +64,7 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
-    
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -76,7 +80,7 @@ jobs:
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
       if: failure()
-      
+
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:

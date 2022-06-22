@@ -15,6 +15,10 @@ jobs:
       with:
         path: ./code
 
+    - uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
     - name: apt update
       run: sudo apt update
 
@@ -40,7 +44,7 @@ jobs:
 
       # Install Ansible
     - name: Install Ansible
-      run:  pip3 install ansible
+      run:  pip3 install ansible==2.10.7
 
     - name: make
       run: cd ./code &&
