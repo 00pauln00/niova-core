@@ -44,7 +44,7 @@ jobs:
 
       # Install Ansible
     - name: Install Ansible
-      run:  python3 -m pip install --user ansible-core==2.10.16 &&
+      run:  pip3 install ansible &&
             ansible --version
 
     - name: make
