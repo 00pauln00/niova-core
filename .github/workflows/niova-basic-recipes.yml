@@ -42,10 +42,17 @@ jobs:
       run:  pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath &&
             python3 --version
 
-      # Install Ansible
+    # Install Ansible
+    #- name: Install Ansible
+    #  run:  pip3 install ansible &&
+    #        ansible --version
+
     - name: Install Ansible
-      run:  pip3 install ansible &&
-            ansible --version
+      run: sudo apt update &&
+           sudo apt install software-properties-common &&
+           sudo add-apt-repository --yes --update ppa:ansible/ansible &&
+           sudo apt install ansible &&
+           ansible --version
 
     - name: make
       run: cd ./code &&
