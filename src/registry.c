@@ -797,7 +797,15 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     }
 
     int rc = lreg_util_processor();
-    FATAL_IF(rc, "lreg_util_processor(): %s", strerror(-rc));
+    if (rc == -EXDEV)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "util thread is not longer lreg handler");
+        lreg_notify();
+    }
+    else
+    {
+        FATAL_IF(rc, "lreg_util_processor(): %s", strerror(-rc));
+    }
 
     eventfd_t x = {0};
     ssize_t rrc;
