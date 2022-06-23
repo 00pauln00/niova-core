@@ -176,6 +176,8 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 		handler.configHandler(writer, reader)
 	} else if (reader.URL.Path == "/stat") && (handler.StatsRequired) {
 		handler.statHandler(writer, reader)
+	} else if (reader.URL.Path == "/check") {
+		writer.Write([]byte("HTTP server in operation"))
 	} else {
 		handler.kvRequestHandler(writer, reader)
 	}

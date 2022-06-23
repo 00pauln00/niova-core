@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"common/httpServer"
+	"common/httpClient"
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
@@ -504,6 +505,26 @@ func (handler *proxyHandler) killSignalHandler() {
 	}()
 }
 
+
+/*
+Structure : proxyHandler
+Method    : checkHTTPLiveness
+Arguments : None
+Return(s) : None
+
+Description : Checks status of the http server
+*/
+func (handler *proxyHandler) checkHTTPLiveness() {
+	var emptyByteArray []byte
+	for {
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+handler.httpPort+"/check", false)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
 func main() {
 
 	var err error
@@ -571,6 +592,9 @@ func main() {
 	if proxyObj.requireStat != "0" {
 		go proxyObj.killSignalHandler()
 	}
+
+	//Wait till http server is up and running
+	proxyObj.checkHTTPLiveness()
 
 	//Start the gossip
 	proxyObj.setSerfGossipData()
