@@ -19,6 +19,7 @@
 #include "raft_server_backend_rocksdb.h"
 #include "registry.h"
 #include "ref_tree_proto.h"
+#include "fault_inject.h"
 
 LREG_ROOT_ENTRY_GENERATE(pumicedb_entry, LREG_USER_TYPE_RAFT);
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -682,6 +683,12 @@ pmdb_range_read_release_old_snapshots(void)
     struct timespec now;
     niova_realtime_coarse_clock(&now);
 
+    if (FAULT_INJECT(pmdb_range_read_keep_snapshot))
+    {
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "Dont destroy the older snapshot as fault ineject is set");
+        return;
+    }
     CIRCLEQ_FOREACH_SAFE(rr, &prrq_queue, prrq_lentry, tmp_rr)
     {
         /* If snapshot was open for more than 60secs, release the snapshot */
@@ -1314,6 +1321,13 @@ void
 PmdbPutRoptionsWithSnapshot(const uint64_t seq_number)
 {
     struct pmdb_range_read_req *prrq;
+
+    if (FAULT_INJECT(pmdb_range_read_keep_snapshot))
+    {
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "Ignore releasing snapshot as fault injection is set");
+        return;
+    }
 
     prrq = pmdb_range_read_req_lookup(seq_number, __func__, __LINE__);
     // One put is for lookup above and another put is the actual reference drop.

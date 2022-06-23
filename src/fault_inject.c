@@ -129,6 +129,11 @@ static struct fault_injection coreFaultInjections[] =
         .flti_when = FAULT_INJECT_PERIOD_every_time,
         .flti_enabled = 0,
     },
+    [FAULT_INJECT_pmdb_range_read_keep_snapshot] = {
+        .flti_name = "pmdb_range_read_keep_snapshot",
+        .flti_when = FAULT_INJECT_PERIOD_every_time,
+        .flti_enabled = 0,
+    },
 };
 
 static struct fault_injection_set
