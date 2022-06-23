@@ -15,9 +15,9 @@ jobs:
       with:
         path: ./code
 
-    - uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
+    #- uses: actions/setup-python@v2
+    #  with:
+    #    python-version: '3.9'
 
     - name: apt update
       run: sudo apt update
@@ -39,11 +39,13 @@ jobs:
                                    python3-setuptools `apt-cache search librocksdb | awk '{print $1}'` uncrustify libasan5 libtsan0
 
     - name: Install python libraries
-      run:  pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath
+      run:  pip3 install setuptools wheel func_timeout sockets psutil dpath jmespath &&
+            python3 --version
 
       # Install Ansible
     - name: Install Ansible
-      run:  pip3 install ansible==2.10.7
+      run:  pip3 install ansible &&
+            ansible --version
 
     - name: make
       run: cd ./code &&
