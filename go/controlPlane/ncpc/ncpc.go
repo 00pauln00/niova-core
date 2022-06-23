@@ -198,6 +198,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.IntVar(&handler.count, "n", 1, "Write number of key/value pairs per key type (Default 1 will write the passed key/value)")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
+	flag.Uint64Var(&handler.seqNum, "S", math.MaxUint64, "Sequence Number for read")
 	flag.Parse()
 }
 
@@ -362,7 +363,7 @@ func (clientObj *clientHandler) rangeRead() {
 
 	Operation = "rangeRead"
 	// get sequence number from arguments
-	seqNum = math.MaxUint64
+	seqNum = clientObj.seqNum
 	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string]string)
 	var count int
