@@ -1,3 +1,5 @@
-control_plane_check_meminfo_after_kill.yml
+basic_recipe_for_rangeQuery_controlplane.yml
+controlplane_rangeQuery_leader_change.yml
+controlplane_rangeQuery_Insertnew_key.yml
 basic_niova_block_recipe.yml
 niova_block_gossip_info_check.yml
