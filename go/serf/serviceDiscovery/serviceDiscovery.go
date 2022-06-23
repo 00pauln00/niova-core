@@ -108,7 +108,8 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 		}
 
 		log.Error("Error in HTTP request : ", err)
-		log.Trace("Retrying HTTP request with different proxy")
+		log.Trace("Retrying HTTP request with a different proxy")
+		time.Sleep(1 * time.Second)
 	}
 
 	if handler.IsStatRequired {
@@ -144,7 +145,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 			}
 			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
-				log.Info(removeName)
+				log.Trace(removeName)
 			}
 
 			//Check if node is alive, check if gossip is available and http server of that node is not reported down!
