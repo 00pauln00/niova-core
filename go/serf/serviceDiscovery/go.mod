@@ -16,6 +16,7 @@ require (
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000
 	github.com/hashicorp/serf v0.9.7
 	github.com/sirupsen/logrus v1.8.1
+	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000
 )
 
 require (
