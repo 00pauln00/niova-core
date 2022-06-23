@@ -26,9 +26,9 @@ jobs:
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
-    - uses: actions/setup-python@v2
-      with:
-        python-version: '3.9'
+    #- uses: actions/setup-python@v2
+    #  with:
+    #    python-version: '3.9'
 
     - name: dpkg / rpm prep
       run: sudo apt-get install -y uuid-dev
@@ -43,16 +43,10 @@ jobs:
             python3 --version
 
     # Install Ansible
-    #- name: Install Ansible
-    #  run:  pip3 install ansible &&
-    #        ansible --version
-
     - name: Install Ansible
-      run: sudo apt update &&
-           sudo apt install software-properties-common &&
-           sudo add-apt-repository --yes --update ppa:ansible/ansible &&
-           sudo apt install ansible &&
-           ansible --version
+      run:  pip install ansible &&
+            pip install ansible-core &&
+            pip list && ansible --version
 
     - name: make
       run: cd ./code &&
