@@ -53,7 +53,7 @@ jobs:
 
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/controlPlane && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
+           cd code/go/controlPlane && go mod tidy && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
