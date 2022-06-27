@@ -14,20 +14,20 @@ compile:
 	echo "Compiling niovakv"
 
 proxyInstall:
-	cd proxy && go build
+	cd proxy && go mod tidy && go build
 
 nkvcInstall:
-	cd nkvc && go build
+	cd nkvc && go mod tidy && go build
 
 pmdbserver:
-	cd pmdbServer && go build pmdbServer.go
+	cd pmdbServer && go mod tidy && go build pmdbServer.go
 
 covid_foodpalace_apps:
-	cd ../covid19APP/server && go build && cd ../../niovaKV/ && cd ../covid19APP/client && go build && cd ../../niovaKV/ && cd ../foodpalaceAPP/server && go build && cd ../../niovaKV/ && cd ../foodpalaceAPP/client && go build
+	cd ../covid19APP/server && go mod tidy && go build && cd ../../niovaKV/ && cd ../covid19APP/client && go mod tidy && go build && cd ../../niovaKV/ && cd ../foodpalaceAPP/server && go mod tidy && go build && cd ../../niovaKV/ && cd ../foodpalaceAPP/client && go mod tidy && go build
 
 
 lkvt_module:
-	cd lkvt && git submodule init && git submodule update && git checkout go_mod_patch && go build
+	cd lkvt && git submodule init && git submodule update && go build
 
 install:
 	sudo cp pmdbServer/pmdbServer ${DIR}/libexec/niova/NKV_pmdbServer
