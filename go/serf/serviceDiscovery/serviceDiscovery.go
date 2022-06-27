@@ -70,12 +70,12 @@ func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
 }
 
-func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) []byte {
+func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) ([]byte, error) {
 	var toSend client.Member
 	var response []byte
+	var err error
 
 	for i := 0; i < handler.HTTPRetry; i++ {
-		var err error
 		var ok bool
 
 		//Get node to send request to
@@ -121,7 +121,7 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 		}
 	}
 
-	return response
+	return response, err
 }
 
 func isValidNodeData(member client.Member) bool {
