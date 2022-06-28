@@ -187,10 +187,10 @@ func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
 
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
-	flag.StringVar(&handler.requestKey, "k", "Key", "Key - For ReadRange pass '<prefix>*' e.g. : -k 'vdev.*'")
+	flag.StringVar(&handler.requestKey, "k", "", "Key - For ReadRange pass '<prefix>*' e.g. : -k 'vdev.*'")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
 	flag.StringVar(&handler.port, "p", "1999", "Port value")
-	flag.StringVar(&handler.requestValue, "v", "NULL", "Value")
+	flag.StringVar(&handler.requestValue, "v", "", "Value")
 	flag.StringVar(&handler.configPath, "c", "./gossipNodes", "gossip nodes config file path")
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
@@ -447,6 +447,14 @@ func isRangeRequest(requestKey string) bool {
 	return requestKey[len(requestKey)-1:] == "*"
 }
 
+func isSingleWriteReqValid( cli *clientHandler) bool {
+	if cli.operation == "write" && cli.count == 1 && cli.requestValue == "" {
+		return false
+	}
+
+	return true
+}
+
 func main() {
 	//Intialize client object
 	clientObj := clientHandler{}
@@ -454,7 +462,7 @@ func main() {
 	//Get commandline parameters.
 	clientObj.getCmdParams()
 	flag.Usage = usage
-	if flag.NFlag() == 0 {
+	if flag.NFlag() == 0 || !isSingleWriteReqValid(&clientObj){
 		usage()
 		os.Exit(-1)
 	}
