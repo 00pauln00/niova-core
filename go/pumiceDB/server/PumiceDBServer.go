@@ -328,7 +328,7 @@ func seekTo(key string, key_len int64, itr *C.rocksdb_iterator_t) {
 // Wrapper for rocksdb_iter_key/val -
 // Returns the key and value from the where
 // the iterator is present
-func getKeyVal(itr *C.rocksdb_iterator_t) (string, string) {
+func getKeyVal(itr *C.rocksdb_iterator_t) (string, []byte) {
 	var cKeyLen C.size_t
 	var cValLen C.size_t
 
@@ -338,20 +338,19 @@ func getKeyVal(itr *C.rocksdb_iterator_t) (string, string) {
 	keyBytes := CToGoBytes(C_key, C.int(cKeyLen))
 	valueBytes := CToGoBytes(C_value, C.int(cValLen))
 
-	return string(keyBytes), string(valueBytes)
+	return string(keyBytes), valueBytes
 }
 
 func pmdbFetchRange(key string, key_len int64,
-	prefix string, bufSize int64, seqNum uint64, go_cf string) (map[string]string, string, uint64, error) {
+	prefix string, bufSize int64, seqNum uint64, go_cf string) (map[string][]byte, string, uint64, error) {
 	var lookup_err error
 	var snapDestroyed bool
-	var resultMap = make(map[string]string)
+	var resultMap = make(map[string][]byte)
 	var mapSize int
 	var lastKey string
 	var retSeqNum C.ulong
 	var itr *C.rocksdb_iterator_t
 	var ropts *C.rocksdb_readoptions_t
-
 	log.Trace("RangeQuery - Key passed is: ", key, " Prefix passed is : ", prefix,
 		" Seq No passed is : ", seqNum)
 
@@ -410,7 +409,7 @@ func pmdbFetchRange(key string, key_len int64,
 
 // Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, prefix string, bufSize int64, seqNum uint64, gocolfamily string) (map[string]string, string, uint64, error) {
+	key_len int64, prefix string, bufSize int64, seqNum uint64, gocolfamily string) (map[string][]byte, string, uint64, error) {
 
 	return pmdbFetchRange(key, key_len, prefix, bufSize, seqNum, gocolfamily)
 }

@@ -5,6 +5,7 @@
 *.*~
 *.swp
 *.out
+go.sum
 .gitignore
 TAGS
 test/simple_test

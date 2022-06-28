@@ -19,6 +19,7 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"strconv"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -186,10 +187,10 @@ func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
 
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
-	flag.StringVar(&handler.requestKey, "k", "Key", "Key - For ReadRange pass '<prefix>*' e.g. : -k 'vdev.*'")
+	flag.StringVar(&handler.requestKey, "k", "", "Key - For ReadRange pass '<prefix>*' e.g. : -k 'vdev.*'")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
 	flag.StringVar(&handler.port, "p", "1999", "Port value")
-	flag.StringVar(&handler.requestValue, "v", "NULL", "Value")
+	flag.StringVar(&handler.requestValue, "v", "", "Value")
 	flag.StringVar(&handler.configPath, "c", "./gossipNodes", "gossip nodes config file path")
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
@@ -205,6 +206,17 @@ func (handler *clientHandler) getCmdParams() {
 func (cli *clientHandler) write2Json(toJson interface{}) {
 	file, _ := json.MarshalIndent(toJson, "", " ")
 	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
+}
+
+//Converts map[string][]byte to map[string]string
+func convMapToStr(map1 map[string][]byte) map[string]string {
+	map2 := make(map[string]string)
+
+	for k, v := range map1 {
+		map2[k] = string(v)
+	}
+
+	return map2
 }
 
 func fillOperationData(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
@@ -297,6 +309,7 @@ func (clientObj *clientHandler) write() {
 
 			//Send the write request
 			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+
 			//Decode the request
 			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 			err = dec.Decode(&responseObj)
@@ -347,7 +360,7 @@ func (clientObj *clientHandler) read() {
 		log.Error("Decoding error : ", err)
 	}
 
-	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
+	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, string(responseObj.ResultMap[responseObj.Key]), 0)
 	clientObj.write2Json(operationStat)
 }
 
@@ -364,7 +377,7 @@ func (clientObj *clientHandler) rangeRead() {
 	// get sequence number from arguments
 	seqNum = math.MaxUint64
 	// Keep calling range request till ContinueRead is true
-	resultMap := make(map[string]string)
+	resultMap := make(map[string][]byte)
 	var count int
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
@@ -409,10 +422,11 @@ func (clientObj *clientHandler) rangeRead() {
 		Key = rangeResponseObj.Key
 	}
 	//Get status from response
-	operationStat := fillOperationData(0, "range", requestObj.Key, resultMap, seqNum)
+	strResultMap := convMapToStr(resultMap)
+	operationStat := fillOperationData(0, "range", requestObj.Key, strResultMap, seqNum)
 	clientObj.write2Json(operationStat)
-	// FIXME Failing
-	/*
+
+	//Validate range response§
 	if reqStatus == nil {
 		fmt.Println("Generate the Data for read validation")
 		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
@@ -427,11 +441,18 @@ func (clientObj *clientHandler) rangeRead() {
 		}
 		fmt.Println("The range query was completed in", count, "iterations")
 	}
-	*/
 }
 
 func isRangeRequest(requestKey string) bool {
 	return requestKey[len(requestKey)-1:] == "*"
+}
+
+func isSingleWriteReqValid( cli *clientHandler) bool {
+	if cli.operation == "write" && cli.count == 1 && cli.requestValue == "" {
+		return false
+	}
+
+	return true
 }
 
 func main() {
@@ -441,7 +462,7 @@ func main() {
 	//Get commandline parameters.
 	clientObj.getCmdParams()
 	flag.Usage = usage
-	if flag.NFlag() == 0 {
+	if flag.NFlag() == 0 || !isSingleWriteReqValid(&clientObj){
 		usage()
 		os.Exit(-1)
 	}
