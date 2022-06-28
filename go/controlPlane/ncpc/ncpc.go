@@ -400,7 +400,7 @@ func (clientObj *clientHandler) read() {
 
 	var operationStat *opData
 	if err == nil {
-		operationStat = fillOperationData(responseObj.Status, "read", responseObj.Key, responseObj.ResultMap[responseObj.Key], 0)
+		operationStat = fillOperationData(responseObj.Status, "read", responseObj.Key, string(responseObj.ResultMap[responseObj.Key]), 0)
 	} else {
 		operationStat = fillOperationData(1, "read", responseObj.Key, err.Error(), 0)
 	}
