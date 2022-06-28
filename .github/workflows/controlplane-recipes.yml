@@ -19,11 +19,11 @@ jobs:
       run: sudo apt update
 
     # Install golang
-    - name: Install golang 1.16
+    - name: Install golang 1.18.3
       run: sudo rm -rf /usr/bin/go &&
-           sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+           sudo wget https://golang.org/dl/go1.18.3.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
-           sudo tar -C /home/runner/work/go -xzf  go1.16.6.linux-amd64.tar.gz &&
+           sudo tar -C /home/runner/work/go -xzf  go1.18.3.linux-amd64.tar.gz &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
@@ -53,7 +53,11 @@ jobs:
 
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/controlPlane && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
+           cd code/go/controlPlane
+           && cd ncpc/ && go mod tidy && cd ..
+           && cd pmdbServer && go mod tidy && cd ..
+           && cd proxy && go mod tidy && cd ..
+           && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&

@@ -270,7 +270,7 @@ pmdb_compile_time_asserts(void)
                         PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP);
 
     // enum PmdbOpType must fit into 'uint8_t pmdbrm_op'
-    COMPILE_TIME_ASSERT(pmdb_op_any < (1 << sizeof(uint8_t)) * NBBY);
+    COMPILE_TIME_ASSERT(pmdb_op_any < (1 << (sizeof(uint8_t) * NBBY)));
 }
 
 #define PMDB_ARG_CHECK(op, rncr)                     \
