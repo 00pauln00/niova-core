@@ -8,6 +8,7 @@ type KVRequest struct {
 	Rncui     string
 	CheckSum  [16]byte
 	SeqNum	  uint64
+	Consistent bool
 }
 
 type KVResponse struct {
@@ -17,6 +18,7 @@ type KVResponse struct {
 	ContinueRead bool
 	Prefix       string
 	SeqNum	     uint64
+	IsConsistent bool
 }
 
 type LookoutRequest struct {

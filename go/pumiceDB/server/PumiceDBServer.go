@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
-
+	"math"
 	gopointer "github.com/mattn/go-pointer"
 )
 
@@ -340,24 +340,33 @@ func getKeyVal(itr *C.rocksdb_iterator_t) (string, []byte) {
 }
 
 func pmdbFetchRange(key string, key_len int64,
-	prefix string, bufSize int64, seqNum uint64, go_cf string) (map[string][]byte, string, uint64, error) {
+	prefix string, bufSize int64, consistent bool, seqNum uint64, go_cf string) (map[string][]byte, string, uint64, bool, error) {
 	var lookup_err error
 	var snapDestroyed bool
 	var resultMap = make(map[string][]byte)
 	var mapSize int
 	var lastKey string
 	var retSeqNum C.ulong
+	var isConsistent bool
 	var itr *C.rocksdb_iterator_t
 	var ropts *C.rocksdb_readoptions_t
 	log.Trace("RangeQuery - Key passed is: ", key, " Prefix passed is : ", prefix,
 		" Seq No passed is : ", seqNum)
 
 	// get the readoptions and create/fetch seq num for snapshot
-	ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retSeqNum)
-	if seqNum != CToGoUint64(retSeqNum){
-		seqNum = CToGoUint64(retSeqNum)
+	if consistent {
+		isConsistent = true
+		ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retSeqNum)
+		if seqNum != CToGoUint64(retSeqNum){
+			if seqNum != math.MaxUint64 {
+				isConsistent = false
+			}
+			seqNum = CToGoUint64(retSeqNum)
+		}
+	} else {
+		snapDestroyed = true
+		ropts = C.rocksdb_readoptions_create()
 	}
-	snapDestroyed = false
 
 	// create iterator
 	cf := GoToCString(go_cf)
@@ -372,10 +381,12 @@ func pmdbFetchRange(key string, key_len int64,
 		log.Trace("RangeQuery - Seeked to : ", fKey)
 
 		// check if passed key is prefix of fetched key or exit
-		if !(strings.HasPrefix(fKey, prefix)) {
-			log.Trace("RangeQuery - Destroying snapshot, seqNum is - ", seqNum)
-			snapDestroyed = true
-			C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
+		if !(strings.HasPrefix(fKey, prefix) {
+			if snapDestroyed {
+				log.Trace("RangeQuery - Destroying snapshot, seqNum is - ", seqNum)
+				snapDestroyed = true
+				C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
+			}
 			break
 		}
 		// check if the key-val can be stored in the buffer
@@ -397,19 +408,23 @@ func pmdbFetchRange(key string, key_len int64,
 	}
 	C.rocksdb_iter_destroy(itr)
 	FreeCMem(cf)
+	if !consistent {
+		C.rocksdb_readoptions_destroy(ropts)
+	}
+
 	if len(resultMap) == 0 {
 		lookup_err = errors.New("Failed to lookup for key")
 	} else {
 		lookup_err = nil
 	}
-	return resultMap, lastKey, seqNum, lookup_err
+	return resultMap, lastKey, seqNum, isConsistent, lookup_err
 }
 
 // Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
-	key_len int64, prefix string, bufSize int64, seqNum uint64, gocolfamily string) (map[string][]byte, string, uint64, error) {
+	key_len int64, prefix string, bufSize int64, consistent bool, seqNum uint64, gocolfamily string) (map[string][]byte, string, uint64, bool, error) {
 
-	return pmdbFetchRange(key, key_len, prefix, bufSize, seqNum, gocolfamily)
+	return pmdbFetchRange(key, key_len, prefix, bufSize, consistent, seqNum, gocolfamily)
 }
 
 // Copy data from the user's application into the pmdb reply buffer
