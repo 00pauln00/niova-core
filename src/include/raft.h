@@ -340,7 +340,11 @@ enum raft_instance_hist_types
     RAFT_INSTANCE_HIST_NENTRIES_SYNC      = 5,
     RAFT_INSTANCE_HIST_COALESCED_WR_CNT   = 6,
     RAFT_INSTANCE_HIST_CHKPT_LAT_USEC     = 7,
-    RAFT_INSTANCE_HIST_MAX                = 8,
+    RAFT_INSTANCE_HIST_USR_READ_LAT       = 8,
+    RAFT_INSTANCE_HIST_USR_READ_SZ        = 9,
+    RAFT_INSTANCE_HIST_USR_APPLY_LAT      = 10,
+    RAFT_INSTANCE_HIST_USR_APPLY_SZ       = 11,
+    RAFT_INSTANCE_HIST_MAX                = 12,
     RAFT_INSTANCE_HIST_CLIENT_MAX = RAFT_INSTANCE_HIST_DEV_READ_LAT_USEC,
 };
 
@@ -758,6 +762,14 @@ raft_instance_hist_stat_2_name(enum raft_instance_hist_types hist)
         return "coalesced-wr-cnt";
     case RAFT_INSTANCE_HIST_CHKPT_LAT_USEC:
         return "checkpoint-latency-usec";
+    case RAFT_INSTANCE_HIST_USR_READ_LAT:
+        return "app-read-usec";
+    case RAFT_INSTANCE_HIST_USR_READ_SZ:
+        return "app-read-sz";
+    case RAFT_INSTANCE_HIST_USR_APPLY_LAT:
+        return "app-apply-usec";
+    case RAFT_INSTANCE_HIST_USR_APPLY_SZ:
+        return "app-apply-sz";
     default:
         break;
     }

@@ -133,6 +133,10 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_FOLLOWER_VSTATS,    // varray - last follower node
     RAFT_LREG_HIST_COMMIT_LAT,    // hist object
     RAFT_LREG_HIST_READ_LAT,      // hist object
+    RAFT_LREG_HIST_USR_READ_LAT, // hist object
+    RAFT_LREG_HIST_USR_READ_SZ,  // hist object
+    RAFT_LREG_HIST_USR_APPLY_LAT, // hist object
+    RAFT_LREG_HIST_USR_APPLY_SZ,  // hist object
     RAFT_LREG_MAX,
     RAFT_LREG_MAX_FOLLOWER = RAFT_LREG_FOLLOWER_VSTATS,
 };
@@ -354,6 +358,34 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                 raft_instance_hist_stat_2_name(
                     RAFT_INSTANCE_HIST_COALESCED_WR_CNT),
                 RAFT_INSTANCE_HIST_COALESCED_WR_CNT);
+            break;
+        case RAFT_LREG_HIST_USR_READ_LAT:
+            lreg_value_fill_histogram(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_USR_READ_LAT),
+                RAFT_INSTANCE_HIST_USR_READ_LAT);
+            break;
+        case RAFT_LREG_HIST_USR_READ_SZ:
+            lreg_value_fill_histogram(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_USR_READ_SZ),
+                RAFT_INSTANCE_HIST_USR_READ_SZ);
+            break;
+        case RAFT_LREG_HIST_USR_APPLY_LAT:
+            lreg_value_fill_histogram(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_USR_APPLY_LAT),
+                RAFT_INSTANCE_HIST_USR_APPLY_LAT);
+            break;
+        case RAFT_LREG_HIST_USR_APPLY_SZ:
+            lreg_value_fill_histogram(
+                lv,
+                raft_instance_hist_stat_2_name(
+                    RAFT_INSTANCE_HIST_USR_APPLY_SZ),
+                RAFT_INSTANCE_HIST_USR_APPLY_SZ);
             break;
         case RAFT_LREG_HIST_CHKPT_LAT:
             lreg_value_fill_histogram(
@@ -4307,14 +4339,33 @@ raft_server_client_recv_handler(struct raft_instance *ri,
      * 4. SM processes a read request, returning the requested application
      *    data.
      */
+    NIOVA_TIMER_START(x);
     int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-
-    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
 
     // rncr.rncr_type was set by the callback!
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;
 
+    if (write_op)
+    {
+        NIOVA_TIMER_STOP_and_HIST_ADD(
+            x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_USR_APPLY_LAT));
+
+        binary_hist_incorporate_val(
+            raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_USR_APPLY_SZ),
+            rcm->rcrm_data_size);
+    }
+    else
+    {
+        NIOVA_TIMER_STOP_and_HIST_ADD(
+            x, raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_USR_READ_LAT));
+
+        binary_hist_incorporate_val(
+            raft_server_type_2_hist(ri, RAFT_INSTANCE_HIST_USR_READ_SZ),
+            rncr.rncr_reply->rcrm_data_size);
+    }
+
+    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
     DBG_RAFT_CLIENT_RPC(log_level, rcm,
                         "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
                         write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
