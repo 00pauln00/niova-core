@@ -326,7 +326,7 @@ type NiovaKVServer struct {
 }
 
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, pmdbHandle unsafe.Pointer) {
+	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
@@ -335,7 +335,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
-		return
+		return -1
 	}
 
 	log.Trace("Key passed by client: ", applyNiovaKV.Key)
@@ -349,10 +349,12 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	valLen := len(byteToStr)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
-	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
+	rc := nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
+	return rc
 }
+
 func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 

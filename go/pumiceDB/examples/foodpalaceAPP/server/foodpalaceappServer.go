@@ -57,7 +57,7 @@ func (fpso *FoodpalaceServer) initLogger() {
 
 //Method for Apply callback.
 func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
-	dataBufSz int64, pmdbHandle unsafe.Pointer) {
+	dataBufSz int64, pmdbHandle unsafe.Pointer) int {
 
 	data := &foodpalaceapplib.FoodpalaceData{}
 	fpso.pso.Decode(dataBuf, data, dataBufSz)
@@ -89,8 +89,9 @@ func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Point
 	appValLen := len(fpAppValue)
 
 	//Write key,values.
-	fpso.pso.WriteKV(appUuid, pmdbHandle, fpAppKey, int64(appKeyLen), fpAppValue,
+	rc := fpso.pso.WriteKV(appUuid, pmdbHandle, fpAppKey, int64(appKeyLen), fpAppValue,
 		int64(appValLen), colmfamily)
+	return rc
 }
 
 //Method for read callback.
