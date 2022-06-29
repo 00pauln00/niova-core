@@ -36,6 +36,7 @@ type clientHandler struct {
 	resultFile        string
 	rncui             string
 	rangeQuery        bool
+	relaxedConsistency bool
 	count             int
 	seed              int
 	lastKey           string
@@ -197,6 +198,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.resultFile, "j", "json_output", "Path along with file name for the resultant json file")
 	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request / Lookout uuid")
 	flag.IntVar(&handler.count, "n", 1, "Write number of key/value pairs per key type (Default 1 will write the passed key/value)")
+	flag.BoolVar(&handler.relaxedConsistency, "r", false, "Set this flag if range could be performed with relaxed consistency")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
 	flag.Parse()
@@ -379,11 +381,13 @@ func (clientObj *clientHandler) rangeRead() {
 	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string][]byte)
 	var count int
+
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
 		requestObj.Prefix = Prefix
 		requestObj.Key = Key
 		requestObj.Operation = Operation
+		requestObj.Consistent = !clientObj.relaxedConsistency
 		requestObj.SeqNum = seqNum
 		var requestByte bytes.Buffer
 
