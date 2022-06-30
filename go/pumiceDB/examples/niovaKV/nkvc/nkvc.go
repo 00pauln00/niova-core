@@ -81,27 +81,34 @@ func (handler *clientHandler) validate_read(key string, value []byte) bool {
 
 //Function to send the request
 func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write bool) {
-	var (
-		status   int
-		validate bool
-	)
-
+	//Record request start time
 	sendTime := time.Now()
 
+	var status int
+	var responseValue string
 	var requestByte bytes.Buffer
+	var validate bool
 	enc := gob.NewEncoder(&requestByte)
 	enc.Encode(req)
 
-	responseBytes, _ := handler.clientAPIObj.Request(requestByte.Bytes(), "", write)
+	responseBytes, err := handler.clientAPIObj.Request(requestByte.Bytes(), "", write)
 
-	var responseObj requestResponseLib.KVResponse
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	dec.Decode(&responseObj)
+	if err == nil {
+		var responseObj requestResponseLib.KVResponse
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		dec.Decode(&responseObj)
 
-	if !write {
-		if status == 0 {
-			validate = handler.validate_read(req.Key, responseObj.Value)
+		if !write {
+			if responseObj.Status == 0 {
+				validate = handler.validate_read(req.Key, responseObj.Value)
+			}
 		}
+
+		status = responseObj.Status
+		responseValue = string(responseObj.Value)
+	} else {
+		status = 1
+		responseValue = err.Error()
 	}
 
 	requestMeta := request{
@@ -116,8 +123,9 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 		Timestamp:     time.Now(),
 		Status:        status,
 		Validate:      validate,
-		ResponseValue: string(responseObj.Value),
+		ResponseValue: responseValue,
 	}
+
 	operationObj := opData{
 		RequestData:  requestMeta,
 		ResponseData: responseMeta,
@@ -125,7 +133,7 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 	}
 
 	atomic.AddInt64(&handler.requestSentCount, 1)
-	if (responseMeta.Status == -1) || (!validate) {
+	if (err != nil) || (responseMeta.Status == -1) || (!validate) {
 		atomic.AddInt64(&handler.failedRequestCount, int64(1))
 	}
 
