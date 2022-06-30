@@ -92,10 +92,12 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 	enc := gob.NewEncoder(&requestByte)
 	enc.Encode(req)
 
-	responseBytes := handler.clientAPIObj.Request(requestByte.Bytes(), "", write)
+	responseBytes, _ := handler.clientAPIObj.Request(requestByte.Bytes(), "", write)
+
 	var responseObj requestResponseLib.KVResponse
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	dec.Decode(&responseObj)
+
 	if !write {
 		if status == 0 {
 			validate = handler.validate_read(req.Key, responseObj.Value)
