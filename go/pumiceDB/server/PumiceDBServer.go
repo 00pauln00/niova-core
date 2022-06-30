@@ -339,6 +339,28 @@ func getKeyVal(itr *C.rocksdb_iterator_t) (string, []byte) {
 	return string(keyBytes), valueBytes
 }
 
+func createRopts(consistent bool, seqNum *uint64, ropts *C.rocksdb_readoptions_t) bool {
+	var isConsistent bool
+	var retSeqNum C.ulong
+
+	//Create ropts based on consistency requirement
+	if consistent {
+                isConsistent = true
+                ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(*seqNum), &retSeqNum)
+                if *seqNum != CToGoUint64(retSeqNum){
+                        if *seqNum != math.MaxUint64 {
+                                isConsistent = false
+                        }
+                        *seqNum = CToGoUint64(retSeqNum)
+                }
+        } else {
+                ropts = C.rocksdb_readoptions_create()
+        }
+
+	//return if created ropts has same seqnumber as passed
+	return isConsistent
+}
+
 func pmdbFetchRange(key string, key_len int64,
 	prefix string, bufSize int64, consistent bool, seqNum uint64, go_cf string) (map[string][]byte, string, uint64, bool, error) {
 	var lookup_err error
@@ -346,33 +368,20 @@ func pmdbFetchRange(key string, key_len int64,
 	var resultMap = make(map[string][]byte)
 	var mapSize int
 	var lastKey string
-	var retSeqNum C.ulong
-	var isConsistent bool
 	var itr *C.rocksdb_iterator_t
 	var ropts *C.rocksdb_readoptions_t
 	log.Trace("RangeQuery - Key passed is: ", key, " Prefix passed is : ", prefix,
 		" Seq No passed is : ", seqNum)
 
-	// get the readoptions and create/fetch seq num for snapshot
-	if consistent {
-		isConsistent = true
-		ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(seqNum), &retSeqNum)
-		if seqNum != CToGoUint64(retSeqNum){
-			if seqNum != math.MaxUint64 {
-				isConsistent = false
-			}
-			seqNum = CToGoUint64(retSeqNum)
-		}
-	} else {
-		snapDestroyed = true
-		ropts = C.rocksdb_readoptions_create()
-	}
+	//Create ropts based on consistency and seqNum
+	isConsistent := createRopts(consistent, &seqNum, ropts)
 
 	// create iterator
 	cf := GoToCString(go_cf)
 	cf_handle := C.PmdbCfHandleLookup(cf)
 	itr = C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
 
+	//Seek to the provided key
 	seekTo(key, key_len, itr)
 
 	// Iterate over keys store them in map if prefix
@@ -381,14 +390,15 @@ func pmdbFetchRange(key string, key_len int64,
 		log.Trace("RangeQuery - Seeked to : ", fKey)
 
 		// check if passed key is prefix of fetched key or exit
-		if !(strings.HasPrefix(fKey, prefix)) {
-			if snapDestroyed {
+		if !strings.HasPrefix(fKey, prefix) {
+			if consistent {
 				log.Trace("RangeQuery - Destroying snapshot, seqNum is - ", seqNum)
 				snapDestroyed = true
 				C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
 			}
 			break
 		}
+
 		// check if the key-val can be stored in the buffer
 		entrySize := len([]byte(fKey)) + len([]byte(fVal)) + encodingOverhead
 		if (int64(mapSize) + int64(entrySize)) > bufSize {
@@ -401,16 +411,18 @@ func pmdbFetchRange(key string, key_len int64,
 
 		C.rocksdb_iter_next(itr)
 	}
+
 	// exit if the iterator is not valid anymore and the snapshot is not destroyed
-	if C.rocksdb_iter_valid(itr) == 0 && snapDestroyed == false {
+	if C.rocksdb_iter_valid(itr) == 0 && snapDestroyed == false && consistent {
 		log.Trace("RangeQuery - Destroying snapshot after iterating over all the keys")
 		C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
-	}
+	} else if !consistent {
+                C.rocksdb_readoptions_destroy(ropts)
+        }
+
+	//Free the iterator and memory
 	C.rocksdb_iter_destroy(itr)
 	FreeCMem(cf)
-	if !consistent {
-		C.rocksdb_readoptions_destroy(ropts)
-	}
 
 	if len(resultMap) == 0 {
 		lookup_err = errors.New("Failed to lookup for key")
