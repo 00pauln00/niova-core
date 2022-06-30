@@ -381,7 +381,7 @@ func pmdbFetchRange(key string, key_len int64,
 		log.Trace("RangeQuery - Seeked to : ", fKey)
 
 		// check if passed key is prefix of fetched key or exit
-		if !(strings.HasPrefix(fKey, prefix) {
+		if !(strings.HasPrefix(fKey, prefix)) {
 			if snapDestroyed {
 				log.Trace("RangeQuery - Destroying snapshot, seqNum is - ", seqNum)
 				snapDestroyed = true
