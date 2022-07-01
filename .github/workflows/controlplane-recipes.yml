@@ -63,12 +63,12 @@ jobs:
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/control_plane_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
-    # Checkout control-plane branch       
+    # Checkout holon repo
     - name: Checkout repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       ref: nisd_uport_changes
+       #ref:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 

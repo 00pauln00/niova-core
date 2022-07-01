@@ -201,6 +201,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.BoolVar(&handler.relaxedConsistency, "r", false, "Set this flag if range could be performed with relaxed consistency")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
+	flag.Uint64Var(&handler.seqNum, "S", math.MaxUint64, "Sequence Number for read")
 	flag.Parse()
 }
 
@@ -279,6 +280,7 @@ func (clientObj *clientHandler) write() {
 	} else {
 		kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
 	}
+
 	operationStatSlice := make(map[string]*multiWriteStatus)
 	var operationStat interface{}
 	var mut sync.Mutex
@@ -293,46 +295,72 @@ func (clientObj *clientHandler) write() {
 				wg.Done()
 				<-requestLimiter
 			}()
+
 			var requestObj requestResponseLib.KVRequest
-			var responseObj requestResponseLib.KVResponse
-			var requestByte bytes.Buffer
+                        var responseObj requestResponseLib.KVResponse
+                        var requestBytes bytes.Buffer
+                        var responseBytes []byte
 
-			//Fill the request object
-			requestObj.Operation = "write"
-			requestObj.Key = key
-			requestObj.Value = val
-			requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
-			enc := gob.NewEncoder(&requestByte)
-			err := enc.Encode(requestObj)
-			if err != nil {
-				log.Error("Encoding error : ", err)
-				return
-			}
+			err := func() error {
 
-			//Send the write request
-			responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", true)
+				//Fill the request object
+				requestObj.Operation = "write"
+				requestObj.Key = key
+				requestObj.Value = val
+				requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
+				enc := gob.NewEncoder(&requestBytes)
+				err := enc.Encode(requestObj)
+				if err != nil {
+					log.Error("Encoding error : ", err)
+					return err
+				}
 
-			//Decode the request
-			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-			err = dec.Decode(&responseObj)
-			if err != nil {
-				log.Error("Decoding error : ", err)
-				return
-			}
+				//Send the write request
+				responseBytes, err = clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", true)
+				if err != nil {
+					log.Error("Error while sending the request : ", err)
+					return err
+				}
+
+				//Decode the request
+				dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+				err = dec.Decode(&responseObj)
+				if err != nil {
+					log.Error("Decoding error : ", err)
+					return err
+				}
+
+				return nil
+			}()
+
 
 			//Request status filler
 			if clientObj.count == 1 {
-				operationStat = fillOperationData(responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+				if err != nil {
+					operationStat = fillOperationData(1, "write", requestObj.Key, err.Error(), 0)
+				} else {
+					operationStat = fillOperationData(responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+				}
+				return
+			}
+
+			var operationStatMulti multiWriteStatus
+			if err != nil {
+				operationStatMulti = multiWriteStatus{
+					Status: 1,
+					Value: err.Error(),
+				}
 			} else {
-				operationStatMulti := multiWriteStatus{
+				operationStatMulti = multiWriteStatus{
 					Status: responseObj.Status,
 					Value:  string(val),
 				}
-				mut.Lock()
-				operationStatSlice[key] = &operationStatMulti
-				operationStat = operationStatSlice
-				mut.Unlock()
 			}
+
+			mut.Lock()
+			operationStatSlice[key] = &operationStatMulti
+			operationStat = operationStatSlice
+			mut.Unlock()
 		}(key, val)
 	}
 	wg.Wait()
@@ -342,33 +370,50 @@ func (clientObj *clientHandler) write() {
 func (clientObj *clientHandler) read() {
 	var requestObj requestResponseLib.KVRequest
 	var responseObj requestResponseLib.KVResponse
+	var requestBytes bytes.Buffer
 
-	requestObj.Key = clientObj.requestKey
-	requestObj.Operation = clientObj.operation
-	var requestByte bytes.Buffer
-	enc := gob.NewEncoder(&requestByte)
-	err := enc.Encode(requestObj)
-	if err != nil {
-		log.Error("Encoding error : ", err)
+	err := func() error {
+		//Fill the request obj and encode it
+		requestObj.Key = clientObj.requestKey
+		requestObj.Operation = clientObj.operation
+		enc := gob.NewEncoder(&requestBytes)
+		err := enc.Encode(requestObj)
+		if err != nil {
+			log.Error("Encoding error : ", err)
+			return err
+		}
+
+		//Send the request
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		if err != nil {
+			log.Error("Error while sending the request : ", err)
+			return err
+		}
+
+		//Decode the request
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			return err
+		}
+
+		return nil
+	}()
+
+	var operationStat *opData
+	if err == nil {
+		operationStat = fillOperationData(responseObj.Status, "read", responseObj.Key, string(responseObj.ResultMap[responseObj.Key]), 0)
+	} else {
+		operationStat = fillOperationData(1, "read", responseObj.Key, err.Error(), 0)
 	}
 
-	//Send the request
-	responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
-
-	//Decode the request
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
-	if err != nil {
-		log.Error("Decoding error : ", err)
-	}
-
-	operationStat := fillOperationData(responseObj.Status, "read", responseObj.Key, string(responseObj.ResultMap[responseObj.Key]), 0)
 	clientObj.write2Json(operationStat)
 }
 
 func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
-	var reqStatus error
+	var err error
 	var requestObj requestResponseLib.KVRequest
 	var seqNum uint64
 
@@ -377,7 +422,7 @@ func (clientObj *clientHandler) rangeRead() {
 
 	Operation = "rangeRead"
 	// get sequence number from arguments
-	seqNum = math.MaxUint64
+	seqNum = clientObj.seqNum
 	// Keep calling range request till ContinueRead is true
 	resultMap := make(map[string][]byte)
 	var count int
@@ -389,62 +434,73 @@ func (clientObj *clientHandler) rangeRead() {
 		requestObj.Operation = Operation
 		requestObj.Consistent = !clientObj.relaxedConsistency
 		requestObj.SeqNum = seqNum
-		var requestByte bytes.Buffer
+		var requestBytes bytes.Buffer
+		var responseBytes []byte
 
 		// encode the requestObj
-		enc := gob.NewEncoder(&requestByte)
-		err := enc.Encode(requestObj)
+		enc := gob.NewEncoder(&requestBytes)
+		err = enc.Encode(requestObj)
 		if err != nil {
-			reqStatus = err
 			log.Error("Encoding error : ", err)
 			break
 		}
 
 		//Send the range request
-		responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "", false)
+		responseBytes, err = clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		if err != nil {
+			log.Error("Error while sending request : ", err)
+		}
+
 		if len(responseBytes) == 0 {
-			reqStatus = errors.New("Key not found")
-			log.Error(reqStatus)
+			err = errors.New("Key not found")
+			log.Error("Empty response : ",err)
 			break
 		}
 		// decode the responseObj
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&rangeResponseObj)
 		if err != nil {
-			reqStatus = err
 			log.Error("Decoding error : ", err)
 			break
 		}
+
 		// copy result to global result variable
 		maps.Copy(resultMap, rangeResponseObj.ResultMap)
 		count += 1
+
+		//Change sequence number and key for next iteration
 		seqNum = rangeResponseObj.SeqNum
+		Key = rangeResponseObj.Key
 		if !rangeResponseObj.ContinueRead {
 			break
 		}
-		// set key and seqNum for next iteration of range request
-		Key = rangeResponseObj.Key
 	}
-	//Get status from response
-	strResultMap := convMapToStr(resultMap)
-	operationStat := fillOperationData(0, "range", requestObj.Key, strResultMap, seqNum)
-	clientObj.write2Json(operationStat)
 
-	//Validate range response§
-	if reqStatus == nil {
+	//Fill the json
+	var operationStat *opData
+	if err == nil {
+		strResultMap := convMapToStr(resultMap)
+		operationStat = fillOperationData(0, "range", requestObj.Key, strResultMap, seqNum)
+
+		//Validate the range output		
 		fmt.Println("Generate the Data for read validation")
-		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+                genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 
-		// Get the expected data for read operation and compare against the output.
-		tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
-		filteredMap := filterKVPrefix(genKVMap, tPrefix)
+                // Get the expected data for read operation and compare against the output.
+                tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
+                filteredMap := filterKVPrefix(genKVMap, tPrefix)
 
-		compare := reflect.DeepEqual(resultMap, filteredMap)
-		if !compare {
-			fmt.Println("Range verification read failure")
-		}
-		fmt.Println("The range query was completed in", count, "iterations")
+                compare := reflect.DeepEqual(resultMap, filteredMap)
+                if !compare {
+                        fmt.Println("Range verification read failure")
+                }
+                fmt.Println("The range query was completed in", count, "iterations")
+
+	} else {
+		operationStat = fillOperationData(1, "range", requestObj.Key, err.Error(), seqNum)
 	}
+
+	clientObj.write2Json(operationStat)
 }
 
 func isRangeRequest(requestKey string) bool {
@@ -617,8 +673,11 @@ func main() {
 	case "ProxyStat":
                 clientObj.clientAPIObj.ServerChooseAlgorithm = 2
                 clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
-                responseBytes := clientObj.clientAPIObj.Request(nil, "/stat", false)
-                ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
+                responseBytes, err := clientObj.clientAPIObj.Request(nil, "/stat", false)
+		if err != nil {
+			log.Error("Error while sending request to proxy : ", err)
+		}
+		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
         case "LookoutInfo":
                 clientObj.clientAPIObj.ServerChooseAlgorithm = 2
@@ -635,8 +694,11 @@ func main() {
                 if err != nil {
                         log.Info("Encoding error")
                 }
-                responseBytes := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
-                clientObj.write2Json(responseBytes)
+                responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+                if err != nil {
+                        log.Error("Error while sending request to proxy : ", err)
+                }
+		clientObj.write2Json(responseBytes)
 	}
 
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")

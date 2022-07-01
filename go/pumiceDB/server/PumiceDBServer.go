@@ -19,7 +19,7 @@ import (
 #include <rocksdb/c.h>
 #include <raft/raft_net.h>
 #include <raft/pumice_db_client.h>
-extern void applyCgo(const struct raft_net_client_user_id *, const void *,
+extern int applyCgo(const struct raft_net_client_user_id *, const void *,
                      size_t, void *, void *);
 extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
                     size_t, void *, size_t, void *);
@@ -30,7 +30,7 @@ import "C"
 var encodingOverhead int = 2
 
 type PmdbServerAPI interface {
-	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer)
+	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer) int
 	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
 }
 
@@ -94,7 +94,7 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 //export goApply
 func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
-	user_data unsafe.Pointer) {
+	user_data unsafe.Pointer) int {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
@@ -103,7 +103,7 @@ func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz_go := CToGoInt64(input_buf_sz)
 
 	//Calling the golang Application's Apply function.
-	gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
+	return gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
 		pmdb_handle)
 }
 
@@ -251,7 +251,7 @@ func (*PmdbServerObject) LookupKey(key string, key_len int64,
 }
 
 func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
-	key_len int64, value string, value_len int64, gocolfamily string) {
+	key_len int64, value string, value_len int64, gocolfamily string) int {
 
 	//typecast go string to C char *
 	cf := GoToCString(gocolfamily)
@@ -281,14 +281,15 @@ func PmdbWriteKV(app_id unsafe.Pointer, pmdb_handle unsafe.Pointer, key string,
 	FreeCMem(cf)
 	FreeCMem(C_key)
 	FreeCMem(C_value)
+	return go_rc
 }
 
 // Public method of PmdbWriteKV
 func (*PmdbServerObject) WriteKV(app_id unsafe.Pointer,
 	pmdb_handle unsafe.Pointer, key string,
-	key_len int64, value string, value_len int64, gocolfamily string) {
+	key_len int64, value string, value_len int64, gocolfamily string) int {
 
-	PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
+	return PmdbWriteKV(app_id, pmdb_handle, key, key_len, value, value_len,
 		gocolfamily)
 }
 
