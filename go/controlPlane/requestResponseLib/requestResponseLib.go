@@ -18,7 +18,7 @@ type KVResponse struct {
 	ContinueRead bool
 	Prefix       string
 	SeqNum	     uint64
-	IsConsistent bool
+	SnapMiss     bool
 }
 
 type LookoutRequest struct {

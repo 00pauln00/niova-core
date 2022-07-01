@@ -391,7 +391,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	} else if reqStruct.Operation == "rangeRead" {
 		reqStruct.Prefix = reqStruct.Prefix
 		log.Trace("sequence number - ", reqStruct.SeqNum)
-		readResult, lastKey, seqNum, isConsistent, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
+		readResult, lastKey, seqNum, snapMiss, err := nso.pso.RangeReadKV(appId, reqStruct.Key,
 			int64(keyLen), reqStruct.Prefix, (replyBufSize - int64(encodingOverhead)), reqStruct.Consistent, reqStruct.SeqNum, colmfamily)
 		var cRead bool
 		if lastKey != "" {
@@ -405,7 +405,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 			ContinueRead: cRead,
 			Key:          lastKey,
 			SeqNum:	      seqNum,
-			IsConsistent: isConsistent,
+			SnapMiss: snapMiss,
 		}
 		readErr = err
 	}
