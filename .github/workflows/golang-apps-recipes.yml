@@ -52,7 +52,7 @@ jobs:
 
     - name: Build niovakv go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/pumiceDB/examples/niovaKV && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
+           cd code/go/pumiceDB/examples/niovaKV && make niovakv_all -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
