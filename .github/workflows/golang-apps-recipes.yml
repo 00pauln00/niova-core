@@ -50,10 +50,10 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-    - name: Build niovakv go applications using makefile
+    - name: Build  Niovakv go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/pumiceDB/examples/niovaKV && make -e DIR=/home/runner/work/niovad/niovad/build_dir
-    
+
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/niovakv_recipes.txt /home/runner/work/niovad/niovad/build_dir/ &&
