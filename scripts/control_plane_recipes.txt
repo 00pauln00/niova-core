@@ -1,5 +1,3 @@
 controlplane_rangeQuery_Insertnew_key.yml
 controlplane_rangeQuery_leader_change.yml
 controlplane_rangeQuery_kill_all_proxies.yml
-basic_niova_block_recipe.yml
-niova_block_gossip_info_check.yml
