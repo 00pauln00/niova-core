@@ -5,9 +5,6 @@ ARG recipe_name
 ARG backend_type
 ARG app_name
 
-#RUN  mkdir runner && cd runner \
-#     && mkdir work && cd work
-
 # Install golang
 RUN  apt-get update \
   && apt-get install -y wget \
