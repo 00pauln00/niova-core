@@ -106,7 +106,6 @@ type epContainer struct {
 	Statb         syscall.Stat_t
 	EpWatcher     *fsnotify.Watcher
 	serfHandler   serfagenthandler.SerfAgentHandler
-	udpEvent      chan udpMessage
 	storageClient client_api.ClientAPI
 	udpSocket     net.PacketConn
 	httpQuery     map[string](chan []byte)
@@ -240,20 +239,26 @@ func (epc *epContainer) JsonMarshal() []byte {
 func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 	splitPath := strings.Split(event.Name, "/")
 	cmpstr := splitPath[len(splitPath)-1]
-
 	uuid, err := uuid.Parse(splitPath[len(splitPath)-3])
         if err != nil {
                 return
         }
 
+	//temp file exclusion
+	if strings.Contains(cmpstr,".") {
+		return
+        }
+
 	//Check if its for HTTP
-	httpID := strings.Split(cmpstr, "HTTP")
-	if len(httpID) == 2 {
+	if strings.Contains(cmpstr, "HTTP") {
 		var output []byte
 		if ep := epc.EpMap[uuid]; ep != nil {
 		        ep.Complete(cmpstr, &output)
 		}
-		epc.httpQuery[httpID[1]] <- output
+
+		if channel, ok := epc.httpQuery[cmpstr]; ok {
+			channel <- output
+		}
 		return
 	}
 
@@ -320,9 +325,6 @@ func (epc *epContainer) epOutputWatcher() {
 		case err := <-epc.EpWatcher.Errors:
 			fmt.Println("ERROR", err)
 
-		case udpInfo := <-epc.udpEvent:
-			go epc.getConfigNSend(udpInfo)
-
 		}
 	}
 }
@@ -366,7 +368,6 @@ func (epc *epContainer) httpHandleUUIDRequest(w http.ResponseWriter,
 }
 
 func (epc *epContainer) httpHandleRoute(w http.ResponseWriter, r *url.URL) {
-	// Splitting '/vX/' results in a length of 2
 	splitURL := strings.Split(r.String(), "/v0/")
 
 
@@ -389,15 +390,16 @@ func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 
 func (epc *epContainer) customQueryNISD(nisdUUID uuid.UUID, query string) []byte {
 	epc.Mutex.Lock()
-        ep, ok := epc.EpMap[nisdUUID]
+        ep := epc.EpMap[nisdUUID]
         epc.Mutex.Unlock()
+
 	//If not present
-	if !ok {
+	if ep == nil{
 		return []byte("Specified NISD is not present")
 	}
 
 	httpID := "HTTP_"+uuid.New().String()
-	epc.httpQuery[httpID] = make(chan []byte, 1)
+	epc.httpQuery[httpID] = make(chan []byte, 2)
 	ep.CustomQuery(query, httpID)
 
 	//FIXME: Have select in case of NISD dead
@@ -405,7 +407,6 @@ func (epc *epContainer) customQueryNISD(nisdUUID uuid.UUID, query string) []byte
 	select {
 	case byteOP = <- epc.httpQuery[httpID]:
 		break
-
 	}
 	return byteOP
 }
@@ -426,9 +427,8 @@ func (epc *epContainer) QueryNISDHandle(w http.ResponseWriter, r *http.Request) 
         }
 
 	//Call the appropriate function
-	nisdUUID := requestObj.NISD
-	query := requestObj.Cmd
-	output := epc.customQueryNISD(nisdUUID, query)
+	output := epc.customQueryNISD(requestObj.NISD, requestObj.Cmd)
+
 	//Data to writer
 	w.Write(output)
 }
@@ -515,8 +515,7 @@ func (epc *epContainer) startClientAPI() {
 }
 
 func (epc *epContainer) startUDPListner() {
-	fmt.Println("Starting udp listner")
-	//epc.udpEvent = make(chan udpMessage, 10)
+
 	var err error
 	epc.udpSocket, err = net.ListenPacket("udp", ":"+udpPort)
 	if err != nil {
@@ -545,8 +544,8 @@ func main() {
 		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
 	}
 
+	epc.httpQuery = make(map[string]chan []byte)
 	epc.Scan()
-	epc.udpEvent = make(chan udpMessage, 10)
 	go epc.serveHttp()
 
 	epc.startClientAPI()
