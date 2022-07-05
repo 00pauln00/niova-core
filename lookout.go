@@ -253,7 +253,10 @@ func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 	if strings.Contains(cmpstr, "HTTP") {
 		var output []byte
 		if ep := epc.EpMap[uuid]; ep != nil {
-		        ep.Complete(cmpstr, &output)
+			err := ep.Complete(cmpstr, &output)
+			if err != nil {
+				output = []byte(err.Error())
+			}
 		}
 
 		if channel, ok := epc.httpQuery[cmpstr]; ok {

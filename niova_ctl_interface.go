@@ -21,7 +21,7 @@ import "C"
 
 const (
 	maxPendingCmdsEP  = 32
-	maxOutFileSize    = 4*1024 ^ 2
+	maxOutFileSize    = 4*1024*1024
 	outFileTimeoutSec = 2
 	outFilePollMsec   = 1
 	EPtimeoutSec      = 60.0
