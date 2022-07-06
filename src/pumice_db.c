@@ -1430,8 +1430,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     CIRCLEQ_INIT(&prrq_queue);
 
     int rc = raft_server_rocksdb_add_cf_name(
-        &pmdbCFT, PMDB_COLUMN_FAMILY_NAME,
-        strnlen(PMDB_COLUMN_FAMILY_NAME, RAFT_ROCKSDB_MAX_CF_NAME_LEN));
+        &pmdbCFT, PMDB_COLUMN_FAMILY_NAME, strlen(PMDB_COLUMN_FAMILY_NAME));
 
     FATAL_IF((rc), "raft_server_rocksdb_add_cf_name() %s", strerror(-rc));
 
