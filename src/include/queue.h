@@ -343,6 +343,12 @@ struct {                                                               \
         struct type **le_prev;  /* address of previous next element */ \
 }
 
+#define LIST_ENTRY_DETACHED(entry) \
+    ((entry)->le_next == NULL && (entry)->le_prev == NULL)
+
+#define LIST_ENTRY_INIT(entry) \
+    { (entry)->le_next = NULL; (entry)->le_prev = NULL; }
+
 /*
  * List access methods
  */
@@ -360,6 +366,21 @@ struct {                                                               \
         for ((var) = LIST_FIRST(head);                                  \
              (var) && ((tvar) = LIST_NEXT(var, field), 1);              \
              (var) = (tvar))
+
+#define LIST_ENTRY_IS_MEMBER(head, elm, field)        \
+({                                                    \
+    bool found = false;                               \
+    typeof (elm) tmp;                                 \
+    LIST_FOREACH(tmp, head, field)                    \
+    {                                                 \
+        if ((elm) == tmp)                             \
+        {                                             \
+            found = true;                             \
+            break;                                    \
+        }                                             \
+    }                                                 \
+    found;                                            \
+})
 
 /*
  * List functions.

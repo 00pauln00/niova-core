@@ -102,8 +102,6 @@ circleq_splice_tail_test(void)
     NIOVA_ASSERT(tmp->ce_value == j++ && tmp->ce_version == 0);
 }
 
-#include "queue.h"
-
 static void
 circle_queue_checks(void)
 {
@@ -162,9 +160,71 @@ circle_queue_checks(void)
     NIOVA_ASSERT(CIRCLEQ_LAST(&head) == &entries[0]);
 }
 
+static void
+list_queue_checks(void)
+{
+    struct lq_entry {
+        int num;
+        LIST_ENTRY(lq_entry) lentry;
+    };
+#define NENTRIES 4
+
+    LIST_HEAD(lq_head, lq_entry);
+    struct lq_head head = LIST_HEAD_INITIALIZER(head);
+    struct lq_entry unattached = {0};
+
+    NIOVA_ASSERT(LIST_ENTRY_DETACHED(&unattached.lentry));
+    NIOVA_ASSERT(!LIST_ENTRY_IS_MEMBER(&head, &unattached, lentry));
+
+    struct lq_entry entries[NENTRIES];
+
+    for (int i = 0; i < NENTRIES; i++)
+    {
+        entries[i].num = i;
+        LIST_INSERT_HEAD(&head, &entries[i], lentry);
+        NIOVA_ASSERT(!LIST_ENTRY_DETACHED(&entries[i].lentry));
+    }
+
+    for (int i = 0; i < NENTRIES; i++)
+    {
+        NIOVA_ASSERT(LIST_ENTRY_IS_MEMBER(&head, &entries[i], lentry));
+    }
+
+    struct lq_entry *tmp;
+    int i = NENTRIES - 1;
+    LIST_FOREACH(tmp, &head, lentry)
+    {
+        NIOVA_ASSERT(tmp->num == i);
+        i--;
+    }
+
+    LIST_REMOVE(&entries[1], lentry);
+    NIOVA_ASSERT(!LIST_ENTRY_IS_MEMBER(&head, &entries[1], lentry));
+
+    i = NENTRIES - 1;
+    LIST_FOREACH(tmp, &head, lentry)
+    {
+        NIOVA_ASSERT(tmp->num == i);
+        i == 2 ? i -= 2 : i--;
+    }
+
+    NIOVA_ASSERT(LIST_FIRST(&head) == &entries[NENTRIES - 1]);
+
+    struct lq_entry *x;
+    LIST_FOREACH_SAFE(x, &head, lentry, tmp)
+    {
+        LIST_REMOVE(x, lentry);
+        LIST_ENTRY_INIT(&x->lentry);
+    }
+
+    NIOVA_ASSERT(LIST_EMPTY(&head));
+}
+
 int
 main(void)
 {
     circle_queue_checks();
     circleq_splice_tail_test();
+
+    list_queue_checks();
 }
