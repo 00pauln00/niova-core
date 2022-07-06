@@ -356,6 +356,11 @@ struct {                                                               \
             (var)!= LIST_END(head);    \
             (var) = LIST_NEXT(var, field))
 
+#define	LIST_FOREACH_SAFE(var, head, field, tvar)                       \
+        for ((var) = LIST_FIRST(head);                                  \
+             (var) && ((tvar) = LIST_NEXT(var, field), 1);              \
+             (var) = (tvar))
+
 /*
  * List functions.
  */
