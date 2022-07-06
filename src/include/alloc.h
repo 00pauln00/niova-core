@@ -59,8 +59,8 @@ extern enum log_level allocLogLevel;
 
 #define niova_free(ptr)                            \
 {                                                  \
-    free(ptr);                                     \
     LOG_MSG(allocLogLevel, "niova_free: %p", ptr); \
+    free(ptr);                                     \
 }
 
 #define niova_reallocarray(ptr, type, nmemb)                           \
