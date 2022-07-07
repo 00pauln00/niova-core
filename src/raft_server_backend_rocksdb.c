@@ -83,7 +83,7 @@
 #define RECOVERY_MARKER_NAME "inprogress-recovery-db"
 #define RECOVERY_MARKER_REGEX \
     "^"RECOVERY_MARKER_NAME"\\."UUID_REGEX_BASE"_"UUID_REGEX_BASE"$"
-#define RECOVERY_MARKER_NAME_LEN 23
+#define RECOVERY_MARKER_NAME_LEN 22
 
 /* Rsync related regex's
  */
