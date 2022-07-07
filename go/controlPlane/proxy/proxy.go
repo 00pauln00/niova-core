@@ -76,7 +76,7 @@ Method    : getCmdParams
 Arguments : None
 Return(s) : None
 
-Description : Function to get command line parameters while starting of the proxy .
+Description : Function to get command line parameters while starting of the proxy.
 */
 func (handler *proxyHandler) getCmdParams() {
 	var tempRaftUUID, tempClientUUID string
