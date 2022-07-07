@@ -114,7 +114,6 @@ Addr //Addr for serf agent and http listening
 Aport //Serf agent-agent communication
 Rport //Serf agent-client communication
 Hport //Http listener port
-
 */
 func (handler *proxyHandler) getConfigData() error {
 	reader, err := os.Open(handler.configPath)
