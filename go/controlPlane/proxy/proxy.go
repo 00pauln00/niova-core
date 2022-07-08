@@ -30,7 +30,7 @@ import (
 	"time"
 )
 
-//Structure for proxy
+// Structure for proxy
 type proxyHandler struct {
 	//Other
 	configPath string
