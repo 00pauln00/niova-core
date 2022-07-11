@@ -30,11 +30,11 @@ lkvt_module:
 	cd lkvt && git submodule init && git submodule update && go build
 
 install:
-	sudo cp pmdbServer/pmdbServer ${DIR}/libexec/niova/NKV_pmdbServer
-	sudo cp proxy/proxy ${DIR}/libexec/niova/NKV_proxy
-	sudo cp nkvc/nkvc lkvt/lkvt ${DIR}/libexec/niova/
+	cp pmdbServer/pmdbServer ${DIR}/libexec/niova/NKV_pmdbServer
+	cp proxy/proxy ${DIR}/libexec/niova/NKV_proxy
+	cp nkvc/nkvc lkvt/lkvt ${DIR}/libexec/niova/
 	
-	sudo cp proxy/config ${DIR}/libexec/niova/niovakv.config
-	sudo cp ../covid19APP/server/covid_app_server ../covid19APP/client/covid_app_client ../covid19APP/client/vaccinations.csv ${DIR}/libexec/niova
-	sudo cp ../foodpalaceAPP/server/foodpalaceappserver ../foodpalaceAPP/client/foodpalaceappclient ../foodpalaceAPP/client/foodpalace.csv ${DIR}/libexec/niova
-	sudo cp docker/* ${DIR}
+	cp proxy/config ${DIR}/libexec/niova/niovakv.config
+	cp ../covid19APP/server/covid_app_server ../covid19APP/client/covid_app_client ../covid19APP/client/vaccinations.csv ${DIR}/libexec/niova
+	cp ../foodpalaceAPP/server/foodpalaceappserver ../foodpalaceAPP/client/foodpalaceappclient ../foodpalaceAPP/client/foodpalace.csv ${DIR}/libexec/niova
+	cp docker/* ${DIR}
