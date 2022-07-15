@@ -34,6 +34,7 @@
 #define RAFT_ENTRY_SIZE_MIN        65536
 
 #define RAFT_NUM_READ_THREADS 10
+#define RAFT_SERVER_WORK_TYPE 2
 
 // Raft election timeout upper and lower bounds
 #define	RAFT_ELECTION__MAX_TIME_MS 100000
@@ -453,14 +454,20 @@ struct raft_instance_co_wr
     char                                  rcwi_buffer[];
 };
 
-STAILQ_HEAD(raft_read_queue, raft_net_client_request_handle);
+STAILQ_HEAD(raft_srv_work, raft_net_client_request_handle);
 
-struct raft_read_thread
+struct raft_work_queue
 {
-    struct thread_ctl               rrt_ctl;
-    pthread_mutex_t                 rrt_mutex;
-    struct raft_read_queue          rrt_queue;
-    struct raft_instance            *rrt_ri; 
+    pthread_mutex_t                 rsw_mutex;
+    struct raft_srv_work            rsw_queue;
+    struct raft_instance            *rsw_ri;
+};
+
+enum raft_server_work_type
+{
+    RAFT_SERVER_WORK_WRITE = 0,
+    RAFT_SERVER_WORK_READ = 1,
+    RAFT_SEVER_WORK_MAX = 2,
 };
 
 struct raft_instance
@@ -540,7 +547,9 @@ struct raft_instance
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
-    struct raft_read_thread         ri_read_thread[RAFT_NUM_READ_THREADS];
+    struct thread_ctl               ri_writer_thread_ctl;
+    struct thread_ctl               ri_reader_thread_ctl[RAFT_NUM_READ_THREADS];
+    struct raft_work_queue          ri_worker_queue[RAFT_SERVER_WORK_MAX];
     struct raft_recovery_handle     ri_recovery_handle;
     struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member

@@ -4376,17 +4376,17 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
 }
 
 static void
-raft_server_enqueu_read(struct raft_instance *ri,
+raft_server_enqueue_read(struct raft_instance *ri,
                         struct raft_net_client_request_handle *rncr)
 {
     // Generate the Queue ID randomly
     int queue_id = random_get() % (RAFT_NUM_READ_THREADS - 1);
 
     // Take a lock on queue.
-    pthread_mutex_lock(&ri->ri_read_thread[queue_id].rrt_mutex);
+    pthread_mutex_lock(&ri->ri_worker_queue[RAFT_SERVER_WORK_READ].rsw_mutex);
 
-    STAILQ_INSERT_TAIL(&ri->ri_read_thread[queue_id].rrt_queue, rncr, rncr_lentry);
-    pthread_mutex_unlock(&ri->ri_read_thread[queue_id].rrt_mutex);
+    STAILQ_INSERT_TAIL(&ri->ri_worker_queue[RAFT_SERVER_WORK_READ].rsw_queue, rncr, rncr_lentry);
+    pthread_mutex_unlock(&ri->ri_worker_queue[RAFT_SERVER_WORK_READ].rsw_mutex);
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -4467,7 +4467,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (is_read)
     {
         rncr->rncr_bi = bi;
-        raft_server_enqueu_read(ri, rncr);
+        raft_server_enqueue_read(ri, rncr);
         return;
     }
 
@@ -5711,25 +5711,24 @@ static raft_server_read_thread_t
 raft_server_read_thread(void *arg)
 {
     struct thread_ctl *tc = arg;
-    struct raft_read_thread *read_thread = (struct raft_read_thread *)thread_ctl_get_arg(tc);
-
+    struct raft_work_queue *read_worker = (struct raft_work_queue *)thread_ctl_get_arg(tc);
 
     THREAD_LOOP_WITH_CTL(tc)
     {
         //Take mutex
-        pthread_mutex_lock(&read_thread->rrt_mutex);
+        pthread_mutex_lock(&read_worker->rsw_mutex);
         struct raft_net_client_request_handle *rncr;
-        rncr = STAILQ_FIRST(&read_thread->rrt_queue);
+        rncr = STAILQ_FIRST(&read_worker->rsw_queue);
         if (rncr) {
             // Remove the read request from the queue
-            STAILQ_REMOVE_HEAD(&read_thread->rrt_queue, rncr_lentry);
+            STAILQ_REMOVE_HEAD(&read_worker->rsw_queue, rncr_lentry);
         }
         // Release mutex
-        pthread_mutex_unlock(&read_thread->rrt_mutex);
+        pthread_mutex_unlock(&read_worker->rsw_mutex);
 
         if (rncr)
         {
-            raft_server_perform_read(read_thread->rrt_ri, rncr);
+            raft_server_perform_read(read_worker->rsw_ri, rncr);
             usleep(10);
         }
         else
@@ -5748,16 +5747,17 @@ raft_server_read_threads_start(struct raft_instance *ri)
 
     for (int i = 0; i < RAFT_NUM_READ_THREADS; i++)
     {
-         STAILQ_INIT(&ri->ri_read_thread[i].rrt_queue);
-         pthread_mutex_init(&ri->ri_read_thread[i].rrt_mutex, NULL);
+         //TODO init the queue and mutex through different function.
+         //STAILQ_INIT(&ri->ri_w[i].rrt_queue);
+         //pthread_mutex_init(&ri->ri_read_thread[i].rrt_mutex, NULL);
 
-         ri->ri_read_thread[i].rrt_ri = ri;
-         struct thread_ctl *tcl = &ri->ri_read_thread[i].rrt_ctl;
+         ri->ri_reader_thread_ctl[i].rrt_ri = ri;
+         struct thread_ctl *tcl = &ri->ri_reader_thread_ctl[i].rrt_ctl;
  
          int rc = thread_create_watched(raft_server_read_thread,
                                         tcl,
                                         "read_thread",
-                                        (void *)&ri->ri_read_thread[i],
+                                        (void *)&ri->ri_reader_thread_ctl[i],
                                         NULL);
          if (rc)
 	         return rc;
