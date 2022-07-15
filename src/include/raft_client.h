@@ -74,6 +74,7 @@ raft_client_get_default_request_timeout(void);
 int
 raft_client_request_submit(raft_client_instance_t rci,
                            const struct raft_net_client_user_id *rncui,
+                           const enum raft_client_rpc_op_type op_type,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
                            bool allocate_get_buffer_for_user,

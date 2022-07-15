@@ -776,6 +776,7 @@ raft_client_rpc_msg_assign_id(struct raft_client_instance *rci,
 static int // may be raft_net_timerfd_cb_ctx_int_t or client-enqueue ctx
 raft_client_rpc_msg_init(struct raft_client_instance *rci,
                          struct raft_client_rpc_msg *rcrm,
+                         const enum raft_client_rpc_op_type op_type,
                          const enum raft_client_rpc_msg_type msg_type,
                          const size_t data_size,
                          const struct ctl_svc_node *dest_csn,
@@ -798,6 +799,7 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
 
     memset(rcrm, 0, sizeof(struct raft_client_rpc_msg));
 
+    rcrm->rcrm_op = op_type;
     rcrm->rcrm_type = msg_type;
     rcrm->rcrm_version = 0;
     rcrm->rcrm_data_size = data_size;
@@ -818,7 +820,8 @@ static int
 raft_client_rpc_ping_init(struct raft_client_instance *rci,
                           struct raft_client_rpc_msg *rcrm)
 {
-    return raft_client_rpc_msg_init(rci, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_PING,
+    return raft_client_rpc_msg_init(rci, rcrm, RAFT_CLIENT_RPC_OP_TYPE_MAX,
+                                    RAFT_CLIENT_RPC_MSG_TYPE_PING,
                                     0UL, RCI_2_RI(rci)->ri_csn_leader,
                                     RAFT_NET_TAG_NONE);
 }
@@ -1224,6 +1227,7 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
 static int
 raft_client_request_handle_init(
     struct raft_client_instance *rci, struct raft_client_request_handle *rcrh,
+    enum raft_client_rpc_op_type op_type,
     const struct iovec *src_iovs, size_t nsrc_iovs, struct iovec *dest_iovs,
     size_t ndest_iovs, bool allocate_get_buffer_for_user,
     const struct timespec now, const struct timespec timeout,
@@ -1243,6 +1247,7 @@ raft_client_request_handle_init(
         return -ENOTCONN;
 
     int rc = raft_client_rpc_msg_init(rci, &rcrh->rcrh_rpc_request,
+                                      op_type,
                                       RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
                                       niova_io_iovs_total_size_get(src_iovs,
                                                              nsrc_iovs),
@@ -1434,6 +1439,7 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
 raft_client_app_ctx_int_t
 raft_client_request_submit(raft_client_instance_t client_instance,
                            const struct raft_net_client_user_id *rncui,
+                           const enum raft_client_rpc_op_type op_type,
                            const struct iovec *src_iovs, size_t nsrc_iovs,
                            struct iovec *dest_iovs, size_t ndest_iovs,
                            bool allocate_get_buffer_for_user,
@@ -1489,7 +1495,7 @@ raft_client_request_submit(raft_client_instance_t client_instance,
     niova_realtime_coarse_clock(&now);
 
     int rc =
-        raft_client_request_handle_init(rci, rcrh, src_iovs, nsrc_iovs,
+        raft_client_request_handle_init(rci, rcrh, op_type, src_iovs, nsrc_iovs,
                                         dest_iovs, ndest_iovs,
                                         allocate_get_buffer_for_user,
                                         now, timeout,

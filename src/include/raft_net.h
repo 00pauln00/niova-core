@@ -164,6 +164,14 @@ enum raft_client_rpc_msg_type
     RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 6,
 } PACKED;
 
+enum raft_client_rpc_op_type
+{
+    RAFT_CLIENT_RPC_OP_TYPE_WRITE  = 1,
+    RAFT_CLIENT_RPC_OP_TYPE_READ   = 2,
+    RAFT_CLIENT_RPC_OP_TYPE_LOOKUP = 3,
+    RAFT_CLIENT_RPC_OP_TYPE_MAX    = 4,
+} PACKED;
+
 enum raft_net_comm_recency_type
 {
     RAFT_COMM_RECENCY_RECV,
@@ -206,6 +214,7 @@ struct raft_net_client_user_id
 };
 
 /**
+ * @rcrm_op: The type of operation which is one of enum raft_client_rpc_op_type
  * @rcrm_type:  The type of RPC which is one of enum raft_client_rpc_msg_type
  * @rcrm_version:  Version number of this RPC.  This with the type composes
  *    a logical 8-byte header.  At this time, the version numbering isn't
@@ -228,6 +237,7 @@ struct raft_net_client_user_id
  */
 struct raft_client_rpc_msg
 {
+    uint32_t rcrm_op; //Note: This should be first param
     uint32_t rcrm_type;
     uint32_t rcrm_version;
     uint32_t rcrm__pad0;

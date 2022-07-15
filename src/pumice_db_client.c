@@ -319,7 +319,9 @@ pmdb_obj_lookup_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
-    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, &req_iov, 1,
+    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui,
+                                      RAFT_CLIENT_RPC_OP_TYPE_READ,
+                                      &req_iov, 1,
                                       &reply_iov, 1, false,
                                       pmdb_req_opt->pro_timeout,
                                       opts,
@@ -399,7 +401,9 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
     if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
-    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
+    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui,
+                                      RAFT_CLIENT_RPC_OP_TYPE_WRITE,
+                                      req_iovs, 2,
                                       &reply_iov, 1, false,
                                       pmdb_req_opt->pro_timeout,
                                       opts,
@@ -491,7 +495,9 @@ pmdb_obj_get_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
         opts |= RCRT_NON_BLOCKING;
 
     // Note: we should probably only send 1 iov in the case of !pro_get_buffer.
-    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
+    return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui,
+                                      RAFT_CLIENT_RPC_OP_TYPE_READ,
+                                      req_iovs, 2,
                                       reply_iovs, 2,
                                       (pmdb_req_opt->pro_get_buffer == NULL ?
                                        true : false),

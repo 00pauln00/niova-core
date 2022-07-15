@@ -4249,6 +4249,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         return;
     }
 
+	LOG_MSG(LL_WARN, "Inside raft_server_client_recv_handler with recv_buffer: %ld, %ld", recv_bytes, sizeof(struct raft_client_rpc_msg));
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 

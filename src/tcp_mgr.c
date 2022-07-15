@@ -470,15 +470,35 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 
     static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
-    iov.iov_base = sink_buf;
-    iov.iov_len = header_size;
 
-    // try twice in case interrupts cause short read
-    ssize_t rc = tcp_socket_recv_all(&tmc->tmc_tsh, &iov, NULL, 2);
-    if (rc != header_size)
-        return rc < 0 ? rc : -ECOMM;
+    for (int i = 0; i < 2; i++)
+    {
+       if (i == 0)
+       {
+          iov.iov_base = sink_buf;
+          iov.iov_len = 4;
+       }
+       else
+       {
+          iov.iov_base = sink_buf + 4;
+          iov.iov_len = header_size - 4;
+       }
 
-    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
+       iov.iov_base = sink_buf;
+   
+       SIMPLE_LOG_MSG(LL_WARN, "Getting the data from socket");
+       // try twice in case interrupts cause short read
+       ssize_t rc = tcp_socket_recv_all(&tmc->tmc_tsh, &iov, NULL, 2);
+       //if (rc != header_size)
+       //    return rc < 0 ? rc : -ECOMM;
+  
+       if (i == 0)
+       {
+          uint32_t op_type = (uint32_t)*sink_buf;
+          SIMPLE_LOG_MSG(LL_WARN, "The operation type is: %u", op_type);
+       } 
+    }
+    ssize_t rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
     if (rc < 0)
         return rc;
 
@@ -533,7 +553,7 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 
         rc = tcp_mgr_new_msg_handler(tmc);
         if (rc < 0)
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
+            SIMPLE_LOG_MSG(LL_WARN, "cannot read RPC, rc=%d", rc);
     }
 
     // no 'else', tcp_mgr_new_msg_handler can initiate bulk read
