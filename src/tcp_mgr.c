@@ -468,6 +468,7 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 
     NIOVA_ASSERT(recv_cb && bulk_size_cb && header_size);
 
+    // TODO there will be memory allocated from the memtable.
     static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
     iov.iov_base = sink_buf;
