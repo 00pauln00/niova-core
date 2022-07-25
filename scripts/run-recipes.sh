@@ -38,6 +38,7 @@ do
       exit 1
    fi
    echo "Recipe: $recipe completed successfully!"
+   echo "##########################################################################recipe_name: $recipe#################################################################" >> log.txt
    rm -rf $LOG_PATH/*
 done
 
