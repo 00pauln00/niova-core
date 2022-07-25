@@ -91,6 +91,10 @@ jobs:
                              '/home/runner/work/go/go/bin'
                              '1'
 
+    - name: Parse ansible output for task timings
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           python3 recipe_summary_parser.py
+
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
