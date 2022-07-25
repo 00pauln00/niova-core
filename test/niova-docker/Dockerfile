@@ -1,4 +1,4 @@
-FROM nreddy156/niova-base:v1
+FROM nreddy156/niova-base:v2
 
 ARG token
 ARG commitID
