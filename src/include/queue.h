@@ -230,6 +230,11 @@ struct {                                           \
         struct type *stqe_next; /* next element */ \
 }
 
+#define STAILQ_NEXT_ENTRY_DETACHED(entry) \
+    ((entry)->stqe_next == NULL)
+
+#define STAILQ_ENTRY_INIT(entry)                \
+    { (entry)->stqe_next = NULL; }
 /*
  * Singly-linked Tail queue functions.
  */
