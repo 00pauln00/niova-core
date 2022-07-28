@@ -34,6 +34,7 @@
 #define RAFT_ENTRY_SIZE_MIN        65536
 
 #define RAFT_NUM_READ_THREADS 10
+#define RAFT_NUM_WRITE_THREADS 1
 #define RAFT_SERVER_WORK_TYPE 2
 
 // Raft election timeout upper and lower bounds
@@ -449,21 +450,30 @@ struct raft_instance_co_wr
     char                                  rcwi_buffer[];
 };
 
-STAILQ_HEAD(raft_srv_work, raft_net_client_request_handle);
+enum raft_server_bulk_msg_type
+{
+    RAFT_SERVER_BULK_MSG_WRITE = 0,
+    RAFT_SERVER_BULK_MSG_READ = 1,
+    RAFT_SERVER_BULK_MSG_MAX = 2,
+};
+
+STAILQ_HEAD(raft_srv_work, ctl_svc_node);
 
 struct raft_work_queue
 {
     pthread_mutex_t                 rsw_mutex;
     struct raft_srv_work            rsw_queue;
-    struct raft_instance            *rsw_ri;
 };
 
-enum raft_server_work_type
+struct raft_rw_worker_thread
 {
-    RAFT_SERVER_WORK_WRITE = 0,
-    RAFT_SERVER_WORK_READ = 1,
-    RAFT_SEVER_WORK_MAX = 2,
+    struct thread_ctl               rrwt_thread_ctl;
+    char                           *rrwt_recv_buff;
+    char                           *rrwt_reply_buff;
+    void                           *rrwt_arg;
+    struct raft_work_queue         *rrwt_queue; 
 };
+
 
 struct raft_instance
 {
@@ -527,7 +537,6 @@ struct raft_instance
     raft_net_cb_t                   ri_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;
     raft_leader_prep_cb_t           ri_leader_prep_cb;
-    raft_is_read_op_t               ri_is_read_op_cb;
     raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
     raft_net_shutdown_cb_t          ri_shutdown_cb;
     struct raft_evp                 ri_evps[RAFT_EVP_HANDLES_MAX];
@@ -542,9 +551,10 @@ struct raft_instance
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
-    struct thread_ctl               ri_writer_thread_ctl;
-    struct thread_ctl               ri_reader_thread_ctl[RAFT_NUM_READ_THREADS];
-    struct raft_work_queue          ri_worker_queue[RAFT_SERVER_WORK_MAX];
+    struct raft_rw_worker_thread    ri_writer_thread_ctl;
+    struct raft_rw_worker_thread    ri_reader_thread_ctl[RAFT_NUM_READ_THREADS];
+    struct raft_work_queue          ri_worker_queue[RAFT_SERVER_BULK_MSG_MAX]; //1 write queue and 1 read queue
+
     struct raft_recovery_handle     ri_recovery_handle;
     struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member

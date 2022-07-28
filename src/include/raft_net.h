@@ -74,6 +74,12 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_ANY,
 };
 
+struct raft_net_msg_info
+{
+    uint32_t     rnmi_type;
+    size_t       rnmi_bulk_size; 
+};
+
 typedef raft_net_cb_ctx_t
 (*raft_net_cb_t)(struct raft_instance *,
                  const char *, ssize_t,
@@ -160,11 +166,13 @@ enum raft_client_rpc_msg_type
 {
     RAFT_CLIENT_RPC_MSG_TYPE_INVALID    = 0,
     RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
-    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 2,
-    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 3,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 4,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 5,
-    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 6,
+    RAFT_CLIENT_RPC_MSG_TYPE_READ       = 2,
+    RAFT_CLIENT_RPC_MSG_TYPE_WRITE      = 3,
+    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 4,
+    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 5,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 6,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 7,
+    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 8,
 } PACKED;
 
 enum raft_net_comm_recency_type

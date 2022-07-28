@@ -20,9 +20,11 @@ typedef ssize_t tcp_mgr_ctx_ssize_t;
 struct tcp_mgr_connection;
 
 typedef tcp_mgr_ctx_int_t
+(*tcp_mgr_msg_type_cb_t)(struct tcp_mgr_connection *, char *, size_t);
+typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *, char *, size_t, void *);
 typedef tcp_mgr_ctx_ssize_t
-(*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *);
+(*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *, uint32_t *);
 typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *,
                           int fd, void *, size_t);
@@ -42,6 +44,7 @@ struct tcp_mgr_instance
     epoll_mgr_ref_cb_t       tmi_connection_ref_cb;
     pthread_mutex_t          tmi_epoll_ctx_mutex;
 
+    tcp_mgr_msg_type_cb_t    tmi_msg_type_cb;
     tcp_mgr_recv_cb_t        tmi_recv_cb;
     tcp_mgr_bulk_size_cb_t   tmi_bulk_size_cb;
     tcp_mgr_handshake_cb_t   tmi_handshake_cb;
