@@ -455,8 +455,40 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
     return 0;
 }
 
+static char *
+tcp_mgr_get_msg_header(struct tcp_mgr_connection *tmc)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
+    static char buffer[TCP_MGR_MAX_HDR_SIZE];
+    size_t header_size = tmc->tmc_header_size;
+    int socket = tmc->tmc_tsh.tsh_socket;
+    int flags = MSG_WAITALL | MSG_PEEK;
+    uint32_t msg_type;
+
+    ssize_t total_bytes = 0;
+
+    for (int i = 0; i < 2 && total_bytes < header_size; i++)
+    {
+       ssize_t rc = recv(socket, buffer, header_size, flags);
+       if (rc == -EAGAIN)
+           rc = 0;
+
+       else if (rc <= 0)
+           return NULL;
+
+       total_bytes += rc;
+    }
+
+    int rc = bulk_size_cb(tmc, buffer, tmi->tmi_data, &msg_type);
+    if (rc < 0)
+        return NULL;
+
+    return buffer;
+}
+
 static int
-tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
+tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
@@ -479,15 +511,39 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     if (rc != header_size)
         return rc < 0 ? rc : -ECOMM;
 
-    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
+    uint32_t msg_type = 0;
+    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data, &msg_type);
     if (rc < 0)
         return rc;
 
-    return rc == 0
-        ? recv_cb(tmc, sink_buf, header_size, tmi->tmi_data)
-        : tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size);
+    return tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size);
 }
 
+char *
+tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, size_t *buff_size)
+{
+    int rc;
+
+    rc = tcp_mgr_new_bulk_msg_handler(tmc);
+
+    if (rc)
+        return NULL;
+
+   
+    while (tmc->tmc_bulk_remain)
+    {
+        NIOVA_ASSERT(tmc->tmc_bulk_buf);
+
+        rc = tcp_mgr_bulk_progress_recv(tmc);
+        if (rc < 0)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
+    }
+
+    *buff_size = tmc->tmc_bulk_offset;
+    return tmc->tmc_bulk_buf;
+}
+
+//XXX we need to call this once read/write completes.
 static int
 tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 {
@@ -496,14 +552,13 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     NIOVA_ASSERT(tmi->tmi_recv_cb);
 
-    int rc = tmi->tmi_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset,
-                              tmc->tmc_tmi->tmi_data);
+    // XXX recv buffer will be allocated at raft layer
     tcp_mgr_bulk_free(tmi, tmc->tmc_bulk_buf);
 
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
 
-    return rc;
+    return 0;
 }
 
 static epoll_mgr_cb_ctx_t
@@ -513,6 +568,7 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 
     NIOVA_ASSERT(eph && eph->eph_arg);
 
+    size_t header_size = tmc->tmc_header_size;
     struct tcp_mgr_connection *tmc = eph->eph_arg;
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "received events: %d", events);
 
@@ -527,27 +583,16 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         return;
     }
 
-    // is this a new RPC?
-    if (!tmc->tmc_bulk_remain)
+    char *buffer = tcp_mgr_get_msg_header(tmc);
+    if (!buffer)
     {
-        NIOVA_ASSERT(!tmc->tmc_bulk_buf);
-
-        rc = tcp_mgr_new_msg_handler(tmc);
-        if (rc < 0)
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
+        SIMPLE_LOG_MSG(LL_NOTIFY, "Can't read the header from socket fd=%d",
+                       eph->eph_fd);
+        return;
     }
 
-    // no 'else', tcp_mgr_new_msg_handler can initiate bulk read
-    if (rc == 0 && tmc->tmc_bulk_remain)
-    {
-        NIOVA_ASSERT(tmc->tmc_bulk_buf);
-
-        rc = tcp_mgr_bulk_progress_recv(tmc);
-        if (rc < 0)
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
-        else if (!tmc->tmc_bulk_remain)
-            rc = tcp_mgr_bulk_complete(tmc);
-    }
+    rc = tmc->tmc_tmi->tmi_recv_cb(tmc, buffer, header_size,
+                                   tmc->tmc_tmi->tmi_data);
 
     if (rc < 0)
     {
