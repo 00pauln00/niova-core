@@ -49,12 +49,13 @@ func mlongsleep() {
 	C.usleep(500000)
 }
 
+//FIXME : Use struct
 var (
-	endpointRoot    *string // flag
-	httpPort        *int    // flag
-	showHelp        *bool   //flag
-	showHelpShort   *bool   //flag
-	udpPort         string  //flag
+	endpointRoot    *string
+	httpPort        *int
+	showHelp        *bool
+	showHelpShort   *bool
+	udpPort         string
 	agentHandler    serfagenthandler.SerfAgentHandler
 	agentName       string
 	addr            string
@@ -105,9 +106,9 @@ type epContainer struct {
 	Statb         syscall.Stat_t
 	EpWatcher     *fsnotify.Watcher
 	serfHandler   serfagenthandler.SerfAgentHandler
-	udpEvent      chan udpMessage
 	storageClient client_api.ClientAPI
 	udpSocket     net.PacketConn
+	httpQuery     map[string](chan []byte)
 }
 
 type udpMessage struct {
@@ -206,14 +207,13 @@ func (epc *epContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
 
 	epc.Mutex.Lock()
 	ep := epc.EpMap[uuid]
+	epc.Mutex.Unlock()
 	if ep != nil {
-		jsonData, err = json.MarshalIndent(epc.EpMap[uuid], "", "\t")
+		jsonData, err = json.MarshalIndent(ep, "", "\t")
 	} else {
 		// Return an empty set if the item does not exist
-		jsonData = []byte("{}") //XXx should we return an enoent err?
+		jsonData = []byte("{}")
 	}
-
-	epc.Mutex.Unlock()
 
 	if err != nil {
 		return nil
@@ -238,21 +238,35 @@ func (epc *epContainer) JsonMarshal() []byte {
 
 func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 	splitPath := strings.Split(event.Name, "/")
-
-	templ := "ncsiep_"
 	cmpstr := splitPath[len(splitPath)-1]
-
-	if err := strings.Compare(cmpstr[0:len(templ)], templ); err != 0 {
-		return
-	}
-
 	uuid, err := uuid.Parse(splitPath[len(splitPath)-3])
-	if err != nil {
+        if err != nil {
+                return
+        }
+
+	//temp file exclusion
+	if strings.Contains(cmpstr,".") {
+		return
+        }
+
+	//Check if its for HTTP
+	if strings.Contains(cmpstr, "HTTP") {
+		var output []byte
+		if ep := epc.EpMap[uuid]; ep != nil {
+			err := ep.Complete(cmpstr, &output)
+			if err != nil {
+				output = []byte(err.Error())
+			}
+		}
+
+		if channel, ok := epc.httpQuery[cmpstr]; ok {
+			channel <- output
+		}
 		return
 	}
 
 	if ep := epc.EpMap[uuid]; ep != nil {
-		ep.Complete(cmpstr)
+		ep.Complete(cmpstr, nil)
 	}
 }
 
@@ -314,9 +328,6 @@ func (epc *epContainer) epOutputWatcher() {
 		case err := <-epc.EpWatcher.Errors:
 			fmt.Println("ERROR", err)
 
-		case udpInfo := <-epc.udpEvent:
-			go epc.getConfigNSend(udpInfo)
-
 		}
 	}
 }
@@ -360,19 +371,13 @@ func (epc *epContainer) httpHandleUUIDRequest(w http.ResponseWriter,
 }
 
 func (epc *epContainer) httpHandleRoute(w http.ResponseWriter, r *url.URL) {
-	// Splitting '/vX/' results in a length of 2
 	splitURL := strings.Split(r.String(), "/v0/")
 
-	//log.Printf("%+v (url-path-len=%d str=%s)\n", splitURL, len(splitURL),
-	//	r.String())
 
-	// Root level request
 	if len(splitURL) == 2 && len(splitURL[1]) == 0 {
 		epc.httpHandleRootRequest(w)
-		return
-	}
 
-	if uuid, err := uuid.Parse(splitURL[1]); err == nil {
+	} else if uuid, err := uuid.Parse(splitURL[1]); err == nil {
 		epc.httpHandleUUIDRequest(w, uuid)
 
 	} else {
@@ -385,7 +390,55 @@ func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 	epc.httpHandleRoute(w, r.URL)
 }
 
+
+func (epc *epContainer) customQueryNISD(nisdUUID uuid.UUID, query string) []byte {
+	epc.Mutex.Lock()
+        ep := epc.EpMap[nisdUUID]
+        epc.Mutex.Unlock()
+
+	//If not present
+	if ep == nil{
+		return []byte("Specified NISD is not present")
+	}
+
+	httpID := "HTTP_"+uuid.New().String()
+	epc.httpQuery[httpID] = make(chan []byte, 2)
+	ep.CustomQuery(query, httpID)
+
+	//FIXME: Have select in case of NISD dead
+	var byteOP []byte
+	select {
+	case byteOP = <- epc.httpQuery[httpID]:
+		break
+	}
+	return byteOP
+}
+
+func (epc *epContainer) QueryNISDHandle(w http.ResponseWriter, r *http.Request) {
+
+	//Decode the NISD request structure
+	requestBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		log.Println(err)
+	}
+
+	requestObj := requestResponseLib.LookoutRequest{}
+        dec := gob.NewDecoder(bytes.NewBuffer(requestBytes))
+        err = dec.Decode(&requestObj)
+        if err != nil {
+                log.Println(err)
+        }
+
+	//Call the appropriate function
+	output := epc.customQueryNISD(requestObj.NISD, requestObj.Cmd)
+
+	//Data to writer
+	w.Write(output)
+}
+
+
 func (epc *epContainer) serveHttp() {
+	http.HandleFunc("/v1/", epc.QueryNISDHandle)
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
 }
@@ -436,6 +489,7 @@ func (epc *epContainer) getCompressedGossipDataNISD() map[string]string {
 		returnMap[cuuid] = cstatus
 	}
 	returnMap["Type"] = "LOOKOUT"
+	returnMap["Hport"] = strconv.Itoa(*httpPort)
 	return returnMap
 }
 
@@ -464,8 +518,7 @@ func (epc *epContainer) startClientAPI() {
 }
 
 func (epc *epContainer) startUDPListner() {
-	fmt.Println("Starting udp listner")
-	//epc.udpEvent = make(chan udpMessage, 10)
+
 	var err error
 	epc.udpSocket, err = net.ListenPacket("udp", ":"+udpPort)
 	if err != nil {
@@ -494,8 +547,8 @@ func main() {
 		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
 	}
 
+	epc.httpQuery = make(map[string]chan []byte)
 	epc.Scan()
-	epc.udpEvent = make(chan udpMessage, 10)
 	go epc.serveHttp()
 
 	epc.startClientAPI()
