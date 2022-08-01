@@ -1,1 +1,1 @@
-basic_recipe_for_foodpalace_goapp.yml
+foodpalace_golang_operation_all.yml
