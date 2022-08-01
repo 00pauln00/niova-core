@@ -24,6 +24,7 @@ import (
 	compressionLib "common/specificCompressionLib"
 	"sync"
 	"syscall"
+	"common/prometheus_handler"
 	"time"
 	"unsafe"
 )
@@ -105,6 +106,7 @@ type epContainer struct {
 	run           bool
 	Statb         syscall.Stat_t
 	EpWatcher     *fsnotify.Watcher
+	monitorUUID   string
 	serfHandler   serfagenthandler.SerfAgentHandler
 	storageClient client_api.ClientAPI
 	udpSocket     net.PacketConn
@@ -436,10 +438,22 @@ func (epc *epContainer) QueryNISDHandle(w http.ResponseWriter, r *http.Request) 
 	w.Write(output)
 }
 
+func (epc *epContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
+        //Split key based nisd's UUID and field
+        var output string
+        parsedUUID, _ := uuid.Parse(epc.monitorUUID)
+        node := epc.EpMap[parsedUUID]
+                if len(node.EPInfo.RaftRootEntry) > 0 {
+                        output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
+                }
+
+        fmt.Fprintln(w, output)
+}
 
 func (epc *epContainer) serveHttp() {
 	http.HandleFunc("/v1/", epc.QueryNISDHandle)
 	http.HandleFunc("/v0/", epc.HttpHandle)
+	http.HandleFunc("/metrics", epc.MetricsHandler)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
 }
 

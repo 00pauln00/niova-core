@@ -1,16 +1,18 @@
 module controlplane/lookout
 
-replace controlplane/serfagenthandler => ./serf/agent/
+replace controlplane/serfagenthandler => ../serf/agent/
 
-replace ctlplane/client_api => ./client_api/
+replace ctlplane/client_api => ../client_api/
 
-replace ctlplane/serfclienthandler => ./serf/client/
+replace ctlplane/serfclienthandler => ../serf/client/
 
-replace ctlplane/httpclient => ./http/client/
+replace ctlplane/httpclient => ../http/client/
 
-replace common/requestResponseLib => ./RequestResponseLib/
+replace common/requestResponseLib => ../RequestResponseLib/
 
-replace common/specificCompressionLib => ./specificCompressionLib/
+replace common/specificCompressionLib => ../specificCompressionLib/
+
+replace common/prometheus_handler => ../prometheusHandler/
 
 go 1.16
 
@@ -22,6 +24,7 @@ require (
 )
 
 require (
+	common/prometheus_handler v0.0.0-00010101000000-000000000000 // indirect
 	common/requestResponseLib v0.0.0-00010101000000-000000000000 // indirect
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000 // indirect
 	ctlplane/httpclient v0.0.0-00010101000000-000000000000 // indirect
