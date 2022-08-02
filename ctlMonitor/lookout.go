@@ -1,128 +1,40 @@
-package main
+package ctlMonitor
 
 //import _ "net/http/pprof"
 
 import (
 	"bytes"
-	"common/requestResponseLib"
-	"controlplane/serfagenthandler"
-	"ctlplane/client_api"
 	"encoding/gob"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/fsnotify/fsnotify"
 	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
+	"common/requestResponseLib"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
-	compressionLib "common/specificCompressionLib"
 	"sync"
 	"syscall"
 	"common/prometheus_handler"
 	"time"
-	"unsafe"
 )
-
-// #include <unistd.h>
-// #include <string.h>
-// //#include <errno.h>
-// //int usleep(useconds_t usec);
-/*
-#define INET_ADDRSTRLEN 16
-#define UUID_LEN 37
-struct nisd_config
-{
-  char  nisd_uuid[UUID_LEN];
-  char  nisd_ipaddr[INET_ADDRSTRLEN];
-  int   nisdc_addr_len;
-  int   nisd_port;
-};
-*/
-import "C"
-
-func mlongsleep() {
-	C.usleep(500000)
-}
-
-//FIXME : Use struct
-var (
-	endpointRoot    *string
-	httpPort        *int
-	showHelp        *bool
-	showHelpShort   *bool
-	udpPort         string
-	agentHandler    serfagenthandler.SerfAgentHandler
-	agentName       string
-	addr            string
-	agentPort       string
-	agentRPCPort    string
-	gossipNodesPath string
-	serfLogger      string
-	appType		string
-)
-
-func usage(rc int) {
-	fmt.Printf("Usage: [OPTIONS] %s\n", os.Args[0])
-	flag.PrintDefaults()
-	os.Exit(rc)
-}
-
-func init() {
-	endpointRoot = flag.String("dir", "/tmp/.niova", "endpoint directory root")
-	httpPort = flag.Int("port", 8081, "http listen port")
-	showHelpShort = flag.Bool("h", false, "")
-	showHelp = flag.Bool("help", false, "print help")
-	flag.StringVar(&udpPort, "u", "1054", "UDP port for NISD communication")
-	flag.StringVar(&agentName, "n", uuid.New().String(), "Agent name")
-	flag.StringVar(&addr, "a", "127.0.0.1", "Agent addr")
-	flag.StringVar(&agentPort, "p", "3991", "Agent port for serf")
-	flag.StringVar(&agentRPCPort, "r", "3992", "Agent RPC port")
-	flag.StringVar(&gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
-	flag.StringVar(&serfLogger, "s", "serf.log", "Serf logs")
-	flag.StringVar(&appType, "ap", "NISD", "App type [PMDB,NISD]")
-	flag.Parse()
-
-	nonParsed := flag.Args()
-	if len(nonParsed) > 0 {
-		fmt.Println("Unexpected argument found:", nonParsed[1])
-		usage(1)
-	}
-
-	if *showHelpShort == true || *showHelp == true {
-		usage(0)
-	}
-}
 
 type epContainer struct {
+	MonitorUUID   string
 	EpMap         map[uuid.UUID]*NcsiEP
 	Mutex         sync.Mutex
 	Path          string
 	run           bool
 	Statb         syscall.Stat_t
 	EpWatcher     *fsnotify.Watcher
-	monitorUUID   string
-	serfHandler   serfagenthandler.SerfAgentHandler
-	storageClient client_api.ClientAPI
-	udpSocket     net.PacketConn
 	httpQuery     map[string](chan []byte)
+	AppType	      string
+	HttpPort      int
 }
 
-type udpMessage struct {
-	addr    net.Addr
-	message []byte
-}
-
-type NisdConfig struct {
-	Uuid   string
-	Ipaddr string
-	Port   int
-}
 
 func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
@@ -152,7 +64,7 @@ func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	}
 }
 
-func (epc *epContainer) Scan() {
+func (epc *epContainer) scan() {
 	files, err := ioutil.ReadDir(epc.Path)
 	if err != nil {
 		log.Fatal(err)
@@ -161,18 +73,15 @@ func (epc *epContainer) Scan() {
 	for _, file := range files {
 		// Need to support removal of stale items
 		if uuid, err := uuid.Parse(file.Name()); err == nil {
-			epc.tryAdd(uuid)
+			if ((epc.MonitorUUID == uuid.String()) || (epc.MonitorUUID == "*")) {
+				epc.tryAdd(uuid)
+			}
 		}
 	}
 }
 
-func (epc *epContainer) Monitor() error {
+func (epc *epContainer) monitor() error {
 	var err error = nil
-	err = epc.serfAgentStart()
-	if err != nil {
-		log.Printf("Serf error : %s", err)
-		return err
-	}
 
 	for epc.run == true {
 		var tmp_stb syscall.Stat_t
@@ -185,19 +94,16 @@ func (epc *epContainer) Monitor() error {
 
 		if tmp_stb.Mtim != epc.Statb.Mtim {
 			epc.Statb = tmp_stb
-			epc.Scan()
+			epc.scan()
 		}
 
 		// Query for liveness
 		for _, ep := range epc.EpMap {
 			ep.Remove()
-			ep.Detect(appType)
+			ep.Detect(epc.AppType)
 		}
 
-		//Update tags
-		epc.setTags()
-
-		mlongsleep()
+		time.Sleep(time.Second)
 	}
 
 	return err
@@ -272,51 +178,6 @@ func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 	}
 }
 
-func (epc *epContainer) getConfigNSend(udpInfo udpMessage) {
-	//Get uuid from the byte array
-	data := udpInfo.message
-	uuidString := string(data[:36])
-	uuidHex, _ := uuid.Parse(uuidString)
-	nisd, ok := epc.EpMap[uuidHex]
-	if ok {
-		if !nisd.Alive {
-			nisd.pendingCmds = make(map[string]*epCommand)
-			nisd.Alive = true
-			nisd.LastReport = time.Now()
-		}
-	}
-
-	//Send config read request to PMDB server
-	request := requestResponseLib.KVRequest{
-		Operation: "read",
-		Key:       string(uuidString),
-	}
-	var requestByte bytes.Buffer
-	enc := gob.NewEncoder(&requestByte)
-	enc.Encode(request)
-	responseByte := epc.storageClient.Request(requestByte.Bytes(), "", false)
-
-	//Decode response to IPAddr and Port
-	responseObj := requestResponseLib.KVResponse{}
-	dec := gob.NewDecoder(bytes.NewBuffer(responseByte))
-	dec.Decode(&responseObj)
-	var value map[string]string
-	json.Unmarshal(responseObj.Value, &value)
-	ipaddr := value["IP_ADDR"]
-	port, _ := strconv.Atoi(value["Port"])
-
-	//Fill C structure,Add statement for deleting the allocatted buffer
-	nisd_peer_config := C.struct_nisd_config{}
-	C.strncpy(&(nisd_peer_config.nisd_uuid[0]), C.CString(uuidString), C.ulong(len(uuidString)+1))
-	C.strncpy(&(nisd_peer_config.nisd_ipaddr[0]), C.CString(ipaddr), C.ulong(len(ipaddr)+1))
-	nisd_peer_config.nisdc_addr_len = C.int(len(ipaddr))
-	nisd_peer_config.nisd_port = C.int(port)
-	returnData := C.GoBytes(unsafe.Pointer(&nisd_peer_config), C.sizeof_struct_nisd_config)
-
-	//Send the data to the node
-	epc.udpSocket.WriteTo(returnData, udpInfo.addr)
-}
-
 func (epc *epContainer) epOutputWatcher() {
 	for {
 		select {
@@ -334,15 +195,14 @@ func (epc *epContainer) epOutputWatcher() {
 	}
 }
 
-func (epc *epContainer) Init(path string) error {
+func (epc *epContainer) init() error {
 	// Check the provided endpoint root path
-	err := syscall.Stat(path, &epc.Statb)
+	err := syscall.Stat(epc.Path, &epc.Statb)
 	if err != nil {
 		return err
 	}
 
 	// Set path (Xxx still need to check if this is a directory or not)
-	epc.Path = path
 
 	// Create the map
 	epc.EpMap = make(map[uuid.UUID]*NcsiEP)
@@ -393,9 +253,9 @@ func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 }
 
 
-func (epc *epContainer) customQueryNISD(nisdUUID uuid.UUID, query string) []byte {
+func (epc *epContainer) customQuery(node uuid.UUID, query string) []byte {
 	epc.Mutex.Lock()
-        ep := epc.EpMap[nisdUUID]
+        ep := epc.EpMap[node]
         epc.Mutex.Unlock()
 
 	//If not present
@@ -416,7 +276,7 @@ func (epc *epContainer) customQueryNISD(nisdUUID uuid.UUID, query string) []byte
 	return byteOP
 }
 
-func (epc *epContainer) QueryNISDHandle(w http.ResponseWriter, r *http.Request) {
+func (epc *epContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 
 	//Decode the NISD request structure
 	requestBytes, err := ioutil.ReadAll(r.Body)
@@ -432,7 +292,7 @@ func (epc *epContainer) QueryNISDHandle(w http.ResponseWriter, r *http.Request) 
         }
 
 	//Call the appropriate function
-	output := epc.customQueryNISD(requestObj.NISD, requestObj.Cmd)
+	output := epc.customQuery(requestObj.UUID, requestObj.Cmd)
 
 	//Data to writer
 	w.Write(output)
@@ -441,7 +301,7 @@ func (epc *epContainer) QueryNISDHandle(w http.ResponseWriter, r *http.Request) 
 func (epc *epContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
         //Split key based nisd's UUID and field
         var output string
-        parsedUUID, _ := uuid.Parse(epc.monitorUUID)
+        parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
         node := epc.EpMap[parsedUUID]
                 if len(node.EPInfo.RaftRootEntry) > 0 {
                         output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
@@ -451,123 +311,18 @@ func (epc *epContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (epc *epContainer) serveHttp() {
-	http.HandleFunc("/v1/", epc.QueryNISDHandle)
+	http.HandleFunc("/v1/", epc.QueryHandle)
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	http.HandleFunc("/metrics", epc.MetricsHandler)
-	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(*httpPort), nil))
+	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil))
 }
 
-func (epc *epContainer) serfAgentStart() error {
-	switch serfLogger {
-	case "ignore":
-		log.SetOutput(ioutil.Discard)
-	default:
-		f, err := os.OpenFile(serfLogger, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-		if err != nil {
-			log.SetOutput(os.Stderr)
-		} else {
-			log.SetOutput(f)
-		}
-	}
-
-	epc.serfHandler = serfagenthandler.SerfAgentHandler{}
-	epc.serfHandler.Name = agentName
-	epc.serfHandler.BindAddr = addr
-	epc.serfHandler.BindPort, _ = strconv.Atoi(agentPort)
-	epc.serfHandler.AgentLogger = log.Default()
-	epc.serfHandler.RpcAddr = addr
-	epc.serfHandler.RpcPort = agentRPCPort
-	joinAddrs, err := serfagenthandler.GetPeerAddress(gossipNodesPath)
-	if err != nil {
-		return err
-	}
-	//Start serf agent
-	_, err = epc.serfHandler.Startup(joinAddrs, true)
-	return err
-}
-
-func (epc *epContainer) getCompressedGossipDataNISD() map[string]string {
-	returnMap := make(map[string]string)
-	for _,nisd := range epc.EpMap{
-		//Get data from map
-		uuid := nisd.Uuid.String()
-		status := nisd.Alive
-		//Compact the data
-		cuuid, _ := compressionLib.CompressUUID(uuid)
-		cstatus := "0"
-		if status {
-			cstatus = "1"
-		}
-
-		//Fill map; will add extra info in future
-		returnMap[cuuid] = cstatus
-	}
-	returnMap["Type"] = "LOOKOUT"
-	returnMap["Hport"] = strconv.Itoa(*httpPort)
-	return returnMap
-}
-
-func (epc *epContainer) setTags() {
-	tagData := epc.getCompressedGossipDataNISD()
-	err := epc.serfHandler.SetTags(tagData)
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
-func (epc *epContainer) startClientAPI() {
-	//Init niovakv client API
-	epc.storageClient = client_api.ClientAPI{
-		Timeout: 10,
-	}
-	stop := make(chan int)
-	go func() {
-		err := epc.storageClient.Start(stop, gossipNodesPath)
-		if err != nil {
-			fmt.Println("Error while starting client API : ", err)
-			os.Exit(1)
-		}
-	}()
-	epc.storageClient.Till_ready()
-}
-
-func (epc *epContainer) startUDPListner() {
-
-	var err error
-	epc.udpSocket, err = net.ListenPacket("udp", ":"+udpPort)
-	if err != nil {
-		fmt.Println("UDP listner failed : ", err)
-	}
-
-	defer epc.udpSocket.Close()
-	for {
-		buf := make([]byte, 1024)
-		_, addr, err := epc.udpSocket.ReadFrom(buf)
-		if err != nil {
-			continue
-		}
-		udpInfo := udpMessage{
-			addr:    addr,
-			message: buf,
-		}
-		go epc.getConfigNSend(udpInfo)
-	}
-}
-
-func main() {
-	var epc epContainer
-
-	if err := epc.Init(*endpointRoot); err != nil {
-		log.Fatalf("epc.Init('%s'): %s", *endpointRoot, err)
-	}
-
-	epc.httpQuery = make(map[string]chan []byte)
-	epc.Scan()
+func (epc *epContainer) Start() {
+	//Start http service
 	go epc.serveHttp()
 
-	epc.startClientAPI()
-
-	go epc.startUDPListner()
-
-	epc.Monitor()
+	//Scan ctl interface path and monitor it
+	epc.init()
+	//Block
+	epc.monitor()
 }

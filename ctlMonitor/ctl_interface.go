@@ -1,4 +1,4 @@
-package main // niova control interface
+package ctlMonitor // niova control interface
 
 import (
 	//	"math/rand"
