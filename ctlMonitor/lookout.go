@@ -1,6 +1,4 @@
-package ctlMonitor
-
-//import _ "net/http/pprof"
+package lookout
 
 import (
 	"bytes"
@@ -22,7 +20,7 @@ import (
 	"time"
 )
 
-type epContainer struct {
+type EPContainer struct {
 	MonitorUUID   string
 	EpMap         map[uuid.UUID]*NcsiEP
 	Mutex         sync.Mutex
@@ -36,7 +34,7 @@ type epContainer struct {
 }
 
 
-func (epc *epContainer) tryAdd(uuid uuid.UUID) {
+func (epc *EPContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
 	if lns == nil {
 		newlns := NcsiEP{
@@ -64,7 +62,7 @@ func (epc *epContainer) tryAdd(uuid uuid.UUID) {
 	}
 }
 
-func (epc *epContainer) scan() {
+func (epc *EPContainer) scan() {
 	files, err := ioutil.ReadDir(epc.Path)
 	if err != nil {
 		log.Fatal(err)
@@ -80,7 +78,7 @@ func (epc *epContainer) scan() {
 	}
 }
 
-func (epc *epContainer) monitor() error {
+func (epc *EPContainer) monitor() error {
 	var err error = nil
 
 	for epc.run == true {
@@ -109,7 +107,7 @@ func (epc *epContainer) monitor() error {
 	return err
 }
 
-func (epc *epContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
+func (epc *EPContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
 	var jsonData []byte
 	var err error
 
@@ -130,7 +128,7 @@ func (epc *epContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
 	return jsonData
 }
 
-func (epc *epContainer) JsonMarshal() []byte {
+func (epc *EPContainer) JsonMarshal() []byte {
 	var jsonData []byte
 
 	epc.Mutex.Lock()
@@ -144,7 +142,7 @@ func (epc *epContainer) JsonMarshal() []byte {
 	return jsonData
 }
 
-func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
+func (epc *EPContainer) processInotifyEvent(event *fsnotify.Event) {
 	splitPath := strings.Split(event.Name, "/")
 	cmpstr := splitPath[len(splitPath)-1]
 	uuid, err := uuid.Parse(splitPath[len(splitPath)-3])
@@ -178,7 +176,7 @@ func (epc *epContainer) processInotifyEvent(event *fsnotify.Event) {
 	}
 }
 
-func (epc *epContainer) epOutputWatcher() {
+func (epc *EPContainer) epOutputWatcher() {
 	for {
 		select {
 		case event := <-epc.EpWatcher.Events:
@@ -195,7 +193,7 @@ func (epc *epContainer) epOutputWatcher() {
 	}
 }
 
-func (epc *epContainer) init() error {
+func (epc *EPContainer) init() error {
 	// Check the provided endpoint root path
 	err := syscall.Stat(epc.Path, &epc.Statb)
 	if err != nil {
@@ -222,17 +220,17 @@ func (epc *epContainer) init() error {
 	return nil
 }
 
-func (epc *epContainer) httpHandleRootRequest(w http.ResponseWriter) {
+func (epc *EPContainer) httpHandleRootRequest(w http.ResponseWriter) {
 	fmt.Fprintf(w, "%s\n", string(epc.JsonMarshal()))
 }
 
-func (epc *epContainer) httpHandleUUIDRequest(w http.ResponseWriter,
+func (epc *EPContainer) httpHandleUUIDRequest(w http.ResponseWriter,
 	uuid uuid.UUID) {
 
 	fmt.Fprintf(w, "%s\n", string(epc.JsonMarshalUUID(uuid)))
 }
 
-func (epc *epContainer) httpHandleRoute(w http.ResponseWriter, r *url.URL) {
+func (epc *EPContainer) httpHandleRoute(w http.ResponseWriter, r *url.URL) {
 	splitURL := strings.Split(r.String(), "/v0/")
 
 
@@ -248,12 +246,12 @@ func (epc *epContainer) httpHandleRoute(w http.ResponseWriter, r *url.URL) {
 
 }
 
-func (epc *epContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
+func (epc *EPContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 	epc.httpHandleRoute(w, r.URL)
 }
 
 
-func (epc *epContainer) customQuery(node uuid.UUID, query string) []byte {
+func (epc *EPContainer) customQuery(node uuid.UUID, query string) []byte {
 	epc.Mutex.Lock()
         ep := epc.EpMap[node]
         epc.Mutex.Unlock()
@@ -276,7 +274,7 @@ func (epc *epContainer) customQuery(node uuid.UUID, query string) []byte {
 	return byteOP
 }
 
-func (epc *epContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
+func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 
 	//Decode the NISD request structure
 	requestBytes, err := ioutil.ReadAll(r.Body)
@@ -298,7 +296,7 @@ func (epc *epContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 	w.Write(output)
 }
 
-func (epc *epContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
+func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
         //Split key based nisd's UUID and field
         var output string
         parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
@@ -310,19 +308,20 @@ func (epc *epContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
         fmt.Fprintln(w, output)
 }
 
-func (epc *epContainer) serveHttp() {
+func (epc *EPContainer) serveHttp() {
 	http.HandleFunc("/v1/", epc.QueryHandle)
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	http.HandleFunc("/metrics", epc.MetricsHandler)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil))
 }
 
-func (epc *epContainer) Start() {
+func (epc *EPContainer) Start() {
 	//Start http service
 	go epc.serveHttp()
 
-	//Scan ctl interface path and monitor it
+	//Setup lookout
 	epc.init()
-	//Block
+
+	//Start monitoring
 	epc.monitor()
 }
