@@ -22,24 +22,26 @@ import (
 
 type EPContainer struct {
 	MonitorUUID   string
-	EpMap         map[uuid.UUID]*NcsiEP
-	Mutex         sync.Mutex
-	Path          string
-	run           bool
+	CTLPath	      string
+	AppType       string
+        HttpPort      int
+
 	Statb         syscall.Stat_t
-	EpWatcher     *fsnotify.Watcher
+        EpWatcher     *fsnotify.Watcher
+	EpMap         map[uuid.UUID]*NcsiEP
+	mutex         sync.Mutex
+	run           bool
 	httpQuery     map[string](chan []byte)
-	AppType	      string
-	HttpPort      int
 }
 
 
 func (epc *EPContainer) tryAdd(uuid uuid.UUID) {
 	lns := epc.EpMap[uuid]
 	if lns == nil {
+		//FIXME: Do we need Port
 		newlns := NcsiEP{
 			Uuid:         uuid,
-			Path:         epc.Path + "/" + uuid.String(),
+			Path:         epc.CTLPath + "/" + uuid.String(),
 			Name:         "r-a4e1",
 			NiovaSvcType: "raft",
 			Port:         6666,
@@ -55,15 +57,15 @@ func (epc *EPContainer) tryAdd(uuid uuid.UUID) {
 
 		// serialize with readers in httpd context, this is the only
 		// writer thread so the lookup above does not require a lock
-		epc.Mutex.Lock()
+		epc.mutex.Lock()
 		epc.EpMap[uuid] = &newlns
-		epc.Mutex.Unlock()
+		epc.mutex.Unlock()
 		log.Printf("added: %+v\n", newlns)
 	}
 }
 
 func (epc *EPContainer) scan() {
-	files, err := ioutil.ReadDir(epc.Path)
+	files, err := ioutil.ReadDir(epc.CTLPath)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -84,9 +86,9 @@ func (epc *EPContainer) monitor() error {
 	for epc.run == true {
 		var tmp_stb syscall.Stat_t
 
-		err = syscall.Stat(epc.Path, &tmp_stb)
+		err = syscall.Stat(epc.CTLPath, &tmp_stb)
 		if err != nil {
-			log.Printf("syscall.Stat('%s'): %s", epc.Path, err)
+			log.Printf("syscall.Stat('%s'): %s", epc.CTLPath, err)
 			break
 		}
 
@@ -111,9 +113,9 @@ func (epc *EPContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
 	var jsonData []byte
 	var err error
 
-	epc.Mutex.Lock()
+	epc.mutex.Lock()
 	ep := epc.EpMap[uuid]
-	epc.Mutex.Unlock()
+	epc.mutex.Unlock()
 	if ep != nil {
 		jsonData, err = json.MarshalIndent(ep, "", "\t")
 	} else {
@@ -131,9 +133,9 @@ func (epc *EPContainer) JsonMarshalUUID(uuid uuid.UUID) []byte {
 func (epc *EPContainer) JsonMarshal() []byte {
 	var jsonData []byte
 
-	epc.Mutex.Lock()
+	epc.mutex.Lock()
 	jsonData, err := json.MarshalIndent(epc.EpMap, "", "\t")
-	epc.Mutex.Unlock()
+	epc.mutex.Unlock()
 
 	if err != nil {
 		return nil
@@ -195,7 +197,7 @@ func (epc *EPContainer) epOutputWatcher() {
 
 func (epc *EPContainer) init() error {
 	// Check the provided endpoint root path
-	err := syscall.Stat(epc.Path, &epc.Statb)
+	err := syscall.Stat(epc.CTLPath, &epc.Statb)
 	if err != nil {
 		return err
 	}
@@ -252,9 +254,9 @@ func (epc *EPContainer) HttpHandle(w http.ResponseWriter, r *http.Request) {
 
 
 func (epc *EPContainer) customQuery(node uuid.UUID, query string) []byte {
-	epc.Mutex.Lock()
+	epc.mutex.Lock()
         ep := epc.EpMap[node]
-        epc.Mutex.Unlock()
+        epc.mutex.Unlock()
 
 	//If not present
 	if ep == nil{
@@ -265,7 +267,7 @@ func (epc *EPContainer) customQuery(node uuid.UUID, query string) []byte {
 	epc.httpQuery[httpID] = make(chan []byte, 2)
 	ep.CustomQuery(query, httpID)
 
-	//FIXME: Have select in case of NISD dead
+	//FIXME: Have select in case of NISD dead and delete the channel
 	var byteOP []byte
 	select {
 	case byteOP = <- epc.httpQuery[httpID]:
@@ -313,6 +315,29 @@ func (epc *EPContainer) serveHttp() {
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	http.HandleFunc("/metrics", epc.MetricsHandler)
 	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil))
+}
+
+
+
+func (epc *EPContainer) GetList() map[uuid.UUID]*NcsiEP {
+	epc.mutex.Lock()
+	defer epc.mutex.Unlock()
+	return epc.EpMap
+}
+
+
+func (epc *EPContainer) MarkAlive(serviceUUID string) error {
+	serviceID, err := uuid.Parse(serviceUUID)
+	if err != nil {
+		return err
+	}
+	service, ok := epc.EpMap[serviceID]
+	if ( ok && service.Alive) {
+		service.pendingCmds = make(map[string]*epCommand)
+                service.Alive = true
+                service.LastReport = time.Now()
+	}
+	return nil
 }
 
 func (epc *EPContainer) Start() {

@@ -15,7 +15,6 @@ replace common/specificCompressionLib => ../specificCompressionLib/
 replace common/prometheus_handler => ../prometheusHandler/
 
 go 1.16
-
 require (
 	controlplane/serfagenthandler v0.0.0-00010101000000-000000000000
 	ctlplane/client_api v0.0.0-00010101000000-000000000000
