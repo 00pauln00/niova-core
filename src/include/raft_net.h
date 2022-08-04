@@ -328,7 +328,7 @@ struct raft_net_client_request_handle
     uint64_t                                     rncr_msg_id;
     struct raft_net_sm_write_supplements         rncr_sm_write_supp;
     uuid_t                                       rncr_client_uuid;
-    STAILQ_ENTRY(raft_net_client_request_handle) rncr_lentry;
+    //STAILQ_ENTRY(raft_net_client_request_handle) rncr_lentry;
     struct ctl_svc_node                         *rncr_csn;
     struct buffer_item                          *rncr_bi;
 };
@@ -779,5 +779,8 @@ raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts);
 int
 raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
                                     struct raft_net_sm_write_supplements *src);
+
+int
+raft_net_recv_request(struct ctl_svc_node *csn, char *buff, size_t *buff_size);
 
 #endif

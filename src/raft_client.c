@@ -815,6 +815,9 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
     uuid_copy(rcrm->rcrm_dest_id, dest_csn->csn_uuid);
     uuid_copy(rcrm->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
+    char leader_uuid_str[UUID_STR_LEN] = {0};
+    uuid_unparse(rcrm->rcrm_sender_id, leader_uuid_str);
+    SIMPLE_LOG_MSG(LL_WARN, "Sending rpc to: %s", leader_uuid_str);
     raft_client_rpc_msg_assign_id(rci, rcrm);
 
     return 0;
@@ -1225,7 +1228,7 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
     if (!rc)
         rci->rci_leader_csn = RCI_2_RI(rci)->ri_csn_leader;
 
-    DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_NOTIFY : LL_DEBUG), rcrm, from,
+    DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_DEBUG : LL_NOTIFY), rcrm, from,
                              "raft_net_apply_leader_redirect(): %s",
                              strerror(-rc));
 }
@@ -1790,10 +1793,16 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
     FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
 
     if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY");
         raft_client_process_ping_reply(rci, rcrm, sender_csn);
+    }
 
     else if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT)
+    {
+        //SIMPLE_LOG_MSG(LL_WARN, "RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY");
         raft_client_update_leader_from_redirect(rci, rcrm, from);
+    }
 
     else if (!rcrm->rcrm_sys_error &&
              rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)

@@ -2105,6 +2105,12 @@ raft_net_apply_leader_redirect(struct raft_instance *ri,
     if (!ri || uuid_is_null(redirect_target))
         return -EINVAL;
 
+     
+    char leader_uuid_str[UUID_STR_LEN] = {0};
+    char orig_leader_uuid_str[UUID_STR_LEN] = {0};
+    uuid_unparse(ri->ri_csn_leader->csn_uuid, orig_leader_uuid_str);
+    uuid_unparse(redirect_target, leader_uuid_str);
+    SIMPLE_LOG_MSG(LL_WARN, "Redirect to leader: %s, orig: %s", leader_uuid_str, orig_leader_uuid_str);
     raft_peer_t leader_idx = raft_peer_2_idx(ri, redirect_target);
     if (leader_idx == RAFT_PEER_ANY)
         return -ENOENT;
@@ -2120,7 +2126,7 @@ raft_net_apply_leader_redirect(struct raft_instance *ri,
     if (rc == -ETIMEDOUT)
         timespec_clear(&ri->ri_last_send[leader_idx]); // "unstale" the leader
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new leader via redirect (idx=%hhu)",
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "new leader via redirect (idx=%hhu)",
                       leader_idx);
 
     return 0;
@@ -2517,11 +2523,13 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_server_recv_cb = server_recv_cb;
 }
 
-char *
-raft_net_recv_request(struct ctl_svc_node *csn, size_t *buff_size)
+int
+raft_net_recv_request(struct ctl_svc_node *csn, char *recv_buf,
+                      size_t *recv_buf_size)
 {
     return tcp_mgr_recv_req_from_socket(&csn->csn_peer.csnp_net_data,
-                                        buff_size);
+                                        recv_buf,
+                                        recv_buf_size);
 }
 
 int entry_cnt;
