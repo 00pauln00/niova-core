@@ -55,11 +55,13 @@ tcp_mgr_incoming_credits_set(struct tcp_mgr_instance *tmi, uint32_t cnt)
     tcp_mgr_credits_set(&tmi->tmi_incoming_credits, cnt);
 }
 
+#if 0
 static void *
 tcp_mgr_bulk_malloc(struct tcp_mgr_instance *tmi, size_t sz)
 {
     return tcp_mgr_credits_malloc(&tmi->tmi_bulk_credits, sz);
 }
+#endif
 
 static void
 tcp_mgr_bulk_free(struct tcp_mgr_instance *tmi, void *buf)
@@ -399,7 +401,7 @@ tcp_mgr_bulk_progress_recv(struct tcp_mgr_connection *tmc)
 
     ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, &iov, 1, NULL, false);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_len=%ld", recv_bytes,
+    SIMPLE_LOG_MSG(LL_WARN, "recv_bytes=%ld iov_len=%ld", recv_bytes,
                    iov.iov_len);
 
     if (recv_bytes == -EAGAIN)
@@ -419,7 +421,7 @@ tcp_mgr_bulk_progress_recv(struct tcp_mgr_connection *tmc)
 
 static int
 tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
-                              void *hdr, size_t hdr_size)
+                              void *hdr, size_t hdr_size, char *recv_buf)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(tmc && !tmc->tmc_bulk_buf && !tmc->tmc_bulk_remain);
@@ -430,25 +432,10 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
     if (buf_size > TCP_MGR_MAX_BULK_SIZE)
         return -E2BIG;
 
-    // buffer free'd in tcp_mgr_recv_cb
-    void *buf = tcp_mgr_bulk_malloc(tmc->tmc_tmi, buf_size);
-    if (!buf)
-    {
-        DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "cannot allocate bulk buf");
-
-        int bytes_avail;
-        ioctl(tmc->tmc_tsh.tsh_socket, FIONREAD, &bytes_avail);
-        if (bytes_avail >= bulk_size)
-            buf = niova_malloc_can_fail(buf_size);
-
-        if (!buf)
-            return -ENOMEM;
-    }
-
     if (hdr && hdr_size)
-        memcpy(buf, hdr, hdr_size);
+        memcpy(recv_buf, hdr, hdr_size);
 
-    tmc->tmc_bulk_buf = buf;
+    tmc->tmc_bulk_buf = recv_buf;
     tmc->tmc_bulk_offset = hdr_size;
     tmc->tmc_bulk_remain = bulk_size;
 
@@ -488,7 +475,7 @@ tcp_mgr_get_msg_header(struct tcp_mgr_connection *tmc)
 }
 
 static int
-tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc)
+tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc, char *recv_buf)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
@@ -516,20 +503,23 @@ tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc)
     if (rc < 0)
         return rc;
 
-    return tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size);
+    return tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size, recv_buf);
 }
 
-char *
-tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, size_t *buff_size)
+int
+tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
+                             size_t *recv_buf_size)
 {
     int rc;
 
-    rc = tcp_mgr_new_bulk_msg_handler(tmc);
+    SIMPLE_LOG_MSG(LL_WARN, "Read the request from socket now");
+    rc = tcp_mgr_new_bulk_msg_handler(tmc, recv_buf);
 
     if (rc)
-        return NULL;
+        return rc;
 
    
+    SIMPLE_LOG_MSG(LL_WARN, "This is bulk request, read the whole data");
     while (tmc->tmc_bulk_remain)
     {
         NIOVA_ASSERT(tmc->tmc_bulk_buf);
@@ -539,10 +529,11 @@ tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, size_t *buff_size)
             SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
     }
 
-    *buff_size = tmc->tmc_bulk_offset;
-    return tmc->tmc_bulk_buf;
+    *recv_buf_size = tmc->tmc_bulk_offset;
+    return rc;
 }
 
+#if 0
 //XXX we need to call this once read/write completes.
 static int
 tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
@@ -560,6 +551,7 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 
     return 0;
 }
+#endif
 
 static epoll_mgr_cb_ctx_t
 tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
@@ -568,8 +560,8 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 
     NIOVA_ASSERT(eph && eph->eph_arg);
 
-    size_t header_size = tmc->tmc_header_size;
     struct tcp_mgr_connection *tmc = eph->eph_arg;
+    size_t header_size = tmc->tmc_header_size;
     DBG_TCP_MGR_CXN(LL_TRACE, tmc, "received events: %d", events);
 
     int rc = tcp_mgr_epoll_handle_rc_get(eph, events);

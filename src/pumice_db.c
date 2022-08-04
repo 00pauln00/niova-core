@@ -1225,17 +1225,6 @@ pmdb_sm_handler_pmdb_req_check(const struct pmdb_msg *pmdb_req)
     return 0;
 }
 
-static bool
-pmdb_is_read_op(struct raft_net_client_request_handle *rncr)
-{
-    const struct pmdb_msg *pmdb_req =
-        (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
-
-    const enum PmdbOpType op = pmdb_req->pmdbrm_op;
-
-    return op == pmdb_op_read ? true : false;
-}
-
 static int
 pmdb_sm_handler(struct raft_net_client_request_handle *rncr)
 {
@@ -1442,7 +1431,6 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
                                   pmdb_ref_tree_release_all,
-                                  pmdb_is_read_op,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 

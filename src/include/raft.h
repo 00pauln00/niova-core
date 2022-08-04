@@ -111,7 +111,7 @@ enum raft_buf_set_size
 enum raft_buf_set_nbuf
 {
     RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
-    RAFT_BS_LARGE_NBUF = 2,
+    RAFT_BS_LARGE_NBUF = 3,
 };
 
 struct raft_vote_request_msg
@@ -1129,7 +1129,6 @@ raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
                          raft_leader_prep_cb_t leader_prep_handler,
-                         raft_is_read_op_t is_read_op, 
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg);
 
