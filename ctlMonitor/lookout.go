@@ -300,7 +300,7 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
         //Split key based nisd's UUID and field
         var output string
-        parsedUUID, err := uuid.Parse(epc.MonitorUUID)
+        parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
 	node := epc.EpMap[parsedUUID]
 	if len(node.EPInfo.RaftRootEntry) > 0 {
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
@@ -347,5 +347,5 @@ func (epc *EPContainer) Start() {
 	epc.init()
 
 	//Start monitoring
-	err := epc.monitor()
+	epc.monitor()
 }
