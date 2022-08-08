@@ -1,4 +1,4 @@
-package main // niova control interface
+package lookout // niova control interface
 
 import (
 	//	"math/rand"
@@ -90,7 +90,7 @@ type RaftInfo struct {
 	State                    string    `json:"state"`
 	FollowerReason           string    `json:"follower-reason"`
 	ClientRequests           string    `json:"client-requests"`
-	Term                     int       `json:"term"`
+	Term                     int       `json:"term" type:"counter" metric:"Term"`
 	CommitIdx                int       `json:"commit-idx"`
 	LastApplied              int       `json:"last-applied"`
 	LastAppliedCumulativeCrc int64     `json:"last-applied-cumulative-crc"`
@@ -98,8 +98,8 @@ type RaftInfo struct {
 	NewestEntryTerm          int       `json:"newest-entry-term"`
 	NewestEntryDataSize      int       `json:"newest-entry-data-size"`
 	NewestEntryCrc           int64     `json:"newest-entry-crc"`
-	DevReadLatencyUsec       Histogram `json:"dev-read-latency-usec"`
-	DevWriteLatencyUsec      Histogram `json:"dev-write-latency-usec"`
+	DevReadLatencyUsec       Histogram `json:"dev-read-latency-usec" type:"histogram" metric:"dev_read_latency_usec"`
+	DevWriteLatencyUsec      Histogram `json:"dev-write-latency-usec" type:"histogram" metric:"dev_write_latency_usec"`
 	FollowerStats            []struct {
 		PeerUUID    string `json:"peer-uuid"`
 		LastAck     Time   `json:"last-ack"`
