@@ -85,7 +85,6 @@ func (epc *EPContainer) monitor() error {
 
 	for epc.run == true {
 		var tmp_stb syscall.Stat_t
-
 		err = syscall.Stat(epc.CTLPath, &tmp_stb)
 		if err != nil {
 			log.Printf("syscall.Stat('%s'): %s", epc.CTLPath, err)
@@ -301,11 +300,11 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
         //Split key based nisd's UUID and field
         var output string
-        parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
-        node := epc.EpMap[parsedUUID]
-                if len(node.EPInfo.RaftRootEntry) > 0 {
-                        output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
-                }
+        parsedUUID, err := uuid.Parse(epc.MonitorUUID)
+	node := epc.EpMap[parsedUUID]
+	if len(node.EPInfo.RaftRootEntry) > 0 {
+		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
+        }
 
         fmt.Fprintln(w, output)
 }
@@ -348,5 +347,5 @@ func (epc *EPContainer) Start() {
 	epc.init()
 
 	//Start monitoring
-	epc.monitor()
+	err := epc.monitor()
 }

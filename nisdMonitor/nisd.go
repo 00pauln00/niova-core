@@ -5,8 +5,8 @@ import (
 	"common/lookout"
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
-	"controlplane/serfagenthandler"
-	"ctlplane/client_api"
+	"controlplane/serfAgent"
+	"common/serviceDiscovery"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
@@ -40,18 +40,18 @@ import "C"
 
 type nisdMonitor struct {
 	udpPort       string
-	storageClient client_api.ClientAPI
+	storageClient serviceDiscovery.ServiceDiscoveryHandler
 	udpSocket     net.PacketConn
 	lookout       lookout.EPContainer
 	endpointRoot  *string
 	httpPort      *int
 	ctlPath	      *string
 	//serf
-	serfHandler    serfagenthandler.SerfAgentHandler
+	serfHandler    serfAgent.SerfAgentHandler
 	agentName       string
 	addr            string
 	agentPort       string
-	agentRPCPort    string
+	agentRPCPort    *int
 	gossipNodesPath string
 	serfLogger      string
 }
@@ -76,13 +76,14 @@ func (handler *nisdMonitor) parseCMDArgs() {
 
 	handler.ctlPath = flag.String("dir", "/tmp/.niova", "endpoint directory root")
 	handler.httpPort = flag.Int("port", 8081, "http listen port")
+	handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
+
 	flag.StringVar(&handler.udpPort, "u", "1054", "UDP port for NISD communication")
 	flag.StringVar(&handler.agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Agent addr")
 	flag.StringVar(&handler.agentPort, "p", "3991", "Agent port for serf")
-	flag.StringVar(&handler.agentRPCPort, "r", "3992", "Agent RPC port")
 	flag.StringVar(&handler.gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
 	flag.StringVar(&handler.serfLogger, "s", "serf.log", "Serf logs")
 	flag.Parse()
@@ -99,7 +100,7 @@ func (handler *nisdMonitor) parseCMDArgs() {
 }
 
 
-func (handler *nisdMonitor) requestPMDB(key string) []byte {
+func (handler *nisdMonitor) requestPMDB(key string) ([]byte, error) {
 	request := requestResponseLib.KVRequest{
                 Operation: "read",
                 Key:       key,
@@ -107,8 +108,8 @@ func (handler *nisdMonitor) requestPMDB(key string) []byte {
         var requestByte bytes.Buffer
         enc := gob.NewEncoder(&requestByte)
         enc.Encode(request)
-        responseByte := handler.storageClient.Request(requestByte.Bytes(), "", false)
-	return responseByte
+        responseByte, err := handler.storageClient.Request(requestByte.Bytes(), "", false)
+	return responseByte, err
 }
 
 func fillNisdCStruct(UUID string, ipaddr string, port int) []byte {
@@ -132,7 +133,7 @@ func (handler *nisdMonitor) getConfigNSend(udpInfo udpMessage) {
 	handler.lookout.MarkAlive(uuidString)
 
 	//Send config read request to PMDB server
-	responseByte := handler.requestPMDB(uuidString)
+	responseByte, _ := handler.requestPMDB(uuidString)
 
 	//Decode response to IPAddr and Port
 	responseObj := requestResponseLib.KVResponse{}
@@ -168,22 +169,22 @@ func setLogOutput(logPath string) {
 func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
 	agentPort, _ := strconv.Atoi(handler.agentPort)
-	handler.serfHandler = serfagenthandler.SerfAgentHandler{
+	handler.serfHandler = serfAgent.SerfAgentHandler{
 		Name : handler.agentName,
-		BindAddr : handler.addr,
-		BindPort : agentPort,
+		BindAddr : net.ParseIP(handler.addr),
+		BindPort : uint16(agentPort),
 		AgentLogger : log.Default(),
-		RpcAddr : handler.addr,
-		RpcPort : handler.agentRPCPort,
+		RpcAddr : net.ParseIP(handler.addr),
+		RpcPort : uint16(*handler.agentRPCPort),
 	}
 
-	joinAddrs, err := serfagenthandler.GetPeerAddress(handler.gossipNodesPath)
+	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
 	if err != nil {
 		return err
 	}
 
 	//Start serf agent
-	_, err = handler.serfHandler.Startup(joinAddrs, true)
+	_, err = handler.serfHandler.SerfAgentStartup(joinAddrs, true)
 	return err
 }
 
@@ -214,7 +215,7 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 func (handler *nisdMonitor) setTags() {
 	for {
 		tagData := handler.getCompressedGossipDataNISD()
-		err := handler.serfHandler.SetTags(tagData)
+		err := handler.serfHandler.SetNodeTags(tagData)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -225,18 +226,19 @@ func (handler *nisdMonitor) setTags() {
 //NISD
 func (handler *nisdMonitor) startClientAPI() {
 	//Init niovakv client API
-	handler.storageClient = client_api.ClientAPI{
-		Timeout: 10,
+	handler.storageClient = serviceDiscovery.ServiceDiscoveryHandler{
+		HTTPRetry: 10,
+		SerfRetry: 5,
 	}
 	stop := make(chan int)
 	go func() {
-		err := handler.storageClient.Start(stop, handler.gossipNodesPath)
+		err := handler.storageClient.StartClientAPI(stop, handler.gossipNodesPath)
 		if err != nil {
 			fmt.Println("Error while starting client API : ", err)
 			os.Exit(1)
 		}
 	}()
-	handler.storageClient.Till_ready()
+	handler.storageClient.TillReady()
 }
 
 //NISD

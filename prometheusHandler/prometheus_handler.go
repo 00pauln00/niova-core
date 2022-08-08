@@ -8,8 +8,9 @@ import (
 	"strings"
 )
 
-var prometheusClient struct {
+type prometheusClient struct {
 	HTTPoutput string
+	Label map[string]string
 }
 
 func parseCounter(count reflect.Value) string {
@@ -95,8 +96,8 @@ func GenericPromDataParser(structure interface{}) string {
 		fieldType := typeExtract.Field(i)
 		fieldValue := valueExtract.Field(i)
 
-		promType := fieldType.Tag.Get("prom")
-		promLabel := fieldType.Tag.Get("label")
+		promType := fieldType.Tag.Get("type")
+		promLabel := fieldType.Tag.Get("metric")
 		switch promType {
 		case "histogram":
 			histogram := parseHistogram(fieldValue, fieldType.Type)
