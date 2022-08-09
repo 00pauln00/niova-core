@@ -57,8 +57,8 @@ typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
 typedef int raft_server_chkpt_thread_ctx_int_t;
 
-typedef void *raft_server_read_thread_t;
-typedef void raft_server_read_thread_ctx_t;
+typedef void *raft_server_rw_thread_t;
+typedef void raft_server_rw_thread_ctx_t;
 
 static unsigned long long raftServerMaxRecoveryLeaderCommMsec = 10000;
 
@@ -4409,7 +4409,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
-        LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
+        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
         return;
     }
@@ -4419,6 +4419,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     struct ctl_svc_node *csn = NULL;
 
+    SIMPLE_LOG_MSG(LL_WARN, "Inside client_recv_handler for msg type: %d", rcm->rcrm_type);
     /* First set of request checks which are configuration based.
      */
     if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
@@ -4429,7 +4430,17 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
+        SIMPLE_LOG_MSG(LL_WARN, "Orig buffer: %s, size: %ld", recv_buffer, recv_bytes);
         size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
+        char read_data_buf[recv_bytes];
+        size_t actual_recv_bytes = 0; 
+        int rc = raft_net_recv_request(csn, read_data_buf, &actual_recv_bytes);
+
+        const struct raft_client_rpc_msg *rcm_new =
+        (const struct raft_client_rpc_msg *)read_data_buf;
+
+        SIMPLE_LOG_MSG(LL_WARN, "Now data: %s, size: %ld", read_data_buf, actual_recv_bytes);
+        NIOVA_ASSERT(rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
 
         //XXX can we use SMALL buffer for ping?
         struct buffer_item *bi =
@@ -4442,14 +4453,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         struct raft_net_client_request_handle rncr;
 
         raft_server_net_client_request_init_client_rpc(
-        ri, &rncr, rcm, from, reply_buf,
+        ri, &rncr, rcm_new, from, reply_buf,
         reply_size, csn);
 
-        //SIMPLE_LOG_MSG(LL_WARN, "ping reply");
+        SIMPLE_LOG_MSG(LL_WARN, "ping reply");
         /* Second set of checks which determine if this server is capable of
          * handling the request at this time.
          */
-        int rc = raft_server_may_accept_client_request(ri);
+        rc = raft_server_may_accept_client_request(ri);
         if (rc)
         {
             SIMPLE_LOG_MSG(LL_WARN,
@@ -4461,6 +4472,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         {
             raft_server_reply_to_client(ri, &rncr, csn);
         }
+        raft_net_bulk_complete(csn);
         if (csn)
             ctl_svc_node_put(csn);
 
@@ -4481,6 +4493,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     return;
 
 out:
+    raft_net_bulk_complete(csn);
     if (csn)
         ctl_svc_node_put(csn);
 }
@@ -5700,12 +5713,13 @@ raft_server_process_rw_request(struct raft_instance *ri,
         // Read operation or an already committed + applied write operation.
         raft_server_reply_to_client(ri, &rncr, csn);
     }
+    raft_net_bulk_complete(csn);
 out:
     if (csn)
         ctl_svc_node_put(csn);
 }
 
-static raft_server_read_thread_t
+static raft_server_rw_thread_t
 raft_server_rw_thread(void *arg)
 {
     struct thread_ctl *tc = arg;
