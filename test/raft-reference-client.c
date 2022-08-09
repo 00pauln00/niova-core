@@ -814,10 +814,12 @@ rsc_client_rpc_msg_init(struct raft_instance *ri,
         return -EINVAL;
 
     else if (msg_type != RAFT_CLIENT_RPC_MSG_TYPE_PING &&
-             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_REQUEST)
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_WRITE &&
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_READ)
         return -EOPNOTSUPP;
 
-    else if (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REQUEST &&
+    else if ((msg_type == RAFT_CLIENT_RPC_MSG_TYPE_READ ||
+             msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) &&
              (data_size == 0 ||
               (data_size + sizeof(struct raft_client_rpc_msg) >
                raft_net_max_rpc_size(RAFT_INSTANCE_STORE_POSIX_FLAT_FILE))))
@@ -890,7 +892,7 @@ rsc_setup_read_request(struct raft_instance *ri)
     rtdb->rtdb_num_values = 0;
 
     int rc =
-        rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
+        rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_READ,
                                 sizeof(*rtdb), ri->ri_csn_leader);
     NIOVA_ASSERT(!rc);
 }
@@ -923,7 +925,7 @@ rsc_setup_write_request(struct raft_instance *ri)
                          sizeof(struct raft_test_values));
 
     int rc =
-        rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
+        rsc_client_rpc_msg_init(ri, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_WRITE,
                                 request_size, ri->ri_csn_leader);
     NIOVA_ASSERT(!rc);
 }

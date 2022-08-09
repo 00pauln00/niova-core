@@ -165,7 +165,7 @@ enum raft_udp_listen_sockets
 enum raft_client_rpc_msg_type
 {
     RAFT_CLIENT_RPC_MSG_TYPE_INVALID    = 0,
-    RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
+    //RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
     RAFT_CLIENT_RPC_MSG_TYPE_READ       = 2,
     RAFT_CLIENT_RPC_MSG_TYPE_WRITE      = 3,
     RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 4,
@@ -347,10 +347,18 @@ do {                                                                    \
         uuid_unparse((rcm)->rcrm_sender_id, __uuid_str);                \
         switch ((rcm)->rcrm_type)                                       \
         {                                                               \
-        case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                          \
+        case RAFT_CLIENT_RPC_MSG_TYPE_READ:                             \
             uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
             LOG_MSG(log_level,                                          \
-                    "CLI-REQ   %s id=%lx sz=%u "fmt,                    \
+                    "Read CLI-REQ   %s id=%lx sz=%u "fmt,               \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_CLIENT_RPC_MSG_TYPE_WRITE:                            \
+            uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+            LOG_MSG(log_level,                                          \
+                    "Write CLI-REQ   %s id=%lx sz=%u "fmt,              \
                     __uuid_str,                                         \
                     (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
                     ##__VA_ARGS__);                                     \
@@ -782,5 +790,8 @@ raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
 
 int
 raft_net_recv_request(struct ctl_svc_node *csn, char *buff, size_t *buff_size);
+
+int
+raft_net_bulk_complete(struct ctl_svc_node *csn);
 
 #endif
