@@ -1215,7 +1215,9 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
     int rc = raft_net_apply_leader_redirect(RCI_2_RI(rci),
                                             rcrm->rcrm_redirect_id,
                                             raftClientStaleServerTimeMS);
-    rci->rci_leader_csn = RCI_2_RI(rci)->ri_csn_leader;
+    if (!rc)
+        rci->rci_leader_csn = RCI_2_RI(rci)->ri_csn_leader;
+
     DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_NOTIFY : LL_DEBUG), rcrm, from,
                              "raft_net_apply_leader_redirect(): %s",
                              strerror(-rc));
