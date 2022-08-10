@@ -8,15 +8,18 @@
 #include <pthread.h>
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 struct job;
 struct rocksdb_compo;
 
 struct api
 {
-  void (*init)(struct rocksdb_compo *);
-  void (*shutdown)(struct rocksdb_compo *);
+  void (*init)(struct rocksdb_compo *, char *DBPath);
+  void (*shutdown)(struct job *j);
   void (*do_ops)(struct job *);
+  void* (*sync)(void *);
 };
 
 struct job
@@ -31,7 +34,6 @@ struct job
 struct rocksdb_compo
 {
   rocksdb_t *db;
-  rocksdb_backup_engine_t *be;
   rocksdb_options_t *options;
   rocksdb_writeoptions_t *writeoptions;
   rocksdb_readoptions_t *readoptions;
@@ -39,20 +41,22 @@ struct rocksdb_compo
 
 struct config_stuff
 {
-  int keysize, ops, valsize, read;
+  int keysize, ops, valsize, read, sync;
+  long sleeptime;
   char *keypre, *keybase;
+  char *DBPath;
 };
-
+const char sync_key[]="synckey";
 const int KEY_MAX =64000;
 const int VAL_MAX =4000000;
-
-const char DBPath[] = "/tmp/rocksdb_c_simple_example";
-const char DBBackupPath[] = "/tmp/rocksdb_c_simple_example_backup";
-
+struct epoll_event event={
+  .data.u32= -1U,
+  .events = EPOLLIN,
+};
 
 void rand_str(void *, size_t);
-void compo_init(struct rocksdb_compo *c);
-void compo_shutdown(struct rocksdb_compo *c);
+void compo_init(struct rocksdb_compo *c, char *DBPath);
+void compo_shutdown(struct job *j);
 void complete_ops(struct job *j);
 void do_writes(struct job *j);
 void do_reads(struct job *j);
@@ -60,28 +64,114 @@ struct config_stuff config(int argc, char **argv);
 void make_key(struct job *j, int size_diff, int i);
 void do_job(struct config_stuff conf);
 void* sleep_mimic(void * arg);
+void* do_sync(void * arg);
+void startthreads(struct config_stuff conf);
 
 int main(int argc, char **argv) {
-  struct config_stuff conf;
-  conf=config(argc,argv);
-  pthread_t sleepthread;
-  pthread_create(&sleepthread,NULL,sleep_mimic,NULL);
+  struct config_stuff conf=config(argc,argv);
+  startthreads(conf);
   do_job(conf);
   return 0;
 }
+void startthreads(struct config_stuff conf){
+  pthread_t sleepthread;
+  void *p = malloc(sizeof(long));
+  p=&conf.sleeptime;
+  pthread_create(&sleepthread,NULL,sleep_mimic,p);
+}
 
-void* sleep_mimic(void * arg){
-  int fd = timerfd_create(CLOCK_REALTIME, 0);
-  int i =1;
+void* do_sync(void * job_void){
+  char *err = NULL;
+  struct job *j=(struct job *)job_void;
+  rocksdb_t *db=j->compo->db;
+  struct timespec sleeptime;
+  sleeptime.tv_nsec=4000000;
+  rocksdb_writeoptions_t *writeoptions_sync = rocksdb_writeoptions_create();
+  rocksdb_writeoptions_set_sync(writeoptions_sync, 1);
+  while (j->conf->sync)
+  {
+    struct timespec sync_start;
+    clock_gettime(CLOCK_REALTIME,&sync_start);
+    nanosleep(&sleeptime,NULL);
+    char syncval[25];
+    snprintf(syncval,25,"%ld",sync_start.tv_nsec);
+    rocksdb_put(db, writeoptions_sync, sync_key, strlen(sync_key), syncval, strlen(syncval),&err);
+    struct timespec sync_end;
+    clock_gettime(CLOCK_REALTIME,&sync_end);
+    assert(!err);
+    long timediff;
+    timediff=((sync_end.tv_sec-sync_start.tv_sec)*1000000000)+sync_end.tv_nsec-sync_start.tv_nsec;
+    if(timediff>=1.1*sleeptime.tv_nsec){
+      fprintf(stderr,"sync time: %ld \n",timediff);
+    }
+  }
+  return NULL;
+}
+
+void* sleep_mimic(void* sleeptime){ 
+  long stime,sleep_sec,sleep_nsec;
+  stime = *(long *) sleeptime;
+  if(stime>=1000000000){
+    double sec=(double)stime/(double)1000000000;
+    long intPart = (long) sec;
+    long fracPart = 1000000000*sec - 1000000000*intPart;
+    sleep_sec=intPart;
+    sleep_nsec=fracPart;
+  }else{
+    sleep_sec=0;
+    sleep_nsec=stime;
+  }
+  int epollfd=epoll_create1(0);
+  if (epollfd == -1)
+  {
+    perror("epoll_create1");
+    exit(EXIT_FAILURE);
+  }
+  int fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+  if (fd == -1)
+  {
+    perror("timerfd_create");
+    exit(EXIT_FAILURE);
+  }
+  int rc = epoll_ctl(epollfd, EPOLL_CTL_ADD, fd, &event);
+  if (rc == -1)
+  {
+    perror("epoll_ctl");
+    exit(EXIT_FAILURE);
+  }
   while (1)
   {
     struct itimerspec its = {0};
-    int set_returnval = timerfd_settime(fd, 0, &its, NULL);
-    printf("set time %d %ld %ld %ld %ld \n", set_returnval, its.it_interval.tv_sec, its.it_interval.tv_nsec,its.it_value.tv_sec, its.it_value.tv_nsec);
-    sleep(1);
+    its.it_value.tv_sec=sleep_sec;
+    its.it_value.tv_nsec=sleep_nsec;
+    struct timespec start_time,end_time;
+    clock_gettime(CLOCK_REALTIME,&start_time);
+    rc = timerfd_settime(fd, 0, &its, NULL);
+    if (rc == -1)
+    {
+      perror("timerfd_settime");
+      exit(EXIT_FAILURE);
+    }
+    rc = epoll_wait(epollfd,&event,1,-1);//-1 so epoll is infinite if timer doesn't send
+    if (rc == -1)
+    {
+      perror("epoll_wait");
+      exit(EXIT_FAILURE);
+    }
+    clock_gettime(CLOCK_REALTIME,&end_time);
     struct itimerspec outs;
-    int get_returnval = timerfd_gettime(fd,&outs);
-    printf("get time %d %ld %ld %ld %ld \n", get_returnval, outs.it_interval.tv_sec, outs.it_interval.tv_nsec,outs.it_value.tv_sec, outs.it_value.tv_nsec);
+    rc = timerfd_gettime(fd,&outs);
+    if (rc == -1)
+    {
+      perror("timerfd_settime");
+      exit(EXIT_FAILURE);
+    }
+    long timediff=((end_time.tv_sec-start_time.tv_sec)*1000000000)+end_time.tv_nsec-start_time.tv_nsec;
+    if(timediff>=1.1*stime){
+      fprintf(stderr,"sleep set time %ld %ld \n",its.it_value.tv_sec, its.it_value.tv_nsec);
+      fprintf(stderr,"sleep timediff: %ld \n",timediff);
+      fprintf(stderr,"sleep get time %ld %ld \n",outs.it_value.tv_sec, outs.it_value.tv_nsec);
+    }
   }
   return NULL;
 }
@@ -91,13 +181,19 @@ void do_job(struct config_stuff conf){
     struct job j={
     .job_api.init=compo_init,
     .job_api.do_ops=complete_ops,
+    .job_api.sync=do_sync,
     .job_api.shutdown=compo_shutdown,
     .compo=&compo,
   };
   j.conf=&conf;
-  j.job_api.init(j.compo);
+  j.job_api.init(j.compo,j.conf->DBPath);
+  if (conf.sync==1)
+  {
+    pthread_t syncthread;
+    pthread_create(&syncthread,NULL,j.job_api.sync,&j);
+  }
   j.job_api.do_ops(&j);
-  j.job_api.shutdown(j.compo);
+  j.job_api.shutdown(&j);
 }
 
 void rand_str(void *dest, size_t length) {
@@ -111,10 +207,8 @@ void rand_str(void *dest, size_t length) {
     dest=tmp;
 }
 
-void compo_init(struct rocksdb_compo *c){
+void compo_init(struct rocksdb_compo *c, char *DBPath){
   c->options = rocksdb_options_create();
-  // Optimize RocksDB. This is the easiest way to
-  // get RocksDB to perform well.
   long cpus = sysconf(_SC_NPROCESSORS_ONLN);
   // Set # of online cores
   rocksdb_options_increase_parallelism(c->options, (int)(cpus));
@@ -125,60 +219,52 @@ void compo_init(struct rocksdb_compo *c){
   char *err = NULL;
   c->db = rocksdb_open(c->options, DBPath, &err);
   assert(!err);
-  // open Backup Engine that we will use for backing up our database
-  c->be = rocksdb_backup_engine_open(c->options, DBBackupPath, &err);
-  assert(!err);
   c->writeoptions = rocksdb_writeoptions_create();
   c->readoptions = rocksdb_readoptions_create();
 }
 
-void compo_shutdown(struct rocksdb_compo *c){
+void compo_shutdown(struct job *j){
+  if (j->conf->sync==1)
+  {
+    j->conf->sync=0;
+  }
   char *err = NULL;
-  //rdb close and clean
-  // create new backup in a directory specified by DBBackupPath
-  rocksdb_backup_engine_create_new_backup(c->be, c->db, &err);
+  rocksdb_close(j->compo->db);
+  j->compo->db = rocksdb_open(j->compo->options, j->conf->DBPath, &err);
   assert(!err);
-
-  rocksdb_close(c->db);
-  // If something is wrong, you might want to restore data from last backup
-  rocksdb_restore_options_t *restore_options = rocksdb_restore_options_create();
-  rocksdb_backup_engine_restore_db_from_latest_backup(c->be, DBPath, DBPath,
-                                                      restore_options, &err);
-  assert(!err);
-  rocksdb_restore_options_destroy(restore_options);
-
-  c->db = rocksdb_open(c->options, DBPath, &err);
-  assert(!err);
-  // cleanup
-  rocksdb_writeoptions_destroy(c->writeoptions);
-  rocksdb_readoptions_destroy(c->readoptions);
-  rocksdb_options_destroy(c->options);
-  rocksdb_backup_engine_close(c->be);
-  rocksdb_close(c->db);
-  //rdb close and clean
+  rocksdb_writeoptions_destroy(j->compo->writeoptions);
+  rocksdb_readoptions_destroy(j->compo->readoptions);
+  rocksdb_options_destroy(j->compo->options);
+  rocksdb_close(j->compo->db);
 }
 
 struct config_stuff config(int argc, char **argv){
   int opt;
   char* p;
-  char *help="-k key size -n number of ops -v value size -p key prefix -r do reads -h help";
-  struct config_stuff conf;
-  while ((opt = getopt (argc, argv, ":if:k:n:v:p:rh")) != -1)
+  char *help="-k key size -n number of ops -v value size -p key prefix -r do reads -s do syncs -f path to DB -t time for timerfd in nsec -h help";
+  struct config_stuff conf={
+    .keysize=100,
+    .ops=1000,
+    .valsize=1000,
+    .read=0,
+    .sync=0,
+    .sleeptime=30000000,
+    .keypre="key",
+    .DBPath=NULL,
+  };
+  while ((opt = getopt (argc, argv, ":if:k:n:v:p:f:t:rhs")) != -1)
+  {
     switch (opt)
       {
         case 'k':
-        //compare this to MAX first
           if (strtol(optarg, &p, 10) < KEY_MAX){
             conf.keysize = strtol(optarg, &p, 10);
-          }else{
-            conf.keysize = KEY_MAX;
           }
           break;
         case 'n':
           conf.ops = strtol(optarg, &p, 10);
           break;
         case 'v':
-        //compare this to MAX first
           if(strtol(optarg, &p, 10)<VAL_MAX){
             conf.valsize = strtol(optarg, &p, 10);
           }else
@@ -192,6 +278,15 @@ struct config_stuff config(int argc, char **argv){
         case 'r':
           conf.read=1;
           break;
+        case 's':
+          conf.sync=1;
+          break;
+        case 'f':
+          conf.DBPath=optarg;
+          break;
+        case 't':
+          conf.sleeptime=strtol(optarg, &p, 10);
+          break;
         case 'h':
           printf("help called: %s \n", help);
           exit(1);
@@ -199,6 +294,13 @@ struct config_stuff config(int argc, char **argv){
           printf("unrecognized flag: %s \n", help);
           exit(1);
       }
+  }
+  if (conf.DBPath==NULL)
+  {
+    printf("-f file path is mandatory\n");
+    exit(1);
+  }
+  
   return conf;
 }
 
@@ -210,7 +312,8 @@ void complete_ops(struct job *j){
   {
     do_reads(j);
   }
-  
+  free(j->key);
+  free(j->value);
 }
 
 void do_writes(struct job *j){
@@ -220,14 +323,16 @@ void do_writes(struct job *j){
   for (int i = 0; i < j->conf->ops; i++)
   {
     make_key(j,size_diff,i);
-    //printf("j->key: %s\n",j->key);
+    if (i%100==0)
+    {
+      printf("writes: %d / %d\r",i,j->conf->ops);
+    }
     rand_str(j->value, j->conf->valsize);
-    //printf("put j->value %p\n",j->value);
     rocksdb_put(j->compo->db, j->compo->writeoptions, j->key, strlen(j->key), j->value, j->conf->valsize,
-            &err);
-    //printf("after put\n");
+            &err); 
     assert(!err);
   }
+  printf("writes all completed\n");
 }
 
 void do_reads(struct job *j){
@@ -239,10 +344,13 @@ void do_reads(struct job *j){
     make_key(j,size_diff,i);
     char *returned_value =rocksdb_get(j->compo->db, j->compo->readoptions, j->key, strlen(j->key), &len, &err);
     assert(!err);
-    //printf("read key: %s\n",j->key);
-    //printf("read value len: %ld\n",len);
+    if (i%100==0)
+    {
+      printf("reads: %d / %d\r",i,j->conf->ops);
+    }
     free(returned_value);
   }
+  printf("reads all completed\n");
 }
 
 void make_key(struct job *j, int size_diff, int i){
