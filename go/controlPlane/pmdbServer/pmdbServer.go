@@ -144,7 +144,6 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
 	flag.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
-	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
 	flag.Parse()
 
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
@@ -248,7 +247,8 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		addr = splitData[1]
 		aport = splitData[2]
 		rport = splitData[3]
-		if handler.prometheus {
+		if len(splitData) > 4 {
+			handler.prometheus = true
 			hport = splitData[4]
 		}
 		if uuid == handler.peerUUID.String() {

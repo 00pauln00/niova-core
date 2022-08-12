@@ -1,4 +1,4 @@
-module lookout/nisd
+module lookout/nisdLookout
 
 replace controlplane/serfAgent => ../../serf/agent/
 
