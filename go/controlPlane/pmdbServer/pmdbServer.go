@@ -49,6 +49,7 @@ type pmdbServerHandler struct {
 	serfAgentPort      uint16
 	serfRPCPort        uint16
 	hport		   uint16
+	prometheus	   bool
 	nodeAddr           net.IP
 	GossipData         map[string]string
 	ConfigString       string
@@ -94,17 +95,18 @@ func main() {
 	*/
 
 	//Start lookout monitoring
-	CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
-	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
-	ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/"
-	serverHandler.lookoutInstance = lookout.EPContainer{
-                MonitorUUID : nso.peerUuid.String(),
-                AppType : "PMDB",
-                HttpPort : int(serverHandler.hport),
-                CTLPath: ctl_path,
-        }
-        go serverHandler.lookoutInstance.Start()
-
+	if serverHandler.prometheus {
+		CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
+		fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
+		ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/"
+		serverHandler.lookoutInstance = lookout.EPContainer{
+                	MonitorUUID : nso.peerUuid.String(),
+                	AppType : "PMDB",
+                	HttpPort : int(serverHandler.hport),
+                	CTLPath: ctl_path,
+       		}
+        	go serverHandler.lookoutInstance.Start()
+	}
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
@@ -142,6 +144,7 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
 	flag.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
+	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
 	flag.Parse()
 
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
@@ -237,14 +240,17 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	}
 	scanner := bufio.NewScanner(f)
 	var flag bool
+	var uuid, addr, aport, rport, hport string
 	for scanner.Scan() {
 		text := scanner.Text()
 		splitData := strings.Split(text, " ")
-		addr := splitData[1]
-		aport := splitData[2]
-		rport := splitData[3]
-		hport := splitData[4]
-		uuid := splitData[0]
+		uuid = splitData[0]
+		addr = splitData[1]
+		aport = splitData[2]
+		rport = splitData[3]
+		if handler.prometheus {
+			hport = splitData[4]
+		}
 		if uuid == handler.peerUUID.String() {
 			buffer, err := strconv.ParseUint(aport, 10, 16)
 			handler.serfAgentPort = uint16(buffer)
@@ -258,8 +264,11 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 				return errors.New("RPC port is out of range")
 			}
 
-			buffer, err = strconv.ParseUint(hport, 10, 16)
-                        handler.hport = uint16(buffer)
+			if handler.prometheus {
+				buffer, err = strconv.ParseUint(hport, 10, 16)
+				handler.hport = uint16(buffer)
+			}
+
                         if err != nil {
                                 return errors.New("HTTP port is out of range")
                         }
