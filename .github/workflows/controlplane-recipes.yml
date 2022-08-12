@@ -51,6 +51,10 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
+
+    - name: Build nisd lookout monitor
+      run: cd code/go/lookout/nisdMonitor && go build
+
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/controlPlane
@@ -72,18 +76,24 @@ jobs:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
-    # Checkout niova-lookout / Branch : nisd_communication
-    - name: Checkout niova-lookout repository
-      uses: actions/checkout@v2
-      with:
-       repository: 00pauln00/niova-lookout
-       ref: nisd_communication
-       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
-       path: ./lookout
 
-    - name: Compile niova-lookout
-      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
+    #Build nisd monitor
+    - name: Build nisd lookout monitor
+      run: cd code/go/lookout/nisdMonitor && go build
+
+
+    # Checkout niova-lookout / Branch : nisd_communication
+    #- name: Checkout niova-lookout repository
+    #  uses: actions/checkout@v2
+    #  with:
+    #   repository: 00pauln00/niova-lookout
+    #   ref: nisd_communication
+    #   token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
+    #   path: ./lookout
+
+    #- name: Compile niova-lookout
+    #run: export PATH=$PATH:/home/runner/work/go/go/bin &&
+    # cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
 
     # Checkout niova-block repository / Branch : nisd_mointor_retry       
     - name: Checkout niova-block repository
