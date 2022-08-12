@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+	"common/lookout"
+	"fmt"
 )
 
 /*
@@ -46,10 +48,12 @@ type pmdbServerHandler struct {
 	gossipClusterNodes []string
 	serfAgentPort      uint16
 	serfRPCPort        uint16
+	hport		   uint16
 	nodeAddr           net.IP
 	GossipData         map[string]string
 	ConfigString       string
 	ConfigData         []PumiceDBCommon.PeerConfigData
+	lookoutInstance	   lookout.EPContainer
 }
 
 func main() {
@@ -88,6 +92,20 @@ func main() {
 	   read callback functions can be called through pmdb common library
 	   functions.
 	*/
+
+	//Start lookout monitoring
+	CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
+	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
+	ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/"
+	serverHandler.lookoutInstance = lookout.EPContainer{
+                MonitorUUID : nso.peerUuid.String(),
+                AppType : "PMDB",
+                HttpPort : int(serverHandler.hport),
+                CTLPath: ctl_path,
+        }
+        go serverHandler.lookoutInstance.Start()
+
+
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
 		RaftUuid:       nso.raftUuid.String(),
@@ -225,6 +243,7 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		addr := splitData[1]
 		aport := splitData[2]
 		rport := splitData[3]
+		hport := splitData[4]
 		uuid := splitData[0]
 		if uuid == handler.peerUUID.String() {
 			buffer, err := strconv.ParseUint(aport, 10, 16)
@@ -232,11 +251,19 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 			if err != nil {
 				return errors.New("Agent port is out of range")
 			}
+
 			buffer, err = strconv.ParseUint(rport, 10, 16)
 			handler.serfRPCPort = uint16(buffer)
 			if err != nil {
 				return errors.New("RPC port is out of range")
 			}
+
+			buffer, err = strconv.ParseUint(hport, 10, 16)
+                        handler.hport = uint16(buffer)
+                        if err != nil {
+                                return errors.New("HTTP port is out of range")
+                        }
+
 			handler.nodeAddr = net.ParseIP(addr)
 			flag = true
 		} else {

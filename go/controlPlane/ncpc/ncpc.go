@@ -686,7 +686,7 @@ func main() {
                 var requestObj requestResponseLib.LookoutRequest
 
                 //Parse UUID
-                requestObj.NISD, _ = uuid.Parse(clientObj.requestKey)
+                requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
                 requestObj.Cmd = clientObj.requestValue
                 var requestByte bytes.Buffer
                 enc := gob.NewEncoder(&requestByte)
