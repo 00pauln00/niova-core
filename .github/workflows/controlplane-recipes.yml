@@ -51,10 +51,6 @@ jobs:
       env:
         LD_LIBRARY_PATH: /home/runner/work/niovad/niovad/build_dir/lib
 
-
-    - name: Build nisd lookout monitor
-      run: cd code/go/lookout/nisdMonitor && go build
-
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd code/go/controlPlane
