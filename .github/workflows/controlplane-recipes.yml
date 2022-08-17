@@ -68,7 +68,7 @@ jobs:
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+       ref: prometheus_support
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
@@ -92,7 +92,7 @@ jobs:
     #run: export PATH=$PATH:/home/runner/work/go/go/bin &&
     # cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
 
-    # Checkout niova-block repository / Branch : nisd_mointor_retry       
+    # Checkout niova-block repository / Branch : nisd_mointor_retry
     - name: Checkout niova-block repository
       uses: actions/checkout@v2
       with:
