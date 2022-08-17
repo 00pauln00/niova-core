@@ -568,6 +568,12 @@ tcp_mgr_peer_bulk_complete(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
+    // Rearm the epoll
+    int rc = epoll_handle_mod(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Failed to rearm the epoll");
+    }
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
 
@@ -753,7 +759,9 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (incoming->tmc_eph.eph_installed)
         epoll_handle_del(tmi->tmi_epoll_mgr, &incoming->tmc_eph);
 
-    tcp_mgr_connection_epoll_add(owned, EPOLLIN, tcp_mgr_recv_cb,
+    bool is_peer = tmi->tmi_is_peer_cb();
+    uint32_t events = is_peer ? EPOLLIN | EPOLLET | EPOLLONESHOT : EPOLLIN;
+    tcp_mgr_connection_epoll_add(owned, events, tcp_mgr_recv_cb,
                                  tmi->tmi_connection_ref_cb);
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");

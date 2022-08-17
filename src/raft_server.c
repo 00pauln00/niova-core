@@ -5631,7 +5631,6 @@ raft_server_process_rw_request(struct raft_instance *ri,
                                char *recv_buf,
                                char *reply_buf)
 {
-    SIMPLE_LOG_MSG(LL_WARN, "Process read-write request");
     size_t recv_bytes = 0;
     // Read the request from the socket
     // TODO memset the buffer after use.
@@ -5640,7 +5639,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
     if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
-        LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
+        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buf, recv_bytes, ri->ri_server_sm_request_cb);
         return;
     }
@@ -5676,7 +5675,9 @@ raft_server_process_rw_request(struct raft_instance *ri,
     if (write_op && ((rcm->rcrm_data_size +
                      ri->ri_coalesced_wr->rcwi_total_size) >
                      RAFT_ENTRY_MAX_DATA_SIZE(ri)))
+    {
         raft_server_write_coalesced_entries(ri);
+    }
 
     /* cb's may run for a long time and the server may have been deposed
      * Xxx note that SM write requests left in this state may require
