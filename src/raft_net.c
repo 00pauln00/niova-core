@@ -2554,6 +2554,7 @@ raft_net_recv_request(struct ctl_svc_node *csn, char *recv_buf,
 int
 raft_net_bulk_complete(struct ctl_svc_node *csn)
 {
+    SIMPLE_LOG_MSG(LL_WARN, "Calling tcp_mgr_peer_bulk_complete");
     return tcp_mgr_peer_bulk_complete(&csn->csn_peer.csnp_net_data);
 }
 
