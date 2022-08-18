@@ -401,7 +401,7 @@ tcp_mgr_bulk_progress_recv(struct tcp_mgr_connection *tmc)
 
     ssize_t recv_bytes = tcp_socket_recv(&tmc->tmc_tsh, &iov, 1, NULL, false);
 
-    SIMPLE_LOG_MSG(LL_WARN, "recv_bytes=%ld iov_len=%ld", recv_bytes,
+    SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_len=%ld", recv_bytes,
                    iov.iov_len);
 
     if (recv_bytes == -EAGAIN)
@@ -471,7 +471,6 @@ tcp_mgr_peer_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_s
     if (hdr && hdr_size)
         memcpy(recv_buf, hdr, hdr_size);
 
-    SIMPLE_LOG_MSG(LL_WARN, "bulk size is: %ld, data: %s", bulk_size, recv_buf);
     tmc->tmc_bulk_buf = recv_buf;
     tmc->tmc_bulk_offset = hdr_size;
     tmc->tmc_bulk_remain = bulk_size;
@@ -489,16 +488,13 @@ tcp_mgr_get_msg_header(struct tcp_mgr_connection *tmc, char *buffer)
     int flags = MSG_PEEK;
 
 
-    SIMPLE_LOG_MSG(LL_WARN, "tmc pointer: %p, header size: %ld", tmc, header_size);
     ssize_t rc = recv(socket, buffer, header_size, flags);
-    SIMPLE_LOG_MSG(LL_WARN, "return code of recv is: %ld", rc);
     if (rc == -EAGAIN)
         rc = 0;
 
     else if (rc <= 0)
         return rc;
 
-    SIMPLE_LOG_MSG(LL_WARN, "Here the buffer data: %s", buffer);
 
     return 0;
 }
@@ -532,7 +528,6 @@ tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc, char *recv_buf)
     if (rc < 0)
         return rc;
 
-    SIMPLE_LOG_MSG(LL_WARN, "NOw the header size is: %ld and buffer %s", header_size, sink_buf);
     return tcp_mgr_peer_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size, recv_buf);
 }
 
@@ -542,13 +537,11 @@ tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
 {
     int rc;
 
-    SIMPLE_LOG_MSG(LL_WARN, "Read the request from socket now, tmc: %p", tmc);
     rc = tcp_mgr_new_bulk_msg_handler(tmc, recv_buf);
 
     if (rc)
         return rc;
 
-    SIMPLE_LOG_MSG(LL_WARN, "This is bulk request, read the whole data, tmc_bulk_remain: %ld", tmc->tmc_bulk_remain);
     while (tmc->tmc_bulk_remain)
     {
         NIOVA_ASSERT(tmc->tmc_bulk_buf);
@@ -634,7 +627,6 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 static int
 tcp_recv_for_client(struct tcp_mgr_connection *tmc)
 {
-    SIMPLE_LOG_MSG(LL_WARN, "This is client recv cb");
     int rc = 0;
     // is this a new RPC?
     if (!tmc->tmc_bulk_remain)
@@ -671,7 +663,6 @@ tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
 {
     char buffer[TCP_MGR_MAX_HDR_SIZE];
     size_t header_size = tmc->tmc_header_size;
-    SIMPLE_LOG_MSG(LL_WARN, "This is server recv cb");
     int rc  = tcp_mgr_get_msg_header(tmc, buffer);
     if (rc)
     {
@@ -679,13 +670,12 @@ tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
         return rc;
     }
 
-    SIMPLE_LOG_MSG(LL_WARN, "Header contents are : %s and size: %ld", buffer, header_size);
     rc = tmc->tmc_tmi->tmi_recv_cb(tmc, buffer, header_size,
                                    tmc->tmc_tmi->tmi_data);
 
     if (rc < 0)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "error in recv, closing");
+        SIMPLE_LOG_MSG(LL_ERROR, "tmi_recv_cb failed for server");
         tcp_mgr_connection_close_internal(tmc);
     }
     return rc;
@@ -715,7 +705,6 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
 
     bool is_peer = tmi->tmi_is_peer_cb();
 
-    SIMPLE_LOG_MSG(LL_WARN, "Recv Request is for server: %d", is_peer);
 
     if (is_peer)
         tcp_mgr_recv_for_peer(tmc);
@@ -997,7 +986,6 @@ tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
     if (rc < 0 && rc != -EINPROGRESS)
     {
         tcp_mgr_connection_close_internal(tmc);
-        SIMPLE_LOG_MSG(LL_WARN, "tcp_socket_connect(): %d", rc );
     }
     else if (rc == -EINPROGRESS)
     {

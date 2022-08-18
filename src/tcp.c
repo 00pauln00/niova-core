@@ -265,7 +265,7 @@ tcp_socket_recv_all(const struct tcp_socket_handle *tsh,
     {
         ssize_t recv_bytes = tcp_socket_recv(tsh, iov, 1, NULL, false);
 
-        SIMPLE_LOG_MSG(LL_WARN, "recv_bytes=%ld iov_base=%p iov_len=%ld",
+        SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_base=%p iov_len=%ld",
                        recv_bytes, iov->iov_base, iov->iov_len);
 
         if (recv_bytes == -EAGAIN)

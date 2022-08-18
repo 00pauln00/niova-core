@@ -4385,7 +4385,6 @@ raft_server_enqueue_rw(struct raft_instance *ri,
 {
     // Take a lock on queue.
 
-    SIMPLE_LOG_MSG(LL_WARN, "Enqueue the read/write ");
     uint32_t queue_type = (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
                            RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
  
@@ -4402,14 +4401,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
                                 ssize_t recv_bytes,
                                 const struct sockaddr_in *from)
 {
-    SIMPLE_FUNC_ENTRY(LL_WARN);
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
-        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
+        LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
         return;
     }
@@ -4419,18 +4418,16 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
     struct ctl_svc_node *csn = NULL;
 
-    SIMPLE_LOG_MSG(LL_WARN, "Inside client_recv_handler for msg type: %d", rcm->rcrm_type);
     /* First set of request checks which are configuration based.
      */
     if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
     {
-        SIMPLE_LOG_MSG(LL_WARN, "cannot verify client message");
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
         return;
     }
 
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
-        SIMPLE_LOG_MSG(LL_WARN, "Orig buffer: %s, size: %ld", recv_buffer, recv_bytes);
         size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
         char read_data_buf[recv_bytes];
         size_t actual_recv_bytes = 0; 
@@ -4439,7 +4436,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         const struct raft_client_rpc_msg *rcm_new =
         (const struct raft_client_rpc_msg *)read_data_buf;
 
-        SIMPLE_LOG_MSG(LL_WARN, "Now data: %s, size: %ld", read_data_buf, actual_recv_bytes);
         NIOVA_ASSERT(rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
 
         //XXX can we use SMALL buffer for ping?
@@ -4456,14 +4452,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         ri, &rncr, rcm_new, from, reply_buf,
         reply_size, csn);
 
-        SIMPLE_LOG_MSG(LL_WARN, "ping reply");
+        SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
         /* Second set of checks which determine if this server is capable of
          * handling the request at this time.
          */
         rc = raft_server_may_accept_client_request(ri);
         if (rc)
         {
-            SIMPLE_LOG_MSG(LL_WARN,
+            SIMPLE_LOG_MSG(LL_NOTIFY,
                        "cannot accept client message, rc=%d: msg-type=%u",
                        rc, rcm->rcrm_type);
             raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
@@ -4477,7 +4473,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
             ctl_svc_node_put(csn);
 
         buffer_set_release_item(bi);
-        SIMPLE_LOG_MSG(LL_WARN, "Ping returning with rc: %d", rc);
         return;
     }
 
@@ -5656,7 +5651,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
         reply_size, csn);
 
     int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-    enum log_level log_level = cb_rc ? LL_WARN : LL_WARN;
+    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
     // rncr.rncr_type was set by the callback!
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;
@@ -5726,7 +5721,6 @@ raft_server_rw_thread(void *arg)
     struct thread_ctl *tc = arg;
     struct raft_rw_worker_thread *rw_thr = (struct raft_rw_worker_thread *)thread_ctl_get_arg(tc);
 
-    SIMPLE_LOG_MSG(LL_WARN, "Starting thread: tc %p, thread %p", tc, rw_thr);
     struct raft_work_queue *queue = rw_thr->rrwt_queue;
     THREAD_LOOP_WITH_CTL(tc)
     {
@@ -5735,7 +5729,6 @@ raft_server_rw_thread(void *arg)
         struct ctl_svc_node *csn;
         csn = STAILQ_FIRST(&queue->rsw_queue);
         if (csn) {
-            SIMPLE_LOG_MSG(LL_WARN, "Read request from the queue");
             // Remove the read request from the queue
             STAILQ_REMOVE_HEAD(&queue->rsw_queue, csn_lentry);
         }
@@ -5751,7 +5744,6 @@ raft_server_rw_thread(void *arg)
         }
         else
         {
-            //SIMPLE_LOG_MSG(LL_WARN, "Sleep as there is no read/write request");
             // Sleep for sometime and then check the queue for new read
             usleep(100);
         }
@@ -5775,8 +5767,6 @@ raft_server_rw_thread_init(struct raft_instance *ri,
      thread->rrwt_queue = &ri->ri_worker_queue[type]; 
      thread->rrwt_arg = ri;
 
-     SIMPLE_LOG_MSG(LL_WARN, "Initialize the rw thread for %d, thread: %p tcl: %p", type, thread,  &thread->rrwt_thread_ctl);
- 
      char thread_name[64];
      sprintf(thread_name, "%s_thread", type == RAFT_SERVER_BULK_MSG_WRITE ? "write": "read");
      int rc = thread_create_watched(raft_server_rw_thread,
