@@ -1894,7 +1894,6 @@ raft_net_send_client_msg(struct raft_instance *ri,
 
     char uuid_str[UUID_STR_LEN];
     uuid_unparse(ri->ri_csn_leader->csn_uuid, uuid_str);
-    SIMPLE_LOG_MSG(LL_WARN, "Client sending msg to : %s", uuid_str);
 
     if (!ri || !ri->ri_csn_leader || !rcrm)
     {
@@ -2119,12 +2118,6 @@ raft_net_apply_leader_redirect(struct raft_instance *ri,
     if (!ri || uuid_is_null(redirect_target))
         return -EINVAL;
 
-     
-    char leader_uuid_str[UUID_STR_LEN] = {0};
-    char orig_leader_uuid_str[UUID_STR_LEN] = {0};
-    uuid_unparse(ri->ri_csn_leader->csn_uuid, orig_leader_uuid_str);
-    uuid_unparse(redirect_target, leader_uuid_str);
-    SIMPLE_LOG_MSG(LL_WARN, "Redirect to leader: %s, orig: %s", leader_uuid_str, orig_leader_uuid_str);
     raft_peer_t leader_idx = raft_peer_2_idx(ri, redirect_target);
     if (leader_idx == RAFT_PEER_ANY)
         return -ENOENT;
@@ -2554,7 +2547,6 @@ raft_net_recv_request(struct ctl_svc_node *csn, char *recv_buf,
 int
 raft_net_bulk_complete(struct ctl_svc_node *csn)
 {
-    SIMPLE_LOG_MSG(LL_WARN, "Calling tcp_mgr_peer_bulk_complete");
     return tcp_mgr_peer_bulk_complete(&csn->csn_peer.csnp_net_data);
 }
 

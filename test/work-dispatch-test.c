@@ -18,7 +18,6 @@
 #include <fcntl.h>
 
 #define NUM_SECONDS_TO_RUN_TEST 2ULL
-#define BUF_SIZE (1024 * 1024)
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
@@ -244,7 +243,6 @@ struct epoll_worker_priv
 static void *
 epoll_worker(void *arg)
 {
-    STDOUT_MSG("Calling epoll_worker");
     struct thread_ctl *tc = arg;
 
     /* Don't initialize the epoll fd until the master says it's OK to proceed.
@@ -260,8 +258,7 @@ epoll_worker(void *arg)
     ewp[1].ewp_name = "epoll-fd bar";
     ewp[1].ewp_fd   = epoll_pipe_1[0];
 
-    my_ev[0].events = my_ev[1].events = EPOLLIN | EPOLLET | EPOLLONESHOT;
-    //my_ev[0].events = my_ev[1].events = EPOLLIN;
+    my_ev[0].events = my_ev[1].events = EPOLLIN;
     my_ev[0].data.ptr = &ewp[0];
     my_ev[1].data.ptr = &ewp[1];
 
@@ -285,16 +282,12 @@ epoll_worker(void *arg)
 
     THREAD_LOOP_WITH_CTL(tc)
     {
-        //char c;
-        //uint64_t count;
-        char buffer[BUF_SIZE];
+        char c;
         int nfds = epoll_wait(epfd, events, MAX_EPOLL_EVENTS, 1);
 
         FATAL_IF((nfds < 0 && errno != EINTR), "epoll_wait(): %s",
                  strerror(errno));
 
-        
-        //STDOUT_MSG("nfds from epoll_wait: %d", nfds);
         for (int i = 0; i < nfds; i++)
         {
             struct epoll_event *ev = &events[i];
@@ -308,21 +301,16 @@ epoll_worker(void *arg)
                 (struct epoll_worker_priv *)ev->data.ptr;
 
             ewp_ev->ewp_cnt++;
+
 #define MAX_EVENTS_TO_REAP 32
-            for (int j = 0; j < 1; j++)
-            //for (int j = 0; j < MAX_EVENTS_TO_REAP; j++)
+            for (int j = 0; j < MAX_EVENTS_TO_REAP; j++)
             {
-                //ssize_t rc = read(ewp->ewp_fd, (char *)&count, sizeof(uint64_t));
-                ssize_t rc = read(ewp->ewp_fd, buffer, BUF_SIZE);
-                if (rc != BUF_SIZE)
+                ssize_t rc = read(ewp->ewp_fd, &c, 1);
+                if (rc != 1)
                 {
                     int save_errno = errno;
                     if (save_errno == EWOULDBLOCK || save_errno == EAGAIN)
-                    {
-                        STDERR_MSG("read() returned %zd:  %s", rc,
-                                   strerror(save_errno));
                         break;
-                    }
 
                     if (!pipe_is_closed)
                         STDERR_MSG("read() returned %zd:  %s", rc,
@@ -332,15 +320,8 @@ epoll_worker(void *arg)
                         break;
                     }
                 }
-                //STDOUT_MSG("Read: %lu from fd", count);
-                STDOUT_MSG("Read data successfully");
                 num_wakeups++;
             }
-            rc = epoll_ctl(epfd, EPOLL_CTL_MOD, epoll_pipe_0[0], &my_ev[0]);
-            FATAL_IF((rc != 0), "epoll_ctl(0): %s", strerror(errno));
-
-            rc = epoll_ctl(epfd, EPOLL_CTL_MOD, epoll_pipe_1[0], &my_ev[1]);
-            FATAL_IF((rc != 0), "epoll_ctl(1): %s", strerror(errno));
         }
         if (stop)
             break;
@@ -359,29 +340,16 @@ epoll_dispatcher(void *arg)
 
     int fd = *(int *)tc->tc_arg;
 
-    uint64_t counter = 0;
     THREAD_LOOP_WITH_CTL(tc)
     {
-        if (counter < 10)
+        unsigned char c = 0;
+        ssize_t rc = write(fd, &c, 1);
+        if (rc != 1)
         {
-            char buf[BUF_SIZE];
-            //char *buf = (char *)&counter;
-            //unsigned char c = 'a';
-            STDOUT_MSG("Write %lu to fd", counter);
-            ssize_t rc = write(fd, buf, BUF_SIZE);
-            if (rc != BUF_SIZE)
-            {
-                if (!pipe_is_closed)
-                    STDERR_MSG("write() returned %zd:  %s", rc, strerror(errno));
-                break;
-            }
+            if (!pipe_is_closed)
+                STDERR_MSG("write() returned %zd:  %s", rc, strerror(errno));
+            break;
         }
-        else
-        {
-           sleep(1);
-           counter = 0;
-        }
-        counter++;
     }
 
     return NULL;
@@ -411,7 +379,7 @@ epoll_test(void)
     thread_ctl_run(&tc[2]);
 
     for (int i = 0; i < NUM_SECONDS_TO_RUN_TEST; i++)
-        sleep(1000);
+        sleep(1);
 
     pipe_is_closed = true;
 
