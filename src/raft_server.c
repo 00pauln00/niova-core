@@ -4130,9 +4130,6 @@ raft_server_udp_client_deny_request(struct raft_instance *ri,
     {
         reply->rcrm_type = RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT;
         uuid_copy(reply->rcrm_redirect_id, ri->ri_csn_leader->csn_uuid);
-        char leader_uuid_str[UUID_STR_LEN] = {0};
-        uuid_unparse(reply->rcrm_redirect_id, leader_uuid_str);
-        SIMPLE_LOG_MSG(LL_WARN, "Actual leader is: %s", leader_uuid_str);
     }
 
     return raft_server_reply_to_client(ri, rncr, csn);
