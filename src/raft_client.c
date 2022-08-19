@@ -811,9 +811,6 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
     uuid_copy(rcrm->rcrm_dest_id, dest_csn->csn_uuid);
     uuid_copy(rcrm->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
 
-    char leader_uuid_str[UUID_STR_LEN] = {0};
-    uuid_unparse(rcrm->rcrm_dest_id, leader_uuid_str);
-    SIMPLE_LOG_MSG(LL_WARN, "Sending rpc to: %s", leader_uuid_str);
     raft_client_rpc_msg_assign_id(rci, rcrm);
 
     return 0;
@@ -845,8 +842,6 @@ raft_client_ping_raft_service(struct raft_client_instance *rci)
         return;
 
     struct raft_instance *ri = RCI_2_RI(rci);
-
-    DBG_SIMPLE_CTL_SVC_NODE(LL_WARN, ri->ri_csn_leader, "");
 
     struct raft_client_rpc_msg rcrm;
 
