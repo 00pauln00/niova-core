@@ -121,8 +121,8 @@ struct pmdbtc_request
 
 struct pmdbtc_request_history
 {
-    struct pmdbtc_request prh_preq;
     struct raft_test_values prh_last_rtv;
+    struct pmdbtc_request prh_preq;
 };
 
 static util_thread_ctx_ctli_int_t pmdbtcNumApps;

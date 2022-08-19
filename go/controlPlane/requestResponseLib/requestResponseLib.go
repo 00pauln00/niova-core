@@ -8,15 +8,17 @@ type KVRequest struct {
 	Rncui     string
 	CheckSum  [16]byte
 	SeqNum	  uint64
+	Consistent bool
 }
 
 type KVResponse struct {
 	Status       int
 	Key          string
-	ResultMap     map[string]string
+	ResultMap    map[string][]byte
 	ContinueRead bool
 	Prefix       string
 	SeqNum	     uint64
+	SnapMiss     bool
 }
 
 type LookoutRequest struct {

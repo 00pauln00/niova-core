@@ -230,6 +230,11 @@ struct {                                           \
         struct type *stqe_next; /* next element */ \
 }
 
+#define STAILQ_NEXT_ENTRY_DETACHED(entry) \
+    ((entry)->stqe_next == NULL)
+
+#define STAILQ_ENTRY_INIT(entry)                \
+    { (entry)->stqe_next = NULL; }
 /*
  * Singly-linked Tail queue functions.
  */
@@ -343,6 +348,12 @@ struct {                                                               \
         struct type **le_prev;  /* address of previous next element */ \
 }
 
+#define LIST_ENTRY_DETACHED(entry) \
+    ((entry)->le_next == NULL && (entry)->le_prev == NULL)
+
+#define LIST_ENTRY_INIT(entry) \
+    { (entry)->le_next = NULL; (entry)->le_prev = NULL; }
+
 /*
  * List access methods
  */
@@ -355,6 +366,26 @@ struct {                                                               \
         for((var) = LIST_FIRST(head);  \
             (var)!= LIST_END(head);    \
             (var) = LIST_NEXT(var, field))
+
+#define	LIST_FOREACH_SAFE(var, head, field, tvar)                       \
+        for ((var) = LIST_FIRST(head);                                  \
+             (var) && ((tvar) = LIST_NEXT(var, field), 1);              \
+             (var) = (tvar))
+
+#define LIST_ENTRY_IS_MEMBER(head, elm, field)        \
+({                                                    \
+    bool found = false;                               \
+    typeof (elm) tmp;                                 \
+    LIST_FOREACH(tmp, head, field)                    \
+    {                                                 \
+        if ((elm) == tmp)                             \
+        {                                             \
+            found = true;                             \
+            break;                                    \
+        }                                             \
+    }                                                 \
+    found;                                            \
+})
 
 /*
  * List functions.

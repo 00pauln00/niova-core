@@ -3,7 +3,6 @@ package serfClient
 import (
 	"bufio"
 	"errors"
-	"fmt"
 	"math/rand"
 	"os"
 	"strings"
@@ -37,6 +36,7 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	if err != nil {
 		return err
 	}
+
 	filescanner := bufio.NewScanner(reader)
 	filescanner.Split(bufio.ScanLines)
 	var addrs []string
@@ -44,6 +44,7 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 		input := strings.Split(filescanner.Text(), " ")
 		addrs = append(addrs, input[1]+":"+input[3])
 	}
+
 	Handler.loadedGossipNodes = addrs
 	return nil
 }
@@ -61,10 +62,10 @@ func (Handler *SerfClientHandler) InitData(configpath string) error {
 	if err != nil {
 		return err
 	}
+
 	for _, addr := range Handler.loadedGossipNodes {
 		connectClient, err = Handler.connectAddr(addr)
 		if err == nil {
-			fmt.Println(err)
 			break
 		}
 	}

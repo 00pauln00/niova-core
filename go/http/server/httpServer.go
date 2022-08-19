@@ -6,7 +6,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net/http"
-	"hash/crc32"
 	"sync"
 	"net"
 	"time"
@@ -140,25 +139,18 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 		fallthrough
 
 	case "PUT":
-		//Get checkSum
-		checkSum := crc32.ChecksumIEEE(requestBytes)
-		startTime := time.Now()
-		log.Info()
 		if !read {
 			if handler.StatsRequired {
 				thisRequestStat.Status = "Processing"
 			}
 			err = handler.PUTHandler(requestBytes, &result)
 		}
-		endTime := time.Now()
 		if err == nil {
 			success = true
 		}
 
 		//Write the output to HTTP response buffer
 		writer.Write(result)
-		elapsedTime := endTime.Sub(startTime)
-		log.Info(";Request time ;",checkSum, ";",startTime, ";",endTime, ";",elapsedTime)
 
 	default:
 		writer.WriteHeader(http.StatusMethodNotAllowed)
@@ -176,6 +168,8 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 		handler.configHandler(writer, reader)
 	} else if (reader.URL.Path == "/stat") && (handler.StatsRequired) {
 		handler.statHandler(writer, reader)
+	} else if (reader.URL.Path == "/check") {
+		writer.Write([]byte("HTTP server in operation"))
 	} else {
 		handler.kvRequestHandler(writer, reader)
 	}

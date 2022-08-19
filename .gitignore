@@ -5,6 +5,7 @@
 *.*~
 *.swp
 *.out
+go.sum
 .gitignore
 TAGS
 test/simple_test
@@ -124,3 +125,12 @@ niovaclient
 niovakv_client
 niovakv_client_multi
 niovakv_server
+go/pumiceDB/examples/covid19APP/client/covid_app_client
+go/pumiceDB/examples/covid19APP/server/covid_app_server
+go/pumiceDB/examples/foodpalaceAPP/client/foodpalaceappclient
+go/pumiceDB/examples/foodpalaceAPP/server/foodpalaceappserver
+go/pumiceDB/examples/niovaKV/nkvc/nkvc
+go/pumiceDB/examples/niovaKV/pmdbServer/pmdbServer
+go/pumiceDB/examples/niovaKV/proxy/proxy
+niova.pc
+

@@ -243,6 +243,7 @@ micro_pthread_self(void)
 {
     static pthread_t val;
     val += pthread_self();
+    (void)val;
 }
 
 static void

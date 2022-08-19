@@ -2,14 +2,14 @@ package PumiceDBServer
 
 /*
 #include <raft/pumice_db.h>
-extern void goApply(const struct raft_net_client_user_id *,
+extern int goApply(const struct raft_net_client_user_id *,
               const char *, size_t, void *, void *);
 extern size_t goRead(const struct raft_net_client_user_id *,
              const char *, size_t, char *, size_t, void*);
-void applyCgo(const struct raft_net_client_user_id *app_id,
+int applyCgo(const struct raft_net_client_user_id *app_id,
               const char *input_buf, size_t input_bufsz, void *pmdb_handle,
               void *user_data) {
-	goApply(app_id, input_buf, input_bufsz, pmdb_handle, user_data);
+	return goApply(app_id, input_buf, input_bufsz, pmdb_handle, user_data);
 }
 
 size_t readCgo(const struct raft_net_client_user_id *app_id,

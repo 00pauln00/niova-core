@@ -70,12 +70,12 @@ func getAddr(member *client.Member) (string, string) {
 	return member.Addr.String(), member.Tags["Hport"]
 }
 
-func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) []byte {
+func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, write bool) ([]byte, error) {
 	var toSend client.Member
 	var response []byte
+	var err error
 
 	for i := 0; i < handler.HTTPRetry; i++ {
-		var err error
 		var ok bool
 
 		//Get node to send request to
@@ -108,7 +108,8 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 		}
 
 		log.Error("Error in HTTP request : ", err)
-		log.Trace("Retrying HTTP request with different proxy")
+		log.Trace("Retrying HTTP request with a different proxy")
+		time.Sleep(1 * time.Second)
 	}
 
 	if handler.IsStatRequired {
@@ -120,7 +121,7 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 		}
 	}
 
-	return response
+	return response, err
 }
 
 func isValidNodeData(member client.Member) bool {
@@ -144,7 +145,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 			}
 			randomIndex = rand.Intn(len(handler.servers))
 			if removeName != "" {
-				log.Info(removeName)
+				log.Trace(removeName)
 			}
 
 			//Check if node is alive, check if gossip is available and http server of that node is not reported down!

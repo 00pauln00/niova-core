@@ -18,11 +18,11 @@ jobs:
     - name: apt update
       run: sudo apt update
 
-    - name: Install golang 1.16
+    - name: Install golang 1.18.3
       run: sudo rm -rf /usr/bin/go &&
-           sudo wget https://golang.org/dl/go1.16.6.linux-amd64.tar.gz &&
+           sudo wget https://golang.org/dl/go1.18.3.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
-           sudo tar -C /home/runner/work/go -xzf  go1.16.6.linux-amd64.tar.gz &&
+           sudo tar -C /home/runner/work/go -xzf  go1.18.3.linux-amd64.tar.gz &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
@@ -58,7 +58,7 @@ jobs:
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+       ref: bulk_recovery_codeImprovement
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 

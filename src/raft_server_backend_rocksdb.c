@@ -83,7 +83,7 @@
 #define RECOVERY_MARKER_NAME "inprogress-recovery-db"
 #define RECOVERY_MARKER_REGEX \
     "^"RECOVERY_MARKER_NAME"\\."UUID_REGEX_BASE"_"UUID_REGEX_BASE"$"
-#define RECOVERY_MARKER_NAME_LEN 23
+#define RECOVERY_MARKER_NAME_LEN 22
 
 /* Rsync related regex's
  */
@@ -141,7 +141,7 @@ void
 rsbr_compile_time_asserts(void)
 {
     COMPILE_TIME_ASSERT(RECOVERY_MARKER_NAME_LEN ==
-                        strnlen(RECOVERY_MARKER_NAME, PATH_MAX));
+                        strlen(RECOVERY_MARKER_NAME));
 }
 
 static void
@@ -2590,7 +2590,7 @@ rsbr_db_open_internal(const struct raft_instance *ri,
         for (int i = 0; i < cft->rsrcfe_num_cf; i++)
             cft_opts[i] = rir->rir_options;
     }
-    // Set prefix extractor for range queries 
+    // Set prefix extractor for range queries
     rocksdb_options_set_prefix_extractor(rir->rir_options, NULL);
     char *err = NULL;
     rir->rir_db = (cft && cft->rsrcfe_num_cf) ?

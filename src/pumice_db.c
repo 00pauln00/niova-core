@@ -19,6 +19,7 @@
 #include "raft_server_backend_rocksdb.h"
 #include "registry.h"
 #include "ref_tree_proto.h"
+#include "fault_inject.h"
 
 LREG_ROOT_ENTRY_GENERATE(pumicedb_entry, LREG_USER_TYPE_RAFT);
 REGISTRY_ENTRY_FILE_GENERATE;
@@ -270,7 +271,7 @@ pmdb_compile_time_asserts(void)
                         PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP);
 
     // enum PmdbOpType must fit into 'uint8_t pmdbrm_op'
-    COMPILE_TIME_ASSERT(pmdb_op_any < (1 << sizeof(uint8_t)) * NBBY);
+    COMPILE_TIME_ASSERT(pmdb_op_any < (1 << (sizeof(uint8_t) * NBBY)));
 }
 
 #define PMDB_ARG_CHECK(op, rncr)                     \
@@ -682,6 +683,13 @@ pmdb_range_read_release_old_snapshots(void)
     struct timespec now;
     niova_realtime_coarse_clock(&now);
 
+    if (FAULT_INJECT(pmdb_range_read_keep_old_snapshot))
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG,
+                       "Dont destroy the older snapshot as fault ineject is set");
+        return;
+    }
+
     CIRCLEQ_FOREACH_SAFE(rr, &prrq_queue, prrq_lentry, tmp_rr)
     {
         /* If snapshot was open for more than 60secs, release the snapshot */
@@ -1022,6 +1030,10 @@ pmdb_sm_handler_client_rw_op(struct raft_net_client_request_handle *rncr)
         return 0; // noop should be harmless
 
     case pmdb_op_read:
+        // Check if there are any stale or really old snapshot in the range read
+        // tree and release them.
+        pmdb_range_read_release_old_snapshots();
+
         rncr->rncr_type = RAFT_NET_CLIENT_REQ_TYPE_READ;
         return pmdb_sm_handler_client_read(rncr);
 
@@ -1036,9 +1048,6 @@ pmdb_sm_handler_client_rw_op(struct raft_net_client_request_handle *rncr)
     default:
         break;
     }
-    // Check if there are any stale or really old snapshot in the range read
-    // tree and release them.
-    pmdb_range_read_release_old_snapshots();
 
     return -EOPNOTSUPP;
 }
@@ -1316,8 +1325,20 @@ PmdbPutRoptionsWithSnapshot(const uint64_t seq_number)
     struct pmdb_range_read_req *prrq;
 
     prrq = pmdb_range_read_req_lookup(seq_number, __func__, __LINE__);
+    if (!prrq)
+    {
+        SIMPLE_LOG_MSG(LL_WARN,
+                       "There is no snapshot with seq: %lu to release",
+                       seq_number);
+        return;
+    }
+
     // One put is for lookup above and another put is the actual reference drop.
     pmdb_range_read_req_put(prrq, __func__, __LINE__);
+    if (FAULT_INJECT(pmdb_range_read_keep_snapshot) &&
+        prrq->prrq_rtentry.rte_ref_cnt == 1)
+        return;
+
     pmdb_range_read_req_put(prrq, __func__, __LINE__);
 }
 
@@ -1409,8 +1430,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     CIRCLEQ_INIT(&prrq_queue);
 
     int rc = raft_server_rocksdb_add_cf_name(
-        &pmdbCFT, PMDB_COLUMN_FAMILY_NAME,
-        strnlen(PMDB_COLUMN_FAMILY_NAME, RAFT_ROCKSDB_MAX_CF_NAME_LEN));
+        &pmdbCFT, PMDB_COLUMN_FAMILY_NAME, strlen(PMDB_COLUMN_FAMILY_NAME));
 
     FATAL_IF((rc), "raft_server_rocksdb_add_cf_name() %s", strerror(-rc));
 

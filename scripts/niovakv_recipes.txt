@@ -1,6 +1,6 @@
 niovakv_seq_rdwr_operation.yml
 niovakv_concurrent_rdwr_operation.yml
 niovakv_serf_membership_check.yml
-basic_recipe_for_lkvt_client.yml
+lkvt_operation_all.yml
 multiple_nkvservers_with_higher_ops.yml
 multiple_nkvservers_with_higher_ops_stop_and_reboot.yml

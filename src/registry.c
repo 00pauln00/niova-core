@@ -8,6 +8,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/eventfd.h>
 
 #include "log.h"
 #include "lock.h"
@@ -23,9 +24,9 @@ static struct lreg_destroy_queue lRegDestroyQueue;
 static struct lreg_node lRegRootNode;
 static bool lRegInitialized = false;
 static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
-static struct ev_pipe lRegEVP;
+static int lRegEventFD = -1;
 static pthread_t lRegThreadCtx;
-
+static struct epoll_handle *lregEph;
 const char *lRegSeparatorString = "::";
 
 struct lreg_node_lookup_handle
@@ -390,6 +391,8 @@ lreg_node_install_internal(struct lreg_node *child)
 {
     NIOVA_ASSERT(child);
 
+    DBG_LREG_NODE(LL_DEBUG, child, "");
+
     struct lreg_node *parent = child->lrn_parent_for_install_only;
 
     NIOVA_ASSERT(parent && (!lreg_node_needs_installation(parent) ||
@@ -518,6 +521,26 @@ lreg_process_remove_queue(void)
         lreg_node_remove_internal(remove);
 }
 
+int
+lreg_notify(void)
+{
+    FUNC_ENTRY(LL_DEBUG);
+    uint64_t val = 1;
+
+    return write(lRegEventFD, &val, sizeof(val));
+}
+
+bool
+lreg_install_has_queued_nodes(void)
+{
+    LREG_NODE_INSTALL_LOCK;
+    bool empty =
+        (CIRCLEQ_EMPTY(&lRegInstallQueue) && STAILQ_EMPTY(&lRegDestroyQueue));
+    LREG_NODE_INSTALL_UNLOCK;
+
+    return !empty;
+}
+
 static lreg_install_ctx_t
 lreg_node_install_queue(struct lreg_node *child)
 {
@@ -536,7 +559,7 @@ lreg_node_install_queue(struct lreg_node *child)
 
     LREG_NODE_INSTALL_UNLOCK;
 
-    ev_pipe_notify(&lRegEVP);
+    lreg_notify();
 }
 
 static lreg_destroy_ctx_t
@@ -549,7 +572,7 @@ lreg_node_remove_queue(struct lreg_node *child)
 
     LREG_NODE_INSTALL_UNLOCK;
 
-    ev_pipe_notify(&lRegEVP);
+    lreg_notify();
 }
 
 /**
@@ -631,6 +654,44 @@ lreg_node_remove(struct lreg_node *child, struct lreg_node *parent)
 }
 
 /**
+ * lreg_node_wait_for_install_state_change - wait until the lrn state has
+ *    transitioned from the provided state.  Note that we don't wait for a
+ *    specific state since
+ */
+int
+lreg_node_wait_for_install_state(const struct lreg_node *lrn,
+                                 enum lreg_node_states state)
+{
+    if (!lrn)
+        return -EINVAL;
+
+    ssize_t remaining_ms = 60000;
+
+    while (!(lrn->lrn_install_state & state))
+    {
+        size_t sleep_ms = MIN(1000, remaining_ms);
+        struct timespec ts = {0}, rem = {0};
+
+        msec_2_timespec(&ts, sleep_ms);
+
+        for (int rc = -1; rc != 0; ts = rem)
+        {
+            rc = nanosleep(&ts, &rem);
+            if (rc)
+                NIOVA_ASSERT(errno == EINTR);
+        }
+
+        remaining_ms -= sleep_ms;
+
+        FATAL_IF(remaining_ms <= 0, "");
+        if (remaining_ms <= 0)
+            return -ETIMEDOUT;
+    }
+
+    return 0;
+}
+
+/**
  * lreg_node_init - public method for initializing a registry node prior to
  *    installation.
  * @lrn: Pointer to the registry node which is to be initialized.
@@ -704,23 +765,66 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
     return 0;
 }
 
+int
+lreg_util_processor(void)
+{
+    if (!lreg_thread_ctx())
+        return -EXDEV;
+
+    lreg_process_install_queue();
+    lreg_process_remove_queue();
+
+    return 0;
+}
+
+int
+lreg_get_eventfd(void)
+{
+    return lRegEventFD;
+}
+
 static util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
 
-    if (eph->eph_fd != evp_read_fd_get(&lRegEVP))
+    if (eph->eph_fd != lRegEventFD)
     {
         LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
-                eph->eph_fd, evp_read_fd_get(&lRegEVP));
+                eph->eph_fd, lRegEventFD);
 
         return;
     }
 
-    EV_PIPE_RESET(&lRegEVP);
+    int rc = lreg_util_processor();
+    if (rc == -EXDEV)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "util thread is not longer lreg handler");
+        lreg_notify();
+    }
+    else
+    {
+        FATAL_IF(rc, "lreg_util_processor(): %s", strerror(-rc));
+    }
 
-    lreg_process_install_queue();
-    lreg_process_remove_queue();
+    eventfd_t x = {0};
+    ssize_t rrc;
+
+retry:
+    rrc = read(lRegEventFD, &x, sizeof(eventfd_t));
+    if (rrc == -1)
+    {
+        switch (errno)
+        {
+        case EAGAIN: return;
+        case EINTR:  goto retry;
+        default:
+            FATAL_IF(1, "eventfd read(): %s", strerror(errno));
+        };
+    }
+
+    FATAL_IF(rrc != sizeof(eventfd_t),
+             "Invalid read size (%ld) from eventfd read x=%lu", rrc, x);
 }
 
 #define LREG_NODE_INSTALL_COMPLETION_WAIT_USEC 30000000
@@ -761,6 +865,12 @@ lreg_thread_ctx(void)
     return (lRegInitialized && pthread_self() == lRegThreadCtx) ? true : false;
 }
 
+int
+lreg_remove_event_src(void)
+{
+    return util_thread_remove_event_src(lregEph);
+}
+
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_init(void)
 {
@@ -774,13 +884,14 @@ lreg_subsystem_init(void)
     lreg_node_init(&lRegRootNode, LREG_USER_TYPE_ROOT, lreg_root_node_cb,
                    NULL, LREG_INIT_OPT_STATIC);
 
-    int rc = ev_pipe_setup(&lRegEVP);
-    FATAL_IF((rc), "ev_pipe_setup(): %s", strerror(-rc));
+    lRegEventFD = eventfd(0, EFD_NONBLOCK);
+    FATAL_IF((lRegEventFD < 0), "eventfd(): %s", strerror(-lRegEventFD));
 
-    rc = util_thread_install_event_src(evp_read_fd_get(&lRegEVP), EPOLLIN,
-                                       lreg_util_thread_cb, NULL, NULL);
+    int rc = util_thread_install_event_src(lRegEventFD, EPOLLIN,
+                                           lreg_util_thread_cb, NULL, &lregEph);
 
-    FATAL_IF((rc), "util_thread_install_event_src(): %s", strerror(-rc));
+    FATAL_IF((rc || !lregEph), "util_thread_install_event_src(): %s",
+             strerror(-rc));
 
     lRegInitialized = true;
 
@@ -789,7 +900,7 @@ lreg_subsystem_init(void)
      *        registry initialization.
      */
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello lRegEventFD=%d", lRegEventFD);
 }
 
 static destroy_ctx_t NIOVA_DESTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
@@ -797,5 +908,13 @@ lreg_subsystem_destroy(void)
 {
     //Remove from util thread?
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread");
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread lRegEventFD=%d", lRegEventFD);
+
+    if (lRegEventFD >= 0)
+    {
+        int rc = close(lRegEventFD);
+        if (rc)
+            SIMPLE_LOG_MSG(LL_ERROR, "close(lRegEventFD=%d): %s",
+                           lRegEventFD, strerror(-rc));
+    }
 }
