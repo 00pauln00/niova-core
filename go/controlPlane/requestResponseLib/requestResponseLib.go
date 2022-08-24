@@ -22,7 +22,7 @@ type KVResponse struct {
 }
 
 type LookoutRequest struct {
-	NISD	[16]byte
+	UUID	[16]byte
 	Cmd	string
 }
 
