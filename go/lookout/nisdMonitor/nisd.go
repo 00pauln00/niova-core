@@ -44,14 +44,14 @@ type nisdMonitor struct {
 	udpSocket     net.PacketConn
 	lookout       lookout.EPContainer
 	endpointRoot  *string
-	httpPort      *int
-	ctlPath	      *string
+	httpPort      int
+	ctlPath	      string
 	//serf
 	serfHandler    serfAgent.SerfAgentHandler
 	agentName       string
 	addr            string
 	agentPort       string
-	agentRPCPort    *int
+	agentRPCPort    int
 	gossipNodesPath string
 	serfLogger      string
 }
@@ -74,12 +74,16 @@ func (handler *nisdMonitor) parseCMDArgs() {
 		showHelpShort *bool
 	)
 
-	handler.ctlPath = flag.String("dir", "/tmp/.niova", "endpoint directory root")
-	handler.httpPort = flag.Int("port", 8081, "http listen port")
-	handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
+	//handler.ctlPath = flag.String("dir", "/tmp/.niova", "endpoint directory root")
+	//handler.httpPort = flag.Int("port", 8081, "http listen port")
+	//handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
 
+
+	flag.IntVar(&handler.httpPort, "port", 8081, "http listen port")
+	flag.IntVar(&handler.agentRPCPort, "r", 3992, "Agent RPC port")
+	flag.StringVar(&handler.ctlPath, "dir", "/tmp/.niova", "enpoint directory root")
 	flag.StringVar(&handler.udpPort, "u", "1054", "UDP port for NISD communication")
 	flag.StringVar(&handler.agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Agent addr")
@@ -87,6 +91,9 @@ func (handler *nisdMonitor) parseCMDArgs() {
 	flag.StringVar(&handler.gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
 	flag.StringVar(&handler.serfLogger, "s", "serf.log", "Serf logs")
 	flag.Parse()
+
+
+	fmt.Println(handler.ctlPath)
 
 	nonParsed := flag.Args()
 	if len(nonParsed) > 0 {
@@ -175,7 +182,7 @@ func (handler *nisdMonitor) startSerfAgent() error {
 		BindPort : uint16(agentPort),
 		AgentLogger : log.Default(),
 		RpcAddr : net.ParseIP(handler.addr),
-		RpcPort : uint16(*handler.agentRPCPort),
+		RpcPort : uint16(handler.agentRPCPort),
 	}
 
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
@@ -266,29 +273,38 @@ func (handler *nisdMonitor) startUDPListner() {
 
 
 func main() {
+	fmt.Println("Inside NISD Monitor")
 	var nisd nisdMonitor
 
 	//Get cmd line args
+	fmt.Println("Parsing CMD Args")
 	nisd.parseCMDArgs()
+	fmt.Println(nisd)
 
 	//Start pmdb service client discovery api
+	fmt.Println("Starting Client API")
 	nisd.startClientAPI()
 
 	//Start serf agent
+	fmt.Println("Starting Serf Agent")
 	nisd.startSerfAgent()
 
 	//Start udp listener
+	fmt.Println("Starting UPD listner")
 	go nisd.startUDPListner()
 
 	//Set serf tags
+	fmt.Println("Setting serf tags")
 	go nisd.setTags()
 
 	//Start lookout monitoring
+	fmt.Println("Starting lookout monitoring")
 	nisd.lookout = lookout.EPContainer{
 		MonitorUUID : "*",
 		AppType : "NISD",
-		HttpPort : *nisd.httpPort,
-		CTLPath: *nisd.ctlPath,
+		HttpPort : nisd.httpPort,
+		CTLPath: nisd.ctlPath,
 	}
+	fmt.Println("Starting nisd monitor")
 	nisd.lookout.Start()
 }

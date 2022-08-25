@@ -82,12 +82,13 @@ func (epc *EPContainer) scan() {
 
 func (epc *EPContainer) monitor() error {
 	var err error = nil
-
+	fmt.Println("Starting monitoring - QQQQ")
 	for epc.run == true {
+		fmt.Println("Starting monitoring - KKKK")
 		var tmp_stb syscall.Stat_t
 		err = syscall.Stat(epc.CTLPath, &tmp_stb)
 		if err != nil {
-			log.Printf("syscall.Stat('%s'): %s", epc.CTLPath, err)
+			fmt.Println("XXX syscall.Stat('%s'): %s", epc.CTLPath, err)
 			break
 		}
 
@@ -342,10 +343,13 @@ func (epc *EPContainer) MarkAlive(serviceUUID string) error {
 func (epc *EPContainer) Start() {
 	//Start http service
 	go epc.serveHttp()
+	fmt.Println("Serving HTTP XXX")
 
 	//Setup lookout
 	epc.init()
+	fmt.Println("Setup lookout XXX")
 
 	//Start monitoring
 	epc.monitor()
+	fmt.Println("Ending monitoring NISD XXX")
 }
