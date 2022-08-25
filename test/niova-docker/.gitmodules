@@ -1,0 +1,9 @@
+[submodule "niova-core"]
+	path = niova-core
+	url = https://github.com/00pauln00/niova-core.git
+[submodule "liburing"]
+	path = modules/liburing
+	url = https://github.com/axboe/liburing.git
+[submodule "modules/CRoaring"]
+	path = modules/CRoaring
+	url = https://github.com/RoaringBitmap/CRoaring.git
