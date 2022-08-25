@@ -57,7 +57,9 @@ type SystemInfo struct {
 type NISDInfo struct {
 	ReadBytes	int	`json:"dev-bytes-read"`
 	WriteBytes	int	`json:"dev-bytes-write"`
-}
+	NisdReadBytes	int	`json:"dev-bytes-read" type:"counter" metric:"nisd_bytes_read"`
+	NisdWriteBytes	int	`json:"dev-bytes-write" type:"counter" metric:"nisd_bytes_write"`
+	}
 type Histogram struct {
 	Num1       int `json:"1,omitempty"`
 	Num2       int `json:"2,omitempty"`
@@ -421,3 +423,4 @@ func (ep *NcsiEP) Detect(appType string) error {
 func (ep *NcsiEP) Check() error {
 	return nil
 }
+
