@@ -179,6 +179,26 @@ func (Handler *SerfAgentHandler) GetMembership() []string {
 
 /*
 Type : SerfAgentHandler
+Method name : GetMembersState
+Parameters : None
+Return value : map[stirng]bool
+Description : Returns state of nodes in cluster
+*/
+func (Handler *SerfAgentHandler) GetMembersState() map[string]bool {
+	memberState := make(map[string]bool)
+	members := Handler.agentObj.Serf().Members()
+	for _, mems := range members {
+		if mems.Status == 1 {
+			memberState[mems.Name] = true
+		} else {
+			memberState[mems.Name] = false
+		}
+	}
+	return memberState
+}
+
+/*
+Type : SerfAgentHandler
 Method name : SetTags
 Parameters : tags (map[string]string)
 Return value : error
