@@ -4077,8 +4077,14 @@ raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
     if (rc)
         return;
 
+    struct raft_work_queue *wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+
+    pthread_mutex_lock(&wr_queue->rsw_mutex);
+
     if (ri->ri_coalesced_wr->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
         raft_server_write_coalesced_entries(ri); // Issue the pending wr
+
+    pthread_mutex_unlock(&wr_queue->rsw_mutex);
 }
 
 
@@ -4372,7 +4378,14 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
     if (!ri->ri_coalesced_writes ||
         ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
         ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri))
+    {
+        struct raft_work_queue *wr_queue;
+        wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+
+        pthread_mutex_lock(&wr_queue->rsw_mutex);
         raft_server_write_coalesced_entries(ri);
+        pthread_mutex_unlock(&wr_queue->rsw_mutex);
+    }
 }
 
 static void
@@ -5631,7 +5644,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
     if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
-        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
+        LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buf, recv_bytes, ri->ri_server_sm_request_cb);
         return;
     }
@@ -5668,7 +5681,12 @@ raft_server_process_rw_request(struct raft_instance *ri,
                      ri->ri_coalesced_wr->rcwi_total_size) >
                      RAFT_ENTRY_MAX_DATA_SIZE(ri)))
     {
+        struct raft_work_queue *wr_queue;
+        wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+
+        pthread_mutex_lock(&wr_queue->rsw_mutex);
         raft_server_write_coalesced_entries(ri);
+        pthread_mutex_unlock(&wr_queue->rsw_mutex);
     }
 
     /* cb's may run for a long time and the server may have been deposed
@@ -5706,7 +5724,6 @@ raft_server_process_rw_request(struct raft_instance *ri,
         // Read operation or an already committed + applied write operation.
         raft_server_reply_to_client(ri, &rncr, csn);
     }
-    raft_net_bulk_complete(csn);
 out:
     if (csn)
         ctl_svc_node_put(csn);
@@ -5734,6 +5751,8 @@ raft_server_rw_thread(void *arg)
 
         if (csn)
         {
+            memset(rw_thr->rrwt_recv_buff, 0, RAFT_BS_LARGE_SZ);
+            memset(rw_thr->rrwt_reply_buff, 0, RAFT_BS_LARGE_SZ);
             struct raft_instance *ri =
                    (struct raft_instance *)rw_thr->rrwt_arg;
             raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
