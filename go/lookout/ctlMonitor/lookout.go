@@ -52,7 +52,7 @@ func (epc *EPContainer) tryAdd(uuid uuid.UUID) {
 		}
 
 		if err := epc.EpWatcher.Add(newlns.Path + "/output"); err != nil {
-			log.Fatalln("Watcher.Add() failed:", err)
+			log.Fatal("Watcher.Add() failed:", err)
 		}
 
 		// serialize with readers in httpd context, this is the only
@@ -102,7 +102,7 @@ func (epc *EPContainer) monitor() error {
 			ep.Detect(epc.AppType)
 		}
 
-		time.Sleep(time.Second)
+		time.Sleep(5 * time.Second)
 	}
 
 	return err
@@ -326,7 +326,7 @@ func (epc *EPContainer) serveHttp() {
 	http.HandleFunc("/v1/", epc.QueryHandle)
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	http.HandleFunc("/metrics", epc.MetricsHandler)
-	log.Fatal(http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil))
+	http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil)
 }
 
 func (epc *EPContainer) GetList() map[uuid.UUID]*NcsiEP {
