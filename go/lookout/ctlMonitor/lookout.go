@@ -316,7 +316,11 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
 	node := epc.EpMap[parsedUUID]
 	if len(node.EPInfo.RaftRootEntry) > 0 {
-		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
+		if epc.AppType == "PMDB" {
+			output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
+		} else if epc.AppType == "NISD" {
+			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0])
+		}
 	}
 	output += epc.parseMembershipPrometheus()
 	fmt.Fprintln(w, output)
