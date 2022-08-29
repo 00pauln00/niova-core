@@ -4398,7 +4398,9 @@ raft_server_enqueue_rw(struct raft_instance *ri,
 
     uint32_t queue_type = (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
                            RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
- 
+
+    // Release this reference after processing the read/write request.
+    ctl_svc_node_get(csn);
     pthread_mutex_lock(&ri->ri_worker_queue[queue_type].rsw_mutex);
 
     STAILQ_INSERT_TAIL(&ri->ri_worker_queue[queue_type].rsw_queue, csn, csn_lentry);
@@ -4446,6 +4448,9 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
         const struct raft_client_rpc_msg *rcm_new =
         (const struct raft_client_rpc_msg *)read_data_buf;
+
+        if (rcm_new->rcrm_type != RAFT_CLIENT_RPC_MSG_TYPE_PING)
+            SIMPLE_LOG_MSG(LL_WARN, "rcrm_type is : %d", rcm_new->rcrm_type);
 
         NIOVA_ASSERT(rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
 
@@ -4496,10 +4501,11 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     }
 
     raft_server_enqueue_rw(ri, csn, rcm->rcrm_type);
-    return;
+    goto out1;
 
 out:
     raft_net_bulk_complete(csn);
+out1:
     if (csn)
         ctl_svc_node_put(csn);
 }
