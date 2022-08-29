@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"common/lookout"
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
@@ -9,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"hash/crc32"
@@ -22,8 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
-	"common/lookout"
-	"fmt"
 )
 
 /*
@@ -48,13 +48,14 @@ type pmdbServerHandler struct {
 	gossipClusterNodes []string
 	serfAgentPort      uint16
 	serfRPCPort        uint16
-	hport		   uint16
-	prometheus	   bool
+	hport              uint16
+	prometheus         bool
 	nodeAddr           net.IP
 	GossipData         map[string]string
 	ConfigString       string
 	ConfigData         []PumiceDBCommon.PeerConfigData
-	lookoutInstance	   lookout.EPContainer
+	lookoutInstance    lookout.EPContainer
+	serfAgentHandler   serfAgent.SerfAgentHandler
 }
 
 func main() {
@@ -95,18 +96,18 @@ func main() {
 	*/
 
 	//Start lookout monitoring
-	if serverHandler.prometheus {
-		CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
-		fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
-		ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/"
-		serverHandler.lookoutInstance = lookout.EPContainer{
-                	MonitorUUID : nso.peerUuid.String(),
-                	AppType : "PMDB",
-                	HttpPort : int(serverHandler.hport),
-                	CTLPath: ctl_path,
-       		}
-        	go serverHandler.lookoutInstance.Start()
+	CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
+	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
+	ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7] + "ctl-interface/"
+	serverHandler.lookoutInstance = lookout.EPContainer{
+		MonitorUUID:      nso.peerUuid.String(),
+		AppType:          "PMDB",
+		HttpPort:         int(serverHandler.hport),
+		CTLPath:          ctl_path,
+		SerfMembershipCB: serverHandler.SerfMembership,
+		EnableHttp:       serverHandler.prometheus,
 	}
+	go serverHandler.lookoutInstance.Start()
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
@@ -159,6 +160,11 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	}
 
 	return nso, err
+}
+
+func (handler *pmdbServerHandler) SerfMembership() map[string]bool {
+	membership := handler.serfAgentHandler.GetMembersState()
+	return membership
 }
 
 func extractPMDBServerConfigfromFile(path string) (*PumiceDBCommon.PeerConfigData, error) {
@@ -267,11 +273,10 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 			if handler.prometheus {
 				buffer, err = strconv.ParseUint(hport, 10, 16)
 				handler.hport = uint16(buffer)
+				if err != nil {
+					return errors.New("HTTP port is out of range")
+				}
 			}
-
-                        if err != nil {
-                                return errors.New("HTTP port is out of range")
-                        }
 
 			handler.nodeAddr = net.ParseIP(addr)
 			flag = true
@@ -351,6 +356,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	}
 	log.Info(handler.GossipData)
 	serfAgentHandler.SetNodeTags(handler.GossipData)
+	handler.serfAgentHandler = serfAgentHandler
 	return err
 }
 
@@ -418,8 +424,8 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		log.Trace("read - ", reqStruct.SeqNum)
 		readResult, err := nso.pso.ReadKV(appId, reqStruct.Key,
 			int64(keyLen), colmfamily)
-			singleReadMap := make(map[string][]byte)
-			singleReadMap[reqStruct.Key] = readResult
+		singleReadMap := make(map[string][]byte)
+		singleReadMap[reqStruct.Key] = readResult
 		resultResponse = requestResponseLib.KVResponse{
 			Key:       reqStruct.Key,
 			ResultMap: singleReadMap,
@@ -442,8 +448,8 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 			ResultMap:    readResult,
 			ContinueRead: cRead,
 			Key:          lastKey,
-			SeqNum:	      seqNum,
-			SnapMiss: snapMiss,
+			SeqNum:       seqNum,
+			SnapMiss:     snapMiss,
 		}
 		readErr = err
 	}
@@ -466,5 +472,3 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	return replySize
 }
-
-
