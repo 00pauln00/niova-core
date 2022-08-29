@@ -1047,7 +1047,6 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                  queued_ms > raftClientRetryTimeoutMS)
         {
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
-
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;
