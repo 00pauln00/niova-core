@@ -561,14 +561,14 @@ tcp_mgr_peer_bulk_complete(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
+    tmc->tmc_bulk_buf = NULL;
+    tmc->tmc_bulk_offset = 0;
     // Rearm the epoll
     int rc = epoll_handle_mod(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_ERROR, "Failed to rearm the epoll");
     }
-    tmc->tmc_bulk_buf = NULL;
-    tmc->tmc_bulk_offset = 0;
 
     return 0;
 }

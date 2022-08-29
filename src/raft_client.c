@@ -1052,9 +1052,8 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         else if (leader_viable &&  // non-expired requests are queued for send
                  queued_ms > raftClientRetryTimeoutMS)
         {
-            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "re-queued (qms=%lld)",
+            DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued (qms=%lld)",
                                     queued_ms);
-
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;

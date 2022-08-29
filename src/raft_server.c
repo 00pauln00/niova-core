@@ -4364,6 +4364,10 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
      * NOTE: that raft_server_write_coalesced_entries() will have reset
      *    nentries so be sure to take the tmp variable AFTER calling it.
      */
+    struct raft_work_queue *wr_queue;
+    wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+    pthread_mutex_lock(&wr_queue->rsw_mutex);
+
     uint32_t nentries = ri->ri_coalesced_wr->rcwi_nentries;
 
     ri->ri_coalesced_wr->rcwi_entry_sizes[nentries] = len;
@@ -4379,13 +4383,10 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
         ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
         ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri))
     {
-        struct raft_work_queue *wr_queue;
-        wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
 
-        pthread_mutex_lock(&wr_queue->rsw_mutex);
         raft_server_write_coalesced_entries(ri);
-        pthread_mutex_unlock(&wr_queue->rsw_mutex);
     }
+    pthread_mutex_unlock(&wr_queue->rsw_mutex);
 }
 
 static void
@@ -5638,7 +5639,6 @@ raft_server_process_rw_request(struct raft_instance *ri,
 {
     size_t recv_bytes = 0;
     // Read the request from the socket
-    // TODO memset the buffer after use.
     int rc = raft_net_recv_request(csn, recv_buf, &recv_bytes);
 
     if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
@@ -5671,22 +5671,24 @@ raft_server_process_rw_request(struct raft_instance *ri,
                         strerror(-rncr.rncr_op_error), strerror(-cb_rc));
 
     if (cb_rc)
-        goto out;
+        return;
 
     /* For write operation, check if the coalesced buffer is sufficient for
      * accomodating this request. Otherwise first flush the entries in
      * coalesced buffer.
      */
-    if (write_op && ((rcm->rcrm_data_size +
-                     ri->ri_coalesced_wr->rcwi_total_size) >
-                     RAFT_ENTRY_MAX_DATA_SIZE(ri)))
+    if (write_op)
     {
-        struct raft_work_queue *wr_queue;
-        wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
-
-        pthread_mutex_lock(&wr_queue->rsw_mutex);
-        raft_server_write_coalesced_entries(ri);
-        pthread_mutex_unlock(&wr_queue->rsw_mutex);
+       struct raft_work_queue *wr_queue;
+       wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+       pthread_mutex_lock(&wr_queue->rsw_mutex);
+       if ((rcm->rcrm_data_size +
+            ri->ri_coalesced_wr->rcwi_total_size) >
+                        RAFT_ENTRY_MAX_DATA_SIZE(ri))
+       {
+           raft_server_write_coalesced_entries(ri);
+       }
+       pthread_mutex_unlock(&wr_queue->rsw_mutex);
     }
 
     /* cb's may run for a long time and the server may have been deposed
@@ -5697,7 +5699,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
     if (rc)
     {
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        goto out;
+        return;
     }
 
     if (rncr.rncr_write_raft_entry)
@@ -5724,9 +5726,6 @@ raft_server_process_rw_request(struct raft_instance *ri,
         // Read operation or an already committed + applied write operation.
         raft_server_reply_to_client(ri, &rncr, csn);
     }
-out:
-    if (csn)
-        ctl_svc_node_put(csn);
 }
 
 static raft_server_rw_thread_t
@@ -5757,11 +5756,13 @@ raft_server_rw_thread(void *arg)
                    (struct raft_instance *)rw_thr->rrwt_arg;
             raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
                                            rw_thr->rrwt_reply_buff);
+            raft_net_bulk_complete(csn);
+            ctl_svc_node_put(csn);
         }
         else
         {
             // Sleep for sometime and then check the queue for new read
-            usleep(100);
+            usleep(10);
         }
     }
     return (void *)0;
