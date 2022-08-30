@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -85,6 +86,7 @@ func (epc *EPContainer) monitor() error {
 
 	for epc.run == true {
 		var tmp_stb syscall.Stat_t
+		var sleepTime time.Duration
 		err = syscall.Stat(epc.CTLPath, &tmp_stb)
 		if err != nil {
 			log.Printf("syscall.Stat('%s'): %s", epc.CTLPath, err)
@@ -102,7 +104,13 @@ func (epc *EPContainer) monitor() error {
 			ep.Detect(epc.AppType)
 		}
 
-		time.Sleep(5 * time.Second)
+		sleepTimeStr := os.Getenv("NISD_LOOKOUT_SLEEP")
+		sleepTime, err = time.ParseDuration(sleepTimeStr)
+		if err != nil {
+			sleepTime = 5
+			log.Printf("Bad environment variable - Defaulting to standard value")
+		}
+		time.Sleep((sleepTime) * time.Second)
 	}
 
 	return err
@@ -330,7 +338,10 @@ func (epc *EPContainer) serveHttp() {
 	http.HandleFunc("/v1/", epc.QueryHandle)
 	http.HandleFunc("/v0/", epc.HttpHandle)
 	http.HandleFunc("/metrics", epc.MetricsHandler)
-	http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil)
+	err := http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func (epc *EPContainer) GetList() map[uuid.UUID]*NcsiEP {
