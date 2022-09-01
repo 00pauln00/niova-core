@@ -1748,12 +1748,13 @@ raft_client_udp_recv_handler_process_reply(
  *    - RAFT_CLIENT_RPC_MSG_TYPE_REPLY
  */
 static raft_net_cb_ctx_t
-raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
+raft_client_recv_handler(struct raft_instance *ri,
+                         struct ctl_svc_node *csn, const char *recv_buffer,
                          ssize_t recv_bytes, const struct sockaddr_in *from)
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
         recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
-        FAULT_INJECT(raft_client_udp_recv_handler_bypass))
+        FAULT_INJECT(raft_client_udp_recv_handler_bypass) || csn)
         return;
 
     struct raft_client_instance *rci =

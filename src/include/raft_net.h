@@ -82,6 +82,7 @@ struct raft_net_msg_info
 
 typedef raft_net_cb_ctx_t
 (*raft_net_cb_t)(struct raft_instance *,
+                 struct ctl_svc_node *csn,
                  const char *, ssize_t,
                  const struct sockaddr_in *);
 
