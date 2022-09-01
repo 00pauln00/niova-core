@@ -78,8 +78,6 @@ jobs:
       run:  export PATH=$PATH:/home/runner/work/go/go/bin &&
             cd code/go/lookout && 
             make install_all -e DIR=/home/runner/work/niovad/niovad/build_dir
-            && cd nisdMonitor && ls && cp nisdLookout /home/runner/work/niovad/niovad/build_dir/libexec/niova
-
     # Checkout niova-lookout / Branch : nisd_communication
     #- name: Checkout niova-lookout repository
     #  uses: actions/checkout@v2
