@@ -53,7 +53,7 @@ RUN export PATH=$PATH:/go/bin && cd niova-core/go/controlPlane && make -e DIR=/n
 RUN export PATH=$PATH:/go/bin && cd niova-core/go/pumiceDB/examples/niovaKV && make -e DIR=/niovacorelibs niovakv_all
 
 # Clone holon
-RUN git clone https://$token@github.com/00pauln00/holon.git && cd holon && git checkout test-nisd-prometheus && cat recipes/basic_niova_block_recipe.yml
+RUN git clone https://$token@github.com/00pauln00/holon.git && cd holon && git checkout test-nisd-prometheus
 
 # Dsable cache for next tasks
 ARG CACHEBUST=1
@@ -62,8 +62,7 @@ ARG CACHEBUST=1
 RUN wget https://github.com/prometheus/prometheus/releases/download/v2.38.0/prometheus-2.38.0.linux-amd64.tar.gz
 RUN mkdir prometheus && tar -xvf prometheus-2.38.0.linux-amd64.tar.gz -C holon --strip-components=1
 COPY prometheus.yml /holon
-COPY nodeParser.py /holon
-
+ENV PROMETHEUS_PATH=/holon
 # Run holon recipe
 WORKDIR /holon
 COPY entrypoint.sh /holon
