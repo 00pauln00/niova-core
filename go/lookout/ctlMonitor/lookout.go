@@ -313,12 +313,13 @@ func (epc *EPContainer) parseMembershipPrometheus() string {
 func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	//Split key based nisd's UUID and field
 	var output string
-	parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
-	node := epc.EpMap[parsedUUID]
-	if len(node.EPInfo.RaftRootEntry) > 0 {
-		if epc.AppType == "PMDB" {
-			output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
-		} else if epc.AppType == "NISD" {
+
+	if epc.AppType == "PMDB" {
+		parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
+		node := epc.EpMap[parsedUUID]
+		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
+	} else if epc.AppType == "NISD" {
+		for _, node := range epc.EpMap {
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0])
 		}
 	}
