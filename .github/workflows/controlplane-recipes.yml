@@ -76,6 +76,7 @@ jobs:
     #Build nisd monitor
     - name: Build nisd lookout monitor
       run:  export PATH=$PATH:/home/runner/work/go/go/bin &&
+            cd code/go/lookout && ls &&
             cd code/go/lookout/nisdMonitor && go build && 
             cd code/go/lookout/nisdMonitor && go build && cp nisdLookout /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
