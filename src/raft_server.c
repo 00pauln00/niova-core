@@ -4306,14 +4306,32 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     {
         size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
         char read_data_buf[recv_bytes];
-        size_t actual_recv_bytes = 0; 
+        size_t actual_recv_bytes = 0;
+        memset(read_data_buf, 0, recv_bytes);
+        DECLARE_AND_INIT_UUID_STR(orig_sender_uuid, rcm->rcrm_sender_id);
+        SIMPLE_LOG_MSG(LL_WARN, "orig sender: %s, msg_id: %lx", orig_sender_uuid, rcm->rcrm_msg_id);
         int rc = raft_net_recv_request(csn, read_data_buf, &actual_recv_bytes);
+        if (rc || !actual_recv_bytes)
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "Failed to read the ping msg from socket");
+            goto out;
+        }
 
         const struct raft_client_rpc_msg *rcm_new =
         (const struct raft_client_rpc_msg *)read_data_buf;
 
         if (rcm_new->rcrm_type != RAFT_CLIENT_RPC_MSG_TYPE_PING)
+        {
+            DECLARE_AND_INIT_UUID_STR(orig1_sender_uuid, rcm->rcrm_sender_id);
+            DECLARE_AND_INIT_UUID_STR(new_sender_uuid, rcm_new->rcrm_sender_id);
             SIMPLE_LOG_MSG(LL_WARN, "rcrm_type is : %d", rcm_new->rcrm_type);
+            SIMPLE_LOG_MSG(LL_WARN, "orig rcrm_type is : %d", rcm->rcrm_type);
+            SIMPLE_LOG_MSG(LL_WARN, "orig sender is : %s , new sender is: %s", orig1_sender_uuid, new_sender_uuid);
+        }
+        if (rcm_new->rcrm_msg_id != rcm->rcrm_msg_id)
+            SIMPLE_LOG_MSG(LL_WARN, "new msg_id %lx , orig: %lx", rcm_new->rcrm_msg_id, rcm->rcrm_msg_id);
+        if (rcm_new->rcrm_data_size != rcm->rcrm_data_size)
+            SIMPLE_LOG_MSG(LL_WARN, "new data size is : %u, orig: %u", rcm_new->rcrm_data_size, rcm->rcrm_data_size);
 
         NIOVA_ASSERT(rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
 
@@ -5489,7 +5507,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
     if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
-        LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
+        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buf, recv_bytes, ri->ri_server_sm_request_cb);
         return;
     }
@@ -5506,7 +5524,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
         reply_size, csn);
 
     int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
+    enum log_level log_level = cb_rc ? LL_WARN : LL_WARN;
     // rncr.rncr_type was set by the callback!
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;

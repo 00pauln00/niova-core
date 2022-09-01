@@ -487,7 +487,6 @@ tcp_mgr_get_msg_header(struct tcp_mgr_connection *tmc, char *buffer)
     int socket = tmc->tmc_tsh.tsh_socket;
     int flags = MSG_PEEK;
 
-
     ssize_t rc = recv(socket, buffer, header_size, flags);
     if (rc == -EAGAIN)
         rc = 0;
@@ -661,12 +660,13 @@ tcp_recv_for_client(struct tcp_mgr_connection *tmc)
 static int
 tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
 {
-    char buffer[TCP_MGR_MAX_HDR_SIZE];
     size_t header_size = tmc->tmc_header_size;
+    char *buffer =  niova_calloc(1, TCP_MGR_MAX_HDR_SIZE);
     int rc  = tcp_mgr_get_msg_header(tmc, buffer);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "Can't read the header from socket");
+        niova_free(buffer);
         return rc;
     }
 
@@ -678,6 +678,7 @@ tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
         SIMPLE_LOG_MSG(LL_ERROR, "tmi_recv_cb failed for server");
         tcp_mgr_connection_close_internal(tmc);
     }
+    niova_free(buffer);
     return rc;
 }
 
