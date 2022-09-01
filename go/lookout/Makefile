@@ -9,7 +9,7 @@ nisdMonitor:
 	cd nisdMonitor && go mod tidy && go build
 
 install:
-	cp nisdMonitor/nisdLookout ${DIR}/libexec/niova/nisdLookout
+	cp nisdMonitor/nisdLookout ${DIR}/libexec/niova
 
 clean:
 	go clean
