@@ -1310,7 +1310,7 @@ raft_net_peer_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
 
     if (ri->ri_server_recv_cb)
     {
-        ri->ri_server_recv_cb(ri, buf, buf_size, &from);
+        ri->ri_server_recv_cb(ri, NULL, buf, buf_size, &from);
     }
 
     return 0;
@@ -1340,8 +1340,10 @@ raft_net_client_tcp_cb(struct tcp_mgr_connection *tmc, char *buf,
     if (header_size != sizeof(struct raft_client_rpc_msg))
         return -EBADMSG;
 
+    struct ctl_svc_node *csn;
+    raft_net_connection_to_csn(tmc, &csn);
     if (ri->ri_client_recv_cb)
-        ri->ri_client_recv_cb(ri, buf, buf_size, &from);
+        ri->ri_client_recv_cb(ri, csn, buf, buf_size, &from);
 
     return 0;
 }
@@ -2230,13 +2232,13 @@ raft_net_udp_cb(const struct epoll_handle *eph, uint32_t events)
     case RAFT_UDP_LISTEN_SERVER:
         if (ri->ri_server_recv_cb)
         {
-            ri->ri_server_recv_cb(ri, sink_buf, recv_bytes, &from);
+            ri->ri_server_recv_cb(ri, NULL, sink_buf, recv_bytes, &from);
         }
         break;
     case RAFT_UDP_LISTEN_CLIENT:
         if (ri->ri_client_recv_cb)
         {
-            ri->ri_client_recv_cb(ri, sink_buf, recv_bytes, &from);
+            ri->ri_client_recv_cb(ri, NULL, sink_buf, recv_bytes, &from);
         }
         break;
     default:

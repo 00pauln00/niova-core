@@ -3901,6 +3901,7 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
 
 static raft_net_cb_ctx_t
 raft_server_peer_recv_handler(struct raft_instance *ri,
+                              struct ctl_svc_node *csn,
                               const char *recv_buffer,
                               ssize_t recv_bytes,
                               const struct sockaddr_in *from)
@@ -3908,6 +3909,7 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && from);
 
+    NIOVA_ASSERT(csn == NULL);
     if (!recv_buffer || !recv_bytes)
         return;
 
@@ -4399,6 +4401,7 @@ raft_server_enqueue_rw(struct raft_instance *ri,
     uint32_t queue_type = (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
                            RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
 
+    SIMPLE_LOG_MSG(LL_WARN, "Enqueue the read/write request: %d", msg_type);
     // Release this reference after processing the read/write request.
     ctl_svc_node_get(csn);
     pthread_mutex_lock(&ri->ri_worker_queue[queue_type].rsw_mutex);
@@ -4410,6 +4413,7 @@ raft_server_enqueue_rw(struct raft_instance *ri,
 // warning: buffers are statically allocated, so code is not multi-thread safe
 static raft_net_cb_ctx_t
 raft_server_client_recv_handler(struct raft_instance *ri,
+                                struct ctl_svc_node *csn,
                                 const char *recv_buffer,
                                 ssize_t recv_bytes,
                                 const struct sockaddr_in *from)
@@ -4429,11 +4433,11 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *csn = NULL;
+    struct ctl_svc_node *tmp_csn = NULL;
 
     /* First set of request checks which are configuration based.
      */
-    if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
+    if (raft_server_client_recv_ignore_request(ri, rcm, from, &tmp_csn))
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
         return;
@@ -4444,9 +4448,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
         char read_data_buf[recv_bytes];
         size_t actual_recv_bytes = 0;
-        memset(read_data_buf, 0, recv_bytes);
-        DECLARE_AND_INIT_UUID_STR(orig_sender_uuid, rcm->rcrm_sender_id);
-        SIMPLE_LOG_MSG(LL_WARN, "orig sender: %s, msg_id: %lx", orig_sender_uuid, rcm->rcrm_msg_id);
+
+        // Read the ping request buffer completely from the socket.
         int rc = raft_net_recv_request(csn, read_data_buf, &actual_recv_bytes);
         if (rc || !actual_recv_bytes)
         {
@@ -4493,18 +4496,21 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         rc = raft_server_may_accept_client_request(ri);
         if (rc)
         {
-            SIMPLE_LOG_MSG(LL_NOTIFY,
+            SIMPLE_LOG_MSG(LL_WARN,
                        "cannot accept client message, rc=%d: msg-type=%u",
                        rc, rcm->rcrm_type);
             raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
         }
         else
         {
-            raft_server_reply_to_client(ri, &rncr, csn);
+            SIMPLE_LOG_MSG(LL_WARN, "Send ping reply to client");
+            raft_server_reply_to_client(ri, &rncr, tmp_csn);
         }
+        if (tmp_csn)
+            ctl_svc_node_put(tmp_csn);
+
+        SIMPLE_LOG_MSG(LL_WARN, "Calling raft_net_bulk_complete");
         raft_net_bulk_complete(csn);
-        if (csn)
-            ctl_svc_node_put(csn);
 
         buffer_set_release_item(bi);
         return;
@@ -4524,8 +4530,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 out:
     raft_net_bulk_complete(csn);
 out1:
-    if (csn)
-        ctl_svc_node_put(csn);
+    if (tmp_csn)
+        ctl_svc_node_put(tmp_csn);
 }
 
 /**
