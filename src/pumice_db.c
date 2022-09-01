@@ -861,7 +861,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno &&
         obj.pmdb_obj_commit_seqno != ID_ANY_64bit)
     {
-        raft_client_net_request_handle_error_set(rncr, -EALREADY, -EALREADY, 0);
+        raft_client_net_request_handle_error_set(rncr, -EALREADY, 0, 0);
     }
     else if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
     {

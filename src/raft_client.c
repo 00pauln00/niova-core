@@ -1604,7 +1604,7 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         msg_id != raft_client_sub_app_2_msg_id(sa))
     {
         DBG_RAFT_CLIENT_SUB_APP(
-            (sa->rcsa_rh.rcrh_initializing ? LL_NOTIFY : LL_WARN),
+            (sa->rcsa_rh.rcrh_initializing ? LL_NOTIFY : LL_DEBUG),
             sa, "non matching msg_id=%lx", msg_id);
 
         raft_client_sub_app_put(rci, sa, __func__, __LINE__);
