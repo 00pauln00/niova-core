@@ -322,12 +322,18 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	//Split key based nisd's UUID and field
 	var output string
 
+	nodeMap := make(map[uuid.UUID]*NcsiEP)
+	epc.mutex.Lock()
+	for k,v := range epc.EpMap {
+		nodeMap[k] = v
+	}
+	epc.mutex.Unlock()
 	if epc.AppType == "PMDB" {
 		parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
 		node := epc.EpMap[parsedUUID]
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0])
 	} else if epc.AppType == "NISD" {
-		for _, node := range epc.EpMap {
+		for _, node := range nodeMap {
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0])
 		}
 	}
