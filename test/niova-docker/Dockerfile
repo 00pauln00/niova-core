@@ -40,7 +40,9 @@ RUN echo '* hard memlock 65536' | tee -a /etc/security/limits.conf
 RUN cd niova-block && git submodule init && git submodule update
 RUN cd niova-block/modules/liburing && ./configure && make && make install
 RUN cd niova-block && ./prepare.sh && ./configure --with-niova=/niovacorelibs/ --prefix=/niova-block/ --enable-devel && make clean && make && make install
-RUN cp niova-block/bin/niova-block-ctl /niovacorelibs && cp niova-block/bin/nisd /niovacorelibs
+RUN cp niova-block/src/niova-block-ctl /niovacorelibs/libexec/niova \
+	&& cp niova-block/src/nisd /niovacorelibs/libexec/niova \
+	&& cp niova-block/test/niova-block-test /niovacorelibs/libexec/niova
 
 # Compile niova-lookout
 RUN export PATH=$PATH:/go/bin && cd niova-core/go/lookout/nisdMonitor/ && go build && cp nisdLookout /niovacorelibs/libexec/niova
@@ -52,7 +54,7 @@ RUN export PATH=$PATH:/go/bin && cd niova-core/go/controlPlane && make -e DIR=/n
 RUN export PATH=$PATH:/go/bin && cd niova-core/go/pumiceDB/examples/niovaKV && make -e DIR=/niovacorelibs niovakv_all
 
 # Clone holon
-RUN git clone https://$token@github.com/00pauln00/holon.git && cd holon && git checkout prometheus_support
+RUN git clone https://$token@github.com/00pauln00/holon.git 
 
 # Dsable cache for next tasks
 ARG CACHEBUST=1
