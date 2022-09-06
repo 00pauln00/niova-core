@@ -4323,19 +4323,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         const struct raft_client_rpc_msg *rcm_new =
         (const struct raft_client_rpc_msg *)read_data_buf;
 
-        if (rcm_new->rcrm_type != RAFT_CLIENT_RPC_MSG_TYPE_PING)
-        {
-            DECLARE_AND_INIT_UUID_STR(orig1_sender_uuid, rcm->rcrm_sender_id);
-            DECLARE_AND_INIT_UUID_STR(new_sender_uuid, rcm_new->rcrm_sender_id);
-            SIMPLE_LOG_MSG(LL_WARN, "rcrm_type is : %d", rcm_new->rcrm_type);
-            SIMPLE_LOG_MSG(LL_WARN, "orig rcrm_type is : %d", rcm->rcrm_type);
-            SIMPLE_LOG_MSG(LL_WARN, "orig sender is : %s , new sender is: %s", orig1_sender_uuid, new_sender_uuid);
-        }
-        if (rcm_new->rcrm_msg_id != rcm->rcrm_msg_id)
-            SIMPLE_LOG_MSG(LL_WARN, "new msg_id %lx , orig: %lx", rcm_new->rcrm_msg_id, rcm->rcrm_msg_id);
-        if (rcm_new->rcrm_data_size != rcm->rcrm_data_size)
-            SIMPLE_LOG_MSG(LL_WARN, "new data size is : %u, orig: %u", rcm_new->rcrm_data_size, rcm->rcrm_data_size);
-
         NIOVA_ASSERT(rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
 
         //XXX can we use SMALL buffer for ping?
@@ -4359,7 +4346,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         rc = raft_server_may_accept_client_request(ri);
         if (rc)
         {
-            SIMPLE_LOG_MSG(LL_WARN,
+            SIMPLE_LOG_MSG(LL_NOTIFY,
                        "cannot accept client message, rc=%d: msg-type=%u",
                        rc, rcm->rcrm_type);
             raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
@@ -4372,7 +4359,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         if (tmp_csn)
             ctl_svc_node_put(tmp_csn);
 
-        SIMPLE_LOG_MSG(LL_WARN, "Calling raft_net_bulk_complete");
         raft_net_bulk_complete(csn);
 
         buffer_set_release_item(bi);
