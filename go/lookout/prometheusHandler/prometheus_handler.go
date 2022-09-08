@@ -37,27 +37,27 @@ func parseGauge(gauge reflect.Value) string {
 	return fmt.Sprintf("%v", gauge)
 }
 
-func makePromUntype(label string, value reflect.Value) string {
+func makePromUntype(metric string, label string, value reflect.Value) string {
 	strip := fmt.Sprintf("%v", value)
 	output := fmt.Sprintf(`
 # UNtype output
-%s %s`, label, strip)
+%s{%s} %s`, metric, label, strip)
 	return output
 }
 
-func makePromCounter(label string, count string) string {
+func makePromCounter(metric string, label string, count string) string {
 	output := fmt.Sprintf(`
 # HELP %s output
 # TYPE %s counter
-`, label, label)
-	entry := fmt.Sprintf(`%s%s %s`, output, label, count)
+`, metric, metric)
+	entry := fmt.Sprintf(`%s%s{%s} %s`, output, metric, label, count)
 	return entry + "\n"
 }
 
-func makePromHistogram(label string, histogram map[string]string) string {
+func makePromHistogram(metric string, histogram map[string]string) string {
 	output := fmt.Sprintf(`
 # HELP %s histogram output
-# TYPE %s histogram`, label, label)
+# TYPE %s histogram`, metric, metric)
 
 	//Sort bound
 	var bounds []string
@@ -67,29 +67,38 @@ func makePromHistogram(label string, histogram map[string]string) string {
 	sort.Strings(bounds)
 
 	for _, bound := range bounds {
-		entry := fmt.Sprintf(`%s_bucket{le="%s"} %s`, label, bound, histogram[bound])
+		entry := fmt.Sprintf(`%s_bucket{le="%s"} %s`, metric, bound, histogram[bound])
 		output += "\n" + entry
 	}
-	entry := fmt.Sprintf("%s_count %s", label, histogram["+inf"])
+	entry := fmt.Sprintf("%s_count %s", metric, histogram["+inf"])
 	output += "\n\n" + entry + "\n"
 	return output
 }
 
 
-func makePromGauge(label string, value string) string {
+func makePromGauge(metric string, label string, value string) string {
 	output := fmt.Sprintf(`
 # HELP %s gauge output
-# TYPE %s gauge`, label, label)
-	entry := fmt.Sprintf(`%s%s %s`, output, label, value)
+# TYPE %s gauge`, metric, metric)
+	entry := fmt.Sprintf(`%s%s{%s} %s`, output, metric, label, value)
         return entry + "\n"
 }
 
-func GenericPromDataParser(structure interface{}) string {
+func makeLabelString(label map[string]string) string {
+	output := ""
+	for key, value := range label {
+		output += fmt.Sprintf(`%s="%s"`,key, value)
+	}
+	return output
+}
+
+func GenericPromDataParser(structure interface{}, labels map[string]string) string {
 	var op string
 
 	//Reflect the struct
 	typeExtract := reflect.TypeOf(structure)
 	valueExtract := reflect.ValueOf(structure)
+	labelString := makeLabelString(labels)
 
 	//Iterating over fields and compress their values
 	for i := 0; i < typeExtract.NumField(); i++ {
@@ -97,19 +106,19 @@ func GenericPromDataParser(structure interface{}) string {
 		fieldValue := valueExtract.Field(i)
 
 		promType := fieldType.Tag.Get("type")
-		promLabel := fieldType.Tag.Get("metric")
+		promMetric := fieldType.Tag.Get("metric")
 		switch promType {
 		case "histogram":
 			histogram := parseHistogram(fieldValue, fieldType.Type)
-			op += makePromHistogram(promLabel, histogram)
+			op += makePromHistogram(promMetric, histogram)
 		case "counter":
 			count := parseCounter(fieldValue)
-			op += makePromCounter(promLabel, count)
+			op += makePromCounter(promMetric, labelString, count)
 		case "gauge":
 			value := parseGauge(fieldValue)
-			op += makePromGauge(promLabel, value)
+			op += makePromGauge(promMetric, labelString, value)
 		case "untype":
-			op += makePromUntype(promLabel, fieldValue)
+			op += makePromUntype(promMetric, labelString, fieldValue)
 		}
 	}
 	return op
