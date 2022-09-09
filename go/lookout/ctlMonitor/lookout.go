@@ -341,6 +341,7 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			labelMap := make(map[string]string)
                 	labelMap["NISD_UUID"] = uuid.String()
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0], labelMap)
+			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
 		}
 	}
 	output += epc.parseMembershipPrometheus()

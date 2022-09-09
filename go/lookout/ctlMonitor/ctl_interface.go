@@ -58,6 +58,13 @@ type NISDInfo struct {
 	ReadBytes	int	`json:"dev-bytes-read"`
 	WriteBytes	int	`json:"dev-bytes-write"`
 }
+
+
+type NISDRoot struct {
+	VBlockWritten	int	`json:"vblks-written"`
+}
+
+
 type Histogram struct {
 	Num1       int `json:"1,omitempty"`
 	Num2       int `json:"2,omitempty"`
@@ -114,6 +121,7 @@ type CtlIfOut struct {
 	SysInfo		SystemInfo `json:"system_info,omitempty"`
 	RaftRootEntry	[]RaftInfo `json:"raft_root_entry,omitempty"`
 	NISDInformation	[]NISDInfo `json:"niorq_mgr_root_entry,omitempty"`
+	NISDRootEntry	[]NISDRoot `json:"nisd_root_entry,omitempty"`
 }
 
 type NcsiEP struct {
@@ -306,7 +314,7 @@ func (ep *NcsiEP) getSysinfo() error {
 }
 
 func (ep *NcsiEP) getNISDinfo() error {
-	cmd := epCommand{ep: ep, cmd: "GET /niorq_mgr_root_entry/.*", op: NISDInfoOp}
+	cmd := epCommand{ep: ep, cmd: "GET /.*/.*/.*", op: NISDInfoOp}
 	cmd.submit()
 	return cmd.err
 }
