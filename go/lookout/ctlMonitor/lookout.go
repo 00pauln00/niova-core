@@ -339,7 +339,7 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	} else if epc.AppType == "NISD" {
 		for uuid, node := range nodeMap {
 			labelMap := make(map[string]string)
-                	labelMap["NISD_UUID"] = uuid.String()
+			labelMap["NISD_UUID"] = uuid.String()
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0], labelMap)
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
 		}

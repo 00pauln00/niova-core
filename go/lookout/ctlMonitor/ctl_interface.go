@@ -55,13 +55,26 @@ type SystemInfo struct {
 }
 
 type NISDInfo struct {
-	ReadBytes	int	`json:"dev-bytes-read"`
-	WriteBytes	int	`json:"dev-bytes-write"`
+	ReadBytes		int	`json:"dev-bytes-read" type:"counter" metric:"nisd_dev_read_bytes"`
+	WriteBytes		int	`json:"dev-bytes-write" type:"counter" metric:"nisd_dev_write_bytes"`
+	NetRecvBytes		int	`json:"net-bytes-recv" type:"counter" metric:"nisd_net_bytes_recv"`
+	NetSendBytes		int	`json:"net-bytes-send" type:"counter" metric:"nisd_net_bytes_send"`
+	DevRdLatencyUsec	int	`json"dev-rd-latency-usec" type:"histogram" metric:"nisd_dev_rd_latency_usec"`
+	DevWrLatencyUsec	int	`json"dev-wr-latency-usec" type:"histogram" metric:"nisd_dev_wr_latency_usec"`
 }
 
 
 type NISDRoot struct {
-	VBlockWritten	int	`json:"vblks-written"`
+	VBlockWritten		int	`json:"vblks-written" type:"counter" metric:"nisd_vblk_write"`
+	VBlockRead		int	`json:"vblks-read" type:"counter" metric:"nisd_vblk_read"`
+	MetablockWritten	int	`json:"metablock-sectors-written" type:"counter" metric:"nisd_metablock_wriitten"`
+	MetablockRead		int	`json:"metablcock-sectors-read" type:"counter" metric:"nisd_metablock_read"`
+	MetablockCacheHit	int	`json:"metablock-cache-hits" type:"counter" metric:"nisd_metablock_cache_hits"`
+	MetablockCacheMiss	int	`json:"metablock-cache-misses" type:"counter" metric:"nisd_metablock_cache_misses"`
+	NumPblks		int	`json:"num-pblks" type:"counter" metric:"nisd_num_pblk"`
+	NumPblksUsed		int	`json:"num-pblks-used" type:"counter" metric:"nisd_num_pblk_used"`
+	NumReservedPblks	int	`json:"num-reserved-pblks" type:"counter" metric:"nisd_num_reserved_pblks"`
+	NumReservedPblksUsed	int	`json:"num-reserved-pblks-used" type:"counter" metric:"nisd_num_reserved_pblks_used"`
 }
 
 
@@ -337,6 +350,7 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 	case NISDInfoOp:
 		//update
 		ep.EPInfo.NISDInformation = ctlData.NISDInformation
+		ep.EPInfo.NISDRootEntry = ctlData.NISDRootEntry
 
 	default:
 		log.Printf("invalid op=%d \n", op)
