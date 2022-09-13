@@ -85,7 +85,7 @@ jobs:
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
            cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
 
-    # Checkout niova-block repository / Branch : nisd_mointor_retry       
+    # Checkout niova-block repository / Branch : nisd_mointor_retry
     - name: Checkout niova-block repository
       uses: actions/checkout@v2
       with:
@@ -136,8 +136,10 @@ jobs:
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/control_plane_recipes.txt'
                              'controlplane'
-                             '0'
                              '/home/runner/work/go/go/bin'
+                             1
+                             1
+
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename

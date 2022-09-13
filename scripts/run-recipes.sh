@@ -34,7 +34,13 @@ do
    then
       NLOOKOUT=${8}
       NNISD=${9}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e app_name=$APP_TYPE holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD holon.yml
+   elif [[ ( $# -eq 10 ) && $APP_TYPE == "controlplane" ]]
+   then
+      NLOOKOUT=${8}
+      NNISD=${9}
+      INPUTFILE=${10}
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e blocktest_file_path=$INPUTFILE holon.yml
    else
       ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC holon.yml
    fi
