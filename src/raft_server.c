@@ -4267,10 +4267,12 @@ raft_server_enqueue_rw(struct raft_instance *ri,
     SIMPLE_LOG_MSG(LL_WARN, "Enqueue the read/write request: %d", msg_type);
     // Release this reference after processing the read/write request.
     ctl_svc_node_get(csn);
-    pthread_mutex_lock(&ri->ri_worker_queue[queue_type].rsw_mutex);
 
-    STAILQ_INSERT_TAIL(&ri->ri_worker_queue[queue_type].rsw_queue, csn, csn_lentry);
-    pthread_mutex_unlock(&ri->ri_worker_queue[queue_type].rsw_mutex);
+    NIOVA_SET_COND_AND_WAKE(signal,
+    {STAILQ_INSERT_TAIL(&ri->ri_worker_queue[queue_type].rsw_queue, csn, csn_lentry);},
+    &ri->ri_worker_queue[queue_type].rsw_mutex,
+    &ri->ri_worker_queue[queue_type].rsw_cond);
+
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -4353,7 +4355,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         }
         else
         {
-            SIMPLE_LOG_MSG(LL_WARN, "Send ping reply to client");
             raft_server_reply_to_client(ri, &rncr, tmp_csn);
         }
         if (tmp_csn)
@@ -5592,6 +5593,10 @@ raft_server_rw_thread(void *arg)
     struct raft_work_queue *queue = rw_thr->rrwt_queue;
     THREAD_LOOP_WITH_CTL(tc)
     {
+        // Wait for item in the queue.
+        NIOVA_WAIT_COND(!STAILQ_EMPTY(&queue->rsw_queue),
+                        &queue->rsw_mutex, &queue->rsw_cond);
+
         //Take mutex
         pthread_mutex_lock(&queue->rsw_mutex);
         struct ctl_svc_node *csn;
@@ -5613,11 +5618,6 @@ raft_server_rw_thread(void *arg)
                                            rw_thr->rrwt_reply_buff);
             raft_net_bulk_complete(csn);
             ctl_svc_node_put(csn);
-        }
-        else
-        {
-            // Sleep for sometime and then check the queue for new read
-            usleep(10);
         }
     }
     return (void *)0;
@@ -5665,6 +5665,7 @@ raft_server_rw_threads_start(struct raft_instance *ri)
         struct raft_work_queue *queue = &ri->ri_worker_queue[i];
         STAILQ_INIT(&queue->rsw_queue);
         pthread_mutex_init(&queue->rsw_mutex, NULL);
+        pthread_cond_init(&queue->rsw_cond, NULL);
     }
 
     // Start Writer thread.

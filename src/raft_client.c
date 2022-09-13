@@ -822,7 +822,6 @@ raft_client_rpc_ping_init(struct raft_client_instance *rci,
 {
     char uuid_str[UUID_STR_LEN];
     uuid_unparse(RCI_2_RI(rci)->ri_csn_leader->csn_uuid, uuid_str);
-    //SIMPLE_LOG_MSG(LL_WARN, "Client sending ping rpc msg to : %s", uuid_str);
 
     return raft_client_rpc_msg_init(rci, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_PING,
                                     0UL, RCI_2_RI(rci)->ri_csn_leader,
