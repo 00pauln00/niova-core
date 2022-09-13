@@ -13,14 +13,11 @@ RUN git config --global url."https://$token@github.com/".insteadOf "https://gith
 
 ## Clone repos
 # Copy niova-core
-RUN git clone https://$token@github.com/00pauln00/niova-core.git
+RUN git clone https://$token@github.com/00pauln00/niova-core.git && cd niova-core
 
 # Copy niova-block
 RUN git clone https://$token@github.com/00pauln00/niova-block.git
 COPY .gitmodules /niova-block
-
-# Copy niova-lookout
-RUN git clone https://$token@github.com/00pauln00/niova-lookout.git
 
 ## Compile repos
 # Compile niova-core
@@ -35,9 +32,6 @@ ENV PYTHONPATH=.
 ENV NIOVA_BIN_PATH=/niovacorelibs/libexec/niova
 
 
-# Compile niova-lookout
-RUN export PATH=$PATH:/go/bin && cd niova-lookout && go build && cp lookout /niovacorelibs/libexec/niova
-
 # Compile niova-block
 # increase memlock limit
 RUN apt-get install -y libreadline-dev
@@ -46,7 +40,12 @@ RUN echo '* hard memlock 65536' | tee -a /etc/security/limits.conf
 RUN cd niova-block && git submodule init && git submodule update
 RUN cd niova-block/modules/liburing && ./configure && make && make install
 RUN cd niova-block && ./prepare.sh && ./configure --with-niova=/niovacorelibs/ --prefix=/niova-block/ --enable-devel && make clean && make && make install
-RUN cp niova-block/bin/niova-block-ctl /niovacorelibs && cp niova-block/bin/nisd /niovacorelibs
+RUN cp niova-block/src/niova-block-ctl /niovacorelibs/libexec/niova \
+	&& cp niova-block/src/nisd /niovacorelibs/libexec/niova \
+	&& cp niova-block/test/niova-block-test /niovacorelibs/libexec/niova
+
+# Compile niova-lookout
+RUN export PATH=$PATH:/go/bin && cd niova-core/go/lookout/nisdMonitor/ && go build && cp nisdLookout /niovacorelibs/libexec/niova
 
 # Compile controlplane app
 RUN export PATH=$PATH:/go/bin && cd niova-core/go/controlPlane && make -e DIR=/niovacorelibs install_all
@@ -60,6 +59,17 @@ RUN git clone https://$token@github.com/00pauln00/holon.git
 # Dsable cache for next tasks
 ARG CACHEBUST=1
 
+# Install prometheus client
+RUN wget https://github.com/prometheus/prometheus/releases/download/v2.38.0/prometheus-2.38.0.linux-amd64.tar.gz
+RUN mkdir prometheus && tar -xvf prometheus-2.38.0.linux-amd64.tar.gz -C holon --strip-components=1
+COPY prometheus.yml /holon
+ENV PROMETHEUS_PATH=/holon
+
 # Run holon recipe
 WORKDIR /holon
-ENTRYPOINT ["ansible-playbook", "-e", "srv_port=8000", "-e", "dir_path=/logs/covid_log", "-e", "client_port=18000","holon.yml"]
+COPY entrypoint.sh /holon
+
+ENTRYPOINT ["bash", "entrypoint.sh"]
+
+#ENTRYPOINT ["ansible-playbook", "-e", "srv_port=2530", "-e", "dir_path=/logs/covid_log", "-e", "client_port=18000","holon.yml"] 
+
