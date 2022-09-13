@@ -140,6 +140,17 @@ jobs:
                              1
                              1
 
+    - name:  run recipe for multiple I/O operations on nisd
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
+                             '/home/runner/work/niovad/niovad/build_dir'
+                             '/home/runner/work/niovad/niovad/holon_log' 5
+                             '/home/runner/work/niovad/niovad/build_dir/container_recipes.txt'
+                             'controlplane'
+                             '/home/runner/work/go/go/bin'
+                             2
+                             2
+                             'true'
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
