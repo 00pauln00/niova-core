@@ -4401,7 +4401,6 @@ raft_server_enqueue_rw(struct raft_instance *ri,
     uint32_t queue_type = (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
                            RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
 
-    SIMPLE_LOG_MSG(LL_WARN, "Enqueue the read/write request: %d", msg_type);
     // Release this reference after processing the read/write request.
     ctl_svc_node_get(csn);
 
@@ -5678,7 +5677,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
         reply_size, csn);
 
     int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-    enum log_level log_level = cb_rc ? LL_WARN : LL_WARN;
+    enum log_level log_level = cb_rc ? LL_DEBUG : LL_NOTIFY;
     // rncr.rncr_type was set by the callback!
     bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
         true : false;
