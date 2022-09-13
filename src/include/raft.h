@@ -467,6 +467,7 @@ STAILQ_HEAD(raft_srv_work, ctl_svc_node);
 struct raft_work_queue
 {
     pthread_mutex_t                 rsw_mutex;
+    pthread_cond_t                  rsw_cond;
     struct raft_srv_work            rsw_queue;
 };
 

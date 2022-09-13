@@ -1340,8 +1340,11 @@ raft_net_client_tcp_cb(struct tcp_mgr_connection *tmc, char *buf,
     if (header_size != sizeof(struct raft_client_rpc_msg))
         return -EBADMSG;
 
-    struct ctl_svc_node *csn;
-    raft_net_connection_to_csn(tmc, &csn);
+    // Pass the valid csn pointer only for raft servers.
+    struct ctl_svc_node *csn = NULL;
+    if (raft_net_is_raft_peer_cb())
+        raft_net_connection_to_csn(tmc, &csn);
+
     if (ri->ri_client_recv_cb)
         ri->ri_client_recv_cb(ri, csn, buf, buf_size, &from);
 
