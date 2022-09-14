@@ -226,6 +226,8 @@ func (epc *EPContainer) init() error {
 
 	go epc.epOutputWatcher()
 
+	epc.scan()
+
 	return nil
 }
 
@@ -303,7 +305,7 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 	w.Write(output)
 }
 
-func (epc *EPContainer) parseMembershipPrometheus() string {
+func (epc *EPContainer) parseMembershipPrometheus( state string, raftUUID string ) string {
 	var output string
 	membership := epc.SerfMembershipCB()
 	for name, isAlive := range membership {
@@ -313,7 +315,7 @@ func (epc *EPContainer) parseMembershipPrometheus() string {
 		} else {
 			adder = "0"
 		}
-		output += "\n" + fmt.Sprintf(`node_status{uuid="%s"} %s`, name, adder)
+		output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"raftUUID="%s"} %s`, name, state, raftUUID, adder)
 	}
 	return output
 }
@@ -329,22 +331,27 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		nodeMap[k] = v
 	}
 	epc.mutex.Unlock()
-
 	if epc.AppType == "PMDB" {
 		parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
 		node := nodeMap[parsedUUID]
 		labelMap := make(map[string]string)
 		labelMap["PMDB_UUID"] = parsedUUID.String()
+		labelMap["TYPE"] = epc.AppType
+		labelMap["STATE"] = node.EPInfo.RaftRootEntry[0].State
+		labelMap["RAFT_UUID"] = node.EPInfo.RaftRootEntry[0].RaftUUID
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0], labelMap)
+		output += epc.parseMembershipPrometheus( node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID )
 	} else if epc.AppType == "NISD" {
 		for uuid, node := range nodeMap {
 			labelMap := make(map[string]string)
 			labelMap["NISD_UUID"] = uuid.String()
+			labelMap["TYPE"] = epc.AppType
+			labelMap["STATUS"] = node.EPInfo.NISDRootEntry[0].Status
+			labelMap["ALT_NAME"] = node.EPInfo.NISDRootEntry[0].AltName
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0], labelMap)
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
 		}
 	}
-	output += epc.parseMembershipPrometheus()
 	fmt.Fprintln(w, output)
 }
 

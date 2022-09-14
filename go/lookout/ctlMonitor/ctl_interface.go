@@ -48,7 +48,7 @@ type SystemInfo struct {
 	RusageMaxRss            int       `json:"rusage.max_rss"`
 	RusageMinFault          int       `json:"rusage.min_fault"`
 	RusageMajFault          int       `json:"rusage.maj_fault"`
-	RusageInBlock           int       `json:"rusage.in_block"`
+	RusageInBlock           int       `json:"rusage.in_block" type:"counter" metric:"in_block_usage"`
 	RusageOutBlock          int       `json:"rusage.out_block"`
 	RusageVolCtsw           int       `json:"rusage.vol_ctsw"`
 	RusageInvolCtsw         int       `json:"rusage.invol_ctsw"`
@@ -75,6 +75,8 @@ type NISDRoot struct {
 	NumPblksUsed		int	`json:"num-pblks-used" type:"counter" metric:"nisd_num_pblk_used"`
 	NumReservedPblks	int	`json:"num-reserved-pblks" type:"counter" metric:"nisd_num_reserved_pblks"`
 	NumReservedPblksUsed	int	`json:"num-reserved-pblks-used" type:"counter" metric:"nisd_num_reserved_pblks_used"`
+	Status			string	`json:"status"` 
+	AltName			string	`json:"alt-name"`
 }
 
 
@@ -111,7 +113,7 @@ type RaftInfo struct {
 	FollowerReason           string    `json:"follower-reason"`
 	ClientRequests           string    `json:"client-requests"`
 	Term                     int       `json:"term" type:"counter" metric:"Term"`
-	CommitIdx                int       `json:"commit-idx"`
+	CommitIdx                int       `json:"commit-idx" type:"counter" metric:"CommitIdx"`
 	LastApplied              int       `json:"last-applied"`
 	LastAppliedCumulativeCrc int64     `json:"last-applied-cumulative-crc"`
 	NewestEntryIdx           int       `json:"newest-entry-idx"`

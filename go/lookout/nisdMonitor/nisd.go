@@ -265,7 +265,7 @@ func (handler *nisdMonitor) SerfMembership() map[string]bool {
 	membership := handler.storageClient.GetMembership()
 	returnMap := make(map[string]bool)
 	for _, member := range membership {
-		if member.Status == "Alive" {
+		if member.Status == "alive" {
 			returnMap[member.Name] = true
 		}
 	}
