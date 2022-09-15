@@ -5748,7 +5748,8 @@ static raft_server_rw_thread_t
 raft_server_rw_thread(void *arg)
 {
     struct thread_ctl *tc = arg;
-    struct raft_rw_worker_thread *rw_thr = (struct raft_rw_worker_thread *)thread_ctl_get_arg(tc);
+    struct raft_rw_worker_thread *rw_thr =
+        (struct raft_rw_worker_thread *)thread_ctl_get_arg(tc);
 
     struct raft_work_queue *queue = rw_thr->rrwt_queue;
     THREAD_LOOP_WITH_CTL(tc)
