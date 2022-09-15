@@ -4397,17 +4397,18 @@ raft_server_enqueue_rw(struct raft_instance *ri,
                        uint32_t msg_type)
 {
     // Take a lock on queue.
-
-    uint32_t queue_type = (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
-                           RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
+    uint32_t queue_type =
+        (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
+        RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
 
     // Release this reference after processing the read/write request.
     ctl_svc_node_get(csn);
 
-    NIOVA_SET_COND_AND_WAKE(signal,
-    {STAILQ_INSERT_TAIL(&ri->ri_worker_queue[queue_type].rsw_queue, csn, csn_lentry);},
-    &ri->ri_worker_queue[queue_type].rsw_mutex,
-    &ri->ri_worker_queue[queue_type].rsw_cond);
+    struct raft_work_queue *rwq = &ri->ri_worker_queue[queue_type];
+
+    NIOVA_SET_COND_AND_WAKE(
+        signal, { STAILQ_INSERT_TAIL(&rwq->rsw_queue, csn, csn_lentry); },
+        &rwq->rsw_mutex, &rwq->rsw_cond);
 
 }
 
