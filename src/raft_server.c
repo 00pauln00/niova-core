@@ -4409,7 +4409,6 @@ raft_server_enqueue_rw(struct raft_instance *ri,
     NIOVA_SET_COND_AND_WAKE(
         signal, { STAILQ_INSERT_TAIL(&rwq->rsw_queue, csn, csn_lentry); },
         &rwq->rsw_mutex, &rwq->rsw_cond);
-
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -5792,19 +5791,19 @@ raft_server_rw_thread_init(struct raft_instance *ri,
 
      size_t buf_size = RAFT_BS_LARGE_SZ;
     // XXX should we allocate recv and reply buffers on demand?
-     thread->rrwt_recv_buff = niova_malloc(buf_size); 
+     thread->rrwt_recv_buff = niova_malloc(buf_size);
      NIOVA_ASSERT(thread->rrwt_recv_buff);
      thread->rrwt_reply_buff = niova_malloc(buf_size);
      NIOVA_ASSERT(thread->rrwt_reply_buff);
 
-     thread->rrwt_queue = &ri->ri_worker_queue[type]; 
+     thread->rrwt_queue = &ri->ri_worker_queue[type];
      thread->rrwt_arg = ri;
 
      char thread_name[64];
      sprintf(thread_name, "%s_thread", type == RAFT_SERVER_BULK_MSG_WRITE ? "write": "read");
      int rc = thread_create_watched(raft_server_rw_thread,
                                     &thread->rrwt_thread_ctl,
-                                    type == RAFT_SERVER_BULK_MSG_WRITE ? "wr_thread" : "rd_thread", 
+                                    type == RAFT_SERVER_BULK_MSG_WRITE ? "wr_thread" : "rd_thread",
                                     (void *)thread,
                                     NULL);
      if (rc)
