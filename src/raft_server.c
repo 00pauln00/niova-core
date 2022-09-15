@@ -5754,20 +5754,19 @@ raft_server_rw_thread(void *arg)
     struct raft_work_queue *queue = rw_thr->rrwt_queue;
     THREAD_LOOP_WITH_CTL(tc)
     {
-        // Wait for item in the queue.
-        NIOVA_WAIT_COND(!STAILQ_EMPTY(&queue->rsw_queue),
-                        &queue->rsw_mutex, &queue->rsw_cond);
+        struct ctl_svc_node *csn = NULL;
 
-        //Take mutex
-        pthread_mutex_lock(&queue->rsw_mutex);
-        struct ctl_svc_node *csn;
-        csn = STAILQ_FIRST(&queue->rsw_queue);
-        if (csn) {
-            // Remove the read request from the queue
-            STAILQ_REMOVE_HEAD(&queue->rsw_queue, csn_lentry);
-        }
-        // Release mutex
-        pthread_mutex_unlock(&queue->rsw_mutex);
+        // Wait for item in the queue.
+        NIOVA_WAIT_COND(
+            !STAILQ_EMPTY(&queue->rsw_queue),
+            &queue->rsw_mutex, &queue->rsw_cond,
+            {
+                if (!STAILQ_EMPTY(&queue->rsw_queue))
+                {
+                    csn = STAILQ_FIRST(&queue->rsw_queue);
+                    STAILQ_REMOVE_HEAD(&queue->rsw_queue, csn_lentry);
+                }
+            });
 
         if (csn)
         {
