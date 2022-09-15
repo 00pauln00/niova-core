@@ -131,6 +131,8 @@ jobs:
                              '/home/runner/work/go/go/bin'
                              1
                              1
+                             5
+
 
     - name:  run recipe for multiple I/O operations on nisd
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
@@ -143,6 +145,7 @@ jobs:
                              2
                              2
                              'true'
+                             2
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
