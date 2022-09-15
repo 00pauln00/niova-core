@@ -661,7 +661,7 @@ static int
 tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
 {
     size_t header_size = tmc->tmc_header_size;
-    char *buffer =  niova_calloc(1, TCP_MGR_MAX_HDR_SIZE);
+    char *buffer =  niova_calloc(1UL, TCP_MGR_MAX_HDR_SIZE);
     int rc  = tcp_mgr_get_msg_header(tmc, buffer);
     if (rc)
     {

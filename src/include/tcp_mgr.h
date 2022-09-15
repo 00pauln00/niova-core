@@ -10,7 +10,7 @@
 #include "epoll_mgr.h"
 #include "tcp.h"
 
-#define TCP_MGR_MAX_HDR_SIZE 65000
+#define TCP_MGR_MAX_HDR_SIZE 65000UL
 #define TCP_MGR_MAX_BULK_SIZE 256*1024*1024
 
 typedef void    tcp_mgr_ctx_t;
