@@ -277,7 +277,7 @@ static void
 fault_inject_set_lreg_install(struct fault_injection_set *fis)
 {
     NIOVA_ASSERT(fis);
-    SIMPLE_LOG_MSG(LL_WARN, "size=%zu", fis->finj_set_size);
+    SIMPLE_LOG_MSG(LL_DEBUG, "size=%zu", fis->finj_set_size);
 
     for (int i = 0; i < fis->finj_set_size; i++)
     {
