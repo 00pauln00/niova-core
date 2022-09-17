@@ -75,6 +75,9 @@ raft_server_instance_self_idx(const struct raft_instance *ri)
     return raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
 }
 
+static unsigned long long
+raft_heartbeat_timeout_msec(const struct raft_instance *ri);
+
 static const char *
 raft_follower_reason_2_str(enum raft_follower_reasons reason)
 {
@@ -114,6 +117,8 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_LAST_APPLIED_CCRC,  // int64
     RAFT_LREG_SYNC_FREQ_US,       // uint64
     RAFT_LREG_SYNC_CNT,           // uint64
+    RAFT_LREG_QUORUM_CNT,         // int64
+    RAFT_LREG_HEARTBEAT_MSEC,     // int64
     RAFT_LREG_NEWEST_ENTRY_IDX,   // int64
     RAFT_LREG_NEWEST_ENTRY_TERM,  // int64
     RAFT_LREG_NEWEST_ENTRY_SIZE,  // uint32
@@ -239,6 +244,16 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                 (raft_instance_is_candidate(ri) ||
                  raft_instance_is_leader(ri)) ? "none" :
                 raft_follower_reason_2_str(ri->ri_follower_reason));
+            break;
+        case RAFT_LREG_QUORUM_CNT:
+            lreg_value_fill_signed(lv, "quorum-cnt",
+                                   (raft_instance_is_leader(ri) ?
+                                    ri->ri_leader.rls_quorum_ok_cnt : -1));
+            break;
+        case RAFT_LREG_HEARTBEAT_MSEC:
+            lreg_value_fill_signed(lv, "heartbeat-freq-msec",
+                                   (raft_instance_is_leader(ri) ?
+                                    raft_heartbeat_timeout_msec(ri) : -1));
             break;
         case RAFT_LREG_CLIENT_REQUESTS:
             lreg_value_fill_string(
@@ -1612,15 +1627,23 @@ raft_election_timeout_set(const struct raft_instance *ri, struct timespec *ts)
     msec_2_timespec(ts, msec);
 }
 
-static void
-raft_heartbeat_timeout_sec(const struct raft_instance *ri, struct timespec *ts)
+static unsigned long long
+raft_heartbeat_timeout_msec(const struct raft_instance *ri)
 {
+    NIOVA_ASSERT(ri);
+
     unsigned long long msec = (ri->ri_election_timeout_max_ms /
                                ri->ri_heartbeat_freq_per_election_min);
 
     NIOVA_ASSERT(msec >= RAFT_HEARTBEAT__MIN_TIME_MS);
 
-    msec_2_timespec(ts, msec);
+    return msec;
+}
+
+static void
+raft_heartbeat_timeout_sec(const struct raft_instance *ri, struct timespec *ts)
+{
+    msec_2_timespec(ts, raft_heartbeat_timeout_msec(ri));
 }
 
 /**
@@ -3400,7 +3423,12 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
                                             non_matching_prev_term, update_sli,
                                             rc);
 
-    if (reset_timerfd)
+    /* Ensure that the raft leader (valid or otherwise) does not reset its timer
+     * since this may cause a leader timeout due to delayed pings.
+     * Additionally, for users of the heartbeat as a clock source it's important
+     * that the leader wakes up consistently.
+     */
+    if (reset_timerfd && !raft_instance_is_leader(ri))
         raft_server_timerfd_settime(ri);
 }
 
@@ -3877,16 +3905,35 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
         ri, raft_election_timeout_lower_bound(ri));
 }
 
+/* raft_leader_check_quorum - reads follower ack state and determines if a
+ *   quorum exists (IOW that enough followers have ack'd this leader w/in the
+ *   time window).
+ *   NOTE:  rls_quorum_ok_cnt - this value is incremented each time this call
+ *     is entered, without respect to the current time.  It is assumed that this
+ *     called is made periodically from the leader's timefd expiration. Calling
+ *     this function outside of raft_net_timerfd_cb_ctx can have a negative
+ *     effect on users of this value which are using it as a clock value.
+ */
 static raft_net_timerfd_cb_ctx_bool_t
 raft_leader_check_quorum(struct raft_instance *ri)
 {
+    NIOVA_ASSERT(ri->ri_state == RAFT_STATE_LEADER);
+
     bool quorum_intact =
         raft_leader_majority_followers_comm_window(
             ri, (raft_election_timeout_lower_bound(ri) *
                  ri->ri_check_quorum_timeout_factor));
 
-    if (!quorum_intact)
+    if (quorum_intact)
+    {
+        ri->ri_leader.rls_quorum_ok_cnt++;
+        DBG_RAFT_INSTANCE(LL_DEBUG, ri, "quorum OK (cnt=%ld)",
+                          ri->ri_leader.rls_quorum_ok_cnt);
+    }
+    else
+    {
         DBG_RAFT_INSTANCE(LL_WARN, ri, "quorum loss detected");
+    }
 
     return quorum_intact;
 }

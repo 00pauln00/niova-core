@@ -314,6 +314,8 @@ struct raft_leader_state
 {
     int64_t                   rls_initial_term_idx; // idx @start of ldr's term
     int64_t                   rls_leader_term;
+    int64_t                   rls_quorum_ok_cnt;
+//    int64_t                   rls_quorum_miss_cnt;
     struct raft_follower_info rls_rfi[CTL_SVC_MAX_RAFT_PEERS];
 };
 
