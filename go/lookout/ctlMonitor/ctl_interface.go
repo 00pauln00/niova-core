@@ -59,8 +59,8 @@ type NISDInfo struct {
 	WriteBytes		int	`json:"dev-bytes-write" type:"counter" metric:"nisd_dev_write_bytes"`
 	NetRecvBytes		int	`json:"net-bytes-recv" type:"counter" metric:"nisd_net_bytes_recv"`
 	NetSendBytes		int	`json:"net-bytes-send" type:"counter" metric:"nisd_net_bytes_send"`
-	DevRdLatencyUsec	int	`json"dev-rd-latency-usec" type:"histogram" metric:"nisd_dev_rd_latency_usec"`
-	DevWrLatencyUsec	int	`json"dev-wr-latency-usec" type:"histogram" metric:"nisd_dev_wr_latency_usec"`
+	DevRdLatencyUsec	int	`json:"dev-rd-latency-usec" type:"histogram" metric:"nisd_dev_rd_latency_usec"`
+	DevWrLatencyUsec	int	`json:"dev-wr-latency-usec" type:"histogram" metric:"nisd_dev_wr_latency_usec"`
 }
 
 
