@@ -24,8 +24,6 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
-	"common/lookout"
-	"fmt"
 )
 
 /*
@@ -258,9 +256,9 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		rport = splitData[3]
 		if len(splitData) > 4 {
 			handler.prometheus = true
-		if handler.prometheus {
 			hport = splitData[4]
 		}
+
 		if uuid == handler.peerUUID.String() {
 			buffer, err := strconv.ParseUint(aport, 10, 16)
 			handler.serfAgentPort = uint16(buffer)
@@ -287,7 +285,7 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		} else {
 			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
 		}
-	}
+ 	}
 
 	if !flag {
 		log.Error("Peer UUID not matching with gossipNodes config file")
