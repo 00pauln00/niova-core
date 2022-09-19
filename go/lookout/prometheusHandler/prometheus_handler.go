@@ -78,7 +78,8 @@ func makePromHistogram(metric string, histogram map[string]string) string {
 func makePromGauge(metric string, label string, value string) string {
 	output := fmt.Sprintf(`
 # HELP %s gauge output
-# TYPE %s gauge`, metric, metric)
+# TYPE %s gauge
+`, metric, metric)
 	entry := fmt.Sprintf(`%s%s{%s} %s`, output, metric, label, value)
 	return entry + "\n"
 }
