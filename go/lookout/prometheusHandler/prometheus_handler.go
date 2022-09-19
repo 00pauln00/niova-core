@@ -10,7 +10,7 @@ import (
 
 type prometheusClient struct {
 	HTTPoutput string
-	Label map[string]string
+	Label      map[string]string
 }
 
 func parseCounter(count reflect.Value) string {
@@ -75,19 +75,18 @@ func makePromHistogram(metric string, histogram map[string]string) string {
 	return output
 }
 
-
 func makePromGauge(metric string, label string, value string) string {
 	output := fmt.Sprintf(`
 # HELP %s gauge output
 # TYPE %s gauge`, metric, metric)
 	entry := fmt.Sprintf(`%s%s{%s} %s`, output, metric, label, value)
-        return entry + "\n"
+	return entry + "\n"
 }
 
 func makeLabelString(label map[string]string) string {
 	output := ""
 	for key, value := range label {
-		output += fmt.Sprintf(`%s="%s"`,key, value)
+		output += fmt.Sprintf(`%s="%s"`, key, value)
 	}
 	return output
 }

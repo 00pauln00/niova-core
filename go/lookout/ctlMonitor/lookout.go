@@ -308,7 +308,7 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 	w.Write(output)
 }
 
-func (epc *EPContainer) parseMembershipPrometheus( state string, raftUUID string ) string {
+func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string) string {
 	var output string
 	membership := epc.SerfMembershipCB()
 	for name, isAlive := range membership {
@@ -330,7 +330,7 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	//Take snapshot of the EpMap
 	nodeMap := make(map[uuid.UUID]*NcsiEP)
 	epc.mutex.Lock()
-	for k,v := range epc.EpMap {
+	for k, v := range epc.EpMap {
 		nodeMap[k] = v
 	}
 	epc.mutex.Unlock()
@@ -343,7 +343,7 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		labelMap["STATE"] = node.EPInfo.RaftRootEntry[0].State
 		labelMap["RAFT_UUID"] = node.EPInfo.RaftRootEntry[0].RaftUUID
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0], labelMap)
-		output += epc.parseMembershipPrometheus( node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID )
+		output += epc.parseMembershipPrometheus(node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID)
 	} else if epc.AppType == "NISD" {
 		for uuid, node := range nodeMap {
 			labelMap := make(map[string]string)
