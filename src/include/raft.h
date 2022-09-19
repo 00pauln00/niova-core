@@ -88,7 +88,8 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 4,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 5,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 6,
-    RAFT_RPC_MSG_TYPE_ANY                    = 7,
+    RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE        = 7,
+    RAFT_RPC_MSG_TYPE_ANY                    = 8,
 };
 
 enum raft_buf_set_type
@@ -611,6 +612,13 @@ do {                                                                \
                     (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
                     __uuid_str,                                         \
                     ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE:                         \
+            LOG_MSG(log_level,                                          \
+                    "SYNC_IDX_UPDATE t=%ld sli=%ld %s "fmt,              \
+                    (rm)->rrm_sync_index_update.rsium_term,             \
+                    (rm)->rrm_sync_index_update.rsium_synced_log_index, \
+                    __uuid_str, ##__VA_ARGS__);                         \
             break;                                                      \
         default:                                                        \
             LOG_MSG(log_level, "UNKNOWN "fmt, ##__VA_ARGS__);           \
