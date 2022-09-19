@@ -181,7 +181,10 @@ func (epc *EPContainer) processInotifyEvent(event *fsnotify.Event) {
 	}
 
 	if ep := epc.EpMap[uuid]; ep != nil {
-		ep.Complete(cmpstr, nil)
+		err := ep.Complete(cmpstr, nil)
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
 }
 
