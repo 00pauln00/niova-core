@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"common/lookout"
 	"common/requestResponseLib"
+	"common/serviceDiscovery"
 	compressionLib "common/specificCompressionLib"
 	"controlplane/serfAgent"
-	"common/serviceDiscovery"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
@@ -17,8 +17,8 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"unsafe"
 	"time"
+	"unsafe"
 )
 
 // #include <unistd.h>
@@ -45,9 +45,9 @@ type nisdMonitor struct {
 	lookout       lookout.EPContainer
 	endpointRoot  *string
 	httpPort      *int
-	ctlPath	      *string
+	ctlPath       *string
 	//serf
-	serfHandler    serfAgent.SerfAgentHandler
+	serfHandler     serfAgent.SerfAgentHandler
 	agentName       string
 	addr            string
 	agentPort       string
@@ -99,27 +99,26 @@ func (handler *nisdMonitor) parseCMDArgs() {
 	}
 }
 
-
 func (handler *nisdMonitor) requestPMDB(key string) ([]byte, error) {
 	request := requestResponseLib.KVRequest{
-                Operation: "read",
-                Key:       key,
-        }
-        var requestByte bytes.Buffer
-        enc := gob.NewEncoder(&requestByte)
-        enc.Encode(request)
-        responseByte, err := handler.storageClient.Request(requestByte.Bytes(), "", false)
+		Operation: "read",
+		Key:       key,
+	}
+	var requestByte bytes.Buffer
+	enc := gob.NewEncoder(&requestByte)
+	enc.Encode(request)
+	responseByte, err := handler.storageClient.Request(requestByte.Bytes(), "", false)
 	return responseByte, err
 }
 
 func fillNisdCStruct(UUID string, ipaddr string, port int) []byte {
 	//FIXME: free the memory
 	nisd_peer_config := C.struct_nisd_config{}
-        C.strncpy(&(nisd_peer_config.nisd_uuid[0]), C.CString(UUID), C.ulong(len(UUID)+1))
-        C.strncpy(&(nisd_peer_config.nisd_ipaddr[0]), C.CString(ipaddr), C.ulong(len(ipaddr)+1))
-        nisd_peer_config.nisdc_addr_len = C.int(len(ipaddr))
-        nisd_peer_config.nisd_port = C.int(port)
-        returnData := C.GoBytes(unsafe.Pointer(&nisd_peer_config), C.sizeof_struct_nisd_config)
+	C.strncpy(&(nisd_peer_config.nisd_uuid[0]), C.CString(UUID), C.ulong(len(UUID)+1))
+	C.strncpy(&(nisd_peer_config.nisd_ipaddr[0]), C.CString(ipaddr), C.ulong(len(ipaddr)+1))
+	nisd_peer_config.nisdc_addr_len = C.int(len(ipaddr))
+	nisd_peer_config.nisd_port = C.int(port)
+	returnData := C.GoBytes(unsafe.Pointer(&nisd_peer_config), C.sizeof_struct_nisd_config)
 	return returnData
 }
 
@@ -151,31 +150,30 @@ func (handler *nisdMonitor) getConfigNSend(udpInfo udpMessage) {
 	handler.udpSocket.WriteTo(structByteArray, udpInfo.addr)
 }
 
-
 func setLogOutput(logPath string) {
 	switch logPath {
-        case "ignore":
-                log.SetOutput(ioutil.Discard)
-        default:
-                f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
-                if err != nil {
-                        log.SetOutput(os.Stderr)
-                } else {
-                        log.SetOutput(f)
-                }
-        }
+	case "ignore":
+		log.SetOutput(ioutil.Discard)
+	default:
+		f, err := os.OpenFile(logPath, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0644)
+		if err != nil {
+			log.SetOutput(os.Stderr)
+		} else {
+			log.SetOutput(f)
+		}
+	}
 }
 
 func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
 	agentPort, _ := strconv.Atoi(handler.agentPort)
 	handler.serfHandler = serfAgent.SerfAgentHandler{
-		Name : handler.agentName,
-		BindAddr : net.ParseIP(handler.addr),
-		BindPort : uint16(agentPort),
-		AgentLogger : log.Default(),
-		RpcAddr : net.ParseIP(handler.addr),
-		RpcPort : uint16(*handler.agentRPCPort),
+		Name:        handler.agentName,
+		BindAddr:    net.ParseIP(handler.addr),
+		BindPort:    uint16(agentPort),
+		AgentLogger: log.Default(),
+		RpcAddr:     net.ParseIP(handler.addr),
+		RpcPort:     uint16(*handler.agentRPCPort),
 	}
 
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
@@ -187,7 +185,6 @@ func (handler *nisdMonitor) startSerfAgent() error {
 	_, err = handler.serfHandler.SerfAgentStartup(joinAddrs, true)
 	return err
 }
-
 
 func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 	returnMap := make(map[string]string)
@@ -264,6 +261,16 @@ func (handler *nisdMonitor) startUDPListner() {
 	}
 }
 
+func (handler *nisdMonitor) SerfMembership() map[string]bool {
+	membership := handler.storageClient.GetMembership()
+	returnMap := make(map[string]bool)
+	for _, member := range membership {
+		if member.Status == "alive" {
+			returnMap[member.Name] = true
+		}
+	}
+	return returnMap
+}
 
 func main() {
 	var nisd nisdMonitor
@@ -285,10 +292,12 @@ func main() {
 
 	//Start lookout monitoring
 	nisd.lookout = lookout.EPContainer{
-		MonitorUUID : "*",
-		AppType : "NISD",
-		HttpPort : *nisd.httpPort,
-		CTLPath: *nisd.ctlPath,
+		MonitorUUID:      "*",
+		AppType:          "NISD",
+		HttpPort:         *nisd.httpPort,
+		CTLPath:          *nisd.ctlPath,
+		SerfMembershipCB: nisd.SerfMembership,
+		EnableHttp:       true,
 	}
 	nisd.lookout.Start()
 }

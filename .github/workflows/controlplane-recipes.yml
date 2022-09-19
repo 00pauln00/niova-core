@@ -68,29 +68,21 @@ jobs:
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/holon
-       #ref:
+         #ref:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
-    # Checkout niova-lookout / Branch : nisd_communication
-    - name: Checkout niova-lookout repository
-      uses: actions/checkout@v2
-      with:
-       repository: 00pauln00/niova-lookout
-       ref: nisd_communication
-       token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
-       path: ./lookout
-
-    - name: Compile niova-lookout
-      run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd ./lookout && go build && cp lookout /home/runner/work/niovad/niovad/build_dir/libexec/niova && cd -
+    #Build nisd monitor
+    - name: Build nisd lookout monitor
+      run:  export PATH=$PATH:/home/runner/work/go/go/bin &&
+            cd code/go/lookout/nisdMonitor && go build && cp nisdLookout /home/runner/work/niovad/niovad/build_dir/libexec/niova
 
     # Checkout niova-block repository / Branch : nisd_mointor_retry
     - name: Checkout niova-block repository
       uses: actions/checkout@v2
       with:
        repository: 00pauln00/niova-block
-       ref: nisd_mointor_retry
+       #ref: 
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PATH
        submodules: recursive
        path: ./niova-block
