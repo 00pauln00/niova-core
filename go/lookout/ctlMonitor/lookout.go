@@ -312,13 +312,15 @@ func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string)
 	var output string
 	membership := epc.SerfMembershipCB()
 	for name, isAlive := range membership {
-		var adder string
+		var adder, status string
 		if isAlive {
 			adder = "1"
+			status = "online"
 		} else {
 			adder = "0"
+			status = "offline"
 		}
-		output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"raftUUID="%s"} %s`, name, state, raftUUID, adder)
+		output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"status="%s"raftUUID="%s"} %s`, name, state, status, raftUUID, adder)
 	}
 	return output
 }
@@ -334,25 +336,31 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		nodeMap[k] = v
 	}
 	epc.mutex.Unlock()
+	labelMap := make(map[string]string)
+	for _, node := range nodeMap {
+		labelMap["NODE_NAME"] = node.EPInfo.SysInfo.UtsNodename
+		labelMap["SYS_NAME"]= node.EPInfo.SysInfo.UtsSysname
+		labelMap["MACHINE"]= node.EPInfo.SysInfo.UtsMachine
+	}
 	if epc.AppType == "PMDB" {
 		parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
 		node := nodeMap[parsedUUID]
-		labelMap := make(map[string]string)
 		labelMap["PMDB_UUID"] = parsedUUID.String()
-		labelMap["TYPE"] = epc.AppType
 		labelMap["STATE"] = node.EPInfo.RaftRootEntry[0].State
 		labelMap["RAFT_UUID"] = node.EPInfo.RaftRootEntry[0].RaftUUID
+		labelMap["TYPE"] = epc.AppType
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0], labelMap)
 		output += epc.parseMembershipPrometheus(node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID)
+		output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
 	} else if epc.AppType == "NISD" {
 		for uuid, node := range nodeMap {
-			labelMap := make(map[string]string)
 			labelMap["NISD_UUID"] = uuid.String()
-			labelMap["TYPE"] = epc.AppType
 			labelMap["STATUS"] = node.EPInfo.NISDRootEntry[0].Status
 			labelMap["ALT_NAME"] = node.EPInfo.NISDRootEntry[0].AltName
+			labelMap["TYPE"] = epc.AppType
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0], labelMap)
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
+			output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
 		}
 	}
 	fmt.Fprintln(w, output)
