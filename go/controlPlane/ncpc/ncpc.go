@@ -6,8 +6,8 @@ import (
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
-	"errors"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	uuid "github.com/google/uuid"
@@ -18,8 +18,8 @@ import (
 	"math/rand"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
-	"strconv"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -147,7 +147,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 			//VDEV-UUID
 			for j := int64(0); j < noUUID; j++ {
 				randUUID, _ := uuid.NewRandomFromReader(r)
-				partNodePrefix := prefix +"."+randUUID.String()
+				partNodePrefix := prefix + "." + randUUID.String()
 				kvMap[partNodePrefix] = randSeq(valSize, r)
 				vdevUUID = append(vdevUUID, randUUID.String())
 			}
@@ -207,8 +207,11 @@ func (handler *clientHandler) getCmdParams() {
 
 //Write to Json
 func (cli *clientHandler) write2Json(toJson interface{}) {
-	file, _ := json.MarshalIndent(toJson, "", " ")
-	_ = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
+	file, err := json.MarshalIndent(toJson, "", " ")
+	err = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
+	if err != nil {
+		log.Error("Error in writing output to the file : ", err)
+	}
 }
 
 //Converts map[string][]byte to map[string]string
@@ -224,9 +227,9 @@ func convMapToStr(map1 map[string][]byte) map[string]string {
 
 func fillOperationData(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
 	requestMeta := request{
-		Opcode:    operation,
-		Key:       key,
-		Value:     value,
+		Opcode: operation,
+		Key:    key,
+		Value:  value,
 	}
 
 	responseMeta := response{
@@ -271,7 +274,6 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	return nisdDataMap
 }
 
-
 func (clientObj *clientHandler) write() {
 	kvMap := make(map[string][]byte)
 	// Fill kvMap with key/val from user or generate keys/vals
@@ -297,9 +299,9 @@ func (clientObj *clientHandler) write() {
 			}()
 
 			var requestObj requestResponseLib.KVRequest
-                        var responseObj requestResponseLib.KVResponse
-                        var requestBytes bytes.Buffer
-                        var responseBytes []byte
+			var responseObj requestResponseLib.KVResponse
+			var requestBytes bytes.Buffer
+			var responseBytes []byte
 
 			err := func() error {
 
@@ -333,7 +335,6 @@ func (clientObj *clientHandler) write() {
 				return nil
 			}()
 
-
 			//Request status filler
 			if clientObj.count == 1 {
 				if err != nil {
@@ -348,7 +349,7 @@ func (clientObj *clientHandler) write() {
 			if err != nil {
 				operationStatMulti = multiWriteStatus{
 					Status: 1,
-					Value: err.Error(),
+					Value:  err.Error(),
 				}
 			} else {
 				operationStatMulti = multiWriteStatus{
@@ -453,7 +454,7 @@ func (clientObj *clientHandler) rangeRead() {
 
 		if len(responseBytes) == 0 {
 			err = errors.New("Key not found")
-			log.Error("Empty response : ",err)
+			log.Error("Empty response : ", err)
 			break
 		}
 		// decode the responseObj
@@ -482,19 +483,19 @@ func (clientObj *clientHandler) rangeRead() {
 		strResultMap := convMapToStr(resultMap)
 		operationStat = fillOperationData(0, "range", requestObj.Key, strResultMap, seqNum)
 
-		//Validate the range output		
+		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
-                genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 
-                // Get the expected data for read operation and compare against the output.
-                tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
-                filteredMap := filterKVPrefix(genKVMap, tPrefix)
+		// Get the expected data for read operation and compare against the output.
+		tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
+		filteredMap := filterKVPrefix(genKVMap, tPrefix)
 
-                compare := reflect.DeepEqual(resultMap, filteredMap)
-                if !compare {
-                        fmt.Println("Range verification read failure")
-                }
-                fmt.Println("The range query was completed in", count, "iterations")
+		compare := reflect.DeepEqual(resultMap, filteredMap)
+		if !compare {
+			fmt.Println("Range verification read failure")
+		}
+		fmt.Println("The range query was completed in", count, "iterations")
 
 	} else {
 		operationStat = fillOperationData(1, "range", requestObj.Key, err.Error(), seqNum)
@@ -507,7 +508,7 @@ func isRangeRequest(requestKey string) bool {
 	return requestKey[len(requestKey)-1:] == "*"
 }
 
-func isSingleWriteReqValid( cli *clientHandler) bool {
+func isSingleWriteReqValid(cli *clientHandler) bool {
 	if cli.operation == "write" && cli.count == 1 && cli.requestValue == "" {
 		return false
 	}
@@ -522,7 +523,7 @@ func main() {
 	//Get commandline parameters.
 	clientObj.getCmdParams()
 	flag.Usage = usage
-	if flag.NFlag() == 0 || !isSingleWriteReqValid(&clientObj){
+	if flag.NFlag() == 0 || !isSingleWriteReqValid(&clientObj) {
 		usage()
 		os.Exit(-1)
 	}
@@ -671,9 +672,9 @@ func main() {
 		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
 
 	case "ProxyStat":
-                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
-                clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
-                responseBytes, err := clientObj.clientAPIObj.Request(nil, "/stat", false)
+		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+		clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
+		responseBytes, err := clientObj.clientAPIObj.Request(nil, "/stat", false)
 		if err != nil {
 			log.Error("Error while sending request to proxy : ", err)
 		}
@@ -699,8 +700,8 @@ func main() {
                         log.Error("Error while sending request to proxy : ", err)
                 }
 		clientObj.write2Json(responseBytes)
-	}
 
+	}
 	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
 
 }
