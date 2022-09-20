@@ -64,18 +64,21 @@ type NISDInfo struct {
 }
 
 type NISDRoot struct {
-	VBlockWritten        int    `json:"vblks-written" type:"counter" metric:"nisd_vblk_write"`
-	VBlockRead           int    `json:"vblks-read" type:"counter" metric:"nisd_vblk_read"`
-	MetablockWritten     int    `json:"metablock-sectors-written" type:"counter" metric:"nisd_metablock_wriitten"`
-	MetablockRead        int    `json:"metablcock-sectors-read" type:"counter" metric:"nisd_metablock_read"`
-	MetablockCacheHit    int    `json:"metablock-cache-hits" type:"counter" metric:"nisd_metablock_cache_hits"`
-	MetablockCacheMiss   int    `json:"metablock-cache-misses" type:"counter" metric:"nisd_metablock_cache_misses"`
-	NumPblks             int    `json:"num-pblks" type:"counter" metric:"nisd_num_pblk"`
-	NumPblksUsed         int    `json:"num-pblks-used" type:"counter" metric:"nisd_num_pblk_used"`
-	NumReservedPblks     int    `json:"num-reserved-pblks" type:"counter" metric:"nisd_num_reserved_pblks"`
-	NumReservedPblksUsed int    `json:"num-reserved-pblks-used" type:"counter" metric:"nisd_num_reserved_pblks_used"`
-	Status               string `json:"status"`
-	AltName              string `json:"alt-name"`
+	VBlockWritten        	int    `json:"vblks-written" type:"counter" metric:"nisd_vblk_write"`
+	VBlockRead           	int    `json:"vblks-read" type:"counter" metric:"nisd_vblk_read"`
+	VBlockHoleRead	     	int    `json:"vblks-hole-read" type:"gauge" metric:"nisd_vblk_hole_read"`
+	VBlockReplicationSent	int    `json:"vblks-replication-sent" type:"gauge" metric:"nisd_vblk_replication_sent"`
+	VBlockReplicationRecv	int    `json:"vblks-replication-recv" type:"gauge" metric:"nisd_vblk_replication_recv"`
+	MetablockWritten     	int    `json:"metablock-sectors-written" type:"counter" metric:"nisd_metablock_wriitten"`
+	MetablockRead        	int    `json:"metablcock-sectors-read" type:"counter" metric:"nisd_metablock_read"`
+	MetablockCacheHit    	int    `json:"metablock-cache-hits" type:"counter" metric:"nisd_metablock_cache_hits"`
+	MetablockCacheMiss   	int    `json:"metablock-cache-misses" type:"counter" metric:"nisd_metablock_cache_misses"`
+	NumPblks             	int    `json:"num-pblks" type:"counter" metric:"nisd_num_pblk"`
+	NumPblksUsed         	int    `json:"num-pblks-used" type:"counter" metric:"nisd_num_pblk_used"`
+	NumReservedPblks     	int    `json:"num-reserved-pblks" type:"counter" metric:"nisd_num_reserved_pblks"`
+	NumReservedPblksUsed 	int    `json:"num-reserved-pblks-used" type:"counter" metric:"nisd_num_reserved_pblks_used"`
+	Status               	string `json:"status"`
+	AltName              	string `json:"alt-name"`
 }
 
 type Histogram struct {
