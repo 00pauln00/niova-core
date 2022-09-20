@@ -5780,7 +5780,7 @@ raft_server_rw_thread(void *arg)
 
         // Wait for item in the queue.
         NIOVA_WAIT_COND(
-            !STAILQ_EMPTY(&queue->rsw_queue),
+            (!STAILQ_EMPTY(&queue->rsw_queue) || tc->tc_halt),
             &queue->rsw_mutex, &queue->rsw_cond,
             {
                 if (!STAILQ_EMPTY(&queue->rsw_queue))
@@ -5862,9 +5862,14 @@ raft_server_rw_thread_join(struct raft_instance *ri)
     NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
 
     int rc = 0, rc_error = 0;
+    struct raft_work_queue *rwq = NULL;
 
     for (int i = 0; i < RAFT_NUM_READ_THREADS; i++)
     {
+         rwq = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_READ];
+         NIOVA_SET_COND_AND_WAKE(
+            broadcast, {thread_ctl_halt(&ri->ri_reader_thread_ctl[i].rrwt_thread_ctl);},
+            &rwq->rsw_mutex, &rwq->rsw_cond);
          rc = thread_halt_and_destroy(&ri->ri_reader_thread_ctl[i].rrwt_thread_ctl);
          if (rc)
              rc_error = rc;
