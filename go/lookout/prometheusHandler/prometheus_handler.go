@@ -54,7 +54,7 @@ func makePromCounter(metric string, label string, count string) string {
 	return entry + "\n"
 }
 
-func makePromHistogram(metric string, histogram map[string]string) string {
+func makePromHistogram(metric string, label string, histogram map[string]string) string {
 	output := fmt.Sprintf(`
 # HELP %s histogram output
 # TYPE %s histogram`, metric, metric)
@@ -67,7 +67,7 @@ func makePromHistogram(metric string, histogram map[string]string) string {
 	sort.Strings(bounds)
 
 	for _, bound := range bounds {
-		entry := fmt.Sprintf(`%s_bucket{le="%s"} %s`, metric, bound, histogram[bound])
+		entry := fmt.Sprintf(`%s_bucket{%sle="%s"} %s`, metric, label, bound, histogram[bound])
 		output += "\n" + entry
 	}
 	entry := fmt.Sprintf("%s_count %s", metric, histogram["+inf"])
@@ -110,7 +110,7 @@ func GenericPromDataParser(structure interface{}, labels map[string]string) stri
 		switch promType {
 		case "histogram":
 			histogram := parseHistogram(fieldValue, fieldType.Type)
-			op += makePromHistogram(promMetric, histogram)
+			op += makePromHistogram(promMetric, labelString, histogram)
 		case "counter":
 			count := parseCounter(fieldValue)
 			op += makePromCounter(promMetric, labelString, count)
