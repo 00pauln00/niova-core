@@ -308,7 +308,7 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 	w.Write(output)
 }
 
-func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string) string {
+func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string, nodeUUID string) string {
 	var output string
 	membership := epc.SerfMembershipCB()
 	for name, isAlive := range membership {
@@ -320,7 +320,9 @@ func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string)
 			adder = "0"
 			status = "offline"
 		}
-		output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"status="%s"raftUUID="%s"} %s`, name, state, status, raftUUID, adder)
+		if nodeUUID == name {
+			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"status="%s"raftUUID="%s"} %s`, name, state, status, raftUUID, adder)
+		}
 	}
 	return output
 }
@@ -349,8 +351,11 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		labelMap["STATE"] = node.EPInfo.RaftRootEntry[0].State
 		labelMap["RAFT_UUID"] = node.EPInfo.RaftRootEntry[0].RaftUUID
 		labelMap["TYPE"] = epc.AppType
+		labelMap["VOTED_FOR"] = node.EPInfo.RaftRootEntry[0].VotedForUUID
+		labelMap["FOLLOWER_REASON"] = node.EPInfo.RaftRootEntry[0].FollowerReason
+		labelMap["CLIENT_REQS"] = node.EPInfo.RaftRootEntry[0].ClientRequests
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0], labelMap)
-		output += epc.parseMembershipPrometheus(node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID)
+		output += epc.parseMembershipPrometheus(node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID, parsedUUID.String())
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
 	} else if epc.AppType == "NISD" {
 		for uuid, node := range nodeMap {

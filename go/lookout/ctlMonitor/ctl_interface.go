@@ -110,14 +110,14 @@ type RaftInfo struct {
 	State                    string    `json:"state"`
 	FollowerReason           string    `json:"follower-reason"`
 	ClientRequests           string    `json:"client-requests"`
-	Term                     int       `json:"term" type:"counter" metric:"Term"`
-	CommitIdx                int       `json:"commit-idx" type:"counter" metric:"CommitIdx"`
-	LastApplied              int       `json:"last-applied"`
-	LastAppliedCumulativeCrc int64     `json:"last-applied-cumulative-crc"`
-	NewestEntryIdx           int       `json:"newest-entry-idx"`
-	NewestEntryTerm          int       `json:"newest-entry-term"`
-	NewestEntryDataSize      int       `json:"newest-entry-data-size"`
-	NewestEntryCrc           int64     `json:"newest-entry-crc"`
+	Term                     int       `json:"term" type:"gauge" metric:"PMDB_term"`
+	CommitIdx                int       `json:"commit-idx" type:"gauge" metric:"PMDB_commitIdx"`
+	LastApplied              int       `json:"last-applied" type:"gauge" metric:"PMDB_last_applied"`
+	LastAppliedCumulativeCrc int64     `json:"last-applied-cumulative-crc" type:"gauge" metric:"PMDB_last_applied_cumulative_crc"`
+	NewestEntryIdx           int       `json:"newest-entry-idx" type:"gauge" metric:"PMDB_newest_entry_idx"`
+	NewestEntryTerm          int       `json:"newest-entry-term" type:"gauge" metric:"PMDB_newest_entry_term"`
+	NewestEntryDataSize      int       `json:"newest-entry-data-size" type:"gauge" metric:"PMDB_newest_entry_data_size"`
+	NewestEntryCrc           int64     `json:"newest-entry-crc" type:"gauge" metric:"PMDB_newest_entry_crc"`
 	DevReadLatencyUsec       Histogram `json:"dev-read-latency-usec" type:"histogram" metric:"dev_read_latency_usec"`
 	DevWriteLatencyUsec      Histogram `json:"dev-write-latency-usec" type:"histogram" metric:"dev_write_latency_usec"`
 	FollowerStats            []struct {
