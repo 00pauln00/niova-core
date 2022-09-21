@@ -2666,8 +2666,6 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
     }
 
-//XXX if leader and followers still have sync ops pending, wake up at a higher
-//    frequency
     raft_server_timerfd_settime(ri);
 }
 
