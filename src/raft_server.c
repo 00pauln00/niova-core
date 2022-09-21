@@ -3587,7 +3587,7 @@ raft_server_try_update_follower_sync_idx(
         {
             rfi->rfi_synced_idx = sli;
 
-            DBG_RAFT_MSG(LL_WARN, rrm, "new-sync-idx=%ld how=%d",
+            DBG_RAFT_MSG(LL_DEBUG, rrm, "new-sync-idx=%ld how=%d",
                          rfi->rfi_synced_idx, type);
 
             // if this request increases the remote's rfi_synced_idx..
@@ -4856,12 +4856,9 @@ raft_server_follower_send_sync_idx(struct raft_instance *ri)
     raft_server_set_uuids_in_rpc_msg(ri, &rrm);
 
     int rc = raft_server_send_msg(ri, RAFT_UDP_LISTEN_SERVER, leader, &rrm);
-    if (rc)
-        DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "raft_server_send_msg(): %s",
-                          strerror(-rc));
 
-    DBG_RAFT_INSTANCE(LL_WARN, ri, "raft_server_send_msg(): %s",
-                      strerror(-rc));
+    DBG_RAFT_INSTANCE((rc ? LL_NOTIFY : LL_DEBUG), ri,
+                      "raft_server_send_msg(): %s", strerror(-rc));
 }
 
 static raft_server_epoll_remote_sender_t
