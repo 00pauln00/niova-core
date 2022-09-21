@@ -125,6 +125,7 @@ type RaftInfo struct {
 	DevWriteLatencyUsec      Histogram `json:"dev-write-latency-usec" type:"histogram" metric:"dev_write_latency_usec"`
 	FollowerStats            []struct {
 		PeerUUID    string `json:"peer-uuid"`
+		LastAckMs   int	   `json:"ms-since-last-ack"`
 		LastAck     Time   `json:"last-ack"`
 		NextIdx     int    `json:"next-idx"`
 		PrevIdxTerm int    `json:"prev-idx-term"`
