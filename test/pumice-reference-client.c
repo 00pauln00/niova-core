@@ -107,6 +107,7 @@ struct pmdbtc_request
     raft_net_request_tag_t         preq_last_tag;
     pmdb_obj_stat_t                preq_obj_stat;
     struct timespec                preq_submitted;
+    struct timespec                preq_last_req_submitted;
     struct timespec                preq_completed;
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -318,7 +319,7 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_unsigned(
                 lv, "duration-ms",
                 (timespec_2_msec(&preq->preq_completed) -
-                 timespec_2_msec(&preq->preq_submitted)));
+                 timespec_2_msec(&preq->preq_last_req_submitted)));
             break;
         case PMDB_TEST_REQ_LREG_APP_SEQNO:
             lreg_value_fill_unsigned(lv, "app-seqno",
@@ -439,6 +440,7 @@ pmdbtc_queue_request(const struct raft_net_client_user_id *rncui,
     preq->preq_val_cnt = val_cnt;
     //Pending seqno.
     preq->preq_pmdb_seqno = write_seqno;
+
     niova_realtime_coarse_clock(&preq->preq_submitted);
 
     raft_net_client_user_id_copy(&preq->preq_rncui, rncui);
@@ -765,7 +767,7 @@ pmdbtc_result_capture(struct pmdbtc_request *preq, int rc)
     struct pmdbtc_app *papp = preq->preq_papp;
 
     papp->papp_last_tag = preq->preq_last_tag;
-    papp->papp_last_request = preq->preq_submitted;
+    papp->papp_last_request = preq->preq_last_req_submitted;
     papp->papp_last_request_completed = preq->preq_completed;
     papp->papp_obj_stat = preq->preq_obj_stat;
 
@@ -892,6 +894,8 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     preq->preq_last_tag = preq->preq_obj_stat.status;
     // Copy the pending seqno in the preq object stat.
     preq->preq_obj_stat.sequence_num = preq->preq_pmdb_seqno;
+
+    niova_realtime_coarse_clock(&preq->preq_last_req_submitted);
 
     pmdb_request_opts_t pmdb_req = {0};
 
