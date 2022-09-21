@@ -1277,11 +1277,11 @@ raft_server_backend_sync_pending(struct raft_instance *ri, const char *caller)
 
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri, "raft_server_backend_sync(): %s",
                                strerror(-rc));
-#if 1
+
     // Schedule the main thread to issue AE requests to followers
-    if (unsynced_entries && !rc)
+    if (unsynced_entries && !rc && (raft_instance_is_follower(ri) ||
+                                    raft_instance_is_leader(ri)))
         RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_REMOTE_SEND);
-#endif
 }
 
 static int
