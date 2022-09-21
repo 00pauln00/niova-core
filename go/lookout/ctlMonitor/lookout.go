@@ -310,8 +310,8 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 
 func loadSystemInfo(labelMap map[string]string, sysInfo SystemInfo) map[string]string {
 	labelMap["NODE_NAME"] = sysInfo.UtsNodename
-	labelMap["SYS_NAME"]= sysInfo.UtsSysname
-	labelMap["MACHINE"]= sysInfo.UtsMachine
+	labelMap["SYS_NAME"] = sysInfo.UtsSysname
+	labelMap["MACHINE"] = sysInfo.UtsMachine
 
 	return labelMap
 }
@@ -336,8 +336,8 @@ func loadNISDLabelMap(labelMap map[string]string, nisdRootEntry NISDRoot) map[st
 func getFollowerStats(raftEntry RaftInfo) string {
 	var output string
 	for indx := range raftEntry.FollowerStats {
-		UUID :=  raftEntry.FollowerStats[indx].PeerUUID
-		LastAckMs :=  raftEntry.FollowerStats[indx].LastAckMs
+		UUID := raftEntry.FollowerStats[indx].PeerUUID
+		LastAckMs := raftEntry.FollowerStats[indx].LastAckMs
 		output += "\n" + fmt.Sprintf(`follower_stats{uuid="%s"}%d`, UUID, LastAckMs)
 	}
 	return output
