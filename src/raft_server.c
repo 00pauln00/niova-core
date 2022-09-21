@@ -2522,6 +2522,8 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     NIOVA_ASSERT(ri && ri->ri_csn_raft && rrm &&
                  raft_member_idx_is_valid(ri, follower));
 
+    memset(rrm, 0, sizeof(*rrm));
+
     const struct raft_follower_info *rfi =
         raft_server_get_follower_info(ri, follower);
 
@@ -2611,11 +2613,7 @@ raft_server_write_coalesced_entries(struct raft_instance *ri)
 
     raft_net_sm_write_supplement_destroy(&ri->ri_coalesced_wr->rcwi_ws);
 
-    // Reinit the rec_co_wr_info after writing coalesced entried to backend
-    size_t co_wr_info_size = sizeof(struct raft_instance_co_wr) +
-                                    RAFT_ENTRY_MAX_DATA_SIZE(ri);
-
-    memset(ri->ri_coalesced_wr, 0, co_wr_info_size);
+    memset(ri->ri_coalesced_wr, 0, sizeof(struct raft_instance_co_wr));
 }
 
 static raft_net_timerfd_cb_ctx_bool_t
@@ -4591,19 +4589,14 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
     if (!raft_instance_is_leader(ri) || my_raft_idx < 0)
         return;
 
-    const size_t src_buf_sz = raft_net_max_rpc_size(ri->ri_store_type);
-    const size_t sink_buf_sz = ri->ri_max_entry_size;
+    struct buffer_item *src_bi =
+        buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
 
-    struct buffer_item *src_bi, *sink_bi;
-    // Xxx this function appears to only require a single buffer..
-    src_bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
-    sink_bi = buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
-    NIOVA_ASSERT(src_bi && sink_bi);
+    NIOVA_ASSERT(src_bi);
 
-    char *src_buf = (char *)src_bi->bi_iov.iov_base;
-    char *sink_buf = (char *)sink_bi->bi_iov.iov_base;
+    struct raft_rpc_msg *rrm =
+        (struct raft_rpc_msg *)((char *)src_bi->bi_iov.iov_base);
 
-    struct raft_rpc_msg *rrm = (struct raft_rpc_msg *)src_buf;
     const raft_peer_t num_raft_members = raft_num_members_validate_and_get(ri);
 
     ///Xxx this is a big mess of code which needs to be made into some
@@ -4617,12 +4610,6 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
              !heartbeat))
             continue;
 
-        memset(src_buf, 0, src_buf_sz);
-        memset(sink_buf, 0, sink_buf_sz);
-
-        struct raft_append_entries_request_msg *raerq =
-            &rrm->rrm_append_entries_request;
-
         int rc = raft_server_leader_init_append_entry_msg(ri, rrm, i,
                                                           heartbeat);
         NIOVA_ASSERT(!rc || rc == -ESTALE); // sanity check
@@ -4633,8 +4620,11 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
              * a msg so that the follower knows to enter bulk recovery.
              */
             heartbeat = true; // force this to be a heartbeat msg
-            NIOVA_ASSERT(raerq->raerqm_heartbeat_msg);
+            NIOVA_ASSERT(rrm->rrm_append_entries_request.raerqm_heartbeat_msg);
         }
+
+        struct raft_append_entries_request_msg *raerq =
+            &rrm->rrm_append_entries_request;
 
         const int64_t peer_next_raft_idx = raerq->raerqm_prev_log_index + 1;
 
@@ -4644,11 +4634,11 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
 
         if (!heartbeat && peer_next_raft_idx <= my_raft_idx)
         {
-            struct raft_entry_header *reh =
-                (struct raft_entry_header *)sink_buf;
+            struct raft_entry_header reh = {0};
 
+            // raft_server_entry_header_read_by_store() verifies reh contents
             int rc = raft_server_entry_header_read_by_store(
-                ri, reh, peer_next_raft_idx);
+                ri, &reh, peer_next_raft_idx);
 
             if (rc == -ERANGE) // allow -ERANGE
                 continue;
@@ -4657,14 +4647,14 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
                 (rc), ri, "raft_server_entry_header_read_by_store(%ld): %s",
                 peer_next_raft_idx, strerror(-rc));
 
-            raerq->raerqm_entries_sz = reh->reh_data_size;
+            raerq->raerqm_entries_sz = reh.reh_data_size;
 
-            raerq->raerqm_leader_change_marker = reh->reh_leader_change_marker;
-            raerq->raerqm_num_entries = reh->reh_num_entries;
-            memcpy(&raerq->raerqm_size_arr, &reh->reh_entry_sz,
+            raerq->raerqm_leader_change_marker = reh.reh_leader_change_marker;
+            raerq->raerqm_num_entries = reh.reh_num_entries;
+            memcpy(&raerq->raerqm_size_arr[0], &reh.reh_entry_sz[0],
                    sizeof(uint32_t) * RAFT_ENTRY_NUM_ENTRIES);
 
-            NIOVA_ASSERT(reh->reh_index == peer_next_raft_idx);
+            NIOVA_ASSERT(reh.reh_index == peer_next_raft_idx);
 
             if (raerq->raerqm_entries_sz)
             {
@@ -4702,9 +4692,8 @@ raft_server_append_entry_sender(struct raft_instance *ri, bool heartbeat)
                           "raft_server_send_msg(): %d", rc);
     }
 
-    // release buffers
+    // release buffer
     buffer_set_release_item(src_bi);
-    buffer_set_release_item(sink_bi);
 }
 
 static raft_server_epoll_sm_apply_t
@@ -6097,7 +6086,7 @@ raft_server_instance_run(const char *raft_uuid_str,
             ri->ri_coalesced_wr = niova_malloc(co_wr_info_size);
             NIOVA_ASSERT(ri->ri_coalesced_wr);
 
-            memset(ri->ri_coalesced_wr, 0, co_wr_info_size);
+            memset(ri->ri_coalesced_wr, 0, sizeof(struct raft_instance_co_wr));
 
             // Execute the main loop
             int main_loop_rc = raft_server_main_loop(ri);
