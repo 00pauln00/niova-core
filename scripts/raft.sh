@@ -40,4 +40,4 @@ fi
 
 LD_LIBRARY_PATH=/usr/local/niova/lib \
                gdb -ex=r --args /usr/local/niova/libexec/niova/pumice-reference-server \
-               -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
+               -r ${RAFT_UUID} -u ${PEER_UUID} -a -c 2> /tmp/${PEER_UUID}.peer
