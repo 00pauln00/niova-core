@@ -308,6 +308,41 @@ func (epc *EPContainer) QueryHandle(w http.ResponseWriter, r *http.Request) {
 	w.Write(output)
 }
 
+func loadSystemInfo(labelMap map[string]string, sysInfo SystemInfo) map[string]string {
+	labelMap["NODE_NAME"] = sysInfo.UtsNodename
+	labelMap["SYS_NAME"]= sysInfo.UtsSysname
+	labelMap["MACHINE"]= sysInfo.UtsMachine
+
+	return labelMap
+}
+
+func loadPMDBLabelMap(labelMap map[string]string, raftEntry RaftInfo) map[string]string {
+	labelMap["STATE"] = raftEntry.State
+	labelMap["RAFT_UUID"] = raftEntry.RaftUUID
+	labelMap["VOTED_FOR"] = raftEntry.VotedForUUID
+	labelMap["FOLLOWER_REASON"] = raftEntry.FollowerReason
+	labelMap["CLIENT_REQS"] = raftEntry.ClientRequests
+
+	return labelMap
+}
+
+func loadNISDLabelMap(labelMap map[string]string, nisdRootEntry NISDRoot) map[string]string {
+	labelMap["STATUS"] = nisdRootEntry.Status
+	labelMap["ALT_NAME"] = nisdRootEntry.AltName
+
+	return labelMap
+}
+
+func getFollowerStats(raftEntry RaftInfo) string {
+	var output string
+	for indx := range raftEntry.FollowerStats {
+		UUID :=  raftEntry.FollowerStats[indx].PeerUUID
+		LastAckMs :=  raftEntry.FollowerStats[indx].LastAckMs
+		output += "\n" + fmt.Sprintf(`follower_stats{uuid="%s"}%d`, UUID, LastAckMs)
+	}
+	return output
+}
+
 func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string, nodeUUID string) string {
 	var output string
 	membership := epc.SerfMembershipCB()
@@ -322,7 +357,11 @@ func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string,
 		}
 		if nodeUUID == name {
 			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"status="%s"raftUUID="%s"} %s`, name, state, status, raftUUID, adder)
+		} else {
+			// since we do not know the state of other nodes
+			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"status="%s"raftUUID="%s"} %s`, name, status, raftUUID, adder)
 		}
+
 	}
 	return output
 }
@@ -338,33 +377,37 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 		nodeMap[k] = v
 	}
 	epc.mutex.Unlock()
+
 	labelMap := make(map[string]string)
 	for _, node := range nodeMap {
-		labelMap["NODE_NAME"] = node.EPInfo.SysInfo.UtsNodename
-		labelMap["SYS_NAME"]= node.EPInfo.SysInfo.UtsSysname
-		labelMap["MACHINE"]= node.EPInfo.SysInfo.UtsMachine
+		labelMap = loadSystemInfo(labelMap, node.EPInfo.SysInfo)
 	}
+
 	if epc.AppType == "PMDB" {
 		parsedUUID, _ := uuid.Parse(epc.MonitorUUID)
 		node := nodeMap[parsedUUID]
 		labelMap["PMDB_UUID"] = parsedUUID.String()
-		labelMap["STATE"] = node.EPInfo.RaftRootEntry[0].State
-		labelMap["RAFT_UUID"] = node.EPInfo.RaftRootEntry[0].RaftUUID
 		labelMap["TYPE"] = epc.AppType
-		labelMap["VOTED_FOR"] = node.EPInfo.RaftRootEntry[0].VotedForUUID
-		labelMap["FOLLOWER_REASON"] = node.EPInfo.RaftRootEntry[0].FollowerReason
-		labelMap["CLIENT_REQS"] = node.EPInfo.RaftRootEntry[0].ClientRequests
+		// Loading labelMap with PMDB data
+		labelMap = loadPMDBLabelMap(labelMap, node.EPInfo.RaftRootEntry[0])
+		// Parsing exported data
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.RaftRootEntry[0], labelMap)
+		// Parsing membership data
 		output += epc.parseMembershipPrometheus(node.EPInfo.RaftRootEntry[0].State, node.EPInfo.RaftRootEntry[0].RaftUUID, parsedUUID.String())
+		// Parsing follower data
+		output += getFollowerStats(node.EPInfo.RaftRootEntry[0])
+		// Parsing system info
 		output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
 	} else if epc.AppType == "NISD" {
 		for uuid, node := range nodeMap {
 			labelMap["NISD_UUID"] = uuid.String()
-			labelMap["STATUS"] = node.EPInfo.NISDRootEntry[0].Status
-			labelMap["ALT_NAME"] = node.EPInfo.NISDRootEntry[0].AltName
 			labelMap["TYPE"] = epc.AppType
+			labelMap = loadNISDLabelMap(labelMap, node.EPInfo.NISDRootEntry[0])
+			// Parse NISDInfo
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDInformation[0], labelMap)
+			// Parse NISDRootEntry
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
+			// Parse nisd system info
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
 		}
 	}
