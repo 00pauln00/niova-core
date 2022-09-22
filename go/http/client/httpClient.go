@@ -9,7 +9,6 @@ import (
 )
 
 func service_Request(request *http.Request) ([]byte, error) {
-
 	request.Header.Set("Content-Type", "application/json; charset=utf-8")
 	httpClient := &http.Client{}
 

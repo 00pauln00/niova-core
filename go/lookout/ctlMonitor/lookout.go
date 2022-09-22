@@ -267,15 +267,15 @@ func (epc *EPContainer) customQuery(node uuid.UUID, query string) []byte {
 	epc.mutex.Lock()
 	ep := epc.EpMap[node]
 	epc.mutex.Unlock()
-
 	//If not present
 	if ep == nil {
 		return []byte("Specified NISD is not present")
 	}
 
 	httpID := "HTTP_" + uuid.New().String()
+
 	epc.httpQuery[httpID] = make(chan []byte, 2)
-	ep.CustomQuery(query, httpID)
+	ep.CtlCustomQuery(query, httpID)
 
 	//FIXME: Have select in case of NISD dead and delete the channel
 	var byteOP []byte
@@ -391,6 +391,7 @@ func (epc *EPContainer) MarkAlive(serviceUUID string) error {
 func (epc *EPContainer) Start() {
 	//Start http service
 	if epc.EnableHttp {
+		epc.httpQuery = make(map[string](chan []byte))
 		go epc.serveHttp()
 	}
 

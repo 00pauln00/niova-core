@@ -3,24 +3,23 @@ package serviceDiscovery
 import (
 	"common/httpClient"
 	"common/serfClient"
+	compressionLib "common/specificCompressionLib"
 	"encoding/json"
 	"errors"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"math/rand"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"sync"
 	"time"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
-	compressionLib "common/specificCompressionLib"
-	log "github.com/sirupsen/logrus"
 
 	client "github.com/hashicorp/serf/client"
 )
 
-
 type ServiceDiscoveryHandler struct {
 	//Exported
 	HTTPRetry             int //No of seconds for a request time out and membership table refresh
-	SerfRetry	      int
+	SerfRetry             int
 	ServerChooseAlgorithm int
 	UseSpecificServerName string
 
@@ -32,14 +31,14 @@ type ServiceDiscoveryHandler struct {
 	IsStatRequired      bool
 
 	//UnExported
-	servers           []client.Member
-	serfClientObj     serfClient.SerfClientHandler
-	serfUpdateLock    sync.Mutex
-	agentTableLock    sync.Mutex
-	statUpdateLock    sync.Mutex
-	ready             bool
-	specificServer    *client.Member
-	roundRobinPtr     int
+	servers        []client.Member
+	serfClientObj  serfClient.SerfClientHandler
+	serfUpdateLock sync.Mutex
+	agentTableLock sync.Mutex
+	statUpdateLock sync.Mutex
+	ready          bool
+	specificServer *client.Member
+	roundRobinPtr  int
 }
 
 type ServerRequestStat struct {
@@ -84,9 +83,9 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 			log.Error("Error while choosing node : ", err)
 			break
 		}
-
-		//Get node's http address
+		//Get node's http address and port
 		addr, port := getAddr(&toSend)
+
 		response, err = httpClient.HTTP_Request(payload, addr+":"+port+suburl, write)
 		if err == nil {
 			ok = true
@@ -120,12 +119,11 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 			handler.RequestFailedCount += int64(1)
 		}
 	}
-
 	return response, err
 }
 
 func isValidNodeData(member client.Member) bool {
-	if ((member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] != "PROXY")) {
+	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] != "PROXY") {
 		return false
 	}
 	return true
@@ -160,11 +158,11 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 		//Round-Robin based proxy chooser
 		for {
 			if len(handler.servers) == 0 {
-                                return client.Member{}, errors.New("(Service discovery) Server not available")
-                        }
+				return client.Member{}, errors.New("(Service discovery) Server not available")
+			}
 			handler.roundRobinPtr %= len(handler.servers)
 			serverChoosen = &handler.servers[handler.roundRobinPtr]
-			if (isValidNodeData(handler.servers[handler.roundRobinPtr])) {
+			if isValidNodeData(handler.servers[handler.roundRobinPtr]) {
 				handler.roundRobinPtr += 1
 				break
 			}
@@ -260,24 +258,23 @@ func (handler *ServiceDiscoveryHandler) GetMembership() map[string]client.Member
 	return handler.serfClientObj.GetMemberList()
 }
 
-
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
-        for _,v := range mapSample {
-                return v
-        }
-        return nil
+	for _, v := range mapSample {
+		return v
+	}
+	return nil
 }
 
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 	PMDBServerConfigMap := make(map[string]PumiceDBCommon.PeerConfigData)
-	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
+	allPmdbServerGossip := handler.serfClientObj.GetTags("Type", "PMDB_SERVER")
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
 	for key, value := range pmdbServerGossip {
 		uuid, err := compressionLib.DecompressUUID(key)
-                if err == nil {
+		if err == nil {
 			peerConfig := PumiceDBCommon.PeerConfigData{}
-			compressionLib.DecompressStructure(&peerConfig,key+value)
+			compressionLib.DecompressStructure(&peerConfig, key+value)
 			PMDBServerConfigMap[uuid] = peerConfig
 		}
 	}

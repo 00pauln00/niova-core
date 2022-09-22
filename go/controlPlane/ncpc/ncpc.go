@@ -26,24 +26,24 @@ import (
 )
 
 type clientHandler struct {
-	requestKey        string
-	requestValue      string
-	addr              string
-	port              string
-	operation         string
-	configPath        string
-	logPath           string
-	resultFile        string
-	rncui             string
-	rangeQuery        bool
+	requestKey         string
+	requestValue       string
+	addr               string
+	port               string
+	operation          string
+	configPath         string
+	logPath            string
+	resultFile         string
+	rncui              string
+	rangeQuery         bool
 	relaxedConsistency bool
-	count             int
-	seed              int
-	lastKey           string
-	operationMetaObjs []opData //For filling json data
-	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
-	seqNum            uint64
-	valSize           int
+	count              int
+	seed               int
+	lastKey            string
+	operationMetaObjs  []opData //For filling json data
+	clientAPIObj       serviceDiscovery.ServiceDiscoveryHandler
+	seqNum             uint64
+	valSize            int
 }
 
 type request struct {
@@ -549,6 +549,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
 	clientObj.clientAPIObj.TillReady()
 
 	var passNext bool
@@ -680,28 +681,28 @@ func main() {
 		}
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
-        case "LookoutInfo":
-                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
-                clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
-                //Request obj
-                var requestObj requestResponseLib.LookoutRequest
+	case "LookoutInfo":
+		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
+		//Request obj
+		var requestObj requestResponseLib.LookoutRequest
 
-                //Parse UUID
-                requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
-                requestObj.Cmd = clientObj.requestValue
-                var requestByte bytes.Buffer
-                enc := gob.NewEncoder(&requestByte)
-                err := enc.Encode(requestObj)
-                if err != nil {
-                        log.Info("Encoding error")
-                }
-                responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
-                if err != nil {
-                        log.Error("Error while sending request to proxy : ", err)
-                }
-		clientObj.write2Json(responseBytes)
+		//Parse UUID
+		requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
+		requestObj.Cmd = clientObj.requestValue
 
+		var requestByte bytes.Buffer
+		enc := gob.NewEncoder(&requestByte)
+		err := enc.Encode(requestObj)
+		if err != nil {
+			log.Info("Encoding error")
+		}
+		responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+
+		if err != nil {
+			log.Error("Error while sending request to proxy : ", err)
+		}
+		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 	}
-	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
 
 }

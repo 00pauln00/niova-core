@@ -193,7 +193,6 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 		//Get data from map
 		uuid := nisd.Uuid.String()
 		status := nisd.Alive
-
 		//Compact the data
 		cuuid, _ := compressionLib.CompressUUID(uuid)
 		cstatus := "0"
@@ -204,7 +203,11 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 		//Fill map; will add extra info in future
 		returnMap[cuuid] = cstatus
 	}
+	httpPort := handler.httpPort
+
 	returnMap["Type"] = "LOOKOUT"
+	returnMap["Hport"] = strconv.Itoa(*httpPort)
+
 	return returnMap
 }
 
