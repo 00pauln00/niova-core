@@ -337,8 +337,10 @@ func getFollowerStats(raftEntry RaftInfo) string {
 	var output string
 	for indx := range raftEntry.FollowerStats {
 		UUID := raftEntry.FollowerStats[indx].PeerUUID
+		NextIdx := raftEntry.FollowerStats[indx].NextIdx
+		PrevIdxTerm := raftEntry.FollowerStats[indx].PrevIdxTerm
 		LastAckMs := raftEntry.FollowerStats[indx].LastAckMs
-		output += "\n" + fmt.Sprintf(`follower_stats{uuid="%s"}%d`, UUID, LastAckMs)
+		output += "\n" + fmt.Sprintf(`follower_stats{uuid="%s"next_idx="%d"prev_idx_term="%d"}%d`, UUID, NextIdx, PrevIdxTerm, LastAckMs)
 	}
 	return output
 }
