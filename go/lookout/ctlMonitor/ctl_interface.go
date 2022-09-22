@@ -336,7 +336,7 @@ func (ep *NcsiEP) getNISDinfo() error {
 	return cmd.err
 }
 
-func (ep *NcsiEP) CustomQuery(customCMD string, ID string) error {
+func (ep *NcsiEP) CtlCustomQuery(customCMD string, ID string) error {
 	cmd := epCommand{ep: ep, cmd: customCMD, op: Custom, fn: ID}
 	cmd.submit()
 	return cmd.err
