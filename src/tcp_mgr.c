@@ -160,6 +160,8 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
 
     tmc->tmc_status = TMCS_DISCONNECTED;
 
+    uuid_clear(tmc->tmc_session_uuid);
+
     return 0;
 }
 
@@ -275,6 +277,9 @@ tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     tcp_mgr_credits_free(&tmi->tmi_incoming_credits, incoming);
+
+    // Create a uuid for this new connection
+    uuid_generate(tmc->tmc_session_uuid);
 }
 
 static epoll_mgr_cb_ctx_t

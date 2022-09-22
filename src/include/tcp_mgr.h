@@ -7,6 +7,8 @@
 #ifndef __NIOVA_TCP_MGR_H_
 #define __NIOVA_TCP_MGR_H_ 1
 
+#include <uuid/uuid.h>
+
 #include "epoll_mgr.h"
 #include "tcp.h"
 
@@ -36,7 +38,6 @@ struct tcp_mgr_instance
 {
     struct tcp_socket_handle tmi_listen_socket;
     void                    *tmi_data;
-
     struct epoll_mgr        *tmi_epoll_mgr;
     struct epoll_handle      tmi_listen_eph;
     epoll_mgr_ref_cb_t       tmi_connection_ref_cb;
@@ -64,6 +65,7 @@ enum tcp_mgr_connection_status
 struct tcp_mgr_connection
 {
     enum tcp_mgr_connection_status    tmc_status;
+    uuid_t                            tmc_session_uuid;
     struct tcp_socket_handle          tmc_tsh;
     struct epoll_handle               tmc_eph;
     struct tcp_mgr_instance          *tmc_tmi;
