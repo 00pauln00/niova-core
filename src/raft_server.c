@@ -4389,7 +4389,7 @@ raft_server_enqueue_rw(struct raft_instance *ri,
 
     uint32_t queue_type = RAFT_SERVER_BULK_MSG_READ;
 
-    // Release this reference after processing the read/write request.
+    // Release this reference after processing the read request.
     ctl_svc_node_get(csn);
 
     struct raft_work_queue *rwq = &ri->ri_worker_queue[queue_type];
@@ -4447,7 +4447,10 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     // The recv_buff contains only header, we still have to read the
     // complete data.
     size_t req_size = recv_bytes + rcm->rcrm_data_size;
-    char *request = (char *)niova_calloc(1, req_size);
+    struct buffer_item *recv_bi =
+       buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+
+    char *request = (char *)recv_bi->bi_iov.iov_base;
     size_t actual_recv_bytes = 0;
 
     // Read the ping/write request buffer completely from the socket.
@@ -4460,13 +4463,15 @@ raft_server_client_recv_handler(struct raft_instance *ri,
           ctl_svc_node_put(tmp_csn);
 
        raft_net_bulk_complete(csn);
-       niova_free(request);
+       buffer_set_release_item(recv_bi);
        return;
     }
 
     const struct raft_client_rpc_msg *rcm_new =
        (const struct raft_client_rpc_msg *)request;
 
+    // raft buf pool has enough buffers for all read threads and main thread.
+    // pool size  > number of read threads.
     struct buffer_item *bi =
        buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
     NIOVA_ASSERT(bi);
@@ -4486,7 +4491,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     rc = raft_server_may_accept_client_request(ri);
     if (rc)
     {
-        SIMPLE_LOG_MSG(LL_WARN,
+        SIMPLE_LOG_MSG(LL_NOTIFY,
                    "cannot accept client message, rc=%d: msg-type=%u",
                    rc, rcm_new->rcrm_type);
         raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
@@ -4499,9 +4504,9 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
         SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
         raft_server_reply_to_client(ri, &rncr, csn);
-        buffer_set_release_item(bi);
         raft_net_bulk_complete(csn);
-        niova_free(request);
+        buffer_set_release_item(bi);
+        buffer_set_release_item(recv_bi);
      
         return;
     }
@@ -4576,8 +4581,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_server_reply_to_client(ri, &rncr, csn);
     }
 out:
-    niova_free(request);
     buffer_set_release_item(bi);
+    buffer_set_release_item(recv_bi);
     // Re-arm the epoll so next request can be read from socket.
     raft_net_bulk_complete(csn);
 }

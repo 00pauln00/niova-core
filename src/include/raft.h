@@ -112,7 +112,7 @@ enum raft_buf_set_size
 enum raft_buf_set_nbuf
 {
     RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
-    RAFT_BS_LARGE_NBUF = 3,
+    RAFT_BS_LARGE_NBUF = 3 + RAFT_NUM_READ_THREADS,
 };
 
 struct raft_vote_request_msg
