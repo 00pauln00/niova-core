@@ -55,12 +55,18 @@ type SystemInfo struct {
 }
 
 type NISDInfo struct {
-	ReadBytes        int       `json:"dev-bytes-read" type:"counter" metric:"nisd_dev_read_bytes"`
-	WriteBytes       int       `json:"dev-bytes-write" type:"counter" metric:"nisd_dev_write_bytes"`
-	NetRecvBytes     int       `json:"net-bytes-recv" type:"counter" metric:"nisd_net_bytes_recv"`
-	NetSendBytes     int       `json:"net-bytes-send" type:"counter" metric:"nisd_net_bytes_send"`
-	DevRdLatencyUsec Histogram `json:"dev-rd-latency-usec" type:"histogram" metric:"nisd_dev_rd_latency_usec"`
-	DevWrLatencyUsec Histogram `json:"dev-wr-latency-usec" type:"histogram" metric:"nisd_dev_wr_latency_usec"`
+	ReadBytes        	int       `json:"dev-bytes-read" type:"counter" metric:"nisd_dev_read_bytes"`
+	WriteBytes       	int       `json:"dev-bytes-write" type:"counter" metric:"nisd_dev_write_bytes"`
+	NetRecvBytes     	int       `json:"net-bytes-recv" type:"counter" metric:"nisd_net_bytes_recv"`
+	NetSendBytes     	int       `json:"net-bytes-send" type:"counter" metric:"nisd_net_bytes_send"`
+	DevRdLatencyUsec 	Histogram `json:"dev-rd-latency-usec" type:"histogram" metric:"nisd_dev_rd_latency_usec"`
+	DevWrLatencyUsec 	Histogram `json:"dev-wr-latency-usec" type:"histogram" metric:"nisd_dev_wr_latency_usec"`
+	DevReadSize	 	Histogram `json:"dev-rd-size" type:"histogram" metric:"nisd_dev_rd_size"`
+	DevWriteSize	 	Histogram `json:"dev-wr-size" type:"histogram" metric:"nisd_dev_wr_size"`
+	NetRecvSize	 	Histogram `json:"net-recv-size" type:"histogram" metric:"nisd_net_recv_size"`
+	NetSendSize	 	Histogram `json:"net-send-size" type:"histogram" metric:"nisd_net_send_size"`
+	NetRecvLatencyUsec	Histogram  `json:"net-recv-latency-usec" type:"histogram" metric:"nisd_net_recv_latency_usec"`
+	NetSendLatencyUsec	Histogram  `json:"net-send-latency-usec" type:"histogram" metric:"nisd_net_send_latency_usec"`
 }
 
 type NISDRoot struct {
