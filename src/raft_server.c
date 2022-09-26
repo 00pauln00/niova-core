@@ -2611,10 +2611,15 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
 
     case RAFT_STATE_LEADER:
-        raft_leader_check_quorum(ri) ?
-            raft_server_issue_heartbeat(ri) :
+        if (raft_leader_check_quorum(ri))
+        {
+            raft_server_leader_co_wr_timer_expired(ri);
+            raft_server_issue_heartbeat(ri);
+        }
+        else
+        {
             raft_server_become_candidate(ri, true);
-        raft_server_leader_co_wr_timer_expired(ri);
+        }
         break;
     default:
         break;
