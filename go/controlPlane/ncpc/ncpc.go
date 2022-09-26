@@ -550,7 +550,6 @@ func main() {
 		}
 	}()
 	clientObj.clientAPIObj.TillReady()
-
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
@@ -689,6 +688,7 @@ func main() {
                 //Parse UUID
                 requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
                 requestObj.Cmd = clientObj.requestValue
+
                 var requestByte bytes.Buffer
                 enc := gob.NewEncoder(&requestByte)
                 err := enc.Encode(requestObj)
@@ -696,12 +696,11 @@ func main() {
                         log.Info("Encoding error")
                 }
                 responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
-                if err != nil {
+                
+		if err != nil {
                         log.Error("Error while sending request to proxy : ", err)
                 }
-		clientObj.write2Json(responseBytes)
-
+		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 	}
-	//clientObj.clientAPIObj.DumpIntoJson("./execution_summary.json")
 
 }
