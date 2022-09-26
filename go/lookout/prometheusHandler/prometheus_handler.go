@@ -23,11 +23,13 @@ func parseHistogram(histogram reflect.Value, histogramType reflect.Type) map[str
 	for i := 0; i < histogram.NumField(); i++ {
 		bucketBound := histogramType.Field(i)
 		bucketValue := histogram.Field(i)
-		count := int(bucketValue.Int())
-		upperBound := strings.Split(bucketBound.Tag.Get("json"), ",")[0]
-		histoMap[upperBound] = fmt.Sprintf("%v", bucketValue)
-
-		totalObservation += count
+		//Discard intervals with 0 value
+		if(int(bucketValue.Int()) != 0) {
+			count := int(bucketValue.Int())
+			upperBound := strings.Split(bucketBound.Tag.Get("json"), ",")[0]
+			histoMap[upperBound] = fmt.Sprintf("%v", bucketValue)
+			totalObservation += count
+		}
 	}
 	histoMap["+inf"] = strconv.Itoa(int(totalObservation))
 	return histoMap
