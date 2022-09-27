@@ -4581,6 +4581,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_server_reply_to_client(ri, &rncr, csn);
     }
 out:
+    if (tmp_csn)
+        ctl_svc_node_put(tmp_csn);
     buffer_set_release_item(bi);
     buffer_set_release_item(recv_bi);
     // Re-arm the epoll so next request can be read from socket.
