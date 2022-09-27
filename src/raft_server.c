@@ -118,6 +118,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_SYNC_FREQ_US,       // uint64
     RAFT_LREG_SYNC_CNT,           // uint64
     RAFT_LREG_QUORUM_CNT,         // int64
+    RAFT_LREG_TIME_AS_LEADER,     // float
     RAFT_LREG_HEARTBEAT_MSEC,     // int64
     RAFT_LREG_NEWEST_ENTRY_IDX,   // int64
     RAFT_LREG_NEWEST_ENTRY_TERM,  // int64
@@ -245,6 +246,13 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                  raft_instance_is_leader(ri)) ? "none" :
                 raft_follower_reason_2_str(ri->ri_follower_reason));
             break;
+        case RAFT_LREG_TIME_AS_LEADER:
+                lreg_value_fill_float(
+                    lv, "leader-time",
+                    raft_instance_is_leader(ri) ?
+                    timespec_2_float(&ri->ri_leader.rls_leader_accumulated) :
+                    (float)0.0);
+        break;
         case RAFT_LREG_QUORUM_CNT:
             lreg_value_fill_signed(lv, "quorum-cnt",
                                    (raft_instance_is_leader(ri) ?
@@ -2161,6 +2169,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
     memset(rls, 0, sizeof(*rls));
 
     rls->rls_leader_term = ri->ri_log_hdr.rlh_term;
+    niova_unstable_coarse_clock(&rls->rls_leader_start);
 
     const raft_peer_t num_raft_peers = raft_num_members_validate_and_get(ri);
 
@@ -2598,6 +2607,22 @@ static raft_net_timerfd_cb_ctx_bool_t
 raft_leader_check_quorum(struct raft_instance *ri);
 
 static raft_net_timerfd_cb_ctx_t
+raft_server_increment_leader_time(struct raft_instance *ri)
+{
+    if (ri == NULL || !raft_instance_is_leader(ri))
+        return;
+
+    struct raft_leader_state *rls = &ri->ri_leader;
+
+    struct timespec now;
+    niova_unstable_coarse_clock(&now);
+
+    NIOVA_ASSERT(timespeccmp(&now, &rls->rls_leader_start, >=));
+
+    timespecsub(&now, &rls->rls_leader_start, &rls->rls_leader_accumulated);
+}
+
+static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
     FUNC_ENTRY(LL_TRACE);
@@ -2615,6 +2640,7 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         {
             raft_server_leader_co_wr_timer_expired(ri);
             raft_server_issue_heartbeat(ri);
+            raft_server_increment_leader_time(ri);
         }
         else
         {
