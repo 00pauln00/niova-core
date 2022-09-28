@@ -129,7 +129,7 @@ func main() {
 }
 
 func ExportNodeState(nso *NiovaKVServer, handler * pmdbServerHandler){
-	for range time.Tick(time.Second * tagExportInterval){
+	for range time.Tick(time.Second * time.Duration(tagExportInterval)){
 		ret := nso.pso.PmdbExportNodeState()
 		handler.GossipData["State"] = strconv.Itoa(ret)
 		handler.serfAgentHandler.SetNodeTags(handler.GossipData)
