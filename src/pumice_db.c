@@ -1480,9 +1480,7 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 int
 PmdbGetNodeState()
 {
-	struct raft_instance *ri = NULL;
-	ri = raft_net_get_instance();
-	return ri->ri_state;
+	return raft_net_get_instance()->ri_state;
 }
 
 /**
