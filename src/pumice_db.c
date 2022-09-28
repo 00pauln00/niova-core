@@ -70,6 +70,7 @@ struct pmdb_cowr_sub_app
     struct raft_net_client_user_id    pcwsa_rncui; // Must be the first memb!
     uuid_t                            pcwsa_client_uuid; // client UUID
     int64_t                           pcwsa_current_term;
+    int64_t                           pcwsa_msg_id;
     REF_TREE_ENTRY(pmdb_cowr_sub_app) pcwsa_rtentry;
 };
 
@@ -560,8 +561,8 @@ pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
 
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
-                      const uuid_t client_uuid, const int current_term,
-                      int *ret_error,
+                      const uuid_t client_uuid, const int64_t msg_id,
+                      const int current_term, int *ret_error,
                       const char *caller_func, const int caller_lineno)
 {
     NIOVA_ASSERT(rncui);
@@ -579,7 +580,6 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
     struct pmdb_cowr_sub_app *subapp = RT_GET_ADD(pmdb_cowr_sub_app_tree,
                                                   &pmdb_cowr_sub_apps, &cowr,
                                                   &error);
-
     if (!subapp)
     {
         LOG_MSG(LL_WARN, "Can not add RB entry pmdb_cowr_sub_app_add(): %s",
@@ -590,28 +590,37 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
 
     if (error) // The entry already existed
     {
-        /*
-         * -EALREADY indicates write request is already in coalesced buffer.
-         * Convert the error to -EINPROGRESS as -EALREADY means write is
-         * already committed in pmdb_sm_handler_client_write().
+        /* EALREADY or EEXIST indicate the request already exists in coalesce
+         * buffer.  Convert the error to -EINPROGRESS as -ESTALE means write
+         * is conflicting.  Note that due to following properties of the client:
+         * TCP-based communications and a queue_depth of '1' per rncui, the
+         * same client should not be reissuing a request on the non-current
+         * write_seqno.  Retry of a request, from the same client, should only
+         * be occurring on that client's current write_seqno.  In the case of
+         * ESTALE, this function takes the decision to declare any request,
+         * which is not a retry of the existing request, as an error -
+         * regardless of its sequence number - since it violates the QD=1
+         * property of PMDB.
          */
         if (error == -EALREADY || error == -EEXIST)
         {
-            PMDB_STR_DEBUG(LL_DEBUG, &subapp->pcwsa_rncui, "RNCUI already added");
-            *ret_error = -EINPROGRESS;
-            // If the different client is trying to use existing rncui.
-            if (uuid_compare(subapp->pcwsa_client_uuid, client_uuid))
-            {
-                LOG_MSG(LL_DEBUG, "Different client trying out existing rncui");
-                *ret_error = -EPERM;
-            }
+            PMDB_STR_DEBUG(LL_NOTIFY, &subapp->pcwsa_rncui,
+                           "subapp GET error: %s", strerror(-error));
+
+            /* Use the msg id to determine conflicts instead of the client_uuid
+             * since the client could be a proxy.
+             */
+            *ret_error = subapp->pcwsa_msg_id == msg_id ?
+                -EINPROGRESS : -ESTALE;
         }
+
         pmdb_cowr_sub_app_put(subapp, __func__, __LINE__);
         return NULL;
     }
 
     PMDB_STR_DEBUG(LL_DEBUG, &subapp->pcwsa_rncui, "RNCUI added successfully");
-    NIOVA_ASSERT(pmdb_cowr_tree_term == -1 || pmdb_cowr_tree_term == current_term);
+    NIOVA_ASSERT(pmdb_cowr_tree_term == -1 ||
+                 pmdb_cowr_tree_term == current_term);
 
     if (pmdb_cowr_tree_term == -1)
         pmdb_cowr_tree_term = current_term;
@@ -889,9 +898,9 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             struct pmdb_cowr_sub_app *cowr_sa =
                 pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
                                       rncr->rncr_client_uuid,
+                                      rncr->rncr_msg_id,
                                       rncr->rncr_current_term,
-                                      &error, __func__,
-                                      __LINE__);
+                                      &error, __func__, __LINE__);
             if (!cowr_sa)
                 raft_client_net_request_handle_error_set(
                     rncr, error, error, 0);
