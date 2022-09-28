@@ -1472,6 +1472,19 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
                      use_coalesced_writes);
 }
 
+
+/*
+ * PmdbGetNodeState - used to return the state (follower,leader,etc)
+ * of the calling server.
+ */
+int
+PmdbGetNodeState()
+{
+	struct raft_instance *ri = NULL;
+	ri = raft_net_get_instance();
+	return ri->ri_state;
+}
+
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec
  *   thread.

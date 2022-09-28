@@ -190,6 +190,10 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 func (pso *PmdbServerObject) Run() error {
 	return PmdbStartServer(pso)
 }
+// Public method to export node state
+func (*PmdbServerObject) PmdbExportNodeState() int {
+	return int(C.PmdbGetNodeState())
+}
 
 // Export the common decode method via the server object
 func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},

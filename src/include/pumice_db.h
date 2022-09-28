@@ -91,6 +91,8 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          int num_cf, bool use_synchronous_writes,
          bool use_coalesced_writes, void *user_data);
 
+int
+PmdbGetNodeState();
 /**
  * PmdbClose - called from application context to shutdown the pumicedb exec
  *   thread.

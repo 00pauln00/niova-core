@@ -23,6 +23,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -35,6 +36,7 @@ import "C"
 var seqno = 0
 
 var encodingOverhead = 256
+var tagExportInterval = 30
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -118,13 +120,22 @@ func main() {
 		CoalescedWrite: true,
 	}
 
+	go ExportNodeState(nso, &serverHandler)
 	// Start the pmdb server
 	err = nso.pso.Run()
-
 	if err != nil {
 		log.Error(err)
 	}
 }
+
+func ExportNodeState(nso *NiovaKVServer, handler * pmdbServerHandler){
+	for range time.Tick(time.Second * tagExportInterval){
+		ret := nso.pso.PmdbExportNodeState()
+		handler.GossipData["State"] = strconv.Itoa(ret)
+		handler.serfAgentHandler.SetNodeTags(handler.GossipData)
+	}
+}
+
 
 func usage() {
 	flag.PrintDefaults()
