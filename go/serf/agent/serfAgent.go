@@ -179,19 +179,40 @@ func (Handler *SerfAgentHandler) GetMembership() []string {
 
 /*
 Type : SerfAgentHandler
-Method name : GetMembersState
+Method name : GetMembersStatus
 Parameters : None
 Return value : map[stirng]bool
-Description : Returns state of nodes in cluster
+Description : Returns status of nodes in cluster
 */
-func (Handler *SerfAgentHandler) GetMembersState() map[string]bool {
-	memberState := make(map[string]bool)
+func (Handler *SerfAgentHandler) GetMembersStatus() map[string]bool {
+	memberStatus := make(map[string]bool)
 	members := Handler.agentObj.Serf().Members()
 	for _, mems := range members {
 		if mems.Status == 1 {
-			memberState[mems.Name] = true
+			memberStatus[mems.Name] = true
 		} else {
-			memberState[mems.Name] = false
+			memberStatus[mems.Name] = false
+		}
+	}
+	return memberStatus
+}
+
+
+/*
+Type : SerfAgentHandler
+Method name : GetMemberState
+Parameters : None
+Return value : map[string]int
+Description : Returns state of the nodes in cluster in int type
+*/
+func (Handler *SerfAgentHandler) GetMemberState() map[string]int {
+	memberState := make(map[string]int)
+	members := Handler.agentObj.Serf().Members()
+	for _, mems := range members {
+		if mems.Status == 1 {
+			memberState[mems.Name], _ = strconv.Atoi(mems.Tags["State"])
+		} else {
+			memberState[mems.Name] = 0
 		}
 	}
 	return memberState

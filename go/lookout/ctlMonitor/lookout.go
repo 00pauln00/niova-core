@@ -28,6 +28,7 @@ type EPContainer struct {
 	HttpPort         int
 	EnableHttp       bool
 	SerfMembershipCB func() map[string]bool
+	SerfMemberState  func() map[string]int
 	Statb            syscall.Stat_t
 	EpWatcher        *fsnotify.Watcher
 	EpMap            map[uuid.UUID]*NcsiEP
@@ -345,9 +346,11 @@ func getFollowerStats(raftEntry RaftInfo) string {
 	return output
 }
 
+
 func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string, nodeUUID string) string {
 	var output string
 	membership := epc.SerfMembershipCB()
+	memberState := epc.SerfMemberState()
 	for name, isAlive := range membership {
 		var adder, status string
 		if isAlive {
@@ -358,7 +361,8 @@ func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string,
 			status = "offline"
 		}
 		if nodeUUID == name {
-			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"status="%s"raftUUID="%s"} %s`, name, state, status, raftUUID, adder)
+			state_int := memberState[name]
+			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"state_int="%d"status="%s"raftUUID="%s"} %s`, name, state, state_int, status, raftUUID, adder)
 		} else {
 			// since we do not know the state of other nodes
 			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"status="%s"raftUUID="%s"} %s`, name, status, raftUUID, adder)
