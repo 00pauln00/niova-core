@@ -865,25 +865,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
      * of ID_ANY_64bit means the object has previously attempted a write but
      * that write did not yet (or ever) commit.
      */
-    if (pmdb_req->pmdbrm_write_seqno == obj.pmdb_obj_commit_seqno)
-    {
-        /* To detect a retried request both the write_seqno and the msg_id
-         * must match.  In that case, 'success' may be returned.  Note that
-         * since a single client may only ever send a single request per rncui
-         * (ie queue_depth == 1), a valid retry scenario only needs to check
-         * for the last write.  IOW the server only promises to detect a retry
-         * from a 'race between multiple clients' given a queue depth of '1'.
-         */
-        int rc = (obj.pmdb_obj_msg_id == rncr->rncr_msg_id) ? 0 : -ESTALE;
-
-        raft_client_net_request_handle_error_set(
-            rncr, rc ? rc : -EALREADY, 0, rc);
-    }
-    else if (pmdb_req->pmdbrm_write_seqno < obj.pmdb_obj_commit_seqno)
-    {
-        raft_client_net_request_handle_error_set(rncr, -ESTALE, 0, -ESTALE);
-    }
-    else if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
+    if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
     {
         /* Check if request has already been placed into the log but not yet
          * applied.  Here, the client's request has been accepted but not
@@ -902,7 +884,6 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                                                      -EINPROGRESS, 0);
         }
         else // Check if rncui is already part of coalesced_wr_tree
-
         {
             int error = 0;
             struct pmdb_cowr_sub_app *cowr_sa =
@@ -919,8 +900,28 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                 pmdb_prep_raft_entry_write(rncr, &obj);
         }
     }
-    else // Request sequence is too far ahead
+    else if (pmdb_req->pmdbrm_write_seqno == obj.pmdb_obj_commit_seqno)
     {
+        /* To detect a retried request both the write_seqno and the msg_id
+         * must match.  In that case, 'success' may be returned.  Note that
+         * since a single client may only ever send a single request per rncui
+         * (ie queue_depth == 1), a valid retry scenario only needs to check
+         * for the last write.  IOW the server only promises to detect a retry
+         * from a 'race between multiple clients' given a queue depth of '1'.
+         */
+        int rc = (obj.pmdb_obj_msg_id == rncr->rncr_msg_id) ? 0 : -ESTALE;
+
+        raft_client_net_request_handle_error_set(
+            rncr, rc ? rc : -EALREADY, 0, rc);
+    }
+    else if (pmdb_req->pmdbrm_write_seqno < obj.pmdb_obj_commit_seqno)
+    {
+        // Request is no longer current
+        raft_client_net_request_handle_error_set(rncr, -ESTALE, 0, -ESTALE);
+    }
+    else
+    {
+        // Request sequence is too far ahead
         rc = -EBADE;
         raft_client_net_request_handle_error_set(rncr, rc, 0, 0);
     }
