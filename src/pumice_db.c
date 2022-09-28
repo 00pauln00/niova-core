@@ -1193,8 +1193,8 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
                        "pmdb_object_lookup(): %s", strerror(-rc));
 
         /* Since the KV is being rewritten, replace the errors with -ESTALE
-         * only for leader (as pmdb object was written only on leader as marker in
-         * the write phase. For followers it would fail with ENOENT)
+         * only for leader (as pmdb object was written only on leader as marked
+         * in the write phase. For followers it would fail with ENOENT)
          * so that upper layer will not attempt to issue a reply.
          */
         if (rncr->rncr_is_leader)
@@ -1240,7 +1240,6 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
         pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
         pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(rncr);
     }
-
 
     return rc;
 }
