@@ -29,7 +29,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define PMDB_SNAPSHOT_MAX_OPEN_TIME_SEC 60
 
 static const struct PmdbAPI *pmdbApi;
-static void *pmdb_user_data = NULL;
+static void *pmdbUserData = NULL;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -1004,7 +1004,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
                                  pmdb_req->pmdbrm_data,
                                  pmdb_req->pmdbrm_data_size,
                                  pmdb_reply->pmdbrm_data, max_reply_size,
-                                 pmdb_user_data);
+                                 pmdbUserData);
     }
     //XXX fault injection needed
     if (rrc < 0)
@@ -1251,7 +1251,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     int apply_rc =
         pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
                             pmdb_req->pmdbrm_data_size, (void *)&pah,
-                            pmdb_user_data);
+                            pmdbUserData);
 
     // rc of 0 means the client will get a reply and removal of coalesced
     // tree item only leader should send the reply back to client.
@@ -1513,7 +1513,7 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          bool use_coalesced_writes,
          void *user_data)
 {
-    pmdb_user_data = user_data;
+    pmdbUserData = user_data;
     return _PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
                      num_cf_names, use_synchronous_writes,
                      use_coalesced_writes);
