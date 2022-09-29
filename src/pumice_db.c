@@ -902,11 +902,31 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                                       rncr->rncr_current_term,
                                       &error, __func__, __LINE__);
             if (!cowr_sa)
-                raft_client_net_request_handle_error_set(
-                    rncr, error, error, 0);
+            {
+                switch (error)
+                {
+                case -ESTALE: // app level error
+                    raft_client_net_request_handle_error_set(
+                        rncr, error, 0, error);
+                    break;
 
-            else // Request sequence test passes, will enter the raft log.
+                // The rest are considered 'sys' errors
+                case -EINPROGRESS: // fall through
+                case -ENOMEM:      // fall through
+                default:
+                    raft_client_net_request_handle_error_set(
+                        rncr, error, error, 0);
+                    break;
+                }
+            }
+            else
+            {
+                // Xxx handle pmbd_api->write_prep here
+                //     remove cowr_sa is write_prep fails
+
+                // Request sequence test passes, will enter the raft log.
                 pmdb_prep_raft_entry_write(rncr, &obj);
+            }
         }
     }
     else if (pmdb_req->pmdbrm_write_seqno == obj.pmdb_obj_commit_seqno)
