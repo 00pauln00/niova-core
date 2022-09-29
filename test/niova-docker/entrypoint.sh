@@ -20,6 +20,9 @@ echo "HW : $HW"
 cd /holon
 ./prometheus --config.file=prometheus.yml &
 
+# Run grafana
+service grafana-server start
+
 # Run command passed from arguments
 $*
 
