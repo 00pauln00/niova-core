@@ -841,6 +841,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     bool new_object = false;
     int64_t prev_pending_term = -1;
 
+    // Find the object in RocksDB
     int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                 rncr->rncr_current_term);
     if (rc)
@@ -860,7 +861,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             /* This appears to be a system error.  Mark it and reply to the
              * client.
              */
-            raft_client_net_request_handle_error_set(rncr, rc, 0, rc);
+            raft_client_net_request_handle_error_set(rncr, rc, rc, 0);
 
             return 0;
         }
