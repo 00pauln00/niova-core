@@ -137,7 +137,6 @@ func ExportNodeState(nso *NiovaKVServer, handler * pmdbServerHandler){
 	}
 }
 
-
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -174,7 +173,6 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 
 	return nso, err
 }
-
 
 func (handler *pmdbServerHandler) SerfMembership() map[string]bool {
 	membership := handler.serfAgentHandler.GetMembersStatus()

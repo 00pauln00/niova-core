@@ -346,7 +346,6 @@ func getFollowerStats(raftEntry RaftInfo) string {
 	return output
 }
 
-
 func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string, nodeUUID string) string {
 	var output string
 	membership := epc.SerfMembershipCB()

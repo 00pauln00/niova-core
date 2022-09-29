@@ -1472,15 +1472,18 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
                      use_coalesced_writes);
 }
 
-
 /*
  * PmdbGetNodeState - used to return the state (follower,leader,etc)
  * of the calling server.
  */
 int
-PmdbGetNodeState()
+PmdbGetNodeState(void)
 {
-	return raft_net_get_instance()->ri_state;
+	struct raft_instance *ri = raft_net_get_instance();
+	if(!ri){
+	       return -ENOENT;
+	}
+	return ri->ri_state;
 }
 
 /**
