@@ -36,8 +36,7 @@ typedef int     pumicedb_write_prep_ctx_int_t;
 typedef pumicedb_write_prep_ctx_int_t
 (*pmdb_write_prep_sm_handler_t)(const struct raft_net_client_user_id *,
                                 const void *input_buf, size_t input_bufsz,
-                                void *pmdb_handle, void *user_data,
-                                bool *perform_raft_write);
+                                void *user_data, bool *perform_raft_write);
 
 /**
  * pmdb_apply_sm_handler_t - The apply handler is called from raft after the

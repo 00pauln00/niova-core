@@ -920,11 +920,28 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             }
             else
             {
-                // Xxx handle pmbd_api->write_prep here
-                //     remove cowr_sa is write_prep fails
+                bool write_entry = true;
 
-                // Request sequence test passes, will enter the raft log.
-                pmdb_prep_raft_entry_write(rncr, &obj);
+                // pmdb_write_prep() may set 'write_entry' to false
+                int rc = pmdbApi->pmdb_write_prep != NULL ?
+                    pmdbApi->pmdb_write_prep(
+                        &pmdb_req->pmdbrm_user_id, pmdb_req->pmdbrm_data,
+                        pmdb_req->pmdbrm_data_size, pmdbUserData,
+                        &write_entry) : 0;
+
+                if (rc) // client-only error, raft write may still proceed
+                    raft_client_net_request_handle_error_set(rncr, 0, 0, rc);
+
+                if (write_entry)
+                {
+                    // Request sequence test passes, will enter the raft log.
+                    pmdb_prep_raft_entry_write(rncr, &obj);
+                }
+                else
+                {
+                    // Remove write coalescing object from the ref-tree
+                    pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
+                }
             }
         }
     }
