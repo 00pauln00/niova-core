@@ -866,10 +866,8 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             return 0;
         }
     }
-    else
-    {
-        PMDB_OBJ_DEBUG(LL_NOTIFY, &obj, "obj exists");
-    }
+
+    PMDB_OBJ_DEBUG(LL_NOTIFY, &obj, "obj (new=%d)", new_object);
 
     /* Check if the request was already committed and applied.  A commit-seqno
      * of ID_ANY_64bit means the object has previously attempted a write but
@@ -952,8 +950,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     else
     {
         // Request sequence is too far ahead
-        rc = -EBADE;
-        raft_client_net_request_handle_error_set(rncr, rc, 0, 0);
+        raft_client_net_request_handle_error_set(rncr, -EBADE, 0, -EBADE);
     }
 
     // Stash the obj metadata into the reply
