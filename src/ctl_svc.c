@@ -38,15 +38,16 @@ REGISTRY_ENTRY_FILE_GENERATE;
  */
 enum ctl_svc_node_keys
 {
-    CTL_SVC_NODE_UUID,              //string
-    CTL_SVC_NODE_TYPE,              //string
-    CTL_SVC_NODE_HOSTNAME,          //string
-    CTL_SVC_NODE_IPADDR,            //string
-    CTL_SVC_NODE_PORT,              //string
-    CTL_SVC_NODE_CLIENT_PORT,       //unsigned
+    CTL_SVC_NODE_UUID,             //string
+    CTL_SVC_NODE_TYPE,             //string
+    CTL_SVC_NODE_HOSTNAME,         //string
+    CTL_SVC_NODE_IPADDR,           //string
+    CTL_SVC_NODE_PORT,             //string
+    CTL_SVC_NODE_CLIENT_PORT,      //unsigned
+    CTL_SVC_NODE_SESSION_UUID,     //uuid
     CTL_SVC_NODE_NET_SEND_ENABLED, //bool
     CTL_SVC_NODE_NET_RECV_ENABLED, //bool
-    CTL_SVC_NODE_STORE,             //string (pathname)
+    CTL_SVC_NODE_STORE,            //string (pathname)
     CTL_SVC_NODE__MAX,
     CTL_SVC_NODE__MIN = 0,
     CTL_SVC_NODE__MAX_RAFT = CTL_SVC_NODE_HOSTNAME,
@@ -583,6 +584,11 @@ ctl_svc_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
         case CTL_SVC_NODE_CLIENT_PORT:
             lreg_value_fill_unsigned(lrv, "client_port",
                                      csn->csn_peer.csnp_client_port);
+            break;
+        case CTL_SVC_NODE_SESSION_UUID:
+            lreg_value_fill_string_uuid(
+                lrv, "session-uuid",
+                csn->csn_peer.csnp_net_data.tmc_session_uuid);
             break;
         case CTL_SVC_NODE_NET_SEND_ENABLED:
             lreg_value_fill_bool(
