@@ -2093,6 +2093,7 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME, //
     RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS, // unsigned
+    RAFT_CLIENT_SUB_APP_CONN_SESSION_UUID,  //
     RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS,     // unsigned
     RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE,        // string
@@ -2142,6 +2143,10 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             snprintf(LREG_VALUE_TO_OUT_STR(lv), LREG_VALUE_STRING_MAX,
                      "%s:%d", inet_ntoa(sa->rcsa_rh.rcrh_sin_reply_addr),
                      ntohs(sa->rcsa_rh.rcrh_sin_reply_port));
+            break;
+        case RAFT_CLIENT_SUB_APP_CONN_SESSION_UUID:
+            lreg_value_fill_string_uuid(lv, "conn-session",
+                                        sa->rcsa_rh.rcrh_conn_session_uuid);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME:
             lreg_value_fill_string_time(lv, "submitted",
