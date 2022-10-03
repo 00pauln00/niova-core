@@ -772,6 +772,9 @@ tcp_mgr_connect_complete(struct tcp_mgr_connection *tmc)
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
     tmc->tmc_status = TMCS_CONNECTED;
+
+    // Create a uuid for this new connection
+    uuid_generate(tmc->tmc_session_uuid);
     rc = 0;
 out:
     if (rc < 0)
