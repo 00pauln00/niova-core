@@ -6,7 +6,7 @@ import (
 	"common/requestResponseLib"
 	"common/serviceDiscovery"
 	compressionLib "common/specificCompressionLib"
-	"controlplane/serfAgent"
+	"common/serfAgent"
 	"encoding/gob"
 	"encoding/json"
 	"flag"

@@ -32,9 +32,9 @@ type SerfAgentHandler struct {
 	RpcAddr     net.IP //Addr for agent-client communication
 	RpcPort     uint16 //Port for agent-client communicaton
 	AgentLogger *log.Logger
+	AgentObj    *agent.Agent
 
 	//non-exported
-	agentObj    *agent.Agent
 	agentIPCObj *agent.AgentIPC
 	agentConf   *agent.Config
 }
@@ -57,7 +57,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 
 	//Create SerfAgentHandler obj and init the values
-	Handler.agentObj = serfagent
+	Handler.AgentObj = serfagent
 	Handler.agentConf = agentconfig
 
 	return err
@@ -71,7 +71,7 @@ Return Value : error
 Description : Starts the created agent in setup, and listenes on rpc channel
 */
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
-	err := Handler.agentObj.Start()
+	err := Handler.AgentObj.Start()
 
 	if !requireRPC {
 		return err
@@ -79,11 +79,11 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 
 	//Create func handler for rpc, client handlers are binded to rpc.
 	FuncHandler := &agent.ScriptEventHandler{
-		SelfFunc: func() serf.Member { return Handler.agentObj.Serf().LocalMember() },
+		SelfFunc: func() serf.Member { return Handler.AgentObj.Serf().LocalMember() },
 		Scripts:  Handler.agentConf.EventScripts(),
 		Logger:   Handler.AgentLogger,
 	}
-	Handler.agentObj.RegisterEventHandler(FuncHandler)
+	Handler.AgentObj.RegisterEventHandler(FuncHandler)
 
 	//Return if error in starting the agent
 	if err != nil {
@@ -96,7 +96,7 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	if err != nil {
 		return err
 	}
-	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, "", rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
+	Handler.agentIPCObj = agent.NewAgentIPC(Handler.AgentObj, "", rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
 
 	return nil
 }
@@ -110,7 +110,7 @@ Description : Joins the cluster
 */
 func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
 	//fmt.Println(Handler.agentObj)
-	no_of_nodes, err := Handler.agentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
+	no_of_nodes, err := Handler.AgentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
 	return no_of_nodes, err
 }
 
@@ -170,52 +170,11 @@ Description : Returns addr of nodes in the cluster
 */
 func (Handler *SerfAgentHandler) GetMembership() []string {
 	var membersAddr []string
-	members := Handler.agentObj.Serf().Members()
+	members := Handler.AgentObj.Serf().Members()
 	for _, mems := range members {
 		membersAddr = append(membersAddr, mems.Addr.String())
 	}
 	return membersAddr
-}
-
-/*
-Type : SerfAgentHandler
-Method name : GetMembersStatus
-Parameters : None
-Return value : map[stirng]bool
-Description : Returns status of nodes in cluster
-*/
-func (Handler *SerfAgentHandler) GetMembersStatus() map[string]bool {
-	memberStatus := make(map[string]bool)
-	members := Handler.agentObj.Serf().Members()
-	for _, mems := range members {
-		if mems.Status == 1 {
-			memberStatus[mems.Name] = true
-		} else {
-			memberStatus[mems.Name] = false
-		}
-	}
-	return memberStatus
-}
-
-
-/*
-Type : SerfAgentHandler
-Method name : GetMemberState
-Parameters : None
-Return value : map[string]int
-Description : Returns state of the nodes in cluster in int type
-*/
-func (Handler *SerfAgentHandler) GetMemberState() map[string]int {
-	memberState := make(map[string]int)
-	members := Handler.agentObj.Serf().Members()
-	for _, mems := range members {
-		if mems.Status == 1 {
-			memberState[mems.Name], _ = strconv.Atoi(mems.Tags["State"])
-		} else {
-			memberState[mems.Name] = 0
-		}
-	}
-	return memberState
 }
 
 /*
@@ -226,12 +185,12 @@ Return value : error
 Description : Update tags, its incremental type update
 */
 func (Handler *SerfAgentHandler) SetNodeTags(tags map[string]string) error {
-	err := Handler.agentObj.SetTags(tags)
+	err := Handler.AgentObj.SetTags(tags)
 	return err
 }
 
 func (Handler *SerfAgentHandler) GetTags(filterKey string, filterValue string) map[string]map[string]string {
-	members := Handler.agentObj.Serf().Members()
+	members := Handler.AgentObj.Serf().Members()
 	returnMap := make(map[string]map[string]string)
 	for _, mem := range members {
 		if mem.Tags[filterKey] == filterValue {
@@ -250,7 +209,7 @@ Description : Stops and closes the agent and stops listenting on bind addr and r
 */
 func (Handler *SerfAgentHandler) Close() error {
 	Handler.agentIPCObj.Shutdown()
-	err := Handler.agentObj.Shutdown()
+	err := Handler.AgentObj.Shutdown()
 	return err
 }
 

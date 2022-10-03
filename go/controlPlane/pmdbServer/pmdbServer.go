@@ -106,8 +106,8 @@ func main() {
 		AppType:          "PMDB",
 		HttpPort:         int(serverHandler.hport),
 		CTLPath:          ctl_path,
-		SerfMembershipCB: serverHandler.SerfMembership,
-		SerfMemberState:  serverHandler.SerfMemberState,
+		SerfGetTagInfo: serverHandler.SerfGetTagInfo,
+		SerfAgentHandler: serverHandler.serfAgentHandler,
 		EnableHttp:       serverHandler.prometheus,
 	}
 	go serverHandler.lookoutInstance.Start()
@@ -174,14 +174,9 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	return nso, err
 }
 
-func (handler *pmdbServerHandler) SerfMembership() map[string]bool {
-	membership := handler.serfAgentHandler.GetMembersStatus()
-	return membership
-}
-
-func (handler *pmdbServerHandler) SerfMemberState() map[string]int {
-	memberState := handler.serfAgentHandler.GetMemberState()
-	return memberState
+func (handler *pmdbServerHandler) SerfGetTagInfo(serfAgentHandler *serfAgent.SerfAgentHandler) map[string]PumiceDBCommon.PMDBGossipInfo {
+	memberInfo := PumiceDBCommon.GetMemberGossipInfo(serfAgentHandler)
+	return memberInfo
 }
 
 func extractPMDBServerConfigfromFile(path string) (*PumiceDBCommon.PeerConfigData, error) {
