@@ -972,7 +972,8 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
 
     // Stash the obj metadata into the reply
     struct pmdb_msg *pmdb_reply = RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
-    pmdb_obj_to_reply(&obj, pmdb_reply, rncr->rncr_current_term, rc);
+    pmdb_obj_to_reply(&obj, pmdb_reply, rncr->rncr_current_term,
+                      rncr->rncr_op_error);
 
     PMDB_OBJ_DEBUG((rncr->rncr_op_error == -EBADE ? LL_NOTIFY : LL_DEBUG),
                    &obj, "op-err=%s new-object=%s (ppt=%ld)",
