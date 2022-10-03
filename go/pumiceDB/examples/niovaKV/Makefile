@@ -27,7 +27,7 @@ covid_foodpalace_apps:
 
 
 lkvt_module:
-	cd lkvt && git submodule init && git submodule update && go build
+	cd lkvt && git submodule init && git submodule update && go mod tidy && go build
 
 install:
 	cp pmdbServer/pmdbServer ${DIR}/libexec/niova/NKV_pmdbServer
