@@ -1049,7 +1049,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                  queued_ms > raftClientRetryTimeoutMS &&
                  uuid_compare(sa->rcsa_rh.rcrh_conn_session_uuid, session_uuid))
         {
-            NIOVA_ASSERT(!uuid_is_null(sa->rcsa_rh.rcrh_conn_session_uuid));
+            NIOVA_ASSERT(!uuid_is_null(session_uuid));
 
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
 

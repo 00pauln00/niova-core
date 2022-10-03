@@ -204,6 +204,7 @@ tcp_mgr_connection_close_internal(struct tcp_mgr_connection *tmc)
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
     tmc->tmc_bulk_remain = 0;
+    uuid_clear(tmc->tmc_session_uuid);
 
     tcp_socket_close(&tmc->tmc_tsh);
     tmc->tmc_status = TMCS_DISCONNECTED;
