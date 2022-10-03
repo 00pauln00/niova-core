@@ -999,6 +999,11 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
+    uuid_t session_uuid = {};
+
+    if (leader_viable)
+        ctl_svc_node_2_session_uuid(RCI_2_RI(rci)->ri_csn_leader, session_uuid);
+
     SIMPLE_LOG_MSG(LL_TRACE, "entering lock");
 
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
@@ -1041,8 +1046,11 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
         else if (leader_viable &&  // non-expired requests are queued for send
-                 queued_ms > raftClientRetryTimeoutMS)
+                 queued_ms > raftClientRetryTimeoutMS &&
+                 uuid_compare(sa->rcsa_rh.rcrh_conn_session_uuid, session_uuid))
         {
+            NIOVA_ASSERT(!uuid_is_null(sa->rcsa_rh.rcrh_conn_session_uuid));
+
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
 
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
