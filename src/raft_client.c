@@ -1248,7 +1248,7 @@ raft_client_request_handle_init(
     int rc = raft_client_rpc_msg_init(rci, &rcrh->rcrh_rpc_request,
                                       RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
                                       niova_io_iovs_total_size_get(src_iovs,
-                                                             nsrc_iovs),
+                                                                   nsrc_iovs),
                                       leader, tag);
     if (rc)
         return rc;
@@ -1826,6 +1826,8 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
     {
         niova_realtime_coarse_clock(&rci->rci_last_request_sent);
 
+        ctl_svc_node_2_session_uuid(RCI_2_RI(rci)->ri_csn_leader,
+                                    sa->rcsa_rh.rcrh_conn_session_uuid);
         sa->rcsa_rh.rcrh_last_send = rci->rci_last_request_sent;
         sa->rcsa_rh.rcrh_num_sends++;
     }
