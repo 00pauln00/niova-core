@@ -124,6 +124,8 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC,   // uint32
     RAFT_LREG_LOWEST_IDX,         // int64
     RAFT_LREG_CHKPT_IDX,          // int64
+    RAFT_LREG_COALESCE_ITEMS,     // int64
+    RAFT_LREG_COALESCE_SPACE_AVAIL, // int64
     RAFT_LREG_HIST_COALESCED_WR_CNT,  // hist object
     RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
@@ -306,6 +308,19 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             break;
         case RAFT_LREG_SYNC_CNT:
             lreg_value_fill_unsigned(lv, "sync-cnt", ri->ri_sync_cnt);
+            break;
+        case RAFT_LREG_COALESCE_ITEMS:
+            lreg_value_fill_signed(
+                lv, "coalesce-items-pending",
+                (raft_instance_is_leader(ri) && ri->ri_coalesced_wr != NULL) ?
+                ri->ri_coalesced_wr->rcwi_nentries : -1LL);
+            break;
+        case RAFT_LREG_COALESCE_SPACE_AVAIL:
+            lreg_value_fill_signed(
+                lv, "coalesce-space-remaining",
+                (raft_instance_is_leader(ri) && ri->ri_coalesced_wr != NULL) ?
+                (RAFT_ENTRY_MAX_DATA_SIZE(ri) -
+                 ri->ri_coalesced_wr->rcwi_total_size) : -1LL);
             break;
         case RAFT_LREG_HIST_COMMIT_LAT:
             lreg_value_fill_histogram(
