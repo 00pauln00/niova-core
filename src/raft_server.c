@@ -75,6 +75,9 @@ raft_server_instance_self_idx(const struct raft_instance *ri)
     return raft_peer_2_idx(ri, ri->ri_csn_this_peer->csn_uuid);
 }
 
+static unsigned long long
+raft_heartbeat_timeout_msec(const struct raft_instance *ri);
+
 static const char *
 raft_follower_reason_2_str(enum raft_follower_reasons reason)
 {
@@ -114,6 +117,9 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_LAST_APPLIED_CCRC,  // int64
     RAFT_LREG_SYNC_FREQ_US,       // uint64
     RAFT_LREG_SYNC_CNT,           // uint64
+    RAFT_LREG_QUORUM_CNT,         // int64
+    RAFT_LREG_TIME_AS_LEADER,     // float
+    RAFT_LREG_HEARTBEAT_MSEC,     // int64
     RAFT_LREG_NEWEST_ENTRY_IDX,   // int64
     RAFT_LREG_NEWEST_ENTRY_TERM,  // int64
     RAFT_LREG_NEWEST_ENTRY_SIZE,  // uint32
@@ -124,6 +130,8 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC,   // uint32
     RAFT_LREG_LOWEST_IDX,         // int64
     RAFT_LREG_CHKPT_IDX,          // int64
+    RAFT_LREG_COALESCE_ITEMS,     // int64
+    RAFT_LREG_COALESCE_SPACE_AVAIL, // int64
     RAFT_LREG_HIST_COALESCED_WR_CNT,  // hist object
     RAFT_LREG_HIST_DEV_READ_LAT,  // hist object
     RAFT_LREG_HIST_DEV_WRITE_LAT, // hist object
@@ -240,6 +248,23 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                  raft_instance_is_leader(ri)) ? "none" :
                 raft_follower_reason_2_str(ri->ri_follower_reason));
             break;
+        case RAFT_LREG_TIME_AS_LEADER:
+                lreg_value_fill_float(
+                    lv, "leader-time",
+                    raft_instance_is_leader(ri) ?
+                    timespec_2_float(&ri->ri_leader.rls_leader_accumulated) :
+                    (float)0.0);
+        break;
+        case RAFT_LREG_QUORUM_CNT:
+            lreg_value_fill_signed(lv, "quorum-cnt",
+                                   (raft_instance_is_leader(ri) ?
+                                    ri->ri_leader.rls_quorum_ok_cnt : -1));
+            break;
+        case RAFT_LREG_HEARTBEAT_MSEC:
+            lreg_value_fill_signed(lv, "heartbeat-freq-msec",
+                                   (raft_instance_is_leader(ri) ?
+                                    raft_heartbeat_timeout_msec(ri) : -1));
+            break;
         case RAFT_LREG_CLIENT_REQUESTS:
             lreg_value_fill_string(
                 lv, "client-requests",
@@ -306,6 +331,19 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             break;
         case RAFT_LREG_SYNC_CNT:
             lreg_value_fill_unsigned(lv, "sync-cnt", ri->ri_sync_cnt);
+            break;
+        case RAFT_LREG_COALESCE_ITEMS:
+            lreg_value_fill_signed(
+                lv, "coalesce-items-pending",
+                (raft_instance_is_leader(ri) && ri->ri_coalesced_wr != NULL) ?
+                ri->ri_coalesced_wr->rcwi_nentries : -1LL);
+            break;
+        case RAFT_LREG_COALESCE_SPACE_AVAIL:
+            lreg_value_fill_signed(
+                lv, "coalesce-space-remaining",
+                (raft_instance_is_leader(ri) && ri->ri_coalesced_wr != NULL) ?
+                (RAFT_ENTRY_MAX_DATA_SIZE(ri) -
+                 ri->ri_coalesced_wr->rcwi_total_size) : -1LL);
             break;
         case RAFT_LREG_HIST_COMMIT_LAT:
             lreg_value_fill_histogram(
@@ -1612,15 +1650,23 @@ raft_election_timeout_set(const struct raft_instance *ri, struct timespec *ts)
     msec_2_timespec(ts, msec);
 }
 
-static void
-raft_heartbeat_timeout_sec(const struct raft_instance *ri, struct timespec *ts)
+static unsigned long long
+raft_heartbeat_timeout_msec(const struct raft_instance *ri)
 {
+    NIOVA_ASSERT(ri);
+
     unsigned long long msec = (ri->ri_election_timeout_max_ms /
                                ri->ri_heartbeat_freq_per_election_min);
 
     NIOVA_ASSERT(msec >= RAFT_HEARTBEAT__MIN_TIME_MS);
 
-    msec_2_timespec(ts, msec);
+    return msec;
+}
+
+static void
+raft_heartbeat_timeout_sec(const struct raft_instance *ri, struct timespec *ts)
+{
+    msec_2_timespec(ts, raft_heartbeat_timeout_msec(ri));
 }
 
 /**
@@ -2138,6 +2184,7 @@ raft_server_leader_init_state(struct raft_instance *ri)
     memset(rls, 0, sizeof(*rls));
 
     rls->rls_leader_term = ri->ri_log_hdr.rlh_term;
+    niova_unstable_coarse_clock(&rls->rls_leader_start);
 
     const raft_peer_t num_raft_peers = raft_num_members_validate_and_get(ri);
 
@@ -2575,6 +2622,22 @@ static raft_net_timerfd_cb_ctx_bool_t
 raft_leader_check_quorum(struct raft_instance *ri);
 
 static raft_net_timerfd_cb_ctx_t
+raft_server_increment_leader_time(struct raft_instance *ri)
+{
+    if (ri == NULL || !raft_instance_is_leader(ri))
+        return;
+
+    struct raft_leader_state *rls = &ri->ri_leader;
+
+    struct timespec now;
+    niova_unstable_coarse_clock(&now);
+
+    NIOVA_ASSERT(timespeccmp(&now, &rls->rls_leader_start, >=));
+
+    timespecsub(&now, &rls->rls_leader_start, &rls->rls_leader_accumulated);
+}
+
+static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
     FUNC_ENTRY(LL_TRACE);
@@ -2588,10 +2651,16 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
 
     case RAFT_STATE_LEADER:
-        raft_leader_check_quorum(ri) ?
-            raft_server_issue_heartbeat(ri) :
+        if (raft_leader_check_quorum(ri))
+        {
+            raft_server_leader_co_wr_timer_expired(ri);
+            raft_server_issue_heartbeat(ri);
+            raft_server_increment_leader_time(ri);
+        }
+        else
+        {
             raft_server_become_candidate(ri, true);
-        raft_server_leader_co_wr_timer_expired(ri);
+        }
         break;
     default:
         break;
@@ -3400,7 +3469,12 @@ raft_server_process_append_entries_request(struct raft_instance *ri,
                                             non_matching_prev_term, update_sli,
                                             rc);
 
-    if (reset_timerfd)
+    /* Ensure that the raft leader (valid or otherwise) does not reset its timer
+     * since this may cause a leader timeout due to delayed pings.
+     * Additionally, for users of the heartbeat as a clock source it's important
+     * that the leader wakes up consistently.
+     */
+    if (reset_timerfd && !raft_instance_is_leader(ri))
         raft_server_timerfd_settime(ri);
 }
 
@@ -3877,16 +3951,35 @@ raft_leader_instance_is_fresh(const struct raft_instance *ri)
         ri, raft_election_timeout_lower_bound(ri));
 }
 
+/* raft_leader_check_quorum - reads follower ack state and determines if a
+ *   quorum exists (IOW that enough followers have ack'd this leader w/in the
+ *   time window).
+ *   NOTE:  rls_quorum_ok_cnt - this value is incremented each time this call
+ *     is entered, without respect to the current time.  It is assumed that this
+ *     called is made periodically from the leader's timefd expiration. Calling
+ *     this function outside of raft_net_timerfd_cb_ctx can have a negative
+ *     effect on users of this value which are using it as a clock value.
+ */
 static raft_net_timerfd_cb_ctx_bool_t
 raft_leader_check_quorum(struct raft_instance *ri)
 {
+    NIOVA_ASSERT(ri->ri_state == RAFT_STATE_LEADER);
+
     bool quorum_intact =
         raft_leader_majority_followers_comm_window(
             ri, (raft_election_timeout_lower_bound(ri) *
                  ri->ri_check_quorum_timeout_factor));
 
-    if (!quorum_intact)
+    if (quorum_intact)
+    {
+        ri->ri_leader.rls_quorum_ok_cnt++;
+        DBG_RAFT_INSTANCE(LL_DEBUG, ri, "quorum OK (cnt=%ld)",
+                          ri->ri_leader.rls_quorum_ok_cnt);
+    }
+    else
+    {
         DBG_RAFT_INSTANCE(LL_WARN, ri, "quorum loss detected");
+    }
 
     return quorum_intact;
 }
