@@ -29,7 +29,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	//"fmt"
+	"fmt"
 )
 
 //Structure for proxy
@@ -97,7 +97,8 @@ func (handler *proxyHandler) getCmdParams() {
 	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server serf configuration file")
 	flag.Parse()
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
-	handler.clientUUID, _ = uuid.FromString(tempClientUUID)
+	//FIXME: For testing purpose
+	handler.clientUUID, _ = uuid.FromString("75883d2c-9889-42d9-84ad-3bcb0cbb7892")
 }
 
 /*
@@ -121,6 +122,7 @@ func (handler *proxyHandler) getConfigData(config []byte) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("Config info : ",configMap["PortRange"])
 	portRangeStart, err := strconv.Atoi(strings.Split(configMap["PortRange"],"-")[0])
 	portRangeEnd, err := strconv.Atoi(strings.Split(configMap["PortRange"],"-")[1])
 	if err != nil {
