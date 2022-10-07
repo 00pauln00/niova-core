@@ -1290,6 +1290,12 @@ raft_net_connection_to_csn(struct tcp_mgr_connection *tmc,
     *ret = OFFSET_CAST(ctl_svc_node, csn_peer, peer);
 }
 
+static tcp_mgr_ctx_bool_t
+raft_net_is_raft_peer_cb(void)
+{
+     return !raft_instance_is_client(raft_net_get_instance());
+}
+
 static tcp_mgr_ctx_int_t
 raft_net_peer_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
                      struct raft_instance *ri)
@@ -1308,18 +1314,17 @@ raft_net_peer_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
     if (header_size != sizeof(struct raft_rpc_msg))
         return -EBADMSG;
 
+    // Pass the valid csn pointer only for raft servers.
+    struct ctl_svc_node *csn = NULL;
+    if (raft_net_is_raft_peer_cb())
+        raft_net_connection_to_csn(tmc, &csn);
+
     if (ri->ri_server_recv_cb)
     {
-        ri->ri_server_recv_cb(ri, NULL, buf, buf_size, &from);
+        ri->ri_server_recv_cb(ri, csn, buf, buf_size, &from);
     }
 
     return 0;
-}
-
-static tcp_mgr_ctx_bool_t
-raft_net_is_raft_peer_cb(void)
-{
-     return !raft_instance_is_client(raft_net_get_instance());
 }
 
 static tcp_mgr_ctx_int_t

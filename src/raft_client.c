@@ -1755,12 +1755,12 @@ raft_client_recv_handler_process_reply(
  */
 static raft_net_cb_ctx_t
 raft_client_recv_handler(struct raft_instance *ri,
-                         struct ctl_svc_node *csn, const char *recv_buffer,
+                         struct ctl_svc_node *sender_csn, const char *recv_buffer,
                          ssize_t recv_bytes, const struct sockaddr_in *from)
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
         recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
-        FAULT_INJECT(raft_client_recv_handler_bypass) || csn)
+        FAULT_INJECT(raft_client_recv_handler_bypass));
         return;
 
     struct raft_client_instance *rci =
@@ -1769,8 +1769,8 @@ raft_client_recv_handler(struct raft_instance *ri,
     const struct raft_client_rpc_msg *rcrm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *sender_csn = raft_net_verify_sender_server_msg(
-        ri, rcrm->rcrm_sender_id, rcrm->rcrm_raft_id, from);
+    sender_csn = raft_net_verify_sender_server_msg(
+                     ri, rcrm->rcrm_sender_id, rcrm->rcrm_raft_id, from);
     if (!sender_csn)
         return;
 

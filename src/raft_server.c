@@ -3901,7 +3901,7 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
 
 static raft_net_cb_ctx_t
 raft_server_peer_recv_handler(struct raft_instance *ri,
-                              struct ctl_svc_node *csn,
+                              struct ctl_svc_node *sender_csn,
                               const char *recv_buffer,
                               ssize_t recv_bytes,
                               const struct sockaddr_in *from)
@@ -3909,7 +3909,6 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && from);
 
-    NIOVA_ASSERT(csn == NULL);
     if (!recv_buffer || !recv_bytes)
         return;
 
@@ -3940,9 +3939,9 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
 
     /* Verify the sender's id before proceeding.
      */
-    struct ctl_svc_node *sender_csn =
-        raft_net_verify_sender_server_msg(ri, rrm->rrm_sender_id,
-                                          rrm->rrm_raft_id, from);
+    sender_csn =
+          raft_net_verify_sender_server_msg(ri, rrm->rrm_sender_id,
+                                            rrm->rrm_raft_id, from);
     if (!sender_csn)
         return;
 
@@ -4389,8 +4388,7 @@ raft_server_enqueue_rw(struct raft_instance *ri,
 
     uint32_t queue_type = RAFT_SERVER_BULK_MSG_READ;
 
-    // Release this reference after processing the read request.
-    ctl_svc_node_get(csn);
+    // Release the reference on csn after processing the read request.
 
     struct raft_work_queue *rwq = &ri->ri_worker_queue[queue_type];
 
@@ -4432,6 +4430,9 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         return;
     }
 
+    // Take the reference on csn before using it for request.
+    ctl_svc_node_get(csn);
+
     // Enqueue the read request to be processed by read threads
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_READ)
     {
@@ -4464,6 +4465,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 
        raft_net_bulk_complete(csn);
        buffer_set_release_item(recv_bi);
+       ctl_svc_node_put(csn);
        return;
     }
 
@@ -4507,6 +4509,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_net_bulk_complete(csn);
         buffer_set_release_item(bi);
         buffer_set_release_item(recv_bi);
+        ctl_svc_node_put(csn);
      
         return;
     }
@@ -4587,6 +4590,7 @@ out:
     buffer_set_release_item(recv_bi);
     // Re-arm the epoll so next request can be read from socket.
     raft_net_bulk_complete(csn);
+    ctl_svc_node_put(csn);
 }
 
 /**
