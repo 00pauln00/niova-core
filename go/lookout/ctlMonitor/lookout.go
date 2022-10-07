@@ -29,8 +29,6 @@ type EPContainer struct {
 	AppType          string
 	HttpPort         int
 	EnableHttp       bool
-	SerfMembershipCB func() map[string]bool
-	SerfMemberState  func(serfAgentHandler * serfAgent.SerfAgentHandler) map[string]int
 	SerfGetTagInfo	 func(serfAgentHandler * serfAgent.SerfAgentHandler) map[string]PumiceDBCommon.PMDBGossipInfo
 	Statb            syscall.Stat_t
 	EpWatcher        *fsnotify.Watcher

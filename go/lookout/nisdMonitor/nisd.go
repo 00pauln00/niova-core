@@ -298,7 +298,6 @@ func main() {
 		AppType:          "NISD",
 		HttpPort:         *nisd.httpPort,
 		CTLPath:          *nisd.ctlPath,
-		SerfMembershipCB: nisd.SerfMembership,
 		EnableHttp:       true,
 	}
 	nisd.lookout.Start()
