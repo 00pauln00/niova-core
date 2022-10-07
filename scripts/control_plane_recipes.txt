@@ -5,3 +5,4 @@ controlPlane_pmdbrangeRead_delete_old_snapshot.yml
 controlPlane_rangeQuery_read_from_2threads_simultaneously.yml
 controlPlane_rangeQuery_disable_leader.yml
 controlPlane_LookoutInfo_operation.yml
+controlPlane_LeaderStateCheck.yml
