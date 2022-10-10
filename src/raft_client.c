@@ -787,10 +787,12 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
         return -EINVAL;
 
     else if (msg_type != RAFT_CLIENT_RPC_MSG_TYPE_PING &&
-             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_REQUEST)
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_WRITE &&
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_READ)
         return -EOPNOTSUPP;
 
-    else if (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REQUEST &&
+    else if ((msg_type == RAFT_CLIENT_RPC_MSG_TYPE_READ ||
+             msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) &&
              (data_size == 0 ||
               !raft_client_rpc_msg_size_is_valid(RCI_2_RI(rci)->ri_store_type,
                                                  data_size)))
@@ -818,6 +820,9 @@ static int
 raft_client_rpc_ping_init(struct raft_client_instance *rci,
                           struct raft_client_rpc_msg *rcrm)
 {
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(RCI_2_RI(rci)->ri_csn_leader->csn_uuid, uuid_str);
+
     return raft_client_rpc_msg_init(rci, rcrm, RAFT_CLIENT_RPC_MSG_TYPE_PING,
                                     0UL, RCI_2_RI(rci)->ri_csn_leader,
                                     RAFT_NET_TAG_NONE);
@@ -836,8 +841,6 @@ raft_client_ping_raft_service(struct raft_client_instance *rci)
         return;
 
     struct raft_instance *ri = RCI_2_RI(rci);
-
-    DBG_SIMPLE_CTL_SVC_NODE(LL_DEBUG, ri->ri_csn_leader, "");
 
     struct raft_client_rpc_msg rcrm;
 
@@ -1043,7 +1046,6 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                  queued_ms > raftClientRetryTimeoutMS)
         {
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
-
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
             cnt++;
@@ -1218,7 +1220,8 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
     if (!rc)
         rci->rci_leader_csn = RCI_2_RI(rci)->ri_csn_leader;
 
-    DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_NOTIFY : LL_DEBUG), rcrm, from,
+    rci->rci_leader_csn = RCI_2_RI(rci)->ri_csn_leader;
+    DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_DEBUG : LL_NOTIFY), rcrm, from,
                              "raft_net_apply_leader_redirect(): %s",
                              strerror(-rc));
 }
@@ -1245,7 +1248,9 @@ raft_client_request_handle_init(
         return -ENOTCONN;
 
     int rc = raft_client_rpc_msg_init(rci, &rcrh->rcrh_rpc_request,
-                                      RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
+                                      (rcrt & RCRT_WRITE) ?
+                                      RAFT_CLIENT_RPC_MSG_TYPE_WRITE :
+                                      RAFT_CLIENT_RPC_MSG_TYPE_READ,
                                       niova_io_iovs_total_size_get(src_iovs,
                                                              nsrc_iovs),
                                       leader, tag);
@@ -1591,7 +1596,7 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
         msg_id != raft_client_sub_app_2_msg_id(sa))
     {
         DBG_RAFT_CLIENT_SUB_APP(
-            (sa->rcsa_rh.rcrh_initializing ? LL_NOTIFY : LL_WARN),
+            (sa->rcsa_rh.rcrh_initializing ? LL_NOTIFY : LL_DEBUG),
             sa, "non matching msg_id=%lx", msg_id);
 
         raft_client_sub_app_put(rci, sa, __func__, __LINE__);
@@ -1742,12 +1747,13 @@ raft_client_udp_recv_handler_process_reply(
  *    - RAFT_CLIENT_RPC_MSG_TYPE_REPLY
  */
 static raft_net_cb_ctx_t
-raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
+raft_client_recv_handler(struct raft_instance *ri,
+                         struct ctl_svc_node *csn, const char *recv_buffer,
                          ssize_t recv_bytes, const struct sockaddr_in *from)
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
         recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
-        FAULT_INJECT(raft_client_udp_recv_handler_bypass))
+        FAULT_INJECT(raft_client_udp_recv_handler_bypass) || csn)
         return;
 
     struct raft_client_instance *rci =
@@ -1783,10 +1789,14 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
     FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
 
     if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
+    {
         raft_client_process_ping_reply(rci, rcrm, sender_csn);
+    }
 
     else if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT)
+    {
         raft_client_update_leader_from_redirect(rci, rcrm, from);
+    }
 
     else if (!rcrm->rcrm_sys_error &&
              rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)

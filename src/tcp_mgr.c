@@ -79,6 +79,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
+              tcp_mgr_is_raft_peer_cb_t is_peer_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
@@ -90,6 +91,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_connection_ref_cb = connection_ref_cb;
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
+    tmi->tmi_is_peer_cb = is_peer_cb;
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
@@ -456,6 +458,121 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
 }
 
 static int
+tcp_mgr_peer_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
+                              void *hdr, size_t hdr_size, char *recv_buf)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    NIOVA_ASSERT(tmc && !tmc->tmc_bulk_buf && !tmc->tmc_bulk_remain);
+
+    size_t buf_size = hdr_size + bulk_size;
+    if (buf_size > TCP_MGR_MAX_BULK_SIZE)
+        return -E2BIG;
+
+    if (hdr && hdr_size)
+        memcpy(recv_buf, hdr, hdr_size);
+
+    tmc->tmc_bulk_buf = recv_buf;
+    tmc->tmc_bulk_offset = hdr_size;
+    tmc->tmc_bulk_remain = bulk_size;
+
+    return 0;
+}
+
+static int
+tcp_mgr_get_msg_header(struct tcp_mgr_connection *tmc, char *buffer)
+{
+    //struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    //tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
+    size_t header_size = tmc->tmc_header_size;
+    int socket = tmc->tmc_tsh.tsh_socket;
+    int flags = MSG_PEEK;
+
+    ssize_t rc = recv(socket, buffer, header_size, flags);
+    if (rc == -EAGAIN)
+        rc = 0;
+
+    else if (rc <= 0)
+        return rc;
+
+
+    return 0;
+}
+
+static int
+tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc, char *recv_buf)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    tcp_mgr_recv_cb_t recv_cb = tmi->tmi_recv_cb;
+    tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
+    size_t header_size = tmc->tmc_header_size;
+
+    NIOVA_ASSERT(recv_cb && bulk_size_cb && header_size);
+
+    // TODO there will be memory allocated from the memtable.
+    static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
+    struct iovec iov;
+    iov.iov_base = sink_buf;
+    iov.iov_len = header_size;
+
+    // try twice in case interrupts cause short read
+    ssize_t rc = tcp_socket_recv_all(&tmc->tmc_tsh, &iov, NULL, 2);
+    if (rc != header_size)
+        return rc < 0 ? rc : -ECOMM;
+
+    uint32_t msg_type = 0;
+    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data, &msg_type);
+    if (rc < 0)
+        return rc;
+
+    return tcp_mgr_peer_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size, recv_buf);
+}
+
+int
+tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
+                             size_t *recv_buf_size)
+{
+    int rc;
+
+    rc = tcp_mgr_new_bulk_msg_handler(tmc, recv_buf);
+
+    if (rc)
+        return rc;
+
+    while (tmc->tmc_bulk_remain)
+    {
+        NIOVA_ASSERT(tmc->tmc_bulk_buf);
+
+        rc = tcp_mgr_bulk_progress_recv(tmc);
+        if (rc < 0)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
+    }
+
+    *recv_buf_size = tmc->tmc_bulk_offset;
+    return rc;
+}
+
+//XXX we need to call this once read/write completes.
+int
+tcp_mgr_peer_bulk_complete(struct tcp_mgr_connection *tmc)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    tmc->tmc_bulk_buf = NULL;
+    tmc->tmc_bulk_offset = 0;
+    // Rearm the epoll
+    int rc = epoll_handle_mod(tmc->tmc_tmi->tmi_epoll_mgr, &tmc->tmc_eph);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Failed to rearm the epoll");
+    }
+
+    return 0;
+}
+
+static int
 tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -478,7 +595,8 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     if (rc != header_size)
         return rc < 0 ? rc : -ECOMM;
 
-    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
+    uint32_t msg_type = 0;
+    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data, &msg_type);
     if (rc < 0)
         return rc;
 
@@ -505,27 +623,10 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
     return rc;
 }
 
-static epoll_mgr_cb_ctx_t
-tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
+static int
+tcp_recv_for_client(struct tcp_mgr_connection *tmc)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
-
-    NIOVA_ASSERT(eph && eph->eph_arg);
-
-    struct tcp_mgr_connection *tmc = eph->eph_arg;
-    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "received events: %d", events);
-
-    int rc = tcp_mgr_epoll_handle_rc_get(eph, events);
-    if (rc)
-    {
-        if (rc == -ECONNRESET || rc == -ENOTCONN || rc == -ECONNABORTED)
-            tcp_mgr_connection_close_internal(tmc);
-
-        SIMPLE_LOG_MSG(LL_NOTIFY, "error received on socket fd=%d, rc=%d",
-                       eph->eph_fd, rc);
-        return;
-    }
-
+    int rc = 0;
     // is this a new RPC?
     if (!tmc->tmc_bulk_remain)
     {
@@ -553,6 +654,63 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         SIMPLE_LOG_MSG(LL_DEBUG, "error in recv, closing");
         tcp_mgr_connection_close_internal(tmc);
     }
+    return rc;
+}
+
+static int
+tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
+{
+    size_t header_size = tmc->tmc_header_size;
+    char *buffer =  niova_calloc(1UL, TCP_MGR_MAX_HDR_SIZE);
+    int rc  = tcp_mgr_get_msg_header(tmc, buffer);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY, "Can't read the header from socket");
+        niova_free(buffer);
+        return rc;
+    }
+
+    rc = tmc->tmc_tmi->tmi_recv_cb(tmc, buffer, header_size,
+                                   tmc->tmc_tmi->tmi_data);
+
+    if (rc < 0)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "tmi_recv_cb failed for server");
+        tcp_mgr_connection_close_internal(tmc);
+    }
+    niova_free(buffer);
+    return rc;
+}
+
+static epoll_mgr_cb_ctx_t
+tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    NIOVA_ASSERT(eph && eph->eph_arg);
+
+    struct tcp_mgr_connection *tmc = eph->eph_arg;
+    DBG_TCP_MGR_CXN(LL_DEBUG, tmc, "received events: %d", events);
+
+    int rc = tcp_mgr_epoll_handle_rc_get(eph, events);
+    if (rc)
+    {
+        if (rc == -ECONNRESET || rc == -ENOTCONN || rc == -ECONNABORTED)
+            tcp_mgr_connection_close_internal(tmc);
+
+        SIMPLE_LOG_MSG(LL_NOTIFY, "error received on socket fd=%d, rc=%d",
+                       eph->eph_fd, rc);
+        return;
+    }
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    bool is_peer = tmi->tmi_is_peer_cb();
+
+
+    if (is_peer)
+        tcp_mgr_recv_for_peer(tmc);
+    else
+        tcp_recv_for_client(tmc);
 }
 
 static int
@@ -591,7 +749,9 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (incoming->tmc_eph.eph_installed)
         epoll_handle_del(tmi->tmi_epoll_mgr, &incoming->tmc_eph);
 
-    tcp_mgr_connection_epoll_add(owned, EPOLLIN, tcp_mgr_recv_cb,
+    bool is_peer = tmi->tmi_is_peer_cb();
+    uint32_t events = is_peer ? EPOLLIN | EPOLLET | EPOLLONESHOT : EPOLLIN;
+    tcp_mgr_connection_epoll_add(owned, events, tcp_mgr_recv_cb,
                                  tmi->tmi_connection_ref_cb);
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");
@@ -827,7 +987,6 @@ tcp_mgr_connection_connect_epoll_ctx(struct tcp_mgr_connection *tmc)
     if (rc < 0 && rc != -EINPROGRESS)
     {
         tcp_mgr_connection_close_internal(tmc);
-        SIMPLE_LOG_MSG(LL_WARN, "tcp_socket_connect(): %d", rc );
     }
     else if (rc == -EINPROGRESS)
     {

@@ -10,19 +10,22 @@
 #include "epoll_mgr.h"
 #include "tcp.h"
 
-#define TCP_MGR_MAX_HDR_SIZE 65000
+#define TCP_MGR_MAX_HDR_SIZE 65000UL
 #define TCP_MGR_MAX_BULK_SIZE 256*1024*1024
 
 typedef void    tcp_mgr_ctx_t;
 typedef int     tcp_mgr_ctx_int_t;
 typedef ssize_t tcp_mgr_ctx_ssize_t;
+typedef bool    tcp_mgr_ctx_bool_t;
 
 struct tcp_mgr_connection;
 
 typedef tcp_mgr_ctx_int_t
+(*tcp_mgr_msg_type_cb_t)(struct tcp_mgr_connection *, char *, size_t);
+typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *, char *, size_t, void *);
 typedef tcp_mgr_ctx_ssize_t
-(*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *);
+(*tcp_mgr_bulk_size_cb_t)(struct tcp_mgr_connection *, char *, void *, uint32_t *);
 typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *,
                           int fd, void *, size_t);
@@ -32,24 +35,29 @@ typedef tcp_mgr_ctx_ssize_t
 typedef tcp_mgr_ctx_t
 (*tcp_mgr_connection_epoll_ctx_cb_t)(struct tcp_mgr_connection *);
 
+typedef tcp_mgr_ctx_bool_t
+(*tcp_mgr_is_raft_peer_cb_t)(void);
+
 struct tcp_mgr_instance
 {
-    struct tcp_socket_handle tmi_listen_socket;
-    void                    *tmi_data;
+    struct tcp_socket_handle  tmi_listen_socket;
+    void                     *tmi_data;
 
-    struct epoll_mgr        *tmi_epoll_mgr;
-    struct epoll_handle      tmi_listen_eph;
-    epoll_mgr_ref_cb_t       tmi_connection_ref_cb;
-    pthread_mutex_t          tmi_epoll_ctx_mutex;
+    struct epoll_mgr         *tmi_epoll_mgr;
+    struct epoll_handle       tmi_listen_eph;
+    epoll_mgr_ref_cb_t        tmi_connection_ref_cb;
+    pthread_mutex_t           tmi_epoll_ctx_mutex;
 
-    tcp_mgr_recv_cb_t        tmi_recv_cb;
-    tcp_mgr_bulk_size_cb_t   tmi_bulk_size_cb;
-    tcp_mgr_handshake_cb_t   tmi_handshake_cb;
-    tcp_mgr_handshake_fill_t tmi_handshake_fill;
-    size_t                   tmi_handshake_size;
+    tcp_mgr_msg_type_cb_t     tmi_msg_type_cb;
+    tcp_mgr_recv_cb_t         tmi_recv_cb;
+    tcp_mgr_bulk_size_cb_t    tmi_bulk_size_cb;
+    tcp_mgr_is_raft_peer_cb_t tmi_is_peer_cb;
+    tcp_mgr_handshake_cb_t    tmi_handshake_cb;
+    tcp_mgr_handshake_fill_t  tmi_handshake_fill;
+    size_t                    tmi_handshake_size;
 
-    niova_atomic32_t         tmi_bulk_credits;
-    niova_atomic32_t         tmi_incoming_credits;
+    niova_atomic32_t          tmi_bulk_credits;
+    niova_atomic32_t          tmi_incoming_credits;
 };
 
 enum tcp_mgr_connection_status
@@ -93,6 +101,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
+              tcp_mgr_is_raft_peer_cb_t is_peer_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
@@ -143,4 +152,10 @@ void
 tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
                          struct tcp_mgr_instance *tmi,
                          const char *ipaddr, int port);
+
+int
+tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *buf, size_t *buff_size);
+
+int
+tcp_mgr_peer_bulk_complete(struct tcp_mgr_connection *tmc);
 #endif

@@ -57,6 +57,9 @@ typedef void * raft_server_chkpt_thread_t;
 typedef void raft_server_chkpt_thread_ctx_t;
 typedef int raft_server_chkpt_thread_ctx_int_t;
 
+typedef void *raft_server_rw_thread_t;
+typedef void raft_server_rw_thread_ctx_t;
+
 static unsigned long long raftServerMaxRecoveryLeaderCommMsec = 10000;
 
 static const char *
@@ -3854,6 +3857,7 @@ raft_server_process_received_server_msg(struct raft_instance *ri,
 
 static raft_net_cb_ctx_t
 raft_server_peer_recv_handler(struct raft_instance *ri,
+                              struct ctl_svc_node *csn,
                               const char *recv_buffer,
                               ssize_t recv_bytes,
                               const struct sockaddr_in *from)
@@ -3861,6 +3865,7 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(ri && from);
 
+    NIOVA_ASSERT(csn == NULL);
     if (!recv_buffer || !recv_bytes)
         return;
 
@@ -4030,8 +4035,14 @@ raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
     if (rc)
         return;
 
+    struct raft_work_queue *wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+
+    pthread_mutex_lock(&wr_queue->rsw_mutex);
+
     if (ri->ri_coalesced_wr->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
         raft_server_write_coalesced_entries(ri); // Issue the pending wr
+
+    pthread_mutex_unlock(&wr_queue->rsw_mutex);
 }
 
 
@@ -4199,7 +4210,8 @@ raft_server_net_client_request_init(
     enum raft_net_client_request_type type,
     const struct raft_client_rpc_msg *rpc_request,  const char *commit_data,
     const size_t commit_data_size, const struct sockaddr_in *from,
-    char *reply_buf, const size_t reply_buf_size)
+    char *reply_buf, const size_t reply_buf_size,
+    struct ctl_svc_node *csn)
 {
     NIOVA_ASSERT(ri && rncr && reply_buf &&
                  reply_buf_size >= sizeof(struct raft_client_rpc_msg));
@@ -4226,6 +4238,8 @@ raft_server_net_client_request_init(
     memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
 
     rncr->rncr_reply = (struct raft_client_rpc_msg *)reply_buf;
+    rncr->rncr_csn = csn;
+    rncr->rncr_bi = NULL;
 
     CONST_OVERRIDE(size_t, rncr->rncr_reply_data_max_size,
                    (reply_buf_size - sizeof(struct raft_client_rpc_msg)));
@@ -4267,14 +4281,15 @@ raft_server_net_client_request_init_client_rpc(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
     const struct raft_client_rpc_msg *rpc_request,
     const struct sockaddr_in *from, char *reply_buf,
-    const size_t reply_buf_size)
+    const size_t reply_buf_size,
+    struct ctl_svc_node *csn)
 {
     NIOVA_ASSERT(ri && rncr && rpc_request);
 
     raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_NONE,
                                         rpc_request, NULL, 0, from, reply_buf,
-                                        reply_buf_size);
+                                        reply_buf_size, csn);
 
     raft_server_client_reply_init(
         ri, rncr, (rpc_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING ?
@@ -4307,6 +4322,10 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
      * NOTE: that raft_server_write_coalesced_entries() will have reset
      *    nentries so be sure to take the tmp variable AFTER calling it.
      */
+    struct raft_work_queue *wr_queue;
+    wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+    pthread_mutex_lock(&wr_queue->rsw_mutex);
+
     uint32_t nentries = ri->ri_coalesced_wr->rcwi_nentries;
 
     ri->ri_coalesced_wr->rcwi_entry_sizes[nentries] = len;
@@ -4321,13 +4340,39 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
     if (!ri->ri_coalesced_writes ||
         ri->ri_coalesced_wr->rcwi_nentries == RAFT_ENTRY_NUM_ENTRIES ||
         ri->ri_coalesced_wr->rcwi_total_size == RAFT_ENTRY_MAX_DATA_SIZE(ri))
+    {
+
         raft_server_write_coalesced_entries(ri);
+    }
+    pthread_mutex_unlock(&wr_queue->rsw_mutex);
+}
+
+static void
+raft_server_enqueue_rw(struct raft_instance *ri,
+                       struct ctl_svc_node *csn,
+                       uint32_t msg_type)
+{
+    // Take a lock on queue.
+
+    uint32_t queue_type = (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ?
+                           RAFT_SERVER_BULK_MSG_WRITE : RAFT_SERVER_BULK_MSG_READ;
+
+    // Release this reference after processing the read/write request.
+    ctl_svc_node_get(csn);
+
+    NIOVA_SET_COND_AND_WAKE(signal,
+    {STAILQ_INSERT_TAIL(&ri->ri_worker_queue[queue_type].rsw_queue, csn, csn_lentry);},
+    &ri->ri_worker_queue[queue_type].rsw_mutex,
+    &ri->ri_worker_queue[queue_type].rsw_cond);
+
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
 static raft_net_cb_ctx_t
 raft_server_client_recv_handler(struct raft_instance *ri,
-                                const char *recv_buffer, ssize_t recv_bytes,
+                                struct ctl_svc_node *csn,
+                                const char *recv_buffer,
+                                ssize_t recv_bytes,
                                 const struct sockaddr_in *from)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -4345,135 +4390,90 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *csn = NULL;
+    struct ctl_svc_node *tmp_csn = NULL;
 
     /* First set of request checks which are configuration based.
      */
-    if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
+    if (raft_server_client_recv_ignore_request(ri, rcm, from, &tmp_csn))
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
         return;
     }
 
-    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
-
-    struct buffer_item *bi =
-        buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
-    NIOVA_ASSERT(bi);
-
-    char *reply_buf = (char *)bi->bi_iov.iov_base;
-    NIOVA_ASSERT(reply_buf);
-
-    struct raft_net_client_request_handle rncr;
-
-    raft_server_net_client_request_init_client_rpc(
-        ri, &rncr, rcm, from, reply_buf,
-        reply_size);
-
-    /* Second set of checks which determine if this server is capable of
-     * handling the request at this time.
-     */
-    int rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-    {
-        SIMPLE_LOG_MSG(LL_NOTIFY,
-                       "cannot accept client message, rc=%d: msg-type=%u",
-                       rc, rcm->rcrm_type);
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        goto out;
-    }
-
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
+        size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
+        char read_data_buf[recv_bytes];
+        size_t actual_recv_bytes = 0;
+
+        // Read the ping request buffer completely from the socket.
+        int rc = raft_net_recv_request(csn, read_data_buf, &actual_recv_bytes);
+        if (rc || !actual_recv_bytes)
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "Failed to read the ping msg from socket");
+            goto out;
+        }
+
+        const struct raft_client_rpc_msg *rcm_new =
+        (const struct raft_client_rpc_msg *)read_data_buf;
+
+        NIOVA_ASSERT(rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
+
+        //XXX can we use SMALL buffer for ping?
+        struct buffer_item *bi =
+           buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+        NIOVA_ASSERT(bi);
+
+        char *reply_buf = (char *)bi->bi_iov.iov_base;
+        NIOVA_ASSERT(reply_buf);
+
+        struct raft_net_client_request_handle rncr;
+
+        raft_server_net_client_request_init_client_rpc(
+        ri, &rncr, rcm_new, from, reply_buf,
+        reply_size, csn);
+
         SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
-        raft_server_reply_to_client(ri, &rncr, csn);
-        goto out;
-    }
-
-    /* Call into the application state machine logic.  There are several
-     * outcomes here:
-     * 1. SM detects a new write, here it may store sender info for reply
-     *    post-commit.
-     * 2. SM detects a write which had already been committed, here we reply
-     *    to the client notifying it of the completion.
-     * 3. SM detects a write which is still in progress, here no reply is sent.
-     * 4. SM processes a read request, returning the requested application
-     *    data.
-     */
-    int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-
-    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
-
-    // rncr.rncr_type was set by the callback!
-    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
-        true : false;
-
-    DBG_RAFT_CLIENT_RPC(log_level, rcm,
-                        "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
-                        write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
-                        strerror(-rncr.rncr_op_error), strerror(-cb_rc));
-
-    /* Callback's with error are only logged.  There are no client replies
-     * or raft operations which will occur.
-     */
-    if (cb_rc) // Other than logging this issue, nothing can be done here
-    {
-        /* ri_server_sm_request_cb will return EXIST only when wr is retried.
-         * Don't destroy the write supplment from rncr as it coalesced wr supp.
+        /* Second set of checks which determine if this server is capable of
+         * handling the request at this time.
          */
+        rc = raft_server_may_accept_client_request(ri);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_NOTIFY,
+                       "cannot accept client message, rc=%d: msg-type=%u",
+                       rc, rcm->rcrm_type);
+            raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
+        }
+        else
+        {
+            raft_server_reply_to_client(ri, &rncr, tmp_csn);
+        }
+        if (tmp_csn)
+            ctl_svc_node_put(tmp_csn);
+
+        raft_net_bulk_complete(csn);
+
+        buffer_set_release_item(bi);
+        return;
+    }
+
+    if (rcm->rcrm_type != RAFT_CLIENT_RPC_MSG_TYPE_READ &&
+        rcm->rcrm_type != RAFT_CLIENT_RPC_MSG_TYPE_WRITE)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Invalid client message type: %u",
+                       rcm->rcrm_type);
         goto out;
     }
 
-    /* For write operation, check if the coalesced buffer is sufficient for
-     * accomodating this request. Otherwise first flush the entries in
-     * coalesced buffer.
-     */
-    if (write_op && ((rcm->rcrm_data_size +
-                     ri->ri_coalesced_wr->rcwi_total_size) >
-                     RAFT_ENTRY_MAX_DATA_SIZE(ri)))
-        raft_server_write_coalesced_entries(ri);
-
-    /* cb's may run for a long time and the server may have been deposed
-     * Xxx note that SM write requests left in this state may require
-     *   cleanup.
-     */
-    rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-    {
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        goto out;
-    }
-
-    if (rncr.rncr_write_raft_entry)
-    {
-        /* Store the request as an entry in the Raft log.  Do not reply to
-         * the client until the write is committed and applied!
-         *
-         * NOTE: that raft_server_write_coalesce_entry() is called regardless
-         *       of whether coalescing is enabling.  If disabled,
-         *       raft_server_write_coalesce_entry() will go directly to
-         *       raft_server_leader_write_new_entry()
-         * Merge the rncr write supplement into coalesced write supplement.
-         * rncr_sm_write_supp will be destroyed once it is merged into
-         * ri_coalesced_wr->rcwi_ws.
-         */
-        raft_net_sm_write_supplements_merge(&ri->ri_coalesced_wr->rcwi_ws,
-                                            &rncr.rncr_sm_write_supp);
-        raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
-                                         rcm->rcrm_data_size,
-                                         RAFT_WR_ENTRY_OPT_NONE);
-    }
-    else
-    {
-        // Read operation or an already committed + applied write operation.
-        raft_server_reply_to_client(ri, &rncr, csn);
-    }
+    raft_server_enqueue_rw(ri, csn, rcm->rcrm_type);
+    goto out1;
 
 out:
-    if (csn)
-        ctl_svc_node_put(csn);
-
-    buffer_set_release_item(bi);
+    raft_net_bulk_complete(csn);
+out1:
+    if (tmp_csn)
+        ctl_svc_node_put(tmp_csn);
 }
 
 /**
@@ -4682,7 +4682,7 @@ raft_server_net_client_request_init_sm_apply(
     raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
                                         NULL, commit_data, commit_data_size,
-                                        NULL, reply_buf, reply_buf_size);
+                                        NULL, reply_buf, reply_buf_size, NULL);
 }
 
 /**
@@ -5579,6 +5579,225 @@ raft_server_chkpt_thread_join(struct raft_instance *ri)
     return rc;
 }
 
+static void
+raft_server_process_rw_request(struct raft_instance *ri,
+                               struct ctl_svc_node *csn,
+                               char *recv_buf,
+                               char *reply_buf)
+{
+    size_t recv_bytes = 0;
+    // Read the request from the socket
+    int rc = raft_net_recv_request(csn, recv_buf, &recv_bytes);
+
+    if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
+        recv_bytes < sizeof(struct raft_client_rpc_msg))
+    {
+        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
+                recv_buf, recv_bytes, ri->ri_server_sm_request_cb);
+        return;
+    }
+
+    const struct raft_client_rpc_msg *rcm =
+        (const struct raft_client_rpc_msg *)recv_buf;
+
+    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
+
+    struct raft_net_client_request_handle rncr;
+
+    raft_server_net_client_request_init_client_rpc(
+        ri, &rncr, rcm, NULL, reply_buf,
+        reply_size, csn);
+
+    int cb_rc = ri->ri_server_sm_request_cb(&rncr);
+    enum log_level log_level = cb_rc ? LL_DEBUG : LL_NOTIFY;
+    // rncr.rncr_type was set by the callback!
+    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
+        true : false;
+    DBG_RAFT_CLIENT_RPC(log_level, rcm,
+                        "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
+                        write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
+                        strerror(-rncr.rncr_op_error), strerror(-cb_rc));
+
+    if (cb_rc)
+        return;
+
+    /* For write operation, check if the coalesced buffer is sufficient for
+     * accomodating this request. Otherwise first flush the entries in
+     * coalesced buffer.
+     */
+    if (write_op)
+    {
+       struct raft_work_queue *wr_queue;
+       wr_queue = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_WRITE];
+       pthread_mutex_lock(&wr_queue->rsw_mutex);
+       if ((rcm->rcrm_data_size +
+            ri->ri_coalesced_wr->rcwi_total_size) >
+                        RAFT_ENTRY_MAX_DATA_SIZE(ri))
+       {
+           raft_server_write_coalesced_entries(ri);
+       }
+       pthread_mutex_unlock(&wr_queue->rsw_mutex);
+    }
+
+    /* cb's may run for a long time and the server may have been deposed
+     * Xxx note that SM write requests left in this state may require
+     *   cleanup.
+     */
+    rc = raft_server_may_accept_client_request(ri);
+    if (rc)
+    {
+        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
+        return;
+    }
+
+    if (rncr.rncr_write_raft_entry)
+    {
+        /* Store the request as an entry in the Raft log.  Do not reply to
+         * the client until the write is committed and applied!
+         *
+         * NOTE: that raft_server_write_coalesce_entry() is called regardless
+         *       of whether coalescing is enabling.  If disabled,
+         *       raft_server_write_coalesce_entry() will go directly to
+         *       raft_server_leader_write_new_entry()
+         * Merge the rncr write supplement into coalesced write supplement.
+         * rncr_sm_write_supp will be destroyed once it is merged into
+         * ri_coalesced_wr->rcwi_ws.
+         */
+        raft_net_sm_write_supplements_merge(&ri->ri_coalesced_wr->rcwi_ws,
+                                            &rncr.rncr_sm_write_supp);
+        raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
+                                         rcm->rcrm_data_size,
+                                         RAFT_WR_ENTRY_OPT_NONE);
+    }
+    else
+    {
+        // Read operation or an already committed + applied write operation.
+        raft_server_reply_to_client(ri, &rncr, csn);
+    }
+}
+
+static raft_server_rw_thread_t
+raft_server_rw_thread(void *arg)
+{
+    struct thread_ctl *tc = arg;
+    struct raft_rw_worker_thread *rw_thr = (struct raft_rw_worker_thread *)thread_ctl_get_arg(tc);
+
+    struct raft_work_queue *queue = rw_thr->rrwt_queue;
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        // Wait for item in the queue.
+        NIOVA_WAIT_COND(!STAILQ_EMPTY(&queue->rsw_queue),
+                        &queue->rsw_mutex, &queue->rsw_cond);
+
+        //Take mutex
+        pthread_mutex_lock(&queue->rsw_mutex);
+        struct ctl_svc_node *csn;
+        csn = STAILQ_FIRST(&queue->rsw_queue);
+        if (csn) {
+            // Remove the read request from the queue
+            STAILQ_REMOVE_HEAD(&queue->rsw_queue, csn_lentry);
+        }
+        // Release mutex
+        pthread_mutex_unlock(&queue->rsw_mutex);
+
+        if (csn)
+        {
+            memset(rw_thr->rrwt_recv_buff, 0, RAFT_BS_LARGE_SZ);
+            memset(rw_thr->rrwt_reply_buff, 0, RAFT_BS_LARGE_SZ);
+            struct raft_instance *ri =
+                   (struct raft_instance *)rw_thr->rrwt_arg;
+            raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
+                                           rw_thr->rrwt_reply_buff);
+            raft_net_bulk_complete(csn);
+            ctl_svc_node_put(csn);
+        }
+    }
+    return (void *)0;
+}
+
+static int
+raft_server_rw_thread_init(struct raft_instance *ri,
+                           struct raft_rw_worker_thread *thread,
+                           enum raft_server_bulk_msg_type type)
+{
+
+     size_t buf_size = RAFT_BS_LARGE_SZ;
+    // XXX should we allocate recv and reply buffers on demand?
+     thread->rrwt_recv_buff = niova_malloc(buf_size); 
+     NIOVA_ASSERT(thread->rrwt_recv_buff);
+     thread->rrwt_reply_buff = niova_malloc(buf_size);
+     NIOVA_ASSERT(thread->rrwt_reply_buff);
+
+     thread->rrwt_queue = &ri->ri_worker_queue[type]; 
+     thread->rrwt_arg = ri;
+
+     char thread_name[64];
+     sprintf(thread_name, "%s_thread", type == RAFT_SERVER_BULK_MSG_WRITE ? "write": "read");
+     int rc = thread_create_watched(raft_server_rw_thread,
+                                    &thread->rrwt_thread_ctl,
+                                    type == RAFT_SERVER_BULK_MSG_WRITE ? "wr_thread" : "rd_thread", 
+                                    (void *)thread,
+                                    NULL);
+     if (rc)
+	     return rc;
+
+     thread_ctl_run(&thread->rrwt_thread_ctl);
+
+     return 0;
+}
+
+static int
+raft_server_rw_threads_start(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
+
+    // Initialize the writer/reader queue(s)
+    for (int i = 0; i < RAFT_SERVER_BULK_MSG_MAX; i++)
+    {
+        struct raft_work_queue *queue = &ri->ri_worker_queue[i];
+        STAILQ_INIT(&queue->rsw_queue);
+        pthread_mutex_init(&queue->rsw_mutex, NULL);
+        pthread_cond_init(&queue->rsw_cond, NULL);
+    }
+
+    // Start Writer thread.
+    raft_server_rw_thread_init(ri, &ri->ri_writer_thread_ctl,
+                               RAFT_SERVER_BULK_MSG_WRITE);
+
+    // Start Reader threads.
+    for (int i = 0; i < RAFT_NUM_READ_THREADS; i++)
+        raft_server_rw_thread_init(ri, &ri->ri_reader_thread_ctl[i],
+                                   RAFT_SERVER_BULK_MSG_READ);
+
+    return 0;
+}
+
+static int
+raft_server_rw_thread_join(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
+
+    int rc_error = 0;
+
+    int rc = thread_halt_and_destroy(&ri->ri_writer_thread_ctl.rrwt_thread_ctl);
+
+    if (rc)
+        rc_error = rc;
+
+    for (int i = 0; i < RAFT_NUM_READ_THREADS; i++)
+    {
+         rc = thread_halt_and_destroy(&ri->ri_reader_thread_ctl[i].rrwt_thread_ctl);
+         if (rc)
+             rc_error = rc;
+    }
+
+    LOG_MSG(((rc && !ri->ri_startup_error) ? LL_WARN : LL_NOTIFY),
+            "thread_halt_and_destroy(): %s", strerror(-rc));
+
+    return rc_error;
+}
+
+
 static int
 raft_server_instance_buffer_set_setup(struct raft_instance *ri)
 {
@@ -5681,6 +5900,11 @@ raft_server_instance_startup(struct raft_instance *ri)
             goto out;
     }
 
+    // Start writer/reader thread(s)
+    rc = raft_server_rw_threads_start(ri);
+    if (rc)
+        goto out;
+
     if (ri->ri_backend->rib_backend_checkpoint)
     {
         rc = raft_server_chkpt_thread_start(ri);
@@ -5725,6 +5949,7 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     int rc_chkpt = raft_server_chkpt_thread_join(ri);
     int rc_sync = raft_server_sync_thread_join(ri);
+    int rc_rw = raft_server_rw_thread_join(ri);
     int rc_backend_close = raft_server_backend_close(ri);
     int rc_evp_cleanup = raft_server_evp_cleanup(ri);
     int mutex_rc = pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
@@ -5751,6 +5976,14 @@ raft_server_instance_shutdown(struct raft_instance *ri)
                        strerror(-rc_sync));
         if (!rc)
             rc = rc_sync;
+    }
+
+    if (rc_rw)
+    {
+        SIMPLE_LOG_MSG(ll, "raft_server_rw_thread_join(): %s",
+                       strerror(-rc_sync));
+        if (!rc)
+            rc = rc_rw;
     }
 
     if (rc_backend_close)

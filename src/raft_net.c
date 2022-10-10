@@ -1309,9 +1309,17 @@ raft_net_peer_tcp_cb(struct tcp_mgr_connection *tmc, char *buf, size_t buf_size,
         return -EBADMSG;
 
     if (ri->ri_server_recv_cb)
-        ri->ri_server_recv_cb(ri, buf, buf_size, &from);
+    {
+        ri->ri_server_recv_cb(ri, NULL, buf, buf_size, &from);
+    }
 
     return 0;
+}
+
+static tcp_mgr_ctx_bool_t
+raft_net_is_raft_peer_cb(void)
+{
+     return !raft_instance_is_client(raft_net_get_instance());
 }
 
 static tcp_mgr_ctx_int_t
@@ -1332,8 +1340,13 @@ raft_net_client_tcp_cb(struct tcp_mgr_connection *tmc, char *buf,
     if (header_size != sizeof(struct raft_client_rpc_msg))
         return -EBADMSG;
 
+    // Pass the valid csn pointer only for raft servers.
+    struct ctl_svc_node *csn = NULL;
+    if (raft_net_is_raft_peer_cb())
+        raft_net_connection_to_csn(tmc, &csn);
+
     if (ri->ri_client_recv_cb)
-        ri->ri_client_recv_cb(ri, buf, buf_size, &from);
+        ri->ri_client_recv_cb(ri, csn, buf, buf_size, &from);
 
     return 0;
 }
@@ -1495,16 +1508,21 @@ raft_net_connection_getput(struct tcp_mgr_connection *tmc,
 static tcp_mgr_ctx_ssize_t
 raft_net_client_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
                                  struct raft_client_rpc_msg *msg,
-                                 struct raft_instance *ri)
+                                 struct raft_instance *ri,
+                                 uint32_t *msg_type)
 {
+
+    *msg_type = msg->rcrm_type;
     return msg->rcrm_data_size;
 }
 
 static tcp_mgr_ctx_ssize_t
 raft_net_peer_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
                                struct raft_rpc_msg *msg,
-                               struct raft_instance *ri)
+                               struct raft_instance *ri,
+                               uint32_t *msg_type)
 {
+    *msg_type = msg->rrm_type;
     return msg->rrm_type != RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ? 0
         : msg->rrm_append_entries_request.raerqm_entries_sz;
 }
@@ -1571,6 +1589,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
                       (tcp_mgr_recv_cb_t)raft_net_client_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
+                      (tcp_mgr_is_raft_peer_cb_t)raft_net_is_raft_peer_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                       sizeof(struct raft_rpc_msg),
@@ -1580,6 +1599,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
                       (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
+                      (tcp_mgr_is_raft_peer_cb_t)raft_net_is_raft_peer_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                       sizeof(struct raft_rpc_msg),
@@ -1877,6 +1897,9 @@ raft_net_send_client_msg(struct raft_instance *ri,
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
+    char uuid_str[UUID_STR_LEN];
+    uuid_unparse(ri->ri_csn_leader->csn_uuid, uuid_str);
+
     if (!ri || !ri->ri_csn_leader || !rcrm)
     {
         SIMPLE_LOG_MSG(LL_DEBUG, "ri %p ldr %p rcrm %p", ri,
@@ -2115,7 +2138,8 @@ raft_net_apply_leader_redirect(struct raft_instance *ri,
     if (rc == -ETIMEDOUT)
         timespec_clear(&ri->ri_last_send[leader_idx]); // "unstale" the leader
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new leader via redirect (idx=%hhu)",
+
+    DBG_RAFT_INSTANCE(LL_DEBUG, ri, "new leader via redirect (idx=%hhu)",
                       leader_idx);
 
     return 0;
@@ -2210,11 +2234,15 @@ raft_net_udp_cb(const struct epoll_handle *eph, uint32_t events)
     {
     case RAFT_UDP_LISTEN_SERVER:
         if (ri->ri_server_recv_cb)
-            ri->ri_server_recv_cb(ri, sink_buf, recv_bytes, &from);
+        {
+            ri->ri_server_recv_cb(ri, NULL, sink_buf, recv_bytes, &from);
+        }
         break;
     case RAFT_UDP_LISTEN_CLIENT:
         if (ri->ri_client_recv_cb)
-            ri->ri_client_recv_cb(ri, sink_buf, recv_bytes, &from);
+        {
+            ri->ri_client_recv_cb(ri, NULL, sink_buf, recv_bytes, &from);
+        }
         break;
     default:
         break;
@@ -2510,6 +2538,21 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
     ri->ri_timer_fd_cb = timer_fd_cb;
     ri->ri_client_recv_cb = client_recv_cb;
     ri->ri_server_recv_cb = server_recv_cb;
+}
+
+int
+raft_net_recv_request(struct ctl_svc_node *csn, char *recv_buf,
+                      size_t *recv_buf_size)
+{
+    return tcp_mgr_recv_req_from_socket(&csn->csn_peer.csnp_net_data,
+                                        recv_buf,
+                                        recv_buf_size);
+}
+
+int
+raft_net_bulk_complete(struct ctl_svc_node *csn)
+{
+    return tcp_mgr_peer_bulk_complete(&csn->csn_peer.csnp_net_data);
 }
 
 int entry_cnt;
