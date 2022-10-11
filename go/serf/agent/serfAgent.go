@@ -46,13 +46,13 @@ Parameters : None
 Return values : error
 Description : Creates agent with configurations mentioned in structure and returns error if any, it dosent start the agent
 */
-func (Handler *SerfAgentHandler) setup() error {
+func (Handler *SerfAgentHandler) setup(agentBindPort int) error {
 
 	//Init an agent
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr.String()                      //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort = int(Handler.BindPort)                          //Agent bind port
+	serfconfig.MemberlistConfig.BindPort = int(agentBindPort)                          //Agent bind port
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 
@@ -109,7 +109,6 @@ Return value : int, error
 Description : Joins the cluster
 */
 func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
-	//fmt.Println(Handler.agentObj)
 	no_of_nodes, err := Handler.agentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
 	return no_of_nodes, err
 }
@@ -143,15 +142,29 @@ Description : Does setup, start and joins in cluster
 func (Handler *SerfAgentHandler) SerfAgentStartup(joinAddrs []string, RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
-	//Setup
-	err = Handler.setup()
-	if err != nil {
-		return 0, err
+	var rc bool
+	low, high := 3300, 3400
+	BindPortList := make([]int, high-low+1)
+	for i := range BindPortList {
+		BindPortList[i] = i + low;
 	}
-	//Start agent and RPC server
-	err = Handler.start(RPCRequired)
-	if err != nil {
-		return 0, err
+	//Setup
+	for port := range BindPortList {
+		err = Handler.setup( BindPortList[port] )
+		if err != nil {
+			return 0, err
+		}
+		//Start agent and RPC server
+		err = Handler.start(RPCRequired)
+		if err != nil{
+			errStr := err.Error()
+			rc = strings.Contains(errStr, "bind")
+		}
+		if err != nil && rc {
+			continue
+		} else {
+			break;
+		}
 	}
 
 	//Join the cluster

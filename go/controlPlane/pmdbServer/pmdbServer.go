@@ -357,7 +357,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		return err
 	}
 	log.Info(handler.GossipData)
-	serfAgentHandler.SetNodeTags(handler.GossipData)
+	err = serfAgentHandler.SetNodeTags(handler.GossipData)
 	handler.serfAgentHandler = serfAgentHandler
 	return err
 }
