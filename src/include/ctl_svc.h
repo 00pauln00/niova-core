@@ -179,6 +179,12 @@ ctl_svc_node_2_session_uuid(const struct ctl_svc_node *a, uuid_t session_uuid)
     uuid_copy(session_uuid, a->csn_peer.csnp_net_data.tmc_session_uuid);
 }
 
+static inline void
+ctl_svc_node_2_session_term(const struct ctl_svc_node *a, int64_t *session_term)
+{
+    *session_term = a->csn_peer.csnp_net_data.tmc_session_term;
+}
+
 /**
  * ctl_svc_node_check_string - compares the provided UUID string with the
  *    binary UUID stored in the node.

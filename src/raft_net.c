@@ -1410,6 +1410,12 @@ raft_net_csn_setup(struct ctl_svc_node *csn, void *data)
     return 0;
 }
 
+static tcp_mgr_ctx_int64_t
+raft_net_tcp_get_term_cb(struct raft_instance *ri)
+{
+   return raft_server_get_current_raft_entry_term(ri, RI_NEHDR_SYNC);
+}
+
 
 static tcp_mgr_ctx_int_t
 raft_net_tcp_handshake_cb(struct raft_instance *ri,
@@ -1572,6 +1578,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (tcp_mgr_recv_cb_t)raft_net_client_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
+                      (tcp_mgr_get_term_cb_t)raft_net_tcp_get_term_cb,
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                       sizeof(struct raft_rpc_msg),
                       DEFAULT_BULK_CREDITS,
@@ -1581,6 +1588,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
                       (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
                       (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
+                      (tcp_mgr_get_term_cb_t)raft_net_tcp_get_term_cb,
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                       sizeof(struct raft_rpc_msg),
                       DEFAULT_BULK_CREDITS,
