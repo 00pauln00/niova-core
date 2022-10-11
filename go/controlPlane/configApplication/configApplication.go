@@ -176,8 +176,9 @@ func (handler *configApplication) GetPMDBServerConfig() error {
 
 func (handler *configApplication) startPMDBClient() error {
         var err error
-
-        //Get client object
+	fmt.Println("Raft uuid : ", handler.raftUUID)
+        //handler.raftUUID = "c077b532-44f2-11ed-822f-72e5126963a0"
+	//Get client object
         handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID, handler.clientUUID)
         if handler.pmdbClientObj == nil {
                 return errors.New("PMDB client object is empty")
@@ -188,6 +189,14 @@ func (handler *configApplication) startPMDBClient() error {
         if err != nil {
                 return err
         }
+	
+	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
+	for (err != nil){
+	    leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
+	 }
+	 fmt.Println("Leader uuid : ",leaderUuid.String());
+	// Defer the Stop
+        //defer handler.pmdbClientObj.Stop()
 
         //Store rncui in clientObj
         handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
@@ -226,14 +235,17 @@ func main() {
 		clientUUID:uuid.NewV4().String(),
 	}
 	appHandler.getCmdLineArgs()
+	flag.Parse()
 	appHandler.GetPMDBServerConfig()
-	appHandler.startPMDBClient()
+	err := appHandler.startPMDBClient()
+	fmt.Println("PMDB client error : ", err);
 	//get config from json file
-	jsonFile, err := os.Open("sample.json")
+	jsonFile, err := os.Open(appHandler.configFile)
 	if err != nil {
     		fmt.Println(err)
 	}
 
+	fmt.Println("Reading jsonFile: ", jsonFile);
 	byteValue, err := ioutil.ReadAll(jsonFile)
 	if err != nil {
                 fmt.Println(err)
@@ -245,10 +257,10 @@ func main() {
 
 	for key,value := range cfgData {
 		data, _ := json.Marshal(value)
-		appHandler.Write(key, data)
-		fmt.Println("Key : ",key)
-		var response *[]byte
-		appHandler.Read(key, response)
+		err := appHandler.Write(key, data)
+		fmt.Println("Key : ",key, err)
+		//var response *[]byte
+		//appHandler.Read(key, response)
 		//fmt.Println("Response : ", string(*response));
 	}
 	
