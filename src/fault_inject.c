@@ -79,13 +79,13 @@ static struct fault_injection coreFaultInjections[] =
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_client_udp_recv_handler_bypass] = {
-        .flti_name = "raft_client_udp_recv_handler_bypass",
+    [FAULT_INJECT_raft_client_recv_handler_bypass] = {
+        .flti_name = "raft_client_recv_handler_bypass",
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
-    [FAULT_INJECT_raft_client_udp_recv_handler_process_reply_bypass] = {
-        .flti_name = "raft_client_udp_recv_handler_process_reply_bypass",
+    [FAULT_INJECT_raft_client_recv_handler_process_reply_bypass] = {
+        .flti_name = "raft_client_recv_handler_process_reply_bypass",
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
