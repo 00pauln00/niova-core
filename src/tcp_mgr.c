@@ -80,7 +80,6 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
-              tcp_mgr_get_term_cb_t get_term_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
               uint32_t incoming_credits)
@@ -92,7 +91,6 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
     tmi->tmi_handshake_cb = handshake_cb;
-    tmi->tmi_get_term_cb = get_term_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
 
@@ -163,7 +161,6 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
     tmc->tmc_status = TMCS_DISCONNECTED;
 
     uuid_clear(tmc->tmc_session_uuid);
-    tmc->tmc_session_term = 0;
 
     return 0;
 }
@@ -208,7 +205,6 @@ tcp_mgr_connection_close_internal(struct tcp_mgr_connection *tmc)
     tmc->tmc_bulk_offset = 0;
     tmc->tmc_bulk_remain = 0;
     uuid_clear(tmc->tmc_session_uuid);
-    tmc->tmc_session_term = 0;
 
     tcp_socket_close(&tmc->tmc_tsh);
     tmc->tmc_status = TMCS_DISCONNECTED;
@@ -277,15 +273,14 @@ tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 {
     struct tcp_mgr_incoming_connection *incoming =
         OFFSET_CAST(tcp_mgr_incoming_connection, tmic_tmc, tmc);
-    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     int refcnt = niova_atomic_read(&incoming->tmic_refcnt);
     NIOVA_ASSERT(refcnt == 1);
 
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     tcp_mgr_credits_free(&tmi->tmi_incoming_credits, incoming);
 
     // Create a uuid for this new connection
     uuid_generate(tmc->tmc_session_uuid);
-    tmc->tmc_session_term = tmi->tmi_get_term_cb(tmi->tmi_data);
 }
 
 static epoll_mgr_cb_ctx_t
@@ -779,10 +774,8 @@ tcp_mgr_connect_complete(struct tcp_mgr_connection *tmc)
     DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
     tmc->tmc_status = TMCS_CONNECTED;
 
-    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     // Create a uuid for this new connection
     uuid_generate(tmc->tmc_session_uuid);
-    tmc->tmc_session_term = tmi->tmi_get_term_cb(tmi->tmi_data);
     rc = 0;
 out:
     if (rc < 0)

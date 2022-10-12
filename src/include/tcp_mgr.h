@@ -18,7 +18,6 @@
 typedef void    tcp_mgr_ctx_t;
 typedef int     tcp_mgr_ctx_int_t;
 typedef ssize_t tcp_mgr_ctx_ssize_t;
-typedef int64_t tcp_mgr_ctx_int64_t;
 
 struct tcp_mgr_connection;
 
@@ -29,9 +28,6 @@ typedef tcp_mgr_ctx_ssize_t
 typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_handshake_cb_t)(void *, struct tcp_mgr_connection **, size_t *,
                           int fd, void *, size_t);
-typedef tcp_mgr_ctx_int64_t
-(*tcp_mgr_get_term_cb_t)(void *);
-
 typedef tcp_mgr_ctx_ssize_t
 (*tcp_mgr_handshake_fill_t)(void *, struct tcp_mgr_connection *,
                             void *, size_t);
@@ -50,7 +46,6 @@ struct tcp_mgr_instance
     tcp_mgr_recv_cb_t        tmi_recv_cb;
     tcp_mgr_bulk_size_cb_t   tmi_bulk_size_cb;
     tcp_mgr_handshake_cb_t   tmi_handshake_cb;
-    tcp_mgr_get_term_cb_t    tmi_get_term_cb;
     tcp_mgr_handshake_fill_t tmi_handshake_fill;
     size_t                   tmi_handshake_size;
 
@@ -71,7 +66,6 @@ struct tcp_mgr_connection
 {
     enum tcp_mgr_connection_status    tmc_status;
     uuid_t                            tmc_session_uuid;
-    int64_t                           tmc_session_term;
     struct tcp_socket_handle          tmc_tsh;
     struct epoll_handle               tmc_eph;
     struct tcp_mgr_instance          *tmc_tmi;
@@ -102,7 +96,6 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
-              tcp_mgr_get_term_cb_t get_term_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
               uint32_t incoming_credits);

@@ -171,7 +171,6 @@ struct raft_client_request_handle
     raft_client_user_cb_t      rcrh_async_cb;
     void                      *rcrh_arg;
     uuid_t                     rcrh_conn_session_uuid;
-    int64_t                    rcrh_conn_session_term;
     struct raft_client_rpc_msg rcrh_rpc_request;
 };
 
@@ -1001,13 +1000,9 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
     uuid_t session_uuid = {};
-    int64_t session_term = 0;
 
     if (leader_viable)
-    {
         ctl_svc_node_2_session_uuid(RCI_2_RI(rci)->ri_csn_leader, session_uuid);
-        ctl_svc_node_2_session_term(RCI_2_RI(rci)->ri_csn_leader, &session_term);
-    }
 
     SIMPLE_LOG_MSG(LL_TRACE, "entering lock");
 
@@ -1051,9 +1046,8 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
         else if (leader_viable &&  // non-expired requests are queued for send
-                 (queued_ms > raftClientRetryTimeoutMS &&
-                 (uuid_compare(sa->rcsa_rh.rcrh_conn_session_uuid, session_uuid) ||
-                  sa->rcsa_rh.rcrh_conn_session_term != session_term)))
+                 queued_ms > raftClientRetryTimeoutMS &&
+                 uuid_compare(sa->rcsa_rh.rcrh_conn_session_uuid, session_uuid))
         {
             NIOVA_ASSERT(!uuid_is_null(session_uuid));
 
@@ -1842,8 +1836,6 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
 
         ctl_svc_node_2_session_uuid(RCI_2_RI(rci)->ri_csn_leader,
                                     sa->rcsa_rh.rcrh_conn_session_uuid);
-        ctl_svc_node_2_session_term(RCI_2_RI(rci)->ri_csn_leader,
-                                    &sa->rcsa_rh.rcrh_conn_session_term);
         sa->rcsa_rh.rcrh_last_send = rci->rci_last_request_sent;
         sa->rcsa_rh.rcrh_num_sends++;
     }
@@ -2112,7 +2104,6 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS, // unsigned
     RAFT_CLIENT_SUB_APP_CONN_SESSION_UUID,  //
-    RAFT_CLIENT_SUB_APP_CONN_SESSION_TERM,  //
     RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS,     // unsigned
     RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE,        // string
@@ -2166,10 +2157,6 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
         case RAFT_CLIENT_SUB_APP_CONN_SESSION_UUID:
             lreg_value_fill_string_uuid(lv, "conn-session",
                                         sa->rcsa_rh.rcrh_conn_session_uuid);
-            break;
-        case RAFT_CLIENT_SUB_APP_CONN_SESSION_TERM:
-            lreg_value_fill_signed(lv, "conn-session-term",
-                                        sa->rcsa_rh.rcrh_conn_session_term);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME:
             lreg_value_fill_string_time(lv, "submitted",
