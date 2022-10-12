@@ -244,6 +244,7 @@ struct raft_client_rpc_msg
     int16_t  rcrm_sys_error;
     uint16_t rcrm__pad1[2];
     uint64_t rcrm_user_tag;
+    int64_t  rcrm_term;
     char     WORD_ALIGN_MEMBER(rcrm_data[]);
 };
 
