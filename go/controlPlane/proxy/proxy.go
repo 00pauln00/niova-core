@@ -250,13 +250,7 @@ func validateCheckSum(data map[string]string, checksum string) error {
 
 	//Append map keys to key array
 	for k := range data {
-		//Since 'State' is not yet stored in the gossip
-		//we ignore it for checksum verification
-		if k != "State" {
-			keys = append(keys, k)
-		} else {
-			continue
-		}
+		keys = append(keys, k)
 	}
 
 	//Sort the key array to ensure uniformity

@@ -121,7 +121,7 @@ func main() {
 		CoalescedWrite: true,
 	}
 
-	go ExportNodeState(nso, &serverHandler)
+	go ExportNodeInfo(nso, &serverHandler)
 	// Start the pmdb server
 	err = nso.pso.Run()
 	if err != nil {
@@ -129,7 +129,16 @@ func main() {
 	}
 }
 
-func ExportNodeState(nso *NiovaKVServer, handler * pmdbServerHandler){
+func ExportNodeInfo(nso *NiovaKVServer, handler * pmdbServerHandler) {
+	handler.readPMDBServerConfig()
+	handler.GossipData["Type"] = "PMDB_SERVER"
+	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
+	handler.GossipData["RU"] = handler.raftUUID.String()
+	handler.GossipData["State"] = strconv.Itoa(nso.pso.PmdbExportNodeState())
+	handler.GossipData["CS"], _ = generateCheckSum(handler.GossipData)
+	log.Info(handler.GossipData)
+	handler.serfAgentHandler.SetNodeTags(handler.GossipData)
+
 	for range time.Tick(time.Second * time.Duration(tagExportInterval)){
 		ret := nso.pso.PmdbExportNodeState()
 		handler.GossipData["State"] = strconv.Itoa(ret)
@@ -359,16 +368,6 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
-	handler.readPMDBServerConfig()
-	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
-	handler.GossipData["RU"] = handler.raftUUID.String()
-	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
-	if err != nil {
-		return err
-	}
-	log.Info(handler.GossipData)
-	serfAgentHandler.SetNodeTags(handler.GossipData)
 	handler.serfAgentHandler = serfAgentHandler
 	return err
 }
