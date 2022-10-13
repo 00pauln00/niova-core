@@ -1056,7 +1056,9 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                  sa->rcsa_term !=
                  niova_atomic_read(&RCI_2_RI(rci)->ri_leader_term)))
         {
-            NIOVA_ASSERT(!uuid_is_null(session_uuid));
+            if (uuid_is_null(session_uuid))
+                SIMPLE_LOG_MSG(LL_DEBUG,
+                               "leader disconected but leader info is not updated yet.");
 
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
 
