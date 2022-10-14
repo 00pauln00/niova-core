@@ -37,7 +37,7 @@ func (handler *configApplication) getCmdLineArgs() {
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "Raft UUID")
 	flag.StringVar(&handler.portRange, "p", "NULL", "Port range [0-9]")
 	flag.StringVar(&handler.gossipNodesFile, "g", "./gossipNodes", "Gossip Nodes file to connect with gossip mesh")
-	flag.BoolVar(&handler.read, "r", false, "Read port range information")
+	flag.BoolVar(&handler.read, "o", false, "Read port range information")
 }
 
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
@@ -194,8 +194,8 @@ func (handler *configApplication) startPMDBClient() error {
 	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
 	for (err != nil){
 	    leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
-	 }
-	 fmt.Println("Leader uuid : ",leaderUuid.String());
+	}
+	fmt.Println("Leader uuid : ",leaderUuid.String());
 	// Defer the Stop
         //defer handler.pmdbClientObj.Stop()
 
@@ -247,6 +247,7 @@ func main() {
 	} else {
 		var value *[]byte
 		err = appHandler.Read(appHandler.raftUUID+"_Port_Range", value)
+		fmt.Println("Value : ",string(*value))
 	}
 	fmt.Println("Error in operation : ", err);
 }

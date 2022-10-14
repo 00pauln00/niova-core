@@ -160,6 +160,12 @@ func (handler *proxyHandler) startPMDBClient() error {
 	if err != nil {
 		return err
 	}
+	
+	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
+	for (err != nil) {
+		leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
+	}
+	log.Info("Leader uuid : ", leaderUuid.String())
 
 	//Store rncui in nkvclientObj
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
