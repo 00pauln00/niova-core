@@ -245,9 +245,12 @@ func main() {
 	if !appHandler.read {
 		err = appHandler.Write(appHandler.raftUUID+"_Port_Range", []byte(appHandler.portRange));
 	} else {
-		var value *[]byte
-		err = appHandler.Read(appHandler.raftUUID+"_Port_Range", value)
-		fmt.Println("Value : ",string(*value))
+		var value []byte
+		err = appHandler.Read(appHandler.raftUUID+"_Port_Range", &value)
+		var response requestResponseLib.KVResponse
+		dec := gob.NewDecoder(bytes.NewBuffer(value))
+		dec.Decode(&response)
+		fmt.Println("Value : ",string(response.Value))
 	}
 	fmt.Println("Error in operation : ", err);
 }
