@@ -29,7 +29,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"fmt"
 )
 
 //Structure for proxy
@@ -119,21 +118,23 @@ Rport //Serf agent-client communication
 Hport //Http listener port
 
 */
-func (handler *proxyHandler) getConfigData(config []byte) error {
-	fmt.Println("Config info : ",string(config))
-	portRangeStart, err := strconv.Atoi(strings.Split(string(config),"-")[0])
-	portRangeEnd, err := strconv.Atoi(strings.Split(string(config),"-")[1])
+func (handler *proxyHandler) getConfigData(config string) error {
+	portRangeStart, err := strconv.Atoi(strings.Split(config,"-")[0])
+	portRangeEnd, err := strconv.Atoi(strings.Split(config,"-")[1])
 	if err != nil {
 		return err
 	}
 
-	var ports []uint16
 	for i:=portRangeStart; i<=portRangeEnd; i++ {
 		handler.portRange = append(handler.portRange, uint16(i))
 	}
-	if len(ports) < 3 {
+
+
+	if len(handler.portRange) < 3 {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
+
+	handler.addr = net.IPv4(127, 0, 0, 1)
 	
 	return err
 }
@@ -419,18 +420,13 @@ Return(s) : error
 Description : A wrapper for PMDB ReadCallBack
 */
 func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	requestObj := requestResponseLib.KVRequest{
-		Key : key,
-		Operation : "Read",
-	}
-	var requestBytes bytes.Buffer
-	enc := gob.NewEncoder(&requestBytes)
-	err := enc.Encode(requestObj)
-	if err != nil {
-		return err
-	}
-	
-	return handler.ReadCallBack(requestBytes.Bytes(), response)
+	var request requestResponseLib.KVRequest
+        request.Operation = "read"
+        request.Key = key
+        var requestBytes bytes.Buffer
+        enc := gob.NewEncoder(&requestBytes)
+        enc.Encode(request)
+	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), "", response)
 }
 
 /*
@@ -480,6 +476,7 @@ Description : Set gossip data for proxy
 func (handler *proxyHandler) setSerfGossipData() {
 	tag := make(map[string]string)
 	//Static tags
+
 	tag["Hport"] = strconv.Itoa(int(handler.httpPort))
 	tag["Aport"] = strconv.Itoa(int(handler.serfAgentPort))
 	tag["Rport"] = strconv.Itoa(int(handler.serfAgentRPCPort))
@@ -590,15 +587,18 @@ func main() {
         }
 
 	//Get config data from PMDB
-	var config *[]byte
-	err = proxyObj.ReadWrapper(proxyObj.raftUUID.String()+"_Port_Range",config)
+	var config []byte
+	err = proxyObj.ReadWrapper(proxyObj.raftUUID.String()+"_Port_Range", &config)
 	if err != nil {
 		log.Error("(PROXY) Error while trying to read configuration information from PMDB : ", err)
 		os.Exit(1)
 	}
+	var response requestResponseLib.KVResponse
+	dec := gob.NewDecoder(bytes.NewBuffer(config))
+	dec.Decode(&response)
 
 	//Apply config
-	err = proxyObj.getConfigData(*config)
+	err = proxyObj.getConfigData(string(response.ResultMap[proxyObj.raftUUID.String()+"_Port_Range"]))
         if err != nil {
                 log.Error("(Proxy) Error while getting config data : ", err)
                 os.Exit(1)
@@ -608,6 +608,7 @@ func main() {
 	//Start serf agent handler
 	for i := range proxyObj.portRange {
 		//Iterate over ports in the range
+		log.Info("(Serf Agent) - Preparing to bind with port - ", proxyObj.portRange[i])
 		proxyObj.serfAgentPort = proxyObj.portRange[i]
 		proxyObj.serfAgentRPCPort = proxyObj.portRange[i+1]
 		err = proxyObj.startSerfAgent()
@@ -621,6 +622,7 @@ func main() {
 				os.Exit(1)
 			}
 		}
+		break
 	}
 	
 	//Start http server
@@ -640,6 +642,7 @@ func main() {
 					break
 				}
 			}
+			break
 		}
 	}()
 
