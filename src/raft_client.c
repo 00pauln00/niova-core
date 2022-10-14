@@ -301,6 +301,7 @@ struct raft_client_instance
     struct timespec                        rci_last_msg_recvd;
     niova_atomic32_t                       rci_sub_app_cnt;
     niova_atomic32_t                       rci_msg_id_counter;
+    int64_t                                rci_leader_term;
     unsigned int                           rci_msg_id_prefix;
     const struct ctl_svc_node             *rci_leader_csn;
     size_t                                 rci_leader_alive_cnt;
@@ -914,8 +915,7 @@ raft_client_request_send_queue_add_locked(struct raft_client_instance *rci,
     sa->rcsa_rh.rcrh_sendq = 1;
 
     // Get the leader term.
-    struct raft_instance *ri = RCI_2_RI(rci);
-    sa->rcsa_term = niova_atomic_read(&ri->ri_leader_term);
+    sa->rcsa_term = niova_atomic_read(&rci->rci_leader_term);
 
     // Take a ref on the 'sa'.
     REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
@@ -1054,11 +1054,11 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
                  queued_ms > raftClientRetryTimeoutMS &&
                  (uuid_compare(sa->rcsa_rh.rcrh_conn_session_uuid, session_uuid) ||
                  sa->rcsa_term !=
-                 niova_atomic_read(&RCI_2_RI(rci)->ri_leader_term)))
+                 niova_atomic_read(&rci->rci_leader_term)))
         {
             if (uuid_is_null(session_uuid))
                 SIMPLE_LOG_MSG(LL_DEBUG,
-                               "leader disconected but leader info is not updated yet.");
+                               "leader disconnected but leader info is not updated yet.");
 
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
 
@@ -1802,7 +1802,7 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 
     // Update the term value received in the reply (only from leader).
     if (rcrm->rcrm_term >= 0)
-        niova_atomic_init(&ri->ri_leader_term, rcrm->rcrm_term);
+        niova_atomic_init(&rci->rci_leader_term, rcrm->rcrm_term);
 
     if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
         raft_client_process_ping_reply(rci, rcrm, sender_csn);

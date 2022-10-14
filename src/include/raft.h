@@ -499,7 +499,6 @@ struct raft_instance
     ssize_t                         ri_max_scan_entries;
     size_t                          ri_log_reap_factor;
     size_t                          ri_num_checkpoints;
-    int64_t                         ri_leader_term;
     const size_t                    ri_max_entry_size;
     struct raft_entry_header        ri_newest_entry_hdr[RI_NEHDR_ALL];
     pthread_mutex_t                 ri_newest_entry_mutex;
