@@ -250,7 +250,7 @@ func main() {
 		var response requestResponseLib.KVResponse
 		dec := gob.NewDecoder(bytes.NewBuffer(value))
 		dec.Decode(&response)
-		fmt.Println("Value : ",string(response.Value))
+		fmt.Println("Value : ",string(response.ResultMap[appHandler.raftUUID+"_Port_Range"]))
 	}
 	fmt.Println("Error in operation : ", err);
 }
