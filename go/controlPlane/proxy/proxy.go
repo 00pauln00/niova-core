@@ -120,14 +120,9 @@ Hport //Http listener port
 
 */
 func (handler *proxyHandler) getConfigData(config []byte) error {
-	configMap := make(map[string]string)
-	err := json.Unmarshal(config, configMap)
-	if err != nil {
-		return err
-	}
-	fmt.Println("Config info : ",configMap["PortRange"])
-	portRangeStart, err := strconv.Atoi(strings.Split(configMap["PortRange"],"-")[0])
-	portRangeEnd, err := strconv.Atoi(strings.Split(configMap["PortRange"],"-")[1])
+	fmt.Println("Config info : ",string(config))
+	portRangeStart, err := strconv.Atoi(strings.Split(string(config),"-")[0])
+	portRangeEnd, err := strconv.Atoi(strings.Split(string(config),"-")[1])
 	if err != nil {
 		return err
 	}
@@ -139,11 +134,7 @@ func (handler *proxyHandler) getConfigData(config []byte) error {
 	if len(ports) < 3 {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
-	/*
-	handler.httpPort = ports[0]
-	handler.serfAgentRPCPort = ports[1]
-	handler.serfAgentPort = ports[2]
-	*/
+	
 	return err
 }
 
@@ -594,7 +585,7 @@ func main() {
 
 	//Get config data from PMDB
 	var config *[]byte
-	err = proxyObj.ReadWrapper(proxyObj.clientUUID.String(),config)
+	err = proxyObj.ReadWrapper(proxyObj.raftUUID.String()+"_Port_Range",config)
 	if err != nil {
 		log.Error("(PROXY) Error while trying to read configuration information from PMDB : ", err)
 		os.Exit(1)
@@ -607,7 +598,7 @@ func main() {
                 os.Exit(1)
         }
 	//XXX maintain common idx
-	var idx int	
+	
 	//Start serf agent handler
 	for i := range proxyObj.portRange {
 		//Iterate over ports in the range

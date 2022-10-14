@@ -3,7 +3,6 @@ package main
 import (
  "os"
  "fmt"
- "io/ioutil"
  "common/requestResponseLib"
  "encoding/json"
  "encoding/gob"
@@ -28,15 +27,17 @@ type configApplication struct {
 	pmdbClientObj *pmdbClient.PmdbClientObj
 	clientUUID string
 	raftUUID string
-	configFile string
+	portRange string
 	gossipNodesFile string
+	read bool
 	PMDBServerConfigArray []PumiceDBCommon.PeerConfigData
 }
 
 func (handler *configApplication) getCmdLineArgs() {
 	flag.StringVar(&handler.raftUUID, "r", "NULL", "Raft UUID")
-	flag.StringVar(&handler.configFile, "c", "NULL", "Config file")
+	flag.StringVar(&handler.portRange, "p", "NULL", "Port range [0-9]")
 	flag.StringVar(&handler.gossipNodesFile, "g", "./gossipNodes", "Gossip Nodes file to connect with gossip mesh")
+	flag.BoolVar(&handler.read, "r", false, "Read port range information")
 }
 
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
@@ -234,34 +235,18 @@ func main() {
 	appHandler := configApplication{
 		clientUUID:uuid.NewV4().String(),
 	}
+	
 	appHandler.getCmdLineArgs()
 	flag.Parse()
 	appHandler.GetPMDBServerConfig()
 	err := appHandler.startPMDBClient()
 	fmt.Println("PMDB client error : ", err);
-	//get config from json file
-	jsonFile, err := os.Open(appHandler.configFile)
-	if err != nil {
-    		fmt.Println(err)
-	}
-
-	fmt.Println("Reading jsonFile: ", jsonFile);
-	byteValue, err := ioutil.ReadAll(jsonFile)
-	if err != nil {
-                fmt.Println(err)
-        }
-
-	var cfgData map[string]interface{}
-    	json.Unmarshal([]byte(byteValue), &cfgData)
-
-
-	for key,value := range cfgData {
-		data, _ := json.Marshal(value)
-		err := appHandler.Write(key, data)
-		fmt.Println("Key : ",key, err)
-		//var response *[]byte
-		//appHandler.Read(key, response)
-		//fmt.Println("Response : ", string(*response));
-	}
 	
+	if !appHandler.read {
+		err = appHandler.Write(appHandler.raftUUID+"_Port_Range", []byte(appHandler.portRange));
+	} else {
+		var value *[]byte
+		err = appHandler.Read(appHandler.raftUUID+"_Port_Range", value)
+	}
+	fmt.Println("Error in operation : ", err);
 }
