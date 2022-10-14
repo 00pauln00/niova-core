@@ -62,6 +62,9 @@ type proxyHandler struct {
 	limit         string
 	requireStat   string
 	httpServerObj httpServer.HTTPServerHandler
+
+	//Port range
+	portRange     []uint16
 }
 
 var MaxPort = 60000
@@ -98,7 +101,7 @@ func (handler *proxyHandler) getCmdParams() {
 	flag.Parse()
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
 	//FIXME: For testing purpose
-	handler.clientUUID, _ = uuid.FromString("75883d2c-9889-42d9-84ad-3bcb0cbb7892")
+	handler.clientUUID, _ = uuid.FromString(tempClientUUID)
 }
 
 /*
@@ -131,21 +134,16 @@ func (handler *proxyHandler) getConfigData(config []byte) error {
 
 	var ports []uint16
 	for i:=portRangeStart; i<=portRangeEnd; i++ {
-		ln, err := net.Listen("tcp", ":" + string(i))
-  		if err == nil {
-			ports = append(ports,uint16(i))
-  		}
-  		ln.Close()
-		if (len(ports)==3) {
-			break;
-		}
+		handler.portRange = append(handler.portRange, uint16(i))
 	}
-	if len(ports) != 3 {
+	if len(ports) < 3 {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
+	/*
 	handler.httpPort = ports[0]
 	handler.serfAgentRPCPort = ports[1]
 	handler.serfAgentPort = ports[2]
+	*/
 	return err
 }
 
@@ -608,20 +606,43 @@ func main() {
                 log.Error("(Proxy) Error while getting config data : ", err)
                 os.Exit(1)
         }
-	
+	//XXX maintain common idx
+	var idx int	
 	//Start serf agent handler
-	err = proxyObj.startSerfAgent()
-	if err != nil {
-		log.Error("Error while starting serf agent : ", err)
-		os.Exit(1)
+	for i := range proxyObj.portRange {
+		//Iterate over ports in the range
+		proxyObj.serfAgentPort = proxyObj.portRange[i]
+		proxyObj.serfAgentRPCPort = proxyObj.portRange[i+1]
+		err = proxyObj.startSerfAgent()
+		if err != nil {
+			//Check if the error is a bind error
+			if strings.Contains(err.Error(), "bind") {
+				log.Info("(Serf Agent) - Port: ", proxyObj.serfAgentPort, " already in use. Binding with - ", proxyObj.portRange[i+1])
+				continue
+			} else {
+				log.Error("Error while starting serf agent : ", err)
+				os.Exit(1)
+			}
+		}
 	}
 	
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
-		err = proxyObj.startHTTPServer()
-		if err != nil {
-			log.Error("Error while starting http server : ", err)
+		for i := range proxyObj.portRange {
+			//Iterate over ports in the range
+			proxyObj.httpPort = proxyObj.portRange[i]
+			err = proxyObj.startHTTPServer()
+			if err != nil {
+				//Check if the error is a bind error
+				if strings.Contains(err.Error(), "bind") {
+					log.Info("(HTTPServer - Port: ", proxyObj.httpPort, " already in use. Binding with - ", proxyObj.portRange[i+1])
+					continue
+				} else {
+					log.Error("Error while starting http server : ", err)
+					break
+				}
+			}
 		}
 	}()
 
