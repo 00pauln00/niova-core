@@ -134,7 +134,7 @@ func (handler *proxyHandler) getConfigData(config string) error {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
 
-	handler.addr = net.IPv4(127, 0, 0, 1)
+	handler.addr = net.IPv4(0, 0, 0, 0)
 	
 	return err
 }
@@ -541,6 +541,7 @@ func (handler *proxyHandler) checkHTTPLiveness() {
 func main() {
 
 	var err error
+	var i int
 
 	proxyObj := proxyHandler{}
 	//Get commandline paraameters.
@@ -603,10 +604,8 @@ func main() {
                 log.Error("(Proxy) Error while getting config data : ", err)
                 os.Exit(1)
         }
-	//XXX maintain common idx
-	
 	//Start serf agent handler
-	for i := range proxyObj.portRange {
+	for i = range proxyObj.portRange {
 		//Iterate over ports in the range
 		log.Info("(Serf Agent) - Preparing to bind with port - ", proxyObj.portRange[i])
 		proxyObj.serfAgentPort = proxyObj.portRange[i]
@@ -628,8 +627,9 @@ func main() {
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
-		for i := range proxyObj.portRange {
+		for i = range proxyObj.portRange {
 			//Iterate over ports in the range
+			log.Info("(HTTP Server) - Preparing to bind with port - ", proxyObj.portRange[i])
 			proxyObj.httpPort = proxyObj.portRange[i]
 			err = proxyObj.startHTTPServer()
 			if err != nil {
