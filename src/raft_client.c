@@ -1702,16 +1702,16 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
 }
 
 /**
- * raft_client_udp_recv_handler_process_reply - handler for non-ping replies.
+ * raft_client_recv_handler_process_reply - handler for non-ping replies.
  */
 static raft_net_cb_ctx_t
-raft_client_udp_recv_handler_process_reply(
+raft_client_recv_handler_process_reply(
     struct raft_client_instance *rci, const struct raft_client_rpc_msg *rcrm,
     const struct ctl_svc_node *sender_csn, const struct sockaddr_in *from)
 {
     NIOVA_ASSERT(rci && RCI_2_RI(rci) && rcrm && sender_csn && from);
 
-    if (FAULT_INJECT(raft_client_udp_recv_handler_process_reply_bypass))
+    if (FAULT_INJECT(raft_client_recv_handler_process_reply_bypass))
     {
         return;
     }
@@ -1747,7 +1747,7 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
         recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
-        FAULT_INJECT(raft_client_udp_recv_handler_bypass))
+        FAULT_INJECT(raft_client_recv_handler_bypass))
         return;
 
     struct raft_client_instance *rci =
@@ -1790,7 +1790,7 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 
     else if (!rcrm->rcrm_sys_error &&
              rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY)
-        raft_client_udp_recv_handler_process_reply(rci, rcrm, sender_csn, from);
+        raft_client_recv_handler_process_reply(rci, rcrm, sender_csn, from);
 }
 
 /**
