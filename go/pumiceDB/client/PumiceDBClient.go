@@ -227,7 +227,7 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
 	rc := C.PmdbObjPut(obj.pmdb, obj_id, key, c_key_len, &obj_stat)
-
+	fmt.Println("Write status : ", rc)
 	if rc != 0 {
 		return fmt.Errorf("PmdbObjPut(): %d", rc)
 	}
@@ -256,7 +256,7 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 
 	reply_buff := C.PmdbObjGet(obj.pmdb, obj_id, key, c_key_len,
 		&actual_value_size)
-
+	fmt.Println("Read here : ", reply_buff)
 	if reply_buff == nil {
 		*reply_size = 0
 		err := errors.New("Key not found")

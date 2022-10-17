@@ -549,7 +549,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady()
+	clientObj.clientAPIObj.TillReady("PROXY")
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
