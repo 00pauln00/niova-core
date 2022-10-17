@@ -531,7 +531,10 @@ func (handler *proxyHandler) checkHTTPLiveness() {
 	var emptyByteArray []byte
 	for {
 		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(handler.httpPort))+"/check", false)
-		if err == nil {
+		if err != nil {
+			log.Error("HTTP Liveness - ", err)
+		} else {
+			log.Info("HTTP Liveness - HTTP Server is alive")
 			break
 		}
 		time.Sleep(1 * time.Second)
@@ -605,16 +608,15 @@ func main() {
                 os.Exit(1)
         }
 	//Start serf agent handler
-	for i = range proxyObj.portRange {
+	log.Info("Starting serf agent handler")
+	for i=0; i< len(proxyObj.portRange); i++ {
 		//Iterate over ports in the range
-		log.Info("(Serf Agent) - Preparing to bind with port - ", proxyObj.portRange[i])
 		proxyObj.serfAgentPort = proxyObj.portRange[i]
 		proxyObj.serfAgentRPCPort = proxyObj.portRange[i+1]
 		err = proxyObj.startSerfAgent()
 		if err != nil {
 			//Check if the error is a bind error
 			if strings.Contains(err.Error(), "bind") {
-				log.Info("(Serf Agent) - Port: ", proxyObj.serfAgentPort, " already in use. Binding with - ", proxyObj.portRange[i+1])
 				continue
 			} else {
 				log.Error("Error while starting serf agent : ", err)
@@ -627,15 +629,13 @@ func main() {
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
-		for i = range proxyObj.portRange {
+		for ;i< len(proxyObj.portRange); i++ {
 			//Iterate over ports in the range
-			log.Info("(HTTP Server) - Preparing to bind with port - ", proxyObj.portRange[i])
 			proxyObj.httpPort = proxyObj.portRange[i]
 			err = proxyObj.startHTTPServer()
 			if err != nil {
 				//Check if the error is a bind error
 				if strings.Contains(err.Error(), "bind") {
-					log.Info("(HTTPServer - Port: ", proxyObj.httpPort, " already in use. Binding with - ", proxyObj.portRange[i+1])
 					continue
 				} else {
 					log.Error("Error while starting http server : ", err)
