@@ -54,7 +54,7 @@ RUN export PATH=$PATH:/go/bin && cd niova-core/go/controlPlane && make -e DIR=/n
 RUN export PATH=$PATH:/go/bin && cd niova-core/go/pumiceDB/examples/niovaKV && make -e DIR=/niovacorelibs niovakv_all
 
 # Clone holon
-RUN git clone https://$token@github.com/00pauln00/holon.git && cd holon && git checkout prometheus_bug_fix
+RUN git clone https://$token@github.com/00pauln00/holon.git
 
 # Dsable cache for next tasks
 ARG CACHEBUST=1
