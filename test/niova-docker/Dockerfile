@@ -54,7 +54,7 @@ RUN export PATH=$PATH:/go/bin && cd niova-core/go/controlPlane && make -e DIR=/n
 RUN export PATH=$PATH:/go/bin && cd niova-core/go/pumiceDB/examples/niovaKV && make -e DIR=/niovacorelibs niovakv_all
 
 # Clone holon
-RUN git clone https://$token@github.com/00pauln00/holon.git
+RUN git clone https://$token@github.com/00pauln00/holon.git && cd holon && git checkout prometheus_bug_fix
 
 # Dsable cache for next tasks
 ARG CACHEBUST=1
@@ -74,6 +74,12 @@ RUN echo "deb [signed-by=/usr/share/keyrings/grafana.key] https://packages.grafa
 RUN apt-get update
 RUN apt-get install -y grafana
 COPY datasource.yaml /etc/grafana/provisioning/datasources/
+COPY dashboard.yaml /etc/grafana/provisioning/dashboards/
+RUN mkdir dashboards
+COPY nisd_details.json /dashboards/
+COPY pmdb_details.json /dashboards/
+COPY overview_pmdb_nisd.json /dashboards/
+#COPY datasource.yaml /etc/grafana/provisioning/datasources/
 
 # Run holon recipe
 WORKDIR /holon
