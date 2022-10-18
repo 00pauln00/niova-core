@@ -9,6 +9,7 @@ import (
 	"controlplane/serfAgent"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"github.com/google/uuid"
@@ -17,6 +18,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
 )
@@ -50,10 +52,12 @@ type nisdMonitor struct {
 	serfHandler     serfAgent.SerfAgentHandler
 	agentName       string
 	addr            string
-	agentPort       string
-	agentRPCPort    *int
+	agentPort       int16
+	agentRPCPort    int16
 	gossipNodesPath string
 	serfLogger      string
+	raftUUID	string
+	portRange	[]int16
 }
 
 //NISD
@@ -76,16 +80,17 @@ func (handler *nisdMonitor) parseCMDArgs() {
 
 	handler.ctlPath = flag.String("dir", "/tmp/.niova", "endpoint directory root")
 	handler.httpPort = flag.Int("port", 8081, "http listen port")
-	handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
+	//handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
 
 	flag.StringVar(&handler.udpPort, "u", "1054", "UDP port for NISD communication")
 	flag.StringVar(&handler.agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Agent addr")
-	flag.StringVar(&handler.agentPort, "p", "3991", "Agent port for serf")
+	//flag.StringVar(&handler.agentPort, "p", "3991", "Agent port for serf")
 	flag.StringVar(&handler.gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
 	flag.StringVar(&handler.serfLogger, "s", "serf.log", "Serf logs")
+	flag.StringVar(&handler.raftUUID, "r", "", "Raft UUID")
 	flag.Parse()
 
 	nonParsed := flag.Args()
@@ -166,14 +171,14 @@ func setLogOutput(logPath string) {
 
 func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
-	agentPort, _ := strconv.Atoi(handler.agentPort)
+	agentPort := handler.agentPort
 	handler.serfHandler = serfAgent.SerfAgentHandler{
 		Name:        handler.agentName,
 		BindAddr:    net.ParseIP(handler.addr),
 		BindPort:    uint16(agentPort),
 		AgentLogger: log.Default(),
 		RpcAddr:     net.ParseIP(handler.addr),
-		RpcPort:     uint16(*handler.agentRPCPort),
+		RpcPort:     uint16(handler.agentRPCPort),
 	}
 
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
@@ -274,8 +279,49 @@ func (handler *nisdMonitor) SerfMembership() map[string]bool {
 	return returnMap
 }
 
+func (handler *nisdMonitor) getPortRange() error {
+	var response requestResponseLib.PMDBKVResponse
+
+	responseBytes, err := handler.requestPMDB(handler.raftUUID + "_Port_Range")
+	if err != nil {
+		fmt.Println("Request PMDB - ", err)
+		return err
+	}
+
+	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	dec.Decode(&response)
+
+	err = handler.getConfigData(string(response.ResultMap[handler.raftUUID+"_Port_Range"]))
+	if err != nil {
+		fmt.Println("getConfigData - ", err)
+	}
+
+	fmt.Println(handler.portRange)
+	return nil
+}
+
+func (handler *nisdMonitor) getConfigData(config string) error {
+	portRangeStart, err := strconv.Atoi(strings.Split(config,"-")[0])
+	portRangeEnd, err := strconv.Atoi(strings.Split(config,"-")[1])
+	if err != nil {
+		return err
+	}
+
+	for i:=portRangeStart; i<=portRangeEnd; i++ {
+		handler.portRange = append(handler.portRange, int16(i))
+	}
+
+	if len(handler.portRange) < 3 {
+		return errors.New("Not enough ports available in the specified range to start services")
+	}
+
+	return err
+}
+
+
 func main() {
 	var nisd nisdMonitor
+	var i int
 
 	//Get cmd line args
 	nisd.parseCMDArgs()
@@ -283,10 +329,30 @@ func main() {
 	//Start pmdb service client discovery api
 	nisd.startClientAPI()
 
+	err := nisd.getPortRange()
+	if err != nil {
+		os.Exit(1)
+	}
+
 	//Start serf agent
-	nisd.startSerfAgent()
+
+	for i = 0; i<len(nisd.portRange); i++ {
+		nisd.agentPort = nisd.portRange[i]
+		nisd.agentRPCPort = nisd.portRange[i+1]
+		err = nisd.startSerfAgent()
+		if err != nil {
+			if strings.Contains(err.Error(), "bind") {
+				continue
+			} else {
+				fmt.Println("Error while startign serf agent : ", err)
+				os.Exit(1)
+			}
+		}
+		break
+	}
 
 	//Start udp listener
+
 	go nisd.startUDPListner()
 
 	//Set serf tags
