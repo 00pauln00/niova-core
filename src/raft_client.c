@@ -1694,7 +1694,8 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
                         timespec_2_msec(&rcrh->rcrh_submitted));
 
         raft_client_sub_app_done(rci, sa, __func__, __LINE__, true,
-                                 reply_size_error);
+                                 reply_size_error ? reply_size_error :
+                                 app_rpc_err);
     }
 
     // Put the ref taken by our lookup
