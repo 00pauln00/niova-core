@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"common/httpClient"
 	"common/lookout"
 	"common/requestResponseLib"
 	"common/serviceDiscovery"
@@ -46,7 +47,7 @@ type nisdMonitor struct {
 	udpSocket     net.PacketConn
 	lookout       lookout.EPContainer
 	endpointRoot  *string
-	httpPort      *int
+	httpPort      int
 	ctlPath       *string
 	//serf
 	serfHandler     serfAgent.SerfAgentHandler
@@ -79,15 +80,12 @@ func (handler *nisdMonitor) parseCMDArgs() {
 	)
 
 	handler.ctlPath = flag.String("dir", "/tmp/.niova", "endpoint directory root")
-	handler.httpPort = flag.Int("port", 8081, "http listen port")
-	//handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
 
 	flag.StringVar(&handler.udpPort, "u", "1054", "UDP port for NISD communication")
 	flag.StringVar(&handler.agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Agent addr")
-	//flag.StringVar(&handler.agentPort, "p", "3991", "Agent port for serf")
 	flag.StringVar(&handler.gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
 	flag.StringVar(&handler.serfLogger, "s", "serf.log", "Serf logs")
 	flag.StringVar(&handler.raftUUID, "r", "", "Raft UUID")
@@ -211,7 +209,7 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 	httpPort  := handler.httpPort
 
 	returnMap["Type"] = "LOOKOUT"
-	returnMap["Hport"] = strconv.Itoa(*httpPort)
+	returnMap["Hport"] = strconv.Itoa(httpPort)
 	return returnMap  
 }
 
@@ -296,7 +294,6 @@ func (handler *nisdMonitor) getPortRange() error {
 		fmt.Println("getConfigData - ", err)
 	}
 
-	fmt.Println(handler.portRange)
 	return nil
 }
 
@@ -316,6 +313,20 @@ func (handler *nisdMonitor) getConfigData(config string) error {
 	}
 
 	return err
+}
+
+func (handler *nisdMonitor) checkHTTPLiveness() {
+	var emptyByteArray []byte
+	for {
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(handler.httpPort)) + "/check", false)
+		if err != nil {
+			fmt.Println("HTTP Liveness - ", err)
+		} else {
+			fmt.Println("HTTP Liveness - HTTP Server is alive")
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
 
 
@@ -344,7 +355,7 @@ func main() {
 			if strings.Contains(err.Error(), "bind") {
 				continue
 			} else {
-				fmt.Println("Error while startign serf agent : ", err)
+				fmt.Println("Error while starting serf agent : ", err)
 				os.Exit(1)
 			}
 		}
@@ -352,20 +363,38 @@ func main() {
 	}
 
 	//Start udp listener
-
 	go nisd.startUDPListner()
 
-	//Set serf tags
-	go nisd.setTags()
 
-	//Start lookout monitoring
-	nisd.lookout = lookout.EPContainer{
-		MonitorUUID:      "*",
-		AppType:          "NISD",
-		HttpPort:         *nisd.httpPort,
-		CTLPath:          *nisd.ctlPath,
-		SerfMembershipCB: nisd.SerfMembership,
-		EnableHttp:       true,
+	for ;i<len(nisd.portRange); i++ {
+		nisd.httpPort = int(nisd.portRange[i])
+		//Start lookout monitoring
+		nisd.lookout = lookout.EPContainer{
+			MonitorUUID:      "*",
+			AppType:          "NISD",
+			HttpPort:         nisd.httpPort,
+			CTLPath:          *nisd.ctlPath,
+			SerfMembershipCB: nisd.SerfMembership,
+			EnableHttp:       true,
+		}
+		errs := make(chan error, 1)
+		go func() {
+			errs <- nisd.lookout.Start()
+		}()
+		if err = <-errs; err != nil {
+			if strings.Contains(err.Error(), "bind") {
+				continue
+			} else {
+				fmt.Println("Error while starting Lookout : ", err)
+				os.Exit(1)
+			}
+		}
+		break
 	}
-	nisd.lookout.Start()
+
+	//Wait till http lookout http is up and running
+	go nisd.checkHTTPLiveness()
+
+	//Set serf tags
+	nisd.setTags()
 }

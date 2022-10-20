@@ -414,14 +414,16 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, output)
 }
 
-func (epc *EPContainer) serveHttp() {
-	http.HandleFunc("/v1/", epc.QueryHandle)
-	http.HandleFunc("/v0/", epc.HttpHandle)
-	http.HandleFunc("/metrics", epc.MetricsHandler)
-	err := http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil)
+func (epc *EPContainer) serveHttp() error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/", epc.QueryHandle)
+	mux.HandleFunc("/v0/", epc.HttpHandle)
+	mux.HandleFunc("/metrics", epc.MetricsHandler)
+	err := http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), mux)
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
+	return nil
 }
 
 func (epc *EPContainer) GetList() map[uuid.UUID]*NcsiEP {
@@ -444,16 +446,37 @@ func (epc *EPContainer) MarkAlive(serviceUUID string) error {
 	return nil
 }
 
-func (epc *EPContainer) Start() {
+func (epc *EPContainer) Start() error {
+	var err error
+	errs := make(chan error, 1)
 	//Start http service
 	if epc.EnableHttp {
 		epc.httpQuery = make(map[string](chan []byte))
-		go epc.serveHttp()
+		go func(){
+			err_r := epc.serveHttp()
+			errs <- err_r
+			if(<-errs != nil){
+				return
+			}
+		}()
+		if err := <- errs; err != nil {
+			return err
+		}
 	}
 
 	//Setup lookout
-	epc.init()
+	err = epc.init()
+	if err != nil {
+		log.Printf("Lookout Init - ", err)
+		return err
+	}
 
 	//Start monitoring
-	epc.monitor()
+	err = epc.monitor()
+	if err != nil {
+		log.Printf("Lookout Monitor - ", err)
+		return err
+	}
+
+	return nil
 }
