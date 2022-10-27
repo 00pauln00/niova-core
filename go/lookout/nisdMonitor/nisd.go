@@ -347,19 +347,12 @@ func main() {
 
 	//Start serf agent
 
-	for i = 0; i<len(nisd.portRange); i++ {
-		nisd.agentPort = nisd.portRange[i]
-		nisd.agentRPCPort = nisd.portRange[i+1]
-		err = nisd.startSerfAgent()
-		if err != nil {
-			if strings.Contains(err.Error(), "bind") {
-				continue
-			} else {
-				fmt.Println("Error while starting serf agent : ", err)
-				os.Exit(1)
-			}
-		}
-		break
+	nisd.ServicePortRangeS = nisd.portRange[0]
+	nisd.ServicePortRangeE = nisd.portRange[len(nisd.PortRange)-1]
+	err = nisd.startSerfAgent()
+	if err != nil {
+		fmt.Println("Error while starting serf agent : ", err)
+		os.Exit(1)
 	}
 
 	//Start udp listener
