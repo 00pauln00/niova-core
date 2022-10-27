@@ -200,10 +200,10 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
 	handler.serfAgentObj.Name = handler.serfAgentName
 	handler.serfAgentObj.BindAddr = handler.addr
-	handler.serfAgentObj.BindPort = handler.serfAgentPort
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RpcAddr = handler.addr
-	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
+	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
+	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
 	if err != nil {
 		return err

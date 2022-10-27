@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-
+	"errors"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 )
@@ -28,11 +28,10 @@ type SerfAgentHandler struct {
 	//Exported
 	Name        string //Name of the agent
 	BindAddr    net.IP //Addr for inter agent communcations
-	BindPort    uint16 //Port for inter agent communcations
 	RpcAddr     net.IP //Addr for agent-client communication
-	RpcPort     uint16 //Port for agent-client communicaton
 	AgentLogger *log.Logger
-
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
 	//non-exported
 	agentObj    *agent.Agent
 	agentIPCObj *agent.AgentIPC
@@ -52,7 +51,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr.String()                      //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort = int(Handler.BindPort)                          //Agent bind port
+	serfconfig.MemberlistConfig.BindPort = int(Handler.ServicePortRangeS)                          //Agent bind port
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 
@@ -72,6 +71,14 @@ Description : Starts the created agent in setup, and listenes on rpc channel
 */
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	err := Handler.agentObj.Start()
+	for (err != nil) && (Handler.ServicePortRangeS <= Handler.ServicePortRangeE) {
+                Handler.ServicePortRangeS += 1
+		Handler.setup()
+        	err = Handler.agentObj.Start()
+	}
+	if (err != nil) {
+                return errors.New("All port in use")
+        }
 
 	if !requireRPC {
 		return err
@@ -92,10 +99,15 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 
 	//Start a RPC listener
 	agentLog := agent.NewLogWriter(10) //Need change for logging
-	rpcListener, err := net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
-	if err != nil {
-		return err
+	rpcListener, err := net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.ServicePortRangeS)))
+	for (err != nil) && (Handler.ServicePortRangeS <= Handler.ServicePortRangeE) {
+		Handler.ServicePortRangeS += 1
+		rpcListener, err = net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.ServicePortRangeS)))
 	}
+	if (err != nil) {
+		return errors.New("All port in use")
+	}
+
 	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, "", rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
 
 	return nil
