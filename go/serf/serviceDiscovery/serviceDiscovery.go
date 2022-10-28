@@ -294,15 +294,9 @@ func (handler *ServiceDiscoveryHandler) GetLeader() string {
 }
 
 //Wait till connect
-func (handler *ServiceDiscoveryHandler) TillReady(service string) {
+func (handler *ServiceDiscoveryHandler) TillReady() {
 	//Check the client
 	for !handler.ready {
 		
-	}
-	//Check the service
-	_, err := handler.pickServer("")
-	for err != nil {
-	    	_, err = handler.pickServer("")
-		time.Sleep(5)
 	}
 }
