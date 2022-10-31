@@ -329,6 +329,26 @@ func (handler *nisdMonitor) checkHTTPLiveness() {
 	}
 }
 
+func (handler *nisdMonitor) findFreePort() int {
+	for i := 0; i<len(handler.portRange); i++ {
+		handler.httpPort = int(handler.portRange[i])
+		fmt.Println("Trying to bind with - ", int(handler.httpPort))
+		check, err := net.Listen("tcp", handler.addr + ":" + strconv.Itoa(int(handler.httpPort)))
+		if err != nil {
+			if strings.Contains(err.Error(), "bind") {
+				continue
+			} else {
+				fmt.Println("Error while finding port : ", err)
+				return 0
+			}
+		} else {
+			check.Close()
+			break
+		}
+	}
+	fmt.Println("Returning free port - ", handler.httpPort)
+	return handler.httpPort
+}
 
 func main() {
 	var nisd nisdMonitor
@@ -359,30 +379,25 @@ func main() {
 	go nisd.startUDPListner()
 
 
-	for ;i<len(nisd.portRange); i++ {
-		nisd.httpPort = int(nisd.portRange[i])
-		//Start lookout monitoring
-		nisd.lookout = lookout.EPContainer{
-			MonitorUUID:      "*",
-			AppType:          "NISD",
-			HttpPort:         nisd.httpPort,
-			CTLPath:          *nisd.ctlPath,
-			SerfMembershipCB: nisd.SerfMembership,
-			EnableHttp:       true,
-		}
-		errs := make(chan error, 1)
-		go func() {
-			errs <- nisd.lookout.Start()
-		}()
-		if err = <-errs; err != nil {
-			if strings.Contains(err.Error(), "bind") {
-				continue
-			} else {
-				fmt.Println("Error while starting Lookout : ", err)
-				os.Exit(1)
-			}
-		}
-		break
+	//Start lookout monitoring
+	nisd.lookout = lookout.EPContainer{
+		MonitorUUID:      "*",
+		AppType:          "NISD",
+		HttpPort:         nisd.findFreePort(),
+		CTLPath:          *nisd.ctlPath,
+		SerfMembershipCB: nisd.SerfMembership,
+		EnableHttp:       true,
+	}
+	errs := make(chan error, 1)
+	go func() {
+		errs <- nisd.lookout.Start()
+	}()
+	select {
+	case err = <-errs:
+		fmt.Println("Error while starting Lookout : ", err)
+		os.Exit(1)
+	default:
+		fmt.Println("Lookout started successfully")
 	}
 
 	//Wait till http lookout http is up and running
