@@ -46,8 +46,8 @@ type pmdbServerHandler struct {
 	logLevel           string
 	gossipClusterFile  string
 	gossipClusterNodes []string
-	serfAgentPort      uint16
-	serfRPCPort        uint16
+	servicePortRangeS  uint16
+	servicePortRangeE  uint16
 	hport              uint16
 	prometheus         bool
 	nodeAddr           net.IP
@@ -246,28 +246,28 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	}
 	scanner := bufio.NewScanner(f)
 	var flag bool
-	var uuid, addr, aport, rport, hport string
+	var uuid, addr, sport, eport, hport string
 	for scanner.Scan() {
 		text := scanner.Text()
 		splitData := strings.Split(text, " ")
 		uuid = splitData[0]
 		addr = splitData[1]
-		aport = splitData[2]
-		rport = splitData[3]
+		sport = splitData[2]
+		eport = splitData[3]
 		if len(splitData) > 4 {
 			handler.prometheus = true
 			hport = splitData[4]
 		}
 
 		if uuid == handler.peerUUID.String() {
-			buffer, err := strconv.ParseUint(aport, 10, 16)
-			handler.serfAgentPort = uint16(buffer)
+			buffer, err := strconv.ParseUint(sport, 10, 16)
+			handler.servicePortRangeS = uint16(buffer)
 			if err != nil {
 				return errors.New("Agent port is out of range")
 			}
 
-			buffer, err = strconv.ParseUint(rport, 10, 16)
-			handler.serfRPCPort = uint16(buffer)
+			buffer, err = strconv.ParseUint(eport, 10, 16)
+			handler.servicePortRangeE = uint16(buffer)
 			if err != nil {
 				return errors.New("RPC port is out of range")
 			}
@@ -283,7 +283,7 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 			handler.nodeAddr = net.ParseIP(addr)
 			flag = true
 		} else {
-			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
+			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+sport+":"+eport)
 		}
  	}
 
@@ -292,8 +292,6 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		return errors.New("UUID not matching")
 	}
 
-	log.Info("Cluster nodes : ", handler.gossipClusterNodes)
-	log.Info("Node serf info : ", handler.nodeAddr, handler.serfAgentPort, handler.serfRPCPort)
 	return nil
 }
 
@@ -339,10 +337,10 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		Name:     handler.peerUUID.String(),
 		BindAddr: handler.nodeAddr,
 	}
-	serfAgentHandler.BindPort = handler.serfAgentPort
 	serfAgentHandler.AgentLogger = defaultLogger.Default()
 	serfAgentHandler.RpcAddr = handler.nodeAddr
-	serfAgentHandler.RpcPort = handler.serfRPCPort
+	serfAgentHandler.ServicePortRangeS = handler.servicePortRangeS
+	serfAgentHandler.ServicePortRangeE = handler.servicePortRangeE
 	//Start serf agent
 	_, err = serfAgentHandler.SerfAgentStartup(handler.gossipClusterNodes, true)
 	if err != nil {
@@ -350,7 +348,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	}
 	handler.readPMDBServerConfig()
 	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
+	//handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
 	handler.GossipData["RU"] = handler.raftUUID.String()
 	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
 	if err != nil {
