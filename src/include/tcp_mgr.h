@@ -79,6 +79,7 @@ struct tcp_mgr_connection
     char                             *tmc_bulk_buf;
     size_t                            tmc_bulk_offset;
     size_t                            tmc_bulk_remain;
+    pthread_mutex_t                   tmc_mutex;
     tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_cb;
 };
 

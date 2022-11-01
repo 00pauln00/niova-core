@@ -160,6 +160,7 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
 
     tmc->tmc_epoll_ctx_cb = NULL;
 
+    pthread_mutex_init(&tmc->tmc_mutex, NULL);
     tmc->tmc_status = TMCS_DISCONNECTED;
 
     return 0;
@@ -536,10 +537,14 @@ tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
 {
     int rc;
 
+    niova_mutex_lock(&tmc->tmc_mutex);
     rc = tcp_mgr_new_bulk_msg_handler(tmc, recv_buf);
 
     if (rc)
+    {
+        niova_mutex_unlock(&tmc->tmc_mutex);
         return rc;
+    }
 
     while (tmc->tmc_bulk_remain)
     {
@@ -550,6 +555,7 @@ tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
             SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
     }
 
+    niova_mutex_unlock(&tmc->tmc_mutex);
     *recv_buf_size = tmc->tmc_bulk_offset;
     return rc;
 }
@@ -720,8 +726,10 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     NIOVA_ASSERT(incoming && owned && incoming->tmc_status == TMCS_CONNECTING);
 
     struct tcp_mgr_instance *tmi = incoming->tmc_tmi;
+    bool tmc_locked = false;
 
-    if (owned->tmc_status != TMCS_DISCONNECTED)
+    // Don't treat it as error if owned is already in connected state
+    if (owned->tmc_status != TMCS_DISCONNECTED && owned->tmc_status != TMCS_CONNECTED)
     {
         if (owned->tmc_status == TMCS_NEEDS_SETUP)
             DBG_TCP_MGR_CXN(LL_ERROR, owned, "connection not setup");
@@ -742,6 +750,13 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
         return -EINVAL;
     }
 
+    if (owned->tmc_status == TMCS_CONNECTED)
+    {
+        // Update the owned with lock as reader threads might be
+        // accessing the tmc at the same time.
+        niova_mutex_lock(&owned->tmc_mutex);
+        tmc_locked = true;
+    }
     owned->tmc_header_size = incoming->tmc_header_size;
     owned->tmc_tsh.tsh_socket = incoming->tmc_tsh.tsh_socket;
     owned->tmc_status = TMCS_CONNECTED;
@@ -755,6 +770,9 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
                                  tmi->tmi_connection_ref_cb);
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");
+
+    if (tmc_locked)
+        niova_mutex_unlock(&owned->tmc_mutex);
 
     // epoll takes a ref, so we can give up ours
     tcp_mgr_connection_put(owned);
