@@ -249,7 +249,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady("")
+	clientObj.clientAPIObj.TillReady("", 5)
 
 	//Process the request
 	n, _ := strconv.Atoi(clientObj.noRequest)
