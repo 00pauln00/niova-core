@@ -182,7 +182,7 @@ func (handler *HTTPServerHandler) Start_HTTPServer() error {
 	handler.HTTPServer.Addr = handler.Addr.String() + ":" + handler.Port
 
 	//Update the timeout using little's fourmula
-	handler.HTTPServer.Handler = http.TimeoutHandler(handler, 150*time.Second, "Server Timeout")
+	handler.HTTPServer.Handler = http.TimeoutHandler(handler, 600*time.Second, "Server Timeout")
 	handler.Stat.StatusMap = make(map[int64]*RequestStatus)
 
 	//Start server
