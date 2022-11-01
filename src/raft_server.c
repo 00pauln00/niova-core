@@ -4110,6 +4110,10 @@ raft_server_client_reply_init(const struct raft_instance *ri,
     uuid_copy(reply->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
     uuid_copy(reply->rcrm_dest_id, rncr->rncr_client_uuid);
 
+    reply->rcrm_term = -1;
+
+    if (raft_instance_is_leader(ri))
+        reply->rcrm_term = ri->ri_log_hdr.rlh_term;
     reply->rcrm_type = msg_type;
     reply->rcrm_msg_id = rncr->rncr_msg_id;
     reply->rcrm_data_size = rncr->rncr_reply_data_size;

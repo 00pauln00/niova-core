@@ -170,6 +170,7 @@ struct raft_client_request_handle
     pthread_cond_t            *rcrh_cond_var;
     raft_client_user_cb_t      rcrh_async_cb;
     void                      *rcrh_arg;
+    uuid_t                     rcrh_conn_session_uuid;
     struct raft_client_rpc_msg rcrh_rpc_request;
 };
 
@@ -189,6 +190,7 @@ struct raft_client_sub_app
 {
     struct raft_net_client_user_id rcsa_rncui;      //Must be the first memb!
     struct raft_client_instance   *rcsa_rci;
+    int64_t                        rcsa_term; // leader team when sa was queued.
     REF_TREE_ENTRY(raft_client_sub_app) rcsa_rtentry;
     STAILQ_ENTRY(raft_client_sub_app)   rcsa_lentry; // retry queue
     struct raft_client_request_handle rcsa_rh;
@@ -299,6 +301,7 @@ struct raft_client_instance
     struct timespec                        rci_last_msg_recvd;
     niova_atomic32_t                       rci_sub_app_cnt;
     niova_atomic32_t                       rci_msg_id_counter;
+    int64_t                                rci_leader_term;
     unsigned int                           rci_msg_id_prefix;
     const struct ctl_svc_node             *rci_leader_csn;
     size_t                                 rci_leader_alive_cnt;
@@ -911,6 +914,9 @@ raft_client_request_send_queue_add_locked(struct raft_client_instance *rci,
 
     sa->rcsa_rh.rcrh_sendq = 1;
 
+    // Get the leader term.
+    sa->rcsa_term = niova_atomic_read(&rci->rci_leader_term);
+
     // Take a ref on the 'sa'.
     REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
 
@@ -998,6 +1004,11 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
 
     const bool leader_viable = raft_client_leader_is_viable(rci);
 
+    uuid_t session_uuid = {};
+
+    if (leader_viable)
+        ctl_svc_node_2_session_uuid(RCI_2_RI(rci)->ri_csn_leader, session_uuid);
+
     SIMPLE_LOG_MSG(LL_TRACE, "entering lock");
 
     RCI_LOCK(rci); // Synchronize with raft_client_rpc_sender()
@@ -1040,8 +1051,15 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
         else if (leader_viable &&  // non-expired requests are queued for send
-                 queued_ms > raftClientRetryTimeoutMS)
+                 queued_ms > raftClientRetryTimeoutMS &&
+                 (uuid_compare(sa->rcsa_rh.rcrh_conn_session_uuid, session_uuid) ||
+                 sa->rcsa_term !=
+                 niova_atomic_read(&rci->rci_leader_term)))
         {
+            if (uuid_is_null(session_uuid))
+                SIMPLE_LOG_MSG(LL_DEBUG,
+                               "leader disconnected but leader info is not updated yet.");
+
             DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
 
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
@@ -1247,7 +1265,7 @@ raft_client_request_handle_init(
     int rc = raft_client_rpc_msg_init(rci, &rcrh->rcrh_rpc_request,
                                       RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
                                       niova_io_iovs_total_size_get(src_iovs,
-                                                             nsrc_iovs),
+                                                                   nsrc_iovs),
                                       leader, tag);
     if (rc)
         return rc;
@@ -1782,6 +1800,10 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 
     FATAL_IF((rc), "raft_net_comm_get_last_recv(): %s", strerror(-rc));
 
+    // Update the term value received in the reply (only from leader).
+    if (rcrm->rcrm_term >= 0)
+        niova_atomic_init(&rci->rci_leader_term, rcrm->rcrm_term);
+
     if (rcrm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY)
         raft_client_process_ping_reply(rci, rcrm, sender_csn);
 
@@ -1825,6 +1847,8 @@ raft_client_rpc_launch(struct raft_client_instance *rci,
     {
         niova_realtime_coarse_clock(&rci->rci_last_request_sent);
 
+        ctl_svc_node_2_session_uuid(RCI_2_RI(rci)->ri_csn_leader,
+                                    sa->rcsa_rh.rcrh_conn_session_uuid);
         sa->rcsa_rh.rcrh_last_send = rci->rci_last_request_sent;
         sa->rcsa_rh.rcrh_num_sends++;
     }
@@ -2092,6 +2116,8 @@ enum raft_client_sub_app_request_stats
     RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME, //
     RAFT_CLIENT_SUB_APP_REQ_ATTEMPTS,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_COMPLETION_TIME_MS, // unsigned
+    RAFT_CLIENT_SUB_APP_CONN_SESSION_UUID,  //
+    RAFT_CLIENT_SUB_APP_CURRENT_TERM,       // int64
     RAFT_CLIENT_SUB_APP_REQ_TIMEOUT_MS,     // unsigned
     RAFT_CLIENT_SUB_APP_REQ_REPLY_SZ,       // unsigned
     RAFT_CLIENT_SUB_APP_REQ_RQ_TYPE,        // string
@@ -2141,6 +2167,14 @@ raft_client_sub_app_multi_facet_handler(enum lreg_node_cb_ops op,
             snprintf(LREG_VALUE_TO_OUT_STR(lv), LREG_VALUE_STRING_MAX,
                      "%s:%d", inet_ntoa(sa->rcsa_rh.rcrh_sin_reply_addr),
                      ntohs(sa->rcsa_rh.rcrh_sin_reply_port));
+            break;
+        case RAFT_CLIENT_SUB_APP_CONN_SESSION_UUID:
+            lreg_value_fill_string_uuid(lv, "conn-session",
+                                        sa->rcsa_rh.rcrh_conn_session_uuid);
+            break;
+        case RAFT_CLIENT_SUB_APP_CURRENT_TERM:
+            lreg_value_fill_signed(lv, "current-term",
+                                        sa->rcsa_term);
             break;
         case RAFT_CLIENT_SUB_APP_REQ_SUBMITTED_TIME:
             lreg_value_fill_string_time(lv, "submitted",

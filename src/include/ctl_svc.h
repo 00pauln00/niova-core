@@ -170,6 +170,15 @@ ctl_svc_node_compare_uuid(const struct ctl_svc_node *a, const uuid_t uuid)
     return uuid_compare(a->csn_uuid, uuid);
 }
 
+static inline void
+ctl_svc_node_2_session_uuid(const struct ctl_svc_node *a, uuid_t session_uuid)
+{
+    if (a == NULL)
+        uuid_clear(session_uuid);
+
+    uuid_copy(session_uuid, a->csn_peer.csnp_net_data.tmc_session_uuid);
+}
+
 /**
  * ctl_svc_node_check_string - compares the provided UUID string with the
  *    binary UUID stored in the node.

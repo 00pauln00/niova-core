@@ -160,6 +160,8 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
 
     tmc->tmc_status = TMCS_DISCONNECTED;
 
+    uuid_clear(tmc->tmc_session_uuid);
+
     return 0;
 }
 
@@ -202,6 +204,7 @@ tcp_mgr_connection_close_internal(struct tcp_mgr_connection *tmc)
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
     tmc->tmc_bulk_remain = 0;
+    uuid_clear(tmc->tmc_session_uuid);
 
     tcp_socket_close(&tmc->tmc_tsh);
     tmc->tmc_status = TMCS_DISCONNECTED;
@@ -275,6 +278,9 @@ tcp_mgr_incoming_fini(struct tcp_mgr_connection *tmc)
 
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     tcp_mgr_credits_free(&tmi->tmi_incoming_credits, incoming);
+
+    // Create a uuid for this new connection
+    uuid_generate(tmc->tmc_session_uuid);
 }
 
 static epoll_mgr_cb_ctx_t
@@ -767,6 +773,9 @@ tcp_mgr_connect_complete(struct tcp_mgr_connection *tmc)
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, tmc, "connection established");
     tmc->tmc_status = TMCS_CONNECTED;
+
+    // Create a uuid for this new connection
+    uuid_generate(tmc->tmc_session_uuid);
     rc = 0;
 out:
     if (rc < 0)
