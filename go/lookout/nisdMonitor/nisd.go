@@ -58,8 +58,12 @@ type nisdMonitor struct {
 	gossipNodesPath string
 	serfLogger      string
 	raftUUID	string
-	portRange	[]int16
+	PortRange	[]int16
+	ServicePortRangeS int16
+	ServicePortRangeE int16
 }
+
+var RecvdPort int
 
 //NISD
 type udpMessage struct {
@@ -169,14 +173,16 @@ func setLogOutput(logPath string) {
 
 func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
-	agentPort := handler.agentPort
+	//agentPort := handler.agentPort
 	handler.serfHandler = serfAgent.SerfAgentHandler{
 		Name:        handler.agentName,
 		BindAddr:    net.ParseIP(handler.addr),
-		BindPort:    uint16(agentPort),
+		ServicePortRangeS: uint16(handler.ServicePortRangeS),
+		ServicePortRangeE: uint16(handler.ServicePortRangeE),
+		//BindPort:    uint16(agentPort),
 		AgentLogger: log.Default(),
 		RpcAddr:     net.ParseIP(handler.addr),
-		RpcPort:     uint16(handler.agentRPCPort),
+		//RpcPort:     uint16(handler.agentRPCPort),
 	}
 
 	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
@@ -206,8 +212,7 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 		//Fill map; will add extra info in future
 		returnMap[cuuid] = cstatus
 	}
-	httpPort  := handler.httpPort
-
+	httpPort  := RecvdPort
 	returnMap["Type"] = "LOOKOUT"
 	returnMap["Hport"] = strconv.Itoa(httpPort)
 	return returnMap  
@@ -305,10 +310,10 @@ func (handler *nisdMonitor) getConfigData(config string) error {
 	}
 
 	for i:=portRangeStart; i<=portRangeEnd; i++ {
-		handler.portRange = append(handler.portRange, int16(i))
+		handler.PortRange = append(handler.PortRange, int16(i))
 	}
 
-	if len(handler.portRange) < 3 {
+	if len(handler.PortRange) < 3 {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
 
@@ -318,7 +323,7 @@ func (handler *nisdMonitor) getConfigData(config string) error {
 func (handler *nisdMonitor) checkHTTPLiveness() {
 	var emptyByteArray []byte
 	for {
-		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(handler.httpPort)) + "/check", false)
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort)) + "/check", false)
 		if err != nil {
 			fmt.Println("HTTP Liveness - ", err)
 		} else {
@@ -330,8 +335,8 @@ func (handler *nisdMonitor) checkHTTPLiveness() {
 }
 
 func (handler *nisdMonitor) findFreePort() int {
-	for i := 0; i<len(handler.portRange); i++ {
-		handler.httpPort = int(handler.portRange[i])
+	for i := 0; i<len(handler.PortRange); i++ {
+		handler.httpPort = int(handler.PortRange[i])
 		fmt.Println("Trying to bind with - ", int(handler.httpPort))
 		check, err := net.Listen("tcp", handler.addr + ":" + strconv.Itoa(int(handler.httpPort)))
 		if err != nil {
@@ -352,7 +357,6 @@ func (handler *nisdMonitor) findFreePort() int {
 
 func main() {
 	var nisd nisdMonitor
-	var i int
 
 	//Get cmd line args
 	nisd.parseCMDArgs()
@@ -366,9 +370,8 @@ func main() {
 	}
 
 	//Start serf agent
-
-	nisd.ServicePortRangeS = nisd.portRange[0]
-	nisd.ServicePortRangeE = nisd.portRange[len(nisd.PortRange)-1]
+	nisd.ServicePortRangeS = nisd.PortRange[0]
+	nisd.ServicePortRangeE = nisd.PortRange[len(nisd.PortRange)-1]
 	err = nisd.startSerfAgent()
 	if err != nil {
 		fmt.Println("Error while starting serf agent : ", err)
@@ -378,15 +381,18 @@ func main() {
 	//Start udp listener
 	go nisd.startUDPListner()
 
+	portAddr := &RecvdPort
 
 	//Start lookout monitoring
 	nisd.lookout = lookout.EPContainer{
 		MonitorUUID:      "*",
 		AppType:          "NISD",
-		HttpPort:         nisd.findFreePort(),
+		//HttpPort:         nisd.findFreePort(),
+		PortRange:	  nisd.PortRange,
 		CTLPath:          *nisd.ctlPath,
 		SerfMembershipCB: nisd.SerfMembership,
 		EnableHttp:       true,
+		RetPort:	  portAddr,
 	}
 	errs := make(chan error, 1)
 	go func() {
@@ -401,7 +407,7 @@ func main() {
 	}
 
 	//Wait till http lookout http is up and running
-	go nisd.checkHTTPLiveness()
+	nisd.checkHTTPLiveness()
 
 	//Set serf tags
 	nisd.setTags()
