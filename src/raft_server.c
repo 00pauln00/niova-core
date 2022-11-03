@@ -4480,7 +4480,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         buffer_set_release_item(recv_bi);
         raft_net_bulk_complete(csn);
         ctl_svc_node_put(csn);
-     
+
         return;
     }
     /* Call into the application state machine logic.  There are several
@@ -5770,8 +5770,6 @@ raft_server_rw_thread(void *arg)
 
         if (csn)
         {
-            memset(rw_thr->rrwt_recv_buff, 0, RAFT_BS_LARGE_SZ);
-            memset(rw_thr->rrwt_reply_buff, 0, RAFT_BS_LARGE_SZ);
             struct raft_instance *ri =
                    (struct raft_instance *)rw_thr->rrwt_arg;
             raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
