@@ -33,6 +33,10 @@
 
 #define RAFT_ENTRY_SIZE_MIN        65536
 
+#define RAFT_NUM_READ_THREADS 10
+#define RAFT_NUM_WRITE_THREADS 1
+#define RAFT_SERVER_WORK_TYPE 2
+
 // Raft election timeout upper and lower bounds
 #define	RAFT_ELECTION__MAX_TIME_MS 100000
 #define	RAFT_ELECTION__MIN_TIME_MS 100
@@ -108,7 +112,7 @@ enum raft_buf_set_size
 enum raft_buf_set_nbuf
 {
     RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
-    RAFT_BS_LARGE_NBUF = 2,
+    RAFT_BS_LARGE_NBUF = 3 + RAFT_NUM_READ_THREADS,
 };
 
 struct raft_vote_request_msg
@@ -451,6 +455,31 @@ struct raft_instance_co_wr
     char                                  rcwi_buffer[];
 };
 
+enum raft_server_bulk_msg_type
+{
+    RAFT_SERVER_BULK_MSG_READ = 0,
+    RAFT_SERVER_BULK_MSG_MAX = 1,
+};
+
+STAILQ_HEAD(raft_srv_work, ctl_svc_node);
+
+struct raft_work_queue
+{
+    pthread_mutex_t                 rsw_mutex;
+    pthread_cond_t                  rsw_cond;
+    struct raft_srv_work            rsw_queue;
+};
+
+struct raft_rw_worker_thread
+{
+    struct thread_ctl               rrwt_thread_ctl;
+    char                           *rrwt_recv_buff;
+    char                           *rrwt_reply_buff;
+    void                           *rrwt_arg;
+    struct raft_work_queue         *rrwt_queue; 
+};
+
+
 struct raft_instance
 {
     struct udp_socket_handle        ri_ush[RAFT_UDP_LISTEN_MAX];
@@ -527,6 +556,9 @@ struct raft_instance
     raft_entry_idx_t                ri_entries_detected_at_startup;
     struct thread_ctl               ri_sync_thread_ctl;
     struct thread_ctl               ri_chkpt_thread_ctl;
+    struct raft_rw_worker_thread    ri_reader_thread_ctl[RAFT_NUM_READ_THREADS];
+    struct raft_work_queue          ri_worker_queue[RAFT_SERVER_BULK_MSG_MAX]; //1 read queue
+
     struct raft_recovery_handle     ri_recovery_handle;
     struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member

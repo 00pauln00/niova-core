@@ -14,7 +14,7 @@
 #include "util.h"
 
 #define RAFT_CLIENT_REQUEST_TIMEOUT_MAX_SECS 0xffffffffU
-#define RAFT_CLIENT_REQUEST_TIMEOUT_SECS 60
+#define RAFT_CLIENT_REQUEST_TIMEOUT_SECS 600
 
 enum raft_client_request_opts
 {

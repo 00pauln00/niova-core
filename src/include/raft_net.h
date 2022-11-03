@@ -74,8 +74,15 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_ANY,
 };
 
+struct raft_net_msg_info
+{
+    uint32_t     rnmi_type;
+    size_t       rnmi_bulk_size; 
+};
+
 typedef raft_net_cb_ctx_t
 (*raft_net_cb_t)(struct raft_instance *,
+                 struct ctl_svc_node *csn,
                  const char *, ssize_t,
                  const struct sockaddr_in *);
 
@@ -85,6 +92,9 @@ typedef raft_net_timerfd_cb_ctx_t
 // State machine request handler - reads, writes, and commits
 typedef raft_net_cb_ctx_int_t
 (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
+
+typedef bool
+(*raft_is_read_op_t)(struct raft_net_client_request_handle *);
 
 // cleanup the cowr subapp tree on getting elected as leader
 typedef raft_net_leader_prep_cb_ctx_t
@@ -156,12 +166,14 @@ enum raft_udp_listen_sockets
 enum raft_client_rpc_msg_type
 {
     RAFT_CLIENT_RPC_MSG_TYPE_INVALID    = 0,
-    RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
-    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 2,
-    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 3,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 4,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 5,
-    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 6,
+    //RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
+    RAFT_CLIENT_RPC_MSG_TYPE_READ       = 2,
+    RAFT_CLIENT_RPC_MSG_TYPE_WRITE      = 3,
+    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 4,
+    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 5,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 6,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 7,
+    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 8,
 } PACKED;
 
 enum raft_net_comm_recency_type
@@ -301,22 +313,25 @@ struct raft_net_sm_write_supplements
 
 struct raft_net_client_request_handle
 {
-    enum raft_net_client_request_type     rncr_type;  // may be set by sm cb
-    bool                                  rncr_write_raft_entry;
-    bool                                  rncr_is_leader;
-    int                                   rncr_op_error;
-    int64_t                               rncr_entry_term;
-    int64_t                               rncr_current_term;
-    raft_entry_idx_t                      rncr_pending_apply_idx;
-    const struct raft_client_rpc_msg     *rncr_request;
-    const char                           *rncr_request_or_commit_data;
-    const size_t                          rncr_request_or_commit_data_size;
-    struct raft_client_rpc_msg           *rncr_reply;
-    const size_t                          rncr_reply_data_max_size;
-    size_t                                rncr_reply_data_size;
-    uint64_t                              rncr_msg_id;
-    struct raft_net_sm_write_supplements  rncr_sm_write_supp;
-    uuid_t                                rncr_client_uuid;
+    enum raft_net_client_request_type            rncr_type;  // may be set by sm cb
+    bool                                         rncr_write_raft_entry;
+    bool                                         rncr_is_leader;
+    int                                          rncr_op_error;
+    int64_t                                      rncr_entry_term;
+    int64_t                                      rncr_current_term;
+    raft_entry_idx_t                             rncr_pending_apply_idx;
+    const struct raft_client_rpc_msg            *rncr_request;
+    const char                                  *rncr_request_or_commit_data;
+    const size_t                                 rncr_request_or_commit_data_size;
+    struct raft_client_rpc_msg                  *rncr_reply;
+    const size_t                                 rncr_reply_data_max_size;
+    size_t                                       rncr_reply_data_size;
+    uint64_t                                     rncr_msg_id;
+    struct raft_net_sm_write_supplements         rncr_sm_write_supp;
+    uuid_t                                       rncr_client_uuid;
+    //STAILQ_ENTRY(raft_net_client_request_handle) rncr_lentry;
+    struct ctl_svc_node                         *rncr_csn;
+    struct buffer_item                          *rncr_bi;
 };
 
 #define DBG_RAFT_CLIENT_RPC_SOCK(log_level, rcm, from, fmt, ...) \
@@ -333,10 +348,18 @@ do {                                                                    \
         uuid_unparse((rcm)->rcrm_sender_id, __uuid_str);                \
         switch ((rcm)->rcrm_type)                                       \
         {                                                               \
-        case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                          \
+        case RAFT_CLIENT_RPC_MSG_TYPE_READ:                             \
             uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
             LOG_MSG(log_level,                                          \
-                    "CLI-REQ   %s id=%lx sz=%u "fmt,                    \
+                    "Read CLI-REQ   %s id=%lx sz=%u "fmt,               \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_CLIENT_RPC_MSG_TYPE_WRITE:                            \
+            uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+            LOG_MSG(log_level,                                          \
+                    "Write CLI-REQ   %s id=%lx sz=%u "fmt,              \
                     __uuid_str,                                         \
                     (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
                     ##__VA_ARGS__);                                     \
@@ -765,5 +788,12 @@ raft_net_set_num_checkpoints(struct raft_instance *ri, size_t num_ckpts);
 int
 raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
                                     struct raft_net_sm_write_supplements *src);
+
+int
+raft_net_recv_request(struct ctl_svc_node *csn, char *buff, size_t *buff_size,
+                      bool read_req);
+
+int
+raft_net_bulk_complete(struct ctl_svc_node *csn);
 
 #endif
