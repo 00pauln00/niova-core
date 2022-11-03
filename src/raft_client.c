@@ -82,8 +82,14 @@ static unsigned long long raftClientStaleServerTimeMS =
 static unsigned long long raftClientIdlePingServerTimeMS =
     RAFT_CLIENT_STALE_SERVER_TIME_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
+/* raftClientRetryTimeoutMS was originally based on UDP-based comms.  Now that
+ * the client is exclusively TCP-based, it doesn't make sense to retry unless
+ * the socket has been reestablish and/or the leader has changed.
+ * Xxx at this time the tcp code here lacks session information which would be
+ * needed to detect the need to resend the msg on the new connection.
+ */
 static unsigned long long raftClientRetryTimeoutMS =
-    (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 10);
+    (RAFT_CLIENT_TIMERFD_EXPIRE_MS * 1000);
 
 #define RAFT_CLIENT_OP_HISTORY_SIZE 64
 static const size_t raftClientOpHistorySize = RAFT_CLIENT_OP_HISTORY_SIZE;
@@ -1042,7 +1048,8 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
         else if (leader_viable &&  // non-expired requests are queued for send
                  queued_ms > raftClientRetryTimeoutMS)
         {
-            DBG_RAFT_CLIENT_SUB_APP(LL_DEBUG, sa, "re-queued");
+            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "re-queued (qms=%lld)",
+                                    queued_ms);
 
             raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
                                                       __LINE__);
