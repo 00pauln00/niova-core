@@ -704,9 +704,7 @@ pmdb_range_read_release_old_snapshots(void)
         /* If snapshot was open for more than 60secs, release the snapshot */
         if ((now.tv_sec - rr->prrq_snap_atime.tv_sec) >=
              PMDB_SNAPSHOT_MAX_OPEN_TIME_SEC)
-        {
              pmdb_range_read_req_put(rr, __func__, __LINE__);
-        }
         else
             // List sorted with time.
             break;

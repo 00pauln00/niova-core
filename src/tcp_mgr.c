@@ -79,7 +79,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
               tcp_mgr_bulk_size_cb_t bulk_size_cb,
-              tcp_mgr_is_raft_peer_cb_t is_peer_cb,
+              tcp_mgr_is_conn_for_client_cb_t is_conn_for_client_cb,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
@@ -91,7 +91,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_connection_ref_cb = connection_ref_cb;
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
-    tmi->tmi_is_peer_cb = is_peer_cb;
+    tmi->tmi_is_conn_for_client_cb = is_conn_for_client_cb;
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
@@ -533,16 +533,19 @@ tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc, char *recv_buf)
 
 int
 tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
-                             size_t *recv_buf_size)
+                             size_t *recv_buf_size,
+                             bool take_lock)
 {
     int rc;
 
-    niova_mutex_lock(&tmc->tmc_mutex);
+    if (take_lock)
+        niova_mutex_lock(&tmc->tmc_mutex);
     rc = tcp_mgr_new_bulk_msg_handler(tmc, recv_buf);
 
     if (rc)
     {
-        niova_mutex_unlock(&tmc->tmc_mutex);
+        if (take_lock)
+            niova_mutex_unlock(&tmc->tmc_mutex);
         return rc;
     }
 
@@ -555,7 +558,8 @@ tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
             SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
     }
 
-    niova_mutex_unlock(&tmc->tmc_mutex);
+    if (take_lock)
+        niova_mutex_unlock(&tmc->tmc_mutex);
     *recv_buf_size = tmc->tmc_bulk_offset;
     return rc;
 }
@@ -630,7 +634,7 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
 }
 
 static int
-tcp_recv_for_client(struct tcp_mgr_connection *tmc)
+tcp_recv_common(struct tcp_mgr_connection *tmc)
 {
     int rc = 0;
     // is this a new RPC?
@@ -664,7 +668,7 @@ tcp_recv_for_client(struct tcp_mgr_connection *tmc)
 }
 
 static int
-tcp_mgr_recv_for_peer(struct tcp_mgr_connection *tmc)
+tcp_mgr_recv_with_edge_triggered(struct tcp_mgr_connection *tmc)
 {
     size_t header_size = tmc->tmc_header_size;
     char *buffer =  niova_calloc(1UL, TCP_MGR_MAX_HDR_SIZE);
@@ -710,13 +714,12 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     }
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
 
-    bool is_peer = tmi->tmi_is_peer_cb();
+    bool from_client = tmi->tmi_is_conn_for_client_cb(tmc);
 
-
-    if (is_peer)
-        tcp_mgr_recv_for_peer(tmc);
+    if (from_client)
+        tcp_mgr_recv_with_edge_triggered(tmc);
     else
-        tcp_recv_for_client(tmc);
+        tcp_recv_common(tmc);
 }
 
 static int
@@ -764,8 +767,9 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (incoming->tmc_eph.eph_installed)
         epoll_handle_del(tmi->tmi_epoll_mgr, &incoming->tmc_eph);
 
-    bool is_peer = tmi->tmi_is_peer_cb();
-    uint32_t events = is_peer ? EPOLLIN | EPOLLET | EPOLLONESHOT : EPOLLIN;
+    // Check if sender is client. Epoll with edge triggered and oneshot for client
+    bool is_sender_client = tmi->tmi_is_conn_for_client_cb(owned);
+    uint32_t events = is_sender_client ? EPOLLIN | EPOLLET | EPOLLONESHOT : EPOLLIN;
     tcp_mgr_connection_epoll_add(owned, events, tcp_mgr_recv_cb,
                                  tmi->tmi_connection_ref_cb);
 

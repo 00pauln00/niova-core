@@ -4167,7 +4167,7 @@ raft_server_client_reply_init(const struct raft_instance *ri,
 static raft_net_cb_ctx_bool_t
 raft_server_client_recv_ignore_request(
     struct raft_instance *ri, const struct raft_client_rpc_msg *rcm,
-    const struct sockaddr_in *from, struct ctl_svc_node **csn_out)
+    const struct sockaddr_in *from, struct ctl_svc_node *client_csn)
 {
     NIOVA_ASSERT(rcm && from);
 
@@ -4183,26 +4183,6 @@ raft_server_client_recv_ignore_request(
     }
     else
     {
-        /* Lookup the client in the ctl-svc-node tree - existence is not
-         * mandatory.
-         */
-        struct ctl_svc_node *client_csn = NULL;
-        rc = ctl_svc_node_lookup(rcm->rcrm_sender_id, &client_csn);
-        if (rc)
-        {
-            DECLARE_AND_INIT_UUID_STR(sender_uuid,
-                                      rcm->rcrm_sender_id);
-            SIMPLE_LOG_MSG(LL_WARN, "ctl_svc_node_lookup(): %d uuid %s",
-                           rc, sender_uuid);
-            struct ctl_svc_node csn = {0};
-
-            rc = ctl_svc_node_init(&csn, rcm->rcrm_raft_id, rcm->rcrm_sender_id,
-                                   CTL_SVC_NODE_TYPE_RAFT_CLIENT);
-            if (!rc)
-                rc = ctl_svc_node_add(&csn, &client_csn);
-            //fallthrough. ignore_request will be set to true.
-        }
-
         if (!rc && client_csn)
         {
             if (client_csn->csn_type == CTL_SVC_NODE_TYPE_RAFT_CLIENT)
@@ -4222,11 +4202,6 @@ raft_server_client_recv_ignore_request(
                     LL_NOTIFY, client_csn,
                     "recv'd RPC request from this non-client UUID");
             }
-
-            if (ignore_request)
-                ctl_svc_node_put(client_csn);
-            else
-                *csn_out = client_csn;
         }
         else
         {
@@ -4407,26 +4382,28 @@ raft_server_client_recv_handler(struct raft_instance *ri,
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
-    NIOVA_ASSERT(ri && from);
+    NIOVA_ASSERT(ri && from && csn);
 
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
     {
         LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
+        //Re-arm the epoll
+        raft_net_bulk_complete(csn);
         return;
     }
 
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *tmp_csn = NULL;
-
     /* First set of request checks which are configuration based.
      */
-    if (raft_server_client_recv_ignore_request(ri, rcm, from, &tmp_csn))
+    if (raft_server_client_recv_ignore_request(ri, rcm, from, csn))
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
+        //Re-arm the epoll
+        raft_net_bulk_complete(csn);
         return;
     }
 
@@ -4437,8 +4414,6 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_READ)
     {
        raft_server_enqueue_rw(ri, csn, rcm->rcrm_type);
-       if (tmp_csn)
-          ctl_svc_node_put(tmp_csn);
        return;
     }
 
@@ -4455,16 +4430,14 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     size_t actual_recv_bytes = 0;
 
     // Read the ping/write request buffer completely from the socket.
-    int rc = raft_net_recv_request(csn, request, &actual_recv_bytes);
+    int rc = raft_net_recv_request(csn, request, &actual_recv_bytes, false);
     if (rc || req_size != actual_recv_bytes)
     {
        SIMPLE_LOG_MSG(LL_ERROR, "Can't read the request");
 
-       if (tmp_csn)
-          ctl_svc_node_put(tmp_csn);
-
-       raft_net_bulk_complete(csn);
        buffer_set_release_item(recv_bi);
+       //Re-arm the epoll
+       raft_net_bulk_complete(csn);
        ctl_svc_node_put(csn);
        return;
     }
@@ -4501,14 +4474,11 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     }
     if (rcm_new->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
     {
-        if (tmp_csn)
-           ctl_svc_node_put(tmp_csn);
-
         SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
         raft_server_reply_to_client(ri, &rncr, csn);
-        raft_net_bulk_complete(csn);
         buffer_set_release_item(bi);
         buffer_set_release_item(recv_bi);
+        raft_net_bulk_complete(csn);
         ctl_svc_node_put(csn);
      
         return;
@@ -4584,11 +4554,8 @@ raft_server_client_recv_handler(struct raft_instance *ri,
         raft_server_reply_to_client(ri, &rncr, csn);
     }
 out:
-    if (tmp_csn)
-        ctl_svc_node_put(tmp_csn);
     buffer_set_release_item(bi);
     buffer_set_release_item(recv_bi);
-    // Re-arm the epoll so next request can be read from socket.
     raft_net_bulk_complete(csn);
     ctl_svc_node_put(csn);
 }
@@ -5729,7 +5696,7 @@ raft_server_process_rw_request(struct raft_instance *ri,
     size_t recv_bytes = 0;
 
     // Read the complete request from the socket
-    int rc = raft_net_recv_request(csn, recv_buf, &recv_bytes);
+    int rc = raft_net_recv_request(csn, recv_buf, &recv_bytes, true);
 
     if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
         recv_bytes < sizeof(struct raft_client_rpc_msg))
@@ -5809,6 +5776,7 @@ raft_server_rw_thread(void *arg)
                    (struct raft_instance *)rw_thr->rrwt_arg;
             raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
                                            rw_thr->rrwt_reply_buff);
+            //Re-arm the epoll
             raft_net_bulk_complete(csn);
             ctl_svc_node_put(csn);
         }
