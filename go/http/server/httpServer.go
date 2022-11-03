@@ -116,11 +116,15 @@ func (handler *HTTPServerHandler) kvRequestHandler(writer http.ResponseWriter, r
 		id = handler.createStat(&thisRequestStat)
 	}
 
-	//HTTP connections limiter
-	handler.connectionLimiter <- 1
-	defer func() {
-		<-handler.connectionLimiter
-	}()
+	// if connection limit is -1 pass all the request to pmdb servers
+	// instead of making the channel for connectionLimiter.
+	if handler.HTTPConnectionLimit != -1 {
+		//HTTP connections limiter
+		handler.connectionLimiter <- 1
+		defer func() {
+			<-handler.connectionLimiter
+		}()
+	}
 
 	var success bool
 	var read bool
@@ -177,7 +181,9 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 
 //Start server
 func (handler *HTTPServerHandler) Start_HTTPServer() error {
-	handler.connectionLimiter = make(chan int, handler.HTTPConnectionLimit)
+        if  handler.HTTPConnectionLimit != -1 {
+		handler.connectionLimiter = make(chan int, handler.HTTPConnectionLimit)
+		}
 	handler.HTTPServer = http.Server{}
 	handler.HTTPServer.Addr = handler.Addr.String() + ":" + handler.Port
 

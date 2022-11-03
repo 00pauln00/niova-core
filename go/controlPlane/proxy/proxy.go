@@ -88,7 +88,7 @@ func (handler *proxyHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "Log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "Configuration file path")
 	flag.StringVar(&handler.serfAgentName, "n", "NULL", "Serf agent name")
-	flag.StringVar(&handler.limit, "e", "500", "Number of concurrent HTTP connections")
+	flag.StringVar(&handler.limit, "e", "-1", "Number of concurrent HTTP connections")
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "Serf logger file [default:ignore]")
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.StringVar(&handler.requireStat, "s", "0", "HTTP server stat : provides status of requests, If needed provide 1")
