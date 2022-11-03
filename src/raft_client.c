@@ -1760,7 +1760,7 @@ raft_client_recv_handler(struct raft_instance *ri,
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
         recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
-        FAULT_INJECT(raft_client_recv_handler_bypass));
+        FAULT_INJECT(raft_client_recv_handler_bypass))
         return;
 
     struct raft_client_instance *rci =
