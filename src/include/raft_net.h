@@ -156,12 +156,13 @@ enum raft_udp_listen_sockets
 enum raft_client_rpc_msg_type
 {
     RAFT_CLIENT_RPC_MSG_TYPE_INVALID    = 0,
-    RAFT_CLIENT_RPC_MSG_TYPE_REQUEST    = 1,
-    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 2,
-    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 3,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 4,
-    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 5,
-    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 6,
+    RAFT_CLIENT_RPC_MSG_TYPE_READ       = 1,
+    RAFT_CLIENT_RPC_MSG_TYPE_WRITE      = 2,
+    RAFT_CLIENT_RPC_MSG_TYPE_REPLY      = 3,
+    RAFT_CLIENT_RPC_MSG_TYPE_REDIRECT   = 4,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING       = 5,
+    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY = 6,
+    RAFT_CLIENT_RPC_MSG_TYPE_ANY        = 7,
 } PACKED;
 
 enum raft_net_comm_recency_type
@@ -333,7 +334,15 @@ do {                                                                    \
         uuid_unparse((rcm)->rcrm_sender_id, __uuid_str);                \
         switch ((rcm)->rcrm_type)                                       \
         {                                                               \
-        case RAFT_CLIENT_RPC_MSG_TYPE_REQUEST:                          \
+        case RAFT_CLIENT_RPC_MSG_TYPE_READ:                             \
+            uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+            LOG_MSG(log_level,                                          \
+                    "Read CLI-REQ   %s id=%lx sz=%u "fmt,               \
+                    __uuid_str,                                         \
+                    (rcm)->rcrm_msg_id, (rcm)->rcrm_data_size,          \
+                    ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_CLIENT_RPC_MSG_TYPE_WRITE:                            \
             uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
             LOG_MSG(log_level,                                          \
                     "CLI-REQ   %s id=%lx sz=%u "fmt,                    \

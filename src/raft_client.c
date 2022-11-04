@@ -798,10 +798,12 @@ raft_client_rpc_msg_init(struct raft_client_instance *rci,
         return -EINVAL;
 
     else if (msg_type != RAFT_CLIENT_RPC_MSG_TYPE_PING &&
-             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_REQUEST)
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_WRITE &&
+             msg_type != RAFT_CLIENT_RPC_MSG_TYPE_READ)
         return -EOPNOTSUPP;
 
-    else if (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REQUEST &&
+    else if ((msg_type == RAFT_CLIENT_RPC_MSG_TYPE_READ ||
+              msg_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) &&
              (data_size == 0 ||
               !raft_client_rpc_msg_size_is_valid(RCI_2_RI(rci)->ri_store_type,
                                                  data_size)))
@@ -1276,9 +1278,11 @@ raft_client_request_handle_init(
         return -ENOTCONN;
 
     int rc = raft_client_rpc_msg_init(rci, &rcrh->rcrh_rpc_request,
-                                      RAFT_CLIENT_RPC_MSG_TYPE_REQUEST,
+                                      (rcrt & RCRT_WRITE) ?
+                                      RAFT_CLIENT_RPC_MSG_TYPE_WRITE :
+                                      RAFT_CLIENT_RPC_MSG_TYPE_READ,
                                       niova_io_iovs_total_size_get(src_iovs,
-                                                             nsrc_iovs),
+                                                                   nsrc_iovs),
                                       leader, tag);
     if (rc)
         return rc;
