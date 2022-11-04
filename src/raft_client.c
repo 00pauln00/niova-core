@@ -1290,7 +1290,7 @@ raft_client_sub_app_wait(struct raft_client_instance *rci,
     NIOVA_ASSERT(rci && completion_notifier && tls_cond_var);
 
     NIOVA_WAIT_COND(((*completion_notifier) <= 0), RCI_2_MUTEX(rci),
-                    tls_cond_var);
+                    tls_cond_var, {});
 }
 
 /**
