@@ -536,11 +536,12 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
 #define NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var) \
     while ((!cond)) pthread_cond_wait(cond_var, mutex)
 
-#define NIOVA_WAIT_COND(cond, mutex, cond_var)     \
-{                                                  \
-    niova_mutex_lock(mutex);                       \
-    NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var); \
-    niova_mutex_unlock(mutex);                     \
+#define NIOVA_WAIT_COND(cond, mutex, cond_var, action)    \
+{                                                         \
+    niova_mutex_lock(mutex);                              \
+    NIOVA_WAIT_COND_LOCKED(cond, mutex, cond_var);        \
+    action;                                               \
+    niova_mutex_unlock(mutex);                            \
 }
 
 #define NIOVA_SET_COND_AND_WAKE_LOCKED(how, set_code_block, cond_var) \
