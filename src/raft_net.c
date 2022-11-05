@@ -2546,13 +2546,13 @@ raft_net_instance_apply_callbacks(struct raft_instance *ri,
 }
 
 int
-raft_net_recv_request(struct ctl_svc_node *csn, char *recv_buf,
-                      size_t *recv_buf_size,
-                      bool read)
+raft_net_recv_request_data(struct ctl_svc_node *csn, char *recv_buf,
+                           size_t *recv_buf_size,
+                           bool read)
 {
-    return tcp_mgr_recv_req_from_socket(&csn->csn_peer.csnp_net_data,
-                                        recv_buf,
-                                        recv_buf_size, read);
+    return tcp_mgr_recv_req_data_from_socket(&csn->csn_peer.csnp_net_data,
+                                             recv_buf,
+                                             recv_buf_size, read);
 }
 
 int

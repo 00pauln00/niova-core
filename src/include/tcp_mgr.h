@@ -155,8 +155,9 @@ tcp_mgr_connection_setup(struct tcp_mgr_connection *tmc,
                          const char *ipaddr, int port);
 
 int
-tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *buf, size_t *buff_size,
-                             bool take_lock);
+tcp_mgr_recv_req_data_from_socket(struct tcp_mgr_connection *tmc, char *buf,
+                                  size_t *buff_size,
+                                  bool take_lock);
 
 int
 tcp_mgr_peer_bulk_complete(struct tcp_mgr_connection *tmc);

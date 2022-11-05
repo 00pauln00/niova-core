@@ -461,7 +461,15 @@ enum raft_server_bulk_msg_type
     RAFT_SERVER_BULK_MSG_MAX = 1,
 };
 
-STAILQ_HEAD(raft_srv_work, ctl_svc_node);
+STAILQ_HEAD(raft_srv_work, raft_read_req);
+
+struct raft_read_req
+{
+    void                        *rrr_header;
+    struct ctl_svc_node         *rrr_csn;
+    ssize_t                      rrr_rbytes;
+    STAILQ_ENTRY(raft_read_req)  rrr_lentry;
+};
 
 struct raft_work_queue
 {

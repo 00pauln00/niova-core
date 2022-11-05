@@ -4354,22 +4354,81 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
     }
 }
 
-static void
+static struct raft_read_req *
+raft_server_read_thr_alloc_req(struct ctl_svc_node *csn,
+                               const char *read_req_header,
+                               ssize_t bytes)
+{
+    //Allocate the header for read request enqueue
+    char *header = niova_malloc(bytes);
+
+    //Copy the header content to be queued
+    memcpy(header, read_req_header, bytes);
+
+    struct raft_read_req *rrr = niova_malloc(sizeof(struct raft_read_req));
+    if (!rrr)
+        return NULL;
+
+    rrr->rrr_header = header;
+    rrr->rrr_csn = csn;
+    rrr->rrr_rbytes = bytes;
+
+    return rrr;
+}
+
+static int
 raft_server_enqueue_rw(struct raft_instance *ri,
                        struct ctl_svc_node *csn,
+                       const char *read_req_header,
+                       ssize_t bytes,
                        uint32_t msg_type)
 {
     NIOVA_ASSERT(msg_type == RAFT_CLIENT_RPC_MSG_TYPE_READ);
 
     uint32_t queue_type = RAFT_SERVER_BULK_MSG_READ;
 
-    // Release the reference on csn after processing the read request.
+    // Note: Release the reference on csn after processing the read request.
+
+    struct raft_read_req *rrr;
+    rrr = raft_server_read_thr_alloc_req(csn, read_req_header, bytes);
+    if (!rrr)
+        return -ENOMEM;
 
     struct raft_work_queue *rwq = &ri->ri_worker_queue[queue_type];
 
     NIOVA_SET_COND_AND_WAKE(
-        signal, { STAILQ_INSERT_TAIL(&rwq->rsw_queue, csn, csn_lentry); },
+        signal, { STAILQ_INSERT_TAIL(&rwq->rsw_queue, rrr, rrr_lentry); },
         &rwq->rsw_mutex, &rwq->rsw_cond);
+
+    return 0;
+}
+
+static int
+raft_server_rw_read_request_data(struct ctl_svc_node *csn,
+                                 const char *req_header,
+                                 ssize_t header_size,
+                                 char *recv_buf)
+{
+    struct raft_client_rpc_msg *header_rcm =
+        (struct raft_client_rpc_msg *)req_header;
+
+    struct raft_client_rpc_msg *recv_rcm =
+        (struct raft_client_rpc_msg *)recv_buf;
+
+    size_t recv_bytes = 0;
+    size_t total_req_size = header_rcm->rcrm_data_size + header_size;
+    // Copy the header to the recv_buffer
+    *recv_rcm = *header_rcm;
+
+    // Read the complete request from the socket
+    int rc = raft_net_recv_request_data(csn, recv_buf, &recv_bytes, true);
+
+    if (rc || total_req_size != recv_bytes)
+    {
+        LOG_MSG(LL_WARN, "Can't read the read request data");
+        return rc ? rc : -EINVAL;
+    }
+    return 0;
 }
 
 // warning: buffers are statically allocated, so code is not multi-thread safe
@@ -4389,6 +4448,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     {
         LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
+
         //Re-arm the epoll
         raft_net_bulk_complete(csn);
         return;
@@ -4413,37 +4473,41 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     // Enqueue the read request to be processed by read threads
     if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_READ)
     {
-       raft_server_enqueue_rw(ri, csn, rcm->rcrm_type);
-       return;
+        raft_server_enqueue_rw(ri, csn, recv_buffer, recv_bytes, rcm->rcrm_type);
+        return;
     }
 
     // Ping and Write request will be processed by main thread itself.
-    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
+    char *wr_request = NULL;
 
-    // The recv_buff contains only header, we still have to read the
-    // complete data.
-    size_t req_size = recv_bytes + rcm->rcrm_data_size;
+    // Allocate the buffer for receiving complete request.
     struct buffer_item *recv_bi =
-       buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+           buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
 
-    char *request = (char *)recv_bi->bi_iov.iov_base;
-    size_t actual_recv_bytes = 0;
-
-    // Read the ping/write request buffer completely from the socket.
-    int rc = raft_net_recv_request(csn, request, &actual_recv_bytes, false);
-    if (rc || req_size != actual_recv_bytes)
+    /*
+     * Only Write request needs to read the request data.
+     */
+    if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE)
     {
-       SIMPLE_LOG_MSG(LL_ERROR, "Can't read the request");
+        wr_request = (char *)recv_bi->bi_iov.iov_base;
 
-       buffer_set_release_item(recv_bi);
-       //Re-arm the epoll
-       raft_net_bulk_complete(csn);
-       ctl_svc_node_put(csn);
-       return;
+        int rc = raft_server_rw_read_request_data(csn, recv_buffer, recv_bytes,
+                                                  wr_request);
+        if (rc)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "Failed to read write request data");
+            buffer_set_release_item(recv_bi);
+            //Re-arm the epoll
+            raft_net_bulk_complete(csn);
+            ctl_svc_node_put(csn);
+            return;
+        }
     }
 
     const struct raft_client_rpc_msg *rcm_new =
-       (const struct raft_client_rpc_msg *)request;
+            (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE) ? 
+            (const struct raft_client_rpc_msg *)wr_request :
+            (const struct raft_client_rpc_msg *)recv_buffer;
 
     // raft buf pool has enough buffers for all read threads and main thread.
     // pool size  > number of read threads.
@@ -4455,6 +4519,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     NIOVA_ASSERT(reply_buf);
 
     struct raft_net_client_request_handle rncr;
+    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
 
     raft_server_net_client_request_init_client_rpc(
         ri, &rncr, rcm_new, from, reply_buf,
@@ -4463,7 +4528,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     /* Second set of checks which determine if this server is capable of
      * handling the request at this time.
      */
-    rc = raft_server_may_accept_client_request(ri);
+    int rc = raft_server_may_accept_client_request(ri);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY,
@@ -5689,20 +5754,19 @@ raft_server_chkpt_thread_join(struct raft_instance *ri)
 
 static void
 raft_server_process_rw_request(struct raft_instance *ri,
-                               struct ctl_svc_node *csn,
+                               struct raft_read_req *rrr,
                                char *recv_buf,
                                char *reply_buf)
 {
-    size_t recv_bytes = 0;
+    struct ctl_svc_node *csn = rrr->rrr_csn;
+    // Read the read request data from socket.
+    int rc = raft_server_rw_read_request_data(csn, rrr->rrr_header,
+                                              rrr->rrr_rbytes,
+                                              recv_buf);
 
-    // Read the complete request from the socket
-    int rc = raft_net_recv_request(csn, recv_buf, &recv_bytes, true);
-
-    if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
-        recv_bytes < sizeof(struct raft_client_rpc_msg))
+    if (rc)
     {
-        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
-                recv_buf, recv_bytes, ri->ri_server_sm_request_cb);
+        SIMPLE_LOG_MSG(LL_ERROR, "Failed to read the read request data");
         return;
     }
 
@@ -5744,6 +5808,13 @@ raft_server_process_rw_request(struct raft_instance *ri,
     raft_server_reply_to_client(ri, &rncr, csn);
 }
 
+static void
+raft_server_read_thr_req_destroy(struct raft_read_req *rrr)
+{
+    niova_free(rrr->rrr_header);
+    niova_free(rrr);
+}
+
 static raft_server_rw_thread_t
 raft_server_rw_thread(void *arg)
 {
@@ -5754,8 +5825,7 @@ raft_server_rw_thread(void *arg)
     struct raft_work_queue *queue = rw_thr->rrwt_queue;
     THREAD_LOOP_WITH_CTL(tc)
     {
-        struct ctl_svc_node *csn = NULL;
-
+        struct raft_read_req *rrr = NULL;
         // Wait for item in the queue.
         NIOVA_WAIT_COND(
             (!STAILQ_EMPTY(&queue->rsw_queue) || tc->tc_halt),
@@ -5763,20 +5833,22 @@ raft_server_rw_thread(void *arg)
             {
                 if (!STAILQ_EMPTY(&queue->rsw_queue))
                 {
-                    csn = STAILQ_FIRST(&queue->rsw_queue);
-                    STAILQ_REMOVE_HEAD(&queue->rsw_queue, csn_lentry);
+                    rrr = STAILQ_FIRST(&queue->rsw_queue);
+                    STAILQ_REMOVE_HEAD(&queue->rsw_queue, rrr_lentry);
                 }
             });
 
-        if (csn)
+        if (rrr)
         {
             struct raft_instance *ri =
                    (struct raft_instance *)rw_thr->rrwt_arg;
-            raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
+            raft_server_process_rw_request(ri, rrr, rw_thr->rrwt_recv_buff,
                                            rw_thr->rrwt_reply_buff);
             //Re-arm the epoll
-            raft_net_bulk_complete(csn);
-            ctl_svc_node_put(csn);
+            raft_net_bulk_complete(rrr->rrr_csn);
+            ctl_svc_node_put(rrr->rrr_csn);
+
+            raft_server_read_thr_req_destroy(rrr);
         }
     }
     return (void *)0;

@@ -479,43 +479,14 @@ tcp_mgr_peer_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_s
     return 0;
 }
 
+//Read only the header
 static int
 tcp_mgr_get_msg_header(struct tcp_mgr_connection *tmc, char *buffer)
 {
-    //struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-    //tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
     size_t header_size = tmc->tmc_header_size;
-    int socket = tmc->tmc_tsh.tsh_socket;
-    int flags = MSG_PEEK;
-
-    ssize_t rc = recv(socket, buffer, header_size, flags);
-    if (rc == -EAGAIN)
-        rc = 0;
-
-    else if (rc <= 0)
-        return rc;
-
-
-    return 0;
-}
-
-static int
-tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc, char *recv_buf)
-{
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
-
-    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-
-    tcp_mgr_recv_cb_t recv_cb = tmi->tmi_recv_cb;
-    tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
-    size_t header_size = tmc->tmc_header_size;
-
-    NIOVA_ASSERT(recv_cb && bulk_size_cb && header_size);
-
-    // TODO there will be memory allocated from the memtable.
-    static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
-    iov.iov_base = sink_buf;
+
+    iov.iov_base = buffer;
     iov.iov_len = header_size;
 
     // try twice in case interrupts cause short read
@@ -523,24 +494,39 @@ tcp_mgr_new_bulk_msg_handler(struct tcp_mgr_connection *tmc, char *recv_buf)
     if (rc != header_size)
         return rc < 0 ? rc : -ECOMM;
 
+    return 0;
+}
+
+
+static int
+tcp_mgr_prepare_recv_for_req_body(struct tcp_mgr_connection *tmc,
+                                  char *recv_buf)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
+
+    size_t header_size = tmc->tmc_header_size;
+
     uint32_t msg_type = 0;
-    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data, &msg_type);
+    ssize_t rc = bulk_size_cb(tmc, recv_buf, tmi->tmi_data, &msg_type);
     if (rc < 0)
         return rc;
 
-    return tcp_mgr_peer_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size, recv_buf);
+    return tcp_mgr_peer_bulk_prepare_and_recv(tmc, rc, recv_buf, header_size, recv_buf);
 }
 
 int
-tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
-                             size_t *recv_buf_size,
-                             bool take_lock)
+tcp_mgr_recv_req_data_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
+                                  size_t *recv_buf_size,
+                                  bool take_lock)
 {
     int rc;
 
     if (take_lock)
         niova_mutex_lock(&tmc->tmc_mutex);
-    rc = tcp_mgr_new_bulk_msg_handler(tmc, recv_buf);
+    rc = tcp_mgr_prepare_recv_for_req_body(tmc, recv_buf);
 
     if (rc)
     {
@@ -560,6 +546,7 @@ tcp_mgr_recv_req_from_socket(struct tcp_mgr_connection *tmc, char *recv_buf,
 
     if (take_lock)
         niova_mutex_unlock(&tmc->tmc_mutex);
+
     *recv_buf_size = tmc->tmc_bulk_offset;
     return rc;
 }
@@ -688,6 +675,7 @@ tcp_mgr_recv_with_edge_triggered(struct tcp_mgr_connection *tmc)
         SIMPLE_LOG_MSG(LL_ERROR, "tmi_recv_cb failed for server");
         tcp_mgr_connection_close_internal(tmc);
     }
+
     niova_free(buffer);
     return rc;
 }

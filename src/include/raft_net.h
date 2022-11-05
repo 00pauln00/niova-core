@@ -790,8 +790,9 @@ raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
                                     struct raft_net_sm_write_supplements *src);
 
 int
-raft_net_recv_request(struct ctl_svc_node *csn, char *buff, size_t *buff_size,
-                      bool read_req);
+raft_net_recv_request_data(struct ctl_svc_node *csn, char *buff,
+                           size_t *buff_size,
+                           bool read_req);
 
 int
 raft_net_bulk_complete(struct ctl_svc_node *csn);
