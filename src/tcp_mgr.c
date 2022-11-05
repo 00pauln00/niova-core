@@ -658,16 +658,15 @@ static int
 tcp_mgr_recv_with_edge_triggered(struct tcp_mgr_connection *tmc)
 {
     size_t header_size = tmc->tmc_header_size;
-    char *buffer =  niova_calloc(1UL, TCP_MGR_MAX_HDR_SIZE);
-    int rc  = tcp_mgr_get_msg_header(tmc, buffer);
+    static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
+    int rc  = tcp_mgr_get_msg_header(tmc, sink_buf);
     if (rc)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY, "Can't read the header from socket");
-        niova_free(buffer);
         return rc;
     }
 
-    rc = tmc->tmc_tmi->tmi_recv_cb(tmc, buffer, header_size,
+    rc = tmc->tmc_tmi->tmi_recv_cb(tmc, sink_buf, header_size,
                                    tmc->tmc_tmi->tmi_data);
 
     if (rc < 0)
@@ -676,7 +675,6 @@ tcp_mgr_recv_with_edge_triggered(struct tcp_mgr_connection *tmc)
         tcp_mgr_connection_close_internal(tmc);
     }
 
-    niova_free(buffer);
     return rc;
 }
 
