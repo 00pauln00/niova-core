@@ -1122,21 +1122,10 @@ raft_client_timerfd_cb(struct raft_instance *ri)
     }
     else
     {
-        // Make sure unviable_next_ping_iteration value is sane
-        if (unviable_next_ping_iteration > unviable_iterations)
-            unviable_next_ping_iteration = MIN(unviable_iterations + 50,
-                                               unviable_next_ping_iteration);
+        unviable_iterations++;
 
-        if (rci->rci_leader_alive_cnt > 0 ||
-            unviable_iterations++ >= unviable_next_ping_iteration)
-        {
-            raft_client_set_ping_target(rci);
-            raft_client_ping_raft_service(rci);
-
-            if (!rci->rci_leader_alive_cnt)
-                unviable_next_ping_iteration +=
-                    MIN(50, (2 * unviable_iterations - 1));
-        }
+        raft_client_set_ping_target(rci);
+        raft_client_ping_raft_service(rci);
     }
 
     raft_client_check_pending_requests(rci);
