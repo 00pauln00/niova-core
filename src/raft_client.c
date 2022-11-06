@@ -307,6 +307,7 @@ struct raft_client_instance
     niova_atomic32_t                       rci_msg_id_counter;
     unsigned int                           rci_msg_id_prefix;
     const struct ctl_svc_node             *rci_leader_csn;
+    bool                                   rci_leader_redirect;
     size_t                                 rci_leader_alive_cnt;
     raft_client_data_2_obj_id_t            rci_obj_id_cb;
     struct lreg_node                       rci_lreg;
@@ -864,6 +865,14 @@ raft_client_set_ping_target(struct raft_client_instance *rci)
 
     struct raft_instance *ri = RCI_2_RI(rci);
 
+    if (ri->ri_csn_leader && rci->rci_leader_redirect)
+    {
+        LOG_MSG(LL_NOTIFY, "target set from leader redirect");
+
+        rci->rci_leader_redirect = false;
+        return;
+    }
+
     if (!ri->ri_csn_leader ||
         raft_client_server_target_is_stale(ri, ri->ri_csn_leader->csn_uuid))
     {
@@ -1223,7 +1232,10 @@ raft_client_update_leader_from_redirect(struct raft_client_instance *rci,
                                             rcrm->rcrm_redirect_id,
                                             raftClientStaleServerTimeMS);
     if (!rc)
+    {
+        rci->rci_leader_redirect = true;
         rci->rci_leader_csn = RCI_2_RI(rci)->ri_csn_leader;
+    }
 
     DBG_RAFT_CLIENT_RPC_SOCK((rc ? LL_NOTIFY : LL_DEBUG), rcrm, from,
                              "raft_net_apply_leader_redirect(): %s",
