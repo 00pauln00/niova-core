@@ -482,7 +482,7 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 
     // If there's no bulk proceed to request processor, else read the bulk
     return bulk_size ?
-        tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size) :
+        tcp_mgr_bulk_prepare_and_recv(tmc, bulk_size, sink_buf, header_size) :
         tmi->tmi_recv_cb(tmc, sink_buf, header_size, tmi->tmi_data);
 }
 
