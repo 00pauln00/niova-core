@@ -78,10 +78,10 @@ static size_t raftClientRequestRatePerSec = RAFT_CLIENT_REQUEST_RATE_PER_SEC;
     (RAFT_CLIENT_TIMERFD_EXPIRE_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS)
 
 static unsigned long long raftClientStaleServerTimeMS =
-    RAFT_CLIENT_STALE_SERVER_TIME_MS;
+    RAFT_CLIENT_STALE_SERVER_TIME_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS;
 
 static unsigned long long raftClientIdlePingServerTimeMS =
-    RAFT_CLIENT_STALE_SERVER_TIME_MS * RAFT_CLIENT_TIMERFD_EXPIRE_MS;
+    RAFT_CLIENT_STALE_SERVER_TIME_MS;
 
 /* raftClientRetryTimeoutMS was originally based on UDP-based comms.  Now that
  * the client is exclusively TCP-based, it doesn't make sense to retry unless
