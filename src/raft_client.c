@@ -159,6 +159,7 @@ struct raft_client_request_handle
     uint8_t                    rcrh_history_cache : 1;
     uint8_t                    rcrh_pending_op_cache : 1;
     uint8_t                    rcrh_alloc_get_buffer_for_user : 1;
+    uint8_t                    rcrh_leader_not_viable_delay : 1;
     int16_t                    rcrh_error;
     uint16_t                   rcrh_sin_reply_port;
     struct in_addr             rcrh_sin_reply_addr;
@@ -222,7 +223,7 @@ do {                                                                \
             __uuid_str);                                                \
         LOG_MSG(                                                        \
             log_level,                                                  \
-            "sa@%p %s.%lx.%lx.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c e=%d " \
+            "sa@%p %s.%lx.%lx.%lx.%lx msgid=%lx nr=%zu r=%d %c%c%c%c%c%c%c%c%c e=%d " \
             fmt,                                                        \
             sa,  __uuid_str,                                            \
             RAFT_NET_CLIENT_USER_ID_2_UINT64(&(sa)->rcsa_rncui, 0, 2),  \
@@ -240,6 +241,7 @@ do {                                                                \
             (sa)->rcsa_rh.rcrh_ready         ? 'r' : '-',               \
             (sa)->rcsa_rh.rcrh_sendq         ? 's' : '-',               \
             (sa)->rcsa_rh.rcrh_send_failed   ? 'f' : '-',               \
+            (sa)->rcsa_rh.rcrh_leader_not_viable_delay   ? 'l' : '-',   \
             (sa)->rcsa_rh.rcrh_error,                                   \
             ##__VA_ARGS__);                                             \
     }                                                                   \
@@ -1056,15 +1058,34 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             // Take ref to protect against concurrent cancel operations
             REF_TREE_REF_GET_ELEM_LOCKED(sa, rcsa_rtentry);
         }
-        else if (leader_viable &&  // non-expired requests are queued for send
-                 queued_ms > raftClientRetryTimeoutMS)
+        else if (leader_viable)
         {
-            DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "re-queued (qms=%lld)",
-                                    queued_ms);
+            bool send = false;
+            if (sa->rcsa_rh.rcrh_leader_not_viable_delay)
+            {
+                // Send immediately
+                sa->rcsa_rh.rcrh_leader_not_viable_delay = 0;
+                send = true;
+            }
+            else if (sa->rcsa_rh.rcrh_num_sends == 0)
+            {
+                // Send immediately if the request has never been tried
+                send = true;
+            }
+            else if (queued_ms > raftClientRetryTimeoutMS)
+            {
+                send = true;
+            }
 
-            raft_client_request_send_queue_add_locked(rci, sa, &now, __func__,
-                                                      __LINE__);
-            cnt++;
+            if (send)
+            {
+                DBG_RAFT_CLIENT_SUB_APP(LL_WARN, sa, "re-queued (qms=%lld)",
+                                        queued_ms);
+
+                raft_client_request_send_queue_add_locked(rci, sa, &now,
+                                                          __func__, __LINE__);
+                cnt++;
+            }
         }
 
         raft_client_op_history_add_item(
@@ -1426,8 +1447,17 @@ raft_client_request_submit_enqueue(struct raft_client_instance *rci,
     sa->rcsa_rh.rcrh_initializing = 0;
 
     if (queue)
+    {
         raft_client_request_send_queue_add_locked(rci, sa, now, __func__,
                                                   __LINE__);
+    }
+    else
+    {
+        sa->rcsa_rh.rcrh_leader_not_viable_delay = 1;
+        DBG_RAFT_CLIENT_SUB_APP(LL_NOTIFY, sa,
+                                "delay due to leader not viable");
+    }
+
     RCI_UNLOCK(rci);
 
     // Done after the lock is released.
