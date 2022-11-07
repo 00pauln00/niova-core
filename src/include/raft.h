@@ -43,6 +43,11 @@
 #define RAFT_ELECTION_UPPER_TIME_MS 300
 #define RAFT_ELECTION_RANGE_DIVISOR 2.0
 
+// Raft leader wakes up every RAFT_LEADER_WAKEUP_MS
+#define RAFT_LEADER_WAKEUP_MS 2ULL
+#define RAFT_SERVER_COALESCE_TIMEOUT_FACTOR 2 // * RAFT_LEADER_WAKEUP_MS
+#define RAFT_SERVER_HEARTBEAT_ISSUE_FACTOR 10 // * RAFT_LEADER_WAKEUP_MS
+
 // Leader steps down after this many cycles following quorum loss
 #define RAFT_ELECTION_CHECK_QUORUM_FACTOR 10
 
@@ -549,7 +554,7 @@ raft_compile_time_checks(void)
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
     COMPILE_TIME_ASSERT((RAFT_ELECTION_UPPER_TIME_MS /
-                         RAFT_HEARTBEAT_FREQ_PER_ELECTION) >
+                         RAFT_HEARTBEAT_FREQ_PER_ELECTION) >=
                         RAFT_HEARTBEAT__MIN_TIME_MS);
 }
 

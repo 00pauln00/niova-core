@@ -1651,6 +1651,12 @@ raft_election_timeout_set(const struct raft_instance *ri, struct timespec *ts)
 }
 
 static unsigned long long
+raft_leader_wakeup_freq_msec(void)
+{
+    return RAFT_LEADER_WAKEUP_MS;
+}
+
+static unsigned long long
 raft_heartbeat_timeout_msec(const struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
@@ -1663,10 +1669,18 @@ raft_heartbeat_timeout_msec(const struct raft_instance *ri)
     return msec;
 }
 
+#if 0
 static void
-raft_heartbeat_timeout_sec(const struct raft_instance *ri, struct timespec *ts)
+raft_heartbeat_timeout_set(const struct raft_instance *ri, struct timespec *ts)
 {
     msec_2_timespec(ts, raft_heartbeat_timeout_msec(ri));
+}
+#endif
+
+static void
+raft_leader_timeout_set(struct timespec *ts)
+{
+    msec_2_timespec(ts, raft_leader_wakeup_freq_msec());
 }
 
 /**
@@ -1680,7 +1694,7 @@ raft_server_timerfd_settime(struct raft_instance *ri)
 
     if (ri->ri_state == RAFT_STATE_LEADER)
     {
-        raft_heartbeat_timeout_sec(ri, &its.it_value);
+        raft_leader_timeout_set(&its.it_value);
         its.it_interval = its.it_value;
     }
     else
@@ -2636,6 +2650,24 @@ raft_server_increment_leader_time(struct raft_instance *ri)
 }
 
 static raft_net_timerfd_cb_ctx_t
+raft_server_timerfd_leader_cb(struct raft_instance *ri)
+{
+    static size_t cnt;
+    cnt++;
+
+    if (!raft_leader_check_quorum(ri)) // bail if quorum loss is detected
+        return raft_server_become_candidate(ri, true);
+
+    if ((cnt % RAFT_SERVER_COALESCE_TIMEOUT_FACTOR) == 0)
+        raft_server_leader_co_wr_timer_expired(ri);
+
+    if ((cnt % RAFT_SERVER_HEARTBEAT_ISSUE_FACTOR) == 0)
+        raft_server_issue_heartbeat(ri);
+
+    raft_server_increment_leader_time(ri);
+}
+
+static raft_net_timerfd_cb_ctx_t
 raft_server_timerfd_cb(struct raft_instance *ri)
 {
     FUNC_ENTRY(LL_TRACE);
@@ -2649,17 +2681,9 @@ raft_server_timerfd_cb(struct raft_instance *ri)
         break;
 
     case RAFT_STATE_LEADER:
-        if (raft_leader_check_quorum(ri))
-        {
-            raft_server_leader_co_wr_timer_expired(ri);
-            raft_server_issue_heartbeat(ri);
-            raft_server_increment_leader_time(ri);
-        }
-        else
-        {
-            raft_server_become_candidate(ri, true);
-        }
+        raft_server_timerfd_leader_cb(ri);
         break;
+
     default:
         break;
     }
