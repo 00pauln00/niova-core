@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"strings"
+	"strconv"
+	"common/serfAgent"
 	"unsafe"
 	"net"
 )
@@ -29,6 +31,11 @@ type PeerConfigData struct {
         IPAddr     net.IP
         Port       uint16
         ClientPort uint16
+}
+
+type PMDBGossipInfo struct {
+	Status	  bool
+	State 	  int
 }
 
 //Func for initializing the logger
@@ -114,4 +121,21 @@ func Decode(input unsafe.Pointer, output interface{},
 	}
 
 	return nil
+}
+
+func GetMemberGossipInfo(Handler *serfAgent.SerfAgentHandler) map[string]PMDBGossipInfo {
+	memberInfo := make(map[string]PMDBGossipInfo)
+	members := Handler.AgentObj.Serf().Members()
+	for _, mems := range members {
+		var temp PMDBGossipInfo
+		if(mems.Status == 1){
+			temp.Status = true
+		} else {
+			temp.Status = false
+		}
+		temp.State, _ = strconv.Atoi(mems.Tags["State"])
+		memberInfo[mems.Name] = temp
+	}
+	fmt.Println(memberInfo)
+	return memberInfo
 }

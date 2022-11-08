@@ -6,7 +6,7 @@ import (
 	"common/requestResponseLib"
 	"common/serviceDiscovery"
 	compressionLib "common/specificCompressionLib"
-	"controlplane/serfAgent"
+	"common/serfAgent"
 	"encoding/gob"
 	"encoding/json"
 	"flag"
@@ -298,7 +298,6 @@ func main() {
 		AppType:          "NISD",
 		HttpPort:         *nisd.httpPort,
 		CTLPath:          *nisd.ctlPath,
-		SerfMembershipCB: nisd.SerfMembership,
 		EnableHttp:       true,
 	}
 	nisd.lookout.Start()

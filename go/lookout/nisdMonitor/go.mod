@@ -1,6 +1,6 @@
 module lookout/nisdLookout
 
-replace controlplane/serfAgent => ../../serf/agent/
+replace common/serfAgent => ../../serf/agent/
 
 replace common/lookout => ../ctlMonitor/
 
@@ -31,8 +31,8 @@ require (
 require (
 	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
 	common/prometheus_handler v0.0.0-00010101000000-000000000000 // indirect
+	common/serfAgent v0.0.0-00010101000000-000000000000 // indirect
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
-	controlplane/serfAgent v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
@@ -58,8 +58,8 @@ require (
 	github.com/mitchellh/mapstructure v0.0.0-20160808181253-ca63d7c062ee // indirect
 	github.com/posener/complete v1.2.3 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
-	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/sirupsen/logrus v1.9.0 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
-	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad // indirect
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
 	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000 // indirect
 )

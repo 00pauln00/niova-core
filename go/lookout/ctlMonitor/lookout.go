@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"common/prometheus_handler"
 	"common/requestResponseLib"
+	"common/serfAgent"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
 	"strconv"
 	"strings"
@@ -27,10 +29,11 @@ type EPContainer struct {
 	AppType          string
 	HttpPort         int
 	EnableHttp       bool
-	SerfMembershipCB func() map[string]bool
+	SerfGetTagInfo	 func(serfAgentHandler * serfAgent.SerfAgentHandler) map[string]PumiceDBCommon.PMDBGossipInfo
 	Statb            syscall.Stat_t
 	EpWatcher        *fsnotify.Watcher
 	EpMap            map[uuid.UUID]*NcsiEP
+	SerfAgentHandler serfAgent.SerfAgentHandler
 	mutex            sync.Mutex
 	run              bool
 	httpQuery        map[string](chan []byte)
@@ -345,10 +348,10 @@ func getFollowerStats(raftEntry RaftInfo) string {
 
 func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string, nodeUUID string) string {
 	var output string
-	membership := epc.SerfMembershipCB()
-	for name, isAlive := range membership {
-		var adder, status string
-		if isAlive {
+	memberInfo := epc.SerfGetTagInfo(&epc.SerfAgentHandler)
+	for name := range memberInfo {
+		var status, adder string
+		if memberInfo[name].Status{
 			adder = "1"
 			status = "online"
 		} else {
@@ -356,12 +359,11 @@ func (epc *EPContainer) parseMembershipPrometheus(state string, raftUUID string,
 			status = "offline"
 		}
 		if nodeUUID == name {
-			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"status="%s"raftUUID="%s"} %s`, name, state, status, raftUUID, adder)
+			state_int := memberInfo[name].State
+			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"state="%s"state_int="%d"status="%s"raftUUID="%s"} %s`, name, state, state_int, status, raftUUID, adder)
 		} else {
-			// since we do not know the state of other nodes
 			output += "\n" + fmt.Sprintf(`node_status{uuid="%s"status="%s"raftUUID="%s"} %s`, name, status, raftUUID, adder)
 		}
-
 	}
 	return output
 }
