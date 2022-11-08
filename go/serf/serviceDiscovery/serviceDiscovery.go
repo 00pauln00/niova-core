@@ -294,19 +294,26 @@ func (handler *ServiceDiscoveryHandler) GetLeader() string {
 }
 
 //Wait till connect
-func (handler *ServiceDiscoveryHandler) TillReady(service string) {
+func (handler *ServiceDiscoveryHandler) TillReady(service string, serviceRetry int) error {
 	for !handler.ready {
 
 	}
 
 	//Check the service
 	if service == "" {
-		return
+		return nil
 	}
 	_, err := handler.pickServer(service)
 
-	for err != nil {
-		_, err = handler.pickServer(service)
-		time.Sleep(5)
+	if err != nil {
+		for i:=0; i<= serviceRetry; i++ {
+		    _, err := handler.pickServer(service)
+		    time.Sleep(5)
+		    if err == nil {
+			break
+		    }
+		}
+		return errors.New("failed to start service after retry." )
 	}
+	return nil
 }

@@ -237,7 +237,7 @@ func (handler *nisdMonitor) startClientAPI() {
 			os.Exit(1)
 		}
 	}()
-	handler.storageClient.TillReady()
+	handler.storageClient.TillReady("", 0)
 }
 
 //NISD
