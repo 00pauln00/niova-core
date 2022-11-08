@@ -17,6 +17,26 @@
 typedef void    pumicedb_apply_ctx_t;
 typedef int     pumicedb_apply_ctx_int_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
+typedef int     pumicedb_write_prep_ctx_int_t;
+
+/**
+ * pmdb_write_prep_sm_handler_t - The write prep handler is the application's
+ *    hook into the initial stages of the raft write pipeline.  After the raft
+ *    server has received a write request, the pmdb layer will perform its own
+ *    checks to ensure the request has the correct write-seqno for the provided
+ *    rncui.  If this check passes, the write's contents are then passed here
+ *    so that the application may further inspect the write to decide if the
+ *    write should proceed.  If the write will not proceed the raft layer will
+ *    immediately reply to the client.
+ * @perform_raft_write:  instructs the pmdb layer to proceed (or not) with the
+ *    write.  Note that this variable must be set by the handler.
+ * RETURNS: an integer which will ultimately be returned to the client
+ *    application.
+ */
+typedef pumicedb_write_prep_ctx_int_t
+(*pmdb_write_prep_sm_handler_t)(const struct raft_net_client_user_id *,
+                                const void *input_buf, size_t input_bufsz,
+                                void *user_data, bool *perform_raft_write);
 
 /**
  * pmdb_apply_sm_handler_t - The apply handler is called from raft after the
@@ -32,9 +52,7 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
 typedef pumicedb_apply_ctx_int_t
 (*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
                            const void *input_buf, size_t input_bufsz,
-                           void *pmdb_handle,
-                           void *user_data);
-
+                           void *pmdb_handle, void *user_data);
 /**
  * pmdb_read_sm_handler_t - performs a general read operation. The app-uuid and
  *    the requisite buffers are provided.  The implementation must provide the
@@ -47,8 +65,9 @@ typedef pumicedb_read_ctx_ssize_t
 
 struct PmdbAPI
 {
-    pmdb_apply_sm_handler_t pmdb_apply;
-    pmdb_read_sm_handler_t  pmdb_read;
+    pmdb_apply_sm_handler_t      pmdb_apply;
+    pmdb_read_sm_handler_t       pmdb_read;
+    pmdb_write_prep_sm_handler_t pmdb_write_prep;
 };
 
 /**

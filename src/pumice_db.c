@@ -29,7 +29,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define PMDB_SNAPSHOT_MAX_OPEN_TIME_SEC 60
 
 static const struct PmdbAPI *pmdbApi;
-static void *pmdb_user_data = NULL;
+static void *pmdbUserData = NULL;
 
 static struct raft_server_rocksdb_cf_table pmdbCFT = {0};
 
@@ -70,6 +70,7 @@ struct pmdb_cowr_sub_app
     struct raft_net_client_user_id    pcwsa_rncui; // Must be the first memb!
     uuid_t                            pcwsa_client_uuid; // client UUID
     int64_t                           pcwsa_current_term;
+    int64_t                           pcwsa_msg_id;
     REF_TREE_ENTRY(pmdb_cowr_sub_app) pcwsa_rtentry;
 };
 
@@ -560,8 +561,8 @@ pmdb_cowr_sub_app_lookup(const struct raft_net_client_user_id *rncui,
 
 static struct pmdb_cowr_sub_app *
 pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
-                      const uuid_t client_uuid, const int current_term,
-                      int *ret_error,
+                      const uuid_t client_uuid, const int64_t msg_id,
+                      const int current_term, int *ret_error,
                       const char *caller_func, const int caller_lineno)
 {
     NIOVA_ASSERT(rncui);
@@ -579,7 +580,6 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
     struct pmdb_cowr_sub_app *subapp = RT_GET_ADD(pmdb_cowr_sub_app_tree,
                                                   &pmdb_cowr_sub_apps, &cowr,
                                                   &error);
-
     if (!subapp)
     {
         LOG_MSG(LL_WARN, "Can not add RB entry pmdb_cowr_sub_app_add(): %s",
@@ -590,28 +590,37 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
 
     if (error) // The entry already existed
     {
-        /*
-         * -EALREADY indicates write request is already in coalesced buffer.
-         * Convert the error to -EINPROGRESS as -EALREADY means write is
-         * already committed in pmdb_sm_handler_client_write().
+        /* EALREADY or EEXIST indicate the request already exists in coalesce
+         * buffer.  Convert the error to -EINPROGRESS as -ESTALE means write
+         * is conflicting.  Note that due to following properties of the client:
+         * TCP-based communications and a queue_depth of '1' per rncui, the
+         * same client should not be reissuing a request on the non-current
+         * write_seqno.  Retry of a request, from the same client, should only
+         * be occurring on that client's current write_seqno.  In the case of
+         * ESTALE, this function takes the decision to declare any request,
+         * which is not a retry of the existing request, as an error -
+         * regardless of its sequence number - since it violates the QD=1
+         * property of PMDB.
          */
         if (error == -EALREADY || error == -EEXIST)
         {
-            PMDB_STR_DEBUG(LL_DEBUG, &subapp->pcwsa_rncui, "RNCUI already added");
-            *ret_error = -EINPROGRESS;
-            // If the different client is trying to use existing rncui.
-            if (uuid_compare(subapp->pcwsa_client_uuid, client_uuid))
-            {
-                LOG_MSG(LL_DEBUG, "Different client trying out existing rncui");
-                *ret_error = -EPERM;
-            }
+            PMDB_STR_DEBUG(LL_NOTIFY, &subapp->pcwsa_rncui,
+                           "subapp GET error: %s", strerror(-error));
+
+            /* Use the msg id to determine conflicts instead of the client_uuid
+             * since the client could be a proxy.
+             */
+            *ret_error = subapp->pcwsa_msg_id == msg_id ?
+                -EINPROGRESS : -ESTALE;
         }
+
         pmdb_cowr_sub_app_put(subapp, __func__, __LINE__);
         return NULL;
     }
 
     PMDB_STR_DEBUG(LL_DEBUG, &subapp->pcwsa_rncui, "RNCUI added successfully");
-    NIOVA_ASSERT(pmdb_cowr_tree_term == -1 || pmdb_cowr_tree_term == current_term);
+    NIOVA_ASSERT(pmdb_cowr_tree_term == -1 ||
+                 pmdb_cowr_tree_term == current_term);
 
     if (pmdb_cowr_tree_term == -1)
         pmdb_cowr_tree_term = current_term;
@@ -821,10 +830,18 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
+    // Do not accept a negative write_seqno
+    if (pmdb_req->pmdbrm_write_seqno < 0)
+    {
+        raft_client_net_request_handle_error_set(rncr, -EILSEQ, 0, -EILSEQ);
+        return 0;
+    }
+
     struct pmdb_object obj = {0};
     bool new_object = false;
     int64_t prev_pending_term = -1;
 
+    // Find the object in RocksDB
     int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
                                 rncr->rncr_current_term);
     if (rc)
@@ -844,26 +861,19 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             /* This appears to be a system error.  Mark it and reply to the
              * client.
              */
-            raft_client_net_request_handle_error_set(rncr, rc, 0, rc);
+            raft_client_net_request_handle_error_set(rncr, rc, rc, 0);
 
             return 0;
         }
     }
-    else
-    {
-        PMDB_OBJ_DEBUG(LL_NOTIFY, &obj, "obj exists");
-    }
+
+    PMDB_OBJ_DEBUG(LL_NOTIFY, &obj, "obj (new=%d)", new_object);
 
     /* Check if the request was already committed and applied.  A commit-seqno
      * of ID_ANY_64bit means the object has previously attempted a write but
      * that write did not yet (or ever) commit.
      */
-    if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno &&
-        obj.pmdb_obj_commit_seqno != ID_ANY_64bit)
-    {
-        raft_client_net_request_handle_error_set(rncr, -EALREADY, 0, 0);
-    }
-    else if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
+    if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
     {
         /* Check if request has already been placed into the log but not yet
          * applied.  Here, the client's request has been accepted but not
@@ -882,32 +892,88 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                                                      -EINPROGRESS, 0);
         }
         else // Check if rncui is already part of coalesced_wr_tree
-
         {
             int error = 0;
             struct pmdb_cowr_sub_app *cowr_sa =
                 pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
                                       rncr->rncr_client_uuid,
+                                      rncr->rncr_msg_id,
                                       rncr->rncr_current_term,
-                                      &error, __func__,
-                                      __LINE__);
+                                      &error, __func__, __LINE__);
             if (!cowr_sa)
-                raft_client_net_request_handle_error_set(
-                    rncr, error, error, 0);
+            {
+                switch (error)
+                {
+                case -ESTALE: // app level error
+                    raft_client_net_request_handle_error_set(
+                        rncr, error, 0, error);
+                    break;
 
-            else // Request sequence test passes, will enter the raft log.
-                pmdb_prep_raft_entry_write(rncr, &obj);
+                // The rest are considered 'sys' errors
+                case -EINPROGRESS: // fall through
+                case -ENOMEM:      // fall through
+                default:
+                    raft_client_net_request_handle_error_set(
+                        rncr, error, error, 0);
+                    break;
+                }
+            }
+            else
+            {
+                bool write_entry = true;
+
+                // pmdb_write_prep() may set 'write_entry' to false
+                int rc = pmdbApi->pmdb_write_prep != NULL ?
+                    pmdbApi->pmdb_write_prep(
+                        &pmdb_req->pmdbrm_user_id, pmdb_req->pmdbrm_data,
+                        pmdb_req->pmdbrm_data_size, pmdbUserData,
+                        &write_entry) : 0;
+
+                if (rc) // client-only error, raft write may still proceed
+                    raft_client_net_request_handle_error_set(rncr, 0, 0, rc);
+
+                if (write_entry)
+                {
+                    // Request sequence test passes, will enter the raft log.
+                    pmdb_prep_raft_entry_write(rncr, &obj);
+                }
+                else
+                {
+                    // Remove write coalescing object from the ref-tree
+                    pmdb_cowr_sub_app_put(cowr_sa, __func__, __LINE__);
+                }
+            }
         }
     }
-    else // Request sequence is too far ahead
+    else if (pmdb_req->pmdbrm_write_seqno == obj.pmdb_obj_commit_seqno)
     {
-        rc = -EBADE;
-        raft_client_net_request_handle_error_set(rncr, rc, 0, 0);
+        /* To detect a retried request both the write_seqno and the msg_id
+         * must match.  In that case, 'success' may be returned.  Note that
+         * since a single client may only ever send a single request per rncui
+         * (ie queue_depth == 1), a valid retry scenario only needs to check
+         * for the last write.  IOW the server only promises to detect a retry
+         * from a 'race between multiple clients' given a queue depth of '1'.
+         */
+        int rc = (obj.pmdb_obj_msg_id == rncr->rncr_msg_id) ? 0 : -ESTALE;
+
+        raft_client_net_request_handle_error_set(
+            rncr, rc ? rc : -EALREADY, 0, rc);
+    }
+    else if (pmdb_req->pmdbrm_write_seqno < obj.pmdb_obj_commit_seqno)
+    {
+        // Request is no longer current
+        raft_client_net_request_handle_error_set(rncr, -ESTALE, 0, -ESTALE);
+    }
+    else
+    {
+        // Request sequence is too far ahead
+        raft_client_net_request_handle_error_set(rncr, -EBADE, 0, -EBADE);
     }
 
     // Stash the obj metadata into the reply
     struct pmdb_msg *pmdb_reply = RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
-    pmdb_obj_to_reply(&obj, pmdb_reply, rncr->rncr_current_term, rc);
+    pmdb_obj_to_reply(&obj, pmdb_reply, rncr->rncr_current_term,
+                      rncr->rncr_op_error);
 
     PMDB_OBJ_DEBUG((rncr->rncr_op_error == -EBADE ? LL_NOTIFY : LL_DEBUG),
                    &obj, "op-err=%s new-object=%s (ppt=%ld)",
@@ -956,7 +1022,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
                                  pmdb_req->pmdbrm_data,
                                  pmdb_req->pmdbrm_data_size,
                                  pmdb_reply->pmdbrm_data, max_reply_size,
-                                 pmdb_user_data);
+                                 pmdbUserData);
     }
     //XXX fault injection needed
     if (rrc < 0)
@@ -1173,8 +1239,8 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
                        "pmdb_object_lookup(): %s", strerror(-rc));
 
         /* Since the KV is being rewritten, replace the errors with -ESTALE
-         * only for leader (as pmdb object was written only on leader as marker in
-         * the write phase. For followers it would fail with ENOENT)
+         * only for leader (as pmdb object was written only on leader as marked
+         * in the write phase. For followers it would fail with ENOENT)
          * so that upper layer will not attempt to issue a reply.
          */
         if (rncr->rncr_is_leader)
@@ -1203,7 +1269,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     int apply_rc =
         pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
                             pmdb_req->pmdbrm_data_size, (void *)&pah,
-                            pmdb_user_data);
+                            pmdbUserData);
 
     // rc of 0 means the client will get a reply and removal of coalesced
     // tree item only leader should send the reply back to client.
@@ -1220,7 +1286,6 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
         pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
         pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(rncr);
     }
-
 
     return rc;
 }
@@ -1466,7 +1531,7 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
          bool use_coalesced_writes,
          void *user_data)
 {
-    pmdb_user_data = user_data;
+    pmdbUserData = user_data;
     return _PmdbExec(raft_uuid_str, raft_instance_uuid_str, pmdb_api, cf_names,
                      num_cf_names, use_synchronous_writes,
                      use_coalesced_writes);
