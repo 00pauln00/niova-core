@@ -549,7 +549,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady()
+	clientObj.clientAPIObj.TillReady("")
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
@@ -560,9 +560,11 @@ func main() {
 		clientObj.read()
 
 	case "write":
+		clientObj.clientAPIObj.TillReady("PROXY")
 		clientObj.write()
 
 	case "read":
+		clientObj.clientAPIObj.TillReady("PROXY")
 		if !isRangeRequest(clientObj.requestKey) {
 			clientObj.read()
 		} else {
