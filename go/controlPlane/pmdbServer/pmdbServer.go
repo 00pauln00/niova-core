@@ -56,6 +56,7 @@ type pmdbServerHandler struct {
 	ConfigData         []PumiceDBCommon.PeerConfigData
 	lookoutInstance    lookout.EPContainer
 	serfAgentHandler   serfAgent.SerfAgentHandler
+	portRange	   []int16
 }
 
 func main() {
@@ -102,7 +103,8 @@ func main() {
 	serverHandler.lookoutInstance = lookout.EPContainer{
 		MonitorUUID:      nso.peerUuid.String(),
 		AppType:          "PMDB",
-		HttpPort:         int(serverHandler.hport),
+		//HttpPort:         int(serverHandler.hport),
+		PortRange:	  serverHandler.portRange[20:40],
 		CTLPath:          ctl_path,
 		SerfMembershipCB: serverHandler.SerfMembership,
 		EnableHttp:       serverHandler.prometheus,
@@ -131,6 +133,14 @@ func usage() {
 	os.Exit(0)
 }
 
+func makeRange(min, max int) []int16 {
+a := make([]int16, max-min+1)
+for i := range a {
+    a[i] = int16(min + i)
+}
+return a
+}
+
 func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	var tempRaftUUID, tempPeerUUID string
 	var err error
@@ -148,6 +158,7 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
 	flag.Parse()
 
+	handler.portRange = makeRange(6000,7000)
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
 	handler.peerUUID, _ = uuid.FromString(tempPeerUUID)
 	nso := &NiovaKVServer{}
@@ -246,7 +257,8 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	}
 	scanner := bufio.NewScanner(f)
 	var flag bool
-	var uuid, addr, sport, eport, hport string
+	var uuid, addr, sport, eport string
+	//var hport string
 	for scanner.Scan() {
 		text := scanner.Text()
 		splitData := strings.Split(text, " ")
@@ -254,27 +266,29 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		addr = splitData[1]
 		sport = splitData[2]
 		eport = splitData[3]
+		/*
 		if len(splitData) > 4 {
 			handler.prometheus = true
 			hport = splitData[4]
 		}
+		*/
 
 		if uuid == handler.peerUUID.String() {
-			buffer, err := strconv.ParseUint(sport, 10, 16)
-			handler.servicePortRangeS = uint16(buffer)
+			//buffer, err := strconv.ParseUint(sport, 10, 16)
+			handler.servicePortRangeS = uint16(6000)
 			if err != nil {
 				return errors.New("Agent port is out of range")
 			}
 
-			buffer, err = strconv.ParseUint(eport, 10, 16)
-			handler.servicePortRangeE = uint16(buffer)
+			//buffer, err = strconv.ParseUint(eport, 10, 16)
+			handler.servicePortRangeE = uint16(7000)
 			if err != nil {
 				return errors.New("RPC port is out of range")
 			}
 
 			if handler.prometheus {
-				buffer, err = strconv.ParseUint(hport, 10, 16)
-				handler.hport = uint16(buffer)
+				//buffer, err = strconv.ParseUint(hport, 10, 16)
+				//handler.hport = uint16(buffer)
 				if err != nil {
 					return errors.New("HTTP port is out of range")
 				}
@@ -314,6 +328,15 @@ func generateCheckSum(data map[string]string) (string, error) {
 	return string(checkSumByteArray), err
 }
 
+func (handler *pmdbServerHandler) getAddrList() []string {
+	var addrs []string
+	for i := 0;i <= 20;i++ {
+		fmt.Println(handler.nodeAddr.String() + ":" + strconv.Itoa(int(handler.portRange[i])))
+		addrs = append(addrs, handler.nodeAddr.String() + ":" + strconv.Itoa(int(handler.portRange[i])))
+	}
+	return addrs
+}
+
 func (handler *pmdbServerHandler) startSerfAgent() error {
 	err := handler.readGossipClusterFile()
 	if err != nil {
@@ -334,15 +357,18 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 
 	//defaultLogger.SetOutput(ioutil.Discard)
 	serfAgentHandler := serfAgent.SerfAgentHandler{
-		Name:     handler.peerUUID.String(),
-		BindAddr: handler.nodeAddr,
+		Name:     		handler.peerUUID.String(),
+		BindAddr: 		handler.nodeAddr,
+		AgentLogger: 		defaultLogger.Default(),
+		RpcAddr: 		handler.nodeAddr,
+		ServicePortRangeS: 	handler.servicePortRangeS,
+		ServicePortRangeE: 	handler.servicePortRangeE,
 	}
-	serfAgentHandler.AgentLogger = defaultLogger.Default()
-	serfAgentHandler.RpcAddr = handler.nodeAddr
-	serfAgentHandler.ServicePortRangeS = handler.servicePortRangeS
-	serfAgentHandler.ServicePortRangeE = handler.servicePortRangeE
+
+	joinAddrs := handler.getAddrList()
+
 	//Start serf agent
-	_, err = serfAgentHandler.SerfAgentStartup(handler.gossipClusterNodes, true)
+	_, err = serfAgentHandler.SerfAgentStartup(joinAddrs, true)
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
