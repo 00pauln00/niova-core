@@ -511,26 +511,12 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
     return rc;
 }
 
-static epoll_mgr_cb_ctx_t
-tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
+static void
+tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc)
 {
-    SIMPLE_FUNC_ENTRY(LL_TRACE);
+    NIOVA_ASSERT(tmc);
 
-    NIOVA_ASSERT(eph && eph->eph_arg);
-
-    struct tcp_mgr_connection *tmc = eph->eph_arg;
-    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "received events: %d", events);
-
-    int rc = tcp_mgr_epoll_handle_rc_get(eph, events);
-    if (rc)
-    {
-        if (rc == -ECONNRESET || rc == -ENOTCONN || rc == -ECONNABORTED)
-            tcp_mgr_connection_close_internal(tmc);
-
-        SIMPLE_LOG_MSG(LL_NOTIFY, "error received on socket fd=%d, rc=%d",
-                       eph->eph_fd, rc);
-        return;
-    }
+    int rc = 0;
 
     // is this a new RPC?
     if (!tmc->tmc_bulk_remain)
@@ -561,6 +547,61 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         // Will remove from epoll set
         tcp_mgr_connection_close_internal(tmc);
     }
+}
+
+static epoll_mgr_cb_ctx_t
+tcp_mgr_conn_recv_handoff(struct tcp_mgr_connection *tmc)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    niova_mutex_lock(&tmi->tmi_connq.tmcq_mutex);
+    if (tmc->tmc_handoff)
+    {
+        /* Set the bit if we recv'd another msg while the request was either
+         * queued or being processed.
+         */
+        if (!tmc->tmc_event_recvd_while_handoff)
+            tmc->tmc_event_recvd_while_handoff = 1;
+
+        goto out;
+    }
+
+    NIOVA_SET_COND_AND_WAKE_LOCKED(
+        signal,
+        { STAILQ_INSERT_TAIL(&tmi->tmi_connq.tmcq_queue, tmc, tmc_lentry); },
+        &tmi->tmi_connq.tmcq_cond);
+
+out:
+    niova_mutex_unlock(&tmi->tmi_connq.tmcq_mutex);
+}
+
+static epoll_mgr_cb_ctx_t
+tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
+{
+    SIMPLE_FUNC_ENTRY(LL_TRACE);
+
+    NIOVA_ASSERT(eph && eph->eph_arg);
+
+    struct tcp_mgr_connection *tmc = eph->eph_arg;
+    DBG_TCP_MGR_CXN(LL_TRACE, tmc, "received events: %d", events);
+
+    int rc = tcp_mgr_epoll_handle_rc_get(eph, events);
+    if (rc)
+    {
+        if (rc == -ECONNRESET || rc == -ENOTCONN || rc == -ECONNABORTED)
+            tcp_mgr_connection_close_internal(tmc);
+
+        SIMPLE_LOG_MSG(LL_NOTIFY, "error received on socket fd=%d, rc=%d",
+                       eph->eph_fd, rc);
+        return;
+    }
+
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    NIOVA_ASSERT(tmi);
+
+    return tmi->tmi_conn_recv_handoff ?
+        tcp_mgr_conn_recv_handoff(tmc) :
+        tcp_mgr_conn_recv_inline(tmc);
 }
 
 static int

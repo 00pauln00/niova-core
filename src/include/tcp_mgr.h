@@ -77,6 +77,7 @@ struct tcp_mgr_connection
 {
     enum tcp_mgr_connection_status    tmc_status;
     uint8_t                           tmc_handoff:1;
+    uint8_t                           tmc_event_recvd_while_handoff:1;
     struct tcp_socket_handle          tmc_tsh;
     struct epoll_handle               tmc_eph;
     struct tcp_mgr_instance          *tmc_tmi;
