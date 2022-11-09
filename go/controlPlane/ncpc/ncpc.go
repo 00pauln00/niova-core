@@ -551,7 +551,7 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady("",clientObj.serviceRetry)
+	clientObj.clientAPIObj.TillReady("", clientObj.serviceRetry)
 	if err != nil {
 		log.Error(err)
 		os.Exit(1)

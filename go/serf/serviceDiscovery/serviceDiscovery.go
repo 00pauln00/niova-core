@@ -308,7 +308,7 @@ func (handler *ServiceDiscoveryHandler) TillReady(service string, serviceRetry i
 	if err != nil {
 		for i:=0; i<= serviceRetry; i++ {
 		    _, err := handler.pickServer(service)
-		    time.Sleep(5)
+		    
 		    if err == nil {
 			break
 		    }
