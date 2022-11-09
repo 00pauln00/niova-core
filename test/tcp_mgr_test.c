@@ -522,7 +522,7 @@ tmt_setup(struct tmt_data *td)
                   tmt_bulk_size_cb,
                   tmt_handshake_cb,
                   tmt_handshake_fill, sizeof(struct tmt_handshake),
-                  BULK_CREDITS, INCOMING_CREDITS);
+                  BULK_CREDITS, INCOMING_CREDITS, false);
 
     rc = pthread_mutex_init(&td->td_conn_list_mutex, NULL);
     NIOVA_ASSERT(!rc);

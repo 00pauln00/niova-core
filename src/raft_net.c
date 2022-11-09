@@ -1575,7 +1575,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                       sizeof(struct raft_rpc_msg),
                       DEFAULT_BULK_CREDITS,
-                      DEFAULT_INCOMING_CREDITS);
+                      DEFAULT_INCOMING_CREDITS, false);
         tcp_mgr_setup(&ri->ri_peer_tcp_mgr, ri,
                       (epoll_mgr_ref_cb_t)raft_net_connection_getput,
                       (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
@@ -1584,7 +1584,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
                       (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
                       sizeof(struct raft_rpc_msg),
                       DEFAULT_BULK_CREDITS,
-                      DEFAULT_INCOMING_CREDITS);
+                      DEFAULT_INCOMING_CREDITS, false);
     }
 
     rc = raft_net_sockets_setup(ri);

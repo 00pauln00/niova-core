@@ -32,10 +32,21 @@ typedef tcp_mgr_ctx_ssize_t
 typedef tcp_mgr_ctx_t
 (*tcp_mgr_connection_epoll_ctx_cb_t)(struct tcp_mgr_connection *);
 
+struct tcp_mgr_connection;
+STAILQ_HEAD(tcp_mgr_conn_list, tcp_mgr_connection);
+
+struct tcp_mgr_connq
+{
+    pthread_mutex_t          tmcq_mutex;
+    pthread_cond_t           tmcq_cond;
+    struct tcp_mgr_conn_list tmcq_queue;
+};
+
 struct tcp_mgr_instance
 {
     struct tcp_socket_handle tmi_listen_socket;
     void                    *tmi_data;
+    uint8_t                  tmi_conn_recv_handoff:1;
 
     struct epoll_mgr        *tmi_epoll_mgr;
     struct epoll_handle      tmi_listen_eph;
@@ -50,6 +61,7 @@ struct tcp_mgr_instance
 
     niova_atomic32_t         tmi_bulk_credits;
     niova_atomic32_t         tmi_incoming_credits;
+    struct tcp_mgr_connq     tmi_connq;
 };
 
 enum tcp_mgr_connection_status
@@ -96,7 +108,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
-              uint32_t incoming_credits);
+              uint32_t incoming_credits, bool conn_recv_handoff);
 
 int
 tcp_mgr_sockets_close(struct tcp_mgr_instance *tmi);

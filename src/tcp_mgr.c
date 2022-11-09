@@ -82,7 +82,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
-              uint32_t incoming_credits)
+              uint32_t incoming_credits, bool conn_recv_handoff)
 {
     NIOVA_ASSERT(tmi);
 
@@ -93,11 +93,18 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
+    tmi->tmi_conn_recv_handoff = !!conn_recv_handoff;
 
     tcp_mgr_bulk_credits_set(tmi, bulk_credits);
     tcp_mgr_incoming_credits_set(tmi, incoming_credits);
 
     pthread_mutex_init(&tmi->tmi_epoll_ctx_mutex, NULL);
+
+    struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
+
+    STAILQ_INIT(&tmcq->tmcq_queue);
+    pthread_mutex_init(&tmcq->tmcq_mutex, NULL);
+    pthread_cond_init(&tmcq->tmcq_cond, NULL);
 }
 
 int
