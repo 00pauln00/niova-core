@@ -76,6 +76,7 @@ enum tcp_mgr_connection_status
 struct tcp_mgr_connection
 {
     enum tcp_mgr_connection_status    tmc_status;
+    uint8_t                           tmc_handoff:1;
     struct tcp_socket_handle          tmc_tsh;
     struct epoll_handle               tmc_eph;
     struct tcp_mgr_instance          *tmc_tmi;
@@ -84,6 +85,7 @@ struct tcp_mgr_connection
     size_t                            tmc_bulk_offset;
     size_t                            tmc_bulk_remain;
     tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_cb;
+    STAILQ_ENTRY(tcp_mgr_connection)  tmc_lentry;
 };
 
 struct tcp_mgr_incoming_connection
