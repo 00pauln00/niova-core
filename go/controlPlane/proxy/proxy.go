@@ -204,13 +204,13 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
 	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
-	joinAddrs, err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
+	err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
 	if err != nil {
 		return err
 	}
 
 	//Start serf agent
-	_, err = handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
+	_, err = handler.serfAgentObj.SerfAgentStartup(true)
 	return err
 }
 

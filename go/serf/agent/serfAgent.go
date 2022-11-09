@@ -33,7 +33,11 @@ type SerfAgentHandler struct {
 	AgentLogger *log.Logger
 	ServicePortRangeS uint16
 	ServicePortRangeE uint16
+	PMDBPortRangeS	  uint16
+	PMDBPortRangeE	  uint16
+
 	//non-exported
+	joinAddrs   []string
 	agentObj    *agent.Agent
 	agentIPCObj *agent.AgentIPC
 	agentConf   *agent.Config
@@ -183,7 +187,7 @@ Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) SerfAgentStartup(joinAddrs []string, RPCRequired bool) (int, error) {
+func (Handler *SerfAgentHandler) SerfAgentStartup(RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -198,8 +202,8 @@ func (Handler *SerfAgentHandler) SerfAgentStartup(joinAddrs []string, RPCRequire
 	}
 
 	//Join the cluster
-	if len(joinAddrs) != 0 {
-		memcount, _ = Handler.join(joinAddrs)
+	if len(Handler.joinAddrs) != 0 {
+		memcount, _ = Handler.join(Handler.joinAddrs)
 	}
 	return memcount, err
 }
@@ -284,22 +288,25 @@ Return Value : list of addrs
 Description : Get the list of teh addresses to join the cluster.
 */
 
-func (Handler *SerfAgentHandler) getServerAddress(staticSerfConfigPath string) ([]string, error) {
+func (Handler *SerfAgentHandler) getServerAddress(staticSerfConfigPath string) error {
 	//Get addrs and Rports and store it in AgentAddrs and
 
 	if _, err := os.Stat(staticSerfConfigPath); os.IsNotExist(err) {
-		return nil, err
+		return err
 	}
 	reader, err := os.OpenFile(staticSerfConfigPath, os.O_RDONLY, 0444)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	filescanner := bufio.NewScanner(reader)
-	filescanner.Split(bufio.ScanLines)
-	var addrs []string
-	for filescanner.Scan() {
-		input := strings.Split(filescanner.Text(), " ")
-		addrs = append(addrs, input[0]+":"+input[1])
-	}
-	return addrs, nil
+	scanner.Scan()
+        IPAddrs := scanner.Text()
+	Handler.joinAddrs = strings.Split(IPAddrs, " ")
+
+        //Read Ports
+        scanner.Scan()
+        Ports := strings.Split(scanner.Text(), " ")
+        Handler.PMDBPortRangeS = uint16(Ports[0])
+        Handler.PMDBPortRangeE = uint16(Ports[1])
+	return nil
 }

@@ -185,13 +185,13 @@ func (handler *nisdMonitor) startSerfAgent() error {
 		//RpcPort:     uint16(handler.agentRPCPort),
 	}
 
-	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
+	err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
 	if err != nil {
 		return err
 	}
 
 	//Start serf agent
-	_, err = handler.serfHandler.SerfAgentStartup(joinAddrs, true)
+	_, err = handler.serfHandler.SerfAgentStartup(true)
 	return err
 }
 

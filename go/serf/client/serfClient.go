@@ -22,13 +22,20 @@ type SerfClientHandler struct {
 	Agents  []client.Member //Holds all agent names in cluster, initialized with few known agent names
 	Retries int             //No of retries to connect with any agent
 	//Un-exported
-	loadedGossipNodes	[]string
+	loadedGossipNodesAddr	[]string
+	PMDBPortRangeS		uint16
+	PMDBPortRangeE		uint16
 	agentConnection		*client.RPCClient
 	connectionExist		bool
 }
 
 func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	//Get addrs and Rports and store it in AgentAddrs and
+	/*
+	Following is the format of gossipNodes config File
+	IPAddrs with space seperated
+	Sport Eport
+	*/
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
 		return err
 	}
@@ -37,15 +44,16 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 		return err
 	}
 
-	filescanner := bufio.NewScanner(reader)
-	filescanner.Split(bufio.ScanLines)
-	var addrs []string
-	for filescanner.Scan() {
-		input := strings.Split(filescanner.Text(), " ")
-		addrs = append(addrs, input[1]+":"+input[3])
-	}
+	scanner := bufio.NewScanner(reader)
+	scanner.Scan()
+        IPAddrs := scanner.Text()
+        handler.loadedGossipNodesAddr = strings.Split(IPAddrs, " ")
 
-	Handler.loadedGossipNodes = addrs
+        //Read Ports
+        scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+        handler.PMDBPortRangeS = uint16(Ports[0])
+        handler.PMDBPortRangeE = uint16(Ports[1])
 	return nil
 }
 

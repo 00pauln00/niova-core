@@ -45,7 +45,6 @@ type pmdbServerHandler struct {
 	logDir             string
 	logLevel           string
 	gossipClusterFile  string
-	gossipClusterNodes []string
 	servicePortRangeS  uint16
 	servicePortRangeE  uint16
 	hport              uint16
@@ -256,56 +255,17 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		return err
 	}
 	scanner := bufio.NewScanner(f)
-	var flag bool
-	var uuid, addr, sport, eport string
-	//var hport string
-	for scanner.Scan() {
-		text := scanner.Text()
-		splitData := strings.Split(text, " ")
-		uuid = splitData[0]
-		addr = splitData[1]
-		sport = splitData[2]
-		eport = splitData[3]
-		/*
-		if len(splitData) > 4 {
-			handler.prometheus = true
-			hport = splitData[4]
-		}
-		*/
-
-		if uuid == handler.peerUUID.String() {
-			//buffer, err := strconv.ParseUint(sport, 10, 16)
-			handler.servicePortRangeS = uint16(6000)
-			if err != nil {
-				return errors.New("Agent port is out of range")
-			}
-
-			//buffer, err = strconv.ParseUint(eport, 10, 16)
-			handler.servicePortRangeE = uint16(7000)
-			if err != nil {
-				return errors.New("RPC port is out of range")
-			}
-
-			if handler.prometheus {
-				//buffer, err = strconv.ParseUint(hport, 10, 16)
-				//handler.hport = uint16(buffer)
-				if err != nil {
-					return errors.New("HTTP port is out of range")
-				}
-			}
-
-			handler.nodeAddr = net.ParseIP(addr)
-			flag = true
-		} else {
-			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+sport+":"+eport)
-		}
- 	}
-
-	if !flag {
-		log.Error("Peer UUID not matching with gossipNodes config file")
-		return errors.New("UUID not matching")
-	}
-
+	/*
+	Following is the format of gossipNodes file
+	PMDB server addrs with space separated
+	Start_port End_port
+	*/
+	scanner.Scan()
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	handler.servicePortRangeS = uint16(Ports[0])
+	handler.servicePortRangeE = uint16(Ports[1])
 	return nil
 }
 
@@ -364,11 +324,24 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		ServicePortRangeS: 	handler.servicePortRangeS,
 		ServicePortRangeE: 	handler.servicePortRangeE,
 	}
+<<<<<<< Updated upstream
 
 	joinAddrs := handler.getAddrList()
 
 	//Start serf agent
 	_, err = serfAgentHandler.SerfAgentStartup(joinAddrs, true)
+=======
+	serfAgentHandler.AgentLogger = defaultLogger.Default()
+	serfAgentHandler.RpcAddr = handler.nodeAddr
+	serfAgentHandler.ServicePortRangeS = handler.servicePortRangeS
+	serfAgentHandler.ServicePortRangeE = handler.servicePortRangeE
+	err = serfAgentHandler.ReadGossipNodesFile(handler.gossipClusterFile)
+	if err != nil {
+		log.Error("Error while reading gossipNodes file in serf agent ", err)
+	}
+	//Start serf agent
+	_, err = serfAgentHandler.SerfAgentStartup(true)
+>>>>>>> Stashed changes
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
