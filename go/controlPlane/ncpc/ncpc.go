@@ -44,6 +44,7 @@ type clientHandler struct {
 	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
 	seqNum            uint64
 	valSize           int
+	serviceRetry      int
 }
 
 type request struct {
@@ -202,6 +203,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
 	flag.Uint64Var(&handler.seqNum, "S", math.MaxUint64, "Sequence Number for read")
+	flag.IntVar(&handler.serviceRetry, "sr", 1, "how many times you want to retry to pick the server if proxy is not available")
 	flag.Parse()
 }
 
@@ -549,7 +551,12 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady()
+	clientObj.clientAPIObj.TillReady("", clientObj.serviceRetry)
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
+
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
@@ -560,9 +567,21 @@ func main() {
 		clientObj.read()
 
 	case "write":
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+
 		clientObj.write()
 
 	case "read":
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+
 		if !isRangeRequest(clientObj.requestKey) {
 			clientObj.read()
 		} else {
