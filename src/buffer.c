@@ -18,6 +18,21 @@ static size_t bufferSetPageBits;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+/* Use cast to override 'const *bs' which is needed for at least one public
+ * routine.
+ */
+#define BS_LOCK(bs)                                                  \
+    do {                                                             \
+        if ((bs)->bs_serialize)                                      \
+            niova_mutex_lock((pthread_mutex_t *)&(bs)->bs_mutex);    \
+    } while (0)
+
+#define BS_UNLOCK(bs)                                                   \
+    do {                                                                \
+        if ((bs)->bs_serialize)                                         \
+            niova_mutex_unlock((pthread_mutex_t *)&(bs)->bs_mutex);     \
+    } while (0)
+
 static void
 buffer_page_size_set(void)
 {
@@ -43,10 +58,11 @@ buffer_set_size_to_nblks(const struct buffer_set *bs)
     return bs ? bs->bs_item_size >> bufferSetPageBits : 0;
 }
 
-size_t
-buffer_set_navail(const struct buffer_set *bs)
+static size_t
+buffer_set_navail_locked(const struct buffer_set *bs)
 {
     NIOVA_ASSERT(bs);
+
     NIOVA_ASSERT(bs->bs_num_allocated  >= 0);
     NIOVA_ASSERT(bs->bs_num_pndg_alloc >= 0);
     NIOVA_ASSERT(bs->bs_num_bufs >= (bs->bs_num_allocated +
@@ -55,13 +71,28 @@ buffer_set_navail(const struct buffer_set *bs)
     return bs->bs_num_bufs - (bs->bs_num_allocated + bs->bs_num_pndg_alloc);
 }
 
+size_t
+buffer_set_navail(const struct buffer_set *bs)
+{
+    if (!bs)
+        return 0;
+
+    BS_LOCK(bs);
+    size_t navail = buffer_set_navail_locked(bs);
+    BS_UNLOCK(bs);
+
+    return navail;
+}
+
 struct buffer_item *
 buffer_set_allocate_item(struct buffer_set *bs)
 {
     if (!bs)
         return NULL;
 
-    size_t navail = buffer_set_navail(bs);
+    BS_LOCK(bs);
+
+    size_t navail = buffer_set_navail_locked(bs);
 
     if (!navail)
     {
@@ -77,6 +108,8 @@ buffer_set_allocate_item(struct buffer_set *bs)
 
     bs->bs_num_allocated++;
     bi->bi_allocated = true;
+
+    BS_UNLOCK(bs);
 
     return bi;
 }
@@ -114,13 +147,17 @@ buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems)
     if (!bs || !nitems)
         return -EINVAL;
 
+    BS_LOCK(bs);
+
     if (bs->bs_num_bufs < nitems)
         return -ENOMEM;
 
-    else if (buffer_set_navail(bs) < nitems)
+    else if (buffer_set_navail_locked(bs) < nitems)
         return -ENOBUFS;
 
     bs->bs_num_pndg_alloc += nitems;
+
+    BS_UNLOCK(bs);
 
     return 0;
 }
@@ -132,8 +169,10 @@ buffer_set_release_item(struct buffer_item *bi)
         return;
 
     struct buffer_set *bs = bi->bi_bs;
-
     NIOVA_ASSERT(bs);
+
+    BS_LOCK(bs);
+
     NIOVA_ASSERT(bi->bi_allocated);
     NIOVA_ASSERT(bs->bs_num_allocated > 0);
     bi->bi_iov = bi->bi_iov_save;
@@ -145,6 +184,8 @@ buffer_set_release_item(struct buffer_item *bi)
 
     CIRCLEQ_REMOVE(&bs->bs_inuse_list, bi, bi_lentry);
     CIRCLEQ_INSERT_TAIL(&bs->bs_free_list, bi, bi_lentry);
+
+    BS_UNLOCK(bs);
 }
 
 int
@@ -175,17 +216,26 @@ buffer_set_destroy(struct buffer_set *bs)
 
     bs->bs_init = 0;
 
+    if (bs->bs_serialize)
+        pthread_mutex_destroy(&bs->bs_mutex);
+
     return 0;
 }
 
 int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                bool use_posix_memalign)
+                bool use_posix_memalign, bool serialize)
 {
     buffer_page_size_set();
 
     if (!bs || !buf_size || bs->bs_init)
         return -EINVAL;
+
+    if (serialize)
+    {
+        bs->bs_serialize = 1;
+        pthread_mutex_init(&bs->bs_mutex, NULL);
+    }
 
     bs->bs_item_size = buf_size;
     bs->bs_num_bufs = 0;

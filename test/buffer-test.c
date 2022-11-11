@@ -14,17 +14,17 @@ buffer_test(void)
 
     struct buffer_set bs = {0};
 
-    int rc = buffer_set_init(NULL, 0, 0, false);
+    int rc = buffer_set_init(NULL, 0, 0, false, false);
     NIOVA_ASSERT(rc == -EINVAL);
 
     // page size is set on first call to set_init()
     NIOVA_ASSERT(buffer_page_size() == 4096);
 
-    rc = buffer_set_init(&bs, 0, 0, false);
+    rc = buffer_set_init(&bs, 0, 0, false, false);
     NIOVA_ASSERT(rc == -EINVAL);
 
     // init and destroy 'bs'
-    rc = buffer_set_init(&bs, 1, 1, false);
+    rc = buffer_set_init(&bs, 1, 1, false, false);
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == 1);
 
@@ -44,7 +44,7 @@ buffer_test(void)
 
     // reserved ops
     const size_t n = 10;
-    rc = buffer_set_init(&bs, n, 1, false);
+    rc = buffer_set_init(&bs, n, 1, false, false);
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == n);
 

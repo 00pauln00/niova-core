@@ -5689,7 +5689,7 @@ raft_server_instance_buffer_set_setup(struct raft_instance *ri)
     for (int p = 0; p < RAFT_BUF_SET_MAX; p++)
     {
         rc = buffer_set_init(&ri->ri_buf_set[p], nbuff[p],
-                             buff_set_sizes[p], true);
+                             buff_set_sizes[p], true, true);
         NIOVA_ASSERT(rc == 0);
     }
 
