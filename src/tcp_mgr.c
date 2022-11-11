@@ -171,9 +171,14 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
             rc = thread_create(tcp_mgr_worker, &tmi->tmi_workers[i], thr_name,
                                (void *)tmi, NULL);
             if (rc == 0)
+            {
                 tmi->tmi_nworkers++;
+                thread_ctl_run(&tmi->tmi_workers[i]);
+            }
             else
+            {
                 break;
+            }
         }
 
         if (tmi->tmi_nworkers == 0)
