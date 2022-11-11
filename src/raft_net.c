@@ -1576,7 +1576,7 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
             (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
             sizeof(struct raft_rpc_msg),
             DEFAULT_BULK_CREDITS,
-            DEFAULT_INCOMING_CREDITS, false);
+            DEFAULT_INCOMING_CREDITS, client_mode ? false : true);
 
         if (rc) // needs a tcp_mgr_destroy()
         {
