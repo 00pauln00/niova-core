@@ -74,6 +74,9 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
         tmc->tmc_tmi->tmi_connection_ref_cb(tmc, EPH_REF_PUT);
 }
 
+static void
+tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc);
+
 static void *
 tcp_mgr_worker(void *arg)
 {
@@ -106,7 +109,7 @@ tcp_mgr_worker(void *arg)
         NIOVA_ASSERT(tmc->tmc_handoff);
 
         // do work
-//        tcp_mgr_conn_recv_inline(tmc);
+        tcp_mgr_conn_recv_inline(tmc);
         // end work
 
         niova_mutex_lock(&tmcq->tmcq_mutex);
