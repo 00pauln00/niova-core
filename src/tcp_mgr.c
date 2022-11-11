@@ -550,7 +550,7 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     NIOVA_ASSERT(tmi->tmi_recv_cb && tmi->tmi_bulk_size_cb && header_size &&
                  header_size <= TCP_MGR_MAX_HDR_SIZE);
 
-    static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
+    static __thread char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
     iov.iov_base = sink_buf;
     iov.iov_len = header_size;
