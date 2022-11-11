@@ -893,7 +893,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                                       __LINE__);
             if (!cowr_sa)
                 raft_client_net_request_handle_error_set(
-                    rncr, error, error, 0);
+                    rncr, error, 0, error);
 
             else // Request sequence test passes, will enter the raft log.
                 pmdb_prep_raft_entry_write(rncr, &obj);
