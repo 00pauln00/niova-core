@@ -42,6 +42,8 @@ struct tcp_mgr_connq
     struct tcp_mgr_conn_list tmcq_queue;
 };
 
+#define TCP_MGR_NTHREADS 32
+
 struct tcp_mgr_instance
 {
     struct tcp_socket_handle tmi_listen_socket;
@@ -62,6 +64,8 @@ struct tcp_mgr_instance
     niova_atomic32_t         tmi_bulk_credits;
     niova_atomic32_t         tmi_incoming_credits;
     struct tcp_mgr_connq     tmi_connq;
+    struct thread_ctl        tmi_workers[TCP_MGR_NTHREADS];
+    size_t                   tmi_nworkers;
 };
 
 enum tcp_mgr_connection_status
@@ -103,7 +107,7 @@ do {                                                                 \
                  ##__VA_ARGS__);                                     \
 } while(0)
 
-void
+int
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,

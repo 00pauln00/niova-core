@@ -74,7 +74,61 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
         tmc->tmc_tmi->tmi_connection_ref_cb(tmc, EPH_REF_PUT);
 }
 
-void
+static void *
+tcp_mgr_worker(void *arg)
+{
+    struct thread_ctl *tc = (struct thread_ctl *)arg;
+    NIOVA_ASSERT(tc && tc->tc_arg);
+
+    struct tcp_mgr_instance *tmi = (struct tcp_mgr_instance *)tc->tc_arg;
+    struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
+
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        struct tcp_mgr_connection *tmc = NULL;
+
+        NIOVA_WAIT_COND(
+            (!STAILQ_EMPTY(&tmcq->tmcq_queue) || tc->tc_halt),
+             &tmcq->tmcq_mutex, &tmcq->tmcq_cond,
+            {
+                if (!STAILQ_EMPTY(&tmcq->tmcq_queue) && !tc->tc_halt)
+                {
+                    tmc = STAILQ_FIRST(&tmcq->tmcq_queue);
+                    STAILQ_REMOVE_HEAD(&tmcq->tmcq_queue, tmc_lentry);
+                }
+            });
+
+        if (tmc == NULL)
+            continue;
+
+        NIOVA_ASSERT(tmc->tmc_handoff);
+
+        // do work
+
+        // end work
+
+        niova_mutex_lock(&tmcq->tmcq_mutex);
+
+        NIOVA_ASSERT(tmc->tmc_handoff);
+
+        if (tmc->tmc_event_recvd_while_handoff)
+        {
+            // Clear state and requeue
+            STAILQ_INSERT_TAIL(&tmcq->tmcq_queue, tmc, tmc_lentry);
+            tmc->tmc_event_recvd_while_handoff = 0;
+        }
+        else
+        {
+            tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
+        }
+
+        niova_mutex_unlock(&tmcq->tmcq_mutex);
+    }
+
+    return NULL;
+}
+
+int
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
@@ -101,10 +155,35 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     pthread_mutex_init(&tmi->tmi_epoll_ctx_mutex, NULL);
 
     struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
-
     STAILQ_INIT(&tmcq->tmcq_queue);
     pthread_mutex_init(&tmcq->tmcq_mutex, NULL);
     pthread_cond_init(&tmcq->tmcq_cond, NULL);
+
+    if (conn_recv_handoff)
+    {
+        int rc = 0;
+
+        for (int i = 0; i < TCP_MGR_NTHREADS; i++)
+        {
+            char thr_name[MAX_THREAD_NAME] = {0};
+            snprintf(thr_name, MAX_THREAD_NAME, "tcp_wrk.%d", i);
+
+            rc = thread_create(tcp_mgr_worker, &tmi->tmi_workers[i], thr_name,
+                               (void *)tmi, NULL);
+            if (rc == 0)
+                tmi->tmi_nworkers++;
+            else
+                break;
+        }
+
+        if (tmi->tmi_nworkers == 0)
+            return rc;
+
+        for (int i = 0; i < tmi->tmi_nworkers; i++)
+            thread_creator_wait_until_ctl_loop_reached(&tmi->tmi_workers[i]);
+    }
+
+    return 0;
 }
 
 int
