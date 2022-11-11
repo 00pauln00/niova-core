@@ -98,29 +98,22 @@ tcp_mgr_worker(void *arg)
                 }
             });
 
+        SIMPLE_LOG_MSG(LL_DEBUG, "tmc=%p", tmc);
+
         if (tmc == NULL)
             continue;
 
         NIOVA_ASSERT(tmc->tmc_handoff);
 
         // do work
-
+//        tcp_mgr_conn_recv_inline(tmc);
         // end work
 
         niova_mutex_lock(&tmcq->tmcq_mutex);
 
         NIOVA_ASSERT(tmc->tmc_handoff);
 
-        if (tmc->tmc_event_recvd_while_handoff)
-        {
-            // Clear state and requeue
-            STAILQ_INSERT_TAIL(&tmcq->tmcq_queue, tmc, tmc_lentry);
-            tmc->tmc_event_recvd_while_handoff = 0;
-        }
-        else
-        {
-            tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
-        }
+        tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
 
         niova_mutex_unlock(&tmcq->tmcq_mutex);
     }
@@ -640,15 +633,11 @@ tcp_mgr_conn_recv_handoff(struct tcp_mgr_connection *tmc)
 
     niova_mutex_lock(&tmi->tmi_connq.tmcq_mutex);
     if (tmc->tmc_handoff)
-    {
-        /* Set the bit if we recv'd another msg while the request was either
-         * queued or being processed.
-         */
-        if (!tmc->tmc_event_recvd_while_handoff)
-            tmc->tmc_event_recvd_while_handoff = 1;
-
         goto out;
-    }
+
+    tmc->tmc_handoff = 1;
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "tmc=%p", tmc);
 
     NIOVA_SET_COND_AND_WAKE_LOCKED(
         signal,
