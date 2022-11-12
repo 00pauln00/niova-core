@@ -555,6 +555,8 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 
     static __thread char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
+
+    // Note that tcp_socket_recv_all() will modify the iov
     iov.iov_base = sink_buf;
     iov.iov_len = header_size;
 
@@ -604,6 +606,9 @@ tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc)
         NIOVA_ASSERT(!tmc->tmc_bulk_buf);
 
         rc = tcp_mgr_new_msg_handler(tmc);
+        if (rc == -EAGAIN) // Nothing to do on this socket
+            return;
+
         if (rc < 0)
             SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
     }
@@ -616,6 +621,7 @@ tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc)
         rc = tcp_mgr_bulk_progress_recv(tmc);
         if (rc < 0)
             SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
+
         else if (!tmc->tmc_bulk_remain)
             rc = tcp_mgr_bulk_complete(tmc);
     }
