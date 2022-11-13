@@ -118,6 +118,10 @@ tcp_mgr_worker(void *arg)
 
         tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
 
+        int rc = epoll_handle_mod(tmi->tmi_epoll_mgr, &tmc->tmc_eph);
+        if (rc != 0)
+            LOG_MSG(LL_DEBUG, "epoll_handle_mod(): %s", strerror(-rc));
+
         niova_mutex_unlock(&tmcq->tmcq_mutex);
     }
 
@@ -642,7 +646,10 @@ tcp_mgr_conn_recv_handoff(struct tcp_mgr_connection *tmc)
 
     niova_mutex_lock(&tmi->tmi_connq.tmcq_mutex);
     if (tmc->tmc_handoff)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "tmc=%p handoff already set", tmc);
         goto out;
+    }
 
     tmc->tmc_handoff = 1;
 
@@ -722,7 +729,9 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (incoming->tmc_eph.eph_installed)
         epoll_handle_del(tmi->tmi_epoll_mgr, &incoming->tmc_eph);
 
-    tcp_mgr_connection_epoll_add(owned, EPOLLIN, tcp_mgr_recv_cb,
+    uint32_t events = EPOLLIN | (tmi->tmi_conn_recv_handoff ? EPOLLONESHOT : 0);
+
+    tcp_mgr_connection_epoll_add(owned, events, tcp_mgr_recv_cb,
                                  tmi->tmi_connection_ref_cb);
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");
