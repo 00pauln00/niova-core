@@ -2,13 +2,13 @@ package serfAgent
 
 import (
 	"bufio"
+	"fmt"
 	"log"
 	"net"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
-//	"errors"
+	//	"errors"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 )
@@ -27,15 +27,13 @@ Methods:
 */
 type SerfAgentHandler struct {
 	//Exported
-	Name        string //Name of the agent
-	BindAddr    net.IP //Addr for inter agent communcations
-	RpcAddr     net.IP //Addr for agent-client communication
-	AgentLogger *log.Logger
+	Name              string //Name of the agent
+	BindAddr          net.IP //Addr for inter agent communcations
+	RpcAddr           net.IP //Addr for agent-client communication
+	AgentLogger       *log.Logger
 	ServicePortRangeS uint16
 	ServicePortRangeE uint16
-	PMDBPortRangeS	  uint16
-	PMDBPortRangeE	  uint16
-
+	RpcPort           uint16
 	//non-exported
 	joinAddrs   []string
 	agentObj    *agent.Agent
@@ -76,30 +74,17 @@ Description : Starts the created agent in setup, and listenes on rpc channel
 */
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	var err error
-
 	for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
 		Handler.setup()
-		fmt.Println("Trying to bind with port - ", Handler.ServicePortRangeS)
 		err = Handler.agentObj.Start()
 		if err != nil {
 			Handler.ServicePortRangeS += 1
 			continue
 		} else {
-			fmt.Println("Successfuly binded serf agentObj to - ", Handler.ServicePortRangeS)
+			fmt.Println("Succesfully binded to port - ", Handler.ServicePortRangeS)
 			break
 		}
 	}
-	/*
-	err := Handler.agentObj.Start()
-	for (err != nil) && (Handler.ServicePortRangeS <= Handler.ServicePortRangeE) {
-                Handler.ServicePortRangeS += 1
-		Handler.setup()
-        	err = Handler.agentObj.Start()
-	}
-	if (err != nil) {
-                return errors.New("All port in use")
-        }
-	*/
 
 	if !requireRPC {
 		return err
@@ -123,25 +108,16 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 
 	var rpcListener net.Listener
 	for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
-		fmt.Println("Trying to bind RPC with port - ", Handler.ServicePortRangeS)
-		rpcListener, err = net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.ServicePortRangeS)))
+		Handler.RpcPort = Handler.ServicePortRangeS
+		rpcListener, err = net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
 		if err != nil {
 			Handler.ServicePortRangeS += 1
 			continue
 		} else {
-			fmt.Println("Succesfully binded RPC Port to - ", Handler.ServicePortRangeS)
+			fmt.Println("Succesfully binded RPC Port to - ", Handler.RpcPort)
 			break
 		}
 	}
-	/*
-	for (err != nil) && (Handler.ServicePortRangeS <= Handler.ServicePortRangeE) {
-		Handler.ServicePortRangeS += 1
-		rpcListener, err = net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.ServicePortRangeS)))
-	}
-	if (err != nil) {
-		return errors.New("All port in use")
-	}
-	*/
 	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, "", rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
 
 	return nil
@@ -187,7 +163,7 @@ Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) SerfAgentStartup(RPCRequired bool) (int, error) {
+func (Handler *SerfAgentHandler) SerfAgentStartup(joinAddrs []string, RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
@@ -298,15 +274,17 @@ func (Handler *SerfAgentHandler) getServerAddress(staticSerfConfigPath string) e
 	if err != nil {
 		return err
 	}
-	filescanner := bufio.NewScanner(reader)
+	scanner := bufio.NewScanner(reader)
 	scanner.Scan()
-        IPAddrs := scanner.Text()
+	IPAddrs := scanner.Text()
 	Handler.joinAddrs = strings.Split(IPAddrs, " ")
 
-        //Read Ports
-        scanner.Scan()
-        Ports := strings.Split(scanner.Text(), " ")
-        Handler.PMDBPortRangeS = uint16(Ports[0])
-        Handler.PMDBPortRangeE = uint16(Ports[1])
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	Handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	Handler.ServicePortRangeE = uint16(temp)
 	return nil
 }

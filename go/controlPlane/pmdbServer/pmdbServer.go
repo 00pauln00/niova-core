@@ -11,8 +11,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"hash/crc32"
 	"io/ioutil"
 	defaultLogger "log"
@@ -24,6 +22,9 @@ import (
 	"strconv"
 	"strings"
 	"unsafe"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -40,22 +41,22 @@ var encodingOverhead = 256
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct {
-	raftUUID           uuid.UUID
-	peerUUID           uuid.UUID
-	logDir             string
-	logLevel           string
-	gossipClusterFile  string
-	servicePortRangeS  uint16
-	servicePortRangeE  uint16
-	hport              uint16
-	prometheus         bool
-	nodeAddr           net.IP
-	GossipData         map[string]string
-	ConfigString       string
-	ConfigData         []PumiceDBCommon.PeerConfigData
-	lookoutInstance    lookout.EPContainer
-	serfAgentHandler   serfAgent.SerfAgentHandler
-	portRange	   []int16
+	raftUUID          uuid.UUID
+	peerUUID          uuid.UUID
+	logDir            string
+	logLevel          string
+	gossipClusterFile string
+	servicePortRangeS uint16
+	servicePortRangeE uint16
+	hport             uint16
+	prometheus        bool
+	nodeAddr          net.IP
+	GossipData        map[string]string
+	ConfigString      string
+	ConfigData        []PumiceDBCommon.PeerConfigData
+	lookoutInstance   lookout.EPContainer
+	serfAgentHandler  serfAgent.SerfAgentHandler
+	portRange         []uint16
 }
 
 func main() {
@@ -100,10 +101,10 @@ func main() {
 	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
 	ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7] + "ctl-interface/"
 	serverHandler.lookoutInstance = lookout.EPContainer{
-		MonitorUUID:      nso.peerUuid.String(),
-		AppType:          "PMDB",
+		MonitorUUID: nso.peerUuid.String(),
+		AppType:     "PMDB",
 		//HttpPort:         int(serverHandler.hport),
-		PortRange:	  serverHandler.portRange[20:40],
+		PortRange:        serverHandler.portRange[20:40],
 		CTLPath:          ctl_path,
 		SerfMembershipCB: serverHandler.SerfMembership,
 		EnableHttp:       serverHandler.prometheus,
@@ -132,12 +133,12 @@ func usage() {
 	os.Exit(0)
 }
 
-func makeRange(min, max int) []int16 {
-a := make([]int16, max-min+1)
-for i := range a {
-    a[i] = int16(min + i)
-}
-return a
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
 }
 
 func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
@@ -157,7 +158,6 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
 	flag.Parse()
 
-	handler.portRange = makeRange(6000,7000)
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
 	handler.peerUUID, _ = uuid.FromString(tempPeerUUID)
 	nso := &NiovaKVServer{}
@@ -256,16 +256,23 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	}
 	scanner := bufio.NewScanner(f)
 	/*
-	Following is the format of gossipNodes file
-	PMDB server addrs with space separated
-	Start_port End_port
+		Following is the format of gossipNodes file
+		PMDB server addrs with space separated
+		Start_port End_port
 	*/
 	scanner.Scan()
+	IPAddrs := strings.Split(scanner.Text(), " ")
+	handler.nodeAddr = net.ParseIP(IPAddrs[0])
 	//Read Ports
 	scanner.Scan()
 	Ports := strings.Split(scanner.Text(), " ")
-	handler.servicePortRangeS = uint16(Ports[0])
-	handler.servicePortRangeE = uint16(Ports[1])
+	temp, _ := strconv.Atoi(Ports[0])
+	handler.servicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	handler.servicePortRangeE = uint16(temp)
+
+	//Set port range array
+	handler.portRange = makeRange(handler.servicePortRangeS, handler.servicePortRangeE)
 	return nil
 }
 
@@ -290,9 +297,8 @@ func generateCheckSum(data map[string]string) (string, error) {
 
 func (handler *pmdbServerHandler) getAddrList() []string {
 	var addrs []string
-	for i := 0;i <= 20;i++ {
-		fmt.Println(handler.nodeAddr.String() + ":" + strconv.Itoa(int(handler.portRange[i])))
-		addrs = append(addrs, handler.nodeAddr.String() + ":" + strconv.Itoa(int(handler.portRange[i])))
+	for i := 0; i <= 20; i++ {
+		addrs = append(addrs, handler.nodeAddr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
 	}
 	return addrs
 }
@@ -317,37 +323,24 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 
 	//defaultLogger.SetOutput(ioutil.Discard)
 	serfAgentHandler := serfAgent.SerfAgentHandler{
-		Name:     		handler.peerUUID.String(),
-		BindAddr: 		handler.nodeAddr,
-		AgentLogger: 		defaultLogger.Default(),
-		RpcAddr: 		handler.nodeAddr,
-		ServicePortRangeS: 	handler.servicePortRangeS,
-		ServicePortRangeE: 	handler.servicePortRangeE,
+		Name:              handler.peerUUID.String(),
+		BindAddr:          handler.nodeAddr,
+		AgentLogger:       defaultLogger.Default(),
+		RpcAddr:           handler.nodeAddr,
+		ServicePortRangeS: handler.servicePortRangeS,
+		ServicePortRangeE: handler.servicePortRangeE,
 	}
-<<<<<<< Updated upstream
 
 	joinAddrs := handler.getAddrList()
 
 	//Start serf agent
 	_, err = serfAgentHandler.SerfAgentStartup(joinAddrs, true)
-=======
-	serfAgentHandler.AgentLogger = defaultLogger.Default()
-	serfAgentHandler.RpcAddr = handler.nodeAddr
-	serfAgentHandler.ServicePortRangeS = handler.servicePortRangeS
-	serfAgentHandler.ServicePortRangeE = handler.servicePortRangeE
-	err = serfAgentHandler.ReadGossipNodesFile(handler.gossipClusterFile)
-	if err != nil {
-		log.Error("Error while reading gossipNodes file in serf agent ", err)
-	}
-	//Start serf agent
-	_, err = serfAgentHandler.SerfAgentStartup(true)
->>>>>>> Stashed changes
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
 	handler.readPMDBServerConfig()
 	handler.GossipData["Type"] = "PMDB_SERVER"
-	//handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
+	handler.GossipData["Rport"] = strconv.Itoa(int(serfAgentHandler.RpcPort))
 	handler.GossipData["RU"] = handler.raftUUID.String()
 	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
 	if err != nil {

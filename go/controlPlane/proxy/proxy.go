@@ -3,8 +3,8 @@ package main
 import (
 	//"bufio"
 	"bytes"
-	"common/httpServer"
 	"common/httpClient"
+	"common/httpServer"
 	"common/requestResponseLib"
 	"common/serfAgent"
 	"common/serfClient"
@@ -14,8 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"hash/crc32"
 	"io/ioutil"
 	defaultLogger "log"
@@ -29,6 +27,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 //Structure for proxy
@@ -63,7 +64,7 @@ type proxyHandler struct {
 	httpServerObj httpServer.HTTPServerHandler
 
 	//Port range
-	portRange     []uint16
+	portRange []uint16
 }
 
 var MaxPort = 60000
@@ -119,23 +120,22 @@ Hport //Http listener port
 
 */
 func (handler *proxyHandler) getConfigData(config string) error {
-	portRangeStart, err := strconv.Atoi(strings.Split(config,"-")[0])
-	portRangeEnd, err := strconv.Atoi(strings.Split(config,"-")[1])
+	portRangeStart, err := strconv.Atoi(strings.Split(config, "-")[0])
+	portRangeEnd, err := strconv.Atoi(strings.Split(config, "-")[1])
 	if err != nil {
 		return err
 	}
 
-	for i:=portRangeStart; i<=portRangeEnd; i++ {
+	for i := portRangeStart; i <= portRangeEnd; i++ {
 		handler.portRange = append(handler.portRange, uint16(i))
 	}
-
 
 	if len(handler.portRange) < 3 {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
 
 	handler.addr = net.IPv4(0, 0, 0, 0)
-	
+
 	return err
 }
 
@@ -161,9 +161,9 @@ func (handler *proxyHandler) startPMDBClient() error {
 	if err != nil {
 		return err
 	}
-	
+
 	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
-	for (err != nil) {
+	for err != nil {
 		leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
 	}
 	log.Info("Leader uuid : ", leaderUuid.String())
@@ -172,6 +172,14 @@ func (handler *proxyHandler) startPMDBClient() error {
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
 
+}
+
+func (handler *proxyHandler) getAddrList() []string {
+	var addrs []string
+	for i := 0; i <= 20; i++ {
+		addrs = append(addrs, handler.addr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
+	}
+	return addrs
 }
 
 /*
@@ -204,13 +212,10 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
 	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
-	err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
-	if err != nil {
-		return err
-	}
 
+	joinAddrs := handler.getAddrList()
 	//Start serf agent
-	_, err = handler.serfAgentObj.SerfAgentStartup(true)
+	_, err := handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
 	return err
 }
 
@@ -421,11 +426,11 @@ Description : A wrapper for PMDB ReadCallBack
 */
 func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
 	var request requestResponseLib.KVRequest
-        request.Operation = "read"
-        request.Key = key
-        var requestBytes bytes.Buffer
-        enc := gob.NewEncoder(&requestBytes)
-        enc.Encode(request)
+	request.Operation = "read"
+	request.Key = key
+	var requestBytes bytes.Buffer
+	enc := gob.NewEncoder(&requestBytes)
+	enc.Encode(request)
 	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), "", response)
 }
 
@@ -518,7 +523,6 @@ func (handler *proxyHandler) killSignalHandler() {
 	}()
 }
 
-
 /*
 Structure : proxyHandler
 Method    : checkHTTPLiveness
@@ -570,25 +574,25 @@ func main() {
 	}
 
 	/*
-	//get config data
-	err = proxyObj.getConfigData()
-	if err != nil {
-		log.Error("(Proxy) Error while getting config data : ", err)
-		os.Exit(1)
-	}
+		//get config data
+		err = proxyObj.getConfigData()
+		if err != nil {
+			log.Error("(Proxy) Error while getting config data : ", err)
+			os.Exit(1)
+		}
 	*/
 	//Get PMDB server config data
-        err = proxyObj.GetPMDBServerConfig()
-        if err != nil {
-                log.Error("Could not get PMDB Server config data : ", err)
-                os.Exit(1)
-        }
+	err = proxyObj.GetPMDBServerConfig()
+	if err != nil {
+		log.Error("Could not get PMDB Server config data : ", err)
+		os.Exit(1)
+	}
 
 	err = proxyObj.startPMDBClient()
-        if err != nil {
-                log.Error("(Niovakv Server) Error while starting pmdb client : ", err)
-                os.Exit(1)
-        }
+	if err != nil {
+		log.Error("(Niovakv Server) Error while starting pmdb client : ", err)
+		os.Exit(1)
+	}
 
 	//Get config data from PMDB
 	var config []byte
@@ -603,13 +607,13 @@ func main() {
 
 	//Apply config
 	err = proxyObj.getConfigData(string(response.ResultMap[proxyObj.raftUUID.String()+"_Port_Range"]))
-        if err != nil {
-                log.Error("(Proxy) Error while getting config data : ", err)
-                os.Exit(1)
-        }
+	if err != nil {
+		log.Error("(Proxy) Error while getting config data : ", err)
+		os.Exit(1)
+	}
 	//Start serf agent handler
 	log.Info("Starting serf agent handler")
-	for i=0; i< len(proxyObj.portRange); i++ {
+	for i = 0; i < len(proxyObj.portRange); i++ {
 		//Iterate over ports in the range
 		proxyObj.serfAgentPort = proxyObj.portRange[i]
 		proxyObj.serfAgentRPCPort = proxyObj.portRange[i+1]
@@ -625,11 +629,11 @@ func main() {
 		}
 		break
 	}
-	
+
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
-		for ;i< len(proxyObj.portRange); i++ {
+		for ; i < len(proxyObj.portRange); i++ {
 			//Iterate over ports in the range
 			proxyObj.httpPort = proxyObj.portRange[i]
 			err = proxyObj.startHTTPServer()

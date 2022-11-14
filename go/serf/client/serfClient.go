@@ -3,10 +3,12 @@ package serfClient
 import (
 	"bufio"
 	"errors"
-	"math/rand"
-	"os"
-	"strings"
 	"github.com/hashicorp/serf/client"
+	"math/rand"
+	"net"
+	"os"
+	"strconv"
+	"strings"
 )
 
 /*
@@ -22,19 +24,37 @@ type SerfClientHandler struct {
 	Agents  []client.Member //Holds all agent names in cluster, initialized with few known agent names
 	Retries int             //No of retries to connect with any agent
 	//Un-exported
-	loadedGossipNodesAddr	[]string
-	PMDBPortRangeS		uint16
-	PMDBPortRangeE		uint16
-	agentConnection		*client.RPCClient
-	connectionExist		bool
+	loadedGossipNodes []string
+	ipAddrs           net.IP
+	portRange         []uint16
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
+	agentConnection   *client.RPCClient
+	connectionExist   bool
+}
+
+func (handler *SerfClientHandler) getAddrList() []string {
+	var addrs []string
+	for i := 0; i <= 40; i++ {
+		addrs = append(addrs, handler.ipAddrs.String()+":"+strconv.Itoa(int(handler.portRange[i])))
+	}
+	return addrs
+}
+
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
 }
 
 func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	//Get addrs and Rports and store it in AgentAddrs and
 	/*
-	Following is the format of gossipNodes config File
-	IPAddrs with space seperated
-	Sport Eport
+		Following is the format of gossipNodes config File
+		IPAddrs with space seperated
+		Sport Eport
 	*/
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
 		return err
@@ -45,15 +65,21 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	}
 
 	scanner := bufio.NewScanner(reader)
+	//Read IPAddrs
 	scanner.Scan()
-        IPAddrs := scanner.Text()
-        handler.loadedGossipNodesAddr = strings.Split(IPAddrs, " ")
+	IPAddrs := strings.Split(scanner.Text(), " ")
+	//TODO Parse IPs Into array
+	Handler.ipAddrs = net.ParseIP(IPAddrs[0])
 
-        //Read Ports
-        scanner.Scan()
+	//Read Ports
+	scanner.Scan()
 	Ports := strings.Split(scanner.Text(), " ")
-        handler.PMDBPortRangeS = uint16(Ports[0])
-        handler.PMDBPortRangeE = uint16(Ports[1])
+	temp, _ := strconv.Atoi(Ports[0])
+	Handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	Handler.ServicePortRangeE = uint16(temp)
+
+	Handler.portRange = makeRange(Handler.ServicePortRangeS, Handler.ServicePortRangeE)
 	return nil
 }
 
@@ -71,6 +97,7 @@ func (Handler *SerfClientHandler) InitData(configpath string) error {
 		return err
 	}
 
+	Handler.loadedGossipNodes = Handler.getAddrList()
 	for _, addr := range Handler.loadedGossipNodes {
 		connectClient, err = Handler.connectAddr(addr)
 		if err == nil {
@@ -164,15 +191,14 @@ func (Handler *SerfClientHandler) GetPMDBConfig() string {
 	return ""
 }
 
-
 func (Handler *SerfClientHandler) GetTags(filterKey string, filterValue string) map[string]map[string]string {
-        returnMap := make(map[string]map[string]string)
-        for _, mem := range Handler.Agents {
-                if mem.Tags[filterKey] == filterValue {
-                        returnMap[mem.Name] = mem.Tags
-                }
-        }
-        return returnMap
+	returnMap := make(map[string]map[string]string)
+	for _, mem := range Handler.Agents {
+		if mem.Tags[filterKey] == filterValue {
+			returnMap[mem.Name] = mem.Tags
+		}
+	}
+	return returnMap
 }
 
 /*
