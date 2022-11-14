@@ -5710,184 +5710,6 @@ raft_server_instance_buffer_set_destroy(struct raft_instance *ri)
     }
 }
 
-
-static void
-raft_server_process_rw_request(struct raft_instance *ri,
-                               struct ctl_svc_node *csn,
-                               char *recv_buf,
-                               char *reply_buf)
-{
-#if 0
-    size_t recv_bytes = 0;
-
-    // Read the complete request from the socket
-    int rc = raft_net_recv_request(csn, recv_buf, &recv_bytes, true);
-
-    if (rc || !recv_buf || !recv_bytes || !ri->ri_server_sm_request_cb ||
-        recv_bytes < sizeof(struct raft_client_rpc_msg))
-    {
-        LOG_MSG(LL_WARN, "sanity check fail, buf %p bytes %ld cb %p",
-                recv_buf, recv_bytes, ri->ri_server_sm_request_cb);
-        return;
-    }
-
-    const struct raft_client_rpc_msg *rcm =
-        (const struct raft_client_rpc_msg *)recv_buf;
-
-    // Only read operations are handled through threads right now.
-    NIOVA_ASSERT(rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_READ);
-
-    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
-
-    struct raft_net_client_request_handle rncr;
-
-    raft_server_net_client_request_init_client_rpc(
-        ri, &rncr, rcm, NULL, reply_buf,
-        reply_size, csn);
-
-    int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-    enum log_level log_level = cb_rc ? LL_DEBUG : LL_NOTIFY;
-    DBG_RAFT_CLIENT_RPC(log_level, rcm,
-                        "read_op op_error=%s, cb_rc=%s",
-                        strerror(-rncr.rncr_op_error), strerror(-cb_rc));
-
-    if (cb_rc)
-        return;
-
-    /* cb's may run for a long time and the server may have been deposed
-     * Xxx note that SM write requests left in this state may require
-     *   cleanup.
-     */
-    rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-    {
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        return;
-    }
-
-    // Send reply back for Read operation.
-    raft_server_reply_to_client(ri, &rncr, csn);
-#endif
-}
-
-static raft_server_rw_thread_t
-raft_server_rw_thread(void *arg)
-{
-    struct thread_ctl *tc = arg;
-    struct raft_rw_worker_thread *rw_thr =
-        (struct raft_rw_worker_thread *)thread_ctl_get_arg(tc);
-
-    struct raft_work_queue *queue = rw_thr->rrwt_queue;
-    THREAD_LOOP_WITH_CTL(tc)
-    {
-        struct ctl_svc_node *csn = NULL;
-
-        // Wait for item in the queue.
-        NIOVA_WAIT_COND(
-            (!STAILQ_EMPTY(&queue->rsw_queue) || tc->tc_halt),
-            &queue->rsw_mutex, &queue->rsw_cond,
-            {
-                if (!STAILQ_EMPTY(&queue->rsw_queue))
-                {
-                    csn = STAILQ_FIRST(&queue->rsw_queue);
-                    STAILQ_REMOVE_HEAD(&queue->rsw_queue, csn_lentry);
-                }
-            });
-
-        if (csn)
-        {
-            struct raft_instance *ri =
-                   (struct raft_instance *)rw_thr->rrwt_arg;
-            raft_server_process_rw_request(ri, csn, rw_thr->rrwt_recv_buff,
-                                           rw_thr->rrwt_reply_buff);
-            //Re-arm the epoll
-//            raft_net_bulk_complete(csn);
-            ctl_svc_node_put(csn);
-        }
-    }
-    return (void *)0;
-}
-
-static int
-raft_server_rw_thread_init(struct raft_instance *ri,
-                           struct raft_rw_worker_thread *thread,
-                           enum raft_server_bulk_msg_type type)
-{
-
-     size_t buf_size = RAFT_BS_LARGE_SZ;
-    // XXX should we allocate recv and reply buffers on demand?
-     thread->rrwt_recv_buff = niova_malloc(buf_size);
-     NIOVA_ASSERT(thread->rrwt_recv_buff);
-     thread->rrwt_reply_buff = niova_malloc(buf_size);
-     NIOVA_ASSERT(thread->rrwt_reply_buff);
-
-     thread->rrwt_queue = &ri->ri_worker_queue[type];
-     thread->rrwt_arg = ri;
-
-     int rc = thread_create_watched(raft_server_rw_thread,
-                                    &thread->rrwt_thread_ctl,
-                                    "rd_thread",
-                                    (void *)thread,
-                                    NULL);
-     if (rc)
-	     return rc;
-
-     thread_ctl_run(&thread->rrwt_thread_ctl);
-
-     return 0;
-}
-
-static int
-raft_server_rw_threads_start(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
-
-    // Initialize the reader queue(s)
-    for (int i = 0; i < RAFT_SERVER_BULK_MSG_MAX; i++)
-    {
-        struct raft_work_queue *queue = &ri->ri_worker_queue[i];
-        STAILQ_INIT(&queue->rsw_queue);
-        pthread_mutex_init(&queue->rsw_mutex, NULL);
-        pthread_cond_init(&queue->rsw_cond, NULL);
-    }
-
-    // Start Reader threads.
-    for (int i = 0; i < RAFT_NUM_READ_THREADS; i++)
-        raft_server_rw_thread_init(ri, &ri->ri_reader_thread_ctl[i],
-                                   RAFT_SERVER_BULK_MSG_READ);
-
-    return 0;
-}
-
-static int
-raft_server_rw_thread_join(struct raft_instance *ri)
-{
-    NIOVA_ASSERT(ri && raft_instance_is_shutdown(ri));
-
-    int rc = 0, rc_error = 0;
-    struct raft_work_queue *rwq = NULL;
-
-    for (int i = 0; i < RAFT_NUM_READ_THREADS; i++)
-    {
-         rwq = &ri->ri_worker_queue[RAFT_SERVER_BULK_MSG_READ];
-         NIOVA_SET_COND_AND_WAKE(
-            broadcast,
-            { thread_ctl_halt(&ri->ri_reader_thread_ctl[i].rrwt_thread_ctl); },
-            &rwq->rsw_mutex, &rwq->rsw_cond);
-
-         rc = thread_halt_and_destroy(
-             &ri->ri_reader_thread_ctl[i].rrwt_thread_ctl);
-
-         if (rc)
-             rc_error = rc;
-    }
-
-    LOG_MSG(((rc && !ri->ri_startup_error) ? LL_WARN : LL_NOTIFY),
-            "thread_halt_and_destroy(): %s", strerror(-rc));
-
-    return rc_error;
-}
-
 static int
 raft_server_instance_startup(struct raft_instance *ri)
 {
@@ -5954,11 +5776,6 @@ raft_server_instance_startup(struct raft_instance *ri)
             goto out;
     }
 
-    // Start writer/reader thread(s)
-    rc = raft_server_rw_threads_start(ri);
-    if (rc)
-        goto out;
-
     if (ri->ri_backend->rib_backend_checkpoint)
     {
         rc = raft_server_chkpt_thread_start(ri);
@@ -6003,7 +5820,6 @@ raft_server_instance_shutdown(struct raft_instance *ri)
 
     int rc_chkpt = raft_server_chkpt_thread_join(ri);
     int rc_sync = raft_server_sync_thread_join(ri);
-    int rc_rw = raft_server_rw_thread_join(ri);
     int rc_backend_close = raft_server_backend_close(ri);
     int rc_evp_cleanup = raft_server_evp_cleanup(ri);
     int mutex_rc = pthread_mutex_destroy(&ri->ri_newest_entry_mutex);
@@ -6030,14 +5846,6 @@ raft_server_instance_shutdown(struct raft_instance *ri)
                        strerror(-rc_sync));
         if (!rc)
             rc = rc_sync;
-    }
-
-    if (rc_rw)
-    {
-        SIMPLE_LOG_MSG(ll, "raft_server_rw_thread_join(): %s",
-                       strerror(-rc_sync));
-        if (!rc)
-            rc = rc_rw;
     }
 
     if (rc_backend_close)

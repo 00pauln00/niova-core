@@ -117,7 +117,7 @@ enum raft_buf_set_size
 enum raft_buf_set_nbuf
 {
     RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
-    RAFT_BS_LARGE_NBUF = RAFT_NUM_READ_THREADS + RAFT_NUM_WRITE_THREADS,
+    RAFT_BS_LARGE_NBUF = TCP_MGR_NTHREADS,
 };
 
 struct raft_vote_request_msg
