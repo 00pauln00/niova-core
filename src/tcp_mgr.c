@@ -108,7 +108,13 @@ tcp_mgr_worker(void *arg)
 
         NIOVA_ASSERT(tmc->tmc_handoff);
 
-        // do work
+        /* Start work.  Note: this method ensures that only a single operation,
+         * per connection, will be processed at any one time.  This ensures that
+         * a greedy client will not occupy all processing threads.  If this
+         * behavior were to be changed, it's likely that a per-connection send
+         * mutex would be required to prevent interleaving of reply contents on
+         * the socket.
+         */
         tcp_mgr_conn_recv_inline(tmc);
         // end work
 
