@@ -59,9 +59,9 @@ type nisdMonitor struct {
 	gossipNodesPath   string
 	serfLogger        string
 	raftUUID          string
-	PortRange         []int16
-	ServicePortRangeS int16
-	ServicePortRangeE int16
+	PortRange         []uint16
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
 }
 
 var RecvdPort int
@@ -186,13 +186,13 @@ func (handler *nisdMonitor) startSerfAgent() error {
 		//RpcPort:     uint16(handler.agentRPCPort),
 	}
 
-	err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
+	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
 	if err != nil {
 		return err
 	}
 
 	//Start serf agent
-	_, err = handler.serfHandler.SerfAgentStartup(true)
+	_, err = handler.serfHandler.SerfAgentStartup(joinAddrs, true)
 	return err
 }
 
@@ -311,7 +311,7 @@ func (handler *nisdMonitor) getConfigData(config string) error {
 	}
 
 	for i := portRangeStart; i <= portRangeEnd; i++ {
-		handler.PortRange = append(handler.PortRange, int16(i))
+		handler.PortRange = append(handler.PortRange, uint16(i))
 	}
 
 	if len(handler.PortRange) < 3 {
