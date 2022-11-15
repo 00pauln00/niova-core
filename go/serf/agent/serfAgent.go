@@ -133,9 +133,8 @@ Return value : int, error
 Description : Joins the cluster
 */
 func (Handler *SerfAgentHandler) join(addrs []string) (int, error) {
-	//fmt.Println(Handler.agentObj)
 	no_of_nodes, err := Handler.agentObj.Join(addrs, false) //Change with deployment add :Handler.Bindport
-	fmt.Println("Serf agent found ", no_of_nodes, " in the cluster")
+	fmt.Println("Serf agent found ", no_of_nodes, " nodes in the cluster")
 	return no_of_nodes, err
 }
 
@@ -180,8 +179,8 @@ func (Handler *SerfAgentHandler) SerfAgentStartup(joinAddrs []string, RPCRequire
 	}
 
 	//Join the cluster
-	if len(Handler.joinAddrs) != 0 {
-		memcount, _ = Handler.join(Handler.joinAddrs)
+	if len(joinAddrs) != 0 {
+		memcount, _ = Handler.join(joinAddrs)
 	}
 	return memcount, err
 }
