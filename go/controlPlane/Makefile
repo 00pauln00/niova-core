@@ -8,7 +8,7 @@ export CGO_CFLAGS
 export LD_LIBRARY_PATH
 export PATH
 
-install_all: compile pmdbserver proxyserver ncpcclient install docker_support
+install_all: compile pmdbserver proxyserver ncpcclient configapp install docker_support
 
 install_only: compile pmdbserver proxyserver ncpcclient install
 
@@ -24,6 +24,9 @@ proxyserver:
 ncpcclient:
 	cd ncpc &&  go mod tidy && go build ncpc.go
 
+configapp:
+	cd configApplication && go mod tidy && go build configApplication.go
+
 install:
 	cp pmdbServer/pmdbServer ${DIR}/libexec/niova/CTLPlane_pmdbServer
 
@@ -34,6 +37,8 @@ install:
 	cp proxy/config ${DIR}/libexec/niova/niovakv.config
 
 	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
+
+	cp configApplication/cfgApp ${DIR}/libexec/niova/cfgApp
 
 docker_support:
 	cp -r docker/* ${DIR}
