@@ -7,8 +7,6 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"net"
@@ -20,6 +18,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 )
 
 var HttpPort int
@@ -37,8 +38,8 @@ type EPContainer struct {
 	mutex            sync.Mutex
 	run              bool
 	httpQuery        map[string](chan []byte)
-	PortRange	 []int16
-	RetPort		 *int
+	PortRange        []uint16
+	RetPort          *int
 }
 
 func (epc *EPContainer) tryAdd(uuid uuid.UUID) {
@@ -424,7 +425,7 @@ func (epc *EPContainer) serveHttp() error {
 	mux.HandleFunc("/v1/", epc.QueryHandle)
 	mux.HandleFunc("/v0/", epc.HttpHandle)
 	mux.HandleFunc("/metrics", epc.MetricsHandler)
-	for i := 0;i<len(epc.PortRange);i++ {
+	for i := 0; i < len(epc.PortRange); i++ {
 		epc.HttpPort = int(epc.PortRange[i])
 		*epc.RetPort = epc.HttpPort
 		l, err := net.Listen("tcp", ":"+strconv.Itoa(epc.HttpPort))
@@ -471,14 +472,14 @@ func (epc *EPContainer) Start() error {
 	//Start http service
 	if epc.EnableHttp {
 		epc.httpQuery = make(map[string](chan []byte))
-		go func(){
+		go func() {
 			err_r := epc.serveHttp()
 			errs <- err_r
-			if(<-errs != nil){
+			if <-errs != nil {
 				return
 			}
 		}()
-		if err := <- errs; err != nil {
+		if err := <-errs; err != nil {
 			return err
 		}
 	}
