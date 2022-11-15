@@ -34,6 +34,7 @@ type SerfAgentHandler struct {
 	ServicePortRangeS uint16
 	ServicePortRangeE uint16
 	RpcPort           uint16
+	Aport             uint16
 	//non-exported
 	joinAddrs   []string
 	agentObj    *agent.Agent
@@ -82,6 +83,7 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 			continue
 		} else {
 			fmt.Println("Succesfully binded to port - ", Handler.ServicePortRangeS)
+			Handler.Aport = Handler.ServicePortRangeS
 			break
 		}
 	}

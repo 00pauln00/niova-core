@@ -483,8 +483,8 @@ func (handler *proxyHandler) setSerfGossipData() {
 	//Static tags
 
 	tag["Hport"] = strconv.Itoa(int(handler.httpPort))
-	tag["Aport"] = strconv.Itoa(int(handler.serfAgentPort))
-	tag["Rport"] = strconv.Itoa(int(handler.serfAgentRPCPort))
+	tag["Aport"] = strconv.Itoa(int(handler.serfAgentObj.Aport))
+	tag["Rport"] = strconv.Itoa(int(handler.serfAgentObj.RpcPort))
 	tag["Type"] = "PROXY"
 	handler.serfAgentObj.SetNodeTags(tag)
 
@@ -613,21 +613,9 @@ func main() {
 	}
 	//Start serf agent handler
 	log.Info("Starting serf agent handler")
-	for i = 0; i < len(proxyObj.portRange); i++ {
-		//Iterate over ports in the range
-		proxyObj.serfAgentPort = proxyObj.portRange[i]
-		proxyObj.serfAgentRPCPort = proxyObj.portRange[i+1]
-		err = proxyObj.startSerfAgent()
-		if err != nil {
-			//Check if the error is a bind error
-			if strings.Contains(err.Error(), "bind") {
-				continue
-			} else {
-				log.Error("Error while starting serf agent : ", err)
-				os.Exit(1)
-			}
-		}
-		break
+	err = proxyObj.startSerfAgent()
+	if err != nil {
+		log.Error("Error while starting Serf Agent")
 	}
 
 	//Start http server
