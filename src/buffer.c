@@ -84,19 +84,17 @@ buffer_set_navail(const struct buffer_set *bs)
     return navail;
 }
 
-struct buffer_item *
-buffer_set_allocate_item(struct buffer_set *bs)
+static struct buffer_item *
+buffer_set_allocate_item_locked(struct buffer_set *bs)
 {
-    if (!bs)
-        return NULL;
-
-    BS_LOCK(bs);
+    NIOVA_ASSERT(bs);
 
     size_t navail = buffer_set_navail_locked(bs);
 
     if (!navail)
     {
         NIOVA_ASSERT(CIRCLEQ_EMPTY(&bs->bs_free_list));
+
         return NULL;
     }
 
@@ -109,6 +107,19 @@ buffer_set_allocate_item(struct buffer_set *bs)
     bs->bs_num_allocated++;
     bi->bi_allocated = true;
 
+    return bi;
+}
+
+struct buffer_item *
+buffer_set_allocate_item(struct buffer_set *bs)
+{
+    if (!bs)
+        return NULL;
+
+    BS_LOCK(bs);
+
+    struct buffer_item *bi = buffer_set_allocate_item_locked(bs);
+
     BS_UNLOCK(bs);
 
     return bi;
@@ -120,9 +131,14 @@ buffer_set_allocate_item_from_pending(struct buffer_set *bs)
     NIOVA_ASSERT(bs);
     NIOVA_ASSERT(bs->bs_num_pndg_alloc > 0);
 
+    BS_LOCK(bs);
+
     bs->bs_num_pndg_alloc--;
-    struct buffer_item *bi = buffer_set_allocate_item(bs);
+    struct buffer_item *bi = buffer_set_allocate_item_locked(bs);
+
     NIOVA_ASSERT(bi);
+
+    BS_UNLOCK(bs);
 
     return bi;
 }
@@ -133,10 +149,18 @@ buffer_set_release_pending_alloc(struct buffer_set *bs, const size_t nitems)
     if (!bs || nitems > bs->bs_num_bufs)
         return -EINVAL;
 
+    BS_LOCK(bs);
+
     if (nitems > bs->bs_num_pndg_alloc)
+    {
+        BS_UNLOCK(bs);
+
         return -EOVERFLOW;
+    }
 
     bs->bs_num_pndg_alloc -= nitems;
+
+    BS_UNLOCK(bs);
 
     return 0;
 }
@@ -150,10 +174,15 @@ buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems)
     BS_LOCK(bs);
 
     if (bs->bs_num_bufs < nitems)
+    {
+        BS_UNLOCK(bs);
         return -ENOMEM;
-
+    }
     else if (buffer_set_navail_locked(bs) < nitems)
+    {
+        BS_UNLOCK(bs);
         return -ENOBUFS;
+    }
 
     bs->bs_num_pndg_alloc += nitems;
 
