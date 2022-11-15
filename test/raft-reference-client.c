@@ -649,6 +649,13 @@ rsc_server_target_is_stale(const struct raft_instance *ri,
                                    RAFT_COMM_RECENCY_UNACKED_SEND,
                                    &recency_ms);
 
+    /* rc of '-EALREADY' means that no msg has been sent OR that a redirect
+     * was sent by another peer server (the reciept of which would clear out
+     * the 'last_send' timestamp).
+     */
+    if (rc == -EALREADY)
+        return false;
+
     return (rc || recency_ms > RSC_STALE_SERVER_TIME_MS) ? true : false;
 }
 

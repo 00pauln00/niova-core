@@ -10,9 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
-	maps "golang.org/x/exp/maps"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -23,27 +20,32 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	uuid "github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+	maps "golang.org/x/exp/maps"
 )
 
 type clientHandler struct {
-	requestKey        string
-	requestValue      string
-	addr              string
-	port              string
-	operation         string
-	configPath        string
-	logPath           string
-	resultFile        string
-	rncui             string
-	rangeQuery        bool
+	requestKey         string
+	requestValue       string
+	addr               string
+	port               string
+	operation          string
+	configPath         string
+	logPath            string
+	resultFile         string
+	rncui              string
+	rangeQuery         bool
 	relaxedConsistency bool
-	count             int
-	seed              int
-	lastKey           string
-	operationMetaObjs []opData //For filling json data
-	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
-	seqNum            uint64
-	valSize           int
+	count              int
+	seed               int
+	lastKey            string
+	operationMetaObjs  []opData //For filling json data
+	clientAPIObj       serviceDiscovery.ServiceDiscoveryHandler
+	seqNum             uint64
+	valSize            int
+	serviceRetry       int
 }
 
 type request struct {
@@ -202,6 +204,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
 	flag.IntVar(&handler.valSize, "vs", 512, "Random value generation size")
 	flag.Uint64Var(&handler.seqNum, "S", math.MaxUint64, "Sequence Number for read")
+	flag.IntVar(&handler.serviceRetry, "sr", 1, "how many times you want to retry to pick the server if proxy is not available")
 	flag.Parse()
 }
 
@@ -549,7 +552,11 @@ func main() {
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady()
+	clientObj.clientAPIObj.TillReady("", clientObj.serviceRetry)
+	if err != nil {
+		log.Error(err)
+		os.Exit(1)
+	}
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
@@ -560,9 +567,21 @@ func main() {
 		clientObj.read()
 
 	case "write":
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+
 		clientObj.write()
 
 	case "read":
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+
 		if !isRangeRequest(clientObj.requestKey) {
 			clientObj.read()
 		} else {
@@ -679,27 +698,27 @@ func main() {
 		}
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
-        case "LookoutInfo":
-                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
-                clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
-                //Request obj
-                var requestObj requestResponseLib.LookoutRequest
+	case "LookoutInfo":
+		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
+		//Request obj
+		var requestObj requestResponseLib.LookoutRequest
 
-                //Parse UUID
-                requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
-                requestObj.Cmd = clientObj.requestValue
+		//Parse UUID
+		requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
+		requestObj.Cmd = clientObj.requestValue
 
-                var requestByte bytes.Buffer
-                enc := gob.NewEncoder(&requestByte)
-                err := enc.Encode(requestObj)
-                if err != nil {
-                        log.Info("Encoding error")
-                }
-                responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
-                
+		var requestByte bytes.Buffer
+		enc := gob.NewEncoder(&requestByte)
+		err := enc.Encode(requestObj)
 		if err != nil {
-                        log.Error("Error while sending request to proxy : ", err)
-                }
+			log.Info("Encoding error")
+		}
+		responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+
+		if err != nil {
+			log.Error("Error while sending request to proxy : ", err)
+		}
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 	}
 

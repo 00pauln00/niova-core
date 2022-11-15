@@ -461,30 +461,29 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-
-    tcp_mgr_recv_cb_t recv_cb = tmi->tmi_recv_cb;
-    tcp_mgr_bulk_size_cb_t bulk_size_cb = tmi->tmi_bulk_size_cb;
     size_t header_size = tmc->tmc_header_size;
 
-    NIOVA_ASSERT(recv_cb && bulk_size_cb && header_size);
+    NIOVA_ASSERT(tmi->tmi_recv_cb && tmi->tmi_bulk_size_cb && header_size &&
+                 header_size <= TCP_MGR_MAX_HDR_SIZE);
 
     static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
     iov.iov_base = sink_buf;
     iov.iov_len = header_size;
 
-    // try twice in case interrupts cause short read
-    ssize_t rc = tcp_socket_recv_all(&tmc->tmc_tsh, &iov, NULL, 2);
+    ssize_t rc = tcp_socket_recv_all(&tmc->tmc_tsh, &iov, NULL, 1024);
     if (rc != header_size)
         return rc < 0 ? rc : -ECOMM;
 
-    rc = bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
-    if (rc < 0)
-        return rc;
+    // Interpret the header to determine size of the bulk
+    ssize_t bulk_size = tmi->tmi_bulk_size_cb(tmc, sink_buf, tmi->tmi_data);
+    if (bulk_size < 0)
+        return bulk_size;
 
-    return rc == 0
-        ? recv_cb(tmc, sink_buf, header_size, tmi->tmi_data)
-        : tcp_mgr_bulk_prepare_and_recv(tmc, rc, sink_buf, header_size);
+    // If there's no bulk proceed to request processor, else read the bulk
+    return bulk_size ?
+        tcp_mgr_bulk_prepare_and_recv(tmc, bulk_size, sink_buf, header_size) :
+        tmi->tmi_recv_cb(tmc, sink_buf, header_size, tmi->tmi_data);
 }
 
 static int
@@ -551,6 +550,8 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
     if (rc < 0)
     {
         SIMPLE_LOG_MSG(LL_DEBUG, "error in recv, closing");
+
+        // Will remove from epoll set
         tcp_mgr_connection_close_internal(tmc);
     }
 }

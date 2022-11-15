@@ -2115,8 +2115,9 @@ raft_net_apply_leader_redirect(struct raft_instance *ri,
     if (rc == -ETIMEDOUT)
         timespec_clear(&ri->ri_last_send[leader_idx]); // "unstale" the leader
 
-    DBG_RAFT_INSTANCE(LL_NOTIFY, ri, "new leader via redirect (idx=%hhu)",
-                      leader_idx);
+    DBG_RAFT_INSTANCE(LL_NOTIFY, ri,
+                      "new leader via redirect (idx=%hhu) (rc=%d)",
+                      leader_idx, rc);
 
     return 0;
 }

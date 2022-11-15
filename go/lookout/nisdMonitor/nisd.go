@@ -13,7 +13,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"net"
@@ -22,6 +21,8 @@ import (
 	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/google/uuid"
 )
 
 // #include <unistd.h>
@@ -50,15 +51,15 @@ type nisdMonitor struct {
 	httpPort      int
 	ctlPath       *string
 	//serf
-	serfHandler     serfAgent.SerfAgentHandler
-	agentName       string
-	addr            string
-	agentPort       int16
-	agentRPCPort    int16
-	gossipNodesPath string
-	serfLogger      string
-	raftUUID	string
-	PortRange	[]int16
+	serfHandler       serfAgent.SerfAgentHandler
+	agentName         string
+	addr              string
+	agentPort         int16
+	agentRPCPort      int16
+	gossipNodesPath   string
+	serfLogger        string
+	raftUUID          string
+	PortRange         []int16
 	ServicePortRangeS int16
 	ServicePortRangeE int16
 }
@@ -175,8 +176,8 @@ func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
 	//agentPort := handler.agentPort
 	handler.serfHandler = serfAgent.SerfAgentHandler{
-		Name:        handler.agentName,
-		BindAddr:    net.ParseIP(handler.addr),
+		Name:              handler.agentName,
+		BindAddr:          net.ParseIP(handler.addr),
 		ServicePortRangeS: uint16(handler.ServicePortRangeS),
 		ServicePortRangeE: uint16(handler.ServicePortRangeE),
 		//BindPort:    uint16(agentPort),
@@ -212,10 +213,10 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 		//Fill map; will add extra info in future
 		returnMap[cuuid] = cstatus
 	}
-	httpPort  := RecvdPort
+	httpPort := RecvdPort
 	returnMap["Type"] = "LOOKOUT"
 	returnMap["Hport"] = strconv.Itoa(httpPort)
-	return returnMap  
+	return returnMap
 }
 
 //NISD
@@ -245,7 +246,7 @@ func (handler *nisdMonitor) startClientAPI() {
 			os.Exit(1)
 		}
 	}()
-	handler.storageClient.TillReady()
+	handler.storageClient.TillReady("", 0)
 }
 
 //NISD
@@ -303,13 +304,13 @@ func (handler *nisdMonitor) getPortRange() error {
 }
 
 func (handler *nisdMonitor) getConfigData(config string) error {
-	portRangeStart, err := strconv.Atoi(strings.Split(config,"-")[0])
-	portRangeEnd, err := strconv.Atoi(strings.Split(config,"-")[1])
+	portRangeStart, err := strconv.Atoi(strings.Split(config, "-")[0])
+	portRangeEnd, err := strconv.Atoi(strings.Split(config, "-")[1])
 	if err != nil {
 		return err
 	}
 
-	for i:=portRangeStart; i<=portRangeEnd; i++ {
+	for i := portRangeStart; i <= portRangeEnd; i++ {
 		handler.PortRange = append(handler.PortRange, int16(i))
 	}
 
@@ -323,7 +324,7 @@ func (handler *nisdMonitor) getConfigData(config string) error {
 func (handler *nisdMonitor) checkHTTPLiveness() {
 	var emptyByteArray []byte
 	for {
-		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort)) + "/check", false)
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
 		if err != nil {
 			fmt.Println("HTTP Liveness - ", err)
 		} else {
@@ -335,10 +336,10 @@ func (handler *nisdMonitor) checkHTTPLiveness() {
 }
 
 func (handler *nisdMonitor) findFreePort() int {
-	for i := 0; i<len(handler.PortRange); i++ {
+	for i := 0; i < len(handler.PortRange); i++ {
 		handler.httpPort = int(handler.PortRange[i])
 		fmt.Println("Trying to bind with - ", int(handler.httpPort))
-		check, err := net.Listen("tcp", handler.addr + ":" + strconv.Itoa(int(handler.httpPort)))
+		check, err := net.Listen("tcp", handler.addr+":"+strconv.Itoa(int(handler.httpPort)))
 		if err != nil {
 			if strings.Contains(err.Error(), "bind") {
 				continue
@@ -385,14 +386,14 @@ func main() {
 
 	//Start lookout monitoring
 	nisd.lookout = lookout.EPContainer{
-		MonitorUUID:      "*",
-		AppType:          "NISD",
+		MonitorUUID: "*",
+		AppType:     "NISD",
 		//HttpPort:         nisd.findFreePort(),
-		PortRange:	  nisd.PortRange,
+		PortRange:        nisd.PortRange,
 		CTLPath:          *nisd.ctlPath,
 		SerfMembershipCB: nisd.SerfMembership,
 		EnableHttp:       true,
-		RetPort:	  portAddr,
+		RetPort:          portAddr,
 	}
 	errs := make(chan error, 1)
 	go func() {

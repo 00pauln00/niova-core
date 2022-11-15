@@ -44,7 +44,7 @@ pthread_cond_worker(void *arg)
     THREAD_LOOP_WITH_CTL(tc)
     {
         niova_atomic_inc(&waiters);
-        NIOVA_WAIT_COND((niova_atomic_read(&waiters) == 0), &mutex, &cond);
+        NIOVA_WAIT_COND((niova_atomic_read(&waiters) == 0), &mutex, &cond, {});
 
         num_wakeups++;
     }

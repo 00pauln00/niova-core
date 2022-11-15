@@ -43,6 +43,11 @@
 #define RAFT_ELECTION_UPPER_TIME_MS 300
 #define RAFT_ELECTION_RANGE_DIVISOR 2.0
 
+// Raft leader wakes up every RAFT_LEADER_WAKEUP_MS
+#define RAFT_LEADER_WAKEUP_MS 2ULL
+#define RAFT_SERVER_COALESCE_TIMEOUT_FACTOR 2 // * RAFT_LEADER_WAKEUP_MS
+#define RAFT_SERVER_HEARTBEAT_ISSUE_FACTOR 10 // * RAFT_LEADER_WAKEUP_MS
+
 // Leader steps down after this many cycles following quorum loss
 #define RAFT_ELECTION_CHECK_QUORUM_FACTOR 10
 
@@ -88,7 +93,8 @@ enum raft_rpc_msg_type
     RAFT_RPC_MSG_TYPE_VOTE_REPLY             = 4,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST = 5,
     RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REPLY   = 6,
-    RAFT_RPC_MSG_TYPE_ANY                    = 7,
+    RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE        = 7,
+    RAFT_RPC_MSG_TYPE_ANY                    = 8,
 };
 
 enum raft_buf_set_type
@@ -314,6 +320,10 @@ struct raft_leader_state
 {
     int64_t                   rls_initial_term_idx; // idx @start of ldr's term
     int64_t                   rls_leader_term;
+    int64_t                   rls_quorum_ok_cnt;
+    struct timespec           rls_leader_start;
+    struct timespec           rls_leader_accumulated;
+//    int64_t                   rls_quorum_miss_cnt;
     struct raft_follower_info rls_rfi[CTL_SVC_MAX_RAFT_PEERS];
 };
 
@@ -544,7 +554,7 @@ raft_compile_time_checks(void)
     COMPILE_TIME_ASSERT(sizeof(struct raft_entry_header) ==
                         RAFT_ENTRY_HEADER_RESERVE);
     COMPILE_TIME_ASSERT((RAFT_ELECTION_UPPER_TIME_MS /
-                         RAFT_HEARTBEAT_FREQ_PER_ELECTION) >
+                         RAFT_HEARTBEAT_FREQ_PER_ELECTION) >=
                         RAFT_HEARTBEAT__MIN_TIME_MS);
 }
 
@@ -607,6 +617,13 @@ do {                                                                \
                     (rm)->rrm_append_entries_reply.raerpm_err_non_matching_prev_term, \
                     __uuid_str,                                         \
                     ##__VA_ARGS__);                                     \
+            break;                                                      \
+        case RAFT_RPC_MSG_TYPE_SYNC_IDX_UPDATE:                         \
+            LOG_MSG(log_level,                                          \
+                    "SYNC_IDX_UPDATE t=%ld sli=%ld %s "fmt,              \
+                    (rm)->rrm_sync_index_update.rsium_term,             \
+                    (rm)->rrm_sync_index_update.rsium_synced_log_index, \
+                    __uuid_str, ##__VA_ARGS__);                         \
             break;                                                      \
         default:                                                        \
             LOG_MSG(log_level, "UNKNOWN "fmt, ##__VA_ARGS__);           \

@@ -382,7 +382,7 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Length of value.
 	valLen := len(byteToStr)
 
-	log.Info("Write the KeyValue by calling PmdbWriteKV")
+	log.Trace("Write the KeyValue by calling PmdbWriteKV")
 	rc := nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
