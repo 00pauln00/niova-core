@@ -38,7 +38,7 @@ install:
 
 	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
 
-	cp configApplication/cfgApp ${DIR}/libexec/niova/cfgApp
+	cp configApplication/configApplication ${DIR}/libexec/niova/cfgApp
 
 docker_support:
 	cp -r docker/* ${DIR}
