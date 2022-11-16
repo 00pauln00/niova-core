@@ -10,10 +10,10 @@ export PATH
 
 install_all: compile pmdbserver proxyserver ncpcclient configapp install docker_support
 
-install_only: compile pmdbserver proxyserver ncpcclient install
+install_only: compile pmdbserver proxyserver ncpcclient configapp install
 
 compile:
-	echo "Compiling niovakv"
+	echo "Compiling controlPlane"
 
 pmdbserver:
 	cd pmdbServer && go mod tidy  && go build pmdbServer.go
