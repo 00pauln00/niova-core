@@ -51,7 +51,7 @@ jobs:
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/coalesced_wr_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/coalesced_wr_recipes.txt /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/coalesced_wr_recipes_with_sync.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
