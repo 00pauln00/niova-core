@@ -75,6 +75,18 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/coalesced_wr_recipes.txt'
                              'pumicedb'
                              '1'
+                             '0'
+                             '/home/runner/work/go/go/bin'
+
+    - name:  run coalesced recipes with sync mode
+      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+           ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
+                             '/home/runner/work/niovad/niovad/build_dir'
+                             '/home/runner/work/niovad/niovad/holon_log' 5
+                             '/home/runner/work/niovad/niovad/build_dir/coalesced_wr_recipes_with_sync.txt'
+                             'pumicedb'
+                             '1'
+                             '1'
                              '/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
