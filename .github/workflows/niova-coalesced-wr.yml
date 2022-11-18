@@ -52,6 +52,7 @@ jobs:
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
            cp ./code/scripts/coalesced_wr_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/coalesced_wr_recipes_with_sync.txt /home/runner/work/niovad/niovad/build_dir/
 
     - name: Checkout repository
       uses: actions/checkout@v2
@@ -67,6 +68,9 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: list recipes
+      run: ls -ltr /home/runner/work/niovad/niovad/build_dir
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -77,10 +81,6 @@ jobs:
                              '1'
                              '0'
                              '/home/runner/work/go/go/bin'
-
-
-    - name: list recipes
-      run: ls -ltr /home/runner/work/niovad/niovad/build_dir
 
     - name:  run coalesced recipes with sync mode
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
