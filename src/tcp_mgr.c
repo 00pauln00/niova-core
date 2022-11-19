@@ -77,6 +77,32 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
 static void
 tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc);
 
+static void
+tcp_mgr_conn_reenable(struct tcp_mgr_connection *tmc)
+{
+    if (!tmc->tmc_handoff)
+        return;
+
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
+
+    niova_mutex_lock(&tmcq->tmcq_mutex);
+
+    if (!tmc->tmc_handoff)
+    {
+        niova_mutex_unlock(&tmcq->tmcq_mutex);
+        return;
+    }
+
+    tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
+
+    int rc = epoll_handle_mod(tmi->tmi_epoll_mgr, &tmc->tmc_eph);
+    if (rc != 0)
+        LOG_MSG(LL_DEBUG, "epoll_handle_mod(): %s", strerror(-rc));
+
+    niova_mutex_unlock(&tmcq->tmcq_mutex);
+}
+
 static void *
 tcp_mgr_worker(void *arg)
 {
@@ -114,23 +140,16 @@ tcp_mgr_worker(void *arg)
          * behavior were to be changed, it's likely that a per-connection send
          * mutex would be required to prevent interleaving of reply contents on
          * the socket.
+         * NOTE that the send mutex may be needed anyway since the write replies
+         * will be handled async - by another thread.  The other issue becomes
+         * socket writes which can't be completed, in this case we need to
+         * queue the sends on the connection, similar to how nconn.c works.
          */
         tcp_mgr_conn_recv_inline(tmc);
         // end work
 
-        niova_mutex_lock(&tmcq->tmcq_mutex);
-
-        NIOVA_ASSERT(tmc->tmc_handoff);
-
-        tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
-
-        int rc = epoll_handle_mod(tmi->tmi_epoll_mgr, &tmc->tmc_eph);
-        if (rc != 0)
-            LOG_MSG(LL_DEBUG, "epoll_handle_mod(): %s", strerror(-rc));
-
-        niova_mutex_unlock(&tmcq->tmcq_mutex);
+        tcp_mgr_conn_reenable(tmc);
     }
-
     return NULL;
 }
 
