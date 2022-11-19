@@ -572,6 +572,15 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
 }
 
 static int
+tcp_mgr_tmi_exec_recv_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
+                         size_t size)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    return tmi->tmi_recv_cb(tmc, sink_buf, size, tmi->tmi_data);
+}
+
+static int
 tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -601,7 +610,7 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     // If there's no bulk proceed to request processor, else read the bulk
     return bulk_size ?
         tcp_mgr_bulk_prepare_and_recv(tmc, bulk_size, sink_buf, header_size) :
-        tmi->tmi_recv_cb(tmc, sink_buf, header_size, tmi->tmi_data);
+        tcp_mgr_tmi_exec_recv_cb(tmc, sink_buf, header_size);
 }
 
 static int
@@ -612,8 +621,9 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     NIOVA_ASSERT(tmi->tmi_recv_cb);
 
-    int rc = tmi->tmi_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset,
-                              tmc->tmc_tmi->tmi_data);
+    int rc =
+        tcp_mgr_tmi_exec_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset);
+
     tcp_mgr_bulk_free(tmi, tmc->tmc_bulk_buf);
 
     tmc->tmc_bulk_buf = NULL;
