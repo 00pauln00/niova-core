@@ -116,7 +116,7 @@ enum raft_buf_set_size
 
 enum raft_buf_set_nbuf
 {
-    RAFT_BS_SMALL_NBUF = RAFT_ENTRY_NUM_ENTRIES,
+    RAFT_BS_SMALL_NBUF = (RAFT_ENTRY_NUM_ENTRIES + TCP_MGR_NTHREADS),
     RAFT_BS_LARGE_NBUF = TCP_MGR_NTHREADS,
 };
 
