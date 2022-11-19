@@ -760,7 +760,7 @@ raft_instance_update_newest_entry_hdr(
     if (reh->reh_index < 0)
         return;  // ignore log blocks
 
-    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
+    niova_mutex_lock(&ri->ri_newest_entry_mutex);
 
     for (enum raft_instance_newest_entry_hdr_types i = RI_NEHDR__START;
          i < RI_NEHDR__END; i++)
@@ -785,7 +785,7 @@ raft_instance_update_newest_entry_hdr(
             NIOVA_ASSERT(updated);
     }
 
-    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
+    niova_mutex_unlock(&ri->ri_newest_entry_mutex);
 
     // DBG_RAFT_INSTANCE() takes the mutex, don't deadlock
     DBG_RAFT_INSTANCE(LL_DEBUG, ri, "");
@@ -797,7 +797,7 @@ raft_server_has_unsynced_entries(struct raft_instance *ri)
     NIOVA_ASSERT(ri);
     bool valid = true;
 
-    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
+    niova_mutex_lock(&ri->ri_newest_entry_mutex);
 
     const bool diff = memcmp(&ri->ri_newest_entry_hdr[RI_NEHDR_SYNC],
                              &ri->ri_newest_entry_hdr[RI_NEHDR_UNSYNC],
@@ -810,7 +810,7 @@ raft_server_has_unsynced_entries(struct raft_instance *ri)
                  raft_server_does_synchronous_writes(ri)))
         valid = false;
 
-    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
+    niova_mutex_unlock(&ri->ri_newest_entry_mutex);
 
     DBG_RAFT_INSTANCE_FATAL_IF((!valid), ri, "invalid ri newest entries");
 
@@ -1007,7 +1007,7 @@ raft_server_read_entry_register_idx(struct raft_instance *ri,
     if (rc)
         return rc;
 
-    pthread_mutex_lock(&ri->ri_compaction_mutex);
+    niova_mutex_lock(&ri->ri_compaction_mutex);
     // only one read at a time
     NIOVA_ASSERT(ri->ri_pending_read_idx == ID_ANY_64bit);
 
@@ -1015,7 +1015,7 @@ raft_server_read_entry_register_idx(struct raft_instance *ri,
     if (!rc)
         ri->ri_pending_read_idx = entry_idx;
 
-    pthread_mutex_unlock(&ri->ri_compaction_mutex);
+    niova_mutex_unlock(&ri->ri_compaction_mutex);
 
     if (rc)
         DBG_RAFT_INSTANCE(
@@ -1032,12 +1032,12 @@ raft_server_read_entry_unregister_idx(struct raft_instance *ri,
 {
     NIOVA_ASSERT(ri);
 
-    pthread_mutex_lock(&ri->ri_compaction_mutex);
+    niova_mutex_lock(&ri->ri_compaction_mutex);
 
     NIOVA_ASSERT(ri->ri_pending_read_idx == entry_idx);
     ri->ri_pending_read_idx = ID_ANY_64bit;
 
-    pthread_mutex_unlock(&ri->ri_compaction_mutex);
+    niova_mutex_unlock(&ri->ri_compaction_mutex);
 }
 
 static raft_server_chkpt_thread_ctx_int_t
@@ -1048,7 +1048,7 @@ raft_server_compaction_try_increase_lowest_idx(
 
     int rc = 0;
 
-    pthread_mutex_lock(&ri->ri_compaction_mutex);
+    niova_mutex_lock(&ri->ri_compaction_mutex);
     NIOVA_ASSERT(new_lowest_idx > niova_atomic_read(&ri->ri_lowest_idx));
 
     // A read is currently operating in the compaction region
@@ -1058,7 +1058,7 @@ raft_server_compaction_try_increase_lowest_idx(
     else
         niova_atomic_init(&ri->ri_lowest_idx, new_lowest_idx);
 
-    pthread_mutex_unlock(&ri->ri_compaction_mutex);
+    niova_mutex_unlock(&ri->ri_compaction_mutex);
 
     return rc;
 }
@@ -1403,7 +1403,7 @@ raft_instance_initialize_newest_entry_hdr(struct raft_instance *ri)
 {
     NIOVA_ASSERT(ri);
 
-    pthread_mutex_lock(&ri->ri_newest_entry_mutex);
+    niova_mutex_lock(&ri->ri_newest_entry_mutex);
 
     for (enum raft_instance_newest_entry_hdr_types i = RI_NEHDR__START;
          i < RI_NEHDR__END; i++)
@@ -1414,7 +1414,7 @@ raft_instance_initialize_newest_entry_hdr(struct raft_instance *ri)
         ri->ri_newest_entry_hdr[i].reh_index = -1ULL;
     }
 
-    pthread_mutex_unlock(&ri->ri_newest_entry_mutex);
+    niova_mutex_unlock(&ri->ri_newest_entry_mutex);
 }
 
 /**
