@@ -4101,8 +4101,12 @@ raft_server_leader_co_wr_timer_expired(struct raft_instance *ri)
     if (rc)
         return;
 
+    niova_mutex_lock(&ri->ri_write_mutex);
     if (ri->ri_coalesced_wr->rcwi_nentries && !FAULT_INJECT(coalesced_writes))
+    {
         raft_server_write_coalesced_entries(ri); // Issue the pending wr
+    }
+    niova_mutex_unlock(&ri->ri_write_mutex);
 }
 
 
@@ -4395,14 +4399,247 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
         raft_server_write_coalesced_entries(ri);
 }
 
-// warning: buffers are statically allocated, so code is not multi-thread safe
+static int
+raft_server_client_rncr_prepare(struct raft_instance *ri,
+                                const struct raft_client_rpc_msg *rcm,
+                                const struct sockaddr_in *from,
+                                struct raft_net_client_request_handle *rncr,
+                                enum raft_buf_set_type buf_type)
+{
+    NIOVA_ASSERT(ri && rcm && from && rncr && buf_type < RAFT_BUF_SET_MAX);
+
+    struct ctl_svc_node *csn = NULL;
+
+    /* First set of request checks which are configuration based.
+     */
+    if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
+    {
+        //XXX destroy the connection by setting tmc::tmc_user_error
+        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
+
+        if (csn != NULL)
+            ctl_svc_node_put(csn);
+
+        return -EXDEV;
+    }
+
+    struct buffer_item *bi =
+        buffer_set_allocate_item(&ri->ri_buf_set[buf_type]);
+
+    NIOVA_ASSERT(bi);
+
+    raft_server_net_client_request_init_client_rpc(ri, rncr, rcm, from,
+                                                   (char *)bi->bi_iov.iov_base,
+                                                   bi->bi_bs->bs_item_size);
+
+    // raft_server_net_client_request_init_client_rpc() clears out the rncr
+    rncr->rncr_bi = bi;
+    rncr->rncr_csn = csn;
+
+    // Perform this check before handing back the rncr.
+    int rc = raft_server_may_accept_client_request(ri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY,
+                       "cannot accept client message, rc=%d: msg-type=%u",
+                       rc, rcm->rcrm_type);
+
+        raft_server_udp_client_deny_request(ri, rncr, csn, rc);
+
+        if (rncr->rncr_csn)
+        {
+            ctl_svc_node_put(rncr->rncr_csn);
+            rncr->rncr_csn = NULL;
+        }
+
+        if (rncr->rncr_bi)
+        {
+            buffer_set_release_item(rncr->rncr_bi);
+            rncr->rncr_bi = NULL;
+        }
+    }
+
+    return rc;
+}
+
+static void
+raft_server_client_rncr_write_raft_entry(
+    struct raft_instance *ri, struct raft_net_client_request_handle *rncr)
+{
+    // Xxx Also check that this is the 'main' thread
+    NIOVA_ASSERT(ri && rncr && rncr->rncr_write_raft_entry &&
+                 rncr->rncr_request);
+
+    const struct raft_client_rpc_msg *rcm = rncr->rncr_request;
+
+    /* For write operation, check if the coalesced buffer is sufficient for
+     * accomodating this request. Otherwise first flush the entries in
+     * coalesced buffer.
+     */
+    if ((rcm->rcrm_data_size + ri->ri_coalesced_wr->rcwi_total_size) >
+        RAFT_ENTRY_MAX_DATA_SIZE(ri))
+        raft_server_write_coalesced_entries(ri);
+
+    /* Store the request as an entry in the Raft log.  Do not reply to
+     * the client until the write is committed and applied!
+     *
+     * NOTE: that raft_server_write_coalesce_entry() is called regardless
+     *       of whether coalescing is enabling.  If disabled,
+     *       raft_server_write_coalesce_entry() will go directly to
+     *       raft_server_leader_write_new_entry()
+     * Merge the rncr write supplement into coalesced write supplement.
+     * rncr_sm_write_supp will be destroyed once it is merged into
+     * ri_coalesced_wr->rcwi_ws.
+     */
+    raft_net_sm_write_supplements_merge(&ri->ri_coalesced_wr->rcwi_ws,
+                                        &rncr->rncr_sm_write_supp);
+
+    raft_server_write_coalesce_entry(ri, rcm->rcrm_data, rcm->rcrm_data_size,
+                                     RAFT_WR_ENTRY_OPT_NONE);
+}
+
+static void
+raft_server_client_rncr_complete(struct raft_instance *ri,
+                                 struct raft_net_client_request_handle *rncr)
+{
+    NIOVA_ASSERT(ri && rncr && rncr->rncr_request);
+
+    const struct raft_client_rpc_msg *rcm = rncr->rncr_request;
+
+    // Check leadership state before replying
+    int rc = raft_server_may_accept_client_request(ri);
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_NOTIFY,
+                       "cannot accept client message, rc=%d: msg-type=%u",
+                       rc, rcm->rcrm_type);
+
+        raft_server_udp_client_deny_request(ri, rncr, rncr->rncr_csn, rc);
+    }
+    else
+    {
+        if (rncr->rncr_op_error && rncr->rncr_reply->rcrm_app_error == 0)
+            rncr->rncr_reply->rcrm_app_error = rncr->rncr_op_error;
+
+        if (!rncr->rncr_op_error && rncr->rncr_write_raft_entry)
+            raft_server_client_rncr_write_raft_entry(ri, rncr);
+        else
+            raft_server_reply_to_client(ri, rncr, rncr->rncr_csn);
+    }
+
+    if (rncr->rncr_csn)
+        ctl_svc_node_put(rncr->rncr_csn);
+
+    if (rncr->rncr_bi)
+        buffer_set_release_item(rncr->rncr_bi);
+}
+
+static raft_net_cb_ctx_t
+raft_server_client_recv_handler_ping(struct raft_instance *ri,
+                                     const struct raft_client_rpc_msg *rcm,
+                                     const struct sockaddr_in *from)
+{
+    NIOVA_ASSERT(ri && rcm && rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING);
+
+    struct raft_net_client_request_handle rncr = {0};
+
+    int rc = raft_server_client_rncr_prepare(ri, rcm, from, &rncr,
+                                             RAFT_BUF_SET_SMALL);
+    if (rc)
+        return;
+
+    SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
+
+    raft_server_client_rncr_complete(ri, &rncr);
+}
+
+static raft_net_cb_ctx_t
+raft_server_client_recv_handler_read(struct raft_instance *ri,
+                                     const struct raft_client_rpc_msg *rcm,
+                                     const struct sockaddr_in *from)
+{
+    NIOVA_ASSERT(rcm && rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_READ);
+
+    struct raft_net_client_request_handle rncr = {0};
+
+    int rc = raft_server_client_rncr_prepare(ri, rcm, from, &rncr,
+                                             RAFT_BUF_SET_LARGE);
+    if (rc)
+        return;
+
+    /* Call into the application state machine logic to retrieve the requested
+     * data.
+     */
+    rc = ri->ri_server_sm_request_cb(&rncr);
+
+    if (rc && rncr.rncr_op_error == 0)
+        rncr.rncr_op_error = rc;
+
+    raft_server_client_rncr_complete(ri, &rncr);
+}
+
+static void // must be the main raft thread
+raft_server_do_client_write(struct raft_instance *ri,
+                            struct raft_net_client_request_handle *rncr)
+{
+    // Need to ensure this is NOT tcp_mgr_thread_ctx()!
+    NIOVA_ASSERT(
+        ri && rncr->rncr_request &&
+        rncr->rncr_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE);
+
+    NIOVA_ASSERT(rncr->rncr_bi != NULL);
+
+    const struct raft_client_rpc_msg *rcm = rncr->rncr_request;
+
+    /* Call into the application state machine logic.  There are several
+     * outcomes here:
+     * 1. SM detects a new write, here it may store sender info for reply
+     *    post-commit.
+     * 2. SM detects a write which had already been committed, here we reply
+     *    to the client notifying it of the completion.
+     * 3. SM detects a write which is still in progress, here no reply is sent.
+     */
+    niova_mutex_lock(&ri->ri_write_mutex);
+
+    int rc = ri->ri_server_sm_request_cb(rncr);
+
+    enum log_level log_level = rc ? LL_WARN : LL_DEBUG;
+
+    DBG_RAFT_CLIENT_RPC(log_level, rcm, "write-2-raft=%s op_error=%s, rc=%s",
+                        rncr->rncr_write_raft_entry ? "yes" : "no",
+                        strerror(-rncr->rncr_op_error), strerror(-rc));
+
+    if (rc && rncr->rncr_op_error == 0)
+        rncr->rncr_op_error = rc;
+
+    raft_server_client_rncr_complete(ri, rncr);
+
+    niova_mutex_unlock(&ri->ri_write_mutex);
+}
+
+static void
+raft_server_client_recv_handler_write(struct raft_instance *ri,
+                                      const struct raft_client_rpc_msg *rcm,
+                                      const struct sockaddr_in *from)
+{
+    NIOVA_ASSERT(rcm && rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_WRITE);
+
+    struct raft_net_client_request_handle rncr = {0};
+
+    int rc = raft_server_client_rncr_prepare(ri, rcm, from, &rncr,
+                                             RAFT_BUF_SET_LARGE);
+    if (rc)
+        return;
+
+    return raft_server_do_client_write(ri, &rncr);
+}
+
 static raft_net_cb_ctx_t
 raft_server_client_recv_handler(struct raft_instance *ri,
                                 const char *recv_buffer, ssize_t recv_bytes,
                                 const struct sockaddr_in *from)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
-
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
@@ -4416,135 +4653,21 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     const struct raft_client_rpc_msg *rcm =
         (const struct raft_client_rpc_msg *)recv_buffer;
 
-    struct ctl_svc_node *csn = NULL;
-
-    /* First set of request checks which are configuration based.
-     */
-    if (raft_server_client_recv_ignore_request(ri, rcm, from, &csn))
+    switch (rcm->rcrm_type)
     {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "cannot verify client message");
-        return;
-    }
+    case RAFT_CLIENT_RPC_MSG_TYPE_READ:
+        return raft_server_client_recv_handler_read(ri, rcm, from);
 
-    size_t reply_size = raft_net_max_rpc_size(ri->ri_store_type);
+    case RAFT_CLIENT_RPC_MSG_TYPE_WRITE:
+        return raft_server_client_recv_handler_write(ri, rcm, from);
 
-    struct buffer_item *bi =
-        buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
-    NIOVA_ASSERT(bi);
+    case RAFT_CLIENT_RPC_MSG_TYPE_PING:
+        return raft_server_client_recv_handler_ping(ri, rcm, from);
 
-    char *reply_buf = (char *)bi->bi_iov.iov_base;
-    NIOVA_ASSERT(reply_buf);
-
-    struct raft_net_client_request_handle rncr;
-
-    raft_server_net_client_request_init_client_rpc(
-        ri, &rncr, rcm, from, reply_buf,
-        reply_size);
-
-    /* Second set of checks which determine if this server is capable of
-     * handling the request at this time.
-     */
-    int rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-    {
-        SIMPLE_LOG_MSG(LL_NOTIFY,
-                       "cannot accept client message, rc=%d: msg-type=%u",
-                       rc, rcm->rcrm_type);
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        goto out;
-    }
-
-    if (rcm->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING)
-    {
-        SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
-        raft_server_reply_to_client(ri, &rncr, csn);
-        goto out;
-    }
-
-    /* Call into the application state machine logic.  There are several
-     * outcomes here:
-     * 1. SM detects a new write, here it may store sender info for reply
-     *    post-commit.
-     * 2. SM detects a write which had already been committed, here we reply
-     *    to the client notifying it of the completion.
-     * 3. SM detects a write which is still in progress, here no reply is sent.
-     * 4. SM processes a read request, returning the requested application
-     *    data.
-     */
-    int cb_rc = ri->ri_server_sm_request_cb(&rncr);
-
-    enum log_level log_level = cb_rc ? LL_WARN : LL_DEBUG;
-
-    // rncr.rncr_type was set by the callback!
-    bool write_op = rncr.rncr_type == RAFT_NET_CLIENT_REQ_TYPE_WRITE ?
-        true : false;
-
-    DBG_RAFT_CLIENT_RPC(log_level, rcm,
-                        "wr_op=%d write-2-raft=%s op_error=%s, cb_rc=%s",
-                        write_op, rncr.rncr_write_raft_entry ? "yes" : "no",
-                        strerror(-rncr.rncr_op_error), strerror(-cb_rc));
-
-    /* Callback's with error are only logged.  There are no client replies
-     * or raft operations which will occur.
-     */
-    if (cb_rc) // Other than logging this issue, nothing can be done here
-    {
-        /* ri_server_sm_request_cb will return EXIST only when wr is retried.
-         * Don't destroy the write supplment from rncr as it coalesced wr supp.
-         */
-        goto out;
-    }
-
-    /* For write operation, check if the coalesced buffer is sufficient for
-     * accomodating this request. Otherwise first flush the entries in
-     * coalesced buffer.
-     */
-    if (write_op && ((rcm->rcrm_data_size +
-                     ri->ri_coalesced_wr->rcwi_total_size) >
-                     RAFT_ENTRY_MAX_DATA_SIZE(ri)))
-        raft_server_write_coalesced_entries(ri);
-
-    /* cb's may run for a long time and the server may have been deposed
-     * Xxx note that SM write requests left in this state may require
-     *   cleanup.
-     */
-    rc = raft_server_may_accept_client_request(ri);
-    if (rc)
-    {
-        raft_server_udp_client_deny_request(ri, &rncr, csn, rc);
-        goto out;
-    }
-
-    if (rncr.rncr_write_raft_entry)
-    {
-        /* Store the request as an entry in the Raft log.  Do not reply to
-         * the client until the write is committed and applied!
-         *
-         * NOTE: that raft_server_write_coalesce_entry() is called regardless
-         *       of whether coalescing is enabling.  If disabled,
-         *       raft_server_write_coalesce_entry() will go directly to
-         *       raft_server_leader_write_new_entry()
-         * Merge the rncr write supplement into coalesced write supplement.
-         * rncr_sm_write_supp will be destroyed once it is merged into
-         * ri_coalesced_wr->rcwi_ws.
-         */
-        raft_net_sm_write_supplements_merge(&ri->ri_coalesced_wr->rcwi_ws,
-                                            &rncr.rncr_sm_write_supp);
-        raft_server_write_coalesce_entry(ri, rcm->rcrm_data,
-                                         rcm->rcrm_data_size,
-                                         RAFT_WR_ENTRY_OPT_NONE);
-    }
-    else
-    {
-        // Read operation or an already committed + applied write operation.
-        raft_server_reply_to_client(ri, &rncr, csn);
-    }
-
-out:
-    if (csn)
-        ctl_svc_node_put(csn);
-
-    buffer_set_release_item(bi);
+    default:
+        //Xxx end the connection
+        break;
+    };
 }
 
 /**
@@ -4930,7 +5053,9 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     {
         if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
             raft_net_client_request_handle_has_reply_info(&rncr[i]))
+        {
             raft_server_reply_to_client(ri, &rncr[i], NULL);
+        }
 
         //Release the reply buffer
         buffer_set_release_item(reply_bi[i]);
@@ -5005,7 +5130,11 @@ raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 
     EV_PIPE_RESET(evp);
 
+    niova_mutex_lock(&ri->ri_write_mutex);
+
     raft_server_state_machine_apply(ri);
+
+    niova_mutex_unlock(&ri->ri_write_mutex);
 }
 
 static raft_server_epoll_t
@@ -5719,6 +5848,9 @@ raft_server_instance_startup(struct raft_instance *ri)
              "pthread_mutex_init(): %s", strerror(errno));
 
     FATAL_IF((pthread_mutex_init(&ri->ri_compaction_mutex, NULL)),
+             "pthread_mutex_init(): %s", strerror(errno));
+
+    FATAL_IF((pthread_mutex_init(&ri->ri_write_mutex, NULL)),
              "pthread_mutex_init(): %s", strerror(errno));
 
     // raft_server_instance_init() should have been run
