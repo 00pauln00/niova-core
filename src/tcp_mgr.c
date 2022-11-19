@@ -276,6 +276,8 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
 
     tmc->tmc_status = TMCS_DISCONNECTED;
 
+    pthread_mutex_init(&tmc->tmc_send_mutex, NULL);
+
     return 0;
 }
 
@@ -1067,7 +1069,11 @@ tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
 
     const ssize_t total_size = niova_io_iovs_total_size_get(iov, niovs);
 
+    niova_mutex_lock(&tmc->tmc_send_mutex);
+
     ssize_t send_rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
+
+    niova_mutex_unlock(&tmc->tmc_send_mutex);
 
     if (send_rc != total_size)
     {
