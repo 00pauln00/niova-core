@@ -60,7 +60,7 @@ jobs:
 
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
-    
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -68,7 +68,6 @@ jobs:
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/rebuild_recipes.txt'
                              'pumicedb'
-                             '0'
                              '/home/runner/work/go/go/bin'
 
     - name: Prepare artifact filename
@@ -76,7 +75,7 @@ jobs:
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
       if: failure()
-      
+
     - name: Archive the test results
       uses: actions/upload-artifact@v2
       with:
