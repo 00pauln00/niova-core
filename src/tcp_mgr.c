@@ -166,6 +166,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     NIOVA_ASSERT(tmi);
 
     tmi->tmi_data = data;
+    tmi->tmi_nworkers = 0;
     tmi->tmi_connection_ref_cb = connection_ref_cb;
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
