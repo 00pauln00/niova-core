@@ -176,7 +176,7 @@ func (handler *proxyHandler) startPMDBClient() error {
 
 func (handler *proxyHandler) getAddrList() []string {
 	var addrs []string
-	for i := 0; i <= 20; i++ {
+	for i := 0; i < len(handler.portRange); i++ {
 		addrs = append(addrs, handler.addr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
 	}
 	return addrs
@@ -212,6 +212,7 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
 	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
+	handler.serfAgentObj.AppType = "PROXY"
 
 	joinAddrs := handler.getAddrList()
 	//Start serf agent

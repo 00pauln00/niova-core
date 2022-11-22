@@ -297,7 +297,7 @@ func generateCheckSum(data map[string]string) (string, error) {
 
 func (handler *pmdbServerHandler) getAddrList() []string {
 	var addrs []string
-	for i := 0; i <= 20; i++ {
+	for i := 0; i <= 40; i++ {
 		addrs = append(addrs, handler.nodeAddr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
 	}
 	return addrs
@@ -329,6 +329,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		RpcAddr:           handler.nodeAddr,
 		ServicePortRangeS: handler.servicePortRangeS,
 		ServicePortRangeE: handler.servicePortRangeE,
+		AppType:           "PMDB",
 	}
 
 	joinAddrs := handler.getAddrList()

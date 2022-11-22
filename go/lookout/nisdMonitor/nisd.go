@@ -172,6 +172,14 @@ func setLogOutput(logPath string) {
 	}
 }
 
+func (handler *nisdMonitor) getAddrList() []string {
+	var addrs []string
+	for i := 0; i < len(handler.PortRange); i++ {
+		addrs = append(addrs, handler.addr+":"+strconv.Itoa(int(handler.PortRange[i])))
+	}
+	return addrs
+}
+
 func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
 	//agentPort := handler.agentPort
@@ -180,19 +188,14 @@ func (handler *nisdMonitor) startSerfAgent() error {
 		BindAddr:          net.ParseIP(handler.addr),
 		ServicePortRangeS: uint16(handler.ServicePortRangeS),
 		ServicePortRangeE: uint16(handler.ServicePortRangeE),
-		//BindPort:    uint16(agentPort),
-		AgentLogger: log.Default(),
-		RpcAddr:     net.ParseIP(handler.addr),
-		//RpcPort:     uint16(handler.agentRPCPort),
+		AgentLogger:       log.Default(),
+		RpcAddr:           net.ParseIP(handler.addr),
 	}
 
-	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
-	if err != nil {
-		return err
-	}
+	joinAddrs := handler.getAddrList()
 
 	//Start serf agent
-	_, err = handler.serfHandler.SerfAgentStartup(joinAddrs, true)
+	_, err := handler.serfHandler.SerfAgentStartup(joinAddrs, true)
 	return err
 }
 

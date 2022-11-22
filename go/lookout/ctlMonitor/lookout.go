@@ -438,6 +438,7 @@ func (epc *EPContainer) serveHttp() error {
 			}
 		} else {
 			go func() {
+				fmt.Println("Serving at - ", epc.HttpPort)
 				http.Serve(l, mux)
 			}()
 		}
