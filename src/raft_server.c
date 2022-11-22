@@ -4500,7 +4500,8 @@ raft_server_client_rncr_write_raft_entry(
 
 static void
 raft_server_client_rncr_complete(struct raft_instance *ri,
-                                 struct raft_net_client_request_handle *rncr)
+                                 struct raft_net_client_request_handle *rncr,
+                                 int sm_cb_rc)
 {
     NIOVA_ASSERT(ri && rncr && rncr->rncr_request);
 
@@ -4508,20 +4509,19 @@ raft_server_client_rncr_complete(struct raft_instance *ri,
 
     // Check leadership state before replying
     int rc = raft_server_may_accept_client_request(ri);
-    if (rc)
+    if (rc || sm_cb_rc)
     {
         SIMPLE_LOG_MSG(LL_NOTIFY,
-                       "cannot accept client message, rc=%d: msg-type=%u",
-                       rc, rcm->rcrm_type);
+                       "cannot accept client message, rc=(%d, %d): msg-type=%u",
+                       rc, sm_cb_rc, rcm->rcrm_type);
+
+        rc = rc ? rc : sm_cb_rc;
 
         raft_server_udp_client_deny_request(ri, rncr, rncr->rncr_csn, rc);
     }
     else
     {
-        if (rncr->rncr_op_error && rncr->rncr_reply->rcrm_app_error == 0)
-            rncr->rncr_reply->rcrm_app_error = rncr->rncr_op_error;
-
-        if (!rncr->rncr_op_error && rncr->rncr_write_raft_entry)
+        if (rncr->rncr_write_raft_entry)
             raft_server_client_rncr_write_raft_entry(ri, rncr);
         else
             raft_server_reply_to_client(ri, rncr, rncr->rncr_csn);
@@ -4545,12 +4545,9 @@ raft_server_client_recv_handler_ping(struct raft_instance *ri,
 
     int rc = raft_server_client_rncr_prepare(ri, rcm, from, &rncr,
                                              RAFT_BUF_SET_SMALL);
-    if (rc)
-        return;
-
     SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
 
-    raft_server_client_rncr_complete(ri, &rncr);
+    raft_server_client_rncr_complete(ri, &rncr, rc);
 }
 
 static raft_net_cb_ctx_t
@@ -4572,10 +4569,7 @@ raft_server_client_recv_handler_read(struct raft_instance *ri,
      */
     rc = ri->ri_server_sm_request_cb(&rncr);
 
-    if (rc && rncr.rncr_op_error == 0)
-        rncr.rncr_op_error = rc;
-
-    raft_server_client_rncr_complete(ri, &rncr);
+    raft_server_client_rncr_complete(ri, &rncr, rc);
 }
 
 static void // must be the main raft thread
@@ -4609,10 +4603,7 @@ raft_server_do_client_write(struct raft_instance *ri,
                         rncr->rncr_write_raft_entry ? "yes" : "no",
                         strerror(-rncr->rncr_op_error), strerror(-rc));
 
-    if (rc && rncr->rncr_op_error == 0)
-        rncr->rncr_op_error = rc;
-
-    raft_server_client_rncr_complete(ri, rncr);
+    raft_server_client_rncr_complete(ri, rncr, rc);
 
     niova_mutex_unlock(&ri->ri_write_mutex);
 }
