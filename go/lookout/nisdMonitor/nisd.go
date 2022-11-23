@@ -66,6 +66,7 @@ type nisdMonitor struct {
 }
 
 var RecvdPort int
+var SetTagsInterval int = 10
 
 //NISD
 type udpMessage struct {
@@ -229,7 +230,7 @@ func (handler *nisdMonitor) setTags() {
 		if err != nil {
 			fmt.Println(err)
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(SetTagsInterval) * time.Second)
 	}
 }
 
