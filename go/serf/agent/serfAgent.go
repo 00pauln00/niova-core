@@ -30,8 +30,7 @@ Methods:
 type SerfAgentHandler struct {
 	//Exported
 	Name              string //Name of the agent
-	BindAddr          net.IP //Addr for inter agent communcations
-	RpcAddr           net.IP //Addr for agent-client communication
+	Addr              net.IP //Addr for inter agent and agent-client communication
 	AgentLogger       *log.Logger
 	ServicePortRangeS uint16
 	ServicePortRangeE uint16
@@ -58,7 +57,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	//Init an agent
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
-	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr.String()                      //Agent bind addr
+	serfconfig.MemberlistConfig.BindAddr = Handler.Addr.String()                          //Agent bind addr
 	serfconfig.MemberlistConfig.BindPort = int(Handler.ServicePortRangeS)                 //Agent bind port
 	serfconfig.MemberlistConfig.SecretKey = Handler.RaftUUID.Bytes()                      //Encryption key
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
@@ -135,7 +134,7 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	if Handler.AppType == "PMDB" {
 		for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
 			Handler.RpcPort = Handler.ServicePortRangeS
-			rpcListener, err = net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
+			rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
 			if err != nil {
 				Handler.ServicePortRangeS += 1
 				continue
@@ -147,7 +146,7 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	} else {
 		for i := Handler.ServicePortRangeS; i > Handler.ServicePortRangeE; i-- {
 			Handler.RpcPort = Handler.ServicePortRangeS
-			rpcListener, err = net.Listen("tcp", Handler.RpcAddr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
+			rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
 			if err != nil {
 				Handler.ServicePortRangeS -= 1
 				continue
@@ -206,15 +205,31 @@ func (Handler *SerfAgentHandler) GetPeerAddress(staticSerfConfigPath string) ([]
 
 /*
 Type : SerfAgentHandler
+Method name : getAddrList
+Parameters : None
+Return value : []string
+Description : Iterates over port range and gets list of adresses.
+*/
+func (Handler *SerfAgentHandler) getAddrList() []string {
+	var addrs []string
+	for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
+		addrs = append(addrs, Handler.Addr.String()+":"+strconv.Itoa(int(i)))
+	}
+	return addrs
+}
+
+/*
+Type : SerfAgentHandler
 Method name : Startup
 Parameters : staticSerfConfigPath
 Return value : int, error
 Description : Does setup, start and joins in cluster
 */
-func (Handler *SerfAgentHandler) SerfAgentStartup(joinAddrs []string, RPCRequired bool) (int, error) {
+func (Handler *SerfAgentHandler) SerfAgentStartup(RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
 	//Setup
+	joinAddrs := Handler.getAddrList()
 	err = Handler.setup()
 	if err != nil {
 		return 0, err

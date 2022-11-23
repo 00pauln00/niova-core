@@ -330,15 +330,6 @@ func generateCheckSum(data map[string]string) (string, error) {
 	return string(checkSumByteArray), err
 }
 
-func (handler *pmdbServerHandler) getAddrList() []string {
-	var addrs []string
-	//TODO Add limits to the port range
-	for i := 0; i < len(handler.portRange); i++ {
-		addrs = append(addrs, handler.nodeAddr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
-	}
-	return addrs
-}
-
 func (handler *pmdbServerHandler) startSerfAgent() error {
 	err := handler.readGossipClusterFile()
 	if err != nil {
@@ -360,19 +351,16 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	//defaultLogger.SetOutput(ioutil.Discard)
 	serfAgentHandler := serfAgent.SerfAgentHandler{
 		Name:              handler.peerUUID.String(),
-		BindAddr:          handler.nodeAddr,
+		Addr:              handler.nodeAddr,
 		AgentLogger:       defaultLogger.Default(),
-		RpcAddr:           handler.nodeAddr,
 		RaftUUID:          handler.raftUUID,
 		ServicePortRangeS: handler.servicePortRangeS,
 		ServicePortRangeE: handler.servicePortRangeE,
 		AppType:           "PMDB",
 	}
 
-	joinAddrs := handler.getAddrList()
-
 	//Start serf agent
-	_, err = serfAgentHandler.SerfAgentStartup(joinAddrs, true)
+	_, err = serfAgentHandler.SerfAgentStartup(true)
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}

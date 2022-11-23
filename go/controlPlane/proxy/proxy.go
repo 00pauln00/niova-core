@@ -175,14 +175,6 @@ func (handler *proxyHandler) startPMDBClient() error {
 
 }
 
-func (handler *proxyHandler) getAddrList() []string {
-	var addrs []string
-	for i := 0; i < len(handler.portRange); i++ {
-		addrs = append(addrs, handler.addr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
-	}
-	return addrs
-}
-
 /*
 Structure : proxyHandler
 Method    : startSerfAgent
@@ -208,17 +200,15 @@ func (handler *proxyHandler) startSerfAgent() error {
 	//Fill serf agent configuration
 	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
 	handler.serfAgentObj.Name = handler.serfAgentName
-	handler.serfAgentObj.BindAddr = handler.addr
+	handler.serfAgentObj.Addr = handler.addr
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
-	handler.serfAgentObj.RpcAddr = handler.addr
 	handler.serfAgentObj.RaftUUID = handler.raftUUID
 	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
 	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
 	handler.serfAgentObj.AppType = "PROXY"
 
-	joinAddrs := handler.getAddrList()
 	//Start serf agent
-	_, err := handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
+	_, err := handler.serfAgentObj.SerfAgentStartup(true)
 	return err
 }
 
