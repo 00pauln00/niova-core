@@ -77,35 +77,38 @@ Parameters : None
 Return Value : error
 Description : Starts the created agent in setup, and listenes on rpc channel
 */
+
+func (Handler *SerfAgentHandler) startObj() bool {
+	Handler.setup()
+	err := Handler.agentObj.Start()
+	if err != nil {
+		return false
+	} else {
+		fmt.Println("Succefully binded to port - ", Handler.ServicePortRangeS)
+		Handler.Aport = Handler.ServicePortRangeS
+		return true
+	}
+}
+
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	var err error
 	if Handler.AppType == "PMDB" {
 		for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
-			Handler.setup()
-			err = Handler.agentObj.Start()
-			if err != nil {
+			if Handler.startObj() {
+				break
+			} else {
 				Handler.ServicePortRangeS += 1
 				continue
-			} else {
-				fmt.Println("Succesfully binded to port - ", Handler.ServicePortRangeS)
-				Handler.Aport = Handler.ServicePortRangeS
-				break
 			}
 		}
 	} else {
 		Handler.ServicePortRangeS, Handler.ServicePortRangeE = Handler.ServicePortRangeE, Handler.ServicePortRangeS
-		fmt.Println("Start - ", Handler.ServicePortRangeS, " End - ", Handler.ServicePortRangeE)
 		for i := Handler.ServicePortRangeS; i > Handler.ServicePortRangeE; i-- {
-			fmt.Println("XXX - ", Handler.ServicePortRangeS)
-			Handler.setup()
-			err = Handler.agentObj.Start()
-			if err != nil {
+			if Handler.startObj() {
+				break
+			} else {
 				Handler.ServicePortRangeS -= 1
 				continue
-			} else {
-				fmt.Println("Successfully binded to port - ", Handler.ServicePortRangeS)
-				Handler.Aport = Handler.ServicePortRangeS
-				break
 			}
 		}
 	}
