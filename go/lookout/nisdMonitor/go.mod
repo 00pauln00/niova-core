@@ -21,18 +21,18 @@ replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 go 1.18
 
 require (
+	common/httpClient v0.0.0-00010101000000-000000000000
 	common/lookout v0.0.0-00010101000000-000000000000
 	common/requestResponseLib v0.0.0-00010101000000-000000000000
 	common/serviceDiscovery v0.0.0-00010101000000-000000000000
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000
+	controlplane/serfAgent v0.0.0-00010101000000-000000000000
 	github.com/google/uuid v1.3.0
 )
 
 require (
-	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
 	common/prometheus_handler v0.0.0-00010101000000-000000000000 // indirect
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
-	controlplane/serfAgent v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/circbuf v0.0.0-20150827004946-bbbad097214e // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/armon/go-radix v1.0.0 // indirect
@@ -57,6 +57,7 @@ require (
 	github.com/mitchellh/cli v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v0.0.0-20160808181253-ca63d7c062ee // indirect
 	github.com/posener/complete v1.2.3 // indirect
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect

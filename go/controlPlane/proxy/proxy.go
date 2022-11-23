@@ -2,6 +2,7 @@ package main
 
 import (
 	//"bufio"
+	"bufio"
 	"bytes"
 	"common/httpClient"
 	"common/httpServer"
@@ -14,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"hash/crc32"
 	"io/ioutil"
 	defaultLogger "log"
@@ -64,7 +66,9 @@ type proxyHandler struct {
 	httpServerObj httpServer.HTTPServerHandler
 
 	//Port range
-	portRange []uint16
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
+	portRange         []uint16
 }
 
 var MaxPort = 60000
@@ -104,6 +108,14 @@ func (handler *proxyHandler) getCmdParams() {
 	handler.clientUUID, _ = uuid.FromString(tempClientUUID)
 }
 
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
+}
+
 /*
 Structure : proxyHandler
 Method    : getConfigData
@@ -119,25 +131,34 @@ Rport //Serf agent-client communication
 Hport //Http listener port
 
 */
-func (handler *proxyHandler) getConfigData(config string) error {
-	portRangeStart, err := strconv.Atoi(strings.Split(config, "-")[0])
-	portRangeEnd, err := strconv.Atoi(strings.Split(config, "-")[1])
+func (handler *proxyHandler) getConfigData() error {
+	//Get addrs and Rports and store it in handler
+
+	if _, err := os.Stat(handler.serfPeersFilePath); os.IsNotExist(err) {
+		return err
+	}
+	reader, err := os.OpenFile(handler.serfPeersFilePath, os.O_RDONLY, 0444)
 	if err != nil {
 		return err
 	}
 
-	for i := portRangeStart; i <= portRangeEnd; i++ {
-		handler.portRange = append(handler.portRange, uint16(i))
-	}
+	scanner := bufio.NewScanner(reader)
+	//Read IPAddrs
+	scanner.Scan()
+	IPAddrs := strings.Split(scanner.Text(), " ")
+	fmt.Println(IPAddrs)
+	handler.addr = net.ParseIP(IPAddrs[0])
 
-	if len(handler.portRange) < 3 {
-		return errors.New("Not enough ports available in the specified range to start services")
-	}
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	handler.ServicePortRangeE = uint16(temp)
 
-	//TODO Add changes to store all IP Addrs
-	handler.addr = net.IPv4(0, 0, 0, 0)
-
-	return err
+	handler.portRange = makeRange(handler.ServicePortRangeS, handler.ServicePortRangeE)
+	return nil
 }
 
 /*
@@ -203,8 +224,8 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.Addr = handler.addr
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RaftUUID = handler.raftUUID
-	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
-	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
+	handler.serfAgentObj.ServicePortRangeS = handler.ServicePortRangeS
+	handler.serfAgentObj.ServicePortRangeE = handler.ServicePortRangeE
 	handler.serfAgentObj.AppType = "PROXY"
 
 	//Start serf agent
@@ -292,12 +313,12 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
 	//Validate checksum; Get checksum entry from Map and delete that entry
-	//recvCheckSum := pmdbServerGossip["CS"]
-	//delete(pmdbServerGossip, "CS")
-	//err = validateCheckSum(pmdbServerGossip, recvCheckSum)
-	//if err != nil {
-	//	return err
-	//}
+	recvCheckSum := pmdbServerGossip["CS"]
+	delete(pmdbServerGossip, "CS")
+	err = validateCheckSum(pmdbServerGossip, recvCheckSum)
+	if err != nil {
+		return err
+	}
 
 	//Get Raft UUID from the map
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
@@ -579,19 +600,8 @@ func main() {
 		os.Exit(1)
 	}
 
-	//Get config data from PMDB
-	var config []byte
-	err = proxyObj.ReadWrapper(proxyObj.raftUUID.String()+"_Port_Range", &config)
-	if err != nil {
-		log.Error("(PROXY) Error while trying to read configuration information from PMDB : ", err)
-		os.Exit(1)
-	}
-	var response requestResponseLib.KVResponse
-	dec := gob.NewDecoder(bytes.NewBuffer(config))
-	dec.Decode(&response)
-
 	//Apply config
-	err = proxyObj.getConfigData(string(response.ResultMap[proxyObj.raftUUID.String()+"_Port_Range"]))
+	err = proxyObj.getConfigData()
 	if err != nil {
 		log.Error("(Proxy) Error while getting config data : ", err)
 		os.Exit(1)
