@@ -94,8 +94,6 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/control_plane_recipes.txt'
                              'controlplane'
                              '/home/runner/work/go/go/bin'
-                             1
-                             1
                              5
 
     - name: Prepare artifact filename

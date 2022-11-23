@@ -31,19 +31,10 @@ do
    then
       NNISD=${6}
       ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD holon.yml
-   elif [[ ( $# -eq 10 ) && $APP_TYPE == "controlplane" ]]
+   elif [[ ( $# -eq 8 ) && $APP_TYPE == "controlplane" ]]
    then
-      NLOOKOUT=${8}
-      NNISD=${9}
-      NCLIENTS=${10}
+      NCLIENTS=${8}
       ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD  -e nclients=$NCLIENTS holon.yml
-   elif [[ ( $# -eq 11 ) && $APP_TYPE == "controlplane" ]]
-   then
-      NLOOKOUT=${8}
-      NNISD=${9}
-      INPUTFILE=${10}
-      NCLIENTS=${11}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e blocktest_file_path=$INPUTFILE  -e nclients=$NCLIENTS holon.yml
    else
       ENABLE_COALESCED_WR=${7}
       ENABLE_SYNC=${8}
