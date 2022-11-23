@@ -382,7 +382,7 @@ func (handler *nisdMonitor) loadConfigInfo() error {
 	scanner.Scan()
 	IPAddrs := strings.Split(scanner.Text(), " ")
 	fmt.Println(IPAddrs)
-	handler.addr = net.ParseIP(IPAddrs[0])
+	handler.addr = IPAddrs[0]
 
 	//Read Ports
 	scanner.Scan()
