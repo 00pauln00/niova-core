@@ -4545,10 +4545,10 @@ raft_server_client_recv_handler_ping(struct raft_instance *ri,
 
     int rc = raft_server_client_rncr_prepare(ri, rcm, from, &rncr,
                                              RAFT_BUF_SET_SMALL);
-    SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
+    if (rc == -EXDEV)
+        return;
 
-    if (rc)
-        return rc;
+    SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
 
     raft_server_client_rncr_complete(ri, &rncr, rc);
 }
