@@ -425,6 +425,7 @@ func (epc *EPContainer) serveHttp() error {
 	mux.HandleFunc("/v1/", epc.QueryHandle)
 	mux.HandleFunc("/v0/", epc.HttpHandle)
 	mux.HandleFunc("/metrics", epc.MetricsHandler)
+	//TODO Add app type check and assign ports according to convention
 	for i := 0; i < len(epc.PortRange); i++ {
 		epc.HttpPort = int(epc.PortRange[i])
 		*epc.RetPort = epc.HttpPort

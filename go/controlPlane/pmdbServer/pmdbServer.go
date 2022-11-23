@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"common/httpClient"
 	"common/lookout"
 	"common/requestResponseLib"
 	"common/serfAgent"
@@ -21,6 +22,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 
 	uuid "github.com/satori/go.uuid"
@@ -36,6 +38,8 @@ import "C"
 var seqno = 0
 
 var encodingOverhead = 256
+
+var RecvdPort int
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -96,6 +100,8 @@ func main() {
 	   functions.
 	*/
 
+	portAddr := &RecvdPort
+
 	//Start lookout monitoring
 	CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
@@ -103,13 +109,20 @@ func main() {
 	serverHandler.lookoutInstance = lookout.EPContainer{
 		MonitorUUID: nso.peerUuid.String(),
 		AppType:     "PMDB",
-		//HttpPort:         int(serverHandler.hport),
+		//TODO Assign port range according to convention
 		PortRange:        serverHandler.portRange[20:40],
 		CTLPath:          ctl_path,
 		SerfMembershipCB: serverHandler.SerfMembership,
 		EnableHttp:       serverHandler.prometheus,
+		RetPort:          portAddr,
 	}
 	go serverHandler.lookoutInstance.Start()
+
+	//Wait till HTTP Server has started
+	if serverHandler.prometheus {
+		serverHandler.checkHTTPLiveness()
+		serverHandler.exportTags()
+	}
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
@@ -128,6 +141,14 @@ func main() {
 	}
 }
 
+func (handler *pmdbServerHandler) exportTags() error {
+	handler.GossipData["Hport"] = strconv.Itoa(RecvdPort)
+	fmt.Println("HPort is - ", handler.GossipData["Hport"])
+	handler.serfAgentHandler.SetNodeTags(handler.GossipData)
+
+	return nil
+}
+
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -139,6 +160,20 @@ func makeRange(min, max uint16) []uint16 {
 		a[i] = uint16(min + uint16(i))
 	}
 	return a
+}
+
+func (handler *pmdbServerHandler) checkHTTPLiveness() {
+	var emptyByteArray []byte
+	for {
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
+		if err != nil {
+			fmt.Println("HTTP Liveness - ", err)
+		} else {
+			fmt.Println("HTTP Liveness - HTTP Server is alive")
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
@@ -297,7 +332,8 @@ func generateCheckSum(data map[string]string) (string, error) {
 
 func (handler *pmdbServerHandler) getAddrList() []string {
 	var addrs []string
-	for i := 0; i <= 40; i++ {
+	//TODO Add limits to the port range
+	for i := 0; i < len(handler.portRange); i++ {
 		addrs = append(addrs, handler.nodeAddr.String()+":"+strconv.Itoa(int(handler.portRange[i])))
 	}
 	return addrs
@@ -327,6 +363,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		BindAddr:          handler.nodeAddr,
 		AgentLogger:       defaultLogger.Default(),
 		RpcAddr:           handler.nodeAddr,
+		RaftUUID:          handler.raftUUID,
 		ServicePortRangeS: handler.servicePortRangeS,
 		ServicePortRangeE: handler.servicePortRangeE,
 		AppType:           "PMDB",

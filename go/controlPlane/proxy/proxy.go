@@ -134,6 +134,7 @@ func (handler *proxyHandler) getConfigData(config string) error {
 		return errors.New("Not enough ports available in the specified range to start services")
 	}
 
+	//TODO Add changes to store all IP Addrs
 	handler.addr = net.IPv4(0, 0, 0, 0)
 
 	return err
@@ -210,6 +211,7 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj.BindAddr = handler.addr
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RpcAddr = handler.addr
+	handler.serfAgentObj.RaftUUID = handler.raftUUID
 	handler.serfAgentObj.ServicePortRangeS = handler.portRange[0]
 	handler.serfAgentObj.ServicePortRangeE = handler.portRange[len(handler.portRange)-1]
 	handler.serfAgentObj.AppType = "PROXY"
@@ -300,12 +302,12 @@ func (handler *proxyHandler) GetPMDBServerConfig() error {
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
 	//Validate checksum; Get checksum entry from Map and delete that entry
-	recvCheckSum := pmdbServerGossip["CS"]
-	delete(pmdbServerGossip, "CS")
-	err = validateCheckSum(pmdbServerGossip, recvCheckSum)
-	if err != nil {
-		return err
-	}
+	//recvCheckSum := pmdbServerGossip["CS"]
+	//delete(pmdbServerGossip, "CS")
+	//err = validateCheckSum(pmdbServerGossip, recvCheckSum)
+	//if err != nil {
+	//	return err
+	//}
 
 	//Get Raft UUID from the map
 	handler.raftUUID, err = uuid.FromString(pmdbServerGossip["RU"])
@@ -574,14 +576,6 @@ func main() {
 		log.Error("(Proxy) Logger error : ", err)
 	}
 
-	/*
-		//get config data
-		err = proxyObj.getConfigData()
-		if err != nil {
-			log.Error("(Proxy) Error while getting config data : ", err)
-			os.Exit(1)
-		}
-	*/
 	//Get PMDB server config data
 	err = proxyObj.GetPMDBServerConfig()
 	if err != nil {
@@ -619,6 +613,7 @@ func main() {
 		log.Error("Error while starting Serf Agent")
 	}
 
+	//TODO Shift inside common HTTP Library
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")

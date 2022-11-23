@@ -11,6 +11,8 @@ import (
 	//	"errors"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
+
+	uuid "github.com/satori/go.uuid"
 )
 
 /*
@@ -34,6 +36,7 @@ type SerfAgentHandler struct {
 	ServicePortRangeS uint16
 	ServicePortRangeE uint16
 	RpcPort           uint16
+	RaftUUID          uuid.UUID
 	Aport             uint16
 	AppType           string
 	//non-exported
@@ -57,6 +60,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.BindAddr.String()                      //Agent bind addr
 	serfconfig.MemberlistConfig.BindPort = int(Handler.ServicePortRangeS)                 //Agent bind port
+	serfconfig.MemberlistConfig.SecretKey = Handler.RaftUUID.Bytes()                      //Encryption key
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
 
