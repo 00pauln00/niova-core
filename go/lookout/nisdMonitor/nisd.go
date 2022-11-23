@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"common/httpClient"
 	"common/lookout"
@@ -186,17 +187,14 @@ func (handler *nisdMonitor) startSerfAgent() error {
 	//agentPort := handler.agentPort
 	handler.serfHandler = serfAgent.SerfAgentHandler{
 		Name:              handler.agentName,
-		BindAddr:          net.ParseIP(handler.addr),
+		Addr:              net.ParseIP(handler.addr),
 		ServicePortRangeS: uint16(handler.ServicePortRangeS),
 		ServicePortRangeE: uint16(handler.ServicePortRangeE),
 		AgentLogger:       log.Default(),
-		RpcAddr:           net.ParseIP(handler.addr),
 	}
 
-	joinAddrs := handler.getAddrList()
-
 	//Start serf agent
-	_, err := handler.serfHandler.SerfAgentStartup(joinAddrs, true)
+	_, err := handler.serfHandler.SerfAgentStartup(true)
 	return err
 }
 
@@ -360,6 +358,43 @@ func (handler *nisdMonitor) findFreePort() int {
 	return handler.httpPort
 }
 
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
+}
+
+func (handler *nisdMonitor) loadConfigInfo() error {
+	//Get addrs and Rports and store it in handler
+
+	if _, err := os.Stat(handler.gossipNodesPath); os.IsNotExist(err) {
+		return err
+	}
+	reader, err := os.OpenFile(handler.gossipNodesPath, os.O_RDONLY, 0444)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(reader)
+	//Read IPAddrs
+	scanner.Scan()
+	IPAddrs := strings.Split(scanner.Text(), " ")
+	fmt.Println(IPAddrs)
+
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	handler.ServicePortRangeE = uint16(temp)
+
+	handler.PortRange = makeRange(handler.ServicePortRangeS, handler.ServicePortRangeE)
+	return nil
+}
+
 func main() {
 	var nisd nisdMonitor
 
@@ -369,8 +404,9 @@ func main() {
 	//Start pmdb service client discovery api
 	nisd.startClientAPI()
 
-	err := nisd.getPortRange()
+	err := nisd.loadConfigInfo()
 	if err != nil {
+		fmt.Println("Error while loading config info - ", err)
 		os.Exit(1)
 	}
 
