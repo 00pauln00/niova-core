@@ -4547,6 +4547,9 @@ raft_server_client_recv_handler_ping(struct raft_instance *ri,
                                              RAFT_BUF_SET_SMALL);
     SIMPLE_LOG_MSG(LL_NOTIFY, "ping reply");
 
+    if (rc)
+        return rc;
+
     raft_server_client_rncr_complete(ri, &rncr, rc);
 }
 
