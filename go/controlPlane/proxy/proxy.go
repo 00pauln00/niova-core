@@ -73,6 +73,7 @@ type proxyHandler struct {
 
 var MaxPort = 60000
 var MinPort = 1000
+var RecvdPort int
 
 func usage() {
 	flag.PrintDefaults()
@@ -472,11 +473,14 @@ func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
 	handler.httpServerObj = httpServer.HTTPServerHandler{}
 	handler.httpServerObj.Addr = handler.addr
+	handler.httpServerObj.PortRange = handler.portRange
 	handler.httpServerObj.Port = handler.httpPort
 	handler.httpServerObj.PUTHandler = handler.WriteCallBack
 	handler.httpServerObj.GETHandler = handler.ReadCallBack
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
 	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
+	handler.httpServerObj.RecvdPort = &RecvdPort
+	handler.httpServerObj.AppType = "Proxy"
 	if handler.requireStat != "0" {
 		handler.httpServerObj.StatsRequired = true
 	}
@@ -548,11 +552,15 @@ Description : Checks status of the http server
 func (handler *proxyHandler) checkHTTPLiveness() {
 	var emptyByteArray []byte
 	for {
-		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(handler.httpPort))+"/check", false)
+		fmt.Println("/check on port - ", RecvdPort)
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
 		if err != nil {
 			log.Error("HTTP Liveness - ", err)
+			fmt.Println("HTTP Liveness - ", err)
 		} else {
 			log.Info("HTTP Liveness - HTTP Server is alive")
+			fmt.Println("HTTP Liveness - Server is alive")
+			handler.httpPort = uint16(RecvdPort)
 			break
 		}
 		time.Sleep(1 * time.Second)
@@ -617,10 +625,9 @@ func main() {
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
-		for ; i < len(proxyObj.portRange); i++ {
-			//Iterate over ports in the range
-			proxyObj.httpPort = proxyObj.portRange[i]
-			err = proxyObj.startHTTPServer()
+		proxyObj.httpPort = proxyObj.portRange[i]
+		err = proxyObj.startHTTPServer()
+		/*
 			if err != nil {
 				//Check if the error is a bind error
 				if strings.Contains(err.Error(), "bind") {
@@ -629,9 +636,7 @@ func main() {
 					log.Error("Error while starting http server : ", err)
 					break
 				}
-			}
-			break
-		}
+		*/
 	}()
 
 	//Stat maker

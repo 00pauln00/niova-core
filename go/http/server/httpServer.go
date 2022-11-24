@@ -5,11 +5,11 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"io/ioutil"
-	"net/http"
-	"sync"
 	"net"
-	"time"
+	"net/http"
 	"strconv"
+	"sync"
+	"time"
 )
 
 type HTTPServerHandler struct {
@@ -20,6 +20,9 @@ type HTTPServerHandler struct {
 	PUTHandler          func([]byte, *[]byte) error
 	HTTPConnectionLimit int
 	PMDBServerConfig    map[string][]byte
+	PortRange           []uint16
+	RecvdPort           *int
+	AppType             string
 	//Non-exported
 	HTTPServer        http.Server
 	rncui             string
@@ -169,11 +172,64 @@ func (handler *HTTPServerHandler) ServeHTTP(writer http.ResponseWriter, reader *
 		handler.configHandler(writer, reader)
 	} else if (reader.URL.Path == "/stat") && (handler.StatsRequired) {
 		handler.statHandler(writer, reader)
-	} else if (reader.URL.Path == "/check") {
+	} else if reader.URL.Path == "/check" {
 		writer.Write([]byte("HTTP server in operation"))
 	} else {
 		handler.kvRequestHandler(writer, reader)
 	}
+}
+
+func (handler *HTTPServerHandler) TryConnect(addr string) (net.Listener, bool) {
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, false
+	} else {
+		return listener, true
+	}
+}
+
+func (handler *HTTPServerHandler) Start_HTTPListener() (net.Listener, error) {
+	if handler.AppType == "PMDB" {
+		for i := handler.PortRange[0]; i < handler.PortRange[len(handler.PortRange)-1]; i++ {
+			handler.HTTPServer.Addr = handler.Addr.String() + ":" + strconv.Itoa(int(i))
+			listener, ok := handler.TryConnect(handler.HTTPServer.Addr)
+			if ok {
+				*handler.RecvdPort = int(i)
+				return listener, nil
+			} else {
+				continue
+			}
+		}
+	} else {
+		for i := handler.PortRange[len(handler.PortRange)-1]; i > handler.PortRange[0]; i-- {
+			handler.HTTPServer.Addr = handler.Addr.String() + ":" + strconv.Itoa(int(i))
+			listener, ok := handler.TryConnect(handler.HTTPServer.Addr)
+			if ok {
+				*handler.RecvdPort = int(i)
+				return listener, nil
+			} else {
+				continue
+			}
+		}
+	}
+	return nil, nil
+
+	/*
+		fmt.Println("Iterating over port - ", i)
+		handler.HTTPServer.Addr = handler.Addr.String() + ":" + strconv.Itoa(int(i))
+		listener, err = net.Listen("tcp", handler.HTTPServer.Addr)
+		if err != nil {
+			if strings.Contains(err.Error(), "bind") {
+				continue
+			} else {
+				fmt.Println("Error while starting http listener - ", err)
+				return nil, err
+			}
+		} else {
+			*handler.RecvdPort = int(i)
+			break
+		}
+	*/
 }
 
 //Start server
@@ -186,8 +242,14 @@ func (handler *HTTPServerHandler) Start_HTTPServer() error {
 	handler.HTTPServer.Handler = http.TimeoutHandler(handler, 150*time.Second, "Server Timeout")
 	handler.Stat.StatusMap = make(map[int64]*RequestStatus)
 
+	//Start listener
+	listener, err := handler.Start_HTTPListener()
+	if err != nil {
+		return err
+	}
 	//Start server
-	err := handler.HTTPServer.ListenAndServe()
+	err = handler.HTTPServer.Serve(listener)
+	//err := handler.HTTPServer.ListenAndServe()
 	return err
 }
 
