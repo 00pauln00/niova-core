@@ -213,23 +213,6 @@ func (handler *HTTPServerHandler) Start_HTTPListener() (net.Listener, error) {
 		}
 	}
 	return nil, nil
-
-	/*
-		fmt.Println("Iterating over port - ", i)
-		handler.HTTPServer.Addr = handler.Addr.String() + ":" + strconv.Itoa(int(i))
-		listener, err = net.Listen("tcp", handler.HTTPServer.Addr)
-		if err != nil {
-			if strings.Contains(err.Error(), "bind") {
-				continue
-			} else {
-				fmt.Println("Error while starting http listener - ", err)
-				return nil, err
-			}
-		} else {
-			*handler.RecvdPort = int(i)
-			break
-		}
-	*/
 }
 
 //Start server

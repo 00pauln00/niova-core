@@ -474,7 +474,6 @@ func (handler *proxyHandler) startHTTPServer() error {
 	handler.httpServerObj = httpServer.HTTPServerHandler{}
 	handler.httpServerObj.Addr = handler.addr
 	handler.httpServerObj.PortRange = handler.portRange
-	handler.httpServerObj.Port = handler.httpPort
 	handler.httpServerObj.PUTHandler = handler.WriteCallBack
 	handler.httpServerObj.GETHandler = handler.ReadCallBack
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
