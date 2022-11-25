@@ -248,12 +248,7 @@ Description : Does setup, start and joins in cluster
 func (Handler *SerfAgentHandler) SerfAgentStartup(RPCRequired bool) (int, error) {
 	var err error
 	var memcount int
-	//Setup
 	joinAddrs := Handler.getAddrList()
-	err = Handler.setup()
-	if err != nil {
-		return 0, err
-	}
 	//Start agent and RPC server
 	err = Handler.start(RPCRequired)
 	if err != nil {

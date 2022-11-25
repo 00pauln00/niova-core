@@ -239,7 +239,6 @@ func (handler *proxyHandler) startSerfAgent() error {
 	//Fill serf agent configuration
 	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
 	handler.serfAgentObj.Name = handler.serfAgentName
-	handler.serfAgentObj.Addr = handler.addr
 	handler.serfAgentObj.AddrList = handler.addrList
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RaftUUID = handler.raftUUID
