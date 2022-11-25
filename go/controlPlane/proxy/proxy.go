@@ -41,7 +41,8 @@ type proxyHandler struct {
 	logLevel   string
 
 	//Niovakvserver
-	addr net.IP
+	addr     net.IP
+	addrList []net.IP
 
 	//Pmdb nivoa client
 	raftUUID                uuid.UUID
@@ -117,6 +118,18 @@ func makeRange(min, max uint16) []uint16 {
 	return a
 }
 
+func removeDuplicateStr(strSlice []string) []string {
+	allKeys := make(map[string]bool)
+	list := []string{}
+	for _, item := range strSlice {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
 /*
 Structure : proxyHandler
 Method    : getConfigData
@@ -146,8 +159,12 @@ func (handler *proxyHandler) getConfigData() error {
 	scanner := bufio.NewScanner(reader)
 	//Read IPAddrs
 	scanner.Scan()
-	IPAddrs := strings.Split(scanner.Text(), " ")
-	fmt.Println(IPAddrs)
+	IPAddrsTxt := strings.Split(scanner.Text(), " ")
+	IPAddrs := removeDuplicateStr(IPAddrsTxt)
+	for i := range IPAddrs {
+		ipAddr := net.ParseIP(IPAddrs[i])
+		handler.addrList = append(handler.addrList, ipAddr)
+	}
 	handler.addr = net.ParseIP(IPAddrs[0])
 
 	//Read Ports
@@ -223,6 +240,7 @@ func (handler *proxyHandler) startSerfAgent() error {
 	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
 	handler.serfAgentObj.Name = handler.serfAgentName
 	handler.serfAgentObj.Addr = handler.addr
+	handler.serfAgentObj.AddrList = handler.addrList
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.RaftUUID = handler.raftUUID
 	handler.serfAgentObj.ServicePortRangeS = handler.ServicePortRangeS

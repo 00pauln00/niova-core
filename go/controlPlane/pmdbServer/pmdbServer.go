@@ -55,6 +55,7 @@ type pmdbServerHandler struct {
 	hport             uint16
 	prometheus        bool
 	nodeAddr          net.IP
+	addrList          []net.IP
 	GossipData        map[string]string
 	ConfigString      string
 	ConfigData        []PumiceDBCommon.PeerConfigData
@@ -302,6 +303,18 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() error {
 	return nil
 }
 
+func removeDuplicateStr(strSlice []string) []string {
+	allKeys := make(map[string]bool)
+	list := []string{}
+	for _, item := range strSlice {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
 func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	f, err := os.Open(handler.gossipClusterFile)
 	if err != nil {
@@ -314,7 +327,12 @@ func (handler *pmdbServerHandler) readGossipClusterFile() error {
 		Start_port End_port
 	*/
 	scanner.Scan()
-	IPAddrs := strings.Split(scanner.Text(), " ")
+	IPAddrsTxt := strings.Split(scanner.Text(), " ")
+	IPAddrs := removeDuplicateStr(IPAddrsTxt)
+	for i := range IPAddrs {
+		ipAddr := net.ParseIP(IPAddrs[i])
+		handler.addrList = append(handler.addrList, ipAddr)
+	}
 	handler.nodeAddr = net.ParseIP(IPAddrs[0])
 	//Read Ports
 	scanner.Scan()
@@ -370,6 +388,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	serfAgentHandler := serfAgent.SerfAgentHandler{
 		Name:              handler.peerUUID.String(),
 		Addr:              handler.nodeAddr,
+		AddrList:          handler.addrList,
 		AgentLogger:       defaultLogger.Default(),
 		RaftUUID:          handler.raftUUID,
 		ServicePortRangeS: handler.servicePortRangeS,

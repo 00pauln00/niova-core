@@ -31,6 +31,7 @@ type SerfAgentHandler struct {
 	//Exported
 	Name              string //Name of the agent
 	Addr              net.IP //Addr for inter agent and agent-client communication
+	AddrList          []net.IP
 	AgentLogger       *log.Logger
 	ServicePortRangeS uint16
 	ServicePortRangeE uint16
@@ -92,26 +93,33 @@ Description : Starts the created agent in setup, and listenes on rpc channel
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	var err error
 	if Handler.AppType == "PMDB" {
-		for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
-			if Handler.startObj() {
-				break
-			} else {
-				Handler.ServicePortRangeS += 1
-				continue
+	out1:
+		for i := 0; i < len(Handler.AddrList); i++ {
+			Handler.Addr = Handler.AddrList[i]
+			for j := Handler.ServicePortRangeS; j < Handler.ServicePortRangeE; j++ {
+				if Handler.startObj() {
+					break out1
+				} else {
+					Handler.ServicePortRangeS += 1
+					continue
+				}
 			}
 		}
 	} else {
 		Handler.ServicePortRangeS, Handler.ServicePortRangeE = Handler.ServicePortRangeE, Handler.ServicePortRangeS
-		for i := Handler.ServicePortRangeS; i > Handler.ServicePortRangeE; i-- {
-			if Handler.startObj() {
-				break
-			} else {
-				Handler.ServicePortRangeS -= 1
-				continue
+	out2:
+		for i := 0; i < len(Handler.AddrList); i++ {
+			Handler.Addr = Handler.AddrList[i]
+			for j := Handler.ServicePortRangeS; j > Handler.ServicePortRangeE; j-- {
+				if Handler.startObj() {
+					break out2
+				} else {
+					Handler.ServicePortRangeS -= 1
+					continue
+				}
 			}
 		}
 	}
-
 	if !requireRPC {
 		return err
 	}
@@ -134,27 +142,35 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 
 	var rpcListener net.Listener
 	if Handler.AppType == "PMDB" {
-		for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
-			Handler.RpcPort = Handler.ServicePortRangeS
-			rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
-			if err != nil {
-				Handler.ServicePortRangeS += 1
-				continue
-			} else {
-				fmt.Println("Succesfully binded RPC Port to - ", Handler.RpcPort)
-				break
+	out3:
+		for i := 0; i < len(Handler.AddrList); i++ {
+			Handler.Addr = Handler.AddrList[i]
+			for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
+				Handler.RpcPort = Handler.ServicePortRangeS
+				rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
+				if err != nil {
+					Handler.ServicePortRangeS += 1
+					continue
+				} else {
+					fmt.Println("Succesfully binded RPC Port to - ", Handler.RpcPort)
+					break out3
+				}
 			}
 		}
 	} else {
-		for i := Handler.ServicePortRangeS; i > Handler.ServicePortRangeE; i-- {
-			Handler.RpcPort = Handler.ServicePortRangeS
-			rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
-			if err != nil {
-				Handler.ServicePortRangeS -= 1
-				continue
-			} else {
-				fmt.Println("Successfully binded RPC Port to - ", Handler.RpcPort)
-				break
+	out4:
+		for i := 0; i < len(Handler.AddrList); i++ {
+			Handler.Addr = Handler.AddrList[i]
+			for i := Handler.ServicePortRangeS; i > Handler.ServicePortRangeE; i-- {
+				Handler.RpcPort = Handler.ServicePortRangeS
+				rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
+				if err != nil {
+					Handler.ServicePortRangeS -= 1
+					continue
+				} else {
+					fmt.Println("Successfully binded RPC Port to - ", Handler.RpcPort)
+					break out4
+				}
 			}
 		}
 	}
@@ -214,8 +230,10 @@ Description : Iterates over port range and gets list of adresses.
 */
 func (Handler *SerfAgentHandler) getAddrList() []string {
 	var addrs []string
-	for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
-		addrs = append(addrs, Handler.Addr.String()+":"+strconv.Itoa(int(i)))
+	for i := 0; i < len(Handler.AddrList); i++ {
+		for j := Handler.ServicePortRangeS; j < Handler.ServicePortRangeE; j++ {
+			addrs = append(addrs, Handler.AddrList[i].String()+":"+strconv.Itoa(int(j)))
+		}
 	}
 	return addrs
 }
