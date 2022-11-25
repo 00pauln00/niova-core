@@ -125,7 +125,7 @@ func (handler *configApplication) dumpConfigToFile(outfilepath string) error {
 func (handler *configApplication) GetPMDBServerConfig() error {
 	//Init serf client
 	serfClientObj := serfClient.SerfClientHandler{}
-	serfClientObj.InitData(handler.gossipNodesFile)
+	serfClientObj.InitData(handler.gossipNodesFile, handler.raftUUID)
 
 	//Iterate till getting PMDB config data from serf gossip
 	var allPmdbServerGossip map[string]map[string]string

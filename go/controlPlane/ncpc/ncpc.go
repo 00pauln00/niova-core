@@ -29,6 +29,7 @@ import (
 type clientHandler struct {
 	requestKey         string
 	requestValue       string
+	raftUUID           string
 	addr               string
 	port               string
 	operation          string
@@ -194,6 +195,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
 	flag.StringVar(&handler.port, "p", "1999", "Port value")
 	flag.StringVar(&handler.requestValue, "v", "", "Value")
+	flag.StringVar(&handler.raftUUID, "ru", "", "RaftUUID of the cluster to be queried")
 	flag.StringVar(&handler.configPath, "c", "./gossipNodes", "gossip nodes config file path")
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
@@ -543,6 +545,7 @@ func main() {
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		HTTPRetry: 10,
 		SerfRetry: 5,
+		RaftUUID:  clientObj.raftUUID,
 	}
 	stop := make(chan int)
 	go func() {

@@ -317,7 +317,7 @@ file is used by PMDB client to connet to the PMDB cluster.
 func (handler *proxyHandler) GetPMDBServerConfig() error {
 	//Init serf client
 	serfClientObj := serfClient.SerfClientHandler{}
-	serfClientObj.InitData(handler.serfPeersFilePath)
+	serfClientObj.InitData(handler.serfPeersFilePath, handler.raftUUID.String())
 
 	//Iterate till getting PMDB config data from serf gossip
 	var allPmdbServerGossip map[string]map[string]string

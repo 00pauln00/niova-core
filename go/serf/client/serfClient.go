@@ -90,7 +90,7 @@ Parameters : configPath string
 Return value : error
 Description : Get configuration data from config file
 */
-func (Handler *SerfClientHandler) InitData(configpath string) error {
+func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
 	var connectClient *client.RPCClient
 	err := Handler.getConfigData(configpath)
 	if err != nil {
@@ -99,7 +99,7 @@ func (Handler *SerfClientHandler) InitData(configpath string) error {
 
 	Handler.loadedGossipNodes = Handler.getAddrList()
 	for _, addr := range Handler.loadedGossipNodes {
-		connectClient, err = Handler.connectAddr(addr)
+		connectClient, err = Handler.connectAddr(addr, raftUUID)
 		if err == nil {
 			break
 		}
@@ -115,16 +115,19 @@ func (Handler *SerfClientHandler) InitData(configpath string) error {
 	return err
 }
 
-func (Handler *SerfClientHandler) connectAddr(addr string) (*client.RPCClient, error) {
-	return client.NewRPCClient(addr)
+func (Handler *SerfClientHandler) connectAddr(addr, raftUUID string) (*client.RPCClient, error) {
+	var RPCClientConfig client.Config
+	RPCClientConfig.Addr = addr
+	RPCClientConfig.AuthKey = raftUUID
+	return client.ClientFromConfig(&RPCClientConfig)
 }
 
-func (Handler *SerfClientHandler) connectRandomNode() (*client.RPCClient, error) {
+func (Handler *SerfClientHandler) connectRandomNode(raftUUID string) (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
 	randomAddr := randomAgent.Addr.String()
 	rPort := randomAgent.Tags["Rport"]
-	connector, err := Handler.connectAddr(randomAddr + ":" + rPort)
+	connector, err := Handler.connectAddr(randomAddr+":"+rPort, raftUUID)
 	if err != nil {
 		//Delete the node from connection list
 		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
@@ -140,7 +143,7 @@ Return value : error
 Description : Gets data from a random agent, persist the agent connection if persistConnection is true.
 persistConnection can be used if frequect updates are required.
 */
-func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error {
+func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool, raftUUID string) error {
 	var err error
 
 	//If no connection was persisted
@@ -150,7 +153,7 @@ func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error
 			if len(Handler.Agents) <= 0 {
 				return errors.New("No live serf agents")
 			}
-			Handler.agentConnection, err = Handler.connectRandomNode()
+			Handler.agentConnection, err = Handler.connectRandomNode(raftUUID)
 			if err == nil {
 				Handler.connectionExist = true
 				break

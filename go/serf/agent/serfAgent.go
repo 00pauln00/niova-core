@@ -174,7 +174,7 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 			}
 		}
 	}
-	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, "", rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
+	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, Handler.RaftUUID.String(), rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
 
 	return nil
 }
