@@ -115,6 +115,7 @@ tcp_mgr_worker(void *arg)
     THREAD_LOOP_WITH_CTL(tc)
     {
         struct tcp_mgr_connection *tmc = NULL;
+        thread_ctl_set_self(tc);
 
         NIOVA_WAIT_COND(
             (!STAILQ_EMPTY(&tmcq->tmcq_queue) || tc->tc_halt),
