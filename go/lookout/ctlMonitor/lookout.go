@@ -87,6 +87,17 @@ func (epc *EPContainer) scan() {
 	}
 }
 
+func (epc *EPContainer) CheckLiveness(peerUuid string) bool {
+	uuid, _ := uuid.Parse(peerUuid)
+	for {
+		if epc.EpMap[uuid] == nil {
+			time.Sleep(1 * time.Second)
+		} else {
+			return epc.EpMap[uuid].Alive
+		}
+	}
+}
+
 func (epc *EPContainer) monitor() error {
 	var err error = nil
 
@@ -110,6 +121,7 @@ func (epc *EPContainer) monitor() error {
 			ep.Detect(epc.AppType)
 		}
 
+		//TODO Change env variable to LOOKOUT SLEEP
 		sleepTimeStr := os.Getenv("NISD_LOOKOUT_SLEEP")
 		sleepTime, err = time.ParseDuration(sleepTimeStr)
 		if err != nil {

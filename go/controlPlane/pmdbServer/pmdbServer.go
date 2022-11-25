@@ -119,10 +119,6 @@ func main() {
 	go serverHandler.lookoutInstance.Start()
 
 	//Wait till HTTP Server has started
-	if serverHandler.prometheus {
-		serverHandler.checkHTTPLiveness()
-		serverHandler.exportTags()
-	}
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
@@ -134,17 +130,39 @@ func main() {
 	}
 
 	// Start the pmdb server
-	err = nso.pso.Run()
+	//TODO Check error
+	go nso.pso.Run()
 
-	if err != nil {
-		log.Error(err)
+	serverHandler.checkPMDBLiveness()
+	serverHandler.exportTags()
+}
+
+func (handler *pmdbServerHandler) checkPMDBLiveness() {
+	for {
+		ok := handler.lookoutInstance.CheckLiveness(handler.peerUUID.String())
+		if ok {
+			fmt.Println("PMDB Server is live")
+			return
+		} else {
+			time.Sleep(1 * time.Second)
+		}
 	}
 }
 
 func (handler *pmdbServerHandler) exportTags() error {
-	handler.GossipData["Hport"] = strconv.Itoa(RecvdPort)
-	fmt.Println("HPort is - ", handler.GossipData["Hport"])
-	handler.serfAgentHandler.SetNodeTags(handler.GossipData)
+	if handler.prometheus {
+		handler.checkHTTPLiveness()
+		handler.GossipData["Hport"] = strconv.Itoa(RecvdPort)
+	}
+	handler.GossipData["Type"] = "PMDB_SERVER"
+	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfAgentHandler.RpcPort))
+	handler.GossipData["RU"] = handler.raftUUID.String()
+	handler.GossipData["CS"], _ = generateCheckSum(handler.GossipData)
+	log.Info(handler.GossipData)
+	for {
+		handler.serfAgentHandler.SetNodeTags(handler.GossipData)
+		time.Sleep(3 * time.Second)
+	}
 
 	return nil
 }
@@ -365,15 +383,6 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 		log.Error("Error while starting serf agent ", err)
 	}
 	handler.readPMDBServerConfig()
-	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = strconv.Itoa(int(serfAgentHandler.RpcPort))
-	handler.GossipData["RU"] = handler.raftUUID.String()
-	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
-	if err != nil {
-		return err
-	}
-	log.Info(handler.GossipData)
-	serfAgentHandler.SetNodeTags(handler.GossipData)
 	handler.serfAgentHandler = serfAgentHandler
 	return err
 }

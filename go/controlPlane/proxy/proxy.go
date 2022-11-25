@@ -626,16 +626,6 @@ func main() {
 		log.Info("Starting HTTP server")
 		proxyObj.httpPort = proxyObj.portRange[i]
 		err = proxyObj.startHTTPServer()
-		/*
-			if err != nil {
-				//Check if the error is a bind error
-				if strings.Contains(err.Error(), "bind") {
-					continue
-				} else {
-					log.Error("Error while starting http server : ", err)
-					break
-				}
-		*/
 	}()
 
 	//Stat maker

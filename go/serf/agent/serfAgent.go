@@ -70,14 +70,6 @@ func (Handler *SerfAgentHandler) setup() error {
 	return err
 }
 
-/*
-Type : SerfAgentHandler
-Method name : Start
-Parameters : None
-Return Value : error
-Description : Starts the created agent in setup, and listenes on rpc channel
-*/
-
 func (Handler *SerfAgentHandler) startObj() bool {
 	Handler.setup()
 	err := Handler.agentObj.Start()
@@ -90,6 +82,13 @@ func (Handler *SerfAgentHandler) startObj() bool {
 	}
 }
 
+/*
+Type : SerfAgentHandler
+Method name : Start
+Parameters : None
+Return Value : error
+Description : Starts the created agent in setup, and listenes on rpc channel
+*/
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	var err error
 	if Handler.AppType == "PMDB" {
