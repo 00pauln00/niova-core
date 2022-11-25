@@ -184,6 +184,10 @@ func makeRange(min, max uint16) []uint16 {
 func (handler *pmdbServerHandler) checkHTTPLiveness() {
 	var emptyByteArray []byte
 	for {
+		if RecvdPort == -1 {
+			fmt.Println("HTTP Server failed to start")
+			os.Exit(0)
+		}
 		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
 		if err != nil {
 			fmt.Println("HTTP Liveness - ", err)

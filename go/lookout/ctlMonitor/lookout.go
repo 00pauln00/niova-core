@@ -440,7 +440,6 @@ func (epc *EPContainer) serveHttp() error {
 	//TODO Add app type check and assign ports according to convention
 	for i := 0; i < len(epc.PortRange); i++ {
 		epc.HttpPort = int(epc.PortRange[i])
-		*epc.RetPort = epc.HttpPort
 		l, err := net.Listen("tcp", ":"+strconv.Itoa(epc.HttpPort))
 		if err != nil {
 			if strings.Contains(err.Error(), "bind") {
@@ -451,6 +450,7 @@ func (epc *EPContainer) serveHttp() error {
 			}
 		} else {
 			go func() {
+				*epc.RetPort = epc.HttpPort
 				fmt.Println("Serving at - ", epc.HttpPort)
 				http.Serve(l, mux)
 			}()
@@ -494,6 +494,7 @@ func (epc *EPContainer) Start() error {
 			}
 		}()
 		if err := <-errs; err != nil {
+			*epc.RetPort = -1
 			return err
 		}
 	}
