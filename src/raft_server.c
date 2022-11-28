@@ -5369,8 +5369,6 @@ raft_server_sync_thread(void *arg)
     if (!ri->ri_sync_freq_us)
         ri->ri_sync_freq_us = RAFT_SERVER_SYNC_FREQ_US;
 
-//    thread_ctl_set_user_pause_usec(tc, ri->ri_sync_freq_us);
-
     NIOVA_ASSERT(ri);
 
     THREAD_LOOP_WITH_CTL(tc)
@@ -5577,8 +5575,6 @@ raft_server_chkpt_thread(void *arg)
 {
     struct thread_ctl *tc = arg;
     struct raft_instance *ri = (struct raft_instance *)thread_ctl_get_arg(tc);
-
-//    thread_ctl_set_user_pause_usec(tc, ri->ri_sync_freq_us);
 
     NIOVA_ASSERT(ri);
 

@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <unistd.h>
 
+#include "atomic.h"
 #include "common.h"
 #include "queue.h"
 #include "watchdog.h"
@@ -25,35 +26,83 @@
 extern __thread char thrName[MAX_THREAD_NAME + 1];
 extern __thread const struct thread_ctl *thrCtl;
 
+enum tc_flags
+{
+    TC_FLAG_RUN              = (1 << 0),
+    TC_FLAG_HALT             = (1 << 1),
+    TC_FLAG_WATCHDOG         = (1 << 2),
+    TC_FLAG_IS_WATCHDOG_THR  = (1 << 3),
+    TC_FLAG_IS_UTILITY_THR   = (1 << 4),
+    TC_FLAG_EXITED           = (1 << 5),
+    TC_FLAG_REACHED_CTL_LOOP = (1 << 6),
+};
+
 struct thread_ctl
 {
-    char     tc_thr_name[MAX_THREAD_NAME + 1];
-    uint32_t tc_run                  : 1,
-             tc_halt                 : 1,
-             tc_user_pause_toggle    : 1,
-             tc_watchdog             : 1,
-             tc_is_utility_thread    : 1,
-             tc_is_watchdog_thread   : 1,
-             tc_exited               : 1,
-             tc_has_reached_ctl_loop : 1;
+    char                   tc_thr_name[MAX_THREAD_NAME + 1];
+    enum tc_flags          tc_flags;
     int                    tc_ret;    // thread return code
     pthread_t              tc_thread_id;
-    useconds_t             tc_user_pause_usecs;
     useconds_t             tc_pause_usecs;
     void                  *tc_arg;
     size_t                 tc_sig_cnt;
     struct watchdog_handle tc_watchdog_handle;
 };
 
-#define DBG_THREAD_CTL(log_level, tc, fmt, ...)                 \
+static inline enum tc_flags
+thread_ctl_has_flag(const struct thread_ctl *tc, enum tc_flags flag)
+{
+    if (tc == NULL)
+        return 0;
+
+    return niova_atomic_read(&tc->tc_flags) & flag;
+}
+
+static inline int
+thread_ctl_set_flag(struct thread_ctl *tc, enum tc_flags flag)
+{
+    bool cas_ok = false;
+
+    do {
+        enum tc_flags current = tc->tc_flags;
+
+        if (current & flag)
+            return -EALREADY;
+
+        cas_ok = niova_atomic_cas(&tc->tc_flags, current, (current | flag));
+
+    } while (!cas_ok);
+
+    return 0;
+}
+
+static inline int
+thread_ctl_unset_flag(struct thread_ctl *tc, enum tc_flags flag)
+{
+    bool cas_ok = false;
+
+    do {
+        enum tc_flags current = tc->tc_flags;
+
+        if (!(current & flag))
+            return -EALREADY;
+
+        cas_ok = niova_atomic_cas(&tc->tc_flags, current, (current & ~flag));
+
+    } while (!cas_ok);
+
+    return 0;
+}
+
+#define DBG_THREAD_CTL(log_level, tc, fmt, ...)                         \
     log_msg(log_level, "tc@%p %s:%lx icnt=%lu scnt=%lu %c%c%c%c %p "fmt, \
-            (tc), (tc)->tc_thr_name, (tc)->tc_thread_id,        \
-            watchdog_get_exec_cnt(&(tc)->tc_watchdog_handle),   \
-            (tc)->tc_sig_cnt,                                   \
-            (tc)->tc_run                     ? 'r' : '-',       \
-            (tc)->tc_halt                    ? 'h' : '-',       \
-            (tc)->tc_watchdog                ? 'w' : '-',       \
-            (tc)->tc_has_reached_ctl_loop    ? 'l' : '-',       \
+            (tc), (tc)->tc_thr_name, (tc)->tc_thread_id,                \
+            watchdog_get_exec_cnt(&(tc)->tc_watchdog_handle),           \
+            (tc)->tc_sig_cnt,                                           \
+            thread_ctl_has_flag((tc), TC_FLAG_RUN)              ? 'r' : '-', \
+            thread_ctl_has_flag((tc), TC_FLAG_HALT)             ? 'h' : '-', \
+            thread_ctl_has_flag((tc), TC_FLAG_WATCHDOG)         ? 'w' : '-', \
+            thread_ctl_has_flag((tc), TC_FLAG_REACHED_CTL_LOOP) ? 'l' : '-', \
             (tc)->tc_arg, ##__VA_ARGS__)
 
 #define THREAD_LOOP_WITH_CTL(tc)                            \
@@ -90,22 +139,24 @@ thread_ctl_run(struct thread_ctl *);
 void
 thread_ctl_halt(struct thread_ctl *);
 
-static inline int
+static inline bool
 thread_ctl_thread_is_halting(const struct thread_ctl *tc)
 {
-    return tc ? tc->tc_halt : -EINVAL;
+    return (tc && thread_ctl_has_flag(tc, TC_FLAG_HALT)) ?
+        true : false;
 }
 
-static inline int
+static inline bool
 thread_ctl_thread_is_running(const struct thread_ctl *tc)
 {
-    return tc ? tc->tc_run : -EINVAL;
+    return (tc && thread_ctl_has_flag(tc, TC_FLAG_RUN)) ?
+        true : false;
 }
 
-static inline int
+static inline bool
 thread_ctl_thread_is_watched(const struct thread_ctl *tc)
 {
-    return tc ? tc->tc_watchdog : -EINVAL;
+    return (tc && thread_ctl_has_flag(tc, TC_FLAG_WATCHDOG)) ? true : false;
 }
 
 thread_id_t
@@ -137,14 +188,19 @@ thread_ctl_remove_from_watchdog(struct thread_ctl *tc);
 static inline void
 thread_ctl_set_self(struct thread_ctl *tc)
 {
-    tc->tc_has_reached_ctl_loop = 1;
-    thrCtl = tc;
+    int rc = thread_ctl_set_flag(tc, TC_FLAG_REACHED_CTL_LOOP);
+    if (rc == 0)
+        thrCtl = tc;
+
+    else if (tc != thrCtl) // 'self' may be set only once
+        thread_abort();
 }
 
 static inline bool
 thread_ctl_thread_has_reached_ctl_loop(const struct thread_ctl *tc)
 {
-    return (tc->tc_has_reached_ctl_loop || tc->tc_exited) ? true : false;
+    return (thread_ctl_has_flag(tc, (TC_FLAG_REACHED_CTL_LOOP |
+                                     TC_FLAG_EXITED))) ? true : false;
 }
 
 thread_exec_ctx_bool_t
@@ -153,13 +209,15 @@ thread_ctl_should_continue_self(void);
 static inline bool
 thread_ctl_is_utility_thread(void)
 {
-    return (thrCtl && thrCtl->tc_is_utility_thread) ? true : false;
+    return (thrCtl && thread_ctl_has_flag(thrCtl, TC_FLAG_IS_UTILITY_THR)) ?
+            true : false;
 }
 
 static inline bool
 thread_ctl_is_watchdog_thread(void)
 {
-    return (thrCtl && thrCtl->tc_is_watchdog_thread) ? true : false;
+    return (thrCtl && thread_ctl_has_flag(thrCtl, TC_FLAG_IS_WATCHDOG_THR)) ?
+            true : false;
 }
 
 void
@@ -177,6 +235,6 @@ thread_issue_sig_alarm_to_thread(pthread_t tid);
 static inline bool
 thread_has_exited(const struct thread_ctl *tc)
 {
-    return (tc && tc->tc_exited) ? true : false;
+    return (tc && thread_ctl_has_flag(tc, TC_FLAG_EXITED)) ? true : false;
 }
 #endif

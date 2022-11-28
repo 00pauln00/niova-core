@@ -127,7 +127,9 @@ util_thread_main(void *arg)
     FUNC_ENTRY(LL_DEBUG);
 
     struct thread_ctl *tc = arg;
-    tc->tc_is_utility_thread = 1;
+
+    int rc = thread_ctl_set_flag(tc, TC_FLAG_IS_UTILITY_THR);
+    NIOVA_ASSERT(rc == 0);
 
     thread_ctl_set_self(tc);
 
