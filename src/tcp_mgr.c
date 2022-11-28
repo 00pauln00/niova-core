@@ -115,13 +115,14 @@ tcp_mgr_worker(void *arg)
     THREAD_LOOP_WITH_CTL(tc)
     {
         struct tcp_mgr_connection *tmc = NULL;
-        thread_ctl_set_self(tc);
 
         NIOVA_WAIT_COND(
-            (!STAILQ_EMPTY(&tmcq->tmcq_queue) || tc->tc_halt),
+            (!STAILQ_EMPTY(&tmcq->tmcq_queue) ||
+             thread_ctl_has_flag(tc, TC_FLAG_HALT)),
              &tmcq->tmcq_mutex, &tmcq->tmcq_cond,
             {
-                if (!STAILQ_EMPTY(&tmcq->tmcq_queue) && !tc->tc_halt)
+                if (!STAILQ_EMPTY(&tmcq->tmcq_queue) &&
+                    !thread_ctl_has_flag(tc, TC_FLAG_HALT))
                 {
                     tmc = STAILQ_FIRST(&tmcq->tmcq_queue);
                     STAILQ_REMOVE_HEAD(&tmcq->tmcq_queue, tmc_lentry);
