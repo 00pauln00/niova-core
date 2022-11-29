@@ -120,10 +120,14 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 			}
 		}
 	}
-	if !requireRPC {
-		return err
+	//Check if serf agent is created
+	if Handler.agentObj == nil {
+		fmt.Println("Agent not started")
 	}
 
+	if !requireRPC {
+		return err
+	
 	//Create func handler for rpc, client handlers are binded to rpc.
 	FuncHandler := &agent.ScriptEventHandler{
 		SelfFunc: func() serf.Member { return Handler.agentObj.Serf().LocalMember() },
@@ -352,6 +356,8 @@ func (Handler *SerfAgentHandler) getServerAddress(staticSerfConfigPath string) e
 	if err != nil {
 		return err
 	}
+
+	//IPAddrs
 	scanner := bufio.NewScanner(reader)
 	scanner.Scan()
 	IPAddrs := scanner.Text()
