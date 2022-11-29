@@ -517,12 +517,14 @@ tmt_setup(struct tmt_data *td)
     int rc = epoll_mgr_setup(&td->td_epoll_mgr);
     NIOVA_ASSERT(!rc);
 
-    tcp_mgr_setup(&td->td_tcp_mgr, td, tmt_tcp_mgr_owned_connection_getput_cb,
-                  tmt_recv_cb,
-                  tmt_bulk_size_cb,
-                  tmt_handshake_cb,
-                  tmt_handshake_fill, sizeof(struct tmt_handshake),
-                  BULK_CREDITS, INCOMING_CREDITS);
+    rc = tcp_mgr_setup(&td->td_tcp_mgr, td,
+                       tmt_tcp_mgr_owned_connection_getput_cb,
+                       tmt_recv_cb,
+                       tmt_bulk_size_cb,
+                       tmt_handshake_cb,
+                       tmt_handshake_fill, sizeof(struct tmt_handshake),
+                       BULK_CREDITS, INCOMING_CREDITS, false);
+    NIOVA_ASSERT(!rc);
 
     rc = pthread_mutex_init(&td->td_conn_list_mutex, NULL);
     NIOVA_ASSERT(!rc);

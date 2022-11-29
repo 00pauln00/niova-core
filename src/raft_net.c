@@ -1567,24 +1567,41 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
 
     if (!raft_net_tcp_disabled())
     {
-        tcp_mgr_setup(&ri->ri_client_tcp_mgr, ri,
-                      (epoll_mgr_ref_cb_t)raft_net_connection_getput,
-                      (tcp_mgr_recv_cb_t)raft_net_client_tcp_cb,
-                      (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
-                      (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
-                      (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
-                      sizeof(struct raft_rpc_msg),
-                      DEFAULT_BULK_CREDITS,
-                      DEFAULT_INCOMING_CREDITS);
-        tcp_mgr_setup(&ri->ri_peer_tcp_mgr, ri,
-                      (epoll_mgr_ref_cb_t)raft_net_connection_getput,
-                      (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
-                      (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
-                      (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
-                      (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
-                      sizeof(struct raft_rpc_msg),
-                      DEFAULT_BULK_CREDITS,
-                      DEFAULT_INCOMING_CREDITS);
+        rc = tcp_mgr_setup(
+            &ri->ri_client_tcp_mgr, ri,
+            (epoll_mgr_ref_cb_t)raft_net_connection_getput,
+            (tcp_mgr_recv_cb_t)raft_net_client_tcp_cb,
+            (tcp_mgr_bulk_size_cb_t)raft_net_client_msg_bulk_size_cb,
+            (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
+            (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
+            sizeof(struct raft_rpc_msg),
+            DEFAULT_BULK_CREDITS,
+            DEFAULT_INCOMING_CREDITS, client_mode ? false : true);
+
+        if (rc) // needs a tcp_mgr_destroy()
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "tcp_mgr_setup(client): %s",
+                           strerror(-rc));
+            return rc;
+        }
+
+        rc = tcp_mgr_setup(
+            &ri->ri_peer_tcp_mgr, ri,
+            (epoll_mgr_ref_cb_t)raft_net_connection_getput,
+            (tcp_mgr_recv_cb_t)raft_net_peer_tcp_cb,
+            (tcp_mgr_bulk_size_cb_t)raft_net_peer_msg_bulk_size_cb,
+            (tcp_mgr_handshake_cb_t)raft_net_tcp_handshake_cb,
+            (tcp_mgr_handshake_fill_t)raft_net_tcp_handshake_fill,
+            sizeof(struct raft_rpc_msg),
+            DEFAULT_BULK_CREDITS,
+            DEFAULT_INCOMING_CREDITS, false);
+
+        if (rc) // needs a tcp_mgr_destroy()
+        {
+            SIMPLE_LOG_MSG(LL_WARN, "tcp_mgr_setup(peer): %s",
+                           strerror(-rc));
+            return rc;
+        }
     }
 
     rc = raft_net_sockets_setup(ri);

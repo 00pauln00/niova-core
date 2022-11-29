@@ -8,23 +8,21 @@
 #include "log.h"
 
 static void
-buffer_test(void)
+buffer_test(bool serialize)
 {
-    NIOVA_ASSERT(buffer_page_size() == 0);
-
     struct buffer_set bs = {0};
 
-    int rc = buffer_set_init(NULL, 0, 0, false);
+    int rc = buffer_set_init(NULL, 0, 0, false, serialize);
     NIOVA_ASSERT(rc == -EINVAL);
 
     // page size is set on first call to set_init()
     NIOVA_ASSERT(buffer_page_size() == 4096);
 
-    rc = buffer_set_init(&bs, 0, 0, false);
+    rc = buffer_set_init(&bs, 0, 0, false, serialize);
     NIOVA_ASSERT(rc == -EINVAL);
 
     // init and destroy 'bs'
-    rc = buffer_set_init(&bs, 1, 1, false);
+    rc = buffer_set_init(&bs, 1, 1, false, serialize);
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == 1);
 
@@ -44,7 +42,7 @@ buffer_test(void)
 
     // reserved ops
     const size_t n = 10;
-    rc = buffer_set_init(&bs, n, 1, false);
+    rc = buffer_set_init(&bs, n, 1, false, serialize);
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == n);
 
@@ -80,7 +78,10 @@ buffer_test(void)
 int
 main(void)
 {
-    buffer_test();
+    NIOVA_ASSERT(buffer_page_size() == 0);
+
+    buffer_test(false);
+    buffer_test(true);
 
     return 0;
 }
