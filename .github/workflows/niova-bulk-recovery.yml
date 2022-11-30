@@ -103,7 +103,7 @@ jobs:
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
-        echo ::set-output name=ARTIFACT_NAME::test-recipe-report_"$( echo ${{ github.run_attempt }})"
+        echo ::set-output name=ARTIFACT_NAME::test-recipe-report_${{ github.run_attempt }}
       if: failure()
 
     - name: Archive the test results
