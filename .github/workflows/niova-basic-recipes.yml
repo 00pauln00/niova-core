@@ -41,15 +41,6 @@ jobs:
     - name: Install Ansible
       run:  pip3 install ansible
 
-    - name: Output Run ID
-      run: echo ${{ github.run_id }}
-
-    - name: Output Run Number
-      run: echo ${{ github.run_number }}
-
-    - name: Output Run Attempt
-      run: echo ${{ github.run_attempt }}
-
     - name: make
       run: cd ./code &&
            ./prepare.sh &&
@@ -79,15 +70,6 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
-    - name: Output Run ID
-      run: echo ${{ github.run_id }}
-
-    - name: Output Run Number
-      run: echo ${{ github.run_number }}
-
-    - name: Output Run Attempt
-      run: echo ${{ github.run_attempt }}
-
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -113,7 +95,7 @@ jobs:
       id: prepare_artifact_filename
       run: |
         echo ::set-output name=ARTIFACT_NAME::test-recipe-report_${{ github.run_attempt }}
-      #if: failure()
+      if: failure()
 
     - name: Archive the test results
       uses: actions/upload-artifact@v2
