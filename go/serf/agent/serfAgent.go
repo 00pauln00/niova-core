@@ -8,7 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	//	"errors"
+	"errors"
 	"github.com/hashicorp/serf/cmd/serf/command/agent"
 	"github.com/hashicorp/serf/serf"
 
