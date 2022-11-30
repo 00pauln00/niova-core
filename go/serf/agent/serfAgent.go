@@ -54,7 +54,9 @@ Return values : error
 Description : Creates agent with configurations mentioned in structure and returns error if any, it dosent start the agent
 */
 func (Handler *SerfAgentHandler) setup() error {
-
+	//Debug statement
+	fmt.Println("Set Called with port : ", Handler.ServicePortRangeS)
+	
 	//Init an agent
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
@@ -92,6 +94,7 @@ Description : Starts the created agent in setup, and listenes on rpc channel
 */
 func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	var err error
+	fmt.Println("Specified port range : ", Handler.ServicePortRangeS, Handler.ServicePortRangeE)
 	if Handler.AppType == "PMDB" {
 	out1:
 		for i := 0; i < len(Handler.AddrList); i++ {
@@ -120,10 +123,16 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 			}
 		}
 	}
+
+	if Handler.agentObj == nil {
+		//Debug statment
+		fmt.Println("Agent not started")
+		return errors.New("Agent not started")
+	}
+
 	if !requireRPC {
 		return err
 	}
-
 	//Create func handler for rpc, client handlers are binded to rpc.
 	FuncHandler := &agent.ScriptEventHandler{
 		SelfFunc: func() serf.Member { return Handler.agentObj.Serf().LocalMember() },
