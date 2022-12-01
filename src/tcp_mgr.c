@@ -74,7 +74,88 @@ tcp_mgr_connection_put(struct tcp_mgr_connection *tmc)
         tmc->tmc_tmi->tmi_connection_ref_cb(tmc, EPH_REF_PUT);
 }
 
-void
+static void
+tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc);
+
+static void
+tcp_mgr_conn_reenable(struct tcp_mgr_connection *tmc)
+{
+    if (!tmc->tmc_handoff)
+        return;
+
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
+
+    niova_mutex_lock(&tmcq->tmcq_mutex);
+
+    if (!tmc->tmc_handoff)
+    {
+        niova_mutex_unlock(&tmcq->tmcq_mutex);
+        return;
+    }
+
+    tmc->tmc_handoff = 0; // mark the tmc as not residing on the queue
+
+    int rc = epoll_handle_mod(tmi->tmi_epoll_mgr, &tmc->tmc_eph);
+    if (rc != 0)
+        LOG_MSG(LL_DEBUG, "epoll_handle_mod(): %s", strerror(-rc));
+
+    niova_mutex_unlock(&tmcq->tmcq_mutex);
+}
+
+static void *
+tcp_mgr_worker(void *arg)
+{
+    struct thread_ctl *tc = (struct thread_ctl *)arg;
+    NIOVA_ASSERT(tc && tc->tc_arg);
+
+    struct tcp_mgr_instance *tmi = (struct tcp_mgr_instance *)tc->tc_arg;
+    struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
+
+    THREAD_LOOP_WITH_CTL(tc)
+    {
+        struct tcp_mgr_connection *tmc = NULL;
+
+        NIOVA_WAIT_COND(
+            (!STAILQ_EMPTY(&tmcq->tmcq_queue) ||
+             thread_ctl_has_flag(tc, TC_FLAG_HALT)),
+             &tmcq->tmcq_mutex, &tmcq->tmcq_cond,
+            {
+                if (!STAILQ_EMPTY(&tmcq->tmcq_queue) &&
+                    !thread_ctl_has_flag(tc, TC_FLAG_HALT))
+                {
+                    tmc = STAILQ_FIRST(&tmcq->tmcq_queue);
+                    STAILQ_REMOVE_HEAD(&tmcq->tmcq_queue, tmc_lentry);
+                }
+            });
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "tmc=%p", tmc);
+
+        if (tmc == NULL)
+            continue;
+
+        NIOVA_ASSERT(tmc->tmc_handoff);
+
+        /* Start work.  Note: this method ensures that only a single operation,
+         * per connection, will be processed at any one time.  This ensures that
+         * a greedy client will not occupy all processing threads.  If this
+         * behavior were to be changed, it's likely that a per-connection send
+         * mutex would be required to prevent interleaving of reply contents on
+         * the socket.
+         * NOTE that the send mutex may be needed anyway since the write replies
+         * will be handled async - by another thread.  The other issue becomes
+         * socket writes which can't be completed, in this case we need to
+         * queue the sends on the connection, similar to how nconn.c works.
+         */
+        tcp_mgr_conn_recv_inline(tmc);
+        // end work
+
+        tcp_mgr_conn_reenable(tmc);
+    }
+    return NULL;
+}
+
+int
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
@@ -82,22 +163,60 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
-              uint32_t incoming_credits)
+              uint32_t incoming_credits, bool conn_recv_handoff)
 {
     NIOVA_ASSERT(tmi);
 
     tmi->tmi_data = data;
+    tmi->tmi_nworkers = 0;
     tmi->tmi_connection_ref_cb = connection_ref_cb;
     tmi->tmi_recv_cb = recv_cb;
     tmi->tmi_bulk_size_cb = bulk_size_cb;
     tmi->tmi_handshake_cb = handshake_cb;
     tmi->tmi_handshake_fill = handshake_fill;
     tmi->tmi_handshake_size = handshake_size;
+    tmi->tmi_conn_recv_handoff = !!conn_recv_handoff;
 
     tcp_mgr_bulk_credits_set(tmi, bulk_credits);
     tcp_mgr_incoming_credits_set(tmi, incoming_credits);
 
     pthread_mutex_init(&tmi->tmi_epoll_ctx_mutex, NULL);
+
+    struct tcp_mgr_connq *tmcq = &tmi->tmi_connq;
+    STAILQ_INIT(&tmcq->tmcq_queue);
+    pthread_mutex_init(&tmcq->tmcq_mutex, NULL);
+    pthread_cond_init(&tmcq->tmcq_cond, NULL);
+
+    if (conn_recv_handoff)
+    {
+        int rc = 0;
+
+        for (int i = 0; i < TCP_MGR_NTHREADS; i++)
+        {
+            char thr_name[MAX_THREAD_NAME] = {0};
+            snprintf(thr_name, MAX_THREAD_NAME, "tcp_wrk.%d", i);
+
+            rc = thread_create(tcp_mgr_worker, &tmi->tmi_workers[i], thr_name,
+                               (void *)tmi, NULL);
+            if (rc == 0)
+            {
+                tmi->tmi_nworkers++;
+                thread_ctl_run(&tmi->tmi_workers[i]);
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (tmi->tmi_nworkers == 0)
+            return rc;
+
+        for (int i = 0; i < tmi->tmi_nworkers; i++)
+            thread_creator_wait_until_ctl_loop_reached(&tmi->tmi_workers[i]);
+    }
+
+    return 0;
 }
 
 int
@@ -159,6 +278,8 @@ tcp_mgr_connection_setup_internal(struct tcp_mgr_connection *tmc,
     tmc->tmc_epoll_ctx_cb = NULL;
 
     tmc->tmc_status = TMCS_DISCONNECTED;
+
+    pthread_mutex_init(&tmc->tmc_send_mutex, NULL);
 
     return 0;
 }
@@ -456,6 +577,15 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
 }
 
 static int
+tcp_mgr_tmi_exec_recv_cb(struct tcp_mgr_connection *tmc, char *sink_buf,
+                         size_t size)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    return tmi->tmi_recv_cb(tmc, sink_buf, size, tmi->tmi_data);
+}
+
+static int
 tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
@@ -466,8 +596,10 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     NIOVA_ASSERT(tmi->tmi_recv_cb && tmi->tmi_bulk_size_cb && header_size &&
                  header_size <= TCP_MGR_MAX_HDR_SIZE);
 
-    static char sink_buf[TCP_MGR_MAX_HDR_SIZE];
+    static __thread char sink_buf[TCP_MGR_MAX_HDR_SIZE];
     struct iovec iov;
+
+    // Note that tcp_socket_recv_all() will modify the iov
     iov.iov_base = sink_buf;
     iov.iov_len = header_size;
 
@@ -483,7 +615,7 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     // If there's no bulk proceed to request processor, else read the bulk
     return bulk_size ?
         tcp_mgr_bulk_prepare_and_recv(tmc, bulk_size, sink_buf, header_size) :
-        tmi->tmi_recv_cb(tmc, sink_buf, header_size, tmi->tmi_data);
+        tcp_mgr_tmi_exec_recv_cb(tmc, sink_buf, header_size);
 }
 
 static int
@@ -494,14 +626,82 @@ tcp_mgr_bulk_complete(struct tcp_mgr_connection *tmc)
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
     NIOVA_ASSERT(tmi->tmi_recv_cb);
 
-    int rc = tmi->tmi_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset,
-                              tmc->tmc_tmi->tmi_data);
+    int rc =
+        tcp_mgr_tmi_exec_recv_cb(tmc, tmc->tmc_bulk_buf, tmc->tmc_bulk_offset);
+
     tcp_mgr_bulk_free(tmi, tmc->tmc_bulk_buf);
 
     tmc->tmc_bulk_buf = NULL;
     tmc->tmc_bulk_offset = 0;
 
     return rc;
+}
+
+static void
+tcp_mgr_conn_recv_inline(struct tcp_mgr_connection *tmc)
+{
+    NIOVA_ASSERT(tmc);
+
+    int rc = 0;
+
+    // is this a new RPC?
+    if (!tmc->tmc_bulk_remain)
+    {
+        NIOVA_ASSERT(!tmc->tmc_bulk_buf);
+
+        rc = tcp_mgr_new_msg_handler(tmc);
+        if (rc == -EAGAIN) // Nothing to do on this socket
+            return;
+
+        if (rc < 0)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
+    }
+
+    // no 'else', tcp_mgr_new_msg_handler can initiate bulk read
+    if (rc == 0 && tmc->tmc_bulk_remain)
+    {
+        NIOVA_ASSERT(tmc->tmc_bulk_buf);
+
+        rc = tcp_mgr_bulk_progress_recv(tmc);
+        if (rc < 0)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
+
+        else if (!tmc->tmc_bulk_remain)
+            rc = tcp_mgr_bulk_complete(tmc);
+    }
+
+    if (rc < 0)
+    {
+        SIMPLE_LOG_MSG(LL_DEBUG, "error in recv, closing");
+
+        // Will remove from epoll set
+        tcp_mgr_connection_close_internal(tmc);
+    }
+}
+
+static epoll_mgr_cb_ctx_t
+tcp_mgr_conn_recv_handoff(struct tcp_mgr_connection *tmc)
+{
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+
+    niova_mutex_lock(&tmi->tmi_connq.tmcq_mutex);
+    if (tmc->tmc_handoff)
+    {
+        SIMPLE_LOG_MSG(LL_WARN, "tmc=%p handoff already set", tmc);
+        goto out;
+    }
+
+    tmc->tmc_handoff = 1;
+
+    SIMPLE_LOG_MSG(LL_DEBUG, "tmc=%p", tmc);
+
+    NIOVA_SET_COND_AND_WAKE_LOCKED(
+        signal,
+        { STAILQ_INSERT_TAIL(&tmi->tmi_connq.tmcq_queue, tmc, tmc_lentry); },
+        &tmi->tmi_connq.tmcq_cond);
+
+out:
+    niova_mutex_unlock(&tmi->tmi_connq.tmcq_mutex);
 }
 
 static epoll_mgr_cb_ctx_t
@@ -525,35 +725,12 @@ tcp_mgr_recv_cb(const struct epoll_handle *eph, uint32_t events)
         return;
     }
 
-    // is this a new RPC?
-    if (!tmc->tmc_bulk_remain)
-    {
-        NIOVA_ASSERT(!tmc->tmc_bulk_buf);
+    struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
+    NIOVA_ASSERT(tmi);
 
-        rc = tcp_mgr_new_msg_handler(tmc);
-        if (rc < 0)
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot read RPC, rc=%d", rc);
-    }
-
-    // no 'else', tcp_mgr_new_msg_handler can initiate bulk read
-    if (rc == 0 && tmc->tmc_bulk_remain)
-    {
-        NIOVA_ASSERT(tmc->tmc_bulk_buf);
-
-        rc = tcp_mgr_bulk_progress_recv(tmc);
-        if (rc < 0)
-            SIMPLE_LOG_MSG(LL_NOTIFY, "cannot complete bulk read, rc=%d", rc);
-        else if (!tmc->tmc_bulk_remain)
-            rc = tcp_mgr_bulk_complete(tmc);
-    }
-
-    if (rc < 0)
-    {
-        SIMPLE_LOG_MSG(LL_DEBUG, "error in recv, closing");
-
-        // Will remove from epoll set
-        tcp_mgr_connection_close_internal(tmc);
-    }
+    return tmi->tmi_conn_recv_handoff ?
+        tcp_mgr_conn_recv_handoff(tmc) :
+        tcp_mgr_conn_recv_inline(tmc);
 }
 
 static int
@@ -592,7 +769,9 @@ tcp_mgr_connection_merge_incoming(struct tcp_mgr_connection *incoming,
     if (incoming->tmc_eph.eph_installed)
         epoll_handle_del(tmi->tmi_epoll_mgr, &incoming->tmc_eph);
 
-    tcp_mgr_connection_epoll_add(owned, EPOLLIN, tcp_mgr_recv_cb,
+    uint32_t events = EPOLLIN | (tmi->tmi_conn_recv_handoff ? EPOLLONESHOT : 0);
+
+    tcp_mgr_connection_epoll_add(owned, events, tcp_mgr_recv_cb,
                                  tmi->tmi_connection_ref_cb);
 
     DBG_TCP_MGR_CXN(LL_NOTIFY, owned, "connection established");
@@ -893,7 +1072,11 @@ tcp_mgr_send_msg(struct tcp_mgr_connection *tmc, struct iovec *iov,
 
     const ssize_t total_size = niova_io_iovs_total_size_get(iov, niovs);
 
+    niova_mutex_lock(&tmc->tmc_send_mutex);
+
     ssize_t send_rc = tcp_socket_send(&tmc->tmc_tsh, iov, niovs);
+
+    niova_mutex_unlock(&tmc->tmc_send_mutex);
 
     if (send_rc != total_size)
     {

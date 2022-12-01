@@ -8,6 +8,7 @@
 
 #include <sys/uio.h>
 #include <stdint.h>
+#include <pthread.h>
 
 #include "common.h"
 #include "queue.h"
@@ -35,9 +36,11 @@ struct buffer_set
     ssize_t            bs_num_allocated;
     ssize_t            bs_num_pndg_alloc;
     size_t             bs_item_size;
-    bool               bs_init;
+    uint8_t            bs_init:1;
+    uint8_t            bs_serialize:1;
     struct buffer_list bs_free_list;
     struct buffer_list bs_inuse_list;
+    pthread_mutex_t    bs_mutex;
 };
 
 size_t
@@ -81,7 +84,7 @@ buffer_set_destroy(struct buffer_set *bs);
 
 int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                bool use_posix_memalign);
+                bool use_posix_memalign, bool serialize);
 
 static inline ssize_t
 buffer_user_list_total_bytes(const struct buffer_user_slist *bus,

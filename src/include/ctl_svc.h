@@ -85,6 +85,7 @@ struct ctl_svc_node
 {
     uuid_t                 csn_uuid;
     REF_TREE_ENTRY(ctl_svc_node) csn_rtentry;
+    STAILQ_ENTRY(ctl_svc_node) csn_lentry;
     enum ctl_svc_node_type csn_type;
     struct lreg_node       csn_lrn;
     union

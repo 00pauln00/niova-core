@@ -57,12 +57,14 @@ thread_ctl_install_sighandlers(void)
 static thread_exec_ctx_t
 thread_ctl_monitor_via_watchdog_internal(struct thread_ctl *tc)
 {
-    NIOVA_ASSERT(!tc->tc_watchdog);
+    NIOVA_ASSERT(!thread_ctl_has_flag(tc, TC_FLAG_WATCHDOG));
 
     int rc = watchdog_add_thread(&tc->tc_watchdog_handle);
 
     if (!rc)
-        tc->tc_watchdog = 1;
+    {
+        rc = thread_ctl_set_flag(tc, TC_FLAG_WATCHDOG);
+    }
 
     DBG_THREAD_CTL((rc ? LL_ERROR : LL_DEBUG), tc, "%s",
                    rc ? strerror(-rc) : "");
@@ -84,7 +86,7 @@ thread_ctl_monitor_via_watchdog(struct thread_ctl *tc)
 thread_exec_ctx_bool_t
 thread_ctl_should_continue(const struct thread_ctl *tc)
 {
-    return tc->tc_halt ? false : true;
+    return thread_ctl_has_flag(tc, TC_FLAG_HALT) ? false : true;
 }
 
 thread_exec_ctx_bool_t
@@ -114,22 +116,13 @@ thread_ctl_should_pause(struct thread_ctl *tc)
          */
         return false;
     }
-    else if (!tc->tc_run)
+    else if (!thread_ctl_has_flag(tc, TC_FLAG_RUN))
     {
         /* Thread control asked this thread to stop running for now.
          */
         tc->tc_pause_usecs = THR_PAUSE_DEFAULT_USECS;
 
         return true;
-    }
-    else if (tc->tc_user_pause_usecs)
-    {
-        /* The thread itself has asked to pause.
-         */
-        tc->tc_pause_usecs = tc->tc_user_pause_usecs;
-        tc->tc_user_pause_toggle = !tc->tc_user_pause_toggle;
-
-        return tc->tc_user_pause_toggle ? false : true;
     }
 
     return false;
@@ -165,16 +158,11 @@ thread_ctl_loop_test(struct thread_ctl *tc)
     return should_continue;
 }
 
-thread_exec_ctx_t
-thread_ctl_set_user_pause_usec(struct thread_ctl *tc, uint32_t usecs)
-{
-    tc->tc_user_pause_usecs = usecs;
-}
-
 void
 thread_ctl_run(struct thread_ctl *tc)
 {
-    tc->tc_run = 1;
+    int rc = thread_ctl_set_flag(tc, TC_FLAG_RUN);
+    FATAL_IF(rc != 0, "TC_FLAG_RUN could not be set, %s", strerror(-rc));
 
     DBG_THREAD_CTL(LL_NOTIFY, tc, "");
 }
@@ -182,7 +170,8 @@ thread_ctl_run(struct thread_ctl *tc)
 void
 thread_ctl_halt(struct thread_ctl *tc)
 {
-    tc->tc_halt = 1;
+    int rc = thread_ctl_set_flag(tc, TC_FLAG_HALT);
+    FATAL_IF(rc != 0, "TC_FLAG_HALT could not be set, %s", strerror(-rc));
 
     DBG_THREAD_CTL(LL_NOTIFY, tc, "");
 }
@@ -250,8 +239,19 @@ thread_creator_wait_until_ctl_loop_reached(const struct thread_ctl *tc)
 void
 thread_ctl_remove_from_watchdog(struct thread_ctl *tc)
 {
-    if (tc && tc->tc_watchdog)
-        watchdog_remove_thread(&tc->tc_watchdog_handle);
+    if (tc && thread_ctl_has_flag(tc, TC_FLAG_WATCHDOG))
+    {
+        int rc = watchdog_remove_thread(&tc->tc_watchdog_handle);
+        if (rc)
+        {
+            NIOVA_ASSERT(rc == -ENOENT);
+        }
+        else
+        {
+            rc = thread_ctl_unset_flag(tc, TC_FLAG_WATCHDOG);
+            NIOVA_ASSERT(rc == 0);
+        }
+    }
 }
 
 static long int
