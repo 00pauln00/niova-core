@@ -16,6 +16,7 @@
 #include "util_thread.h"
 #include "ev_pipe.h"
 #include "init.h"
+#include "io.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -796,6 +797,19 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
         return;
     }
 
+    eventfd_t x = {0};
+
+    /* Reap the FD before processing the work queue, otherwise a livelock may
+     * occur where an item is on the list w/out an accompanying event in
+     * the fd.
+     */
+    ssize_t rrc = niova_io_read(lRegEventFD, (char *)&x, sizeof(eventfd_t));
+    if (rrc == -EAGAIN)
+        return;
+
+    FATAL_IF(rrc != sizeof(eventfd_t),
+             "Invalid read size (%ld) from eventfd read x=%lu", rrc, x);
+
     int rc = lreg_util_processor();
     if (rc == -EXDEV)
     {
@@ -806,25 +820,6 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     {
         FATAL_IF(rc, "lreg_util_processor(): %s", strerror(-rc));
     }
-
-    eventfd_t x = {0};
-    ssize_t rrc;
-
-retry:
-    rrc = read(lRegEventFD, &x, sizeof(eventfd_t));
-    if (rrc == -1)
-    {
-        switch (errno)
-        {
-        case EAGAIN: return;
-        case EINTR:  goto retry;
-        default:
-            FATAL_IF(1, "eventfd read(): %s", strerror(errno));
-        };
-    }
-
-    FATAL_IF(rrc != sizeof(eventfd_t),
-             "Invalid read size (%ld) from eventfd read x=%lu", rrc, x);
 }
 
 #define LREG_NODE_INSTALL_COMPLETION_WAIT_USEC 30000000

@@ -23,7 +23,7 @@ typedef volatile signed char   niova_atomic8_t;
 #define niova_atomic_xor __sync_xor_and_fetch
 
 // type __sync_and_and_fetch (type *ptr, type value, ...)
-#define niova_atomic_and __sync_xor_and_fetch
+#define niova_atomic_and __sync_and_and_fetch
 
 #define niova_atomic_inc(ptr)           __sync_add_and_fetch(ptr, 1)
 #define niova_atomic_fetch_and_inc(ptr) __sync_fetch_and_add(ptr, 1)

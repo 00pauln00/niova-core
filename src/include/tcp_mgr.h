@@ -32,10 +32,23 @@ typedef tcp_mgr_ctx_ssize_t
 typedef tcp_mgr_ctx_t
 (*tcp_mgr_connection_epoll_ctx_cb_t)(struct tcp_mgr_connection *);
 
+struct tcp_mgr_connection;
+STAILQ_HEAD(tcp_mgr_conn_list, tcp_mgr_connection);
+
+struct tcp_mgr_connq
+{
+    pthread_mutex_t          tmcq_mutex;
+    pthread_cond_t           tmcq_cond;
+    struct tcp_mgr_conn_list tmcq_queue;
+};
+
+#define TCP_MGR_NTHREADS 32
+
 struct tcp_mgr_instance
 {
     struct tcp_socket_handle tmi_listen_socket;
     void                    *tmi_data;
+    uint8_t                  tmi_conn_recv_handoff:1;
 
     struct epoll_mgr        *tmi_epoll_mgr;
     struct epoll_handle      tmi_listen_eph;
@@ -50,6 +63,9 @@ struct tcp_mgr_instance
 
     niova_atomic32_t         tmi_bulk_credits;
     niova_atomic32_t         tmi_incoming_credits;
+    struct tcp_mgr_connq     tmi_connq;
+    struct thread_ctl        tmi_workers[TCP_MGR_NTHREADS];
+    size_t                   tmi_nworkers;
 };
 
 enum tcp_mgr_connection_status
@@ -64,6 +80,8 @@ enum tcp_mgr_connection_status
 struct tcp_mgr_connection
 {
     enum tcp_mgr_connection_status    tmc_status;
+    uint8_t                           tmc_handoff:1;
+    uint8_t                           tmc_user_error:1;
     struct tcp_socket_handle          tmc_tsh;
     struct epoll_handle               tmc_eph;
     struct tcp_mgr_instance          *tmc_tmi;
@@ -72,6 +90,8 @@ struct tcp_mgr_connection
     size_t                            tmc_bulk_offset;
     size_t                            tmc_bulk_remain;
     tcp_mgr_connection_epoll_ctx_cb_t tmc_epoll_ctx_cb;
+    STAILQ_ENTRY(tcp_mgr_connection)  tmc_lentry;
+    pthread_mutex_t                   tmc_send_mutex;
 };
 
 struct tcp_mgr_incoming_connection
@@ -88,7 +108,7 @@ do {                                                                 \
                  ##__VA_ARGS__);                                     \
 } while(0)
 
-void
+int
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
               tcp_mgr_recv_cb_t recv_cb,
@@ -96,7 +116,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               tcp_mgr_handshake_cb_t handshake_cb,
               tcp_mgr_handshake_fill_t handshake_fill,
               size_t handshake_size, uint32_t bulk_credits,
-              uint32_t incoming_credits);
+              uint32_t incoming_credits, bool conn_recv_handoff);
 
 int
 tcp_mgr_sockets_close(struct tcp_mgr_instance *tmi);

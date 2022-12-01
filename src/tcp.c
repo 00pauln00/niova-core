@@ -245,7 +245,8 @@ tcp_socket_recv(const struct tcp_socket_handle *tsh, struct iovec *iov,
     if (from)
         tcp_setup_sockaddr_in(tsh->tsh_ipaddr, tsh->tsh_port, from);
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "fd=%d src=%s:%u nb=%zd flags=%x",
+    SIMPLE_LOG_MSG((rc == 0 ? LL_NOTIFY : LL_DEBUG),
+                   "fd=%d src=%s:%u nb=%zd flags=%x",
                    socket, tsh->tsh_ipaddr, tsh->tsh_port, rc,
                    msg.msg_flags);
 
@@ -268,10 +269,10 @@ tcp_socket_recv_all(const struct tcp_socket_handle *tsh,
         SIMPLE_LOG_MSG(LL_DEBUG, "recv_bytes=%ld iov_base=%p iov_len=%ld",
                        recv_bytes, iov->iov_base, iov->iov_len);
 
-        if (recv_bytes == -EAGAIN)
-            recv_bytes = 0;
+        if (recv_bytes == 0) // Socket has closed
+            return -ENOTCONN;
 
-        else if (recv_bytes <= 0)
+        else if (recv_bytes < 0)
             return recv_bytes;
 
         total_bytes += recv_bytes;

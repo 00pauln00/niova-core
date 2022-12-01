@@ -193,7 +193,8 @@ watchdog_svc_thread(void *arg)
     struct thread_ctl *tc = arg;
     NIOVA_ASSERT(tc);
 
-    tc->tc_is_watchdog_thread = 1;
+    int rc = thread_ctl_set_flag(tc, TC_FLAG_IS_WATCHDOG_THR);
+    NIOVA_ASSERT(rc == 0);
 
     thread_ctl_set_self(tc);
 
