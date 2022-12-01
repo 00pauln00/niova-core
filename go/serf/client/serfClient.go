@@ -35,7 +35,7 @@ type SerfClientHandler struct {
 
 func (handler *SerfClientHandler) getAddrList() []string {
 	var addrs []string
-	for i := len(handler.portRange)-1 ; i >= 0 ; i-- {
+	for i := 0; i < len(handler.portRange); i++ {
 		addrs = append(addrs, handler.ipAddrs.String()+":"+strconv.Itoa(int(handler.portRange[i])))
 	}
 	return addrs
