@@ -60,7 +60,8 @@ jobs:
            && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
-      run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/
+      run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
+           cp ./code/scripts/control_plane_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     # Checkout holon repo
     - name: Checkout repository
