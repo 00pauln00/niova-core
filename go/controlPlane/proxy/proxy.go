@@ -8,7 +8,6 @@ import (
 	"common/httpServer"
 	"common/requestResponseLib"
 	"common/serfAgent"
-	"common/serfClient"
 	compressionLib "common/specificCompressionLib"
 	"encoding/binary"
 	"encoding/gob"
@@ -237,15 +236,16 @@ func (handler *proxyHandler) startSerfAgent() error {
 	}
 
 	//Fill serf agent configuration
-	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
-	handler.serfAgentObj.Name = handler.serfAgentName
-	handler.serfAgentObj.AddrList = handler.addrList
-	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
-	handler.serfAgentObj.RaftUUID = handler.raftUUID
-	handler.serfAgentObj.ServicePortRangeS = handler.ServicePortRangeS
-	handler.serfAgentObj.ServicePortRangeE = handler.ServicePortRangeE
-	handler.serfAgentObj.AppType = "PROXY"
-
+	handler.serfAgentObj = serfAgent.SerfAgentHandler{
+		Name : handler.serfAgentName,
+		AddrList : handler.addrList,
+		Addr : net.ParseIP("0.0.0.0"),
+		AgentLogger : defaultLogger.Default(),
+		RaftUUID : handler.raftUUID,
+		ServicePortRangeS : handler.ServicePortRangeS,
+		ServicePortRangeE : handler.ServicePortRangeE,
+		AppType : "PROXY",
+	}
 	//Start serf agent
 	_, err := handler.serfAgentObj.SerfAgentStartup(true)
 	return err
@@ -315,14 +315,10 @@ Description : Get PMDB server configs from serf gossip and store in file. The ge
 file is used by PMDB client to connet to the PMDB cluster.
 */
 func (handler *proxyHandler) GetPMDBServerConfig() error {
-	//Init serf client
-	serfClientObj := serfClient.SerfClientHandler{}
-	serfClientObj.InitData(handler.serfPeersFilePath, handler.raftUUID.String())
-
 	//Iterate till getting PMDB config data from serf gossip
 	var allPmdbServerGossip map[string]map[string]string
 	for len(allPmdbServerGossip) == 0 {
-		allPmdbServerGossip = serfClientObj.GetTags("Type", "PMDB_SERVER")
+		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type", "PMDB_SERVER")
 		time.Sleep(2 * time.Second)
 	}
 	log.Info("PMDB config from gossip : ", allPmdbServerGossip)
@@ -488,15 +484,16 @@ Description : Starts HTTP server.
 */
 func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
-	handler.httpServerObj = httpServer.HTTPServerHandler{}
-	handler.httpServerObj.Addr = handler.addr
-	handler.httpServerObj.PortRange = handler.portRange
-	handler.httpServerObj.PUTHandler = handler.WriteCallBack
-	handler.httpServerObj.GETHandler = handler.ReadCallBack
+	handler.httpServerObj = httpServer.HTTPServerHandler{
+		Addr : handler.addr,
+		PortRange : handler.portRange,
+		PUTHandler : handler.WriteCallBack,
+		GETHandler : handler.ReadCallBack,
+		PMDBServerConfig : handler.PMDBServerConfigByteMap,
+		RecvdPort : &RecvdPort,
+		AppType : "Proxy",
+	}
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
-	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
-	handler.httpServerObj.RecvdPort = &RecvdPort
-	handler.httpServerObj.AppType = "Proxy"
 	if handler.requireStat != "0" {
 		handler.httpServerObj.StatsRequired = true
 	}
@@ -610,6 +607,20 @@ func main() {
 	if err != nil {
 		log.Error("(Proxy) Logger error : ", err)
 	}
+	
+	//Apply config
+        err = proxyObj.getConfigData()
+        if err != nil {
+                log.Error("(Proxy) Error while getting config data : ", err)
+                os.Exit(1)
+        }
+
+        //Start serf agent handler
+        log.Info("Starting serf agent handler")
+        err = proxyObj.startSerfAgent()
+        if err != nil {
+                log.Error("Error while starting Serf Agent")
+        }
 
 	//Get PMDB server config data
 	err = proxyObj.GetPMDBServerConfig()
@@ -622,19 +633,6 @@ func main() {
 	if err != nil {
 		log.Error("(Niovakv Server) Error while starting pmdb client : ", err)
 		os.Exit(1)
-	}
-
-	//Apply config
-	err = proxyObj.getConfigData()
-	if err != nil {
-		log.Error("(Proxy) Error while getting config data : ", err)
-		os.Exit(1)
-	}
-	//Start serf agent handler
-	log.Info("Starting serf agent handler")
-	err = proxyObj.startSerfAgent()
-	if err != nil {
-		log.Error("Error while starting Serf Agent")
 	}
 
 	//TODO Shift inside common HTTP Library

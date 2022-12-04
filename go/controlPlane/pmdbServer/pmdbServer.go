@@ -392,6 +392,7 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 	serfAgentHandler := serfAgent.SerfAgentHandler{
 		Name:              handler.peerUUID.String(),
 		AddrList:          handler.addrList,
+		Addr:		   net.ParseIP("0.0.0.0"),
 		AgentLogger:       defaultLogger.Default(),
 		RaftUUID:          handler.raftUUID,
 		ServicePortRangeS: handler.servicePortRangeS,

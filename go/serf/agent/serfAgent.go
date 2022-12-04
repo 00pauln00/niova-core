@@ -97,8 +97,6 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	fmt.Println("Specified port range : ", Handler.ServicePortRangeS, Handler.ServicePortRangeE)
 	if Handler.AppType == "PMDB" {
 	out1:
-		for i := 0; i < len(Handler.AddrList); i++ {
-			Handler.Addr = Handler.AddrList[i]
 			for j := Handler.ServicePortRangeS; j < Handler.ServicePortRangeE; j++ {
 				if Handler.startObj() {
 					break out1
@@ -107,12 +105,9 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 					continue
 				}
 			}
-		}
 	} else {
 		Handler.ServicePortRangeS, Handler.ServicePortRangeE = Handler.ServicePortRangeE, Handler.ServicePortRangeS
 	out2:
-		for i := 0; i < len(Handler.AddrList); i++ {
-			Handler.Addr = Handler.AddrList[i]
 			for j := Handler.ServicePortRangeS; j > Handler.ServicePortRangeE; j-- {
 				if Handler.startObj() {
 					break out2
@@ -121,7 +116,6 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 					continue
 				}
 			}
-		}
 	}
 
 	if Handler.agentObj == nil {
