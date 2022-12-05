@@ -71,7 +71,7 @@ jobs:
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
     - name: Short commit
-      run: echo ${{git.commit.id.abbrev}}
+      run: $(git rev-parse --short ${{ github.event.pull_request.head.sha }})
 
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
