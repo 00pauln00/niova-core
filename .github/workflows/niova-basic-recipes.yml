@@ -70,6 +70,9 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: get short commit_id
+      run: echo ${{ github.event.pull_request.head.sha::7 }}
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -93,7 +96,7 @@ jobs:
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
-        echo ::set-output name=ARTIFACT_NAME::test-recipe-report_${{ github.event.pull_request.head.sha }}_${{ github.run_attempt }}
+        echo ::set-output name=ARTIFACT_NAME::test-recipe-report_${{ github.event.pull_request.head.sha::7 }}_${{ github.run_attempt }}
       #if: failure()
 
     - name: Archive the test results
