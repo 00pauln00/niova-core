@@ -70,6 +70,9 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: Step
+      run: echo ${{GITHUB_SHA::7}}
+
     - name: Get short SHA
       run: echo "SHORT_SHA=$("${{ github.event.pull_request.head.sha }}".SubString(0, 8))" >> $env:GITHUB_ENV
 
