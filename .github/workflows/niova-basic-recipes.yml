@@ -70,6 +70,9 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: Get latest commit-id
+      run: ${{ github.event.pull_request.head.sha }}
+
     - name:  run recipes
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
