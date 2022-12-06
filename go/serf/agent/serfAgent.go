@@ -53,7 +53,7 @@ Parameters : None
 Return values : error
 Description : Creates agent with configurations mentioned in structure and returns error if any, it dosent start the agent
 */
-func (Handler *SerfAgentHandler) setup() error {
+func (Handler *SerfAgentHandler) setupNstart(bindPort int) error {
 	//Debug statement
 	fmt.Println("Set Called with port : ", Handler.ServicePortRangeS)
 	
@@ -61,7 +61,7 @@ func (Handler *SerfAgentHandler) setup() error {
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.Addr.String()                          //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort = int(Handler.ServicePortRangeS)                 //Agent bind port
+	serfconfig.MemberlistConfig.BindPort = bindPort                 		      //Agent bind port
 	serfconfig.MemberlistConfig.SecretKey = Handler.RaftUUID.Bytes()                      //Encryption key
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
@@ -69,36 +69,26 @@ func (Handler *SerfAgentHandler) setup() error {
 	//Create SerfAgentHandler obj and init the values
 	Handler.agentObj = serfagent
 	Handler.agentConf = agentconfig
-
+	err = Handler.agentObj.Start()
 	return err
 }
 
-func (Handler *SerfAgentHandler) startObj() bool {
-	Handler.setup()
-	err := Handler.agentObj.Start()
-	if err != nil {
-		return false
-	} else {
-		fmt.Println("Succefully binded to port - ", Handler.ServicePortRangeS)
-		Handler.Aport = Handler.ServicePortRangeS
-		return true
-	}
-}
 
 /*
 Type : SerfAgentHandler
-Method name : Start
-Parameters : None
+Method name : bind
+Parameters : requiredRPC
 Return Value : error
-Description : Starts the created agent in setup, and listenes on rpc channel
+Description : Inits and binds serf agent and rpc service to a port in the specified port range
 */
-func (Handler *SerfAgentHandler) start(requireRPC bool) error {
+func (Handler *SerfAgentHandler) bind(requireRPC bool) error {
 	var err error
 	fmt.Println("Specified port range : ", Handler.ServicePortRangeS, Handler.ServicePortRangeE)
 	if Handler.AppType == "PMDB" {
 	out1:
 			for j := Handler.ServicePortRangeS; j < Handler.ServicePortRangeE; j++ {
-				if Handler.startObj() {
+				err = Handler.setupNstart(int(j))
+				if err == nil {
 					break out1
 				} else {
 					Handler.ServicePortRangeS += 1
@@ -106,13 +96,13 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 				}
 			}
 	} else {
-		Handler.ServicePortRangeS, Handler.ServicePortRangeE = Handler.ServicePortRangeE, Handler.ServicePortRangeS
 	out2:
-			for j := Handler.ServicePortRangeS; j > Handler.ServicePortRangeE; j-- {
-				if Handler.startObj() {
+			for j := Handler.ServicePortRangeE; j > Handler.ServicePortRangeS; j-- {
+				err = Handler.setupNstart(int(j))
+				if err == nil {
 					break out2
 				} else {
-					Handler.ServicePortRangeS -= 1
+					Handler.ServicePortRangeE -= 1
 					continue
 				}
 			}
@@ -146,8 +136,6 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 	var rpcListener net.Listener
 	if Handler.AppType == "PMDB" {
 	out3:
-		for i := 0; i < len(Handler.AddrList); i++ {
-			Handler.Addr = Handler.AddrList[i]
 			for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
 				Handler.RpcPort = Handler.ServicePortRangeS
 				rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
@@ -159,23 +147,19 @@ func (Handler *SerfAgentHandler) start(requireRPC bool) error {
 					break out3
 				}
 			}
-		}
 	} else {
 	out4:
-		for i := 0; i < len(Handler.AddrList); i++ {
-			Handler.Addr = Handler.AddrList[i]
-			for i := Handler.ServicePortRangeS; i > Handler.ServicePortRangeE; i-- {
-				Handler.RpcPort = Handler.ServicePortRangeS
+			for i := Handler.ServicePortRangeE; i > Handler.ServicePortRangeS; i-- {
+				Handler.RpcPort = Handler.ServicePortRangeE
 				rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
 				if err != nil {
-					Handler.ServicePortRangeS -= 1
+					Handler.ServicePortRangeE -= 1
 					continue
 				} else {
 					fmt.Println("Successfully binded RPC Port to - ", Handler.RpcPort)
 					break out4
 				}
 			}
-		}
 	}
 	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, Handler.RaftUUID.String(), rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
 
@@ -253,7 +237,7 @@ func (Handler *SerfAgentHandler) SerfAgentStartup(RPCRequired bool) (int, error)
 	var memcount int
 	joinAddrs := Handler.getAddrList()
 	//Start agent and RPC server
-	err = Handler.start(RPCRequired)
+	err = Handler.bind(RPCRequired)
 	if err != nil {
 		return 0, err
 	}
