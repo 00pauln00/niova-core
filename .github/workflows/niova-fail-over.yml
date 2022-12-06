@@ -73,7 +73,7 @@ jobs:
     - name: Prepare artifact filename
       id: prepare_artifact_filename
       run: |
-        echo ::set-output name=ARTIFACT_NAME::test-recipe-report."$( echo $(($RANDOM%10000)))"
+        echo ::set-output name=ARTIFACT_NAME::test-recipe-report_${{ github.event.pull_request.head.sha }}_${{ github.run_attempt }}
       if: failure()
 
     - name: Archive the test results
