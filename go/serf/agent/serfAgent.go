@@ -44,6 +44,7 @@ type SerfAgentHandler struct {
 	agentObj    *agent.Agent
 	agentIPCObj *agent.AgentIPC
 	agentConf   *agent.Config
+	rpcListener net.Listener
 }
 
 /*
@@ -74,6 +75,33 @@ func (Handler *SerfAgentHandler) setupNstart(bindPort int) error {
 }
 
 
+func (Handler *SerfAgentHandler) createRPCHandler(bindPort int) error {
+	var err error
+	Handler.rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(bindPort))
+	return err
+}
+
+func (Handler *SerfAgentHandler) tryRangePMDBServer(caller func(int) error) {
+	for j := Handler.ServicePortRangeS; j <= Handler.ServicePortRangeE; j++ {
+		err := caller(int(j))
+                if err == nil {
+			break
+		}
+              	Handler.ServicePortRangeS += 1
+	}
+}
+
+
+func (Handler *SerfAgentHandler) tryRangeOthers(caller func(int) error) {
+	for j := Handler.ServicePortRangeE; j >= Handler.ServicePortRangeS; j-- {
+                err := caller(int(j))
+                if err == nil {
+                        break
+                }
+                Handler.ServicePortRangeE -= 1
+        }
+}
+
 /*
 Type : SerfAgentHandler
 Method name : bind
@@ -85,27 +113,9 @@ func (Handler *SerfAgentHandler) bind(requireRPC bool) error {
 	var err error
 	fmt.Println("Specified port range : ", Handler.ServicePortRangeS, Handler.ServicePortRangeE)
 	if Handler.AppType == "PMDB" {
-	out1:
-			for j := Handler.ServicePortRangeS; j < Handler.ServicePortRangeE; j++ {
-				err = Handler.setupNstart(int(j))
-				if err == nil {
-					break out1
-				} else {
-					Handler.ServicePortRangeS += 1
-					continue
-				}
-			}
+		Handler.tryRangePMDBServer(Handler.setupNstart)
 	} else {
-	out2:
-			for j := Handler.ServicePortRangeE; j > Handler.ServicePortRangeS; j-- {
-				err = Handler.setupNstart(int(j))
-				if err == nil {
-					break out2
-				} else {
-					Handler.ServicePortRangeE -= 1
-					continue
-				}
-			}
+		Handler.tryRangeOthers(Handler.setupNstart)
 	}
 
 	if Handler.agentObj == nil {
@@ -114,6 +124,8 @@ func (Handler *SerfAgentHandler) bind(requireRPC bool) error {
 		return errors.New("Agent not started")
 	}
 
+
+	//RPC
 	if !requireRPC {
 		return err
 	}
@@ -133,35 +145,17 @@ func (Handler *SerfAgentHandler) bind(requireRPC bool) error {
 	//Start a RPC listener
 	agentLog := agent.NewLogWriter(10) //Need change for logging
 
-	var rpcListener net.Listener
 	if Handler.AppType == "PMDB" {
-	out3:
-			for i := Handler.ServicePortRangeS; i < Handler.ServicePortRangeE; i++ {
-				Handler.RpcPort = Handler.ServicePortRangeS
-				rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
-				if err != nil {
-					Handler.ServicePortRangeS += 1
-					continue
-				} else {
-					fmt.Println("Succesfully binded RPC Port to - ", Handler.RpcPort)
-					break out3
-				}
-			}
+		Handler.tryRangePMDBServer(Handler.createRPCHandler)
 	} else {
-	out4:
-			for i := Handler.ServicePortRangeE; i > Handler.ServicePortRangeS; i-- {
-				Handler.RpcPort = Handler.ServicePortRangeE
-				rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(int(Handler.RpcPort)))
-				if err != nil {
-					Handler.ServicePortRangeE -= 1
-					continue
-				} else {
-					fmt.Println("Successfully binded RPC Port to - ", Handler.RpcPort)
-					break out4
-				}
-			}
+		Handler.tryRangeOthers(Handler.createRPCHandler)
 	}
-	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, Handler.RaftUUID.String(), rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
+
+	//Check RPC listener
+	if Handler.rpcListener == nil {
+		return errors.New("RPC not started")
+	}
+	Handler.agentIPCObj = agent.NewAgentIPC(Handler.agentObj, Handler.RaftUUID.String(), Handler.rpcListener, Handler.AgentLogger.Writer(), agentLog) //Need change for logging
 
 	return nil
 }
