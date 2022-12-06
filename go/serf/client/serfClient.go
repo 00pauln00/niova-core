@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 /*
@@ -92,27 +93,59 @@ Description : Get configuration data from config file
 */
 func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
 	var connectClient *client.RPCClient
-	err := Handler.getConfigData(configpath)
+	var err error
+	err = Handler.getConfigData(configpath)
 	if err != nil {
 		return err
 	}
 
 	Handler.loadedGossipNodes = Handler.getAddrList()
+	// channel to catch client
+	cliChan := make(chan *client.RPCClient)
+	// channel to catch error
+	errChan := make(chan error)
 	for _, addr := range Handler.loadedGossipNodes {
-		connectClient, err = Handler.connectAddr(addr, raftUUID)
-		if err == nil {
-			break
+		go func() {
+			cli, err_temp := Handler.connectAddr(addr, raftUUID)
+			if err_temp != nil {
+				// if err
+				errChan <- err_temp
+			} else if err_temp == nil {
+				// if conn is successful
+				cliChan <- cli
+			}
+			return
+		}()
+		select {
+		case connectClient = <-cliChan:
+			// catch client returned on success
+			if connectClient == nil {
+				return errors.New("No live serf agents")
+			}
+			clusterMembers, err_t := connectClient.Members()
+			Handler.Agents = clusterMembers
+			return err_t
+		case err = <-errChan:
+			// catch error on connection and move to next port
+			err = nil
+			continue
+		case <-time.After(5 * time.Second):
+			// timeout if connection takes too long and move to next port
+			continue
 		}
 	}
-
-	if connectClient == nil {
-		return errors.New("No live serf agents")
-	}
-
-	clusterMembers, err := connectClient.Members()
-	Handler.Agents = clusterMembers
-
 	return err
+
+	/*
+		if connectClient == nil {
+			return errors.New("No live serf agents")
+		}
+
+		clusterMembers, err := connectClient.Members()
+		Handler.Agents = clusterMembers
+
+		return err
+	*/
 }
 
 func (Handler *SerfClientHandler) connectAddr(addr, raftUUID string) (*client.RPCClient, error) {
@@ -125,9 +158,10 @@ func (Handler *SerfClientHandler) connectAddr(addr, raftUUID string) (*client.RP
 func (Handler *SerfClientHandler) connectRandomNode(raftUUID string) (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
-	randomAddr := randomAgent.Addr.String()
+	//TODO Store addr in Handler.Agents
+	//randomAddr := randomAgent.Addr.String()
 	rPort := randomAgent.Tags["Rport"]
-	connector, err := Handler.connectAddr(randomAddr+":"+rPort, raftUUID)
+	connector, err := Handler.connectAddr("127.0.0.1"+":"+rPort, raftUUID)
 	if err != nil {
 		//Delete the node from connection list
 		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)

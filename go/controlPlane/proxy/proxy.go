@@ -237,14 +237,14 @@ func (handler *proxyHandler) startSerfAgent() error {
 
 	//Fill serf agent configuration
 	handler.serfAgentObj = serfAgent.SerfAgentHandler{
-		Name : handler.serfAgentName,
-		AddrList : handler.addrList,
-		Addr : net.ParseIP("0.0.0.0"),
-		AgentLogger : defaultLogger.Default(),
-		RaftUUID : handler.raftUUID,
-		ServicePortRangeS : handler.ServicePortRangeS,
-		ServicePortRangeE : handler.ServicePortRangeE,
-		AppType : "PROXY",
+		Name:              handler.serfAgentName,
+		AddrList:          handler.addrList,
+		Addr:              net.ParseIP("127.0.0.1"),
+		AgentLogger:       defaultLogger.Default(),
+		RaftUUID:          handler.raftUUID,
+		ServicePortRangeS: handler.ServicePortRangeS,
+		ServicePortRangeE: handler.ServicePortRangeE,
+		AppType:           "PROXY",
 	}
 	//Start serf agent
 	_, err := handler.serfAgentObj.SerfAgentStartup(true)
@@ -485,13 +485,13 @@ Description : Starts HTTP server.
 func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
 	handler.httpServerObj = httpServer.HTTPServerHandler{
-		Addr : handler.addr,
-		PortRange : handler.portRange,
-		PUTHandler : handler.WriteCallBack,
-		GETHandler : handler.ReadCallBack,
-		PMDBServerConfig : handler.PMDBServerConfigByteMap,
-		RecvdPort : &RecvdPort,
-		AppType : "Proxy",
+		Addr:             handler.addr,
+		PortRange:        handler.portRange,
+		PUTHandler:       handler.WriteCallBack,
+		GETHandler:       handler.ReadCallBack,
+		PMDBServerConfig: handler.PMDBServerConfigByteMap,
+		RecvdPort:        &RecvdPort,
+		AppType:          "Proxy",
 	}
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
 	if handler.requireStat != "0" {
@@ -607,20 +607,20 @@ func main() {
 	if err != nil {
 		log.Error("(Proxy) Logger error : ", err)
 	}
-	
-	//Apply config
-        err = proxyObj.getConfigData()
-        if err != nil {
-                log.Error("(Proxy) Error while getting config data : ", err)
-                os.Exit(1)
-        }
 
-        //Start serf agent handler
-        log.Info("Starting serf agent handler")
-        err = proxyObj.startSerfAgent()
-        if err != nil {
-                log.Error("Error while starting Serf Agent")
-        }
+	//Apply config
+	err = proxyObj.getConfigData()
+	if err != nil {
+		log.Error("(Proxy) Error while getting config data : ", err)
+		os.Exit(1)
+	}
+
+	//Start serf agent handler
+	log.Info("Starting serf agent handler")
+	err = proxyObj.startSerfAgent()
+	if err != nil {
+		log.Error("Error while starting Serf Agent")
+	}
 
 	//Get PMDB server config data
 	err = proxyObj.GetPMDBServerConfig()

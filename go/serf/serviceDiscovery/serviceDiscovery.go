@@ -150,11 +150,11 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 			}
 
 			//Check if node is alive, check if gossip is available and http server of that node is not reported down!
-			if (isValidNodeData(handler.servers[randomIndex])) {
-                                if (removeName == "") || (removeName != handler.servers[randomIndex].Name) {
-                                        break;
-                                }
-                        }
+			if isValidNodeData(handler.servers[randomIndex]) {
+				if (removeName == "") || (removeName != handler.servers[randomIndex].Name) {
+					break
+				}
+			}
 			handler.servers = removeIndex(handler.servers, randomIndex)
 		}
 		serverChoosen = &handler.servers[randomIndex]
