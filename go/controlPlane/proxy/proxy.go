@@ -162,6 +162,9 @@ func (handler *proxyHandler) getConfigData() error {
 	IPAddrs := removeDuplicateStr(IPAddrsTxt)
 	for i := range IPAddrs {
 		ipAddr := net.ParseIP(IPAddrs[i])
+		if ipAddr == nil {
+			continue
+		}
 		handler.addrList = append(handler.addrList, ipAddr)
 	}
 	handler.addr = net.ParseIP(IPAddrs[0])

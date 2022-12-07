@@ -2,15 +2,15 @@ package serfAgent
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"github.com/hashicorp/serf/cmd/serf/command/agent"
+	"github.com/hashicorp/serf/serf"
 	"log"
 	"net"
 	"os"
 	"strconv"
 	"strings"
-	"errors"
-	"github.com/hashicorp/serf/cmd/serf/command/agent"
-	"github.com/hashicorp/serf/serf"
 
 	uuid "github.com/satori/go.uuid"
 )
@@ -56,13 +56,13 @@ Description : Creates agent with configurations mentioned in structure and retur
 */
 func (Handler *SerfAgentHandler) setupNstart(bindPort int) error {
 	//Debug statement
-	fmt.Println("Set Called with port : ", Handler.ServicePortRangeS)
-	
+	fmt.Println("Setup Called with port : ", Handler.ServicePortRangeS)
+
 	//Init an agent
 	serfconfig := serf.DefaultConfig()                                                    //config for serf
 	serfconfig.NodeName = Handler.Name                                                    //Agent name
 	serfconfig.MemberlistConfig.BindAddr = Handler.Addr.String()                          //Agent bind addr
-	serfconfig.MemberlistConfig.BindPort = bindPort                 		      //Agent bind port
+	serfconfig.MemberlistConfig.BindPort = bindPort                                       //Agent bind port
 	serfconfig.MemberlistConfig.SecretKey = Handler.RaftUUID.Bytes()                      //Encryption key
 	agentconfig := agent.DefaultConfig()                                                  //Agent config to provide for agent creation
 	serfagent, err := agent.Create(agentconfig, serfconfig, Handler.AgentLogger.Writer()) //Agent creation; last parameter is log, need to check that
@@ -71,35 +71,42 @@ func (Handler *SerfAgentHandler) setupNstart(bindPort int) error {
 	Handler.agentObj = serfagent
 	Handler.agentConf = agentconfig
 	err = Handler.agentObj.Start()
+	if err != nil {
+		fmt.Println(err, " Retrying with next port")
+	} else {
+		fmt.Println("Successfully binded to - ", bindPort)
+	}
 	return err
 }
 
-
 func (Handler *SerfAgentHandler) createRPCHandler(bindPort int) error {
 	var err error
+	Handler.RpcPort = uint16(bindPort)
 	Handler.rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(bindPort))
+	if err != nil {
+		fmt.Println(err, " Retrying with next port")
+	} else {
+		fmt.Println("Successfully binded RPC Port to - ", Handler.RpcPort)
+	}
 	return err
 }
 
 func (Handler *SerfAgentHandler) tryRangePMDBServer(caller func(int) error) {
 	for j := Handler.ServicePortRangeS; j <= Handler.ServicePortRangeE; j++ {
 		err := caller(int(j))
-                if err == nil {
+		if err == nil {
 			break
 		}
-              	Handler.ServicePortRangeS += 1
 	}
 }
 
-
 func (Handler *SerfAgentHandler) tryRangeOthers(caller func(int) error) {
 	for j := Handler.ServicePortRangeE; j >= Handler.ServicePortRangeS; j-- {
-                err := caller(int(j))
-                if err == nil {
-                        break
-                }
-                Handler.ServicePortRangeE -= 1
-        }
+		err := caller(int(j))
+		if err == nil {
+			break
+		}
+	}
 }
 
 /*
@@ -119,11 +126,8 @@ func (Handler *SerfAgentHandler) bind(requireRPC bool) error {
 	}
 
 	if Handler.agentObj == nil {
-		//Debug statment
-		fmt.Println("Agent not started")
 		return errors.New("Agent not started")
 	}
-
 
 	//RPC
 	if !requireRPC {
