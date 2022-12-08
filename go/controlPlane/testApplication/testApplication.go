@@ -11,14 +11,12 @@ import (
 )
 
 type testApplication struct {
-	raftUUID              string
 	portRange             string
 }
 
 func (handler *testApplication) getCmdLineArgs() {
 	flag.StringVar(&handler.portRange, "p", "NULL", "Port range [0-9]")
 }
-
 
 func (handler *testApplication) startHttpPort(){
 	portRangeStart, err := strconv.Atoi(strings.Split(handler.portRange, "-")[0])
@@ -30,7 +28,6 @@ func (handler *testApplication) startHttpPort(){
 		mux := http.NewServeMux()
 		go func(i int) {
 			port := strconv.Itoa(i)
-			fmt.Println("port after concatenate is,", port)
 			
 			l, err := net.Listen("tcp", ":"+port)
 	                if err != nil {
@@ -41,7 +38,6 @@ func (handler *testApplication) startHttpPort(){
 		                     		http.Serve(l, mux)
                         	}()
                		}
-	
 		}(i)
 		time.Sleep(1 * time.Second)	
 	}
