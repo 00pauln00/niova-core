@@ -638,7 +638,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	//TODO Shift inside common HTTP Library
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
