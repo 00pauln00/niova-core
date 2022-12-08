@@ -149,10 +149,12 @@ func (handler *proxyHandler) getProxyConfigData() error {
 	IPAddrs := removeDuplicateStr(IPAddrsTxt)
 	for i := range IPAddrs {
 		ipAddr := net.ParseIP(IPAddrs[i])
+		if ipAddr == nil {
+			continue
+		}
 		handler.addrList = append(handler.addrList, ipAddr)
 	}
-	handler.addr = net.ParseIP(IPAddrs[0])
-	//handler.addr = net.ParseIP("0.0.0.0")
+	handler.addr = net.ParseIP("127.0.0.1")
 
 	//Read Ports
 	scanner.Scan()
@@ -214,6 +216,7 @@ func (handler *proxyHandler) start_SerfAgent() error {
 	handler.serfAgentObj.Name = handler.serfAgentName
 	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
 	handler.serfAgentObj.AddrList = handler.addrList
+	handler.serfAgentObj.Addr = handler.addr
 	handler.serfAgentObj.ServicePortRangeS = handler.ServicePortRangeS
 	handler.serfAgentObj.ServicePortRangeE = handler.ServicePortRangeE
 	handler.serfAgentObj.RaftUUID = handler.raftUUID

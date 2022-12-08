@@ -84,7 +84,7 @@ func (Handler *SerfAgentHandler) createRPCHandler(bindPort int) error {
 	Handler.RpcPort = uint16(bindPort)
 	Handler.rpcListener, err = net.Listen("tcp", Handler.Addr.String()+":"+strconv.Itoa(bindPort))
 	if err != nil {
-		fmt.Println(err, " Retrying with next port")
+		fmt.Println(err, " RPC Listener init - Retrying with next port")
 	} else {
 		fmt.Println("Successfully binded RPC Port to - ", Handler.RpcPort)
 	}
