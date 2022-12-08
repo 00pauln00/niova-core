@@ -10,7 +10,7 @@ export PATH
 
 install_all: compile pmdbserver proxyserver ncpcclient configapp install docker_support
 
-install_only: compile pmdbserver proxyserver ncpcclient configapp install
+install_only: compile pmdbserver proxyserver ncpcclient configapp testapp install
 
 compile:
 	echo "Compiling controlPlane"
@@ -27,6 +27,9 @@ ncpcclient:
 configapp:
 	cd configApplication && go mod tidy && go build configApplication.go
 
+testapp:
+	cd testApplication && go mod tidy && go build testApplication.go
+
 install:
 	cp pmdbServer/pmdbServer ${DIR}/libexec/niova/CTLPlane_pmdbServer
 
@@ -39,6 +42,8 @@ install:
 	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
 
 	cp configApplication/configApplication ${DIR}/libexec/niova/cfgApp
+
+	cp testApplication/testApplication ${DIR}/libexec/niova/testApp
 
 docker_support:
 	cp -r docker/* ${DIR}
