@@ -551,12 +551,16 @@ func main() {
 	go func() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
+			operationStat := fillOperationData(-1, "setup", "", err.Error(), 0)
+			clientObj.write2Json(operationStat)
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
 	clientObj.clientAPIObj.TillReady("", clientObj.serviceRetry)
 	if err != nil {
+		operationStat := fillOperationData(-1, "setup", "", err.Error(), 0)
+		clientObj.write2Json(operationStat)
 		log.Error(err)
 		os.Exit(1)
 	}
