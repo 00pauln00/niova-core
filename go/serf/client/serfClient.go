@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"github.com/hashicorp/serf/client"
+	"log"
 	"math/rand"
 	"net"
 	"os"
@@ -131,6 +132,7 @@ func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
 			continue
 		case <-time.After(5 * time.Second):
 			// timeout if connection takes too long and move to next port
+			log.Printf("InitData - Timed out on addr ", addr, " retrying with next address")
 			continue
 		}
 	}
