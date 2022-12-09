@@ -37,8 +37,6 @@ install:
 	
 	cp ncpc/ncpc ${DIR}/libexec/niova/ncpc
 
-	cp proxy/config ${DIR}/libexec/niova/niovakv.config
-
 	cp proxy/gossipNodes ${DIR}/libexec/niova/gossipNodes
 
 	cp configApplication/configApplication ${DIR}/libexec/niova/cfgApp
@@ -55,8 +53,6 @@ docker_support:
 	cp proxy/proxy ${DIR}/ProxyContents/CTLPlane_proxy
 
 	cp ncpc/ncpc ${DIR}/ProxyContents/
-
-	cp proxy/config ${DIR}/ProxyContents/niovakv.config
 
 	cp proxy/gossipNodes ${DIR}/ProxyContents/gossipNodes
 
