@@ -133,6 +133,17 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_type      = NIOVA_ENV_VAR_TYPE_NONE,
         .nev_present   = false,
     },
+    [NIOVA_ENV_VAR_niova_thread_cnt] = {
+        .nev_name      = "NIOVA_THREAD_COUNT",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_NET,
+        .nev_var_num   = NIOVA_ENV_VAR_niova_thread_cnt,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = TCP_MGR_NTHREADS,
+        .nev_min       = TCP_MGR_NTHREADS_MIN,
+        .nev_max       = TCP_MGR_NTHREADS_MAX,
+        .nev_cb        = tcp_mgr_set_thread_cnt_env_cb,
+        .nev_present   = false,
+    },
 };
 
 static void
