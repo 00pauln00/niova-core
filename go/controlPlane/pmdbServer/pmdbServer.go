@@ -108,10 +108,9 @@ func main() {
 	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
 	ctl_path := CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7] + "ctl-interface/"
 	serverHandler.lookoutInstance = lookout.EPContainer{
-		MonitorUUID: nso.peerUuid.String(),
-		AppType:     "PMDB",
-		//TODO Assign port range according to convention
-		PortRange:        serverHandler.portRange[20:40],
+		MonitorUUID:      nso.peerUuid.String(),
+		AppType:          "PMDB",
+		PortRange:        serverHandler.portRange,
 		CTLPath:          ctl_path,
 		SerfMembershipCB: serverHandler.SerfMembership,
 		EnableHttp:       serverHandler.prometheus,

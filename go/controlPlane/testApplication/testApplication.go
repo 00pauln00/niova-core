@@ -2,12 +2,13 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
 	"net/http"
 	"net"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type testApplication struct {
@@ -22,7 +23,7 @@ func (handler *testApplication) startHttpPort(){
 	portRangeStart, err := strconv.Atoi(strings.Split(handler.portRange, "-")[0])
 	portRangeEnd, err := strconv.Atoi(strings.Split(handler.portRange, "-")[1])
 	if err != nil {
-		fmt.Println(err)
+		log.Error(err)
 	}
 	for i := portRangeStart; i <= portRangeEnd; i++ {
 		mux := http.NewServeMux()
@@ -31,11 +32,10 @@ func (handler *testApplication) startHttpPort(){
 			
 			l, err := net.Listen("tcp", ":"+port)
 	                if err != nil {
-                                fmt.Println("Error while starting http on that port - ", err)
+                                log.Error("Error while starting http on that port - ", err)
                 	} else {
                         	go func() {
-                                	fmt.Println("Serving at - ", port)
-		                     		http.Serve(l, mux)
+					http.Serve(l, mux)
                         	}()
                		}
 		}(i)
