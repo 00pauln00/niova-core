@@ -10,6 +10,8 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+int tcpWorkerCnt = TCP_MGR_NTHREADS;
+
 void
 tcp_mgr_credits_set(niova_atomic32_t *credits, uint32_t cnt)
 {
@@ -155,6 +157,15 @@ tcp_mgr_worker(void *arg)
     return NULL;
 }
 
+env_cb_ctx_t
+tcp_mgr_set_thread_cnt_env_cb(const struct niova_env_var *ev)
+{
+    if (!ev)
+        return;
+
+    tcpWorkerCnt = ev->nev_long_value;
+}
+
 int
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
               epoll_mgr_ref_cb_t connection_ref_cb,
@@ -191,7 +202,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     {
         int rc = 0;
 
-        for (int i = 0; i < TCP_MGR_NTHREADS; i++)
+        for (int i = 0; i < tcpWorkerCnt; i++)
         {
             char thr_name[MAX_THREAD_NAME] = {0};
             snprintf(thr_name, MAX_THREAD_NAME, "tcp_wrk.%d", i);

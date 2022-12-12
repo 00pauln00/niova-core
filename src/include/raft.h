@@ -114,6 +114,8 @@ enum raft_buf_set_size
     RAFT_BS_LARGE_SZ = 4194304,
 };
 
+//Note: Dont use these NBUF macros directly as TCP_MGR_NTHREADS
+//can be set by user through environment variable.
 enum raft_buf_set_nbuf
 {
     RAFT_BS_SMALL_NBUF = (RAFT_ENTRY_NUM_ENTRIES + TCP_MGR_NTHREADS),

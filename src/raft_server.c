@@ -30,6 +30,8 @@
 #define RAFT_SERVER_RECOVERY_ATTEMPTS 100
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
 
+int tcpWorkerCnt;
+
 enum raft_write_entry_opts
 {
     RAFT_WR_ENTRY_OPT_NONE                 = 0,
@@ -5803,7 +5805,10 @@ raft_server_instance_buffer_set_setup(struct raft_instance *ri)
     size_t buff_set_sizes[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_SZ,
                                                RAFT_BS_LARGE_SZ};
 
-    size_t nbuff[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_NBUF, RAFT_BS_LARGE_NBUF};
+    int small_nbuf = RAFT_ENTRY_NUM_ENTRIES + tcpWorkerCnt;
+    int large_nbuf = tcpWorkerCnt;
+
+    size_t nbuff[RAFT_BUF_SET_MAX] = {small_nbuf, large_nbuf};
 
     for (int p = 0; p < RAFT_BUF_SET_MAX; p++)
     {
