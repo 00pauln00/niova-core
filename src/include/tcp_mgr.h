@@ -9,6 +9,7 @@
 
 #include "epoll_mgr.h"
 #include "tcp.h"
+#include "env.h"
 
 #define TCP_MGR_MAX_HDR_SIZE 65000
 #define TCP_MGR_MAX_BULK_SIZE 256*1024*1024
@@ -17,7 +18,12 @@ typedef void    tcp_mgr_ctx_t;
 typedef int     tcp_mgr_ctx_int_t;
 typedef ssize_t tcp_mgr_ctx_ssize_t;
 
+extern int tcpWorkerCnt;
+
 struct tcp_mgr_connection;
+
+env_cb_ctx_t
+tcp_mgr_set_thread_cnt_env_cb(const struct niova_env_var *ev);
 
 typedef tcp_mgr_ctx_int_t
 (*tcp_mgr_recv_cb_t)(struct tcp_mgr_connection *, char *, size_t, void *);
@@ -43,6 +49,8 @@ struct tcp_mgr_connq
 };
 
 #define TCP_MGR_NTHREADS 32
+#define TCP_MGR_NTHREADS_MIN 2
+#define TCP_MGR_NTHREADS_MAX 32
 
 struct tcp_mgr_instance
 {
