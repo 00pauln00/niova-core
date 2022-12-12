@@ -2,6 +2,7 @@ package serfClient
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"github.com/hashicorp/serf/client"
 	"log"
@@ -93,7 +94,7 @@ Return value : error
 Description : Get configuration data from config file
 */
 func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
-	var connectClient *client.RPCClient
+	//var connectClient *client.RPCClient
 	var err error
 	err = Handler.getConfigData(configpath)
 	if err != nil {
@@ -101,12 +102,21 @@ func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
 	}
 
 	Handler.loadedGossipNodes = Handler.getAddrList()
-	// channel to catch client
-	cliChan := make(chan *client.RPCClient)
+	err = Handler.connectAddrWithTimeout(raftUUID)
+	return err
+}
+
+func (Handler *SerfClientHandler) connectAddrWithTimeout(raftUUID string) error {
+	var connectClient *client.RPCClient
+	var err error
 	// channel to catch error
 	errChan := make(chan error)
+	// channel to catch client
+	cliChan := make(chan *client.RPCClient)
 	for _, addr := range Handler.loadedGossipNodes {
-		go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		go func(ctx context.Context) {
 			cli, err_temp := Handler.connectAddr(addr, raftUUID)
 			if err_temp != nil {
 				// if err
@@ -116,8 +126,12 @@ func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
 				cliChan <- cli
 			}
 			return
-		}()
+		}(ctx)
 		select {
+		case <-ctx.Done():
+			// timeout if connection takes too long and move to next port
+			log.Printf("Timed out while trying to connect to - %s", addr)
+			continue
 		case connectClient = <-cliChan:
 			// catch client returned on success
 			if connectClient == nil {
@@ -130,24 +144,9 @@ func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
 			// catch error on connection and move to next port
 			err = nil
 			continue
-		case <-time.After(5 * time.Second):
-			// timeout if connection takes too long and move to next port
-			log.Printf("InitData - Timed out on addr ", addr, " retrying with next address")
-			continue
 		}
 	}
 	return err
-
-	/*
-		if connectClient == nil {
-			return errors.New("No live serf agents")
-		}
-
-		clusterMembers, err := connectClient.Members()
-		Handler.Agents = clusterMembers
-
-		return err
-	*/
 }
 
 func (Handler *SerfClientHandler) connectAddr(addr, raftUUID string) (*client.RPCClient, error) {
