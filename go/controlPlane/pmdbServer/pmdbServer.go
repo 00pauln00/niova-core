@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"common/httpClient"
 	"common/lookout"
 	"common/requestResponseLib"
 	"common/serfAgent"
@@ -11,8 +12,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"hash/crc32"
 	"io/ioutil"
 	defaultLogger "log"
@@ -23,7 +22,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -36,26 +39,29 @@ var seqno = 0
 
 var encodingOverhead = 256
 
+var RecvdPort int
+
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct {
-	raftUUID           uuid.UUID
-	peerUUID           uuid.UUID
-	logDir             string
-	logLevel           string
-	gossipClusterFile  string
-	gossipClusterNodes []string
-	serfAgentPort      uint16
-	serfRPCPort        uint16
-	hport              uint16
-	prometheus         bool
-	nodeAddr           net.IP
-	GossipData         map[string]string
-	ConfigString       string
-	ConfigData         []PumiceDBCommon.PeerConfigData
-	lookoutInstance    lookout.EPContainer
-	serfAgentHandler   serfAgent.SerfAgentHandler
+	raftUUID          uuid.UUID
+	peerUUID          uuid.UUID
+	logDir            string
+	logLevel          string
+	gossipClusterFile string
+	servicePortRangeS uint16
+	servicePortRangeE uint16
+	hport             uint16
+	prometheus        bool
+	nodeAddr          net.IP
+	addrList          []net.IP
+	GossipData        map[string]string
+	ConfigString      string
+	ConfigData        []PumiceDBCommon.PeerConfigData
+	lookoutInstance   lookout.EPContainer
+	serfAgentHandler  serfAgent.SerfAgentHandler
+	portRange         []uint16
 }
 
 func main() {
@@ -95,6 +101,8 @@ func main() {
 	   functions.
 	*/
 
+	portAddr := &RecvdPort
+
 	//Start lookout monitoring
 	CTL_SVC_DIR_PATH := os.Getenv("NIOVA_LOCAL_CTL_SVC_DIR")
 	fmt.Println("Path CTL :  ", CTL_SVC_DIR_PATH[:len(CTL_SVC_DIR_PATH)-7]+"ctl-interface/")
@@ -102,12 +110,15 @@ func main() {
 	serverHandler.lookoutInstance = lookout.EPContainer{
 		MonitorUUID:      nso.peerUuid.String(),
 		AppType:          "PMDB",
-		HttpPort:         int(serverHandler.hport),
+		PortRange:        serverHandler.portRange,
 		CTLPath:          ctl_path,
 		SerfMembershipCB: serverHandler.SerfMembership,
 		EnableHttp:       serverHandler.prometheus,
+		RetPort:          portAddr,
 	}
 	go serverHandler.lookoutInstance.Start()
+
+	//Wait till HTTP Server has started
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
@@ -119,16 +130,72 @@ func main() {
 	}
 
 	// Start the pmdb server
-	err = nso.pso.Run()
+	//TODO Check error
+	go nso.pso.Run()
 
-	if err != nil {
-		log.Error(err)
+	serverHandler.checkPMDBLiveness()
+	serverHandler.exportTags()
+}
+
+func (handler *pmdbServerHandler) checkPMDBLiveness() {
+	for {
+		ok := handler.lookoutInstance.CheckLiveness(handler.peerUUID.String())
+		if ok {
+			fmt.Println("PMDB Server is live")
+			return
+		} else {
+			time.Sleep(1 * time.Second)
+		}
 	}
+}
+
+func (handler *pmdbServerHandler) exportTags() error {
+	if handler.prometheus {
+		handler.checkHTTPLiveness()
+		handler.GossipData["Hport"] = strconv.Itoa(RecvdPort)
+	}
+	handler.GossipData["Type"] = "PMDB_SERVER"
+	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfAgentHandler.RpcPort))
+	handler.GossipData["RU"] = handler.raftUUID.String()
+	handler.GossipData["CS"], _ = generateCheckSum(handler.GossipData)
+	log.Info(handler.GossipData)
+	for {
+		handler.serfAgentHandler.SetNodeTags(handler.GossipData)
+		time.Sleep(3 * time.Second)
+	}
+
+	return nil
 }
 
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
+}
+
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
+}
+
+func (handler *pmdbServerHandler) checkHTTPLiveness() {
+	var emptyByteArray []byte
+	for {
+		if RecvdPort == -1 {
+			fmt.Println("HTTP Server failed to start")
+			os.Exit(0)
+		}
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
+		if err != nil {
+			fmt.Println("HTTP Liveness - ", err)
+		} else {
+			fmt.Println("HTTP Liveness - HTTP Server is alive")
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
 }
 
 func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
@@ -239,61 +306,47 @@ func (handler *pmdbServerHandler) readPMDBServerConfig() error {
 	return nil
 }
 
+func removeDuplicateStr(strSlice []string) []string {
+	allKeys := make(map[string]bool)
+	list := []string{}
+	for _, item := range strSlice {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
+}
+
 func (handler *pmdbServerHandler) readGossipClusterFile() error {
 	f, err := os.Open(handler.gossipClusterFile)
 	if err != nil {
 		return err
 	}
 	scanner := bufio.NewScanner(f)
-	var flag bool
-	var uuid, addr, aport, rport, hport string
-	for scanner.Scan() {
-		text := scanner.Text()
-		splitData := strings.Split(text, " ")
-		uuid = splitData[0]
-		addr = splitData[1]
-		aport = splitData[2]
-		rport = splitData[3]
-		if len(splitData) > 4 {
-			handler.prometheus = true
-			hport = splitData[4]
-		}
-
-		if uuid == handler.peerUUID.String() {
-			buffer, err := strconv.ParseUint(aport, 10, 16)
-			handler.serfAgentPort = uint16(buffer)
-			if err != nil {
-				return errors.New("Agent port is out of range")
-			}
-
-			buffer, err = strconv.ParseUint(rport, 10, 16)
-			handler.serfRPCPort = uint16(buffer)
-			if err != nil {
-				return errors.New("RPC port is out of range")
-			}
-
-			if handler.prometheus {
-				buffer, err = strconv.ParseUint(hport, 10, 16)
-				handler.hport = uint16(buffer)
-				if err != nil {
-					return errors.New("HTTP port is out of range")
-				}
-			}
-
-			handler.nodeAddr = net.ParseIP(addr)
-			flag = true
-		} else {
-			handler.gossipClusterNodes = append(handler.gossipClusterNodes, addr+":"+aport)
-		}
- 	}
-
-	if !flag {
-		log.Error("Peer UUID not matching with gossipNodes config file")
-		return errors.New("UUID not matching")
+	/*
+		Following is the format of gossipNodes file
+		PMDB server addrs with space separated
+		Start_port End_port
+	*/
+	scanner.Scan()
+	IPAddrsTxt := strings.Split(scanner.Text(), " ")
+	IPAddrs := removeDuplicateStr(IPAddrsTxt)
+	for i := range IPAddrs {
+		ipAddr := net.ParseIP(IPAddrs[i])
+		handler.addrList = append(handler.addrList, ipAddr)
 	}
+	handler.nodeAddr = net.ParseIP(IPAddrs[0])
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	handler.servicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	handler.servicePortRangeE = uint16(temp)
 
-	log.Info("Cluster nodes : ", handler.gossipClusterNodes)
-	log.Info("Node serf info : ", handler.nodeAddr, handler.serfAgentPort, handler.serfRPCPort)
+	//Set port range array
+	handler.portRange = makeRange(handler.servicePortRangeS, handler.servicePortRangeE)
 	return nil
 }
 
@@ -336,28 +389,22 @@ func (handler *pmdbServerHandler) startSerfAgent() error {
 
 	//defaultLogger.SetOutput(ioutil.Discard)
 	serfAgentHandler := serfAgent.SerfAgentHandler{
-		Name:     handler.peerUUID.String(),
-		BindAddr: handler.nodeAddr,
+		Name:              handler.peerUUID.String(),
+		AddrList:          handler.addrList,
+		Addr:              net.ParseIP("127.0.0.1"),
+		AgentLogger:       defaultLogger.Default(),
+		RaftUUID:          handler.raftUUID,
+		ServicePortRangeS: handler.servicePortRangeS,
+		ServicePortRangeE: handler.servicePortRangeE,
+		AppType:           "PMDB",
 	}
-	serfAgentHandler.BindPort = handler.serfAgentPort
-	serfAgentHandler.AgentLogger = defaultLogger.Default()
-	serfAgentHandler.RpcAddr = handler.nodeAddr
-	serfAgentHandler.RpcPort = handler.serfRPCPort
+
 	//Start serf agent
-	_, err = serfAgentHandler.SerfAgentStartup(handler.gossipClusterNodes, true)
+	_, err = serfAgentHandler.SerfAgentStartup(true)
 	if err != nil {
 		log.Error("Error while starting serf agent ", err)
 	}
 	handler.readPMDBServerConfig()
-	handler.GossipData["Type"] = "PMDB_SERVER"
-	handler.GossipData["Rport"] = strconv.Itoa(int(handler.serfRPCPort))
-	handler.GossipData["RU"] = handler.raftUUID.String()
-	handler.GossipData["CS"], err = generateCheckSum(handler.GossipData)
-	if err != nil {
-		return err
-	}
-	log.Info(handler.GossipData)
-	serfAgentHandler.SetNodeTags(handler.GossipData)
 	handler.serfAgentHandler = serfAgentHandler
 	return err
 }

@@ -1,10 +1,11 @@
 package main
 
 import (
+	//"bufio"
 	"bufio"
 	"bytes"
-	"common/httpServer"
 	"common/httpClient"
+	"common/httpServer"
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
@@ -13,8 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
-	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
+	"fmt"
 	"hash/crc32"
 	"io/ioutil"
 	defaultLogger "log"
@@ -28,6 +28,9 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	uuid "github.com/satori/go.uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 //Structure for proxy
@@ -37,7 +40,8 @@ type proxyHandler struct {
 	logLevel   string
 
 	//Niovakvserver
-	addr net.IP
+	addr     net.IP
+	addrList []net.IP
 
 	//Pmdb nivoa client
 	raftUUID                uuid.UUID
@@ -56,14 +60,20 @@ type proxyHandler struct {
 	serfAgentObj      serfAgent.SerfAgentHandler
 
 	//Http
-	httpPort      string
+	httpPort      uint16
 	limit         string
 	requireStat   string
 	httpServerObj httpServer.HTTPServerHandler
+
+	//Port range
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
+	portRange         []uint16
 }
 
 var MaxPort = 60000
 var MinPort = 1000
+var RecvdPort int
 
 func usage() {
 	flag.PrintDefaults()
@@ -95,62 +105,79 @@ func (handler *proxyHandler) getCmdParams() {
 	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server serf configuration file")
 	flag.Parse()
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
+	//FIXME: For testing purpose
 	handler.clientUUID, _ = uuid.FromString(tempClientUUID)
+}
+
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
+}
+
+func removeDuplicateStr(strSlice []string) []string {
+	allKeys := make(map[string]bool)
+	list := []string{}
+	for _, item := range strSlice {
+		if _, value := allKeys[item]; !value {
+			allKeys[item] = true
+			list = append(list, item)
+		}
+	}
+	return list
 }
 
 /*
 Structure : proxyHandler
 Method    : getConfigData
-Arguments : None
+Arguments : []byte
 Return(s) : error
 
-Description : Parses proxy's configuration file
+Description : Parses proxy's configuration from PMDB server
 
 Config should contain following:
-Name, Addr, Aport, Rport, Hport
-
-Name //For serf agent name, must be unique for each node
 Addr //Addr for serf agent and http listening
 Aport //Serf agent-agent communication
 Rport //Serf agent-client communication
 Hport //Http listener port
+
 */
 func (handler *proxyHandler) getConfigData() error {
-	reader, err := os.Open(handler.configPath)
+	//Get addrs and Rports and store it in handler
+
+	if _, err := os.Stat(handler.serfPeersFilePath); os.IsNotExist(err) {
+		return err
+	}
+	reader, err := os.OpenFile(handler.serfPeersFilePath, os.O_RDONLY, 0444)
 	if err != nil {
 		return err
 	}
-	filescanner := bufio.NewScanner(reader)
-	filescanner.Split(bufio.ScanLines)
-	var flag bool
-	for filescanner.Scan() {
-		input := strings.Split(filescanner.Text(), " ")
-		if input[0] == handler.serfAgentName {
-			handler.addr = net.ParseIP(input[1])
-			aport := input[2]
-			buffer, err := strconv.ParseUint(aport, 10, 16)
-			handler.serfAgentPort = uint16(buffer)
-			if err != nil {
-				return errors.New("Agent port is out of range")
-			}
 
-			rport := input[3]
-			buffer, err = strconv.ParseUint(rport, 10, 16)
-			if err != nil {
-				return errors.New("Agent port is out of range")
-			}
-
-			handler.serfAgentRPCPort = uint16(buffer)
-			handler.httpPort = input[4]
-
-			flag = true
+	scanner := bufio.NewScanner(reader)
+	//Read IPAddrs
+	scanner.Scan()
+	IPAddrsTxt := strings.Split(scanner.Text(), " ")
+	IPAddrs := removeDuplicateStr(IPAddrsTxt)
+	for i := range IPAddrs {
+		ipAddr := net.ParseIP(IPAddrs[i])
+		if ipAddr == nil {
+			continue
 		}
+		handler.addrList = append(handler.addrList, ipAddr)
 	}
+	handler.addr = net.ParseIP(IPAddrs[0])
 
-	if !flag {
-		return errors.New("Agent name not matching or not provided")
-	}
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	handler.ServicePortRangeE = uint16(temp)
 
+	handler.portRange = makeRange(handler.ServicePortRangeS, handler.ServicePortRangeE)
 	return nil
 }
 
@@ -176,6 +203,12 @@ func (handler *proxyHandler) startPMDBClient() error {
 	if err != nil {
 		return err
 	}
+
+	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
+	for err != nil {
+		leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
+	}
+	log.Info("Leader uuid : ", leaderUuid.String())
 
 	//Store rncui in nkvclientObj
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
@@ -206,20 +239,18 @@ func (handler *proxyHandler) startSerfAgent() error {
 	}
 
 	//Fill serf agent configuration
-	handler.serfAgentObj = serfAgent.SerfAgentHandler{}
-	handler.serfAgentObj.Name = handler.serfAgentName
-	handler.serfAgentObj.BindAddr = handler.addr
-	handler.serfAgentObj.BindPort = handler.serfAgentPort
-	handler.serfAgentObj.AgentLogger = defaultLogger.Default()
-	handler.serfAgentObj.RpcAddr = handler.addr
-	handler.serfAgentObj.RpcPort = handler.serfAgentRPCPort
-	joinAddrs, err := serfAgent.GetPeerAddress(handler.serfPeersFilePath)
-	if err != nil {
-		return err
+	handler.serfAgentObj = serfAgent.SerfAgentHandler{
+		Name:              handler.serfAgentName,
+		AddrList:          handler.addrList,
+		Addr:              net.ParseIP("127.0.0.1"),
+		AgentLogger:       defaultLogger.Default(),
+		RaftUUID:          handler.raftUUID,
+		ServicePortRangeS: handler.ServicePortRangeS,
+		ServicePortRangeE: handler.ServicePortRangeE,
+		AppType:           "PROXY",
 	}
-
 	//Start serf agent
-	_, err = handler.serfAgentObj.SerfAgentStartup(joinAddrs, true)
+	_, err := handler.serfAgentObj.SerfAgentStartup(true)
 	return err
 }
 
@@ -287,9 +318,8 @@ Description : Get PMDB server configs from serf gossip and store in file. The ge
 file is used by PMDB client to connet to the PMDB cluster.
 */
 func (handler *proxyHandler) GetPMDBServerConfig() error {
-	var allPmdbServerGossip map[string]map[string]string
-
 	//Iterate till getting PMDB config data from serf gossip
+	var allPmdbServerGossip map[string]map[string]string
 	for len(allPmdbServerGossip) == 0 {
 		allPmdbServerGossip = handler.serfAgentObj.GetTags("Type", "PMDB_SERVER")
 		time.Sleep(2 * time.Second)
@@ -419,8 +449,26 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 
 /*
 Structure : proxyHandler
+Method : ReadWrapper
+Arguments : key, *[]byte
+Return(s) : error
+
+Description : A wrapper for PMDB ReadCallBack
+*/
+func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
+	var request requestResponseLib.KVRequest
+	request.Operation = "read"
+	request.Key = key
+	var requestBytes bytes.Buffer
+	enc := gob.NewEncoder(&requestBytes)
+	enc.Encode(request)
+	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), "", response)
+}
+
+/*
+Structure : proxyHandler
 Method    : ReadCallBack
-Arguments : []byte
+Arguments : []byte, *[]byte
 Return(s) : error
 
 Description : Call back for PMDB read requests to HTTP server.
@@ -439,13 +487,16 @@ Description : Starts HTTP server.
 */
 func (handler *proxyHandler) startHTTPServer() error {
 	//Start httpserver.
-	handler.httpServerObj = httpServer.HTTPServerHandler{}
-	handler.httpServerObj.Addr = handler.addr
-	handler.httpServerObj.Port = handler.httpPort
-	handler.httpServerObj.PUTHandler = handler.WriteCallBack
-	handler.httpServerObj.GETHandler = handler.ReadCallBack
+	handler.httpServerObj = httpServer.HTTPServerHandler{
+		Addr:             handler.addr,
+		PortRange:        handler.portRange,
+		PUTHandler:       handler.WriteCallBack,
+		GETHandler:       handler.ReadCallBack,
+		PMDBServerConfig: handler.PMDBServerConfigByteMap,
+		RecvdPort:        &RecvdPort,
+		AppType:          "Proxy",
+	}
 	handler.httpServerObj.HTTPConnectionLimit, _ = strconv.Atoi(handler.limit)
-	handler.httpServerObj.PMDBServerConfig = handler.PMDBServerConfigByteMap
 	if handler.requireStat != "0" {
 		handler.httpServerObj.StatsRequired = true
 	}
@@ -464,9 +515,10 @@ Description : Set gossip data for proxy
 func (handler *proxyHandler) setSerfGossipData() {
 	tag := make(map[string]string)
 	//Static tags
-	tag["Hport"] = handler.httpPort
-	tag["Aport"] = strconv.Itoa(int(handler.serfAgentPort))
-	tag["Rport"] = strconv.Itoa(int(handler.serfAgentRPCPort))
+
+	tag["Hport"] = strconv.Itoa(int(handler.httpPort))
+	tag["Aport"] = strconv.Itoa(int(handler.serfAgentObj.Aport))
+	tag["Rport"] = strconv.Itoa(int(handler.serfAgentObj.RpcPort))
 	tag["Type"] = "PROXY"
 	handler.serfAgentObj.SetNodeTags(tag)
 
@@ -505,7 +557,6 @@ func (handler *proxyHandler) killSignalHandler() {
 	}()
 }
 
-
 /*
 Structure : proxyHandler
 Method    : checkHTTPLiveness
@@ -517,8 +568,15 @@ Description : Checks status of the http server
 func (handler *proxyHandler) checkHTTPLiveness() {
 	var emptyByteArray []byte
 	for {
-		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+handler.httpPort+"/check", false)
-		if err == nil {
+		fmt.Println("/check on port - ", RecvdPort)
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
+		if err != nil {
+			log.Error("HTTP Liveness - ", err)
+			fmt.Println("HTTP Liveness - ", err)
+		} else {
+			log.Info("HTTP Liveness - HTTP Server is alive")
+			fmt.Println("HTTP Liveness - Server is alive")
+			handler.httpPort = uint16(RecvdPort)
 			break
 		}
 		time.Sleep(1 * time.Second)
@@ -528,6 +586,7 @@ func (handler *proxyHandler) checkHTTPLiveness() {
 func main() {
 
 	var err error
+	var i int
 
 	proxyObj := proxyHandler{}
 	//Get commandline paraameters.
@@ -552,7 +611,7 @@ func main() {
 		log.Error("(Proxy) Logger error : ", err)
 	}
 
-	//get config data
+	//Apply config
 	err = proxyObj.getConfigData()
 	if err != nil {
 		log.Error("(Proxy) Error while getting config data : ", err)
@@ -560,10 +619,10 @@ func main() {
 	}
 
 	//Start serf agent handler
+	log.Info("Starting serf agent handler")
 	err = proxyObj.startSerfAgent()
 	if err != nil {
-		log.Error("Error while starting serf agent : ", err)
-		os.Exit(1)
+		log.Error("Error while starting Serf Agent")
 	}
 
 	//Get PMDB server config data
@@ -572,7 +631,7 @@ func main() {
 		log.Error("Could not get PMDB Server config data : ", err)
 		os.Exit(1)
 	}
-	//Create a niovaKVServerHandler
+
 	err = proxyObj.startPMDBClient()
 	if err != nil {
 		log.Error("(Niovakv Server) Error while starting pmdb client : ", err)
@@ -582,10 +641,8 @@ func main() {
 	//Start http server
 	go func() {
 		log.Info("Starting HTTP server")
+		proxyObj.httpPort = proxyObj.portRange[i]
 		err = proxyObj.startHTTPServer()
-		if err != nil {
-			log.Error("Error while starting http server : ", err)
-		}
 	}()
 
 	//Stat maker

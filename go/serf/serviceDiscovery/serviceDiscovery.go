@@ -3,26 +3,27 @@ package serviceDiscovery
 import (
 	"common/httpClient"
 	"common/serfClient"
+	compressionLib "common/specificCompressionLib"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"math/rand"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"sync"
 	"time"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
-	compressionLib "common/specificCompressionLib"
+
 	log "github.com/sirupsen/logrus"
 
 	client "github.com/hashicorp/serf/client"
 )
 
-
 type ServiceDiscoveryHandler struct {
 	//Exported
 	HTTPRetry             int //No of seconds for a request time out and membership table refresh
-	SerfRetry	      int
+	SerfRetry             int
 	ServerChooseAlgorithm int
 	UseSpecificServerName string
+	RaftUUID              string
 
 	//Stat
 	RequestDistribution map[string]*ServerRequestStat
@@ -32,14 +33,14 @@ type ServiceDiscoveryHandler struct {
 	IsStatRequired      bool
 
 	//UnExported
-	servers           []client.Member
-	serfClientObj     serfClient.SerfClientHandler
-	serfUpdateLock    sync.Mutex
-	agentTableLock    sync.Mutex
-	statUpdateLock    sync.Mutex
-	ready             bool
-	specificServer    *client.Member
-	roundRobinPtr     int
+	servers        []client.Member
+	serfClientObj  serfClient.SerfClientHandler
+	serfUpdateLock sync.Mutex
+	agentTableLock sync.Mutex
+	statUpdateLock sync.Mutex
+	ready          bool
+	specificServer *client.Member
+	roundRobinPtr  int
 }
 
 type ServerRequestStat struct {
@@ -125,7 +126,7 @@ func (handler *ServiceDiscoveryHandler) Request(payload []byte, suburl string, w
 }
 
 func isValidNodeData(member client.Member) bool {
-	if ((member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] != "PROXY")) {
+	if (member.Status != "alive") || (member.Tags["Hport"] == "") || (member.Tags["Type"] != "PROXY") {
 		return false
 	}
 	return true
@@ -149,8 +150,10 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 			}
 
 			//Check if node is alive, check if gossip is available and http server of that node is not reported down!
-			if (isValidNodeData(handler.servers[randomIndex])) && (removeName != handler.servers[randomIndex].Name) {
-				break
+			if isValidNodeData(handler.servers[randomIndex]) {
+				if (removeName == "") || (removeName != handler.servers[randomIndex].Name) {
+					break
+				}
 			}
 			handler.servers = removeIndex(handler.servers, randomIndex)
 		}
@@ -160,11 +163,11 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 		//Round-Robin based proxy chooser
 		for {
 			if len(handler.servers) == 0 {
-                                return client.Member{}, errors.New("(Service discovery) Server not available")
-                        }
+				return client.Member{}, errors.New("(Service discovery) Server not available")
+			}
 			handler.roundRobinPtr %= len(handler.servers)
 			serverChoosen = &handler.servers[handler.roundRobinPtr]
-			if (isValidNodeData(handler.servers[handler.roundRobinPtr])) {
+			if isValidNodeData(handler.servers[handler.roundRobinPtr]) {
 				handler.roundRobinPtr += 1
 				break
 			}
@@ -194,7 +197,7 @@ func (handler *ServiceDiscoveryHandler) pickServer(removeName string) (client.Me
 
 func (handler *ServiceDiscoveryHandler) initSerfClient(configPath string) error {
 	handler.serfClientObj.Retries = handler.SerfRetry
-	return handler.serfClientObj.InitData(configPath)
+	return handler.serfClientObj.InitData(configPath, handler.RaftUUID)
 }
 
 func (handler *ServiceDiscoveryHandler) memberSearcher(stop chan int) error {
@@ -207,7 +210,7 @@ comparison:
 		default:
 			//Get latest membership data
 			handler.serfUpdateLock.Lock()
-			err := handler.serfClientObj.UpdateSerfClient(true)
+			err := handler.serfClientObj.UpdateSerfClient(true, handler.RaftUUID)
 			handler.serfUpdateLock.Unlock()
 			if err != nil {
 				return err
@@ -251,7 +254,7 @@ func removeIndex(s []client.Member, index int) []client.Member {
 
 func (handler *ServiceDiscoveryHandler) getConfig(configPath string) error {
 	handler.serfClientObj.Retries = 5
-	return handler.serfClientObj.InitData(configPath)
+	return handler.serfClientObj.InitData(configPath, handler.RaftUUID)
 }
 
 func (handler *ServiceDiscoveryHandler) GetMembership() map[string]client.Member {
@@ -260,24 +263,23 @@ func (handler *ServiceDiscoveryHandler) GetMembership() map[string]client.Member
 	return handler.serfClientObj.GetMemberList()
 }
 
-
 func getAnyEntryFromStringMap(mapSample map[string]map[string]string) map[string]string {
-        for _,v := range mapSample {
-                return v
-        }
-        return nil
+	for _, v := range mapSample {
+		return v
+	}
+	return nil
 }
 
 func (handler *ServiceDiscoveryHandler) GetPMDBServerConfig() ([]byte, error) {
 	PMDBServerConfigMap := make(map[string]PumiceDBCommon.PeerConfigData)
-	allPmdbServerGossip := handler.serfClientObj.GetTags("Type","PMDB_SERVER")
+	allPmdbServerGossip := handler.serfClientObj.GetTags("Type", "PMDB_SERVER")
 	pmdbServerGossip := getAnyEntryFromStringMap(allPmdbServerGossip)
 
 	for key, value := range pmdbServerGossip {
 		uuid, err := compressionLib.DecompressUUID(key)
-                if err == nil {
+		if err == nil {
 			peerConfig := PumiceDBCommon.PeerConfigData{}
-			compressionLib.DecompressStructure(&peerConfig,key+value)
+			compressionLib.DecompressStructure(&peerConfig, key+value)
 			PMDBServerConfigMap[uuid] = peerConfig
 		}
 	}
@@ -306,14 +308,14 @@ func (handler *ServiceDiscoveryHandler) TillReady(service string, serviceRetry i
 	_, err := handler.pickServer(service)
 
 	if err != nil {
-		for i:=0; i<= serviceRetry; i++ {
-		    _, err := handler.pickServer(service)
-		    
-		    if err == nil {
-			break
-		    }
+		for i := 0; i <= serviceRetry; i++ {
+			_, err := handler.pickServer(service)
+
+			if err == nil {
+				break
+			}
 		}
-		return errors.New("failed to start service after retry." )
+		return errors.New("failed to start service after retry.")
 	}
 	return nil
 }

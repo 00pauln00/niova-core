@@ -12,6 +12,16 @@ type KVResponse struct {
 	Value  []byte
 }
 
+type PMDBKVResponse struct {
+	Status       int
+	Key          string
+	ResultMap    map[string][]byte
+	ContinueRead bool
+	Prefix       string
+	SeqNum	     uint64
+	SnapMiss     bool
+}
+
 type LookoutRequest struct {
 	UUID	[16]byte
 	Cmd	string

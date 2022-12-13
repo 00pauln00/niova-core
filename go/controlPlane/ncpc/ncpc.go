@@ -10,9 +10,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
-	maps "golang.org/x/exp/maps"
 	"io/ioutil"
 	"math"
 	"math/rand"
@@ -23,28 +20,33 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	uuid "github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
+	maps "golang.org/x/exp/maps"
 )
 
 type clientHandler struct {
-	requestKey        string
-	requestValue      string
-	addr              string
-	port              string
-	operation         string
-	configPath        string
-	logPath           string
-	resultFile        string
-	rncui             string
-	rangeQuery        bool
+	requestKey         string
+	requestValue       string
+	raftUUID           string
+	addr               string
+	port               string
+	operation          string
+	configPath         string
+	logPath            string
+	resultFile         string
+	rncui              string
+	rangeQuery         bool
 	relaxedConsistency bool
-	count             int
-	seed              int
-	lastKey           string
-	operationMetaObjs []opData //For filling json data
-	clientAPIObj      serviceDiscovery.ServiceDiscoveryHandler
-	seqNum            uint64
-	valSize           int
-	serviceRetry      int
+	count              int
+	seed               int
+	lastKey            string
+	operationMetaObjs  []opData //For filling json data
+	clientAPIObj       serviceDiscovery.ServiceDiscoveryHandler
+	seqNum             uint64
+	valSize            int
+	serviceRetry       int
 }
 
 type request struct {
@@ -193,6 +195,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
 	flag.StringVar(&handler.port, "p", "1999", "Port value")
 	flag.StringVar(&handler.requestValue, "v", "", "Value")
+	flag.StringVar(&handler.raftUUID, "ru", "", "RaftUUID of the cluster to be queried")
 	flag.StringVar(&handler.configPath, "c", "./gossipNodes", "gossip nodes config file path")
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
@@ -542,21 +545,25 @@ func main() {
 	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
 		HTTPRetry: 10,
 		SerfRetry: 5,
+		RaftUUID:  clientObj.raftUUID,
 	}
 	stop := make(chan int)
 	go func() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
+			operationStat := fillOperationData(-1, "setup", "", err.Error(), 0)
+			clientObj.write2Json(operationStat)
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
 	clientObj.clientAPIObj.TillReady("", clientObj.serviceRetry)
 	if err != nil {
+		operationStat := fillOperationData(-1, "setup", "", err.Error(), 0)
+		clientObj.write2Json(operationStat)
 		log.Error(err)
 		os.Exit(1)
 	}
-
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
@@ -698,27 +705,27 @@ func main() {
 		}
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
-        case "LookoutInfo":
-                clientObj.clientAPIObj.ServerChooseAlgorithm = 2
-                clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
-                //Request obj
-                var requestObj requestResponseLib.LookoutRequest
+	case "LookoutInfo":
+		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
+		//Request obj
+		var requestObj requestResponseLib.LookoutRequest
 
-                //Parse UUID
-                requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
-                requestObj.Cmd = clientObj.requestValue
+		//Parse UUID
+		requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
+		requestObj.Cmd = clientObj.requestValue
 
-                var requestByte bytes.Buffer
-                enc := gob.NewEncoder(&requestByte)
-                err := enc.Encode(requestObj)
-                if err != nil {
-                        log.Info("Encoding error")
-                }
-                responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
-                
+		var requestByte bytes.Buffer
+		enc := gob.NewEncoder(&requestByte)
+		err := enc.Encode(requestObj)
 		if err != nil {
-                        log.Error("Error while sending request to proxy : ", err)
-                }
+			log.Info("Encoding error")
+		}
+		responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+
+		if err != nil {
+			log.Error("Error while sending request to proxy : ", err)
+		}
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 	}
 

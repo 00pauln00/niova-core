@@ -7,10 +7,9 @@ import (
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
-	"github.com/fsnotify/fsnotify"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -19,7 +18,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/google/uuid"
 )
+
+var HttpPort int
 
 type EPContainer struct {
 	MonitorUUID      string
@@ -34,6 +38,8 @@ type EPContainer struct {
 	mutex            sync.Mutex
 	run              bool
 	httpQuery        map[string](chan []byte)
+	PortRange        []uint16
+	RetPort          *int
 }
 
 func (epc *EPContainer) tryAdd(uuid uuid.UUID) {
@@ -81,6 +87,17 @@ func (epc *EPContainer) scan() {
 	}
 }
 
+func (epc *EPContainer) CheckLiveness(peerUuid string) bool {
+	uuid, _ := uuid.Parse(peerUuid)
+	for {
+		if epc.EpMap[uuid] == nil {
+			time.Sleep(1 * time.Second)
+		} else {
+			return epc.EpMap[uuid].Alive
+		}
+	}
+}
+
 func (epc *EPContainer) monitor() error {
 	var err error = nil
 
@@ -104,6 +121,7 @@ func (epc *EPContainer) monitor() error {
 			ep.Detect(epc.AppType)
 		}
 
+		//TODO Change env variable to LOOKOUT SLEEP
 		sleepTimeStr := os.Getenv("NISD_LOOKOUT_SLEEP")
 		sleepTime, err = time.ParseDuration(sleepTimeStr)
 		if err != nil {
@@ -414,14 +432,31 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintln(w, output)
 }
 
-func (epc *EPContainer) serveHttp() {
-	http.HandleFunc("/v1/", epc.QueryHandle)
-	http.HandleFunc("/v0/", epc.HttpHandle)
-	http.HandleFunc("/metrics", epc.MetricsHandler)
-	err := http.ListenAndServe(":"+strconv.Itoa(epc.HttpPort), nil)
-	if err != nil {
-		fmt.Println(err)
+func (epc *EPContainer) serveHttp() error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/", epc.QueryHandle)
+	mux.HandleFunc("/v0/", epc.HttpHandle)
+	mux.HandleFunc("/metrics", epc.MetricsHandler)
+	for i := len(epc.PortRange) - 1; i >= 0; i-- {
+		epc.HttpPort = int(epc.PortRange[i])
+		l, err := net.Listen("tcp", ":"+strconv.Itoa(epc.HttpPort))
+		if err != nil {
+			if strings.Contains(err.Error(), "bind") {
+				continue
+			} else {
+				fmt.Println("Error while starting lookout - ", err)
+				return err
+			}
+		} else {
+			go func() {
+				*epc.RetPort = epc.HttpPort
+				fmt.Println("Serving at - ", epc.HttpPort)
+				http.Serve(l, mux)
+			}()
+		}
+		break
 	}
+	return nil
 }
 
 func (epc *EPContainer) GetList() map[uuid.UUID]*NcsiEP {
@@ -444,16 +479,38 @@ func (epc *EPContainer) MarkAlive(serviceUUID string) error {
 	return nil
 }
 
-func (epc *EPContainer) Start() {
+func (epc *EPContainer) Start() error {
+	var err error
+	errs := make(chan error, 1)
 	//Start http service
 	if epc.EnableHttp {
 		epc.httpQuery = make(map[string](chan []byte))
-		go epc.serveHttp()
+		go func() {
+			err_r := epc.serveHttp()
+			errs <- err_r
+			if <-errs != nil {
+				return
+			}
+		}()
+		if err := <-errs; err != nil {
+			*epc.RetPort = -1
+			return err
+		}
 	}
 
 	//Setup lookout
-	epc.init()
+	err = epc.init()
+	if err != nil {
+		log.Printf("Lookout Init - ", err)
+		return err
+	}
 
 	//Start monitoring
-	epc.monitor()
+	err = epc.monitor()
+	if err != nil {
+		log.Printf("Lookout Monitor - ", err)
+		return err
+	}
+
+	return nil
 }

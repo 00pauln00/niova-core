@@ -2,7 +2,7 @@ package main
 
 import (
 	"bytes"
-	"common/clientAPI"
+	serviceDiscovery "common/clientAPI"
 	"common/requestResponseLib"
 	"encoding/gob"
 	"encoding/json"
@@ -21,14 +21,14 @@ import (
 )
 
 type clientHandler struct {
-	configPath, keyPrefix, valuePrefix, logPath, serial, noRequest, resultFile, operation string
-	concurrency                                                                           int
-	respFillerLock                                                                        sync.Mutex
-	operationMetaObjs                                                                     []opData //For filling json data
-	operationsWait                                                                        sync.WaitGroup
-	concurrencyChannel                                                                    chan int
-	requestSentCount, failedRequestCount                                                  int64
-	clientAPIObj                                                                          *serviceDiscovery.ServiceDiscoveryHandler
+	configPath, keyPrefix, valuePrefix, logPath, serial, noRequest, resultFile, operation, raftUUID string
+	concurrency                                                                                     int
+	respFillerLock                                                                                  sync.Mutex
+	operationMetaObjs                                                                               []opData //For filling json data
+	operationsWait                                                                                  sync.WaitGroup
+	concurrencyChannel                                                                              chan int
+	requestSentCount, failedRequestCount                                                            int64
+	clientAPIObj                                                                                    *serviceDiscovery.ServiceDiscoveryHandler
 }
 
 type request struct {
@@ -61,6 +61,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.configPath, "c", "./config", "config file path")
 	flag.StringVar(&handler.logPath, "l", ".", "log file path")
 	flag.StringVar(&handler.keyPrefix, "k", "Key", "Key prefix")
+	flag.StringVar(&handler.raftUUID, "ru", "", "RaftUUID of the cluster to be queried")
 	flag.StringVar(&handler.valuePrefix, "v", "Value", "Value prefix")
 	flag.StringVar(&handler.serial, "s", "no", "Serialized request or not")
 	flag.StringVar(&handler.noRequest, "n", "5", "No of request")
@@ -238,8 +239,9 @@ func main() {
 	log.Info("----START OF EXECUTION---")
 	//Init niovakv client API
 	clientObj.clientAPIObj = &serviceDiscovery.ServiceDiscoveryHandler{
-		HTTPRetry : 10,
-		SerfRetry : 5,
+		HTTPRetry: 10,
+		SerfRetry: 5,
+		RaftUUID:  clientObj.raftUUID,
 	}
 	stop := make(chan int)
 	go func() {

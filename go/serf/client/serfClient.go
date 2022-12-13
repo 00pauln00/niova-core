@@ -2,12 +2,20 @@ package serfClient
 
 import (
 	"bufio"
+	"context"
 	"errors"
-	"math/rand"
-	"os"
-	"strings"
 	"github.com/hashicorp/serf/client"
+	"log"
+	"math/rand"
+	"net"
+	"os"
+	"strconv"
+	"strings"
+	"time"
 )
+
+// Duration for which we wait to establish serf client connection before timeout
+var serfConnectionTimeout time.Duration = 5
 
 /*
 Type : SerfClientHandler
@@ -22,13 +30,38 @@ type SerfClientHandler struct {
 	Agents  []client.Member //Holds all agent names in cluster, initialized with few known agent names
 	Retries int             //No of retries to connect with any agent
 	//Un-exported
-	loadedGossipNodes	[]string
-	agentConnection		*client.RPCClient
-	connectionExist		bool
+	loadedGossipNodes []string
+	ipAddrs           net.IP
+	portRange         []uint16
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
+	agentConnection   *client.RPCClient
+	connectionExist   bool
+}
+
+func (handler *SerfClientHandler) getAddrList() []string {
+	var addrs []string
+	for i := 0; i < len(handler.portRange); i++ {
+		addrs = append(addrs, handler.ipAddrs.String()+":"+strconv.Itoa(int(handler.portRange[i])))
+	}
+	return addrs
+}
+
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
 }
 
 func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	//Get addrs and Rports and store it in AgentAddrs and
+	/*
+		Following is the format of gossipNodes config File
+		IPAddrs with space seperated
+		Sport Eport
+	*/
 	if _, err := os.Stat(serfConfigPath); os.IsNotExist(err) {
 		return err
 	}
@@ -37,15 +70,21 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 		return err
 	}
 
-	filescanner := bufio.NewScanner(reader)
-	filescanner.Split(bufio.ScanLines)
-	var addrs []string
-	for filescanner.Scan() {
-		input := strings.Split(filescanner.Text(), " ")
-		addrs = append(addrs, input[1]+":"+input[3])
-	}
+	scanner := bufio.NewScanner(reader)
+	//Read IPAddrs
+	scanner.Scan()
+	IPAddrs := strings.Split(scanner.Text(), " ")
+	Handler.ipAddrs = net.ParseIP(IPAddrs[0])
 
-	Handler.loadedGossipNodes = addrs
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	Handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	Handler.ServicePortRangeE = uint16(temp)
+
+	Handler.portRange = makeRange(Handler.ServicePortRangeS, Handler.ServicePortRangeE)
 	return nil
 }
 
@@ -56,40 +95,74 @@ Parameters : configPath string
 Return value : error
 Description : Get configuration data from config file
 */
-func (Handler *SerfClientHandler) InitData(configpath string) error {
-	var connectClient *client.RPCClient
-	err := Handler.getConfigData(configpath)
+func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
+	var err error
+	err = Handler.getConfigData(configpath)
 	if err != nil {
 		return err
 	}
 
-	for _, addr := range Handler.loadedGossipNodes {
-		connectClient, err = Handler.connectAddr(addr)
-		if err == nil {
-			break
-		}
-	}
-
-	if connectClient == nil {
-		return errors.New("No live serf agents")
-	}
-
-	clusterMembers, err := connectClient.Members()
-	Handler.Agents = clusterMembers
-
+	Handler.loadedGossipNodes = Handler.getAddrList()
+	err = Handler.connectAddrWithTimeout(raftUUID)
 	return err
 }
 
-func (Handler *SerfClientHandler) connectAddr(addr string) (*client.RPCClient, error) {
-	return client.NewRPCClient(addr)
+func (Handler *SerfClientHandler) connectAddrWithTimeout(raftUUID string) error {
+	var connectClient *client.RPCClient
+	var err error
+	// channel to catch error
+	errChan := make(chan error)
+	// channel to catch client
+	cliChan := make(chan *client.RPCClient)
+	for _, addr := range Handler.loadedGossipNodes {
+		ctx, cancel := context.WithTimeout(context.Background(), serfConnectionTimeout*time.Second)
+		defer cancel()
+		go func(ctx context.Context) {
+			cli, err_temp := Handler.connectAddr(addr, raftUUID)
+			if err_temp != nil {
+				// if err
+				errChan <- err_temp
+			} else if err_temp == nil {
+				// if conn is successful
+				cliChan <- cli
+			}
+			return
+		}(ctx)
+		select {
+		case <-ctx.Done():
+			// timeout if connection takes too long and move to next port
+			log.Printf("Timed out while trying to connect to - %s", addr)
+			continue
+		case connectClient = <-cliChan:
+			// catch client returned on success
+			if connectClient == nil {
+				return errors.New("No live serf agents")
+			}
+			clusterMembers, err_t := connectClient.Members()
+			Handler.Agents = clusterMembers
+			return err_t
+		case err = <-errChan:
+			// catch error on connection and move to next port
+			err = nil
+			continue
+		}
+	}
+	return err
 }
 
-func (Handler *SerfClientHandler) connectRandomNode() (*client.RPCClient, error) {
+func (Handler *SerfClientHandler) connectAddr(addr, raftUUID string) (*client.RPCClient, error) {
+	var RPCClientConfig client.Config
+	RPCClientConfig.Addr = addr
+	RPCClientConfig.AuthKey = raftUUID
+	return client.ClientFromConfig(&RPCClientConfig)
+}
+
+func (Handler *SerfClientHandler) connectRandomNode(raftUUID string) (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
 	randomAddr := randomAgent.Addr.String()
 	rPort := randomAgent.Tags["Rport"]
-	connector, err := Handler.connectAddr(randomAddr + ":" + rPort)
+	connector, err := Handler.connectAddr(randomAddr+":"+rPort, raftUUID)
 	if err != nil {
 		//Delete the node from connection list
 		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
@@ -105,7 +178,7 @@ Return value : error
 Description : Gets data from a random agent, persist the agent connection if persistConnection is true.
 persistConnection can be used if frequect updates are required.
 */
-func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error {
+func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool, raftUUID string) error {
 	var err error
 
 	//If no connection was persisted
@@ -115,7 +188,7 @@ func (Handler *SerfClientHandler) UpdateSerfClient(persistConnection bool) error
 			if len(Handler.Agents) <= 0 {
 				return errors.New("No live serf agents")
 			}
-			Handler.agentConnection, err = Handler.connectRandomNode()
+			Handler.agentConnection, err = Handler.connectRandomNode(raftUUID)
 			if err == nil {
 				Handler.connectionExist = true
 				break
@@ -156,15 +229,14 @@ func (Handler *SerfClientHandler) GetPMDBConfig() string {
 	return ""
 }
 
-
 func (Handler *SerfClientHandler) GetTags(filterKey string, filterValue string) map[string]map[string]string {
-        returnMap := make(map[string]map[string]string)
-        for _, mem := range Handler.Agents {
-                if mem.Tags[filterKey] == filterValue {
-                        returnMap[mem.Name] = mem.Tags
-                }
-        }
-        return returnMap
+	returnMap := make(map[string]map[string]string)
+	for _, mem := range Handler.Agents {
+		if mem.Tags[filterKey] == filterValue {
+			returnMap[mem.Name] = mem.Tags
+		}
+	}
+	return returnMap
 }
 
 /*

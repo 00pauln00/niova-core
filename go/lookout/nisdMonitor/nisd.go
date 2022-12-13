@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"common/httpClient"
 	"common/lookout"
 	"common/requestResponseLib"
 	"common/serviceDiscovery"
@@ -9,16 +11,19 @@ import (
 	"controlplane/serfAgent"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
-	"github.com/google/uuid"
 	"io/ioutil"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 	"unsafe"
+
+	"github.com/google/uuid"
 )
 
 // #include <unistd.h>
@@ -44,17 +49,24 @@ type nisdMonitor struct {
 	udpSocket     net.PacketConn
 	lookout       lookout.EPContainer
 	endpointRoot  *string
-	httpPort      *int
+	httpPort      int
 	ctlPath       *string
 	//serf
-	serfHandler     serfAgent.SerfAgentHandler
-	agentName       string
-	addr            string
-	agentPort       string
-	agentRPCPort    *int
-	gossipNodesPath string
-	serfLogger      string
+	serfHandler       serfAgent.SerfAgentHandler
+	agentName         string
+	addr              string
+	agentPort         int16
+	agentRPCPort      int16
+	gossipNodesPath   string
+	serfLogger        string
+	raftUUID          string
+	PortRange         []uint16
+	ServicePortRangeS uint16
+	ServicePortRangeE uint16
 }
+
+var RecvdPort int
+var SetTagsInterval int = 10
 
 //NISD
 type udpMessage struct {
@@ -75,17 +87,15 @@ func (handler *nisdMonitor) parseCMDArgs() {
 	)
 
 	handler.ctlPath = flag.String("dir", "/tmp/.niova", "endpoint directory root")
-	handler.httpPort = flag.Int("port", 8081, "http listen port")
-	handler.agentRPCPort = flag.Int("r", 3992, "Agent RPC port")
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
 
 	flag.StringVar(&handler.udpPort, "u", "1054", "UDP port for NISD communication")
 	flag.StringVar(&handler.agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Agent addr")
-	flag.StringVar(&handler.agentPort, "p", "3991", "Agent port for serf")
 	flag.StringVar(&handler.gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
 	flag.StringVar(&handler.serfLogger, "s", "serf.log", "Serf logs")
+	flag.StringVar(&handler.raftUUID, "r", "", "Raft UUID")
 	flag.Parse()
 
 	nonParsed := flag.Args()
@@ -164,25 +174,27 @@ func setLogOutput(logPath string) {
 	}
 }
 
+func (handler *nisdMonitor) getAddrList() []string {
+	var addrs []string
+	for i := 0; i < len(handler.PortRange); i++ {
+		addrs = append(addrs, handler.addr+":"+strconv.Itoa(int(handler.PortRange[i])))
+	}
+	return addrs
+}
+
 func (handler *nisdMonitor) startSerfAgent() error {
 	setLogOutput(handler.serfLogger)
-	agentPort, _ := strconv.Atoi(handler.agentPort)
+	//agentPort := handler.agentPort
 	handler.serfHandler = serfAgent.SerfAgentHandler{
-		Name:        handler.agentName,
-		BindAddr:    net.ParseIP(handler.addr),
-		BindPort:    uint16(agentPort),
-		AgentLogger: log.Default(),
-		RpcAddr:     net.ParseIP(handler.addr),
-		RpcPort:     uint16(*handler.agentRPCPort),
-	}
-
-	joinAddrs, err := serfAgent.GetPeerAddress(handler.gossipNodesPath)
-	if err != nil {
-		return err
+		Name:              handler.agentName,
+		Addr:              net.ParseIP(handler.addr),
+		ServicePortRangeS: uint16(handler.ServicePortRangeS),
+		ServicePortRangeE: uint16(handler.ServicePortRangeE),
+		AgentLogger:       log.Default(),
 	}
 
 	//Start serf agent
-	_, err = handler.serfHandler.SerfAgentStartup(joinAddrs, true)
+	_, err := handler.serfHandler.SerfAgentStartup(true)
 	return err
 }
 
@@ -203,11 +215,10 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 		//Fill map; will add extra info in future
 		returnMap[cuuid] = cstatus
 	}
-	httpPort  := handler.httpPort
-
+	httpPort := RecvdPort
 	returnMap["Type"] = "LOOKOUT"
-	returnMap["Hport"] = strconv.Itoa(*httpPort)
-	return returnMap  
+	returnMap["Hport"] = strconv.Itoa(httpPort)
+	return returnMap
 }
 
 //NISD
@@ -218,7 +229,7 @@ func (handler *nisdMonitor) setTags() {
 		if err != nil {
 			fmt.Println(err)
 		}
-		time.Sleep(10 * time.Second)
+		time.Sleep(time.Duration(SetTagsInterval) * time.Second)
 	}
 }
 
@@ -274,6 +285,117 @@ func (handler *nisdMonitor) SerfMembership() map[string]bool {
 	return returnMap
 }
 
+func (handler *nisdMonitor) getPortRange() error {
+	var response requestResponseLib.PMDBKVResponse
+
+	responseBytes, err := handler.requestPMDB(handler.raftUUID + "_Port_Range")
+	if err != nil {
+		fmt.Println("Request PMDB - ", err)
+		return err
+	}
+
+	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	dec.Decode(&response)
+
+	err = handler.getConfigData(string(response.ResultMap[handler.raftUUID+"_Port_Range"]))
+	if err != nil {
+		fmt.Println("getConfigData - ", err)
+	}
+
+	return nil
+}
+
+func (handler *nisdMonitor) getConfigData(config string) error {
+	portRangeStart, err := strconv.Atoi(strings.Split(config, "-")[0])
+	portRangeEnd, err := strconv.Atoi(strings.Split(config, "-")[1])
+	if err != nil {
+		return err
+	}
+
+	for i := portRangeStart; i <= portRangeEnd; i++ {
+		handler.PortRange = append(handler.PortRange, uint16(i))
+	}
+
+	if len(handler.PortRange) < 3 {
+		return errors.New("Not enough ports available in the specified range to start services")
+	}
+
+	return err
+}
+
+func (handler *nisdMonitor) checkHTTPLiveness() {
+	var emptyByteArray []byte
+	for {
+		_, err := httpClient.HTTP_Request(emptyByteArray, "127.0.0.1:"+strconv.Itoa(int(RecvdPort))+"/check", false)
+		if err != nil {
+			fmt.Println("HTTP Liveness - ", err)
+		} else {
+			fmt.Println("HTTP Liveness - HTTP Server is alive")
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+func (handler *nisdMonitor) findFreePort() int {
+	for i := 0; i < len(handler.PortRange); i++ {
+		handler.httpPort = int(handler.PortRange[i])
+		fmt.Println("Trying to bind with - ", int(handler.httpPort))
+		check, err := net.Listen("tcp", handler.addr+":"+strconv.Itoa(int(handler.httpPort)))
+		if err != nil {
+			if strings.Contains(err.Error(), "bind") {
+				continue
+			} else {
+				fmt.Println("Error while finding port : ", err)
+				return 0
+			}
+		} else {
+			check.Close()
+			break
+		}
+	}
+	fmt.Println("Returning free port - ", handler.httpPort)
+	return handler.httpPort
+}
+
+func makeRange(min, max uint16) []uint16 {
+	a := make([]uint16, max-min+1)
+	for i := range a {
+		a[i] = uint16(min + uint16(i))
+	}
+	return a
+}
+
+func (handler *nisdMonitor) loadConfigInfo() error {
+	//Get addrs and Rports and store it in handler
+
+	if _, err := os.Stat(handler.gossipNodesPath); os.IsNotExist(err) {
+		return err
+	}
+	reader, err := os.OpenFile(handler.gossipNodesPath, os.O_RDONLY, 0444)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(reader)
+	//Read IPAddrs
+	scanner.Scan()
+	IPAddrs := strings.Split(scanner.Text(), " ")
+	fmt.Println(IPAddrs)
+	handler.addr = IPAddrs[0]
+
+	//Read Ports
+	scanner.Scan()
+	Ports := strings.Split(scanner.Text(), " ")
+	temp, _ := strconv.Atoi(Ports[0])
+	handler.ServicePortRangeS = uint16(temp)
+	temp, _ = strconv.Atoi(Ports[1])
+	handler.ServicePortRangeE = uint16(temp)
+
+	handler.PortRange = makeRange(handler.ServicePortRangeS, handler.ServicePortRangeE)
+	return nil
+}
+
 func main() {
 	var nisd nisdMonitor
 
@@ -283,23 +405,52 @@ func main() {
 	//Start pmdb service client discovery api
 	nisd.startClientAPI()
 
+	err := nisd.loadConfigInfo()
+	if err != nil {
+		fmt.Println("Error while loading config info - ", err)
+		os.Exit(1)
+	}
+
 	//Start serf agent
-	nisd.startSerfAgent()
+	nisd.ServicePortRangeS = nisd.PortRange[0]
+	nisd.ServicePortRangeE = nisd.PortRange[len(nisd.PortRange)-1]
+	err = nisd.startSerfAgent()
+	if err != nil {
+		fmt.Println("Error while starting serf agent : ", err)
+		os.Exit(1)
+	}
 
 	//Start udp listener
 	go nisd.startUDPListner()
 
-	//Set serf tags
-	go nisd.setTags()
+	portAddr := &RecvdPort
 
 	//Start lookout monitoring
 	nisd.lookout = lookout.EPContainer{
-		MonitorUUID:      "*",
-		AppType:          "NISD",
-		HttpPort:         *nisd.httpPort,
+		MonitorUUID: "*",
+		AppType:     "NISD",
+		//HttpPort:         nisd.findFreePort(),
+		PortRange:        nisd.PortRange,
 		CTLPath:          *nisd.ctlPath,
 		SerfMembershipCB: nisd.SerfMembership,
 		EnableHttp:       true,
+		RetPort:          portAddr,
 	}
-	nisd.lookout.Start()
+	errs := make(chan error, 1)
+	go func() {
+		errs <- nisd.lookout.Start()
+	}()
+	select {
+	case err = <-errs:
+		fmt.Println("Error while starting Lookout : ", err)
+		os.Exit(1)
+	default:
+		fmt.Println("Lookout started successfully")
+	}
+
+	//Wait till http lookout http is up and running
+	nisd.checkHTTPLiveness()
+
+	//Set serf tags
+	nisd.setTags()
 }
