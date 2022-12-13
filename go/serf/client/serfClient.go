@@ -71,7 +71,6 @@ func (Handler *SerfClientHandler) getConfigData(serfConfigPath string) error {
 	//Read IPAddrs
 	scanner.Scan()
 	IPAddrs := strings.Split(scanner.Text(), " ")
-	//TODO Parse IPs Into array
 	Handler.ipAddrs = net.ParseIP(IPAddrs[0])
 
 	//Read Ports
@@ -159,10 +158,9 @@ func (Handler *SerfClientHandler) connectAddr(addr, raftUUID string) (*client.RP
 func (Handler *SerfClientHandler) connectRandomNode(raftUUID string) (*client.RPCClient, error) {
 	randomIndex := rand.Intn(len(Handler.Agents))
 	randomAgent := Handler.Agents[randomIndex]
-	//TODO Store addr in Handler.Agents
-	//randomAddr := randomAgent.Addr.String()
+	randomAddr := randomAgent.Addr.String()
 	rPort := randomAgent.Tags["Rport"]
-	connector, err := Handler.connectAddr("127.0.0.1"+":"+rPort, raftUUID)
+	connector, err := Handler.connectAddr(randomAddr+":"+rPort, raftUUID)
 	if err != nil {
 		//Delete the node from connection list
 		Handler.Agents = append(Handler.Agents[:randomIndex], Handler.Agents[randomIndex+1:]...)
