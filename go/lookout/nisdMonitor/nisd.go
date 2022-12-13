@@ -176,7 +176,6 @@ func setLogOutput(logPath string) {
 
 func (handler *nisdMonitor) getAddrList() []string {
 	var addrs []string
-	//TODO Add limits to end and start
 	for i := 0; i < len(handler.PortRange); i++ {
 		addrs = append(addrs, handler.addr+":"+strconv.Itoa(int(handler.PortRange[i])))
 	}
@@ -413,7 +412,6 @@ func main() {
 	}
 
 	//Start serf agent
-	//TODO Assign according to convention
 	nisd.ServicePortRangeS = nisd.PortRange[0]
 	nisd.ServicePortRangeE = nisd.PortRange[len(nisd.PortRange)-1]
 	err = nisd.startSerfAgent()
