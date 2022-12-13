@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// Duration for which we wait to establish serf client connection before timeout
+var serfConnectionTimeout time.Duration = 5
+
 /*
 Type : SerfClientHandler
 Description : Handler for agent
@@ -93,7 +96,6 @@ Return value : error
 Description : Get configuration data from config file
 */
 func (Handler *SerfClientHandler) InitData(configpath, raftUUID string) error {
-	//var connectClient *client.RPCClient
 	var err error
 	err = Handler.getConfigData(configpath)
 	if err != nil {
@@ -113,7 +115,7 @@ func (Handler *SerfClientHandler) connectAddrWithTimeout(raftUUID string) error 
 	// channel to catch client
 	cliChan := make(chan *client.RPCClient)
 	for _, addr := range Handler.loadedGossipNodes {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), serfConnectionTimeout*time.Second)
 		defer cancel()
 		go func(ctx context.Context) {
 			cli, err_temp := Handler.connectAddr(addr, raftUUID)
