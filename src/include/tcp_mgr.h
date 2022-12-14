@@ -18,8 +18,6 @@ typedef void    tcp_mgr_ctx_t;
 typedef int     tcp_mgr_ctx_int_t;
 typedef ssize_t tcp_mgr_ctx_ssize_t;
 
-extern int tcpWorkerCnt;
-
 struct tcp_mgr_connection;
 
 env_cb_ctx_t
@@ -115,6 +113,9 @@ do {                                                                 \
                  (tmc)->tmc_tsh.tsh_socket,                          \
                  ##__VA_ARGS__);                                     \
 } while(0)
+
+int
+tcp_mgr_worker_cnt_get(void);
 
 int
 tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
