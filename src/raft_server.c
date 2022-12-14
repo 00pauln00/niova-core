@@ -26,11 +26,10 @@
 #include "thread.h"
 #include "util_thread.h"
 #include "buffer.h"
+#include "tcp_mgr.h"
 
 #define RAFT_SERVER_RECOVERY_ATTEMPTS 100
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
-
-int tcpWorkerCnt;
 
 enum raft_write_entry_opts
 {
@@ -5805,8 +5804,8 @@ raft_server_instance_buffer_set_setup(struct raft_instance *ri)
     size_t buff_set_sizes[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_SZ,
                                                RAFT_BS_LARGE_SZ};
 
-    int small_nbuf = RAFT_ENTRY_NUM_ENTRIES + tcpWorkerCnt;
-    int large_nbuf = tcpWorkerCnt;
+    int small_nbuf = RAFT_ENTRY_NUM_ENTRIES + tcp_mgr_worker_cnt_get();
+    int large_nbuf = tcp_mgr_worker_cnt_get();
 
     size_t nbuff[RAFT_BUF_SET_MAX] = {small_nbuf, large_nbuf};
 

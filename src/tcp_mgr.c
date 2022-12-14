@@ -10,7 +10,14 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-int tcpWorkerCnt = TCP_MGR_NTHREADS;
+static int tcpWorkerCnt = TCP_MGR_NTHREADS;
+
+
+int
+tcp_mgr_worker_cnt_get(void)
+{
+    return tcpWorkerCnt;
+}
 
 void
 tcp_mgr_credits_set(niova_atomic32_t *credits, uint32_t cnt)
