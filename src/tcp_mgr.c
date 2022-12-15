@@ -209,6 +209,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
     {
         int rc = 0;
 
+        SIMPLE_LOG_MSG(LL_WARN, "Number of worker threads: %d", tcpWorkerCnt);
         for (int i = 0; i < tcpWorkerCnt; i++)
         {
             char thr_name[MAX_THREAD_NAME] = {0};
