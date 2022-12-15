@@ -2,7 +2,7 @@ package PumiceDBServer
 
 /*
 #include <raft/pumice_db.h>
-extern int goWritePre(const struct raft_net_client_user_id *,
+extern int goWritePrep(const struct raft_net_client_user_id *,
                       const char *, size_t, void *);
 extern int goApply(const struct raft_net_client_user_id *,
               const char *, size_t, void *, void *);
