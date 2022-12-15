@@ -2,10 +2,18 @@ package PumiceDBServer
 
 /*
 #include <raft/pumice_db.h>
+extern int goWritePre(const struct raft_net_client_user_id *,
+                      const char *, size_t, void *);
 extern int goApply(const struct raft_net_client_user_id *,
               const char *, size_t, void *, void *);
 extern size_t goRead(const struct raft_net_client_user_id *,
              const char *, size_t, char *, size_t, void*);
+int writePrepCgo(const struct raft_net_client_user_id *app_id,
+                 const char *input_buf, size_t input_bufsz,
+                 void *user_data) {
+	return goWritePrep(app_id, input_buf, input_bufsz, user_data);
+}
+
 int applyCgo(const struct raft_net_client_user_id *app_id,
               const char *input_buf, size_t input_bufsz, void *pmdb_handle,
               void *user_data) {

@@ -16,6 +16,7 @@
 
 typedef void    pumicedb_apply_ctx_t;
 typedef int     pumicedb_apply_ctx_int_t;
+typedef int     pumicedb_write_prep_ctx_int_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
 
 /**
@@ -45,10 +46,23 @@ typedef pumicedb_read_ctx_ssize_t
                           const char *request_buf, size_t request_bufsz,
                           char *reply_buf, size_t reply_bufsz, void *user_data);
 
+/**
+ * pmdb_write_prep_sm_handler_t - The write prepare handler is called from
+ * raft before applying the write entry.
+ * Application is presented with original buffer content. And looking at the
+ * buffer data, application can decide whether to go ahead with write operation.
+ * Actual write to rocksDB would happen only through apply handler.
+ */
+typedef pumicedb_write_prep_ctx_int_t
+(*pmdb_write_prep_sm_handler_t)(const struct raft_net_client_user_id *,
+                                const void *input_buf, size_t input_bufsz,
+                                void *user_data);
+
 struct PmdbAPI
 {
-    pmdb_apply_sm_handler_t pmdb_apply;
-    pmdb_read_sm_handler_t  pmdb_read;
+    pmdb_write_prep_sm_handler_t pmdb_write_prep;
+    pmdb_apply_sm_handler_t      pmdb_apply;
+    pmdb_read_sm_handler_t       pmdb_read;
 };
 
 /**
