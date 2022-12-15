@@ -821,24 +821,25 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
+    const struct raft_net_client_user_id *rncui = &pmdb_req->pmdbrm_user_id;
     struct pmdb_object obj = {0};
     bool new_object = false;
     int64_t prev_pending_term = -1;
 
-    int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
+    int rc = pmdb_object_lookup(rncui, &obj,
                                 rncr->rncr_current_term);
     if (rc)
     {
         if (rc == -ENOENT)
         {
             pmdb_object_init(&obj, pmdb_get_current_version(),
-                             &pmdb_req->pmdbrm_user_id);
+                             rncui);
             rc = 0;
             new_object = true;
         }
         else
         {
-            PMDB_STR_DEBUG(LL_NOTIFY, &pmdb_req->pmdbrm_user_id,
+            PMDB_STR_DEBUG(LL_NOTIFY, rncui,
                            "pmdb_object_lookup(): %s", strerror(-rc));
 
             /* This appears to be a system error.  Mark it and reply to the
@@ -865,6 +866,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     }
     else if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
     {
+        int wrc = 0;
         /* Check if request has already been placed into the log but not yet
          * applied.  Here, the client's request has been accepted but not
          * yet completed and the client has retried the request.
@@ -881,12 +883,27 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
                                                      -EINPROGRESS, 0);
         }
-        else // Check if rncui is already part of coalesced_wr_tree
+        /*
+        */
+        if (pmdbApi->pmdb_write_prep)
+        {
+            wrc = pmdbApi->pmdb_write_prep(rncui, pmdb_req->pmdbrm_data,
+                                           pmdb_req->pmdbrm_data_size,
+                                           pmdb_user_data);
+            if (wrc)
+                raft_client_net_request_handle_error_set(rncr,
+                                                         -EPERM,
+                                                         0, -EPERM);
+        }
+
+        // If write_prep is not defined by application orwrite_prep
+        // returned success
+        if (!wrc) // Check if rncui is already part of coalesced_wr_tree
 
         {
             int error = 0;
             struct pmdb_cowr_sub_app *cowr_sa =
-                pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
+                pmdb_cowr_sub_app_add(rncui,
                                       rncr->rncr_client_uuid,
                                       rncr->rncr_current_term,
                                       &error, __func__,

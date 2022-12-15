@@ -356,8 +356,9 @@ main(int argc, char **argv)
     pmdbts_getopt(argc, argv);
 
     struct PmdbAPI api = {
-        .pmdb_apply = pmdbts_apply,
-        .pmdb_read = pmdbts_read,
+        .pmdb_write_prep = NULL,
+        .pmdb_apply      = pmdbts_apply,
+        .pmdb_read       = pmdbts_read,
     };
 
     const char *cf_names[1] = {pmdbts_column_family_name};
