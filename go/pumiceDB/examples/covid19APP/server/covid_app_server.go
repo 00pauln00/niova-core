@@ -126,6 +126,11 @@ type CovidServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
+func (cso *CovidServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+	inputBufSize int64) int {
+    return 0;
+}
+
 func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 

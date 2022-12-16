@@ -416,6 +416,11 @@ type NiovaKVServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
+func (nso *NiovaKVServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+	inputBufSize int64) int {
+    return 0;
+}
+
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 
