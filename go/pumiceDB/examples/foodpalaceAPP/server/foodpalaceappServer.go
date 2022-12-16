@@ -55,6 +55,12 @@ func (fpso *FoodpalaceServer) initLogger() {
 	log.Info("peer:", fpso.peerUuid)
 }
 
+//Method for WritePrep callback.
+func (fpso *FoodpalaceServer) WritePrep(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
+	dataBufSz int64) int {
+    return 0;
+}
+
 //Method for Apply callback.
 func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
 	dataBufSz int64, pmdbHandle unsafe.Pointer) int {
