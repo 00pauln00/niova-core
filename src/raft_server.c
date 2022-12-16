@@ -5805,9 +5805,10 @@ raft_server_instance_buffer_set_setup(struct raft_instance *ri)
                                                RAFT_BS_LARGE_SZ};
 
     int small_nbuf = RAFT_ENTRY_NUM_ENTRIES + tcp_mgr_worker_cnt_get();
+    // Note: server fails if No. of large buffer is not nthreads + 1
     int large_nbuf = tcp_mgr_worker_cnt_get() + 1;
 
-    SIMPLE_LOG_MSG(LL_WARN, "sbuf count: %d, lbuf count: %d", small_nbuf,
+    SIMPLE_LOG_MSG(LL_NOTIFY, "sbuf count: %d, lbuf count: %d", small_nbuf,
                    large_nbuf);
 
     size_t nbuff[RAFT_BUF_SET_MAX] = {small_nbuf, large_nbuf};
