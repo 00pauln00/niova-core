@@ -6,7 +6,7 @@ replace niova/go-pumicedb-lib/server => ../../pumiceDB/server
 
 replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 
-replace common/serfAgent => ../../../../serf/agent
+replace common/serfAgent => ../../serf/agent
 
 replace common/requestResponseLib => ../requestResponseLib
 
