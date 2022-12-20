@@ -4,11 +4,12 @@ import (
 	"common/requestResponseLib"
 	"errors"
 	"flag"
-	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"unsafe"
+
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -27,6 +28,7 @@ type pmdbServerHandler struct {
 	peerUUID string
 	logDir   string
 	logLevel string
+	pso      *PumiceDBServer.PmdbServerObject
 }
 
 func main() {
@@ -55,7 +57,7 @@ func main() {
 		log.Fatal("Error while initializing serf agent ", err)
 	}
 
-	log.Info("Raft and Peer UUID: ", lso.raftUuid, " ", lso.peerUuid)
+	log.Info("Raft and Peer UUID: ", lso.raftUUID, " ", lso.peerUUID)
 	/*
 	   Initialize the internal pmdb-server-object pointer.
 	   Assign the Directionary object to PmdbAPI so the apply and
@@ -64,8 +66,8 @@ func main() {
 	*/
 	lso.pso = &PumiceDBServer.PmdbServerObject{
 		ColumnFamilies: colmfamily,
-		RaftUuid:       lso.raftUuid,
-		PeerUuid:       lso.peerUuid,
+		RaftUuid:       lso.raftUUID,
+		PeerUuid:       lso.peerUUID,
 		PmdbAPI:        lso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
@@ -84,7 +86,7 @@ func usage() {
 	os.Exit(0)
 }
 
-func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
+func (handler *pmdbServerHandler) parseArgs() (*pmdbServerHandler, error) {
 
 	var err error
 
@@ -99,9 +101,9 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
 	flag.Parse()
 
-	lso := &NiovaKVServer{}
-	lso.raftUuid = handler.raftUUID
-	lso.peerUuid = handler.peerUUID
+	lso := &pmdbServerHandler{}
+	lso.raftUUID = handler.raftUUID
+	lso.peerUUID = handler.peerUUID
 
 	if lso == nil {
 		err = errors.New("Not able to parse the arguments")
@@ -119,13 +121,13 @@ type LeaseServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (lso *LeaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
-	applyNiovaKV := &requestResponseLib.KVRequest{}
+	applyNiovaKV := &requestResponseLib.LeaseReq{}
 
 	decodeErr := lso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
 	if decodeErr != nil {
@@ -133,18 +135,18 @@ func (lso *LeaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", applyNiovaKV.Key)
+	log.Trace("Key passed by client: ", applyNiovaKV.Client)
 
 	// length of key.
-	keyLength := len(applyNiovaKV.Key)
+	keyLength := len(applyNiovaKV.Client)
 
-	byteToStr := string(applyNiovaKV.Value)
+	byteToStr := applyNiovaKV.Resource.String()
 
 	// Length of value.
 	valLen := len(byteToStr)
 
 	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	rc := lso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
+	rc := lso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Client.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
@@ -181,13 +183,13 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 }
 */
-func (lso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
+func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
 	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
-	reqStruct := &requestResponseLib.KVRequest{}
+	reqStruct := &requestResponseLib.LeaseReq{}
 	decodeErr := lso.pso.Decode(requestBuf, reqStruct, requestBufSize)
 
 	if decodeErr != nil {
@@ -195,13 +197,13 @@ func (lso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", reqStruct.Key)
+	log.Trace("Key passed by client: ", reqStruct.Client)
 
-	keyLen := len(reqStruct.Key)
+	keyLen := len(reqStruct.Client.String())
 	log.Trace("Key length: ", keyLen)
 
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	readResult, readErr := lso.pso.ReadKV(appId, reqStruct.Key,
+	readResult, readErr := lso.pso.ReadKV(appId, reqStruct.Client.String(),
 		int64(keyLen), colmfamily)
 	var valType []byte
 	var replySize int64
@@ -212,9 +214,9 @@ func (lso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		inputVal := string(valType)
 		log.Trace("Input value after read request:", inputVal)
 
-		resultReq := requestResponseLib.KVRequest{
-			Key:   reqStruct.Key,
-			Value: valType,
+		resultReq := requestResponseLib.LeaseReq{
+			Client:   reqStruct.Client,
+			Resource: reqStruct.Resource,
 		}
 
 		//Copy the encoded result in replyBuffer
