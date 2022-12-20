@@ -1,7 +1,17 @@
-package main
+package requestResponseLib
 
-import "fmt"
+import "github.com/google/uuid"
 
-func main() {
-	fmt.Println("vim-go")
+type LeaseReq struct {
+	Client    uuid.UUID
+	Resource  uuid.UUID
+	Operation int
+}
+
+type LeaseResp struct {
+	Client    uuid.UUID
+	Resource  uuid.UUID
+	Status    string
+	State     string
+	Timestamp string
 }
