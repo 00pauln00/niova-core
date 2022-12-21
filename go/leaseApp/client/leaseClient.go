@@ -19,12 +19,19 @@ import (
 )
 
 type operation int
+type state int
 
 const (
 	GET     operation = 0
 	PUT               = 1
 	LOOKUP            = 2
 	REFRESH           = 3
+)
+
+const (
+	ACQUIRED      state = 0
+	FREE                = 1
+	TRANSITIONING       = 2
 )
 
 var (
@@ -43,7 +50,7 @@ type leaseHandler struct {
 	ttl           time.Duration
 	pmdbClientObj *pmdbClient.PmdbClientObj
 	operation     operation
-	state         int
+	leaseState    state
 	timeStamp     string
 	jsonFilePath  string
 }
@@ -67,13 +74,13 @@ Return(s) : None
 Description : Parse command line params and load into leaseHandler sturct
 */
 func (handler *leaseHandler) getCmdParams() {
-	var stringOperation, tempClientUUID, tempVdevUUID, tempRaftUUID string
+	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
 	var ok bool
 	var err error
 
-	flag.StringVar(&tempClientUUID, "u", uuid.New().String(), "ClientUUID - UUID of the requesting client")
-	flag.StringVar(&tempVdevUUID, "v", "NULL", "VdevUUID - UUID of the requested VDEV")
-	flag.StringVar(&tempRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
+	flag.StringVar(&strClientUUID, "u", uuid.New().String(), "ClientUUID - UUID of the requesting client")
+	flag.StringVar(&strResourceUUID, "v", "NULL", "ResourceUUID - UUID of the requested resource")
+	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
 	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
 	flag.Usage = usage
@@ -94,17 +101,17 @@ func (handler *leaseHandler) getCmdParams() {
 		usage()
 		os.Exit(-1)
 	}
-	handler.client, err = uuid.Parse(tempClientUUID)
+	handler.client, err = uuid.Parse(strClientUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	handler.resource, err = uuid.Parse(tempVdevUUID)
+	handler.resource, err = uuid.Parse(strResourceUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	handler.raftUUID, err = uuid.Parse(tempRaftUUID)
+	handler.raftUUID, err = uuid.Parse(strRaftUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
