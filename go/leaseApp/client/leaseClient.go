@@ -9,8 +9,6 @@ import (
 	"flag"
 	"io/ioutil"
 	"os"
-	"strconv"
-	"sync"
 	"time"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
@@ -20,23 +18,44 @@ import (
 	"github.com/google/uuid"
 )
 
+type operation int
+
+const (
+	GET     operation = 0
+	PUT               = 1
+	LOOKUP            = 2
+	REFRESH           = 3
+)
+
+var (
+	operationsMap = map[string]operation{
+		"GET":     GET,
+		"PUT":     PUT,
+		"LOOKUP":  LOOKUP,
+		"REFRESH": REFRESH,
+	}
+)
+
 type leaseHandler struct {
-	clientUUID         uuid.UUID
-	resource           uuid.UUID
-	raftUUID           uuid.UUID
-	ttl                time.Duration
-	pmdbClientObj      *pmdbClient.PmdbClientObj
-	operation          string
-	state              int
-	timeStamp          string
-	operationsWait     sync.WaitGroup
-	concurrencyChannel chan int
-	jsonFilePath       string
+	client        uuid.UUID
+	resource      uuid.UUID
+	raftUUID      uuid.UUID
+	ttl           time.Duration
+	pmdbClientObj *pmdbClient.PmdbClientObj
+	operation     operation
+	state         int
+	timeStamp     string
+	jsonFilePath  string
 }
 
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
+}
+
+func parseOperation(str string) (operation, bool) {
+	op, ok := operationsMap[str]
+	return op, ok
 }
 
 /*
@@ -48,22 +67,34 @@ Return(s) : None
 Description : Parse command line params and load into leaseHandler sturct
 */
 func (handler *leaseHandler) getCmdParams() {
-	var tempClientUUID, tempVdevUUID, tempRaftUUID string
+	var stringOperation, tempClientUUID, tempVdevUUID, tempRaftUUID string
+	var ok bool
 	var err error
 
 	flag.StringVar(&tempClientUUID, "u", uuid.New().String(), "ClientUUID - UUID of the requesting client")
 	flag.StringVar(&tempVdevUUID, "v", "NULL", "VdevUUID - UUID of the requested VDEV")
 	flag.StringVar(&tempRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
-	flag.StringVar(&handler.operation, "o", "2", "Operation - 0 : Write Lease Req, 1 : Read Lease Req, 2 : Refresh Lease Req")
+	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
 	flag.Usage = usage
 	flag.Parse()
 	if flag.NFlag() == 0 {
 		usage()
 		os.Exit(-1)
 	}
-
-	handler.clientUUID, err = uuid.Parse(tempClientUUID)
+	/*
+		handler.operation, err = strconv.Atoi(stringOperation)
+		if err != nil {
+			usage()
+			os.Exit(-1)
+		}
+	*/
+	handler.operation, ok = parseOperation(stringOperation)
+	if !ok {
+		usage()
+		os.Exit(-1)
+	}
+	handler.client, err = uuid.Parse(tempClientUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
@@ -92,7 +123,7 @@ func (handler *leaseHandler) startPMDBClient() error {
 	var err error
 
 	//Get clientObj
-	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID.String(), handler.clientUUID.String())
+	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID.String(), handler.client.String())
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB Client Obj could not be initialized")
 	}
@@ -129,26 +160,32 @@ func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) (requestR
 	}
 
 	switch handler.operation {
-	case "0":
+	case GET:
 		//Request lease
-		/*responseBytes, err = handler.pmdbClientObj.GetLease(requestBytes.Bytes(), "", true)
-		if err != nil {
-			log.Error("Error while sending the request : ", err)
-			return nil, err
-		}*/
-	case "1":
+		/*
+			responseBytes, err = handler.pmdbClientObj.GetLease(requestBytes.Bytes(), "", true)
+			if err != nil {
+				log.Error("Error while sending the request : ", err)
+				return nil, err
+			}
+		*/
+	case LOOKUP:
 		//Request lookup
-		/*responseBytes, err = handler.pmdbClientObj.LookupLease(requestBytes.Bytes(), "", true)
-		if err != nil {
-			log.Error("Error while sending the request : ", err)
-			return nil, err
-		}*/
-	case "2":
+		/*
+			responseBytes, err = handler.pmdbClientObj.LookupLease(requestBytes.Bytes(), "", true)
+			if err != nil {
+				log.Error("Error while sending the request : ", err)
+				return nil, err
+			}
+		*/
+	case REFRESH:
 		//responseBytes, err = handler.pmdbClientObj.RefreshLease(requestBytes.Bytes(), "", true)
-		/*if err != nil {
-			log.Error("Error while sending the request : ", err)
-			return nil, err
-		}*/
+		/*
+			if err != nil {
+				log.Error("Error while sending the request : ", err)
+				return nil, err
+			}
+		*/
 	}
 	//Decode the req response
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
@@ -171,11 +208,10 @@ Description : Handler function for get_lease() operation
 */
 func (handler *leaseHandler) get_lease() error {
 
-	operation, _ := strconv.Atoi(handler.operation)
 	requestObj := requestResponseLib.LeaseReq{
-		Client:    handler.clientUUID,
+		Client:    handler.client,
 		Resource:  handler.resource,
-		Operation: operation,
+		Operation: int(handler.operation),
 	}
 
 	response, err := handler.sendReq(&requestObj)
@@ -198,10 +234,9 @@ Description : Handler function for lookup_lease() operation
               Lookup lease info of a particular resource
 */
 func (handler *leaseHandler) lookup_lease() error {
-	operation, _ := strconv.Atoi(handler.operation)
 	requestObj := requestResponseLib.LeaseReq{
 		Resource:  handler.resource,
-		Operation: operation,
+		Operation: int(handler.operation),
 	}
 
 	response, err := handler.sendReq(&requestObj)
@@ -223,11 +258,10 @@ Description : Handler function for refresh_lease() operation
               Refresh lease of a owned resource
 */
 func (handler *leaseHandler) refresh_lease() error {
-	operation, _ := strconv.Atoi(handler.operation)
 	requestObj := requestResponseLib.LeaseReq{
-		Client:    handler.clientUUID,
+		Client:    handler.client,
 		Resource:  handler.resource,
-		Operation: operation,
+		Operation: int(handler.operation),
 	}
 
 	response, err := handler.sendReq(&requestObj)
@@ -274,19 +308,19 @@ func main() {
 	}
 
 	switch leaseObj.operation {
-	case "1":
+	case GET:
 		// get lease
 		err := leaseObj.get_lease()
 		if err != nil {
 			log.Error(err)
 		}
-	case "2":
+	case LOOKUP:
 		// lookup lease
 		err := leaseObj.lookup_lease()
 		if err != nil {
 			log.Error(err)
 		}
-	case "3":
+	case REFRESH:
 		// refresh lease
 		err := leaseObj.refresh_lease()
 		if err != nil {

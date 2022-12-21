@@ -127,62 +127,32 @@ func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointe
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
-	applyNiovaKV := &requestResponseLib.LeaseReq{}
+	applyLeaseReq := &requestResponseLib.LeaseReq{}
 
-	decodeErr := lso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
+	decodeErr := lso.pso.Decode(inputBuf, applyLeaseReq, inputBufSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", applyNiovaKV.Client)
+	log.Trace("Key passed by client: ", applyLeaseReq.Client)
 
 	// length of key.
-	keyLength := len(applyNiovaKV.Client)
+	keyLength := len(applyLeaseReq.Client)
 
-	byteToStr := applyNiovaKV.Resource.String()
+	byteToStr := applyLeaseReq.Resource.String()
 
 	// Length of value.
 	valLen := len(byteToStr)
 
 	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	rc := lso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Client.String(),
+	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Client.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
 	return rc
 }
 
-/*
-func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
-	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
-
-	log.Trace("NiovaCtlPlane server: Read request received")
-
-
-	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
-	if decodeErr != nil {
-		log.Error("Failed to decode the application data")
-		return
-	}
-
-	log.Trace("Key passed by client: ", applyNiovaKV.InputKey)
-
-	// length of key.
-	keyLength := len(applyNiovaKV.InputKey)
-
-	byteToStr := string(applyNiovaKV.InputValue)
-
-	// Length of value.
-	valLen := len(byteToStr)
-
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
-		int64(keyLength), byteToStr,
-		int64(valLen), colmfamily)
-
-}
-*/
 func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
