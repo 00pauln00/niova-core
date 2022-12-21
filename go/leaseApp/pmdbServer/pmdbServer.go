@@ -8,7 +8,7 @@ import (
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"unsafe"
-
+	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -23,12 +23,40 @@ var seqno = 0
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
+const (
+	MOUNTING int = 0
+	MOUNTED      = 1
+	EXPIRED      = 2
+	REVOKED      = 3
+)
+
+type hybridTS struct {
+        major   uint32
+        minor   uint64
+}
+
+type leaseStruct struct {
+        vdevUUID       uuid.UUID
+        clientUUID     uuid.UUID
+	status	       int
+        leaseGranted   hybridTS
+        leaseExpiry    hybridTS
+}
+
 type pmdbServerHandler struct {
 	raftUUID string
 	peerUUID string
 	logDir   string
 	logLevel string
 	pso      *PumiceDBServer.PmdbServerObject
+}
+
+type LeaseServer struct {
+        raftUuid       string
+        peerUuid       string
+        columnFamilies string
+        leaseMap       map[uuid.UUID]leaseStruct
+        pso            *PumiceDBServer.PmdbServerObject
 }
 
 func main() {
@@ -114,17 +142,32 @@ func (handler *pmdbServerHandler) parseArgs() (*pmdbServerHandler, error) {
 	return lso, err
 }
 
-type LeaseServer struct {
-	raftUuid       string
-	peerUuid       string
-	columnFamilies string
-	pso            *PumiceDBServer.PmdbServerObject
+func (lso *pmdbServerHandler) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+	inputBufSize int64, pmdbHande unsafe.Pointer) int {
+	
+	log.Trace("Lease server : Write prep request")
+
+	Request := &requestResponseLib.LeaseReq{}
+
+        decodeErr := lso.pso.Decode(inputBuf, Request, inputBufSize)
+        if decodeErr != nil {
+                log.Error("Failed to decode the application data")
+                return -1
+        }
+
+	//Check if requested Vdev uuid is already present in MAP and has valid lease (1)
+	//If so, check client UUID (2)
+	//If matches (2), Return Status ok
+	//If not(2), Return Error
+	//If not(1), Create Map entry with status as mounting
+
+	return 0
 }
 
 func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 
-	log.Trace("NiovaCtlPlane server: Apply request received")
+	log.Trace("Lease server: Apply request received")
 
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
