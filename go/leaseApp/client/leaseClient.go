@@ -80,7 +80,7 @@ func (handler *leaseHandler) getCmdParams() {
 	var ok bool
 	var err error
 
-	flag.StringVar(&strClientUUID, "u", uuid.New().String(), "ClientUUID - UUID of the requesting client")
+	flag.StringVar(&strClientUUID, "u", "NULL", "ClientUUID - UUID of the requesting client")
 	flag.StringVar(&strResourceUUID, "v", "NULL", "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
@@ -185,6 +185,7 @@ Return(s) : error
 
 Description : Send read/get/refresh request to server
 */
+//TODO Need to remove this function and add wrappers for write/read/refresh callbacks instead
 func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) error {
 	var err error
 	var responseObj requestResponseLib.LeaseResp
