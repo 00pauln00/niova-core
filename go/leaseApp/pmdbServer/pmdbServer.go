@@ -37,8 +37,8 @@ type hybridTS struct {
 }
 
 type leaseStruct struct {
-	vdevUUID     uuid.UUID
-	clientUUID   uuid.UUID
+	resource     uuid.UUID
+	client       uuid.UUID
 	status       int
 	leaseGranted hybridTS
 	leaseExpiry  hybridTS
@@ -223,12 +223,12 @@ func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Point
 
 	if readErr == nil {
 		valType = readResult
-		inputVal := string(valType)
+		inputVal, _ := uuid.Parse(string(valType))
 		log.Trace("Input value after read request:", inputVal)
 
 		resultReq := requestResponseLib.LeaseReq{
 			Client:   reqStruct.Client,
-			Resource: reqStruct.Resource,
+			Resource: inputVal,
 		}
 
 		//Copy the encoded result in replyBuffer
