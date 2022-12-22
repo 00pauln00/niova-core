@@ -8,6 +8,7 @@ import (
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"unsafe"
+
 	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -31,16 +32,16 @@ const (
 )
 
 type hybridTS struct {
-        major   uint32
-        minor   uint64
+	major uint32
+	minor uint64
 }
 
 type leaseStruct struct {
-        vdevUUID       uuid.UUID
-        clientUUID     uuid.UUID
-	status	       int
-        leaseGranted   hybridTS
-        leaseExpiry    hybridTS
+	vdevUUID     uuid.UUID
+	clientUUID   uuid.UUID
+	status       int
+	leaseGranted hybridTS
+	leaseExpiry  hybridTS
 }
 
 type pmdbServerHandler struct {
@@ -52,11 +53,11 @@ type pmdbServerHandler struct {
 }
 
 type LeaseServer struct {
-        raftUuid       string
-        peerUuid       string
-        columnFamilies string
-        leaseMap       map[uuid.UUID]leaseStruct
-        pso            *PumiceDBServer.PmdbServerObject
+	raftUuid       string
+	peerUuid       string
+	columnFamilies string
+	leaseMap       map[uuid.UUID]leaseStruct
+	pso            *PumiceDBServer.PmdbServerObject
 }
 
 func main() {
@@ -144,16 +145,16 @@ func (handler *pmdbServerHandler) parseArgs() (*pmdbServerHandler, error) {
 
 func (lso *pmdbServerHandler) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHande unsafe.Pointer) int {
-	
+
 	log.Trace("Lease server : Write prep request")
 
 	Request := &requestResponseLib.LeaseReq{}
 
-        decodeErr := lso.pso.Decode(inputBuf, Request, inputBufSize)
-        if decodeErr != nil {
-                log.Error("Failed to decode the application data")
-                return -1
-        }
+	decodeErr := lso.pso.Decode(inputBuf, Request, inputBufSize)
+	if decodeErr != nil {
+		log.Error("Failed to decode the application data")
+		return -1
+	}
 
 	//Check if requested Vdev uuid is already present in MAP and has valid lease (1)
 	//If so, check client UUID (2)
@@ -178,21 +179,20 @@ func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointe
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", applyLeaseReq.Client)
+	log.Trace("Key passed by client: ", applyLeaseReq.Client.String())
 
 	// length of key.
-	keyLength := len(applyLeaseReq.Client)
+	keyLength := len(applyLeaseReq.Client.String())
 
 	byteToStr := applyLeaseReq.Resource.String()
+	log.Trace("Value passed by client: ", byteToStr)
 
 	// Length of value.
 	valLen := len(byteToStr)
 
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
 	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Client.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
-
 	return rc
 }
 
@@ -213,7 +213,6 @@ func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Point
 	log.Trace("Key passed by client: ", reqStruct.Client)
 
 	keyLen := len(reqStruct.Client.String())
-	log.Trace("Key length: ", keyLen)
 
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 	readResult, readErr := lso.pso.ReadKV(appId, reqStruct.Client.String(),
@@ -241,8 +240,6 @@ func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Point
 	} else {
 		log.Error(readErr)
 	}
-
-	log.Trace("Reply size: ", replySize)
 
 	return replySize
 }
