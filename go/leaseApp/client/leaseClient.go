@@ -57,6 +57,19 @@ type leaseHandler struct {
 	jsonFilePath  string
 }
 
+type hybridTS struct {
+	Major uint32
+	Minor uint64
+}
+
+type leaseStruct struct {
+	Resource     uuid.UUID
+	Client       uuid.UUID
+	Status       int
+	LeaseGranted hybridTS
+	LeaseExpiry  hybridTS
+}
+
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -219,20 +232,23 @@ func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) error {
 
 	case LOOKUP:
 		//Request lookup
+		leaseObj := leaseStruct{}
 		err = handler.ReadCallBack(requestBytes.Bytes(), "", &responseBytes)
 		if err != nil {
 			log.Error("Error while sending the request : ", err)
 			return err
 		}
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
+		err = dec.Decode(&leaseObj)
 		if err != nil {
 			log.Error("Decoding error : ", err)
 			return err
 		}
-		fmt.Println("Status - ", responseObj.Status)
-		fmt.Println("Lease Owner - ", responseObj.Client)
-		fmt.Println("Resource UUID - ", responseObj.Resource)
+		fmt.Println("Status - ", leaseObj.Status)
+		fmt.Println("Lease Owner - ", leaseObj.Client)
+		fmt.Println("Resource UUID - ", leaseObj.Resource)
+		fmt.Println("Lease Granted at - ", leaseObj.LeaseGranted)
+		fmt.Println("Lease Expiry at - ", leaseObj.LeaseExpiry)
 
 	case REFRESH:
 		//responseBytes, err = handler.pmdbClientObj.RefreshLease(requestBytes.Bytes(), "", true)
