@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"common/requestResponseLib"
+	"encoding/gob"
 	"errors"
 	"flag"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -167,8 +169,8 @@ func (lso *pmdbServerHandler) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Po
 
 func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
-
 	log.Trace("Lease server: Apply request received")
+	var valueBytes bytes.Buffer
 
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
@@ -184,7 +186,22 @@ func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointe
 	// length of key.
 	keyLength := len(applyLeaseReq.Client.String())
 
-	byteToStr := applyLeaseReq.Resource.String()
+	leaseObj := leaseStruct{
+		resource: applyLeaseReq.Resource,
+		client:   applyLeaseReq.Client,
+	}
+	leaseObj.leaseGranted.major = 3
+	leaseObj.leaseGranted.minor = 1066
+	leaseObj.leaseExpiry.major = 3
+	leaseObj.leaseExpiry.minor = 1066
+
+	enc := gob.NewEncoder(&valueBytes)
+	err := enc.Encode(&leaseObj)
+	if err != nil {
+		log.Error(err)
+	}
+
+	byteToStr := string(valueBytes.Bytes())
 	log.Trace("Value passed by client: ", byteToStr)
 
 	// Length of value.
