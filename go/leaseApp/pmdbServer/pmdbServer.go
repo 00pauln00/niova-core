@@ -6,6 +6,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"flag"
+	"fmt"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
@@ -34,16 +35,16 @@ const (
 )
 
 type hybridTS struct {
-	major uint32
-	minor uint64
+	Major uint32
+	Minor uint64
 }
 
 type leaseStruct struct {
-	resource     uuid.UUID
-	client       uuid.UUID
-	status       int
-	leaseGranted hybridTS
-	leaseExpiry  hybridTS
+	Resource     uuid.UUID
+	Client       uuid.UUID
+	Status       int
+	LeaseGranted hybridTS
+	LeaseExpiry  hybridTS
 }
 
 type pmdbServerHandler struct {
@@ -187,13 +188,13 @@ func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointe
 	keyLength := len(applyLeaseReq.Client.String())
 
 	leaseObj := leaseStruct{
-		resource: applyLeaseReq.Resource,
-		client:   applyLeaseReq.Client,
+		Resource: applyLeaseReq.Resource,
+		Client:   applyLeaseReq.Client,
 	}
-	leaseObj.leaseGranted.major = 3
-	leaseObj.leaseGranted.minor = 1066
-	leaseObj.leaseExpiry.major = 3
-	leaseObj.leaseExpiry.minor = 1066
+	leaseObj.LeaseGranted.Major = 3
+	leaseObj.LeaseGranted.Minor = 1066
+	leaseObj.LeaseExpiry.Major = 3
+	leaseObj.LeaseExpiry.Minor = 1166
 
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(&leaseObj)
@@ -241,15 +242,26 @@ func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Point
 	if readErr == nil {
 		valType = readResult
 		inputVal, _ := uuid.Parse(string(valType))
+
+		leaseObj := leaseStruct{}
+		leaseObj.Status = 1
+		dec := gob.NewDecoder(bytes.NewBuffer(readResult))
+		err := dec.Decode(&leaseObj)
+		if err != nil {
+			log.Error(err)
+		}
+		fmt.Println("YYYY - ", leaseObj)
 		log.Trace("Input value after read request:", inputVal)
 
-		resultReq := requestResponseLib.LeaseReq{
-			Client:   reqStruct.Client,
-			Resource: inputVal,
-		}
+		/*
+			resultReq := requestResponseLib.LeaseReq{
+				Client:   reqStruct.Client,
+				Resource: inputVal,
+			}
+		*/
 
 		//Copy the encoded result in replyBuffer
-		replySize, copyErr = lso.pso.CopyDataToBuffer(resultReq, replyBuf)
+		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
