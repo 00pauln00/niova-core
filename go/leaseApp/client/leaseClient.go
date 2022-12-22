@@ -7,8 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"os"
+	"sync/atomic"
 	"time"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
@@ -89,13 +91,6 @@ func (handler *leaseHandler) getCmdParams() {
 		usage()
 		os.Exit(-1)
 	}
-	/*
-		handler.operation, err = strconv.Atoi(stringOperation)
-		if err != nil {
-			usage()
-			os.Exit(-1)
-		}
-	*/
 	handler.operation, ok = parseOperation(stringOperation)
 	if !ok {
 		usage()
@@ -130,6 +125,7 @@ func (handler *leaseHandler) startPMDBClient() error {
 	var err error
 
 	//Get clientObj
+	log.Info("Raft UUID - ", handler.raftUUID.String(), " Client UUID - ", handler.client.String())
 	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID.String(), handler.client.String())
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB Client Obj could not be initialized")
@@ -141,9 +137,44 @@ func (handler *leaseHandler) startPMDBClient() error {
 		return err
 	}
 
+	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
+	for err != nil {
+		leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
+	}
+	log.Info("Leader uuid : ", leaderUuid.String())
+
 	//Store encui in AppUUID
 	handler.pmdbClientObj.AppUUID = uuid.New().String()
 	return nil
+}
+
+func (handler *leaseHandler) WriteCallBack(request []byte, rncui string, response *[]byte) error {
+	var err error
+	requestObj := requestResponseLib.LeaseReq{}
+	dec := gob.NewDecoder(bytes.NewBuffer(request))
+	err = dec.Decode(&requestObj)
+	if err != nil {
+		return err
+	}
+
+	err = handler.pmdbClientObj.WriteEncoded(request, rncui)
+	var responseObj requestResponseLib.LeaseResp
+	if err != nil {
+		responseObj.Status = "Failed"
+		log.Error(err)
+	} else {
+		responseObj.Status = "Success"
+	}
+
+	var responseBuffer bytes.Buffer
+	enc := gob.NewEncoder(&responseBuffer)
+	err = enc.Encode(responseObj)
+	*response = responseBuffer.Bytes()
+	return err
+}
+
+func (handler *leaseHandler) ReadCallBack(request []byte, rncui string, response *[]byte) error {
+	return handler.pmdbClientObj.ReadEncoded(request, rncui, response)
 }
 
 /*
@@ -154,7 +185,7 @@ Return(s) : error
 
 Description : Send read/get/refresh request to server
 */
-func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) (requestResponseLib.LeaseResp, error) {
+func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) error {
 	var err error
 	var responseObj requestResponseLib.LeaseResp
 	var requestBytes bytes.Buffer
@@ -163,28 +194,45 @@ func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) (requestR
 	err = enc.Encode(req)
 	if err != nil {
 		log.Error("Encoding error : ", err)
-		return responseObj, err
+		return err
 	}
+	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
 
 	switch handler.operation {
 	case GET:
 		//Request lease
-		/*
-			responseBytes, err = handler.pmdbClientObj.GetLease(requestBytes.Bytes(), "", true)
-			if err != nil {
-				log.Error("Error while sending the request : ", err)
-				return nil, err
-			}
-		*/
+		err = handler.WriteCallBack(requestBytes.Bytes(), rncui, &responseBytes)
+		if err != nil {
+			log.Error("Error while sending the request : ", err)
+			return err
+		}
+		//TODO Add decoing to a function and reuse for following cases
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			return err
+		}
+		log.Info("Write Req Status - ", responseObj.Status)
+
 	case LOOKUP:
 		//Request lookup
-		/*
-			responseBytes, err = handler.pmdbClientObj.LookupLease(requestBytes.Bytes(), "", true)
-			if err != nil {
-				log.Error("Error while sending the request : ", err)
-				return nil, err
-			}
-		*/
+		err = handler.ReadCallBack(requestBytes.Bytes(), "", &responseBytes)
+		if err != nil {
+			log.Error("Error while sending the request : ", err)
+			return err
+		}
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			return err
+		}
+		fmt.Println("Status - ", responseObj.Status)
+		fmt.Println("Lease Owner - ", responseObj.Client)
+		fmt.Println("Resource UUID - ", responseObj.Resource)
+
 	case REFRESH:
 		//responseBytes, err = handler.pmdbClientObj.RefreshLease(requestBytes.Bytes(), "", true)
 		/*
@@ -195,13 +243,7 @@ func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) (requestR
 		*/
 	}
 	//Decode the req response
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
-	if err != nil {
-		log.Error("Decoding error : ", err)
-		return responseObj, err
-	}
-	return responseObj, err
+	return err
 }
 
 /*
@@ -216,17 +258,16 @@ Description : Handler function for get_lease() operation
 func (handler *leaseHandler) get_lease() error {
 
 	requestObj := requestResponseLib.LeaseReq{
-		Client:    handler.client,
-		Resource:  handler.resource,
-		Operation: int(handler.operation),
+		Client:   handler.client,
+		Resource: handler.resource,
 	}
 
-	response, err := handler.sendReq(&requestObj)
+	err := handler.sendReq(&requestObj)
 	if err != nil {
 		log.Error(err)
 	}
 
-	handler.writeToJson(response)
+	//handler.writeToJson(response)
 
 	return err
 }
@@ -242,15 +283,15 @@ Description : Handler function for lookup_lease() operation
 */
 func (handler *leaseHandler) lookup_lease() error {
 	requestObj := requestResponseLib.LeaseReq{
-		Resource:  handler.resource,
-		Operation: int(handler.operation),
+		Client:   handler.client,
+		Resource: handler.resource,
 	}
 
-	response, err := handler.sendReq(&requestObj)
+	err := handler.sendReq(&requestObj)
 	if err != nil {
 		log.Error(err)
 	}
-	handler.writeToJson(response)
+	//handler.writeToJson(response)
 
 	return err
 }
@@ -266,16 +307,15 @@ Description : Handler function for refresh_lease() operation
 */
 func (handler *leaseHandler) refresh_lease() error {
 	requestObj := requestResponseLib.LeaseReq{
-		Client:    handler.client,
-		Resource:  handler.resource,
-		Operation: int(handler.operation),
+		Client:   handler.client,
+		Resource: handler.resource,
 	}
 
-	response, err := handler.sendReq(&requestObj)
+	err := handler.sendReq(&requestObj)
 	if err != nil {
 		log.Error(err)
 	}
-	handler.writeToJson(response)
+	//handler.writeToJson(response)
 
 	return err
 }
