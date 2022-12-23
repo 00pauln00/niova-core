@@ -161,16 +161,16 @@ func (handler *leaseHandler) startPMDBClient() error {
 	return nil
 }
 
-func (handler *leaseHandler) WriteCallBack(request []byte, rncui string, response *[]byte) error {
+func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *requestResponseLib.LeaseResp) error {
 	var err error
-	requestObj := requestResponseLib.LeaseReq{}
-	dec := gob.NewDecoder(bytes.NewBuffer(request))
-	err = dec.Decode(&requestObj)
+	var requestBytes bytes.Buffer
+	enc := gob.NewEncoder(&requestBytes)
+	err = enc.Encode(requestObj)
 	if err != nil {
+		log.Error("Encoding error : ", err)
 		return err
 	}
-
-	err = handler.pmdbClientObj.WriteEncoded(request, rncui)
+	err = handler.pmdbClientObj.WriteEncoded(requestBytes.Bytes(), rncui)
 	var responseObj requestResponseLib.LeaseResp
 	if err != nil {
 		responseObj.Status = "Failed"
@@ -179,15 +179,19 @@ func (handler *leaseHandler) WriteCallBack(request []byte, rncui string, respons
 		responseObj.Status = "Success"
 	}
 
-	var responseBuffer bytes.Buffer
-	enc := gob.NewEncoder(&responseBuffer)
-	err = enc.Encode(responseObj)
-	*response = responseBuffer.Bytes()
 	return err
 }
 
-func (handler *leaseHandler) ReadCallBack(request []byte, rncui string, response *[]byte) error {
-	return handler.pmdbClientObj.ReadEncoded(request, rncui, response)
+func (handler *leaseHandler) ReadCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+	var err error
+	var requestBytes bytes.Buffer
+	enc := gob.NewEncoder(&requestBytes)
+	err = enc.Encode(requestObj)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+		return err
+	}
+	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), rncui, response)
 }
 
 /*
@@ -202,38 +206,26 @@ Description : Send read/get/refresh request to server
 func (handler *leaseHandler) sendReq(req *requestResponseLib.LeaseReq) error {
 	var err error
 	var responseObj requestResponseLib.LeaseResp
-	var requestBytes bytes.Buffer
+	//var requestBytes bytes.Buffer
 	var responseBytes []byte
-	enc := gob.NewEncoder(&requestBytes)
-	err = enc.Encode(req)
-	if err != nil {
-		log.Error("Encoding error : ", err)
-		return err
-	}
 	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
 
 	switch handler.operation {
 	case GET:
 		//Request lease
-		err = handler.WriteCallBack(requestBytes.Bytes(), rncui, &responseBytes)
+		err = handler.WriteCallBack(*req, rncui, &responseObj)
 		if err != nil {
 			log.Error("Error while sending the request : ", err)
 			return err
 		}
 		//TODO Add decoing to a function and reuse for following cases
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
-		if err != nil {
-			log.Error("Decoding error : ", err)
-			return err
-		}
 		log.Info("Write Req Status - ", responseObj.Status)
 
 	case LOOKUP:
 		//Request lookup
 		leaseObj := leaseStruct{}
-		err = handler.ReadCallBack(requestBytes.Bytes(), "", &responseBytes)
+		err = handler.ReadCallBack(*req, "", &responseBytes)
 		if err != nil {
 			log.Error("Error while sending the request : ", err)
 			return err
