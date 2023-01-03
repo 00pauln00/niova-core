@@ -81,8 +81,9 @@ Return(s) : None
 
 Description : Parse command line params and load into leaseHandler sturct
 */
-func (handler *leaseHandler) getCmdParams() {
+func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
+	var requestObj requestResponseLib.LeaseReq
 	var ok bool
 	var err error
 
@@ -102,21 +103,22 @@ func (handler *leaseHandler) getCmdParams() {
 		usage()
 		os.Exit(-1)
 	}
-	handler.client, err = uuid.Parse(strClientUUID)
-	if err != nil {
-		usage()
-		os.Exit(-1)
-	}
-	handler.resource, err = uuid.Parse(strResourceUUID)
-	if err != nil {
-		usage()
-		os.Exit(-1)
-	}
 	handler.raftUUID, err = uuid.Parse(strRaftUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
+	requestObj.Client, err = uuid.Parse(strClientUUID)
+	if err != nil {
+		usage()
+		os.Exit(-1)
+	}
+	requestObj.Resource, err = uuid.Parse(strResourceUUID)
+	if err != nil {
+		usage()
+		os.Exit(-1)
+	}
+	return requestObj
 }
 
 /*
@@ -127,12 +129,12 @@ Return(s) : error
 
 Description : Start PMDB Client object for ClientUUID and RaftUUID
 */
-func (handler *leaseHandler) startPMDBClient() error {
+func (handler *leaseHandler) startPMDBClient(client string) error {
 	var err error
 
 	//Get clientObj
-	log.Info("Raft UUID - ", handler.raftUUID.String(), " Client UUID - ", handler.client.String())
-	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID.String(), handler.client.String())
+	log.Info("Raft UUID - ", handler.raftUUID.String(), " Client UUID - ", client)
+	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID.String(), client)
 	if handler.pmdbClientObj == nil {
 		return errors.New("PMDB Client Obj could not be initialized")
 	}
@@ -196,17 +198,11 @@ Return(s) : error
 Description : Handler function for get_lease() operation
               Acquire a lease on a particular resource
 */
-func (handler *leaseHandler) get_lease() error {
-	var responseObj requestResponseLib.LeaseResp
+func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) error {
 	var err error
-
-	requestObj := requestResponseLib.LeaseReq{
-		Client:   handler.client,
-		Resource: handler.resource,
-	}
+	var responseObj requestResponseLib.LeaseResp
 
 	rncui := handler.getRNCUI()
-
 	err = handler.WriteCallBack(requestObj, rncui, &responseObj)
 	if err != nil {
 		log.Error(err)
@@ -227,13 +223,9 @@ Return(s) : error
 Description : Handler function for lookup_lease() operation
               Lookup lease info of a particular resource
 */
-func (handler *leaseHandler) lookup_lease() error {
+func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq) error {
 	var responseBytes []byte
 	var err error
-	requestObj := requestResponseLib.LeaseReq{
-		Client:   handler.client,
-		Resource: handler.resource,
-	}
 
 	err = handler.ReadCallBack(requestObj, "", &responseBytes)
 	if err != nil {
@@ -297,13 +289,13 @@ func main() {
 	leaseObjHandler := leaseHandler{}
 
 	// Load cmd params
-	leaseObjHandler.getCmdParams()
+	requestObj := leaseObjHandler.getCmdParams()
 
 	/*
 		Initialize Logging
 	*/
 
-	err := leaseObjHandler.startPMDBClient()
+	err := leaseObjHandler.startPMDBClient(requestObj.Client.String())
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
@@ -311,13 +303,13 @@ func main() {
 	switch leaseObjHandler.operation {
 	case GET:
 		// get lease
-		err := leaseObjHandler.get_lease()
+		err := leaseObjHandler.get_lease(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
 	case LOOKUP:
 		// lookup lease
-		err := leaseObjHandler.lookup_lease()
+		err := leaseObjHandler.lookup_lease(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
