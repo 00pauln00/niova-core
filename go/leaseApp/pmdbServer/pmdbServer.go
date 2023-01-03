@@ -52,26 +52,25 @@ type pmdbServerHandler struct {
 	peerUUID string
 	logDir   string
 	logLevel string
-	pso      *PumiceDBServer.PmdbServerObject
 }
 
-type LeaseServer struct {
-	raftUuid       string
-	peerUuid       string
-	columnFamilies string
+type leaseServer struct {
+	raftUUID       string
+	peerUUID       string
+	logDir	       string
+	logLevel       string
 	leaseMap       map[uuid.UUID]leaseStruct
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
 func main() {
-	serverHandler := pmdbServerHandler{}
-	lso, pErr := serverHandler.parseArgs()
+	lso, pErr := parseArgs()
 	if pErr != nil {
 		log.Println(pErr)
 		return
 	}
 
-	switch serverHandler.logLevel {
+	switch lso.logLevel {
 	case "Info":
 		log.SetLevel(log.InfoLevel)
 	case "Trace":
@@ -79,7 +78,7 @@ func main() {
 	}
 
 	//Create log file
-	err := PumiceDBCommon.InitLogger(serverHandler.logDir)
+	err := PumiceDBCommon.InitLogger(lso.logDir)
 	if err != nil {
 		log.Error("Error while initating logger ", err)
 		os.Exit(1)
@@ -118,24 +117,21 @@ func usage() {
 	os.Exit(0)
 }
 
-func (handler *pmdbServerHandler) parseArgs() (*pmdbServerHandler, error) {
+func parseArgs() (*leaseServer, error) {
 
 	var err error
+	lso := &leaseServer{}
 
-	flag.StringVar(&handler.raftUUID, "r", "NULL", "raft uuid")
-	flag.StringVar(&handler.peerUUID, "u", "NULL", "peer uuid")
+	flag.StringVar(&lso.raftUUID, "r", "NULL", "raft uuid")
+	flag.StringVar(&lso.peerUUID, "u", "NULL", "peer uuid")
 
 	/* If log path is not provided, it will use Default log path.
 	   default log path: /tmp/<peer-uuid>.log
 	*/
-	defaultLog := "/" + "tmp" + "/" + handler.peerUUID + ".log"
-	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
-	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
+	defaultLog := "/" + "tmp" + "/" + lso.peerUUID + ".log"
+	flag.StringVar(&lso.logDir, "l", defaultLog, "log dir")
+	flag.StringVar(&lso.logLevel, "ll", "Info", "Log level")
 	flag.Parse()
-
-	lso := &pmdbServerHandler{}
-	lso.raftUUID = handler.raftUUID
-	lso.peerUUID = handler.peerUUID
 
 	if lso == nil {
 		err = errors.New("Not able to parse the arguments")
@@ -146,7 +142,16 @@ func (handler *pmdbServerHandler) parseArgs() (*pmdbServerHandler, error) {
 	return lso, err
 }
 
-func (lso *pmdbServerHandler) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+func provideLease(entry leaseStruct, clientUUID uuid.UUID) bool {
+	//Check if existing lease is valid
+	//If valid, Check if client uuid is same
+	 //If so, return true
+	 //If not, ret false
+	//If not valid, ret true
+	return true
+}
+
+func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHande unsafe.Pointer) int {
 
 	log.Trace("Lease server : Write prep request")
@@ -158,17 +163,33 @@ func (lso *pmdbServerHandler) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Po
 		log.Error("Failed to decode the application data")
 		return -1
 	}
+	//Check if its a lease request
+	//If not, return 0
 
 	//Check if requested Vdev uuid is already present in MAP and has valid lease (1)
 	//If so, check client UUID (2)
 	//If matches (2), Return Status ok
 	//If not(2), Return Error
 	//If not(1), Create Map entry with status as mounting
+	vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
+	if isPresent {
+	   if !provideLease(vdev_lease_info, Request.Client) {
+		//Dont provide lease
+		return -1
+	   }
+	}
+
+	//Insert into MAP
+	lso.leaseMap[Request.Resource] = leaseStruct{
+		Resource: Request.Resource,
+		Client: Request.Client,
+		Status: MOUNTING,
+	} 
 
 	return 0
 }
 
-func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
+func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 	log.Trace("Lease server: Apply request received")
 	var valueBytes bytes.Buffer
@@ -214,7 +235,7 @@ func (lso *pmdbServerHandler) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointe
 	return rc
 }
 
-func (lso *pmdbServerHandler) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
+func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
 
 	log.Trace("NiovaCtlPlane server: Read request received")
