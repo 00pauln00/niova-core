@@ -47,13 +47,6 @@ type leaseStruct struct {
 	LeaseExpiry  hybridTS
 }
 
-type pmdbServerHandler struct {
-	raftUUID string
-	peerUUID string
-	logDir   string
-	logLevel string
-}
-
 type leaseServer struct {
 	raftUUID       string
 	peerUUID       string
