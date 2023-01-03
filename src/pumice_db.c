@@ -1385,6 +1385,11 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
     return prrq->prrq_roptions;
 }
 
+int PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts)
+{
+    return raft_server_get_leader_ts(ts);
+}
+
 /**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'
  *    context only.  This call is used by the application to stage KVs for

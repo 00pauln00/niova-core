@@ -12,6 +12,7 @@
 
 #include "pumice_db_net.h"
 #include "raft_net.h"
+#include "raft.h"
 #include "common.h"
 
 typedef void    pumicedb_apply_ctx_t;
@@ -64,6 +65,13 @@ struct PmdbAPI
     pmdb_apply_sm_handler_t      pmdb_apply;
     pmdb_read_sm_handler_t       pmdb_read;
 };
+
+/**
+ * PmdbGetLeaderTimeStamp - Fill up the leader TS (timestamp) in the ts pointer.
+ * @ts: Pointer to raft_leader_ts for storing the leader timstamp information.
+ */
+int
+PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts);
 
 /**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'
