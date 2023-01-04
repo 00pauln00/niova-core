@@ -883,37 +883,50 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
                                                      -EINPROGRESS, 0);
         }
-        /*
-        */
-        if (pmdbApi->pmdb_write_prep)
+        else
         {
-            wrc = pmdbApi->pmdb_write_prep(rncui, pmdb_req->pmdbrm_data,
-                                           pmdb_req->pmdbrm_data_size,
-                                           pmdb_user_data);
-            if (wrc)
-                raft_client_net_request_handle_error_set(rncr,
-                                                         -EPERM,
-                                                         0, -EPERM);
-        }
+            /*
+            */
+            int continue_wr = 0;
+            if (pmdbApi->pmdb_write_prep)
+            {
+                wrc = pmdbApi->pmdb_write_prep(rncui, pmdb_req->pmdbrm_data,
+                                               pmdb_req->pmdbrm_data_size,
+                                               pmdb_user_data,
+                                               &continue_wr);
+                if (wrc)
+                    raft_client_net_request_handle_error_set(rncr,
+                                                             -EPERM,
+                                                             0, -EPERM);
+                else if (!wrc && !continue_wr)
+                {
+                    // Write prepare was successful but application don't want
+                    // to continue with raft write.
+                    raft_client_net_request_handle_error_set(rncr,
+                                                             -EALREADY,
+                                                             0, 0);
+                    wrc = 1;
+                }
+            }
 
-        // If write_prep is not defined by application orwrite_prep
-        // returned success
-        if (!wrc) // Check if rncui is already part of coalesced_wr_tree
+            // If write_prep is not defined by application or write_prep
+            // returned success and application notify to continue raft write.
+            if (!wrc) // Check if rncui is already part of coalesced_wr_tree
+            {
+                int error = 0;
+                struct pmdb_cowr_sub_app *cowr_sa =
+                    pmdb_cowr_sub_app_add(rncui,
+                                          rncr->rncr_client_uuid,
+                                          rncr->rncr_current_term,
+                                          &error, __func__,
+                                          __LINE__);
+                if (!cowr_sa)
+                    raft_client_net_request_handle_error_set(
+                        rncr, error, 0, error);
 
-        {
-            int error = 0;
-            struct pmdb_cowr_sub_app *cowr_sa =
-                pmdb_cowr_sub_app_add(rncui,
-                                      rncr->rncr_client_uuid,
-                                      rncr->rncr_current_term,
-                                      &error, __func__,
-                                      __LINE__);
-            if (!cowr_sa)
-                raft_client_net_request_handle_error_set(
-                    rncr, error, 0, error);
-
-            else // Request sequence test passes, will enter the raft log.
-                pmdb_prep_raft_entry_write(rncr, &obj);
+                else // Request sequence test passes, will enter the raft log.
+                    pmdb_prep_raft_entry_write(rncr, &obj);
+            }
         }
     }
     else // Request sequence is too far ahead

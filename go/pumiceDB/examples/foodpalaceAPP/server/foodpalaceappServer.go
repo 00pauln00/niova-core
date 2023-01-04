@@ -57,7 +57,7 @@ func (fpso *FoodpalaceServer) initLogger() {
 
 //Method for WritePrep callback.
 func (fpso *FoodpalaceServer) WritePrep(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
-	dataBufSz int64) int {
+	dataBufSz int64, continue_wr unsafe.Pointer) int {
     return 0;
 }
 
