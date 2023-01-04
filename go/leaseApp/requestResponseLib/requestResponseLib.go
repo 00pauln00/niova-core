@@ -19,8 +19,8 @@ type LeaseResp struct {
 }
 
 type hybridTS struct {
-	Major uint32
-	Minor uint64
+	Term       uint32
+	LeaderTime uint64
 }
 
 type LeaseStruct struct {

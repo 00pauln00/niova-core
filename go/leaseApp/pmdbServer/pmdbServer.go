@@ -34,26 +34,13 @@ const (
 	REVOKED      = 3
 )
 
-type hybridTS struct {
-	Major uint32
-	Minor uint64
-}
-
-type leaseStruct struct {
-	Resource     uuid.UUID
-	Client       uuid.UUID
-	Status       int
-	LeaseGranted hybridTS
-	LeaseExpiry  hybridTS
-}
-
 type leaseServer struct {
-	raftUUID       string
-	peerUUID       string
-	logDir	       string
-	logLevel       string
-	leaseMap       map[uuid.UUID]leaseStruct
-	pso            *PumiceDBServer.PmdbServerObject
+	raftUUID string
+	peerUUID string
+	logDir   string
+	logLevel string
+	leaseMap map[uuid.UUID]requestResponseLib.LeaseStruct
+	pso      *PumiceDBServer.PmdbServerObject
 }
 
 func main() {
@@ -135,11 +122,11 @@ func parseArgs() (*leaseServer, error) {
 	return lso, err
 }
 
-func provideLease(entry leaseStruct, clientUUID uuid.UUID) bool {
+func provideLease(entry requestResponseLib.LeaseStruct, clientUUID uuid.UUID) bool {
 	//Check if existing lease is valid
 	//If valid, Check if client uuid is same
-	 //If so, return true
-	 //If not, ret false
+	//If so, return true
+	//If not, ret false
 	//If not valid, ret true
 	return true
 }
@@ -166,18 +153,18 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	//If not(1), Create Map entry with status as mounting
 	vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
 	if isPresent {
-	   if !provideLease(vdev_lease_info, Request.Client) {
-		//Dont provide lease
-		return -1
-	   }
+		if !provideLease(vdev_lease_info, Request.Client) {
+			//Dont provide lease
+			return -1
+		}
 	}
 
 	//Insert into MAP
-	lso.leaseMap[Request.Resource] = leaseStruct{
+	lso.leaseMap[Request.Resource] = requestResponseLib.LeaseStruct{
 		Resource: Request.Resource,
-		Client: Request.Client,
-		Status: MOUNTING,
-	} 
+		Client:   Request.Client,
+		Status:   MOUNTING,
+	}
 
 	return 0
 }
@@ -201,14 +188,14 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// length of key.
 	keyLength := len(applyLeaseReq.Client.String())
 
-	leaseObj := leaseStruct{
+	leaseObj := requestResponseLib.LeaseStruct{
 		Resource: applyLeaseReq.Resource,
 		Client:   applyLeaseReq.Client,
 	}
-	leaseObj.LeaseGranted.Major = 3
-	leaseObj.LeaseGranted.Minor = 1066
-	leaseObj.LeaseExpiry.Major = 3
-	leaseObj.LeaseExpiry.Minor = 1166
+	leaseObj.LeaseGranted.Term = 3
+	leaseObj.LeaseGranted.LeaderTime = 1066
+	leaseObj.LeaseExpiry.Term = 3
+	leaseObj.LeaseExpiry.LeaderTime = 1166
 
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(&leaseObj)
@@ -257,7 +244,7 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		valType = readResult
 		inputVal, _ := uuid.Parse(string(valType))
 
-		leaseObj := leaseStruct{}
+		leaseObj := requestResponseLib.LeaseStruct{}
 		leaseObj.Status = 1
 		dec := gob.NewDecoder(bytes.NewBuffer(readResult))
 		err := dec.Decode(&leaseObj)
