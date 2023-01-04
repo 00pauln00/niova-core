@@ -11,7 +11,6 @@ import (
 	"io/ioutil"
 	"os"
 	"sync/atomic"
-	"time"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
 
@@ -46,15 +45,15 @@ var (
 )
 
 type leaseHandler struct {
-	client        uuid.UUID
-	resource      uuid.UUID
-	raftUUID      uuid.UUID
-	ttl           time.Duration
+	//client        uuid.UUID
+	//resource      uuid.UUID
+	raftUUID uuid.UUID
+	//ttl           time.Duration
 	pmdbClientObj *pmdbClient.PmdbClientObj
 	operation     operation
-	leaseState    state
-	timeStamp     string
-	jsonFilePath  string
+	//leaseState    state
+	//timeStamp     string
+	jsonFilePath string
 }
 
 func usage() {
@@ -156,6 +155,15 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 	return nil
 }
 
+/*
+Structure : leaseHandler
+Method	  : WriteCallBack()
+Arguments : LeaseReq, rncui, *LeaseResp
+Return(s) : error
+
+Description : Wrapper function for WriteEncoded() function
+*/
+
 func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *requestResponseLib.LeaseResp) error {
 	var err error
 	var requestBytes bytes.Buffer
@@ -177,6 +185,14 @@ func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseRe
 	return err
 }
 
+/*
+Structure : leaseHandler
+Method	  : ReadCallBack()
+Arguments : LeaseReq, rncui, *response
+Return(s) : error
+
+Description : Wrapper function for ReadEncoded() function
+*/
 func (handler *leaseHandler) ReadCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
@@ -192,7 +208,7 @@ func (handler *leaseHandler) ReadCallBack(requestObj requestResponseLib.LeaseReq
 /*
 Structure : leaseHandler
 Method	  : get_lease()
-Arguments :
+Arguments : requestResponseLib.LeaseReq
 Return(s) : error
 
 Description : Handler function for get_lease() operation
@@ -217,7 +233,7 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 /*
 Structure : leaseHandler
 Method	  : lookup_lease()
-Arguments :
+Arguments : requestResponseLib.LeaseReq
 Return(s) : error
 
 Description : Handler function for lookup_lease() operation
@@ -246,33 +262,32 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 /*
 Structure : leaseHandler
 Method	  : refresh_lease()
-Arguments :
+Arguments : requestResponseLib.LeaseReq
 Return(s) : error
 
 Description : Handler function for refresh_lease() operation
               Refresh lease of a owned resource
 */
-func (handler *leaseHandler) refresh_lease() error {
+func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseReq) error {
 	var err error
-	/*
-		requestObj := requestResponseLib.LeaseReq{
-			Client:   handler.client,
-			Resource: handler.resource,
-		}
+	var responseObj requestResponseLib.LeaseResp
 
-		err := handler.sendReq(&requestObj)
-		if err != nil {
-			log.Error(err)
-		}
-		handler.writeToJson(response)
-	*/
+	rncui := handler.getRNCUI()
+	err = handler.WriteCallBack(requestObj, rncui, &responseObj)
+	if err != nil {
+		log.Error(err)
+	}
+
+	log.Info("Refresh request status - ", responseObj.Status)
+	handler.writeToJson(responseObj)
+
 	return err
 }
 
 /*
 Structure : leaseHandler
 Method	  : writeToJson
-Arguments :
+Arguments : struct
 Return(s) : error
 
 Description : Write response/error to json file
@@ -315,7 +330,7 @@ func main() {
 		}
 	case REFRESH:
 		// refresh lease
-		err := leaseObjHandler.refresh_lease()
+		err := leaseObjHandler.refresh_lease(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
