@@ -127,7 +127,7 @@ type CovidServer struct {
 }
 
 func (cso *CovidServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64) int {
+	inputBufSize int64, continue_wr unsafe.Pointer) int {
     return 0;
 }
 
