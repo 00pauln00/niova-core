@@ -322,6 +322,10 @@ func main() {
 		if err != nil {
 			log.Error(err)
 		}
+		err = leaseObjHandler.lookup_lease(requestObj)
+		if err != nil {
+			log.Error(err)
+		}
 	case LOOKUP:
 		// lookup lease
 		err := leaseObjHandler.lookup_lease(requestObj)
