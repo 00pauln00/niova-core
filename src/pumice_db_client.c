@@ -336,7 +336,7 @@ PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 {
     /* Initialize the request options */
     pmdb_request_opts_t pmdb_req_opt;
-    pmdb_request_options_init(&pmdb_req_opt, 1, 0, ret_stat, NULL, NULL, NULL,
+    pmdb_request_options_init(&pmdb_req_opt, 1, 0, 0,ret_stat, NULL, NULL, NULL,
                               0, pmdb_get_default_request_timeout());
 
     return pmdb_obj_lookup_internal(pmdb, obj_id, &pmdb_req_opt);
@@ -373,7 +373,9 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
     struct pmdb_client_request *pcreq =
         pmdb_client_request_new(obj_id, pmdb_op_write, user_buf, user_buf_size,
-                                NULL, 0, pmdb_req_opt->pro_stat,
+                                pmdb_req_opt->pro_get_buffer,
+                                pmdb_req_opt->pro_get_buffer_size,
+                                pmdb_req_opt->pro_stat,
                                 pmdb_req_opt->pro_timeout,
                                 pmdb_req_opt->pro_non_blocking_cb,
                                 pmdb_req_opt->pro_arg, &rc);
@@ -390,17 +392,31 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
         [1].iov_len = user_buf_size,
     };
 
-    struct iovec reply_iov = {
-        .iov_base = (void *)&pcreq->pcreq_msg_reply,
-        .iov_len = sizeof(struct pmdb_msg),
-    };
+    int nreply_iov = 1;
+    if (pmdb_req_opt->pro_get_response)
+        nreply_iov = 2;
+
+    struct iovec reply_iov[nreply_iov];
+
+
+    reply_iov[0].iov_base = (void *)&pcreq->pcreq_msg_reply;
+    reply_iov[0].iov_len = sizeof(struct pmdb_msg);
+
+    if (nreply_iov == 2)
+    {
+        reply_iov[1].iov_base = pmdb_req_opt->pro_get_buffer;
+        reply_iov[1].iov_len = pmdb_req_opt->pro_get_buffer_size;
+    }
 
     int opts = RCRT_WRITE;
     if (pmdb_req_opt->pro_non_blocking)
         opts |= RCRT_NON_BLOCKING;
 
     return raft_client_request_submit(pmdb_2_rci(pmdb), &rncui, req_iovs, 2,
-                                      &reply_iov, 1, false,
+                                      reply_iov, nreply_iov,
+                                      (pmdb_req_opt->pro_get_buffer == NULL &&
+                                       pmdb_req_opt->pro_get_response ?
+                                       true : false),
                                       pmdb_req_opt->pro_timeout,
                                       opts,
                                       pmdb_client_request_cb, pcreq,
@@ -416,11 +432,40 @@ PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
 {
     pmdb_request_opts_t pmdb_req_opt;
 
-    pmdb_request_options_init(&pmdb_req_opt, 1, 0, user_pmdb_stat, NULL, NULL,
+    pmdb_request_options_init(&pmdb_req_opt, 1, 0, 0,user_pmdb_stat, NULL, NULL,
                               NULL, 0, pmdb_get_default_request_timeout());
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size,
                                  &pmdb_req_opt);
+}
+
+/**
+ * PmdbObjPutAndGetReponse - blocking public put (write) routine and get the
+ * response back in the reply buffer.
+ */
+int
+PmdbObjPutAndGetResponse(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
+                         const char *kv,
+                         size_t kv_size,
+                         struct pmdb_obj_stat *user_pmdb_stat)
+{
+    pmdb_request_opts_t pmdb_req_opt;
+
+    pmdb_request_options_init(&pmdb_req_opt, 1, 0, 1, user_pmdb_stat, NULL,
+                              NULL, NULL, 0, pmdb_get_default_request_timeout());
+
+    int rc = pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size,
+                                   &pmdb_req_opt);
+
+    if (rc)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "PmdbObjPutAndGetResponse failed: error: %d",
+                       rc);
+        return rc;
+    }
+
+    //return pmdb_stat.reply_buffer;
+    return 0;
 }
 
 /**
@@ -526,7 +571,7 @@ PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,
     pmdb_request_opts_t pmdb_req_opt;
 
     /* Initialize the request options */
-    pmdb_request_options_init(&pmdb_req_opt, 0, 0, &pmdb_stat, NULL, NULL,
+    pmdb_request_options_init(&pmdb_req_opt, 0, 0, 0, &pmdb_stat, NULL, NULL,
                               NULL, 0, pmdb_get_default_request_timeout());
 
     int rc = pmdb_obj_get_internal(pmdb, obj_id, key, key_size, &pmdb_req_opt);

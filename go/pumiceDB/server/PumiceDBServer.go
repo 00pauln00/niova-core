@@ -22,7 +22,7 @@ import (
 extern int writePrepCgo(const struct raft_net_client_user_id *, const void *,
                         size_t, void *, int *);
 extern int applyCgo(const struct raft_net_client_user_id *, const void *,
-                     size_t, void *, void *);
+                     size_t, void *, size_t, void *, void *);
 extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
                     size_t, void *, size_t, void *);
 */
@@ -33,7 +33,7 @@ var encodingOverhead int = 2
 
 type PmdbServerAPI interface {
 	WritePrep(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer) int
-	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer) int
+	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64, unsafe.Pointer) int
 	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
 }
 
@@ -113,18 +113,19 @@ func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Poin
 
 //export goApply
 func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
-	input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
-	user_data unsafe.Pointer) int {
+	input_buf_sz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
+    pmdb_handle unsafe.Pointer, user_data unsafe.Pointer) int {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
 
 	//Convert buffer size from c data type size_t to golang int64.
 	input_buf_sz_go := CToGoInt64(input_buf_sz)
+    reply_bufsz_go := CToGoInt64(reply_bufsz)
 
 	//Calling the golang Application's Apply function.
 	return gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
-		pmdb_handle)
+        reply_buf, reply_bufsz_go, pmdb_handle)
 }
 
 //export goRead

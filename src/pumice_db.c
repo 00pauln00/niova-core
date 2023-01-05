@@ -1228,11 +1228,24 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
     struct pmdb_apply_handle pah = {.pah_rncui = rncui, .pah_ws = ws};
+    struct pmdb_msg *pmdb_reply = NULL;
+    const size_t max_reply_size =
+        rncr->rncr_reply_data_max_size - PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
+
+    if (rncr->rncr_is_leader)
+    {
+        // XXX check this macro
+        pmdb_reply =
+                RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+    }
 
     // Call into the application so it may emplace its own KVs.
     int apply_rc =
         pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
-                            pmdb_req->pmdbrm_data_size, (void *)&pah,
+                            pmdb_req->pmdbrm_data_size,
+                            pmdb_reply ? pmdb_reply->pmdbrm_data : NULL,
+                            max_reply_size,
+                            (void *)&pah,
                             pmdb_user_data);
 
     // rc of 0 means the client will get a reply and removal of coalesced
@@ -1241,16 +1254,13 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     {
         if (rncr->rncr_is_leader)
         {
-            struct pmdb_msg *pmdb_reply =
-                RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
-
+            pmdb_reply->pmdbrm_data_size = apply_rc >= 0 ? apply_rc : 0;
             // Pass in ID_ANY_64bit since this is a reply.
-            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc < 0 ? apply_rc: 0);
         }
         pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
         pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(rncr);
     }
-
 
     return rc;
 }

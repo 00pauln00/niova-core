@@ -208,6 +208,39 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 
 }
 
+//Call the pmdb C library function to write the application data and get
+//the response buffer.
+func (obj *PmdbClientObj) writeKVAndGetResponse(rncui string, key *C.char,
+	key_len int64, reply_size *int64) (unsafe.Pointer, error) {
+
+	var obj_stat C.pmdb_obj_stat_t
+
+	crncui_str := GoToCString(rncui)
+	defer FreeCMem(crncui_str)
+
+	c_key_len := GoToCSize_t(key_len)
+
+	var rncui_id C.struct_raft_net_client_user_id
+
+	C.raft_net_client_user_id_parse(crncui_str, &rncui_id, 0)
+	var obj_id *C.pmdb_obj_id_t
+
+	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
+
+	rc := C.PmdbObjPutAndGetResponse(obj.pmdb, obj_id, key, c_key_len,
+                                            &obj_stat)
+
+	if rc != 0 {
+		return nil, fmt.Errorf("PmdbObjPutAndGetResponse(): %d", rc)
+	}
+
+    reply_buf := obj_stat.reply_buffer
+    *reply_size = int64(obj_stat.reply_size)
+
+	return reply_buf, nil
+}
+
+
 //Call the pmdb C library function to write the application data.
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 	key_len int64) error {
@@ -323,7 +356,7 @@ func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 	var stat C.pmdb_obj_stat_t
 	var pmdb_req_opt C.pmdb_request_opts_t
 
-	C.pmdb_request_options_init(&pmdb_req_opt, 1, 0, &stat, nil, nil,
+	C.pmdb_request_options_init(&pmdb_req_opt, 1, 0, 0, &stat, nil, nil,
 		zeroCopyObj.buffer, C.size_t(zeroCopyObj.buffer_len), 0)
 
 	rc := C.PmdbObjGetX(obj.pmdb, obj_id, key, c_key_len,

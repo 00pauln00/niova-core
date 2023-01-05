@@ -422,7 +422,8 @@ func (nso *NiovaKVServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointe
 }
 
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
+	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
+    pmdbHandle unsafe.Pointer) int {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
