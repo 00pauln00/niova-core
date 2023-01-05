@@ -63,7 +63,8 @@ func (fpso *FoodpalaceServer) WritePrep(appUuid unsafe.Pointer, dataBuf unsafe.P
 
 //Method for Apply callback.
 func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
-	dataBufSz int64, pmdbHandle unsafe.Pointer) int {
+	dataBufSz int64, dataReplyBuf unsafe.Pointer, dataReplyBufsz int64,
+    pmdbHandle unsafe.Pointer) int {
 
 	data := &foodpalaceapplib.FoodpalaceData{}
 	fpso.pso.Decode(dataBuf, data, dataBufSz)

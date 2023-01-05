@@ -34,6 +34,7 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
 typedef pumicedb_apply_ctx_int_t
 (*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
                            const void *input_buf, size_t input_bufsz,
+                           char *reply_buf, size_t reply_bufsz,
                            void *pmdb_handle,
                            void *user_data);
 
