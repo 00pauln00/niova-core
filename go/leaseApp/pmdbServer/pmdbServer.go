@@ -33,10 +33,9 @@ var ttlDefault = 60
 var colmfamily = "PMDBTS_CF"
 
 const (
-	MOUNTING int = 0
-	MOUNTED      = 1
+	INPROGRESS int = 0
+	GRANTED      = 1
 	EXPIRED      = 2
-	REVOKED      = 3
 )
 
 type leaseServer struct {
@@ -44,7 +43,7 @@ type leaseServer struct {
 	peerUUID string
 	logDir   string
 	logLevel string
-	leaseMap map[uuid.UUID]requestResponseLib.LeaseStruct
+	leaseMap map[uuid.UUID]*requestResponseLib.LeaseStruct
 	pso      *PumiceDBServer.PmdbServerObject
 }
 
@@ -127,7 +126,7 @@ func parseArgs() (*leaseServer, error) {
 	return lso, err
 }
 
-func provideLease(entry requestResponseLib.LeaseStruct, clientUUID uuid.UUID) bool {
+func isValidLease(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID) bool {
 	//Check if existing lease is valid
 	//If valid, Check if client uuid is same
 	//If so, return true
@@ -159,17 +158,17 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	//If not(1), Create Map entry with status as mounting
 	vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
 	if isPresent {
-		if !provideLease(vdev_lease_info, Request.Client) {
+		if isValidLease(vdev_lease_info, Request.Client) {
 			//Dont provide lease
 			return -1
 		}
 	}
 
 	//Insert into MAP
-	lso.leaseMap[Request.Resource] = requestResponseLib.LeaseStruct{
+	lso.leaseMap[Request.Resource] = &requestResponseLib.LeaseStruct{
 		Resource: Request.Resource,
 		Client:   Request.Client,
-		Status:   MOUNTING,
+		Status:   GRANTED,
 	}
 
 	return 0
@@ -182,13 +181,12 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	//TODO Call PmdbGetLeaderTimeStamp by passing a C struct
 	//     fill up Term and LeaderTime and directly assign values
 	//reqRecvTS := lso.pso.GetLeaderTimeStamp()
-	leaderTerm, leaderTime := PumiceDBServer.PmdbGetLeaderTimeStamp()
+	//leaderTerm, leaderTime := PumiceDBServer.PmdbGetLeaderTimeStamp()
 	//if rc != 0 {
 	//	log.Error("Failed to get timestamp - ", rc)
 	//	return rc
 	//}
 
-	fmt.Println("GET Request recieved at - ", leaderTerm, leaderTime)
 
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
@@ -204,15 +202,10 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// length of key.
 	keyLength := len(applyLeaseReq.Client.String())
 
-	leaseObj := requestResponseLib.LeaseStruct{
-		Resource: applyLeaseReq.Resource,
-		Client:   applyLeaseReq.Client,
-	}
+	leaseObj := lso.leaseMap[applyLeaseReq.Resource]
 	//TODO Use actual values set TTL to 60s
-	leaseObj.LeaseGranted.Term = uint32(leaderTerm)
-	leaseObj.LeaseGranted.LeaderTime = uint64(leaderTime)
-	leaseObj.LeaseExpiry.Term = uint32(leaderTerm)
-	leaseObj.LeaseExpiry.LeaderTime = uint64(leaderTime) + uint64(ttlDefault)
+	leaseObj.LeaseGrantedTS = 3.12
+	leaseObj.LeaseExpiryTS = 3.72
 
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(&leaseObj)
