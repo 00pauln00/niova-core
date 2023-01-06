@@ -18,15 +18,10 @@ type LeaseResp struct {
 	Timestamp string
 }
 
-type hybridTS struct {
-	Term       uint32
-	LeaderTime uint64
-}
-
 type LeaseStruct struct {
-	Resource     uuid.UUID
-	Client       uuid.UUID
-	Status       int
-	LeaseGranted hybridTS
-	LeaseExpiry  hybridTS
+	Resource       uuid.UUID
+	Client         uuid.UUID
+	Status         int
+	LeaseGrantedTS float64
+	LeaseExpiryTS  float64
 }
