@@ -17,12 +17,17 @@ import (
 )
 
 /*
+#cgo LDFLAGS: -lniova -lniova_raft -lniova_pumice -lrocksdb
 #include <stdlib.h>
 #include <string.h>
+#include <raft/pumice_db.h>
+#include <raft/raft_net.h>
+#include <raft/pumice_db_client.h>
 */
 import "C"
 
 var seqno = 0
+var ttlDefault = 60
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -135,6 +140,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHande unsafe.Pointer) int {
 
 	log.Trace("Lease server : Write prep request")
+	fmt.Println("JJJ - WRITEPREP")
 
 	Request := &requestResponseLib.LeaseReq{}
 
@@ -173,6 +179,16 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
 	log.Trace("Lease server: Apply request received")
 	var valueBytes bytes.Buffer
+	//TODO Call PmdbGetLeaderTimeStamp by passing a C struct
+	//     fill up Term and LeaderTime and directly assign values
+	//reqRecvTS := lso.pso.GetLeaderTimeStamp()
+	leaderTerm, leaderTime := PumiceDBServer.PmdbGetLeaderTimeStamp()
+	//if rc != 0 {
+	//	log.Error("Failed to get timestamp - ", rc)
+	//	return rc
+	//}
+
+	fmt.Println("GET Request recieved at - ", leaderTerm, leaderTime)
 
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
@@ -192,10 +208,11 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		Resource: applyLeaseReq.Resource,
 		Client:   applyLeaseReq.Client,
 	}
-	leaseObj.LeaseGranted.Term = 3
-	leaseObj.LeaseGranted.LeaderTime = 1066
-	leaseObj.LeaseExpiry.Term = 3
-	leaseObj.LeaseExpiry.LeaderTime = 1166
+	//TODO Use actual values set TTL to 60s
+	leaseObj.LeaseGranted.Term = uint32(leaderTerm)
+	leaseObj.LeaseGranted.LeaderTime = uint64(leaderTime)
+	leaseObj.LeaseExpiry.Term = uint32(leaderTerm)
+	leaseObj.LeaseExpiry.LeaderTime = uint64(leaderTime) + uint64(ttlDefault)
 
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(&leaseObj)
