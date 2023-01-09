@@ -50,7 +50,6 @@ type leaseHandler struct {
 	raftUUID uuid.UUID
 	//ttl           time.Duration
 	pmdbClientObj *pmdbClient.PmdbClientObj
-	operation     operation
 	//leaseState    state
 	//timeStamp     string
 	jsonFilePath string
@@ -83,6 +82,7 @@ Description : Parse command line params and load into leaseHandler sturct
 func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
 	var requestObj requestResponseLib.LeaseReq
+	var tempOperation operation
 	var ok bool
 	var err error
 
@@ -97,11 +97,12 @@ func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 		usage()
 		os.Exit(-1)
 	}
-	handler.operation, ok = parseOperation(stringOperation)
+	tempOperation, ok = parseOperation(stringOperation)
 	if !ok {
 		usage()
 		os.Exit(-1)
 	}
+	requestObj.Operation = int(tempOperation)
 	handler.raftUUID, err = uuid.Parse(strRaftUUID)
 	if err != nil {
 		usage()
@@ -318,7 +319,7 @@ func main() {
 		os.Exit(-1)
 	}
 	//TODO Use LeaseReq.Operation
-	switch leaseObjHandler.operation {
+	switch operation(requestObj.Operation) {
 	case GET:
 		// get lease
 		//TODO Use new C API to do get_lease and return structure
