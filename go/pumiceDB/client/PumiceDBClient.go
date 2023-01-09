@@ -94,6 +94,33 @@ func (obj *PmdbClientObj) WriteEncoded(request []byte, rncui string) error {
 	return obj.writeKV(rncui, encodedRequest, requestLen)
 }
 
+func (obj *PmdbClientObj) WriteEncodedAndGetResponse(request []byte, rncui string, response *[]byte) error {
+	var reply_size int64
+	var wr_err error
+	var reply_buff unsafe.Pointer
+	fmt.Println("++++++++++++++++++++++++++++++++++++++++")
+	fmt.Println("Called WriteEncodedAndGetResponse")
+	fmt.Println("++++++++++++++++++++++++++++++++++++++++")
+
+	requestLen := int64(len(request))
+	//Convert to unsafe pointer (void * for C function)
+	encodedData := unsafe.Pointer(&request[0])
+	encodedRequest := (*C.char)(encodedData)
+
+	reply_buff, wr_err = obj.writeKVAndGetResponse(rncui, encodedRequest, requestLen, &reply_size)
+	if wr_err != nil {
+		return wr_err
+	}
+	if reply_buff != nil {
+		bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
+		buffer := bytes.NewBuffer(bytes_data)
+		*response = buffer.Bytes()
+	}
+	// Free the buffer allocated by the C library
+	C.free(reply_buff)
+	return nil
+}
+
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(input_ed interface{},
 	rncui string,

@@ -157,7 +157,7 @@ Return(s) : error
 Description : Wrapper function for WriteEncoded() function
 */
 
-func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *requestResponseLib.LeaseResp) error {
+func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -166,7 +166,7 @@ func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseRe
 		log.Error("Encoding error : ", err)
 		return err
 	}
-	err = handler.pmdbClientObj.WriteEncoded(requestBytes.Bytes(), rncui)
+	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, response)
 	//TODO Changes to accomodate new C API callback
 	var responseObj requestResponseLib.LeaseResp
 	if err != nil {
@@ -210,11 +210,12 @@ Description : Handler function for get_lease() operation
 */
 func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) error {
 	var err error
+	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseResp
 
 	rncui := handler.getRNCUI()
 	//TODO Change name to Wrapper - write_lease()
-	err = handler.WriteCallBack(requestObj, rncui, &responseObj)
+	err = handler.WriteCallBack(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
@@ -235,8 +236,8 @@ Description : Handler function for lookup_lease() operation
               Lookup lease info of a particular resource
 */
 func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq) error {
-	var responseBytes []byte
 	var err error
+	var responseBytes []byte
 
 	err = handler.ReadCallBack(requestObj, "", &responseBytes)
 	if err != nil {
@@ -265,10 +266,11 @@ Description : Handler function for refresh_lease() operation
 */
 func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseReq) error {
 	var err error
+	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseResp
 
 	rncui := handler.getRNCUI()
-	err = handler.WriteCallBack(requestObj, rncui, &responseObj)
+	err = handler.WriteCallBack(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
