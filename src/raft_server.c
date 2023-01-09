@@ -26,6 +26,7 @@
 #include "thread.h"
 #include "util_thread.h"
 #include "buffer.h"
+#include "tcp_mgr.h"
 
 #define RAFT_SERVER_RECOVERY_ATTEMPTS 100
 LREG_ROOT_ENTRY_GENERATE(raft_root_entry, LREG_USER_TYPE_RAFT);
@@ -5803,7 +5804,14 @@ raft_server_instance_buffer_set_setup(struct raft_instance *ri)
     size_t buff_set_sizes[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_SZ,
                                                RAFT_BS_LARGE_SZ};
 
-    size_t nbuff[RAFT_BUF_SET_MAX] = {RAFT_BS_SMALL_NBUF, RAFT_BS_LARGE_NBUF};
+    int small_nbuf = RAFT_ENTRY_NUM_ENTRIES + tcp_mgr_worker_cnt_get();
+    // Note: server fails if No. of large buffer is not nthreads + 1
+    int large_nbuf = tcp_mgr_worker_cnt_get() + 1;
+
+    SIMPLE_LOG_MSG(LL_NOTIFY, "sbuf count: %d, lbuf count: %d", small_nbuf,
+                   large_nbuf);
+
+    size_t nbuff[RAFT_BUF_SET_MAX] = {small_nbuf, large_nbuf};
 
     for (int p = 0; p < RAFT_BUF_SET_MAX; p++)
     {
