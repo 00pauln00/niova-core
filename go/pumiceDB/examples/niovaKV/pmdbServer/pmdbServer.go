@@ -120,7 +120,8 @@ type NiovaKVServer struct {
 }
 
 func (nso *NiovaKVServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, continue_wr unsafe.Pointer) int {
+	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
+    continue_wr unsafe.Pointer) int {
     return 0;
 }
 

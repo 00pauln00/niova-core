@@ -58,6 +58,7 @@ typedef pumicedb_read_ctx_ssize_t
 typedef pumicedb_write_prep_ctx_int_t
 (*pmdb_write_prep_sm_handler_t)(const struct raft_net_client_user_id *,
                                 const void *input_buf, size_t input_bufsz,
+                                char *reply_buf, size_t reply_bufsz,
                                 void *user_data, int *continue_wr);
 
 struct PmdbAPI
