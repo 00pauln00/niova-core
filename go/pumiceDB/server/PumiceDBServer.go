@@ -20,7 +20,7 @@ import (
 #include <raft/raft_net.h>
 #include <raft/pumice_db_client.h>
 extern int writePrepCgo(const struct raft_net_client_user_id *, const void *,
-                        size_t, void *, int *);
+                        size_t, void *, size_t, void *, int *);
 extern int applyCgo(const struct raft_net_client_user_id *, const void *,
                      size_t, void *, size_t, void *, void *);
 extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
@@ -32,7 +32,8 @@ import "C"
 var encodingOverhead int = 2
 
 type PmdbServerAPI interface {
-	WritePrep(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer) int
+	WritePrep(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64,
+              unsafe.Pointer) int
 	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64, unsafe.Pointer) int
 	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
 }
@@ -97,6 +98,8 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 //export goWritePrep
 func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz C.size_t,
+    reply_buf unsafe.Pointer,
+    reply_buf_sz C.size_t,
 	user_data unsafe.Pointer,
     continue_wr unsafe.Pointer) int {
 
@@ -105,9 +108,12 @@ func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Poin
 
 	//Convert buffer size from c data type size_t to golang int64.
 	input_buf_sz_go := CToGoInt64(input_buf_sz)
+	reply_buf_sz_go := CToGoInt64(reply_buf_sz)
 
 	//Calling the golang Application's WritePrep function.
-	return gcb.PmdbAPI.WritePrep(unsafe.Pointer(app_id), input_buf, input_buf_sz_go, continue_wr)
+	return gcb.PmdbAPI.WritePrep(unsafe.Pointer(app_id), input_buf,
+                                 input_buf_sz_go, reply_buf, reply_buf_sz_go,
+                                 continue_wr)
 }
 
 

@@ -888,10 +888,23 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             /*
             */
             int continue_wr = 0;
+            SIMPLE_LOG_MSG(LL_WARN, "Is write_prep defined: %p",
+                           pmdbApi->pmdb_write_prep);
             if (pmdbApi->pmdb_write_prep)
             {
+                struct pmdb_msg *pmdb_reply = NULL;
+                pmdb_reply =
+                    RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+                const size_t max_reply_size =
+                    rncr->rncr_reply_data_max_size -
+                    PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
+
+                SIMPLE_LOG_MSG(LL_WARN, "Calling application write_prep");
                 wrc = pmdbApi->pmdb_write_prep(rncui, pmdb_req->pmdbrm_data,
                                                pmdb_req->pmdbrm_data_size,
+                                               pmdb_reply ?
+                                               pmdb_reply->pmdbrm_data : NULL,
+                                               max_reply_size,
                                                pmdb_user_data,
                                                &continue_wr);
                 if (wrc)
@@ -1234,7 +1247,6 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     if (rncr->rncr_is_leader)
     {
-        // XXX check this macro
         pmdb_reply =
                 RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
     }
