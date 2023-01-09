@@ -4,6 +4,15 @@ import (
 	"github.com/google/uuid"
 )
 
+type Operation int
+
+const (
+	GET     Operation = 0
+	PUT               = 1
+	LOOKUP            = 2
+	REFRESH           = 3
+)
+
 type LeaseReq struct {
 	Client    uuid.UUID
 	Resource  uuid.UUID

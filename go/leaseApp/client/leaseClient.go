@@ -19,15 +19,7 @@ import (
 	"github.com/google/uuid"
 )
 
-type operation int
 type state int
-
-const (
-	GET     operation = 0
-	PUT               = 1
-	LOOKUP            = 2
-	REFRESH           = 3
-)
 
 const (
 	ACQUIRED      state = 0
@@ -36,11 +28,11 @@ const (
 )
 
 var (
-	operationsMap = map[string]operation{
-		"GET":     GET,
-		"PUT":     PUT,
-		"LOOKUP":  LOOKUP,
-		"REFRESH": REFRESH,
+	operationsMap = map[string]requestResponseLib.Operation{
+		"GET":     requestResponseLib.GET,
+		"PUT":     requestResponseLib.PUT,
+		"LOOKUP":  requestResponseLib.LOOKUP,
+		"REFRESH": requestResponseLib.REFRESH,
 	}
 )
 
@@ -60,7 +52,7 @@ func usage() {
 	os.Exit(0)
 }
 
-func parseOperation(str string) (operation, bool) {
+func parseOperation(str string) (requestResponseLib.Operation, bool) {
 	op, ok := operationsMap[str]
 	return op, ok
 }
@@ -82,7 +74,7 @@ Description : Parse command line params and load into leaseHandler sturct
 func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
 	var requestObj requestResponseLib.LeaseReq
-	var tempOperation operation
+	var tempOperation requestResponseLib.Operation
 	var ok bool
 	var err error
 
@@ -319,8 +311,8 @@ func main() {
 		os.Exit(-1)
 	}
 	//TODO Use LeaseReq.Operation
-	switch operation(requestObj.Operation) {
-	case GET:
+	switch requestResponseLib.Operation(requestObj.Operation) {
+	case requestResponseLib.GET:
 		// get lease
 		//TODO Use new C API to do get_lease and return structure
 		err := leaseObjHandler.get_lease(requestObj)
@@ -331,13 +323,13 @@ func main() {
 		if err != nil {
 			log.Error(err)
 		}
-	case LOOKUP:
+	case requestResponseLib.LOOKUP:
 		// lookup lease
 		err := leaseObjHandler.lookup_lease(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
-	case REFRESH:
+	case requestResponseLib.REFRESH:
 		// refresh lease
 		err := leaseObjHandler.refresh_lease(requestObj)
 		if err != nil {
