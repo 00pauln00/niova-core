@@ -55,17 +55,22 @@ func (fpso *FoodpalaceServer) initLogger() {
 	log.Info("peer:", fpso.peerUuid)
 }
 
+//Method for InitLeader callback
+func (fpso *FoodpalaceServer) InitLeader() {
+    return;
+}
+
 //Method for WritePrep callback.
 func (fpso *FoodpalaceServer) WritePrep(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
 	dataBufSz int64, dataReplyBuf unsafe.Pointer, dataReplyBufsz int64,
-    continue_wr unsafe.Pointer) int {
+    continue_wr unsafe.Pointer) int64 {
     return 0;
 }
 
 //Method for Apply callback.
 func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
 	dataBufSz int64, dataReplyBuf unsafe.Pointer, dataReplyBufsz int64,
-    pmdbHandle unsafe.Pointer) int {
+    pmdbHandle unsafe.Pointer) int64 {
 
 	data := &foodpalaceapplib.FoodpalaceData{}
 	fpso.pso.Decode(dataBuf, data, dataBufSz)
@@ -99,7 +104,8 @@ func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Point
 	//Write key,values.
 	rc := fpso.pso.WriteKV(appUuid, pmdbHandle, fpAppKey, int64(appKeyLen), fpAppValue,
 		int64(appValLen), colmfamily)
-	return rc
+
+	return int64(rc)
 }
 
 //Method for read callback.

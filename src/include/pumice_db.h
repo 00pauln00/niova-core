@@ -15,10 +15,10 @@
 #include "raft.h"
 #include "common.h"
 
-typedef void    pumicedb_apply_ctx_t;
-typedef int     pumicedb_apply_ctx_int_t;
-typedef int     pumicedb_write_prep_ctx_int_t;
+typedef ssize_t pumicedb_apply_ctx_ssize_t;
+typedef ssize_t pumicedb_write_prep_ctx_ssize_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
+typedef void    pumicedb_init_leader_ctx_void_t;
 
 /**
  * pmdb_apply_sm_handler_t - The apply handler is called from raft after the
@@ -31,7 +31,7 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  *    The updates staged via PmdbWriteKV() are written atomically into rocksDB
  *    along with other pumiceDB and raft internal metadata.
  */
-typedef pumicedb_apply_ctx_int_t
+typedef pumicedb_apply_ctx_ssize_t
 (*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
                            const void *input_buf, size_t input_bufsz,
                            char *reply_buf, size_t reply_bufsz,
@@ -55,17 +55,27 @@ typedef pumicedb_read_ctx_ssize_t
  * buffer data, application can decide whether to go ahead with write operation.
  * Actual write to rocksDB would happen only through apply handler.
  */
-typedef pumicedb_write_prep_ctx_int_t
+typedef pumicedb_write_prep_ctx_ssize_t
 (*pmdb_write_prep_sm_handler_t)(const struct raft_net_client_user_id *,
                                 const void *input_buf, size_t input_bufsz,
                                 char *reply_buf, size_t reply_bufsz,
                                 void *user_data, int *continue_wr);
 
+/**
+ *pmdb_init_leader_sm_handler_t - The initialize leader handler is called from
+ * raft when peer becomes leader.
+ * It can be used if Application wants to perform some initialization on
+ * leader.
+ */
+typedef pumicedb_init_leader_ctx_void_t
+(*pmdb_init_leader_sm_handler_t)(void *user_data);
+
 struct PmdbAPI
 {
-    pmdb_write_prep_sm_handler_t pmdb_write_prep;
-    pmdb_apply_sm_handler_t      pmdb_apply;
-    pmdb_read_sm_handler_t       pmdb_read;
+    pmdb_write_prep_sm_handler_t  pmdb_write_prep;
+    pmdb_apply_sm_handler_t       pmdb_apply;
+    pmdb_read_sm_handler_t        pmdb_read;
+    pmdb_init_leader_sm_handler_t pmdb_init_leader;
 };
 
 /**

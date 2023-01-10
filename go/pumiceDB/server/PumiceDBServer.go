@@ -19,12 +19,13 @@ import (
 #include <rocksdb/c.h>
 #include <raft/raft_net.h>
 #include <raft/pumice_db_client.h>
-extern int writePrepCgo(const struct raft_net_client_user_id *, const void *,
+extern ssize_t writePrepCgo(const struct raft_net_client_user_id *, const void *,
                         size_t, void *, size_t, void *, int *);
-extern int applyCgo(const struct raft_net_client_user_id *, const void *,
+extern ssize_t applyCgo(const struct raft_net_client_user_id *, const void *,
                      size_t, void *, size_t, void *, void *);
-extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
+extern ssize_t readCgo(const struct raft_net_client_user_id *, const void *,
                     size_t, void *, size_t, void *);
+extern void initLeaderCgo(void *);
 */
 import "C"
 
@@ -33,9 +34,10 @@ var encodingOverhead int = 2
 
 type PmdbServerAPI interface {
 	WritePrep(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64,
-              unsafe.Pointer) int
-	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64, unsafe.Pointer) int
+              unsafe.Pointer) int64
+	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64, unsafe.Pointer) int64
 	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
+    InitLeader()
 }
 
 type PmdbServerObject struct {
@@ -101,7 +103,7 @@ func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Poin
     reply_buf unsafe.Pointer,
     reply_buf_sz C.size_t,
 	user_data unsafe.Pointer,
-    continue_wr unsafe.Pointer) int {
+    continue_wr unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
@@ -120,7 +122,7 @@ func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Poin
 //export goApply
 func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-    pmdb_handle unsafe.Pointer, user_data unsafe.Pointer) int {
+    pmdb_handle unsafe.Pointer, user_data unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
@@ -149,6 +151,15 @@ func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer
 	//Calling the golang Application's Read function.
 	return gcb.PmdbAPI.Read(unsafe.Pointer(app_id), request_buf, request_bufsz_go,
 		reply_buf, reply_bufsz_go)
+}
+
+//export goInitLeader
+func goInitLeader(user_data unsafe.Pointer) {
+
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
+
+    gcb.PmdbAPI.InitLeader()
 }
 
 /**

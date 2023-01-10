@@ -217,7 +217,7 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
     }
 }
 
-static pumicedb_apply_ctx_int_t
+static pumicedb_apply_ctx_ssize_t
 pmdbts_apply(const struct raft_net_client_user_id *app_id,
              const void *input_buf, size_t input_bufsz,
              char *reply_buf, size_t reply_bufsz,
@@ -359,6 +359,7 @@ main(int argc, char **argv)
 
     struct PmdbAPI api = {
         .pmdb_write_prep = NULL,
+        .pmdb_init_leader = NULL,
         .pmdb_apply      = pmdbts_apply,
         .pmdb_read       = pmdbts_read,
     };

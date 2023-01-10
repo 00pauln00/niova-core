@@ -126,15 +126,19 @@ type CovidServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
+func (cso *CovidServer) InitLeader() {
+    return;
+}
+
 func (cso *CovidServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-    continue_wr unsafe.Pointer) int {
+    continue_wr unsafe.Pointer) int64 {
     return 0;
 }
 
 func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-    pmdbHandle unsafe.Pointer) int {
+    pmdbHandle unsafe.Pointer) int64 {
 
 	log.Info("Covid19_Data app server: Apply request received")
 
@@ -185,7 +189,8 @@ func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	rc := cso.pso.WriteKV(appId, pmdbHandle, applyCovid.Location,
 		int64(keyLength), covidDataVal,
 		int64(covidDataLen), colmfamily)
-	return rc
+
+	return int64(rc)
 }
 
 func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
