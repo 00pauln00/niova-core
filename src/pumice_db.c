@@ -1380,7 +1380,8 @@ pmdb_prepare_leader(void)
     pmdb_ref_tree_release_all();
     // Give control to application to perform any cleanup/initialization
     // on leader.
-    pmdbApi->pmdb_init_leader(pmdb_user_data);
+    if (pmdbApi->pmdb_init_leader)
+        pmdbApi->pmdb_init_leader(pmdb_user_data);
 }
 
 void
