@@ -28,7 +28,7 @@ const (
 )
 
 var (
-	operationsMap = map[string]requestResponseLib.Operation{
+	operationsMap = map[string]int{
 		"GET":     requestResponseLib.GET,
 		"PUT":     requestResponseLib.PUT,
 		"LOOKUP":  requestResponseLib.LOOKUP,
@@ -52,7 +52,7 @@ func usage() {
 	os.Exit(0)
 }
 
-func parseOperation(str string) (requestResponseLib.Operation, bool) {
+func parseOperation(str string) (int, bool) {
 	op, ok := operationsMap[str]
 	return op, ok
 }
@@ -74,7 +74,7 @@ Description : Parse command line params and load into leaseHandler sturct
 func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
 	var requestObj requestResponseLib.LeaseReq
-	var tempOperation requestResponseLib.Operation
+	var tempOperation int
 	var ok bool
 	var err error
 
@@ -313,7 +313,7 @@ func main() {
 		os.Exit(-1)
 	}
 	//TODO Use LeaseReq.Operation
-	switch requestResponseLib.Operation(requestObj.Operation) {
+	switch requestObj.Operation {
 	case requestResponseLib.GET:
 		// get lease
 		//TODO Use new C API to do get_lease and return structure
