@@ -866,7 +866,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     }
     else if (pmdb_req->pmdbrm_write_seqno == (obj.pmdb_obj_commit_seqno + 1))
     {
-        int wrc = 0;
+        ssize_t wrc = 0;
         /* Check if request has already been placed into the log but not yet
          * applied.  Here, the client's request has been accepted but not
          * yet completed and the client has retried the request.
@@ -907,24 +907,28 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
                                                max_reply_size,
                                                pmdb_user_data,
                                                &continue_wr);
-                if (wrc)
+                if (wrc < 0)
+                {
                     raft_client_net_request_handle_error_set(rncr,
                                                              -EPERM,
                                                              0, -EPERM);
-                else if (!wrc && !continue_wr)
+                    rc = -EPERM;
+                }
+                else if (wrc >= 0 && !continue_wr)
                 {
                     // Write prepare was successful but application don't want
                     // to continue with raft write.
                     raft_client_net_request_handle_error_set(rncr,
                                                              -EALREADY,
                                                              0, 0);
-                    wrc = 1;
+                    pmdb_reply->pmdbrm_data_size = wrc;
+                    wrc = -1;
                 }
             }
 
             // If write_prep is not defined by application or write_prep
             // returned success and application notify to continue raft write.
-            if (!wrc) // Check if rncui is already part of coalesced_wr_tree
+            if (wrc >= 0) // Check if rncui is already part of coalesced_wr_tree
             {
                 int error = 0;
                 struct pmdb_cowr_sub_app *cowr_sa =
@@ -1252,7 +1256,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     }
 
     // Call into the application so it may emplace its own KVs.
-    int apply_rc =
+    ssize_t apply_rc =
         pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
                             pmdb_req->pmdbrm_data_size,
                             pmdb_reply ? pmdb_reply->pmdbrm_data : NULL,
@@ -1369,6 +1373,14 @@ pmdb_ref_tree_release_all(void)
 {
     pmdb_cowr_sub_app_release_all();
     pmdb_range_read_req_release_all();
+}
+static void
+pmdb_prepare_leader(void)
+{
+    pmdb_ref_tree_release_all();
+    // Give control to application to perform any cleanup/initialization
+    // on leader.
+    pmdbApi->pmdb_init_leader(pmdb_user_data);
 }
 
 void
@@ -1507,7 +1519,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
-                                  pmdb_ref_tree_release_all,
+                                  pmdb_prepare_leader,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 
