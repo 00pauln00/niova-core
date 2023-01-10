@@ -11,7 +11,8 @@ import (
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"unsafe"
-
+	"strconv"	
+	"strings"
 	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -126,17 +127,38 @@ func parseArgs() (*leaseServer, error) {
 	return lso, err
 }
 
-func isValidLease(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID) bool {
+func addMinorToHybrid(current_time float64, add_minor int) float64 {
+	//TODO: Validate this func
+	stringTime := fmt.Sprintf("%f",current_time)
+	minorComponent, _ := strconv.Atoi(strings.Split(stringTime, ".")[1])
+	newMinor := minorComponent + add_minor
+	updatedTime := strings.Split(stringTime, ".")[0]+"."+string(newMinor)
+	f, _ := strconv.ParseFloat(updatedTime, 64)
+	return f
+}
+
+func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime float64, operation int) bool {
+	if (entry.Status == INPROGRESS){
+		return false
+	}
+
 	//Check if existing lease is valid
-	//If valid, Check if client uuid is same
-	//If so, return true
-	//If not, ret false
-	//If not valid, ret true
+	stillValid := entry.LeaseExpiryTS >= currentTime
+	//If valid, Check if client uuid is same and operation is refresh
+	if (stillValid) {
+		if ((operation == requestResponseLib.REFRESH) && (clientUUID == entry.Client)) {
+			return true
+		} else {
+			return false
+		}
+	}
 	return true
 }
 
 func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, pmdbHande unsafe.Pointer) int {
+	inputBufSize int64, continue_wr *int, replyBuf unsafe.Pointer, replySize *int64, pmdbHande unsafe.Pointer) int {
+
+	var copyErr error
 
 	log.Trace("Lease server : Write prep request")
 	fmt.Println("JJJ - WRITEPREP")
@@ -148,45 +170,59 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		log.Error("Failed to decode the application data")
 		return -1
 	}
-	//Check if its a lease request
-	//If not, return 0
+	//Get current hybrid time
+	//TODO: GetCurrentHybridTime() def this in pumiceDBServer.go
+	currentTime := lso.pso.GetCurrentHybridTime()
 
-	//Check if requested Vdev uuid is already present in MAP and has valid lease (1)
-	//If so, check client UUID (2)
-	//If matches (2), Return Status ok
-	//If not(2), Return Error
-	//If not(1), Create Map entry with status as mounting
-	vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
-	if isPresent {
-		if isValidLease(vdev_lease_info, Request.Client) {
-			//Dont provide lease
-			return -1
+	//Check if its a refresh request
+	if Request.Operation == requestResponseLib.REFRESH {
+		*continue_wr = 0
+		vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
+                if isPresent {
+			if isPermitted(vdev_lease_info, Request.Client, currentTime, Request.Operation) {
+				//Refresh the lease 
+				lso.leaseMap[Request.Resource].LeaseGrantedTS = currentTime
+				lso.leaseMap[Request.Resource].LeaseExpiryTS = addMinorToHybrid(currentTime, ttlDefault)
+				//Copy the encoded result in replyBuffer
+                		*replySize, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], replyBuf)
+                		if copyErr != nil {
+                        		log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        		return -1
+                		}
+				return 0
+			}
+		}
+		return -1
+	}
+
+	//Check if get lease
+	if Request.Operation == requestResponseLib.GET {
+		vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
+		if isPresent {
+			if !isPermitted(vdev_lease_info, Request.Client, currentTime, Request.Operation) {
+				//Dont provide lease
+				*continue_wr = 0
+				return -1
+			}	
+		}
+	
+		//Insert or update into MAP
+		lso.leaseMap[Request.Resource] = &requestResponseLib.LeaseStruct{
+			Resource: Request.Resource,
+			Client:   Request.Client,
+			Status:   INPROGRESS,
 		}
 	}
 
-	//Insert into MAP
-	lso.leaseMap[Request.Resource] = &requestResponseLib.LeaseStruct{
-		Resource: Request.Resource,
-		Client:   Request.Client,
-		Status:   GRANTED,
-	}
-
+	*continue_wr = 1
 	return 0
 }
 
 func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
+	inputBufSize int64, replyBuf unsafe.Pointer, replySize *int64, pmdbHandle unsafe.Pointer) int {
 	log.Trace("Lease server: Apply request received")
 	var valueBytes bytes.Buffer
-	//TODO Call PmdbGetLeaderTimeStamp by passing a C struct
-	//     fill up Term and LeaderTime and directly assign values
-	//reqRecvTS := lso.pso.GetLeaderTimeStamp()
-	//leaderTerm, leaderTime := PumiceDBServer.PmdbGetLeaderTimeStamp()
-	//if rc != 0 {
-	//	log.Error("Failed to get timestamp - ", rc)
-	//	return rc
-	//}
-
+	var copyErr error
 
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
@@ -204,8 +240,8 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	leaseObj := lso.leaseMap[applyLeaseReq.Resource]
 	//TODO Use actual values set TTL to 60s
-	leaseObj.LeaseGrantedTS = 3.12
-	leaseObj.LeaseExpiryTS = 3.72
+	leaseObj.LeaseGrantedTS = lso.pso.GetCurrentHybridTime()
+	leaseObj.LeaseExpiryTS = addMinorToHybrid(leaseObj.LeaseGrantedTS, ttlDefault)
 
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(&leaseObj)
@@ -222,6 +258,13 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Client.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
+
+	//Copy the encoded result in replyBuffer
+        *replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
+	if copyErr != nil {
+        	log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                return -1
+        }
 	return rc
 }
 
@@ -264,12 +307,6 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		fmt.Println("YYYY - ", leaseObj)
 		log.Trace("Input value after read request:", inputVal)
 
-		/*
-			resultReq := requestResponseLib.LeaseReq{
-				Client:   reqStruct.Client,
-				Resource: inputVal,
-			}
-		*/
 
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)

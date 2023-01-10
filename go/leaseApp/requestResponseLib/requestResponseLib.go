@@ -4,10 +4,9 @@ import (
 	"github.com/google/uuid"
 )
 
-type Operation int
 
 const (
-	GET     Operation = 0
+	GET     int = 0
 	PUT               = 1
 	LOOKUP            = 2
 	REFRESH           = 3
