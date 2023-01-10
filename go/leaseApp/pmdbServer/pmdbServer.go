@@ -7,14 +7,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	uuid "github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-	"unsafe"
-	"strconv"	
+	"strconv"
 	"strings"
-	uuid "github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
+	"unsafe"
 )
 
 /*
@@ -35,8 +35,8 @@ var colmfamily = "PMDBTS_CF"
 
 const (
 	INPROGRESS int = 0
-	GRANTED      = 1
-	EXPIRED      = 2
+	GRANTED        = 1
+	EXPIRED        = 2
 )
 
 type leaseServer struct {
@@ -84,7 +84,7 @@ func main() {
 		ColumnFamilies: colmfamily,
 		RaftUuid:       lso.raftUUID,
 		PeerUuid:       lso.peerUUID,
-		PmdbAPI:        lso,
+		PmdbAPI:        lso.pso.PmdbAPI,
 		SyncWrites:     false,
 		CoalescedWrite: true,
 	}
@@ -129,24 +129,24 @@ func parseArgs() (*leaseServer, error) {
 
 func addMinorToHybrid(current_time float64, add_minor int) float64 {
 	//TODO: Validate this func
-	stringTime := fmt.Sprintf("%f",current_time)
+	stringTime := fmt.Sprintf("%f", current_time)
 	minorComponent, _ := strconv.Atoi(strings.Split(stringTime, ".")[1])
 	newMinor := minorComponent + add_minor
-	updatedTime := strings.Split(stringTime, ".")[0]+"."+string(newMinor)
+	updatedTime := strings.Split(stringTime, ".")[0] + "." + string(newMinor)
 	f, _ := strconv.ParseFloat(updatedTime, 64)
 	return f
 }
 
 func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime float64, operation int) bool {
-	if (entry.Status == INPROGRESS){
+	if entry.Status == INPROGRESS {
 		return false
 	}
 
 	//Check if existing lease is valid
 	stillValid := entry.LeaseExpiryTS >= currentTime
 	//If valid, Check if client uuid is same and operation is refresh
-	if (stillValid) {
-		if ((operation == requestResponseLib.REFRESH) && (clientUUID == entry.Client)) {
+	if stillValid {
+		if (operation == requestResponseLib.REFRESH) && (clientUUID == entry.Client) {
 			return true
 		} else {
 			return false
@@ -156,7 +156,7 @@ func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, cu
 }
 
 func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, continue_wr *int, replyBuf unsafe.Pointer, replySize *int64, pmdbHande unsafe.Pointer) int {
+	inputBufSize int64, continue_wr *int, replyBuf unsafe.Pointer, replySize int64, pmdbHande unsafe.Pointer) int {
 
 	var copyErr error
 
@@ -178,17 +178,17 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	if Request.Operation == requestResponseLib.REFRESH {
 		*continue_wr = 0
 		vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
-                if isPresent {
+		if isPresent {
 			if isPermitted(vdev_lease_info, Request.Client, currentTime, Request.Operation) {
-				//Refresh the lease 
+				//Refresh the lease
 				lso.leaseMap[Request.Resource].LeaseGrantedTS = currentTime
 				lso.leaseMap[Request.Resource].LeaseExpiryTS = addMinorToHybrid(currentTime, ttlDefault)
 				//Copy the encoded result in replyBuffer
-                		*replySize, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], replyBuf)
-                		if copyErr != nil {
-                        		log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                        		return -1
-                		}
+				replySize, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], replyBuf)
+				if copyErr != nil {
+					log.Error("Failed to Copy result in the buffer: %s", copyErr)
+					return -1
+				}
 				return 0
 			}
 		}
@@ -203,9 +203,9 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 				//Dont provide lease
 				*continue_wr = 0
 				return -1
-			}	
+			}
 		}
-	
+
 		//Insert or update into MAP
 		lso.leaseMap[Request.Resource] = &requestResponseLib.LeaseStruct{
 			Resource: Request.Resource,
@@ -219,7 +219,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 }
 
 func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, replySize *int64, pmdbHandle unsafe.Pointer) int {
+	inputBufSize int64, replyBuf unsafe.Pointer, replySize int64, pmdbHandle unsafe.Pointer) int {
 	log.Trace("Lease server: Apply request received")
 	var valueBytes bytes.Buffer
 	var copyErr error
@@ -260,11 +260,11 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		int64(valLen), colmfamily)
 
 	//Copy the encoded result in replyBuffer
-        *replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
+	replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
 	if copyErr != nil {
-        	log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                return -1
-        }
+		log.Error("Failed to Copy result in the buffer: %s", copyErr)
+		return -1
+	}
 	return rc
 }
 
@@ -306,7 +306,6 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		}
 		fmt.Println("YYYY - ", leaseObj)
 		log.Trace("Input value after read request:", inputVal)
-
 
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
