@@ -191,9 +191,11 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 
 	cCallbacks := C.struct_PmdbAPI{}
 
-	//Assign the callback functions for apply and read
+	//Assign the callback functions
 	cCallbacks.pmdb_apply = C.pmdb_apply_sm_handler_t(C.applyCgo)
 	cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
+	cCallbacks.pmdb_write_prep = C.pmdb_write_prep_sm_handler_t(C.writePrepCgo)
+	cCallbacks.pmdb_init_leader = C.pmdb_init_leader_sm_handler_t(C.initLeaderCgo)
 
 	/*
 	 * Store the column family name into char * array.
