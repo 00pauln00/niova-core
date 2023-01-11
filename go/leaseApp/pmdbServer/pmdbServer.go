@@ -7,14 +7,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	uuid "github.com/google/uuid"
-	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"strconv"
 	"strings"
 	"unsafe"
+
+	uuid "github.com/google/uuid"
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -84,7 +85,7 @@ func main() {
 		ColumnFamilies: colmfamily,
 		RaftUuid:       lso.raftUUID,
 		PeerUuid:       lso.peerUUID,
-		PmdbAPI:        lso.pso.PmdbAPI,
+		PmdbAPI:        lso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
 	}
@@ -141,9 +142,10 @@ func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, cu
 	if entry.Status == INPROGRESS {
 		return false
 	}
+	leaseExpiryTS := addMinorToHybrid(entry.TimeStamp, ttlDefault)
 
 	//Check if existing lease is valid
-	stillValid := entry.LeaseExpiryTS >= currentTime
+	stillValid := leaseExpiryTS >= currentTime
 	//If valid, Check if client uuid is same and operation is refresh
 	if stillValid {
 		if (operation == requestResponseLib.REFRESH) && (clientUUID == entry.Client) {
@@ -156,12 +158,11 @@ func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, cu
 }
 
 func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, continue_wr *int, replyBuf unsafe.Pointer, replySize int64, pmdbHande unsafe.Pointer) int {
+	inputBufSize int64, replyBuf unsafe.Pointer, reply_buf_size int64, continue_wr unsafe.Pointer) int64 {
 
 	var copyErr error
 
 	log.Trace("Lease server : Write prep request")
-	fmt.Println("JJJ - WRITEPREP")
 
 	Request := &requestResponseLib.LeaseReq{}
 
@@ -176,15 +177,21 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	//Check if its a refresh request
 	if Request.Operation == requestResponseLib.REFRESH {
-		*continue_wr = 0
+		//Copy the encoded result in replyBuffer
+
 		vdev_lease_info, isPresent := lso.leaseMap[Request.Resource]
+		_, copyErr = lso.pso.CopyDataToBuffer(byte(0), continue_wr)
+		if copyErr != nil {
+			log.Error("Failed to COpy result in the buffer : %s", copyErr)
+			return -1
+		}
 		if isPresent {
 			if isPermitted(vdev_lease_info, Request.Client, currentTime, Request.Operation) {
 				//Refresh the lease
-				lso.leaseMap[Request.Resource].LeaseGrantedTS = currentTime
-				lso.leaseMap[Request.Resource].LeaseExpiryTS = addMinorToHybrid(currentTime, ttlDefault)
+				lso.leaseMap[Request.Resource].TimeStamp = currentTime
+				lso.leaseMap[Request.Resource].TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
-				replySize, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], replyBuf)
+				_, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], replyBuf)
 				if copyErr != nil {
 					log.Error("Failed to Copy result in the buffer: %s", copyErr)
 					return -1
@@ -201,7 +208,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		if isPresent {
 			if !isPermitted(vdev_lease_info, Request.Client, currentTime, Request.Operation) {
 				//Dont provide lease
-				*continue_wr = 0
+				lso.pso.CopyDataToBuffer(byte(0), continue_wr)
 				return -1
 			}
 		}
@@ -214,12 +221,17 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		}
 	}
 
-	*continue_wr = 1
+	_, copyErr = lso.pso.CopyDataToBuffer(byte(1), continue_wr)
+	if copyErr != nil {
+		log.Error("Failed to COpy result in the buffer : %s", copyErr)
+		return -1
+	}
+
 	return 0
 }
 
 func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, replySize int64, pmdbHandle unsafe.Pointer) int {
+	inputBufSize int64, replyBuf unsafe.Pointer, replySize int64, pmdbHandle unsafe.Pointer) int64 {
 	log.Trace("Lease server: Apply request received")
 	var valueBytes bytes.Buffer
 	var copyErr error
@@ -240,8 +252,8 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	leaseObj := lso.leaseMap[applyLeaseReq.Resource]
 	//TODO Use actual values set TTL to 60s
-	leaseObj.LeaseGrantedTS = lso.pso.GetCurrentHybridTime()
-	leaseObj.LeaseExpiryTS = addMinorToHybrid(leaseObj.LeaseGrantedTS, ttlDefault)
+	leaseObj.TimeStamp = lso.pso.GetCurrentHybridTime()
+	leaseObj.TTL = ttlDefault
 
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(&leaseObj)
@@ -265,7 +277,7 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1
 	}
-	return rc
+	return int64(rc)
 }
 
 func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
@@ -318,4 +330,6 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	}
 
 	return replySize
+}
+func (lso *leaseServer) InitLeader() {
 }
