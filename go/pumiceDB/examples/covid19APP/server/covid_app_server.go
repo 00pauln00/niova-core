@@ -127,18 +127,18 @@ type CovidServer struct {
 }
 
 func (cso *CovidServer) InitLeader() {
-    return;
+	return
 }
 
 func (cso *CovidServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-    continue_wr unsafe.Pointer) int64 {
-    return 0;
+	continue_wr unsafe.Pointer) int64 {
+	return 0
 }
 
 func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-    pmdbHandle unsafe.Pointer) int64 {
+	pmdbHandle unsafe.Pointer) int64 {
 
 	log.Info("Covid19_Data app server: Apply request received")
 

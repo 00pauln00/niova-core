@@ -3,14 +3,14 @@ package PumiceDBServer
 import (
 	"errors"
 	"fmt"
+	gopointer "github.com/mattn/go-pointer"
 	log "github.com/sirupsen/logrus"
+	"math"
 	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"strings"
 	"unsafe"
-	"math"
-	gopointer "github.com/mattn/go-pointer"
 )
 
 /*
@@ -34,10 +34,10 @@ var encodingOverhead int = 2
 
 type PmdbServerAPI interface {
 	WritePrep(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64,
-              unsafe.Pointer) int64
+		unsafe.Pointer) int64
 	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64, unsafe.Pointer) int64
 	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
-    InitLeader()
+	InitLeader()
 }
 
 type PmdbServerObject struct {
@@ -100,10 +100,10 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 //export goWritePrep
 func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz C.size_t,
-    reply_buf unsafe.Pointer,
-    reply_buf_sz C.size_t,
+	reply_buf unsafe.Pointer,
+	reply_buf_sz C.size_t,
 	user_data unsafe.Pointer,
-    continue_wr unsafe.Pointer) int64 {
+	continue_wr unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
@@ -114,26 +114,25 @@ func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Poin
 
 	//Calling the golang Application's WritePrep function.
 	return gcb.PmdbAPI.WritePrep(unsafe.Pointer(app_id), input_buf,
-                                 input_buf_sz_go, reply_buf, reply_buf_sz_go,
-                                 continue_wr)
+		input_buf_sz_go, reply_buf, reply_buf_sz_go,
+		continue_wr)
 }
-
 
 //export goApply
 func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
 	input_buf_sz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-    pmdb_handle unsafe.Pointer, user_data unsafe.Pointer) int64 {
+	pmdb_handle unsafe.Pointer, user_data unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
 
 	//Convert buffer size from c data type size_t to golang int64.
 	input_buf_sz_go := CToGoInt64(input_buf_sz)
-    reply_bufsz_go := CToGoInt64(reply_bufsz)
+	reply_bufsz_go := CToGoInt64(reply_bufsz)
 
 	//Calling the golang Application's Apply function.
 	return gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
-        reply_buf, reply_bufsz_go, pmdb_handle)
+		reply_buf, reply_bufsz_go, pmdb_handle)
 }
 
 //export goRead
@@ -159,7 +158,7 @@ func goInitLeader(user_data unsafe.Pointer) {
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
 
-    gcb.PmdbAPI.InitLeader()
+	gcb.PmdbAPI.InitLeader()
 }
 
 /**
@@ -387,16 +386,16 @@ func createRopts(consistent bool, seqNum *uint64) (*C.rocksdb_readoptions_t, boo
 
 	//Create ropts based on consistency requirement
 	if consistent {
-                ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(*seqNum), &retSeqNum)
-                if *seqNum != CToGoUint64(retSeqNum){
-                        if *seqNum != math.MaxUint64 {
+		ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(*seqNum), &retSeqNum)
+		if *seqNum != CToGoUint64(retSeqNum) {
+			if *seqNum != math.MaxUint64 {
 				snapMiss = true
-                        }
-                        *seqNum = CToGoUint64(retSeqNum)
-                }
-        } else {
-                ropts = C.rocksdb_readoptions_create()
-        }
+			}
+			*seqNum = CToGoUint64(retSeqNum)
+		}
+	} else {
+		ropts = C.rocksdb_readoptions_create()
+	}
 
 	return ropts, snapMiss
 }
@@ -406,7 +405,7 @@ func destroyRopts(seqNum uint64, ropts *C.rocksdb_readoptions_t, consistent bool
 	if consistent {
 		C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
 	} else {
-                C.rocksdb_readoptions_destroy(ropts)
+		C.rocksdb_readoptions_destroy(ropts)
 	}
 }
 
@@ -507,7 +506,7 @@ func (*PmdbServerObject) CopyDataToBuffer(ed interface{},
 }
 
 // Get the leader timestamp.
-func PmdbGetLeaderTimeStamp(ts *C.struct_raft_leader_ts) (int) {
-    rc := C.PmdbGetLeaderTimeStamp(ts)
+func PmdbGetLeaderTimeStamp(ts *C.struct_raft_leader_ts) int {
+	rc := C.PmdbGetLeaderTimeStamp(ts)
 	return int(rc)
 }
