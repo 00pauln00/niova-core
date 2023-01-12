@@ -497,7 +497,11 @@ func (*PmdbServerObject) CopyDataToBuffer(ed interface{},
 }
 
 // Get the leader timestamp.
-func PmdbGetLeaderTimeStamp(ts *C.struct_raft_leader_ts) int {
-	rc := C.PmdbGetLeaderTimeStamp(ts)
+func PmdbGetLeaderTimeStamp(ts *float64) int {
+
+	var ts_c C.double
+	rc := C.PmdbGetLeaderTimeStamp(&ts_c)
+
+	*ts = float64(ts_c)
 	return int(rc)
 }

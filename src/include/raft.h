@@ -333,14 +333,8 @@ struct raft_leader_state
     struct raft_follower_info rls_rfi[CTL_SVC_MAX_RAFT_PEERS];
 };
 
-struct raft_leader_ts
-{
-    int64_t     rlts_term; //leader term.
-    time_t      rlts_time; //leader time in seconds.
-};
-
 int
-raft_server_get_leader_ts(struct raft_leader_ts *leader_ts);
+raft_server_get_leader_ts(double *leader_ts);
 
 struct epoll_handle;
 struct raft_instance;
