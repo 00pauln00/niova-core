@@ -57,20 +57,20 @@ func (fpso *FoodpalaceServer) initLogger() {
 
 //Method for InitLeader callback
 func (fpso *FoodpalaceServer) InitLeader() {
-    return;
+	return
 }
 
 //Method for WritePrep callback.
 func (fpso *FoodpalaceServer) WritePrep(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
 	dataBufSz int64, dataReplyBuf unsafe.Pointer, dataReplyBufsz int64,
-    continue_wr unsafe.Pointer) int64 {
-    return 0;
+	continue_wr unsafe.Pointer) int64 {
+	return 0
 }
 
 //Method for Apply callback.
 func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
 	dataBufSz int64, dataReplyBuf unsafe.Pointer, dataReplyBufsz int64,
-    pmdbHandle unsafe.Pointer) int64 {
+	pmdbHandle unsafe.Pointer) int64 {
 
 	data := &foodpalaceapplib.FoodpalaceData{}
 	fpso.pso.Decode(dataBuf, data, dataBufSz)

@@ -228,18 +228,17 @@ func (obj *PmdbClientObj) writeKVAndGetResponse(rncui string, key *C.char,
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
 	rc := C.PmdbObjPutAndGetResponse(obj.pmdb, obj_id, key, c_key_len,
-                                            &obj_stat)
+		&obj_stat)
 
 	if rc != 0 {
 		return nil, fmt.Errorf("PmdbObjPutAndGetResponse(): %d", rc)
 	}
 
-    reply_buf := obj_stat.reply_buffer
-    *reply_size = int64(obj_stat.reply_size)
+	reply_buf := obj_stat.reply_buffer
+	*reply_size = int64(obj_stat.reply_size)
 
 	return reply_buf, nil
 }
-
 
 //Call the pmdb C library function to write the application data.
 func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,

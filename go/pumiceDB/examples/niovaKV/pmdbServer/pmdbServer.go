@@ -121,17 +121,17 @@ type NiovaKVServer struct {
 
 func (nso *NiovaKVServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-    continue_wr unsafe.Pointer) int64 {
-    return 0;
+	continue_wr unsafe.Pointer) int64 {
+	return 0
 }
 
 func (nso *NiovaKVServer) InitLeader() {
-    return;
+	return
 }
 
 func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-    pmdbHandle unsafe.Pointer) int64 {
+	pmdbHandle unsafe.Pointer) int64 {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
