@@ -47,6 +47,11 @@ type leaseHandler struct {
 	jsonFilePath string
 }
 
+type writeObj struct {
+	Request  requestResponseLib.LeaseReq
+	Response requestResponseLib.LeaseStruct
+}
+
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -211,7 +216,7 @@ Description : Handler function for get_lease() operation
 func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) error {
 	var err error
 	var responseBytes []byte
-	var responseObj requestResponseLib.LeaseResp
+	var responseObj requestResponseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
 	//TODO Change name to Wrapper - write_lease()
@@ -221,7 +226,11 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 	}
 
 	log.Info("Write request status - ", responseObj.Status)
-	handler.writeToJson(responseObj)
+	res := writeObj{
+		Request:  requestObj,
+		Response: responseObj,
+	}
+	handler.writeToJson(res)
 
 	return err
 }
@@ -250,7 +259,11 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 	if err != nil {
 		log.Error("Decoding error : ", err)
 	}
-	handler.writeToJson(leaseObj)
+	res := writeObj{
+		Request:  requestObj,
+		Response: leaseObj,
+	}
+	handler.writeToJson(res)
 
 	return err
 }
@@ -267,7 +280,7 @@ Description : Handler function for refresh_lease() operation
 func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseReq) error {
 	var err error
 	var responseBytes []byte
-	var responseObj requestResponseLib.LeaseResp
+	var responseObj requestResponseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
 	err = handler.WriteCallBack(requestObj, rncui, &responseBytes)
@@ -276,7 +289,11 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	}
 
 	log.Info("Refresh request status - ", responseObj.Status)
-	handler.writeToJson(responseObj)
+	res := writeObj{
+		Request:  requestObj,
+		Response: responseObj,
+	}
+	handler.writeToJson(res)
 
 	return err
 }
