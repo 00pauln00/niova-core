@@ -86,7 +86,7 @@ struct PmdbAPI
  * @ts: Pointer to raft_leader_ts for storing the leader timstamp information.
  */
 int
-PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts);
+PmdbGetLeaderTimeStamp(double *ts);
 
 /**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'

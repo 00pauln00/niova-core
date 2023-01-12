@@ -1470,7 +1470,7 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
     return prrq->prrq_roptions;
 }
 
-int PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts)
+int PmdbGetLeaderTimeStamp(double *ts)
 {
     return raft_server_get_leader_ts(ts);
 }
