@@ -19,13 +19,10 @@ import (
 #include <rocksdb/c.h>
 #include <raft/raft_net.h>
 #include <raft/pumice_db_client.h>
-extern ssize_t writePrepCgo(const struct raft_net_client_user_id *, const void *,
-                        size_t, void *, size_t, void *, int *);
-extern ssize_t applyCgo(const struct raft_net_client_user_id *, const void *,
-                     size_t, void *, size_t, void *, void *);
-extern ssize_t readCgo(const struct raft_net_client_user_id *, const void *,
-                    size_t, void *, size_t, void *);
-extern void initLeaderCgo(void *);
+extern ssize_t writePrepCgo(struct pumicedb_cb_cargs *args, int *);
+extern ssize_t applyCgo(struct pumicedb_cb_cargs *args, void *);
+extern ssize_t readCgo(struct pumicedb_cb_cargs *args);
+extern void initLeaderCgo(struct pumicedb_cb_cargs *args);
 */
 import "C"
 
@@ -98,65 +95,59 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 */
 
 //export goWritePrep
-func goWritePrep(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
-	input_buf_sz C.size_t,
-	reply_buf unsafe.Pointer,
-	reply_buf_sz C.size_t,
-	user_data unsafe.Pointer,
+func goWritePrep(args *C.struct_pumicedb_cb_cargs,
 	continue_wr unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
+	gcb := gopointer.Restore(unsafe.Pointer(args.pcb_user_data)).(*PmdbServerObject)
 
 	//Convert buffer size from c data type size_t to golang int64.
-	input_buf_sz_go := CToGoInt64(input_buf_sz)
-	reply_buf_sz_go := CToGoInt64(reply_buf_sz)
+	input_buf_sz_go := CToGoInt64(args.pcb_req_bufsz)
+	reply_buf_sz_go := CToGoInt64(args.pcb_reply_bufsz)
 
 	//Calling the golang Application's WritePrep function.
-	return gcb.PmdbAPI.WritePrep(unsafe.Pointer(app_id), input_buf,
-		input_buf_sz_go, reply_buf, reply_buf_sz_go,
-		continue_wr)
+	return gcb.PmdbAPI.WritePrep(unsafe.Pointer(args.pcb_userid),
+		unsafe.Pointer(args.pcb_req_buf), input_buf_sz_go,
+		unsafe.Pointer(args.pcb_reply_buf), reply_buf_sz_go, continue_wr)
 }
 
 //export goApply
-func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
-	input_buf_sz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-	pmdb_handle unsafe.Pointer, user_data unsafe.Pointer) int64 {
+func goApply(args *C.struct_pumicedb_cb_cargs,
+	pmdb_handle unsafe.Pointer) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
+	gcb := gopointer.Restore(unsafe.Pointer(args.pcb_user_data)).(*PmdbServerObject)
 
 	//Convert buffer size from c data type size_t to golang int64.
-	input_buf_sz_go := CToGoInt64(input_buf_sz)
-	reply_bufsz_go := CToGoInt64(reply_bufsz)
+	input_buf_sz_go := CToGoInt64(args.pcb_req_bufsz)
+	reply_bufsz_go := CToGoInt64(args.pcb_reply_bufsz)
 
 	//Calling the golang Application's Apply function.
-	return gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
-		reply_buf, reply_bufsz_go, pmdb_handle)
+	return gcb.PmdbAPI.Apply(unsafe.Pointer(args.pcb_userid),
+		unsafe.Pointer(args.pcb_req_buf), input_buf_sz_go,
+		unsafe.Pointer(args.pcb_reply_buf), reply_bufsz_go, pmdb_handle)
 }
 
 //export goRead
-func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
-	request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-	user_data unsafe.Pointer) int64 {
+func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
-
+	gcb := gopointer.Restore(unsafe.Pointer(args.pcb_user_data)).(*PmdbServerObject)
 	//Convert buffer size from c data type size_t to golang int64.
-	request_bufsz_go := CToGoInt64(request_bufsz)
-	reply_bufsz_go := CToGoInt64(reply_bufsz)
+	input_bufsz_go := CToGoInt64(args.pcb_req_bufsz)
+	reply_bufsz_go := CToGoInt64(args.pcb_reply_bufsz)
 
 	//Calling the golang Application's Read function.
-	return gcb.PmdbAPI.Read(unsafe.Pointer(app_id), request_buf, request_bufsz_go,
-		reply_buf, reply_bufsz_go)
+	return gcb.PmdbAPI.Read(unsafe.Pointer(args.pcb_userid),
+		unsafe.Pointer(args.pcb_req_buf), input_bufsz_go,
+		unsafe.Pointer(args.pcb_reply_buf), reply_bufsz_go)
 }
 
 //export goInitLeader
-func goInitLeader(user_data unsafe.Pointer) {
+func goInitLeader(args *C.struct_pumicedb_cb_cargs) {
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
+	gcb := gopointer.Restore(unsafe.Pointer(args.pcb_user_data)).(*PmdbServerObject)
 
 	gcb.PmdbAPI.InitLeader()
 }

@@ -20,6 +20,17 @@ typedef ssize_t pumicedb_write_prep_ctx_ssize_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
 typedef void    pumicedb_init_leader_ctx_void_t;
 
+//common arguments for pumicedb callback functions.
+struct pumicedb_cb_cargs
+{
+    const struct raft_net_client_user_id *pcb_userid;
+    const void *pcb_req_buf;
+    size_t      pcb_req_bufsz;
+    char       *pcb_reply_buf;
+    size_t      pcb_reply_bufsz;
+    void       *pcb_user_data;
+};
+
 /**
  * pmdb_apply_sm_handler_t - The apply handler is called from raft after the
  *    local raft instance has learned that a previously unapplied raft entry
@@ -32,11 +43,7 @@ typedef void    pumicedb_init_leader_ctx_void_t;
  *    along with other pumiceDB and raft internal metadata.
  */
 typedef pumicedb_apply_ctx_ssize_t
-(*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
-                           const void *input_buf, size_t input_bufsz,
-                           char *reply_buf, size_t reply_bufsz,
-                           void *pmdb_handle,
-                           void *user_data);
+(*pmdb_apply_sm_handler_t)(struct pumicedb_cb_cargs *args, void *pmdb_handle);
 
 /**
  * pmdb_read_sm_handler_t - performs a general read operation. The app-uuid and
@@ -44,9 +51,7 @@ typedef pumicedb_apply_ctx_ssize_t
  *    the number of bytes used in reply_buf.
  */
 typedef pumicedb_read_ctx_ssize_t
-(*pmdb_read_sm_handler_t)(const struct raft_net_client_user_id *,
-                          const char *request_buf, size_t request_bufsz,
-                          char *reply_buf, size_t reply_bufsz, void *user_data);
+(*pmdb_read_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 /**
  * pmdb_write_prep_sm_handler_t - The write prepare handler is called from
@@ -56,10 +61,8 @@ typedef pumicedb_read_ctx_ssize_t
  * Actual write to rocksDB would happen only through apply handler.
  */
 typedef pumicedb_write_prep_ctx_ssize_t
-(*pmdb_write_prep_sm_handler_t)(const struct raft_net_client_user_id *,
-                                const void *input_buf, size_t input_bufsz,
-                                char *reply_buf, size_t reply_bufsz,
-                                void *user_data, int *continue_wr);
+(*pmdb_write_prep_sm_handler_t)(struct pumicedb_cb_cargs *args,
+                                int *continue_wr);
 
 /**
  *pmdb_init_leader_sm_handler_t - The initialize leader handler is called from
@@ -68,7 +71,7 @@ typedef pumicedb_write_prep_ctx_ssize_t
  * leader.
  */
 typedef pumicedb_init_leader_ctx_void_t
-(*pmdb_init_leader_sm_handler_t)(void *user_data);
+(*pmdb_init_leader_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 struct PmdbAPI
 {
