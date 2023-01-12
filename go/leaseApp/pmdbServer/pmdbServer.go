@@ -90,6 +90,8 @@ func main() {
 		CoalescedWrite: true,
 	}
 
+	lso.leaseMap = make(map[uuid.UUID]*requestResponseLib.LeaseStruct)
+
 	// Start the pmdb server
 	err = lso.pso.Run()
 
