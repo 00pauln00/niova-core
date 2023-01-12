@@ -423,6 +423,7 @@ Return(s) : error
 Description : Call back for PMDB writes requests to HTTP server.
 */
 func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) error {
+	var replySize int64
 	requestObj := requestResponseLib.KVRequest{}
 	dec := gob.NewDecoder(bytes.NewBuffer(request))
 	err := dec.Decode(&requestObj)
@@ -430,7 +431,8 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 		return err
 	}
 
-	err = handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui)
+	_, err = handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui, 0,
+		&replySize)
 
 	var responseObj requestResponseLib.KVResponse
 	if err != nil {

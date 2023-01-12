@@ -428,44 +428,17 @@ pmdb_obj_put_internal(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
  */
 int
 PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-           size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat)
+           size_t kv_size, int get_response,
+           struct pmdb_obj_stat *user_pmdb_stat)
 {
     pmdb_request_opts_t pmdb_req_opt;
 
-    pmdb_request_options_init(&pmdb_req_opt, 1, 0, 0,user_pmdb_stat, NULL, NULL,
+    pmdb_request_options_init(&pmdb_req_opt, 1, 0, get_response,
+                              user_pmdb_stat, NULL, NULL,
                               NULL, 0, pmdb_get_default_request_timeout());
 
     return pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size,
                                  &pmdb_req_opt);
-}
-
-/**
- * PmdbObjPutAndGetReponse - blocking public put (write) routine and get the
- * response back in the reply buffer.
- */
-int
-PmdbObjPutAndGetResponse(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
-                         const char *kv,
-                         size_t kv_size,
-                         struct pmdb_obj_stat *user_pmdb_stat)
-{
-    pmdb_request_opts_t pmdb_req_opt;
-
-    pmdb_request_options_init(&pmdb_req_opt, 1, 0, 1, user_pmdb_stat, NULL,
-                              NULL, NULL, 0, pmdb_get_default_request_timeout());
-
-    int rc = pmdb_obj_put_internal(pmdb, obj_id, kv, kv_size,
-                                   &pmdb_req_opt);
-
-    if (rc)
-    {
-        SIMPLE_LOG_MSG(LL_ERROR, "PmdbObjPutAndGetResponse failed: error: %d",
-                       rc);
-        return rc;
-    }
-
-    //return pmdb_stat.reply_buffer;
-    return 0;
 }
 
 /**

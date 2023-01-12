@@ -232,7 +232,9 @@ func (handler *proxyHandler) start_SerfAgent() error {
 func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) error {
 	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
-	err := handler.pmdbClientObj.WriteEncoded(request, rncui)
+	var replySize int64
+
+	_, err := handler.pmdbClientObj.WriteEncoded(request, rncui, 0, &replySize)
 	if err != nil {
 		responseObj := requestResponseLib.KVResponse{
 			Status: 1,
