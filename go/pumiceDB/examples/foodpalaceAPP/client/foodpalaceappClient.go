@@ -338,9 +338,12 @@ func (woexc *writeOne) exec() error {
 
 	var errorMsg error
 	var wrStrdtCmd foodpalaceRqOp
+	var replySize int64
+
 	//Perform write operation.
 	fmt.Println("\n", woexc.rq.foodpalaceData, woexc.args[1])
-	err := woexc.rq.clientObj.Write(woexc.rq.foodpalaceData, woexc.args[1])
+	_, err := woexc.rq.clientObj.Write(woexc.rq.foodpalaceData, woexc.args[1], 0,
+		&replySize)
 	if err != nil {
 		log.Error("Write key-value failed : ", err)
 		wrStrdtCmd.Status = -1
@@ -433,6 +436,8 @@ func (wme *writeMulti) exec() error {
 
 	var excerr error
 	var wrStrdata = &foodpalaceRqOp{}
+	var replySize int64
+
 	//Create a file for storing keys and rncui.
 	os.Create("keyRncuiData.txt")
 
@@ -457,7 +462,7 @@ func (wme *writeMulti) exec() error {
 		}
 		wme.rq.key = restIdStr
 		wme.rq.rncui = rncui
-		err := wme.rq.clientObj.Write(wme.multiReqdata[i], rncui)
+		_, err := wme.rq.clientObj.Write(wme.multiReqdata[i], rncui, 0, &replySize)
 		if err != nil {
 			log.Error("Pmdb Write failed.", err)
 			wrStrdata.Status = -1

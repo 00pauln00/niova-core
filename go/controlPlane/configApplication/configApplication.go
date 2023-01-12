@@ -208,9 +208,11 @@ func (handler *configApplication) Write(key string, data []byte) error {
 	request.Value = data
 	request.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 	var requestBytes bytes.Buffer
+	var replySize int64
+
 	enc := gob.NewEncoder(&requestBytes)
 	enc.Encode(request)
-	err := handler.pmdbClientObj.WriteEncoded(requestBytes.Bytes(), request.Rncui)
+	_, err := handler.pmdbClientObj.WriteEncoded(requestBytes.Bytes(), request.Rncui, 0, &replySize)
 	return err
 }
 

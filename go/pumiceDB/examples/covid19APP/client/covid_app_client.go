@@ -513,10 +513,11 @@ func (wrObj *wrOne) exec() error {
 
 	var errMsg error
 	var wrData = &covidVaxData{}
+	var replySize int64
 
 	//Perform write Operation.
-	err := wrObj.op.cliObj.Write(wrObj.op.covidData,
-		wrObj.op.rncui)
+	_, err := wrObj.op.cliObj.Write(wrObj.op.covidData,
+		wrObj.op.rncui, 0, &replySize)
 
 	if err != nil {
 		errMsg = errors.New("exec() method failed for WriteOne.")
@@ -695,12 +696,13 @@ func (wmObj *wrMul) exec() error {
 
 	var wErr error
 	var wmData = &covidVaxData{}
+	var replySize int64
 
 	for csvStruct := range writeMultiMap {
 		rncui := getRncui(keyRncuiMap, &csvStruct)
 		wmObj.op.key = csvStruct.Location
 		wmObj.op.rncui = rncui
-		err := wmObj.op.cliObj.Write(&csvStruct, rncui)
+		_, err := wmObj.op.cliObj.Write(&csvStruct, rncui, 0, &replySize)
 		if err != nil {
 			wmData.Status = -1
 			log.Info("Write key-value failed : ", err)
