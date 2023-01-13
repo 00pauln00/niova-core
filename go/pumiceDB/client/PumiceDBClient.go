@@ -94,20 +94,18 @@ func (obj *PmdbClientObj) WriteEncoded(request []byte, rncui string) error {
 	return obj.writeKV(rncui, encodedRequest, requestLen)
 }
 
-func (obj *PmdbClientObj) WriteEncodedAndGetResponse(request []byte, rncui string, response *[]byte) error {
+func (obj *PmdbClientObj) WriteEncodedAndGetResponse(request []byte, rncui string, getResponse int, response *[]byte) error {
 	var reply_size int64
 	var wr_err error
 	var reply_buff unsafe.Pointer
-	fmt.Println("++++++++++++++++++++++++++++++++++++++++")
-	fmt.Println("Called WriteEncodedAndGetResponse")
-	fmt.Println("++++++++++++++++++++++++++++++++++++++++")
 
 	requestLen := int64(len(request))
 	//Convert to unsafe pointer (void * for C function)
 	encodedData := unsafe.Pointer(&request[0])
 	encodedRequest := (*C.char)(encodedData)
+	getResponse_c := (C.int)(getResponse)
 
-	reply_buff, wr_err = obj.writeKVAndGetResponse(rncui, encodedRequest, requestLen, &reply_size)
+	reply_buff, wr_err = obj.writeKV(rncui, encodedRequest, requestLen, getResponse_c, &reply_size)
 	if wr_err != nil {
 		return wr_err
 	}

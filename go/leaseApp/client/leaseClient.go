@@ -155,14 +155,14 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 
 /*
 Structure : leaseHandler
-Method	  : WriteCallBack()
+Method	  : WriteLease()
 Arguments : LeaseReq, rncui, *LeaseResp
 Return(s) : error
 
 Description : Wrapper function for WriteEncoded() function
 */
 
-func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+func (handler *leaseHandler) WriteLease(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -171,14 +171,14 @@ func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseRe
 		log.Error("Encoding error : ", err)
 		return err
 	}
-	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, response)
+	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, 1, response)
 	//TODO Changes to accomodate new C API callback
-	var responseObj requestResponseLib.LeaseResp
+	var responseObj requestResponseLib.LeaseStruct
 	if err != nil {
-		responseObj.Status = "Failed"
+		responseObj.Status = -1 //TODO set errno
 		log.Error(err)
 	} else {
-		responseObj.Status = "Success"
+		responseObj.Status = 0
 	}
 
 	return err
@@ -186,13 +186,13 @@ func (handler *leaseHandler) WriteCallBack(requestObj requestResponseLib.LeaseRe
 
 /*
 Structure : leaseHandler
-Method	  : ReadCallBack()
+Method	  : ReadLease()
 Arguments : LeaseReq, rncui, *response
 Return(s) : error
 
 Description : Wrapper function for ReadEncoded() function
 */
-func (handler *leaseHandler) ReadCallBack(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+func (handler *leaseHandler) ReadLease(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -220,7 +220,7 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 
 	rncui := handler.getRNCUI()
 	//TODO Change name to Wrapper - write_lease()
-	err = handler.WriteCallBack(requestObj, rncui, &responseBytes)
+	err = handler.WriteLease(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
@@ -248,7 +248,7 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 	var err error
 	var responseBytes []byte
 
-	err = handler.ReadCallBack(requestObj, "", &responseBytes)
+	err = handler.ReadLease(requestObj, "", &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
@@ -283,7 +283,7 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	var responseObj requestResponseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
-	err = handler.WriteCallBack(requestObj, rncui, &responseBytes)
+	err = handler.WriteLease(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
