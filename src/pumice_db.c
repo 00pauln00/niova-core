@@ -965,7 +965,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
 
             else // Request sequence test passes, will enter the raft log.
             {
-                int continue_wr = 0;
+                int continue_wr = 1;
                 rc = pmdb_write_prep_cb(rncr, &continue_wr);
                 // If write_prep return success and allow to continue raft write.
                 if (!rc && continue_wr)
