@@ -177,7 +177,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	//TODO: GetCurrentHybridTime() def this in pumiceDBServer.go
 	var currentTime float64
 	PumiceDBServer.PmdbGetLeaderTimeStamp(&currentTime)
-	
+
 	//Check if its a refresh request
 	if Request.Operation == requestResponseLib.REFRESH {
 		//Copy the encoded result in replyBuffer
@@ -224,7 +224,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 			Status:   INPROGRESS,
 		}
 	}
-	
+
 	log.Info("Map after write prep : ", lso.leaseMap)
 	_, copyErr = lso.pso.CopyDataToBuffer(byte(1), continue_wr)
 	if copyErr != nil {
@@ -238,6 +238,7 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	inputBufSize int64, replyBuf unsafe.Pointer, replySize int64, pmdbHandle unsafe.Pointer) int64 {
 	var valueBytes bytes.Buffer
 	var copyErr error
+	var replySizeRc int64
 
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
@@ -256,10 +257,10 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	leaseObj, isPresent := lso.leaseMap[applyLeaseReq.Resource]
 	if !isPresent {
 		leaseObj = &requestResponseLib.LeaseStruct{
-                        Resource: applyLeaseReq.Resource,
-                        Client:   applyLeaseReq.Client,
-                        Status:   GRANTED,
-                }
+			Resource: applyLeaseReq.Resource,
+			Client:   applyLeaseReq.Client,
+			Status:   GRANTED,
+		}
 		lso.leaseMap[applyLeaseReq.Resource] = leaseObj
 	}
 	isLeaderFlag := PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
@@ -282,15 +283,16 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		int64(valLen), colmfamily)
 
 	//Copy the encoded result in replyBuffer
-	if isLeaderFlag == 0 {
-		log.Info("(Apply) lease obj ",leaseObj, *leaseObj)
-		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
+	replySizeRc = 0
+	if isLeaderFlag == 0 && replyBuf != nil {
+		log.Info("(Apply) lease obj ", leaseObj, *leaseObj)
+		replySizeRc, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
 		}
 	}
-	return int64(rc)
+	return replySizeRc
 }
 
 func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
