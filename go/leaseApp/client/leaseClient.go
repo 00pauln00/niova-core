@@ -173,13 +173,6 @@ func (handler *leaseHandler) WriteLease(requestObj requestResponseLib.LeaseReq, 
 	}
 	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, 1, response)
 	//TODO Changes to accomodate new C API callback
-	var responseObj requestResponseLib.LeaseStruct
-	if err != nil {
-		responseObj.Status = -1 //TODO set errno
-		log.Error(err)
-	} else {
-		responseObj.Status = 0
-	}
 
 	return err
 }
@@ -225,6 +218,9 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 		log.Error(err)
 	}
 
+	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	err = dec.Decode(&responseObj)
+
 	log.Info("Write request status - ", responseObj.Status)
 	res := writeObj{
 		Request:  requestObj,
@@ -258,6 +254,9 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 	err = dec.Decode(&leaseObj)
 	if err != nil {
 		log.Error("Decoding error : ", err)
+		leaseObj.Status = -1
+	} else {
+		leaseObj.Status = 0
 	}
 	res := writeObj{
 		Request:  requestObj,
@@ -335,10 +334,6 @@ func main() {
 		// get lease
 		//TODO Use new C API to do get_lease and return structure
 		err := leaseObjHandler.get_lease(requestObj)
-		if err != nil {
-			log.Error(err)
-		}
-		err = leaseObjHandler.lookup_lease(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
