@@ -139,6 +139,13 @@ func addMinorToHybrid(current_time float64, add_minor int) float64 {
 	return f
 }
 
+
+func getMinor(time float64) int {
+	stringTime := fmt.Sprintf("%f", time)
+        minorComponent, _ := strconv.Atoi(strings.Split(stringTime, ".")[1])
+	return minorComponent
+}
+
 func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime float64, operation int) bool {
 	if entry.Status == INPROGRESS {
 		return false
@@ -335,6 +342,11 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	
 
 	if (isPresent) {
+		oldTS := getMinor(leaseObj.TimeStamp)
+		//Leader happens only in leader
+		PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
+		newTS := getMinor(leaseObj.TimeStamp)
+		leaseObj.TTL = newTS-oldTS
 		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
                 if copyErr != nil {
                         log.Error("Failed to Copy result in the buffer: %s", copyErr)
