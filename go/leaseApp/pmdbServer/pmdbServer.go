@@ -235,7 +235,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 }
 
 func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, replySize int64, pmdbHandle unsafe.Pointer) int64 {
+	inputBufSize int64, replyBuf unsafe.Pointer, maxreplySize int64, pmdbHandle unsafe.Pointer) int64 {
 	var valueBytes bytes.Buffer
 	var copyErr error
 	var replySizeRc int64
@@ -278,9 +278,14 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Length of value.
 	valLen := len(byteToStr)
 
-	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Client.String(),
+	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Resource.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
+	
+	if rc < 0 {
+		log.Error("Value not written to rocksdb")
+		return -1
+	}
 
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
@@ -309,35 +314,47 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", reqStruct.Client)
+	log.Trace("Key passed by client: ", reqStruct.Resource)
 
-	keyLen := len(reqStruct.Client.String())
+	keyLen := len(reqStruct.Resource.String())
 
 	//Update timestamp
+	leaseObj, isPresent := lso.leaseMap[reqStruct.Resource]
 
+
+	var readResult []byte
+	var readErr error
+	if (!isPresent) {
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	readResult, readErr := lso.pso.ReadKV(appId, reqStruct.Client.String(),
-		int64(keyLen), colmfamily)
+		readResult, readErr = lso.pso.ReadKV(appId, reqStruct.Client.String(),
+			int64(keyLen), colmfamily)
+	}
 	var valType []byte
 	var replySize int64
 	var copyErr error
+	
 
-	if readErr == nil {
+	if (isPresent) {
+		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+	} else if (readErr == nil) {
 		valType = readResult
 		inputVal, _ := uuid.Parse(string(valType))
 
-		leaseObj := requestResponseLib.LeaseStruct{}
-		leaseObj.Status = 1
+		leaseObjRocksDB := requestResponseLib.LeaseStruct{}
 		dec := gob.NewDecoder(bytes.NewBuffer(readResult))
-		err := dec.Decode(&leaseObj)
+		err := dec.Decode(&leaseObjRocksDB)
 		if err != nil {
 			log.Error(err)
 		}
-		fmt.Println("YYYY - ", leaseObj)
+		fmt.Println("YYYY - ", leaseObjRocksDB)
 		log.Trace("Input value after read request:", inputVal)
 
 		//Copy the encoded result in replyBuffer
-		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
+		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObjRocksDB, replyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
