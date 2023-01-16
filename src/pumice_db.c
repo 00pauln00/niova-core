@@ -1280,6 +1280,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     const size_t max_reply_size =
         rncr->rncr_reply_data_max_size - PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
     struct pumicedb_cb_cargs apply_args;
+    struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
     pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
                           pmdb_req->pmdbrm_data_size, pmdb_reply ?
@@ -1302,9 +1303,14 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     {
         if (rncr->rncr_is_leader)
         {
-            pmdb_reply->pmdbrm_data_size = apply_rc >= 0 ? apply_rc : 0;
+            // Add the reply size to the RPC reply
+            reply->rcrm_data_size += (uint32_t)apply_rc;
+
+            pmdb_reply->pmdbrm_data_size = apply_rc >= 0 ?
+                                           (uint32_t)apply_rc : 0;
             // Pass in ID_ANY_64bit since this is a reply.
-            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc < 0 ? apply_rc: 0);
+            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit,
+                              apply_rc < 0 ? apply_rc: 0);
         }
         pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
         pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(rncr);
