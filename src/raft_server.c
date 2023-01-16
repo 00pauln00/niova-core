@@ -5026,8 +5026,22 @@ raft_server_state_machine_apply(struct raft_instance *ri)
           */
          if (!rc_arr[i] && raft_instance_is_leader(ri) &&
              raft_net_client_request_handle_has_reply_info(&rncr[i]))
-            raft_server_client_reply_init(
-                ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
+         {
+             /* rncr and rcrm_data_size gets populated in
+              * ri_server_sm_request_cb. raft_server_client_reply_init()
+              * memset's rcrn_reply which will overwrite the rcrm_data_size
+              * as well. So store the rcrm_data_size value in temporary variable
+              * first and restore it again.
+              */
+             struct raft_net_client_request_handle *rncr_ptr = &rncr[i];
+             struct raft_client_rpc_msg *reply = rncr_ptr->rncr_reply;
+             uint32_t orig_rcrm_data_size = reply->rcrm_data_size;
+
+             raft_server_client_reply_init(
+                 ri, &rncr[i], RAFT_CLIENT_RPC_MSG_TYPE_REPLY);
+
+             reply->rcrm_data_size = orig_rcrm_data_size;
+          }
     }
 
     // All rncr entries were using single ws structure.
