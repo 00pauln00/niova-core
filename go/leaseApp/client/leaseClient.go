@@ -37,18 +37,21 @@ var (
 )
 
 type leaseHandler struct {
-	//client        uuid.UUID
-	//resource      uuid.UUID
-	raftUUID uuid.UUID
-	//ttl           time.Duration
+	raftUUID      uuid.UUID
 	pmdbClientObj *pmdbClient.PmdbClientObj
-	//leaseState    state
-	//timeStamp     string
-	jsonFilePath string
+	jsonFilePath  string
 }
 
+// will be used to write to json file
+type JsonLeaseReq struct {
+	Client    uuid.UUID
+	Resource  uuid.UUID
+	Operation string
+}
+
+// will be used to write req and res to json file
 type writeObj struct {
-	Request  requestResponseLib.LeaseReq
+	Request  JsonLeaseReq
 	Response requestResponseLib.LeaseStruct
 }
 
@@ -66,6 +69,20 @@ func (handler *leaseHandler) getRNCUI() string {
 	idq := atomic.AddUint64(&handler.pmdbClientObj.WriteSeqNo, uint64(1))
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
 	return rncui
+}
+
+func getStringOperation(op int) string {
+	switch op {
+	case requestResponseLib.GET:
+		return "GET"
+	case requestResponseLib.PUT:
+		return "PUT"
+	case requestResponseLib.LOOKUP:
+		return "LOOKUP"
+	case requestResponseLib.REFRESH:
+		return "RESFRESH"
+	}
+	return "UNKNOWN"
 }
 
 /*
@@ -222,10 +239,17 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 	err = dec.Decode(&responseObj)
 
 	log.Info("Write request status - ", responseObj.Status)
+	req := JsonLeaseReq{
+		Client:    requestObj.Client,
+		Resource:  requestobj.Resource,
+		Operation: getStringOperation(requestObj.Operation),
+	}
+
 	res := writeObj{
-		Request:  requestObj,
+		Request:  req,
 		Response: responseObj,
 	}
+
 	handler.writeToJson(res)
 
 	return err
@@ -258,8 +282,14 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 	} else {
 		leaseObj.Status = 0
 	}
+	req := JsonLeaseReq{
+		Client:    requestObj.Client,
+		Resource:  requestobj.Resource,
+		Operation: getStringOperation(requestObj.Operation),
+	}
+
 	res := writeObj{
-		Request:  requestObj,
+		Request:  req,
 		Response: leaseObj,
 	}
 	handler.writeToJson(res)
@@ -288,8 +318,13 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	}
 
 	log.Info("Refresh request status - ", responseObj.Status)
+	req := JsonLeaseReq{
+		Client:    requestObj.Client,
+		Resource:  requestobj.Resource,
+		Operation: getStringOperation(requestObj.Operation),
+	}
 	res := writeObj{
-		Request:  requestObj,
+		Request:  req,
 		Response: responseObj,
 	}
 	handler.writeToJson(res)
