@@ -189,7 +189,6 @@ func (handler *leaseHandler) WriteLease(requestObj requestResponseLib.LeaseReq, 
 		return err
 	}
 	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, 1, response)
-	//TODO Changes to accomodate new C API callback
 
 	return err
 }
@@ -229,7 +228,7 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 	var responseObj requestResponseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
-	//TODO Change name to Wrapper - write_lease()
+
 	err = handler.WriteLease(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
@@ -363,11 +362,9 @@ func main() {
 		log.Error(err)
 		os.Exit(-1)
 	}
-	//TODO Use LeaseReq.Operation
 	switch requestObj.Operation {
 	case requestResponseLib.GET:
 		// get lease
-		//TODO Use new C API to do get_lease and return structure
 		err := leaseObjHandler.get_lease(requestObj)
 		if err != nil {
 			log.Error(err)
