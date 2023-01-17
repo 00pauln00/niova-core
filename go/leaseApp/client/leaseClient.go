@@ -241,7 +241,7 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 	log.Info("Write request status - ", responseObj.Status)
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
-		Resource:  requestobj.Resource,
+		Resource:  requestObj.Resource,
 		Operation: getStringOperation(requestObj.Operation),
 	}
 
@@ -284,7 +284,7 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 	}
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
-		Resource:  requestobj.Resource,
+		Resource:  requestObj.Resource,
 		Operation: getStringOperation(requestObj.Operation),
 	}
 
@@ -320,7 +320,7 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	log.Info("Refresh request status - ", responseObj.Status)
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
-		Resource:  requestobj.Resource,
+		Resource:  requestObj.Resource,
 		Operation: getStringOperation(requestObj.Operation),
 	}
 	res := writeObj{
