@@ -1282,16 +1282,14 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     struct pumicedb_cb_cargs apply_args;
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
 
+    if (rncr->rncr_is_leader)
+        pmdb_reply = (struct pmdb_msg *)reply->rcrm_data;
+
     pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
                           pmdb_req->pmdbrm_data_size, pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
                           max_reply_size, pmdb_user_data, &apply_args);
 
-    if (rncr->rncr_is_leader)
-    {
-        pmdb_reply =
-                RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
-    }
 
     // Call into the application so it may emplace its own KVs.
     ssize_t apply_rc =
