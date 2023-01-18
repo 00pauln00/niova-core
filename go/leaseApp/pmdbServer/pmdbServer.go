@@ -123,9 +123,9 @@ func parseArgs() (*leaseServer, error) {
 	return lso, err
 }
 
-func addMinorToHybrid(current_time PumiceDBServer.PmdbLeaderTS, add_minor int) int64 {
+func addMinorToHybrid(current_time requestResponseLib.LeaderTS, add_minor int) int64 {
 	//TODO: Validate this func
-	return current_time.LeaderTime + add_minor
+	return current_time.LeaderTime + int64(add_minor)
 }
 
 
@@ -135,7 +135,7 @@ func getMinor(time float64) int {
 	return minorComponent
 }
 
-func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime PumiceDBServer.PmdbLeaderTS, operation int) bool {
+func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime requestResponseLib.LeaderTS, operation int) bool {
 	if entry.LeaseState == requestResponseLib.INPROGRESS {
 		return false
 	}
@@ -152,6 +152,14 @@ func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, cu
 		}
 	}
 	return true
+}
+
+func (lso *leaseServer) GetLeaderTimeStamp(ts *requestResponseLib.LeaderTS) int {
+	var major, minor int64 
+	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&major, &minor)
+	ts.LeaderTerm = major
+	ts.LeaderTime = minor
+	return rc
 }
 
 func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
@@ -171,8 +179,8 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	//Get current hybrid time
 	//TODO: GetCurrentHybridTime() def this in pumiceDBServer.go
-	var currentTime PumiceDBServer.PmdbLeaderTS
-	PumiceDBServer.PmdbGetLeaderTimeStamp(&currentTime)
+	var currentTime requestResponseLib.LeaderTS
+	lso.GetLeaderTimeStamp(&currentTime)
 
 	//Check if its a refresh request
 	if Request.Operation == requestResponseLib.REFRESH {
@@ -259,7 +267,7 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		lso.leaseMap[applyLeaseReq.Resource] = leaseObj
 	}
 	leaseObj.LeaseState = requestResponseLib.GRANTED
-	isLeaderFlag := PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
+	isLeaderFlag := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 	leaseObj.TTL = ttlDefault
 
 	enc := gob.NewEncoder(&valueBytes)
@@ -336,8 +344,9 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	if (isPresent) {
 		oldTS := leaseObj.TimeStamp
 		//Leader happens only in leader
-		PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
-		leaseObj.TTL = leaseObj.TimeStamp.LeaderTime - oldTS.LeaderTime
+		lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+		//TODO: Possible wrap around
+		leaseObj.TTL = int(leaseObj.TimeStamp.LeaderTime - oldTS.LeaderTime)
 		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
                 if copyErr != nil {
                         log.Error("Failed to Copy result in the buffer: %s", copyErr)

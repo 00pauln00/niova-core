@@ -30,7 +30,7 @@ type LeaseResp struct {
 	Timestamp string
 }
 
-type PmdbLeaderTS struct {
+type LeaderTS struct {
         LeaderTerm    int64
         LeaderTime    int64
 }
@@ -41,5 +41,5 @@ type LeaseStruct struct {
 	Status     int
 	LeaseState int
 	TTL        int
-	TimeStamp  PmdbLeaderTS
+	TimeStamp  LeaderTS
 }
