@@ -147,10 +147,10 @@ func getMinor(time float64) int {
 }
 
 func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime float64, operation int) bool {
-	if entry.Status == INPROGRESS {
+	if entry.LeaseState == requestResponseLib.INPROGRESS {
 		return false
 	}
-	leaseExpiryTS := addMinorToHybrid(entry.TimeStamp, ttlDefault)
+	leaseExpiryTS := addMinorToHybrid(entry.TimeStamp, entry.TTL)
 
 	//Check if existing lease is valid
 	stillValid := leaseExpiryTS >= currentTime
@@ -228,7 +228,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		lso.leaseMap[Request.Resource] = &requestResponseLib.LeaseStruct{
 			Resource: Request.Resource,
 			Client:   Request.Client,
-			Status:   INPROGRESS,
+			LeaseState:   requestResponseLib.INPROGRESS,
 		}
 	}
 
@@ -266,10 +266,10 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		leaseObj = &requestResponseLib.LeaseStruct{
 			Resource: applyLeaseReq.Resource,
 			Client:   applyLeaseReq.Client,
-			Status:   GRANTED,
 		}
 		lso.leaseMap[applyLeaseReq.Resource] = leaseObj
 	}
+	leaseObj.LeaseState = requestResponseLib.GRANTED
 	isLeaderFlag := PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
 	leaseObj.TTL = ttlDefault
 
@@ -331,22 +331,25 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 
 	var readResult []byte
 	var readErr error
+
+	//Read from rocksDB only if its not present in MAP
 	if (!isPresent) {
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
 		readResult, readErr = lso.pso.ReadKV(appId, reqStruct.Client.String(),
 			int64(keyLen), colmfamily)
 	}
+
+
 	var valType []byte
 	var replySize int64
 	var copyErr error
 	
-
 	if (isPresent) {
 		oldTS := getMinor(leaseObj.TimeStamp)
 		//Leader happens only in leader
 		PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
 		newTS := getMinor(leaseObj.TimeStamp)
-		leaseObj.TTL = newTS-oldTS
+		leaseObj.TTL = newTS - oldTS
 		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
                 if copyErr != nil {
                         log.Error("Failed to Copy result in the buffer: %s", copyErr)

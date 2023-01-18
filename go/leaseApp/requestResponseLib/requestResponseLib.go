@@ -9,6 +9,11 @@ const (
 	PUT         = 1
 	LOOKUP      = 2
 	REFRESH     = 3
+	GRANTED     = 0
+	INPROGRESS  = 1
+	EXPIRED     = 2
+	AIU	    = 3
+	INVALID     = 4
 )
 
 type LeaseReq struct {
@@ -26,9 +31,10 @@ type LeaseResp struct {
 }
 
 type LeaseStruct struct {
-	Resource  uuid.UUID
-	Client    uuid.UUID
-	Status    int
-	TTL       int
-	TimeStamp float64
+	Resource   uuid.UUID
+	Client     uuid.UUID
+	Status     int
+	LeaseState int
+	TTL        int
+	TimeStamp  float64
 }
