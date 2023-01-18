@@ -88,6 +88,12 @@ typedef void                             raft_server_epoll_t;
 typedef raft_server_epoll_sm_apply_t     raft_server_sm_apply_cb_t;
 typedef raft_server_epoll_sm_apply_int_t raft_server_sm_apply_cb_int_t;
 
+struct raft_leader_ts
+{
+    int64_t rlts_term;
+    int64_t rlts_time;
+};
+
 enum raft_rpc_msg_type
 {
     RAFT_RPC_MSG_TYPE_INVALID                = 0,
@@ -334,7 +340,7 @@ struct raft_leader_state
 };
 
 int
-raft_server_get_leader_ts(double *leader_ts);
+raft_server_get_leader_ts(struct raft_leader_ts *leader_ts);
 
 struct epoll_handle;
 struct raft_instance;

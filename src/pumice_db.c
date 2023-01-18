@@ -1410,6 +1410,7 @@ pmdb_ref_tree_release_all(void)
     pmdb_cowr_sub_app_release_all();
     pmdb_range_read_req_release_all();
 }
+
 static void
 pmdb_prepare_leader(void)
 {
@@ -1474,7 +1475,7 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
     return prrq->prrq_roptions;
 }
 
-int PmdbGetLeaderTimeStamp(double *ts)
+int PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts)
 {
     return raft_server_get_leader_ts(ts);
 }
