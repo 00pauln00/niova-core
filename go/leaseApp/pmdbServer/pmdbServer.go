@@ -34,12 +34,6 @@ var ttlDefault = 60
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
 
-const (
-	INPROGRESS int = 0
-	GRANTED        = 1
-	EXPIRED        = 2
-)
-
 type leaseServer struct {
 	raftUUID string
 	peerUUID string
@@ -129,14 +123,9 @@ func parseArgs() (*leaseServer, error) {
 	return lso, err
 }
 
-func addMinorToHybrid(current_time float64, add_minor int) float64 {
+func addMinorToHybrid(current_time PumiceDBServer.PmdbLeaderTS, add_minor int) int64 {
 	//TODO: Validate this func
-	stringTime := fmt.Sprintf("%f", current_time)
-	minorComponent, _ := strconv.Atoi(strings.Split(stringTime, ".")[1])
-	newMinor := minorComponent + add_minor
-	updatedTime := strings.Split(stringTime, ".")[0] + "." + string(newMinor)
-	f, _ := strconv.ParseFloat(updatedTime, 64)
-	return f
+	return current_time.LeaderTime + add_minor
 }
 
 
@@ -146,14 +135,14 @@ func getMinor(time float64) int {
 	return minorComponent
 }
 
-func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime float64, operation int) bool {
+func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, currentTime PumiceDBServer.PmdbLeaderTS, operation int) bool {
 	if entry.LeaseState == requestResponseLib.INPROGRESS {
 		return false
 	}
 	leaseExpiryTS := addMinorToHybrid(entry.TimeStamp, entry.TTL)
 
-	//Check if existing lease is valid
-	stillValid := leaseExpiryTS >= currentTime
+	//Check if existing lease is valid; by comparing only the minor
+	stillValid := leaseExpiryTS >= currentTime.LeaderTime
 	//If valid, Check if client uuid is same and operation is refresh
 	if stillValid {
 		if (operation == requestResponseLib.REFRESH) && (clientUUID == entry.Client) {
@@ -182,7 +171,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	//Get current hybrid time
 	//TODO: GetCurrentHybridTime() def this in pumiceDBServer.go
-	var currentTime float64
+	var currentTime PumiceDBServer.PmdbLeaderTS
 	PumiceDBServer.PmdbGetLeaderTimeStamp(&currentTime)
 
 	//Check if its a refresh request
@@ -345,11 +334,10 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	var copyErr error
 	
 	if (isPresent) {
-		oldTS := getMinor(leaseObj.TimeStamp)
+		oldTS := leaseObj.TimeStamp
 		//Leader happens only in leader
 		PumiceDBServer.PmdbGetLeaderTimeStamp(&leaseObj.TimeStamp)
-		newTS := getMinor(leaseObj.TimeStamp)
-		leaseObj.TTL = newTS - oldTS
+		leaseObj.TTL = leaseObj.TimeStamp.LeaderTime - oldTS.LeaderTime
 		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
                 if copyErr != nil {
                         log.Error("Failed to Copy result in the buffer: %s", copyErr)

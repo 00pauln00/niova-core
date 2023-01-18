@@ -30,11 +30,16 @@ type LeaseResp struct {
 	Timestamp string
 }
 
+type PmdbLeaderTS struct {
+        LeaderTerm    int64
+        LeaderTime    int64
+}
+
 type LeaseStruct struct {
 	Resource   uuid.UUID
 	Client     uuid.UUID
 	Status     int
 	LeaseState int
 	TTL        int
-	TimeStamp  float64
+	TimeStamp  PmdbLeaderTS
 }
