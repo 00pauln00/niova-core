@@ -6312,19 +6312,15 @@ raft_server_instance_run(const char *raft_uuid_str,
 }
 
 int
-raft_server_get_leader_ts(double *leader_ts)
+raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
 {
     struct raft_instance *ri = raft_net_get_instance();
 
     if (!raft_instance_is_leader(ri) || !leader_ts)
         return -EINVAL;
 
-    char ts_buf[512];
-
-    sprintf(ts_buf, "%lu.%lu", ri->ri_log_hdr.rlh_term,
-                               ri->ri_leader.rls_leader_accumulated.tv_sec);
-
-    *leader_ts = atof(ts_buf);
+    leader_ts->rlts_term = ri->ri_log_hdr.rlh_term;
+    leader_ts->rlts_time = ri->ri_leader.rls_leader_accumulated.tv_sec;
 
     return 0;
 }

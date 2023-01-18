@@ -46,6 +46,11 @@ type PmdbServerObject struct {
 	CoalescedWrite bool
 }
 
+type PmdbLeaderTS struct {
+	LeaderTerm    int64
+	LeaderTime    int64
+}
+
 type charsSlice []*C.char
 
 /* Typecast Go string to C String */
@@ -497,11 +502,16 @@ func (*PmdbServerObject) CopyDataToBuffer(ed interface{},
 }
 
 // Get the leader timestamp.
-func PmdbGetLeaderTimeStamp(ts *float64) int {
+func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) int {
 
-	var ts_c C.double
+	var ts_c C.struct_raft_leader_ts
 	rc := C.PmdbGetLeaderTimeStamp(&ts_c)
 
-	*ts = float64(ts_c)
-	return int(rc)
+	rc_go := int(rc)
+	if rc_go == 0 {
+		ts.LeaderTerm = int64(ts_c.rlts_term)
+		ts.LeaderTime = int64(ts_c.rlts_time)
+	}
+
+	return rc_go
 }
