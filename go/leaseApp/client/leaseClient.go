@@ -255,7 +255,7 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 
 	log.Info("Write request status - ", responseObj.Status)
 	res := prepareJsonResponse(requestObj, responseObj)
-	handler.writeToJson(res, handler.logFilePath)
+	handler.writeToJson(res, handler.jsonFilePath)
 
 	return err
 }
@@ -288,7 +288,7 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 		leaseObj.Status = 0
 	}
 	res := prepareJsonResponse(requestObj, leaseObj)
-	handler.writeToJson(res, handler.logFilePath)
+	handler.writeToJson(res, handler.jsonFilePath)
 
 	return err
 }
@@ -316,7 +316,7 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	log.Info("Refresh request status - ", responseObj.Status)
 
 	res := prepareJsonResponse(requestObj, responseObj)
-	handler.writeToJson(res, handler.logFilePath)
+	handler.writeToJson(res, handler.jsonFilePath)
 
 	return err
 }
