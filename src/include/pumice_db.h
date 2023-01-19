@@ -28,6 +28,8 @@ struct pumicedb_cb_cargs
     size_t      pcb_req_bufsz;
     char       *pcb_reply_buf;
     size_t      pcb_reply_bufsz;
+    int        *pcb_continue_wr;
+    void       *pcb_pmdb_handler;
     void       *pcb_user_data;
 };
 
@@ -43,7 +45,7 @@ struct pumicedb_cb_cargs
  *    along with other pumiceDB and raft internal metadata.
  */
 typedef pumicedb_apply_ctx_ssize_t
-(*pmdb_apply_sm_handler_t)(struct pumicedb_cb_cargs *args, void *pmdb_handle);
+(*pmdb_apply_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 /**
  * pmdb_read_sm_handler_t - performs a general read operation. The app-uuid and
@@ -61,8 +63,7 @@ typedef pumicedb_read_ctx_ssize_t
  * Actual write to rocksDB would happen only through apply handler.
  */
 typedef pumicedb_write_prep_ctx_ssize_t
-(*pmdb_write_prep_sm_handler_t)(struct pumicedb_cb_cargs *args,
-                                int *continue_wr);
+(*pmdb_write_prep_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 /**
  *pmdb_init_leader_sm_handler_t - The initialize leader handler is called from
