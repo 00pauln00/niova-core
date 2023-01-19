@@ -798,7 +798,7 @@ static void
 pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
                       const void *req_buf, size_t req_bufsz,
                       char *reply_buf, size_t reply_bufsz,
-                      int64_t peer_state,
+                      int peer_state,
                       int *continue_wr, void *pmdb_handler,
                       void *user_data,
                       struct pumicedb_cb_cargs *args)
@@ -1438,7 +1438,7 @@ pmdb_prepare_leader(void)
 }
 
 static void
-pmdb_prepare_peer_state(int bootup)
+pmdb_prepare_peer_state(int64_t bootup)
 {
     struct pumicedb_cb_cargs init_leader_cb_args;
 

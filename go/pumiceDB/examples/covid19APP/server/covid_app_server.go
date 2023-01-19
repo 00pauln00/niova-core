@@ -125,6 +125,10 @@ type CovidServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
+func (cso *CovidServer) PrepPeer(prepPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
 func (cso *CovidServer) InitLeader() {
 	return
 }
