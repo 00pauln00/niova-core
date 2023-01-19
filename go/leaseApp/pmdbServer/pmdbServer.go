@@ -155,10 +155,10 @@ func isPermitted(entry *requestResponseLib.LeaseStruct, clientUUID uuid.UUID, cu
 }
 
 func (lso *leaseServer) GetLeaderTimeStamp(ts *requestResponseLib.LeaderTS) int {
-	var major, minor int64 
-	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&major, &minor)
-	ts.LeaderTerm = major
-	ts.LeaderTime = minor
+	var plts PumiceDBServer.PmdbLeaderTS
+	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
+	ts.LeaderTerm = plts.LeaderTerm
+	ts.LeaderTime = plts.LeaderTime
 	return rc
 }
 
@@ -342,6 +342,10 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	var copyErr error
 	
 	if (isPresent) {
+		if (leaseObj.LeaseState == requestResponseLib.INPROGRESS) {
+			return -1;	
+		}
+
 		oldTS := leaseObj.TimeStamp
 		//Leader happens only in leader
 		lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
@@ -379,4 +383,11 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 }
 
 func (lso *leaseServer) InitLeader() {
+	for _,leaseObj := range(lso.leaseMap) {
+		rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+		if (rc != 0) {
+			log.Error("Unable to get timestamp (InitLeader)")
+		}
+		leaseObj.TTL = ttlDefault
+	}
 }
