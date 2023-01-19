@@ -29,7 +29,7 @@ import (
 import "C"
 
 var seqno = 0
-var ttlDefault = 60
+var ttlDefault = 120
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
@@ -128,10 +128,9 @@ func addMinorToHybrid(current_time requestResponseLib.LeaderTS, add_minor int) i
 	return current_time.LeaderTime + int64(add_minor)
 }
 
-
 func getMinor(time float64) int {
 	stringTime := fmt.Sprintf("%f", time)
-        minorComponent, _ := strconv.Atoi(strings.Split(stringTime, ".")[1])
+	minorComponent, _ := strconv.Atoi(strings.Split(stringTime, ".")[1])
 	return minorComponent
 }
 
@@ -223,9 +222,9 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		log.Info("Resource not present in map")
 		//Insert or update into MAP
 		lso.leaseMap[Request.Resource] = &requestResponseLib.LeaseStruct{
-			Resource: Request.Resource,
-			Client:   Request.Client,
-			LeaseState:   requestResponseLib.INPROGRESS,
+			Resource:   Request.Resource,
+			Client:     Request.Client,
+			LeaseState: requestResponseLib.INPROGRESS,
 		}
 	}
 
@@ -285,7 +284,7 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Resource.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
-	
+
 	if rc < 0 {
 		log.Error("Value not written to rocksdb")
 		return -1
@@ -325,38 +324,42 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Update timestamp
 	leaseObj, isPresent := lso.leaseMap[reqStruct.Resource]
 
-
 	var readResult []byte
 	var readErr error
 
 	//Read from rocksDB only if its not present in MAP
-	if (!isPresent) {
-	//Pass the work as key to PmdbReadKV and get the value from pumicedb
+	if !isPresent {
+		//Pass the work as key to PmdbReadKV and get the value from pumicedb
 		readResult, readErr = lso.pso.ReadKV(appId, reqStruct.Client.String(),
 			int64(keyLen), colmfamily)
 	}
 
-
 	var valType []byte
 	var replySize int64
 	var copyErr error
-	
-	if (isPresent) {
-		if (leaseObj.LeaseState == requestResponseLib.INPROGRESS) {
-			return -1;	
+
+	if isPresent {
+		if leaseObj.LeaseState == requestResponseLib.INPROGRESS {
+			return -1
 		}
 
 		oldTS := leaseObj.TimeStamp
 		//Leader happens only in leader
 		lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 		//TODO: Possible wrap around
-		leaseObj.TTL = int(leaseObj.TimeStamp.LeaderTime - oldTS.LeaderTime)
+		ttl := ttlDefault - int(leaseObj.TimeStamp.LeaderTime-oldTS.LeaderTime)
+		if ttl < 0 {
+			leaseObj.TTL = 0
+			leaseObj.LeaseState = requestResponseLib.EXPIRED
+		} else {
+			leaseObj.TTL = ttl
+		}
 		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
-                if copyErr != nil {
-                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                        return -1
-                }
-	} else if (readErr == nil) {
+		if copyErr != nil {
+			log.Error("Failed to Copy result in the buffer: %s", copyErr)
+			return -1
+		}
+	} else if readErr == nil {
 		valType = readResult
 		inputVal, _ := uuid.Parse(string(valType))
 
@@ -383,9 +386,9 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 }
 
 func (lso *leaseServer) InitLeader() {
-	for _,leaseObj := range(lso.leaseMap) {
+	for _, leaseObj := range lso.leaseMap {
 		rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-		if (rc != 0) {
+		if rc != 0 {
 			log.Error("Unable to get timestamp (InitLeader)")
 		}
 		leaseObj.TTL = ttlDefault

@@ -346,6 +346,9 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 		log.Error(err)
 	}
 
+	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	err = dec.Decode(&responseObj)
+
 	log.Info("Refresh request status - ", responseObj.Status)
 
 	res := prepareJsonResponse(requestObj, responseObj)
