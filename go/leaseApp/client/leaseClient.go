@@ -40,6 +40,7 @@ type leaseHandler struct {
 	raftUUID      uuid.UUID
 	pmdbClientObj *pmdbClient.PmdbClientObj
 	jsonFilePath  string
+	logFilePath   string
 }
 
 // will be used to write to json file
@@ -85,6 +86,19 @@ func getStringOperation(op int) string {
 	return "UNKNOWN"
 }
 
+func prepareJsonResponse(requestObj requestResponseLib.LeaseReq, responseObj requestResponseLib.LeaseStruct) writeObj {
+	req := JsonLeaseReq{
+		Client:    requestObj.Client,
+		Resource:  requestObj.Resource,
+		Operation: getStringOperation(requestObj.Operation),
+	}
+	res := writeObj{
+		Request:  req,
+		Response: responseObj,
+	}
+	return res
+}
+
 /*
 Structure : leaseHandler
 Method	  : getCmdParams
@@ -104,6 +118,7 @@ func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 	flag.StringVar(&strResourceUUID, "v", "NULL", "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
+	flag.StringVar(&handler.logFilePath, "l", "./", "Log file path")
 	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
 	flag.Usage = usage
 	flag.Parse()
@@ -238,18 +253,8 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 	err = dec.Decode(&responseObj)
 
 	log.Info("Write request status - ", responseObj.Status)
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-
-	res := writeObj{
-		Request:  req,
-		Response: responseObj,
-	}
-
-	handler.writeToJson(res)
+	res := prepareJsonResponse(requestObj, responseObj)
+	handler.writeToJson(res, handler.logFilePath)
 
 	return err
 }
@@ -281,16 +286,7 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 	} else {
 		leaseObj.Status = 0
 	}
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-
-	res := writeObj{
-		Request:  req,
-		Response: leaseObj,
-	}
+	res := prepareJsonResponse(requestObj, leaseObj)
 	handler.writeToJson(res)
 
 	return err
@@ -317,15 +313,8 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	}
 
 	log.Info("Refresh request status - ", responseObj.Status)
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-	res := writeObj{
-		Request:  req,
-		Response: responseObj,
-	}
+
+	res := prepareJsonResponse(requestObj, responseObj)
 	handler.writeToJson(res)
 
 	return err
@@ -339,9 +328,9 @@ Return(s) : error
 
 Description : Write response/error to json file
 */
-func (handler *leaseHandler) writeToJson(toJson interface{}) {
+func (handler *leaseHandler) writeToJson(toJson interface{}, jsonFilePath string) {
 	file, err := json.MarshalIndent(toJson, "", " ")
-	err = ioutil.WriteFile(handler.jsonFilePath+".json", file, 0644)
+	err = ioutil.WriteFile(jsonFilePath+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
 	}
@@ -356,8 +345,12 @@ func main() {
 	/*
 		Initialize Logging
 	*/
+	err := PumiceDBCommon.InitLogger(leaseObjHandler.logFilePath)
+	if err != nil {
+		log.Error("Error while initializing the logger ", err)
+	}
 
-	err := leaseObjHandler.startPMDBClient(requestObj.Client.String())
+	err = leaseObjHandler.startPMDBClient(requestObj.Client.String())
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
