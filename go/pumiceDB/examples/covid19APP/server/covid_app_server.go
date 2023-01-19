@@ -6,7 +6,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	"covidapplib/lib"
 	log "github.com/sirupsen/logrus"
@@ -130,22 +129,19 @@ func (cso *CovidServer) InitLeader() {
 	return
 }
 
-func (cso *CovidServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-	continue_wr unsafe.Pointer) int64 {
+func (cso *CovidServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	return 0
 }
 
-func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64,
-	pmdbHandle unsafe.Pointer) int64 {
+func (cso *CovidServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Info("Covid19_Data app server: Apply request received")
 
 	/* Decode the input buffer into structure format */
 	applyCovid := &CovidAppLib.CovidLocale{}
 
-	decodeErr := cso.pso.Decode(inputBuf, applyCovid, inputBufSize)
+	decodeErr := cso.pso.Decode(applyArgs.ReqBuf, applyCovid,
+					applyArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -178,7 +174,8 @@ func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		applyCovid.PeopleVaccinated = applyCovid.PeopleVaccinated + pvInt
 	}
 
-	covidDataVal := fmt.Sprintf("%s %d %d", applyCovid.IsoCode, applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
+	covidDataVal := fmt.Sprintf("%s %d %d", applyCovid.IsoCode,
+					applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
 
 	//length of all values.
 	covidDataLen := len(covidDataVal)
@@ -186,21 +183,21 @@ func (cso *CovidServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	log.Info("Current covideData values: ", covidDataVal)
 
 	log.Info("Write the KeyValue by calling PmdbWriteKV")
-	rc := cso.pso.WriteKV(appId, pmdbHandle, applyCovid.Location,
+	rc := cso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
+		applyCovid.Location,
 		int64(keyLength), covidDataVal,
 		int64(covidDataLen), colmfamily)
 
 	return int64(rc)
 }
 
-func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
-	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
+func (cso *CovidServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Info("Covid19_Data App: Read request received")
 
 	//Decode the request structure sent by client.
 	reqStruct := &CovidAppLib.CovidLocale{}
-	decodeErr := cso.pso.Decode(requestBuf, reqStruct, requestBufSize)
+	decodeErr := cso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
@@ -213,7 +210,7 @@ func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	log.Info("Key length: ", keyLen)
 
 	/* Pass the work as key to PmdbReadKV and get the value from pumicedb */
-	readRsult, readErr := cso.pso.ReadKV(appId, reqStruct.Location,
+	readRsult, readErr := cso.pso.ReadKV(readArgs.UserID, reqStruct.Location,
 		int64(keyLen), colmfamily)
 
 	var splitValues []string
@@ -235,7 +232,8 @@ func (cso *CovidServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	}
 
 	//Copy the encoded result in replyBuffer
-	replySize, copyErr := cso.pso.CopyDataToBuffer(resultCovid, replyBuf)
+	replySize, copyErr := cso.pso.CopyDataToBuffer(resultCovid,
+							readArgs.ReplyBuf)
 	if copyErr != nil {
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1

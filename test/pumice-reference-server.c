@@ -218,13 +218,14 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
 }
 
 static pumicedb_apply_ctx_ssize_t
-pmdbts_apply(struct pumicedb_cb_cargs *args, void *pmdb_handle)
+pmdbts_apply(struct pumicedb_cb_cargs *args)
 {
 //    NIOVA_ASSERT(!pmdbst_init_rocksdb());
 
     const struct raft_net_client_user_id *app_id = args->pcb_userid;
     const void *input_buf = args->pcb_req_buf;
     size_t input_bufsz = args->pcb_req_bufsz;
+    void *pmdb_handle = args->pcb_pmdb_handler;
     
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)input_buf;

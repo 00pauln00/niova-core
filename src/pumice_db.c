@@ -798,6 +798,7 @@ static void
 pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
                         const void *req_buf, size_t req_bufsz,
                         char *reply_buf, size_t reply_bufsz,
+                        int *continue_wr, void *pmdb_handler,
                         void *user_data,
                         struct pumicedb_cb_cargs *args)
 {
@@ -806,6 +807,8 @@ pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
     args->pcb_req_bufsz = req_bufsz;
     args->pcb_reply_buf = reply_buf;
     args->pcb_reply_bufsz = reply_bufsz;
+    args->pcb_continue_wr = continue_wr;
+    args->pcb_pmdb_handler = pmdb_handler;
     args->pcb_user_data = user_data;
 }
 
@@ -837,11 +840,11 @@ pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
                           pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
                           max_reply_size,
+                          continue_wr, NULL,
                           pmdb_user_data,
                           &write_prep_cb_args);
 
-    rc = pmdbApi->pmdb_write_prep(&write_prep_cb_args,
-                                  continue_wr);
+    rc = pmdbApi->pmdb_write_prep(&write_prep_cb_args);
     if (rc < 0)
     {
         raft_client_net_request_handle_error_set(rncr,
@@ -1026,6 +1029,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
                               pmdb_req->pmdbrm_data,
                               pmdb_req->pmdbrm_data_size,
                               pmdb_reply->pmdbrm_data, max_reply_size,
+                              NULL, NULL,
                               pmdb_user_data,
                               &read_cb_args);
 
@@ -1288,12 +1292,13 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
                           pmdb_req->pmdbrm_data_size, pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
-                          max_reply_size, pmdb_user_data, &apply_args);
+                          max_reply_size, NULL, (void *)&pah,
+                          pmdb_user_data, &apply_args);
 
 
     // Call into the application so it may emplace its own KVs.
     ssize_t apply_rc =
-        pmdbApi->pmdb_apply(&apply_args, (void *)&pah);
+        pmdbApi->pmdb_apply(&apply_args);
 
     // rc of 0 means the client will get a reply and removal of coalesced
     // tree item only leader should send the reply back to client.
@@ -1419,7 +1424,7 @@ pmdb_prepare_leader(void)
     // on leader.
     struct pumicedb_cb_cargs init_leader_cb_args;
 
-    pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, pmdb_user_data,
+    pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, NULL, NULL, pmdb_user_data,
                           &init_leader_cb_args);
 
     if (pmdbApi->pmdb_init_leader)
