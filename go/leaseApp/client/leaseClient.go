@@ -51,10 +51,19 @@ type JsonLeaseReq struct {
 	Operation string
 }
 
+type JsonLeaseResp struct {
+	Client     uuid.UUID
+	Resource   uuid.UUID
+	Status     int
+	LeaseState string
+	TTL        int
+	TimeStamp  requestResponseLib.LeaderTS
+}
+
 // will be used to write req and res to json file
 type writeObj struct {
 	Request  JsonLeaseReq
-	Response requestResponseLib.LeaseStruct
+	Response JsonLeaseResp
 }
 
 func usage() {
@@ -87,15 +96,39 @@ func getStringOperation(op int) string {
 	return "UNKNOWN"
 }
 
+func getStringLeaseState(leaseState int) string {
+	switch leaseState {
+	case requestResponseLib.GRANTED:
+		return "GRANTED"
+	case requestResponseLib.INPROGRESS:
+		return "IN-PROGRESS"
+	case requestResponseLib.EXPIRED:
+		return "EXPIRED"
+	case requestResponseLib.AIU:
+		return "ALREADY-IN-USE"
+	case requestResponseLib.INVALID:
+		return "INVALID"
+	}
+	return "UNKNOWN"
+}
+
 func prepareJsonResponse(requestObj requestResponseLib.LeaseReq, responseObj requestResponseLib.LeaseStruct) writeObj {
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
 		Resource:  requestObj.Resource,
 		Operation: getStringOperation(requestObj.Operation),
 	}
+	resp := JsonLeaseResp{
+		Client:     responseObj.Client,
+		Resource:   responseObj.Resource,
+		Status:     responseObj.Status,
+		LeaseState: getStringLeaseState(responseObj.LeaseState),
+		TTL:        responseObj.TTL,
+		TimeStamp:  responseObj.TimeStamp,
+	}
 	res := writeObj{
 		Request:  req,
-		Response: responseObj,
+		Response: resp,
 	}
 	return res
 }
@@ -119,7 +152,7 @@ func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
 	flag.StringVar(&strResourceUUID, "v", "NULL", "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
-	flag.StringVar(&handler.logFilePath, "l", "./", "Log file path")
+	flag.StringVar(&handler.logFilePath, "l", "", "Log file path")
 	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
 	flag.Usage = usage
 	flag.Parse()
