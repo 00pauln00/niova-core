@@ -5329,6 +5329,7 @@ raft_server_instance_init(struct raft_instance *ri,
                           const char *this_peer_uuid_str,
                           raft_sm_request_handler_t sm_request_handler,
                           raft_leader_prep_cb_t leader_prep_handler,
+                          raft_prep_peer_state_cb_t peer_state_prep_handler,
                           enum raft_instance_options opts, void *arg)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -5362,6 +5363,7 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
     ri->ri_leader_prep_cb = leader_prep_handler;
+    ri->ri_prep_peer_state_cb = peer_state_prep_handler;
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes =
         opts & RAFT_INSTANCE_OPTIONS_SYNC_WRITES ? true : false;
@@ -5927,6 +5929,10 @@ raft_server_instance_startup(struct raft_instance *ri)
             goto out;
     }
 
+    // Give control to application to setup peer on startup.
+    if (ri->ri_prep_peer_state_cb)
+        ri->ri_prep_peer_state_cb(1);
+
 out:
     if (rc)
     {
@@ -6176,6 +6182,7 @@ raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
                          raft_leader_prep_cb_t leader_prep_handler,
+                         raft_prep_peer_state_cb_t peer_state_prep_handler,
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg)
 {
@@ -6223,7 +6230,7 @@ raft_server_instance_run(const char *raft_uuid_str,
         // Initialization - this resets the raft instance's contents
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
                                   sm_request_handler, leader_prep_handler,
-                                  opts, arg);
+                                  peer_state_prep_handler, opts, arg);
 
         // Raft net startup
         int raft_net_startup_rc = raft_net_instance_startup(ri, false);

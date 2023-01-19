@@ -558,6 +558,7 @@ struct raft_instance
     raft_net_cb_t                   ri_server_recv_cb;
     raft_sm_request_handler_t       ri_server_sm_request_cb;
     raft_leader_prep_cb_t           ri_leader_prep_cb;
+    raft_prep_peer_state_cb_t       ri_prep_peer_state_cb;
     raft_net_startup_pre_bind_cb_t  ri_startup_pre_net_bind_cb;
     raft_net_shutdown_cb_t          ri_shutdown_cb;
     struct raft_evp                 ri_evps[RAFT_EVP_HANDLES_MAX];
@@ -1156,6 +1157,7 @@ raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
                          raft_leader_prep_cb_t leader_prep_handler,
+                         raft_prep_peer_state_cb_t peer_state_prep_handler,
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg);
 

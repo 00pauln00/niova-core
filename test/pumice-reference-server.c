@@ -360,6 +360,7 @@ main(int argc, char **argv)
     struct PmdbAPI api = {
         .pmdb_write_prep = NULL,
         .pmdb_init_leader = NULL,
+        .pmdb_prep_peer_state = NULL,
         .pmdb_apply      = pmdbts_apply,
         .pmdb_read       = pmdbts_read,
     };

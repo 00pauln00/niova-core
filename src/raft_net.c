@@ -1226,6 +1226,10 @@ raft_net_instance_shutdown(struct raft_instance *ri)
 
     int rc = 0;
 
+    // Give control to application to cleanup application data on shutdown.
+    if (ri->ri_prep_peer_state_cb)
+        ri->ri_prep_peer_state_cb(0);
+
     int sockets_close_rc = raft_net_sockets_close(ri);
     if (sockets_close_rc)
     {

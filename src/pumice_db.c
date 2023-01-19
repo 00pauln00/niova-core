@@ -796,17 +796,19 @@ pmdb_range_read_req_add(const uint64_t seq_number,
 
 static void
 pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
-                        const void *req_buf, size_t req_bufsz,
-                        char *reply_buf, size_t reply_bufsz,
-                        int *continue_wr, void *pmdb_handler,
-                        void *user_data,
-                        struct pumicedb_cb_cargs *args)
+                      const void *req_buf, size_t req_bufsz,
+                      char *reply_buf, size_t reply_bufsz,
+                      int64_t peer_state,
+                      int *continue_wr, void *pmdb_handler,
+                      void *user_data,
+                      struct pumicedb_cb_cargs *args)
 {
     args->pcb_userid = app_id;
     args->pcb_req_buf = req_buf;
     args->pcb_req_bufsz = req_bufsz;
     args->pcb_reply_buf = reply_buf;
     args->pcb_reply_bufsz = reply_bufsz;
+    args->pcb_peer_state = peer_state;
     args->pcb_continue_wr = continue_wr;
     args->pcb_pmdb_handler = pmdb_handler;
     args->pcb_user_data = user_data;
@@ -839,7 +841,7 @@ pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
                           pmdb_req->pmdbrm_data_size,
                           pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
-                          max_reply_size,
+                          max_reply_size, -1,
                           continue_wr, NULL,
                           pmdb_user_data,
                           &write_prep_cb_args);
@@ -1029,7 +1031,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
                               pmdb_req->pmdbrm_data,
                               pmdb_req->pmdbrm_data_size,
                               pmdb_reply->pmdbrm_data, max_reply_size,
-                              NULL, NULL,
+                              -1, NULL, NULL,
                               pmdb_user_data,
                               &read_cb_args);
 
@@ -1292,7 +1294,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
                           pmdb_req->pmdbrm_data_size, pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
-                          max_reply_size, NULL, (void *)&pah,
+                          max_reply_size, -1, NULL, (void *)&pah,
                           pmdb_user_data, &apply_args);
 
 
@@ -1419,16 +1421,34 @@ pmdb_ref_tree_release_all(void)
 static void
 pmdb_prepare_leader(void)
 {
+    // Release entries from coalesced wr tree and range read tree
     pmdb_ref_tree_release_all();
+
     // Give control to application to perform any cleanup/initialization
     // on leader.
     struct pumicedb_cb_cargs init_leader_cb_args;
 
-    pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, NULL, NULL, pmdb_user_data,
-                          &init_leader_cb_args);
-
     if (pmdbApi->pmdb_init_leader)
+    {
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, -1, NULL, NULL,
+                              pmdb_user_data,
+                              &init_leader_cb_args);
         pmdbApi->pmdb_init_leader(&init_leader_cb_args);
+    }
+}
+
+static void
+pmdb_prepare_peer_state(int bootup)
+{
+    struct pumicedb_cb_cargs init_leader_cb_args;
+
+    if (pmdbApi->pmdb_prep_peer_state)
+    {
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, bootup, NULL, NULL,
+                              pmdb_user_data,
+                              &init_leader_cb_args);
+        pmdbApi->pmdb_prep_peer_state(&init_leader_cb_args);
+    }
 }
 
 void
@@ -1568,6 +1588,7 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
                                   pmdb_prepare_leader,
+                                  pmdb_prepare_peer_state,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 
