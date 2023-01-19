@@ -23,6 +23,7 @@ extern ssize_t writePrepCgo(struct pumicedb_cb_cargs *args, int *);
 extern ssize_t applyCgo(struct pumicedb_cb_cargs *args, void *);
 extern ssize_t readCgo(struct pumicedb_cb_cargs *args);
 extern void initLeaderCgo(struct pumicedb_cb_cargs *args);
+extern void prepPeerCgo(struct pumicedb_cb_cargs *args);
 */
 import "C"
 
@@ -35,6 +36,7 @@ type PmdbCbArgs struct {
 	ReqSize		int64
 	ReplyBuf	unsafe.Pointer
 	ReplySize	int64
+	Bootup		int
 	ContinueWr	unsafe.Pointer
 	PmdbHandler	unsafe.Pointer
 	UserData	unsafe.Pointer
@@ -45,6 +47,7 @@ type PmdbServerAPI interface {
 	Apply(goCbArgs *PmdbCbArgs) int64
 	Read(goCbArgs *PmdbCbArgs) int64
 	InitLeader()
+	PrepPeer(goCbArgs *PmdbCbArgs)
 }
 
 type PmdbServerObject struct {
@@ -110,6 +113,7 @@ func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
 	goCbArgs.ReqSize = CToGoInt64(cargs.pcb_req_bufsz)
 	goCbArgs.ReplyBuf = unsafe.Pointer(cargs.pcb_reply_buf)
 	goCbArgs.ReplySize = CToGoInt64(cargs.pcb_reply_bufsz)
+	goCbArgs.Bootup = int(cargs.pcb_peer_state)
 	goCbArgs.ContinueWr = unsafe.Pointer(cargs.pcb_continue_wr)
 	goCbArgs.UserData = unsafe.Pointer(cargs.pcb_user_data)
 }
@@ -170,6 +174,18 @@ func goInitLeader(args *C.struct_pumicedb_cb_cargs) {
 	gcb := gopointer.Restore(initLeaderArgs.UserData).(*PmdbServerObject)
 
 	gcb.PmdbAPI.InitLeader()
+}
+
+//export goPrepPeer
+func goPrepPeer(args *C.struct_pumicedb_cb_cargs) {
+
+	var prepPeerArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &prepPeerArgs)
+
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(prepPeerArgs.UserData).(*PmdbServerObject)
+
+	gcb.PmdbAPI.PrepPeer(&prepPeerArgs)
 }
 
 /**

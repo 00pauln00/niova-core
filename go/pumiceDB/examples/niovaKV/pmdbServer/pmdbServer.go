@@ -126,6 +126,10 @@ func (nso *NiovaKVServer) InitLeader() {
 	return
 }
 
+func (nso *NiovaKVServer) PrepPeer(prepPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
 func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
