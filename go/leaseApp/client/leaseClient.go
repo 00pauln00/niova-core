@@ -91,7 +91,7 @@ func getStringOperation(op int) string {
 	case requestResponseLib.LOOKUP:
 		return "LOOKUP"
 	case requestResponseLib.REFRESH:
-		return "RESFRESH"
+		return "REFRESH"
 	}
 	return "UNKNOWN"
 }
