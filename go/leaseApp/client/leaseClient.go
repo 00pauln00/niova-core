@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 
 	log "github.com/sirupsen/logrus"
 
@@ -287,7 +288,7 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 		leaseObj.Status = 0
 	}
 	res := prepareJsonResponse(requestObj, leaseObj)
-	handler.writeToJson(res)
+	handler.writeToJson(res, handler.logFilePath)
 
 	return err
 }
@@ -315,7 +316,7 @@ func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseRe
 	log.Info("Refresh request status - ", responseObj.Status)
 
 	res := prepareJsonResponse(requestObj, responseObj)
-	handler.writeToJson(res)
+	handler.writeToJson(res, handler.logFilePath)
 
 	return err
 }
