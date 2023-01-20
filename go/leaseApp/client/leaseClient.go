@@ -221,14 +221,14 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 
 /*
 Structure : leaseHandler
-Method	  : WriteLease()
+Method	  : Write()
 Arguments : LeaseReq, rncui, *LeaseResp
 Return(s) : error
 
 Description : Wrapper function for WriteEncoded() function
 */
 
-func (handler *leaseHandler) WriteLease(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+func (handler *leaseHandler) Write(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -244,13 +244,13 @@ func (handler *leaseHandler) WriteLease(requestObj requestResponseLib.LeaseReq, 
 
 /*
 Structure : leaseHandler
-Method	  : ReadLease()
+Method	  : Read()
 Arguments : LeaseReq, rncui, *response
 Return(s) : error
 
 Description : Wrapper function for ReadEncoded() function
 */
-func (handler *leaseHandler) ReadLease(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+func (handler *leaseHandler) Read(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -264,21 +264,21 @@ func (handler *leaseHandler) ReadLease(requestObj requestResponseLib.LeaseReq, r
 
 /*
 Structure : leaseHandler
-Method	  : get_lease()
+Method	  : get()
 Arguments : requestResponseLib.LeaseReq
 Return(s) : error
 
-Description : Handler function for get_lease() operation
+Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) error {
+func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) error {
 	var err error
 	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
 
-	err = handler.WriteLease(requestObj, rncui, &responseBytes)
+	err = handler.Write(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
@@ -295,18 +295,18 @@ func (handler *leaseHandler) get_lease(requestObj requestResponseLib.LeaseReq) e
 
 /*
 Structure : leaseHandler
-Method	  : lookup_lease()
+Method	  : lookup()
 Arguments : requestResponseLib.LeaseReq
 Return(s) : error
 
-Description : Handler function for lookup_lease() operation
+Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq) error {
+func (handler *leaseHandler) lookup(requestObj requestResponseLib.LeaseReq) error {
 	var err error
 	var responseBytes []byte
 
-	err = handler.ReadLease(requestObj, "", &responseBytes)
+	err = handler.Read(requestObj, "", &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
@@ -328,20 +328,20 @@ func (handler *leaseHandler) lookup_lease(requestObj requestResponseLib.LeaseReq
 
 /*
 Structure : leaseHandler
-Method	  : refresh_lease()
+Method	  : refresh()
 Arguments : requestResponseLib.LeaseReq
 Return(s) : error
 
-Description : Handler function for refresh_lease() operation
+Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (handler *leaseHandler) refresh_lease(requestObj requestResponseLib.LeaseReq) error {
+func (handler *leaseHandler) refresh(requestObj requestResponseLib.LeaseReq) error {
 	var err error
 	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
-	err = handler.WriteLease(requestObj, rncui, &responseBytes)
+	err = handler.Write(requestObj, rncui, &responseBytes)
 	if err != nil {
 		log.Error(err)
 	}
@@ -395,19 +395,19 @@ func main() {
 	switch requestObj.Operation {
 	case requestResponseLib.GET:
 		// get lease
-		err := leaseObjHandler.get_lease(requestObj)
+		err := leaseObjHandler.get(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
 	case requestResponseLib.LOOKUP:
 		// lookup lease
-		err := leaseObjHandler.lookup_lease(requestObj)
+		err := leaseObjHandler.lookup(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
 	case requestResponseLib.REFRESH:
 		// refresh lease
-		err := leaseObjHandler.refresh_lease(requestObj)
+		err := leaseObjHandler.refresh(requestObj)
 		if err != nil {
 			log.Error(err)
 		}
