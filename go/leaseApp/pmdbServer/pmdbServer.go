@@ -12,7 +12,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unsafe"
 
 	uuid "github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
@@ -161,15 +160,14 @@ func (lso *leaseServer) GetLeaderTimeStamp(ts *requestResponseLib.LeaderTS) int 
 	return rc
 }
 
-func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, reply_buf_size int64, continue_wr unsafe.Pointer) int64 {
+func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	var copyErr error
 	var replySize int64
 
 	Request := &requestResponseLib.LeaseReq{}
 
-	decodeErr := lso.pso.Decode(inputBuf, Request, inputBufSize)
+	decodeErr := lso.pso.Decode(wePrepArgs.ReqBuf, Request, wrPrepArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -184,7 +182,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	//Check if its a refresh request
 	if Request.Operation == requestResponseLib.REFRESH {
 		//Copy the encoded result in replyBuffer
-		_, copyErr = lso.pso.CopyDataToBuffer(byte(0), continue_wr)
+		_, copyErr = lso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
@@ -197,7 +195,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 				lso.leaseMap[Request.Resource].TimeStamp = currentTime
 				lso.leaseMap[Request.Resource].TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
-				replySize, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], replyBuf)
+				replySize, copyErr = lso.pso.CopyDataToBuffer(*lso.leaseMap[Request.Resource], wrPrepArgs.ReplyBuf)
 				if copyErr != nil {
 					log.Error("Failed to Copy result in the buffer: %s", copyErr)
 					return -1
@@ -215,7 +213,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 		if isPresent {
 			if !isPermitted(vdev_lease_info, Request.Client, currentTime, Request.Operation) {
 				//Dont provide lease
-				lso.pso.CopyDataToBuffer(byte(0), continue_wr)
+				lso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
 				return -1
 			}
 		}
@@ -229,7 +227,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	}
 
 	log.Info("Map after write prep : ", lso.leaseMap)
-	_, copyErr = lso.pso.CopyDataToBuffer(byte(1), continue_wr)
+	_, copyErr = lso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
 	if copyErr != nil {
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1
@@ -237,8 +235,7 @@ func (lso *leaseServer) WritePrep(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	return 0
 }
 
-func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, replyBuf unsafe.Pointer, maxreplySize int64, pmdbHandle unsafe.Pointer) int64 {
+func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var valueBytes bytes.Buffer
 	var copyErr error
 	var replySizeRc int64
@@ -246,7 +243,7 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Decode the input buffer into structure format
 	applyLeaseReq := &requestResponseLib.LeaseReq{}
 
-	decodeErr := lso.pso.Decode(inputBuf, applyLeaseReq, inputBufSize)
+	decodeErr := lso.pso.Decode(applyArgs.ReqBuf, applyLeaseReq, applyArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -281,7 +278,7 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	// Length of value.
 	valLen := len(byteToStr)
 
-	rc := lso.pso.WriteKV(appId, pmdbHandle, applyLeaseReq.Resource.String(),
+	rc := lso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler, applyLeaseReq.Resource.String(),
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
@@ -292,9 +289,9 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
-	if isLeaderFlag == 0 && replyBuf != nil {
+	if isLeaderFlag == 0 && applyArgs.ReplyBuf != nil {
 		log.Info("(Apply) lease obj ", leaseObj, *leaseObj)
-		replySizeRc, copyErr = lso.pso.CopyDataToBuffer(leaseObj, replyBuf)
+		replySizeRc, copyErr = lso.pso.CopyDataToBuffer(leaseObj, applyArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
@@ -303,14 +300,13 @@ func (lso *leaseServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	return replySizeRc
 }
 
-func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
-	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
+func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
 	reqStruct := &requestResponseLib.LeaseReq{}
-	decodeErr := lso.pso.Decode(requestBuf, reqStruct, requestBufSize)
+	decodeErr := lso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
@@ -330,7 +326,7 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	//Read from rocksDB only if its not present in MAP
 	if !isPresent {
 		//Pass the work as key to PmdbReadKV and get the value from pumicedb
-		readResult, readErr = lso.pso.ReadKV(appId, reqStruct.Client.String(),
+		readResult, readErr = lso.pso.ReadKV(readArgs.UserID, reqStruct.Client.String(),
 			int64(keyLen), colmfamily)
 	}
 
@@ -354,7 +350,7 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		} else {
 			leaseObj.TTL = ttl
 		}
-		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, replyBuf)
+		replySize, copyErr = lso.pso.CopyDataToBuffer(*leaseObj, readArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
@@ -369,11 +365,10 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		if err != nil {
 			log.Error(err)
 		}
-		fmt.Println("YYYY - ", leaseObjRocksDB)
 		log.Trace("Input value after read request:", inputVal)
 
 		//Copy the encoded result in replyBuffer
-		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObjRocksDB, replyBuf)
+		replySize, copyErr = lso.pso.CopyDataToBuffer(leaseObjRocksDB, readArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
@@ -385,7 +380,7 @@ func (lso *leaseServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	return replySize
 }
 
-func (lso *leaseServer) InitLeader() {
+func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	for _, leaseObj := range lso.leaseMap {
 		rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 		if rc != 0 {
@@ -393,4 +388,12 @@ func (lso *leaseServer) InitLeader() {
 		}
 		leaseObj.TTL = ttlDefault
 	}
+}
+
+func (lso *leaseServer) PrepPeer(prepPeer *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
+func (lso *leaseServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
 }

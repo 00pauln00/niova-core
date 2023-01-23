@@ -269,7 +269,7 @@ Return(s) : error
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseReq, error) {
+func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseStruct, error) {
 	var err error
 	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseStruct
@@ -390,7 +390,7 @@ func main() {
 	switch requestObj.Operation {
 	case requestResponseLib.GET:
 		// get lease
-		err := leaseObjHandler.get(requestObj)
+		responseObj, err = leaseObjHandler.get(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -399,7 +399,7 @@ func main() {
 		}
 	case requestResponseLib.LOOKUP:
 		// lookup lease
-		err := leaseObjHandler.lookup(requestObj)
+		responseObj, err = leaseObjHandler.lookup(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -408,7 +408,7 @@ func main() {
 		}
 	case requestResponseLib.REFRESH:
 		// refresh lease
-		err := leaseObjHandler.refresh(requestObj)
+		responseObj, err = leaseObjHandler.refresh(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
