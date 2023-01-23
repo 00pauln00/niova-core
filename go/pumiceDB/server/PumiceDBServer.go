@@ -115,6 +115,7 @@ func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
 	goCbArgs.ReplySize = CToGoInt64(cargs.pcb_reply_bufsz)
 	goCbArgs.Bootup = int(cargs.pcb_peer_state)
 	goCbArgs.ContinueWr = unsafe.Pointer(cargs.pcb_continue_wr)
+	goCbArgs.PmdbHandler = unsafe.Pointer(cargs.pcb_pmdb_handler)
 	goCbArgs.UserData = unsafe.Pointer(cargs.pcb_user_data)
 }
 
