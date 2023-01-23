@@ -18,8 +18,8 @@
 typedef ssize_t pumicedb_apply_ctx_ssize_t;
 typedef ssize_t pumicedb_write_prep_ctx_ssize_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
-typedef void    pumicedb_init_leader_ctx_void_t;
-typedef void    pumicedb_prep_peer_state_ctx_void_t;
+typedef void    pumicedb_init_peer_ctx_void_t;
+typedef void    pumicedb_cleanup_peer_ctx_void_t;
 
 //common arguments for pumicedb callback functions.
 struct pumicedb_cb_cargs
@@ -30,7 +30,6 @@ struct pumicedb_cb_cargs
     char       *pcb_reply_buf;
     size_t      pcb_reply_bufsz;
     int        *pcb_continue_wr;
-    int         pcb_peer_state;
     void       *pcb_pmdb_handler;
     void       *pcb_user_data;
 };
@@ -68,30 +67,28 @@ typedef pumicedb_write_prep_ctx_ssize_t
 (*pmdb_write_prep_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 /**
- *pmdb_init_leader_sm_handler_t - The initialize leader handler is called from
- * raft when peer becomes leader.
+ *pmdb_init_peer_sm_handler_t - The initialize peer handler is called from
+ * raft when peer boots up or becomes leader..
  * It can be used if Application wants to perform some initialization on
- * leader.
+ * bootup or becoming leader.
  */
-typedef pumicedb_init_leader_ctx_void_t
-(*pmdb_init_leader_sm_handler_t)(struct pumicedb_cb_cargs *args);
+typedef pumicedb_init_peer_ctx_void_t
+(*pmdb_init_peer_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 /**
- *pmdb_prep_peer_state_sm_handler_t - The prepare peer state handler is called
- * from startup and shutdown of the peer.
- * It can be used if Application wants to perform some initialization or
- * cleanup on startup or shutdown.
+ *pmdb_cleanup_peer_sm_handler_t - The cleanup application specific
+ * data on shutdown.
  */
-typedef pumicedb_prep_peer_state_ctx_void_t
-(*pmdb_prep_peer_state_sm_handler_t)(struct pumicedb_cb_cargs *args);
+typedef pumicedb_cleanup_peer_ctx_void_t
+(*pmdb_cleanup_peer_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 struct PmdbAPI
 {
     pmdb_write_prep_sm_handler_t      pmdb_write_prep;
     pmdb_apply_sm_handler_t           pmdb_apply;
     pmdb_read_sm_handler_t            pmdb_read;
-    pmdb_init_leader_sm_handler_t     pmdb_init_leader;
-    pmdb_prep_peer_state_sm_handler_t pmdb_prep_peer_state;
+    pmdb_init_peer_sm_handler_t       pmdb_init_peer;
+    pmdb_cleanup_peer_sm_handler_t    pmdb_cleanup_peer;
 };
 
 /**

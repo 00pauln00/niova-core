@@ -54,13 +54,13 @@ func (fpso *FoodpalaceServer) initLogger() {
 	log.Info("peer:", fpso.peerUuid)
 }
 
-//Method for PrepPeer callback
-func (fpso *FoodpalaceServer) PrepPeer(prepPeerArgs *PumiceDBServer.PmdbCbArgs) {
+//Method for CleanupPeer callback
+func (fpso *FoodpalaceServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 
-//Method for InitLeader callback
-func (fpso *FoodpalaceServer) InitLeader() {
+//Method for InitPeer callback
+func (fpso *FoodpalaceServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 
