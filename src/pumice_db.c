@@ -827,10 +827,9 @@ pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
     const struct raft_net_client_user_id *rncui = &pmdb_req->pmdbrm_user_id;
-    
-    struct pmdb_msg *pmdb_reply = NULL;
-    pmdb_reply =
-         RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+
+    struct raft_client_rpc_msg *reply = rncr->rncr_reply;
+    struct pmdb_msg *pmdb_reply = (struct pmdb_msg *)reply->rcrm_data;
     const size_t max_reply_size =
         rncr->rncr_reply_data_max_size -
         PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
@@ -862,6 +861,7 @@ pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
                                                   -EALREADY,
                                                   0, 0);
          pmdb_reply->pmdbrm_data_size = rc;
+         reply->rcrm_data_size += (uint32_t)rc;
     }
 
     return rc >= 0 ? 0 : -1;
