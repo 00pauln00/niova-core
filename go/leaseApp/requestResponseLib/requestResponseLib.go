@@ -9,11 +9,11 @@ const (
 	PUT            = 1
 	LOOKUP         = 2
 	REFRESH        = 3
-	GRANTED        = 0
+	INVALID        = 0
 	INPROGRESS     = 1
 	EXPIRED        = 2
 	AIU            = 3
-	INVALID        = 4
+	GRANTED        = 4
 )
 
 type LeaseReq struct {
