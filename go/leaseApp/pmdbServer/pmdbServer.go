@@ -167,7 +167,7 @@ func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	Request := &requestResponseLib.LeaseReq{}
 
-	decodeErr := lso.pso.Decode(wePrepArgs.ReqBuf, Request, wrPrepArgs.ReqSize)
+	decodeErr := lso.pso.Decode(wrPrepArgs.ReqBuf, Request, wrPrepArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
