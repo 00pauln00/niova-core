@@ -28,7 +28,7 @@ import (
 import "C"
 
 var seqno = 0
-var ttlDefault = 120
+var ttlDefault = 60
 
 // Use the default column family
 var colmfamily = "PMDBTS_CF"
