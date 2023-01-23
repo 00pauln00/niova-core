@@ -5,15 +5,15 @@ import (
 )
 
 const (
-	GET     int = 0
-	PUT         = 1
-	LOOKUP      = 2
-	REFRESH     = 3
-	GRANTED     = 0
-	INPROGRESS  = 1
-	EXPIRED     = 2
-	AIU	    = 3
-	INVALID     = 4
+	GET        int = 0
+	PUT            = 1
+	LOOKUP         = 2
+	REFRESH        = 3
+	GRANTED        = 0
+	INPROGRESS     = 1
+	EXPIRED        = 2
+	AIU            = 3
+	INVALID        = 4
 )
 
 type LeaseReq struct {
@@ -31,14 +31,14 @@ type LeaseResp struct {
 }
 
 type LeaderTS struct {
-        LeaderTerm    int64
-        LeaderTime    int64
+	LeaderTerm int64
+	LeaderTime int64
 }
 
 type LeaseStruct struct {
 	Resource   uuid.UUID
 	Client     uuid.UUID
-	Status     int
+	Status     string
 	LeaseState int
 	TTL        int
 	TimeStamp  LeaderTS

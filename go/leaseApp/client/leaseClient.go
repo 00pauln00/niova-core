@@ -54,7 +54,7 @@ type JsonLeaseReq struct {
 type JsonLeaseResp struct {
 	Client     uuid.UUID
 	Resource   uuid.UUID
-	Status     int
+	Status     string
 	LeaseState string
 	TTL        int
 	TimeStamp  requestResponseLib.LeaderTS
@@ -234,7 +234,6 @@ func (handler *leaseHandler) Write(requestObj requestResponseLib.LeaseReq, rncui
 	enc := gob.NewEncoder(&requestBytes)
 	err = enc.Encode(requestObj)
 	if err != nil {
-		log.Error("Encoding error : ", err)
 		return err
 	}
 	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, 1, response)
@@ -256,7 +255,6 @@ func (handler *leaseHandler) Read(requestObj requestResponseLib.LeaseReq, rncui 
 	enc := gob.NewEncoder(&requestBytes)
 	err = enc.Encode(requestObj)
 	if err != nil {
-		log.Error("Encoding error : ", err)
 		return err
 	}
 	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), rncui, response)
@@ -271,7 +269,7 @@ Return(s) : error
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) error {
+func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseReq, error) {
 	var err error
 	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseStruct
@@ -280,17 +278,18 @@ func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) error {
 
 	err = handler.Write(requestObj, rncui, &responseBytes)
 	if err != nil {
-		log.Error(err)
+		return responseObj, err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&responseObj)
+	if err != nil {
+		return responseObj, err
+	}
 
 	log.Info("Write request status - ", responseObj.Status)
-	res := prepareJsonResponse(requestObj, responseObj)
-	handler.writeToJson(res, handler.jsonFilePath)
 
-	return err
+	return responseObj, err
 }
 
 /*
@@ -302,28 +301,23 @@ Return(s) : error
 Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (handler *leaseHandler) lookup(requestObj requestResponseLib.LeaseReq) error {
+func (handler *leaseHandler) lookup(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseStruct, error) {
 	var err error
 	var responseBytes []byte
+	var responseObj requestResponseLib.LeaseStruct
 
 	err = handler.Read(requestObj, "", &responseBytes)
 	if err != nil {
-		log.Error(err)
+		return responseObj, err
 	}
 
-	leaseObj := requestResponseLib.LeaseStruct{}
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&leaseObj)
+	err = dec.Decode(&responseObj)
 	if err != nil {
-		log.Error("Decoding error : ", err)
-		leaseObj.Status = -1
-	} else {
-		leaseObj.Status = 0
+		return responseObj, err
 	}
-	res := prepareJsonResponse(requestObj, leaseObj)
-	handler.writeToJson(res, handler.jsonFilePath)
 
-	return err
+	return responseObj, err
 }
 
 /*
@@ -335,7 +329,7 @@ Return(s) : error
 Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (handler *leaseHandler) refresh(requestObj requestResponseLib.LeaseReq) error {
+func (handler *leaseHandler) refresh(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseStruct, error) {
 	var err error
 	var responseBytes []byte
 	var responseObj requestResponseLib.LeaseStruct
@@ -343,18 +337,18 @@ func (handler *leaseHandler) refresh(requestObj requestResponseLib.LeaseReq) err
 	rncui := handler.getRNCUI()
 	err = handler.Write(requestObj, rncui, &responseBytes)
 	if err != nil {
-		log.Error(err)
+		return responseObj, err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&responseObj)
+	if err != nil {
+		return responseObj, err
+	}
 
 	log.Info("Refresh request status - ", responseObj.Status)
 
-	res := prepareJsonResponse(requestObj, responseObj)
-	handler.writeToJson(res, handler.jsonFilePath)
-
-	return err
+	return responseObj, err
 }
 
 /*
@@ -392,26 +386,38 @@ func main() {
 		log.Error(err)
 		os.Exit(-1)
 	}
+	var responseObj requestResponseLib.LeaseStruct
 	switch requestObj.Operation {
 	case requestResponseLib.GET:
 		// get lease
 		err := leaseObjHandler.get(requestObj)
 		if err != nil {
 			log.Error(err)
+			responseObj.Status = err.Error()
+		} else {
+			responseObj.Status = "Success"
 		}
 	case requestResponseLib.LOOKUP:
 		// lookup lease
 		err := leaseObjHandler.lookup(requestObj)
 		if err != nil {
 			log.Error(err)
+			responseObj.Status = err.Error()
+		} else {
+			responseObj.Status = "Success"
 		}
 	case requestResponseLib.REFRESH:
 		// refresh lease
 		err := leaseObjHandler.refresh(requestObj)
 		if err != nil {
 			log.Error(err)
+			responseObj.Status = err.Error()
+		} else {
+			responseObj.Status = "Success"
 		}
 	}
+	res := prepareJsonResponse(requestObj, responseObj)
+	leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
 
 	log.Info("-----END OF EXECUTION-----")
 }
