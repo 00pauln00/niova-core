@@ -31,7 +31,7 @@ var seqno = 0
 var ttlDefault = 60
 
 // Use the default column family
-var colmfamily = "PMDBTS_CF"
+var colmfamily []string = []string{"PMDBTS_CF",""}
 
 type leaseServer struct {
 	raftUUID string
@@ -280,7 +280,7 @@ func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	rc := lso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler, applyLeaseReq.Resource.String(),
 		int64(keyLength), byteToStr,
-		int64(valLen), colmfamily)
+		int64(valLen), colmfamily[0])
 
 	if rc < 0 {
 		log.Error("Value not written to rocksdb")
@@ -327,7 +327,7 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	if !isPresent {
 		//Pass the work as key to PmdbReadKV and get the value from pumicedb
 		readResult, readErr = lso.pso.ReadKV(readArgs.UserID, reqStruct.Client.String(),
-			int64(keyLen), colmfamily)
+			int64(keyLen), colmfamily[0])
 	}
 
 	var valType []byte
@@ -381,12 +381,40 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 }
 
 func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	for _, leaseObj := range lso.leaseMap {
-		rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-		if rc != 0 {
-			log.Error("Unable to get timestamp (InitLeader)")
+	if len(lso.leaseMap) != 0 {
+		//Peer becomes leader
+		for _, leaseObj := range lso.leaseMap {
+			rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+			if rc != 0 {
+				log.Error("Unable to get timestamp (InitLeader)")
+			}
+			leaseObj.TTL = ttlDefault
 		}
-		leaseObj.TTL = ttlDefault
+	} else {
+		//Peer boots up
+		//Range_query
+		readResult, _, _, _, err := lso.pso.RangeReadKV(initPeerArgs.UserID, "",
+                        0, "", 0, true, 0, colmfamily[0])
+		
+		if err != nil {
+			log.Error("Failed range query : ", err)
+			return
+		}
+
+		//Result of the read
+		for key,value := range readResult {
+			//Decode the request structure sent by client.
+        		lstruct := &requestResponseLib.LeaseStruct{}
+			dec := gob.NewDecoder(bytes.NewBuffer(value))
+			decodeErr := dec.Decode(lstruct)
+
+        		if decodeErr != nil {
+				log.Error("Failed to decode the read request : ", decodeErr)
+                		return
+        		}
+			kuuid, _ := uuid.Parse(key)
+			lso.leaseMap[kuuid] = lstruct 
+		}
 	}
 }
 
