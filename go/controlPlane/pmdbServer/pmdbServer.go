@@ -120,7 +120,7 @@ func main() {
 	//Wait till HTTP Server has started
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
+		ColumnFamilies: []string{colmfamily},
 		RaftUuid:       nso.raftUuid.String(),
 		PeerUuid:       nso.peerUuid.String(),
 		PmdbAPI:        nso,

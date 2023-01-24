@@ -53,9 +53,9 @@ type PmdbServerObject struct {
 	PmdbAPI        PmdbServerAPI
 	RaftUuid       string
 	PeerUuid       string
-	ColumnFamilies string // XXX should be an array of strings
 	SyncWrites     bool
 	CoalescedWrite bool
+	ColumnFamilies []string
 }
 
 type PmdbLeaderTS struct {
@@ -228,10 +228,14 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 	 * Store gostring to byte array.
 	 * Don't forget to append the null terminating character.
 	 */
-	cf_byte_arr := []byte(pso.ColumnFamilies + "\000")
 
-	cf_name := make(charsSlice, len(cf_byte_arr))
-	cf_name[0] = (*C.char)(C.CBytes(cf_byte_arr))
+	var i int
+	cf_name := make(charsSlice, len(pso.ColumnFamilies))
+	for _, cFamily := range pso.ColumnFamilies {
+		cf_byte_arr := []byte(cFamily + "\000")
+		cf_name[i] = (*C.char)(C.CBytes(cf_byte_arr))
+		i = i + 1
+	}
 
 	//Convert Byte array to char **
 	sH := (*reflect.SliceHeader)(unsafe.Pointer(&cf_name))
@@ -242,8 +246,9 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 	defer gopointer.Unref(opa_ptr)
 
 	// Starting the pmdb server.
-	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1,
-		(C.bool)(pso.SyncWrites), (C.bool)(pso.CoalescedWrite), opa_ptr)
+	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array,
+		C.int(len(pso.ColumnFamilies)), (C.bool)(pso.SyncWrites),
+		(C.bool)(pso.CoalescedWrite), opa_ptr)
 
 	if rc != 0 {
 		return fmt.Errorf("PmdbExec() returned %d", rc)
