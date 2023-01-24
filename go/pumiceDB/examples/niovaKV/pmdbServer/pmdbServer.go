@@ -62,12 +62,12 @@ func main() {
 	   functions.
 	*/
 	nso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
 		RaftUuid:       nso.raftUuid,
 		PeerUuid:       nso.peerUuid,
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
+		ColumnFamilies: []string{colmfamily},
 	}
 
 	// Start the pmdb server

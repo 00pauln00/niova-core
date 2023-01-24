@@ -213,7 +213,7 @@ func main() {
 	   functions.
 	*/
 	fpso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
+		ColumnFamilies: []string{colmfamily},
 		RaftUuid:       fpso.raftUuid,
 		PeerUuid:       fpso.peerUuid,
 		PmdbAPI:        fpso,

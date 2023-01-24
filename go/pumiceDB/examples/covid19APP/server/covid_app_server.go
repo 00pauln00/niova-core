@@ -54,7 +54,7 @@ func main() {
 	   functions.
 	*/
 	cso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
+		ColumnFamilies: []string{colmfamily},
 		RaftUuid:       cso.raftUuid,
 		PeerUuid:       cso.peerUuid,
 		PmdbAPI:        cso,
