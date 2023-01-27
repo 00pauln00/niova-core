@@ -87,9 +87,9 @@ typedef raft_net_timerfd_cb_ctx_t
 typedef raft_net_cb_ctx_int_t
 (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
 
-// Initialize the peer on bootup of becoming leader.
+// Initialize the peer on bootup peer or becoming leader.
 typedef raft_net_init_peer_cb_ctx_t
-(*raft_init_peer_cb_t)(int becoming_leader);
+(*raft_init_peer_cb_t)(uint32_t bootup_peer);
 
 // Cleanup peer on shutdown.
 typedef raft_net_cleanup_peer_cb_ctx_t
