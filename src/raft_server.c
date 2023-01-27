@@ -2346,7 +2346,7 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
 
     // cleanup any stale cowr sub app entries in the tree
     if (ri->ri_init_peer_cb)
-        ri->ri_init_peer_cb(1);
+        ri->ri_init_peer_cb(0);
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
@@ -5931,7 +5931,7 @@ raft_server_instance_startup(struct raft_instance *ri)
 
     // Give control to application to setup peer on startup.
     if (ri->ri_init_peer_cb)
-        ri->ri_init_peer_cb(0);
+        ri->ri_init_peer_cb(1);
 
 out:
     if (rc)

@@ -29,6 +29,7 @@ struct pumicedb_cb_cargs
     size_t      pcb_req_bufsz;
     char       *pcb_reply_buf;
     size_t      pcb_reply_bufsz;
+    uint32_t    pcb_bootup_peer;
     int        *pcb_continue_wr;
     void       *pcb_pmdb_handler;
     void       *pcb_user_data;

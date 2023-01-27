@@ -798,6 +798,7 @@ static void
 pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
                       const void *req_buf, size_t req_bufsz,
                       char *reply_buf, size_t reply_bufsz,
+                      uint32_t bootup_peer,
                       int *continue_wr, void *pmdb_handler,
                       void *user_data,
                       struct pumicedb_cb_cargs *args)
@@ -807,6 +808,7 @@ pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
     args->pcb_req_bufsz = req_bufsz;
     args->pcb_reply_buf = reply_buf;
     args->pcb_reply_bufsz = reply_bufsz;
+    args->pcb_bootup_peer = bootup_peer;
     args->pcb_continue_wr = continue_wr;
     args->pcb_pmdb_handler = pmdb_handler;
     args->pcb_user_data = user_data;
@@ -838,7 +840,7 @@ pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
                           pmdb_req->pmdbrm_data_size,
                           pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
-                          max_reply_size,
+                          max_reply_size, 0,
                           continue_wr, NULL,
                           pmdb_user_data,
                           &write_prep_cb_args);
@@ -1028,7 +1030,7 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
         pumicedb_init_cb_args(&pmdb_req->pmdbrm_user_id,
                               pmdb_req->pmdbrm_data,
                               pmdb_req->pmdbrm_data_size,
-                              pmdb_reply->pmdbrm_data, max_reply_size,
+                              pmdb_reply->pmdbrm_data, max_reply_size, 0,
                               NULL, NULL,
                               pmdb_user_data,
                               &read_cb_args);
@@ -1292,7 +1294,7 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
                           pmdb_req->pmdbrm_data_size, pmdb_reply ?
                           pmdb_reply->pmdbrm_data : NULL,
-                          max_reply_size, NULL, (void *)&pah,
+                          max_reply_size, 0, NULL, (void *)&pah,
                           pmdb_user_data, &apply_args);
 
 
@@ -1417,9 +1419,9 @@ pmdb_ref_tree_release_all(void)
 }
 
 static void
-pmdb_init_peer_handler(int becoming_leader)
+pmdb_init_peer_handler(uint32_t bootup_peer)
 {
-    if (becoming_leader)
+    if (!bootup_peer)
         // Release entries from coalesced wr tree and range read tree
         pmdb_ref_tree_release_all();
 
@@ -1429,7 +1431,7 @@ pmdb_init_peer_handler(int becoming_leader)
 
     if (pmdbApi->pmdb_init_peer)
     {
-        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, NULL, NULL,
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, bootup_peer, NULL, NULL,
                               pmdb_user_data,
                               &init_leader_cb_args);
         pmdbApi->pmdb_init_peer(&init_leader_cb_args);
@@ -1443,7 +1445,7 @@ pmdb_cleanup_peer_handler(void)
 
     if (pmdbApi->pmdb_cleanup_peer)
     {
-        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, NULL, NULL,
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, 0, NULL, NULL,
                               pmdb_user_data,
                               &init_leader_cb_args);
         pmdbApi->pmdb_cleanup_peer(&init_leader_cb_args);
