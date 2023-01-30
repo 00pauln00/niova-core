@@ -60,8 +60,8 @@ type PmdbServerObject struct {
 }
 
 type PmdbLeaderTS struct {
-	LeaderTerm    int64
-	LeaderTime    int64
+	Term    int64
+	Time    int64
 }
 
 type charsSlice []*C.char
@@ -547,8 +547,8 @@ func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) int {
 
 	rc_go := int(rc)
 	if rc_go == 0 {
-		ts.LeaderTerm = int64(ts_c.rlts_term)
-		ts.LeaderTime = int64(ts_c.rlts_time)
+		ts.Term = int64(ts_c.rlts_term)
+		ts.Time = int64(ts_c.rlts_time)
 	}
 
 	return rc_go

@@ -855,8 +855,8 @@ pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
     }
     else if (rc >= 0 && !*continue_wr)
     {
-         // Write prepare was successful but application don't want
-         // to continue with raft write.
+         // Write prepare was successful but application chooses to bypass
+         // the raft write
          raft_client_net_request_handle_error_set(rncr,
                                                   -EALREADY,
                                                   0, 0);
