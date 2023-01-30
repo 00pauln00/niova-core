@@ -1,36 +1,41 @@
 package leaseServer
 
 import (
+	"encoding/gob"
+	"bytes"
+	"unsafe"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	uuid "github.com/google/uuid"
         log "github.com/sirupsen/logrus"
 	leaseLib "common/leaseLib"
 )
 
-
-
+var ttlDefault = 60
 type leaseServer struct {
-        leaseMap map[uuid.UUID]*common.LeaseStruct
-        pso      *PumiceDBServer.PmdbServerObject
+	UserID	    unsafe.Pointer
+	PmdbHandler unsafe.Pointer
+	LeaseColmFam string
+        leaseMap map[uuid.UUID]*leaseLib.LeaseStruct
+	pso      *PumiceDBServer.PmdbServerObject
 }
 
 
 
 //Helper functions
-func checkMajorCorrectness(currentTerm int, leaseTerm int) {
+func checkMajorCorrectness(currentTerm int64, leaseTerm int64) {
         if(currentTerm != leaseTerm) {
                 log.Fatal("Major(Term) not matching")
         }
 }
 
 func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime leaseLib.LeaderTS, operation int) bool {
-        if entry.LeaseState == requestResponseLib.INPROGRESS {
+        if entry.LeaseState == leaseLib.INPROGRESS {
                 return false
         }
         leaseExpiryTS := entry.TimeStamp.LeaderTime + int64(entry.TTL)
 
         //Check majot correctness
-	checkMajorCorrectness(currentTime.TimeStamp.LeaderTerm, entry.TimeStamp.LeaderTerm)
+	checkMajorCorrectness(currentTime.LeaderTerm, entry.TimeStamp.LeaderTerm)
         //Check if existing lease is valid; by comparing only the minor
         stillValid := leaseExpiryTS >= currentTime.LeaderTime
 	//If valid, Check if client uuid is same and operation is refresh
@@ -42,6 +47,16 @@ func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime 
                 }
         }
         return true
+}
+
+
+
+func (lso *leaseServer) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
+        var plts PumiceDBServer.PmdbLeaderTS
+        rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
+        ts.LeaderTerm = plts.LeaderTerm
+        ts.LeaderTime = plts.LeaderTime
+        return rc
 }
 
 func (lso *leaseServer) Prepare(opcode int, resourceUUID uuid.UUID, clientUUID uuid.UUID, reply *interface{}) int {
@@ -125,5 +140,57 @@ func (lso *leaseServer) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid.UUID,
         }
         leaseObj.LeaseState = leaseLib.GRANTED
         isLeaderFlag := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-        leaseObj.TTL = ttlDefault	
+        leaseObj.TTL = ttlDefault
+	
+	var valueBytes bytes.Buffer
+	enc := gob.NewEncoder(&valueBytes)
+        err := enc.Encode(&leaseObj)
+        if err != nil {
+                log.Error(err)
+        }
+
+        byteToStr := string(valueBytes.Bytes())
+        log.Trace("Value passed by client: ", byteToStr)
+
+        // Length of value.
+        valLen := len(byteToStr)
+	keyLength := len(resourceUUID.String())
+        rc := lso.pso.WriteKV(lso.UserID, lso.PmdbHandler, resourceUUID.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
+
+        if rc < 0 {
+                log.Error("Value not written to rocksdb")
+                return -1
+        }
+	if (isLeaderFlag == 0){
+		return 0
+	}
+
+	*reply = *leaseObj
+	return 1
+}
+
+func (lso *leaseServer) PeerBootup() {
+	readResult, _, _, _, err := lso.pso.RangeReadKV(lso.UserID, "",
+        0, "", 0, true, 0, lso.LeaseColmFam)
+	
+        log.Info("Read result : ",readResult)
+        if err != nil {
+        	log.Error("Failed range query : ", err)
+                return
+        }
+
+        //Result of the read
+        for key,value := range readResult {
+        	//Decode the request structure sent by client.
+                lstruct := &leaseLib.LeaseStruct{}
+                dec := gob.NewDecoder(bytes.NewBuffer(value))
+                decodeErr := dec.Decode(lstruct)
+
+                if decodeErr != nil {
+                	log.Error("Failed to decode the read request : ", decodeErr)
+                        return
+                }
+                kuuid, _ := uuid.Parse(key)
+                lso.leaseMap[kuuid] = lstruct
+         }
 }
