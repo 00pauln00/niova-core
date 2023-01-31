@@ -189,7 +189,7 @@ func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	//keyLength := len(applyLeaseReq.Client.String())
 	
 	var returnObj interface{}
-	rc := lso.leaseObj.ApplyLease(applyLeaseReq.Resource, applyLeaseReq.Client, &returnObj)
+	rc := lso.leaseObj.ApplyLease(applyLeaseReq.Resource, applyLeaseReq.Client, &returnObj, applyArgs.AppID, applyArgs.PmdbHandler)
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
 	if rc == 1 && applyArgs.ReplyBuf != nil {

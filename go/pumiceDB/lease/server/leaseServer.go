@@ -12,8 +12,6 @@ import (
 
 var ttlDefault = 60
 type LeaseServerObject struct {
-	UserID	    unsafe.Pointer
-	PmdbHandler unsafe.Pointer
 	LeaseColmFam string
 	LeaseMap map[uuid.UUID]*leaseLib.LeaseStruct
 	Pso      *PumiceDBServer.PmdbServerObject
@@ -129,7 +127,7 @@ func (lso *LeaseServerObject) ReadLease(resourceUUID uuid.UUID, reply *interface
 	return 0
 }
 
-func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid.UUID, reply *interface{}) int {
+func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid.UUID, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
 	leaseObj, isPresent := lso.LeaseMap[resourceUUID]
         if !isPresent {
                 leaseObj = &leaseLib.LeaseStruct{
@@ -155,7 +153,7 @@ func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid
         // Length of value.
         valLen := len(byteToStr)
 	keyLength := len(resourceUUID.String())
-        rc := lso.Pso.WriteKV(lso.UserID, lso.PmdbHandler, resourceUUID.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
+        rc := lso.Pso.WriteKV(userID, pmdbHandler, resourceUUID.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
 
         if rc < 0 {
                 log.Error("Value not written to rocksdb")
@@ -169,8 +167,8 @@ func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid
 	return 1
 }
 
-func (lso *LeaseServerObject) PeerBootup() {
-	readResult, _, _, _, err := lso.Pso.RangeReadKV(lso.UserID, "",
+func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
+	readResult, _, _, _, err := lso.Pso.RangeReadKV(userID, "",
         0, "", 0, true, 0, lso.LeaseColmFam)
 	
         log.Info("Read result : ",readResult)
