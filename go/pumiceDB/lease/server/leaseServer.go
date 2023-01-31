@@ -52,8 +52,8 @@ func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
         var plts PumiceDBServer.PmdbLeaderTS
         rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
-        ts.LeaderTerm = plts.LeaderTerm
-        ts.LeaderTime = plts.LeaderTime
+        ts.LeaderTerm = plts.Term
+        ts.LeaderTime = plts.Time
         return rc
 }
 
