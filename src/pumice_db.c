@@ -794,6 +794,79 @@ pmdb_range_read_req_add(const uint64_t seq_number,
     return rr_req;
 }
 
+static void
+pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
+                      const void *req_buf, size_t req_bufsz,
+                      char *reply_buf, size_t reply_bufsz,
+                      uint32_t bootup_peer,
+                      int *continue_wr, void *pmdb_handler,
+                      void *user_data,
+                      struct pumicedb_cb_cargs *args)
+{
+    args->pcb_userid = app_id;
+    args->pcb_req_buf = req_buf;
+    args->pcb_req_bufsz = req_bufsz;
+    args->pcb_reply_buf = reply_buf;
+    args->pcb_reply_bufsz = reply_bufsz;
+    args->pcb_bootup_peer = bootup_peer;
+    args->pcb_continue_wr = continue_wr;
+    args->pcb_pmdb_handler = pmdb_handler;
+    args->pcb_user_data = user_data;
+}
+
+static int
+pmdb_write_prep_cb(struct raft_net_client_request_handle *rncr,
+                   int *continue_wr)
+{
+    if (!pmdbApi->pmdb_write_prep)
+    {
+        return 0;
+    }
+
+    const struct pmdb_msg *pmdb_req =
+        (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
+
+    const struct raft_net_client_user_id *rncui = &pmdb_req->pmdbrm_user_id;
+
+    struct raft_client_rpc_msg *reply = rncr->rncr_reply;
+    struct pmdb_msg *pmdb_reply = (struct pmdb_msg *)reply->rcrm_data;
+    const size_t max_reply_size =
+        rncr->rncr_reply_data_max_size -
+        PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
+    struct pumicedb_cb_cargs write_prep_cb_args;
+    ssize_t rc = 0;
+
+    pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
+                          pmdb_req->pmdbrm_data_size,
+                          pmdb_reply ?
+                          pmdb_reply->pmdbrm_data : NULL,
+                          max_reply_size, 0,
+                          continue_wr, NULL,
+                          pmdb_user_data,
+                          &write_prep_cb_args);
+
+    rc = pmdbApi->pmdb_write_prep(&write_prep_cb_args);
+    if (rc < 0)
+    {
+        raft_client_net_request_handle_error_set(rncr,
+                                                 -EPERM,
+                                                 0, -EPERM);
+        rc = -EPERM;
+    }
+    else if (rc >= 0 && !*continue_wr)
+    {
+         // Write prepare was successful but application chooses to bypass
+         // the raft write
+         raft_client_net_request_handle_error_set(rncr,
+                                                  -EALREADY,
+                                                  0, 0);
+         pmdb_reply->pmdbrm_data_size = rc;
+         reply->rcrm_data_size += (uint32_t)rc;
+    }
+
+    return rc >= 0 ? 0 : -1;
+}
+
 /**
  * pmdb_sm_handler_client_write - lookup the object and ensure that the
  *    requested write sequence number is consistent with the pmdb-object.
@@ -821,24 +894,25 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
     const struct pmdb_msg *pmdb_req =
         (const struct pmdb_msg *)rncr->rncr_request_or_commit_data;
 
+    const struct raft_net_client_user_id *rncui = &pmdb_req->pmdbrm_user_id;
     struct pmdb_object obj = {0};
     bool new_object = false;
     int64_t prev_pending_term = -1;
 
-    int rc = pmdb_object_lookup(&pmdb_req->pmdbrm_user_id, &obj,
+    int rc = pmdb_object_lookup(rncui, &obj,
                                 rncr->rncr_current_term);
     if (rc)
     {
         if (rc == -ENOENT)
         {
             pmdb_object_init(&obj, pmdb_get_current_version(),
-                             &pmdb_req->pmdbrm_user_id);
+                             rncui);
             rc = 0;
             new_object = true;
         }
         else
         {
-            PMDB_STR_DEBUG(LL_NOTIFY, &pmdb_req->pmdbrm_user_id,
+            PMDB_STR_DEBUG(LL_NOTIFY, rncui,
                            "pmdb_object_lookup(): %s", strerror(-rc));
 
             /* This appears to be a system error.  Mark it and reply to the
@@ -881,22 +955,27 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
             raft_client_net_request_handle_error_set(rncr, -EINPROGRESS,
                                                      -EINPROGRESS, 0);
         }
-        else // Check if rncui is already part of coalesced_wr_tree
-
+        else
         {
             int error = 0;
             struct pmdb_cowr_sub_app *cowr_sa =
-                pmdb_cowr_sub_app_add(&pmdb_req->pmdbrm_user_id,
-                                      rncr->rncr_client_uuid,
-                                      rncr->rncr_current_term,
-                                      &error, __func__,
-                                      __LINE__);
+            pmdb_cowr_sub_app_add(rncui,
+                                  rncr->rncr_client_uuid,
+                                  rncr->rncr_current_term,
+                                  &error, __func__,
+                                  __LINE__);
             if (!cowr_sa)
                 raft_client_net_request_handle_error_set(
-                    rncr, error, 0, error);
+                        rncr, error, 0, error);
 
             else // Request sequence test passes, will enter the raft log.
-                pmdb_prep_raft_entry_write(rncr, &obj);
+            {
+                int continue_wr = 1;
+                rc = pmdb_write_prep_cb(rncr, &continue_wr);
+                // If write_prep return success and allow to continue raft write.
+                if (!rc && continue_wr)
+                    pmdb_prep_raft_entry_write(rncr, &obj);
+            }
         }
     }
     else // Request sequence is too far ahead
@@ -947,16 +1026,21 @@ pmdb_sm_handler_client_read(struct raft_net_client_request_handle *rncr)
 
     if (!rrc || pmdb_rncui_is_read_any(&pmdb_req->pmdbrm_user_id))   // Ok.  Continue to read operation
     {
+        struct pumicedb_cb_cargs read_cb_args;
+        pumicedb_init_cb_args(&pmdb_req->pmdbrm_user_id,
+                              pmdb_req->pmdbrm_data,
+                              pmdb_req->pmdbrm_data_size,
+                              pmdb_reply->pmdbrm_data, max_reply_size, 0,
+                              NULL, NULL,
+                              pmdb_user_data,
+                              &read_cb_args);
+
         // FIXME Get the current term value here.
         if (rncr->rncr_current_term != pmdb_current_term)
             pmdb_current_term = rncr->rncr_current_term;
 
         // If there are stale range read snapshot, destroy those.
-        rrc = pmdbApi->pmdb_read(&pmdb_req->pmdbrm_user_id,
-                                 pmdb_req->pmdbrm_data,
-                                 pmdb_req->pmdbrm_data_size,
-                                 pmdb_reply->pmdbrm_data, max_reply_size,
-                                 pmdb_user_data);
+        rrc = pmdbApi->pmdb_read(&read_cb_args);
     }
     //XXX fault injection needed
     if (rrc < 0)
@@ -1198,12 +1282,25 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
 
     struct raft_net_sm_write_supplements *ws = &rncr->rncr_sm_write_supp;
     struct pmdb_apply_handle pah = {.pah_rncui = rncui, .pah_ws = ws};
+    struct pmdb_msg *pmdb_reply = NULL;
+    const size_t max_reply_size =
+        rncr->rncr_reply_data_max_size - PMDB_RESERVED_RPC_PAYLOAD_SIZE_UDP;
+    struct pumicedb_cb_cargs apply_args;
+    struct raft_client_rpc_msg *reply = rncr->rncr_reply;
+
+    if (rncr->rncr_is_leader)
+        pmdb_reply = (struct pmdb_msg *)reply->rcrm_data;
+
+    pumicedb_init_cb_args(rncui, pmdb_req->pmdbrm_data,
+                          pmdb_req->pmdbrm_data_size, pmdb_reply ?
+                          pmdb_reply->pmdbrm_data : NULL,
+                          max_reply_size, 0, NULL, (void *)&pah,
+                          pmdb_user_data, &apply_args);
+
 
     // Call into the application so it may emplace its own KVs.
-    int apply_rc =
-        pmdbApi->pmdb_apply(rncui, pmdb_req->pmdbrm_data,
-                            pmdb_req->pmdbrm_data_size, (void *)&pah,
-                            pmdb_user_data);
+    ssize_t apply_rc =
+        pmdbApi->pmdb_apply(&apply_args);
 
     // rc of 0 means the client will get a reply and removal of coalesced
     // tree item only leader should send the reply back to client.
@@ -1211,16 +1308,18 @@ pmdb_sm_handler_pmdb_sm_apply(const struct pmdb_msg *pmdb_req,
     {
         if (rncr->rncr_is_leader)
         {
-            struct pmdb_msg *pmdb_reply =
-                RAFT_NET_MAP_RPC(pmdb_msg, rncr->rncr_reply);
+            // Add the reply size to the RPC reply
+            reply->rcrm_data_size += (uint32_t)apply_rc;
 
+            pmdb_reply->pmdbrm_data_size = apply_rc >= 0 ?
+                                           (uint32_t)apply_rc : 0;
             // Pass in ID_ANY_64bit since this is a reply.
-            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit, apply_rc);
+            pmdb_obj_to_reply(&obj, pmdb_reply, ID_ANY_64bit,
+                              apply_rc < 0 ? apply_rc: 0);
         }
         pmdb_sm_handler_pmdb_sm_apply_remove_coalesce_tree_item(pmdb_req, rncr);
         pmdb_sm_handler_pmdb_sm_apply_remove_range_read_tree_item(rncr);
     }
-
 
     return rc;
 }
@@ -1319,6 +1418,40 @@ pmdb_ref_tree_release_all(void)
     pmdb_range_read_req_release_all();
 }
 
+static void
+pmdb_init_peer_handler(uint32_t bootup_peer)
+{
+    if (!bootup_peer)
+        // Release entries from coalesced wr tree and range read tree
+        pmdb_ref_tree_release_all();
+
+    // Give control to application to perform any cleanup/initialization
+    // on leader.
+    struct pumicedb_cb_cargs init_leader_cb_args;
+
+    if (pmdbApi->pmdb_init_peer)
+    {
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, bootup_peer, NULL, NULL,
+                              pmdb_user_data,
+                              &init_leader_cb_args);
+        pmdbApi->pmdb_init_peer(&init_leader_cb_args);
+    }
+}
+
+static void
+pmdb_cleanup_peer_handler(void)
+{
+    struct pumicedb_cb_cargs init_leader_cb_args;
+
+    if (pmdbApi->pmdb_cleanup_peer)
+    {
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, 0, NULL, NULL,
+                              pmdb_user_data,
+                              &init_leader_cb_args);
+        pmdbApi->pmdb_cleanup_peer(&init_leader_cb_args);
+    }
+}
+
 void
 PmdbPutRoptionsWithSnapshot(const uint64_t seq_number)
 {
@@ -1366,6 +1499,11 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
     *ret_seq = prrq->prrq_seq;
 
     return prrq->prrq_roptions;
+}
+
+int PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts)
+{
+    return raft_server_get_leader_ts(ts);
 }
 
 /**
@@ -1450,7 +1588,8 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
-                                  pmdb_ref_tree_release_all,
+                                  pmdb_init_peer_handler,
+                                  pmdb_cleanup_peer_handler,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 

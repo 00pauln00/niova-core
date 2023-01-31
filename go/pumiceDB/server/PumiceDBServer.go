@@ -3,14 +3,14 @@ package PumiceDBServer
 import (
 	"errors"
 	"fmt"
+	gopointer "github.com/mattn/go-pointer"
 	log "github.com/sirupsen/logrus"
+	"math"
 	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"strings"
 	"unsafe"
-	"math"
-	gopointer "github.com/mattn/go-pointer"
 )
 
 /*
@@ -19,28 +19,49 @@ import (
 #include <rocksdb/c.h>
 #include <raft/raft_net.h>
 #include <raft/pumice_db_client.h>
-extern int applyCgo(const struct raft_net_client_user_id *, const void *,
-                     size_t, void *, void *);
-extern size_t readCgo(const struct raft_net_client_user_id *, const void *,
-                    size_t, void *, size_t, void *);
+extern ssize_t writePrepCgo(struct pumicedb_cb_cargs *args, int *);
+extern ssize_t applyCgo(struct pumicedb_cb_cargs *args, void *);
+extern ssize_t readCgo(struct pumicedb_cb_cargs *args);
+extern void initPeerCgo(struct pumicedb_cb_cargs *args);
+extern void cleanupPeerCgo(struct pumicedb_cb_cargs *args);
 */
 import "C"
 
 // The encoding overhead for a single key-val entry is 2 bytes
 var encodingOverhead int = 2
 
+type PmdbCbArgs struct {
+	UserID		unsafe.Pointer
+	ReqBuf		unsafe.Pointer
+	ReqSize		int64
+	ReplyBuf	unsafe.Pointer
+	ReplySize	int64
+	BootupPeer	uint32
+	ContinueWr	unsafe.Pointer
+	PmdbHandler	unsafe.Pointer
+	UserData	unsafe.Pointer
+}
+
 type PmdbServerAPI interface {
-	Apply(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer) int
-	Read(unsafe.Pointer, unsafe.Pointer, int64, unsafe.Pointer, int64) int64
+	WritePrep(goCbArgs *PmdbCbArgs) int64
+	Apply(goCbArgs *PmdbCbArgs) int64
+	Read(goCbArgs *PmdbCbArgs) int64
+	InitPeer(goCbArgs *PmdbCbArgs)
+	CleanupPeer(goCbArgs *PmdbCbArgs)
 }
 
 type PmdbServerObject struct {
 	PmdbAPI        PmdbServerAPI
 	RaftUuid       string
 	PeerUuid       string
-	ColumnFamilies string // XXX should be an array of strings
 	SyncWrites     bool
 	CoalescedWrite bool
+	ColumnFamilies []string
+}
+
+type PmdbLeaderTS struct {
+	Term    int64
+	Time    int64
 }
 
 type charsSlice []*C.char
@@ -85,43 +106,87 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 	return C.GoBytes(unsafe.Pointer(C_value), C_value_len)
 }
 
+func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
+					goCbArgs *PmdbCbArgs) {
+	goCbArgs.UserID = unsafe.Pointer(cargs.pcb_userid)
+	goCbArgs.ReqBuf = unsafe.Pointer(cargs.pcb_req_buf)
+	goCbArgs.ReqSize = CToGoInt64(cargs.pcb_req_bufsz)
+	goCbArgs.ReplyBuf = unsafe.Pointer(cargs.pcb_reply_buf)
+	goCbArgs.ReplySize = CToGoInt64(cargs.pcb_reply_bufsz)
+	goCbArgs.BootupPeer = uint32(cargs.pcb_bootup_peer)
+	goCbArgs.ContinueWr = unsafe.Pointer(cargs.pcb_continue_wr)
+	goCbArgs.PmdbHandler = unsafe.Pointer(cargs.pcb_pmdb_handler)
+	goCbArgs.UserData = unsafe.Pointer(cargs.pcb_user_data)
+}
+
 /*
- The following goApply and goRead functions are the exported
+ The following goWritePrep, goApply and goRead functions are the exported
  functions which is needed for calling the golang function
  pointers from C.
 */
 
-//export goApply
-func goApply(app_id *C.struct_raft_net_client_user_id, input_buf unsafe.Pointer,
-	input_buf_sz C.size_t, pmdb_handle unsafe.Pointer,
-	user_data unsafe.Pointer) int {
+//export goWritePrep
+func goWritePrep(args *C.struct_pumicedb_cb_cargs) int64 {
+
+	var wrPrepArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &wrPrepArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
+	gcb := gopointer.Restore(wrPrepArgs.UserData).(*PmdbServerObject)
 
-	//Convert buffer size from c data type size_t to golang int64.
-	input_buf_sz_go := CToGoInt64(input_buf_sz)
+	//Calling the golang Application's WritePrep function.
+	return gcb.PmdbAPI.WritePrep(&wrPrepArgs)
+}
+
+//export goApply
+func goApply(args *C.struct_pumicedb_cb_cargs,
+	pmdb_handle unsafe.Pointer) int64 {
+
+	var applyArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &applyArgs)
+
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(applyArgs.UserData).(*PmdbServerObject)
 
 	//Calling the golang Application's Apply function.
-	return gcb.PmdbAPI.Apply(unsafe.Pointer(app_id), input_buf, input_buf_sz_go,
-		pmdb_handle)
+	return gcb.PmdbAPI.Apply(&applyArgs)
 }
 
 //export goRead
-func goRead(app_id *C.struct_raft_net_client_user_id, request_buf unsafe.Pointer,
-	request_bufsz C.size_t, reply_buf unsafe.Pointer, reply_bufsz C.size_t,
-	user_data unsafe.Pointer) int64 {
+func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
+
+	var readArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &readArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(user_data).(*PmdbServerObject)
-
-	//Convert buffer size from c data type size_t to golang int64.
-	request_bufsz_go := CToGoInt64(request_bufsz)
-	reply_bufsz_go := CToGoInt64(reply_bufsz)
+	gcb := gopointer.Restore(readArgs.UserData).(*PmdbServerObject)
 
 	//Calling the golang Application's Read function.
-	return gcb.PmdbAPI.Read(unsafe.Pointer(app_id), request_buf, request_bufsz_go,
-		reply_buf, reply_bufsz_go)
+	return gcb.PmdbAPI.Read(&readArgs)
+}
+
+//export goInitPeer
+func goInitPeer(args *C.struct_pumicedb_cb_cargs) {
+
+	var initPeerArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &initPeerArgs)
+
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(initPeerArgs.UserData).(*PmdbServerObject)
+
+	gcb.PmdbAPI.InitPeer(&initPeerArgs)
+}
+
+//export goCleanupPeer
+func goCleanupPeer(args *C.struct_pumicedb_cb_cargs) {
+
+	var cleanupPeerArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &cleanupPeerArgs)
+
+	//Restore the golang function pointers stored in PmdbCallbacks.
+	gcb := gopointer.Restore(cleanupPeerArgs.UserData).(*PmdbServerObject)
+
+	gcb.PmdbAPI.CleanupPeer(&cleanupPeerArgs)
 }
 
 /**
@@ -153,19 +218,26 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 
 	cCallbacks := C.struct_PmdbAPI{}
 
-	//Assign the callback functions for apply and read
+	//Assign the callback functions
 	cCallbacks.pmdb_apply = C.pmdb_apply_sm_handler_t(C.applyCgo)
 	cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
+	cCallbacks.pmdb_write_prep = C.pmdb_write_prep_sm_handler_t(C.writePrepCgo)
+	cCallbacks.pmdb_init_peer = C.pmdb_init_peer_sm_handler_t(C.initPeerCgo)
+	cCallbacks.pmdb_cleanup_peer = C.pmdb_cleanup_peer_sm_handler_t(C.cleanupPeerCgo)
 
 	/*
 	 * Store the column family name into char * array.
 	 * Store gostring to byte array.
 	 * Don't forget to append the null terminating character.
 	 */
-	cf_byte_arr := []byte(pso.ColumnFamilies + "\000")
 
-	cf_name := make(charsSlice, len(cf_byte_arr))
-	cf_name[0] = (*C.char)(C.CBytes(cf_byte_arr))
+	var i int
+	cf_name := make(charsSlice, len(pso.ColumnFamilies))
+	for _, cFamily := range pso.ColumnFamilies {
+		cf_byte_arr := []byte(cFamily + "\000")
+		cf_name[i] = (*C.char)(C.CBytes(cf_byte_arr))
+		i = i + 1
+	}
 
 	//Convert Byte array to char **
 	sH := (*reflect.SliceHeader)(unsafe.Pointer(&cf_name))
@@ -176,8 +248,9 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 	defer gopointer.Unref(opa_ptr)
 
 	// Starting the pmdb server.
-	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array, 1,
-		(C.bool)(pso.SyncWrites), (C.bool)(pso.CoalescedWrite), opa_ptr)
+	rc := C.PmdbExec(raft_uuid_c, peer_uuid_c, &cCallbacks, cf_array,
+		C.int(len(pso.ColumnFamilies)), (C.bool)(pso.SyncWrites),
+		(C.bool)(pso.CoalescedWrite), opa_ptr)
 
 	if rc != 0 {
 		return fmt.Errorf("PmdbExec() returned %d", rc)
@@ -347,16 +420,16 @@ func createRopts(consistent bool, seqNum *uint64) (*C.rocksdb_readoptions_t, boo
 
 	//Create ropts based on consistency requirement
 	if consistent {
-                ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(*seqNum), &retSeqNum)
-                if *seqNum != CToGoUint64(retSeqNum){
-                        if *seqNum != math.MaxUint64 {
+		ropts = C.PmdbGetRoptionsWithSnapshot(C.ulong(*seqNum), &retSeqNum)
+		if *seqNum != CToGoUint64(retSeqNum) {
+			if *seqNum != math.MaxUint64 {
 				snapMiss = true
-                        }
-                        *seqNum = CToGoUint64(retSeqNum)
-                }
-        } else {
-                ropts = C.rocksdb_readoptions_create()
-        }
+			}
+			*seqNum = CToGoUint64(retSeqNum)
+		}
+	} else {
+		ropts = C.rocksdb_readoptions_create()
+	}
 
 	return ropts, snapMiss
 }
@@ -366,7 +439,7 @@ func destroyRopts(seqNum uint64, ropts *C.rocksdb_readoptions_t, consistent bool
 	if consistent {
 		C.PmdbPutRoptionsWithSnapshot(C.ulong(seqNum))
 	} else {
-                C.rocksdb_readoptions_destroy(ropts)
+		C.rocksdb_readoptions_destroy(ropts)
 	}
 }
 
@@ -469,4 +542,19 @@ func (*PmdbServerObject) CopyDataToBuffer(ed interface{},
 func (*PmdbServerObject) GetCurrentHybridTime() float64 {
 	//TODO: Update this code
 	return 0.0
+}
+
+// Get the leader timestamp.
+func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) int {
+
+	var ts_c C.struct_raft_leader_ts
+	rc := C.PmdbGetLeaderTimeStamp(&ts_c)
+
+	rc_go := int(rc)
+	if rc_go == 0 {
+		ts.Term = int64(ts_c.rlts_term)
+		ts.Time = int64(ts_c.rlts_time)
+	}
+
+	return rc_go
 }

@@ -12,11 +12,28 @@
 
 #include "pumice_db_net.h"
 #include "raft_net.h"
+#include "raft.h"
 #include "common.h"
 
-typedef void    pumicedb_apply_ctx_t;
-typedef int     pumicedb_apply_ctx_int_t;
+typedef ssize_t pumicedb_apply_ctx_ssize_t;
+typedef ssize_t pumicedb_write_prep_ctx_ssize_t;
 typedef ssize_t pumicedb_read_ctx_ssize_t;
+typedef void    pumicedb_init_peer_ctx_void_t;
+typedef void    pumicedb_cleanup_peer_ctx_void_t;
+
+//common arguments for pumicedb callback functions.
+struct pumicedb_cb_cargs
+{
+    const struct raft_net_client_user_id *pcb_userid;
+    const void *pcb_req_buf;
+    size_t      pcb_req_bufsz;
+    char       *pcb_reply_buf;
+    size_t      pcb_reply_bufsz;
+    uint32_t    pcb_bootup_peer;
+    int        *pcb_continue_wr;
+    void       *pcb_pmdb_handler;
+    void       *pcb_user_data;
+};
 
 /**
  * pmdb_apply_sm_handler_t - The apply handler is called from raft after the
@@ -29,11 +46,8 @@ typedef ssize_t pumicedb_read_ctx_ssize_t;
  *    The updates staged via PmdbWriteKV() are written atomically into rocksDB
  *    along with other pumiceDB and raft internal metadata.
  */
-typedef pumicedb_apply_ctx_int_t
-(*pmdb_apply_sm_handler_t)(const struct raft_net_client_user_id *,
-                           const void *input_buf, size_t input_bufsz,
-                           void *pmdb_handle,
-                           void *user_data);
+typedef pumicedb_apply_ctx_ssize_t
+(*pmdb_apply_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 /**
  * pmdb_read_sm_handler_t - performs a general read operation. The app-uuid and
@@ -41,15 +55,49 @@ typedef pumicedb_apply_ctx_int_t
  *    the number of bytes used in reply_buf.
  */
 typedef pumicedb_read_ctx_ssize_t
-(*pmdb_read_sm_handler_t)(const struct raft_net_client_user_id *,
-                          const char *request_buf, size_t request_bufsz,
-                          char *reply_buf, size_t reply_bufsz, void *user_data);
+(*pmdb_read_sm_handler_t)(struct pumicedb_cb_cargs *args);
+
+/**
+ * pmdb_write_prep_sm_handler_t - The write prepare handler is called from
+ * raft before applying the write entry.
+ * Application is presented with original buffer content. And looking at the
+ * buffer data, application can decide whether to go ahead with write operation.
+ * Actual write to rocksDB would happen only through apply handler.
+ */
+typedef pumicedb_write_prep_ctx_ssize_t
+(*pmdb_write_prep_sm_handler_t)(struct pumicedb_cb_cargs *args);
+
+/**
+ *pmdb_init_peer_sm_handler_t - The initialize peer handler is called from
+ * raft when peer boots up or becomes leader..
+ * It can be used if Application wants to perform some initialization on
+ * bootup or becoming leader.
+ */
+typedef pumicedb_init_peer_ctx_void_t
+(*pmdb_init_peer_sm_handler_t)(struct pumicedb_cb_cargs *args);
+
+/**
+ *pmdb_cleanup_peer_sm_handler_t - The cleanup application specific
+ * data on shutdown.
+ */
+typedef pumicedb_cleanup_peer_ctx_void_t
+(*pmdb_cleanup_peer_sm_handler_t)(struct pumicedb_cb_cargs *args);
 
 struct PmdbAPI
 {
-    pmdb_apply_sm_handler_t pmdb_apply;
-    pmdb_read_sm_handler_t  pmdb_read;
+    pmdb_write_prep_sm_handler_t      pmdb_write_prep;
+    pmdb_apply_sm_handler_t           pmdb_apply;
+    pmdb_read_sm_handler_t            pmdb_read;
+    pmdb_init_peer_sm_handler_t       pmdb_init_peer;
+    pmdb_cleanup_peer_sm_handler_t    pmdb_cleanup_peer;
 };
+
+/**
+ * PmdbGetLeaderTimeStamp - Fill up the leader TS (timestamp) in the ts pointer.
+ * @ts: Pointer to raft_leader_ts for storing the leader timstamp information.
+ */
+int
+PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts);
 
 /**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'

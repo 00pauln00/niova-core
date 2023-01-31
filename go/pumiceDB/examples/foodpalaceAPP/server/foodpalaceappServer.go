@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"unsafe"
 )
 
 /*
@@ -55,12 +54,26 @@ func (fpso *FoodpalaceServer) initLogger() {
 	log.Info("peer:", fpso.peerUuid)
 }
 
+//Method for CleanupPeer callback
+func (fpso *FoodpalaceServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
+//Method for InitPeer callback
+func (fpso *FoodpalaceServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
+//Method for WritePrep callback.
+func (fpso *FoodpalaceServer) WritePrep(wrPreArgs *PumiceDBServer.PmdbCbArgs) int64 {
+	return 0
+}
+
 //Method for Apply callback.
-func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Pointer,
-	dataBufSz int64, pmdbHandle unsafe.Pointer) int {
+func (fpso *FoodpalaceServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	data := &foodpalaceapplib.FoodpalaceData{}
-	fpso.pso.Decode(dataBuf, data, dataBufSz)
+	fpso.pso.Decode(applyArgs.ReqBuf, data, applyArgs.ReqSize)
 	log.Info("Data received from client: ", data)
 
 	//Convert resturant_id from int to string and store as fp_app_key.
@@ -89,14 +102,15 @@ func (fpso *FoodpalaceServer) Apply(appUuid unsafe.Pointer, dataBuf unsafe.Point
 	appValLen := len(fpAppValue)
 
 	//Write key,values.
-	rc := fpso.pso.WriteKV(appUuid, pmdbHandle, fpAppKey, int64(appKeyLen), fpAppValue,
-		int64(appValLen), colmfamily)
-	return rc
+	rc := fpso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler, fpAppKey,
+			int64(appKeyLen), fpAppValue,
+			int64(appValLen), colmfamily)
+
+	return int64(rc)
 }
 
 //Method for read callback.
-func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Pointer,
-	dataReqBufsz int64, dataReplyBuf unsafe.Pointer, dataReplyBufsz int64) int64 {
+func (fpso *FoodpalaceServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	var resultSplt []string
 	log.Info("Read request received from client")
@@ -104,7 +118,7 @@ func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Poi
 	//Decode the request structure sent by client.
 	readReqData := &foodpalaceapplib.FoodpalaceData{}
 
-	fpso.pso.Decode(dataReqBuf, readReqData, dataReqBufsz)
+	fpso.pso.Decode(readArgs.ReqBuf, readReqData, readArgs.ReqSize)
 
 	log.Info("Key passed by client: ", readReqData.RestaurantId)
 
@@ -112,7 +126,8 @@ func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Poi
 	fappKey := strconv.Itoa(int(readReqData.RestaurantId))
 	fappKeyLen := len(fappKey)
 
-	result, readErr := fpso.pso.ReadKV(appUuid, fappKey, int64(fappKeyLen), colmfamily)
+	result, readErr := fpso.pso.ReadKV(readArgs.UserID, fappKey,
+		int64(fappKeyLen), colmfamily)
 	if readErr == nil {
 		//Split the result to get respective values.
 		resultStr := string(result[:])
@@ -135,7 +150,7 @@ func (fpso *FoodpalaceServer) Read(appUuid unsafe.Pointer, dataReqBuf unsafe.Poi
 	}
 
 	//Copy the encoded result in reply_buffer.
-	dataReplySize, copyErr := fpso.pso.CopyDataToBuffer(replyData, dataReplyBuf)
+	dataReplySize, copyErr := fpso.pso.CopyDataToBuffer(replyData, readArgs.ReplyBuf)
 	if copyErr != nil {
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1
@@ -198,7 +213,7 @@ func main() {
 	   functions.
 	*/
 	fpso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
+		ColumnFamilies: []string{colmfamily},
 		RaftUuid:       fpso.raftUuid,
 		PeerUuid:       fpso.peerUuid,
 		PmdbAPI:        fpso,

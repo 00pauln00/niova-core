@@ -20,7 +20,8 @@ PmdbObjLookup(pmdb_t pmdb, const pmdb_obj_id_t *obj_id,
 
 int
 PmdbObjPut(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *kv,
-           size_t kv_size, struct pmdb_obj_stat *user_pmdb_stat);
+           size_t kv_size, int get_response,
+           struct pmdb_obj_stat *user_pmdb_stat);
 
 void *
 PmdbObjGet(pmdb_t pmdb, const pmdb_obj_id_t *obj_id, const char *key,

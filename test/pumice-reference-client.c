@@ -902,7 +902,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
     switch (preq->preq_op)
     {
     case pmdb_op_lookup:
-        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests, 0,
                                   &preq->preq_obj_stat,
                                   use_async_requests ? pmdbtc_async_cb : NULL,
                                   use_async_requests ? preq : NULL,
@@ -914,7 +914,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
     case pmdb_op_read:
 
-        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests, 0,
                                   &preq->preq_obj_stat,
                                   use_async_requests ? pmdbtc_async_cb : NULL,
                                   use_async_requests? preq : NULL,
@@ -934,7 +934,7 @@ pmdbtc_submit_request(struct pmdbtc_request *preq)
 
         SIMPLE_LOG_MSG(LL_TRACE, "write rqsz: %lu", rqsz);
 
-        pmdb_request_options_init(&pmdb_req, 1, use_async_requests,
+        pmdb_request_options_init(&pmdb_req, 1, use_async_requests, 0,
                                   &preq->preq_obj_stat,
                                   use_async_requests ? pmdbtc_async_cb : NULL,
                                   use_async_requests ? preq : NULL,

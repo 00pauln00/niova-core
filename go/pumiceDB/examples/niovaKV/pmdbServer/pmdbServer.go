@@ -8,7 +8,6 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-	"unsafe"
 )
 
 /*
@@ -63,12 +62,12 @@ func main() {
 	   functions.
 	*/
 	nso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
 		RaftUuid:       nso.raftUuid,
 		PeerUuid:       nso.peerUuid,
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
+		ColumnFamilies: []string{colmfamily},
 	}
 
 	// Start the pmdb server
@@ -119,15 +118,27 @@ type NiovaKVServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
-	inputBufSize int64, pmdbHandle unsafe.Pointer) int {
+func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
+	return 0
+}
+
+func (nso *NiovaKVServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
+func (nso *NiovaKVServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	return
+}
+
+func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
 
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
 
-	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
+	decodeErr := nso.pso.Decode(applyArgs.ReqBuf, applyNiovaKV,
+								applyArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -144,51 +155,21 @@ func (nso *NiovaKVServer) Apply(appId unsafe.Pointer, inputBuf unsafe.Pointer,
 	valLen := len(byteToStr)
 
 	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	rc := nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.Key,
+	rc := nso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
+		applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
 		int64(valLen), colmfamily)
 
-	return rc
+	return int64(rc)
 }
 
-/*
-func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
-	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
-
-	log.Trace("NiovaCtlPlane server: Read request received")
-
-
-	decodeErr := nso.pso.Decode(inputBuf, applyNiovaKV, inputBufSize)
-	if decodeErr != nil {
-		log.Error("Failed to decode the application data")
-		return
-	}
-
-	log.Trace("Key passed by client: ", applyNiovaKV.InputKey)
-
-	// length of key.
-	keyLength := len(applyNiovaKV.InputKey)
-
-	byteToStr := string(applyNiovaKV.InputValue)
-
-	// Length of value.
-	valLen := len(byteToStr)
-
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	nso.pso.WriteKV(appId, pmdbHandle, applyNiovaKV.InputKey,
-		int64(keyLength), byteToStr,
-		int64(valLen), colmfamily)
-
-}
-*/
-func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
-	requestBufSize int64, replyBuf unsafe.Pointer, replyBufSize int64) int64 {
+func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
 	reqStruct := &requestResponseLib.KVRequest{}
-	decodeErr := nso.pso.Decode(requestBuf, reqStruct, requestBufSize)
+	decodeErr := nso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
@@ -201,7 +182,7 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 	log.Trace("Key length: ", keyLen)
 
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	readResult, readErr := nso.pso.ReadKV(appId, reqStruct.Key,
+	readResult, readErr := nso.pso.ReadKV(readArgs.UserID, reqStruct.Key,
 		int64(keyLen), colmfamily)
 	var valType []byte
 	var replySize int64
@@ -218,7 +199,8 @@ func (nso *NiovaKVServer) Read(appId unsafe.Pointer, requestBuf unsafe.Pointer,
 		}
 
 		//Copy the encoded result in replyBuffer
-		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq, replyBuf)
+		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq,
+													readArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1

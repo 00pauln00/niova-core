@@ -217,13 +217,16 @@ pmdbts_sum_incoming_rtv(const struct raft_test_data_block *rtdb_src,
     }
 }
 
-static pumicedb_apply_ctx_int_t
-pmdbts_apply(const struct raft_net_client_user_id *app_id,
-             const void *input_buf, size_t input_bufsz, void *pmdb_handle,
-             void *user_data)
+static pumicedb_apply_ctx_ssize_t
+pmdbts_apply(struct pumicedb_cb_cargs *args)
 {
 //    NIOVA_ASSERT(!pmdbst_init_rocksdb());
 
+    const struct raft_net_client_user_id *app_id = args->pcb_userid;
+    const void *input_buf = args->pcb_req_buf;
+    size_t input_bufsz = args->pcb_req_bufsz;
+    void *pmdb_handle = args->pcb_pmdb_handler;
+    
     const struct raft_test_data_block *rtdb =
         (const struct raft_test_data_block *)input_buf;
 
@@ -249,13 +252,12 @@ pmdbts_apply(const struct raft_net_client_user_id *app_id,
 }
 
 static pumicedb_read_ctx_ssize_t
-pmdbts_read(const struct raft_net_client_user_id *app_id,
-            const char *request_buf, size_t request_bufsz, char *reply_buf,
-            size_t reply_bufsz, void *user_data)
+pmdbts_read(struct pumicedb_cb_cargs *args)
 {
 
-    (void)request_buf;
-    (void)request_bufsz;
+    const struct raft_net_client_user_id *app_id =  args->pcb_userid;
+    char *reply_buf = args->pcb_reply_buf;
+    size_t reply_bufsz = args->pcb_reply_bufsz;
 
     if (!reply_buf || !reply_bufsz)
         return (ssize_t)-EINVAL;
@@ -356,8 +358,11 @@ main(int argc, char **argv)
     pmdbts_getopt(argc, argv);
 
     struct PmdbAPI api = {
-        .pmdb_apply = pmdbts_apply,
-        .pmdb_read = pmdbts_read,
+        .pmdb_write_prep   = NULL,
+        .pmdb_init_peer    = NULL,
+        .pmdb_cleanup_peer = NULL,
+        .pmdb_apply        = pmdbts_apply,
+        .pmdb_read         = pmdbts_read,
     };
 
     const char *cf_names[1] = {pmdbts_column_family_name};

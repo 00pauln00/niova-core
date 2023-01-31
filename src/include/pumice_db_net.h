@@ -106,7 +106,8 @@ typedef void (*pmdb_user_cb_t)(void *, ssize_t);
  */
 typedef struct pmdb_request_options
 {
-    uint8_t          pro_non_blocking:1;
+    uint8_t          pro_non_blocking:1,
+                     pro_get_response:1;
     pmdb_obj_stat_t *pro_stat;
     pmdb_user_cb_t   pro_non_blocking_cb;
     void            *pro_arg;
@@ -154,6 +155,7 @@ pmdb_get_default_request_timeout(void)
 static inline void
 pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
                   int non_blocking,
+                  int get_response,
                   pmdb_obj_stat_t *obj_stat, pmdb_user_cb_t user_cb,
                   void *user_arg,
                   void *get_buffer,
@@ -161,6 +163,7 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
                   int timeout_sec)
 {
     pmdb_req->pro_non_blocking = non_blocking;
+    pmdb_req->pro_get_response = get_response;
     pmdb_req->pro_stat = obj_stat;
     pmdb_req->pro_non_blocking_cb = user_cb;
     pmdb_req->pro_arg = user_arg;
