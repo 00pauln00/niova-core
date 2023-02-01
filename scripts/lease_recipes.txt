@@ -1,4 +1,3 @@
-verify_pmdb_leader_timestamp.yml
 lease_get_lease_on_already_expired_lease.yml
 lease_get_lease_with_multiple_clients_and_single_resource_uuid.yml
 lease_perform_lookup_operation_before_get_operation.yml
