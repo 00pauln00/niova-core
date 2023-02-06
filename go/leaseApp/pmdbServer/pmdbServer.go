@@ -190,7 +190,7 @@ func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	rc := lso.leaseObj.ApplyLease(applyLeaseReq.Resource, applyLeaseReq.Client, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
-	if rc == 1 && applyArgs.ReplyBuf != nil {
+	if rc == 0 && applyArgs.ReplyBuf != nil {
 		replySizeRc, copyErr = lso.pso.CopyDataToBuffer(returnObj, applyArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
