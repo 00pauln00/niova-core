@@ -1,13 +1,13 @@
 package main
 
 import (
+	leaseServerLib "LeaseLib/leaseServer"
+	leaseLib "common/leaseLib"
 	"common/requestResponseLib"
 	"errors"
 	"flag"
-	leaseServerLib "LeaseLib/leaseServer"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
-	leaseLib "common/leaseLib"
 	"os"
 
 	uuid "github.com/google/uuid"
@@ -28,7 +28,7 @@ var seqno = 0
 var ttlDefault = 60
 
 // Use the default column family
-var colmfamily []string = []string{"PMDBTS_CF",""}
+var colmfamily []string = []string{"PMDBTS_CF"}
 
 type leaseServer struct {
 	raftUUID string
@@ -42,7 +42,7 @@ type leaseServer struct {
 func main() {
 	lso, pErr := parseArgs()
 	if pErr != nil {
-		log.Println(pErr)
+		log.Println("Invalid args - ", pErr)
 		return
 	}
 
@@ -122,7 +122,6 @@ func parseArgs() (*leaseServer, error) {
 	return lso, err
 }
 
-
 func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	var copyErr error
@@ -137,33 +136,32 @@ func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 	log.Info("(Write prep)Lease server : Write prep request", Request)
 
-	
 	var returnObj interface{}
 	rc := lso.leaseObj.Prepare(Request.Operation, Request.Resource, Request.Client, &returnObj)
-	
+
 	if rc <= 0 {
 		//Dont continue write
 		_, copyErr = lso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
-                if copyErr != nil {
-                	log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                        return -1
-                }
+		if copyErr != nil {
+			log.Error("Failed to Copy result in the buffer: %s", copyErr)
+			return -1
+		}
 		if rc == 0 {
 			replySize, copyErr = lso.pso.CopyDataToBuffer(returnObj, wrPrepArgs.ReplyBuf)
-                        if copyErr != nil {
-                        	log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                                return -1
-                        }
-                        return replySize
-		} 
+			if copyErr != nil {
+				log.Error("Failed to Copy result in the buffer: %s", copyErr)
+				return -1
+			}
+			return replySize
+		}
 		return -1
 	} else {
 		//Continue write
 		_, copyErr = lso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
-                if copyErr != nil {
-                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                        return -1
-                }
+		if copyErr != nil {
+			log.Error("Failed to Copy result in the buffer: %s", copyErr)
+			return -1
+		}
 		return 0
 	}
 
@@ -187,7 +185,7 @@ func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	// length of key.
 	//keyLength := len(applyLeaseReq.Client.String())
-	
+
 	var returnObj interface{}
 	rc := lso.leaseObj.ApplyLease(applyLeaseReq.Resource, applyLeaseReq.Client, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
 	//Copy the encoded result in replyBuffer
@@ -222,65 +220,64 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	//keyLen := len(reqStruct.Resource.String())
 
-
 	var returnObj interface{}
-        var replySize int64
+	var replySize int64
 	var copyErr error
 
 	rc := lso.leaseObj.ReadLease(reqStruct.Resource, &returnObj)
-	
+
 	if rc == 0 {
 		replySize, copyErr = lso.pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
-                if copyErr != nil {
-                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
-                        return -1
-                }
+		if copyErr != nil {
+			log.Error("Failed to Copy result in the buffer: %s", copyErr)
+			return -1
+		}
 
 		return replySize
 	}
-	
+
 	return int64(rc)
 
 }
 
 func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	/*
-	log.Info("Init peer called")
-	if len(lso.leaseMap) != 0 {
-		//Peer becomes leader
-		for _, leaseObj := range lso.leaseMap {
-			rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-			if rc != 0 {
-				log.Error("Unable to get timestamp (InitLeader)")
+			log.Info("Init peer called")
+			if len(lso.leaseMap) != 0 {
+				//Peer becomes leader
+				for _, leaseObj := range lso.leaseMap {
+					rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+					if rc != 0 {
+						log.Error("Unable to get timestamp (InitLeader)")
+					}
+					leaseObj.TTL = ttlDefault
+				}
+			} else {
+				//Peer boots up
+				//Range_query
+				readResult, _, _, _, err := lso.pso.RangeReadKV(initPeerArgs.UserID, "",
+		                        0, "", 0, true, 0, colmfamily[0])
+				log.Info("Read result : ",readResult)
+				if err != nil {
+					log.Error("Failed range query : ", err)
+					return
+				}
+
+				//Result of the read
+				for key,value := range readResult {
+					//Decode the request structure sent by client.
+		        		lstruct := &requestResponseLib.LeaseStruct{}
+					dec := gob.NewDecoder(bytes.NewBuffer(value))
+					decodeErr := dec.Decode(lstruct)
+
+		        		if decodeErr != nil {
+						log.Error("Failed to decode the read request : ", decodeErr)
+		                		return
+		        		}
+					kuuid, _ := uuid.Parse(key)
+					lso.leaseMap[kuuid] = lstruct
+				}
 			}
-			leaseObj.TTL = ttlDefault
-		}
-	} else {
-		//Peer boots up
-		//Range_query
-		readResult, _, _, _, err := lso.pso.RangeReadKV(initPeerArgs.UserID, "",
-                        0, "", 0, true, 0, colmfamily[0])
-		log.Info("Read result : ",readResult)	
-		if err != nil {
-			log.Error("Failed range query : ", err)
-			return
-		}
-
-		//Result of the read
-		for key,value := range readResult {
-			//Decode the request structure sent by client.
-        		lstruct := &requestResponseLib.LeaseStruct{}
-			dec := gob.NewDecoder(bytes.NewBuffer(value))
-			decodeErr := dec.Decode(lstruct)
-
-        		if decodeErr != nil {
-				log.Error("Failed to decode the read request : ", decodeErr)
-                		return
-        		}
-			kuuid, _ := uuid.Parse(key)
-			lso.leaseMap[kuuid] = lstruct 
-		}
-	}
 	*/
 }
 
