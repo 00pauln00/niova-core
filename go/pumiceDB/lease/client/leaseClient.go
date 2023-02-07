@@ -4,16 +4,12 @@ import (
 	"bytes"
 	"common/leaseLib"
 	"encoding/gob"
-	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync/atomic"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
 
 	log "github.com/sirupsen/logrus"
 
@@ -110,113 +106,6 @@ func getStringLeaseState(leaseState int) string {
 		return "INVALID"
 	}
 	return "UNKNOWN"
-}
-
-func prepareJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseStruct) writeObj {
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-	resp := JsonLeaseResp{
-		Client:     responseObj.Client,
-		Resource:   responseObj.Resource,
-		Status:     responseObj.Status,
-		LeaseState: getStringLeaseState(responseObj.LeaseState),
-		TTL:        responseObj.TTL,
-		TimeStamp:  responseObj.TimeStamp,
-	}
-	res := writeObj{
-		Request:  req,
-		Response: resp,
-	}
-	return res
-}
-
-/*
-Structure : LeaseHandler
-Method	  : getCmdParams
-Arguments : None
-Return(s) : None
-
-Description : Parse command line params and load into leaseHandler sturct
-*/
-func (handler LeaseHandler) getCmdParams() leaseLib.LeaseReq {
-	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
-	var requestObj leaseLib.LeaseReq
-	var tempOperation int
-	var ok bool
-	var err error
-
-	flag.StringVar(&strClientUUID, "u", "NULL", "ClientUUID - UUID of the requesting client")
-	flag.StringVar(&strResourceUUID, "v", "NULL", "ResourceUUID - UUID of the requested resource")
-	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
-	flag.StringVar(&handler.JsonFilePath, "j", "/tmp", "Output file path")
-	flag.StringVar(&handler.LogFilePath, "l", "", "Log file path")
-	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
-	flag.Usage = usage
-	flag.Parse()
-	if flag.NFlag() == 0 {
-		usage()
-		os.Exit(-1)
-	}
-	tempOperation, ok = parseOperation(stringOperation)
-	if !ok {
-		usage()
-		os.Exit(-1)
-	}
-	requestObj.Operation = int(tempOperation)
-	handler.RaftUUID, err = uuid.Parse(strRaftUUID)
-	if err != nil {
-		usage()
-		os.Exit(-1)
-	}
-	requestObj.Client, err = uuid.Parse(strClientUUID)
-	if err != nil {
-		usage()
-		os.Exit(-1)
-	}
-	requestObj.Resource, err = uuid.Parse(strResourceUUID)
-	if err != nil {
-		usage()
-		os.Exit(-1)
-	}
-	return requestObj
-}
-
-/*
-Structure : LeaseHandler
-Method	  : startPMDBClient
-Arguments : None
-Return(s) : error
-
-Description : Start PMDB Client object for ClientUUID and RaftUUID
-*/
-func (handler LeaseHandler) startPMDBClient(client string) error {
-	var err error
-
-	//Get clientObj
-	log.Info("Raft UUID - ", handler.RaftUUID.String(), " Client UUID - ", client)
-	handler.PmdbClientObj = pmdbClient.PmdbClientNew(handler.RaftUUID.String(), client)
-	if handler.PmdbClientObj == nil {
-		return errors.New("PMDB Client Obj could not be initialized")
-	}
-
-	//Start PMDB Client
-	err = handler.PmdbClientObj.Start()
-	if err != nil {
-		return err
-	}
-
-	leaderUuid, err := handler.PmdbClientObj.PmdbGetLeader()
-	for err != nil {
-		leaderUuid, err = handler.PmdbClientObj.PmdbGetLeader()
-	}
-	log.Info("Leader uuid : ", leaderUuid.String())
-
-	//Store encui in AppUUID
-	handler.PmdbClientObj.AppUUID = uuid.New().String()
-	return nil
 }
 
 /*
@@ -349,75 +238,4 @@ func (handler LeaseHandler) Refresh(requestObj leaseLib.LeaseReq) (leaseLib.Leas
 	log.Info("Refresh request status - ", responseObj.Status)
 
 	return responseObj, err
-}
-
-/*
-Structure : LeaseHandler
-Method	  : writeToJson
-Arguments : struct
-Return(s) : error
-
-Description : Write response/error to json file
-*/
-func writeToJson(toJson interface{}, jsonFilePath string) {
-	file, err := json.MarshalIndent(toJson, "", " ")
-	err = ioutil.WriteFile(jsonFilePath+".json", file, 0644)
-	if err != nil {
-		log.Error("Error writing to outfile : ", err)
-	}
-}
-
-func main() {
-	leaseObjHandler := LeaseHandler{}
-
-	// Load cmd params
-	requestObj := leaseObjHandler.getCmdParams()
-
-	/*
-		Initialize Logging
-	*/
-	err := PumiceDBCommon.InitLogger(leaseObjHandler.LogFilePath)
-	if err != nil {
-		log.Error("Error while initializing the logger ", err)
-	}
-
-	err = leaseObjHandler.startPMDBClient(requestObj.Client.String())
-	if err != nil {
-		log.Error(err)
-		os.Exit(-1)
-	}
-	var responseObj leaseLib.LeaseStruct
-	switch requestObj.Operation {
-	case leaseLib.GET:
-		// get lease
-		responseObj, err = leaseObjHandler.Get(requestObj)
-		if err != nil {
-			log.Error(err)
-			responseObj.Status = err.Error()
-		} else {
-			responseObj.Status = "Success"
-		}
-	case leaseLib.LOOKUP:
-		// lookup lease
-		responseObj, err = leaseObjHandler.Lookup(requestObj)
-		if err != nil {
-			log.Error(err)
-			responseObj.Status = err.Error()
-		} else {
-			responseObj.Status = "Success"
-		}
-	case leaseLib.REFRESH:
-		// refresh lease
-		responseObj, err = leaseObjHandler.Refresh(requestObj)
-		if err != nil {
-			log.Error(err)
-			responseObj.Status = err.Error()
-		} else {
-			responseObj.Status = "Success"
-		}
-	}
-	res := prepareJsonResponse(requestObj, responseObj)
-	writeToJson(res, leaseObjHandler.JsonFilePath)
-
-	log.Info("-----END OF EXECUTION-----")
 }
