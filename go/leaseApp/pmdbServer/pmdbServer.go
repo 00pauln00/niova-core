@@ -244,7 +244,7 @@ func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	if len(lso.leaseObj.LeaseMap) != 0 {
 		lso.leaseObj.LeaderInit()
 	} else {
-		//lso.leaseObj.PeerBootup(initPeerArgs.UserID)
+		lso.leaseObj.PeerBootup(initPeerArgs.UserID)
 	}
 
 	/*
