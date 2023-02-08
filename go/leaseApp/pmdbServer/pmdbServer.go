@@ -241,6 +241,12 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 }
 
 func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+	if len(lso.leaseObj.LeaseMap) != 0 {
+		lso.leaseObj.LeaderInit()
+	} else {
+		//lso.leaseObj.PeerBootup(initPeerArgs.UserID)
+	}
+
 	/*
 			log.Info("Init peer called")
 			if len(lso.leaseMap) != 0 {

@@ -163,6 +163,17 @@ func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid
 	return 1
 }
 
+
+func (lso *LeaseServerObject) LeaderInit() {
+	for _, leaseObj := range lso.LeaseMap {
+        	rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+                if rc != 0 {
+                	log.Error("Unable to get timestamp (InitLeader)")
+                }
+                leaseObj.TTL = ttlDefault
+        }
+}
+
 func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
 	readResult, _, _, _, err := lso.Pso.RangeReadKV(userID, "",
 		0, "", 0, true, 0, lso.LeaseColmFam)
