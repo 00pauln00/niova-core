@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"common/requestResponseLib"
 	"encoding/gob"
 	"encoding/json"
 	"errors"
@@ -12,6 +11,7 @@ import (
 	"os"
 	"sync/atomic"
 
+	leaseLib "common/leaseLib"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 
@@ -30,10 +30,10 @@ const (
 
 var (
 	operationsMap = map[string]int{
-		"GET":     requestResponseLib.GET,
-		"PUT":     requestResponseLib.PUT,
-		"LOOKUP":  requestResponseLib.LOOKUP,
-		"REFRESH": requestResponseLib.REFRESH,
+		"GET":     leaseLib.GET,
+		"PUT":     leaseLib.PUT,
+		"LOOKUP":  leaseLib.LOOKUP,
+		"REFRESH": leaseLib.REFRESH,
 	}
 )
 
@@ -57,7 +57,7 @@ type JsonLeaseResp struct {
 	Status     string
 	LeaseState string
 	TTL        int
-	TimeStamp  requestResponseLib.LeaderTS
+	TimeStamp  leaseLib.LeaderTS
 }
 
 // will be used to write req and res to json file
@@ -84,13 +84,13 @@ func (handler *leaseHandler) getRNCUI() string {
 
 func getStringOperation(op int) string {
 	switch op {
-	case requestResponseLib.GET:
+	case leaseLib.GET:
 		return "GET"
-	case requestResponseLib.PUT:
+	case leaseLib.PUT:
 		return "PUT"
-	case requestResponseLib.LOOKUP:
+	case leaseLib.LOOKUP:
 		return "LOOKUP"
-	case requestResponseLib.REFRESH:
+	case leaseLib.REFRESH:
 		return "REFRESH"
 	}
 	return "UNKNOWN"
@@ -98,21 +98,21 @@ func getStringOperation(op int) string {
 
 func getStringLeaseState(leaseState int) string {
 	switch leaseState {
-	case requestResponseLib.GRANTED:
+	case leaseLib.GRANTED:
 		return "GRANTED"
-	case requestResponseLib.INPROGRESS:
+	case leaseLib.INPROGRESS:
 		return "IN-PROGRESS"
-	case requestResponseLib.EXPIRED:
+	case leaseLib.EXPIRED:
 		return "EXPIRED"
-	case requestResponseLib.AIU:
+	case leaseLib.AIU:
 		return "ALREADY-IN-USE"
-	case requestResponseLib.INVALID:
+	case leaseLib.INVALID:
 		return "INVALID"
 	}
 	return "UNKNOWN"
 }
 
-func prepareJsonResponse(requestObj requestResponseLib.LeaseReq, responseObj requestResponseLib.LeaseStruct) writeObj {
+func prepareJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseStruct) writeObj {
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
 		Resource:  requestObj.Resource,
@@ -141,9 +141,9 @@ Return(s) : None
 
 Description : Parse command line params and load into leaseHandler sturct
 */
-func (handler *leaseHandler) getCmdParams() requestResponseLib.LeaseReq {
+func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
-	var requestObj requestResponseLib.LeaseReq
+	var requestObj leaseLib.LeaseReq
 	var tempOperation int
 	var ok bool
 	var err error
@@ -228,7 +228,7 @@ Return(s) : error
 Description : Wrapper function for WriteEncoded() function
 */
 
-func (handler *leaseHandler) Write(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+func (handler *leaseHandler) Write(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -249,7 +249,7 @@ Return(s) : error
 
 Description : Wrapper function for ReadEncoded() function
 */
-func (handler *leaseHandler) Read(requestObj requestResponseLib.LeaseReq, rncui string, response *[]byte) error {
+func (handler *leaseHandler) Read(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -263,16 +263,16 @@ func (handler *leaseHandler) Read(requestObj requestResponseLib.LeaseReq, rncui 
 /*
 Structure : leaseHandler
 Method	  : get()
-Arguments : requestResponseLib.LeaseReq
+Arguments : leaseLib.LeaseReq
 Return(s) : error
 
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseStruct, error) {
+func (handler *leaseHandler) get(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
 	var err error
 	var responseBytes []byte
-	var responseObj requestResponseLib.LeaseStruct
+	var responseObj leaseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
 
@@ -295,16 +295,16 @@ func (handler *leaseHandler) get(requestObj requestResponseLib.LeaseReq) (reques
 /*
 Structure : leaseHandler
 Method	  : lookup()
-Arguments : requestResponseLib.LeaseReq
+Arguments : leaseLib.LeaseReq
 Return(s) : error
 
 Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (handler *leaseHandler) lookup(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseStruct, error) {
+func (handler *leaseHandler) lookup(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
 	var err error
 	var responseBytes []byte
-	var responseObj requestResponseLib.LeaseStruct
+	var responseObj leaseLib.LeaseStruct
 
 	err = handler.Read(requestObj, "", &responseBytes)
 	if err != nil {
@@ -323,16 +323,16 @@ func (handler *leaseHandler) lookup(requestObj requestResponseLib.LeaseReq) (req
 /*
 Structure : leaseHandler
 Method	  : refresh()
-Arguments : requestResponseLib.LeaseReq
+Arguments : leaseLib.LeaseReq
 Return(s) : error
 
 Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (handler *leaseHandler) refresh(requestObj requestResponseLib.LeaseReq) (requestResponseLib.LeaseStruct, error) {
+func (handler *leaseHandler) refresh(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
 	var err error
 	var responseBytes []byte
-	var responseObj requestResponseLib.LeaseStruct
+	var responseObj leaseLib.LeaseStruct
 
 	rncui := handler.getRNCUI()
 	err = handler.Write(requestObj, rncui, &responseBytes)
@@ -386,9 +386,9 @@ func main() {
 		log.Error(err)
 		os.Exit(-1)
 	}
-	var responseObj requestResponseLib.LeaseStruct
+	var responseObj leaseLib.LeaseStruct
 	switch requestObj.Operation {
-	case requestResponseLib.GET:
+	case leaseLib.GET:
 		// get lease
 		responseObj, err = leaseObjHandler.get(requestObj)
 		if err != nil {
@@ -397,7 +397,7 @@ func main() {
 		} else {
 			responseObj.Status = "Success"
 		}
-	case requestResponseLib.LOOKUP:
+	case leaseLib.LOOKUP:
 		// lookup lease
 		responseObj, err = leaseObjHandler.lookup(requestObj)
 		if err != nil {
@@ -406,7 +406,7 @@ func main() {
 		} else {
 			responseObj.Status = "Success"
 		}
-	case requestResponseLib.REFRESH:
+	case leaseLib.REFRESH:
 		// refresh lease
 		responseObj, err = leaseObjHandler.refresh(requestObj)
 		if err != nil {
