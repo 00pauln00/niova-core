@@ -303,7 +303,8 @@ func (clientObj *clientHandler) write() {
 				<-requestLimiter
 			}()
 
-			var requestObj requestResponseLib.KVRequest
+			var requestObj requestResponseLib.Request
+			var kvRequestObj requestResponseLib.KVRequest
 			var responseObj requestResponseLib.KVResponse
 			var requestBytes bytes.Buffer
 			var responseBytes []byte
@@ -311,12 +312,15 @@ func (clientObj *clientHandler) write() {
 			err := func() error {
 
 				//Fill the request object
-				requestObj.Operation = "write"
-				requestObj.Key = key
-				requestObj.Value = val
-				requestObj.Rncui = uuid.New().String() + ":0:0:0:0"
+
+				kvRequestObj.Operation = "write"
+				kvRequestObj.Key = key
+				kvRequestObj.Value = val
+				kvRequestObj.Rncui = uuid.New().String() + ":0:0:0:0"
+				requestObj.RequestType = requestResponseLib.APP_REQ
+				requestObj.RequestPayload = kvRequestObj
 				enc := gob.NewEncoder(&requestBytes)
-				err := enc.Encode(requestObj)
+				err := enc.Encode(kvRequestObj)
 				if err != nil {
 					log.Error("Encoding error : ", err)
 					return err
@@ -343,9 +347,9 @@ func (clientObj *clientHandler) write() {
 			//Request status filler
 			if clientObj.count == 1 {
 				if err != nil {
-					operationStat = fillOperationData(1, "write", requestObj.Key, err.Error(), 0)
+					operationStat = fillOperationData(1, "write", kvRequestObj.Key, err.Error(), 0)
 				} else {
-					operationStat = fillOperationData(responseObj.Status, "write", requestObj.Key, string(requestObj.Value), 0)
+					operationStat = fillOperationData(responseObj.Status, "write", kvRequestObj.Key, string(kvRequestObj.Value), 0)
 				}
 				return
 			}
@@ -374,14 +378,17 @@ func (clientObj *clientHandler) write() {
 }
 
 func (clientObj *clientHandler) read() {
-	var requestObj requestResponseLib.KVRequest
+	var requestObj requestResponseLib.Request
+	var kvRequestObj requestResponseLib.KVRequest
 	var responseObj requestResponseLib.KVResponse
 	var requestBytes bytes.Buffer
 
 	err := func() error {
 		//Fill the request obj and encode it
-		requestObj.Key = clientObj.requestKey
-		requestObj.Operation = clientObj.operation
+		kvRequestObj.Key = clientObj.requestKey
+		kvRequestObj.Operation = clientObj.operation
+		requestObj.RequestType = requestResponseLib.APP_REQ
+		requestObj.RequestPayload = kvRequestObj
 		enc := gob.NewEncoder(&requestBytes)
 		err := enc.Encode(requestObj)
 		if err != nil {
@@ -420,7 +427,8 @@ func (clientObj *clientHandler) read() {
 func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
 	var err error
-	var requestObj requestResponseLib.KVRequest
+	var requestObj requestResponseLib.Request
+	var kvRequestObj requestResponseLib.KVRequest
 	var seqNum uint64
 
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
@@ -435,11 +443,13 @@ func (clientObj *clientHandler) rangeRead() {
 
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
-		requestObj.Prefix = Prefix
-		requestObj.Key = Key
-		requestObj.Operation = Operation
-		requestObj.Consistent = !clientObj.relaxedConsistency
-		requestObj.SeqNum = seqNum
+		kvRequestObj.Prefix = Prefix
+		kvRequestObj.Key = Key
+		kvRequestObj.Operation = Operation
+		kvRequestObj.Consistent = !clientObj.relaxedConsistency
+		kvRequestObj.SeqNum = seqNum
+		requestObj.RequestType = requestResponseLib.APP_REQ
+		requestObj.RequestPayload = kvRequestObj
 		var requestBytes bytes.Buffer
 		var responseBytes []byte
 
@@ -486,7 +496,7 @@ func (clientObj *clientHandler) rangeRead() {
 	var operationStat *opData
 	if err == nil {
 		strResultMap := convMapToStr(resultMap)
-		operationStat = fillOperationData(0, "range", requestObj.Key, strResultMap, seqNum)
+		operationStat = fillOperationData(0, "range", kvRequestObj.Key, strResultMap, seqNum)
 
 		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
@@ -503,7 +513,7 @@ func (clientObj *clientHandler) rangeRead() {
 		fmt.Println("The range query was completed in", count, "iterations")
 
 	} else {
-		operationStat = fillOperationData(1, "range", requestObj.Key, err.Error(), seqNum)
+		operationStat = fillOperationData(1, "range", kvRequestObj.Key, err.Error(), seqNum)
 	}
 
 	clientObj.write2Json(operationStat)
@@ -709,11 +719,14 @@ func main() {
 		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
 		//Request obj
-		var requestObj requestResponseLib.LookoutRequest
+		var requestObj requestResponseLib.Request
+		var kvRequestObj requestResponseLib.LookoutRequest
 
 		//Parse UUID
-		requestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
-		requestObj.Cmd = clientObj.requestValue
+		kvRequestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
+		kvRequestObj.Cmd = clientObj.requestValue
+		requestObj.RequestType = requestResponseLib.LOOKOUT_REQ
+		requestObj.RequestPayload = kvRequestObj
 
 		var requestByte bytes.Buffer
 		enc := gob.NewEncoder(&requestByte)
