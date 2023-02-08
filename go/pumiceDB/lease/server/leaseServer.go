@@ -112,7 +112,7 @@ func (lso *LeaseServerObject) ReadLease(resourceUUID uuid.UUID, reply *interface
 	checkMajorCorrectness(leaseObj.TimeStamp.LeaderTerm, oldTS.LeaderTerm)
 
 	//TODO: Possible wrap around
-	ttl := ttlDefault - int(leaseObj.TimeStamp.LeaderTime-oldTS.LeaderTime)
+	ttl := leaseObj.TTL - int(leaseObj.TimeStamp.LeaderTime-oldTS.LeaderTime)
 	if ttl < 0 {
 		leaseObj.TTL = 0
 		leaseObj.LeaseState = leaseLib.EXPIRED
@@ -163,15 +163,14 @@ func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid
 	return 1
 }
 
-
 func (lso *LeaseServerObject) LeaderInit() {
 	for _, leaseObj := range lso.LeaseMap {
-        	rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-                if rc != 0 {
-                	log.Error("Unable to get timestamp (InitLeader)")
-                }
-                leaseObj.TTL = ttlDefault
-        }
+		rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+		if rc != 0 {
+			log.Error("Unable to get timestamp (InitLeader)")
+		}
+		leaseObj.TTL = ttlDefault
+	}
 }
 
 func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
