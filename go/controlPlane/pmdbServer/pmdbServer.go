@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"hash/crc32"
 	"io/ioutil"
+	leaseServerLib "LeaseLib/leaseServer"
+        leaseLib "common/leaseLib"
 	defaultLogger "log"
 	"net"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -128,6 +130,12 @@ func main() {
 		CoalescedWrite: true,
 	}
 
+
+	//Fill leaseObj
+	nso.leaseObj = leaseServerLib.LeaseServerObject{}
+        nso.leaseObj.Pso = nso.pso
+        nso.leaseObj.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseStruct)
+	
 	// Start the pmdb server
 	//TODO Check error
 	go nso.pso.Run()
@@ -412,6 +420,7 @@ type NiovaKVServer struct {
 	raftUuid       uuid.UUID
 	peerUuid       uuid.UUID
 	columnFamilies string
+	leaseObj        leaseServerLib.LeaseServerObject
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
@@ -424,54 +433,149 @@ func (nso *NiovaKVServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs
 }
 
 func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
-    return 0;
+    	log.Trace("NiovaCtlPlane server: Write prep received")
+	var copyErr error
+	var replySize int64
+
+        // Decode the input buffer into structure format
+        req := &requestResponseLib.Request{}
+        decodeErr := nso.pso.Decode(wrPrepArgs.ReqBuf, req, wrPrepArgs.ReqSize)
+        if decodeErr != nil {
+                log.Error("Failed to decode the application data")
+                return -1
+        }
+
+	//Check the operation type
+	if(req.RequestType != requestResponseLib.LEASE_REQ) {
+		 _, copyErr = nso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+                return 0
+	}
+	
+	//If leaseReq
+	var returnObj interface{}
+        rc := nso.leaseObj.Prepare(req.RequestPayload, &returnObj)
+
+        if rc <= 0 {
+                //Dont continue write
+                _, copyErr = nso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+                if rc == 0 {
+                        replySize, copyErr = nso.pso.CopyDataToBuffer(returnObj, wrPrepArgs.ReplyBuf)
+                        if copyErr != nil {
+                                log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                                return -1
+                        }
+                        return replySize
+                }
+                return -1
+        } else {
+                //Continue write
+                _, copyErr = nso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+                return 0
+        }
+	return 0;
 }
 
 func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
+	var copyErr error
+	var replySizeRc int64
 
 	// Decode the input buffer into structure format
-	applyNiovaKV := &requestResponseLib.KVRequest{}
-	decodeErr := nso.pso.Decode(applyArgs.ReqBuf, applyNiovaKV,
+	req := &requestResponseLib.Request{}
+	decodeErr := nso.pso.Decode(applyArgs.ReqBuf, req,
 								applyArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
 	}
 
-	log.Trace("Key passed by client: ", applyNiovaKV.Key)
+	if(req.RequestType == requestResponseLib.LEASE_REQ) {
+		var returnObj interface{}
+        	rc := nso.leaseObj.ApplyLease(req.RequestPayload, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
+        	//Copy the encoded result in replyBuffer
+        	replySizeRc = 0
+        	if rc == 0 && applyArgs.ReplyBuf != nil {
+                	replySizeRc, copyErr = nso.pso.CopyDataToBuffer(returnObj, applyArgs.ReplyBuf)
+                	if copyErr != nil {
+                        	log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        	return -1
+                	}
+        	} else {
+                	return int64(rc)
+        	}
 
-	// length of key.
-	keyLength := len(applyNiovaKV.Key)
+        	return replySizeRc
+	} else {
 
-	byteToStr := string(applyNiovaKV.Value)
+		//For application request
+		applyNiovaKV := req.RequestPayload.(requestResponseLib.KVRequest)
+		log.Trace("Key passed by client: ", applyNiovaKV.Key)
 
-	// Length of value.
-	valLen := len(byteToStr)
+		// length of key.
+		keyLength := len(applyNiovaKV.Key)
 
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
-	rc := nso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
-		applyNiovaKV.Key,
-		int64(keyLength), byteToStr,
-		int64(valLen), colmfamily)
+		byteToStr := string(applyNiovaKV.Value)
 
-	return int64(rc)
+		// Length of value.
+		valLen := len(byteToStr)
+
+		log.Trace("Write the KeyValue by calling PmdbWriteKV")
+		rc := nso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
+			applyNiovaKV.Key,
+			int64(keyLength), byteToStr,
+			int64(valLen), colmfamily)
+
+		return int64(rc)
+	}
+
+	return 0
 }
 
 func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Read request received")
+	var copyErr error
+	var replySize int64
 
 	//Decode the request structure sent by client.
-	reqStruct := &requestResponseLib.KVRequest{}
-	decodeErr := nso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
+	req := &requestResponseLib.Request{}
+	decodeErr := nso.pso.Decode(readArgs.ReqBuf, req, readArgs.ReqSize)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
 		return -1
 	}
 
+	//Lease request
+	if(req.RequestType == requestResponseLib.LEASE_REQ) {
+		var returnObj interface{}
+		rc := nso.leaseObj.ReadLease(req.RequestPayload, &returnObj)
+
+        	if rc == 0 {
+                	replySize, copyErr = nso.pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
+                	if copyErr != nil {
+                        	log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        	return -1
+                	}
+
+                	return replySize
+        	}
+	} else {
+	//Application request
+	reqStruct := req.RequestPayload.(requestResponseLib.KVRequest)
 	log.Trace("Key passed by client: ", reqStruct.Key)
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
@@ -536,4 +640,6 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	log.Trace("Reply size: ", replySize)
 
 	return replySize
+	}
+	return 0;
 }

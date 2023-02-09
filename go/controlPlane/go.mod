@@ -20,6 +20,11 @@ replace niovakv/serfclienthandler => ./serf/client
 
 replace niovakv/httpclient => ./http/client
 
+replace LeaseLib/leaseServer => ../../pumiceDB/lease/server
+
+replace common/leaseLib => ../../pumiceDB/lease/common
+
+
 require (
 	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
