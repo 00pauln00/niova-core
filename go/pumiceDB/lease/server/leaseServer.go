@@ -7,7 +7,7 @@ import (
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"unsafe"
 
-	uuid "github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -194,7 +194,7 @@ func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
 			log.Error("Failed to decode the read request : ", decodeErr)
 			return
 		}
-		kuuid, _ := uuid.Parse(key)
+		kuuid, _ := uuid.FromString(key)
 		lso.LeaseMap[kuuid] = lstruct
 	}
 }

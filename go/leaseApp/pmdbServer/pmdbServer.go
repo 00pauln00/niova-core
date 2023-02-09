@@ -10,7 +10,7 @@ import (
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 
-	uuid "github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -247,44 +247,6 @@ func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 		//lso.leaseObj.PeerBootup(initPeerArgs.UserID)
 	}
 
-	/*
-			log.Info("Init peer called")
-			if len(lso.leaseMap) != 0 {
-				//Peer becomes leader
-				for _, leaseObj := range lso.leaseMap {
-					rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-					if rc != 0 {
-						log.Error("Unable to get timestamp (InitLeader)")
-					}
-					leaseObj.TTL = ttlDefault
-				}
-			} else {
-				//Peer boots up
-				//Range_query
-				readResult, _, _, _, err := lso.pso.RangeReadKV(initPeerArgs.UserID, "",
-		                        0, "", 0, true, 0, colmfamily[0])
-				log.Info("Read result : ",readResult)
-				if err != nil {
-					log.Error("Failed range query : ", err)
-					return
-				}
-
-				//Result of the read
-				for key,value := range readResult {
-					//Decode the request structure sent by client.
-		        		lstruct := &requestResponseLib.LeaseStruct{}
-					dec := gob.NewDecoder(bytes.NewBuffer(value))
-					decodeErr := dec.Decode(lstruct)
-
-		        		if decodeErr != nil {
-						log.Error("Failed to decode the read request : ", decodeErr)
-		                		return
-		        		}
-					kuuid, _ := uuid.Parse(key)
-					lso.leaseMap[kuuid] = lstruct
-				}
-			}
-	*/
 }
 
 func (lso *leaseServer) PrepPeer(prepPeer *PumiceDBServer.PmdbCbArgs) {

@@ -17,7 +17,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 type state int
@@ -166,17 +166,17 @@ func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 		os.Exit(-1)
 	}
 	requestObj.Operation = int(tempOperation)
-	handler.raftUUID, err = uuid.Parse(strRaftUUID)
+	handler.raftUUID, err = uuid.FromString(strRaftUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	requestObj.Client, err = uuid.Parse(strClientUUID)
+	requestObj.Client, err = uuid.FromString(strClientUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	requestObj.Resource, err = uuid.Parse(strResourceUUID)
+	requestObj.Resource, err = uuid.FromString(strResourceUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
@@ -215,7 +215,7 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 	log.Info("Leader uuid : ", leaderUuid.String())
 
 	//Store encui in AppUUID
-	handler.pmdbClientObj.AppUUID = uuid.New().String()
+	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
 }
 
