@@ -55,20 +55,20 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
 	return rc
 }
 
-func (lso *LeaseServerObject) Prepare(opcode int, resourceUUID uuid.UUID, clientUUID uuid.UUID, reply *interface{}) int {
+func (lso *LeaseServerObject) Prepare(request leaseLib.LeaseReq, reply *interface{}) int {
 	var currentTime leaseLib.LeaderTS
 	lso.GetLeaderTimeStamp(&currentTime)
 
 	//Check if its a refresh request
-	if opcode == leaseLib.REFRESH {
-		vdev_lease_info, isPresent := lso.LeaseMap[resourceUUID]
+	if request.Operation == leaseLib.REFRESH {
+		vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
 		if isPresent {
-			if isPermitted(vdev_lease_info, clientUUID, currentTime, opcode) {
+			if isPermitted(vdev_lease_info, request.Client, currentTime, request.Operation) {
 				//Refresh the lease
-				lso.LeaseMap[resourceUUID].TimeStamp = currentTime
-				lso.LeaseMap[resourceUUID].TTL = ttlDefault
+				lso.LeaseMap[request.Resource].TimeStamp = currentTime
+				lso.LeaseMap[request.Resource].TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
-				*reply = *lso.LeaseMap[resourceUUID]
+				*reply = *lso.LeaseMap[request.Resource]
 				return 0
 			}
 		}
@@ -76,20 +76,20 @@ func (lso *LeaseServerObject) Prepare(opcode int, resourceUUID uuid.UUID, client
 	}
 
 	//Check if get lease
-	if opcode == leaseLib.GET {
-		vdev_lease_info, isPresent := lso.LeaseMap[resourceUUID]
+	if request.Operation == leaseLib.GET {
+		vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
 		log.Info("Get lease operation")
 		if isPresent {
-			if !isPermitted(vdev_lease_info, clientUUID, currentTime, opcode) {
+			if !isPermitted(vdev_lease_info, request.Client, currentTime, request.Operation) {
 				//Dont provide lease
 				return -1
 			}
 		}
 		log.Info("Resource not present in map")
 		//Insert or update into MAP
-		lso.LeaseMap[resourceUUID] = &leaseLib.LeaseStruct{
-			Resource:   resourceUUID,
-			Client:     clientUUID,
+		lso.LeaseMap[request.Resource] = &leaseLib.LeaseStruct{
+			Resource:   request.Resource,
+			Client:     request.Client,
 			LeaseState: leaseLib.INPROGRESS,
 		}
 	}
@@ -97,8 +97,8 @@ func (lso *LeaseServerObject) Prepare(opcode int, resourceUUID uuid.UUID, client
 	return 1
 }
 
-func (lso *LeaseServerObject) ReadLease(resourceUUID uuid.UUID, reply *interface{}) int {
-	leaseObj, isPresent := lso.LeaseMap[resourceUUID]
+func (lso *LeaseServerObject) ReadLease(request leaseLib.LeaseReq, reply *interface{}) int {
+	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		return -1
 	}
@@ -123,14 +123,14 @@ func (lso *LeaseServerObject) ReadLease(resourceUUID uuid.UUID, reply *interface
 	return 0
 }
 
-func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid.UUID, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
-	leaseObj, isPresent := lso.LeaseMap[resourceUUID]
+func (lso *LeaseServerObject) ApplyLease(request leaseLib.LeaseReq, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
+	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		leaseObj = &leaseLib.LeaseStruct{
-			Resource: resourceUUID,
-			Client:   clientUUID,
+			Resource: request.Resource,
+			Client:   request.Client,
 		}
-		lso.LeaseMap[resourceUUID] = leaseObj
+		lso.LeaseMap[request.Resource] = leaseObj
 	}
 	leaseObj.LeaseState = leaseLib.GRANTED
 	isLeaderFlag := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
@@ -148,8 +148,8 @@ func (lso *LeaseServerObject) ApplyLease(resourceUUID uuid.UUID, clientUUID uuid
 
 	// Length of value.
 	valLen := len(byteToStr)
-	keyLength := len(resourceUUID.String())
-	rc := lso.Pso.WriteKV(userID, pmdbHandler, resourceUUID.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
+	keyLength := len(request.Resource.String())
+	rc := lso.Pso.WriteKV(userID, pmdbHandler, request.Resource.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
 
 	if rc < 0 {
 		log.Error("Value not written to rocksdb")

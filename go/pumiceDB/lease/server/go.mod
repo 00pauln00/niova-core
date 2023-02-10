@@ -16,7 +16,6 @@ require (
 )
 
 require (
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/mattn/go-pointer v0.0.1 // indirect
 	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
 	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000 // indirect
