@@ -12,13 +12,16 @@ replace common/clientAPI => ../../serf/serviceDiscovery
 
 replace common/specificCompressionLib => ../../specificCompressionLib/
 
+replace common/leaseLib => ../../pumiceDB/lease/common
+
 go 1.18
 
 require (
 	common/clientAPI v0.0.0-00010101000000-000000000000
+	common/leaseLib v0.0.0-00010101000000-000000000000
 	common/requestResponseLib v0.0.0-00010101000000-000000000000
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000
-	github.com/google/uuid v1.3.0
+	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.8.1
 	golang.org/x/exp v0.0.0-20220414153411-bcd21879b8fd
 	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000
@@ -29,6 +32,7 @@ require (
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
 	github.com/hashicorp/go-msgpack v0.5.3 // indirect
