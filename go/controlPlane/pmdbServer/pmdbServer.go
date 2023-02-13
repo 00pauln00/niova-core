@@ -415,12 +415,8 @@ type NiovaKVServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (nso *NiovaKVServer) InitPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+func (nso *NiovaKVServer) Init(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
     return;
-}
-
-func (nso *NiovaKVServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
 }
 
 func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {

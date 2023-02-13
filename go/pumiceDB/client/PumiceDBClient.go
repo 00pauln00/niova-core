@@ -18,6 +18,17 @@ import (
 */
 import "C"
 
+type PmdbReqArgs struct {
+	Rncui 		string
+	ReqED 		interface{}
+	ResponseED	interface{}
+	ReqByteArr	[]byte
+	Response	*[]byte
+	ReplySize	*int64
+	GetResponse int
+	ZeroCopyObj *RDZeroCopyObj
+}
+
 type PmdbClientObj struct {
 	initialized bool
 	pmdb        C.pmdb_t
@@ -63,59 +74,63 @@ func CToGoString(cstring *C.char) string {
 }
 
 //Write KV from client.
-func (obj *PmdbClientObj) Write(ed interface{},
-	rncui string, getResponse int, replySize *int64) (unsafe.Pointer, error) {
+func (obj *PmdbClientObj) Write(reqArgs *PmdbReqArgs) (unsafe.Pointer, error) {
 
 	var key_len int64
 
 	// Encode the application structure into void pointer so it can be
 	// type casted to C char *
-	ed_key, err := PumiceDBCommon.Encode(ed, &key_len)
+	ed_key, err := PumiceDBCommon.Encode(reqArgs.ReqED, &key_len)
 	if err != nil {
 		return nil, err
 	}
 
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
-	getResponse_c := (C.int)(getResponse)
+	getResponse_c := (C.int)(reqArgs.GetResponse)
 	//Perform the write
-	return obj.writeKV(rncui, encoded_key, key_len, getResponse_c, replySize)
+	return obj.writeKV(reqArgs.Rncui, encoded_key, key_len, getResponse_c,
+			reqArgs.ReplySize)
 }
 
 //WriteEncoded
 /*
 WriteEncoded allows client to pass the encoded KV struct for writing
 */
-func (obj *PmdbClientObj) WriteEncoded(request []byte, rncui string,
-	getResponse int, replySize *int64) (unsafe.Pointer, error) {
-	requestLen := int64(len(request))
+func (obj *PmdbClientObj) WriteEncoded(reqArgs *PmdbReqArgs) (unsafe.Pointer,
+	error) {
+	requestLen := int64(len(reqArgs.ReqByteArr))
 	//Convert it to unsafe pointer (void * for C function)
-	encodedData := unsafe.Pointer(&request[0])
+	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
 	encodedRequest := (*C.char)(encodedData)
-	getResponse_c := (C.int)(getResponse)
-	return obj.writeKV(rncui, encodedRequest, requestLen, getResponse_c,
-		replySize)
+	getResponse_c := (C.int)(reqArgs.GetResponse)
+	return obj.writeKV(reqArgs.Rncui, encodedRequest, requestLen,
+		getResponse_c,
+		reqArgs.ReplySize)
+
 }
 
-func (obj *PmdbClientObj) WriteEncodedAndGetResponse(request []byte, rncui string, getResponse int, response *[]byte) error {
+func (obj *PmdbClientObj) WriteEncodedAndGetResponse(reqArgs *PmdbReqArgs) error {
 	var reply_size int64
 	var wr_err error
 	var reply_buff unsafe.Pointer
 
-	requestLen := int64(len(request))
+	requestLen := int64(len(reqArgs.ReqByteArr))
 	//Convert to unsafe pointer (void * for C function)
-	encodedData := unsafe.Pointer(&request[0])
+	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
 	encodedRequest := (*C.char)(encodedData)
-	getResponse_c := (C.int)(getResponse)
+	getResponse_c := (C.int)(reqArgs.GetResponse)
 
-	reply_buff, wr_err = obj.writeKV(rncui, encodedRequest, requestLen, getResponse_c, &reply_size)
+	reply_buff, wr_err = obj.writeKV(reqArgs.Rncui, encodedRequest,
+		requestLen, getResponse_c, &reply_size)
 	if wr_err != nil {
 		return wr_err
 	}
+
 	if reply_buff != nil {
 		bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
 		buffer := bytes.NewBuffer(bytes_data)
-		*response = buffer.Bytes()
+		*reqArgs.Response = buffer.Bytes()
 	}
 	// Free the buffer allocated by the C library
 	C.free(reply_buff)
@@ -123,9 +138,7 @@ func (obj *PmdbClientObj) WriteEncodedAndGetResponse(request []byte, rncui strin
 }
 
 //Read the value of key on the client
-func (obj *PmdbClientObj) Read(input_ed interface{},
-	rncui string,
-	output_ed interface{}) error {
+func (obj *PmdbClientObj) Read(reqArgs *PmdbReqArgs) error {
 
 	var key_len int64
 	var reply_size int64
@@ -133,7 +146,7 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	var reply_buff unsafe.Pointer
 
 	//Encode the data passed by application.
-	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
+	ed_key, err := PumiceDBCommon.Encode(reqArgs.ReqED, &key_len)
 	if err != nil {
 		return err
 	}
@@ -141,11 +154,11 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	//Typecast the encoded key to char*
 	encoded_key := (*C.char)(ed_key)
 
-	if len(rncui) == 0 {
+	if len(reqArgs.Rncui) == 0 {
 		reply_buff, rd_err = obj.readKVAny(encoded_key,
 			key_len, &reply_size)
 	} else {
-		reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+		reply_buff, rd_err = obj.readKV(reqArgs.Rncui, encoded_key,
 			key_len, &reply_size)
 	}
 
@@ -154,7 +167,8 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 	}
 
 	if reply_buff != nil {
-		err = PumiceDBCommon.Decode(unsafe.Pointer(reply_buff), output_ed,
+		err = PumiceDBCommon.Decode(unsafe.Pointer(reply_buff),
+			reqArgs.ResponseED,
 			reply_size)
 	}
 	//Free the buffer allocated by C library.
@@ -166,21 +180,21 @@ func (obj *PmdbClientObj) Read(input_ed interface{},
 /*
 ReadEncoded allows client to pass the encoded KV struct for reading
 */
-func (obj *PmdbClientObj) ReadEncoded(request []byte, rncui string, response *[]byte) error {
+func (obj *PmdbClientObj) ReadEncoded(reqArgs *PmdbReqArgs) error {
 	var reply_size int64
 	var rd_err error
 	var reply_buff unsafe.Pointer
 
-	requestLen := int64(len(request))
+	requestLen := int64(len(reqArgs.ReqByteArr))
 	//Typecast the encoded key to char*
-	encodedData := unsafe.Pointer(&request[0])
+	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
 	encoded_key := (*C.char)(encodedData)
 
-	if len(rncui) == 0 {
+	if len(reqArgs.Rncui) == 0 {
 		reply_buff, rd_err = obj.readKVAny(encoded_key,
 			requestLen, &reply_size)
 	} else {
-		reply_buff, rd_err = obj.readKV(rncui, encoded_key,
+		reply_buff, rd_err = obj.readKV(reqArgs.Rncui, encoded_key,
 			requestLen, &reply_size)
 	}
 
@@ -191,7 +205,7 @@ func (obj *PmdbClientObj) ReadEncoded(request []byte, rncui string, response *[]
 	if reply_buff != nil {
 		bytes_data := C.GoBytes(unsafe.Pointer(reply_buff), C.int(reply_size))
 		buffer := bytes.NewBuffer(bytes_data)
-		*response = buffer.Bytes()
+		*reqArgs.Response = buffer.Bytes()
 	}
 	//Free the buffer allocated by C library.
 	C.free(reply_buff)
@@ -199,13 +213,11 @@ func (obj *PmdbClientObj) ReadEncoded(request []byte, rncui string, response *[]
 }
 
 //Read the value of key on the client the application passed buffer
-func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
-	rncui string,
-	zeroCopyObj *RDZeroCopyObj) error {
+func (obj *PmdbClientObj) ReadZeroCopy(reqArgs *PmdbReqArgs) error {
 
 	var key_len int64
 	//Encode the input buffer passed by client.
-	ed_key, err := PumiceDBCommon.Encode(input_ed, &key_len)
+	ed_key, err := PumiceDBCommon.Encode(reqArgs.ReqED, &key_len)
 	if err != nil {
 		return err
 	}
@@ -214,8 +226,8 @@ func (obj *PmdbClientObj) ReadZeroCopy(input_ed interface{},
 	encoded_key := (*C.char)(ed_key)
 
 	//Read the value of the key in application buffer
-	return obj.readKVZeroCopy(rncui, encoded_key,
-		key_len, zeroCopyObj)
+	return obj.readKVZeroCopy(reqArgs.Rncui, encoded_key,
+		key_len, reqArgs.ZeroCopyObj)
 
 }
 

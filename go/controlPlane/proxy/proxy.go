@@ -431,8 +431,14 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 		return err
 	}
 
-	_, err = handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui, 0,
-		&replySize)
+	reqArgs := &pmdbClient.PmdbReqArgs {
+		Rncui: requestObj.Rncui,
+		ReqByteArr: request,
+		GetResponse: 0,
+		ReplySize: &replySize,
+	}
+
+	_, err = handler.pmdbClientObj.WriteEncoded(reqArgs)
 
 	var responseObj requestResponseLib.KVResponse
 	if err != nil {
@@ -464,7 +470,12 @@ func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
 	enc.Encode(request)
-	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), "", response)
+	reqArgs := &pmdbClient.PmdbReqArgs {
+		Rncui: "",
+		ReqByteArr: requestBytes.Bytes(),
+		Response: response,
+	}
+	return handler.pmdbClientObj.ReadEncoded(reqArgs)
 }
 
 /*
@@ -476,7 +487,13 @@ Return(s) : error
 Description : Call back for PMDB read requests to HTTP server.
 */
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	return handler.pmdbClientObj.ReadEncoded(request, "", response)
+	reqArgs := &pmdbClient.PmdbReqArgs {
+		Rncui: "",
+		ReqByteArr: request,
+		Response: response,
+	}
+
+	return handler.pmdbClientObj.ReadEncoded(reqArgs)
 }
 
 /*

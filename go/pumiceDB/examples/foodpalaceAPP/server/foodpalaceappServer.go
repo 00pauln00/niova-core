@@ -54,13 +54,8 @@ func (fpso *FoodpalaceServer) initLogger() {
 	log.Info("peer:", fpso.peerUuid)
 }
 
-//Method for CleanupPeer callback
-func (fpso *FoodpalaceServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
-}
-
-//Method for InitPeer callback
-func (fpso *FoodpalaceServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+//Method for Init callback
+func (fpso *FoodpalaceServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 

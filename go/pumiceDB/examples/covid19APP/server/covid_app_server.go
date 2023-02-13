@@ -125,11 +125,7 @@ type CovidServer struct {
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (cso *CovidServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
-}
-
-func (cso *CovidServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+func (cso *CovidServer) Init(initArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 

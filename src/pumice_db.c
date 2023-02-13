@@ -798,7 +798,7 @@ static void
 pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
                       const void *req_buf, size_t req_bufsz,
                       char *reply_buf, size_t reply_bufsz,
-                      uint32_t bootup_peer,
+                      enum raft_init_state_type init_state,
                       int *continue_wr, void *pmdb_handler,
                       void *user_data,
                       struct pumicedb_cb_cargs *args)
@@ -808,7 +808,7 @@ pumicedb_init_cb_args(const struct raft_net_client_user_id *app_id,
     args->pcb_req_bufsz = req_bufsz;
     args->pcb_reply_buf = reply_buf;
     args->pcb_reply_bufsz = reply_bufsz;
-    args->pcb_bootup_peer = bootup_peer;
+    args->pcb_init = init_state;
     args->pcb_continue_wr = continue_wr;
     args->pcb_pmdb_handler = pmdb_handler;
     args->pcb_user_data = user_data;
@@ -1419,9 +1419,9 @@ pmdb_ref_tree_release_all(void)
 }
 
 static void
-pmdb_init_peer_handler(uint32_t bootup_peer)
+pmdb_init_peer_handler(enum raft_init_state_type init_state)
 {
-    if (!bootup_peer)
+    if (init_state == RAFT_INIT_BECOMING_LEADER_STATE)
         // Release entries from coalesced wr tree and range read tree
         pmdb_ref_tree_release_all();
 
@@ -1429,26 +1429,12 @@ pmdb_init_peer_handler(uint32_t bootup_peer)
     // on leader.
     struct pumicedb_cb_cargs init_leader_cb_args;
 
-    if (pmdbApi->pmdb_init_peer)
+    if (pmdbApi->pmdb_init)
     {
-        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, bootup_peer, NULL, NULL,
+        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, init_state, NULL, NULL,
                               pmdb_user_data,
                               &init_leader_cb_args);
-        pmdbApi->pmdb_init_peer(&init_leader_cb_args);
-    }
-}
-
-static void
-pmdb_cleanup_peer_handler(void)
-{
-    struct pumicedb_cb_cargs init_leader_cb_args;
-
-    if (pmdbApi->pmdb_cleanup_peer)
-    {
-        pumicedb_init_cb_args(NULL, NULL, 0, NULL, 0, 0, NULL, NULL,
-                              pmdb_user_data,
-                              &init_leader_cb_args);
-        pmdbApi->pmdb_cleanup_peer(&init_leader_cb_args);
+        pmdbApi->pmdb_init(&init_leader_cb_args);
     }
 }
 
@@ -1589,7 +1575,6 @@ _PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
     rc = raft_server_instance_run(raft_uuid_str, raft_instance_uuid_str,
                                   pmdb_sm_handler,
                                   pmdb_init_peer_handler,
-                                  pmdb_cleanup_peer_handler,
                                   RAFT_INSTANCE_STORE_ROCKSDB_PERSISTENT_APP,
                                   opts, &pmdbCFT);
 

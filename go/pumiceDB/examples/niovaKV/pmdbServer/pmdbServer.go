@@ -122,11 +122,7 @@ func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64
 	return 0
 }
 
-func (nso *NiovaKVServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
-}
-
-func (nso *NiovaKVServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+func (nso *NiovaKVServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 

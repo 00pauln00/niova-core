@@ -45,8 +45,7 @@ typedef bool     raft_net_cb_ctx_bool_t;
 typedef void     raft_net_timerfd_cb_ctx_t;
 typedef int      raft_net_timerfd_cb_ctx_int_t;
 typedef bool     raft_net_timerfd_cb_ctx_bool_t;
-typedef void     raft_net_init_peer_cb_ctx_t;
-typedef void     raft_net_cleanup_peer_cb_ctx_t;
+typedef void     raft_net_init_cb_ctx_t;
 
 typedef uint64_t raft_net_request_tag_t;
 #define RAFT_NET_TAG_NONE 0UL
@@ -75,6 +74,15 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_ANY,
 };
 
+enum raft_init_state_type
+{
+    RAFT_INIT_TYPE_NONE,
+    RAFT_INIT_BOOTUP_STATE,
+    RAFT_INIT_BECOMING_LEADER_STATE,
+    RAFT_INIT_SHUTDOWN_STATE,
+    RAFT_INIT_TYPE_ANY,
+};
+
 typedef raft_net_cb_ctx_t
 (*raft_net_cb_t)(struct raft_instance *,
                  const char *, ssize_t,
@@ -87,13 +95,9 @@ typedef raft_net_timerfd_cb_ctx_t
 typedef raft_net_cb_ctx_int_t
 (*raft_sm_request_handler_t)(struct raft_net_client_request_handle *);
 
-// Initialize the peer on bootup peer or becoming leader.
-typedef raft_net_init_peer_cb_ctx_t
-(*raft_init_peer_cb_t)(uint32_t bootup_peer);
-
-// Cleanup peer on shutdown.
-typedef raft_net_cleanup_peer_cb_ctx_t
-(*raft_cleanup_peer_cb_t)(void);
+// Init the peer on bootup peer, shutdown or becoming leader.
+typedef raft_net_init_cb_ctx_t
+(*raft_init_cb_t)(enum raft_init_state_type init_state);
 
 typedef int (*raft_net_startup_pre_bind_cb_t)(struct raft_instance *);
 typedef int (*raft_net_shutdown_cb_t)(struct raft_instance *);
