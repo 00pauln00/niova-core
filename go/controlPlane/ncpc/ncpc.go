@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	serviceDiscovery "common/clientAPI"
+	leaseLib "common/leaseLib"
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
@@ -21,7 +22,7 @@ import (
 	"sync"
 	"time"
 
-	uuid "github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	maps "golang.org/x/exp/maps"
 )
@@ -112,13 +113,13 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	*/
 	noUUID := count
 	for i := int64(0); i < noUUID; i++ {
-		randomNodeUUID, _ := uuid.NewRandomFromReader(r)
+		randomNodeUUID := uuid.NewV4()
 		nodeUUID = append(nodeUUID, randomNodeUUID.String())
 		prefix := "node." + randomNodeUUID.String()
 
 		//NISD-UUIDs
 		for j := int64(0); j < noUUID; j++ {
-			randUUID, _ := uuid.NewRandomFromReader(r)
+			randUUID := uuid.NewV4()
 			nodeNisdMap[randomNodeUUID.String()] = append(nodeNisdMap[randomNodeUUID.String()], randUUID.String())
 		}
 		kvMap[prefix+".NISD-UUIDs"], _ = json.Marshal(nodeNisdMap[randomNodeUUID.String()])
@@ -149,7 +150,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 
 			//VDEV-UUID
 			for j := int64(0); j < noUUID; j++ {
-				randUUID, _ := uuid.NewRandomFromReader(r)
+				randUUID := uuid.NewV4()
 				partNodePrefix := prefix + "." + randUUID.String()
 				kvMap[partNodePrefix] = randSeq(valSize, r)
 				vdevUUID = append(vdevUUID, randUUID.String())
@@ -170,7 +171,7 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		noChunck := count
 		Cprefix := prefix + ".c"
 		for j := int64(0); j < noChunck; j++ {
-			randUUID, _ := uuid.NewRandomFromReader(r)
+			randUUID := uuid.NewV4()
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
 			kvMap[Chunckprefix] = randSeq(valSize, r)
 		}
@@ -200,7 +201,7 @@ func (handler *clientHandler) getCmdParams() {
 	flag.StringVar(&handler.logPath, "l", "/tmp/temp.log", "Log path")
 	flag.StringVar(&handler.operation, "o", "rw", "Specify the opeation to perform")
 	flag.StringVar(&handler.resultFile, "j", "json_output", "Path along with file name for the resultant json file")
-	flag.StringVar(&handler.rncui, "u", uuid.New().String()+":0:0:0:0", "RNCUI for request / Lookout uuid")
+	flag.StringVar(&handler.rncui, "u", uuid.NewV4().String()+":0:0:0:0", "RNCUI for request / Lookout uuid")
 	flag.IntVar(&handler.count, "n", 1, "Write number of key/value pairs per key type (Default 1 will write the passed key/value)")
 	flag.BoolVar(&handler.relaxedConsistency, "r", false, "Set this flag if range could be performed with relaxed consistency")
 	flag.IntVar(&handler.seed, "s", 10, "Seed value")
@@ -261,7 +262,7 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 					CompressedStatus := value[0]
 					//Decompress
 					thisNISDData := nisdData{}
-					thisNISDData.UUID, err = uuid.Parse(d_uuid)
+					thisNISDData.UUID, err = uuid.FromString(d_uuid)
 					if err != nil {
 						log.Error(err)
 					}
@@ -316,7 +317,7 @@ func (clientObj *clientHandler) write() {
 				kvRequestObj.Operation = "write"
 				kvRequestObj.Key = key
 				kvRequestObj.Value = val
-				kvRequestObj.Rncui = uuid.New().String() + ":0:0:0:0"
+				kvRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 				requestObj.RequestType = requestResponseLib.APP_REQ
 				requestObj.RequestPayload = kvRequestObj
 				enc := gob.NewEncoder(&requestBytes)
@@ -723,7 +724,7 @@ func main() {
 		var kvRequestObj requestResponseLib.LookoutRequest
 
 		//Parse UUID
-		kvRequestObj.UUID, _ = uuid.Parse(clientObj.requestKey)
+		kvRequestObj.UUID, _ = uuid.FromString(clientObj.requestKey)
 		kvRequestObj.Cmd = clientObj.requestValue
 		requestObj.RequestType = requestResponseLib.LOOKOUT_REQ
 		requestObj.RequestPayload = kvRequestObj
@@ -740,6 +741,119 @@ func main() {
 			log.Error("Error while sending request to proxy : ", err)
 		}
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
+
+	case "GetLease":
+		//Get Lease code
+		var requestObj requestResponseLib.Request
+		var leaseRequestObj leaseLib.LeaseReq
+		var responseObj leaseLib.LeaseStruct
+		var err error
+
+		leaseRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
+		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+		leaseRequestObj.Operation = leaseLib.GET
+		if err != nil {
+			log.Error(err)
+		}
+
+		requestObj.RequestType = requestResponseLib.LEASE_REQ
+		requestObj.RequestPayload = leaseRequestObj
+
+		var requestBytes bytes.Buffer
+		enc := gob.NewEncoder(&requestBytes)
+		err = enc.Encode(requestObj)
+		if err != nil {
+			log.Info("Encoding error")
+		}
+
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		if err != nil {
+			log.Error("Error while sending request : ", err)
+		}
+
+		//decode the response
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			break
+		}
+		clientObj.write2Json(responseObj)
+
+	case "LookupLease":
+		// Lookup lease code
+		var requestObj requestResponseLib.Request
+		var leaseRequestObj leaseLib.LeaseReq
+		var responseObj leaseLib.LeaseStruct
+		var err error
+
+		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+		leaseRequestObj.Operation = leaseLib.LOOKUP
+		if err != nil {
+			log.Error(err)
+		}
+
+		requestObj.RequestType = requestResponseLib.LEASE_REQ
+		requestObj.RequestPayload = leaseRequestObj
+
+		var requestBytes bytes.Buffer
+		enc := gob.NewEncoder(&requestBytes)
+		err = enc.Encode(requestObj)
+		if err != nil {
+			log.Info("Encoding error")
+		}
+
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		if err != nil {
+			log.Error("Error while sending request : ", err)
+		}
+
+		//decode the response
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			break
+		}
+		clientObj.write2Json(responseObj)
+
+	case "RefreshLease":
+		// Refresh lease ttl
+		var requestObj requestResponseLib.Request
+		var leaseRequestObj leaseLib.LeaseReq
+		var responseObj leaseLib.LeaseStruct
+		var err error
+
+		leaseRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
+		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+		leaseRequestObj.Operation = leaseLib.REFRESH
+		if err != nil {
+			log.Error(err)
+		}
+
+		requestObj.RequestType = requestResponseLib.LEASE_REQ
+		requestObj.RequestPayload = leaseRequestObj
+
+		var requestBytes bytes.Buffer
+		enc := gob.NewEncoder(&requestBytes)
+		err = enc.Encode(requestObj)
+		if err != nil {
+			log.Info("Encoding error")
+		}
+
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		if err != nil {
+			log.Error("Error while sending request : ", err)
+		}
+
+		//decode the response
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			break
+		}
+		clientObj.write2Json(responseObj)
 	}
 
 }
