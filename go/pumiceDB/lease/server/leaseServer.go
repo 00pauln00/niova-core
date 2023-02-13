@@ -47,6 +47,13 @@ func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime 
 	return true
 }
 
+func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject,
+	leaseMap map[uuid.UUID]*leaseLib.LeaseStruct) {
+	lso.Pso = pso
+	lso.LeaseMap = leaseMap
+	lso.LeaseColmFam = "NIOVA_LEASE_CF"
+}
+
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
 	var plts PumiceDBServer.PmdbLeaderTS
 	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
