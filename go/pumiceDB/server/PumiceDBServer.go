@@ -30,15 +30,15 @@ import "C"
 var encodingOverhead int = 2
 
 type PmdbCbArgs struct {
-	UserID		unsafe.Pointer
-	ReqBuf		unsafe.Pointer
-	ReqSize		int64
-	ReplyBuf	unsafe.Pointer
-	ReplySize	int64
-	InitState	uint32
-	ContinueWr	unsafe.Pointer
-	PmdbHandler	unsafe.Pointer
-	UserData	unsafe.Pointer
+	UserID      unsafe.Pointer
+	ReqBuf      unsafe.Pointer
+	ReqSize     int64
+	ReplyBuf    unsafe.Pointer
+	ReplySize   int64
+	InitState   uint32
+	ContinueWr  unsafe.Pointer
+	PmdbHandler unsafe.Pointer
+	UserData    unsafe.Pointer
 }
 
 type PmdbServerAPI interface {
@@ -58,8 +58,8 @@ type PmdbServerObject struct {
 }
 
 type PmdbLeaderTS struct {
-	Term    int64
-	Time    int64
+	Term int64
+	Time int64
 }
 
 type charsSlice []*C.char
@@ -105,7 +105,7 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 }
 
 func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
-					goCbArgs *PmdbCbArgs) {
+	goCbArgs *PmdbCbArgs) {
 	goCbArgs.UserID = unsafe.Pointer(cargs.pcb_userid)
 	goCbArgs.ReqBuf = unsafe.Pointer(cargs.pcb_req_buf)
 	goCbArgs.ReqSize = CToGoInt64(cargs.pcb_req_bufsz)
