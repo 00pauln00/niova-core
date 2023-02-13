@@ -131,10 +131,11 @@ func main() {
 	}
 
 
-	//Fill leaseObj
 	nso.leaseObj = leaseServerLib.LeaseServerObject{}
-        nso.leaseObj.Pso = nso.pso
-        nso.leaseObj.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseStruct)
+
+	//Initalise leaseObj
+	nso.leaseObj.InitLeaseObject(nso.pso,
+								make(map[uuid.UUID]*leaseLib.LeaseStruct))
 	
 	// Start the pmdb server
 	//TODO Check error
