@@ -1,7 +1,7 @@
 package leaseLib
 
 import (
-	"github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 const (
