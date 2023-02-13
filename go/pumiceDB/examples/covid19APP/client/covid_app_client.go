@@ -515,9 +515,14 @@ func (wrObj *wrOne) exec() error {
 	var wrData = &covidVaxData{}
 	var replySize int64
 
+	reqArgs := &PumiceDBClient.PmdbReqArgs {
+		Rncui: wrObj.op.rncui,
+		ReqED: wrObj.op.covidData,
+		GetResponse: 0,
+		ReplySize: &replySize,
+	}
 	//Perform write Operation.
-	_, err := wrObj.op.cliObj.Write(wrObj.op.covidData,
-		wrObj.op.rncui, 0, &replySize)
+	_, err := wrObj.op.cliObj.Write(reqArgs)
 
 	if err != nil {
 		errMsg = errors.New("exec() method failed for WriteOne.")
@@ -586,8 +591,13 @@ func (rdObj *rdOne) exec() error {
 	resStruct := &CovidAppLib.CovidLocale{}
 
 	//read Operation
-	err := rdObj.op.cliObj.Read(rdObj.op.covidData, "",
-		resStruct)
+	reqArgs := &PumiceDBClient.PmdbReqArgs {
+		Rncui: "",
+		ReqED: rdObj.op.covidData,
+		ResponseED: resStruct,
+	}
+
+	err := rdObj.op.cliObj.Read(reqArgs)
 
 	if err != nil {
 
@@ -697,12 +707,19 @@ func (wmObj *wrMul) exec() error {
 	var wErr error
 	var wmData = &covidVaxData{}
 	var replySize int64
+	var reqArgs PumiceDBClient.PmdbReqArgs
 
 	for csvStruct := range writeMultiMap {
 		rncui := getRncui(keyRncuiMap, &csvStruct)
 		wmObj.op.key = csvStruct.Location
 		wmObj.op.rncui = rncui
-		_, err := wmObj.op.cliObj.Write(&csvStruct, rncui, 0, &replySize)
+
+		reqArgs.Rncui = rncui
+		reqArgs.ReqED = &csvStruct
+		reqArgs.GetResponse = 0
+		reqArgs.ReplySize = &replySize
+
+		_, err := wmObj.op.cliObj.Write(&reqArgs)
 		if err != nil {
 			wmData.Status = -1
 			log.Info("Write key-value failed : ", err)
@@ -789,13 +806,18 @@ func (rmObj *rdMul) exec() error {
 	var rErr error
 	//var reply_size int64
 	var rmData = &covidVaxData{}
+	var reqArgs *PumiceDBClient.PmdbReqArgs
 
 	if len(rmObj.multiRead) == len(rmObj.rdRncui) {
 
 		for i := range rmObj.rdRncui {
 
 			resStruct := &CovidAppLib.CovidLocale{}
-			err := rmObj.op.cliObj.Read(rmObj.multiRead[i], "", resStruct)
+			reqArgs.Rncui = ""
+			reqArgs.ReqED = rmObj.multiRead[i]
+			reqArgs.ResponseED = resStruct
+
+			err := rmObj.op.cliObj.Read(reqArgs)
 
 			if err != nil {
 

@@ -2345,8 +2345,8 @@ raft_server_candidate_becomes_leader(struct raft_instance *ri)
     raft_server_set_leader_csn(ri, ri->ri_csn_this_peer);
 
     // cleanup any stale cowr sub app entries in the tree
-    if (ri->ri_init_peer_cb)
-        ri->ri_init_peer_cb(0);
+    if (ri->ri_init_cb)
+        ri->ri_init_cb(RAFT_INIT_BECOMING_LEADER_STATE);
 
     DBG_RAFT_INSTANCE(LL_WARN, ri, "");
 }
@@ -5328,8 +5328,7 @@ raft_server_instance_init(struct raft_instance *ri,
                           const char *raft_uuid_str,
                           const char *this_peer_uuid_str,
                           raft_sm_request_handler_t sm_request_handler,
-                          raft_init_peer_cb_t init_peer_handler,
-                          raft_cleanup_peer_cb_t cleanup_peer_handler,
+                          raft_init_cb_t init_peer_handler,
                           enum raft_instance_options opts, void *arg)
 {
     NIOVA_ASSERT(ri && raft_instance_is_booting(ri));
@@ -5362,8 +5361,7 @@ raft_server_instance_init(struct raft_instance *ri,
     ri->ri_raft_uuid_str = raft_uuid_str;
     ri->ri_this_peer_uuid_str = this_peer_uuid_str;
     ri->ri_server_sm_request_cb = sm_request_handler;
-    ri->ri_init_peer_cb = init_peer_handler;
-    ri->ri_cleanup_peer_cb = cleanup_peer_handler;
+    ri->ri_init_cb = init_peer_handler;
     ri->ri_backend_init_arg = arg;
     ri->ri_synchronous_writes =
         opts & RAFT_INSTANCE_OPTIONS_SYNC_WRITES ? true : false;
@@ -5930,8 +5928,8 @@ raft_server_instance_startup(struct raft_instance *ri)
     }
 
     // Give control to application to setup peer on startup.
-    if (ri->ri_init_peer_cb)
-        ri->ri_init_peer_cb(1);
+    if (ri->ri_init_cb)
+        ri->ri_init_cb(RAFT_INIT_BOOTUP_STATE);
 
 out:
     if (rc)
@@ -6181,8 +6179,7 @@ int
 raft_server_instance_run(const char *raft_uuid_str,
                          const char *this_peer_uuid_str,
                          raft_sm_request_handler_t sm_request_handler,
-                         raft_init_peer_cb_t init_peer_handler,
-                         raft_cleanup_peer_cb_t cleanup_peer_handler,
+                         raft_init_cb_t init_peer_handler,
                          enum raft_instance_store_type type,
                          enum raft_instance_options opts, void *arg)
 {
@@ -6230,7 +6227,7 @@ raft_server_instance_run(const char *raft_uuid_str,
         // Initialization - this resets the raft instance's contents
         raft_server_instance_init(ri, type, raft_uuid_str, this_peer_uuid_str,
                                   sm_request_handler, init_peer_handler,
-                                  cleanup_peer_handler, opts, arg);
+                                  opts, arg);
 
         // Raft net startup
         int raft_net_startup_rc = raft_net_instance_startup(ri, false);

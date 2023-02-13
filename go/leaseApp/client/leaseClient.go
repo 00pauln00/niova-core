@@ -236,7 +236,14 @@ func (handler *leaseHandler) Write(requestObj leaseLib.LeaseReq, rncui string, r
 	if err != nil {
 		return err
 	}
-	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, 1, response)
+	reqArgs := &pmdbClient.PmdbReqArgs {
+		Rncui: rncui,
+		ReqByteArr: requestBytes.Bytes(),
+		Response: response,
+		GetResponse: 1,
+	}
+
+	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
 
 	return err
 }
@@ -257,7 +264,13 @@ func (handler *leaseHandler) Read(requestObj leaseLib.LeaseReq, rncui string, re
 	if err != nil {
 		return err
 	}
-	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), rncui, response)
+	reqArgs := &pmdbClient.PmdbReqArgs {
+		Rncui: rncui,
+		ReqByteArr: requestBytes.Bytes(),
+		Response: response,
+	}
+
+	return handler.pmdbClientObj.ReadEncoded(reqArgs)
 }
 
 /*
