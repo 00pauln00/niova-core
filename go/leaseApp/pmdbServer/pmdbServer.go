@@ -137,7 +137,7 @@ func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	log.Info("(Write prep)Lease server : Write prep request", Request)
 
 	var returnObj interface{}
-	rc := lso.leaseObj.Prepare(Request.Operation, Request.Resource, Request.Client, &returnObj)
+	rc := lso.leaseObj.Prepare(Request, &returnObj)
 
 	if rc <= 0 {
 		//Dont continue write
@@ -187,7 +187,7 @@ func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	//keyLength := len(applyLeaseReq.Client.String())
 
 	var returnObj interface{}
-	rc := lso.leaseObj.ApplyLease(applyLeaseReq.Resource, applyLeaseReq.Client, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
+	rc := lso.leaseObj.ApplyLease(applyLeaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
 	if rc == 0 && applyArgs.ReplyBuf != nil {
@@ -240,7 +240,7 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 }
 
-func (lso *leaseServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+func (lso *leaseServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	if len(lso.leaseObj.LeaseMap) != 0 {
 		lso.leaseObj.LeaderInit()
 	} else {
