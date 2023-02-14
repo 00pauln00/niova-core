@@ -2,17 +2,17 @@ module common/pmdbServer
 
 go 1.16
 
-replace niova/go-pumicedb-lib/server => ../../pumiceDB/server
+replace niova/go-pumicedb-lib/server => ../../../../pumiceDB/server
 
-replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
+replace niova/go-pumicedb-lib/common => ../../../../pumiceDB/common
 
-replace common/serfAgent => ../../serf/agent
+replace common/serfAgent => ../../../serf/agent
 
 replace common/requestResponseLib => ../requestResponseLib
 
-replace LeaseLib/leaseServer => ../../pumiceDB/lease/server
+replace LeaseLib/leaseServer => ../../../../pumiceDB/lease/server
 
-replace common/leaseLib => ../../pumiceDB/lease/common
+replace common/leaseLib => ../../../../pumiceDB/lease/common
 
 require (
 	LeaseLib/leaseServer v0.0.0-00010101000000-000000000000
