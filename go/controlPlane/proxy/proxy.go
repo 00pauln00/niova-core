@@ -424,15 +424,23 @@ Description : Call back for PMDB writes requests to HTTP server.
 */
 func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) error {
 	var replySize int64
-	requestObj := requestResponseLib.KVRequest{}
+	requestObj := requestResponseLib.Request{}
 	dec := gob.NewDecoder(bytes.NewBuffer(request))
 	err := dec.Decode(&requestObj)
 	if err != nil {
 		return err
 	}
 
+	var rncui string
+	if(requestObj.RequestType == requestResponseLib.APP_REQ) {
+		rncui = requestObj.RequestPayload.(requestResponseLib.KVRequest).Rncui
+	} else {
+		//TODO: Fix the rnuci
+		rncui = ""
+	}
+
 	reqArgs := &pmdbClient.PmdbReqArgs {
-		Rncui: requestObj.Rncui,
+		Rncui: rncui,
 		ReqByteArr: request,
 		GetResponse: 0,
 		ReplySize: &replySize,
@@ -440,6 +448,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 
 	_, err = handler.pmdbClientObj.WriteEncoded(reqArgs)
 
+	
 	var responseObj requestResponseLib.KVResponse
 	if err != nil {
 		responseObj.Status = 1
@@ -464,12 +473,15 @@ Return(s) : error
 Description : A wrapper for PMDB ReadCallBack
 */
 func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	var request requestResponseLib.KVRequest
+	var baserequest requestResponseLib.Request
+	baserequest.RequestType = requestResponseLib.APP_REQ 
+	request := requestResponseLib.KVRequest{}
 	request.Operation = "read"
 	request.Key = key
+	baserequest.RequestPayload = request
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
-	enc.Encode(request)
+	enc.Encode(baserequest)
 	reqArgs := &pmdbClient.PmdbReqArgs {
 		Rncui: "",
 		ReqByteArr: requestBytes.Bytes(),
