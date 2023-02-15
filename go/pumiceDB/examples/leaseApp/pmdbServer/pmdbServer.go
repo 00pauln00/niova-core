@@ -71,7 +71,6 @@ func main() {
 	   functions.
 	*/
 	lso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: colmfamily,
 		RaftUuid:       lso.raftUUID,
 		PeerUuid:       lso.peerUUID,
 		PmdbAPI:        lso,
@@ -79,11 +78,14 @@ func main() {
 		CoalescedWrite: true,
 	}
 
+	leaseMap := make(map[uuid.UUID]*leaseLib.LeaseStruct)
 	//TODO: Fill all fields of LeaseServerObject
 	lso.leaseObj = leaseServerLib.LeaseServerObject{}
-	lso.leaseObj.Pso = lso.pso
-	lso.leaseObj.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseStruct)
 
+	lso.leaseObj.InitLeaseObject(lso.pso, leaseMap)
+
+	// For lease application use lease column family
+	lso.pso.ColumnFamilies = []string{lso.leaseObj.LeaseColmFam}
 	// Start the pmdb server
 	err = lso.pso.Run()
 	if err != nil {
@@ -240,12 +242,13 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 }
 
 func (lso *leaseServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	if len(lso.leaseObj.LeaseMap) != 0 {
+	if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
 		lso.leaseObj.LeaderInit()
-	} else {
+	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
 		//lso.leaseObj.PeerBootup(initPeerArgs.UserID)
+	} else {
+		log.Error("Invalid init state: %d", initPeerArgs.InitState)
 	}
-
 }
 
 func (lso *leaseServer) PrepPeer(prepPeer *PumiceDBServer.PmdbCbArgs) {

@@ -122,7 +122,6 @@ func main() {
 	//Wait till HTTP Server has started
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: []string{colmfamily},
 		RaftUuid:       nso.raftUuid.String(),
 		PeerUuid:       nso.peerUuid.String(),
 		PmdbAPI:        nso,
@@ -131,11 +130,12 @@ func main() {
 	}
 
 	nso.leaseObj = leaseServerLib.LeaseServerObject{}
-
 	//Initalise leaseObj
 	nso.leaseObj.InitLeaseObject(nso.pso,
 		make(map[uuid.UUID]*leaseLib.LeaseStruct))
 
+	// Separate column families for application requests and lease
+	nso.pso.ColumnFamilies = []string{colmfamily, nso.leaseObj.LeaseColmFam}
 	// Start the pmdb server
 	//TODO Check error
 	go nso.pso.Run()

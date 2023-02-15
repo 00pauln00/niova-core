@@ -14,6 +14,7 @@ type Request struct {
 }
 
 type LeaseReq struct {
+	Rncui	  string
 	Client    uuid.UUID
 	Resource  uuid.UUID
 	Operation int

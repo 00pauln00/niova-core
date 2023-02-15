@@ -436,7 +436,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 		rncui = requestObj.RequestPayload.(requestResponseLib.KVRequest).Rncui
 	} else {
 		//TODO: Fix the rnuci
-		rncui = ""
+		rncui = requestObj.RequestPayload.(requestResponseLib.LeaseReq).Rncui
 	}
 
 	reqArgs := &pmdbClient.PmdbReqArgs {
