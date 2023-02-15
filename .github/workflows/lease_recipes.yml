@@ -53,7 +53,7 @@ jobs:
 
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/leaseApp
+           cd code/go/pumiceDB/examples/leaseApp
            && cd client && go mod tidy && cd ..
            && cd pmdbServer && go mod tidy && cd ..
            && make install_all -e DIR=/home/runner/work/niovad/niovad/build_dir
