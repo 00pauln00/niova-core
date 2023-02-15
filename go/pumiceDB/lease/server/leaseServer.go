@@ -12,6 +12,7 @@ import (
 )
 
 var ttlDefault = 60
+var LEASE_COLUMN_FAMILY = "NIOVA_LEASE_CF"
 
 type LeaseServerObject struct {
 	LeaseColmFam string
@@ -51,7 +52,7 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 	leaseMap map[uuid.UUID]*leaseLib.LeaseStruct) {
 	lso.Pso = pso
 	lso.LeaseMap = leaseMap
-	lso.LeaseColmFam = "NIOVA_LEASE_CF"
+	lso.LeaseColmFam = LEASE_COLUMN_FAMILY
 }
 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {

@@ -76,7 +76,7 @@ enum raft_net_client_request_type
 
 enum raft_init_state_type
 {
-    RAFT_INIT_TYPE_NONE,
+    RAFT_INIT_TYPE_NONE = 0,
     RAFT_INIT_BOOTUP_STATE,
     RAFT_INIT_BECOMING_LEADER_STATE,
     RAFT_INIT_SHUTDOWN_STATE,

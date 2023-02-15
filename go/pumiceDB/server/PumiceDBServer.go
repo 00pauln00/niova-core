@@ -35,7 +35,7 @@ type PmdbCbArgs struct {
 	ReqSize     int64
 	ReplyBuf    unsafe.Pointer
 	ReplySize   int64
-	InitState   uint32
+	InitState   int
 	ContinueWr  unsafe.Pointer
 	PmdbHandler unsafe.Pointer
 	UserData    unsafe.Pointer
@@ -61,6 +61,14 @@ type PmdbLeaderTS struct {
 	Term int64
 	Time int64
 }
+
+const (
+	INIT_TYPE_NONE             int = 0
+	INIT_BOOTUP_STATE              = 1
+	INIT_BECOMING_LEADER_STATE     = 2
+	INIT_SHUTDOWN_STATE            = 3
+	INIT_TYPE_ANY                  = 4
+)
 
 type charsSlice []*C.char
 
@@ -111,7 +119,7 @@ func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
 	goCbArgs.ReqSize = CToGoInt64(cargs.pcb_req_bufsz)
 	goCbArgs.ReplyBuf = unsafe.Pointer(cargs.pcb_reply_buf)
 	goCbArgs.ReplySize = CToGoInt64(cargs.pcb_reply_bufsz)
-	goCbArgs.InitState = uint32(cargs.pcb_init)
+	goCbArgs.InitState = int(cargs.pcb_init)
 	goCbArgs.ContinueWr = unsafe.Pointer(cargs.pcb_continue_wr)
 	goCbArgs.PmdbHandler = unsafe.Pointer(cargs.pcb_pmdb_handler)
 	goCbArgs.UserData = unsafe.Pointer(cargs.pcb_user_data)
