@@ -66,9 +66,7 @@ func (lso *LeaseServerObject) Prepare(requestPayload interface{}, reply *interfa
 	var currentTime leaseLib.LeaderTS
 	lso.GetLeaderTimeStamp(&currentTime)
 
-	//request := leaseLib.LeaseReq(requestPayload)
-
-	request := requestPayload.(leaseLib.LeaseReq)
+	request := requestPayload.(*leaseLib.LeaseReq)
 	//Check if its a refresh request
 	if request.Operation == leaseLib.REFRESH {
 		vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
@@ -108,7 +106,7 @@ func (lso *LeaseServerObject) Prepare(requestPayload interface{}, reply *interfa
 }
 
 func (lso *LeaseServerObject) ReadLease(requestPayload interface{}, reply *interface{}) int {
-	request := requestPayload.(leaseLib.LeaseReq)
+	request := requestPayload.(*leaseLib.LeaseReq)
 	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		return -1
@@ -135,7 +133,7 @@ func (lso *LeaseServerObject) ReadLease(requestPayload interface{}, reply *inter
 }
 
 func (lso *LeaseServerObject) ApplyLease(requestPayload interface{}, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
-	request := requestPayload.(leaseLib.LeaseReq)
+	request := requestPayload.(*leaseLib.LeaseReq)
 	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		leaseObj = &leaseLib.LeaseStruct{

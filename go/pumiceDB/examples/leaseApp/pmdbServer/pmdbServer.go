@@ -3,7 +3,6 @@ package main
 import (
 	leaseServerLib "LeaseLib/leaseServer"
 	leaseLib "common/leaseLib"
-	"common/requestResponseLib"
 	"errors"
 	"flag"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -127,7 +126,7 @@ func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var copyErr error
 	var replySize int64
 
-	Request := &requestResponseLib.LeaseReq{}
+	Request := &leaseLib.LeaseReq{}
 
 	decodeErr := lso.pso.Decode(wrPrepArgs.ReqBuf, Request, wrPrepArgs.ReqSize)
 	if decodeErr != nil {
@@ -173,7 +172,7 @@ func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var replySizeRc int64
 
 	// Decode the input buffer into structure format
-	applyLeaseReq := &requestResponseLib.LeaseReq{}
+	applyLeaseReq := &leaseLib.LeaseReq{}
 
 	decodeErr := lso.pso.Decode(applyArgs.ReqBuf, applyLeaseReq, applyArgs.ReqSize)
 	if decodeErr != nil {
@@ -208,7 +207,7 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
-	reqStruct := &requestResponseLib.LeaseReq{}
+	reqStruct := &leaseLib.LeaseReq{}
 	decodeErr := lso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
 
 	if decodeErr != nil {
@@ -224,7 +223,7 @@ func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var replySize int64
 	var copyErr error
 
-	rc := lso.leaseObj.ReadLease(reqStruct.Resource, &returnObj)
+	rc := lso.leaseObj.ReadLease(reqStruct, &returnObj)
 
 	if rc == 0 {
 		replySize, copyErr = lso.pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
