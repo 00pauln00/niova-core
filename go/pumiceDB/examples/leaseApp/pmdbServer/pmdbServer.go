@@ -85,6 +85,8 @@ func main() {
 
 	lso.leaseObj.InitLeaseObject(lso.pso, leaseMap)
 
+	// For lease application use lease column family
+	lso.pso.ColumnFamilies = []string{lso.leaseObj.LeaseColmFam}
 	// Start the pmdb server
 	err = lso.pso.Run()
 	if err != nil {
