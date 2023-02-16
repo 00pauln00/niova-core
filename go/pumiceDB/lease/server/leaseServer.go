@@ -185,14 +185,7 @@ func (lso *LeaseServerObject) LeaderInit() {
 }
 
 func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
-	readResult, _, _, _, err := lso.Pso.RangeReadKV(userID, "",
-		0, "", 0, true, 0, lso.LeaseColmFam)
-
-	log.Info("Read result : ", readResult)
-	if err != nil {
-		log.Error("Failed range query : ", err)
-		return
-	}
+	readResult, _,_ := lso.Pso.ReadAllKV(userID, "", 0, 0, lso.LeaseColmFam)
 
 	//Result of the read
 	for key, value := range readResult {
@@ -200,12 +193,12 @@ func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
 		lstruct := &leaseLib.LeaseStruct{}
 		dec := gob.NewDecoder(bytes.NewBuffer(value))
 		decodeErr := dec.Decode(lstruct)
-
 		if decodeErr != nil {
 			log.Error("Failed to decode the read request : ", decodeErr)
 			return
 		}
 		kuuid, _ := uuid.FromString(key)
 		lso.LeaseMap[kuuid] = lstruct
+		delete readResult[key]
 	}
 }

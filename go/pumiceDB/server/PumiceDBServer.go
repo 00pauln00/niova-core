@@ -466,7 +466,7 @@ func pmdbFetchAllKV(key string, key_len int64, bufSize int64, go_cf string) (map
 
 		// check if the key-val can be stored in the buffer
 		entrySize := len([]byte(fKey)) + len([]byte(fVal)) + encodingOverhead
-		if (int64(mapSize) + int64(entrySize)) > bufSize {
+		if ((bufSize > 0)&&((int64(mapSize) + int64(entrySize)) > bufSize)) {
 			log.Trace("ReadAll -  Reply buffer is full - dumping map to client")
 			lastKey = fKey
 			break
