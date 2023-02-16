@@ -378,16 +378,19 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 // Methods for range iterator
 
 // Wrapper for rocksdb_iter_seek -
-// Seeks the passed iterator to the passed key
+// Seeks the passed iterator to the passed key or first key
 func seekTo(key string, key_len int64, itr *C.rocksdb_iterator_t) {
 	var cKey *C.char
 	var cLen C.size_t
 
-	cKey = GoToCString(key)
-	cLen = GoToCSize_t(key_len)
-	C.rocksdb_iter_seek(itr, cKey, cLen)
-
-	FreeCMem(cKey)
+	if key == "" {
+		C.rocksdb_iter_seek_to_first(itr)
+	} else {
+		cKey = GoToCString(key)
+		cLen = GoToCSize_t(key_len)
+		C.rocksdb_iter_seek(itr, cKey, cLen)
+		FreeCMem(cKey)
+	}
 }
 
 // Wrapper for rocksdb_iter_key/val -
@@ -434,6 +437,58 @@ func destroyRopts(seqNum uint64, ropts *C.rocksdb_readoptions_t, consistent bool
 	} else {
 		C.rocksdb_readoptions_destroy(ropts)
 	}
+}
+
+func pmdbFetchAllKV(key string, key_len int64, bufSize int64, go_cf string) (map[string][]byte, string, error) {
+	var lookup_err error
+	var resultMap = make(map[string][]byte)
+	var mapSize int
+	var lastKey string
+	var itr *C.rocksdb_iterator_t
+
+	log.Trace("Read All KV from column Family ", go_cf)
+
+	//Create ropts
+	ropts, _ := createRopts(false, nil)
+
+	// create iterator
+	cf := GoToCString(go_cf)
+	cf_handle := C.PmdbCfHandleLookup(cf)
+	itr = C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
+
+	//Seek to the provided key
+	seekTo(key, key_len, itr)
+
+	// Iterate over keys store them in map if prefix
+	for C.rocksdb_iter_valid(itr) != 0 {
+		fKey, fVal := getKeyVal(itr)
+		log.Trace("ReadAll key : ", fKey)
+
+		// check if the key-val can be stored in the buffer
+		entrySize := len([]byte(fKey)) + len([]byte(fVal)) + encodingOverhead
+		if (int64(mapSize) + int64(entrySize)) > bufSize {
+			log.Trace("ReadAll -  Reply buffer is full - dumping map to client")
+			lastKey = fKey
+			break
+		}
+		mapSize = mapSize + entrySize + encodingOverhead
+		resultMap[fKey] = fVal
+
+		C.rocksdb_iter_next(itr)
+	}
+
+	destroyRopts(0, ropts, false)
+
+	//Free the iterator and memory
+	C.rocksdb_iter_destroy(itr)
+	FreeCMem(cf)
+
+	if len(resultMap) == 0 {
+		lookup_err = errors.New("No keys in the column family")
+	} else {
+		lookup_err = nil
+	}
+	return resultMap, lastKey, lookup_err
 }
 
 func pmdbFetchRange(key string, key_len int64,
@@ -501,6 +556,13 @@ func pmdbFetchRange(key string, key_len int64,
 		lookup_err = nil
 	}
 	return resultMap, lastKey, seqNum, snapMiss, lookup_err
+}
+
+// Public method for read all KV from the column family
+func (*PmdbServerObject) ReadAllKV(app_id unsafe.Pointer, key string,
+	key_len int64, bufSize int64, gocolfamily string) (map[string][]byte, string, error) {
+
+	return pmdbFetchAllKV(key, key_len, bufSize, gocolfamily)
 }
 
 // Public method for range read KV
