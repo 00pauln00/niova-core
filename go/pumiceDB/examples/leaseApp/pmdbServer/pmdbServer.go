@@ -245,7 +245,7 @@ func (lso *leaseServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
 		lso.leaseObj.LeaderInit()
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
-		//lso.leaseObj.PeerBootup(initPeerArgs.UserID)
+		lso.leaseObj.PeerBootup(initPeerArgs.UserID)
 	} else {
 		log.Error("Invalid init state: %d", initPeerArgs.InitState)
 	}
