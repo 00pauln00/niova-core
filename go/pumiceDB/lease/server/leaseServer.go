@@ -185,7 +185,7 @@ func (lso *LeaseServerObject) LeaderInit() {
 }
 
 func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
-	readResult, _,_ := lso.Pso.ReadAllKV(userID, "", 0, 0, lso.LeaseColmFam)
+	readResult, _, _ := lso.Pso.ReadAllKV(userID, "", 0, 0, lso.LeaseColmFam)
 
 	//Result of the read
 	for key, value := range readResult {
@@ -199,6 +199,6 @@ func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
 		}
 		kuuid, _ := uuid.FromString(key)
 		lso.LeaseMap[kuuid] = lstruct
-		delete readResult[key]
+		delete(readResult, key)
 	}
 }
