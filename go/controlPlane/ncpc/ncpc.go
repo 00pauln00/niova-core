@@ -744,11 +744,18 @@ func main() {
 
 	case "GetLease":
 		//Get Lease code
+		var err error
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
+
 		var requestObj requestResponseLib.Request
 		var leaseRequestObj leaseLib.LeaseReq
 		var responseObj leaseLib.LeaseStruct
-		var err error
 
+		leaseRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 		leaseRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
 		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
 		leaseRequestObj.Operation = leaseLib.GET
@@ -766,7 +773,7 @@ func main() {
 			log.Info("Encoding error")
 		}
 
-		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", true)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
@@ -781,11 +788,16 @@ func main() {
 		clientObj.write2Json(responseObj)
 
 	case "LookupLease":
+		var err error
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+		if err != nil {
+			log.Error(err)
+			os.Exit(1)
+		}
 		// Lookup lease code
 		var requestObj requestResponseLib.Request
 		var leaseRequestObj leaseLib.LeaseReq
 		var responseObj leaseLib.LeaseStruct
-		var err error
 
 		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
 		leaseRequestObj.Operation = leaseLib.LOOKUP
@@ -841,7 +853,7 @@ func main() {
 			log.Info("Encoding error")
 		}
 
-		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", true)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
