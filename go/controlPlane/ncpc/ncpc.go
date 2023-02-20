@@ -318,9 +318,11 @@ func (clientObj *clientHandler) write() {
 				kvRequestObj.Key = key
 				kvRequestObj.Value = val
 				kvRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+
 				requestObj.RequestType = requestResponseLib.APP_REQ
 				requestObj.RequestPayload = kvRequestObj
 				gob.Register(requestResponseLib.KVRequest{})
+
 				enc := gob.NewEncoder(&requestBytes)
 				err := enc.Encode(requestObj)
 				if err != nil {
@@ -454,8 +456,11 @@ func (clientObj *clientHandler) rangeRead() {
 		kvRequestObj.Operation = Operation
 		kvRequestObj.Consistent = !clientObj.relaxedConsistency
 		kvRequestObj.SeqNum = seqNum
+
+		gob.Register(requestResponseLib.KVRequest{})
 		requestObj.RequestType = requestResponseLib.APP_REQ
 		requestObj.RequestPayload = kvRequestObj
+
 		var requestBytes bytes.Buffer
 		var responseBytes []byte
 
