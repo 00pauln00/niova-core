@@ -14,11 +14,14 @@ replace common/requestResponseLib => ../requestResponseLib
 
 replace common/specificCompressionLib => ../../specificCompressionLib
 
+replace common/leaseLib => ../../pumiceDB/lease/common
+
 go 1.16
 
 require (
 	common/httpClient v0.0.0-00010101000000-000000000000
 	common/httpServer v0.0.0-00010101000000-000000000000
+	common/leaseLib v0.0.0-00010101000000-000000000000
 	common/requestResponseLib v0.0.0-00010101000000-000000000000
 	common/serfAgent v0.0.0-00010101000000-000000000000
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000

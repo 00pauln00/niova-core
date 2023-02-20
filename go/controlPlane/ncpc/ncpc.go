@@ -320,8 +320,9 @@ func (clientObj *clientHandler) write() {
 				kvRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 				requestObj.RequestType = requestResponseLib.APP_REQ
 				requestObj.RequestPayload = kvRequestObj
+				gob.Register(requestResponseLib.KVRequest{})
 				enc := gob.NewEncoder(&requestBytes)
-				err := enc.Encode(kvRequestObj)
+				err := enc.Encode(requestObj)
 				if err != nil {
 					log.Error("Encoding error : ", err)
 					return err
@@ -388,8 +389,12 @@ func (clientObj *clientHandler) read() {
 		//Fill the request obj and encode it
 		kvRequestObj.Key = clientObj.requestKey
 		kvRequestObj.Operation = clientObj.operation
+
+		gob.Register(requestResponseLib.KVRequest{})
 		requestObj.RequestType = requestResponseLib.APP_REQ
 		requestObj.RequestPayload = kvRequestObj
+
+		//encode the req
 		enc := gob.NewEncoder(&requestBytes)
 		err := enc.Encode(requestObj)
 		if err != nil {
@@ -763,6 +768,7 @@ func main() {
 			log.Error(err)
 		}
 
+		gob.Register(leaseLib.LeaseReq{})
 		requestObj.RequestType = requestResponseLib.LEASE_REQ
 		requestObj.RequestPayload = leaseRequestObj
 
@@ -805,6 +811,7 @@ func main() {
 			log.Error(err)
 		}
 
+		gob.Register(leaseLib.LeaseReq{})
 		requestObj.RequestType = requestResponseLib.LEASE_REQ
 		requestObj.RequestPayload = leaseRequestObj
 
@@ -843,6 +850,7 @@ func main() {
 			log.Error(err)
 		}
 
+		gob.Register(leaseLib.LeaseReq{})
 		requestObj.RequestType = requestResponseLib.LEASE_REQ
 		requestObj.RequestPayload = leaseRequestObj
 

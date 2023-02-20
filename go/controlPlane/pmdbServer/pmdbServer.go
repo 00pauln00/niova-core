@@ -3,6 +3,7 @@ package main
 import (
 	leaseServerLib "LeaseLib/leaseServer"
 	"bufio"
+	"bytes"
 	"common/httpClient"
 	leaseLib "common/leaseLib"
 	"common/lookout"
@@ -10,11 +11,13 @@ import (
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
@@ -25,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unsafe"
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -185,6 +189,26 @@ func makeRange(min, max uint16) []uint16 {
 		a[i] = uint16(min + uint16(i))
 	}
 	return a
+}
+
+func decodeControlPlaneReq(input unsafe.Pointer, output interface{}, data_len int64) error {
+	bytes_data := C.GoBytes(unsafe.Pointer(input), C.int(data_len))
+
+	buffer := bytes.NewBuffer(bytes_data)
+
+	gob.Register(leaseLib.LeaseReq{})
+	gob.Register(requestResponseLib.KVRequest{})
+
+	dec := gob.NewDecoder(buffer)
+	for {
+		if err := dec.Decode(output); err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (handler *pmdbServerHandler) checkHTTPLiveness() {
@@ -435,7 +459,7 @@ func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64
 
 	// Decode the input buffer into structure format
 	req := &requestResponseLib.Request{}
-	decodeErr := nso.pso.Decode(wrPrepArgs.ReqBuf, req, wrPrepArgs.ReqSize)
+	decodeErr := decodeControlPlaneReq(wrPrepArgs.ReqBuf, req, wrPrepArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -491,7 +515,11 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	// Decode the input buffer into structure format
 	req := &requestResponseLib.Request{}
-	decodeErr := nso.pso.Decode(applyArgs.ReqBuf, req,
+	// register datatypes for decoding interface
+	gob.Register(leaseLib.LeaseReq{})
+	gob.Register(requestResponseLib.KVRequest{})
+
+	decodeErr := decodeControlPlaneReq(applyArgs.ReqBuf, req,
 		applyArgs.ReqSize)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
@@ -548,7 +576,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	//Decode the request structure sent by client.
 	req := &requestResponseLib.Request{}
-	decodeErr := nso.pso.Decode(readArgs.ReqBuf, req, readArgs.ReqSize)
+	decodeErr := decodeControlPlaneReq(readArgs.ReqBuf, req, readArgs.ReqSize)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
