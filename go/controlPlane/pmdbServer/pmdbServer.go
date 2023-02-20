@@ -477,7 +477,7 @@ func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64
 
 	//If leaseReq
 	var returnObj interface{}
-	rc := nso.leaseObj.Prepare((req.RequestPayload), &returnObj)
+	rc := nso.leaseObj.Prepare(req.RequestPayload, &returnObj)
 
 	if rc <= 0 {
 		//Dont continue write
