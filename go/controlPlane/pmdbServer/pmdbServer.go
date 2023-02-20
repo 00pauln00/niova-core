@@ -477,7 +477,9 @@ func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64
 
 	//If leaseReq
 	var returnObj interface{}
-	rc := nso.leaseObj.Prepare(req.RequestPayload, &returnObj)
+
+	leaseReq := req.RequestPayload.(leaseLib.LeaseReq)
+	rc := nso.leaseObj.Prepare(&leaseReq, &returnObj)
 
 	if rc <= 0 {
 		//Dont continue write
@@ -528,7 +530,8 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	if req.RequestType == requestResponseLib.LEASE_REQ {
 		var returnObj interface{}
-		rc := nso.leaseObj.ApplyLease(req.RequestPayload, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
+		leaseReq := req.RequestPayload.(leaseLib.LeaseReq)
+		rc := nso.leaseObj.ApplyLease(&leaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
 		//Copy the encoded result in replyBuffer
 		replySizeRc = 0
 		if rc == 0 && applyArgs.ReplyBuf != nil {
@@ -586,7 +589,8 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	//Lease request
 	if req.RequestType == requestResponseLib.LEASE_REQ {
 		var returnObj interface{}
-		rc := nso.leaseObj.ReadLease(req.RequestPayload, &returnObj)
+		leaseReq := req.RequestPayload.(leaseLib.LeaseReq)
+		rc := nso.leaseObj.ReadLease(&leaseReq, &returnObj)
 
 		if rc == 0 {
 			replySize, copyErr = nso.pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
