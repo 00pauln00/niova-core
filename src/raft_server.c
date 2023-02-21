@@ -2029,6 +2029,11 @@ raft_server_become_candidate(struct raft_instance *ri, bool prevote)
         raft_server_timerfd_settime(ri);
 
     raft_server_broadcast_msg(ri, &rrm);
+
+    // If leader is demoted to candidate, allow applications to
+    // cleanup the leader specific state/data.
+    if (prevote && ri->ri_init_cb)
+        ri->ri_init_cb(RAFT_INIT_BECOMING_CANDIDATE_STATE);
 }
 
 static void
