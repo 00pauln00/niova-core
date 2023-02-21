@@ -459,7 +459,9 @@ func main() {
 		log.Error(err)
 		os.Exit(-1)
 	}
+
 	var responseObj leaseLib.LeaseStruct
+
 	switch requestObj.Operation {
 	case leaseLib.GET:
 		if leaseObjHandler.numOfLeases > 0 {
@@ -494,6 +496,7 @@ func main() {
 			res := prepareJsonResponse(requestObj, responseObj)
 			leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
 		}
+
 	case leaseLib.LOOKUP:
 		if leaseObjHandler.numOfLeases > 0 {
 			rdMap = readJsonFile(leaseObjHandler.readJsonFile)
@@ -536,9 +539,9 @@ func main() {
 		} else {
 			responseObj.Status = "Success"
 		}
+		res := prepareJsonResponse(requestObj, responseObj)
+		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
 	}
-	res := prepareJsonResponse(requestObj, responseObj)
-	leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
 
 	log.Info("-----END OF EXECUTION-----")
 }
