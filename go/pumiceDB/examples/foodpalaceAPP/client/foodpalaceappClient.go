@@ -460,7 +460,7 @@ func (wme *writeMulti) exec() error {
 		return err
 	}
 	defer file.Close()
-	var reqArgs *PumiceDBClient.PmdbReqArgs
+	var reqArgs PumiceDBClient.PmdbReqArgs
 	for i := 0; i < len(wme.multiReqdata); i++ {
 		//Generate app_uuid.
 		appUuid := uuid.NewV4().String()
@@ -481,7 +481,7 @@ func (wme *writeMulti) exec() error {
 		reqArgs.ReplySize = &replySize
 		reqArgs.GetResponse = 0
 
-		_, err := wme.rq.clientObj.Write(reqArgs)
+		_, err := wme.rq.clientObj.Write(&reqArgs)
 		if err != nil {
 			log.Error("Pmdb Write failed.", err)
 			wrStrdata.Status = -1
