@@ -35,6 +35,8 @@ var (
 		"LOOKUP":  leaseLib.LOOKUP,
 		"REFRESH": leaseLib.REFRESH,
 	}
+	kvMap = make(map[uuid.UUID]uuid.UUID)
+	rdMap = make(map[uuid.UUID]uuid.UUID)
 )
 
 type leaseHandler struct {
@@ -42,6 +44,8 @@ type leaseHandler struct {
 	pmdbClientObj *pmdbClient.PmdbClientObj
 	jsonFilePath  string
 	logFilePath   string
+	numOfLeases   int
+	readJsonFile  string
 }
 
 // will be used to write to json file
@@ -148,12 +152,15 @@ func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 	var ok bool
 	var err error
 
-	flag.StringVar(&strClientUUID, "u", "NULL", "ClientUUID - UUID of the requesting client")
-	flag.StringVar(&strResourceUUID, "v", "NULL", "ResourceUUID - UUID of the requested resource")
+	flag.StringVar(&strClientUUID, "u", uuid.NewV4().String(), "ClientUUID - UUID of the requesting client")
+	flag.StringVar(&strResourceUUID, "v", uuid.NewV4().String(), "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
 	flag.StringVar(&handler.logFilePath, "l", "", "Log file path")
 	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
+	flag.IntVar(&handler.numOfLeases, "n", 0, "Pass number of leases(Default 0)")
+	flag.StringVar(&handler.readJsonFile, "f", "", "Read JSON file")
+
 	flag.Usage = usage
 	flag.Parse()
 	if flag.NFlag() == 0 {
@@ -217,6 +224,59 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 	//Store encui in AppUUID
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
+}
+
+/*
+Description : Generate N number of client and resource uuids
+*/
+
+func generateUuids(numOfLeases int64) map[uuid.UUID]uuid.UUID {
+
+	noUUID := numOfLeases
+
+	for i := int64(0); i < noUUID; i++ {
+		clientUUID := uuid.NewV4()
+		resourceUUID := uuid.NewV4()
+		kvMap[clientUUID] = resourceUUID
+
+	}
+
+	return kvMap
+}
+
+/*
+Description : Read JSON outfile and parse it.
+*/
+
+func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
+
+	// Open our jsonFile
+	jsonFile, err := os.Open(filename + ".json")
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	// defer the closing of our jsonFile so that we can parse it later on
+	defer jsonFile.Close()
+
+	// read our opened xmlFile as a byte array.
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	// we initialize our Users array
+	var writeObjArr []writeObj
+
+	// we unmarshal our byteArray which contains our
+	// jsonFile's content into 'writeObjArr' which we defined above
+	json.Unmarshal(byteValue, &writeObjArr)
+
+	// we iterate through every user within our writeObjArr array and
+	// print out the user Type, their name, and their facebook url
+	// as just an example
+	for i := range writeObjArr {
+		rdMap[writeObjArr[i].Request.Client] = writeObjArr[i].Request.Resource
+	}
+
+	return rdMap
 }
 
 /*
@@ -402,22 +462,70 @@ func main() {
 	var responseObj leaseLib.LeaseStruct
 	switch requestObj.Operation {
 	case leaseLib.GET:
-		// get lease
-		responseObj, err = leaseObjHandler.get(requestObj)
-		if err != nil {
-			log.Error(err)
-			responseObj.Status = err.Error()
+		if leaseObjHandler.numOfLeases > 0 {
+			var res writeObj
+			var responseObjArr []writeObj
+			kvMap = generateUuids(int64(leaseObjHandler.numOfLeases))
+			for key, value := range kvMap {
+				requestObj.Client = key
+				requestObj.Resource = value
+				// get lease for multiple clients and resources
+				responseObj, err = leaseObjHandler.get(requestObj)
+				if err != nil {
+					log.Error(err)
+					responseObj.Status = err.Error()
+				} else {
+					responseObj.Status = "Success"
+				}
+				res = prepareJsonResponse(requestObj, responseObj)
+				responseObjArr = append(responseObjArr, res)
+			}
+			leaseObjHandler.writeToJson(responseObjArr, leaseObjHandler.jsonFilePath)
 		} else {
-			responseObj.Status = "Success"
+
+			// get lease
+			responseObj, err = leaseObjHandler.get(requestObj)
+			if err != nil {
+				log.Error(err)
+				responseObj.Status = err.Error()
+			} else {
+				responseObj.Status = "Success"
+			}
+			res := prepareJsonResponse(requestObj, responseObj)
+			leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
 		}
 	case leaseLib.LOOKUP:
-		// lookup lease
-		responseObj, err = leaseObjHandler.lookup(requestObj)
-		if err != nil {
-			log.Error(err)
-			responseObj.Status = err.Error()
+		if leaseObjHandler.numOfLeases > 0 {
+			rdMap = readJsonFile(leaseObjHandler.readJsonFile)
+			var res writeObj
+			var responseObjArr []writeObj
+			for key, value := range rdMap {
+				requestObj.Client = key
+				requestObj.Resource = value
+				// lookup lease for multiple clients and resources
+				responseObj, err = leaseObjHandler.lookup(requestObj)
+				if err != nil {
+					log.Error(err)
+					responseObj.Status = err.Error()
+				} else {
+					responseObj.Status = "Success"
+				}
+				res = prepareJsonResponse(requestObj, responseObj)
+				responseObjArr = append(responseObjArr, res)
+			}
+			leaseObjHandler.writeToJson(responseObjArr, leaseObjHandler.jsonFilePath)
 		} else {
-			responseObj.Status = "Success"
+
+			// lookup lease
+			responseObj, err = leaseObjHandler.lookup(requestObj)
+			if err != nil {
+				log.Error(err)
+				responseObj.Status = err.Error()
+			} else {
+				responseObj.Status = "Success"
+			}
+			res := prepareJsonResponse(requestObj, responseObj)
+			leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
 		}
 	case leaseLib.REFRESH:
 		// refresh lease
