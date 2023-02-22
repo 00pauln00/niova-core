@@ -4,6 +4,8 @@ replace common/serfClient => ../../serf/client
 
 replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
 
+replace niova/go-pumicedb-lib/client => ../../pumiceDB/client
+
 replace common/httpClient => ../../http/client
 
 replace common/requestResponseLib => ../requestResponseLib
@@ -14,15 +16,18 @@ replace common/specificCompressionLib => ../../specificCompressionLib/
 
 replace common/leaseLib => ../../pumiceDB/lease/common
 
+replace LeaseLib/leaseClient => ../../pumiceDB/lease/client
+
 go 1.18
 
 require (
+	LeaseLib/leaseClient v0.0.0-00010101000000-000000000000
 	common/clientAPI v0.0.0-00010101000000-000000000000
 	common/leaseLib v0.0.0-00010101000000-000000000000
 	common/requestResponseLib v0.0.0-00010101000000-000000000000
 	common/specificCompressionLib v0.0.0-00010101000000-000000000000
 	github.com/satori/go.uuid v1.2.0
-	github.com/sirupsen/logrus v1.8.1
+	github.com/sirupsen/logrus v1.9.0
 	golang.org/x/exp v0.0.0-20220414153411-bcd21879b8fd
 	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000
 )
@@ -45,5 +50,6 @@ require (
 	github.com/miekg/dns v1.1.41 // indirect
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
-	golang.org/x/sys v0.0.0-20211019181941-9d821ace8654 // indirect
+	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+	niova/go-pumicedb-lib/client v0.0.0-00010101000000-000000000000 // indirect
 )
