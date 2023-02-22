@@ -158,7 +158,7 @@ func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
 	flag.StringVar(&handler.logFilePath, "l", "", "Log file path")
 	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH")
-	flag.IntVar(&handler.numOfLeases, "n", 0, "Pass number of leases(Default 0)")
+	flag.IntVar(&handler.numOfLeases, "n", 1, "Pass number of leases(Default 1)")
 	flag.StringVar(&handler.readJsonFile, "f", "", "Read JSON file")
 
 	flag.Usage = usage
@@ -464,7 +464,7 @@ func main() {
 
 	switch requestObj.Operation {
 	case leaseLib.GET:
-		if leaseObjHandler.numOfLeases > 0 {
+		if leaseObjHandler.numOfLeases >= 1 {
 			var res writeObj
 			var responseObjArr []writeObj
 			kvMap = generateUuids(int64(leaseObjHandler.numOfLeases))
@@ -498,7 +498,7 @@ func main() {
 		}
 
 	case leaseLib.LOOKUP:
-		if leaseObjHandler.numOfLeases > 0 {
+		if leaseObjHandler.numOfLeases >= 1 {
 			rdMap = readJsonFile(leaseObjHandler.readJsonFile)
 			var res writeObj
 			var responseObjArr []writeObj
