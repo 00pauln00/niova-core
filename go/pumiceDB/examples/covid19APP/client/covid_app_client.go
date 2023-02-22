@@ -806,7 +806,7 @@ func (rmObj *rdMul) exec() error {
 	var rErr error
 	//var reply_size int64
 	var rmData = &covidVaxData{}
-	var reqArgs *PumiceDBClient.PmdbReqArgs
+	var reqArgs PumiceDBClient.PmdbReqArgs
 
 	if len(rmObj.multiRead) == len(rmObj.rdRncui) {
 
@@ -817,7 +817,7 @@ func (rmObj *rdMul) exec() error {
 			reqArgs.ReqED = rmObj.multiRead[i]
 			reqArgs.ResponseED = resStruct
 
-			err := rmObj.op.cliObj.Read(reqArgs)
+			err := rmObj.op.cliObj.Read(&reqArgs)
 
 			if err != nil {
 

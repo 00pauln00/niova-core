@@ -66,8 +66,9 @@ const (
 	INIT_TYPE_NONE             int = 0
 	INIT_BOOTUP_STATE              = 1
 	INIT_BECOMING_LEADER_STATE     = 2
-	INIT_SHUTDOWN_STATE            = 3
-	INIT_TYPE_ANY                  = 4
+	INIT_BECOMING_CANDIDATE_STATE  = 3
+	INIT_SHUTDOWN_STATE            = 4
+	INIT_TYPE_ANY                  = 5
 )
 
 type charsSlice []*C.char

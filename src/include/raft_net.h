@@ -74,11 +74,14 @@ enum raft_net_client_request_type
     RAFT_NET_CLIENT_REQ_TYPE_ANY,
 };
 
+//Note: when new state is added to this enum, make sure to replicate it
+//in PumiceDBServer.go const.
 enum raft_init_state_type
 {
     RAFT_INIT_TYPE_NONE = 0,
     RAFT_INIT_BOOTUP_STATE,
     RAFT_INIT_BECOMING_LEADER_STATE,
+    RAFT_INIT_BECOMING_CANDIDATE_STATE,
     RAFT_INIT_SHUTDOWN_STATE,
     RAFT_INIT_TYPE_ANY,
 };
