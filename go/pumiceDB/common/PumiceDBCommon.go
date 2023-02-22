@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"unsafe"
-	"net"
+
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -25,10 +26,15 @@ type PMDBInfo struct {
 }
 
 type PeerConfigData struct {
-        UUID       [16]byte
-        IPAddr     net.IP
-        Port       uint16
-        ClientPort uint16
+	UUID       [16]byte
+	IPAddr     net.IP
+	Port       uint16
+	ClientPort uint16
+}
+
+type PumiceRequest struct {
+	ReqType    int
+	ReqPayload []byte
 }
 
 //Func for initializing the logger
