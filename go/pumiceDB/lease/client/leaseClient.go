@@ -13,7 +13,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/google/uuid"
+	uuid "github.com/satori/go.uuid"
 )
 
 type state int
@@ -125,7 +125,14 @@ func (handler LeaseHandler) write(requestObj leaseLib.LeaseReq, rncui string, re
 	if err != nil {
 		return err
 	}
-	err = handler.PmdbClientObj.WriteEncodedAndGetResponse(requestBytes.Bytes(), rncui, 1, response)
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:       rncui,
+		ReqByteArr:  requestBytes.Bytes(),
+		Response:    response,
+		GetResponse: 1,
+	}
+
+	err = handler.PmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
 
 	return err
 }
@@ -146,7 +153,13 @@ func (handler LeaseHandler) read(requestObj leaseLib.LeaseReq, rncui string, res
 	if err != nil {
 		return err
 	}
-	return handler.PmdbClientObj.ReadEncoded(requestBytes.Bytes(), rncui, response)
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:      rncui,
+		ReqByteArr: requestBytes.Bytes(),
+		Response:   response,
+	}
+
+	return handler.PmdbClientObj.ReadEncoded(reqArgs)
 }
 
 /*
