@@ -161,11 +161,14 @@ func (lso *LeaseServerObject) ApplyLease(requestPayload interface{}, reply *inte
 	valLen := len(byteToStr)
 	keyLength := len(request.Resource.String())
 	rc := lso.Pso.WriteKV(userID, pmdbHandler, request.Resource.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
-
 	if rc < 0 {
+		leaseObj.Status = string(rc)
 		log.Error("Value not written to rocksdb")
 		return -1
+	} else{
+		leaseObj.Status = "Success"
 	}
+
 	if isLeaderFlag == 0 {
 		*reply = *leaseObj
 		return 0

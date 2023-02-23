@@ -4,6 +4,7 @@ import (
 	"bytes"
 	serviceDiscovery "common/clientAPI"
 	leaseLib "common/leaseLib"
+	leaseClientLib "LeaseLib/leaseClient"
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
@@ -796,7 +797,10 @@ func main() {
 			log.Error("Decoding error : ", err)
 			break
 		}
-		clientObj.write2Json(responseObj)
+
+		// convert the response to the actual format
+		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+                clientObj.write2Json(res)
 
 	case "LookupLease":
 		var err error
@@ -830,8 +834,7 @@ func main() {
 		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
-		}
-
+                }
 		//decode the response
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
@@ -839,7 +842,10 @@ func main() {
 			log.Error("Decoding error : ", err)
 			break
 		}
-		clientObj.write2Json(responseObj)
+
+		// convert the response to the actual format
+		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+		clientObj.write2Json(res)
 
 	case "RefreshLease":
 		// Refresh lease ttl
@@ -870,7 +876,6 @@ func main() {
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
-
 		//decode the response
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
@@ -878,7 +883,10 @@ func main() {
 			log.Error("Decoding error : ", err)
 			break
 		}
-		clientObj.write2Json(responseObj)
+
+		// convert the response to the actual format
+                res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+                clientObj.write2Json(res)
 	}
 
 }

@@ -108,6 +108,27 @@ func getStringLeaseState(leaseState int) string {
 	return "UNKNOWN"
 }
 
+func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseStruct) writeObj {
+        req := JsonLeaseReq{
+                Client:    requestObj.Client,
+                Resource:  requestObj.Resource,
+                Operation: getStringOperation(requestObj.Operation),
+        }
+        resp := JsonLeaseResp{
+                Client:     responseObj.Client,
+                Resource:   responseObj.Resource,
+                Status:     responseObj.Status,
+                LeaseState: getStringLeaseState(responseObj.LeaseState),
+                TTL:        responseObj.TTL,
+                TimeStamp:  responseObj.TimeStamp,
+        }
+        res := writeObj{
+                Request:  req,
+                Response: resp,
+        }
+        return res
+}
+
 /*
 Structure : LeaseHandler
 Method	  : write()
