@@ -7,3 +7,4 @@ controlPlane_operation_statusCheck_proxyFail.yml
 controlPlane_start_two_cluster.yml
 controlPlane_false_testing_recipe.yml
 controlPlane_false_testing_recipe2.yml
+controlPlane_Lease_recipe.yml
