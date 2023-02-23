@@ -10,11 +10,11 @@ const (
 
 type Request struct {
 	RequestType    int
-	RequestPayload interface{}
+	RequestPayload []byte
 }
 
 type LeaseReq struct {
-	Rncui	  string
+	Rncui     string
 	Client    uuid.UUID
 	Resource  uuid.UUID
 	Operation int
