@@ -37,6 +37,12 @@ type PumiceRequest struct {
 	ReqPayload []byte
 }
 
+const (
+        APP_REQ     int = 0
+        LEASE_REQ       = 1
+        LOOKOUT_REQ     = 2
+)
+
 //Func for initializing the logger
 func InitLogger(logPath string) error {
 

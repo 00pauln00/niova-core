@@ -36,6 +36,7 @@ type PmdbCbArgs struct {
 	ReplyBuf    unsafe.Pointer
 	ReplySize   int64
 	InitState   int
+	Payload	    []byte
 	ContinueWr  unsafe.Pointer
 	PmdbHandler unsafe.Pointer
 	UserData    unsafe.Pointer
@@ -48,8 +49,16 @@ type PmdbServerAPI interface {
 	Init(goCbArgs *PmdbCbArgs)
 }
 
+type LeaseServerAPI interface {
+        WritePrep(goCbArgs *PmdbCbArgs) int64
+        Apply(goCbArgs *PmdbCbArgs) int64
+        Read(goCbArgs *PmdbCbArgs) int64
+        Init(goCbArgs *PmdbCbArgs)
+}
+
 type PmdbServerObject struct {
 	PmdbAPI        PmdbServerAPI
+	LeaseAPI       LeaseServerAPI
 	RaftUuid       string
 	PeerUuid       string
 	SyncWrites     bool
@@ -114,16 +123,21 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 }
 
 func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
-	goCbArgs *PmdbCbArgs) {
+	goCbArgs *PmdbCbArgs) int {
 	goCbArgs.UserID = unsafe.Pointer(cargs.pcb_userid)
-	goCbArgs.ReqBuf = unsafe.Pointer(cargs.pcb_req_buf)
-	goCbArgs.ReqSize = CToGoInt64(cargs.pcb_req_bufsz)
+	ReqBuf := unsafe.Pointer(cargs.pcb_req_buf)
+	ReqSize := CToGoInt64(cargs.pcb_req_bufsz)
 	goCbArgs.ReplyBuf = unsafe.Pointer(cargs.pcb_reply_buf)
 	goCbArgs.ReplySize = CToGoInt64(cargs.pcb_reply_bufsz)
 	goCbArgs.InitState = int(cargs.pcb_init)
 	goCbArgs.ContinueWr = unsafe.Pointer(cargs.pcb_continue_wr)
 	goCbArgs.PmdbHandler = unsafe.Pointer(cargs.pcb_pmdb_handler)
 	goCbArgs.UserData = unsafe.Pointer(cargs.pcb_user_data)
+	//Decode Pumice level request
+	var request PumiceDBCommon.PumiceRequest
+	Decode(ReqBuf,request,ReqSize)
+	goCbArgs.Payload = request.ReqPayload
+	return request.ReqType
 }
 
 /*
@@ -136,13 +150,21 @@ func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
 func goWritePrep(args *C.struct_pumicedb_cb_cargs) int64 {
 
 	var wrPrepArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &wrPrepArgs)
+	reqType := pmdbCbArgsInit(args, &wrPrepArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(wrPrepArgs.UserData).(*PmdbServerObject)
+	
 
-	//Calling the golang Application's WritePrep function.
-	return gcb.PmdbAPI.WritePrep(&wrPrepArgs)
+	var ret int64
+	if reqType==PumiceDBCommon.APP_REQ {
+		//Calling the golang Application's WritePrep function.
+		ret = gcb.PmdbAPI.WritePrep(&wrPrepArgs)
+	} else {
+		//Calling leaseAPP WritePrep
+		ret = gcb.LeaseAPI.WritePrep(&wrPrepArgs)
+	}
+	return ret
 }
 
 //export goApply
@@ -150,38 +172,59 @@ func goApply(args *C.struct_pumicedb_cb_cargs,
 	pmdb_handle unsafe.Pointer) int64 {
 
 	var applyArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &applyArgs)
+	reqType := pmdbCbArgsInit(args, &applyArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(applyArgs.UserData).(*PmdbServerObject)
-
-	//Calling the golang Application's Apply function.
-	return gcb.PmdbAPI.Apply(&applyArgs)
+	
+	var ret int64
+        if reqType==PumiceDBCommon.APP_REQ {
+                //Calling the golang Application's Apply function.
+                ret = gcb.PmdbAPI.Apply(&applyArgs)
+        } else {
+                //Calling leaseAPP Apply
+                ret = gcb.LeaseAPI.Apply(&applyArgs)
+        }
+        return ret
 }
 
 //export goRead
 func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
 
 	var readArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &readArgs)
+	reqType := pmdbCbArgsInit(args, &readArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(readArgs.UserData).(*PmdbServerObject)
 
-	//Calling the golang Application's Read function.
-	return gcb.PmdbAPI.Read(&readArgs)
+
+	var ret int64
+        if reqType==PumiceDBCommon.APP_REQ {
+                //Calling the golang Application's Read function.
+                ret = gcb.PmdbAPI.Read(&readArgs)
+        } else {
+                //Calling leaseAPP Read
+                ret = gcb.LeaseAPI.Read(&readArgs)
+        }
+        return ret
 }
 
 //export goInit
 func goInit(args *C.struct_pumicedb_cb_cargs) {
 
 	var initArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &initArgs)
+	reqType := pmdbCbArgsInit(args, &initArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(initArgs.UserData).(*PmdbServerObject)
-
-	gcb.PmdbAPI.Init(&initArgs)
+	
+        if reqType==PumiceDBCommon.APP_REQ {
+                //Calling the golang Application's Init function.
+                gcb.PmdbAPI.Init(&initArgs)
+        } else {
+                //Calling leaseAPP Init
+                gcb.LeaseAPI.Init(&initArgs)
+        }
 }
 
 /**
@@ -259,9 +302,15 @@ func (pso *PmdbServerObject) Run() error {
 }
 
 // Export the common decode method via the server object
+//TODO: Remove it from PmdbServerObject
 func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 	len int64) error {
 	return PumiceDBCommon.Decode(input, output, len)
+}
+
+func Decode(input unsafe.Pointer, output interface{},
+        len int64) error {
+        return PumiceDBCommon.Decode(input, output, len)
 }
 
 // search a key in RocksDB
