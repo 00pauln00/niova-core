@@ -48,11 +48,20 @@ func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime 
 	return true
 }
 
+func Decode(payload []byte) leaseLib.LeaseReq {
+	var request leaseLib.LeaseReq
+	dec := gob.NewDecoder(bytes.NewBuffer(payload))
+        dec.Decode(request)
+	return request
+}
+
 func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject,
 	leaseMap map[uuid.UUID]*leaseLib.LeaseStruct) {
 	lso.Pso = pso
 	lso.LeaseMap = leaseMap
 	lso.LeaseColmFam = LEASE_COLUMN_FAMILY
+	//Register Lease callbacks
+	lso.Pso.LeaseAPI = lso
 }
 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
@@ -63,11 +72,10 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
 	return rc
 }
 
-func (lso *LeaseServerObject) Prepare(requestPayload interface{}, reply *interface{}) int {
+func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *interface{}) int {
 	var currentTime leaseLib.LeaderTS
 	lso.GetLeaderTimeStamp(&currentTime)
 
-	request := requestPayload.(*leaseLib.LeaseReq)
 	//Check if its a refresh request
 	if request.Operation == leaseLib.REFRESH {
 		vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
@@ -106,8 +114,48 @@ func (lso *LeaseServerObject) Prepare(requestPayload interface{}, reply *interfa
 	return 1
 }
 
-func (lso *LeaseServerObject) ReadLease(requestPayload interface{}, reply *interface{}) int {
-	request := requestPayload.(*leaseLib.LeaseReq)
+
+func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
+
+        var copyErr error
+        var replySize int64
+
+
+	//Decode request
+	request := Decode(wrPrepArgs.Payload)
+
+        var returnObj interface{}
+        rc := lso.prepare(request, &returnObj)
+
+        if rc <= 0 {
+                //Dont continue write
+                _, copyErr = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+                if rc == 0 {
+                        replySize, copyErr = lso.Pso.CopyDataToBuffer(returnObj, wrPrepArgs.ReplyBuf)
+                        if copyErr != nil {
+                                log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                                return -1
+                        }
+                        return replySize
+                }
+                return -1
+        } else {
+                //Continue write
+		_, copyErr = lso.Pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+                return 0
+        }
+
+}
+
+func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *interface{}) int {
 	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		return -1
@@ -133,8 +181,35 @@ func (lso *LeaseServerObject) ReadLease(requestPayload interface{}, reply *inter
 	return 0
 }
 
-func (lso *LeaseServerObject) ApplyLease(requestPayload interface{}, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
-	request := requestPayload.(*leaseLib.LeaseReq)
+func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
+
+        log.Trace("NiovaCtlPlane server: Read request received")
+
+        //Decode the request structure sent by client.
+        reqStruct := Decode(readArgs.Payload)
+
+        log.Trace("Key passed by client: ", reqStruct.Resource)
+        var returnObj interface{}
+        var replySize int64
+        var copyErr error
+
+        rc := lso.readLease(reqStruct, &returnObj)
+
+        if rc == 0 {
+                replySize, copyErr = lso.Pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+
+                return replySize
+        }
+
+        return int64(rc)
+
+}
+
+func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
 	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		leaseObj = &leaseLib.LeaseStruct{
@@ -162,7 +237,7 @@ func (lso *LeaseServerObject) ApplyLease(requestPayload interface{}, reply *inte
 	keyLength := len(request.Resource.String())
 	rc := lso.Pso.WriteKV(userID, pmdbHandler, request.Resource.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
 	if rc < 0 {
-		leaseObj.Status = string(rc)
+		leaseObj.Status = "Key not found"
 		log.Error("Value not written to rocksdb")
 		return -1
 	} else{
@@ -177,7 +252,37 @@ func (lso *LeaseServerObject) ApplyLease(requestPayload interface{}, reply *inte
 	return 1
 }
 
-func (lso *LeaseServerObject) LeaderInit() {
+func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
+        //var valueBytes bytes.Buffer
+        var copyErr error
+        var replySizeRc int64
+
+        // Decode the input buffer into structure format
+        applyLeaseReq := Decode(applyArgs.Payload)
+
+        log.Info("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
+
+        // length of key.
+        //keyLength := len(applyLeaseReq.Client.String())
+
+        var returnObj interface{}
+        rc := lso.applyLease(applyLeaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
+        //Copy the encoded result in replyBuffer
+        replySizeRc = 0
+        if rc == 0 && applyArgs.ReplyBuf != nil {
+                replySizeRc, copyErr = lso.Pso.CopyDataToBuffer(returnObj, applyArgs.ReplyBuf)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return -1
+                }
+        } else {
+                return int64(rc)
+        }
+
+        return replySizeRc
+}
+
+func (lso *LeaseServerObject) leaderInit() {
 	for _, leaseObj := range lso.LeaseMap {
 		rc := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 		if rc != 0 {
@@ -187,7 +292,7 @@ func (lso *LeaseServerObject) LeaderInit() {
 	}
 }
 
-func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
+func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 	readResult, _, _ := lso.Pso.ReadAllKV(userID, "", 0, 0, lso.LeaseColmFam)
 
 	//Result of the read
@@ -204,4 +309,14 @@ func (lso *LeaseServerObject) PeerBootup(userID unsafe.Pointer) {
 		lso.LeaseMap[kuuid] = lstruct
 		delete(readResult, key)
 	}
+}
+
+func (lso *LeaseServerObject) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+        if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
+                lso.leaderInit()
+        } else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
+                lso.peerBootup(initPeerArgs.UserID)
+        } else {
+                log.Error("Invalid init state: %d", initPeerArgs.InitState)
+        }
 }

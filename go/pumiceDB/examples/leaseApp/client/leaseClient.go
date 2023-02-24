@@ -426,6 +426,73 @@ func (handler *leaseHandler) refresh(requestObj leaseLib.LeaseReq) (leaseLib.Lea
 
 /*
 Structure : leaseHandler
+Method    : multiGet()
+Arguments : leaseLib.LeaseReq
+
+Description: Perform Multiple GET lease operation
+*/
+
+func (handler *leaseHandler) multiGet(requestObj leaseLib.LeaseReq) []writeObj {
+
+	var err error
+	var res writeObj
+	var responseObj leaseLib.LeaseStruct
+	var responseObjArr []writeObj
+
+	kvMap = generateUuids(int64(handler.numOfLeases))
+	for key, value := range kvMap {
+		requestObj.Client = key
+		requestObj.Resource = value
+		// get lease for multiple clients and resources
+		responseObj, err = handler.get(requestObj)
+		if err != nil {
+			log.Error(err)
+			responseObj.Status = err.Error()
+		} else {
+			responseObj.Status = "Success"
+		}
+		res = prepareJsonResponse(requestObj, responseObj)
+		responseObjArr = append(responseObjArr, res)
+	}
+
+	return responseObjArr
+}
+
+/*
+Structure : leaseHandler
+Method    : multiLookup()
+Arguments : leaseLib.LeaseReq
+
+Description: Perform Multiple LOOKUP lease operation
+*/
+
+func (handler *leaseHandler) multiLookup(requestObj leaseLib.LeaseReq) []writeObj {
+
+	var err error
+	var res writeObj
+	var responseObj leaseLib.LeaseStruct
+	var responseObjArr []writeObj
+	rdMap = readJsonFile(handler.readJsonFile)
+	for key, value := range rdMap {
+		requestObj.Client = key
+		requestObj.Resource = value
+		// lookup lease for multiple clients and resources
+		responseObj, err = handler.lookup(requestObj)
+		if err != nil {
+			log.Error(err)
+			responseObj.Status = err.Error()
+		} else {
+			responseObj.Status = "Success"
+		}
+		res = prepareJsonResponse(requestObj, responseObj)
+		responseObjArr = append(responseObjArr, res)
+	}
+
+	return responseObjArr
+}
+
+/*
+Structure : leaseHandler
 Method	  : writeToJson
 Arguments : struct
 Return(s) : error
@@ -462,26 +529,11 @@ func main() {
 
 	var responseObj leaseLib.LeaseStruct
 
+	var responseObjArr []writeObj
 	switch requestObj.Operation {
 	case leaseLib.GET:
 		if leaseObjHandler.numOfLeases >= 1 {
-			var res writeObj
-			var responseObjArr []writeObj
-			kvMap = generateUuids(int64(leaseObjHandler.numOfLeases))
-			for key, value := range kvMap {
-				requestObj.Client = key
-				requestObj.Resource = value
-				// get lease for multiple clients and resources
-				responseObj, err = leaseObjHandler.get(requestObj)
-				if err != nil {
-					log.Error(err)
-					responseObj.Status = err.Error()
-				} else {
-					responseObj.Status = "Success"
-				}
-				res = prepareJsonResponse(requestObj, responseObj)
-				responseObjArr = append(responseObjArr, res)
-			}
+			responseObjArr = leaseObjHandler.multiGet(requestObj)
 			leaseObjHandler.writeToJson(responseObjArr, leaseObjHandler.jsonFilePath)
 		} else {
 
@@ -499,23 +551,7 @@ func main() {
 
 	case leaseLib.LOOKUP:
 		if leaseObjHandler.numOfLeases >= 1 {
-			rdMap = readJsonFile(leaseObjHandler.readJsonFile)
-			var res writeObj
-			var responseObjArr []writeObj
-			for key, value := range rdMap {
-				requestObj.Client = key
-				requestObj.Resource = value
-				// lookup lease for multiple clients and resources
-				responseObj, err = leaseObjHandler.lookup(requestObj)
-				if err != nil {
-					log.Error(err)
-					responseObj.Status = err.Error()
-				} else {
-					responseObj.Status = "Success"
-				}
-				res = prepareJsonResponse(requestObj, responseObj)
-				responseObjArr = append(responseObjArr, res)
-			}
+			responseObjArr = leaseObjHandler.multiLookup(requestObj)
 			leaseObjHandler.writeToJson(responseObjArr, leaseObjHandler.jsonFilePath)
 		} else {
 
