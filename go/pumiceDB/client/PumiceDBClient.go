@@ -4,11 +4,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/google/uuid"
-	"niova/go-pumicedb-lib/common"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"strconv"
 	"syscall"
 	"unsafe"
+
+	"github.com/google/uuid"
 )
 
 /*
@@ -19,12 +20,13 @@ import (
 import "C"
 
 type PmdbReqArgs struct {
-	Rncui 		string
-	ReqED 		interface{}
-	ResponseED	interface{}
-	ReqByteArr	[]byte
-	Response	*[]byte
-	ReplySize	*int64
+	Rncui       string
+	ReqED       interface{}
+	ResponseED  interface{}
+	ReqByteArr  []byte
+	ReqType     int
+	Response    *[]byte
+	ReplySize   *int64
 	GetResponse int
 	ZeroCopyObj *RDZeroCopyObj
 }
@@ -73,6 +75,20 @@ func CToGoString(cstring *C.char) string {
 	return C.GoString(cstring)
 }
 
+//Get PumiceRequest in common format
+func (obj *PmdbClientObj) GetPmdbFunction(reqArgs *PmdbReqArgs) (PumiceDBCommon.PumiceRequest, error) {
+	// get bytes for requestResponse.Request and
+	// convert PumiceDBCommon.PumiceRequest
+	var pmdbRequest PumiceDBCommon.PumiceRequest
+	encodedRequest := reqArgs.ReqByteArr
+
+	pmdbRequest.ReqType = reqArgs.ReqType
+	pmdbRequest.ReqPayload = encodedRequest
+
+	return pmdbRequest, nil
+
+}
+
 //Write KV from client.
 func (obj *PmdbClientObj) Write(reqArgs *PmdbReqArgs) (unsafe.Pointer, error) {
 
@@ -90,7 +106,7 @@ func (obj *PmdbClientObj) Write(reqArgs *PmdbReqArgs) (unsafe.Pointer, error) {
 	getResponse_c := (C.int)(reqArgs.GetResponse)
 	//Perform the write
 	return obj.writeKV(reqArgs.Rncui, encoded_key, key_len, getResponse_c,
-			reqArgs.ReplySize)
+		reqArgs.ReplySize)
 }
 
 //WriteEncoded

@@ -38,9 +38,9 @@ type PumiceRequest struct {
 }
 
 const (
-        APP_REQ     int = 0
-        LEASE_REQ       = 1
-        LOOKOUT_REQ     = 2
+	APP_REQ     int = 0
+	LEASE_REQ       = 1
+	LOOKOUT_REQ     = 2
 )
 
 //Func for initializing the logger
