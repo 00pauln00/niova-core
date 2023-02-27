@@ -28,7 +28,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
@@ -191,15 +190,8 @@ func makeRange(min, max uint16) []uint16 {
 	return a
 }
 
-func decodeControlPlaneReq(input unsafe.Pointer, output interface{}, data_len int64) error {
-	bytes_data := C.GoBytes(unsafe.Pointer(input), C.int(data_len))
-
-	buffer := bytes.NewBuffer(bytes_data)
-
-	gob.Register(leaseLib.LeaseReq{})
-	gob.Register(requestResponseLib.KVRequest{})
-
-	dec := gob.NewDecoder(buffer)
+func decodeControlPlaneReq(input []byte, output *requestResponseLib.KVRequest) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(input))
 	for {
 		if err := dec.Decode(output); err == io.EOF {
 			break
@@ -455,56 +447,10 @@ func (nso *NiovaKVServer) Init(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
 func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	log.Trace("NiovaCtlPlane server: Write prep received")
 	var copyErr error
-	var replySize int64
-
-	// Decode the input buffer into structure format
-	req := &requestResponseLib.Request{}
-	decodeErr := decodeControlPlaneReq(wrPrepArgs.ReqBuf, req, wrPrepArgs.ReqSize)
-	if decodeErr != nil {
-		log.Error("Failed to decode the application data")
+	_, copyErr = nso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
+	if copyErr != nil {
+		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1
-	}
-
-	//Check the operation type
-	if req.RequestType != requestResponseLib.LEASE_REQ {
-		_, copyErr = nso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-		return 0
-	}
-
-	//If leaseReq
-	var returnObj interface{}
-
-	leaseReq := req.RequestPayload.(leaseLib.LeaseReq)
-	rc := nso.leaseObj.Prepare(&leaseReq, &returnObj)
-
-	if rc <= 0 {
-		//Dont continue write
-		_, copyErr = nso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-		if rc == 0 {
-			replySize, copyErr = nso.pso.CopyDataToBuffer(returnObj, wrPrepArgs.ReplyBuf)
-			if copyErr != nil {
-				log.Error("Failed to Copy result in the buffer: %s", copyErr)
-				return -1
-			}
-			return replySize
-		}
-		return -1
-	} else {
-		//Continue write
-		_, copyErr = nso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-		return 0
 	}
 	return 0
 }
@@ -512,43 +458,18 @@ func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64
 func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Apply request received")
-	var copyErr error
-	var replySizeRc int64
 
 	// Decode the input buffer into structure format
-	req := &requestResponseLib.Request{}
+	applyNiovaKV := &requestResponseLib.KVRequest{}
 	// register datatypes for decoding interface
-	gob.Register(leaseLib.LeaseReq{})
-	gob.Register(requestResponseLib.KVRequest{})
-
-	decodeErr := decodeControlPlaneReq(applyArgs.ReqBuf, req,
-		applyArgs.ReqSize)
+	decodeErr := decodeControlPlaneReq(applyArgs.Payload, applyNiovaKV)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
 	}
 
-	if req.RequestType == requestResponseLib.LEASE_REQ {
-		var returnObj interface{}
-		leaseReq := req.RequestPayload.(leaseLib.LeaseReq)
-		rc := nso.leaseObj.ApplyLease(&leaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
-		//Copy the encoded result in replyBuffer
-		replySizeRc = 0
-		if rc == 0 && applyArgs.ReplyBuf != nil {
-			replySizeRc, copyErr = nso.pso.CopyDataToBuffer(returnObj, applyArgs.ReplyBuf)
-			if copyErr != nil {
-				log.Error("Failed to Copy result in the buffer: %s", copyErr)
-				return -1
-			}
-		} else {
-			return int64(rc)
-		}
-
-		return replySizeRc
-	} else {
 
 		//For application request
-		applyNiovaKV := req.RequestPayload.(requestResponseLib.KVRequest)
 		log.Trace("Key passed by client: ", applyNiovaKV.Key)
 
 		// length of key.
@@ -566,9 +487,6 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 			int64(valLen), colmfamily)
 
 		return int64(rc)
-	}
-
-	return 0
 }
 
 func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
@@ -578,8 +496,8 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var replySize int64
 
 	//Decode the request structure sent by client.
-	req := &requestResponseLib.Request{}
-	decodeErr := decodeControlPlaneReq(readArgs.ReqBuf, req, readArgs.ReqSize)
+	reqStruct := &requestResponseLib.KVRequest{}
+	decodeErr := decodeControlPlaneReq(readArgs.Payload, reqStruct)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
@@ -587,23 +505,6 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	//Lease request
-	if req.RequestType == requestResponseLib.LEASE_REQ {
-		var returnObj interface{}
-		leaseReq := req.RequestPayload.(leaseLib.LeaseReq)
-		rc := nso.leaseObj.ReadLease(&leaseReq, &returnObj)
-
-		if rc == 0 {
-			replySize, copyErr = nso.pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
-			if copyErr != nil {
-				log.Error("Failed to Copy result in the buffer: %s", copyErr)
-				return -1
-			}
-
-			return replySize
-		}
-	} else {
-		//Application request
-		reqStruct := req.RequestPayload.(requestResponseLib.KVRequest)
 		log.Trace("Key passed by client: ", reqStruct.Key)
 		keyLen := len(reqStruct.Key)
 		log.Trace("Key length: ", keyLen)
@@ -651,8 +552,6 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 		}
 
 		log.Trace("Response trace : ", resultResponse)
-		var replySize int64
-		var copyErr error
 		if readErr == nil {
 			//Copy the encoded result in replyBuffer
 			replySize, copyErr = nso.pso.CopyDataToBuffer(resultResponse,
@@ -668,6 +567,4 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 		log.Trace("Reply size: ", replySize)
 
 		return replySize
-	}
-	return 0
 }
