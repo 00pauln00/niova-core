@@ -442,15 +442,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 	}
 
 	var rncui string
-	if requestObj.ReqType == requestResponseLib.APP_REQ {
-		//TODO How to handle RNCUI
-		//rncui = requestObj.ReqPayload.(requestResponseLib.KVRequest).Rncui
-		rncui = "0.0.0.0"
-	} else {
-		//TODO: Fix the rnuci
-		//rncui = requestObj.ReqPayload.(leaseLib.LeaseReq).Rncui
-		rncui = ""
-	}
+	rncui = requestObj.Rncui
 
 	if requestObj.ReqType == requestResponseLib.LEASE_REQ {
 		reqArgs := &pmdbClient.PmdbReqArgs{

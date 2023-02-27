@@ -9,6 +9,7 @@ const (
 )
 
 type Request struct {
+	Rncui          string
 	RequestType    int
 	RequestPayload []byte
 }

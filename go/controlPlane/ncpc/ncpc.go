@@ -1,10 +1,10 @@
 package main
 
 import (
+	leaseClientLib "LeaseLib/leaseClient"
 	"bytes"
 	serviceDiscovery "common/clientAPI"
 	leaseLib "common/leaseLib"
-	leaseClientLib "LeaseLib/leaseClient"
 	"common/requestResponseLib"
 	compressionLib "common/specificCompressionLib"
 	"encoding/gob"
@@ -318,7 +318,6 @@ func (clientObj *clientHandler) write() {
 				kvRequestObj.Operation = "write"
 				kvRequestObj.Key = key
 				kvRequestObj.Value = val
-				kvRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 
 				var kvRequestBytes bytes.Buffer
 				enc := gob.NewEncoder(&kvRequestBytes)
@@ -328,6 +327,7 @@ func (clientObj *clientHandler) write() {
 					return err
 				}
 
+				requestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 				requestObj.RequestType = requestResponseLib.APP_REQ
 				requestObj.RequestPayload = kvRequestBytes.Bytes()
 				gob.Register(requestResponseLib.KVRequest{})
@@ -797,7 +797,6 @@ func main() {
 		var leaseRequestObj leaseLib.LeaseReq
 		var responseObj leaseLib.LeaseStruct
 
-		leaseRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 		leaseRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
 		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
 		leaseRequestObj.Operation = leaseLib.GET
@@ -811,6 +810,7 @@ func main() {
 		err = enc.Encode(leaseRequestObj)
 
 		gob.Register(leaseLib.LeaseReq{})
+		requestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 		requestObj.RequestType = requestResponseLib.LEASE_REQ
 		requestObj.RequestPayload = leaseReqBytes.Bytes()
 
@@ -837,7 +837,7 @@ func main() {
 
 		// convert the response to the actual format
 		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
-                clientObj.write2Json(res)
+		clientObj.write2Json(res)
 
 	case "LookupLease":
 		var err error
@@ -876,7 +876,7 @@ func main() {
 		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
-                }
+		}
 		//decode the response
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
@@ -932,8 +932,8 @@ func main() {
 		}
 
 		// convert the response to the actual format
-                res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
-                clientObj.write2Json(res)
+		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+		clientObj.write2Json(res)
 	}
 
 }
