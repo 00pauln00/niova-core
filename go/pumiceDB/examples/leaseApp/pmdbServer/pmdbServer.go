@@ -124,131 +124,19 @@ func parseArgs() (*leaseServer, error) {
 }
 
 func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
-
-	var copyErr error
-	var replySize int64
-
-	Request := &leaseLib.LeaseReq{}
-
-	decodeErr := lso.pso.Decode(wrPrepArgs.ReqBuf, Request, wrPrepArgs.ReqSize)
-	if decodeErr != nil {
-		log.Error("Failed to decode the application data")
-		return -1
-	}
-	log.Info("(Write prep)Lease server : Write prep request", Request)
-
-	var returnObj interface{}
-	rc := lso.leaseObj.Prepare(Request, &returnObj)
-
-	if rc <= 0 {
-		//Dont continue write
-		_, copyErr = lso.pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-		if rc == 0 {
-			replySize, copyErr = lso.pso.CopyDataToBuffer(returnObj, wrPrepArgs.ReplyBuf)
-			if copyErr != nil {
-				log.Error("Failed to Copy result in the buffer: %s", copyErr)
-				return -1
-			}
-			return replySize
-		}
-		return -1
-	} else {
-		//Continue write
-		_, copyErr = lso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-		return 0
-	}
-
+	return 0 
 }
 
 func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
-	//var valueBytes bytes.Buffer
-	var copyErr error
-	var replySizeRc int64
-
-	// Decode the input buffer into structure format
-	applyLeaseReq := &leaseLib.LeaseReq{}
-
-	decodeErr := lso.pso.Decode(applyArgs.ReqBuf, applyLeaseReq, applyArgs.ReqSize)
-	if decodeErr != nil {
-		log.Error("Failed to decode the application data")
-		return -1
-	}
-
-	log.Info("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
-
-	// length of key.
-	//keyLength := len(applyLeaseReq.Client.String())
-
-	var returnObj interface{}
-	rc := lso.leaseObj.ApplyLease(applyLeaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
-	//Copy the encoded result in replyBuffer
-	replySizeRc = 0
-	if rc == 0 && applyArgs.ReplyBuf != nil {
-		replySizeRc, copyErr = lso.pso.CopyDataToBuffer(returnObj, applyArgs.ReplyBuf)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-	} else {
-		return int64(rc)
-	}
-
-	return replySizeRc
+	return 0
 }
 
 func (lso *leaseServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
-
-	log.Trace("NiovaCtlPlane server: Read request received")
-
-	//Decode the request structure sent by client.
-	reqStruct := &leaseLib.LeaseReq{}
-	decodeErr := lso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
-
-	if decodeErr != nil {
-		log.Error("Failed to decode the read request")
-		return -1
-	}
-
-	log.Trace("Key passed by client: ", reqStruct.Resource)
-
-	//keyLen := len(reqStruct.Resource.String())
-
-	var returnObj interface{}
-	var replySize int64
-	var copyErr error
-
-	rc := lso.leaseObj.ReadLease(reqStruct, &returnObj)
-
-	if rc == 0 {
-		replySize, copyErr = lso.pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
-		}
-
-		return replySize
-	}
-
-	return int64(rc)
-
+	return 0
 }
 
 func (lso *leaseServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
-		lso.leaseObj.LeaderInit()
-	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
-		lso.leaseObj.PeerBootup(initPeerArgs.UserID)
-	} else {
-		log.Error("Invalid init state: %d", initPeerArgs.InitState)
-	}
+	return
 }
 
 func (lso *leaseServer) PrepPeer(prepPeer *PumiceDBServer.PmdbCbArgs) {
