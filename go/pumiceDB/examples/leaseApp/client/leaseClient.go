@@ -291,6 +291,8 @@ Description : Wrapper function for WriteEncoded() function
 func (handler *leaseHandler) Write(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
+	var replySize int64
+
 	enc := gob.NewEncoder(&requestBytes)
 	err = enc.Encode(requestObj)
 	if err != nil {
@@ -298,9 +300,11 @@ func (handler *leaseHandler) Write(requestObj leaseLib.LeaseReq, rncui string, r
 	}
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:       rncui,
-		ReqByteArr:  requestBytes.Bytes(),
-		Response:    response,
-		GetResponse: 1,
+                ReqByteArr:  requestBytes.Bytes(),
+                GetResponse: 1,
+                ReplySize:   &replySize,
+                Response:    response,
+                ReqType:     1,
 	}
 
 	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
@@ -325,9 +329,11 @@ func (handler *leaseHandler) Read(requestObj leaseLib.LeaseReq, rncui string, re
 		return err
 	}
 	reqArgs := &pmdbClient.PmdbReqArgs{
-		Rncui:      rncui,
+		Rncui:      "",
 		ReqByteArr: requestBytes.Bytes(),
 		Response:   response,
+		ReqType:    1,
+
 	}
 
 	return handler.pmdbClientObj.ReadEncoded(reqArgs)
