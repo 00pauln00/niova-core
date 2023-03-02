@@ -16,6 +16,7 @@ const (
 	EXPIRED         = 2
 	AIU             = 3
 	GRANTED         = 4
+	NULL            = 5
 )
 
 type LeaseReq struct {
