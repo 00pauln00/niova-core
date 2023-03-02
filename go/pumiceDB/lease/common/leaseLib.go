@@ -5,16 +5,17 @@ import (
 )
 
 const (
-	GET        int = 0
-	PUT            = 1
-	LOOKUP         = 2
-	REFRESH        = 3
-	GET_VALIDATE   = 4
-	INVALID        = 0
-	INPROGRESS     = 1
-	EXPIRED        = 2
-	AIU            = 3
-	GRANTED        = 4
+	GET         int = 0
+	PUT             = 1
+	LOOKUP          = 2
+	REFRESH         = 3
+	GET_VALIDATE    = 4
+	LOOKUP_VALIDATE = 5
+	INVALID         = 0
+	INPROGRESS      = 1
+	EXPIRED         = 2
+	AIU             = 3
+	GRANTED         = 4
 )
 
 type LeaseReq struct {

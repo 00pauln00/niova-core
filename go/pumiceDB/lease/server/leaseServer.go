@@ -158,28 +158,42 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 }
 
 func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *interface{}) int {
-	leaseObj, isPresent := lso.LeaseMap[request.Resource]
-	if !isPresent {
-		return -1
-	}
+	if request.Operation == leaseLib.LOOKUP {
+		leaseObj, isPresent := lso.LeaseMap[request.Resource]
+		if !isPresent {
+			return -1
+		}
 
-	if leaseObj.LeaseState == leaseLib.INPROGRESS {
-		return -1
-	}
+		if leaseObj.LeaseState == leaseLib.INPROGRESS {
+			return -1
+		}
+		*reply = *leaseObj
 
-	oldTS := leaseObj.TimeStamp
-	lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-	checkMajorCorrectness(leaseObj.TimeStamp.LeaderTerm, oldTS.LeaderTerm)
+        } else if request.Operation == leaseLib.LOOKUP_VALIDATE {
 
-	//TODO: Possible wrap around
-	ttl := leaseObj.TTL - int(leaseObj.TimeStamp.LeaderTime-oldTS.LeaderTime)
-	if ttl < 0 {
-		leaseObj.TTL = 0
-		leaseObj.LeaseState = leaseLib.EXPIRED
-	} else {
-		leaseObj.TTL = ttl
+		leaseObj, isPresent := lso.LeaseMap[request.Resource]
+			if !isPresent {
+				return -1
+			}
+
+			if leaseObj.LeaseState == leaseLib.INPROGRESS {
+				return -1
+			}
+
+		oldTS := leaseObj.TimeStamp
+		lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+		checkMajorCorrectness(leaseObj.TimeStamp.LeaderTerm, oldTS.LeaderTerm)
+
+		//TODO: Possible wrap around
+		ttl := leaseObj.TTL - int(leaseObj.TimeStamp.LeaderTime-oldTS.LeaderTime)
+		if ttl < 0 {
+			leaseObj.TTL = 0
+			leaseObj.LeaseState = leaseLib.EXPIRED
+		} else {
+			leaseObj.TTL = ttl
+		}
+		*reply = *leaseObj
 	}
-	*reply = *leaseObj
 	return 0
 }
 
