@@ -528,6 +528,31 @@ func prepareLeaseReq(client, resource string, operation int) requestResponseLib.
 	return appRequestObj
 }
 
+func (clientObj *clientHandler) writeToLeaseOutfile(appRequestObj requestResponseLib.AppRequest, responseObj leaseLib.LeaseStruct) error {
+	var leaseReq leaseLib.LeaseReq
+	resource, err := uuid.FromString(string(appRequestObj.Value))
+	if err != nil {
+		log.Error("Error while writing to outfile : ", err)
+		return err
+	}
+
+	if appRequestObj.LeaseOperation != leaseLib.LOOKUP {
+		client, err := uuid.FromString(appRequestObj.Key)
+		if err != nil {
+			log.Error("Error while writing to outfile : ", err)
+		}
+		leaseReq.Client = client
+		leaseReq.Resource = resource
+	} else {
+		leaseReq.Resource = resource
+	}
+	leaseReq.Operation = appRequestObj.LeaseOperation
+	res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
+	clientObj.write2Json(res)
+
+	return err
+}
+
 func isRangeRequest(requestKey string) bool {
 	return requestKey[len(requestKey)-1:] == "*"
 }
@@ -777,14 +802,10 @@ func main() {
 		}
 
 		// convert the response to the actual format
-		leaseReq := leaseLib.LeaseReq{
-			Client:    appRequestObj.Client,
-			Resource:  appRequestObj.Resource,
-			Operation: appRequestObj.LeaseOperation,
+		err = clientObj.writeToLeaseOutfile(appRequestObj, responseObj)
+		if err != nil {
+			break
 		}
-		res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
-		clientObj.write2Json(res)
-
 	case "LookupLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
@@ -812,12 +833,10 @@ func main() {
 		}
 
 		// convert the response to the actual format
-		leaseReq := leaseLib.LeaseReq{
-			Resource:  appRequestObj.Resource,
-			Operation: appRequestObj.LeaseOperation,
+		err = clientObj.writeToLeaseOutfile(appRequestObj, responseObj)
+		if err != nil {
+			break
 		}
-		res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
-		clientObj.write2Json(res)
 
 	case "RefreshLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
@@ -845,13 +864,10 @@ func main() {
 		}
 
 		// convert the response to the actual format
-		leaseReq := leaseLib.LeaseReq{
-			Client:    appRequestObj.Client,
-			Resource:  appRequestObj.Resource,
-			Operation: appRequestObj.LeaseOperation,
+		err = clientObj.writeToLeaseOutfile(appRequestObj, responseObj)
+		if err != nil {
+			break
 		}
-		res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
-		clientObj.write2Json(res)
 	}
 
 }

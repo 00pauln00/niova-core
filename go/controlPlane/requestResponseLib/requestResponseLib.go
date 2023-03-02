@@ -1,21 +1,18 @@
 package requestResponseLib
 
-import uuid "github.com/satori/go.uuid"
-
 const (
 	APP_REQ     int = 0
 	LEASE_REQ       = 1
 	LOOKOUT_REQ     = 2
 )
 
+//TODO Change KvOperation & LeaseOperation to same type
 type AppRequest struct {
 	Rncui          string
 	RequestType    int
 	RequestPayload []byte
 	KvOperation    string
 	LeaseOperation int
-	Client         uuid.UUID
-	Resource       uuid.UUID
 	Key            string
 	Prefix         string
 	Value          []byte
