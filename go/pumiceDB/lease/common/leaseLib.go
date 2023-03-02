@@ -9,6 +9,7 @@ const (
 	PUT            = 1
 	LOOKUP         = 2
 	REFRESH        = 3
+	GET_VALIDATE   = 4
 	INVALID        = 0
 	INPROGRESS     = 1
 	EXPIRED        = 2
