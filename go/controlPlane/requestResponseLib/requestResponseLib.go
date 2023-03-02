@@ -27,13 +27,6 @@ type AppRequest struct {
 	Cmd            string
 }
 
-type LeaseReq struct {
-	Rncui     string
-	Client    uuid.UUID
-	Resource  uuid.UUID
-	Operation int
-}
-
 type KVRequest struct {
 	Operation  string
 	Key        string

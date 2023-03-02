@@ -517,6 +517,17 @@ func (clientObj *clientHandler) rangeRead() {
 	clientObj.write2Json(operationStat)
 }
 
+func prepareLeaseReq(client, resource string, operation int) requestResponseLib.AppRequest {
+	var appRequestObj requestResponseLib.AppRequest
+	appRequestObj.Key = client
+	appRequestObj.Value = []byte(resource)
+	appRequestObj.LeaseOperation = operation
+	appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+	appRequestObj.ReqType = requestResponseLib.LEASE_REQ
+
+	return appRequestObj
+}
+
 func isRangeRequest(requestKey string) bool {
 	return requestKey[len(requestKey)-1:] == "*"
 }
@@ -749,16 +760,16 @@ func main() {
 
 		var responseObj leaseLib.LeaseStruct
 
-		var appRequestObj requestResponseLib.AppRequest
 		// TODO Change Client and Resource to Key and Value
-		appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
-		appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-		appRequestObj.LeaseOperation = leaseLib.GET
-		appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-		appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-		if err != nil {
-			log.Error(err)
-		}
+		/*
+			appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
+			appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+			appRequestObj.LeaseOperation = leaseLib.GET
+			appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+			appRequestObj.ReqType = requestResponseLib.LEASE_REQ
+		*/
+
+		appRequestObj := prepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.GET)
 
 		// encoding requestObj
 		var appRequestBytes bytes.Buffer
@@ -798,17 +809,16 @@ func main() {
 			os.Exit(1)
 		}
 		// Lookup lease code
-		var appRequestObj requestResponseLib.AppRequest
 		var responseObj leaseLib.LeaseStruct
 
 		// TODO Change Client and Resource to Key and Value
-		appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-		appRequestObj.LeaseOperation = leaseLib.LOOKUP
-		appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-		appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-		if err != nil {
-			log.Error(err)
-		}
+		/*
+			appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+			appRequestObj.LeaseOperation = leaseLib.LOOKUP
+			appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+			appRequestObj.ReqType = requestResponseLib.LEASE_REQ
+		*/
+		appRequestObj := prepareLeaseReq("", clientObj.requestValue, leaseLib.LOOKUP)
 
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)
@@ -838,20 +848,20 @@ func main() {
 		clientObj.write2Json(res)
 
 	case "RefreshLease":
-		// Refresh lease ttl
+
 		var responseObj leaseLib.LeaseStruct
-		var appRequestObj requestResponseLib.AppRequest
 		var err error
 
 		// TODO Change Client and Resource to Key and Value
-		appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
-		appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-		appRequestObj.LeaseOperation = leaseLib.REFRESH
-		appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-		appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-		if err != nil {
-			log.Error(err)
-		}
+		/*
+			appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
+			appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+			appRequestObj.LeaseOperation = leaseLib.REFRESH
+			appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+			appRequestObj.ReqType = requestResponseLib.LEASE_REQ
+		*/
+
+		appRequestObj := prepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.REFRESH)
 
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)

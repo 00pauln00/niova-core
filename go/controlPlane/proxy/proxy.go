@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"common/httpClient"
 	"common/httpServer"
+	"common/leaseLib"
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
@@ -445,9 +446,15 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 	rncui = requestObj.Rncui
 
 	if requestObj.ReqType == requestResponseLib.LEASE_REQ {
-		leaseReq := requestResponseLib.LeaseReq{
-			Client:    requestObj.Client,
-			Resource:  requestObj.Resource,
+		client, u_err := uuid.FromString(requestObj.Key)
+		resource, u_err := uuid.FromString(string(requestObj.Value))
+		if u_err != nil {
+			log.Error(u_err)
+			return u_err
+		}
+		leaseReq := leaseLib.LeaseReq{
+			Client:    client,
+			Resource:  resource,
 			Operation: requestObj.LeaseOperation,
 		}
 		// encode leaseReq
@@ -565,8 +572,14 @@ func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) erro
 	var reqBytes bytes.Buffer
 	enc := gob.NewEncoder(&reqBytes)
 	if requestObj.ReqType == requestResponseLib.LEASE_REQ {
-		leaseReq := requestResponseLib.LeaseReq{
-			Resource:  requestObj.Resource,
+		resource, u_err := uuid.FromString(string(requestObj.Value))
+		if err != nil {
+			log.Error(u_err)
+			return u_err
+		}
+
+		leaseReq := leaseLib.LeaseReq{
+			Resource:  resource,
 			Operation: requestObj.LeaseOperation,
 		}
 		err = enc.Encode(leaseReq)
