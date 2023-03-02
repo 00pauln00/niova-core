@@ -10,6 +10,9 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"encoding/gob"
+	"bytes"
+	"io"
 	"unsafe"
 )
 
@@ -308,6 +311,19 @@ func (pso *PmdbServerObject) Run() error {
 func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 	len int64) error {
 	return PumiceDBCommon.Decode(input, output, len)
+}
+
+func DecodeApplicationReq(input []byte, output interface{}) error {
+        dec := gob.NewDecoder(bytes.NewBuffer(input))
+        for {
+                if err := dec.Decode(output); err == io.EOF {
+                        break
+                } else if err != nil {
+                        return err
+                }
+        }
+
+        return nil
 }
 
 func Decode(input unsafe.Pointer, output interface{},
