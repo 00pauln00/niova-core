@@ -751,30 +751,13 @@ func main() {
 
 	case "GetLease":
 		//Get Lease code
-		var err error
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-		if err != nil {
-			log.Error(err)
-			os.Exit(1)
-		}
 
-		var responseObj leaseLib.LeaseStruct
-
-		// TODO Change Client and Resource to Key and Value
-		/*
-			appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
-			appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-			appRequestObj.LeaseOperation = leaseLib.GET
-			appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-			appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-		*/
-
+		// prepare lease request
 		appRequestObj := prepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.GET)
-
-		// encoding requestObj
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)
-		err = enc.Encode(appRequestObj)
+		err := enc.Encode(appRequestObj)
 		if err != nil {
 			log.Info("Encoding error")
 		}
@@ -785,6 +768,7 @@ func main() {
 		}
 
 		//decode the response
+		var responseObj leaseLib.LeaseStruct
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		if err != nil {
@@ -802,24 +786,10 @@ func main() {
 		clientObj.write2Json(res)
 
 	case "LookupLease":
-		var err error
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-		if err != nil {
-			log.Error(err)
-			os.Exit(1)
-		}
-		// Lookup lease code
-		var responseObj leaseLib.LeaseStruct
 
-		// TODO Change Client and Resource to Key and Value
-		/*
-			appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-			appRequestObj.LeaseOperation = leaseLib.LOOKUP
-			appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-			appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-		*/
+		// prepare lease request
 		appRequestObj := prepareLeaseReq("", clientObj.requestValue, leaseLib.LOOKUP)
-
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)
 		err = enc.Encode(appRequestObj)
@@ -831,7 +801,9 @@ func main() {
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
+
 		//decode the response
+		var responseObj leaseLib.LeaseStruct
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		if err != nil {
@@ -848,24 +820,13 @@ func main() {
 		clientObj.write2Json(res)
 
 	case "RefreshLease":
+		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
-		var responseObj leaseLib.LeaseStruct
-		var err error
-
-		// TODO Change Client and Resource to Key and Value
-		/*
-			appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
-			appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-			appRequestObj.LeaseOperation = leaseLib.REFRESH
-			appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-			appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-		*/
-
+		// prepare lease request
 		appRequestObj := prepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.REFRESH)
-
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)
-		err = enc.Encode(appRequestObj)
+		err := enc.Encode(appRequestObj)
 		if err != nil {
 			log.Info("Encoding error")
 		}
@@ -875,6 +836,7 @@ func main() {
 			log.Error("Error while sending request : ", err)
 		}
 		//decode the response
+		var responseObj leaseLib.LeaseStruct
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		if err != nil {
