@@ -35,6 +35,7 @@ var (
 		"LOOKUP":       leaseLib.LOOKUP,
 		"REFRESH":      leaseLib.REFRESH,
 		"GET_VALIDATE": leaseLib.GET_VALIDATE,
+		"LOOKUP_VALIDATE": leaseLib.LOOKUP_VALIDATE,
 	}
 	kvMap = make(map[uuid.UUID]uuid.UUID)
 	rdMap = make(map[uuid.UUID]uuid.UUID)
@@ -99,6 +100,8 @@ func getStringOperation(op int) string {
 		return "REFRESH"
 	case leaseLib.GET_VALIDATE:
 		return "GET_VALIDATE"
+	case leaseLib.LOOKUP_VALIDATE:
+                return "LOOKUP_VALIDATE"
 	}
 	return "UNKNOWN"
 }
@@ -540,6 +543,35 @@ func (handler *leaseHandler) writeToJson(toJson interface{}, jsonFilePath string
 	}
 }
 
+/*
+Structure : leaseHandler
+Method    : lookup_and_validate()
+Arguments : leaseLib.LeaseReq
+Return(s) : error
+
+Description : Handler function for lookup() operation
+              Lookup lease info of a particular resource
+              and validate that lease is valid.
+*/
+func (handler *leaseHandler) lookup_validate(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
+        var err error
+        var responseBytes []byte
+        var responseObj leaseLib.LeaseStruct
+
+        err = handler.Read(requestObj, "", &responseBytes)
+        if err != nil {
+                return responseObj, err
+        }
+
+        dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+        err = dec.Decode(&responseObj)
+        if err != nil {
+                return responseObj, err
+        }
+
+        return responseObj, err
+}
+
 func main() {
 	leaseObjHandler := leaseHandler{}
 
@@ -574,6 +606,7 @@ func main() {
 		}
 		res := prepareJsonResponse(requestObj, responseObj)
 		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+
 	case leaseLib.LOOKUP:
 		// lookup lease
 		responseObj, err = leaseObjHandler.lookup(requestObj)
@@ -585,6 +618,7 @@ func main() {
 		}
 		res := prepareJsonResponse(requestObj, responseObj)
 		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+
 	case leaseLib.REFRESH:
 		// refresh lease
 		responseObj, err = leaseObjHandler.refresh(requestObj)
@@ -596,10 +630,24 @@ func main() {
 		}
 		res := prepareJsonResponse(requestObj, responseObj)
 		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+
 	case leaseLib.GET_VALIDATE:
 		if leaseObjHandler.numOfLeases >= 1 {
 			leaseObjHandler.getValidate(requestObj)
 		}
+
+	case leaseLib.LOOKUP_VALIDATE:
+                // lookup and validate lease
+                responseObj, err = leaseObjHandler.lookup_validate(requestObj)
+                if err != nil {
+                        log.Error(err)
+                        responseObj.Status = err.Error()
+                } else{
+                        responseObj.Status = "Success"
+                }
+                res := prepareJsonResponse(requestObj, responseObj)
+                leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+
 	}
 
 	log.Info("-----END OF EXECUTION-----")
