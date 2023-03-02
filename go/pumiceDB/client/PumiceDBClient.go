@@ -76,7 +76,7 @@ func CToGoString(cstring *C.char) string {
 }
 
 //Get PumiceRequest in common format
-func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, error) {
+func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, int64) {
 	// get bytes for requestResponse.Request and
 	// convert PumiceDBCommon.PumiceRequest
 	var pmdbRequest PumiceDBCommon.PumiceRequest
@@ -87,10 +87,10 @@ func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, error) {
 	var reqLen int64
 	encodedReqPtr, err := PumiceDBCommon.Encode(pmdbRequest, &reqLen)
 	if err != nil {
-		return nil, err
+		return nil, 0
 	}
 
-	return encodedReqPtr, err
+	return encodedReqPtr, reqLen
 
 }
 
@@ -120,13 +120,8 @@ WriteEncoded allows client to pass the encoded KV struct for writing
 */
 func (obj *PmdbClientObj) WriteEncoded(reqArgs *PmdbReqArgs) (unsafe.Pointer,
 	error) {
-	requestLen := int64(len(reqArgs.ReqByteArr))
 	//Convert it to unsafe pointer (void * for C function)
-	//encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
-	encodedData, err := getPmdbReq(reqArgs)
-	if err != nil {
-		return nil, fmt.Errorf("PumiceDBClient - Error while converting AppReq to PmdbReq : ", err)
-	}
+	encodedData, requestLen := getPmdbReq(reqArgs)
 	encodedRequest := (*C.char)(encodedData)
 	getResponse_c := (C.int)(reqArgs.GetResponse)
 	return obj.writeKV(reqArgs.Rncui, encodedRequest, requestLen,
@@ -140,13 +135,8 @@ func (obj *PmdbClientObj) WriteEncodedAndGetResponse(reqArgs *PmdbReqArgs) error
 	var wr_err error
 	var reply_buff unsafe.Pointer
 
-	requestLen := int64(len(reqArgs.ReqByteArr))
 	//Convert to unsafe pointer (void * for C function)
-	//encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
-	encodedData, err := getPmdbReq(reqArgs)
-	if err != nil {
-		return fmt.Errorf("PumiceDBClient - Error while converting AppReq to PmdbReq : ", err)
-	}
+	encodedData, requestLen := getPmdbReq(reqArgs)
 	encodedRequest := (*C.char)(encodedData)
 	getResponse_c := (C.int)(reqArgs.GetResponse)
 
@@ -214,13 +204,8 @@ func (obj *PmdbClientObj) ReadEncoded(reqArgs *PmdbReqArgs) error {
 	var rd_err error
 	var reply_buff unsafe.Pointer
 
-	requestLen := int64(len(reqArgs.ReqByteArr))
 	//Typecast the encoded key to char*
-	//encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
-	encodedData, err := getPmdbReq(reqArgs)
-	if err != nil {
-		return fmt.Errorf("PumiceDBClient - Error while converting AppReq to PmdbReq : ", err)
-	}
+	encodedData, requestLen := getPmdbReq(reqArgs)
 	encoded_key := (*C.char)(encodedData)
 
 	if len(reqArgs.Rncui) == 0 {

@@ -1,6 +1,6 @@
 package requestResponseLib
 
-import "github.com/google/uuid"
+import uuid "github.com/satori/go.uuid"
 
 const (
 	APP_REQ     int = 0
@@ -8,10 +8,23 @@ const (
 	LOOKOUT_REQ     = 2
 )
 
-type Request struct {
+type AppRequest struct {
 	Rncui          string
 	RequestType    int
 	RequestPayload []byte
+	KvOperation    string
+	LeaseOperation int
+	Client         uuid.UUID
+	Resource       uuid.UUID
+	Key            string
+	Prefix         string
+	Value          []byte
+	CheckSum       [16]byte
+	SeqNum         uint64
+	Consistent     bool
+	ReqType        int
+	UUID           [16]byte
+	Cmd            string
 }
 
 type LeaseReq struct {

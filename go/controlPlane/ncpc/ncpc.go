@@ -305,42 +305,30 @@ func (clientObj *clientHandler) write() {
 				<-requestLimiter
 			}()
 
-			var requestObj requestResponseLib.Request
-			var kvRequestObj requestResponseLib.KVRequest
+			var appRequestObj requestResponseLib.AppRequest
 			var responseObj requestResponseLib.KVResponse
-			var requestBytes bytes.Buffer
 			var responseBytes []byte
 
 			err := func() error {
 
 				//Fill the request object
 
-				kvRequestObj.Operation = "write"
-				kvRequestObj.Key = key
-				kvRequestObj.Value = val
+				appRequestObj.KvOperation = "write"
+				appRequestObj.Key = key
+				appRequestObj.Value = val
+				appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+				appRequestObj.ReqType = requestResponseLib.APP_REQ
 
-				var kvRequestBytes bytes.Buffer
-				enc := gob.NewEncoder(&kvRequestBytes)
-				err := enc.Encode(kvRequestObj)
-				if err != nil {
-					log.Error("Encoding error : ", err)
-					return err
-				}
-
-				requestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-				requestObj.RequestType = requestResponseLib.APP_REQ
-				requestObj.RequestPayload = kvRequestBytes.Bytes()
-				gob.Register(requestResponseLib.KVRequest{})
-
-				enc = gob.NewEncoder(&requestBytes)
-				err = enc.Encode(requestObj)
+				var appRequestBytes bytes.Buffer
+				enc := gob.NewEncoder(&appRequestBytes)
+				err := enc.Encode(appRequestObj)
 				if err != nil {
 					log.Error("Encoding error : ", err)
 					return err
 				}
 
 				//Send the write request
-				responseBytes, err = clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", true)
+				responseBytes, err = clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "", true)
 				if err != nil {
 					log.Error("Error while sending the request : ", err)
 					return err
@@ -360,9 +348,9 @@ func (clientObj *clientHandler) write() {
 			//Request status filler
 			if clientObj.count == 1 {
 				if err != nil {
-					operationStat = fillOperationData(1, "write", kvRequestObj.Key, err.Error(), 0)
+					operationStat = fillOperationData(1, "write", appRequestObj.Key, err.Error(), 0)
 				} else {
-					operationStat = fillOperationData(responseObj.Status, "write", kvRequestObj.Key, string(kvRequestObj.Value), 0)
+					operationStat = fillOperationData(responseObj.Status, "write", appRequestObj.Key, string(appRequestObj.Value), 0)
 				}
 				return
 			}
@@ -391,38 +379,26 @@ func (clientObj *clientHandler) write() {
 }
 
 func (clientObj *clientHandler) read() {
-	var requestObj requestResponseLib.Request
-	var kvRequestObj requestResponseLib.KVRequest
+	var appRequestObj requestResponseLib.AppRequest
 	var responseObj requestResponseLib.KVResponse
-	var requestBytes bytes.Buffer
 
 	err := func() error {
 		//Fill the request obj and encode it
-		kvRequestObj.Key = clientObj.requestKey
-		kvRequestObj.Operation = clientObj.operation
-
-		var kvRequestBytes bytes.Buffer
-		enc := gob.NewEncoder(&kvRequestBytes)
-		err := enc.Encode(kvRequestObj)
-		if err != nil {
-			log.Error("Encoding error : ", err)
-			return err
-		}
-
-		gob.Register(requestResponseLib.KVRequest{})
-		requestObj.RequestType = requestResponseLib.APP_REQ
-		requestObj.RequestPayload = kvRequestBytes.Bytes()
+		appRequestObj.Key = clientObj.requestKey
+		appRequestObj.KvOperation = clientObj.operation
+		appRequestObj.RequestType = requestResponseLib.APP_REQ
 
 		//encode the req
-		enc = gob.NewEncoder(&requestBytes)
-		err = enc.Encode(requestObj)
+		var appRequestBytes bytes.Buffer
+		enc := gob.NewEncoder(&appRequestBytes)
+		err := enc.Encode(appRequestObj)
 		if err != nil {
 			log.Error("Encoding error : ", err)
 			return err
 		}
 
 		//Send the request
-		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending the request : ", err)
 			return err
@@ -452,8 +428,7 @@ func (clientObj *clientHandler) read() {
 func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key, Operation string
 	var err error
-	var requestObj requestResponseLib.Request
-	var kvRequestObj requestResponseLib.KVRequest
+	var appRequestObj requestResponseLib.AppRequest
 	var seqNum uint64
 
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
@@ -468,36 +443,24 @@ func (clientObj *clientHandler) rangeRead() {
 
 	for {
 		rangeResponseObj := requestResponseLib.KVResponse{}
-		kvRequestObj.Prefix = Prefix
-		kvRequestObj.Key = Key
-		kvRequestObj.Operation = Operation
-		kvRequestObj.Consistent = !clientObj.relaxedConsistency
-		kvRequestObj.SeqNum = seqNum
+		appRequestObj.Prefix = Prefix
+		appRequestObj.Key = Key
+		appRequestObj.KvOperation = Operation
+		appRequestObj.Consistent = !clientObj.relaxedConsistency
+		appRequestObj.SeqNum = seqNum
+		appRequestObj.ReqType = requestResponseLib.APP_REQ
 
-		var kvRequestBytes bytes.Buffer
-		enc := gob.NewEncoder(&kvRequestBytes)
-		err := enc.Encode(kvRequestObj)
+		var appRequestBytes bytes.Buffer
+		enc := gob.NewEncoder(&appRequestBytes)
+		err := enc.Encode(appRequestObj)
 		if err != nil {
 			log.Error("Encoding error : ", err)
 		}
 
-		gob.Register(requestResponseLib.KVRequest{})
-		requestObj.RequestType = requestResponseLib.APP_REQ
-		requestObj.RequestPayload = kvRequestBytes.Bytes()
-
-		var requestBytes bytes.Buffer
 		var responseBytes []byte
 
-		// encode the requestObj
-		enc = gob.NewEncoder(&requestBytes)
-		err = enc.Encode(requestObj)
-		if err != nil {
-			log.Error("Encoding error : ", err)
-			break
-		}
-
 		//Send the range request
-		responseBytes, err = clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		responseBytes, err = clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
@@ -531,7 +494,7 @@ func (clientObj *clientHandler) rangeRead() {
 	var operationStat *opData
 	if err == nil {
 		strResultMap := convMapToStr(resultMap)
-		operationStat = fillOperationData(0, "range", kvRequestObj.Key, strResultMap, seqNum)
+		operationStat = fillOperationData(0, "range", appRequestObj.Key, strResultMap, seqNum)
 
 		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
@@ -548,7 +511,7 @@ func (clientObj *clientHandler) rangeRead() {
 		fmt.Println("The range query was completed in", count, "iterations")
 
 	} else {
-		operationStat = fillOperationData(1, "range", kvRequestObj.Key, err.Error(), seqNum)
+		operationStat = fillOperationData(1, "range", appRequestObj.Key, err.Error(), seqNum)
 	}
 
 	clientObj.write2Json(operationStat)
@@ -754,30 +717,21 @@ func main() {
 		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
 		//Request obj
-		var requestObj requestResponseLib.Request
-		var kvRequestObj requestResponseLib.LookoutRequest
+		var appRequestObj requestResponseLib.AppRequest
 
 		//Parse UUID
-		kvRequestObj.UUID, _ = uuid.FromString(clientObj.requestKey)
-		kvRequestObj.Cmd = clientObj.requestValue
+		appRequestObj.UUID, _ = uuid.FromString(clientObj.requestKey)
+		appRequestObj.Cmd = clientObj.requestValue
+		appRequestObj.ReqType = requestResponseLib.LOOKOUT_REQ
 
-		var kvRequestBytes bytes.Buffer
-		enc := gob.NewEncoder(&kvRequestBytes)
-		err := enc.Encode(kvRequestObj)
+		var appRequestBytes bytes.Buffer
+		enc := gob.NewEncoder(&appRequestBytes)
+		err := enc.Encode(appRequestObj)
 		if err != nil {
 			log.Error("Encoding error : ", err)
 		}
 
-		requestObj.RequestType = requestResponseLib.LOOKOUT_REQ
-		requestObj.RequestPayload = kvRequestBytes.Bytes()
-
-		var requestByte bytes.Buffer
-		enc = gob.NewEncoder(&requestByte)
-		err = enc.Encode(requestObj)
-		if err != nil {
-			log.Info("Encoding error")
-		}
-		responseBytes, err := clientObj.clientAPIObj.Request(requestByte.Bytes(), "/v1/", false)
+		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "/v1/", false)
 
 		if err != nil {
 			log.Error("Error while sending request to proxy : ", err)
@@ -793,36 +747,28 @@ func main() {
 			os.Exit(1)
 		}
 
-		var requestObj requestResponseLib.Request
-		var leaseRequestObj leaseLib.LeaseReq
 		var responseObj leaseLib.LeaseStruct
 
-		leaseRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
-		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-		leaseRequestObj.Operation = leaseLib.GET
+		var appRequestObj requestResponseLib.AppRequest
+		// TODO Change Client and Resource to Key and Value
+		appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
+		appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+		appRequestObj.LeaseOperation = leaseLib.GET
+		appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+		appRequestObj.ReqType = requestResponseLib.LEASE_REQ
 		if err != nil {
 			log.Error(err)
 		}
 
-		// encoding leaseReq
-		var leaseReqBytes bytes.Buffer
-		enc := gob.NewEncoder(&leaseReqBytes)
-		err = enc.Encode(leaseRequestObj)
-
-		gob.Register(leaseLib.LeaseReq{})
-		requestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-		requestObj.RequestType = requestResponseLib.LEASE_REQ
-		requestObj.RequestPayload = leaseReqBytes.Bytes()
-
 		// encoding requestObj
-		var requestBytes bytes.Buffer
-		enc = gob.NewEncoder(&requestBytes)
-		err = enc.Encode(requestObj)
+		var appRequestBytes bytes.Buffer
+		enc := gob.NewEncoder(&appRequestBytes)
+		err = enc.Encode(appRequestObj)
 		if err != nil {
 			log.Info("Encoding error")
 		}
 
-		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", true)
+		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "", true)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
@@ -836,7 +782,12 @@ func main() {
 		}
 
 		// convert the response to the actual format
-		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+		leaseReq := leaseLib.LeaseReq{
+			Client:    appRequestObj.Client,
+			Resource:  appRequestObj.Resource,
+			Operation: appRequestObj.LeaseOperation,
+		}
+		res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
 		clientObj.write2Json(res)
 
 	case "LookupLease":
@@ -847,33 +798,26 @@ func main() {
 			os.Exit(1)
 		}
 		// Lookup lease code
-		var requestObj requestResponseLib.Request
-		var leaseRequestObj leaseLib.LeaseReq
+		var appRequestObj requestResponseLib.AppRequest
 		var responseObj leaseLib.LeaseStruct
 
-		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-		leaseRequestObj.Operation = leaseLib.LOOKUP
+		// TODO Change Client and Resource to Key and Value
+		appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+		appRequestObj.LeaseOperation = leaseLib.LOOKUP
+		appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+		appRequestObj.ReqType = requestResponseLib.LEASE_REQ
 		if err != nil {
 			log.Error(err)
 		}
 
-		// encoding leaseReq
-		var leaseReqBytes bytes.Buffer
-		enc := gob.NewEncoder(&leaseReqBytes)
-		err = enc.Encode(leaseRequestObj)
-
-		gob.Register(leaseLib.LeaseReq{})
-		requestObj.RequestType = requestResponseLib.LEASE_REQ
-		requestObj.RequestPayload = leaseReqBytes.Bytes()
-
-		var requestBytes bytes.Buffer
-		enc = gob.NewEncoder(&requestBytes)
-		err = enc.Encode(requestObj)
+		var appRequestBytes bytes.Buffer
+		enc := gob.NewEncoder(&appRequestBytes)
+		err = enc.Encode(appRequestObj)
 		if err != nil {
 			log.Info("Encoding error")
 		}
 
-		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", false)
+		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
@@ -886,40 +830,37 @@ func main() {
 		}
 
 		// convert the response to the actual format
-		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+		leaseReq := leaseLib.LeaseReq{
+			Resource:  appRequestObj.Resource,
+			Operation: appRequestObj.LeaseOperation,
+		}
+		res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
 		clientObj.write2Json(res)
 
 	case "RefreshLease":
 		// Refresh lease ttl
-		var requestObj requestResponseLib.Request
-		var leaseRequestObj leaseLib.LeaseReq
 		var responseObj leaseLib.LeaseStruct
+		var appRequestObj requestResponseLib.AppRequest
 		var err error
 
-		leaseRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
-		leaseRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
-		leaseRequestObj.Operation = leaseLib.REFRESH
+		// TODO Change Client and Resource to Key and Value
+		appRequestObj.Client, err = uuid.FromString(clientObj.requestKey)
+		appRequestObj.Resource, err = uuid.FromString(clientObj.requestValue)
+		appRequestObj.LeaseOperation = leaseLib.REFRESH
+		appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+		appRequestObj.ReqType = requestResponseLib.LEASE_REQ
 		if err != nil {
 			log.Error(err)
 		}
 
-		// encoding leaseReq
-		var leaseReqBytes bytes.Buffer
-		enc := gob.NewEncoder(&leaseReqBytes)
-		err = enc.Encode(leaseRequestObj)
-
-		gob.Register(leaseLib.LeaseReq{})
-		requestObj.RequestType = requestResponseLib.LEASE_REQ
-		requestObj.RequestPayload = leaseReqBytes.Bytes()
-
-		var requestBytes bytes.Buffer
-		enc = gob.NewEncoder(&requestBytes)
-		err = enc.Encode(requestObj)
+		var appRequestBytes bytes.Buffer
+		enc := gob.NewEncoder(&appRequestBytes)
+		err = enc.Encode(appRequestObj)
 		if err != nil {
 			log.Info("Encoding error")
 		}
 
-		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "", true)
+		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "", true)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
@@ -932,7 +873,12 @@ func main() {
 		}
 
 		// convert the response to the actual format
-		res := leaseClientLib.PrepareLeaseJsonResponse(leaseRequestObj, responseObj)
+		leaseReq := leaseLib.LeaseReq{
+			Client:    appRequestObj.Client,
+			Resource:  appRequestObj.Resource,
+			Operation: appRequestObj.LeaseOperation,
+		}
+		res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
 		clientObj.write2Json(res)
 	}
 

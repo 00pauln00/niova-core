@@ -414,8 +414,8 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	return nil
 }
 
-func (handler *proxyHandler) getPmdbRequest(request []byte) (PumiceDBCommon.PumiceRequest, error) {
-	var pmdbReq PumiceDBCommon.PumiceRequest
+func (handler *proxyHandler) getPmdbRequest(request []byte) (requestResponseLib.AppRequest, error) {
+	var pmdbReq requestResponseLib.AppRequest
 
 	dec := gob.NewDecoder(bytes.NewBuffer(request))
 	err := dec.Decode(&pmdbReq)
@@ -445,9 +445,23 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 	rncui = requestObj.Rncui
 
 	if requestObj.ReqType == requestResponseLib.LEASE_REQ {
+		leaseReq := requestResponseLib.LeaseReq{
+			Client:    requestObj.Client,
+			Resource:  requestObj.Resource,
+			Operation: requestObj.LeaseOperation,
+		}
+		// encode leaseReq
+		var leaseReqBytes bytes.Buffer
+		enc := gob.NewEncoder(&leaseReqBytes)
+		err = enc.Encode(leaseReq)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		// prepare args to send to server
 		reqArgs := &pmdbClient.PmdbReqArgs{
 			Rncui:       rncui,
-			ReqByteArr:  requestObj.ReqPayload,
+			ReqByteArr:  leaseReqBytes.Bytes(),
 			GetResponse: 1,
 			ReplySize:   &replySize,
 			Response:    response,
@@ -456,9 +470,29 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 
 		err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
 	} else {
+		kvReq := requestResponseLib.KVRequest{
+			Operation:  requestObj.KvOperation,
+			Key:        requestObj.Key,
+			Prefix:     requestObj.Prefix,
+			Value:      requestObj.Value,
+			Rncui:      requestObj.Rncui,
+			CheckSum:   requestObj.CheckSum,
+			SeqNum:     requestObj.SeqNum,
+			Consistent: requestObj.Consistent,
+		}
+
+		// encode kv request
+		var kvReqBytes bytes.Buffer
+		enc := gob.NewEncoder(&kvReqBytes)
+		err = enc.Encode(kvReq)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+
 		reqArgs := &pmdbClient.PmdbReqArgs{
 			Rncui:       rncui,
-			ReqByteArr:  requestObj.ReqPayload,
+			ReqByteArr:  kvReqBytes.Bytes(),
 			GetResponse: 0,
 			ReplySize:   &replySize,
 			ReqType:     requestObj.ReqType,
@@ -474,7 +508,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 		}
 
 		var responseBuffer bytes.Buffer
-		enc := gob.NewEncoder(&responseBuffer)
+		enc = gob.NewEncoder(&responseBuffer)
 		err = enc.Encode(responseObj)
 		*response = responseBuffer.Bytes()
 	}
@@ -491,20 +525,18 @@ Return(s) : error
 Description : A wrapper for PMDB ReadCallBack
 */
 func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	var baserequest requestResponseLib.Request
+	var baserequest requestResponseLib.AppRequest
 	var baseRequestBytes bytes.Buffer
-	baserequest.RequestType = requestResponseLib.APP_REQ
-	request := requestResponseLib.KVRequest{}
-	request.Operation = "read"
-	request.Key = key
+	baserequest.ReqType = requestResponseLib.APP_REQ
+	baserequest.KvOperation = "read"
+	baserequest.Key = key
 
 	enc := gob.NewEncoder(&baseRequestBytes)
-	err := enc.Encode(request)
+	err := enc.Encode(baserequest)
 	if err != nil {
 		log.Error(err)
 	}
 
-	baserequest.RequestPayload = baseRequestBytes.Bytes()
 	var requestBytes bytes.Buffer
 	enc = gob.NewEncoder(&requestBytes)
 	enc.Encode(baserequest)
@@ -529,9 +561,42 @@ func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) erro
 	if err != nil {
 		return err
 	}
+
+	var reqBytes bytes.Buffer
+	enc := gob.NewEncoder(&reqBytes)
+	if requestObj.ReqType == requestResponseLib.LEASE_REQ {
+		leaseReq := requestResponseLib.LeaseReq{
+			Resource:  requestObj.Resource,
+			Operation: requestObj.LeaseOperation,
+		}
+		err = enc.Encode(leaseReq)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+	} else {
+
+		kvReq := requestResponseLib.KVRequest{
+			Operation:  requestObj.KvOperation,
+			Key:        requestObj.Key,
+			Prefix:     requestObj.Prefix,
+			Value:      requestObj.Value,
+			Rncui:      requestObj.Rncui,
+			CheckSum:   requestObj.CheckSum,
+			SeqNum:     requestObj.SeqNum,
+			Consistent: requestObj.Consistent,
+		}
+		err = enc.Encode(kvReq)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+
+	}
+
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      "",
-		ReqByteArr: requestObj.ReqPayload,
+		ReqByteArr: reqBytes.Bytes(),
 		Response:   response,
 		ReqType:    requestObj.ReqType,
 	}

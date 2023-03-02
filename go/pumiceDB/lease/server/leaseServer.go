@@ -48,11 +48,11 @@ func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime 
 	return true
 }
 
-func Decode(payload []byte) leaseLib.LeaseReq {
-	var request leaseLib.LeaseReq
+func Decode(payload []byte) (leaseLib.LeaseReq, error) {
+	request := &leaseLib.LeaseReq{}
 	dec := gob.NewDecoder(bytes.NewBuffer(payload))
-	dec.Decode(request)
-	return request
+	err := dec.Decode(request)
+	return *request, err
 }
 
 func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject,
@@ -120,7 +120,11 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 	var replySize int64
 
 	//Decode request
-	request := Decode(wrPrepArgs.Payload)
+	request, err := Decode(wrPrepArgs.Payload)
+	if err != nil {
+		log.Error(err)
+		return -1
+	}
 
 	var returnObj interface{}
 	rc := lso.prepare(request, &returnObj)
@@ -184,7 +188,11 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	log.Trace("NiovaCtlPlane server: Read request received")
 
 	//Decode the request structure sent by client.
-	reqStruct := Decode(readArgs.Payload)
+	reqStruct, err := Decode(readArgs.Payload)
+	if err != nil {
+		log.Error(err)
+		return -1
+	}
 
 	log.Trace("Key passed by client: ", reqStruct.Resource)
 	var returnObj interface{}
@@ -256,7 +264,11 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	var replySizeRc int64
 
 	// Decode the input buffer into structure format
-	applyLeaseReq := Decode(applyArgs.Payload)
+	applyLeaseReq, err := Decode(applyArgs.Payload)
+	if err != nil {
+		log.Error(err)
+		return -1
+	}
 
 	log.Info("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
 
