@@ -273,22 +273,12 @@ func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
 
 	// read our opened xmlFile as a byte array.
 	byteValue, _ := ioutil.ReadAll(jsonFile)
-	// we initialize our Users array
+
 	var res multiLease
-	//var writeObjArr []writeObj
-	//multiLease := make(map[uuid.UUID]uuid.UUID)
-	// we unmarshal our byteArray which contains our
-	// jsonFile's content into 'writeObjArr' which we defined above
+
 	json.Unmarshal(byteValue, &res)
 
-	// we iterate through every user within our writeObjArr array and
-	// print out the user Type, their name, and their facebook url
-	// as just an example
-
-	//fmt.Println("request: ", res.Request)
-
 	for key, value := range res.Request {
-		//fmt.Println("key-value: ", key, value)
 		rdMap[key] = value
 	}
 
