@@ -6,7 +6,7 @@ import (
 	"encoding/gob"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"unsafe"
-
+	list "container/list"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,6 +18,7 @@ type LeaseServerObject struct {
 	LeaseColmFam string
 	LeaseMap     map[uuid.UUID]*leaseLib.LeaseStruct
 	Pso          *PumiceDBServer.PmdbServerObject
+	listObj	     *list.List
 }
 
 //Helper functions
@@ -62,6 +63,7 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 	lso.LeaseColmFam = LEASE_COLUMN_FAMILY
 	//Register Lease callbacks
 	lso.Pso.LeaseAPI = lso
+	lso.listObj = list.New()
 }
 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
@@ -85,7 +87,10 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *interfac
 				lso.LeaseMap[request.Resource].TimeStamp = currentTime
 				lso.LeaseMap[request.Resource].TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
+				//TODO: Pointer leak from list element
 				*reply = *lso.LeaseMap[request.Resource]
+				//Update lease list
+				lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
 				return 0
 			}
 		}
@@ -236,6 +241,12 @@ func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *inter
 	leaseObj.LeaseState = leaseLib.GRANTED
 	isLeaderFlag := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 	leaseObj.TTL = ttlDefault
+
+
+	//Insert into list
+	leaseObj.ListElement = &list.Element{}
+	leaseObj.ListElement.Value = leaseObj
+	lso.listObj.PushBack(leaseObj)
 
 	var valueBytes bytes.Buffer
 	enc := gob.NewEncoder(&valueBytes)

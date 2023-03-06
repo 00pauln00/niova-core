@@ -2,6 +2,7 @@ package leaseLib
 
 import (
 	uuid "github.com/satori/go.uuid"
+	list "container/list"
 )
 
 const (
@@ -38,4 +39,5 @@ type LeaseStruct struct {
 	LeaseState int
 	TTL        int
 	TimeStamp  LeaderTS
+	ListElement *list.Element
 }
