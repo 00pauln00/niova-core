@@ -455,7 +455,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 		leaseReq := leaseLib.LeaseReq{
 			Client:    client,
 			Resource:  resource,
-			Operation: requestObj.LeaseOperation,
+			Operation: requestObj.Operation,
 		}
 		// encode leaseReq
 		var leaseReqBytes bytes.Buffer
@@ -478,7 +478,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 		err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
 	} else {
 		kvReq := requestResponseLib.KVRequest{
-			Operation:  requestObj.KvOperation,
+			Operation:  requestObj.Operation,
 			Key:        requestObj.Key,
 			Prefix:     requestObj.Prefix,
 			Value:      requestObj.Value,
@@ -535,7 +535,7 @@ func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
 	var baserequest requestResponseLib.AppRequest
 	var baseRequestBytes bytes.Buffer
 	baserequest.ReqType = requestResponseLib.APP_REQ
-	baserequest.KvOperation = "read"
+	baserequest.Operation = requestResponseLib.KV_READ
 	baserequest.Key = key
 
 	enc := gob.NewEncoder(&baseRequestBytes)
@@ -580,7 +580,7 @@ func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) erro
 
 		leaseReq := leaseLib.LeaseReq{
 			Resource:  resource,
-			Operation: requestObj.LeaseOperation,
+			Operation: requestObj.Operation,
 		}
 		err = enc.Encode(leaseReq)
 		if err != nil {
@@ -590,7 +590,7 @@ func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) erro
 	} else {
 
 		kvReq := requestResponseLib.KVRequest{
-			Operation:  requestObj.KvOperation,
+			Operation:  requestObj.Operation,
 			Key:        requestObj.Key,
 			Prefix:     requestObj.Prefix,
 			Value:      requestObj.Value,

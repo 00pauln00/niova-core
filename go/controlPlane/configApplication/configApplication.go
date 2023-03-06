@@ -203,7 +203,7 @@ func (handler *configApplication) startPMDBClient() error {
 
 func (handler *configApplication) Write(key string, data []byte) error {
 	var request requestResponseLib.KVRequest
-	request.Operation = "write"
+	request.Operation = requestResponseLib.KV_WRITE
 	request.Key = key
 	request.Value = data
 	request.Rncui = uuid.NewV4().String() + ":0:0:0:0"
@@ -212,11 +212,11 @@ func (handler *configApplication) Write(key string, data []byte) error {
 
 	enc := gob.NewEncoder(&requestBytes)
 	enc.Encode(request)
-	reqArgs := &pmdbClient.PmdbReqArgs {
-		Rncui: request.Rncui,
-		ReqByteArr: requestBytes.Bytes(),
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:       request.Rncui,
+		ReqByteArr:  requestBytes.Bytes(),
 		GetResponse: 0,
-		ReplySize: &replySize,
+		ReplySize:   &replySize,
 	}
 
 	_, err := handler.pmdbClientObj.WriteEncoded(reqArgs)
@@ -225,15 +225,15 @@ func (handler *configApplication) Write(key string, data []byte) error {
 
 func (handler *configApplication) Read(key string, response *[]byte) error {
 	var request requestResponseLib.KVRequest
-	request.Operation = "read"
+	request.Operation = requestResponseLib.KV_READ
 	request.Key = key
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
 	enc.Encode(request)
-	reqArgs := &pmdbClient.PmdbReqArgs {
-		Rncui: "",
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:      "",
 		ReqByteArr: requestBytes.Bytes(),
-		Response: response,
+		Response:   response,
 	}
 
 	return handler.pmdbClientObj.ReadEncoded(reqArgs)

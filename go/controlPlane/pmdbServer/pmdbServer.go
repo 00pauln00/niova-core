@@ -468,25 +468,24 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 		return -1
 	}
 
+	//For application request
+	log.Trace("Key passed by client: ", applyNiovaKV.Key)
 
-		//For application request
-		log.Trace("Key passed by client: ", applyNiovaKV.Key)
+	// length of key.
+	keyLength := len(applyNiovaKV.Key)
 
-		// length of key.
-		keyLength := len(applyNiovaKV.Key)
+	byteToStr := string(applyNiovaKV.Value)
 
-		byteToStr := string(applyNiovaKV.Value)
+	// Length of value.
+	valLen := len(byteToStr)
 
-		// Length of value.
-		valLen := len(byteToStr)
+	log.Trace("Write the KeyValue by calling PmdbWriteKV")
+	rc := nso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
+		applyNiovaKV.Key,
+		int64(keyLength), byteToStr,
+		int64(valLen), colmfamily)
 
-		log.Trace("Write the KeyValue by calling PmdbWriteKV")
-		rc := nso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
-			applyNiovaKV.Key,
-			int64(keyLength), byteToStr,
-			int64(valLen), colmfamily)
-
-		return int64(rc)
+	return int64(rc)
 }
 
 func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
@@ -505,66 +504,66 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	//Lease request
-		log.Trace("Key passed by client: ", reqStruct.Key)
-		keyLen := len(reqStruct.Key)
-		log.Trace("Key length: ", keyLen)
+	log.Trace("Key passed by client: ", reqStruct.Key)
+	keyLen := len(reqStruct.Key)
+	log.Trace("Key length: ", keyLen)
 
-		var readErr error
-		var resultResponse requestResponseLib.KVResponse
-		//var resultReq requestResponseLib.KVResponse
-		//Pass the work as key to PmdbReadKV and get the value from pumicedb
-		if reqStruct.Operation == "read" {
+	var readErr error
+	var resultResponse requestResponseLib.KVResponse
+	//var resultReq requestResponseLib.KVResponse
+	//Pass the work as key to PmdbReadKV and get the value from pumicedb
+	if reqStruct.Operation == requestResponseLib.KV_READ {
 
-			log.Trace("read - ", reqStruct.SeqNum)
-			readResult, err := nso.pso.ReadKV(readArgs.UserID, reqStruct.Key,
-				int64(keyLen), colmfamily)
-			singleReadMap := make(map[string][]byte)
-			singleReadMap[reqStruct.Key] = readResult
-			resultResponse = requestResponseLib.KVResponse{
-				Key:       reqStruct.Key,
-				ResultMap: singleReadMap,
-			}
-			readErr = err
-
-		} else if reqStruct.Operation == "rangeRead" {
-			reqStruct.Prefix = reqStruct.Prefix
-			log.Trace("sequence number - ", reqStruct.SeqNum)
-			readResult, lastKey, seqNum, snapMiss, err := nso.pso.RangeReadKV(readArgs.UserID,
-				reqStruct.Key,
-				int64(keyLen), reqStruct.Prefix,
-				(readArgs.ReplySize - int64(encodingOverhead)),
-				reqStruct.Consistent, reqStruct.SeqNum, colmfamily)
-			var cRead bool
-			if lastKey != "" {
-				cRead = true
-			} else {
-				cRead = false
-			}
-			resultResponse = requestResponseLib.KVResponse{
-				Prefix:       reqStruct.Key,
-				ResultMap:    readResult,
-				ContinueRead: cRead,
-				Key:          lastKey,
-				SeqNum:       seqNum,
-				SnapMiss:     snapMiss,
-			}
-			readErr = err
+		log.Trace("read - ", reqStruct.SeqNum)
+		readResult, err := nso.pso.ReadKV(readArgs.UserID, reqStruct.Key,
+			int64(keyLen), colmfamily)
+		singleReadMap := make(map[string][]byte)
+		singleReadMap[reqStruct.Key] = readResult
+		resultResponse = requestResponseLib.KVResponse{
+			Key:       reqStruct.Key,
+			ResultMap: singleReadMap,
 		}
+		readErr = err
 
-		log.Trace("Response trace : ", resultResponse)
-		if readErr == nil {
-			//Copy the encoded result in replyBuffer
-			replySize, copyErr = nso.pso.CopyDataToBuffer(resultResponse,
-				readArgs.ReplyBuf)
-			if copyErr != nil {
-				log.Error("Failed to Copy result in the buffer: %s", copyErr)
-				return -1
-			}
+	} else if reqStruct.Operation == requestResponseLib.KV_RANGE_READ {
+		reqStruct.Prefix = reqStruct.Prefix
+		log.Trace("sequence number - ", reqStruct.SeqNum)
+		readResult, lastKey, seqNum, snapMiss, err := nso.pso.RangeReadKV(readArgs.UserID,
+			reqStruct.Key,
+			int64(keyLen), reqStruct.Prefix,
+			(readArgs.ReplySize - int64(encodingOverhead)),
+			reqStruct.Consistent, reqStruct.SeqNum, colmfamily)
+		var cRead bool
+		if lastKey != "" {
+			cRead = true
 		} else {
-			log.Error(readErr)
+			cRead = false
 		}
+		resultResponse = requestResponseLib.KVResponse{
+			Prefix:       reqStruct.Key,
+			ResultMap:    readResult,
+			ContinueRead: cRead,
+			Key:          lastKey,
+			SeqNum:       seqNum,
+			SnapMiss:     snapMiss,
+		}
+		readErr = err
+	}
 
-		log.Trace("Reply size: ", replySize)
+	log.Trace("Response trace : ", resultResponse)
+	if readErr == nil {
+		//Copy the encoded result in replyBuffer
+		replySize, copyErr = nso.pso.CopyDataToBuffer(resultResponse,
+			readArgs.ReplyBuf)
+		if copyErr != nil {
+			log.Error("Failed to Copy result in the buffer: %s", copyErr)
+			return -1
+		}
+	} else {
+		log.Error(readErr)
+	}
 
-		return replySize
+	log.Trace("Reply size: ", replySize)
+
+	return replySize
 }

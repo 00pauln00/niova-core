@@ -313,7 +313,7 @@ func (clientObj *clientHandler) write() {
 
 				//Fill the request object
 
-				appRequestObj.KvOperation = "write"
+				appRequestObj.Operation = requestResponseLib.KV_WRITE
 				appRequestObj.Key = key
 				appRequestObj.Value = val
 				appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
@@ -385,7 +385,7 @@ func (clientObj *clientHandler) read() {
 	err := func() error {
 		//Fill the request obj and encode it
 		appRequestObj.Key = clientObj.requestKey
-		appRequestObj.KvOperation = clientObj.operation
+		appRequestObj.Operation = requestResponseLib.KV_READ
 		appRequestObj.RequestType = requestResponseLib.APP_REQ
 
 		//encode the req
@@ -426,7 +426,8 @@ func (clientObj *clientHandler) read() {
 }
 
 func (clientObj *clientHandler) rangeRead() {
-	var Prefix, Key, Operation string
+	var Prefix, Key string
+	var Operation int
 	var err error
 	var appRequestObj requestResponseLib.AppRequest
 	var seqNum uint64
@@ -434,7 +435,7 @@ func (clientObj *clientHandler) rangeRead() {
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	Key = clientObj.requestKey[:len(clientObj.requestKey)-1]
 
-	Operation = "rangeRead"
+	Operation = requestResponseLib.KV_RANGE_READ
 	// get sequence number from arguments
 	seqNum = clientObj.seqNum
 	// Keep calling range request till ContinueRead is true
@@ -445,7 +446,7 @@ func (clientObj *clientHandler) rangeRead() {
 		rangeResponseObj := requestResponseLib.KVResponse{}
 		appRequestObj.Prefix = Prefix
 		appRequestObj.Key = Key
-		appRequestObj.KvOperation = Operation
+		appRequestObj.Operation = Operation
 		appRequestObj.Consistent = !clientObj.relaxedConsistency
 		appRequestObj.SeqNum = seqNum
 		appRequestObj.ReqType = requestResponseLib.APP_REQ
@@ -521,7 +522,7 @@ func prepareLeaseReq(client, resource string, operation int) requestResponseLib.
 	var appRequestObj requestResponseLib.AppRequest
 	appRequestObj.Key = client
 	appRequestObj.Value = []byte(resource)
-	appRequestObj.LeaseOperation = operation
+	appRequestObj.Operation = operation
 	appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 	appRequestObj.ReqType = requestResponseLib.LEASE_REQ
 
@@ -536,7 +537,7 @@ func (clientObj *clientHandler) writeToLeaseOutfile(appRequestObj requestRespons
 		return err
 	}
 
-	if appRequestObj.LeaseOperation != leaseLib.LOOKUP {
+	if appRequestObj.Operation != leaseLib.LOOKUP {
 		client, err := uuid.FromString(appRequestObj.Key)
 		if err != nil {
 			log.Error("Error while writing to outfile : ", err)
@@ -546,7 +547,7 @@ func (clientObj *clientHandler) writeToLeaseOutfile(appRequestObj requestRespons
 	} else {
 		leaseReq.Resource = resource
 	}
-	leaseReq.Operation = appRequestObj.LeaseOperation
+	leaseReq.Operation = appRequestObj.Operation
 	res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
 	clientObj.write2Json(res)
 

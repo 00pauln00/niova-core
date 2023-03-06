@@ -6,13 +6,17 @@ const (
 	LOOKOUT_REQ     = 2
 )
 
-//TODO Change KvOperation & LeaseOperation to same type
+const (
+	KV_WRITE      int = 0
+	KV_READ           = 1
+	KV_RANGE_READ     = 2
+)
+
 type AppRequest struct {
 	Rncui          string
 	RequestType    int
 	RequestPayload []byte
-	KvOperation    string
-	LeaseOperation int
+	Operation      int
 	Key            string
 	Prefix         string
 	Value          []byte
@@ -25,7 +29,7 @@ type AppRequest struct {
 }
 
 type KVRequest struct {
-	Operation  string
+	Operation  int
 	Key        string
 	Prefix     string
 	Value      []byte
