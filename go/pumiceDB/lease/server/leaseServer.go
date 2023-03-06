@@ -159,18 +159,13 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 
 func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *interface{}) int {
 	if request.Operation == leaseLib.LOOKUP {
-		leaseObj, isPresent := lso.LeaseMap[request.Resource]
-		if !isPresent {
-			return -1
-		}
-
-		if leaseObj.LeaseState == leaseLib.INPROGRESS {
-			return -1
-		}
+		leaseObj := lso.LeaseMap[request.Resource]
+		leaseObj.TTL = -1
+                leaseObj.LeaseState = leaseLib.NULL
+                lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 		*reply = *leaseObj
 
         } else if request.Operation == leaseLib.LOOKUP_VALIDATE {
-
 		leaseObj, isPresent := lso.LeaseMap[request.Resource]
 			if !isPresent {
 				return -1
