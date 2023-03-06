@@ -218,7 +218,7 @@ func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
 func goInit(args *C.struct_pumicedb_cb_cargs) {
 
 	var initArgs PmdbCbArgs
-	reqType := pmdbCbArgsInit(args, &initArgs)
+	pmdbCbArgsInit(args, &initArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(initArgs.UserData).(*PmdbServerObject)
