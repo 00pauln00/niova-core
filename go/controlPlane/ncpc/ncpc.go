@@ -453,7 +453,7 @@ func (clientObj *clientHandler) rangeRead() {
 
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)
-		err := enc.Encode(appRequestObj)
+		err = enc.Encode(appRequestObj)
 		if err != nil {
 			log.Error("Encoding error : ", err)
 		}
