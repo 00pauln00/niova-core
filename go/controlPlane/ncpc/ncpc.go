@@ -529,7 +529,7 @@ func prepareLeaseReq(client, resource string, operation int) requestResponseLib.
 	return appRequestObj
 }
 
-func (clientObj *clientHandler) writeToLeaseOutfile(appRequestObj requestResponseLib.AppRequest, responseObj leaseLib.LeaseStruct) error {
+func (clientObj *clientHandler) writeToLeaseOutfile(appRequestObj requestResponseLib.AppRequest, responseObj leaseLib.LeaseRes) error {
 	var leaseReq leaseLib.LeaseReq
 	resource, err := uuid.FromString(string(appRequestObj.Value))
 	if err != nil {
@@ -794,7 +794,7 @@ func main() {
 		}
 
 		//decode the response
-		var responseObj leaseLib.LeaseStruct
+		var responseObj leaseLib.LeaseRes
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		if err != nil {
@@ -803,6 +803,7 @@ func main() {
 		}
 
 		// convert the response to the actual format
+		responseObj.Status = "Success"
 		err = clientObj.writeToLeaseOutfile(appRequestObj, responseObj)
 		if err != nil {
 			break
@@ -825,15 +826,24 @@ func main() {
 		}
 
 		//decode the response
-		var responseObj leaseLib.LeaseStruct
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
-		if err != nil {
-			log.Error("Decoding error : ", err)
-			break
+		var responseObj leaseLib.LeaseRes
+		if len(responseBytes) == 0 {
+			err = errors.New("Key not found")
+		} else {
+			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+			err = dec.Decode(&responseObj)
+			if err != nil {
+				log.Error("Decoding error : ", err)
+				break
+			}
 		}
 
 		// convert the response to the actual format
+		if err == nil {
+			responseObj.Status = "Success"
+		} else {
+			responseObj.Status = err.Error()
+		}
 		err = clientObj.writeToLeaseOutfile(appRequestObj, responseObj)
 		if err != nil {
 			break
@@ -856,7 +866,7 @@ func main() {
 			log.Error("Error while sending request : ", err)
 		}
 		//decode the response
-		var responseObj leaseLib.LeaseStruct
+		var responseObj leaseLib.LeaseRes
 		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 		err = dec.Decode(&responseObj)
 		if err != nil {
@@ -865,6 +875,7 @@ func main() {
 		}
 
 		// convert the response to the actual format
+		responseObj.Status = "Success"
 		err = clientObj.writeToLeaseOutfile(appRequestObj, responseObj)
 		if err != nil {
 			break

@@ -3,10 +3,11 @@ package leaseServer
 import (
 	"bytes"
 	leaseLib "common/leaseLib"
+	list "container/list"
 	"encoding/gob"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"unsafe"
-	list "container/list"
+
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
@@ -18,7 +19,7 @@ type LeaseServerObject struct {
 	LeaseColmFam string
 	LeaseMap     map[uuid.UUID]*leaseLib.LeaseStruct
 	Pso          *PumiceDBServer.PmdbServerObject
-	listObj	     *list.List
+	listObj      *list.List
 }
 
 //Helper functions
@@ -26,6 +27,14 @@ func checkMajorCorrectness(currentTerm int64, leaseTerm int64) {
 	if currentTerm != leaseTerm {
 		log.Fatal("Major(Term) not matching")
 	}
+}
+
+func copyToResponse(lease *leaseLib.LeaseStruct, response *leaseLib.LeaseRes) {
+	response.Resource = lease.Resource
+	response.Client = lease.Client
+	response.LeaseState = lease.LeaseState
+	response.TTL = lease.TTL
+	response.TimeStamp = lease.TimeStamp
 }
 
 func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime leaseLib.LeaderTS, operation int) bool {
@@ -74,7 +83,7 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
 	return rc
 }
 
-func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *interface{}) int {
+func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *leaseLib.LeaseRes) int {
 	var currentTime leaseLib.LeaderTS
 	lso.GetLeaderTimeStamp(&currentTime)
 
@@ -88,7 +97,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *interfac
 				lso.LeaseMap[request.Resource].TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
 				//TODO: Pointer leak from list element
-				*reply = *lso.LeaseMap[request.Resource]
+				copyToResponse(lso.LeaseMap[request.Resource], reply)
 				//Update lease list
 				lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
 				return 0
@@ -131,7 +140,7 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 		return -1
 	}
 
-	var returnObj interface{}
+	var returnObj leaseLib.LeaseRes
 	rc := lso.prepare(request, &returnObj)
 
 	if rc <= 0 {
@@ -162,23 +171,26 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 
 }
 
-func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *interface{}) int {
+func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *leaseLib.LeaseRes) int {
 	if request.Operation == leaseLib.LOOKUP {
-		leaseObj := lso.LeaseMap[request.Resource]
-		leaseObj.TTL = -1
-                leaseObj.LeaseState = leaseLib.NULL
-                lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
-		*reply = *leaseObj
-
-        } else if request.Operation == leaseLib.LOOKUP_VALIDATE {
 		leaseObj, isPresent := lso.LeaseMap[request.Resource]
-			if !isPresent {
-				return -1
-			}
+		if !isPresent {
+			return -1
+		}
+		leaseObj.TTL = -1
+		leaseObj.LeaseState = leaseLib.NULL
+		lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
+		copyToResponse(leaseObj, reply)
 
-			if leaseObj.LeaseState == leaseLib.INPROGRESS {
-				return -1
-			}
+	} else if request.Operation == leaseLib.LOOKUP_VALIDATE {
+		leaseObj, isPresent := lso.LeaseMap[request.Resource]
+		if !isPresent {
+			return -1
+		}
+
+		if leaseObj.LeaseState == leaseLib.INPROGRESS {
+			return -1
+		}
 
 		oldTS := leaseObj.TimeStamp
 		lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
@@ -192,7 +204,13 @@ func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *interf
 		} else {
 			leaseObj.TTL = ttl
 		}
-		*reply = *leaseObj
+		//*reply = *leaseObj
+		reply.Client = leaseObj.Client
+		reply.Resource = leaseObj.Resource
+		reply.Status = leaseObj.Status
+		reply.LeaseState = leaseObj.LeaseState
+		reply.TTL = leaseObj.TTL
+		reply.TimeStamp = leaseObj.TimeStamp
 	}
 	return 0
 }
@@ -209,7 +227,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	log.Trace("Key passed by client: ", reqStruct.Resource)
-	var returnObj interface{}
+	var returnObj leaseLib.LeaseRes
 	var replySize int64
 	var copyErr error
 
@@ -229,7 +247,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 }
 
-func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *interface{}, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
+func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *leaseLib.LeaseRes, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
 	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
 		leaseObj = &leaseLib.LeaseStruct{
@@ -242,15 +260,15 @@ func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *inter
 	isLeaderFlag := lso.GetLeaderTimeStamp(&leaseObj.TimeStamp)
 	leaseObj.TTL = ttlDefault
 
-
 	//Insert into list
 	leaseObj.ListElement = &list.Element{}
 	leaseObj.ListElement.Value = leaseObj
 	lso.listObj.PushBack(leaseObj)
 
 	var valueBytes bytes.Buffer
+	//gob.Register(leaseLib.LeaseStruct{})
 	enc := gob.NewEncoder(&valueBytes)
-	err := enc.Encode(&leaseObj)
+	err := enc.Encode(leaseObj)
 	if err != nil {
 		log.Error(err)
 	}
@@ -271,7 +289,13 @@ func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *inter
 	}
 
 	if isLeaderFlag == 0 {
-		*reply = *leaseObj
+		//*reply = *leaseObj
+		reply.Client = leaseObj.Client
+		reply.Resource = leaseObj.Resource
+		reply.Status = leaseObj.Status
+		reply.LeaseState = leaseObj.LeaseState
+		reply.TTL = leaseObj.TTL
+		reply.TimeStamp = leaseObj.TimeStamp
 		return 0
 	}
 
@@ -295,7 +319,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	// length of key.
 	//keyLength := len(applyLeaseReq.Client.String())
 
-	var returnObj interface{}
+	var returnObj leaseLib.LeaseRes
 	rc := lso.applyLease(applyLeaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0

@@ -108,7 +108,7 @@ func getStringLeaseState(leaseState int) string {
 	return "UNKNOWN"
 }
 
-func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseStruct) writeObj {
+func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) writeObj {
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
 		Resource:  requestObj.Resource,
