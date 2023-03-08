@@ -2,6 +2,7 @@ package PumiceDBClient
 
 import (
 	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -97,20 +98,26 @@ func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, int64) {
 //Write KV from client.
 func (obj *PmdbClientObj) Write(reqArgs *PmdbReqArgs) (unsafe.Pointer, error) {
 
-	var key_len int64
+	var requestBytes bytes.Buffer
+	var err error
 
-	// Encode the application structure into void pointer so it can be
-	// type casted to C char *
-	ed_key, err := PumiceDBCommon.Encode(reqArgs.ReqED, &key_len)
+	enc := gob.NewEncoder(&requestBytes)
+	err = enc.Encode(reqArgs.ReqED)
 	if err != nil {
 		return nil, err
 	}
 
+	reqArgs.ReqByteArr = requestBytes.Bytes()
+
+	//Convert to unsafe pointer (void * for C function)
+	encodedData, requestLen := getPmdbReq(reqArgs)
+
 	//Typecast the encoded key to char*
-	encoded_key := (*C.char)(ed_key)
+	encoded_key := (*C.char)(encodedData)
 	getResponse_c := (C.int)(reqArgs.GetResponse)
+
 	//Perform the write
-	return obj.writeKV(reqArgs.Rncui, encoded_key, key_len, getResponse_c,
+	return obj.writeKV(reqArgs.Rncui, encoded_key, requestLen, getResponse_c,
 		reqArgs.ReplySize)
 }
 
@@ -159,26 +166,32 @@ func (obj *PmdbClientObj) WriteEncodedAndGetResponse(reqArgs *PmdbReqArgs) error
 //Read the value of key on the client
 func (obj *PmdbClientObj) Read(reqArgs *PmdbReqArgs) error {
 
-	var key_len int64
 	var reply_size int64
 	var rd_err error
 	var reply_buff unsafe.Pointer
+	var requestBytes bytes.Buffer
+	var err error
 
-	//Encode the data passed by application.
-	ed_key, err := PumiceDBCommon.Encode(reqArgs.ReqED, &key_len)
+	enc := gob.NewEncoder(&requestBytes)
+	err = enc.Encode(reqArgs.ReqED)
 	if err != nil {
 		return err
 	}
 
+	reqArgs.ReqByteArr = requestBytes.Bytes()
+
+	//Convert to unsafe pointer (void * for C function)
+	encodedData, requestLen := getPmdbReq(reqArgs)
+
 	//Typecast the encoded key to char*
-	encoded_key := (*C.char)(ed_key)
+	encoded_key := (*C.char)(encodedData)
 
 	if len(reqArgs.Rncui) == 0 {
 		reply_buff, rd_err = obj.readKVAny(encoded_key,
-			key_len, &reply_size)
+			requestLen, &reply_size)
 	} else {
 		reply_buff, rd_err = obj.readKV(reqArgs.Rncui, encoded_key,
-			key_len, &reply_size)
+			requestLen, &reply_size)
 	}
 
 	if rd_err != nil {

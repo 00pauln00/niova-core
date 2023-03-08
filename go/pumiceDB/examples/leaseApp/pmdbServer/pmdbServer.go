@@ -142,7 +142,3 @@ func (lso *leaseServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 func (lso *leaseServer) PrepPeer(prepPeer *PumiceDBServer.PmdbCbArgs) {
 	return
 }
-
-func (lso *leaseServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
-}
