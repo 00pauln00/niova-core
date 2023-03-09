@@ -42,7 +42,7 @@ type LeaseRes struct {
 	TimeStamp  LeaderTS
 }
 
-type LeaseStruct struct {
+type LeaseMeta struct {
 	Resource    uuid.UUID
 	Client      uuid.UUID
 	Status      string

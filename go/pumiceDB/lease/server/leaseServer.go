@@ -17,7 +17,7 @@ var LEASE_COLUMN_FAMILY = "NIOVA_LEASE_CF"
 
 type LeaseServerObject struct {
 	LeaseColmFam string
-	LeaseMap     map[uuid.UUID]*leaseLib.LeaseStruct
+	LeaseMap     map[uuid.UUID]*leaseLib.LeaseMeta
 	Pso          *PumiceDBServer.PmdbServerObject
 	listObj      *list.List
 }
@@ -29,7 +29,7 @@ func checkMajorCorrectness(currentTerm int64, leaseTerm int64) {
 	}
 }
 
-func copyToResponse(lease *leaseLib.LeaseStruct, response *leaseLib.LeaseRes) {
+func copyToResponse(lease *leaseLib.LeaseMeta, response *leaseLib.LeaseRes) {
 	response.Resource = lease.Resource
 	response.Client = lease.Client
 	response.LeaseState = lease.LeaseState
@@ -37,7 +37,7 @@ func copyToResponse(lease *leaseLib.LeaseStruct, response *leaseLib.LeaseRes) {
 	response.TimeStamp = lease.TimeStamp
 }
 
-func isPermitted(entry *leaseLib.LeaseStruct, clientUUID uuid.UUID, currentTime leaseLib.LeaderTS, operation int) bool {
+func isPermitted(entry *leaseLib.LeaseMeta, clientUUID uuid.UUID, currentTime leaseLib.LeaderTS, operation int) bool {
 	if entry.LeaseState == leaseLib.INPROGRESS {
 		return false
 	}
@@ -67,7 +67,7 @@ func Decode(payload []byte) (leaseLib.LeaseReq, error) {
 
 func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject) {
 	lso.Pso = pso
-	lso.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseStruct)
+	lso.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseMeta)
 	lso.LeaseColmFam = LEASE_COLUMN_FAMILY
 	//Register Lease callbacks
 	lso.Pso.LeaseAPI = lso
@@ -117,7 +117,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *leaseLib
 		}
 		log.Info("Resource not present in map")
 		//Insert or update into MAP
-		lso.LeaseMap[request.Resource] = &leaseLib.LeaseStruct{
+		lso.LeaseMap[request.Resource] = &leaseLib.LeaseMeta{
 			Resource:   request.Resource,
 			Client:     request.Client,
 			LeaseState: leaseLib.INPROGRESS,
@@ -249,7 +249,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *leaseLib.LeaseRes, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
 	leaseObj, isPresent := lso.LeaseMap[request.Resource]
 	if !isPresent {
-		leaseObj = &leaseLib.LeaseStruct{
+		leaseObj = &leaseLib.LeaseMeta{
 			Resource: request.Resource,
 			Client:   request.Client,
 		}
@@ -351,7 +351,7 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 	//Result of the read
 	for key, value := range readResult {
 		//Decode the request structure sent by client.
-		lstruct := &leaseLib.LeaseStruct{}
+		lstruct := &leaseLib.LeaseMeta{}
 		dec := gob.NewDecoder(bytes.NewBuffer(value))
 		decodeErr := dec.Decode(lstruct)
 		if decodeErr != nil {
