@@ -166,7 +166,7 @@ func goWritePrep(args *C.struct_pumicedb_cb_cargs) int64 {
 	if reqType == PumiceDBCommon.APP_REQ {
 		//Calling the golang Application's WritePrep function.
 		ret = gcb.PmdbAPI.WritePrep(&wrPrepArgs)
-	} else {
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
 		//Calling leaseAPP WritePrep
 		ret = gcb.LeaseAPI.WritePrep(&wrPrepArgs)
 	}
@@ -187,7 +187,7 @@ func goApply(args *C.struct_pumicedb_cb_cargs,
 	if reqType == PumiceDBCommon.APP_REQ {
 		//Calling the golang Application's Apply function.
 		ret = gcb.PmdbAPI.Apply(&applyArgs)
-	} else {
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
 		//Calling leaseAPP Apply
 		ret = gcb.LeaseAPI.Apply(&applyArgs)
 	}
@@ -207,7 +207,7 @@ func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
 	if reqType == PumiceDBCommon.APP_REQ {
 		//Calling the golang Application's Read function.
 		ret = gcb.PmdbAPI.Read(&readArgs)
-	} else {
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
 		//Calling leaseAPP Read
 		ret = gcb.LeaseAPI.Read(&readArgs)
 	}
@@ -225,7 +225,7 @@ func goInit(args *C.struct_pumicedb_cb_cargs) {
 
 	if reqType == PumiceDBCommon.APP_REQ {
 		gcb.PmdbAPI.Init(&initArgs)
-	} else {
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
 		gcb.LeaseAPI.Init(&initArgs)
 	}
 }
@@ -311,7 +311,7 @@ func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 	return PumiceDBCommon.Decode(input, output, len)
 }
 
-func DecodeApplicationReq(input []byte, output interface{}) error {
+func (*PmdbServerObject) DecodeApplicationReq(input []byte, output interface{}) error {
         dec := gob.NewDecoder(bytes.NewBuffer(input))
         for {
                 if err := dec.Decode(output); err == io.EOF {

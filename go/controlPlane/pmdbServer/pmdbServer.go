@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"common/httpClient"
-	leaseLib "common/leaseLib"
 	"common/lookout"
 	"common/requestResponseLib"
 	"common/serfAgent"
@@ -134,8 +133,7 @@ func main() {
 
 	nso.leaseObj = leaseServerLib.LeaseServerObject{}
 	//Initalise leaseObj
-	nso.leaseObj.InitLeaseObject(nso.pso,
-		make(map[uuid.UUID]*leaseLib.LeaseStruct))
+	nso.leaseObj.InitLeaseObject(nso.pso)
 
 	// Separate column families for application requests and lease
 	nso.pso.ColumnFamilies = []string{colmfamily, nso.leaseObj.LeaseColmFam}
@@ -462,7 +460,7 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
 	// register datatypes for decoding interface
-	decodeErr := PumiceDBServer.DecodeApplicationReq(applyArgs.Payload, applyNiovaKV)
+	decodeErr := nso.pso.DecodeApplicationReq(applyArgs.Payload, applyNiovaKV)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -496,7 +494,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	//Decode the request structure sent by client.
 	reqStruct := &requestResponseLib.KVRequest{}
-	decodeErr := PumiceDBServer.DecodeApplicationReq(readArgs.Payload, reqStruct)
+	decodeErr := nso.pso.DecodeApplicationReq(readArgs.Payload, reqStruct)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")

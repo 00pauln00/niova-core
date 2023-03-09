@@ -2,14 +2,12 @@ package main
 
 import (
 	leaseServerLib "LeaseLib/leaseServer"
-	leaseLib "common/leaseLib"
 	"errors"
 	"flag"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 
-	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -78,11 +76,9 @@ func main() {
 		CoalescedWrite: true,
 	}
 
-	leaseMap := make(map[uuid.UUID]*leaseLib.LeaseStruct)
 	//TODO: Fill all fields of LeaseServerObject
 	lso.leaseObj = leaseServerLib.LeaseServerObject{}
-
-	lso.leaseObj.InitLeaseObject(lso.pso, leaseMap)
+	lso.leaseObj.InitLeaseObject(lso.pso)
 
 	// For lease application use lease column family
 	lso.pso.ColumnFamilies = []string{lso.leaseObj.LeaseColmFam}

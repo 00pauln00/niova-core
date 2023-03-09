@@ -65,10 +65,9 @@ func Decode(payload []byte) (leaseLib.LeaseReq, error) {
 	return *request, err
 }
 
-func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject,
-	leaseMap map[uuid.UUID]*leaseLib.LeaseStruct) {
+func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject) {
 	lso.Pso = pso
-	lso.LeaseMap = leaseMap
+	lso.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseStruct)
 	lso.LeaseColmFam = LEASE_COLUMN_FAMILY
 	//Register Lease callbacks
 	lso.Pso.LeaseAPI = lso
