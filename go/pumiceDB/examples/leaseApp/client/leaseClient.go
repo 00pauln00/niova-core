@@ -11,6 +11,7 @@ import (
 	"os"
 	"sync/atomic"
 
+	leaseClientLib "LeaseLib/leaseClient"
 	leaseLib "common/leaseLib"
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -127,7 +128,7 @@ func getStringLeaseState(leaseState int) string {
 	return "UNKNOWN"
 }
 
-func prepareJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseStruct) writeObj {
+func prepareJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) writeObj {
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
 		Resource:  requestObj.Resource,
@@ -156,7 +157,7 @@ Return(s) : None
 
 Description : Parse command line params and load into leaseHandler sturct
 */
-func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
+func getCmdParams(handler *leaseClientLib.LeaseHandler) leaseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
 	var requestObj leaseLib.LeaseReq
 	var tempOperation int
@@ -166,11 +167,11 @@ func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 	flag.StringVar(&strClientUUID, "u", uuid.NewV4().String(), "ClientUUID - UUID of the requesting client")
 	flag.StringVar(&strResourceUUID, "v", uuid.NewV4().String(), "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
-	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
-	flag.StringVar(&handler.logFilePath, "l", "", "Log file path")
+	flag.StringVar(&handler.JsonFilePath, "j", "/tmp", "Output file path")
+	flag.StringVar(&handler.LogFilePath, "l", "", "Log file path")
 	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH/GET_VALIDATE")
-	flag.IntVar(&handler.numOfLeases, "n", 1, "Pass number of leases(Default 1)")
-	flag.StringVar(&handler.readJsonFile, "f", "", "Read JSON file")
+	flag.IntVar(&handler.NumOfLeases, "n", 1, "Pass number of leases(Default 1)")
+	flag.StringVar(&handler.ReadJsonFile, "f", "", "Read JSON file")
 
 	flag.Usage = usage
 	flag.Parse()
@@ -184,7 +185,7 @@ func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 		os.Exit(-1)
 	}
 	requestObj.Operation = int(tempOperation)
-	handler.raftUUID, err = uuid.FromString(strRaftUUID)
+	handler.RaftUUID, err = uuid.FromString(strRaftUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
@@ -210,30 +211,30 @@ Return(s) : error
 
 Description : Start PMDB Client object for ClientUUID and RaftUUID
 */
-func (handler *leaseHandler) startPMDBClient(client string) error {
+func startPMDBClient(client string, handler *leaseClientLib.LeaseHandler) error {
 	var err error
 
 	//Get clientObj
-	log.Info("Raft UUID - ", handler.raftUUID.String(), " Client UUID - ", client)
-	handler.pmdbClientObj = pmdbClient.PmdbClientNew(handler.raftUUID.String(), client)
-	if handler.pmdbClientObj == nil {
+	log.Info("Raft UUID - ", handler.RaftUUID.String(), " Client UUID - ", client)
+	handler.PmdbClientObj = pmdbClient.PmdbClientNew(handler.RaftUUID.String(), client)
+	if handler.PmdbClientObj == nil {
 		return errors.New("PMDB Client Obj could not be initialized")
 	}
 
 	//Start PMDB Client
-	err = handler.pmdbClientObj.Start()
+	err = handler.PmdbClientObj.Start()
 	if err != nil {
 		return err
 	}
 
-	leaderUuid, err := handler.pmdbClientObj.PmdbGetLeader()
+	leaderUuid, err := handler.PmdbClientObj.PmdbGetLeader()
 	for err != nil {
-		leaderUuid, err = handler.pmdbClientObj.PmdbGetLeader()
+		leaderUuid, err = handler.PmdbClientObj.PmdbGetLeader()
 	}
 	log.Info("Leader uuid : ", leaderUuid.String())
 
 	//Store encui in AppUUID
-	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
+	handler.PmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
 }
 
@@ -287,175 +288,25 @@ func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
 
 /*
 Structure : leaseHandler
-Method	  : Write()
-Arguments : LeaseReq, rncui, *LeaseResp
-Return(s) : error
-
-Description : Wrapper function for WriteEncoded() function
-*/
-
-func (handler *leaseHandler) Write(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
-	var err error
-	var requestBytes bytes.Buffer
-	var replySize int64
-
-	enc := gob.NewEncoder(&requestBytes)
-	err = enc.Encode(requestObj)
-	if err != nil {
-		return err
-	}
-	reqArgs := &pmdbClient.PmdbReqArgs{
-		Rncui:       rncui,
-		ReqByteArr:  requestBytes.Bytes(),
-		GetResponse: 1,
-		ReplySize:   &replySize,
-		Response:    response,
-		ReqType:     1,
-	}
-
-	err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
-
-	return err
-}
-
-/*
-Structure : leaseHandler
-Method	  : Read()
-Arguments : LeaseReq, rncui, *response
-Return(s) : error
-
-Description : Wrapper function for ReadEncoded() function
-*/
-func (handler *leaseHandler) Read(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
-	var err error
-	var requestBytes bytes.Buffer
-	enc := gob.NewEncoder(&requestBytes)
-	err = enc.Encode(requestObj)
-	if err != nil {
-		return err
-	}
-	reqArgs := &pmdbClient.PmdbReqArgs{
-		Rncui:      "",
-		ReqByteArr: requestBytes.Bytes(),
-		Response:   response,
-		ReqType:    1,
-	}
-
-	return handler.pmdbClientObj.ReadEncoded(reqArgs)
-}
-
-/*
-Structure : leaseHandler
-Method	  : get()
-Arguments : leaseLib.LeaseReq
-Return(s) : error
-
-Description : Handler function for get() operation
-              Acquire a lease on a particular resource
-*/
-func (handler *leaseHandler) get(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
-	var err error
-	var responseBytes []byte
-	var responseObj leaseLib.LeaseStruct
-
-	rncui := handler.getRNCUI()
-
-	err = handler.Write(requestObj, rncui, &responseBytes)
-	if err != nil {
-		return responseObj, err
-	}
-
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
-	if err != nil {
-		return responseObj, err
-	}
-
-	log.Info("Write request status - ", responseObj.Status)
-
-	return responseObj, err
-}
-
-/*
-Structure : leaseHandler
-Method	  : lookup()
-Arguments : leaseLib.LeaseReq
-Return(s) : error
-
-Description : Handler function for lookup() operation
-              Lookup lease info of a particular resource
-*/
-func (handler *leaseHandler) lookup(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
-	var err error
-	var responseBytes []byte
-	var responseObj leaseLib.LeaseStruct
-
-	err = handler.Read(requestObj, "", &responseBytes)
-	if err != nil {
-		return responseObj, err
-	}
-
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
-	if err != nil {
-		return responseObj, err
-	}
-
-	return responseObj, err
-}
-
-/*
-Structure : leaseHandler
-Method	  : refresh()
-Arguments : leaseLib.LeaseReq
-Return(s) : error
-
-Description : Handler function for refresh() operation
-              Refresh lease of a owned resource
-*/
-func (handler *leaseHandler) refresh(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
-	var err error
-	var responseBytes []byte
-	var responseObj leaseLib.LeaseStruct
-
-	rncui := handler.getRNCUI()
-	err = handler.Write(requestObj, rncui, &responseBytes)
-	if err != nil {
-		return responseObj, err
-	}
-
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
-	if err != nil {
-		return responseObj, err
-	}
-
-	log.Info("Refresh request status - ", responseObj.Status)
-
-	return responseObj, err
-}
-
-/*
-Structure : leaseHandler
 Method    : multiGet()
 Arguments : leaseLib.LeaseReq
 
 Description: Perform Multiple GET lease operation
 */
 
-func (handler *leaseHandler) multiGet(requestObj leaseLib.LeaseReq) []writeObj {
+func multiGet(requestObj leaseLib.LeaseReq, handler *leaseClientLib.LeaseHandler) []writeObj {
 
 	var err error
 	var res writeObj
-	var responseObj leaseLib.LeaseStruct
+	var responseObj leaseLib.LeaseRes
 	var responseObjArr []writeObj
 
-	kvMap = generateUuids(int64(handler.numOfLeases))
+	kvMap = generateUuids(int64(handler.NumOfLeases))
 	for key, value := range kvMap {
 		requestObj.Client = key
 		requestObj.Resource = value
 		// get lease for multiple clients and resources
-		responseObj, err = handler.get(requestObj)
+		responseObj, err = handler.Get(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -477,18 +328,18 @@ Arguments : leaseLib.LeaseReq
 Description: Perform Multiple LOOKUP lease operation
 */
 
-func (handler *leaseHandler) multiLookup(requestObj leaseLib.LeaseReq) []writeObj {
+func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseClientLib.LeaseHandler) []writeObj {
 
 	var err error
 	var res writeObj
-	var responseObj leaseLib.LeaseStruct
+	var responseObj leaseLib.LeaseRes
 	var responseObjArr []writeObj
-	rdMap = readJsonFile(handler.readJsonFile)
+	rdMap = readJsonFile(handler.ReadJsonFile)
 	for key, value := range rdMap {
 		requestObj.Client = key
 		requestObj.Resource = value
 		// lookup lease for multiple clients and resources
-		responseObj, err = handler.lookup(requestObj)
+		responseObj, err = handler.Lookup(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -511,12 +362,12 @@ description: It validates the multiple get leases response.
 	     and dump it json file.
 */
 
-func (handler *leaseHandler) getValidate(requestObj leaseLib.LeaseReq) {
+func getValidate(requestObj leaseLib.LeaseReq, handler *leaseClientLib.LeaseHandler) {
 
 	var responseObjArr []writeObj
 	uuidMap := make(map[uuid.UUID]uuid.UUID)
 	mapString := make(map[string]interface{})
-	responseObjArr = handler.multiGet(requestObj)
+	responseObjArr = multiGet(requestObj, handler)
 
 	//Fill the map with clients and resources
 	for i := range responseObjArr {
@@ -542,7 +393,7 @@ func (handler *leaseHandler) getValidate(requestObj leaseLib.LeaseReq) {
 		Response: mapString,
 	}
 
-	handler.writeToJson(res, handler.jsonFilePath)
+	writeToJson(res, handler.JsonFilePath)
 }
 
 /*
@@ -554,11 +405,11 @@ Description: It validates the multiple lookup leases response
 	     and dump to json file.
 */
 
-func (handler *leaseHandler) multiLookupValidate(requestObj leaseLib.LeaseReq) {
+func multiLookupValidate(requestObj leaseLib.LeaseReq, handler *leaseClientLib.LeaseHandler) {
 
 	var responseObjArr []writeObj
 	toJson := make(map[string]interface{})
-	responseObjArr = handler.multiLookup(requestObj)
+	responseObjArr = multiLookup(requestObj, handler)
 
 	for i := 0; i < len(responseObjArr)-1; i++ {
 		if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
@@ -570,7 +421,7 @@ func (handler *leaseHandler) multiLookupValidate(requestObj leaseLib.LeaseReq) {
 			fmt.Println("LeaseState not matched")
 		}
 	}
-	handler.writeToJson(toJson, handler.jsonFilePath)
+	writeToJson(toJson, handler.JsonFilePath)
 }
 
 /*
@@ -581,7 +432,7 @@ Return(s) : error
 
 Description : Write response/error to json file
 */
-func (handler *leaseHandler) writeToJson(toJson interface{}, jsonFilePath string) {
+func writeToJson(toJson interface{}, jsonFilePath string) {
 	file, err := json.MarshalIndent(toJson, "", " ")
 	err = ioutil.WriteFile(jsonFilePath+".json", file, 0644)
 	if err != nil {
@@ -599,10 +450,10 @@ Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
               and validate that lease is valid.
 */
-func (handler *leaseHandler) lookup_validate(requestObj leaseLib.LeaseReq) (leaseLib.LeaseStruct, error) {
+func lookup_validate(requestObj leaseLib.LeaseReq, handler *leaseClientLib.LeaseHandler) (leaseLib.LeaseRes, error) {
 	var err error
 	var responseBytes []byte
-	var responseObj leaseLib.LeaseStruct
+	var responseObj leaseLib.LeaseRes
 
 	err = handler.Read(requestObj, "", &responseBytes)
 	if err != nil {
@@ -619,31 +470,31 @@ func (handler *leaseHandler) lookup_validate(requestObj leaseLib.LeaseReq) (leas
 }
 
 func main() {
-	leaseObjHandler := leaseHandler{}
+	leaseObjHandler := leaseClientLib.LeaseHandler{}
 
 	// Load cmd params
-	requestObj := leaseObjHandler.getCmdParams()
+	requestObj := getCmdParams(&leaseObjHandler)
 
 	/*
 		Initialize Logging
 	*/
-	err := PumiceDBCommon.InitLogger(leaseObjHandler.logFilePath)
+	err := PumiceDBCommon.InitLogger(leaseObjHandler.LogFilePath)
 	if err != nil {
 		log.Error("Error while initializing the logger ", err)
 	}
 
-	err = leaseObjHandler.startPMDBClient(requestObj.Client.String())
+	err = startPMDBClient(requestObj.Client.String(), &leaseObjHandler)
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
 	}
 
-	var responseObj leaseLib.LeaseStruct
+	var responseObj leaseLib.LeaseRes
 
 	switch requestObj.Operation {
 	case leaseLib.GET:
 		// get lease
-		responseObj, err = leaseObjHandler.get(requestObj)
+		responseObj, err = leaseObjHandler.Get(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -651,11 +502,11 @@ func main() {
 			responseObj.Status = "Success"
 		}
 		res := prepareJsonResponse(requestObj, responseObj)
-		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+		writeToJson(res, leaseObjHandler.JsonFilePath)
 
 	case leaseLib.LOOKUP:
 		// lookup lease
-		responseObj, err = leaseObjHandler.lookup(requestObj)
+		responseObj, err = leaseObjHandler.Lookup(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -663,11 +514,11 @@ func main() {
 			responseObj.Status = "Success"
 		}
 		res := prepareJsonResponse(requestObj, responseObj)
-		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+		writeToJson(res, leaseObjHandler.JsonFilePath)
 
 	case leaseLib.REFRESH:
 		// refresh lease
-		responseObj, err = leaseObjHandler.refresh(requestObj)
+		responseObj, err = leaseObjHandler.Refresh(requestObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -675,22 +526,22 @@ func main() {
 			responseObj.Status = "Success"
 		}
 		res := prepareJsonResponse(requestObj, responseObj)
-		leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+		writeToJson(res, leaseObjHandler.JsonFilePath)
 
 	case leaseLib.GET_VALIDATE:
 		//Perform and validate multiple get leases
-		if leaseObjHandler.numOfLeases >= 1 {
-			leaseObjHandler.getValidate(requestObj)
+		if leaseObjHandler.NumOfLeases >= 1 {
+			getValidate(requestObj, &leaseObjHandler)
 		}
 
 	case leaseLib.LOOKUP_VALIDATE:
 		//Perform and validate multiple lookup leases
-		if leaseObjHandler.numOfLeases >= 1 {
-			leaseObjHandler.multiLookupValidate(requestObj)
+		if leaseObjHandler.NumOfLeases >= 1 {
+			multiLookupValidate(requestObj, &leaseObjHandler)
 		} else {
 
 			// lookup and validate lease
-			responseObj, err = leaseObjHandler.lookup_validate(requestObj)
+			responseObj, err = lookup_validate(requestObj, &leaseObjHandler)
 			if err != nil {
 				log.Error(err)
 				responseObj.Status = err.Error()
@@ -698,7 +549,7 @@ func main() {
 				responseObj.Status = "Success"
 			}
 			res := prepareJsonResponse(requestObj, responseObj)
-			leaseObjHandler.writeToJson(res, leaseObjHandler.jsonFilePath)
+			writeToJson(res, leaseObjHandler.JsonFilePath)
 		}
 	}
 
