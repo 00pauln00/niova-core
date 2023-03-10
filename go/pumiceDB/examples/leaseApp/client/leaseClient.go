@@ -49,30 +49,6 @@ type leaseHandler struct {
 	readJsonFile string
 }
 
-/*
-// will be used to write to json file
-type JsonLeaseReq struct {
-	Client    uuid.UUID
-	Resource  uuid.UUID
-	Operation string
-}
-
-type JsonLeaseResp struct {
-	Client     uuid.UUID
-	Resource   uuid.UUID
-	Status     string
-	LeaseState string
-	TTL        int
-	TimeStamp  leaseLib.LeaderTS
-}
-*/
-
-// will be used to write req and res to json file
-type writeObj struct {
-	Request  leaseClientLib.JsonLeaseReq
-	Response leaseClientLib.JsonLeaseResp
-}
-
 type multiLease struct {
 	Request  map[uuid.UUID]uuid.UUID
 	Response map[string]interface{}
@@ -88,6 +64,78 @@ func parseOperation(str string) (int, bool) {
 	return op, ok
 }
 
+// will be used to write to json file
+type JsonLeaseReq struct {
+	Client    uuid.UUID
+	Resource  uuid.UUID
+	Operation string
+}
+
+type JsonLeaseResp struct {
+	Client     uuid.UUID
+	Resource   uuid.UUID
+	Status     string
+	LeaseState string
+	TTL        int
+	TimeStamp  leaseLib.LeaderTS
+}
+
+type WriteObj struct {
+	Request  JsonLeaseReq
+	Response JsonLeaseResp
+}
+
+func getStringLeaseState(leaseState int) string {
+	switch leaseState {
+	case leaseLib.GRANTED:
+		return "GRANTED"
+	case leaseLib.INPROGRESS:
+		return "IN-PROGRESS"
+	case leaseLib.EXPIRED:
+		return "EXPIRED"
+	case leaseLib.AIU:
+		return "ALREADY-IN-USE"
+	case leaseLib.INVALID:
+		return "INVALID"
+	}
+	return "UNKNOWN"
+}
+
+func getStringOperation(op int) string {
+	switch op {
+	case leaseLib.GET:
+		return "GET"
+	case leaseLib.PUT:
+		return "PUT"
+	case leaseLib.LOOKUP:
+		return "LOOKUP"
+	case leaseLib.REFRESH:
+		return "REFRESH"
+	}
+	return "UNKNOWN"
+}
+
+func prepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) WriteObj {
+	req := JsonLeaseReq{
+		Client:    requestObj.Client,
+		Resource:  requestObj.Resource,
+		Operation: getStringOperation(requestObj.Operation),
+	}
+	resp := JsonLeaseResp{
+		Client:     responseObj.Client,
+		Resource:   responseObj.Resource,
+		Status:     responseObj.Status,
+		LeaseState: getStringLeaseState(responseObj.LeaseState),
+		TTL:        responseObj.TTL,
+		TimeStamp:  responseObj.TimeStamp,
+	}
+	res := WriteObj{
+		Request:  req,
+		Response: resp,
+	}
+	return res
+}
+
 /*
 Structure : leaseHandler
 Method	  : getCmdParams
@@ -96,7 +144,8 @@ Return(s) : None
 
 Description : Parse command line params and load into leaseHandler sturct
 */
-func getCmdParams(handler *leaseHandler) leaseLib.LeaseReq {
+//TODO make it a method for leaseHandler
+func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
 	var requestObj leaseLib.LeaseReq
 	var tempOperation int
@@ -233,12 +282,12 @@ Arguments : leaseLib.LeaseReq
 Description: Perform Multiple GET lease operation
 */
 
-func multiGet(requestObj leaseLib.LeaseReq, handler *leaseHandler) []leaseClientLib.WriteObj {
+func multiGet(requestObj leaseLib.LeaseReq, handler *leaseHandler) []WriteObj {
 
 	var err error
-	var res leaseClientLib.WriteObj
+	var res WriteObj
 	var responseObj leaseLib.LeaseRes
-	var responseObjArr []leaseClientLib.WriteObj
+	var responseObjArr []WriteObj
 
 	kvMap = generateUuids(int64(handler.numOfLeases))
 	for key, value := range kvMap {
@@ -252,7 +301,7 @@ func multiGet(requestObj leaseLib.LeaseReq, handler *leaseHandler) []leaseClient
 		} else {
 			responseObj.Status = "Success"
 		}
-		res = leaseClientLib.PrepareLeaseJsonResponse(requestObj, responseObj)
+		res = prepareLeaseJsonResponse(requestObj, responseObj)
 		responseObjArr = append(responseObjArr, res)
 	}
 
@@ -267,12 +316,12 @@ Arguments : leaseLib.LeaseReq
 Description: Perform Multiple LOOKUP lease operation
 */
 
-func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler) []leaseClientLib.WriteObj {
+func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler) []WriteObj {
 
 	var err error
-	var res leaseClientLib.WriteObj
+	var res WriteObj
 	var responseObj leaseLib.LeaseRes
-	var responseObjArr []leaseClientLib.WriteObj
+	var responseObjArr []WriteObj
 	rdMap = readJsonFile(handler.readJsonFile)
 	for key, value := range rdMap {
 		requestObj.Client = key
@@ -285,7 +334,7 @@ func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler) []leaseCli
 		} else {
 			responseObj.Status = "Success"
 		}
-		res = leaseClientLib.PrepareLeaseJsonResponse(requestObj, responseObj)
+		res = prepareLeaseJsonResponse(requestObj, responseObj)
 		responseObjArr = append(responseObjArr, res)
 	}
 
@@ -303,7 +352,7 @@ description: It validates the multiple get leases response.
 
 func getValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler) {
 
-	var responseObjArr []leaseClientLib.WriteObj
+	var responseObjArr []WriteObj
 	uuidMap := make(map[uuid.UUID]uuid.UUID)
 	mapString := make(map[string]interface{})
 	responseObjArr = multiGet(requestObj, handler)
@@ -346,7 +395,7 @@ Description: It validates the multiple lookup leases response
 
 func multiLookupValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler) {
 
-	var responseObjArr []leaseClientLib.WriteObj
+	var responseObjArr []WriteObj
 	toJson := make(map[string]interface{})
 	responseObjArr = multiLookup(requestObj, handler)
 
@@ -412,7 +461,7 @@ func main() {
 	leaseObjHandler := leaseHandler{}
 
 	// Load cmd params
-	requestObj := getCmdParams(&leaseObjHandler)
+	requestObj := leaseObjHandler.getCmdParams()
 
 	/*
 		Initialize Logging
@@ -440,7 +489,7 @@ func main() {
 		} else {
 			responseObj.Status = "Success"
 		}
-		res := leaseClientLib.PrepareLeaseJsonResponse(requestObj, responseObj)
+		res := prepareLeaseJsonResponse(requestObj, responseObj)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
 
 	case leaseLib.LOOKUP:
@@ -452,7 +501,7 @@ func main() {
 		} else {
 			responseObj.Status = "Success"
 		}
-		res := leaseClientLib.PrepareLeaseJsonResponse(requestObj, responseObj)
+		res := prepareLeaseJsonResponse(requestObj, responseObj)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
 
 	case leaseLib.REFRESH:
@@ -464,7 +513,7 @@ func main() {
 		} else {
 			responseObj.Status = "Success"
 		}
-		res := leaseClientLib.PrepareLeaseJsonResponse(requestObj, responseObj)
+		res := prepareLeaseJsonResponse(requestObj, responseObj)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
 
 	case leaseLib.GET_VALIDATE:
@@ -487,7 +536,7 @@ func main() {
 			} else {
 				responseObj.Status = "Success"
 			}
-			res := leaseClientLib.PrepareLeaseJsonResponse(requestObj, responseObj)
+			res := prepareLeaseJsonResponse(requestObj, responseObj)
 			writeToJson(res, leaseObjHandler.jsonFilePath)
 		}
 	}

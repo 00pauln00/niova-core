@@ -1,7 +1,6 @@
 package main
 
 import (
-	leaseClientLib "LeaseLib/leaseClient"
 	"bytes"
 	serviceDiscovery "common/clientAPI"
 	leaseLib "common/leaseLib"
@@ -96,6 +95,78 @@ func randSeq(n int, r *rand.Rand) []byte {
 		b[i] = letters[r.Intn(len(letters))]
 	}
 	return b
+}
+
+// will be used to write to json file
+type JsonLeaseReq struct {
+	Client    uuid.UUID
+	Resource  uuid.UUID
+	Operation string
+}
+
+type JsonLeaseResp struct {
+	Client     uuid.UUID
+	Resource   uuid.UUID
+	Status     string
+	LeaseState string
+	TTL        int
+	TimeStamp  leaseLib.LeaderTS
+}
+
+type WriteObj struct {
+	Request  JsonLeaseReq
+	Response JsonLeaseResp
+}
+
+func getStringLeaseState(leaseState int) string {
+	switch leaseState {
+	case leaseLib.GRANTED:
+		return "GRANTED"
+	case leaseLib.INPROGRESS:
+		return "IN-PROGRESS"
+	case leaseLib.EXPIRED:
+		return "EXPIRED"
+	case leaseLib.AIU:
+		return "ALREADY-IN-USE"
+	case leaseLib.INVALID:
+		return "INVALID"
+	}
+	return "UNKNOWN"
+}
+
+func getStringOperation(op int) string {
+	switch op {
+	case leaseLib.GET:
+		return "GET"
+	case leaseLib.PUT:
+		return "PUT"
+	case leaseLib.LOOKUP:
+		return "LOOKUP"
+	case leaseLib.REFRESH:
+		return "REFRESH"
+	}
+	return "UNKNOWN"
+}
+
+func prepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) WriteObj {
+	req := JsonLeaseReq{
+		Client:    requestObj.Client,
+		Resource:  requestObj.Resource,
+		Operation: getStringOperation(requestObj.Operation),
+	}
+	resp := JsonLeaseResp{
+		Client:     responseObj.Client,
+		Resource:   responseObj.Resource,
+		Status:     responseObj.Status,
+		LeaseState: getStringLeaseState(responseObj.LeaseState),
+		TTL:        responseObj.TTL,
+		TimeStamp:  responseObj.TimeStamp,
+	}
+	res := WriteObj{
+		Request:  req,
+		Response: resp,
+	}
+	return res
 }
 
 func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
@@ -548,7 +619,7 @@ func (clientObj *clientHandler) writeToLeaseOutfile(appRequestObj requestRespons
 		leaseReq.Resource = resource
 	}
 	leaseReq.Operation = appRequestObj.Operation
-	res := leaseClientLib.PrepareLeaseJsonResponse(leaseReq, responseObj)
+	res := prepareLeaseJsonResponse(leaseReq, responseObj)
 	clientObj.write2Json(res)
 
 	return err

@@ -76,57 +76,6 @@ func (clientObj LeaseClient) getRNCUI() string {
 	return rncui
 }
 
-func getStringOperation(op int) string {
-	switch op {
-	case leaseLib.GET:
-		return "GET"
-	case leaseLib.PUT:
-		return "PUT"
-	case leaseLib.LOOKUP:
-		return "LOOKUP"
-	case leaseLib.REFRESH:
-		return "REFRESH"
-	}
-	return "UNKNOWN"
-}
-
-func getStringLeaseState(leaseState int) string {
-	switch leaseState {
-	case leaseLib.GRANTED:
-		return "GRANTED"
-	case leaseLib.INPROGRESS:
-		return "IN-PROGRESS"
-	case leaseLib.EXPIRED:
-		return "EXPIRED"
-	case leaseLib.AIU:
-		return "ALREADY-IN-USE"
-	case leaseLib.INVALID:
-		return "INVALID"
-	}
-	return "UNKNOWN"
-}
-
-func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) WriteObj {
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-	resp := JsonLeaseResp{
-		Client:     responseObj.Client,
-		Resource:   responseObj.Resource,
-		Status:     responseObj.Status,
-		LeaseState: getStringLeaseState(responseObj.LeaseState),
-		TTL:        responseObj.TTL,
-		TimeStamp:  responseObj.TimeStamp,
-	}
-	res := WriteObj{
-		Request:  req,
-		Response: resp,
-	}
-	return res
-}
-
 /*
 Structure : LeaseHandler
 Method	  : write()
