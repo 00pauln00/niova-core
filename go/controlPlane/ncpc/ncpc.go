@@ -527,6 +527,7 @@ func (clientObj *clientHandler) rangeRead() {
 		err = enc.Encode(appRequestObj)
 		if err != nil {
 			log.Error("Encoding error : ", err)
+			break
 		}
 
 		var responseBytes []byte
