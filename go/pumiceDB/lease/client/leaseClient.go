@@ -49,17 +49,13 @@ type JsonLeaseResp struct {
 	TimeStamp  leaseLib.LeaderTS
 }
 
-type LeaseHandler struct {
+type LeaseClient struct {
 	RaftUUID      uuid.UUID
 	PmdbClientObj *pmdbClient.PmdbClientObj
-	JsonFilePath  string
-	LogFilePath   string
-	NumOfLeases   int
-	ReadJsonFile  string
 }
 
 // will be used to write req and res to json file
-type writeObj struct {
+type WriteObj struct {
 	Request  JsonLeaseReq
 	Response JsonLeaseResp
 }
@@ -74,9 +70,9 @@ func parseOperation(str string) (int, bool) {
 	return op, ok
 }
 
-func (handler LeaseHandler) getRNCUI() string {
-	idq := atomic.AddUint64(&handler.PmdbClientObj.WriteSeqNo, uint64(1))
-	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.PmdbClientObj.AppUUID, idq)
+func (clientObj LeaseClient) getRNCUI() string {
+	idq := atomic.AddUint64(&clientObj.PmdbClientObj.WriteSeqNo, uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d", clientObj.PmdbClientObj.AppUUID, idq)
 	return rncui
 }
 
@@ -110,7 +106,7 @@ func getStringLeaseState(leaseState int) string {
 	return "UNKNOWN"
 }
 
-func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) writeObj {
+func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) WriteObj {
 	req := JsonLeaseReq{
 		Client:    requestObj.Client,
 		Resource:  requestObj.Resource,
@@ -124,7 +120,7 @@ func PrepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib
 		TTL:        responseObj.TTL,
 		TimeStamp:  responseObj.TimeStamp,
 	}
-	res := writeObj{
+	res := WriteObj{
 		Request:  req,
 		Response: resp,
 	}
@@ -140,7 +136,7 @@ Return(s) : error
 Description : Wrapper function for WriteEncoded() function
 */
 
-func (handler LeaseHandler) write(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
+func (clientObj LeaseClient) write(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	var replySize int64
@@ -159,7 +155,7 @@ func (handler LeaseHandler) write(requestObj leaseLib.LeaseReq, rncui string, re
 		ReqType:     1,
 	}
 
-	err = handler.PmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
+	err = clientObj.PmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
 
 	return err
 }
@@ -172,7 +168,7 @@ Return(s) : error
 
 Description : Wrapper function for ReadEncoded() function
 */
-func (handler LeaseHandler) Read(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
+func (clientObj LeaseClient) Read(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
 	var requestBytes bytes.Buffer
 	enc := gob.NewEncoder(&requestBytes)
@@ -187,7 +183,7 @@ func (handler LeaseHandler) Read(requestObj leaseLib.LeaseReq, rncui string, res
 		ReqType:    1,
 	}
 
-	return handler.PmdbClientObj.ReadEncoded(reqArgs)
+	return clientObj.PmdbClientObj.ReadEncoded(reqArgs)
 }
 
 /*
@@ -199,14 +195,14 @@ Return(s) : error
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (handler LeaseHandler) Get(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
+func (clientObj LeaseClient) Get(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
 	var err error
 	var responseBytes []byte
 	var responseObj leaseLib.LeaseRes
 
-	rncui := handler.getRNCUI()
+	rncui := clientObj.getRNCUI()
 
-	err = handler.write(requestObj, rncui, &responseBytes)
+	err = clientObj.write(requestObj, rncui, &responseBytes)
 	if err != nil {
 		return responseObj, err
 	}
@@ -231,12 +227,12 @@ Return(s) : error
 Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (handler LeaseHandler) Lookup(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
+func (clientObj LeaseClient) Lookup(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
 	var err error
 	var responseBytes []byte
 	var responseObj leaseLib.LeaseRes
 
-	err = handler.Read(requestObj, "", &responseBytes)
+	err = clientObj.Read(requestObj, "", &responseBytes)
 	if err != nil {
 		return responseObj, err
 	}
@@ -259,13 +255,13 @@ Return(s) : error
 Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (handler LeaseHandler) Refresh(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
+func (clientObj LeaseClient) Refresh(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
 	var err error
 	var responseBytes []byte
 	var responseObj leaseLib.LeaseRes
 
-	rncui := handler.getRNCUI()
-	err = handler.write(requestObj, rncui, &responseBytes)
+	rncui := clientObj.getRNCUI()
+	err = clientObj.write(requestObj, rncui, &responseBytes)
 	if err != nil {
 		return responseObj, err
 	}
