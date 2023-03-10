@@ -49,5 +49,9 @@ type LeaseMeta struct {
 	LeaseState  int
 	TTL         int
 	TimeStamp   LeaderTS
+}
+
+type LeaseInfo struct {
+	LeaseMetaInfo LeaseMeta
 	ListElement *list.Element
 }
