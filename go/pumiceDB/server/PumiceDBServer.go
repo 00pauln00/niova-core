@@ -1,18 +1,18 @@
 package PumiceDBServer
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	gopointer "github.com/mattn/go-pointer"
 	log "github.com/sirupsen/logrus"
+	"io"
 	"math"
 	"niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"strings"
-	"encoding/gob"
-	"bytes"
-	"io"
 	"unsafe"
 )
 
@@ -169,6 +169,8 @@ func goWritePrep(args *C.struct_pumicedb_cb_cargs) int64 {
 	} else if reqType == PumiceDBCommon.LEASE_REQ {
 		//Calling leaseAPP WritePrep
 		ret = gcb.LeaseAPI.WritePrep(&wrPrepArgs)
+	} else {
+		return -1
 	}
 	return ret
 }
@@ -312,16 +314,16 @@ func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
 }
 
 func (*PmdbServerObject) DecodeApplicationReq(input []byte, output interface{}) error {
-        dec := gob.NewDecoder(bytes.NewBuffer(input))
-        for {
-                if err := dec.Decode(output); err == io.EOF {
-                        break
-                } else if err != nil {
-                        return err
-                }
-        }
+	dec := gob.NewDecoder(bytes.NewBuffer(input))
+	for {
+		if err := dec.Decode(output); err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
 
-        return nil
+	return nil
 }
 
 func Decode(input unsafe.Pointer, output interface{},
