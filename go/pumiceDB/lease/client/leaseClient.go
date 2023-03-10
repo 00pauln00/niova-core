@@ -144,27 +144,26 @@ Return(s) : error
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (clientObj LeaseClient) Get(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
+func (clientObj LeaseClient) Get(requestObj leaseLib.LeaseReq, responseObj *leaseLib.LeaseRes) error {
 	var err error
 	var responseBytes []byte
-	var responseObj leaseLib.LeaseRes
 
 	rncui := clientObj.getRNCUI()
 
 	err = clientObj.write(requestObj, rncui, &responseBytes)
 	if err != nil {
-		return responseObj, err
+		return err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&responseObj)
 	if err != nil {
-		return responseObj, err
+		return err
 	}
 
 	log.Info("Write request status - ", responseObj.Status)
 
-	return responseObj, err
+	return err
 }
 
 /*
@@ -176,23 +175,22 @@ Return(s) : error
 Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (clientObj LeaseClient) Lookup(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
+func (clientObj LeaseClient) Lookup(requestObj leaseLib.LeaseReq, responseObj *leaseLib.LeaseRes) error {
 	var err error
 	var responseBytes []byte
-	var responseObj leaseLib.LeaseRes
 
 	err = clientObj.Read(requestObj, "", &responseBytes)
 	if err != nil {
-		return responseObj, err
+		return err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&responseObj)
 	if err != nil {
-		return responseObj, err
+		return err
 	}
 
-	return responseObj, err
+	return err
 }
 
 /*
@@ -204,24 +202,23 @@ Return(s) : error
 Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (clientObj LeaseClient) Refresh(requestObj leaseLib.LeaseReq) (leaseLib.LeaseRes, error) {
+func (clientObj LeaseClient) Refresh(requestObj leaseLib.LeaseReq, responseObj *leaseLib.LeaseRes) error {
 	var err error
 	var responseBytes []byte
-	var responseObj leaseLib.LeaseRes
 
 	rncui := clientObj.getRNCUI()
 	err = clientObj.write(requestObj, rncui, &responseBytes)
 	if err != nil {
-		return responseObj, err
+		return err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&responseObj)
 	if err != nil {
-		return responseObj, err
+		return err
 	}
 
 	log.Info("Refresh request status - ", responseObj.Status)
 
-	return responseObj, err
+	return err
 }

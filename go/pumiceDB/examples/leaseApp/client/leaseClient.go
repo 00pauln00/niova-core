@@ -294,7 +294,7 @@ func multiGet(requestObj leaseLib.LeaseReq, handler *leaseHandler) []WriteObj {
 		requestObj.Client = key
 		requestObj.Resource = value
 		// get lease for multiple clients and resources
-		responseObj, err = handler.clientObj.Get(requestObj)
+		err = handler.clientObj.Get(requestObj, &responseObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -327,7 +327,7 @@ func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler) []WriteObj
 		requestObj.Client = key
 		requestObj.Resource = value
 		// lookup lease for multiple clients and resources
-		responseObj, err = handler.clientObj.Lookup(requestObj)
+		err = handler.clientObj.Lookup(requestObj, &responseObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -482,7 +482,7 @@ func main() {
 	switch requestObj.Operation {
 	case leaseLib.GET:
 		// get lease
-		responseObj, err = leaseObjHandler.clientObj.Get(requestObj)
+		err = leaseObjHandler.clientObj.Get(requestObj, &responseObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -494,7 +494,7 @@ func main() {
 
 	case leaseLib.LOOKUP:
 		// lookup lease
-		responseObj, err = leaseObjHandler.clientObj.Lookup(requestObj)
+		err = leaseObjHandler.clientObj.Lookup(requestObj, &responseObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
@@ -506,7 +506,7 @@ func main() {
 
 	case leaseLib.REFRESH:
 		// refresh lease
-		responseObj, err = leaseObjHandler.clientObj.Refresh(requestObj)
+		err = leaseObjHandler.clientObj.Refresh(requestObj, &responseObj)
 		if err != nil {
 			log.Error(err)
 			responseObj.Status = err.Error()
