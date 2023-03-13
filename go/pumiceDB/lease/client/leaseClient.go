@@ -54,6 +54,13 @@ type LeaseClient struct {
 	PmdbClientObj *pmdbClient.PmdbClientObj
 }
 
+type LeaseReqHandler struct {
+	LeaseClientObj LeaseClient
+	LeaseReq       leaseLib.LeaseReq
+	LeaseRes       leaseLib.LeaseRes
+	Err            error
+}
+
 // will be used to write req and res to json file
 type WriteObj struct {
 	Request  JsonLeaseReq
@@ -144,24 +151,25 @@ Return(s) : error
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (clientObj LeaseClient) Get(requestObj leaseLib.LeaseReq, responseObj *leaseLib.LeaseRes) error {
+func (handler *LeaseReqHandler) Get() error {
 	var err error
 	var responseBytes []byte
 
-	rncui := clientObj.getRNCUI()
+	rncui := handler.LeaseClientObj.getRNCUI()
 
-	err = clientObj.write(requestObj, rncui, &responseBytes)
+	err = handler.LeaseClientObj.write(handler.LeaseReq, rncui, &responseBytes)
 	if err != nil {
 		return err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
+	err = dec.Decode(&handler.LeaseRes)
+
 	if err != nil {
 		return err
 	}
 
-	log.Info("Write request status - ", responseObj.Status)
+	log.Info("Write request status - ", handler.LeaseRes.Status)
 
 	return err
 }
@@ -175,17 +183,17 @@ Return(s) : error
 Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (clientObj LeaseClient) Lookup(requestObj leaseLib.LeaseReq, responseObj *leaseLib.LeaseRes) error {
+func (handler *LeaseReqHandler) Lookup() error {
 	var err error
 	var responseBytes []byte
 
-	err = clientObj.Read(requestObj, "", &responseBytes)
+	err = handler.LeaseClientObj.Read(handler.LeaseReq, "", &responseBytes)
 	if err != nil {
 		return err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
+	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
 	}
@@ -202,23 +210,23 @@ Return(s) : error
 Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (clientObj LeaseClient) Refresh(requestObj leaseLib.LeaseReq, responseObj *leaseLib.LeaseRes) error {
+func (handler *LeaseReqHandler) Refresh() error {
 	var err error
 	var responseBytes []byte
 
-	rncui := clientObj.getRNCUI()
-	err = clientObj.write(requestObj, rncui, &responseBytes)
+	rncui := handler.LeaseClientObj.getRNCUI()
+	err = handler.LeaseClientObj.write(handler.LeaseReq, rncui, &responseBytes)
 	if err != nil {
 		return err
 	}
 
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
+	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
 	}
 
-	log.Info("Refresh request status - ", responseObj.Status)
+	log.Info("Refresh request status - ", handler.LeaseRes.Status)
 
 	return err
 }
