@@ -105,6 +105,8 @@ func getStringOperation(op int) string {
 	switch op {
 	case leaseLib.GET:
 		return "GET"
+	case leaseLib.GET_VALIDATE:
+		return "GET_VALIDATE"
 	case leaseLib.PUT:
 		return "PUT"
 	case leaseLib.LOOKUP:
