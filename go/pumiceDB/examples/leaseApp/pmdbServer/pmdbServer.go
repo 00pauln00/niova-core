@@ -74,6 +74,7 @@ func main() {
 		PmdbAPI:        lso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
+		LeaseEnabled: true,
 	}
 
 	//TODO: Fill all fields of LeaseServerObject

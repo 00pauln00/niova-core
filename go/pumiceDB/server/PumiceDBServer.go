@@ -66,6 +66,7 @@ type PmdbServerObject struct {
 	PeerUuid       string
 	SyncWrites     bool
 	CoalescedWrite bool
+	LeaseEnabled   bool
 	ColumnFamilies []string
 }
 
@@ -220,14 +221,13 @@ func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
 func goInit(args *C.struct_pumicedb_cb_cargs) {
 
 	var initArgs PmdbCbArgs
-	reqType := pmdbCbArgsInit(args, &initArgs)
+	pmdbCbArgsInit(args, &initArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(initArgs.UserData).(*PmdbServerObject)
 
-	if reqType == PumiceDBCommon.APP_REQ {
-		gcb.PmdbAPI.Init(&initArgs)
-	} else if reqType == PumiceDBCommon.LEASE_REQ {
+	gcb.PmdbAPI.Init(&initArgs)
+	if gcb.LeaseEnabled {
 		gcb.LeaseAPI.Init(&initArgs)
 	}
 }

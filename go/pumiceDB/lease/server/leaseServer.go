@@ -374,11 +374,13 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 
 func (lso *LeaseServerObject) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
+		log.Info("Init callback in peer becoming leader.")
 		lso.leaderInit()
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
+		log.Info("Init callback on peer bootup.")
 		lso.peerBootup(initPeerArgs.UserID)
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_CANDIDATE_STATE {
-		log.Info("WIP Leader becoming candidate state")
+		log.Info("Init callback on peer becoming candidate.")
 	} else {
 		log.Error("Invalid init state: %d", initPeerArgs.InitState)
 	}
