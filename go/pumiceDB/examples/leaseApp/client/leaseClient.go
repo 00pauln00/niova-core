@@ -109,6 +109,8 @@ func getStringOperation(op int) string {
 		return "PUT"
 	case leaseLib.LOOKUP:
 		return "LOOKUP"
+	case leaseLib.LOOKUP_VALIDATE:
+		return "LOOKUP_VALIDATE"
 	case leaseLib.REFRESH:
 		return "REFRESH"
 	}
