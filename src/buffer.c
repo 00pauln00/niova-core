@@ -18,6 +18,8 @@ static size_t bufferSetPageBits;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
+#define BUFFER_SECTOR_SIZE 512UL
+
 /* Use cast to override 'const *bs' which is needed for at least one public
  * routine.
  */
@@ -289,7 +291,7 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
         if (use_posix_memalign)
         {
             bi->bi_iov.iov_base =
-                niova_posix_memalign(buf_size, buffer_page_size());
+                niova_posix_memalign(buf_size, BUFFER_SECTOR_SIZE);
 
             FATAL_IF(bi->bi_iov.iov_base == NULL, "niova_posix_memalign()");
         }
