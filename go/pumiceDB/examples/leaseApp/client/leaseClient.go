@@ -328,8 +328,8 @@ func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler
 	var responseObjArr []WriteObj
 	rdMap = readJsonFile(handler.readJsonFile)
 	for key, value := range rdMap {
-		requestObj.Client = key
-		requestObj.Resource = value
+		reqHandler.LeaseReq.Client = key
+		reqHandler.LeaseReq.Resource = value
 		// lookup lease for multiple clients and resources
 		err = reqHandler.Lookup()
 		if err != nil {
@@ -338,7 +338,7 @@ func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler
 		} else {
 			responseObj.Status = "Success"
 		}
-		res = prepareLeaseJsonResponse(requestObj, responseObj)
+		res = prepareLeaseJsonResponse(reqHandler.LeaseReq, reqHandler.LeaseRes)
 		responseObjArr = append(responseObjArr, res)
 	}
 
