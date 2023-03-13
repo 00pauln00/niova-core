@@ -129,6 +129,7 @@ func main() {
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
+		LeaseEnabled: true,
 	}
 
 	nso.leaseObj = leaseServerLib.LeaseServerObject{}
