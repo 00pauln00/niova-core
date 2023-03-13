@@ -22,6 +22,14 @@ type LeaseServerObject struct {
 	listObj      *list.List
 }
 
+type LeaseReqHandler struct {
+	LeaseServerObj *LeaseServerObject
+	LeaseReq       leaseLib.LeaseReq
+	LeaseRes       *leaseLib.LeaseRes
+	UserID         unsafe.Pointer
+	PmdbHandler    unsafe.Pointer
+}
+
 //Helper functions
 func checkMajorCorrectness(currentTerm int64, leaseTerm int64) {
 	if currentTerm != leaseTerm {
@@ -170,19 +178,19 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 
 }
 
-func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *leaseLib.LeaseRes) int {
-	if request.Operation == leaseLib.LOOKUP {
-		leaseObj, isPresent := lso.LeaseMap[request.Resource]
+func (handler *LeaseReqHandler) readLease() int {
+	if handler.LeaseReq.Operation == leaseLib.LOOKUP {
+		leaseObj, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 		if !isPresent {
 			return -1
 		}
 		leaseObj.LeaseMetaInfo.TTL = -1
 		leaseObj.LeaseMetaInfo.LeaseState = leaseLib.NULL
-		lso.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
-		copyToResponse(&leaseObj.LeaseMetaInfo, reply)
+		handler.LeaseServerObj.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
+		copyToResponse(&leaseObj.LeaseMetaInfo, handler.LeaseRes)
 
-	} else if request.Operation == leaseLib.LOOKUP_VALIDATE {
-		leaseObj, isPresent := lso.LeaseMap[request.Resource]
+	} else if handler.LeaseReq.Operation == leaseLib.LOOKUP_VALIDATE {
+		leaseObj, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 		if !isPresent {
 			return -1
 		}
@@ -192,7 +200,7 @@ func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *leaseL
 		}
 
 		oldTS := leaseObj.LeaseMetaInfo.TimeStamp
-		lso.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
+		handler.LeaseServerObj.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
 		checkMajorCorrectness(leaseObj.LeaseMetaInfo.TimeStamp.LeaderTerm, oldTS.LeaderTerm)
 
 		//TODO: Possible wrap around
@@ -204,12 +212,12 @@ func (lso *LeaseServerObject) readLease(request leaseLib.LeaseReq, reply *leaseL
 			leaseObj.LeaseMetaInfo.TTL = ttl
 		}
 		//*reply = *leaseObj
-		reply.Client = leaseObj.LeaseMetaInfo.Client
-		reply.Resource = leaseObj.LeaseMetaInfo.Resource
-		reply.Status = leaseObj.LeaseMetaInfo.Status
-		reply.LeaseState = leaseObj.LeaseMetaInfo.LeaseState
-		reply.TTL = leaseObj.LeaseMetaInfo.TTL
-		reply.TimeStamp = leaseObj.LeaseMetaInfo.TimeStamp
+		handler.LeaseRes.Client = leaseObj.LeaseMetaInfo.Client
+		handler.LeaseRes.Resource = leaseObj.LeaseMetaInfo.Resource
+		handler.LeaseRes.Status = leaseObj.LeaseMetaInfo.Status
+		handler.LeaseRes.LeaseState = leaseObj.LeaseMetaInfo.LeaseState
+		handler.LeaseRes.TTL = leaseObj.LeaseMetaInfo.TTL
+		handler.LeaseRes.TimeStamp = leaseObj.LeaseMetaInfo.TimeStamp
 	}
 	return 0
 }
@@ -229,7 +237,14 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var replySize int64
 	var copyErr error
 
-	rc := lso.readLease(reqStruct, &returnObj)
+	leaseReq := LeaseReqHandler{
+		LeaseServerObj: lso,
+		LeaseReq:       reqStruct,
+		LeaseRes:       &returnObj,
+	}
+
+	//rc := lso.readLease(reqStruct, &returnObj)
+	rc := leaseReq.readLease()
 
 	if rc == 0 {
 		replySize, copyErr = lso.Pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
@@ -245,26 +260,26 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 }
 
-func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *leaseLib.LeaseRes, userID unsafe.Pointer, pmdbHandler unsafe.Pointer) int {
+func (handler *LeaseReqHandler) applyLease() int {
 	var leaseObj leaseLib.LeaseInfo
 	var leaseObjPtr *leaseLib.LeaseInfo
 
-	leaseObjPtr, isPresent := lso.LeaseMap[request.Resource]
+	leaseObjPtr, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
 		leaseObjPtr = &leaseObj
-		lso.LeaseMap[request.Resource] = leaseObjPtr
+		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = leaseObjPtr
 	}
 
-	leaseObjPtr.LeaseMetaInfo.Resource = request.Resource
-	leaseObjPtr.LeaseMetaInfo.Client = request.Client
+	leaseObjPtr.LeaseMetaInfo.Resource = handler.LeaseReq.Resource
+	leaseObjPtr.LeaseMetaInfo.Client = handler.LeaseReq.Client
 	leaseObjPtr.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
-	isLeaderFlag := lso.GetLeaderTimeStamp(&leaseObjPtr.LeaseMetaInfo.TimeStamp)
+	isLeaderFlag := handler.LeaseServerObj.GetLeaderTimeStamp(&leaseObjPtr.LeaseMetaInfo.TimeStamp)
 	leaseObjPtr.LeaseMetaInfo.TTL = ttlDefault
 
 	//Insert into list
 	leaseObjPtr.ListElement = &list.Element{}
 	leaseObjPtr.ListElement.Value = leaseObjPtr
-	lso.listObj.PushBack(leaseObjPtr)
+	handler.LeaseServerObj.listObj.PushBack(leaseObjPtr)
 
 	valueBytes := bytes.Buffer{}
 	//gob.Register(leaseLib.LeaseStruct{})
@@ -280,8 +295,8 @@ func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *lease
 
 	// Length of value.
 	valLen := len(byteToStr)
-	keyLength := len(request.Resource.String())
-	rc := lso.Pso.WriteKV(userID, pmdbHandler, request.Resource.String(), int64(keyLength), byteToStr, int64(valLen), lso.LeaseColmFam)
+	keyLength := len(handler.LeaseReq.Resource.String())
+	rc := handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler, handler.LeaseReq.Resource.String(), int64(keyLength), byteToStr, int64(valLen), handler.LeaseServerObj.LeaseColmFam)
 	if rc < 0 {
 		leaseObjPtr.LeaseMetaInfo.Status = "Key not found"
 		log.Error("Value not written to rocksdb")
@@ -292,17 +307,17 @@ func (lso *LeaseServerObject) applyLease(request leaseLib.LeaseReq, reply *lease
 
 	if isLeaderFlag == 0 {
 		//*reply = *leaseObj
-		reply.Client = leaseObjPtr.LeaseMetaInfo.Client
-		reply.Resource = leaseObjPtr.LeaseMetaInfo.Resource
-		reply.Status = leaseObjPtr.LeaseMetaInfo.Status
-		reply.LeaseState = leaseObjPtr.LeaseMetaInfo.LeaseState
-		reply.TTL = leaseObjPtr.LeaseMetaInfo.TTL
-		reply.TimeStamp = leaseObjPtr.LeaseMetaInfo.TimeStamp
+		handler.LeaseRes.Client = leaseObjPtr.LeaseMetaInfo.Client
+		handler.LeaseRes.Resource = leaseObjPtr.LeaseMetaInfo.Resource
+		handler.LeaseRes.Status = leaseObjPtr.LeaseMetaInfo.Status
+		handler.LeaseRes.LeaseState = leaseObjPtr.LeaseMetaInfo.LeaseState
+		handler.LeaseRes.TTL = leaseObjPtr.LeaseMetaInfo.TTL
+		handler.LeaseRes.TimeStamp = leaseObjPtr.LeaseMetaInfo.TimeStamp
 		return 0
 	}
 
 	//Check if lease is added properly
-	_, isPresent1 := lso.LeaseMap[request.Resource]
+	_, isPresent1 := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 
 	if !isPresent1 {
 		log.Info("Just added lease but not present in map!")
@@ -328,7 +343,14 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	//keyLength := len(applyLeaseReq.Client.String())
 
 	var returnObj leaseLib.LeaseRes
-	rc := lso.applyLease(applyLeaseReq, &returnObj, applyArgs.UserID, applyArgs.PmdbHandler)
+	leaseReq := LeaseReqHandler{
+		LeaseServerObj: lso,
+		LeaseReq:       applyLeaseReq,
+		LeaseRes:       &returnObj,
+		UserID:         applyArgs.UserID,
+		PmdbHandler:    applyArgs.PmdbHandler,
+	}
+	rc := leaseReq.applyLease()
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
 	if rc == 0 && applyArgs.ReplyBuf != nil {
