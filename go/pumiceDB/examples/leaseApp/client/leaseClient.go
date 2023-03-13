@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -293,11 +291,17 @@ func multiGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *l
 	var responseObj leaseLib.LeaseRes
 	var responseObjArr []WriteObj
 
-	kvMap = generateUuids(int64(handler.numOfLeases))
+	if requestObj.Client != uuid.Nil && requestObj.Resource != uuid.Nil {
+                handler.numOfLeases = 1
+                kvMap[requestObj.Client] = requestObj.Resource
+        } else {
+                kvMap = generateUuids(int64(handler.numOfLeases))
+        }
+
 	for key, value := range kvMap {
 		requestObj.Client = key
 		requestObj.Resource = value
-		// get lease for multiple clients and resources
+		// Perform get lease
 		err = reqHandler.Get()
 		if err != nil {
 			log.Error(err)
@@ -326,11 +330,18 @@ func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler
 	var res WriteObj
 	var responseObj leaseLib.LeaseRes
 	var responseObjArr []WriteObj
-	rdMap = readJsonFile(handler.readJsonFile)
+
+	if requestObj.Client != uuid.Nil && requestObj.Resource != uuid.Nil {
+                handler.numOfLeases = 1
+                rdMap[requestObj.Client] = requestObj.Resource
+        } else {
+                rdMap = readJsonFile(handler.readJsonFile)
+        }
+
 	for key, value := range rdMap {
 		reqHandler.LeaseReq.Client = key
 		reqHandler.LeaseReq.Resource = value
-		// lookup lease for multiple clients and resources
+		// Perform lookup lease
 		err = reqHandler.Lookup()
 		if err != nil {
 			log.Error(err)
@@ -347,14 +358,14 @@ func multiLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler
 
 /*
 structure : leasehandler
-method    : getvalidate()
+method    : performGetAndValidate()
 arguments : leaselib.leasereq
 
 description: It validates the multiple get leases response.
 	     and dump it json file.
 */
 
-func getValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) {
+func performGetAndValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) {
 
 	var responseObjArr []WriteObj
 	uuidMap := make(map[uuid.UUID]uuid.UUID)
@@ -366,16 +377,27 @@ func getValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler
 		uuidMap[responseObjArr[i].Request.Client] = responseObjArr[i].Request.Resource
 	}
 
-	//Check if prev element have same LeaseState and LeaderTeerm as current response.
-	for i := 0; i < len(responseObjArr)-1; i++ {
-		if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
-			mapString["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
-		}
+	if len(responseObjArr) == 1 {
+		mapString["Client"] = responseObjArr[0].Response.Client
+                mapString["Resource"] = responseObjArr[0].Response.Resource
+                mapString["Status"] = responseObjArr[0].Response.Status
+                mapString["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
+                mapString["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
+                mapString["LeaseState"] = responseObjArr[0].Response.LeaseState
+                mapString["TTL"] = responseObjArr[0].Response.TTL
+        } else {
 
-		if responseObjArr[i].Response.LeaseState == responseObjArr[i+1].Response.LeaseState {
-			mapString["LeaseState"] = responseObjArr[i+1].Response.LeaseState
-		} else {
-			fmt.Println("LeaseState not matched")
+		//Check if prev element have same LeaseState and LeaderTeerm as current response.
+		for i := 0; i < len(responseObjArr)-1; i++ {
+			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
+				mapString["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
+			}
+
+			if responseObjArr[i].Response.LeaseState == responseObjArr[i+1].Response.LeaseState {
+				mapString["LeaseState"] = responseObjArr[i+1].Response.LeaseState
+			} else {
+				fmt.Println("LeaseState not matched")
+			}
 		}
 	}
 
@@ -390,29 +412,40 @@ func getValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler
 
 /*
 Structure : leaseHandler
-Method    : multiLookupValidate()
+Method    : performLookupAndValidate()
 Arguments : leaseLib.LeaseReq
 
 Description: It validates the multiple lookup leases response
 	     and dump to json file.
 */
 
-func multiLookupValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) {
+func performLookupAndValidate(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) {
 
 	var responseObjArr []WriteObj
 	toJson := make(map[string]interface{})
 	responseObjArr = multiLookup(requestObj, handler, reqHandler)
 
-	for i := 0; i < len(responseObjArr)-1; i++ {
-		if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
-			toJson["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
-		}
-		if responseObjArr[i].Response.LeaseState == responseObjArr[i+1].Response.LeaseState {
-			toJson["LeaseState"] = responseObjArr[i+1].Response.LeaseState
-		} else {
-			fmt.Println("LeaseState not matched")
+	if len(responseObjArr) == 1 {
+                toJson["Client"] = responseObjArr[0].Response.Client
+                toJson["Resource"] = responseObjArr[0].Response.Resource
+                toJson["Status"] = responseObjArr[0].Response.Status
+                toJson["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
+                toJson["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
+                toJson["LeaseState"] = responseObjArr[0].Response.LeaseState
+                toJson["TTL"] = responseObjArr[0].Response.TTL
+	} else {
+		for i := 0; i < len(responseObjArr)-1; i++ {
+			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
+				toJson["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
+			}
+			if responseObjArr[i].Response.LeaseState == responseObjArr[i+1].Response.LeaseState {
+				toJson["LeaseState"] = responseObjArr[i+1].Response.LeaseState
+			} else {
+				fmt.Println("LeaseState not matched")
+			}
 		}
 	}
+
 	writeToJson(toJson, handler.jsonFilePath)
 }
 
@@ -430,35 +463,6 @@ func writeToJson(toJson interface{}, jsonFilePath string) {
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
 	}
-}
-
-/*
-Structure : leaseHandler
-Method    : lookup_and_validate()
-Arguments : leaseLib.LeaseReq
-Return(s) : error
-
-Description : Handler function for lookup() operation
-              Lookup lease info of a particular resource
-              and validate that lease is valid.
-*/
-func lookup_validate(requestObj leaseLib.LeaseReq, handler *leaseHandler) (leaseLib.LeaseRes, error) {
-	var err error
-	var responseBytes []byte
-	var responseObj leaseLib.LeaseRes
-
-	err = handler.clientObj.Read(requestObj, "", &responseBytes)
-	if err != nil {
-		return responseObj, err
-	}
-
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&responseObj)
-	if err != nil {
-		return responseObj, err
-	}
-
-	return responseObj, err
 }
 
 func main() {
@@ -526,28 +530,12 @@ func main() {
 		writeToJson(res, leaseObjHandler.jsonFilePath)
 
 	case leaseLib.GET_VALIDATE:
-		//Perform and validate multiple get leases
-		if leaseObjHandler.numOfLeases >= 1 {
-			getValidate(leaseReqHandler.LeaseReq, &leaseObjHandler, &leaseReqHandler)
-		}
+		//get and validate lease
+		performGetAndValidate(leaseReqHandler.LeaseReq, &leaseObjHandler, &leaseReqHandler)
 
 	case leaseLib.LOOKUP_VALIDATE:
-		//Perform and validate multiple lookup leases
-		if leaseObjHandler.numOfLeases >= 1 {
-			multiLookupValidate(leaseReqHandler.LeaseReq, &leaseObjHandler, &leaseReqHandler)
-		} else {
-
-			// lookup and validate lease
-			responseObj, err = lookup_validate(leaseReqHandler.LeaseReq, &leaseObjHandler)
-			if err != nil {
-				log.Error(err)
-				responseObj.Status = err.Error()
-			} else {
-				responseObj.Status = "Success"
-			}
-			res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, responseObj)
-			writeToJson(res, leaseObjHandler.jsonFilePath)
-		}
+		// lookup and validate lease
+		performLookupAndValidate(leaseReqHandler.LeaseReq, &leaseObjHandler, &leaseReqHandler)
 	}
 
 	log.Info("-----END OF EXECUTION-----")
