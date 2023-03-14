@@ -287,12 +287,14 @@ func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler 
 	var responseObj leaseLib.LeaseRes
 	var responseObjArr []WriteObj
 
+	//If user passed UUID through cmdline
 	if requestObj.Client != uuid.Nil && requestObj.Resource != uuid.Nil {
-                handler.numOfLeases = 1
-                kvMap[requestObj.Client] = requestObj.Resource
-        } else {
-                kvMap = generateUuids(int64(handler.numOfLeases))
-        }
+		handler.numOfLeases = 1
+		kvMap[requestObj.Client] = requestObj.Resource
+	} else {
+		handler.numOfLeases >= 1
+		kvMap = generateUuids(int64(handler.numOfLeases))
+	}
 
 	for key, value := range kvMap {
 		requestObj.Client = key
@@ -323,12 +325,13 @@ func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandl
 	var responseObj leaseLib.LeaseRes
 	var responseObjArr []WriteObj
 
+	//If user passed UUID through cmdline
 	if requestObj.Client != uuid.Nil && requestObj.Resource != uuid.Nil {
-                handler.numOfLeases = 1
-                rdMap[requestObj.Client] = requestObj.Resource
-        } else {
-                rdMap = readJsonFile(handler.readJsonFile)
-        }
+		handler.numOfLeases = 1
+		rdMap[requestObj.Client] = requestObj.Resource
+	} else {
+		rdMap = readJsonFile(handler.readJsonFile)
+	}
 
 	for key, value := range rdMap {
 		reqHandler.LeaseReq.Client = key
@@ -367,8 +370,8 @@ func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, req
 	}
 
 	if handler.numOfLeases == 1 {
-                res = fillGetValidateResponse(requestObj, handler, reqHandler)
-        } else if handler.numOfLeases > 1 {
+		res = fillGetValidateResponse(requestObj, handler, reqHandler)
+	} else if handler.numOfLeases > 1 {
 		//Check if prev element have same LeaseState and LeaderTeerm as current response.
 		for i := 0; i < len(responseObjArr)-1; i++ {
 			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
@@ -382,7 +385,6 @@ func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, req
 			}
 		}
 	}
-
 	//Fill the structure
 	res = multiLease{
 		Request:  uuidMap,
@@ -428,17 +430,17 @@ Description: Fill the response of Lookup validation
 func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) map[string]interface{} {
 
 	var responseObjArr []WriteObj
-        toJson := make(map[string]interface{})
-        responseObjArr = performLookup(requestObj, handler, reqHandler)
+	toJson := make(map[string]interface{})
+	responseObjArr = performLookup(requestObj, handler, reqHandler)
 
-	if handler.numOfLeases == 1 {
-                toJson["Client"] = responseObjArr[0].Response.Client
-                toJson["Resource"] = responseObjArr[0].Response.Resource
-                toJson["Status"] = responseObjArr[0].Response.Status
-                toJson["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
-                toJson["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
-                toJson["LeaseState"] = responseObjArr[0].Response.LeaseState
-                toJson["TTL"] = responseObjArr[0].Response.TTL
+	if len(responseObjArr) == 1 {
+		toJson["Client"] = responseObjArr[0].Response.Client
+		toJson["Resource"] = responseObjArr[0].Response.Resource
+		toJson["Status"] = responseObjArr[0].Response.Status
+		toJson["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
+		toJson["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
+		toJson["LeaseState"] = responseObjArr[0].Response.LeaseState
+		toJson["TTL"] = responseObjArr[0].Response.TTL
 	}
 
 	return toJson
@@ -451,32 +453,32 @@ Description: Fill the response of Get validation
 func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) multiLease {
 
 	var responseObjArr []WriteObj
-        uuidMap := make(map[uuid.UUID]uuid.UUID)
-        mapString := make(map[string]interface{})
-        responseObjArr = performGet(requestObj, handler, reqHandler)
+	uuidMap := make(map[uuid.UUID]uuid.UUID)
+	mapString := make(map[string]interface{})
+	responseObjArr = performGet(requestObj, handler, reqHandler)
 
-        //Fill the map with clients and resources
-        for i := range responseObjArr {
-                uuidMap[responseObjArr[i].Request.Client] = responseObjArr[i].Request.Resource
-        }
+	//Fill the map with clients and resources
+	for i := range responseObjArr {
+		uuidMap[responseObjArr[i].Request.Client] = responseObjArr[i].Request.Resource
+	}
 
-        if handler.numOfLeases == 1 {
-                mapString["Client"] = responseObjArr[0].Response.Client
-                mapString["Resource"] = responseObjArr[0].Response.Resource
-                mapString["Status"] = responseObjArr[0].Response.Status
-                mapString["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
-                mapString["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
-                mapString["LeaseState"] = responseObjArr[0].Response.LeaseState
-                mapString["TTL"] = responseObjArr[0].Response.TTL
+	if len(responseObjArr) == 1 {
+		mapString["Client"] = responseObjArr[0].Response.Client
+		mapString["Resource"] = responseObjArr[0].Response.Resource
+		mapString["Status"] = responseObjArr[0].Response.Status
+		mapString["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
+		mapString["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
+		mapString["LeaseState"] = responseObjArr[0].Response.LeaseState
+		mapString["TTL"] = responseObjArr[0].Response.TTL
 	}
 
 	//Fill the structure
-        getValidateRes := multiLease{
-                Request:  uuidMap,
-                Response: mapString,
-        }
+	getValidateRes := multiLease{
+		Request:  uuidMap,
+		Response: mapString,
+	}
 
-        return getValidateRes
+	return getValidateRes
 }
 
 /*
