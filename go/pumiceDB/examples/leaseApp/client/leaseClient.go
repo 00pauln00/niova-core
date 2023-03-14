@@ -292,7 +292,6 @@ func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler 
 		handler.numOfLeases = 1
 		kvMap[requestObj.Client] = requestObj.Resource
 	} else {
-		handler.numOfLeases >= 1
 		kvMap = generateUuids(int64(handler.numOfLeases))
 	}
 
