@@ -33,6 +33,7 @@ type PeerConfigData struct {
 }
 
 type PumiceRequest struct {
+	Rncui      string
 	ReqType    int
 	ReqPayload []byte
 }

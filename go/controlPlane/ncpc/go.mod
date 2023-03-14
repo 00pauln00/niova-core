@@ -21,6 +21,7 @@ replace LeaseLib/leaseClient => ../../pumiceDB/lease/client
 go 1.18
 
 require (
+	LeaseLib/leaseClient v0.0.0-00010101000000-000000000000
 	common/clientAPI v0.0.0-00010101000000-000000000000
 	common/leaseLib v0.0.0-00010101000000-000000000000
 	common/requestResponseLib v0.0.0-00010101000000-000000000000
@@ -36,6 +37,7 @@ require (
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
+	github.com/google/uuid v1.3.0 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-immutable-radix v1.0.0 // indirect
 	github.com/hashicorp/go-msgpack v0.5.3 // indirect
@@ -49,4 +51,5 @@ require (
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
 	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
+	niova/go-pumicedb-lib/client v0.0.0-00010101000000-000000000000 // indirect
 )

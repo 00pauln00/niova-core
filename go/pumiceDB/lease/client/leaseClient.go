@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 
 	log "github.com/sirupsen/logrus"
 
@@ -229,4 +230,43 @@ func (handler *LeaseReqHandler) Refresh() error {
 	log.Info("Refresh request status - ", handler.LeaseRes.Status)
 
 	return err
+}
+
+//TODO func to prepare request according to PumiceReq common type and return enocded byte array of common pumice req
+func PrepareLeaseReq(client, resource string, operation int) []byte {
+	var pumiceReq PumiceDBCommon.PumiceRequest
+	var leaseReq leaseLib.LeaseReq
+	var err error
+
+	leaseReq.Client, err = uuid.FromString(client)
+	leaseReq.Resource, err = uuid.FromString(resource)
+	leaseReq.Operation = operation
+	leaseReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	var leaseReqBuf bytes.Buffer
+	leaseEnc := gob.NewEncoder(&leaseReqBuf)
+	err = leaseEnc.Encode(leaseReq)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	// set ReqType to 1 for lease
+	pumiceReq.ReqType = 1
+	pumiceReq.ReqPayload = leaseReqBuf.Bytes()
+	pumiceReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+
+	var pumiceReqBuf bytes.Buffer
+	pumiceEnc := gob.NewEncoder(&pumiceReqBuf)
+	err = pumiceEnc.Encode(pumiceReq)
+	if err != nil {
+		log.Error(err)
+		return nil
+	}
+
+	return pumiceReqBuf.Bytes()
 }
