@@ -277,11 +277,7 @@ func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
 }
 
 /*
-Structure : leaseHandler
-Method    : performGet()
-Arguments : leaseLib.LeaseReq
-
-Description: Perform Multiple GET lease operation
+Description: Perform GET lease operation
 */
 
 func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) []WriteObj {
@@ -317,11 +313,7 @@ func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler 
 }
 
 /*
-Structure : leaseHandler
-Method    : performLookup()
-Arguments : leaseLib.LeaseReq
-
-Description: Perform Multiple LOOKUP lease operation
+Description: Perform LOOKUP lease operation
 */
 
 func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) []WriteObj {
@@ -357,11 +349,7 @@ func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandl
 }
 
 /*
-structure : leasehandler
-method    : compareLoookupResponse()
-arguments : leaselib.leasereq
-
-description: It validates the multiple get leases response.
+description: It compare the multiple get leases response.
 	     and dump it json file.
 */
 
@@ -405,11 +393,7 @@ func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, req
 }
 
 /*
-Structure : leaseHandler
-Method    : compareLoookupResponse()
-Arguments : leaseLib.LeaseReq
-
-Description: It validates the multiple lookup leases response
+Description: It compare the multiple lookup leases response
 	     and dump to json file.
 */
 
@@ -437,6 +421,10 @@ func compareLoookupResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler,
 	writeToJson(toJson, handler.jsonFilePath)
 }
 
+/*
+Description: Fill the response of Lookup validation
+*/
+
 func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) map[string]interface{} {
 
 	var responseObjArr []WriteObj
@@ -452,10 +440,13 @@ func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHand
                 toJson["LeaseState"] = responseObjArr[0].Response.LeaseState
                 toJson["TTL"] = responseObjArr[0].Response.TTL
 	}
-	fmt.Println("Fill response: ", toJson)
 
 	return toJson
 }
+
+/*
+Description: Fill the response of Get validation
+*/
 
 func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) multiLease {
 
@@ -484,8 +475,6 @@ func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler
                 Request:  uuidMap,
                 Response: mapString,
         }
-
-        fmt.Println("Fill response: ", getValidateRes)
 
         return getValidateRes
 }
