@@ -518,7 +518,6 @@ func main() {
 	}
 
 	leaseReqHandler.LeaseClientObj = leaseObjHandler.clientObj
-	var responseObj leaseLib.LeaseRes
 
 	switch leaseReqHandler.LeaseReq.Operation {
 	case leaseLib.GET:
@@ -527,9 +526,9 @@ func main() {
 		err = leaseReqHandler.Get()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			leaseReqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			leaseReqHandler.LeaseRes.Status = "Success"
 		}
 		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
@@ -540,9 +539,9 @@ func main() {
 		err = leaseReqHandler.Lookup()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			leaseReqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			leaseReqHandler.LeaseRes.Status = "Success"
 		}
 		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
@@ -553,9 +552,9 @@ func main() {
 		err = leaseReqHandler.Refresh()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			leaseReqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			leaseReqHandler.LeaseRes.Status = "Success"
 		}
 		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
