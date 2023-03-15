@@ -414,6 +414,9 @@ func (clientObj *clientHandler) write() {
 			var responseObj requestResponseLib.KVResponse
 			var responseBytes []byte
 
+			appRequestObj.Key = key
+			appRequestObj.Value = val
+			appRequestObj.Operation = requestResponseLib.KV_WRITE
 			err := func() error {
 
 				//Fill the request object
