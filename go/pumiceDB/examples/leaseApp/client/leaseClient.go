@@ -524,7 +524,7 @@ func main() {
 		os.Exit(-1)
 	}
 
-	leaseReqHandler.LeaseClientObj = leaseObjHandler.clientObj
+	leaseReqHandler.LeaseClientObj = &leaseObjHandler.clientObj
 	leaseReqHandler.Rncui = getRNCUI(leaseReqHandler.LeaseClientObj.PmdbClientObj)
 
 	switch leaseReqHandler.LeaseReq.Operation {
