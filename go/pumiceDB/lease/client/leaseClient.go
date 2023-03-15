@@ -5,9 +5,7 @@ import (
 	"common/leaseLib"
 	"encoding/gob"
 	"flag"
-	"fmt"
 	"os"
-	"sync/atomic"
 
 	pmdbClient "niova/go-pumicedb-lib/client"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -56,7 +54,8 @@ type LeaseClient struct {
 }
 
 type LeaseClientReqHandler struct {
-	LeaseClientObj LeaseClient
+	Rncui          string
+	LeaseClientObj *LeaseClient
 	LeaseReq       leaseLib.LeaseReq
 	LeaseRes       leaseLib.LeaseRes
 	Err            error
@@ -76,12 +75,6 @@ func usage() {
 func parseOperation(str string) (int, bool) {
 	op, ok := operationsMap[str]
 	return op, ok
-}
-
-func (clientObj LeaseClient) getRNCUI() string {
-	idq := atomic.AddUint64(&clientObj.PmdbClientObj.WriteSeqNo, uint64(1))
-	rncui := fmt.Sprintf("%s:0:0:0:%d", clientObj.PmdbClientObj.AppUUID, idq)
-	return rncui
 }
 
 /*
@@ -151,7 +144,7 @@ func (handler *LeaseClientReqHandler) Get() error {
 	var err error
 	var responseBytes []byte
 
-	rncui := handler.LeaseClientObj.getRNCUI()
+	rncui := handler.Rncui
 
 	err = handler.LeaseClientObj.write(handler.LeaseReq, rncui, &responseBytes)
 	if err != nil {
@@ -210,7 +203,7 @@ func (handler *LeaseClientReqHandler) Refresh() error {
 	var err error
 	var responseBytes []byte
 
-	rncui := handler.LeaseClientObj.getRNCUI()
+	rncui := handler.Rncui
 	err = handler.LeaseClientObj.write(handler.LeaseReq, rncui, &responseBytes)
 	if err != nil {
 		return err

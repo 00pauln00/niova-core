@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sync/atomic"
 
 	leaseClientLib "LeaseLib/leaseClient"
 	leaseLib "common/leaseLib"
@@ -137,6 +138,12 @@ func prepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib
 		Response: resp,
 	}
 	return res
+}
+
+func getRNCUI(clientObj *pmdbClient.PmdbClientObj) string {
+	idq := atomic.AddUint64(&clientObj.WriteSeqNo, uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d", clientObj.AppUUID, idq)
+	return rncui
 }
 
 /*
@@ -301,29 +308,33 @@ func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler 
 
 	var err error
 	var res WriteObj
-	var responseObj leaseLib.LeaseRes
 	var responseObjArr []WriteObj
 
-	//If user passed UUID through cmdline
-	if requestObj.Client != uuid.Nil && requestObj.Resource != uuid.Nil {
-		handler.numOfLeases = 1
-		kvMap[requestObj.Client] = requestObj.Resource
-	} else {
+	//If user not passed UUID through cmdline
+	if requestObj.Resource == uuid.Nil {
+		log.Info("client UUID and resource UUID is not passed, so generate UUIDs")
 		kvMap = generateUuids(int64(handler.numOfLeases))
+	} else {
+		handler.numOfLeases = 1
+		log.Info("Pass uuid: ", requestObj.Client, requestObj.Resource)
+		kvMap[requestObj.Client] = requestObj.Resource
 	}
 
 	for key, value := range kvMap {
-		requestObj.Client = key
-		requestObj.Resource = value
+		reqHandler.LeaseReq.Client = key
+		reqHandler.LeaseReq.Resource = value
+
+		fmt.Println("reqHandler.LeaseReq.Client: ", reqHandler.LeaseReq.Client, "reqHandler.LeaseReq.Resource: ", reqHandler.LeaseReq.Resource)
+
 		// Perform get lease
 		err = reqHandler.Get()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			reqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			reqHandler.LeaseRes.Status = "Success"
 		}
-		res = prepareLeaseJsonResponse(requestObj, responseObj)
+		res = prepareLeaseJsonResponse(reqHandler.LeaseReq, reqHandler.LeaseRes)
 		responseObjArr = append(responseObjArr, res)
 	}
 
@@ -338,15 +349,16 @@ func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandl
 
 	var err error
 	var res WriteObj
-	var responseObj leaseLib.LeaseRes
 	var responseObjArr []WriteObj
 
-	//If user passed UUID through cmdline
-	if requestObj.Client != uuid.Nil && requestObj.Resource != uuid.Nil {
-		handler.numOfLeases = 1
-		rdMap[requestObj.Client] = requestObj.Resource
-	} else {
+	//If user not passed UUID through cmdline
+	if requestObj.Resource == uuid.Nil {
+		log.Info("Read get lease json outfile to extract client and resource uuids to perform Lookup lease")
 		rdMap = readJsonFile(handler.readJsonFile)
+	} else {
+		handler.numOfLeases = 1
+		log.Info("Pass uuid: ", requestObj.Client, requestObj.Resource)
+		rdMap[requestObj.Client] = requestObj.Resource
 	}
 
 	for key, value := range rdMap {
@@ -356,9 +368,9 @@ func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandl
 		err = reqHandler.Lookup()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			reqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			reqHandler.LeaseRes.Status = "Success"
 		}
 		res = prepareLeaseJsonResponse(reqHandler.LeaseReq, reqHandler.LeaseRes)
 		responseObjArr = append(responseObjArr, res)
@@ -378,7 +390,7 @@ func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, req
 	var res multiLease
 	uuidMap := make(map[uuid.UUID]uuid.UUID)
 	mapString := make(map[string]interface{})
-	responseObjArr = performGet(requestObj, handler, reqHandler)
+	responseObjArr = getResponse(requestObj, handler, reqHandler)
 
 	//Fill the map with clients and resources
 	for i := range responseObjArr {
@@ -386,8 +398,10 @@ func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, req
 	}
 
 	if handler.numOfLeases == 1 {
-		res = fillGetValidateResponse(requestObj, handler, reqHandler)
-	} else if handler.numOfLeases > 1 {
+		res = fillGetValidateResponse(responseObjArr)
+	}
+
+	if handler.numOfLeases > 1 {
 		//Check if prev element have same LeaseState and LeaderTeerm as current response.
 		for i := 0; i < len(responseObjArr)-1; i++ {
 			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
@@ -423,7 +437,9 @@ func compareLoookupResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler,
 
 	if handler.numOfLeases == 1 {
 		toJson = fillLookupValidateResponse(requestObj, handler, reqHandler)
-	} else if handler.numOfLeases > 1 {
+	}
+
+	if handler.numOfLeases > 1 {
 		for i := 0; i < len(responseObjArr)-1; i++ {
 			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
 				toJson["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
@@ -466,12 +482,10 @@ func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHand
 Description: Fill the response of Get validation
 */
 
-func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) multiLease {
+func fillGetValidateResponse(responseObjArr []WriteObj) multiLease {
 
-	var responseObjArr []WriteObj
 	uuidMap := make(map[uuid.UUID]uuid.UUID)
 	mapString := make(map[string]interface{})
-	responseObjArr = performGet(requestObj, handler, reqHandler)
 
 	//Fill the map with clients and resources
 	for i := range responseObjArr {
@@ -495,6 +509,15 @@ func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler
 	}
 
 	return getValidateRes
+}
+
+func getResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) []WriteObj {
+
+	var responseObjArr []WriteObj
+	//Get the GET Lease Response
+	responseObjArr = performGet(requestObj, handler, reqHandler)
+
+	return responseObjArr
 }
 
 /*
@@ -534,8 +557,8 @@ func main() {
 		os.Exit(-1)
 	}
 
-	leaseReqHandler.LeaseClientObj = leaseObjHandler.clientObj
-	var responseObj leaseLib.LeaseRes
+	leaseReqHandler.LeaseClientObj = &leaseObjHandler.clientObj
+	leaseReqHandler.Rncui = getRNCUI(leaseReqHandler.LeaseClientObj.PmdbClientObj)
 
 	switch leaseReqHandler.LeaseReq.Operation {
 	case leaseLib.GET:
@@ -544,9 +567,9 @@ func main() {
 		err = leaseReqHandler.Get()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			leaseReqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			leaseReqHandler.LeaseRes.Status = "Success"
 		}
 		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
@@ -557,9 +580,9 @@ func main() {
 		err = leaseReqHandler.Lookup()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			leaseReqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			leaseReqHandler.LeaseRes.Status = "Success"
 		}
 		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
@@ -570,9 +593,9 @@ func main() {
 		err = leaseReqHandler.Refresh()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
+			leaseReqHandler.LeaseRes.Status = err.Error()
 		} else {
-			responseObj.Status = "Success"
+			leaseReqHandler.LeaseRes.Status = "Success"
 		}
 		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
 		writeToJson(res, leaseObjHandler.jsonFilePath)
