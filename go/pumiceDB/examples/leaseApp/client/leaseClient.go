@@ -41,6 +41,7 @@ var (
 
 type leaseHandler struct {
 	clientObj    leaseClientLib.LeaseClient
+	request		 leaseLib.LeaseReq
 	jsonFilePath string
 	logFilePath  string
 	numOfLeases  int
@@ -146,16 +147,14 @@ Return(s) : None
 
 Description : Parse command line params and load into leaseHandler sturct
 */
-//TODO make it a method for leaseHandler
-func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
+func (handler *leaseHandler) getCmdParams() {
 	var stringOperation, strClientUUID, strResourceUUID, strRaftUUID string
-	var requestObj leaseLib.LeaseReq
 	var tempOperation int
 	var ok bool
 	var err error
 
 	flag.StringVar(&strClientUUID, "u", uuid.NewV4().String(), "ClientUUID - UUID of the requesting client")
-	flag.StringVar(&strResourceUUID, "v", uuid.NewV4().String(), "ResourceUUID - UUID of the requested resource")
+	flag.StringVar(&strResourceUUID, "v", "", "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
 	flag.StringVar(&handler.logFilePath, "l", "", "Log file path")
@@ -174,23 +173,24 @@ func (handler *leaseHandler) getCmdParams() leaseLib.LeaseReq {
 		usage()
 		os.Exit(-1)
 	}
-	requestObj.Operation = int(tempOperation)
+	handler.request.Operation = int(tempOperation)
 	handler.clientObj.RaftUUID, err = uuid.FromString(strRaftUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	requestObj.Client, err = uuid.FromString(strClientUUID)
+	handler.request.Client, err = uuid.FromString(strClientUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	requestObj.Resource, err = uuid.FromString(strResourceUUID)
-	if err != nil {
-		usage()
-		os.Exit(-1)
+	if strResourceUUID != "" {
+		handler.request.Resource, err = uuid.FromString(strResourceUUID)
+		if err != nil {
+			usage()
+			os.Exit(-1)
+		}
 	}
-	return requestObj
 }
 
 /*
@@ -232,18 +232,35 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 Description : Generate N number of client and resource uuids
 */
 
-func generateUuids(numOfLeases int64) map[uuid.UUID]uuid.UUID {
-
-	noUUID := numOfLeases
-
-	for i := int64(0); i < noUUID; i++ {
-		clientUUID := uuid.NewV4()
+func (handler *leaseHandler) generateUuids() {
+	for i := 0; i < handler.numOfLeases; i++ {
 		resourceUUID := uuid.NewV4()
-		kvMap[clientUUID] = resourceUUID
+		kvMap[resourceUUID] = handler.request.Client
+	}
+}
 
+func (handler *leaseHandler) getLeases() error {
+	//If user passed UUID through cmdline
+	if handler.request.Resource != uuid.Nil {
+		handler.numOfLeases = 1
+		kvMap[handler.request.Client] = handler.request.Resource
+	} else {
+		handler.generateUuids()
 	}
 
-	return kvMap
+	for key, value := range kvMap {
+		leaseHandler.request.Resource = key
+		leaseHandler.request.Client = value
+		//leaseHandler.request.Rncui = 
+		err = leaseHandler.Get()
+		if err != nil {
+			log.Error(err)
+			responseObj.Status = err.Error()
+		} else {
+			responseObj.Status = "Success"
+		}
+		//Prepare json respones
+	}
 }
 
 /*
@@ -501,7 +518,7 @@ func main() {
 	leaseReqHandler := leaseClientLib.LeaseClientReqHandler{}
 
 	// Load cmd params
-	leaseReqHandler.LeaseReq = leaseObjHandler.getCmdParams()
+	leaseObjHandler.getCmdParams()
 
 	/*
 		Initialize Logging
@@ -511,7 +528,7 @@ func main() {
 		log.Error("Error while initializing the logger ", err)
 	}
 
-	err = leaseObjHandler.startPMDBClient(leaseReqHandler.LeaseReq.Client.String())
+	err = leaseObjHandler.startPMDBClient(leaseObjHandler.request.Client.String())
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
