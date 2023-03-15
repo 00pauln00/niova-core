@@ -409,11 +409,11 @@ func (clientObj *clientHandler) write() {
 				<-requestLimiter
 			}()
 
-			//var pumiceReqObj PumiceDBCommon.PumiceRequest
 			var appRequestObj requestResponseLib.KVRequest
 			var responseObj requestResponseLib.KVResponse
 			var responseBytes []byte
 
+			// preparing appReqObj to write to jsonOutfile
 			appRequestObj.Key = key
 			appRequestObj.Value = val
 			appRequestObj.Operation = requestResponseLib.KV_WRITE
@@ -421,32 +421,6 @@ func (clientObj *clientHandler) write() {
 
 				//Fill the request object
 				pumiceRequestBytes := prepareKVRequest(key, val, uuid.NewV4().String()+":0:0:0:0", requestResponseLib.KV_WRITE)
-
-				/*
-					appRequestObj.Operation = requestResponseLib.KV_WRITE
-					appRequestObj.Key = key
-					appRequestObj.Value = val
-					appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-
-					var appRequestBytes bytes.Buffer
-					enc := gob.NewEncoder(&appRequestBytes)
-					err := enc.Encode(appRequestObj)
-					if err != nil {
-						log.Error("Encoding error : ", err)
-						return err
-					}
-
-					pumiceReqObj.ReqType = requestResponseLib.APP_REQ
-					pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
-
-					var pumiceRequestBytes bytes.Buffer
-					pumiceEnc := gob.NewEncoder(&pumiceRequestBytes)
-					err = pumiceEnc.Encode(pumiceReqObj)
-					if err != nil {
-						log.Error("Encoding error : ", err)
-						return err
-					}
-				*/
 
 				//Send the write request
 				var err error
@@ -508,30 +482,6 @@ func (clientObj *clientHandler) read() {
 	err := func() error {
 		//Fill the request obj and encode it
 		pumiceRequestBytes := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ)
-		/*
-			appRequestObj.Key = clientObj.requestKey
-			appRequestObj.Operation = requestResponseLib.KV_READ
-
-			//encode the req
-			var appRequestBytes bytes.Buffer
-			enc := gob.NewEncoder(&appRequestBytes)
-			err := enc.Encode(appRequestObj)
-			if err != nil {
-				log.Error("Encoding error : ", err)
-				return err
-			}
-
-			pumiceReqObj.ReqType = requestResponseLib.APP_REQ
-			pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
-
-			var pumiceRequestBytes bytes.Buffer
-			pumiceEnc := gob.NewEncoder(&pumiceRequestBytes)
-			err = pumiceEnc.Encode(pumiceReqObj)
-			if err != nil {
-				log.Error("Encoding error : ", err)
-				return err
-			}
-		*/
 
 		//Send the request
 		responseBytes, err := clientObj.clientAPIObj.Request(pumiceRequestBytes, "", false)
@@ -678,25 +628,6 @@ func prepareLeaseReq(client, resource string, operation int) requestResponseLib.
 }
 
 func (clientObj *clientHandler) writeToLeaseOutfile(leaseReq leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) {
-	/*
-		resource, err := uuid.FromString(string(appRequestObj.Value))
-		if err != nil {
-			log.Error("Error while writing to outfile : ", err)
-			return err
-		}
-
-		if appRequestObj.Operation != leaseLib.LOOKUP {
-			client, err := uuid.FromString(appRequestObj.Key)
-			if err != nil {
-				log.Error("Error while writing to outfile : ", err)
-			}
-			leaseReq.Client = client
-			leaseReq.Resource = resource
-		} else {
-			leaseReq.Resource = resource
-		}
-		leaseReq.Operation = appRequestObj.Operation
-	*/
 	res := prepareLeaseJsonResponse(leaseReq, responseObj)
 	clientObj.write2Json(res)
 
@@ -947,6 +878,8 @@ func main() {
 
 		// convert the response to the actual format
 		responseObj.Status = "Success"
+
+		// preparing to write to json outfile
 		var client, resource uuid.UUID
 		client, err = uuid.FromString(clientObj.requestKey)
 		resource, err = uuid.FromString(clientObj.requestValue)
@@ -985,6 +918,7 @@ func main() {
 			responseObj.Status = err.Error()
 		}
 
+		// preparing to write to json outfile
 		var resource uuid.UUID
 		resource, err = uuid.FromString(clientObj.requestValue)
 		if err != nil {
@@ -1018,6 +952,7 @@ func main() {
 		// convert the response to the actual format
 		responseObj.Status = "Success"
 
+		// preparing to write to json outfile
 		var client, resource uuid.UUID
 		client, err = uuid.FromString(clientObj.requestKey)
 		resource, err = uuid.FromString(clientObj.requestValue)
