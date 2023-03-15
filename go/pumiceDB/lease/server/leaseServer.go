@@ -22,7 +22,7 @@ type LeaseServerObject struct {
 	listObj      *list.List
 }
 
-type LeaseReqHandler struct {
+type LeaseServerReqHandler struct {
 	LeaseServerObj *LeaseServerObject
 	LeaseReq       leaseLib.LeaseReq
 	LeaseRes       *leaseLib.LeaseRes
@@ -178,7 +178,7 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 
 }
 
-func (handler *LeaseReqHandler) readLease() int {
+func (handler *LeaseServerReqHandler) readLease() int {
 	if handler.LeaseReq.Operation == leaseLib.LOOKUP {
 		leaseObj, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 		if !isPresent {
@@ -237,7 +237,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var replySize int64
 	var copyErr error
 
-	leaseReq := LeaseReqHandler{
+	leaseReq := LeaseServerReqHandler{
 		LeaseServerObj: lso,
 		LeaseReq:       reqStruct,
 		LeaseRes:       &returnObj,
@@ -260,7 +260,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 }
 
-func (handler *LeaseReqHandler) applyLease() int {
+func (handler *LeaseServerReqHandler) applyLease() int {
 	var leaseObj leaseLib.LeaseInfo
 	var leaseObjPtr *leaseLib.LeaseInfo
 
@@ -343,7 +343,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	//keyLength := len(applyLeaseReq.Client.String())
 
 	var returnObj leaseLib.LeaseRes
-	leaseReq := LeaseReqHandler{
+	leaseReq := LeaseServerReqHandler{
 		LeaseServerObj: lso,
 		LeaseReq:       applyLeaseReq,
 		LeaseRes:       &returnObj,

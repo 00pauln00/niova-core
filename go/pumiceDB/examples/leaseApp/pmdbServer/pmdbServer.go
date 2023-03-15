@@ -74,7 +74,7 @@ func main() {
 		PmdbAPI:        lso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
-		LeaseEnabled: true,
+		LeaseEnabled:   true,
 	}
 
 	//TODO: Fill all fields of LeaseServerObject
@@ -121,7 +121,7 @@ func parseArgs() (*leaseServer, error) {
 }
 
 func (lso *leaseServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
-	return 0 
+	return 0
 }
 
 func (lso *leaseServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {

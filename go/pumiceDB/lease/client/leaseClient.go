@@ -55,7 +55,7 @@ type LeaseClient struct {
 	PmdbClientObj *pmdbClient.PmdbClientObj
 }
 
-type LeaseReqHandler struct {
+type LeaseClientReqHandler struct {
 	LeaseClientObj LeaseClient
 	LeaseReq       leaseLib.LeaseReq
 	LeaseRes       leaseLib.LeaseRes
@@ -152,7 +152,7 @@ Return(s) : error
 Description : Handler function for get() operation
               Acquire a lease on a particular resource
 */
-func (handler *LeaseReqHandler) Get() error {
+func (handler *LeaseClientReqHandler) Get() error {
 	var err error
 	var responseBytes []byte
 
@@ -184,7 +184,7 @@ Return(s) : error
 Description : Handler function for lookup() operation
               Lookup lease info of a particular resource
 */
-func (handler *LeaseReqHandler) Lookup() error {
+func (handler *LeaseClientReqHandler) Lookup() error {
 	var err error
 	var responseBytes []byte
 
@@ -211,7 +211,7 @@ Return(s) : error
 Description : Handler function for refresh() operation
               Refresh lease of a owned resource
 */
-func (handler *LeaseReqHandler) Refresh() error {
+func (handler *LeaseClientReqHandler) Refresh() error {
 	var err error
 	var responseBytes []byte
 

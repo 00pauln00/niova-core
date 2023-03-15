@@ -280,7 +280,7 @@ func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
 Description: Perform GET lease operation
 */
 
-func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) []WriteObj {
+func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) []WriteObj {
 
 	var err error
 	var res WriteObj
@@ -317,7 +317,7 @@ func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler 
 Description: Perform LOOKUP lease operation
 */
 
-func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) []WriteObj {
+func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) []WriteObj {
 
 	var err error
 	var res WriteObj
@@ -355,7 +355,7 @@ description: It compare the multiple get leases response.
 	     and dump it json file.
 */
 
-func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) {
+func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) {
 
 	var responseObjArr []WriteObj
 	var res multiLease
@@ -398,7 +398,7 @@ Description: It compare the multiple lookup leases response
 	     and dump to json file.
 */
 
-func compareLoookupResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) {
+func compareLoookupResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) {
 
 	var responseObjArr []WriteObj
 	toJson := make(map[string]interface{})
@@ -426,7 +426,7 @@ func compareLoookupResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler,
 Description: Fill the response of Lookup validation
 */
 
-func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) map[string]interface{} {
+func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) map[string]interface{} {
 
 	var responseObjArr []WriteObj
 	toJson := make(map[string]interface{})
@@ -449,7 +449,7 @@ func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHand
 Description: Fill the response of Get validation
 */
 
-func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseReqHandler) multiLease {
+func fillGetValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) multiLease {
 
 	var responseObjArr []WriteObj
 	uuidMap := make(map[uuid.UUID]uuid.UUID)
@@ -498,7 +498,7 @@ func writeToJson(toJson interface{}, jsonFilePath string) {
 
 func main() {
 	leaseObjHandler := leaseHandler{}
-	leaseReqHandler := leaseClientLib.LeaseReqHandler{}
+	leaseReqHandler := leaseClientLib.LeaseClientReqHandler{}
 
 	// Load cmd params
 	leaseReqHandler.LeaseReq = leaseObjHandler.getCmdParams()
