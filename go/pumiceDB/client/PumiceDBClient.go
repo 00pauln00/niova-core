@@ -128,8 +128,8 @@ WriteEncoded allows client to pass the encoded KV struct for writing
 func (obj *PmdbClientObj) WriteEncoded(reqArgs *PmdbReqArgs) (unsafe.Pointer,
 	error) {
 	//Convert it to unsafe pointer (void * for C function)
-	// TODO pass reqPayload to writeKV and add condition for getPmdbReq
-	encodedData, requestLen := getPmdbReq(reqArgs)
+	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
+	requestLen := int64(len(reqArgs.ReqByteArr))
 	//encodedData := (*C.char)(reqArgs.ReqByteArr)
 	encodedRequest := (*C.char)(encodedData)
 	getResponse_c := (C.int)(reqArgs.GetResponse)
@@ -145,7 +145,6 @@ func (obj *PmdbClientObj) WriteEncodedAndGetResponse(reqArgs *PmdbReqArgs) error
 	var reply_buff unsafe.Pointer
 
 	//Convert to unsafe pointer (void * for C function)
-	//encodedData, requestLen := getPmdbReq(reqArgs)
 	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
 	requestLen := int64(len(reqArgs.ReqByteArr))
 	encodedRequest := (*C.char)(encodedData)

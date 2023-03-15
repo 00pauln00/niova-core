@@ -956,18 +956,7 @@ func main() {
 	case "LookupLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
-		// prepare lease request
-		/*
-			appRequestObj := prepareLeaseReq("", clientObj.requestValue, leaseLib.LOOKUP)
-			var appRequestBytes bytes.Buffer
-			enc := gob.NewEncoder(&appRequestBytes)
-			err = enc.Encode(appRequestObj)
-			if err != nil {
-				log.Info("Encoding error")
-			}
-		*/
-
-		appRequestBytes := leaseClientLib.PrepareLeaseReq("", clientObj.requestValue, leaseLib.GET)
+		appRequestBytes := leaseClientLib.PrepareLeaseReq("", clientObj.requestValue, leaseLib.LOOKUP)
 		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
@@ -1001,24 +990,13 @@ func main() {
 		}
 		leaseReq := leaseLib.LeaseReq{
 			Resource:  resource,
-			Operation: leaseLib.GET,
+			Operation: leaseLib.LOOKUP,
 		}
 
 		clientObj.writeToLeaseOutfile(leaseReq, responseObj)
 
 	case "RefreshLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-
-		// prepare lease request
-		/*
-			appRequestObj := prepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.REFRESH)
-			var appRequestBytes bytes.Buffer
-			enc := gob.NewEncoder(&appRequestBytes)
-			err := enc.Encode(appRequestObj)
-			if err != nil {
-				log.Info("Encoding error")
-			}
-		*/
 
 		appRequestBytes := leaseClientLib.PrepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.REFRESH)
 		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", true)
@@ -1043,7 +1021,7 @@ func main() {
 		leaseReq := leaseLib.LeaseReq{
 			Client:    client,
 			Resource:  resource,
-			Operation: leaseLib.GET,
+			Operation: leaseLib.REFRESH,
 		}
 
 		clientObj.writeToLeaseOutfile(leaseReq, responseObj)

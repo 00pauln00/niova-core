@@ -232,7 +232,6 @@ func (handler *LeaseReqHandler) Refresh() error {
 	return err
 }
 
-//TODO func to prepare request according to PumiceReq common type and return enocded byte array of common pumice req
 func PrepareLeaseReq(client, resource string, operation int) []byte {
 	var pumiceReq PumiceDBCommon.PumiceRequest
 	var leaseReq leaseLib.LeaseReq
