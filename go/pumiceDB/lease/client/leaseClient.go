@@ -95,17 +95,12 @@ Description : Wrapper function for WriteEncoded() function
 
 func (clientObj LeaseClient) write(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
-	var requestBytes bytes.Buffer
 	var replySize int64
 
-	enc := gob.NewEncoder(&requestBytes)
-	err = enc.Encode(requestObj)
-	if err != nil {
-		return err
-	}
+	requestBytes := PreparePumiceReq(requestObj)
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:       rncui,
-		ReqByteArr:  requestBytes.Bytes(),
+		ReqByteArr:  requestBytes,
 		GetResponse: 1,
 		ReplySize:   &replySize,
 		Response:    response,
@@ -233,7 +228,6 @@ func (handler *LeaseClientReqHandler) Refresh() error {
 }
 
 func PrepareLeaseReq(client, resource string, operation int) []byte {
-	var pumiceReq PumiceDBCommon.PumiceRequest
 	var leaseReq leaseLib.LeaseReq
 	var err error
 
@@ -246,6 +240,13 @@ func PrepareLeaseReq(client, resource string, operation int) []byte {
 		return nil
 	}
 
+	return PreparePumiceReq(leaseReq)
+}
+
+func PreparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
+	var err error
+	var pumiceReq PumiceDBCommon.PumiceRequest
+
 	var leaseReqBuf bytes.Buffer
 	leaseEnc := gob.NewEncoder(&leaseReqBuf)
 	err = leaseEnc.Encode(leaseReq)
@@ -254,7 +255,6 @@ func PrepareLeaseReq(client, resource string, operation int) []byte {
 		return nil
 	}
 
-	// set ReqType to 1 for lease
 	pumiceReq.ReqType = 1
 	pumiceReq.ReqPayload = leaseReqBuf.Bytes()
 	pumiceReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
@@ -266,6 +266,5 @@ func PrepareLeaseReq(client, resource string, operation int) []byte {
 		log.Error(err)
 		return nil
 	}
-
 	return pumiceReqBuf.Bytes()
 }
