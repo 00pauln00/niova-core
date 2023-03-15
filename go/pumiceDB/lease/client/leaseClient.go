@@ -55,7 +55,7 @@ type LeaseClient struct {
 
 type LeaseClientReqHandler struct {
 	Rncui          string
-	LeaseClientObj LeaseClient
+	LeaseClientObj *LeaseClient
 	LeaseReq       leaseLib.LeaseReq
 	LeaseRes       leaseLib.LeaseRes
 	Err            error
