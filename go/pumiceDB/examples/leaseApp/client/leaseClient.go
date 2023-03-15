@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sync/atomic"
 
 	leaseClientLib "LeaseLib/leaseClient"
 	leaseLib "common/leaseLib"
@@ -136,6 +137,12 @@ func prepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib
 		Response: resp,
 	}
 	return res
+}
+
+func getRNCUI(clientObj *pmdbClient.PmdbClientObj) string {
+	idq := atomic.AddUint64(&clientObj.WriteSeqNo, uint64(1))
+	rncui := fmt.Sprintf("%s:0:0:0:%d", clientObj.AppUUID, idq)
+	return rncui
 }
 
 /*
@@ -518,6 +525,7 @@ func main() {
 	}
 
 	leaseReqHandler.LeaseClientObj = leaseObjHandler.clientObj
+	leaseReqHandler.Rncui = getRNCUI(leaseReqHandler.LeaseClientObj.PmdbClientObj)
 
 	switch leaseReqHandler.LeaseReq.Operation {
 	case leaseLib.GET:
