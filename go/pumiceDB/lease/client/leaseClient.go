@@ -250,7 +250,6 @@ func PreparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 
 	pumiceReq.ReqType = 1
 	pumiceReq.ReqPayload = leaseReqBuf.Bytes()
-	pumiceReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 
 	var pumiceReqBuf bytes.Buffer
 	pumiceEnc := gob.NewEncoder(&pumiceReqBuf)

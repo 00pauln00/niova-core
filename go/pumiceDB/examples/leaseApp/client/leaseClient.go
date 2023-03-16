@@ -42,7 +42,8 @@ var (
 
 type leaseHandler struct {
 	clientObj    leaseClientLib.LeaseClient
-	request		 leaseLib.LeaseReq
+	cliRequest   leaseClientLib.LeaseClientReqHandler
+	cliOperation int
 	jsonFilePath string
 	logFilePath  string
 	numOfLeases  int
@@ -64,25 +65,9 @@ func parseOperation(str string) (int, bool) {
 	return op, ok
 }
 
-// will be used to write to json file
-type JsonLeaseReq struct {
-	Client    uuid.UUID
-	Resource  uuid.UUID
-	Operation string
-}
-
-type JsonLeaseResp struct {
-	Client     uuid.UUID
-	Resource   uuid.UUID
-	Status     string
-	LeaseState string
-	TTL        int
-	TimeStamp  leaseLib.LeaderTS
-}
-
-type WriteObj struct {
-	Request  JsonLeaseReq
-	Response JsonLeaseResp
+type jsonLeaseFormat struct {
+	Request  leaseLib.LeaseReq
+	Response leaseLib.LeaseRes
 }
 
 func getStringLeaseState(leaseState int) string {
@@ -117,27 +102,6 @@ func getStringOperation(op int) string {
 		return "REFRESH"
 	}
 	return "UNKNOWN"
-}
-
-func prepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) WriteObj {
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-	resp := JsonLeaseResp{
-		Client:     responseObj.Client,
-		Resource:   responseObj.Resource,
-		Status:     responseObj.Status,
-		LeaseState: getStringLeaseState(responseObj.LeaseState),
-		TTL:        responseObj.TTL,
-		TimeStamp:  responseObj.TimeStamp,
-	}
-	res := WriteObj{
-		Request:  req,
-		Response: resp,
-	}
-	return res
 }
 
 func getRNCUI(clientObj *pmdbClient.PmdbClientObj) string {
@@ -180,19 +144,19 @@ func (handler *leaseHandler) getCmdParams() {
 		usage()
 		os.Exit(-1)
 	}
-	handler.request.Operation = int(tempOperation)
+	handler.cliOperation = int(tempOperation)
 	handler.clientObj.RaftUUID, err = uuid.FromString(strRaftUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
-	handler.request.Client, err = uuid.FromString(strClientUUID)
+	handler.cliRequest.LeaseReq.Client, err = uuid.FromString(strClientUUID)
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
 	if strResourceUUID != "" {
-		handler.request.Resource, err = uuid.FromString(strResourceUUID)
+		handler.cliRequest.LeaseReq.Resource, err = uuid.FromString(strResourceUUID)
 		if err != nil {
 			usage()
 			os.Exit(-1)
@@ -213,6 +177,7 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 
 	//Get clientObj
 	log.Info("Raft UUID - ", handler.clientObj.RaftUUID.String(), " Client UUID - ", client)
+
 	handler.clientObj.PmdbClientObj = pmdbClient.PmdbClientNew(handler.clientObj.RaftUUID.String(), client)
 	if handler.clientObj.PmdbClientObj == nil {
 		return errors.New("PMDB Client Obj could not be initialized")
@@ -230,7 +195,9 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 	}
 	log.Info("Leader uuid : ", leaderUuid.String())
 
-	//Store encui in AppUUID
+	handler.cliRequest.LeaseClientObj = &handler.clientObj
+
+	//Store rncui in AppUUID
 	handler.clientObj.PmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
 }
@@ -239,42 +206,58 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 Description : Generate N number of client and resource uuids
 */
 
-func (handler *leaseHandler) generateUuids() {
-	for i := 0; i < handler.numOfLeases; i++ {
-		resourceUUID := uuid.NewV4()
-		kvMap[resourceUUID] = handler.request.Client
+func (handler *leaseHandler) GetUuids() {
+	//If user passed UUID through cmdline
+	if handler.cliRequest.LeaseReq.Resource != uuid.Nil {
+		handler.numOfLeases = 1
+		kvMap[handler.cliRequest.LeaseReq.Resource] = handler.cliRequest.LeaseReq.Client
+	} else {
+		if handler.cliRequest.LeaseReq.Operation == leaseLib.GET ||
+			handler.cliOperation == leaseLib.GET_VALIDATE {
+			for i := 0; i < handler.numOfLeases; i++ {
+				kvMap[uuid.NewV4()] = uuid.NewV4()
+			}
+		} else {
+			//Lookup and Lookup and validate
+			kvMap = getUuidFromFile(handler.jsonFilePath)
+		}
 	}
 }
 
-func (handler *leaseHandler) getLeases() error {
-	//If user passed UUID through cmdline
-	if handler.request.Resource != uuid.Nil {
-		handler.numOfLeases = 1
-		kvMap[handler.request.Client] = handler.request.Resource
-	} else {
-		handler.generateUuids()
-	}
+func (leaseHandler *leaseHandler) getLeases() error {
+
+	leaseHandler.GetUuids()
+	var err error
+	var response []leaseClientLib.LeaseClientReqHandler
 
 	for key, value := range kvMap {
-		leaseHandler.request.Resource = key
-		leaseHandler.request.Client = value
-		//leaseHandler.request.Rncui = 
-		err = leaseHandler.Get()
+		var requestCli leaseClientLib.LeaseClientReqHandler
+		leaseHandler.cliRequest.LeaseReq.Resource = key
+		leaseHandler.cliRequest.LeaseReq.Client = value
+		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
+		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+		err = leaseHandler.cliRequest.Get()
 		if err != nil {
 			log.Error(err)
-			responseObj.Status = err.Error()
-		} else {
-			responseObj.Status = "Success"
 		}
-		//Prepare json respones
+
+		requestCli = leaseHandler.cliRequest
+		response = append(response, requestCli)
 	}
+
+	// Write the response to the json file.
+	leaseHandler.writeToJson(response)
+
+	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE {
+	}
+	return err
 }
 
 /*
 Description : Read JSON outfile and parse it.
 */
 
-func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
+func getUuidFromFile(filename string) map[uuid.UUID]uuid.UUID {
 
 	// Open our jsonFile
 	jsonFile, err := os.Open(filename + ".json")
@@ -289,235 +272,57 @@ func readJsonFile(filename string) map[uuid.UUID]uuid.UUID {
 	// read our opened xmlFile as a byte array.
 	byteValue, _ := ioutil.ReadAll(jsonFile)
 
-	var res multiLease
-
+	var res []leaseClientLib.LeaseClientReqHandler
 	json.Unmarshal(byteValue, &res)
 
-	for key, value := range res.Request {
-		rdMap[key] = value
-	}
-
+	//TODO still needs to store the unmarshal data to MAP
+	var rdMap map[uuid.UUID]uuid.UUID
 	return rdMap
-}
-
-/*
-Description: Perform GET lease operation
-*/
-
-func performGet(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) []WriteObj {
-
-	var err error
-	var res WriteObj
-	var responseObjArr []WriteObj
-
-	//If user not passed UUID through cmdline
-	if requestObj.Resource == uuid.Nil {
-		log.Info("client UUID and resource UUID is not passed, so generate UUIDs")
-		kvMap = generateUuids(int64(handler.numOfLeases))
-	} else {
-		handler.numOfLeases = 1
-		log.Info("Pass uuid: ", requestObj.Client, requestObj.Resource)
-		kvMap[requestObj.Client] = requestObj.Resource
-	}
-
-	for key, value := range kvMap {
-		reqHandler.LeaseReq.Client = key
-		reqHandler.LeaseReq.Resource = value
-
-		fmt.Println("reqHandler.LeaseReq.Client: ", reqHandler.LeaseReq.Client, "reqHandler.LeaseReq.Resource: ", reqHandler.LeaseReq.Resource)
-
-		// Perform get lease
-		err = reqHandler.Get()
-		if err != nil {
-			log.Error(err)
-			reqHandler.LeaseRes.Status = err.Error()
-		} else {
-			reqHandler.LeaseRes.Status = "Success"
-		}
-		res = prepareLeaseJsonResponse(reqHandler.LeaseReq, reqHandler.LeaseRes)
-		responseObjArr = append(responseObjArr, res)
-	}
-
-	return responseObjArr
 }
 
 /*
 Description: Perform LOOKUP lease operation
 */
 
-func performLookup(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) []WriteObj {
+func (leaseHandler *leaseHandler) lookupLeases() error {
 
+	leaseHandler.GetUuids()
 	var err error
-	var res WriteObj
-	var responseObjArr []WriteObj
+	var response []leaseClientLib.LeaseClientReqHandler
 
-	//If user not passed UUID through cmdline
-	if requestObj.Resource == uuid.Nil {
-		log.Info("Read get lease json outfile to extract client and resource uuids to perform Lookup lease")
-		rdMap = readJsonFile(handler.readJsonFile)
-	} else {
-		handler.numOfLeases = 1
-		log.Info("Pass uuid: ", requestObj.Client, requestObj.Resource)
-		rdMap[requestObj.Client] = requestObj.Resource
-	}
-
-	for key, value := range rdMap {
-		reqHandler.LeaseReq.Client = key
-		reqHandler.LeaseReq.Resource = value
-		// Perform lookup lease
-		err = reqHandler.Lookup()
+	for key, value := range kvMap {
+		leaseHandler.cliRequest.LeaseReq.Resource = key
+		leaseHandler.cliRequest.LeaseReq.Client = value
+		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
+		err = leaseHandler.cliRequest.Lookup()
 		if err != nil {
 			log.Error(err)
-			reqHandler.LeaseRes.Status = err.Error()
-		} else {
-			reqHandler.LeaseRes.Status = "Success"
 		}
-		res = prepareLeaseJsonResponse(reqHandler.LeaseReq, reqHandler.LeaseRes)
-		responseObjArr = append(responseObjArr, res)
+
+		response = append(response, leaseHandler.cliRequest)
 	}
 
-	return responseObjArr
+	// Write the response to the json file.
+	leaseHandler.writeToJson(response)
+	return err
 }
 
 /*
-description: It compare the multiple get leases response.
-	     and dump it json file.
+Description: Perform REFRESH lease operation
 */
 
-func compareGetResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) {
+func (leaseHandler *leaseHandler) refreshLease() error {
 
-	var responseObjArr []WriteObj
-	var res multiLease
-	uuidMap := make(map[uuid.UUID]uuid.UUID)
-	mapString := make(map[string]interface{})
-	responseObjArr = getResponse(requestObj, handler, reqHandler)
-
-	//Fill the map with clients and resources
-	for i := range responseObjArr {
-		uuidMap[responseObjArr[i].Request.Client] = responseObjArr[i].Request.Resource
+	leaseHandler.cliRequest.LeaseReq.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+	leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.REFRESH
+	err := leaseHandler.cliRequest.Refresh()
+	if err != nil {
+		log.Error(err)
 	}
 
-	if handler.numOfLeases == 1 {
-		res = fillGetValidateResponse(responseObjArr)
-	}
-
-	if handler.numOfLeases > 1 {
-		//Check if prev element have same LeaseState and LeaderTeerm as current response.
-		for i := 0; i < len(responseObjArr)-1; i++ {
-			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
-				mapString["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
-			}
-
-			if responseObjArr[i].Response.LeaseState == responseObjArr[i+1].Response.LeaseState {
-				mapString["LeaseState"] = responseObjArr[i+1].Response.LeaseState
-			} else {
-				fmt.Println("LeaseState not matched")
-			}
-		}
-	}
-	//Fill the structure
-	res = multiLease{
-		Request:  uuidMap,
-		Response: mapString,
-	}
-
-	writeToJson(res, handler.jsonFilePath)
-}
-
-/*
-Description: It compare the multiple lookup leases response
-	     and dump to json file.
-*/
-
-func compareLoookupResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) {
-
-	var responseObjArr []WriteObj
-	toJson := make(map[string]interface{})
-	responseObjArr = performLookup(requestObj, handler, reqHandler)
-
-	if handler.numOfLeases == 1 {
-		toJson = fillLookupValidateResponse(requestObj, handler, reqHandler)
-	}
-
-	if handler.numOfLeases > 1 {
-		for i := 0; i < len(responseObjArr)-1; i++ {
-			if responseObjArr[i].Response.TimeStamp.LeaderTerm == responseObjArr[i+1].Response.TimeStamp.LeaderTerm {
-				toJson["LeaderTerm"] = responseObjArr[i+1].Response.TimeStamp.LeaderTerm
-			}
-			if responseObjArr[i].Response.LeaseState == responseObjArr[i+1].Response.LeaseState {
-				toJson["LeaseState"] = responseObjArr[i+1].Response.LeaseState
-			} else {
-				fmt.Println("LeaseState not matched")
-			}
-		}
-	}
-
-	writeToJson(toJson, handler.jsonFilePath)
-}
-
-/*
-Description: Fill the response of Lookup validation
-*/
-
-func fillLookupValidateResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) map[string]interface{} {
-
-	var responseObjArr []WriteObj
-	toJson := make(map[string]interface{})
-	responseObjArr = performLookup(requestObj, handler, reqHandler)
-
-	if len(responseObjArr) == 1 {
-		toJson["Client"] = responseObjArr[0].Response.Client
-		toJson["Resource"] = responseObjArr[0].Response.Resource
-		toJson["Status"] = responseObjArr[0].Response.Status
-		toJson["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
-		toJson["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
-		toJson["LeaseState"] = responseObjArr[0].Response.LeaseState
-		toJson["TTL"] = responseObjArr[0].Response.TTL
-	}
-
-	return toJson
-}
-
-/*
-Description: Fill the response of Get validation
-*/
-
-func fillGetValidateResponse(responseObjArr []WriteObj) multiLease {
-
-	uuidMap := make(map[uuid.UUID]uuid.UUID)
-	mapString := make(map[string]interface{})
-
-	//Fill the map with clients and resources
-	for i := range responseObjArr {
-		uuidMap[responseObjArr[i].Request.Client] = responseObjArr[i].Request.Resource
-	}
-
-	if len(responseObjArr) == 1 {
-		mapString["Client"] = responseObjArr[0].Response.Client
-		mapString["Resource"] = responseObjArr[0].Response.Resource
-		mapString["Status"] = responseObjArr[0].Response.Status
-		mapString["LeaderTerm"] = responseObjArr[0].Response.TimeStamp.LeaderTerm
-		mapString["LeaderTime"] = responseObjArr[0].Response.TimeStamp.LeaderTime
-		mapString["LeaseState"] = responseObjArr[0].Response.LeaseState
-		mapString["TTL"] = responseObjArr[0].Response.TTL
-	}
-
-	//Fill the structure
-	getValidateRes := multiLease{
-		Request:  uuidMap,
-		Response: mapString,
-	}
-
-	return getValidateRes
-}
-
-func getResponse(requestObj leaseLib.LeaseReq, handler *leaseHandler, reqHandler *leaseClientLib.LeaseClientReqHandler) []WriteObj {
-
-	var responseObjArr []WriteObj
-	//Get the GET Lease Response
-	responseObjArr = performGet(requestObj, handler, reqHandler)
-
-	return responseObjArr
+	// Write the response to the json file.
+	leaseHandler.writeToJson(leaseHandler.cliRequest)
+	return err
 }
 
 /*
@@ -528,86 +333,56 @@ Return(s) : error
 
 Description : Write response/error to json file
 */
-func writeToJson(toJson interface{}, jsonFilePath string) {
+func (leaseHandler *leaseHandler) writeToJson(toJson interface{}) {
 	file, err := json.MarshalIndent(toJson, "", " ")
-	err = ioutil.WriteFile(jsonFilePath+".json", file, 0644)
+	err = ioutil.WriteFile(leaseHandler.jsonFilePath+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
 	}
 }
 
 func main() {
-	leaseObjHandler := leaseHandler{}
-	leaseReqHandler := leaseClientLib.LeaseClientReqHandler{}
+	leaseHandler := leaseHandler{}
 
 	// Load cmd params
-	leaseObjHandler.getCmdParams()
+	leaseHandler.getCmdParams()
 
 	/*
 		Initialize Logging
 	*/
-	err := PumiceDBCommon.InitLogger(leaseObjHandler.logFilePath)
+	err := PumiceDBCommon.InitLogger(leaseHandler.logFilePath)
 	if err != nil {
 		log.Error("Error while initializing the logger ", err)
 	}
 
-	err = leaseObjHandler.startPMDBClient(leaseObjHandler.request.Client.String())
+	// Start pmdbClient
+	err = leaseHandler.startPMDBClient(leaseHandler.cliRequest.LeaseReq.Client.String())
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
 	}
 
-	leaseReqHandler.LeaseClientObj = &leaseObjHandler.clientObj
-	leaseReqHandler.Rncui = getRNCUI(leaseReqHandler.LeaseClientObj.PmdbClientObj)
 
-	switch leaseReqHandler.LeaseReq.Operation {
+	 leaseHandler.cliRequest.LeaseClientObj = &leaseHandler.clientObj
+	switch leaseHandler.cliOperation {
 	case leaseLib.GET:
-		// get lease
-		//TODO Better error handling
-		err = leaseReqHandler.Get()
-		if err != nil {
-			log.Error(err)
-			leaseReqHandler.LeaseRes.Status = err.Error()
-		} else {
-			leaseReqHandler.LeaseRes.Status = "Success"
-		}
-		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
-		writeToJson(res, leaseObjHandler.jsonFilePath)
-
+		fallthrough
+	case leaseLib.GET_VALIDATE:
+		//get lease
+		err = leaseHandler.getLeases()
 	case leaseLib.LOOKUP:
-		// lookup lease
-		//TODO Better error handling
-		err = leaseReqHandler.Lookup()
-		if err != nil {
-			log.Error(err)
-			leaseReqHandler.LeaseRes.Status = err.Error()
-		} else {
-			leaseReqHandler.LeaseRes.Status = "Success"
-		}
-		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
-		writeToJson(res, leaseObjHandler.jsonFilePath)
+		fallthrough
+	case leaseLib.LOOKUP_VALIDATE:
+		//lookup lease
+		err = leaseHandler.lookupLeases()
 
 	case leaseLib.REFRESH:
 		// refresh lease
-		//TODO Better error handling
-		err = leaseReqHandler.Refresh()
-		if err != nil {
-			log.Error(err)
-			leaseReqHandler.LeaseRes.Status = err.Error()
-		} else {
-			leaseReqHandler.LeaseRes.Status = "Success"
-		}
-		res := prepareLeaseJsonResponse(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
-		writeToJson(res, leaseObjHandler.jsonFilePath)
-
-	case leaseLib.GET_VALIDATE:
-		//get and validate lease
-		compareGetResponse(leaseReqHandler.LeaseReq, &leaseObjHandler, &leaseReqHandler)
-
-	case leaseLib.LOOKUP_VALIDATE:
-		// lookup and validate lease
-		compareLoookupResponse(leaseReqHandler.LeaseReq, &leaseObjHandler, &leaseReqHandler)
+		err = leaseHandler.refreshLease()
 	}
 
+	if err != nil {
+		log.Info("Operation failed")
+	}
 	log.Info("-----END OF EXECUTION-----")
 }
