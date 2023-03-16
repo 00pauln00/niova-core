@@ -95,6 +95,18 @@ func removeDuplicateStr(strSlice []string) []string {
 	return list
 }
 
+func (handler *proxyHandler) getPmdbRequest(request []byte) (PumiceDBCommon.PumiceRequest, error) {
+	var pmdbReq PumiceDBCommon.PumiceRequest
+
+	dec := gob.NewDecoder(bytes.NewBuffer(request))
+	err := dec.Decode(&pmdbReq)
+	if err != nil {
+		log.Error(err)
+		return pmdbReq, err
+	}
+	return pmdbReq, nil
+}
+
 //Function to get command line arguments
 func (handler *proxyHandler) getCmdLineArgs() {
 	var tempRaftUUID, tempClientUUID string
@@ -234,13 +246,19 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 	rncui := fmt.Sprintf("%s:0:0:0:%d", handler.pmdbClientObj.AppUUID, idq)
 	var replySize int64
 
-	reqArgs := &pmdbClient.PmdbReqArgs {
-		Rncui: rncui,
-		ReqByteArr: request,
-		ReplySize: &replySize,
-		GetResponse: 0,
+	requestObj, err := handler.getPmdbRequest(request)
+	if err != nil {
+		return err
 	}
-	_, err := handler.pmdbClientObj.WriteEncoded(reqArgs)
+
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:       rncui,
+		ReqByteArr:  request,
+		ReplySize:   &replySize,
+		GetResponse: 0,
+		ReqType:     requestObj.ReqType,
+	}
+	_, err = handler.pmdbClientObj.WriteEncoded(reqArgs)
 	if err != nil {
 		responseObj := requestResponseLib.KVResponse{
 			Status: 1,
@@ -255,10 +273,16 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 
 //Read call definition for HTTP server
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	reqArgs := &pmdbClient.PmdbReqArgs {
-		Rncui: "",
-		ReqByteArr: request,
-		Response: response,
+	requestObj, err := handler.getPmdbRequest(request)
+	if err != nil {
+		return err
+	}
+
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:      "",
+		ReqByteArr: requestObj.ReqPayload,
+		Response:   response,
+		ReqType:    requestObj.ReqType,
 	}
 	return handler.pmdbClientObj.ReadEncoded(reqArgs)
 }
