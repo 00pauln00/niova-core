@@ -12,22 +12,6 @@ const (
 	KV_RANGE_READ     = 2
 )
 
-type AppRequest struct {
-	Rncui          string
-	RequestType    int
-	RequestPayload []byte
-	Operation      int
-	Key            string
-	Prefix         string
-	Value          []byte
-	CheckSum       [16]byte
-	SeqNum         uint64
-	Consistent     bool
-	ReqType        int
-	UUID           [16]byte
-	Cmd            string
-}
-
 type KVRequest struct {
 	Operation  int
 	Key        string
