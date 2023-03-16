@@ -492,9 +492,8 @@ Return(s) : error
 Description : A wrapper for PMDB ReadCallBack
 */
 func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	var baserequest requestResponseLib.AppRequest
+	var baserequest requestResponseLib.KVRequest
 	var baseRequestBytes bytes.Buffer
-	baserequest.ReqType = requestResponseLib.APP_REQ
 	baserequest.Operation = requestResponseLib.KV_READ
 	baserequest.Key = key
 

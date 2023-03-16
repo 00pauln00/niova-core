@@ -616,17 +616,6 @@ func (clientObj *clientHandler) rangeRead() {
 	clientObj.write2Json(operationStat)
 }
 
-func prepareLeaseReq(client, resource string, operation int) requestResponseLib.AppRequest {
-	var appRequestObj requestResponseLib.AppRequest
-	appRequestObj.Key = client
-	appRequestObj.Value = []byte(resource)
-	appRequestObj.Operation = operation
-	appRequestObj.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-	appRequestObj.ReqType = requestResponseLib.LEASE_REQ
-
-	return appRequestObj
-}
-
 func (clientObj *clientHandler) writeToLeaseOutfile(leaseReq leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) {
 	res := prepareLeaseJsonResponse(leaseReq, responseObj)
 	clientObj.write2Json(res)
@@ -833,12 +822,11 @@ func main() {
 		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
 		//Request obj
-		var appRequestObj requestResponseLib.AppRequest
+		var appRequestObj requestResponseLib.LookoutRequest
 
 		//Parse UUID
 		appRequestObj.UUID, _ = uuid.FromString(clientObj.requestKey)
 		appRequestObj.Cmd = clientObj.requestValue
-		appRequestObj.ReqType = requestResponseLib.LOOKOUT_REQ
 
 		var appRequestBytes bytes.Buffer
 		enc := gob.NewEncoder(&appRequestBytes)
@@ -847,7 +835,19 @@ func main() {
 			log.Error("Encoding error : ", err)
 		}
 
-		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes.Bytes(), "/v1/", false)
+		var pumiceReqObj PumiceDBCommon.PumiceRequest
+		pumiceReqObj.ReqType = requestResponseLib.APP_REQ
+		pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
+
+		var pumiceRequestBytes bytes.Buffer
+		pumiceEnc := gob.NewEncoder(&pumiceRequestBytes)
+		err = pumiceEnc.Encode(pumiceReqObj)
+		if err != nil {
+			log.Error("Encoding error : ", err)
+			return
+		}
+
+		responseBytes, err := clientObj.clientAPIObj.Request(pumiceRequestBytes.Bytes(), "/v1/", false)
 
 		if err != nil {
 			log.Error("Error while sending request to proxy : ", err)
