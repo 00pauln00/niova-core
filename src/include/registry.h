@@ -408,6 +408,8 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
         return 'I';
     case LREG_NODE_REMOVING:
         return 'r';
+    case LREG_NODE_REMOVED:
+        return 'R';
     default:
         break;
     }
@@ -418,7 +420,7 @@ lreg_node_to_install_state(const struct lreg_node *lrn)
 do {                                                               \
     struct lreg_value lrv = {0};                                   \
     SIMPLE_LOG_MSG(log_level,                                      \
-                   "lrn@%p %s %c%c%c%c%c%c%c%c%c%c%c%c%c arg=%p "fmt,   \
+                   "lrn@%p %s %c%c %c%c%c%c%c%c%c%c%c%c%c arg=%p "fmt,   \
                    (lrn),                                          \
                    (const char *)({                                \
                            (lrn)->lrn_cb(LREG_NODE_CB_OP_GET_NAME, \
@@ -459,6 +461,12 @@ static inline bool
 lreg_node_is_installed(const struct lreg_node *lrn)
 {
     return lrn->lrn_install_state == LREG_NODE_INSTALLED ? true : false;
+}
+
+static inline bool
+lreg_node_is_removed(const struct lreg_node *lrn)
+{
+    return (lrn->lrn_install_state == LREG_NODE_REMOVED);
 }
 
 static inline bool
