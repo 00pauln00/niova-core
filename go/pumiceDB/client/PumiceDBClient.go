@@ -25,7 +25,6 @@ type PmdbReqArgs struct {
 	ReqED       interface{}
 	ResponseED  interface{}
 	ReqByteArr  []byte
-	ReqType     int
 	Response    *[]byte
 	ReplySize   *int64
 	GetResponse int
@@ -82,7 +81,7 @@ func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, int64) {
 	// convert PumiceDBCommon.PumiceRequest
 	var pmdbRequest PumiceDBCommon.PumiceRequest
 
-	pmdbRequest.ReqType = reqArgs.ReqType
+	pmdbRequest.ReqType = PumiceDBCommon.APP_REQ
 	pmdbRequest.ReqPayload = reqArgs.ReqByteArr
 
 	var reqLen int64
