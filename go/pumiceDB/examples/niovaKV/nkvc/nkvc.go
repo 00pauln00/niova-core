@@ -87,20 +87,10 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 
 	var status int
 	var responseValue string
-	var requestByte bytes.Buffer
 	var pumiceReqByte bytes.Buffer
 	var validate bool
-	var pumiceReq PumiceDBCommon.PumiceRequest
-	enc := gob.NewEncoder(&requestByte)
-	enc.Encode(req)
 
-	// store in pumiceReq
-	// set req type as 1 for app_req
-	pumiceReq.ReqType = 0
-	pumiceReq.ReqPayload = requestByte.Bytes()
-
-	pumiceEnc := gob.NewEncoder(&pumiceReqByte)
-	pumiceEnc.Encode(pumiceReq)
+	PumiceDBCommon.PrepareAppPumiceRequest(req, &pumiceReqByte)
 
 	responseBytes, err := handler.clientAPIObj.Request(pumiceReqByte.Bytes(), "", write)
 

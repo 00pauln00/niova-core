@@ -128,3 +128,29 @@ func Decode(input unsafe.Pointer, output interface{},
 
 	return nil
 }
+
+//Prepare PumiceRequest for application reqest type APP_REQ
+func PrepareAppPumiceRequest(appRequest interface{}, rncui string, requestBytes *bytes.Buffer) error {
+	var appRequestBytes bytes.Buffer
+	var pumiceReqObj PumiceRequest
+
+	//Encode the application request to prepare payload
+	enc := gob.NewEncoder(&appRequestBytes)
+	err := enc.Encode(appRequest)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+		return err
+	}
+
+	pumiceReqObj.ReqType = APP_REQ
+	pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
+	pumiceReqObj.Rncui = rncui
+
+	//Encode PumiceRequest
+	pumiceEnc := gob.NewEncoder(requestBytes)
+	err = pumiceEnc.Encode(pumiceReqObj)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+	}
+	return err
+}
