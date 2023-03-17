@@ -354,34 +354,16 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 }
 
 func prepareKVRequest(key string, value []byte, rncui string, operation int) []byte {
-	var pumiceReqObj PumiceDBCommon.PumiceRequest
 	var kvReqObj requestResponseLib.KVRequest
-
 	kvReqObj.Operation = operation
 	kvReqObj.Key = key
 	kvReqObj.Value = value
-
-	var kvRequestBytes bytes.Buffer
-	enc := gob.NewEncoder(&kvRequestBytes)
-	err := enc.Encode(kvReqObj)
-	if err != nil {
-		log.Error("Encoding error : ", err)
-		return nil
-	}
-
-	pumiceReqObj.ReqType = requestResponseLib.APP_REQ
-	pumiceReqObj.ReqPayload = kvRequestBytes.Bytes()
-	pumiceReqObj.Rncui = rncui
-
 	var pumiceRequestBytes bytes.Buffer
-	pumiceEnc := gob.NewEncoder(&pumiceRequestBytes)
-	err = pumiceEnc.Encode(pumiceReqObj)
+ err := PumiceDBCommon.PrepareAppPumiceRequest(kvReqObj, rncui, pumiceRequestBytes)
 	if err != nil {
-		log.Error("Encoding error : ", err)
-		return nil
-	}
-
-	return pumiceRequestBytes.Bytes()
+			log.Error("Pumice request creation error : ",err)
+ }
+ return pumiceRequestBytes.Bytes()
 
 }
 
@@ -537,24 +519,12 @@ func (clientObj *clientHandler) rangeRead() {
 		appRequestObj.Consistent = !clientObj.relaxedConsistency
 		appRequestObj.SeqNum = seqNum
 
-		var appRequestBytes bytes.Buffer
-		enc := gob.NewEncoder(&appRequestBytes)
-		err = enc.Encode(appRequestObj)
-		if err != nil {
-			log.Error("Encoding error : ", err)
-			break
-		}
-
-		pumiceReqObj.ReqType = requestResponseLib.APP_REQ
-		pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
-
 		var pumiceRequestBytes bytes.Buffer
-		pumiceEnc := gob.NewEncoder(&pumiceRequestBytes)
-		err = pumiceEnc.Encode(pumiceReqObj)
-		if err != nil {
-			log.Error("Encoding error : ", err)
-			break
-		}
+  err := PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, rncui, pumiceRequestBytes)
+	 if err != nil {
+			 log.Error("Pumice request creation error : ",err)
+    break
+  }
 
 		var responseBytes []byte
 
@@ -835,6 +805,9 @@ func main() {
 			log.Error("Encoding error : ", err)
 		}
 
+
+  //TODO: Why PumiceRequest wrapper for lookout request; 
+  //There is no interaction of pumice layer in lookout request
 		var pumiceReqObj PumiceDBCommon.PumiceRequest
 		pumiceReqObj.ReqType = requestResponseLib.APP_REQ
 		pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
