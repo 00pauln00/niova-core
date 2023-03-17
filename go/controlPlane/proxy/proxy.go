@@ -523,18 +523,11 @@ Return(s) : error
 Description : Call back for PMDB read requests to HTTP server.
 */
 func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	requestObj, err := handler.getPmdbRequest(request)
-	if err != nil {
-		return err
-	}
-
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      "",
-		ReqByteArr: requestObj.ReqPayload,
+		ReqByteArr: request,
 		Response:   response,
-		ReqType:    requestObj.ReqType,
 	}
-
 	res := handler.pmdbClientObj.ReadEncoded(reqArgs)
 	return res
 }
