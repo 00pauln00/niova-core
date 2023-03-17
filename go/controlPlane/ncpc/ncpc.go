@@ -359,7 +359,7 @@ func prepareKVRequest(key string, value []byte, rncui string, operation int) []b
 	kvReqObj.Key = key
 	kvReqObj.Value = value
 	var pumiceRequestBytes bytes.Buffer
- err := PumiceDBCommon.PrepareAppPumiceRequest(kvReqObj, rncui, pumiceRequestBytes)
+ err := PumiceDBCommon.PrepareAppPumiceRequest(kvReqObj, rncui, &pumiceRequestBytes)
 	if err != nil {
 			log.Error("Pumice request creation error : ",err)
  }
@@ -497,7 +497,6 @@ func (clientObj *clientHandler) rangeRead() {
 	var Prefix, Key string
 	var Operation int
 	var err error
-	var pumiceReqObj PumiceDBCommon.PumiceRequest
 	var appRequestObj requestResponseLib.KVRequest
 	var seqNum uint64
 
@@ -520,7 +519,7 @@ func (clientObj *clientHandler) rangeRead() {
 		appRequestObj.SeqNum = seqNum
 
 		var pumiceRequestBytes bytes.Buffer
-  err := PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, rncui, pumiceRequestBytes)
+  err := PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, "", &pumiceRequestBytes)
 	 if err != nil {
 			 log.Error("Pumice request creation error : ",err)
     break
@@ -809,7 +808,7 @@ func main() {
   //TODO: Why PumiceRequest wrapper for lookout request; 
   //There is no interaction of pumice layer in lookout request
 		var pumiceReqObj PumiceDBCommon.PumiceRequest
-		pumiceReqObj.ReqType = requestResponseLib.APP_REQ
+		pumiceReqObj.ReqType = PumiceDBCommon.APP_REQ
 		pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
 
 		var pumiceRequestBytes bytes.Buffer

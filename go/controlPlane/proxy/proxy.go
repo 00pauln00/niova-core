@@ -444,7 +444,7 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 	var rncui string
 	rncui = requestObj.Rncui
 
-	if requestObj.ReqType == requestResponseLib.LEASE_REQ {
+	if requestObj.ReqType == PumiceDBCommon.LEASE_REQ {
 		// prepare args to send to server
 		reqArgs := &pmdbClient.PmdbReqArgs{
 			Rncui:       rncui,
@@ -452,7 +452,6 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 			GetResponse: 1,
 			ReplySize:   &replySize,
 			Response:    response,
-			ReqType:     requestObj.ReqType,
 		}
 
 		err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
@@ -462,7 +461,6 @@ func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) err
 			ReqByteArr:  request,
 			GetResponse: 0,
 			ReplySize:   &replySize,
-			ReqType:     requestObj.ReqType,
 		}
 
 		_, err = handler.pmdbClientObj.WriteEncoded(reqArgs)
