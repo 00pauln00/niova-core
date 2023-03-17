@@ -113,7 +113,6 @@ Return(s) : error
 Description : Wrapper function for ReadEncoded() function
 */
 func (clientObj LeaseClient) Read(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
-	var err error
 
 	requestBytes := PreparePumiceReq(requestObj)
 	reqArgs := &pmdbClient.PmdbReqArgs{
