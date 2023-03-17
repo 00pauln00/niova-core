@@ -129,7 +129,6 @@ func (obj *PmdbClientObj) WriteEncoded(reqArgs *PmdbReqArgs) (unsafe.Pointer,
 	//Convert it to unsafe pointer (void * for C function)
 	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
 	requestLen := int64(len(reqArgs.ReqByteArr))
-	//encodedData := (*C.char)(reqArgs.ReqByteArr)
 	encodedRequest := (*C.char)(encodedData)
 	getResponse_c := (C.int)(reqArgs.GetResponse)
 	return obj.writeKV(reqArgs.Rncui, encodedRequest, requestLen,
@@ -219,15 +218,16 @@ func (obj *PmdbClientObj) ReadEncoded(reqArgs *PmdbReqArgs) error {
 	var rd_err error
 	var reply_buff unsafe.Pointer
 
-	//Typecast the encoded key to char*
-	encodedData, requestLen := getPmdbReq(reqArgs)
-	encoded_key := (*C.char)(encodedData)
+	//Convert it to unsafe pointer (void * for C function)
+	encodedData := unsafe.Pointer(&reqArgs.ReqByteArr[0])
+	requestLen := int64(len(reqArgs.ReqByteArr))
+	encodedRequest := (*C.char)(encodedData)
 
 	if len(reqArgs.Rncui) == 0 {
-		reply_buff, rd_err = obj.readKVAny(encoded_key,
+		reply_buff, rd_err = obj.readKVAny(encodedRequest,
 			requestLen, &reply_size)
 	} else {
-		reply_buff, rd_err = obj.readKV(reqArgs.Rncui, encoded_key,
+		reply_buff, rd_err = obj.readKV(reqArgs.Rncui, encodedRequest,
 			requestLen, &reply_size)
 	}
 
