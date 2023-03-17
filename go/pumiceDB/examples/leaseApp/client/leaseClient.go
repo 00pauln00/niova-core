@@ -207,50 +207,49 @@ Description : Generate N number of client and resource uuids
 */
 
 func (handler *leaseHandler) GetUuids() {
-	//If user passed UUID through cmdline
-	if handler.cliRequest.LeaseReq.Resource != uuid.Nil {
-		handler.numOfLeases = 1
-		kvMap[handler.cliRequest.LeaseReq.Resource] = handler.cliRequest.LeaseReq.Client
-	} else {
-		if handler.cliRequest.LeaseReq.Operation == leaseLib.GET ||
-			handler.cliOperation == leaseLib.GET_VALIDATE {
-			for i := 0; i < handler.numOfLeases; i++ {
-				kvMap[uuid.NewV4()] = uuid.NewV4()
-			}
-		} else {
-			//Lookup and Lookup and validate
-			kvMap = getUuidFromFile(handler.jsonFilePath)
-		}
-	}
+        //If user passed UUID through cmdline
+        if handler.cliRequest.LeaseReq.Resource != uuid.Nil {
+                handler.numOfLeases = 1
+                kvMap[handler.cliRequest.LeaseReq.Resource] = handler.cliRequest.LeaseReq.Client
+        } else {
+                if handler.cliRequest.LeaseReq.Operation == leaseLib.GET ||
+                        handler.cliOperation == leaseLib.GET_VALIDATE {
+                        for i := 0; i < handler.numOfLeases; i++ {
+                                kvMap[uuid.NewV4()] = uuid.NewV4()
+                        }
+                }
+        }
 }
+
+/*
+Description: Perform GET lease operation
+*/
 
 func (leaseHandler *leaseHandler) getLeases() error {
 
-	leaseHandler.GetUuids()
-	var err error
-	var response []leaseClientLib.LeaseClientReqHandler
+        leaseHandler.GetUuids()
+        var err error
+        var response []leaseClientLib.LeaseClientReqHandler
 
-	for key, value := range kvMap {
-		var requestCli leaseClientLib.LeaseClientReqHandler
-		leaseHandler.cliRequest.LeaseReq.Resource = key
-		leaseHandler.cliRequest.LeaseReq.Client = value
-		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
-		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-		err = leaseHandler.cliRequest.Get()
-		if err != nil {
-			log.Error(err)
-		}
+        for key, value := range kvMap {
+                var requestCli leaseClientLib.LeaseClientReqHandler
+                leaseHandler.cliRequest.LeaseReq.Client = key
+                leaseHandler.cliRequest.LeaseReq.Resource = value
+                leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
+                leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+                err = leaseHandler.cliRequest.Get()
+                if err != nil {
+                        log.Error(err)
+                }
 
-		requestCli = leaseHandler.cliRequest
-		response = append(response, requestCli)
-	}
+                requestCli = leaseHandler.cliRequest
+                response = append(response, requestCli)
+        }
 
-	// Write the response to the json file.
-	leaseHandler.writeToJson(response)
+        // Write the response to the json file.
+        leaseHandler.writeToJson(response)
 
-	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE {
-	}
-	return err
+        return err
 }
 
 /*
@@ -259,25 +258,18 @@ Description : Read JSON outfile and parse it.
 
 func getUuidFromFile(filename string) map[uuid.UUID]uuid.UUID {
 
-	// Open our jsonFile
-	jsonFile, err := os.Open(filename + ".json")
-	// if we os.Open returns an error then handle it
-	if err != nil {
-		fmt.Println(err)
-	}
+        // read json file.
+        file, _ := ioutil.ReadFile(filename + ".json")
 
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
+        var resArr []leaseClientLib.LeaseClientReqHandler
 
-	// read our opened xmlFile as a byte array.
-	byteValue, _ := ioutil.ReadAll(jsonFile)
+        _ = json.Unmarshal([]byte(file), &resArr)
 
-	var res []leaseClientLib.LeaseClientReqHandler
-	json.Unmarshal(byteValue, &res)
+        for i := range resArr {
+                kvMap[resArr[i].LeaseReq.Client] = resArr[i].LeaseReq.Resource
+        }
 
-	//TODO still needs to store the unmarshal data to MAP
-	var rdMap map[uuid.UUID]uuid.UUID
-	return rdMap
+        return kvMap
 }
 
 /*
@@ -286,25 +278,27 @@ Description: Perform LOOKUP lease operation
 
 func (leaseHandler *leaseHandler) lookupLeases() error {
 
-	leaseHandler.GetUuids()
-	var err error
-	var response []leaseClientLib.LeaseClientReqHandler
+        //read get lease json outfile to extract client and resource uuid
+        kvMap = getUuidFromFile(leaseHandler.readJsonFile)
 
-	for key, value := range kvMap {
-		leaseHandler.cliRequest.LeaseReq.Resource = key
-		leaseHandler.cliRequest.LeaseReq.Client = value
-		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
-		err = leaseHandler.cliRequest.Lookup()
-		if err != nil {
-			log.Error(err)
-		}
+        var err error
+        var response []leaseClientLib.LeaseClientReqHandler
 
-		response = append(response, leaseHandler.cliRequest)
-	}
+        for key, value := range kvMap {
+                leaseHandler.cliRequest.LeaseReq.Client = key
+                leaseHandler.cliRequest.LeaseReq.Resource = value
+                leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
+                err = leaseHandler.cliRequest.Lookup()
+                if err != nil {
+                        log.Error(err)
+                }
 
-	// Write the response to the json file.
-	leaseHandler.writeToJson(response)
-	return err
+                response = append(response, leaseHandler.cliRequest)
+        }
+
+        // Write the response to the json file.
+        leaseHandler.writeToJson(response)
+        return err
 }
 
 /*
@@ -375,7 +369,6 @@ func main() {
 	case leaseLib.LOOKUP_VALIDATE:
 		//lookup lease
 		err = leaseHandler.lookupLeases()
-
 	case leaseLib.REFRESH:
 		// refresh lease
 		err = leaseHandler.refreshLease()
