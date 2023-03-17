@@ -97,7 +97,6 @@ func (clientObj LeaseClient) write(requestObj leaseLib.LeaseReq, rncui string, r
 		GetResponse: 1,
 		ReplySize:   &replySize,
 		Response:    response,
-		ReqType:     1,
 	}
 
 	err = clientObj.PmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
@@ -115,17 +114,12 @@ Description : Wrapper function for ReadEncoded() function
 */
 func (clientObj LeaseClient) Read(requestObj leaseLib.LeaseReq, rncui string, response *[]byte) error {
 	var err error
-	var requestBytes bytes.Buffer
-	enc := gob.NewEncoder(&requestBytes)
-	err = enc.Encode(requestObj)
-	if err != nil {
-		return err
-	}
+
+	requestBytes := PreparePumiceReq(requestObj)
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      rncui,
-		ReqByteArr: requestBytes.Bytes(),
+		ReqByteArr: requestBytes,
 		Response:   response,
-		ReqType:    1,
 	}
 
 	return clientObj.PmdbClientObj.ReadEncoded(reqArgs)
@@ -248,7 +242,7 @@ func PreparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 		return nil
 	}
 
-	pumiceReq.ReqType = 1
+	pumiceReq.ReqType = PumiceDBCommon.LEASE_REQ
 	pumiceReq.ReqPayload = leaseReqBuf.Bytes()
 
 	var pumiceReqBuf bytes.Buffer
