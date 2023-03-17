@@ -12,6 +12,7 @@
 
 #include "common.h"
 #include "queue.h"
+#include "registry.h"
 
 struct buffer_set;
 struct buffer_item
@@ -30,17 +31,24 @@ struct buffer_item
 CIRCLEQ_HEAD(buffer_list, buffer_item);
 SLIST_HEAD(buffer_user_slist, buffer_item);
 
+#define BUFFER_SET_NAME_MAX 32
+
 struct buffer_set
 {
+    char               bs_name[BUFFER_SET_NAME_MAX + 1];
     ssize_t            bs_num_bufs;
     ssize_t            bs_num_allocated;
     ssize_t            bs_num_pndg_alloc;
     size_t             bs_item_size;
+    size_t             bs_max_allocated;
+    size_t             bs_total_alloc;
     uint8_t            bs_init:1;
     uint8_t            bs_serialize:1;
+    uint8_t            bs_ctl_interface:1;
     struct buffer_list bs_free_list;
     struct buffer_list bs_inuse_list;
     pthread_mutex_t    bs_mutex;
+    struct lreg_node   bs_lrn;
 };
 
 size_t
@@ -86,6 +94,10 @@ int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
                 bool use_posix_memalign, bool serialize);
 
+int
+buffer_set_init_lreg(struct buffer_set *bs, size_t nbufs, size_t buf_size,
+                     bool use_posix_memalign, bool serialize);
+
 static inline ssize_t
 buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
                              size_t *nitems)
@@ -107,5 +119,8 @@ buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
 
     return total;
 }
+
+int
+buffer_set_apply_name(struct buffer_set *bs, const char *name);
 
 #endif
