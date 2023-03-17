@@ -1,12 +1,6 @@
 package requestResponseLib
 
 const (
-	APP_REQ     int = 0
-	LEASE_REQ       = 1
-	LOOKOUT_REQ     = 2
-)
-
-const (
 	KV_WRITE      int = 0
 	KV_READ           = 1
 	KV_RANGE_READ     = 2
