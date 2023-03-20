@@ -37,7 +37,6 @@ var (
 		"LOOKUP_VALIDATE": leaseLib.LOOKUP_VALIDATE,
 	}
 	kvMap = make(map[uuid.UUID]uuid.UUID)
-	rdMap = make(map[uuid.UUID]uuid.UUID)
 )
 
 type leaseHandler struct {
@@ -50,11 +49,6 @@ type leaseHandler struct {
 	readJsonFile string
 }
 
-type multiLease struct {
-	Request  map[uuid.UUID]uuid.UUID
-	Response map[string]interface{}
-}
-
 func usage() {
 	flag.PrintDefaults()
 	os.Exit(0)
@@ -63,11 +57,6 @@ func usage() {
 func parseOperation(str string) (int, bool) {
 	op, ok := operationsMap[str]
 	return op, ok
-}
-
-type jsonLeaseFormat struct {
-	Request  leaseLib.LeaseReq
-	Response leaseLib.LeaseRes
 }
 
 func getStringLeaseState(leaseState int) string {
@@ -129,7 +118,7 @@ func (handler *leaseHandler) getCmdParams() {
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
 	flag.StringVar(&handler.logFilePath, "l", "", "Log file path")
-	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH/GET_VALIDATE")
+	flag.StringVar(&stringOperation, "o", "LOOKUP", "Operation - GET/PUT/LOOKUP/REFRESH/GET_VALIDATE/LOOKUP_VALIDATE")
 	flag.IntVar(&handler.numOfLeases, "n", 1, "Pass number of leases(Default 1)")
 	flag.StringVar(&handler.readJsonFile, "f", "", "Read JSON file")
 
@@ -207,18 +196,18 @@ Description : Generate N number of client and resource uuids
 */
 
 func (handler *leaseHandler) GetUuids() {
-        //If user passed UUID through cmdline
-        if handler.cliRequest.LeaseReq.Resource != uuid.Nil {
-                handler.numOfLeases = 1
-                kvMap[handler.cliRequest.LeaseReq.Resource] = handler.cliRequest.LeaseReq.Client
-        } else {
-                if handler.cliRequest.LeaseReq.Operation == leaseLib.GET ||
-                        handler.cliOperation == leaseLib.GET_VALIDATE {
-                        for i := 0; i < handler.numOfLeases; i++ {
-                                kvMap[uuid.NewV4()] = uuid.NewV4()
-                        }
-                }
-        }
+	//If user passed UUID through cmdline
+	if handler.cliRequest.LeaseReq.Resource != uuid.Nil {
+		handler.numOfLeases = 1
+		kvMap[handler.cliRequest.LeaseReq.Resource] = handler.cliRequest.LeaseReq.Client
+	} else {
+		if handler.cliRequest.LeaseReq.Operation == leaseLib.GET ||
+			handler.cliOperation == leaseLib.GET_VALIDATE {
+			for i := 0; i < handler.numOfLeases; i++ {
+				kvMap[uuid.NewV4()] = uuid.NewV4()
+			}
+		}
+	}
 }
 
 /*
@@ -227,29 +216,46 @@ Description: Perform GET lease operation
 
 func (leaseHandler *leaseHandler) getLeases() error {
 
-        leaseHandler.GetUuids()
-        var err error
-        var response []leaseClientLib.LeaseClientReqHandler
+	leaseHandler.GetUuids()
+	var err error
+	var response []leaseClientLib.LeaseClientReqHandler
+	mapString := make(map[string]string)
 
-        for key, value := range kvMap {
-                var requestCli leaseClientLib.LeaseClientReqHandler
-                leaseHandler.cliRequest.LeaseReq.Client = key
-                leaseHandler.cliRequest.LeaseReq.Resource = value
-                leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
-                leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-                err = leaseHandler.cliRequest.Get()
-                if err != nil {
-                        log.Error(err)
-                }
+	for key, value := range kvMap {
+		var requestCli leaseClientLib.LeaseClientReqHandler
+		leaseHandler.cliRequest.LeaseReq.Client = key
+		leaseHandler.cliRequest.LeaseReq.Resource = value
+		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
+		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+		err = leaseHandler.cliRequest.Get()
+		if err != nil {
+			log.Error(err)
+		}
 
-                requestCli = leaseHandler.cliRequest
-                response = append(response, requestCli)
-        }
+		requestCli = leaseHandler.cliRequest
+		response = append(response, requestCli)
+	}
 
-        // Write the response to the json file.
-        leaseHandler.writeToJson(response)
+	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE && leaseHandler.numOfLeases > 1 {
+		//Check if prev element have same 'Status' and as current response.
+		for i := 0; i < len(response)-1; i++ {
+			if response[i].LeaseRes.Status == response[i+1].LeaseRes.Status {
+				mapString["Status"] = response[i+1].LeaseRes.Status
+			} else {
+				fmt.Println(" 'Status' not matched ")
+			}
+		}
+		// Write single 'Status' to json file.
+		leaseHandler.writeSingleResponseToJson(mapString)
+		// Write the detailed information to json file.
+		leaseHandler.writeToJson(response)
 
-        return err
+	} else {
+		// Write the detailed information to the json file.
+		leaseHandler.writeToJson(response)
+	}
+
+	return err
 }
 
 /*
@@ -258,18 +264,18 @@ Description : Read JSON outfile and parse it.
 
 func getUuidFromFile(filename string) map[uuid.UUID]uuid.UUID {
 
-        // read json file.
-        file, _ := ioutil.ReadFile(filename + ".json")
+	// read json file.
+	file, _ := ioutil.ReadFile(filename + ".json")
 
-        var resArr []leaseClientLib.LeaseClientReqHandler
+	var resArr []leaseClientLib.LeaseClientReqHandler
 
-        _ = json.Unmarshal([]byte(file), &resArr)
+	_ = json.Unmarshal([]byte(file), &resArr)
 
-        for i := range resArr {
-                kvMap[resArr[i].LeaseReq.Client] = resArr[i].LeaseReq.Resource
-        }
+	for i := range resArr {
+		kvMap[resArr[i].LeaseReq.Client] = resArr[i].LeaseReq.Resource
+	}
 
-        return kvMap
+	return kvMap
 }
 
 /*
@@ -278,27 +284,44 @@ Description: Perform LOOKUP lease operation
 
 func (leaseHandler *leaseHandler) lookupLeases() error {
 
-        //read get lease json outfile to extract client and resource uuid
-        kvMap = getUuidFromFile(leaseHandler.readJsonFile)
+	//read get lease json outfile to extract client and resource uuid
+	kvMap = getUuidFromFile(leaseHandler.readJsonFile)
+	mapString := make(map[string]string)
+	var err error
+	var response []leaseClientLib.LeaseClientReqHandler
 
-        var err error
-        var response []leaseClientLib.LeaseClientReqHandler
+	for key, value := range kvMap {
+		leaseHandler.cliRequest.LeaseReq.Client = key
+		leaseHandler.cliRequest.LeaseReq.Resource = value
+		if leaseHandler.cliOperation == leaseLib.LOOKUP {
+			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
+		} else {
+			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP_VALIDATE
+		}
+		err = leaseHandler.cliRequest.Lookup()
+		if err != nil {
+			log.Error(err)
+		}
+		response = append(response, leaseHandler.cliRequest)
+	}
 
-        for key, value := range kvMap {
-                leaseHandler.cliRequest.LeaseReq.Client = key
-                leaseHandler.cliRequest.LeaseReq.Resource = value
-                leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
-                err = leaseHandler.cliRequest.Lookup()
-                if err != nil {
-                        log.Error(err)
-                }
+	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases > 1 {
+		//Check if prev element have same 'Status' and as current response.
+		for i := 0; i < len(response)-1; i++ {
+			if response[i].LeaseRes.Status == response[i+1].LeaseRes.Status {
+				mapString["Status"] = response[i+1].LeaseRes.Status
+			} else {
+				fmt.Println(" 'Status' not matched ")
+			}
+			// Write single 'Status' to json file.
+			leaseHandler.writeToJson(mapString)
+		}
+	} else {
+		// Write the detailed response to the json file.
+		leaseHandler.writeToJson(response)
+	}
 
-                response = append(response, leaseHandler.cliRequest)
-        }
-
-        // Write the response to the json file.
-        leaseHandler.writeToJson(response)
-        return err
+	return err
 }
 
 /*
@@ -325,11 +348,24 @@ Method	  : writeToJson
 Arguments : struct
 Return(s) : error
 
-Description : Write response/error to json file
+Description : Write detailed request-response/error to json file
 */
 func (leaseHandler *leaseHandler) writeToJson(toJson interface{}) {
 	file, err := json.MarshalIndent(toJson, "", " ")
 	err = ioutil.WriteFile(leaseHandler.jsonFilePath+".json", file, 0644)
+	if err != nil {
+		log.Error("Error writing to outfile : ", err)
+	}
+}
+
+/*
+Description : Write single response/error to json file
+*/
+func (leaseHandler *leaseHandler) writeSingleResponseToJson(toJson interface{}) {
+	var filename string
+	file, err := json.MarshalIndent(toJson, "", " ")
+	filename = leaseHandler.jsonFilePath + "_single_response"
+	err = ioutil.WriteFile(filename+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
 	}
@@ -356,8 +392,7 @@ func main() {
 		os.Exit(-1)
 	}
 
-
-	 leaseHandler.cliRequest.LeaseClientObj = &leaseHandler.clientObj
+	leaseHandler.cliRequest.LeaseClientObj = &leaseHandler.clientObj
 	switch leaseHandler.cliOperation {
 	case leaseLib.GET:
 		fallthrough
