@@ -217,7 +217,6 @@ Description: Perform GET lease operation
 func (leaseHandler *leaseHandler) getLeases() error {
 
 	leaseHandler.GetUuids()
-	var err error
 	var response []leaseClientLib.LeaseClientReqHandler
 	mapString := make(map[string]string)
 
@@ -227,9 +226,9 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		leaseHandler.cliRequest.LeaseReq.Resource = value
 		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
 		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-		err = leaseHandler.cliRequest.Get()
-		if err != nil {
-			log.Error(err)
+		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
+		if leaseHandler.cliRequest.Err != nil {
+			log.Error(leaseHandler.cliRequest.Err)
 		}
 
 		requestCli = leaseHandler.cliRequest
@@ -255,7 +254,7 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		leaseHandler.writeToJson(response)
 	}
 
-	return err
+	return leaseHandler.cliRequest.Err
 }
 
 /*
@@ -287,7 +286,6 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 	//read get lease json outfile to extract client and resource uuid
 	kvMap = getUuidFromFile(leaseHandler.readJsonFile)
 	mapString := make(map[string]string)
-	var err error
 	var response []leaseClientLib.LeaseClientReqHandler
 
 	for key, value := range kvMap {
@@ -298,9 +296,9 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 		} else {
 			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP_VALIDATE
 		}
-		err = leaseHandler.cliRequest.Lookup()
-		if err != nil {
-			log.Error(err)
+		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
+		if leaseHandler.cliRequest.Err != nil {
+			log.Error(leaseHandler.cliRequest.Err)
 		}
 		response = append(response, leaseHandler.cliRequest)
 	}
@@ -321,7 +319,7 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 		leaseHandler.writeToJson(response)
 	}
 
-	return err
+	return leaseHandler.cliRequest.Err
 }
 
 /*
