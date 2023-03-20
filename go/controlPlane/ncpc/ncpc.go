@@ -519,7 +519,7 @@ func (clientObj *clientHandler) rangeRead() {
 		appRequestObj.SeqNum = seqNum
 
 		var pumiceRequestBytes bytes.Buffer
-		err := PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, "", &pumiceRequestBytes)
+		err = PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, "", &pumiceRequestBytes)
 		if err != nil {
 			log.Error("Pumice request creation error : ", err)
 			break
