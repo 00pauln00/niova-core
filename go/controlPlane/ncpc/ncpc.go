@@ -359,11 +359,11 @@ func prepareKVRequest(key string, value []byte, rncui string, operation int) []b
 	kvReqObj.Key = key
 	kvReqObj.Value = value
 	var pumiceRequestBytes bytes.Buffer
- err := PumiceDBCommon.PrepareAppPumiceRequest(kvReqObj, rncui, &pumiceRequestBytes)
+	err := PumiceDBCommon.PrepareAppPumiceRequest(kvReqObj, rncui, &pumiceRequestBytes)
 	if err != nil {
-			log.Error("Pumice request creation error : ",err)
- }
- return pumiceRequestBytes.Bytes()
+		log.Error("Pumice request creation error : ", err)
+	}
+	return pumiceRequestBytes.Bytes()
 
 }
 
@@ -519,11 +519,11 @@ func (clientObj *clientHandler) rangeRead() {
 		appRequestObj.SeqNum = seqNum
 
 		var pumiceRequestBytes bytes.Buffer
-  err := PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, "", &pumiceRequestBytes)
-	 if err != nil {
-			 log.Error("Pumice request creation error : ",err)
-    break
-  }
+		err := PumiceDBCommon.PrepareAppPumiceRequest(appRequestObj, "", &pumiceRequestBytes)
+		if err != nil {
+			log.Error("Pumice request creation error : ", err)
+			break
+		}
 
 		var responseBytes []byte
 
@@ -589,6 +589,80 @@ func (clientObj *clientHandler) writeToLeaseOutfile(leaseReq leaseLib.LeaseReq, 
 	res := prepareLeaseJsonResponse(leaseReq, responseObj)
 	clientObj.write2Json(res)
 
+}
+
+func (clientObj *clientHandler) performLeaseOperation(operation int) error {
+	var isWrite bool
+
+	//Get Lease code
+	clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+
+	// prepare lease request
+
+	appRequestBytes := leaseClientLib.PrepareLeaseReq(clientObj.requestKey, clientObj.requestValue, operation)
+
+	if operation == leaseLib.LOOKUP {
+		isWrite = false
+	} else {
+		isWrite = true
+	}
+	responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", isWrite)
+	if err != nil {
+		log.Error("Error while sending request : ", err)
+		return err
+	}
+
+	var responseObj leaseLib.LeaseRes
+	// check for no return val
+	if operation == leaseLib.LOOKUP && len(responseBytes) == 0 {
+		err = errors.New("Key not found")
+	} else {
+		//decode the response
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&responseObj)
+		if err != nil {
+			log.Error("Decoding error : ", err)
+			return err
+		}
+	}
+
+	// convert the response to the outfile format
+	if err == nil {
+		responseObj.Status = "Success"
+	} else {
+		responseObj.Status = err.Error()
+	}
+
+	// preparing to write to json outfile
+	var leaseReq leaseLib.LeaseReq
+	err = clientObj.fillLeaseReqObj(&leaseReq, operation)
+	if err != nil {
+		log.Error("Error while writing to outfile : ", err)
+		return err
+	}
+	clientObj.writeToLeaseOutfile(leaseReq, responseObj)
+
+	return err
+}
+
+func (clientObj *clientHandler) fillLeaseReqObj(leaseReq *leaseLib.LeaseReq, operation int) error {
+	var err error
+
+	if operation != leaseLib.LOOKUP {
+		leaseReq.Client, err = uuid.FromString(clientObj.requestKey)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+	}
+	leaseReq.Resource, err = uuid.FromString(clientObj.requestValue)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+	leaseReq.Operation = operation
+
+	return err
 }
 
 func isRangeRequest(requestKey string) bool {
@@ -804,9 +878,8 @@ func main() {
 			log.Error("Encoding error : ", err)
 		}
 
-
-  //TODO: Why PumiceRequest wrapper for lookout request; 
-  //There is no interaction of pumice layer in lookout request
+		//TODO: Why PumiceRequest wrapper for lookout request;
+		//There is no interaction of pumice layer in lookout request
 		var pumiceReqObj PumiceDBCommon.PumiceRequest
 		pumiceReqObj.ReqType = PumiceDBCommon.APP_REQ
 		pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
@@ -827,114 +900,24 @@ func main() {
 		ioutil.WriteFile(clientObj.resultFile+".json", responseBytes, 0644)
 
 	case "GetLease":
-		//Get Lease code
-		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-
-		// prepare lease request
-
-		appRequestBytes := leaseClientLib.PrepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.GET)
-
-		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", true)
-		if err != nil {
-			log.Error("Error while sending request : ", err)
-		}
-
-		//decode the response
-		var responseObj leaseLib.LeaseRes
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
-		if err != nil {
-			log.Error("Decoding error : ", err)
-			break
-		}
-
-		// convert the response to the actual format
-		responseObj.Status = "Success"
-
-		// preparing to write to json outfile
-		var client, resource uuid.UUID
-		client, err = uuid.FromString(clientObj.requestKey)
-		resource, err = uuid.FromString(clientObj.requestValue)
-		leaseReq := leaseLib.LeaseReq{
-			Client:    client,
-			Resource:  resource,
-			Operation: leaseLib.GET,
-		}
-		clientObj.writeToLeaseOutfile(leaseReq, responseObj)
-	case "LookupLease":
-		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-
-		appRequestBytes := leaseClientLib.PrepareLeaseReq("", clientObj.requestValue, leaseLib.LOOKUP)
-		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", false)
-		if err != nil {
-			log.Error("Error while sending request : ", err)
-		}
-
-		//decode the response
-		var responseObj leaseLib.LeaseRes
-		if len(responseBytes) == 0 {
-			err = errors.New("Key not found")
-		} else {
-			dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-			err = dec.Decode(&responseObj)
-			if err != nil {
-				log.Error("Decoding error : ", err)
-				break
-			}
-		}
-
-		// convert the response to the actual format
-		if err == nil {
-			responseObj.Status = "Success"
-		} else {
-			responseObj.Status = err.Error()
-		}
-
-		// preparing to write to json outfile
-		var resource uuid.UUID
-		resource, err = uuid.FromString(clientObj.requestValue)
+		err := clientObj.performLeaseOperation(leaseLib.GET)
 		if err != nil {
 			log.Error(err)
 			break
 		}
-		leaseReq := leaseLib.LeaseReq{
-			Resource:  resource,
-			Operation: leaseLib.LOOKUP,
+	case "LookupLease":
+		err := clientObj.performLeaseOperation(leaseLib.LOOKUP)
+		if err != nil {
+			log.Error(err)
+			break
 		}
-
-		clientObj.writeToLeaseOutfile(leaseReq, responseObj)
-
 	case "RefreshLease":
-		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-
-		appRequestBytes := leaseClientLib.PrepareLeaseReq(clientObj.requestKey, clientObj.requestValue, leaseLib.REFRESH)
-		responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", true)
+		err := clientObj.performLeaseOperation(leaseLib.REFRESH)
 		if err != nil {
-			log.Error("Error while sending request : ", err)
-		}
-		//decode the response
-		var responseObj leaseLib.LeaseRes
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
-		if err != nil {
-			log.Error("Decoding error : ", err)
+			log.Error(err)
 			break
 		}
 
-		// convert the response to the actual format
-		responseObj.Status = "Success"
-
-		// preparing to write to json outfile
-		var client, resource uuid.UUID
-		client, err = uuid.FromString(clientObj.requestKey)
-		resource, err = uuid.FromString(clientObj.requestValue)
-		leaseReq := leaseLib.LeaseReq{
-			Client:    client,
-			Resource:  resource,
-			Operation: leaseLib.REFRESH,
-		}
-
-		clientObj.writeToLeaseOutfile(leaseReq, responseObj)
 	}
 
 }

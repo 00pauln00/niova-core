@@ -241,6 +241,7 @@ func PreparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 		return nil
 	}
 
+	pumiceReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 	pumiceReq.ReqType = PumiceDBCommon.LEASE_REQ
 	pumiceReq.ReqPayload = leaseReqBuf.Bytes()
 
