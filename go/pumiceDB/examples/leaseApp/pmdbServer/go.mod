@@ -8,8 +8,6 @@ replace niova/go-pumicedb-lib/common => ../../../../pumiceDB/common
 
 replace common/serfAgent => ../../../serf/agent
 
-replace common/requestResponseLib => ../requestResponseLib
-
 replace LeaseLib/leaseServer => ../../../../pumiceDB/lease/server
 
 replace common/leaseLib => ../../../../pumiceDB/lease/common

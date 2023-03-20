@@ -4,8 +4,6 @@ replace niova/go-pumicedb-lib/client => ../../../../pumiceDB/client
 
 replace niova/go-pumicedb-lib/common => ../../../../pumiceDB/common
 
-replace common/requestResponseLib => ../requestResponseLib
-
 replace common/leaseLib => ../../../../pumiceDB/lease/common
 
 replace LeaseLib/leaseClient => ../../../../pumiceDB/lease/client
