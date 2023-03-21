@@ -346,7 +346,7 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 
 	for key, value := range kvMap {
 		//get pumiceReq encoded bytes
-		requestBytes := leaseClientLib.PrepareLeaseReq(key.String(), value.String(), leaseLib.LOOKUP)
+		requestBytes := leaseClientLib.PrepareLeaseReq(key.String(), value.String(), leaseHandler.cliOperation)
 
 		//send encoded req to server
 		var responseBytes []byte
