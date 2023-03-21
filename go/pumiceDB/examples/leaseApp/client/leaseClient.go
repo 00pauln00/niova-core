@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -210,6 +212,47 @@ func (handler *leaseHandler) GetUuids() {
 	}
 }
 
+func (handler *leaseHandler) write(requestBytes []byte, rncui string, response *[]byte) error {
+	var err error
+	var replySize int64
+
+	//requestBytes := PreparePumiceReq(requestObj)
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:       rncui,
+		ReqByteArr:  requestBytes,
+		GetResponse: 1,
+		ReplySize:   &replySize,
+		Response:    response,
+	}
+
+	err = handler.clientObj.PmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
+
+	return err
+}
+
+func (handler *leaseHandler) read(requestBytes []byte, rncui string, response *[]byte) error {
+
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:      rncui,
+		ReqByteArr: requestBytes,
+		Response:   response,
+	}
+
+	return handler.clientObj.PmdbClientObj.ReadEncoded(reqArgs)
+}
+
+func (handler *leaseHandler) prepareLeaseRes(responseBytes *[]byte) error {
+	var err error
+
+	dec := gob.NewDecoder(bytes.NewBuffer(*responseBytes))
+	err = dec.Decode(&handler.cliRequest.LeaseRes)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
 /*
 Description: Perform GET lease operation
 */
@@ -222,11 +265,17 @@ func (leaseHandler *leaseHandler) getLeases() error {
 
 	for key, value := range kvMap {
 		var requestCli leaseClientLib.LeaseClientReqHandler
-		leaseHandler.cliRequest.LeaseReq.Client = key
-		leaseHandler.cliRequest.LeaseReq.Resource = value
-		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
-		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
+		var responseBytes []byte
+
+		//prepare encoded pumiceReq with leaseReq as payload
+		requestBytes := leaseClientLib.PrepareLeaseReq(key.String(), value.String(), leaseLib.GET)
+
+		leaseHandler.cliRequest.Err = leaseHandler.write(requestBytes, getRNCUI(leaseHandler.clientObj.PmdbClientObj), &responseBytes)
+		if leaseHandler.cliRequest.Err != nil {
+			log.Error(leaseHandler.cliRequest.Err)
+		}
+		//prepare leaseRes
+		leaseHandler.cliRequest.Err = leaseHandler.prepareLeaseRes(&responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
 		}
@@ -296,17 +345,21 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 	}
 
 	for key, value := range kvMap {
-		leaseHandler.cliRequest.LeaseReq.Client = key
-		leaseHandler.cliRequest.LeaseReq.Resource = value
-		if leaseHandler.cliOperation == leaseLib.LOOKUP {
-			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
-		} else {
-			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP_VALIDATE
-		}
-		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
+		//get pumiceReq encoded bytes
+		requestBytes := leaseClientLib.PrepareLeaseReq(key.String(), value.String(), leaseLib.LOOKUP)
+
+		//send encoded req to server
+		var responseBytes []byte
+		leaseHandler.cliRequest.Err = leaseHandler.read(requestBytes, "", &responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
 		}
+		//prepare lease resp object
+		leaseHandler.cliRequest.Err = leaseHandler.prepareLeaseRes(&responseBytes)
+		if leaseHandler.cliRequest.Err != nil {
+			log.Error(leaseHandler.cliRequest.Err)
+		}
+
 		response = append(response, leaseHandler.cliRequest)
 	}
 
@@ -337,14 +390,25 @@ func (leaseHandler *leaseHandler) refreshLease() error {
 
 	leaseHandler.cliRequest.LeaseReq.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
 	leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.REFRESH
-	err := leaseHandler.cliRequest.Refresh()
-	if err != nil {
-		log.Error(err)
+
+	//prep req in pumiceReq format
+	requestBytes := leaseClientLib.PrepareLeaseReq(leaseHandler.cliRequest.LeaseReq.Client.String(), leaseHandler.cliRequest.LeaseReq.Resource.String(), leaseLib.REFRESH)
+
+	// send req
+	var responseBytes []byte
+	leaseHandler.cliRequest.Err = leaseHandler.write(requestBytes, getRNCUI(leaseHandler.clientObj.PmdbClientObj), &responseBytes)
+	if leaseHandler.cliRequest.Err != nil {
+		log.Error(leaseHandler.cliRequest.Err)
 	}
 
+	// prepare leaseRes
+	leaseHandler.cliRequest.Err = leaseHandler.prepareLeaseRes(&responseBytes)
+	if leaseHandler.cliRequest.Err != nil {
+		log.Error(leaseHandler.cliRequest.Err)
+	}
 	// Write the response to the json file.
 	leaseHandler.writeToJson(leaseHandler.cliRequest)
-	return err
+	return leaseHandler.cliRequest.Err
 }
 
 /*
