@@ -199,7 +199,7 @@ func (handler *leaseHandler) GetUuids() {
 	//If user passed UUID through cmdline
 	if handler.cliRequest.LeaseReq.Resource != uuid.Nil {
 		handler.numOfLeases = 1
-		kvMap[handler.cliRequest.LeaseReq.Resource] = handler.cliRequest.LeaseReq.Client
+		kvMap[handler.cliRequest.LeaseReq.Client] = handler.cliRequest.LeaseReq.Resource
 	} else {
 		if handler.cliRequest.LeaseReq.Operation == leaseLib.GET ||
 			handler.cliOperation == leaseLib.GET_VALIDATE {
@@ -283,10 +283,17 @@ Description: Perform LOOKUP lease operation
 
 func (leaseHandler *leaseHandler) lookupLeases() error {
 
-	//read get lease json outfile to extract client and resource uuid
-	kvMap = getUuidFromFile(leaseHandler.readJsonFile)
 	mapString := make(map[string]string)
 	var response []leaseClientLib.LeaseClientReqHandler
+
+	//If user not passed UUID through cmdline
+	if leaseHandler.cliRequest.LeaseReq.Resource == uuid.Nil {
+		//read get lease json outfile to extract client and resource uuid
+		kvMap = getUuidFromFile(leaseHandler.readJsonFile)
+	} else {
+		leaseHandler.numOfLeases = 1
+		kvMap[leaseHandler.cliRequest.LeaseReq.Client] = leaseHandler.cliRequest.LeaseReq.Resource
+	}
 
 	for key, value := range kvMap {
 		leaseHandler.cliRequest.LeaseReq.Client = key
