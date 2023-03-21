@@ -353,18 +353,18 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     if (!bs || !buf_size || bs->bs_init)
         return -EINVAL;
 
-    if (serialize)
-    {
-        bs->bs_serialize = 1;
-        pthread_mutex_init(&bs->bs_mutex, NULL);
-    }
-
     memset(bs, 0, sizeof(struct buffer_set));
 
     bs->bs_item_size = buf_size;
     bs->bs_num_bufs = 0;
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
+
+    if (serialize)
+    {
+        bs->bs_serialize = 1;
+        pthread_mutex_init(&bs->bs_mutex, NULL);
+    }
 
     int error = 0;
 
