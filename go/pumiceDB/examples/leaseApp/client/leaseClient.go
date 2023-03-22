@@ -286,11 +286,12 @@ func (leaseHandler *leaseHandler) getLeases() error {
 
 	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE && leaseHandler.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
-		for i := 0; i < len(response)-1; i++ {
-			if response[i].LeaseRes.Status == response[i+1].LeaseRes.Status {
-				mapString["Status"] = response[i+1].LeaseRes.Status
+		for i := 0; i < len(response); i++ {
+			if response[i].LeaseRes.Status == "Success" {
+				mapString["Status"] = "Success"
 			} else {
-				fmt.Println(" 'Status' not matched ")
+				log.Info(" 'Status' not matched ")
+				break
 			}
 		}
 		// Write single 'Status' to json file.
@@ -365,11 +366,13 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 
 	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
-		for i := 0; i < len(response)-1; i++ {
-			if response[i].LeaseRes.Status == response[i+1].LeaseRes.Status {
-				mapString["Status"] = response[i+1].LeaseRes.Status
+		for i := 0; i < len(response); i++ {
+			fmt.Println("Status: ", response[i].LeaseRes.Status)
+			if response[i].LeaseRes.Status == "Success" {
+				mapString["Status"] = "Success"
 			} else {
-				fmt.Println(" 'Status' not matched ")
+				log.Info(" 'Status' not matched ")
+				break
 			}
 			// Write single 'Status' to json file.
 			leaseHandler.writeToJson(mapString)
