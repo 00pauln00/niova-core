@@ -8,7 +8,7 @@
 #include "log.h"
 
 static void
-buffer_test(bool serialize)
+buffer_test(bool serialize, bool lreg)
 {
     struct buffer_set bs = {0};
 
@@ -22,7 +22,10 @@ buffer_test(bool serialize)
     NIOVA_ASSERT(rc == -EINVAL);
 
     // init and destroy 'bs'
-    rc = buffer_set_init(&bs, 1, 1, false, serialize);
+    rc = lreg ?
+        buffer_set_init_lreg(&bs, 1, 1, false, serialize) :
+        buffer_set_init(&bs, 1, 1, false, serialize);
+
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == 1);
 
@@ -42,7 +45,10 @@ buffer_test(bool serialize)
 
     // reserved ops
     const size_t n = 10;
-    rc = buffer_set_init(&bs, n, 1, false, serialize);
+    rc = lreg ?
+        buffer_set_init_lreg(&bs, n, 1, false, serialize) :
+        buffer_set_init(&bs, n, 1, false, serialize);
+
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == n);
 
@@ -80,8 +86,10 @@ main(void)
 {
     NIOVA_ASSERT(buffer_page_size() == 0);
 
-    buffer_test(false);
-    buffer_test(true);
+    buffer_test(false, false);
+    buffer_test(true, false);
+
+    buffer_test(false, true);
 
     return 0;
 }
