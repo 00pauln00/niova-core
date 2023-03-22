@@ -284,7 +284,7 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		response = append(response, requestCli)
 	}
 
-	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE && leaseHandler.numOfLeases >= 1 {
+	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE && leaseHandler.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
 			if response[i].LeaseRes.Status == "Success" {
@@ -364,7 +364,7 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 		response = append(response, leaseHandler.cliRequest)
 	}
 
-	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases >= 1 {
+	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
 			if response[i].LeaseRes.Status == "Success" {
