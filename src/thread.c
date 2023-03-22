@@ -28,10 +28,6 @@ thr_ctl_basic_sighandler(int signum)
 
     if (tc)
         tc->tc_sig_cnt++;
-
-    // Use 'simple log msg' in sighandler context
-    SIMPLE_LOG_MSG(LL_DEBUG, "caught signal=%d tc=%p tc->tc_sig_cnt=%zu",
-                   signum, tc, tc ? tc->tc_sig_cnt : 0);
 }
 
 static void

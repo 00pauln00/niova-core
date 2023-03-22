@@ -829,7 +829,10 @@ lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
     if (!lrn)
         return -EINVAL;
 
-    if (lreg_node_is_installed(lrn) != install)
+    bool (*tfunc)(const struct lreg_node *) = install ?
+        lreg_node_is_installed : lreg_node_is_removed;
+
+    if (!tfunc(lrn))
     {
         if ((init_ctx() || lreg_thread_ctx() || lrn->lrn_inlined_member))
             DBG_LREG_NODE(LL_FATAL, (struct lreg_node *)lrn,
@@ -837,7 +840,7 @@ lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
 
         for (int i = 0; i < LREG_NODE_INSTALL_COMPLETION_WAIT_USEC; i++)
         {
-            if (lreg_node_is_installed(lrn) == install)
+            if (tfunc(lrn))
                 return 0;
             else
                 usleep(1);
