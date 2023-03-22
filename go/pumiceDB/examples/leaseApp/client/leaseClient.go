@@ -367,7 +367,6 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
-			fmt.Println("Status: ", response[i].LeaseRes.Status)
 			if response[i].LeaseRes.Status == "Success" {
 				mapString["Status"] = "Success"
 			} else {
