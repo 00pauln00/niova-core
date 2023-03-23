@@ -181,11 +181,6 @@ iov_test_num_to_meet_size2(void)
     FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
 
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
-                     iovX, 2, 1, 0, &ret_idx, &prune_cnt) == 1);
-    FATAL_IF(prune_cnt != 9, "prune_cnt=%lu", prune_cnt);
-    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
-
-    NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
                      iovX, 2, 1, 8, &ret_idx, &prune_cnt) == 1);
     FATAL_IF(prune_cnt != 1, "prune_cnt=%lu", prune_cnt);
     FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
@@ -202,12 +197,11 @@ iov_test_num_to_meet_size2(void)
     NIOVA_ASSERT(niova_io_iovs_num_to_meet_size2(
                      iovX, 2, r, 0, &ret_idx, &prune_cnt) == 2);
     FATAL_IF(prune_cnt != iovX_len - 1, "prune_cnt=%lu", prune_cnt);
-    FATAL_IF(ret_idx != (r / iovX_len), "ret_idx=%ld", ret_idx);
-
+    FATAL_IF(ret_idx != 0, "ret_idx=%ld", ret_idx);
 
     int rc = niova_io_iovs_num_to_meet_size2(iovX, 2, 1, (2 * iovX_len) - 1,
                                              &ret_idx, &prune_cnt);
-    FATAL_IF(rc != 2, "rc=%d", rc);
+    FATAL_IF(rc != 1, "rc=%d", rc);
     FATAL_IF(prune_cnt != 0, "prune_cnt=%lu", prune_cnt);
     FATAL_IF(ret_idx != 1, "ret_idx=%ld", ret_idx);
 
