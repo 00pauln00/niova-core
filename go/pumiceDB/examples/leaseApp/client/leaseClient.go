@@ -266,10 +266,11 @@ func (leaseHandler *leaseHandler) getLeases() error {
 	for key, value := range kvMap {
 		var requestCli leaseClientLib.LeaseClientReqHandler
 		var responseBytes []byte
-
+		leaseHandler.cliRequest.LeaseReq.Client = key
+		leaseHandler.cliRequest.LeaseReq.Resource = value
 		//prepare encoded pumiceReq with leaseReq as payload
-		requestBytes := leaseClientLib.PrepareLeaseReq(key.String(), value.String(), leaseLib.GET)
-
+		requestBytes := leaseClientLib.PrepareLeaseReq(leaseHandler.cliRequest.LeaseReq.Client.String(),
+			leaseHandler.cliRequest.LeaseReq.Resource.String(), leaseLib.GET)
 		leaseHandler.cliRequest.Err = leaseHandler.write(requestBytes, getRNCUI(leaseHandler.clientObj.PmdbClientObj), &responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
@@ -346,9 +347,11 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 	}
 
 	for key, value := range kvMap {
+		leaseHandler.cliRequest.LeaseReq.Client = key
+		leaseHandler.cliRequest.LeaseReq.Resource = value
 		//get pumiceReq encoded bytes
-		requestBytes := leaseClientLib.PrepareLeaseReq(key.String(), value.String(), leaseHandler.cliOperation)
-
+		requestBytes := leaseClientLib.PrepareLeaseReq(leaseHandler.cliRequest.LeaseReq.Client.String(),
+			leaseHandler.cliRequest.LeaseReq.Resource.String(), leaseHandler.cliOperation)
 		//send encoded req to server
 		var responseBytes []byte
 		leaseHandler.cliRequest.Err = leaseHandler.read(requestBytes, "", &responseBytes)
