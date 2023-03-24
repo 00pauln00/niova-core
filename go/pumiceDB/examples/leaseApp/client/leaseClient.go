@@ -366,6 +366,8 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 
 		if len(responseBytes) == 0 {
 			leaseHandler.cliRequest.LeaseRes.Status = "Key not found"
+		} else {
+			leaseHandler.cliRequest.LeaseRes.Status = "Success"
 		}
 
 		response = append(response, leaseHandler.cliRequest)
