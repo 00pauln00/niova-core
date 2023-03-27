@@ -222,10 +222,10 @@ func (leaseHandler *leaseHandler) getLeases() error {
 
 	for key, value := range kvMap {
 		var requestCli leaseClientLib.LeaseClientReqHandler
-		leaseHandler.cliRequest.LeaseReq.Client = key
-		leaseHandler.cliRequest.LeaseReq.Resource = value
-		leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.GET
-		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+		// Fill up leaseReq struct in lease handler
+		rncui := getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+		err = leaseHandler.InitLeaseReq(key, value, rncui, leaseLib.GET)
+		// perform lease Get operation and which fills up the leaseHandler.cliRequest.LeaseRes
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
@@ -284,6 +284,7 @@ Description: Perform LOOKUP lease operation
 
 func (leaseHandler *leaseHandler) lookupLeases() error {
 
+	var operation int
 	mapString := make(map[string]string)
 	var response []leaseClientLib.LeaseClientReqHandler
 
@@ -297,13 +298,14 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 	}
 
 	for key, value := range kvMap {
-		leaseHandler.cliRequest.LeaseReq.Client = key
-		leaseHandler.cliRequest.LeaseReq.Resource = value
 		if leaseHandler.cliOperation == leaseLib.LOOKUP {
-			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP
+			operation = leaseLib.LOOKUP
 		} else {
-			leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.LOOKUP_VALIDATE
+			operation = leaseLib.LOOKUP_VALIDATE
 		}
+
+		err = leaseHandler.InitLeaseReq(key, value, "", operation)
+
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
