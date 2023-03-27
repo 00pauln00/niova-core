@@ -274,13 +274,15 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		leaseHandler.cliRequest.Err = leaseHandler.write(requestBytes, getRNCUI(leaseHandler.clientObj.PmdbClientObj), &responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
+			leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+		} else {
+			leaseHandler.cliRequest.LeaseRes.Status = "Success"
 		}
 		//prepare leaseRes
 		leaseHandler.cliRequest.Err = leaseHandler.prepareLeaseRes(&responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
 		}
-
 		requestCli = leaseHandler.cliRequest
 		response = append(response, requestCli)
 	}
@@ -357,7 +359,11 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 		leaseHandler.cliRequest.Err = leaseHandler.read(requestBytes, "", &responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
+			leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+		} else {
+			leaseHandler.cliRequest.LeaseRes.Status = "Success"
 		}
+
 		//prepare lease resp object
 		leaseHandler.cliRequest.Err = leaseHandler.prepareLeaseRes(&responseBytes)
 		if leaseHandler.cliRequest.Err != nil {
@@ -410,6 +416,9 @@ func (leaseHandler *leaseHandler) refreshLease() error {
 	leaseHandler.cliRequest.Err = leaseHandler.write(requestBytes, getRNCUI(leaseHandler.clientObj.PmdbClientObj), &responseBytes)
 	if leaseHandler.cliRequest.Err != nil {
 		log.Error(leaseHandler.cliRequest.Err)
+		leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+	} else {
+		leaseHandler.cliRequest.LeaseRes.Status = "Success"
 	}
 
 	// prepare leaseRes
