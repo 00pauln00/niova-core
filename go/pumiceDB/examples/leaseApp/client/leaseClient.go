@@ -224,7 +224,11 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		var requestCli leaseClientLib.LeaseClientReqHandler
 		// Fill up leaseReq struct in lease handler
 		rncui := getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-		err = leaseHandler.InitLeaseReq(key, value, rncui, leaseLib.GET)
+		err := leaseHandler.cliRequest.InitLeaseReq(key.String(), value.String(), rncui, leaseLib.GET)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
 		// perform lease Get operation and which fills up the leaseHandler.cliRequest.LeaseRes
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
 		if leaseHandler.cliRequest.Err != nil {
@@ -303,7 +307,11 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 			operation = leaseLib.LOOKUP_VALIDATE
 		}
 
-		err = leaseHandler.InitLeaseReq(key, value, "", operation)
+		err := leaseHandler.cliRequest.InitLeaseReq(key.String(), value.String(), "", operation)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
 
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
 		if leaseHandler.cliRequest.Err != nil {
