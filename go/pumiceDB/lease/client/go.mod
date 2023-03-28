@@ -6,6 +6,8 @@ replace niova/go-pumicedb-lib/client => ../../client
 
 replace niova/go-pumicedb-lib/common => ../../common
 
+replace common/clientAPI => ../../../serf/serviceDiscovery
+
 go 1.18
 
 require (
