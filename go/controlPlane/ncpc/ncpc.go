@@ -591,11 +591,11 @@ func (clientObj *clientHandler) writeToLeaseOutfile(leaseReq leaseLib.LeaseReq, 
 
 }
 
-//TODO : Better error handling
-func (clientObj *clientHandler) prepareLeaseHandlers() leaseClientLib.LeaseClientReqHandler {
+func (clientObj *clientHandler) prepareLeaseHandlers(leaseReqHandler *leaseClientLib.LeaseClientReqHandler) error {
 	raft, err := uuid.FromString(clientObj.raftUUID)
 	if err != nil {
 		log.Error("Error getting raft UUID ", err)
+		return err
 	}
 
 	leaseClientObj := leaseClientLib.LeaseClient{
@@ -603,69 +603,10 @@ func (clientObj *clientHandler) prepareLeaseHandlers() leaseClientLib.LeaseClien
 		ServiceDiscoveryObj: &clientObj.clientAPIObj,
 	}
 
-	leaseReqHandler := leaseClientLib.LeaseClientReqHandler{
-		LeaseClientObj: &leaseClientObj,
-	}
-
-	return leaseReqHandler
-
-}
-
-/*
-func (clientObj *clientHandler) performLeaseOperation(operation int) error {
-	var isWrite bool
-
-	//Get Lease code
-	clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-
-	// prepare lease request
-
-	appRequestBytes := leaseClientLib.PrepareLeaseReq(clientObj.requestKey, clientObj.requestValue, operation)
-
-	if operation == leaseLib.LOOKUP {
-		isWrite = false
-	} else {
-		isWrite = true
-	}
-	responseBytes, err := clientObj.clientAPIObj.Request(appRequestBytes, "", isWrite)
-	if err != nil {
-		log.Error("Error while sending request : ", err)
-		return err
-	}
-
-	var responseObj leaseLib.LeaseRes
-	// check for no return val
-	if operation == leaseLib.LOOKUP && len(responseBytes) == 0 {
-		err = errors.New("Key not found")
-	} else {
-		//decode the response
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-		err = dec.Decode(&responseObj)
-		if err != nil {
-			log.Error("Decoding error : ", err)
-			return err
-		}
-	}
-
-	// convert the response to the outfile format
-	if err == nil {
-		responseObj.Status = "Success"
-	} else {
-		responseObj.Status = err.Error()
-	}
-
-	// preparing to write to json outfile
-	var leaseReq leaseLib.LeaseReq
-	err = clientObj.fillLeaseReqObj(&leaseReq, operation)
-	if err != nil {
-		log.Error("Error while writing to outfile : ", err)
-		return err
-	}
-	clientObj.writeToLeaseOutfile(leaseReq, responseObj)
-
+	leaseReqHandler.LeaseClientObj = &leaseClientObj
 	return err
+
 }
-*/
 
 func (clientObj *clientHandler) fillLeaseReqObj(leaseReq *leaseLib.LeaseReq, operation int) error {
 	var err error
@@ -924,8 +865,17 @@ func main() {
 	case "GetLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
-		leaseReqHandler := clientObj.prepareLeaseHandlers()
+		var leaseReqHandler leaseClientLib.LeaseClientReqHandler
+		err = clientObj.prepareLeaseHandlers(&leaseReqHandler)
+		if err != nil {
+			log.Error(err)
+			break
+		}
 		err = leaseReqHandler.InitLeaseReq(clientObj.requestKey, clientObj.requestValue, "", leaseLib.GET)
+		if err != nil {
+			log.Error(err)
+			break
+		}
 		err = leaseReqHandler.LeaseOperationOverHTTP()
 		if err != nil {
 			log.Error(err)
@@ -936,8 +886,17 @@ func main() {
 	case "LookupLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
-		leaseReqHandler := clientObj.prepareLeaseHandlers()
+		var leaseReqHandler leaseClientLib.LeaseClientReqHandler
+		err = clientObj.prepareLeaseHandlers(&leaseReqHandler)
+		if err != nil {
+			log.Error(err)
+			break
+		}
 		err = leaseReqHandler.InitLeaseReq(clientObj.requestKey, clientObj.requestValue, "", leaseLib.LOOKUP)
+		if err != nil {
+			log.Error(err)
+			break
+		}
 		err = leaseReqHandler.LeaseOperationOverHTTP()
 		if err != nil {
 			log.Error(err)
@@ -948,8 +907,17 @@ func main() {
 	case "RefreshLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
-		leaseReqHandler := clientObj.prepareLeaseHandlers()
+		var leaseReqHandler leaseClientLib.LeaseClientReqHandler
+		err = clientObj.prepareLeaseHandlers(&leaseReqHandler)
+		if err != nil {
+			log.Error(err)
+			break
+		}
 		err = leaseReqHandler.InitLeaseReq(clientObj.requestKey, clientObj.requestValue, "", leaseLib.REFRESH)
+		if err != nil {
+			log.Error(err)
+			break
+		}
 		err = leaseReqHandler.LeaseOperationOverHTTP()
 		if err != nil {
 			log.Error(err)
