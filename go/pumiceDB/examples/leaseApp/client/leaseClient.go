@@ -224,6 +224,7 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		var requestCli leaseClientLib.LeaseClientReqHandler
 		// Fill up leaseReq struct in lease handler
 		rncui := getRNCUI(leaseHandler.clientObj.PmdbClientObj)
+		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
 		err := leaseHandler.cliRequest.InitLeaseReq(key.String(), value.String(), rncui, leaseLib.GET)
 		if err != nil {
 			log.Error(err)
@@ -233,6 +234,9 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
+			leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+		} else {
+			leaseHandler.cliRequest.LeaseRes.Status = "Success"
 		}
 		requestCli = leaseHandler.cliRequest
 		response = append(response, requestCli)
@@ -316,15 +320,10 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
+			leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+		} else {
+			leaseHandler.cliRequest.LeaseRes.Status = "Success"
 		}
-
-		/*
-			if len(responseBytes) == 0 {
-				leaseHandler.cliRequest.LeaseRes.Status = "Key not found"
-			} else {
-				leaseHandler.cliRequest.LeaseRes.Status = "Success"
-			}
-		*/
 
 		response = append(response, leaseHandler.cliRequest)
 	}
@@ -355,16 +354,20 @@ Description: Perform REFRESH lease operation
 
 func (leaseHandler *leaseHandler) refreshLease() error {
 
+	leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
 	leaseHandler.cliRequest.LeaseReq.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
 	leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.REFRESH
 
-	err := leaseHandler.cliRequest.Refresh()
-	if err != nil {
-		log.Error(err)
+	leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Refresh()
+	if leaseHandler.cliRequest.Err != nil {
+		log.Error(leaseHandler.cliRequest.Err)
+		leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+	} else {
+		leaseHandler.cliRequest.LeaseRes.Status = "Success"
 	}
 	// Write the response to the json file.
 	leaseHandler.writeToJson(leaseHandler.cliRequest)
-	return err
+	return leaseHandler.cliRequest.Err
 }
 
 /*
@@ -380,6 +383,9 @@ func (leaseHandler *leaseHandler) writeToJson(toJson interface{}) {
 	err = ioutil.WriteFile(leaseHandler.jsonFilePath+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
+		leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+	} else {
+		leaseHandler.cliRequest.LeaseRes.Status = "Success"
 	}
 }
 

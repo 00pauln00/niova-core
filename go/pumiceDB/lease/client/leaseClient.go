@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"common/leaseLib"
 	"encoding/gob"
+	"errors"
 
 	serviceDiscovery "common/clientAPI"
 	pmdbClient "niova/go-pumicedb-lib/client"
@@ -150,7 +151,7 @@ func (handler *LeaseClientReqHandler) InitLeaseReq(client, resource, rncui strin
 	handler.LeaseReq.Client = clientUUID
 	handler.LeaseReq.Resource = resourceUUID
 	handler.LeaseReq.Operation = operation
-	handler.LeaseReq.Rncui = rncui
+	//handler.LeaseReq.Rncui = rncui
 
 	return err
 }
@@ -179,7 +180,6 @@ func (handler *LeaseClientReqHandler) Get() error {
 	// decode req response
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&handler.LeaseRes)
-
 	if err != nil {
 		return err
 	}
@@ -205,6 +205,9 @@ func (handler *LeaseClientReqHandler) Lookup() error {
 	requestBytes := PreparePumiceReq(handler.LeaseReq)
 	err = handler.LeaseClientObj.Read(&requestBytes, "", &responseBytes)
 	if err != nil {
+		return err
+	} else if len(responseBytes) == 0 {
+		err = errors.New("Key not found")
 		return err
 	}
 
@@ -277,11 +280,12 @@ func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	// decode req response
 	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
 	err = dec.Decode(&handler.LeaseRes)
-
 	if err != nil {
 		return err
 	}
 
+	//set req as successful if we reach here
+	handler.LeaseRes.Status = "Success"
 	log.Info("Lease request status - ", handler.LeaseRes.Status)
 
 	return err
