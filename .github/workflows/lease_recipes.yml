@@ -85,7 +85,6 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/lease_recipes.txt'
                              'lease'
                              '/home/runner/work/go/go/bin'
-                             5
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
