@@ -871,7 +871,7 @@ func main() {
 			log.Error(err)
 			break
 		}
-		err = leaseReqHandler.InitLeaseReq(clientObj.requestKey, clientObj.requestValue, "", leaseLib.GET)
+		err = leaseReqHandler.InitLeaseReq(clientObj.requestValue, clientObj.requestKey, "", leaseLib.GET)
 		if err != nil {
 			log.Error(err)
 			break
@@ -892,7 +892,7 @@ func main() {
 			log.Error(err)
 			break
 		}
-		err = leaseReqHandler.InitLeaseReq(clientObj.requestKey, clientObj.requestValue, "", leaseLib.LOOKUP)
+		err = leaseReqHandler.InitLeaseReq(clientObj.requestValue, clientObj.requestKey, "", leaseLib.LOOKUP)
 		if err != nil {
 			log.Error(err)
 			break
@@ -913,7 +913,7 @@ func main() {
 			log.Error(err)
 			break
 		}
-		err = leaseReqHandler.InitLeaseReq(clientObj.requestKey, clientObj.requestValue, "", leaseLib.REFRESH)
+		err = leaseReqHandler.InitLeaseReq(clientObj.requestValue, clientObj.requestKey, "", leaseLib.REFRESH)
 		if err != nil {
 			log.Error(err)
 			break
