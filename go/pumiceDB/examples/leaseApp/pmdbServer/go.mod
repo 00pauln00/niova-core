@@ -4,6 +4,8 @@ go 1.16
 
 replace niova/go-pumicedb-lib/server => ../../../../pumiceDB/server
 
+replace niova/go-pumicedb-lib/client => ../../../../pumiceDB/client
+
 replace niova/go-pumicedb-lib/common => ../../../../pumiceDB/common
 
 replace common/serfAgent => ../../../serf/agent
