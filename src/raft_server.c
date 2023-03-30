@@ -4282,8 +4282,8 @@ raft_server_net_client_request_init(
     const size_t commit_data_size, const struct sockaddr_in *from,
     char *reply_buf, const size_t reply_buf_size)
 {
-    NIOVA_ASSERT(ri && rncr && reply_buf &&
-                 reply_buf_size >= sizeof(struct raft_client_rpc_msg));
+    NIOVA_ASSERT(ri && rncr && (rncr->rncr_is_direct_req || (reply_buf &&
+                 reply_buf_size >= sizeof(struct raft_client_rpc_msg))));
 
     if (type == RAFT_NET_CLIENT_REQ_TYPE_NONE)
         FATAL_IF((!rpc_request || commit_data),
@@ -4303,14 +4303,17 @@ raft_server_net_client_request_init(
     rncr->rncr_entry_term = ri->ri_log_hdr.rlh_term;
     rncr->rncr_current_term = ri->ri_log_hdr.rlh_term;
 
-    //memset the reply_buf to make sure garbage values are not used from it.
-    memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
+    //direct request will not have reply buffer
+    if (reply_buf)
+    {
+        //memset the reply_buf to make sure garbage values are not used from it.
+        memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
 
-    rncr->rncr_reply = (struct raft_client_rpc_msg *)reply_buf;
+        rncr->rncr_reply = (struct raft_client_rpc_msg *)reply_buf;
+    }
 
     CONST_OVERRIDE(size_t, rncr->rncr_reply_data_max_size,
                    (reply_buf_size - sizeof(struct raft_client_rpc_msg)));
-
 
     if (rpc_request)
     {
@@ -6331,5 +6334,27 @@ raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
     leader_ts->rlts_term = ri->ri_log_hdr.rlh_term;
     leader_ts->rlts_time = ri->ri_leader.rls_leader_accumulated.tv_sec;
 
+    return 0;
+}
+
+int
+raft_server_enqueue_direct_request_from_leader(char *req_buf, int64_t data_size)
+{
+    // Type case to rcm
+    struct raft_client_rpc_msg *rcm =
+         (struct raft_client_rpc_msg *)req_buf;
+    // Initialize rcm.
+    // Initialize pmdb_msg
+    // Copy kvdata to pmdb_msg
+    // Prepare rncr
+    struct raft_instance *ri = raft_net_get_instance(); //TODO how to get this ri pointer
+    struct raft_net_client_request_handle rncr = {0};
+    raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, NULL,
+                                                   NULL,
+                                                   0);
+
+    // Perform this check before handing back the rncr.
+    // Enqueue the request.
+    raft_server_do_client_write(ri, &rncr);
     return 0;
 }

@@ -1183,4 +1183,7 @@ raft_server_instance_chkpt_compact_max_idx(const struct raft_instance *ri)
 
     return ri->ri_last_applied_synced_idx;
 }
+
+int
+raft_server_enqueue_direct_request_from_leader(char *req_buff, int64_t data_size);
 #endif

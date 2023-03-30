@@ -679,3 +679,25 @@ func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) int {
 
 	return rc_go
 }
+
+func PmdbInitRPCMsg(rcm *C.struct_raft_client_rpc_msg, dataSize uint32) {
+    rcm.rcrm_type = C.RAFT_CLIENT_RPC_MSG_TYPE_WRITE
+	rcm.rcrm_version = 0
+	rcm.rcrm_data_size = C.uint32_t(dataSize)
+}
+
+func PmdbEnqueueDirectWriteRequest(kvdata unsafe.Pointer, dataSize int64) {
+	reqBuffer := C.malloc(4 * 1024 * 1024)
+	rcm  := (*C.struct_raft_client_rpc_msg)(reqBuffer)
+
+	msgPointer := unsafe.Pointer(uintptr(reqBuffer) + C.sizeof_struct_raft_client_rpc_msg)
+	pmdb_msg := (*C.struct_pmdb_msg)(msgPointer)
+    C.pmdb_msg_init(pmdb_msg, C.uint32_t(dataSize), C.pmdb_op_write, 0)
+	dataPtr := unsafe.Pointer(uintptr(msgPointer) + C.sizeof_struct_pmdb_msg)
+	C.memcpy(dataPtr, kvdata, C.size_t(dataSize))
+	pmdbMsgSize := C.sizeof_struct_pmdb_msg + C.int64_t(dataSize)
+	PmdbInitRPCMsg(rcm, uint32(pmdbMsgSize))
+
+	totalSize := int64(pmdbMsgSize + C.sizeof_struct_raft_client_rpc_msg)
+	C.raft_server_enqueue_direct_request_from_leader((*C.char)(reqBuffer), C.int64_t(totalSize))
+}
