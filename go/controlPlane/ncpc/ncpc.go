@@ -98,78 +98,6 @@ func randSeq(n int, r *rand.Rand) []byte {
 	return b
 }
 
-// will be used to write to json file
-type JsonLeaseReq struct {
-	Client    uuid.UUID
-	Resource  uuid.UUID
-	Operation string
-}
-
-type JsonLeaseResp struct {
-	Client     uuid.UUID
-	Resource   uuid.UUID
-	Status     string
-	LeaseState string
-	TTL        int
-	TimeStamp  leaseLib.LeaderTS
-}
-
-type WriteObj struct {
-	Request  JsonLeaseReq
-	Response JsonLeaseResp
-}
-
-func getStringLeaseState(leaseState int) string {
-	switch leaseState {
-	case leaseLib.GRANTED:
-		return "GRANTED"
-	case leaseLib.INPROGRESS:
-		return "IN-PROGRESS"
-	case leaseLib.EXPIRED:
-		return "EXPIRED"
-	case leaseLib.AIU:
-		return "ALREADY-IN-USE"
-	case leaseLib.INVALID:
-		return "INVALID"
-	}
-	return "UNKNOWN"
-}
-
-func getStringOperation(op int) string {
-	switch op {
-	case leaseLib.GET:
-		return "GET"
-	case leaseLib.PUT:
-		return "PUT"
-	case leaseLib.LOOKUP:
-		return "LOOKUP"
-	case leaseLib.REFRESH:
-		return "REFRESH"
-	}
-	return "UNKNOWN"
-}
-
-func prepareLeaseJsonResponse(requestObj leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) WriteObj {
-	req := JsonLeaseReq{
-		Client:    requestObj.Client,
-		Resource:  requestObj.Resource,
-		Operation: getStringOperation(requestObj.Operation),
-	}
-	resp := JsonLeaseResp{
-		Client:     responseObj.Client,
-		Resource:   responseObj.Resource,
-		Status:     responseObj.Status,
-		LeaseState: getStringLeaseState(responseObj.LeaseState),
-		TTL:        responseObj.TTL,
-		TimeStamp:  responseObj.TimeStamp,
-	}
-	res := WriteObj{
-		Request:  req,
-		Response: resp,
-	}
-	return res
-}
-
 func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	kvMap := make(map[string][]byte)
 	r := rand.New(rand.NewSource(seed))
@@ -585,12 +513,6 @@ func (clientObj *clientHandler) rangeRead() {
 	clientObj.write2Json(operationStat)
 }
 
-func (clientObj *clientHandler) writeToLeaseOutfile(leaseReq leaseLib.LeaseReq, responseObj leaseLib.LeaseRes) {
-	res := prepareLeaseJsonResponse(leaseReq, responseObj)
-	clientObj.write2Json(res)
-
-}
-
 func (clientObj *clientHandler) prepareLeaseHandlers(leaseReqHandler *leaseClientLib.LeaseClientReqHandler) error {
 	raft, err := uuid.FromString(clientObj.raftUUID)
 	if err != nil {
@@ -882,7 +804,8 @@ func main() {
 			break
 		}
 
-		clientObj.writeToLeaseOutfile(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
+		//clientObj.writeToLeaseOutfile(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
+		clientObj.write2Json(leaseReqHandler)
 	case "LookupLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
@@ -903,7 +826,8 @@ func main() {
 			break
 		}
 
-		clientObj.writeToLeaseOutfile(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
+		//clientObj.writeToLeaseOutfile(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
+		clientObj.write2Json(leaseReqHandler)
 	case "RefreshLease":
 		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
@@ -924,7 +848,8 @@ func main() {
 			break
 		}
 
-		clientObj.writeToLeaseOutfile(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
+		//clientObj.writeToLeaseOutfile(leaseReqHandler.LeaseReq, leaseReqHandler.LeaseRes)
+		clientObj.write2Json(leaseReqHandler)
 
 	}
 
