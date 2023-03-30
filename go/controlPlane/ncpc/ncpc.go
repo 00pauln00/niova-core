@@ -750,34 +750,20 @@ func main() {
 		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
 		//Request obj
-		var appRequestObj requestResponseLib.LookoutRequest
+		var requestObj requestResponseLib.LookoutRequest
 
 		//Parse UUID
-		appRequestObj.UUID, _ = uuid.FromString(clientObj.requestKey)
-		appRequestObj.Cmd = clientObj.requestValue
+		requestObj.UUID, _ = uuid.FromString(clientObj.requestKey)
+		requestObj.Cmd = clientObj.requestValue
 
-		var appRequestBytes bytes.Buffer
-		enc := gob.NewEncoder(&appRequestBytes)
-		err := enc.Encode(appRequestObj)
+		var requestBytes bytes.Buffer
+		enc := gob.NewEncoder(&requestBytes)
+		err := enc.Encode(requestObj)
 		if err != nil {
 			log.Error("Encoding error : ", err)
 		}
 
-		//TODO: Why PumiceRequest wrapper for lookout request;
-		//There is no interaction of pumice layer in lookout request
-		var pumiceReqObj PumiceDBCommon.PumiceRequest
-		pumiceReqObj.ReqType = PumiceDBCommon.APP_REQ
-		pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
-
-		var pumiceRequestBytes bytes.Buffer
-		pumiceEnc := gob.NewEncoder(&pumiceRequestBytes)
-		err = pumiceEnc.Encode(pumiceReqObj)
-		if err != nil {
-			log.Error("Encoding error : ", err)
-			return
-		}
-
-		responseBytes, err := clientObj.clientAPIObj.Request(pumiceRequestBytes.Bytes(), "/v1/", false)
+		responseBytes, err := clientObj.clientAPIObj.Request(requestBytes.Bytes(), "/v1/", false)
 
 		if err != nil {
 			log.Error("Error while sending request to proxy : ", err)
