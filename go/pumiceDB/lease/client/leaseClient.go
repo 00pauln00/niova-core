@@ -137,21 +137,23 @@ Return(s) : error
 Description : Initialize the handler's leaseReq struct
 */
 func (handler *LeaseClientReqHandler) InitLeaseReq(client, resource, rncui string, operation int) error {
-	clientUUID, err := uuid.FromString(client)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
 	resourceUUID, err := uuid.FromString(resource)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
-	handler.LeaseReq.Client = clientUUID
-	handler.LeaseReq.Resource = resourceUUID
 	handler.LeaseReq.Operation = operation
-	//handler.LeaseReq.Rncui = rncui
+	handler.LeaseReq.Resource = resourceUUID
+
+	if operation != leaseLib.LOOKUP {
+		clientUUID, err := uuid.FromString(client)
+		if err != nil {
+			log.Error(err)
+			return err
+		}
+		handler.LeaseReq.Client = clientUUID
+	}
 
 	return err
 }

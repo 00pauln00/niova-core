@@ -175,7 +175,6 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 		}
 		return 0
 	}
-
 }
 
 func (handler *LeaseServerReqHandler) readLease() int {
@@ -257,7 +256,6 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	return int64(rc)
-
 }
 
 func (handler *LeaseServerReqHandler) applyLease() int {

@@ -91,7 +91,6 @@ func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, int64) {
 	}
 
 	return encodedReqPtr, reqLen
-
 }
 
 //Write KV from client.
@@ -134,7 +133,6 @@ func (obj *PmdbClientObj) WriteEncoded(reqArgs *PmdbReqArgs) (unsafe.Pointer,
 	return obj.writeKV(reqArgs.Rncui, encodedRequest, requestLen,
 		getResponse_c,
 		reqArgs.ReplySize)
-
 }
 
 func (obj *PmdbClientObj) WriteEncodedAndGetResponse(reqArgs *PmdbReqArgs) error {
@@ -261,7 +259,6 @@ func (obj *PmdbClientObj) ReadZeroCopy(reqArgs *PmdbReqArgs) error {
 	//Read the value of the key in application buffer
 	return obj.readKVZeroCopy(reqArgs.Rncui, encoded_key,
 		key_len, reqArgs.ZeroCopyObj)
-
 }
 
 //Get the Leader UUID.
@@ -278,7 +275,6 @@ func (pmdb_client *PmdbClientObj) PmdbGetLeader() (uuid.UUID, error) {
 	//C uuid to Go bytes
 	return uuid.FromBytes(C.GoBytes(unsafe.Pointer(&leader_info.rcli_leader_uuid),
 		C.int(unsafe.Sizeof(leader_info.rcli_leader_uuid))))
-
 }
 
 // Call the pmdb C library function to write the application data.

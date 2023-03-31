@@ -213,7 +213,6 @@ func (handler *proxyHandler) startPMDBClient() error {
 	//Store rncui in nkvclientObj
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
-
 }
 
 /*
@@ -490,23 +489,21 @@ Return(s) : error
 Description : A wrapper for PMDB ReadCallBack
 */
 func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	var baserequest requestResponseLib.KVRequest
-	var baseRequestBytes bytes.Buffer
-	baserequest.Operation = requestResponseLib.KV_READ
-	baserequest.Key = key
+	var req requestResponseLib.KVRequest
+	var reqBytes bytes.Buffer
+	req.Operation = requestResponseLib.KV_READ
+	req.Key = key
 
-	enc := gob.NewEncoder(&baseRequestBytes)
-	err := enc.Encode(baserequest)
+	enc := gob.NewEncoder(&reqBytes)
+	err := enc.Encode(req)
 	if err != nil {
 		log.Error(err)
+		return err
 	}
 
-	var requestBytes bytes.Buffer
-	enc = gob.NewEncoder(&requestBytes)
-	enc.Encode(baserequest)
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      "",
-		ReqByteArr: requestBytes.Bytes(),
+		ReqByteArr: reqBytes.Bytes(),
 		Response:   response,
 	}
 	return handler.pmdbClientObj.ReadEncoded(reqArgs)
