@@ -45,22 +45,6 @@ type LeaseClientReqHandler struct {
 	Err            error
 }
 
-func PrepareLeaseReq(client, resource, rncui string, operation int) []byte {
-	var leaseReq leaseLib.LeaseReq
-	var err error
-
-	leaseReq.Client, err = uuid.FromString(client)
-	leaseReq.Resource, err = uuid.FromString(resource)
-	leaseReq.Operation = operation
-	leaseReq.Rncui = rncui
-	if err != nil {
-		log.Error(err)
-		return nil
-	}
-
-	return preparePumiceReq(leaseReq)
-}
-
 func preparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 	var err error
 	var pumiceReq PumiceDBCommon.PumiceRequest
