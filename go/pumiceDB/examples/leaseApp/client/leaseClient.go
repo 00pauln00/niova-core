@@ -234,9 +234,10 @@ func (leaseHandler *leaseHandler) getLeases() error {
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
-			leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
+
 		} else {
-			leaseHandler.cliRequest.LeaseRes.Status = "Success"
+			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 		}
 		requestCli = leaseHandler.cliRequest
 		response = append(response, requestCli)
@@ -245,7 +246,7 @@ func (leaseHandler *leaseHandler) getLeases() error {
 	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE && leaseHandler.numOfLeases >= 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
-			if response[i].LeaseRes.Status == "Success" {
+			if response[i].LeaseRes.Status == leaseLib.SUCCESS {
 				mapString["Status"] = "Success"
 			} else {
 				log.Info(" 'Status' not matched ")
@@ -320,9 +321,9 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
 		if leaseHandler.cliRequest.Err != nil {
 			log.Error(leaseHandler.cliRequest.Err)
-			leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 		} else {
-			leaseHandler.cliRequest.LeaseRes.Status = "Success"
+			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 		}
 
 		response = append(response, leaseHandler.cliRequest)
@@ -331,7 +332,7 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
-			if response[i].LeaseRes.Status == "Success" {
+			if response[i].LeaseRes.Status == leaseLib.SUCCESS {
 				mapString["Status"] = "Success"
 			} else {
 				log.Info(" 'Status' not matched ")
@@ -361,9 +362,9 @@ func (leaseHandler *leaseHandler) refreshLease() error {
 	leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Refresh()
 	if leaseHandler.cliRequest.Err != nil {
 		log.Error(leaseHandler.cliRequest.Err)
-		leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 	} else {
-		leaseHandler.cliRequest.LeaseRes.Status = "Success"
+		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 	}
 	// Write the response to the json file.
 	leaseHandler.writeToJson(leaseHandler.cliRequest)
@@ -383,9 +384,9 @@ func (leaseHandler *leaseHandler) writeToJson(toJson interface{}) {
 	err = ioutil.WriteFile(leaseHandler.jsonFilePath+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
-		leaseHandler.cliRequest.LeaseRes.Status = leaseHandler.cliRequest.Err.Error()
+		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 	} else {
-		leaseHandler.cliRequest.LeaseRes.Status = "Success"
+		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 	}
 }
 

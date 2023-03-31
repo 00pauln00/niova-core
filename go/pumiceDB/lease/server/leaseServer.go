@@ -298,11 +298,11 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	keyLength := len(handler.LeaseReq.Resource.String())
 	rc := handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler, handler.LeaseReq.Resource.String(), int64(keyLength), byteToStr, int64(valLen), handler.LeaseServerObj.LeaseColmFam)
 	if rc < 0 {
-		leaseObjPtr.LeaseMetaInfo.Status = "Key not found"
+		leaseObjPtr.LeaseMetaInfo.Status = leaseLib.FAILURE
 		log.Error("Value not written to rocksdb")
 		return -1
 	} else {
-		leaseObjPtr.LeaseMetaInfo.Status = "Success"
+		leaseObjPtr.LeaseMetaInfo.Status = leaseLib.SUCCESS
 	}
 
 	if isLeaderFlag == 0 {

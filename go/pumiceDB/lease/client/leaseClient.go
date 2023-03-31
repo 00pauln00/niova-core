@@ -277,15 +277,19 @@ func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	if err != nil {
 		return err
 	}
-	// decode req response
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
-	err = dec.Decode(&handler.LeaseRes)
-	if err != nil {
-		return err
-	}
 
-	//set req as successful if we reach here
-	handler.LeaseRes.Status = "Success"
+	// decode the response if response is not blank
+	if len(responseBytes) == 0 {
+		handler.LeaseRes.Status = leaseLib.FAILURE
+		handler.Err = errors.New("Key not found")
+	} else {
+		handler.LeaseRes.Status = leaseLib.SUCCESS
+		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		err = dec.Decode(&handler.LeaseRes)
+		if err != nil {
+			return err
+		}
+	}
 	log.Info("Lease request status - ", handler.LeaseRes.Status)
 
 	return err

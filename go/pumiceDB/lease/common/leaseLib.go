@@ -19,6 +19,8 @@ const (
 	AIU                 = 3
 	GRANTED             = 4
 	NULL                = 5
+	SUCCESS             = 0
+	FAILURE             = -1
 )
 
 type LeaseReq struct {
@@ -36,22 +38,22 @@ type LeaderTS struct {
 type LeaseRes struct {
 	Client     uuid.UUID
 	Resource   uuid.UUID
-	Status     string
+	Status     int
 	LeaseState int
 	TTL        int
 	TimeStamp  LeaderTS
 }
 
 type LeaseMeta struct {
-	Resource    uuid.UUID
-	Client      uuid.UUID
-	Status      string
-	LeaseState  int
-	TTL         int
-	TimeStamp   LeaderTS
+	Resource   uuid.UUID
+	Client     uuid.UUID
+	Status     int
+	LeaseState int
+	TTL        int
+	TimeStamp  LeaderTS
 }
 
 type LeaseInfo struct {
 	LeaseMetaInfo LeaseMeta
-	ListElement *list.Element
+	ListElement   *list.Element
 }
