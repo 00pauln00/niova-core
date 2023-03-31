@@ -47,7 +47,7 @@ type LeaseClientReqHandler struct {
 
 func preparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 	var err error
-	var pumiceReq PumiceDBCommon.PumiceRequest
+	var pmdbReq PumiceDBCommon.PumiceRequest
 
 	var leaseReqBuf bytes.Buffer
 	leaseEnc := gob.NewEncoder(&leaseReqBuf)
@@ -57,13 +57,13 @@ func preparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 		return nil
 	}
 
-	pumiceReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
-	pumiceReq.ReqType = PumiceDBCommon.LEASE_REQ
-	pumiceReq.ReqPayload = leaseReqBuf.Bytes()
+	pmdbReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
+	pmdbReq.ReqType = PumiceDBCommon.LEASE_REQ
+	pmdbReq.ReqPayload = leaseReqBuf.Bytes()
 
 	var pumiceReqBuf bytes.Buffer
 	pumiceEnc := gob.NewEncoder(&pumiceReqBuf)
-	err = pumiceEnc.Encode(pumiceReq)
+	err = pumiceEnc.Encode(pmdbReq)
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -78,13 +78,13 @@ Arguments : LeaseReq, rncui, *LeaseResp
 Return(s) : error
 Description : Wrapper function for WriteEncoded() function
 */
-func (clientObj LeaseClient) write(requestBytes *[]byte, rncui string, response *[]byte) error {
+func (clientObj LeaseClient) write(reqBytes *[]byte, rncui string, response *[]byte) error {
 	var err error
 	var replySize int64
 
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:       rncui,
-		ReqByteArr:  *requestBytes,
+		ReqByteArr:  *reqBytes,
 		GetResponse: 1,
 		ReplySize:   &replySize,
 		Response:    response,
@@ -102,11 +102,11 @@ Arguments : LeaseReq, rncui, *response
 Return(s) : error
 Description : Wrapper function for ReadEncoded() function
 */
-func (clientObj LeaseClient) Read(requestBytes *[]byte, rncui string, response *[]byte) error {
+func (clientObj LeaseClient) Read(reqBytes *[]byte, rncui string, response *[]byte) error {
 
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      rncui,
-		ReqByteArr: *requestBytes,
+		ReqByteArr: *reqBytes,
 		Response:   response,
 	}
 
@@ -152,19 +152,19 @@ Description : Handler function for get() operation
 */
 func (handler *LeaseClientReqHandler) Get() error {
 	var err error
-	var responseBytes []byte
+	var resBytes []byte
 
-	// Prepare requestBytes for pumiceReq type
-	requestBytes := preparePumiceReq(handler.LeaseReq)
+	// Prepare reqBytes for pumiceReq type
+	reqBytes := preparePumiceReq(handler.LeaseReq)
 
 	// send req
-	err = handler.LeaseClientObj.write(&requestBytes, handler.Rncui, &responseBytes)
+	err = handler.LeaseClientObj.write(&reqBytes, handler.Rncui, &resBytes)
 	if err != nil {
 		return err
 	}
 
 	// decode req response
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	dec := gob.NewDecoder(bytes.NewBuffer(resBytes))
 	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
@@ -185,19 +185,19 @@ Description : Handler function for lookup() operation
 */
 func (handler *LeaseClientReqHandler) Lookup() error {
 	var err error
-	var responseBytes []byte
+	var resBytes []byte
 
-	// Prepare requestBytes for pumiceReq type
-	requestBytes := preparePumiceReq(handler.LeaseReq)
-	err = handler.LeaseClientObj.Read(&requestBytes, "", &responseBytes)
+	// Prepare reqBytes for pumiceReq type
+	reqBytes := preparePumiceReq(handler.LeaseReq)
+	err = handler.LeaseClientObj.Read(&reqBytes, "", &resBytes)
 	if err != nil {
 		return err
-	} else if len(responseBytes) == 0 {
+	} else if len(resBytes) == 0 {
 		err = errors.New("Key not found")
 		return err
 	}
 
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	dec := gob.NewDecoder(bytes.NewBuffer(resBytes))
 	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
@@ -216,19 +216,19 @@ Description : Handler function for refresh() operation
 */
 func (handler *LeaseClientReqHandler) Refresh() error {
 	var err error
-	var responseBytes []byte
+	var resBytes []byte
 
-	// Prepare requestBytes for pumiceReq type
-	requestBytes := preparePumiceReq(handler.LeaseReq)
+	// Prepare reqBytes for pumiceReq type
+	reqBytes := preparePumiceReq(handler.LeaseReq)
 
 	// send req
-	err = handler.LeaseClientObj.write(&requestBytes, handler.Rncui, &responseBytes)
+	err = handler.LeaseClientObj.write(&reqBytes, handler.Rncui, &resBytes)
 	if err != nil {
 		return err
 	}
 
 	// decode req response
-	dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+	dec := gob.NewDecoder(bytes.NewBuffer(resBytes))
 	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
@@ -249,28 +249,28 @@ Description :
 func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	var err error
 	var isWrite bool = false
-	var responseBytes []byte
+	var resBytes []byte
 
-	// Prepare requestBytes for pumiceReq type
-	requestBytes := preparePumiceReq(handler.LeaseReq)
+	// Prepare reqBytes for pumiceReq type
+	reqBytes := preparePumiceReq(handler.LeaseReq)
 
 	if handler.LeaseReq.Operation != leaseLib.LOOKUP {
 		isWrite = true
 	}
 	// send req
-	responseBytes, err = handler.LeaseClientObj.ServiceDiscoveryObj.Request(requestBytes, handler.Rncui, isWrite)
-	//responseBytes, err = clientObj.clientAPIObj.Request(requestBytes, rncui, true)
+	resBytes, err = handler.LeaseClientObj.ServiceDiscoveryObj.Request(reqBytes, handler.Rncui, isWrite)
+	//resBytes, err = clientObj.clientAPIObj.Request(reqBytes, rncui, true)
 	if err != nil {
 		return err
 	}
 
 	// decode the response if response is not blank
-	if len(responseBytes) == 0 {
+	if len(resBytes) == 0 {
 		handler.LeaseRes.Status = leaseLib.FAILURE
 		handler.Err = errors.New("Key not found")
 	} else {
 		handler.LeaseRes.Status = leaseLib.SUCCESS
-		dec := gob.NewDecoder(bytes.NewBuffer(responseBytes))
+		dec := gob.NewDecoder(bytes.NewBuffer(resBytes))
 		err = dec.Decode(&handler.LeaseRes)
 		if err != nil {
 			return err

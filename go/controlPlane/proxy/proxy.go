@@ -482,35 +482,6 @@ func (handler *proxyHandler) PutHandlerCB(request []byte, response *[]byte) erro
 
 /*
 Structure : proxyHandler
-Method : ReadWrapper
-Arguments : key, *[]byte
-Return(s) : error
-
-Description : A wrapper for PMDB ReadCallBack
-*/
-func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	var req requestResponseLib.KVRequest
-	var reqBytes bytes.Buffer
-	req.Operation = requestResponseLib.KV_READ
-	req.Key = key
-
-	enc := gob.NewEncoder(&reqBytes)
-	err := enc.Encode(req)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-
-	reqArgs := &pmdbClient.PmdbReqArgs{
-		Rncui:      "",
-		ReqByteArr: reqBytes.Bytes(),
-		Response:   response,
-	}
-	return handler.pmdbClientObj.ReadEncoded(reqArgs)
-}
-
-/*
-Structure : proxyHandler
 Method    : ReadCallBack
 Arguments : []byte, *[]byte
 Return(s) : error

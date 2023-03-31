@@ -294,6 +294,23 @@ func prepareKVRequest(key string, value []byte, rncui string, operation int) []b
 	return reqBytes.Bytes()
 }
 
+func (clientObj *clientHandler) prepareLOInfoRequest() []byte {
+	//Request obj
+	var reqObj requestResponseLib.LookoutRequest
+	var reqBytes bytes.Buffer
+
+	//Parse UUID
+	reqObj.UUID, _ = uuid.FromString(clientObj.requestKey)
+	reqObj.Cmd = clientObj.requestValue
+
+	enc := gob.NewEncoder(&reqBytes)
+	err := enc.Encode(reqObj)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+	}
+	return reqBytes.Bytes()
+}
+
 func (clientObj *clientHandler) write() {
 
 	clientObj.operation = "write"
@@ -644,21 +661,10 @@ func (clientObj *clientHandler) processProxyStat() {
 func (clientObj *clientHandler) processLookoutInfo() {
 	clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 	clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
-	//Request obj
-	var reqObj requestResponseLib.LookoutRequest
 
-	//Parse UUID
-	reqObj.UUID, _ = uuid.FromString(clientObj.requestKey)
-	reqObj.Cmd = clientObj.requestValue
+	reqBytes := clientObj.prepareLOInfoRequest()
 
-	var reqBytes bytes.Buffer
-	enc := gob.NewEncoder(&reqBytes)
-	err := enc.Encode(reqObj)
-	if err != nil {
-		log.Error("Encoding error : ", err)
-	}
-
-	resBytes, err := clientObj.clientAPIObj.Request(reqBytes.Bytes(), "/v1/", false)
+	resBytes, err := clientObj.clientAPIObj.Request(reqBytes, "/v1/", false)
 
 	if err != nil {
 		log.Error("Error while sending request to proxy : ", err)
