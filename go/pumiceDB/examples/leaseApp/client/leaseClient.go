@@ -249,7 +249,8 @@ func (leaseHandler *leaseHandler) getLeases() error {
 			if response[i].LeaseRes.Status == leaseLib.SUCCESS {
 				mapString["Status"] = "Success"
 			} else {
-				log.Info(" 'Status' not matched ")
+				log.Info("response status not matched")
+				mapString["Status"] = "Failure"
 				break
 			}
 		}
@@ -335,7 +336,8 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 			if response[i].LeaseRes.Status == leaseLib.SUCCESS {
 				mapString["Status"] = "Success"
 			} else {
-				log.Info(" 'Status' not matched ")
+				log.Info("response status not matched")
+				mapString["Status"] = "Failure"
 				break
 			}
 			// Write single 'Status' to json file.
