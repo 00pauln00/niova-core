@@ -79,18 +79,18 @@ func CToGoString(cstring *C.char) string {
 func getPmdbReq(reqArgs *PmdbReqArgs) (unsafe.Pointer, int64) {
 	// get bytes for requestResponse.Request and
 	// convert PumiceDBCommon.PumiceRequest
-	var pmdbRequest PumiceDBCommon.PumiceRequest
+	var req PumiceDBCommon.PumiceRequest
 
-	pmdbRequest.ReqType = PumiceDBCommon.APP_REQ
-	pmdbRequest.ReqPayload = reqArgs.ReqByteArr
+	req.ReqType = PumiceDBCommon.APP_REQ
+	req.ReqPayload = reqArgs.ReqByteArr
 
 	var reqLen int64
-	encodedReqPtr, err := PumiceDBCommon.Encode(pmdbRequest, &reqLen)
+	reqPtr, err := PumiceDBCommon.Encode(req, &reqLen)
 	if err != nil {
 		return nil, 0
 	}
 
-	return encodedReqPtr, reqLen
+	return reqPtr, reqLen
 }
 
 //Write KV from client.

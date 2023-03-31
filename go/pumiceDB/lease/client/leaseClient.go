@@ -58,10 +58,10 @@ func PrepareLeaseReq(client, resource, rncui string, operation int) []byte {
 		return nil
 	}
 
-	return PreparePumiceReq(leaseReq)
+	return preparePumiceReq(leaseReq)
 }
 
-func PreparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
+func preparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
 	var err error
 	var pumiceReq PumiceDBCommon.PumiceRequest
 
@@ -171,7 +171,7 @@ func (handler *LeaseClientReqHandler) Get() error {
 	var responseBytes []byte
 
 	// Prepare requestBytes for pumiceReq type
-	requestBytes := PreparePumiceReq(handler.LeaseReq)
+	requestBytes := preparePumiceReq(handler.LeaseReq)
 
 	// send req
 	err = handler.LeaseClientObj.write(&requestBytes, handler.Rncui, &responseBytes)
@@ -204,7 +204,7 @@ func (handler *LeaseClientReqHandler) Lookup() error {
 	var responseBytes []byte
 
 	// Prepare requestBytes for pumiceReq type
-	requestBytes := PreparePumiceReq(handler.LeaseReq)
+	requestBytes := preparePumiceReq(handler.LeaseReq)
 	err = handler.LeaseClientObj.Read(&requestBytes, "", &responseBytes)
 	if err != nil {
 		return err
@@ -235,7 +235,7 @@ func (handler *LeaseClientReqHandler) Refresh() error {
 	var responseBytes []byte
 
 	// Prepare requestBytes for pumiceReq type
-	requestBytes := PreparePumiceReq(handler.LeaseReq)
+	requestBytes := preparePumiceReq(handler.LeaseReq)
 
 	// send req
 	err = handler.LeaseClientObj.write(&requestBytes, handler.Rncui, &responseBytes)
@@ -268,7 +268,7 @@ func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	var responseBytes []byte
 
 	// Prepare requestBytes for pumiceReq type
-	requestBytes := PreparePumiceReq(handler.LeaseReq)
+	requestBytes := preparePumiceReq(handler.LeaseReq)
 
 	if handler.LeaseReq.Operation != leaseLib.LOOKUP {
 		isWrite = true
