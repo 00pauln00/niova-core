@@ -433,7 +433,7 @@ Return(s) : error
 
 Description : Call back for PMDB writes requests to HTTP server.
 */
-func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) error {
+func (handler *proxyHandler) PutHandlerCB(request []byte, response *[]byte) error {
 	var replySize int64
 	requestObj, err := handler.getPmdbRequest(request)
 	if err != nil {
@@ -517,7 +517,7 @@ Return(s) : error
 
 Description : Call back for PMDB read requests to HTTP server.
 */
-func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
+func (handler *proxyHandler) GetHandlerCB(request []byte, response *[]byte) error {
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      "",
 		ReqByteArr: request,
@@ -540,8 +540,8 @@ func (handler *proxyHandler) startHTTPServer() error {
 	handler.httpServerObj = httpServer.HTTPServerHandler{
 		Addr:             handler.addr,
 		PortRange:        handler.portRange,
-		PUTHandler:       handler.WriteCallBack,
-		GETHandler:       handler.ReadCallBack,
+		PUTHandler:       handler.PutHandlerCB,
+		GETHandler:       handler.GetHandlerCB,
 		PMDBServerConfig: handler.PMDBServerConfigByteMap,
 		RecvdPort:        &RecvdPort,
 		AppType:          "Proxy",

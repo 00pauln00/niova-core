@@ -232,7 +232,7 @@ func convMapToStr(map1 map[string][]byte) map[string]string {
 	return map2
 }
 
-func fillOperationData(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
+func prepareOutput(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
 	requestMeta := request{
 		Opcode: operation,
 		Key:    key,
@@ -295,6 +295,8 @@ func prepareKVRequest(key string, value []byte, rncui string, operation int) []b
 }
 
 func (clientObj *clientHandler) write() {
+
+	clientObj.operation = "write"
 	kvMap := make(map[string][]byte)
 	// Fill kvMap with key/val from user or generate keys/vals
 	if clientObj.count > 1 {
@@ -354,9 +356,9 @@ func (clientObj *clientHandler) write() {
 			//Request status filler
 			if clientObj.count == 1 {
 				if err != nil {
-					operationStat = fillOperationData(1, "write", reqObj.Key, err.Error(), 0)
+					operationStat = prepareOutput(1, "write", reqObj.Key, err.Error(), 0)
 				} else {
-					operationStat = fillOperationData(resObj.Status, "write", reqObj.Key, string(reqObj.Value), 0)
+					operationStat = prepareOutput(resObj.Status, "write", reqObj.Key, string(reqObj.Value), 0)
 				}
 				return
 			}
@@ -387,6 +389,7 @@ func (clientObj *clientHandler) write() {
 func (clientObj *clientHandler) read() {
 	var resObj requestResponseLib.KVResponse
 
+	clientObj.operation = "read"
 	err := func() error {
 		//Fill the request obj and encode it
 		reqBytes := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ)
@@ -411,9 +414,9 @@ func (clientObj *clientHandler) read() {
 
 	var operationStat *opData
 	if err == nil {
-		operationStat = fillOperationData(resObj.Status, "read", resObj.Key, string(resObj.ResultMap[resObj.Key]), 0)
+		operationStat = prepareOutput(resObj.Status, "read", resObj.Key, string(resObj.ResultMap[resObj.Key]), 0)
 	} else {
-		operationStat = fillOperationData(1, "read", resObj.Key, err.Error(), 0)
+		operationStat = prepareOutput(1, "read", resObj.Key, err.Error(), 0)
 	}
 
 	clientObj.write2Json(operationStat)
@@ -426,6 +429,7 @@ func (clientObj *clientHandler) rangeRead() {
 	var reqObj requestResponseLib.KVRequest
 	var seqNum uint64
 
+	clientObj.operation = "read"
 	Prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	Key = clientObj.requestKey[:len(clientObj.requestKey)-1]
 
@@ -488,7 +492,7 @@ func (clientObj *clientHandler) rangeRead() {
 	var operationStat *opData
 	if err == nil {
 		strResultMap := convMapToStr(resultMap)
-		operationStat = fillOperationData(0, "range", reqObj.Key, strResultMap, seqNum)
+		operationStat = prepareOutput(0, "range", reqObj.Key, strResultMap, seqNum)
 
 		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
@@ -505,10 +509,179 @@ func (clientObj *clientHandler) rangeRead() {
 		fmt.Println("The range query was completed in", count, "iterations")
 
 	} else {
-		operationStat = fillOperationData(1, "range", reqObj.Key, err.Error(), seqNum)
+		operationStat = prepareOutput(1, "range", reqObj.Key, err.Error(), seqNum)
 	}
 
 	clientObj.write2Json(operationStat)
+}
+
+func (clientObj *clientHandler) processReadWriteReq() {
+
+	//Wait till proxy is ready
+	clientObj.waitServiceInit("PROXY")
+
+	switch clientObj.operation {
+	case "rw":
+		clientObj.write()
+		clientObj.read()
+		break
+	case "write":
+		clientObj.write()
+	case "read":
+		if !isRangeRequest(clientObj.requestKey) {
+			clientObj.read()
+		} else {
+			clientObj.rangeRead()
+		}
+	default:
+		log.Error("Invalid operation type")
+	}
+}
+
+func (clientObj *clientHandler) processConfig() {
+	resBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
+	log.Info("Response : ", string(resBytes))
+	if err != nil {
+		log.Error("Unable to get the config data")
+	}
+	_ = ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+}
+
+func (clientObj *clientHandler) processMembership() {
+	toJson := clientObj.clientAPIObj.GetMembership()
+	file, _ := json.MarshalIndent(toJson, "", " ")
+	_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+}
+
+func (clientObj *clientHandler) processGeneral() {
+	fmt.Printf("\033[2J")
+	fmt.Printf("\033[2;0H")
+	fmt.Print("UUID")
+	fmt.Printf("\033[2;38H")
+	fmt.Print("Type")
+	fmt.Printf("\033[2;50H")
+	fmt.Println("Status")
+	offset := 3
+	for {
+		lineCounter := 0
+		data := clientObj.clientAPIObj.GetMembership()
+		for _, node := range data {
+			currentLine := offset + lineCounter
+			fmt.Print(node.Name)
+			fmt.Printf("\033[%d;38H", currentLine)
+			fmt.Print(node.Tags["Type"])
+			fmt.Printf("\033[%d;50H", currentLine)
+			fmt.Println(node.Status)
+			lineCounter += 1
+		}
+		time.Sleep(2 * time.Second)
+		fmt.Printf("\033[3;0H")
+		for i := 0; i < lineCounter; i++ {
+			fmt.Println("                                                       ")
+		}
+		fmt.Printf("\033[3;0H")
+	}
+}
+
+func (clientObj *clientHandler) processNisd() {
+	fmt.Printf("\033[2J")
+	fmt.Printf("\033[2;0H")
+	fmt.Println("NISD_UUID")
+	fmt.Printf("\033[2;38H")
+	fmt.Print("Status")
+	fmt.Printf("\033[2;45H")
+	fmt.Println("Parent_UUID(Lookout)")
+	offset := 3
+	for {
+		lCounter := 0
+		data := clientObj.clientAPIObj.GetMembership()
+		for _, node := range data {
+			if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
+				for uuid, value := range node.Tags {
+					if uuid != "Type" {
+						currLine := offset + lCounter
+						fmt.Print(uuid)
+						fmt.Printf("\033[%d;38H", currLine)
+						fmt.Print(strings.Split(value, "_")[0])
+						fmt.Printf("\033[%d;45H", currLine)
+						fmt.Println(node.Name)
+						lCounter += 1
+					}
+				}
+			}
+		}
+		time.Sleep(2 * time.Second)
+		fmt.Printf("\033[3;0H")
+		for i := 0; i < lCounter; i++ {
+			fmt.Println("                                                       ")
+		}
+		fmt.Printf("\033[3;0H")
+	}
+}
+
+func (clientObj *clientHandler) processGossip() {
+	fileData, err := clientObj.clientAPIObj.GetPMDBServerConfig()
+	if err != nil {
+		log.Error("Error while getting pmdb server config data : ", err)
+		return
+	}
+	f, _ := os.OpenFile(clientObj.resultFile+".json", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	f.WriteString(string(fileData))
+
+	ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+}
+
+func (clientObj *clientHandler) processProxyStat() {
+	clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+	clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
+	resBytes, err := clientObj.clientAPIObj.Request(nil, "/stat", false)
+	if err != nil {
+		log.Error("Error while sending request to proxy : ", err)
+	}
+	ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+}
+
+func (clientObj *clientHandler) processLookoutInfo() {
+	clientObj.clientAPIObj.ServerChooseAlgorithm = 2
+	clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
+	//Request obj
+	var reqObj requestResponseLib.LookoutRequest
+
+	//Parse UUID
+	reqObj.UUID, _ = uuid.FromString(clientObj.requestKey)
+	reqObj.Cmd = clientObj.requestValue
+
+	var reqBytes bytes.Buffer
+	enc := gob.NewEncoder(&reqBytes)
+	err := enc.Encode(reqObj)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+	}
+
+	resBytes, err := clientObj.clientAPIObj.Request(reqBytes.Bytes(), "/v1/", false)
+
+	if err != nil {
+		log.Error("Error while sending request to proxy : ", err)
+	}
+	ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+}
+
+func (clientObj *clientHandler) waitServiceInit(service string) {
+	err := clientObj.clientAPIObj.TillReady(service, clientObj.serviceRetry)
+	if err != nil {
+		operationStat := prepareOutput(-1, "setup", "", err.Error(), 0)
+		clientObj.write2Json(operationStat)
+		log.Error(err)
+		os.Exit(1)
+	}
+}
+
+func (clientObj *clientHandler) initServiceDisHandler() {
+	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
+		HTTPRetry: 10,
+		SerfRetry: 5,
+		RaftUUID:  clientObj.raftUUID,
+	}
 }
 
 func (clientObj *clientHandler) prepareLeaseHandlers(leaseReqHandler *leaseClientLib.LeaseClientReqHandler) error {
@@ -525,11 +698,26 @@ func (clientObj *clientHandler) prepareLeaseHandlers(leaseReqHandler *leaseClien
 
 	leaseReqHandler.LeaseClientObj = &leaseClientObj
 	return err
-
 }
 
-func (clientObj *clientHandler) performLeaseReq(client, resource, rncui string, operation int) error {
+func getLeaseOperationType(op string) int {
+	switch op {
+	case "GetLease":
+		return leaseLib.GET
+	case "LookupLease":
+		return leaseLib.LOOKUP
+	case "RefreshLease":
+		return leaseLib.REFRESH
+	default:
+		log.Error("Invalid Lease operation type: ", op)
+		return -1
+	}
+}
+
+func (clientObj *clientHandler) performLeaseReq(resource, client string) error {
 	clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
+
+	op := getLeaseOperationType(clientObj.operation)
 
 	var leaseReqHandler leaseClientLib.LeaseClientReqHandler
 	err := clientObj.prepareLeaseHandlers(&leaseReqHandler)
@@ -537,7 +725,7 @@ func (clientObj *clientHandler) performLeaseReq(client, resource, rncui string, 
 		log.Error(err)
 		return err
 	}
-	err = leaseReqHandler.InitLeaseReq(client, resource, rncui, operation)
+	err = leaseReqHandler.InitLeaseReq(client, resource, "", op)
 	if err != nil {
 		log.Error(err)
 		return err
@@ -553,30 +741,11 @@ func (clientObj *clientHandler) performLeaseReq(client, resource, rncui string, 
 	return err
 }
 
-func (clientObj *clientHandler) fillLeaseReqObj(leaseReq *leaseLib.LeaseReq, operation int) error {
-	var err error
-
-	if operation != leaseLib.LOOKUP {
-		leaseReq.Client, err = uuid.FromString(clientObj.requestKey)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-	}
-	leaseReq.Resource, err = uuid.FromString(clientObj.requestValue)
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-	leaseReq.Operation = operation
-
-	return err
-}
-
 func isRangeRequest(requestKey string) bool {
 	return requestKey[len(requestKey)-1:] == "*"
 }
 
+//Check if for single key write operation, value has been passed.
 func isSingleWriteReqValid(cli *clientHandler) bool {
 	if cli.operation == "write" && cli.count == 1 && cli.requestValue == "" {
 		return false
@@ -591,6 +760,7 @@ func main() {
 
 	//Get commandline parameters.
 	clientObj.getCmdParams()
+
 	flag.Usage = usage
 	if flag.NFlag() == 0 || !isSingleWriteReqValid(&clientObj) {
 		usage()
@@ -603,137 +773,44 @@ func main() {
 		log.Error("Error while initializing the logger  ", err)
 	}
 
-	log.Info("----START OF EXECUTION---")
-
 	//Init service discovery
-	clientObj.clientAPIObj = serviceDiscovery.ServiceDiscoveryHandler{
-		HTTPRetry: 10,
-		SerfRetry: 5,
-		RaftUUID:  clientObj.raftUUID,
-	}
+	clientObj.initServiceDisHandler()
+
 	stop := make(chan int)
 	go func() {
+		log.Info("Start Serf client")
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
-			operationStat := fillOperationData(-1, "setup", "", err.Error(), 0)
+			operationStat := prepareOutput(-1, "setup", "", err.Error(), 0)
 			clientObj.write2Json(operationStat)
 			log.Error(err)
 			os.Exit(1)
 		}
 	}()
-	clientObj.clientAPIObj.TillReady("", clientObj.serviceRetry)
-	if err != nil {
-		operationStat := fillOperationData(-1, "setup", "", err.Error(), 0)
-		clientObj.write2Json(operationStat)
-		log.Error(err)
-		os.Exit(1)
-	}
+
+	//Wait till client API Object is ready
+	clientObj.waitServiceInit("")
+
 	var passNext bool
 	switch clientObj.operation {
 	case "rw":
-		log.Info("Defaulting to write and read")
-		clientObj.operation = "write"
-		clientObj.write()
-		clientObj.operation = "read"
-		clientObj.read()
-
+		fallthrough
 	case "write":
-		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-		if err != nil {
-			log.Error(err)
-			os.Exit(1)
-		}
-
-		clientObj.write()
-
+		fallthrough
 	case "read":
-		clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
-		if err != nil {
-			log.Error(err)
-			os.Exit(1)
-		}
-
-		if !isRangeRequest(clientObj.requestKey) {
-			clientObj.read()
-		} else {
-			clientObj.rangeRead()
-		}
+		clientObj.processReadWriteReq()
 
 	case "config":
-		resBytes, err := clientObj.clientAPIObj.GetPMDBServerConfig()
-		log.Info("Response : ", string(resBytes))
-		if err != nil {
-			log.Error("Unable to get the config data")
-		}
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+		clientObj.processConfig()
 
 	case "membership":
-		toJson := clientObj.clientAPIObj.GetMembership()
-		file, _ := json.MarshalIndent(toJson, "", " ")
-		_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+		clientObj.processMembership()
 
 	case "general":
-		fmt.Printf("\033[2J")
-		fmt.Printf("\033[2;0H")
-		fmt.Print("UUID")
-		fmt.Printf("\033[2;38H")
-		fmt.Print("Type")
-		fmt.Printf("\033[2;50H")
-		fmt.Println("Status")
-		offset := 3
-		for {
-			lineCounter := 0
-			data := clientObj.clientAPIObj.GetMembership()
-			for _, node := range data {
-				currentLine := offset + lineCounter
-				fmt.Print(node.Name)
-				fmt.Printf("\033[%d;38H", currentLine)
-				fmt.Print(node.Tags["Type"])
-				fmt.Printf("\033[%d;50H", currentLine)
-				fmt.Println(node.Status)
-				lineCounter += 1
-			}
-			time.Sleep(2 * time.Second)
-			fmt.Printf("\033[3;0H")
-			for i := 0; i < lineCounter; i++ {
-				fmt.Println("                                                       ")
-			}
-			fmt.Printf("\033[3;0H")
-		}
+		clientObj.processGeneral()
+
 	case "nisd":
-		fmt.Printf("\033[2J")
-		fmt.Printf("\033[2;0H")
-		fmt.Println("NISD_UUID")
-		fmt.Printf("\033[2;38H")
-		fmt.Print("Status")
-		fmt.Printf("\033[2;45H")
-		fmt.Println("Parent_UUID(Lookout)")
-		offset := 3
-		for {
-			lineCounter := 0
-			data := clientObj.clientAPIObj.GetMembership()
-			for _, node := range data {
-				if (node.Tags["Type"] == "LOOKOUT") && (node.Status == "alive") {
-					for uuid, value := range node.Tags {
-						if uuid != "Type" {
-							currentLine := offset + lineCounter
-							fmt.Print(uuid)
-							fmt.Printf("\033[%d;38H", currentLine)
-							fmt.Print(strings.Split(value, "_")[0])
-							fmt.Printf("\033[%d;45H", currentLine)
-							fmt.Println(node.Name)
-							lineCounter += 1
-						}
-					}
-				}
-			}
-			time.Sleep(2 * time.Second)
-			fmt.Printf("\033[3;0H")
-			for i := 0; i < lineCounter; i++ {
-				fmt.Println("                                                       ")
-			}
-			fmt.Printf("\033[3;0H")
-		}
+		clientObj.processNisd()
 
 	case "Gossip":
 		passNext = true
@@ -748,68 +825,24 @@ func main() {
 		fallthrough
 
 	case "PMDBGossip":
-		fileData, err := clientObj.clientAPIObj.GetPMDBServerConfig()
-		if err != nil {
-			log.Error("Error while getting pmdb server config data : ", err)
-			break
-		}
-		if passNext {
-			f, _ := os.OpenFile(clientObj.resultFile+".json", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
-			f.WriteString(string(fileData))
-			break
-		}
-		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		clientObj.processGossip()
 
 	case "ProxyStat":
-		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
-		clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
-		resBytes, err := clientObj.clientAPIObj.Request(nil, "/stat", false)
-		if err != nil {
-			log.Error("Error while sending request to proxy : ", err)
-		}
-		ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+		clientObj.processProxyStat()
 
 	case "LookoutInfo":
-		clientObj.clientAPIObj.ServerChooseAlgorithm = 2
-		clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
-		//Request obj
-		var reqObj requestResponseLib.LookoutRequest
+		clientObj.processLookoutInfo()
 
-		//Parse UUID
-		reqObj.UUID, _ = uuid.FromString(clientObj.requestKey)
-		reqObj.Cmd = clientObj.requestValue
-
-		var reqBytes bytes.Buffer
-		enc := gob.NewEncoder(&reqBytes)
-		err := enc.Encode(reqObj)
-		if err != nil {
-			log.Error("Encoding error : ", err)
-		}
-
-		resBytes, err := clientObj.clientAPIObj.Request(reqBytes.Bytes(), "/v1/", false)
-
-		if err != nil {
-			log.Error("Error while sending request to proxy : ", err)
-		}
-		ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+	//Lease Operations
 	case "GetLease":
-		err := clientObj.performLeaseReq(clientObj.requestValue, clientObj.requestKey, "", leaseLib.GET)
-		if err != nil {
-			log.Error(err)
-			break
-		}
+		fallthrough
 	case "LookupLease":
-		err := clientObj.performLeaseReq("", clientObj.requestKey, "", leaseLib.LOOKUP)
-		if err != nil {
-			log.Error(err)
-			break
-		}
+		fallthrough
 	case "RefreshLease":
-		err := clientObj.performLeaseReq(clientObj.requestValue, clientObj.requestKey, "", leaseLib.REFRESH)
+		err := clientObj.performLeaseReq(clientObj.requestKey, clientObj.requestValue)
 		if err != nil {
 			log.Error(err)
 			break
 		}
 	}
-
 }
