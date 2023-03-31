@@ -54,13 +54,8 @@ func (fpso *FoodpalaceServer) initLogger() {
 	log.Info("peer:", fpso.peerUuid)
 }
 
-//Method for CleanupPeer callback
-func (fpso *FoodpalaceServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
-}
-
-//Method for InitPeer callback
-func (fpso *FoodpalaceServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
+//Method for Init callback
+func (fpso *FoodpalaceServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 
@@ -73,7 +68,7 @@ func (fpso *FoodpalaceServer) WritePrep(wrPreArgs *PumiceDBServer.PmdbCbArgs) in
 func (fpso *FoodpalaceServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	data := &foodpalaceapplib.FoodpalaceData{}
-	fpso.pso.Decode(applyArgs.ReqBuf, data, applyArgs.ReqSize)
+	fpso.pso.DecodeApplicationReq(applyArgs.Payload, data)
 	log.Info("Data received from client: ", data)
 
 	//Convert resturant_id from int to string and store as fp_app_key.
@@ -118,7 +113,7 @@ func (fpso *FoodpalaceServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	//Decode the request structure sent by client.
 	readReqData := &foodpalaceapplib.FoodpalaceData{}
 
-	fpso.pso.Decode(readArgs.ReqBuf, readReqData, readArgs.ReqSize)
+	fpso.pso.DecodeApplicationReq(readArgs.Payload, readReqData)
 
 	log.Info("Key passed by client: ", readReqData.RestaurantId)
 

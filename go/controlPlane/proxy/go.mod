@@ -14,6 +14,8 @@ replace common/requestResponseLib => ../requestResponseLib
 
 replace common/specificCompressionLib => ../../specificCompressionLib
 
+replace common/leaseLib => ../../pumiceDB/lease/common
+
 go 1.16
 
 require (

@@ -1,10 +1,13 @@
 package PumiceDBServer
 
 import (
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	gopointer "github.com/mattn/go-pointer"
 	log "github.com/sirupsen/logrus"
+	"io"
 	"math"
 	"niova/go-pumicedb-lib/common"
 	"reflect"
@@ -22,8 +25,7 @@ import (
 extern ssize_t writePrepCgo(struct pumicedb_cb_cargs *args, int *);
 extern ssize_t applyCgo(struct pumicedb_cb_cargs *args, void *);
 extern ssize_t readCgo(struct pumicedb_cb_cargs *args);
-extern void initPeerCgo(struct pumicedb_cb_cargs *args);
-extern void cleanupPeerCgo(struct pumicedb_cb_cargs *args);
+extern void initCgo(struct pumicedb_cb_cargs *args);
 */
 import "C"
 
@@ -31,38 +33,56 @@ import "C"
 var encodingOverhead int = 2
 
 type PmdbCbArgs struct {
-	UserID		unsafe.Pointer
-	ReqBuf		unsafe.Pointer
-	ReqSize		int64
-	ReplyBuf	unsafe.Pointer
-	ReplySize	int64
-	BootupPeer	uint32
-	ContinueWr	unsafe.Pointer
-	PmdbHandler	unsafe.Pointer
-	UserData	unsafe.Pointer
+	UserID      unsafe.Pointer
+	ReqBuf      unsafe.Pointer
+	ReqSize     int64
+	ReplyBuf    unsafe.Pointer
+	ReplySize   int64
+	InitState   int
+	Payload     []byte
+	ContinueWr  unsafe.Pointer
+	PmdbHandler unsafe.Pointer
+	UserData    unsafe.Pointer
 }
 
 type PmdbServerAPI interface {
 	WritePrep(goCbArgs *PmdbCbArgs) int64
 	Apply(goCbArgs *PmdbCbArgs) int64
 	Read(goCbArgs *PmdbCbArgs) int64
-	InitPeer(goCbArgs *PmdbCbArgs)
-	CleanupPeer(goCbArgs *PmdbCbArgs)
+	Init(goCbArgs *PmdbCbArgs)
+}
+
+type LeaseServerAPI interface {
+	WritePrep(goCbArgs *PmdbCbArgs) int64
+	Apply(goCbArgs *PmdbCbArgs) int64
+	Read(goCbArgs *PmdbCbArgs) int64
+	Init(goCbArgs *PmdbCbArgs)
 }
 
 type PmdbServerObject struct {
 	PmdbAPI        PmdbServerAPI
+	LeaseAPI       LeaseServerAPI
 	RaftUuid       string
 	PeerUuid       string
 	SyncWrites     bool
 	CoalescedWrite bool
+	LeaseEnabled   bool
 	ColumnFamilies []string
 }
 
 type PmdbLeaderTS struct {
-	Term    int64
-	Time    int64
+	Term int64
+	Time int64
 }
+
+const (
+	INIT_TYPE_NONE                int = 0
+	INIT_BOOTUP_STATE                 = 1
+	INIT_BECOMING_LEADER_STATE        = 2
+	INIT_BECOMING_CANDIDATE_STATE     = 3
+	INIT_SHUTDOWN_STATE               = 4
+	INIT_TYPE_ANY                     = 5
+)
 
 type charsSlice []*C.char
 
@@ -107,16 +127,25 @@ func CToGoBytes(C_value *C.char, C_value_len C.int) []byte {
 }
 
 func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
-					goCbArgs *PmdbCbArgs) {
+	goCbArgs *PmdbCbArgs) int {
 	goCbArgs.UserID = unsafe.Pointer(cargs.pcb_userid)
-	goCbArgs.ReqBuf = unsafe.Pointer(cargs.pcb_req_buf)
-	goCbArgs.ReqSize = CToGoInt64(cargs.pcb_req_bufsz)
+	ReqBuf := unsafe.Pointer(cargs.pcb_req_buf)
+	ReqSize := CToGoInt64(cargs.pcb_req_bufsz)
 	goCbArgs.ReplyBuf = unsafe.Pointer(cargs.pcb_reply_buf)
 	goCbArgs.ReplySize = CToGoInt64(cargs.pcb_reply_bufsz)
-	goCbArgs.BootupPeer = uint32(cargs.pcb_bootup_peer)
+	goCbArgs.InitState = int(cargs.pcb_init)
 	goCbArgs.ContinueWr = unsafe.Pointer(cargs.pcb_continue_wr)
 	goCbArgs.PmdbHandler = unsafe.Pointer(cargs.pcb_pmdb_handler)
 	goCbArgs.UserData = unsafe.Pointer(cargs.pcb_user_data)
+	//Decode Pumice level request
+	request := &PumiceDBCommon.PumiceRequest{}
+	err := Decode(ReqBuf, request, ReqSize)
+	if err != nil {
+		log.Error(err)
+		return -1
+	}
+	goCbArgs.Payload = request.ReqPayload
+	return request.ReqType
 }
 
 /*
@@ -129,13 +158,22 @@ func pmdbCbArgsInit(cargs *C.struct_pumicedb_cb_cargs,
 func goWritePrep(args *C.struct_pumicedb_cb_cargs) int64 {
 
 	var wrPrepArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &wrPrepArgs)
+	reqType := pmdbCbArgsInit(args, &wrPrepArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(wrPrepArgs.UserData).(*PmdbServerObject)
 
-	//Calling the golang Application's WritePrep function.
-	return gcb.PmdbAPI.WritePrep(&wrPrepArgs)
+	var ret int64
+	if reqType == PumiceDBCommon.APP_REQ {
+		//Calling the golang Application's WritePrep function.
+		ret = gcb.PmdbAPI.WritePrep(&wrPrepArgs)
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
+		//Calling leaseAPP WritePrep
+		ret = gcb.LeaseAPI.WritePrep(&wrPrepArgs)
+	} else {
+		return -1
+	}
+	return ret
 }
 
 //export goApply
@@ -143,50 +181,55 @@ func goApply(args *C.struct_pumicedb_cb_cargs,
 	pmdb_handle unsafe.Pointer) int64 {
 
 	var applyArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &applyArgs)
+	reqType := pmdbCbArgsInit(args, &applyArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(applyArgs.UserData).(*PmdbServerObject)
 
-	//Calling the golang Application's Apply function.
-	return gcb.PmdbAPI.Apply(&applyArgs)
+	var ret int64
+	if reqType == PumiceDBCommon.APP_REQ {
+		//Calling the golang Application's Apply function.
+		ret = gcb.PmdbAPI.Apply(&applyArgs)
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
+		//Calling leaseAPP Apply
+		ret = gcb.LeaseAPI.Apply(&applyArgs)
+	}
+	return ret
 }
 
 //export goRead
 func goRead(args *C.struct_pumicedb_cb_cargs) int64 {
 
 	var readArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &readArgs)
+	reqType := pmdbCbArgsInit(args, &readArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
 	gcb := gopointer.Restore(readArgs.UserData).(*PmdbServerObject)
 
-	//Calling the golang Application's Read function.
-	return gcb.PmdbAPI.Read(&readArgs)
+	var ret int64
+	if reqType == PumiceDBCommon.APP_REQ {
+		//Calling the golang Application's Read function.
+		ret = gcb.PmdbAPI.Read(&readArgs)
+	} else if reqType == PumiceDBCommon.LEASE_REQ {
+		//Calling leaseAPP Read
+		ret = gcb.LeaseAPI.Read(&readArgs)
+	}
+	return ret
 }
 
-//export goInitPeer
-func goInitPeer(args *C.struct_pumicedb_cb_cargs) {
+//export goInit
+func goInit(args *C.struct_pumicedb_cb_cargs) {
 
-	var initPeerArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &initPeerArgs)
-
-	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(initPeerArgs.UserData).(*PmdbServerObject)
-
-	gcb.PmdbAPI.InitPeer(&initPeerArgs)
-}
-
-//export goCleanupPeer
-func goCleanupPeer(args *C.struct_pumicedb_cb_cargs) {
-
-	var cleanupPeerArgs PmdbCbArgs
-	pmdbCbArgsInit(args, &cleanupPeerArgs)
+	var initArgs PmdbCbArgs
+	pmdbCbArgsInit(args, &initArgs)
 
 	//Restore the golang function pointers stored in PmdbCallbacks.
-	gcb := gopointer.Restore(cleanupPeerArgs.UserData).(*PmdbServerObject)
+	gcb := gopointer.Restore(initArgs.UserData).(*PmdbServerObject)
 
-	gcb.PmdbAPI.CleanupPeer(&cleanupPeerArgs)
+	gcb.PmdbAPI.Init(&initArgs)
+	if gcb.LeaseEnabled {
+		gcb.LeaseAPI.Init(&initArgs)
+	}
 }
 
 /**
@@ -222,8 +265,7 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 	cCallbacks.pmdb_apply = C.pmdb_apply_sm_handler_t(C.applyCgo)
 	cCallbacks.pmdb_read = C.pmdb_read_sm_handler_t(C.readCgo)
 	cCallbacks.pmdb_write_prep = C.pmdb_write_prep_sm_handler_t(C.writePrepCgo)
-	cCallbacks.pmdb_init_peer = C.pmdb_init_peer_sm_handler_t(C.initPeerCgo)
-	cCallbacks.pmdb_cleanup_peer = C.pmdb_cleanup_peer_sm_handler_t(C.cleanupPeerCgo)
+	cCallbacks.pmdb_init = C.pmdb_init_sm_handler_t(C.initCgo)
 
 	/*
 	 * Store the column family name into char * array.
@@ -265,7 +307,26 @@ func (pso *PmdbServerObject) Run() error {
 }
 
 // Export the common decode method via the server object
+//TODO: Remove it from PmdbServerObject
 func (*PmdbServerObject) Decode(input unsafe.Pointer, output interface{},
+	len int64) error {
+	return PumiceDBCommon.Decode(input, output, len)
+}
+
+func (*PmdbServerObject) DecodeApplicationReq(input []byte, output interface{}) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(input))
+	for {
+		if err := dec.Decode(output); err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func Decode(input unsafe.Pointer, output interface{},
 	len int64) error {
 	return PumiceDBCommon.Decode(input, output, len)
 }
@@ -385,16 +446,19 @@ func (*PmdbServerObject) ReadKV(app_id unsafe.Pointer, key string,
 // Methods for range iterator
 
 // Wrapper for rocksdb_iter_seek -
-// Seeks the passed iterator to the passed key
+// Seeks the passed iterator to the passed key or first key
 func seekTo(key string, key_len int64, itr *C.rocksdb_iterator_t) {
 	var cKey *C.char
 	var cLen C.size_t
 
-	cKey = GoToCString(key)
-	cLen = GoToCSize_t(key_len)
-	C.rocksdb_iter_seek(itr, cKey, cLen)
-
-	FreeCMem(cKey)
+	if key == "" {
+		C.rocksdb_iter_seek_to_first(itr)
+	} else {
+		cKey = GoToCString(key)
+		cLen = GoToCSize_t(key_len)
+		C.rocksdb_iter_seek(itr, cKey, cLen)
+		FreeCMem(cKey)
+	}
 }
 
 // Wrapper for rocksdb_iter_key/val -
@@ -441,6 +505,58 @@ func destroyRopts(seqNum uint64, ropts *C.rocksdb_readoptions_t, consistent bool
 	} else {
 		C.rocksdb_readoptions_destroy(ropts)
 	}
+}
+
+func pmdbFetchAllKV(key string, key_len int64, bufSize int64, go_cf string) (map[string][]byte, string, error) {
+	var lookup_err error
+	var resultMap = make(map[string][]byte)
+	var mapSize int
+	var lastKey string
+	var itr *C.rocksdb_iterator_t
+
+	log.Trace("Read All KV from column Family ", go_cf)
+
+	//Create ropts
+	ropts, _ := createRopts(false, nil)
+
+	// create iterator
+	cf := GoToCString(go_cf)
+	cf_handle := C.PmdbCfHandleLookup(cf)
+	itr = C.rocksdb_create_iterator_cf(C.PmdbGetRocksDB(), ropts, cf_handle)
+
+	//Seek to the provided key
+	seekTo(key, key_len, itr)
+
+	// Iterate over keys store them in map if prefix
+	for C.rocksdb_iter_valid(itr) != 0 {
+		fKey, fVal := getKeyVal(itr)
+		log.Trace("ReadAll key : ", fKey)
+
+		// check if the key-val can be stored in the buffer
+		entrySize := len([]byte(fKey)) + len([]byte(fVal)) + encodingOverhead
+		if (bufSize > 0) && ((int64(mapSize) + int64(entrySize)) > bufSize) {
+			log.Trace("ReadAll -  Reply buffer is full - dumping map to client")
+			lastKey = fKey
+			break
+		}
+		mapSize = mapSize + entrySize + encodingOverhead
+		resultMap[fKey] = fVal
+
+		C.rocksdb_iter_next(itr)
+	}
+
+	destroyRopts(0, ropts, false)
+
+	//Free the iterator and memory
+	C.rocksdb_iter_destroy(itr)
+	FreeCMem(cf)
+
+	if len(resultMap) == 0 {
+		lookup_err = errors.New("No keys in the column family")
+	} else {
+		lookup_err = nil
+	}
+	return resultMap, lastKey, lookup_err
 }
 
 func pmdbFetchRange(key string, key_len int64,
@@ -510,6 +626,13 @@ func pmdbFetchRange(key string, key_len int64,
 	return resultMap, lastKey, seqNum, snapMiss, lookup_err
 }
 
+// Public method for read all KV from the column family
+func (*PmdbServerObject) ReadAllKV(app_id unsafe.Pointer, key string,
+	key_len int64, bufSize int64, gocolfamily string) (map[string][]byte, string, error) {
+
+	return pmdbFetchAllKV(key, key_len, bufSize, gocolfamily)
+}
+
 // Public method for range read KV
 func (*PmdbServerObject) RangeReadKV(app_id unsafe.Pointer, key string,
 	key_len int64, prefix string, bufSize int64, consistent bool, seqNum uint64, gocolfamily string) (map[string][]byte, string, uint64, bool, error) {
@@ -537,6 +660,11 @@ func PmdbCopyDataToBuffer(ed interface{}, buffer unsafe.Pointer) (int64, error) 
 func (*PmdbServerObject) CopyDataToBuffer(ed interface{},
 	buffer unsafe.Pointer) (int64, error) {
 	return PmdbCopyDataToBuffer(ed, buffer)
+}
+
+func (*PmdbServerObject) GetCurrentHybridTime() float64 {
+	//TODO: Update this code
+	return 0.0
 }
 
 // Get the leader timestamp.

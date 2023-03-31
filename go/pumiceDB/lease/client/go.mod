@@ -1,40 +1,34 @@
-module ctlplane/ncpc
+module LeaseLib/LeaseClient
 
-replace common/serfClient => ../../serf/client
+replace common/leaseLib => ../common
 
-replace niova/go-pumicedb-lib/common => ../../pumiceDB/common
+replace niova/go-pumicedb-lib/client => ../../client
 
-replace niova/go-pumicedb-lib/client => ../../pumiceDB/client
+replace niova/go-pumicedb-lib/common => ../../common
 
-replace common/httpClient => ../../http/client
+replace common/httpClient => ../../../http/client
 
-replace common/requestResponseLib => ../requestResponseLib
+replace common/clientAPI => ../../../serf/serviceDiscovery
 
-replace common/clientAPI => ../../serf/serviceDiscovery
+replace common/specificCompressionLib => ../../../specificCompressionLib
 
-replace common/specificCompressionLib => ../../specificCompressionLib/
-
-replace common/leaseLib => ../../pumiceDB/lease/common
-
-replace LeaseLib/leaseClient => ../../pumiceDB/lease/client
+replace common/serfClient => ../../../serf/client
 
 go 1.18
 
 require (
-	LeaseLib/leaseClient v0.0.0-00010101000000-000000000000
 	common/clientAPI v0.0.0-00010101000000-000000000000
 	common/leaseLib v0.0.0-00010101000000-000000000000
-	common/requestResponseLib v0.0.0-00010101000000-000000000000
-	common/specificCompressionLib v0.0.0-00010101000000-000000000000
 	github.com/satori/go.uuid v1.2.0
 	github.com/sirupsen/logrus v1.9.0
-	golang.org/x/exp v0.0.0-20220414153411-bcd21879b8fd
+	niova/go-pumicedb-lib/client v0.0.0-00010101000000-000000000000
 	niova/go-pumicedb-lib/common v0.0.0-00010101000000-000000000000
 )
 
 require (
 	common/httpClient v0.0.0-00010101000000-000000000000 // indirect
 	common/serfClient v0.0.0-00010101000000-000000000000 // indirect
+	common/specificCompressionLib v0.0.0-00010101000000-000000000000 // indirect
 	github.com/armon/go-metrics v0.0.0-20180917152333-f0300d1749da // indirect
 	github.com/google/btree v0.0.0-20180813153112-4030bb1f1f0c // indirect
 	github.com/google/uuid v1.3.0 // indirect
@@ -51,5 +45,4 @@ require (
 	github.com/sean-/seed v0.0.0-20170313163322-e2103e2c3529 // indirect
 	golang.org/x/net v0.0.0-20210410081132-afb366fc7cd1 // indirect
 	golang.org/x/sys v0.0.0-20220715151400-c0bba94af5f8 // indirect
-	niova/go-pumicedb-lib/client v0.0.0-00010101000000-000000000000 // indirect
 )

@@ -1,4 +1,4 @@
-name: holon_controlplane_app_recipes_workflow
+name: holon_lease_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -53,15 +53,14 @@ jobs:
 
     - name: Build go applications using makefile
       run: export PATH=$PATH:/home/runner/work/go/go/bin &&
-           cd code/go/controlPlane
-           && cd ncpc/ && go mod tidy && cd ..
+           cd code/go/pumiceDB/examples/leaseApp
+           && cd client && go mod tidy && cd ..
            && cd pmdbServer && go mod tidy && cd ..
-           && cd proxy && go mod tidy && cd ..
-           && make install_only -e DIR=/home/runner/work/niovad/niovad/build_dir
+           && make install_all -e DIR=/home/runner/work/niovad/niovad/build_dir
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/control_plane_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/lease_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     # Checkout holon repo
     - name: Checkout repository
@@ -72,26 +71,20 @@ jobs:
        token: ${{ secrets.HOLON_NIOVA_CI_21_12_2020 }} # 'GitHub_PAT' is a secret that contains your PAT
        path: ./holon
 
-    #Build nisd monitor
-    - name: Build nisd lookout monitor
-      run:  export PATH=$PATH:/home/runner/work/go/go/bin &&
-            cd code/go/lookout/nisdMonitor && go build && cp nisdLookout /home/runner/work/niovad/niovad/build_dir/libexec/niova
-
     - name: Copy holon repo
       run: cp -r ./holon /home/runner/work/niovad/niovad/build_dir/
 
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
-    - name:  run recipes for controlplane application
+    - name:  run recipes for lease application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/control_plane_recipes.txt'
-                             'controlplane'
+                             '/home/runner/work/niovad/niovad/build_dir/lease_recipes.txt'
+                             'lease'
                              '/home/runner/work/go/go/bin'
-                             5
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename

@@ -1,18 +1,22 @@
 package main
 
 import (
+	leaseServerLib "LeaseLib/leaseServer"
 	"bufio"
+	"bytes"
 	"common/httpClient"
 	"common/lookout"
 	"common/requestResponseLib"
 	"common/serfAgent"
 	compressionLib "common/specificCompressionLib"
 	"encoding/binary"
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/ioutil"
 	defaultLogger "log"
 	"net"
@@ -120,14 +124,20 @@ func main() {
 	//Wait till HTTP Server has started
 
 	nso.pso = &PumiceDBServer.PmdbServerObject{
-		ColumnFamilies: []string{colmfamily},
 		RaftUuid:       nso.raftUuid.String(),
 		PeerUuid:       nso.peerUuid.String(),
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
+		LeaseEnabled: true,
 	}
 
+	nso.leaseObj = leaseServerLib.LeaseServerObject{}
+	//Initalise leaseObj
+	nso.leaseObj.InitLeaseObject(nso.pso)
+
+	// Separate column families for application requests and lease
+	nso.pso.ColumnFamilies = []string{colmfamily, nso.leaseObj.LeaseColmFam}
 	// Start the pmdb server
 	//TODO Check error
 	go nso.pso.Run()
@@ -177,6 +187,19 @@ func makeRange(min, max uint16) []uint16 {
 		a[i] = uint16(min + uint16(i))
 	}
 	return a
+}
+
+func decodeControlPlaneReq(input []byte, output *requestResponseLib.KVRequest) error {
+	dec := gob.NewDecoder(bytes.NewBuffer(input))
+	for {
+		if err := dec.Decode(output); err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (handler *pmdbServerHandler) checkHTTPLiveness() {
@@ -412,19 +435,23 @@ type NiovaKVServer struct {
 	raftUuid       uuid.UUID
 	peerUuid       uuid.UUID
 	columnFamilies string
+	leaseObj       leaseServerLib.LeaseServerObject
 	pso            *PumiceDBServer.PmdbServerObject
 }
 
-func (nso *NiovaKVServer) InitPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
-    return;
-}
-
-func (nso *NiovaKVServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+func (nso *NiovaKVServer) Init(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 
 func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
-    return 0;
+	log.Trace("NiovaCtlPlane server: Write prep received")
+	var copyErr error
+	_, copyErr = nso.pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
+	if copyErr != nil {
+		log.Error("Failed to Copy result in the buffer: %s", copyErr)
+		return -1
+	}
+	return 0
 }
 
 func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
@@ -433,13 +460,14 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
-	decodeErr := nso.pso.Decode(applyArgs.ReqBuf, applyNiovaKV,
-								applyArgs.ReqSize)
+	// register datatypes for decoding interface
+	decodeErr := nso.pso.DecodeApplicationReq(applyArgs.Payload, applyNiovaKV)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
 	}
 
+	//For application request
 	log.Trace("Key passed by client: ", applyNiovaKV.Key)
 
 	// length of key.
@@ -462,16 +490,19 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	log.Trace("NiovaCtlPlane server: Read request received")
+	var copyErr error
+	var replySize int64
 
 	//Decode the request structure sent by client.
 	reqStruct := &requestResponseLib.KVRequest{}
-	decodeErr := nso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
+	decodeErr := nso.pso.DecodeApplicationReq(readArgs.Payload, reqStruct)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
 		return -1
 	}
 
+	//Lease request
 	log.Trace("Key passed by client: ", reqStruct.Key)
 	keyLen := len(reqStruct.Key)
 	log.Trace("Key length: ", keyLen)
@@ -480,7 +511,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var resultResponse requestResponseLib.KVResponse
 	//var resultReq requestResponseLib.KVResponse
 	//Pass the work as key to PmdbReadKV and get the value from pumicedb
-	if reqStruct.Operation == "read" {
+	if reqStruct.Operation == requestResponseLib.KV_READ {
 
 		log.Trace("read - ", reqStruct.SeqNum)
 		readResult, err := nso.pso.ReadKV(readArgs.UserID, reqStruct.Key,
@@ -493,14 +524,14 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 		}
 		readErr = err
 
-	} else if reqStruct.Operation == "rangeRead" {
+	} else if reqStruct.Operation == requestResponseLib.KV_RANGE_READ {
 		reqStruct.Prefix = reqStruct.Prefix
 		log.Trace("sequence number - ", reqStruct.SeqNum)
 		readResult, lastKey, seqNum, snapMiss, err := nso.pso.RangeReadKV(readArgs.UserID,
-					reqStruct.Key,
-					int64(keyLen), reqStruct.Prefix,
-					(readArgs.ReplySize - int64(encodingOverhead)),
-					reqStruct.Consistent, reqStruct.SeqNum, colmfamily)
+			reqStruct.Key,
+			int64(keyLen), reqStruct.Prefix,
+			(readArgs.ReplySize - int64(encodingOverhead)),
+			reqStruct.Consistent, reqStruct.SeqNum, colmfamily)
 		var cRead bool
 		if lastKey != "" {
 			cRead = true
@@ -519,8 +550,6 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	log.Trace("Response trace : ", resultResponse)
-	var replySize int64
-	var copyErr error
 	if readErr == nil {
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = nso.pso.CopyDataToBuffer(resultResponse,

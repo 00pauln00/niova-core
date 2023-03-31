@@ -87,12 +87,13 @@ func (handler *clientHandler) sendReq(req *requestResponseLib.KVRequest, write b
 
 	var status int
 	var responseValue string
-	var requestByte bytes.Buffer
+	var pumiceReqByte bytes.Buffer
 	var validate bool
-	enc := gob.NewEncoder(&requestByte)
-	enc.Encode(req)
 
-	responseBytes, err := handler.clientAPIObj.Request(requestByte.Bytes(), "", write)
+	//TODO need to pass rncui ?
+	PumiceDBCommon.PrepareAppPumiceRequest(req, "", &pumiceReqByte)
+
+	responseBytes, err := handler.clientAPIObj.Request(pumiceReqByte.Bytes(), "", write)
 
 	if err == nil {
 		var responseObj requestResponseLib.KVResponse

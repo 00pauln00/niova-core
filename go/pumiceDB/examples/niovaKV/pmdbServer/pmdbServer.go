@@ -122,11 +122,7 @@ func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64
 	return 0
 }
 
-func (nso *NiovaKVServer) InitPeer(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
-	return
-}
-
-func (nso *NiovaKVServer) CleanupPeer(cleanupPeerArgs *PumiceDBServer.PmdbCbArgs) {
+func (nso *NiovaKVServer) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	return
 }
 
@@ -137,8 +133,7 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	// Decode the input buffer into structure format
 	applyNiovaKV := &requestResponseLib.KVRequest{}
 
-	decodeErr := nso.pso.Decode(applyArgs.ReqBuf, applyNiovaKV,
-								applyArgs.ReqSize)
+	decodeErr := nso.pso.DecodeApplicationReq(applyArgs.Payload, applyNiovaKV)
 	if decodeErr != nil {
 		log.Error("Failed to decode the application data")
 		return -1
@@ -169,7 +164,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	//Decode the request structure sent by client.
 	reqStruct := &requestResponseLib.KVRequest{}
-	decodeErr := nso.pso.Decode(readArgs.ReqBuf, reqStruct, readArgs.ReqSize)
+	decodeErr := nso.pso.DecodeApplicationReq(readArgs.Payload, reqStruct)
 
 	if decodeErr != nil {
 		log.Error("Failed to decode the read request")
@@ -210,6 +205,5 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	log.Trace("Reply size: ", replySize)
-
 	return replySize
 }

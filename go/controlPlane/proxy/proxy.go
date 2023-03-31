@@ -213,7 +213,6 @@ func (handler *proxyHandler) startPMDBClient() error {
 	//Store rncui in nkvclientObj
 	handler.pmdbClientObj.AppUUID = uuid.NewV4().String()
 	return nil
-
 }
 
 /*
@@ -414,6 +413,18 @@ func (handler *proxyHandler) dumpConfigToFile(outfilepath string) error {
 	return nil
 }
 
+func (handler *proxyHandler) getPmdbRequest(request []byte) (PumiceDBCommon.PumiceRequest, error) {
+	var pmdbReq PumiceDBCommon.PumiceRequest
+
+	dec := gob.NewDecoder(bytes.NewBuffer(request))
+	err := dec.Decode(&pmdbReq)
+	if err != nil {
+		log.Error(err)
+		return pmdbReq, err
+	}
+	return pmdbReq, nil
+}
+
 /*
 Structure : proxyHandler
 Method    : WriteCallBack
@@ -422,49 +433,51 @@ Return(s) : error
 
 Description : Call back for PMDB writes requests to HTTP server.
 */
-func (handler *proxyHandler) WriteCallBack(request []byte, response *[]byte) error {
+func (handler *proxyHandler) PutHandlerCB(request []byte, response *[]byte) error {
 	var replySize int64
-	requestObj := requestResponseLib.KVRequest{}
-	dec := gob.NewDecoder(bytes.NewBuffer(request))
-	err := dec.Decode(&requestObj)
+	requestObj, err := handler.getPmdbRequest(request)
 	if err != nil {
 		return err
 	}
 
-	_, err = handler.pmdbClientObj.WriteEncoded(request, requestObj.Rncui, 0,
-		&replySize)
+	var rncui string
+	rncui = requestObj.Rncui
 
-	var responseObj requestResponseLib.KVResponse
-	if err != nil {
-		responseObj.Status = 1
+	if requestObj.ReqType == PumiceDBCommon.LEASE_REQ {
+		// prepare args to send to server
+		reqArgs := &pmdbClient.PmdbReqArgs{
+			Rncui:       rncui,
+			ReqByteArr:  request,
+			GetResponse: 1,
+			ReplySize:   &replySize,
+			Response:    response,
+		}
+
+		err = handler.pmdbClientObj.WriteEncodedAndGetResponse(reqArgs)
 	} else {
-		responseObj.Status = 0
+		reqArgs := &pmdbClient.PmdbReqArgs{
+			Rncui:       rncui,
+			ReqByteArr:  request,
+			GetResponse: 0,
+			ReplySize:   &replySize,
+		}
+
+		_, err = handler.pmdbClientObj.WriteEncoded(reqArgs)
+
+		var responseObj requestResponseLib.KVResponse
+		if err != nil {
+			responseObj.Status = 1
+		} else {
+			responseObj.Status = 0
+		}
+
+		var responseBuffer bytes.Buffer
+		enc := gob.NewEncoder(&responseBuffer)
+		err = enc.Encode(responseObj)
+		*response = responseBuffer.Bytes()
 	}
 
-	var responseBuffer bytes.Buffer
-	enc := gob.NewEncoder(&responseBuffer)
-	err = enc.Encode(responseObj)
-	*response = responseBuffer.Bytes()
-
 	return err
-}
-
-/*
-Structure : proxyHandler
-Method : ReadWrapper
-Arguments : key, *[]byte
-Return(s) : error
-
-Description : A wrapper for PMDB ReadCallBack
-*/
-func (handler *proxyHandler) ReadWrapper(key string, response *[]byte) error {
-	var request requestResponseLib.KVRequest
-	request.Operation = "read"
-	request.Key = key
-	var requestBytes bytes.Buffer
-	enc := gob.NewEncoder(&requestBytes)
-	enc.Encode(request)
-	return handler.pmdbClientObj.ReadEncoded(requestBytes.Bytes(), "", response)
 }
 
 /*
@@ -475,8 +488,14 @@ Return(s) : error
 
 Description : Call back for PMDB read requests to HTTP server.
 */
-func (handler *proxyHandler) ReadCallBack(request []byte, response *[]byte) error {
-	return handler.pmdbClientObj.ReadEncoded(request, "", response)
+func (handler *proxyHandler) GetHandlerCB(request []byte, response *[]byte) error {
+	reqArgs := &pmdbClient.PmdbReqArgs{
+		Rncui:      "",
+		ReqByteArr: request,
+		Response:   response,
+	}
+	res := handler.pmdbClientObj.ReadEncoded(reqArgs)
+	return res
 }
 
 /*
@@ -492,8 +511,8 @@ func (handler *proxyHandler) startHTTPServer() error {
 	handler.httpServerObj = httpServer.HTTPServerHandler{
 		Addr:             handler.addr,
 		PortRange:        handler.portRange,
-		PUTHandler:       handler.WriteCallBack,
-		GETHandler:       handler.ReadCallBack,
+		PUTHandler:       handler.PutHandlerCB,
+		GETHandler:       handler.GetHandlerCB,
 		PMDBServerConfig: handler.PMDBServerConfigByteMap,
 		RecvdPort:        &RecvdPort,
 		AppType:          "Proxy",

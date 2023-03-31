@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"unsafe"
-	"net"
+
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -25,11 +26,23 @@ type PMDBInfo struct {
 }
 
 type PeerConfigData struct {
-        UUID       [16]byte
-        IPAddr     net.IP
-        Port       uint16
-        ClientPort uint16
+	UUID       [16]byte
+	IPAddr     net.IP
+	Port       uint16
+	ClientPort uint16
 }
+
+type PumiceRequest struct {
+	Rncui      string
+	ReqType    int
+	ReqPayload []byte
+}
+
+const (
+	APP_REQ     int = 0
+	LEASE_REQ       = 1
+	LOOKOUT_REQ     = 2
+)
 
 //Func for initializing the logger
 func InitLogger(logPath string) error {
@@ -114,4 +127,30 @@ func Decode(input unsafe.Pointer, output interface{},
 	}
 
 	return nil
+}
+
+//Prepare PumiceRequest for application reqest type APP_REQ
+func PrepareAppPumiceRequest(appRequest interface{}, rncui string, requestBytes *bytes.Buffer) error {
+	var appRequestBytes bytes.Buffer
+	var pumiceReqObj PumiceRequest
+
+	//Encode the application request to prepare payload
+	enc := gob.NewEncoder(&appRequestBytes)
+	err := enc.Encode(appRequest)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+		return err
+	}
+
+	pumiceReqObj.ReqType = APP_REQ
+	pumiceReqObj.ReqPayload = appRequestBytes.Bytes()
+	pumiceReqObj.Rncui = rncui
+
+	//Encode PumiceRequest
+	pumiceEnc := gob.NewEncoder(requestBytes)
+	err = pumiceEnc.Encode(pumiceReqObj)
+	if err != nil {
+		log.Error("Encoding error : ", err)
+	}
+	return err
 }

@@ -359,8 +359,7 @@ main(int argc, char **argv)
 
     struct PmdbAPI api = {
         .pmdb_write_prep   = NULL,
-        .pmdb_init_peer    = NULL,
-        .pmdb_cleanup_peer = NULL,
+        .pmdb_init         = NULL,
         .pmdb_apply        = pmdbts_apply,
         .pmdb_read         = pmdbts_read,
     };
