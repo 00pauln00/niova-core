@@ -346,7 +346,7 @@ buffer_set_destroy(struct buffer_set *bs)
 
 int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                bool use_posix_memalign, bool serialize)
+                enum buffer_set_opts opts)
 {
     buffer_page_size_set();
 
@@ -360,7 +360,7 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
 
-    if (serialize)
+    if (opts & BUFSET_OPT_SERIALIZE)
     {
         bs->bs_serialize = 1;
         pthread_mutex_init(&bs->bs_mutex, NULL);
@@ -381,7 +381,7 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
         bi->bi_iov.iov_len = buf_size;
         bi->bi_register_idx = -1;
 
-        if (use_posix_memalign)
+        if (opts & BUFSET_OPT_MEMALIGN)
         {
             bi->bi_iov.iov_base =
                 niova_posix_memalign(buf_size, BUFFER_SECTOR_SIZE);
@@ -408,36 +408,31 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
         buffer_item_touch(bi);
     }
 
-    if (error)
-        buffer_set_destroy(bs);
+    if (!error)
+    {
+        if (opts & BUFSET_OPT_LREG)
+        {
+            lreg_node_init(&bs->bs_lrn, LREG_USER_TYPE_BUFFER_SET,
+                           buffer_lreg_cb, bs, LREG_INIT_OPT_NONE);
 
-    bs->bs_init = true;
+            int rc = lreg_node_install(&bs->bs_lrn,
+                                       LREG_ROOT_ENTRY_PTR(buffer_set_nodes));
+            NIOVA_ASSERT(rc == 0);
+
+            rc = lreg_node_wait_for_completion(&bs->bs_lrn, true);
+            NIOVA_ASSERT(rc == 0);
+
+            bs->bs_ctl_interface = 1;
+        }
+
+        bs->bs_init = true;
+    }
+    else
+    {
+        buffer_set_destroy(bs);
+    }
 
     return error;
-}
-
-int
-buffer_set_init_lreg(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                     bool use_posix_memalign, bool serialize)
-{
-    int rc = buffer_set_init(bs, nbufs, buf_size, use_posix_memalign,
-                             serialize);
-    if (rc)
-        return rc;
-
-    lreg_node_init(&bs->bs_lrn, LREG_USER_TYPE_BUFFER_SET,
-                   buffer_lreg_cb, bs, LREG_INIT_OPT_NONE);
-
-    rc = lreg_node_install(&bs->bs_lrn,
-                           LREG_ROOT_ENTRY_PTR(buffer_set_nodes));
-    NIOVA_ASSERT(rc == 0);
-
-    rc = lreg_node_wait_for_completion(&bs->bs_lrn, true);
-    NIOVA_ASSERT(rc == 0);
-
-    bs->bs_ctl_interface = 1;
-
-    return 0;
 }
 
 int
