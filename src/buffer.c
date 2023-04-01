@@ -30,6 +30,7 @@ enum buffer_set_lreg_stats
     BUFFER_SET_LREG_NUM_BUFS,     // signed int
     BUFFER_SET_LREG_OUTSTANDING,  // signed int
     BUFFER_SET_LREG_TOTAL_ALLOCS, // unsigned int
+    BUFFER_SET_LREG_CACHE_HITS, // unsigned int
     BUFFER_SET_LREG_MAX_USED,     // signed int
     BUFFER_SET_LREG___MAX,
 };
@@ -76,6 +77,9 @@ buffer_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
             break;
         case BUFFER_SET_LREG_TOTAL_ALLOCS:
             lreg_value_fill_unsigned(lv, "total-used", bs->bs_total_alloc);
+            break;
+        case BUFFER_SET_LREG_CACHE_HITS:
+            lreg_value_fill_unsigned(lv, "cache-hits", bs->bs_cache_hits);
             break;
         case BUFFER_SET_LREG_MAX_USED:
             lreg_value_fill_signed(lv, "max-in-use", bs->bs_max_allocated);
@@ -157,8 +161,63 @@ buffer_set_navail(const struct buffer_set *bs)
     return navail;
 }
 
+static size_t
+buffer_set_cache_key_to_index(const struct buffer_set *bs,
+                              const struct buffer_item_cache_key *bick)
+{
+    NIOVA_ASSERT(bs && bs->bs_use_cache && bick);
+
+    return ((bick->bick_key % bs->bs_cache_nbuckets) *
+            BUFFER_SET_CACHE_BUCKET_WIDTH);
+}
+
+static void
+buffer_item_uncache(struct buffer_item *bi)
+{
+    NIOVA_ASSERT(bi != NULL && bi->bi_cached && bi->bi_bs != NULL &&
+                 bi->bi_bs->bs_use_cache);
+
+    struct buffer_set *bs = bi->bi_bs;
+
+    size_t idx = buffer_set_cache_key_to_index(bs, &bi->bi_cache_key);
+
+    for (int i = 0; i < BUFFER_SET_CACHE_BUCKET_WIDTH; i++)
+    {
+        if (bs->bs_cached_items[idx] == bi)
+        {
+            bs->bs_cached_items[idx] = NULL;
+            bi->bi_cached = 0;
+            return;
+        }
+    }
+}
+
 static struct buffer_item *
-buffer_set_allocate_item_locked(struct buffer_set *bs)
+buffer_item_cache_lookup(const struct buffer_item_cache_key *bick,
+                         struct buffer_set *bs)
+{
+    if (bick == NULL || bs == NULL || !bs->bs_use_cache)
+        return NULL;
+
+    size_t idx = buffer_set_cache_key_to_index(bs, bick);
+
+    for (int i = 0; i < BUFFER_SET_CACHE_BUCKET_WIDTH; i++)
+    {
+        if (bs->bs_cached_items[idx] != NULL &&
+            bs->bs_cached_items[idx]->bi_cache_key.bick_key == bick->bick_key)
+        {
+            NIOVA_ASSERT(bs->bs_cached_items[idx]->bi_cached);
+            NIOVA_ASSERT(!bs->bs_cached_items[idx]->bi_allocated);
+
+            return bs->bs_cached_items[idx];
+        }
+    }
+    return NULL;
+}
+
+static struct buffer_item *
+buffer_set_allocate_item_locked(struct buffer_set *bs,
+                                const struct buffer_item_cache_key *bick)
 {
     NIOVA_ASSERT(bs);
 
@@ -173,7 +232,28 @@ buffer_set_allocate_item_locked(struct buffer_set *bs)
 
     NIOVA_ASSERT(!CIRCLEQ_EMPTY(&bs->bs_free_list));
 
-    struct buffer_item *bi = CIRCLEQ_FIRST(&bs->bs_free_list);
+    // Cache LRU oldest item should be at the end of the list
+    struct buffer_item *bi = CIRCLEQ_LAST(&bs->bs_free_list) ;
+
+    if (bs->bs_use_cache && bick != NULL)
+    {
+        struct buffer_item *tmp = buffer_item_cache_lookup(bick, bs);
+        if (tmp != NULL)
+        {
+            bi = tmp;
+            bs->bs_cache_hits++;
+        }
+        else
+        {
+            if (bi->bi_cached)
+                buffer_item_uncache(bi);
+        }
+
+        bi->bi_cache_key = *bick;
+    }
+
+    NIOVA_ASSERT(!bi->bi_allocated);
+
     CIRCLEQ_REMOVE(&bs->bs_free_list, bi, bi_lentry);
     CIRCLEQ_INSERT_TAIL(&bs->bs_inuse_list, bi, bi_lentry);
 
@@ -196,7 +276,23 @@ buffer_set_allocate_item(struct buffer_set *bs)
 
     BS_LOCK(bs);
 
-    struct buffer_item *bi = buffer_set_allocate_item_locked(bs);
+    struct buffer_item *bi = buffer_set_allocate_item_locked(bs, NULL);
+
+    BS_UNLOCK(bs);
+
+    return bi;
+}
+
+struct buffer_item *
+buffer_set_allocate_item_cache(struct buffer_set *bs,
+                               const struct buffer_item_cache_key *bick)
+{
+    if (bs == NULL)
+        return NULL;
+
+    BS_LOCK(bs);
+
+    struct buffer_item *bi = buffer_set_allocate_item_locked(bs, bick);
 
     BS_UNLOCK(bs);
 
@@ -212,7 +308,7 @@ buffer_set_allocate_item_from_pending(struct buffer_set *bs)
     BS_LOCK(bs);
 
     bs->bs_num_pndg_alloc--;
-    struct buffer_item *bi = buffer_set_allocate_item_locked(bs);
+    struct buffer_item *bi = buffer_set_allocate_item_locked(bs, NULL);
 
     NIOVA_ASSERT(bi);
 
@@ -269,6 +365,42 @@ buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems)
     return 0;
 }
 
+static void
+buffer_item_cache(struct buffer_item *bi)
+{
+    NIOVA_ASSERT(bi != NULL && bi->bi_bs != NULL && bi->bi_bs->bs_use_cache);
+
+    if (bi->bi_cached)
+        return;
+
+    struct buffer_set *bs = bi->bi_bs;
+
+    size_t idx = buffer_set_cache_key_to_index(bs, &bi->bi_cache_key);
+
+    for (int i = 0; i < BUFFER_SET_CACHE_BUCKET_WIDTH; i++)
+    {
+        if (bs->bs_cached_items[idx + i] == NULL)
+        {
+            bs->bs_cached_items[idx + i] = bi;
+            bi->bi_cached = 1;
+            return;
+        }
+    }
+
+    const int victim_idx =
+        idx + (bi->bi_cache_key.bick_key % BUFFER_SET_CACHE_BUCKET_WIDTH);
+
+    // Release 'victim' item
+    bs->bs_cached_items[victim_idx]->bi_cached = 0;
+    CIRCLEQ_REMOVE(&bs->bs_free_list, bs->bs_cached_items[victim_idx],
+                   bi_lentry);
+    CIRCLEQ_INSERT_TAIL(&bs->bs_free_list, bs->bs_cached_items[victim_idx],
+                        bi_lentry);
+
+    bs->bs_cached_items[victim_idx] = bi;
+    bi->bi_cached = 1;
+}
+
 void
 buffer_set_release_item(struct buffer_item *bi)
 {
@@ -290,7 +422,12 @@ buffer_set_release_item(struct buffer_item *bi)
     SLIST_ENTRY_INIT(&bi->bi_user_slentry);
 
     CIRCLEQ_REMOVE(&bs->bs_inuse_list, bi, bi_lentry);
-    CIRCLEQ_INSERT_TAIL(&bs->bs_free_list, bi, bi_lentry);
+
+    // Cache LRU newer items at the head of the list
+    CIRCLEQ_INSERT_HEAD(&bs->bs_free_list, bi, bi_lentry);
+
+    if (bs->bs_use_cache)
+        buffer_item_cache(bi); // noop if already cached
 
     BS_UNLOCK(bs);
 }
@@ -323,6 +460,12 @@ buffer_set_destroy(struct buffer_set *bs)
 
     bs->bs_init = 0;
 
+    if (bs->bs_use_cache && bs->bs_cached_items != NULL)
+    {
+        niova_free(bs->bs_cached_items);
+        bs->bs_cached_items = NULL;
+    }
+
     if (bs->bs_serialize)
         pthread_mutex_destroy(&bs->bs_mutex);
 
@@ -352,6 +495,9 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
 
     if (!bs || !buf_size || bs->bs_init)
         return -EINVAL;
+
+    if ((opts & BUFSET_OPT_CACHE) && !(opts & BUFSET_OPT_SERIALIZE))
+        return -EOPNOTSUPP;
 
     memset(bs, 0, sizeof(struct buffer_set));
 
@@ -406,6 +552,26 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
         bs->bs_num_bufs++;
 
         buffer_item_touch(bi);
+    }
+
+    if (!error && (opts & BUFSET_OPT_CACHE))
+    {
+        size_t nb = find_next_prime(MIN(BUFFER_SET_CACHE_MAX_BUCKETS,
+                                        bs->bs_num_bufs));
+
+        bs->bs_cached_items =
+            niova_calloc_can_fail((nb * BUFFER_SET_CACHE_BUCKET_WIDTH),
+                                  sizeof(struct buffer_item *));
+
+        if (bs->bs_cached_items == NULL)
+        {
+            error = -ENOMEM;
+        }
+        else
+        {
+            bs->bs_use_cache = 1;
+            bs->bs_cache_nbuckets = nb;
+        }
     }
 
     if (!error)

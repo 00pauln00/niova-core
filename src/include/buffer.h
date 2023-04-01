@@ -15,6 +15,9 @@
 #include "ref_tree_proto.h"
 #include "registry.h"
 
+#define BUFFER_SET_CACHE_BUCKET_WIDTH 3
+#define BUFFER_SET_CACHE_MAX_BUCKETS (1 << 21)
+
 enum buffer_set_opts
 {
     BUFSET_OPT_MEMALIGN  = (1 << 0),
@@ -38,13 +41,12 @@ struct buffer_item
     SLIST_ENTRY(buffer_item)     bi_user_slentry;
     const char                  *bi_allocator_func;
     struct buffer_item_cache_key bi_cache_key;
-    REF_TREE_ENTRY(buffer_item)  bi_cache_tentry;
     unsigned int                 bi_alloc_lineno:31;
     unsigned int                 bi_allocated:1;
+    unsigned int                 bi_cached:1;
     int                          bi_register_idx;
 };
 
-REF_TREE_HEAD(buffer_set_cache, buffer_item);
 CIRCLEQ_HEAD(buffer_list, buffer_item);
 SLIST_HEAD(buffer_user_slist, buffer_item);
 
@@ -52,22 +54,24 @@ SLIST_HEAD(buffer_user_slist, buffer_item);
 
 struct buffer_set
 {
-    char                    bs_name[BUFFER_SET_NAME_MAX + 1];
-    ssize_t                 bs_num_bufs;
-    ssize_t                 bs_num_allocated;
-    ssize_t                 bs_num_pndg_alloc;
-    size_t                  bs_item_size;
-    size_t                  bs_max_allocated;
-    size_t                  bs_total_alloc;
-    uint8_t                 bs_init:1;
-    uint8_t                 bs_serialize:1;
-    uint8_t                 bs_ctl_interface:1;
-    uint8_t                 bs_use_cache:1;
-    struct buffer_list      bs_free_list;
-    struct buffer_list      bs_inuse_list;
-    pthread_mutex_t         bs_mutex;
-    struct lreg_node        bs_lrn;
-    struct buffer_set_cache bs_cache;
+    char                 bs_name[BUFFER_SET_NAME_MAX + 1];
+    ssize_t              bs_num_bufs;
+    ssize_t              bs_num_allocated;
+    ssize_t              bs_num_pndg_alloc;
+    size_t               bs_item_size;
+    size_t               bs_max_allocated;
+    size_t               bs_total_alloc;
+    size_t               bs_cache_hits;
+    uint8_t              bs_init:1;
+    uint8_t              bs_serialize:1;
+    uint8_t              bs_ctl_interface:1;
+    uint8_t              bs_use_cache:1;
+    struct buffer_list   bs_free_list;
+    struct buffer_list   bs_inuse_list;
+    pthread_mutex_t      bs_mutex;
+    struct lreg_node     bs_lrn;
+    struct buffer_item **bs_cached_items;
+    size_t               bs_cache_nbuckets;
 };
 
 size_t
@@ -93,6 +97,10 @@ buffer_set_navail(const struct buffer_set *bs);
 
 struct buffer_item *
 buffer_set_allocate_item(struct buffer_set *bs);
+
+struct buffer_item *
+buffer_set_allocate_item_cache(struct buffer_set *bs,
+                               const struct buffer_item_cache_key *bick);
 
 void
 buffer_set_release_item(struct buffer_item *bi);

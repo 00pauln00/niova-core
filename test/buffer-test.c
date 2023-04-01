@@ -81,6 +81,63 @@ buffer_test(bool serialize, bool lreg)
     NIOVA_ASSERT(rc == 0);
 }
 
+static void
+buffer_test_cache(void)
+{
+#define NITEMS 1024
+
+    struct buffer_set bs = {0};
+    int rc = buffer_set_init(&bs, NITEMS, 100,
+                             BUFSET_OPT_CACHE | BUFSET_OPT_SERIALIZE);
+    NIOVA_ASSERT(rc == 0);
+
+    const int nbuckets_next_prime = find_next_prime(NITEMS);
+
+    struct buffer_item_cache_key bk = {.bick_key = 123456};
+
+    struct buffer_item *bi = buffer_set_allocate_item_cache(&bs, &bk);
+    NIOVA_ASSERT(bi && !bi->bi_cached && bi->bi_allocated);
+
+    buffer_set_release_item(bi);
+
+    bi = buffer_set_allocate_item_cache(&bs, &bk);
+    NIOVA_ASSERT(bi && bi->bi_cached && bs.bs_cache_hits == 1);
+
+    buffer_set_release_item(bi);
+
+    // Cause cache bucket collisions
+    for (int i = 0; i < (BUFFER_SET_CACHE_BUCKET_WIDTH * 2); i++)
+    {
+        struct buffer_item_cache_key bk =
+            {.bick_key = (nbuckets_next_prime * i)};
+
+        struct buffer_item *bi = buffer_set_allocate_item_cache(&bs, &bk);
+        NIOVA_ASSERT(bi && !bi->bi_cached && bi->bi_allocated);
+        buffer_set_release_item(bi);
+    }
+
+    for (int i = 0; i < BUFFER_SET_CACHE_BUCKET_WIDTH; i++)
+    {
+        struct buffer_item_cache_key bk =
+            {.bick_key = (nbuckets_next_prime * i)};
+
+        struct buffer_item *bi = buffer_set_allocate_item_cache(&bs, &bk);
+        NIOVA_ASSERT(bi && !bi->bi_cached && bi->bi_allocated);
+        buffer_set_release_item(bi);
+
+        // The first set of items should not be present in the cache
+        NIOVA_ASSERT(bs.bs_cache_hits == 1);
+
+        /* Newly cached items should be at the head of the LRU.
+         * NOTE this is technically a use after free on 'bi'.
+         */
+        NIOVA_ASSERT(bi == CIRCLEQ_FIRST(&bs.bs_free_list));
+    }
+
+    rc = buffer_set_destroy(&bs);
+    NIOVA_ASSERT(rc == 0);
+}
+
 int
 main(void)
 {
@@ -90,6 +147,8 @@ main(void)
     buffer_test(true, false);
 
     buffer_test(false, true);
+
+    buffer_test_cache();
 
     return 0;
 }
