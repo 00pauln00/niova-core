@@ -754,17 +754,17 @@ func (clientObj *clientHandler) performLeaseReq(resource, client string) error {
 	var lrh leaseClientLib.LeaseClientReqHandler
 	err := clientObj.prepareLeaseHandlers(&lrh)
 	if err != nil {
-		log.Error(err)
+		log.Error("Error while preparing lease handlers : ", err)
 		return err
 	}
 	err = lrh.InitLeaseReq(client, resource, "", op)
 	if err != nil {
-		log.Error(err)
+		log.Error("error while initializing lease req : ", err)
 		return err
 	}
 	err = lrh.LeaseOperationOverHTTP()
 	if err != nil {
-		log.Error(err)
+		log.Error("Error sending lease request : ", err)
 		return err
 	}
 
@@ -876,7 +876,6 @@ func main() {
 	case "RefreshLease":
 		err := clientObj.performLeaseReq(clientObj.requestKey, clientObj.requestValue)
 		if err != nil {
-			log.Error(err)
 			break
 		}
 	}
