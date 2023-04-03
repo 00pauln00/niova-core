@@ -281,17 +281,17 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	return nisdDataMap
 }
 
-func prepareKVRequest(key string, value []byte, rncui string, operation int) []byte {
+func prepareKVRequest(key string, value []byte, rncui string, operation int, retBytes *bytes.Buffer) error {
 	var reqObj requestResponseLib.KVRequest
+	var err error
 	reqObj.Operation = operation
 	reqObj.Key = key
 	reqObj.Value = value
-	var reqBytes bytes.Buffer
-	err := PumiceDBCommon.PrepareAppPumiceRequest(reqObj, rncui, &reqBytes)
+	err = PumiceDBCommon.PrepareAppPumiceRequest(reqObj, rncui, retBytes)
 	if err != nil {
-		log.Error("Pumice request creation error : ", err)
+		return err
 	}
-	return reqBytes.Bytes()
+	return err
 }
 
 func (clientObj *clientHandler) prepareLOInfoRequest() []byte {
@@ -344,11 +344,15 @@ func (clientObj *clientHandler) write() {
 			err := func() error {
 
 				//Fill the request object
-				reqBytes := prepareKVRequest(key, val, uuid.NewV4().String()+":0:0:0:0", requestResponseLib.KV_WRITE)
+				var reqBytes bytes.Buffer
+				err := prepareKVRequest(key, val, uuid.NewV4().String()+":0:0:0:0", requestResponseLib.KV_WRITE, &reqBytes)
+				if err != nil {
+					log.Error("Error while preparign KV request : ", err)
+					return err
+				}
 
 				//Send the write request
-				var err error
-				resBytes, err = clientObj.clientAPIObj.Request(reqBytes, "", true)
+				resBytes, err = clientObj.clientAPIObj.Request(reqBytes.Bytes(), "", true)
 				if err != nil {
 					log.Error("Error while sending the request : ", err)
 					return err
@@ -409,10 +413,15 @@ func (clientObj *clientHandler) read() {
 	clientObj.operation = "read"
 	err := func() error {
 		//Fill the request obj and encode it
-		reqBytes := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ)
+		var reqBytes bytes.Buffer
+		err := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ, &reqBytes)
+		if err != nil {
+			log.Error("Error while preparign KV request : ", err)
+			return err
+		}
 
 		//Send the request
-		resBytes, err := clientObj.clientAPIObj.Request(reqBytes, "", false)
+		resBytes, err := clientObj.clientAPIObj.Request(reqBytes.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending the request : ", err)
 			return err
