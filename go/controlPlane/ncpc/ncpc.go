@@ -328,8 +328,8 @@ func (clientObj *clientHandler) write() {
 		kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
 	}
 
-	operationStatSlice := make(map[string]*multiWriteStatus)
-	var operationStat interface{}
+	opStatS := make(map[string]*multiWriteStatus)
+	var opStat interface{}
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	// Create a int channel of fixed size to enqueue max requests
@@ -384,34 +384,34 @@ func (clientObj *clientHandler) write() {
 			//Request status filler
 			if clientObj.count == 1 {
 				if err != nil {
-					operationStat = prepareOutput(1, "write", rqO.Key, err.Error(), 0)
+					opStat = prepareOutput(1, "write", rqO.Key, err.Error(), 0)
 				} else {
-					operationStat = prepareOutput(rsO.Status, "write", rqO.Key, string(rqO.Value), 0)
+					opStat = prepareOutput(rsO.Status, "write", rqO.Key, string(rqO.Value), 0)
 				}
 				return
 			}
 
-			var operationStatMulti multiWriteStatus
+			var opStatM multiWriteStatus
 			if err != nil {
-				operationStatMulti = multiWriteStatus{
+				opStatM = multiWriteStatus{
 					Status: 1,
 					Value:  err.Error(),
 				}
 			} else {
-				operationStatMulti = multiWriteStatus{
+				opStatM = multiWriteStatus{
 					Status: rsO.Status,
 					Value:  string(val),
 				}
 			}
 
 			mut.Lock()
-			operationStatSlice[key] = &operationStatMulti
-			operationStat = operationStatSlice
+			opStatS[key] = &opStatM
+			opStat = opStatS
 			mut.Unlock()
 		}(key, val)
 	}
 	wg.Wait()
-	clientObj.write2Json(operationStat)
+	clientObj.write2Json(opStat)
 }
 
 func (clientObj *clientHandler) read() {
@@ -445,14 +445,14 @@ func (clientObj *clientHandler) read() {
 		return nil
 	}()
 
-	var operationStat *opData
+	var opStat *opData
 	if err == nil {
-		operationStat = prepareOutput(rsO.Status, "read", rsO.Key, string(rsO.ResultMap[rsO.Key]), 0)
+		opStat = prepareOutput(rsO.Status, "read", rsO.Key, string(rsO.ResultMap[rsO.Key]), 0)
 	} else {
-		operationStat = prepareOutput(1, "read", rsO.Key, err.Error(), 0)
+		opStat = prepareOutput(1, "read", rsO.Key, err.Error(), 0)
 	}
 
-	clientObj.write2Json(operationStat)
+	clientObj.write2Json(opStat)
 }
 
 func (clientObj *clientHandler) rangeRead() {
@@ -475,20 +475,20 @@ func (clientObj *clientHandler) rangeRead() {
 
 	for {
 		var rsO requestResponseLib.KVResponse
+		var rqB bytes.Buffer
+		var rsB []byte
+
 		rqO.Prefix = prefix
 		rqO.Key = key
 		rqO.Operation = op
 		rqO.Consistent = !clientObj.relaxedConsistency
 		rqO.SeqNum = seqNum
 
-		var rqB bytes.Buffer
 		err = PumiceDBCommon.PrepareAppPumiceRequest(rqO, "", &rqB)
 		if err != nil {
 			log.Error("Pumice request creation error : ", err)
 			break
 		}
-
-		var rsB []byte
 
 		//Send the range request
 		rsB, err = clientObj.clientAPIObj.Request(rqB.Bytes(), "", false)
@@ -522,30 +522,30 @@ func (clientObj *clientHandler) rangeRead() {
 	}
 
 	//Fill the json
-	var operationStat *opData
+	var opStat *opData
 	if err == nil {
-		strResultMap := convMapToStr(resultMap)
-		operationStat = prepareOutput(0, "range", rqO.Key, strResultMap, seqNum)
+		sRMap := convMapToStr(resultMap)
+		opStat = prepareOutput(0, "range", rqO.Key, sRMap, seqNum)
 
 		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
-		genKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+		gKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 
 		// Get the expected data for read operation and compare against the output.
 		tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
-		filteredMap := filterKVPrefix(genKVMap, tPrefix)
+		fMap := filterKVPrefix(gKVMap, tPrefix)
 
-		compare := reflect.DeepEqual(resultMap, filteredMap)
+		compare := reflect.DeepEqual(resultMap, fMap)
 		if !compare {
 			fmt.Println("Range verification read failure")
 		}
 		fmt.Println("The range query was completed in", count, "iterations")
 
 	} else {
-		operationStat = prepareOutput(1, "range", rqO.Key, err.Error(), seqNum)
+		opStat = prepareOutput(1, "range", rqO.Key, err.Error(), seqNum)
 	}
 
-	clientObj.write2Json(operationStat)
+	clientObj.write2Json(opStat)
 }
 
 func (clientObj *clientHandler) processReadWriteReq() {
@@ -701,8 +701,8 @@ func (clientObj *clientHandler) processLookoutInfo() error {
 func (clientObj *clientHandler) waitServiceInit(service string) {
 	err := clientObj.clientAPIObj.TillReady(service, clientObj.serviceRetry)
 	if err != nil {
-		operationStat := prepareOutput(-1, "setup", "", err.Error(), 0)
-		clientObj.write2Json(operationStat)
+		opStat := prepareOutput(-1, "setup", "", err.Error(), 0)
+		clientObj.write2Json(opStat)
 		log.Error(err)
 		os.Exit(1)
 	}
@@ -813,8 +813,8 @@ func main() {
 		log.Info("Start Serf client")
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
-			operationStat := prepareOutput(-1, "setup", "", err.Error(), 0)
-			clientObj.write2Json(operationStat)
+			opStat := prepareOutput(-1, "setup", "", err.Error(), 0)
+			clientObj.write2Json(opStat)
 			log.Error(err)
 			os.Exit(1)
 		}
