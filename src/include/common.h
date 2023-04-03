@@ -253,4 +253,25 @@ lowest_bit_set_and_return(uint64_t *field)
     return x;
 }
 
+static inline bool
+is_prime(int n)
+{
+    for (int i = 2; i <= (n / 2); i++)
+    {
+        if (!(n % i))
+            return false;
+    }
+
+    return true;
+}
+
+static inline int
+find_next_prime(int n)
+{
+    while (!is_prime(++n))
+        ;
+
+    return n;
+}
+
 #endif //NIOVA_COMMON_H
