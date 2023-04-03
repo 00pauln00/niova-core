@@ -496,6 +496,10 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     if (!bs || !buf_size || bs->bs_init)
         return -EINVAL;
 
+//XXX disable BUFSET_OPT_CACHE due to lack of invalidation strategy
+    if (opts & BUFSET_OPT_CACHE)
+        return -EOPNOTSUPP;
+
     if ((opts & BUFSET_OPT_CACHE) && !(opts & BUFSET_OPT_SERIALIZE))
         return -EOPNOTSUPP;
 
