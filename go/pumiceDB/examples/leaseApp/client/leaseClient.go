@@ -214,36 +214,36 @@ func (handler *leaseHandler) GetUuids() {
 Description: Perform GET lease operation
 */
 
-func (leaseHandler *leaseHandler) getLeases() error {
+func (lh *leaseHandler) getLeases() error {
 
-	leaseHandler.GetUuids()
+	lh.GetUuids()
 	var response []leaseClientLib.LeaseClientReqHandler
 	mapString := make(map[string]string)
 
 	for key, value := range kvMap {
 		var requestCli leaseClientLib.LeaseClientReqHandler
 		// Fill up leaseReq struct in lease handler
-		rncui := getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-		leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-		err := leaseHandler.cliRequest.InitLeaseReq(key.String(), value.String(), rncui, leaseLib.GET)
+		rncui := getRNCUI(lh.clientObj.PmdbClientObj)
+		lh.cliRequest.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+		err := lh.cliRequest.InitLeaseReq(key.String(), value.String(), rncui, leaseLib.GET)
 		if err != nil {
 			log.Error(err)
 			return err
 		}
 		// perform lease Get operation and which fills up the leaseHandler.cliRequest.LeaseRes
-		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Get()
-		if leaseHandler.cliRequest.Err != nil {
-			log.Error(leaseHandler.cliRequest.Err)
-			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
+		lh.cliRequest.Err = lh.cliRequest.Get()
+		if lh.cliRequest.Err != nil {
+			log.Error(lh.cliRequest.Err)
+			lh.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 
 		} else {
-			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
+			lh.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 		}
-		requestCli = leaseHandler.cliRequest
+		requestCli = lh.cliRequest
 		response = append(response, requestCli)
 	}
 
-	if leaseHandler.cliOperation == leaseLib.GET_VALIDATE && leaseHandler.numOfLeases >= 1 {
+	if lh.cliOperation == leaseLib.GET_VALIDATE && lh.numOfLeases >= 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
 			if response[i].LeaseRes.Status == leaseLib.SUCCESS {
@@ -255,16 +255,16 @@ func (leaseHandler *leaseHandler) getLeases() error {
 			}
 		}
 		// Write single 'Status' to json file.
-		leaseHandler.writeSingleResponseToJson(mapString)
+		lh.writeSingleResponseToJson(mapString)
 		// Write the detailed information to json file.
-		leaseHandler.writeToJson(response)
+		lh.writeToJson(response)
 
 	} else {
 		// Write the detailed information to the json file.
-		leaseHandler.writeToJson(response)
+		lh.writeToJson(response)
 	}
 
-	return leaseHandler.cliRequest.Err
+	return lh.cliRequest.Err
 }
 
 /*
@@ -291,46 +291,46 @@ func getUuidFromFile(filename string) map[uuid.UUID]uuid.UUID {
 Description: Perform LOOKUP lease operation
 */
 
-func (leaseHandler *leaseHandler) lookupLeases() error {
+func (lh *leaseHandler) lookupLeases() error {
 
-	var operation int
+	var op int
 	mapString := make(map[string]string)
 	var response []leaseClientLib.LeaseClientReqHandler
 
 	//If user not passed UUID through cmdline
-	if leaseHandler.cliRequest.LeaseReq.Resource == uuid.Nil {
+	if lh.cliRequest.LeaseReq.Resource == uuid.Nil {
 		//read get lease json outfile to extract client and resource uuid
-		kvMap = getUuidFromFile(leaseHandler.readJsonFile)
+		kvMap = getUuidFromFile(lh.readJsonFile)
 	} else {
-		leaseHandler.numOfLeases = 1
-		kvMap[leaseHandler.cliRequest.LeaseReq.Client] = leaseHandler.cliRequest.LeaseReq.Resource
+		lh.numOfLeases = 1
+		kvMap[lh.cliRequest.LeaseReq.Client] = lh.cliRequest.LeaseReq.Resource
 	}
 
 	for key, value := range kvMap {
-		if leaseHandler.cliOperation == leaseLib.LOOKUP {
-			operation = leaseLib.LOOKUP
+		if lh.cliOperation == leaseLib.LOOKUP {
+			op = leaseLib.LOOKUP
 		} else {
-			operation = leaseLib.LOOKUP_VALIDATE
+			op = leaseLib.LOOKUP_VALIDATE
 		}
 
-		err := leaseHandler.cliRequest.InitLeaseReq(key.String(), value.String(), "", operation)
+		err := lh.cliRequest.InitLeaseReq(key.String(), value.String(), "", op)
 		if err != nil {
 			log.Error(err)
 			return err
 		}
 
-		leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Lookup()
-		if leaseHandler.cliRequest.Err != nil {
-			log.Error(leaseHandler.cliRequest.Err)
-			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
+		lh.cliRequest.Err = lh.cliRequest.Lookup()
+		if lh.cliRequest.Err != nil {
+			log.Error(lh.cliRequest.Err)
+			lh.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 		} else {
-			leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
+			lh.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 		}
 
-		response = append(response, leaseHandler.cliRequest)
+		response = append(response, lh.cliRequest)
 	}
 
-	if leaseHandler.cliOperation == leaseLib.LOOKUP_VALIDATE && leaseHandler.numOfLeases > 1 {
+	if lh.cliOperation == leaseLib.LOOKUP_VALIDATE && lh.numOfLeases > 1 {
 		//Check if prev element have same 'Status' and as current response.
 		for i := 0; i < len(response); i++ {
 			if response[i].LeaseRes.Status == leaseLib.SUCCESS {
@@ -341,36 +341,36 @@ func (leaseHandler *leaseHandler) lookupLeases() error {
 				break
 			}
 			// Write single 'Status' to json file.
-			leaseHandler.writeToJson(mapString)
+			lh.writeToJson(mapString)
 		}
 	} else {
 		// Write the detailed response to the json file.
-		leaseHandler.writeToJson(response)
+		lh.writeToJson(response)
 	}
 
-	return leaseHandler.cliRequest.Err
+	return lh.cliRequest.Err
 }
 
 /*
 Description: Perform REFRESH lease operation
 */
 
-func (leaseHandler *leaseHandler) refreshLease() error {
+func (lh *leaseHandler) refreshLease() error {
 
-	leaseHandler.cliRequest.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-	leaseHandler.cliRequest.LeaseReq.Rncui = getRNCUI(leaseHandler.clientObj.PmdbClientObj)
-	leaseHandler.cliRequest.LeaseReq.Operation = leaseLib.REFRESH
+	lh.cliRequest.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+	lh.cliRequest.LeaseReq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+	lh.cliRequest.LeaseReq.Operation = leaseLib.REFRESH
 
-	leaseHandler.cliRequest.Err = leaseHandler.cliRequest.Refresh()
-	if leaseHandler.cliRequest.Err != nil {
-		log.Error(leaseHandler.cliRequest.Err)
-		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
+	lh.cliRequest.Err = lh.cliRequest.Refresh()
+	if lh.cliRequest.Err != nil {
+		log.Error(lh.cliRequest.Err)
+		lh.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 	} else {
-		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
+		lh.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 	}
 	// Write the response to the json file.
-	leaseHandler.writeToJson(leaseHandler.cliRequest)
-	return leaseHandler.cliRequest.Err
+	lh.writeToJson(lh.cliRequest)
+	return lh.cliRequest.Err
 }
 
 /*
@@ -381,24 +381,24 @@ Return(s) : error
 
 Description : Write detailed request-response/error to json file
 */
-func (leaseHandler *leaseHandler) writeToJson(toJson interface{}) {
+func (lh *leaseHandler) writeToJson(toJson interface{}) {
 	file, err := json.MarshalIndent(toJson, "", " ")
-	err = ioutil.WriteFile(leaseHandler.jsonFilePath+".json", file, 0644)
+	err = ioutil.WriteFile(lh.jsonFilePath+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
-		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.FAILURE
+		lh.cliRequest.LeaseRes.Status = leaseLib.FAILURE
 	} else {
-		leaseHandler.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
+		lh.cliRequest.LeaseRes.Status = leaseLib.SUCCESS
 	}
 }
 
 /*
 Description : Write single response/error to json file
 */
-func (leaseHandler *leaseHandler) writeSingleResponseToJson(toJson interface{}) {
+func (lh *leaseHandler) writeSingleResponseToJson(toJson interface{}) {
 	var filename string
 	file, err := json.MarshalIndent(toJson, "", " ")
-	filename = leaseHandler.jsonFilePath + "_single_response"
+	filename = lh.jsonFilePath + "_single_response"
 	err = ioutil.WriteFile(filename+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
@@ -406,41 +406,41 @@ func (leaseHandler *leaseHandler) writeSingleResponseToJson(toJson interface{}) 
 }
 
 func main() {
-	leaseHandler := leaseHandler{}
+	lh := leaseHandler{}
 
 	// Load cmd params
-	leaseHandler.getCmdParams()
+	lh.getCmdParams()
 
 	/*
 		Initialize Logging
 	*/
-	err := PumiceDBCommon.InitLogger(leaseHandler.logFilePath)
+	err := PumiceDBCommon.InitLogger(lh.logFilePath)
 	if err != nil {
 		log.Error("Error while initializing the logger ", err)
 	}
 
 	// Start pmdbClient
-	err = leaseHandler.startPMDBClient(leaseHandler.cliRequest.LeaseReq.Client.String())
+	err = lh.startPMDBClient(lh.cliRequest.LeaseReq.Client.String())
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
 	}
 
-	leaseHandler.cliRequest.LeaseClientObj = &leaseHandler.clientObj
-	switch leaseHandler.cliOperation {
+	lh.cliRequest.LeaseClientObj = &lh.clientObj
+	switch lh.cliOperation {
 	case leaseLib.GET:
 		fallthrough
 	case leaseLib.GET_VALIDATE:
 		//get lease
-		err = leaseHandler.getLeases()
+		err = lh.getLeases()
 	case leaseLib.LOOKUP:
 		fallthrough
 	case leaseLib.LOOKUP_VALIDATE:
 		//lookup lease
-		err = leaseHandler.lookupLeases()
+		err = lh.lookupLeases()
 	case leaseLib.REFRESH:
 		// refresh lease
-		err = leaseHandler.refreshLease()
+		err = lh.refreshLease()
 	}
 
 	if err != nil {
