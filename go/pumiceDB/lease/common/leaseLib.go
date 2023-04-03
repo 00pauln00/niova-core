@@ -2,17 +2,19 @@ package leaseLib
 
 import (
 	list "container/list"
-
 	uuid "github.com/satori/go.uuid"
 )
 
 const (
+	//Operation markers
 	GET             int = 0
 	PUT                 = 1
 	LOOKUP              = 2
 	REFRESH             = 3
 	GET_VALIDATE        = 4
 	LOOKUP_VALIDATE     = 5
+	GC		    = 6
+	//Status markers
 	INVALID             = 0
 	INPROGRESS          = 1
 	EXPIRED             = 2
@@ -28,6 +30,8 @@ type LeaseReq struct {
 	Client    uuid.UUID
 	Resource  uuid.UUID
 	Operation int
+	InitiatorTerm int64
+        Resources     []uuid.UUID
 }
 
 type LeaderTS struct {
@@ -51,6 +55,9 @@ type LeaseMeta struct {
 	LeaseState int
 	TTL        int
 	TimeStamp  LeaderTS
+	InGC        bool
+        IsStale     bool
+
 }
 
 type LeaseInfo struct {
