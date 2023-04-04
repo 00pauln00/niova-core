@@ -460,10 +460,6 @@ func (clientObj *clientHandler) rangeRead() {
 	prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	key = clientObj.requestKey[:len(clientObj.requestKey)-1]
 
-	rqo.Prefix = prefix
-	rqo.Operation = op
-	rqo.Consistent = !clientObj.relaxedConsistency
-
 	op = requestResponseLib.KV_RANGE_READ
 	// get sequence number from arguments
 	seqNum = clientObj.seqNum
@@ -471,6 +467,9 @@ func (clientObj *clientHandler) rangeRead() {
 	resultMap := make(map[string][]byte)
 	var count int
 
+	rqo.Prefix = prefix
+	rqo.Operation = op
+	rqo.Consistent = !clientObj.relaxedConsistency
 	for {
 		var rso requestResponseLib.KVResponse
 		var rqb bytes.Buffer
