@@ -42,6 +42,7 @@ type LeaseClientReqHandler struct {
 	LeaseClientObj *LeaseClient
 	LeaseReq       leaseLib.LeaseReq
 	LeaseRes       leaseLib.LeaseRes
+	ReqBytes       []byte
 	Err            error
 }
 
@@ -155,10 +156,10 @@ func (handler *LeaseClientReqHandler) Get() error {
 	var rsB []byte
 
 	// Prepare reqBytes for pumiceReq type
-	rqB := preparePumiceReq(handler.LeaseReq)
+	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
 
 	// send req
-	err = handler.LeaseClientObj.write(&rqB, handler.Rncui, &rsB)
+	err = handler.LeaseClientObj.write(&handler.ReqBytes, handler.Rncui, &rsB)
 	if err != nil {
 		return err
 	}
@@ -188,8 +189,8 @@ func (handler *LeaseClientReqHandler) Lookup() error {
 	var rsB []byte
 
 	// Prepare reqBytes for pumiceReq type
-	rqB := preparePumiceReq(handler.LeaseReq)
-	err = handler.LeaseClientObj.Read(&rqB, "", &rsB)
+	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
+	err = handler.LeaseClientObj.Read(&handler.ReqBytes, "", &rsB)
 	if err != nil {
 		return err
 	} else if len(rsB) == 0 {
@@ -219,10 +220,10 @@ func (handler *LeaseClientReqHandler) Refresh() error {
 	var rsB []byte
 
 	// Prepare reqBytes for pumiceReq type
-	rqB := preparePumiceReq(handler.LeaseReq)
+	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
 
 	// send req
-	err = handler.LeaseClientObj.write(&rqB, handler.Rncui, &rsB)
+	err = handler.LeaseClientObj.write(&handler.ReqBytes, handler.Rncui, &rsB)
 	if err != nil {
 		return err
 	}
@@ -252,13 +253,13 @@ func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	var rsB []byte
 
 	// Prepare reqBytes for pumiceReq type
-	rqB := preparePumiceReq(handler.LeaseReq)
+	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
 
 	if handler.LeaseReq.Operation != leaseLib.LOOKUP {
 		isWrite = true
 	}
 	// send req
-	rsB, err = handler.LeaseClientObj.ServiceDiscoveryObj.Request(rqB, handler.Rncui, isWrite)
+	rsB, err = handler.LeaseClientObj.ServiceDiscoveryObj.Request(handler.ReqBytes, handler.Rncui, isWrite)
 	if err != nil {
 		return err
 	}
