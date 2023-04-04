@@ -282,17 +282,12 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 }
 
 func prepareKVRequest(key string, value []byte, rncui string, operation int, retBytes *bytes.Buffer) error {
-	var err error
 	o := requestResponseLib.KVRequest{
 		Operation: operation,
 		Key:       key,
 		Value:     value,
 	}
-	err = PumiceDBCommon.PrepareAppPumiceRequest(o, rncui, retBytes)
-	if err != nil {
-		return err
-	}
-	return err
+	return PumiceDBCommon.PrepareAppPumiceRequest(o, rncui, retBytes)
 }
 
 func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
@@ -311,8 +306,7 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 	enc := gob.NewEncoder(b)
 	err = enc.Encode(o)
 	if err != nil {
-		log.Error("Encoding error : ", err)
-		return err
+		log.Error("Encodng error : ", err)
 	}
 	return err
 }
@@ -343,29 +337,29 @@ func (clientObj *clientHandler) write() {
 				<-requestLimiter
 			}()
 
-			var rsO requestResponseLib.KVResponse
-			var rsB []byte
+			var rso requestResponseLib.KVResponse
+			var rsb []byte
 
 			err := func() error {
 
 				//Fill the request object
-				var rqB bytes.Buffer
-				err := prepareKVRequest(key, val, uuid.NewV4().String()+":0:0:0:0", requestResponseLib.KV_WRITE, &rqB)
+				var rqb bytes.Buffer
+				err := prepareKVRequest(key, val, uuid.NewV4().String()+":0:0:0:0", requestResponseLib.KV_WRITE, &rqb)
 				if err != nil {
-					log.Error("Error while preparign KV request : ", err)
+					log.Error("Error while preparing KV request : ", err)
 					return err
 				}
 
 				//Send the write request
-				rsB, err = clientObj.clientAPIObj.Request(rqB.Bytes(), "", true)
+				rsb, err = clientObj.clientAPIObj.Request(rqb.Bytes(), "", true)
 				if err != nil {
 					log.Error("Error while sending the request : ", err)
 					return err
 				}
 
 				//Decode the request
-				dec := gob.NewDecoder(bytes.NewBuffer(rsB))
-				err = dec.Decode(&rsO)
+				dec := gob.NewDecoder(bytes.NewBuffer(rsb))
+				err = dec.Decode(&rso)
 				if err != nil {
 					log.Error("Decoding error : ", err)
 					return err
@@ -375,7 +369,7 @@ func (clientObj *clientHandler) write() {
 			}()
 
 			// preparing appReqObj to write to jsonOutfile
-			rqO := requestResponseLib.KVRequest{
+			rqo := requestResponseLib.KVRequest{
 				Key:       key,
 				Value:     val,
 				Operation: requestResponseLib.KV_WRITE,
@@ -384,9 +378,9 @@ func (clientObj *clientHandler) write() {
 			//Request status filler
 			if clientObj.count == 1 {
 				if err != nil {
-					opStat = prepareOutput(1, "write", rqO.Key, err.Error(), 0)
+					opStat = prepareOutput(1, "write", rqo.Key, err.Error(), 0)
 				} else {
-					opStat = prepareOutput(rsO.Status, "write", rqO.Key, string(rqO.Value), 0)
+					opStat = prepareOutput(rso.Status, "write", rqo.Key, string(rqo.Value), 0)
 				}
 				return
 			}
@@ -399,7 +393,7 @@ func (clientObj *clientHandler) write() {
 				}
 			} else {
 				opStatM = multiWriteStatus{
-					Status: rsO.Status,
+					Status: rso.Status,
 					Value:  string(val),
 				}
 			}
@@ -415,28 +409,28 @@ func (clientObj *clientHandler) write() {
 }
 
 func (clientObj *clientHandler) read() {
-	var rsO requestResponseLib.KVResponse
+	var rso requestResponseLib.KVResponse
 
 	clientObj.operation = "read"
 	err := func() error {
 		//Fill the request obj and encode it
-		var rqB bytes.Buffer
-		err := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ, &rqB)
+		var rqb bytes.Buffer
+		err := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ, &rqb)
 		if err != nil {
-			log.Error("Error while preparign KV request : ", err)
+			log.Error("Error while preparing KV request : ", err)
 			return err
 		}
 
 		//Send the request
-		rsB, err := clientObj.clientAPIObj.Request(rqB.Bytes(), "", false)
+		rsb, err := clientObj.clientAPIObj.Request(rqb.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending the request : ", err)
 			return err
 		}
 
 		//Decode the request
-		dec := gob.NewDecoder(bytes.NewBuffer(rsB))
-		err = dec.Decode(&rsO)
+		dec := gob.NewDecoder(bytes.NewBuffer(rsb))
+		err = dec.Decode(&rso)
 		if err != nil {
 			log.Error("Decoding error : ", err)
 			return err
@@ -447,9 +441,9 @@ func (clientObj *clientHandler) read() {
 
 	var opStat *opData
 	if err == nil {
-		opStat = prepareOutput(rsO.Status, "read", rsO.Key, string(rsO.ResultMap[rsO.Key]), 0)
+		opStat = prepareOutput(rso.Status, "read", rso.Key, string(rso.ResultMap[rso.Key]), 0)
 	} else {
-		opStat = prepareOutput(1, "read", rsO.Key, err.Error(), 0)
+		opStat = prepareOutput(1, "read", rso.Key, err.Error(), 0)
 	}
 
 	clientObj.write2Json(opStat)
@@ -459,12 +453,16 @@ func (clientObj *clientHandler) rangeRead() {
 	var prefix, key string
 	var op int
 	var err error
-	var rqO requestResponseLib.KVRequest
+	var rqo requestResponseLib.KVRequest
 	var seqNum uint64
 
 	clientObj.operation = "read"
 	prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
 	key = clientObj.requestKey[:len(clientObj.requestKey)-1]
+
+	rqo.Prefix = prefix
+	rqo.Operation = op
+	rqo.Consistent = !clientObj.relaxedConsistency
 
 	op = requestResponseLib.KV_RANGE_READ
 	// get sequence number from arguments
@@ -474,49 +472,46 @@ func (clientObj *clientHandler) rangeRead() {
 	var count int
 
 	for {
-		var rsO requestResponseLib.KVResponse
-		var rqB bytes.Buffer
-		var rsB []byte
+		var rso requestResponseLib.KVResponse
+		var rqb bytes.Buffer
+		var rsb []byte
 
-		rqO.Prefix = prefix
-		rqO.Key = key
-		rqO.Operation = op
-		rqO.Consistent = !clientObj.relaxedConsistency
-		rqO.SeqNum = seqNum
+		rqo.Key = key
+		rqo.SeqNum = seqNum
 
-		err = PumiceDBCommon.PrepareAppPumiceRequest(rqO, "", &rqB)
+		err = PumiceDBCommon.PrepareAppPumiceRequest(rqo, "", &rqb)
 		if err != nil {
 			log.Error("Pumice request creation error : ", err)
 			break
 		}
 
 		//Send the range request
-		rsB, err = clientObj.clientAPIObj.Request(rqB.Bytes(), "", false)
+		rsb, err = clientObj.clientAPIObj.Request(rqb.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
 
-		if len(rsB) == 0 {
+		if len(rsb) == 0 {
 			err = errors.New("Key not found")
 			log.Error("Empty response : ", err)
 			break
 		}
 		// decode the responseObj
-		dec := gob.NewDecoder(bytes.NewBuffer(rsB))
-		err = dec.Decode(&rsO)
+		dec := gob.NewDecoder(bytes.NewBuffer(rsb))
+		err = dec.Decode(&rso)
 		if err != nil {
 			log.Error("Decoding error : ", err)
 			break
 		}
 
 		// copy result to global result variable
-		maps.Copy(resultMap, rsO.ResultMap)
+		maps.Copy(resultMap, rso.ResultMap)
 		count += 1
 
 		//Change sequence number and key for next iteration
-		seqNum = rsO.SeqNum
-		key = rsO.Key
-		if !rsO.ContinueRead {
+		seqNum = rso.SeqNum
+		key = rso.Key
+		if !rso.ContinueRead {
 			break
 		}
 	}
@@ -525,7 +520,7 @@ func (clientObj *clientHandler) rangeRead() {
 	var opStat *opData
 	if err == nil {
 		sRMap := convMapToStr(resultMap)
-		opStat = prepareOutput(0, "range", rqO.Key, sRMap, seqNum)
+		opStat = prepareOutput(0, "range", rqo.Key, sRMap, seqNum)
 
 		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
@@ -542,7 +537,7 @@ func (clientObj *clientHandler) rangeRead() {
 		fmt.Println("The range query was completed in", count, "iterations")
 
 	} else {
-		opStat = prepareOutput(1, "range", rqO.Key, err.Error(), seqNum)
+		opStat = prepareOutput(1, "range", rqo.Key, err.Error(), seqNum)
 	}
 
 	clientObj.write2Json(opStat)
@@ -572,12 +567,12 @@ func (clientObj *clientHandler) processReadWriteReq() {
 }
 
 func (clientObj *clientHandler) processConfig() {
-	rsB, err := clientObj.clientAPIObj.GetPMDBServerConfig()
-	log.Info("Response : ", string(rsB))
+	rsb, err := clientObj.clientAPIObj.GetPMDBServerConfig()
+	log.Info("Response : ", string(rsb))
 	if err != nil {
 		log.Error("Unable to get the config data")
 	}
-	_ = ioutil.WriteFile(clientObj.resultFile+".json", rsB, 0644)
+	_ = ioutil.WriteFile(clientObj.resultFile+".json", rsb, 0644)
 }
 
 func (clientObj *clientHandler) processMembership() {
