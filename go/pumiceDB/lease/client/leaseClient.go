@@ -122,22 +122,22 @@ Return(s) : error
 Description : Initialize the handler's leaseReq struct
 */
 func (handler *LeaseClientReqHandler) InitLeaseReq(client, resource, rncui string, operation int) error {
-	resourceUUID, err := uuid.FromString(resource)
+	rUUID, err := uuid.FromString(resource)
 	if err != nil {
 		log.Error(err)
 		return err
 	}
 
 	handler.LeaseReq.Operation = operation
-	handler.LeaseReq.Resource = resourceUUID
+	handler.LeaseReq.Resource = rUUID
 
 	if operation != leaseLib.LOOKUP {
-		clientUUID, err := uuid.FromString(client)
+		cUUID, err := uuid.FromString(client)
 		if err != nil {
 			log.Error(err)
 			return err
 		}
-		handler.LeaseReq.Client = clientUUID
+		handler.LeaseReq.Client = cUUID
 	}
 
 	return err
@@ -153,19 +153,19 @@ Description : Handler function for get() operation
 */
 func (handler *LeaseClientReqHandler) Get() error {
 	var err error
-	var rsB []byte
+	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
 	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
 
 	// send req
-	err = handler.LeaseClientObj.write(&handler.ReqBytes, handler.Rncui, &rsB)
+	err = handler.LeaseClientObj.write(&handler.ReqBytes, handler.Rncui, &b)
 	if err != nil {
 		return err
 	}
 
 	// decode req response
-	dec := gob.NewDecoder(bytes.NewBuffer(rsB))
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
@@ -186,19 +186,19 @@ Description : Handler function for lookup() operation
 */
 func (handler *LeaseClientReqHandler) Lookup() error {
 	var err error
-	var rsB []byte
+	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
 	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
-	err = handler.LeaseClientObj.Read(&handler.ReqBytes, "", &rsB)
+	err = handler.LeaseClientObj.Read(&handler.ReqBytes, "", &b)
 	if err != nil {
 		return err
-	} else if len(rsB) == 0 {
+	} else if len(b) == 0 {
 		err = errors.New("Key not found")
 		return err
 	}
 
-	dec := gob.NewDecoder(bytes.NewBuffer(rsB))
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
@@ -217,19 +217,19 @@ Description : Handler function for refresh() operation
 */
 func (handler *LeaseClientReqHandler) Refresh() error {
 	var err error
-	var rsB []byte
+	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
 	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
 
 	// send req
-	err = handler.LeaseClientObj.write(&handler.ReqBytes, handler.Rncui, &rsB)
+	err = handler.LeaseClientObj.write(&handler.ReqBytes, handler.Rncui, &b)
 	if err != nil {
 		return err
 	}
 
 	// decode req response
-	dec := gob.NewDecoder(bytes.NewBuffer(rsB))
+	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	err = dec.Decode(&handler.LeaseRes)
 	if err != nil {
 		return err
@@ -250,7 +250,7 @@ Description :
 func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	var err error
 	var isWrite bool = false
-	var rsB []byte
+	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
 	handler.ReqBytes = preparePumiceReq(handler.LeaseReq)
@@ -259,18 +259,18 @@ func (handler *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 		isWrite = true
 	}
 	// send req
-	rsB, err = handler.LeaseClientObj.ServiceDiscoveryObj.Request(handler.ReqBytes, handler.Rncui, isWrite)
+	b, err = handler.LeaseClientObj.ServiceDiscoveryObj.Request(handler.ReqBytes, handler.Rncui, isWrite)
 	if err != nil {
 		return err
 	}
 
 	// decode the response if response is not blank
-	if len(rsB) == 0 {
+	if len(b) == 0 {
 		handler.LeaseRes.Status = leaseLib.FAILURE
 		handler.Err = errors.New("Key not found")
 	} else {
 		handler.LeaseRes.Status = leaseLib.SUCCESS
-		dec := gob.NewDecoder(bytes.NewBuffer(rsB))
+		dec := gob.NewDecoder(bytes.NewBuffer(b))
 		err = dec.Decode(&handler.LeaseRes)
 		if err != nil {
 			return err
