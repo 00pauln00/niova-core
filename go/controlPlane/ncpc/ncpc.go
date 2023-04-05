@@ -322,8 +322,7 @@ func (clientObj *clientHandler) write() {
 		kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
 	}
 
-	opStatS := make(map[string]*multiWriteStatus)
-	var opStat interface{}
+	var opStat *opData
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	// Create a int channel of fixed size to enqueue max requests
@@ -376,36 +375,19 @@ func (clientObj *clientHandler) write() {
 			}
 
 			//Request status filler
-			if clientObj.count == 1 {
-				if err != nil {
-					opStat = prepareOutput(1, "write", rqo.Key, err.Error(), 0)
-				} else {
-					opStat = prepareOutput(rso.Status, "write", rqo.Key, string(rqo.Value), 0)
-				}
-				return
-			}
-
-			var opStatM multiWriteStatus
 			if err != nil {
-				opStatM = multiWriteStatus{
-					Status: 1,
-					Value:  err.Error(),
-				}
+				opStat = prepareOutput(1, "write", rqo.Key, err.Error(), 0)
 			} else {
-				opStatM = multiWriteStatus{
-					Status: rso.Status,
-					Value:  string(val),
-				}
+				opStat = prepareOutput(rso.Status, "write", rqo.Key, string(rqo.Value), 0)
 			}
 
 			mut.Lock()
-			opStatS[key] = &opStatM
-			opStat = opStatS
+			clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
 			mut.Unlock()
 		}(key, val)
 	}
 	wg.Wait()
-	clientObj.write2Json(opStat)
+	clientObj.write2Json(clientObj.operationMetaObjs)
 }
 
 func (clientObj *clientHandler) read() {
@@ -439,14 +421,13 @@ func (clientObj *clientHandler) read() {
 		return nil
 	}()
 
-	var opStat *opData
 	if err == nil {
-		opStat = prepareOutput(rso.Status, "read", rso.Key, string(rso.ResultMap[rso.Key]), 0)
+		clientObj.operationMetaObjs[0] = *prepareOutput(rso.Status, "read", rso.Key, string(rso.ResultMap[rso.Key]), 0)
 	} else {
-		opStat = prepareOutput(1, "read", rso.Key, err.Error(), 0)
+		clientObj.operationMetaObjs[0] = *prepareOutput(1, "read", rso.Key, err.Error(), 0)
 	}
 
-	clientObj.write2Json(opStat)
+	clientObj.write2Json(clientObj.operationMetaObjs)
 }
 
 func (clientObj *clientHandler) rangeRead() {
@@ -455,6 +436,7 @@ func (clientObj *clientHandler) rangeRead() {
 	var err error
 	var rqo requestResponseLib.KVRequest
 	var seqNum uint64
+	var opStat *opData
 
 	clientObj.operation = "read"
 	prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
@@ -516,11 +498,10 @@ func (clientObj *clientHandler) rangeRead() {
 	}
 
 	//Fill the json
-	var opStat *opData
 	if err == nil {
 		sRMap := convMapToStr(resultMap)
 		opStat = prepareOutput(0, "range", rqo.Key, sRMap, seqNum)
-
+		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
 		//Validate the range output
 		fmt.Println("Generate the Data for read validation")
 		gKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
@@ -537,9 +518,10 @@ func (clientObj *clientHandler) rangeRead() {
 
 	} else {
 		opStat = prepareOutput(1, "range", rqo.Key, err.Error(), seqNum)
+		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
 	}
 
-	clientObj.write2Json(opStat)
+	clientObj.write2Json(clientObj.operationMetaObjs)
 }
 
 func (clientObj *clientHandler) processReadWriteReq() {
