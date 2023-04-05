@@ -317,6 +317,7 @@ struct raft_net_client_request_handle
     enum raft_net_client_request_type     rncr_type;  // may be set by sm cb
     bool                                  rncr_write_raft_entry;
     bool                                  rncr_is_leader;
+    bool                                  rncr_is_direct_req;
     int                                   rncr_op_error;
     int64_t                               rncr_entry_term;
     int64_t                               rncr_current_term;

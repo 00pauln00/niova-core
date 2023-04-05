@@ -209,5 +209,20 @@ pmdb_rncui_is_read_any(const struct raft_net_client_user_id *in)
     return false;
 }
 
+static inline void
+pmdb_msg_init(struct pmdb_msg *msg, uint32_t data_size, uint8_t op,
+              int64_t sequence_num)
+{
+    msg->pmdbrm_magic = PMDB_MSG_MAGIC;
+    msg->pmdbrm_op = op;
+    msg->pmdbrm_data_size = data_size;
+    SIMPLE_LOG_MSG(LL_WARN, "magic: %u, op: %d, data_size: %u", msg->pmdbrm_magic, msg->pmdbrm_op, msg->pmdbrm_data_size);
+    if (op == pmdb_op_write)
+	{
+        msg->pmdbrm_write_seqno = sequence_num;
+		SIMPLE_LOG_MSG(LL_WARN, "pmdbrm_write_seqno: %ld", msg->pmdbrm_write_seqno);
+	}
+}
+ 
 
 #endif

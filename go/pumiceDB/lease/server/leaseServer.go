@@ -467,9 +467,10 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					request.Resources = resourceUUIDs
 					request.InitiatorTerm = currentTime.LeaderTerm
 					//Send Request
-					var ReqBytes bytes.Buffer
-                			enc := gob.NewEncoder(&ReqBytes)
-                			enc.Encode(request)
+					err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(request)
+					if err != nil {
+						log.Error("Failed to send stale lease processing request")
+					}
 				}
 		}
 	}

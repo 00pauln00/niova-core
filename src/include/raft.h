@@ -342,6 +342,9 @@ struct raft_leader_state
 int
 raft_server_get_leader_ts(struct raft_leader_ts *leader_ts);
 
+int
+raft_server_enq_direct_raft_req_from_leader(char *req_buf, int64_t data_size);
+
 struct epoll_handle;
 struct raft_instance;
 

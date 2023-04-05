@@ -681,3 +681,46 @@ func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) int {
 
 	return rc_go
 }
+
+func PmdbInitRPCMsg(rcm *C.struct_raft_client_rpc_msg, dataSize uint32) {
+	rcm.rcrm_type = C.RAFT_CLIENT_RPC_MSG_TYPE_WRITE
+	rcm.rcrm_version = 0
+	rcm.rcrm_data_size = C.uint32_t(dataSize)
+}
+
+func PmdbEnqueueDirectWriteRequest(req interface{}) error {
+	var ReqBytes bytes.Buffer
+	enc := gob.NewEncoder(&ReqBytes)
+	err := enc.Encode(req)
+	if err != nil {
+		log.Error("Failed to encode the stale lease processing request")
+		return err
+	}
+	data := ReqBytes.Bytes()
+	//Convert it to unsafe pointer (void * for C function)
+	kvdata := unsafe.Pointer(&data[0])
+
+	dataSize := int64(len(data))
+
+
+	buf := C.malloc(4 * 1024 * 1024)
+	rcm  := (*C.struct_raft_client_rpc_msg)(buf)
+
+	msgPointer := unsafe.Pointer(uintptr(buf) + C.sizeof_struct_raft_client_rpc_msg)
+
+	log.Info("msgPointer ", msgPointer)
+
+	pmdb_msg := (*C.struct_pmdb_msg)(msgPointer)
+	C.pmdb_msg_init(pmdb_msg, C.uint32_t(dataSize), C.pmdb_op_write, 0)
+
+	dataPtr := unsafe.Pointer(uintptr(msgPointer) + C.sizeof_struct_pmdb_msg)
+	C.memcpy(dataPtr, kvdata, C.size_t(dataSize))
+	pmdbMsgSize := C.sizeof_struct_pmdb_msg + C.int64_t(dataSize)
+	PmdbInitRPCMsg(rcm, uint32(pmdbMsgSize))
+
+	totalSize := int64(pmdbMsgSize + C.sizeof_struct_raft_client_rpc_msg)
+	C.raft_server_enq_direct_raft_req_from_leader((*C.char)(buf), C.int64_t(totalSize))
+	C.free(buf)
+
+	return nil
+}
