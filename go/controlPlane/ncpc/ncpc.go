@@ -422,9 +422,11 @@ func (clientObj *clientHandler) read() {
 	}()
 
 	if err == nil {
-		clientObj.operationMetaObjs[0] = *prepareOutput(rso.Status, "read", rso.Key, string(rso.ResultMap[rso.Key]), 0)
+		opStat := prepareOutput(rso.Status, "read", rso.Key, string(rso.ResultMap[rso.Key]), 0)
+		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
 	} else {
-		clientObj.operationMetaObjs[0] = *prepareOutput(1, "read", rso.Key, err.Error(), 0)
+		opStat := prepareOutput(1, "read", rso.Key, err.Error(), 0)
+		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
 	}
 
 	clientObj.write2Json(clientObj.operationMetaObjs)
