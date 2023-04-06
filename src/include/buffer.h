@@ -17,15 +17,10 @@
 
 enum buffer_set_opts
 {
-    BUFSET_OPT_MEMALIGN  = (1 << 0),
-    BUFSET_OPT_SERIALIZE = (1 << 1),
-    BUFSET_OPT_CACHE     = (1 << 2),
-    BUFSET_OPT_LREG      = (1 << 3),
-};
-
-struct buffer_item_cache_key
-{
-    uint64_t bick_key;
+    BUFSET_OPT_MEMALIGN   = (1 << 0),
+    BUFSET_OPT_SERIALIZE  = (1 << 1),
+    BUFSET_OPT_USER_CACHE = (1 << 2),
+    BUFSET_OPT_LREG       = (1 << 3),
 };
 
 struct buffer_set;
@@ -37,14 +32,14 @@ struct buffer_item
     CIRCLEQ_ENTRY(buffer_item)   bi_lentry;
     SLIST_ENTRY(buffer_item)     bi_user_slentry;
     const char                  *bi_allocator_func;
-    struct buffer_item_cache_key bi_cache_key;
-    REF_TREE_ENTRY(buffer_item)  bi_cache_tentry;
+    void                       (*bi_cache_revoke_cb)(struct buffer_item *,
+                                                     void *);
+    void                        *bi_cache_revoke_arg;
     unsigned int                 bi_alloc_lineno:31;
     unsigned int                 bi_allocated:1;
     int                          bi_register_idx;
 };
 
-REF_TREE_HEAD(buffer_set_cache, buffer_item);
 CIRCLEQ_HEAD(buffer_list, buffer_item);
 SLIST_HEAD(buffer_user_slist, buffer_item);
 
@@ -62,12 +57,11 @@ struct buffer_set
     uint8_t                 bs_init:1;
     uint8_t                 bs_serialize:1;
     uint8_t                 bs_ctl_interface:1;
-    uint8_t                 bs_use_cache:1;
+    uint8_t                 bs_allow_user_cache:1;
     struct buffer_list      bs_free_list;
     struct buffer_list      bs_inuse_list;
     pthread_mutex_t         bs_mutex;
     struct lreg_node        bs_lrn;
-    struct buffer_set_cache bs_cache;
 };
 
 size_t
