@@ -121,7 +121,7 @@ Arguments :
 Return(s) : error
 Description : Initialize the handler's leaseReq struct
 */
-func (handler *LeaseClientReqHandler) InitLeaseReq(client, resource, rncui string, operation int) error {
+func (handler *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation int) error {
 	rUUID, err := uuid.FromString(resource)
 	if err != nil {
 		log.Error(err)

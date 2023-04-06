@@ -223,9 +223,8 @@ func (lh *leaseHandler) getLeases() error {
 	for key, value := range kvMap {
 		var requestCli leaseClientLib.LeaseClientReqHandler
 		// Fill up leaseReq struct in lease handler
-		rncui := getRNCUI(lh.clientObj.PmdbClientObj)
 		lh.cliRequest.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-		err := lh.cliRequest.InitLeaseReq(key.String(), value.String(), rncui, leaseLib.GET)
+		err := lh.cliRequest.InitLeaseReq(key.String(), value.String(), leaseLib.GET)
 		if err != nil {
 			log.Error(err)
 			return err
@@ -313,7 +312,7 @@ func (lh *leaseHandler) lookupLeases() error {
 			op = leaseLib.LOOKUP_VALIDATE
 		}
 
-		err := lh.cliRequest.InitLeaseReq(key.String(), value.String(), "", op)
+		err := lh.cliRequest.InitLeaseReq(key.String(), value.String(), op)
 		if err != nil {
 			log.Error(err)
 			return err
@@ -358,7 +357,6 @@ Description: Perform REFRESH lease operation
 func (lh *leaseHandler) refreshLease() error {
 
 	lh.cliRequest.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-	lh.cliRequest.LeaseReq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
 	lh.cliRequest.LeaseReq.Operation = leaseLib.REFRESH
 
 	lh.cliRequest.Err = lh.cliRequest.Refresh()
