@@ -447,10 +447,11 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				lso.listLock.Lock()
 				//Iterate over list
 				for e := lso.listObj.Front(); e != nil; e = e.Next() {
-					if cobj, ok := e.Value.(leaseLib.LeaseInfo); ok {
+					if cobj, ok := e.Value.(*leaseLib.LeaseInfo); ok {
 						err = lso.GetLeaderTimeStamp(&currentTime)
 						if err != 0 {
-							continue
+							//Leader change, so stop the routine execution
+							break
 						}
 						obj := cobj.LeaseMetaInfo
 						lt := obj.TimeStamp.LeaderTime
