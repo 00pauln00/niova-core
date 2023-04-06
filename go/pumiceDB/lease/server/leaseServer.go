@@ -15,8 +15,8 @@ import (
 	//PumiceDBClient "niova/go-pumicedb-lib/client"
 )
 
-var ttlDefault = 60
-var gcTimeout = 1024
+var ttlDefault = 30
+var gcTimeout = 35
 var LEASE_COLUMN_FAMILY = "NIOVA_LEASE_CF"
 
 type LeaseServerObject struct {
@@ -24,7 +24,7 @@ type LeaseServerObject struct {
 	LeaseMap     map[uuid.UUID]*leaseLib.LeaseInfo
 	Pso          *PumiceDBServer.PmdbServerObject
 	listObj      *list.List
-	stateChangeChannel chan int
+	leader	     bool
 	listLock     sync.RWMutex
 }
 
@@ -85,8 +85,10 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 	lso.LeaseColmFam = LEASE_COLUMN_FAMILY
 	//Register Lease callbacks
 	lso.Pso.LeaseAPI = lso
-	lso.stateChangeChannel = make(chan int,1)
 	lso.listObj = list.New()
+	//Start the garbage collector thread
+	lso.leader = false
+	go lso.leaseGarbageCollector()
 }
 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
@@ -431,19 +433,20 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 
 func (lso *LeaseServerObject) leaseGarbageCollector() {
 	ticker := time.NewTicker(time.Duration(gcTimeout) * time.Second)
+	log.Info("GC routine running")
 	for {
-		select {
-			case <- lso.stateChangeChannel:
-				break;
-			case <- ticker.C:
-				var resourceUUIDs []uuid.UUID
+			<- ticker.C
 				var currentTime leaseLib.LeaderTS
-        			lso.GetLeaderTimeStamp(&currentTime)
+				err := lso.GetLeaderTimeStamp(&currentTime)
+				if err != 0 {
+					continue
+				}
+				log.Info("Stale lease rem")
+				var resourceUUIDs []uuid.UUID
 				//Obtain lock
 				lso.listLock.Lock()
 				//Iterate over list
-				for e := lso.listObj.Front(); e != nil; e = e.Next() {
-					
+				for e := lso.listObj.Front(); e != nil; e = e.Next() {	
 					if cobj, ok := e.Value.(leaseLib.LeaseInfo); ok {
 						obj := cobj.LeaseMetaInfo
 						lt := obj.TimeStamp.LeaderTime
@@ -472,7 +475,6 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 						log.Error("Failed to send stale lease processing request")
 					}
 				}
-		}
 	}
 }
 
@@ -480,13 +482,13 @@ func (lso *LeaseServerObject) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
 		log.Info("Init callback in peer becoming leader.")
 		lso.leaderInit()
-		go lso.leaseGarbageCollector()
+		lso.leader = true
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
 		log.Info("Init callback on peer bootup.")
 		lso.peerBootup(initPeerArgs.UserID)
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_CANDIDATE_STATE {
 		log.Info("Init callback on peer becoming candidate.")
-		lso.stateChangeChannel <- 1
+		lso.leader = false
 	} else {
 		log.Error("Invalid init state: %d", initPeerArgs.InitState)
 	}
