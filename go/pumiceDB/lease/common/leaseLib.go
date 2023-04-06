@@ -20,7 +20,9 @@ const (
 	EXPIRED             = 2
 	AIU                 = 3
 	GRANTED             = 4
-	NULL                = 5
+	STALE_INPROGRESS    = 5
+	EXPIRED_LOCALLY     = 6
+	NULL                = 7
 	SUCCESS             = 0
 	FAILURE             = -1
 )
@@ -31,7 +33,7 @@ type LeaseReq struct {
 	Resource  uuid.UUID
 	Operation int
 	InitiatorTerm int64
-        Resources     []uuid.UUID
+	Resources     []uuid.UUID
 }
 
 type LeaderTS struct {
@@ -55,9 +57,6 @@ type LeaseMeta struct {
 	LeaseState int
 	TTL        int
 	TimeStamp  LeaderTS
-	InGC        bool
-        IsStale     bool
-
 }
 
 type LeaseInfo struct {

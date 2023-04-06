@@ -708,7 +708,7 @@ func PmdbEnqueueDirectWriteRequest(req interface{}) error {
 
 	msgPointer := unsafe.Pointer(uintptr(buf) + C.sizeof_struct_raft_client_rpc_msg)
 
-	log.Info("msgPointer ", msgPointer)
+	log.Info("msgPointer in PmdbEnqueueDirectWriteRequest ", msgPointer)
 
 	pmdb_msg := (*C.struct_pmdb_msg)(msgPointer)
 	C.pmdb_msg_init(pmdb_msg, C.uint32_t(dataSize), C.pmdb_op_write, 0)
