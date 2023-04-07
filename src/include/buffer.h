@@ -12,20 +12,33 @@
 
 #include "common.h"
 #include "queue.h"
+#include "ref_tree_proto.h"
 #include "registry.h"
+
+enum buffer_set_opts
+{
+    BUFSET_OPT_MEMALIGN   = (1 << 0),
+    BUFSET_OPT_SERIALIZE  = (1 << 1),
+    BUFSET_OPT_USER_CACHE = (1 << 2),
+    BUFSET_OPT_LREG       = (1 << 3),
+};
 
 struct buffer_set;
 struct buffer_item
 {
-    struct buffer_set         *bi_bs;
-    struct iovec               bi_iov; // may be modified by user
-    const struct iovec         bi_iov_save;
-    CIRCLEQ_ENTRY(buffer_item) bi_lentry;
-    SLIST_ENTRY(buffer_item)   bi_user_slentry;
-    const char                *bi_allocator_func;
-    unsigned int               bi_alloc_lineno:31;
-    unsigned int               bi_allocated:1;
-    int                        bi_register_idx;
+    struct buffer_set           *bi_bs;
+    struct iovec                 bi_iov; // may be modified by user
+    const struct iovec           bi_iov_save;
+    CIRCLEQ_ENTRY(buffer_item)   bi_lentry;
+    SLIST_ENTRY(buffer_item)     bi_user_slentry;
+    const char                  *bi_allocator_func;
+    void                       (*bi_cache_revoke_cb)(struct buffer_item *,
+                                                     void *);
+    void                        *bi_cache_revoke_arg;
+    unsigned int                 bi_alloc_lineno:31;
+    unsigned int                 bi_allocated:1;
+    unsigned int                 bi_user_cached:1;
+    int                          bi_register_idx;
 };
 
 CIRCLEQ_HEAD(buffer_list, buffer_item);
@@ -35,20 +48,22 @@ SLIST_HEAD(buffer_user_slist, buffer_item);
 
 struct buffer_set
 {
-    char               bs_name[BUFFER_SET_NAME_MAX + 1];
-    ssize_t            bs_num_bufs;
-    ssize_t            bs_num_allocated;
-    ssize_t            bs_num_pndg_alloc;
-    size_t             bs_item_size;
-    size_t             bs_max_allocated;
-    size_t             bs_total_alloc;
-    uint8_t            bs_init:1;
-    uint8_t            bs_serialize:1;
-    uint8_t            bs_ctl_interface:1;
-    struct buffer_list bs_free_list;
-    struct buffer_list bs_inuse_list;
-    pthread_mutex_t    bs_mutex;
-    struct lreg_node   bs_lrn;
+    char                    bs_name[BUFFER_SET_NAME_MAX + 1];
+    ssize_t                 bs_num_bufs;
+    ssize_t                 bs_num_allocated;
+    ssize_t                 bs_num_user_cached;
+    ssize_t                 bs_num_pndg_alloc;
+    size_t                  bs_item_size;
+    size_t                  bs_max_allocated;
+    size_t                  bs_total_alloc;
+    uint8_t                 bs_init:1;
+    uint8_t                 bs_serialize:1;
+    uint8_t                 bs_ctl_interface:1;
+    uint8_t                 bs_allow_user_cache:1;
+    struct buffer_list      bs_free_list;
+    struct buffer_list      bs_inuse_list;
+    pthread_mutex_t         bs_mutex;
+    struct lreg_node        bs_lrn;
 };
 
 size_t
@@ -92,11 +107,7 @@ buffer_set_destroy(struct buffer_set *bs);
 
 int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                bool use_posix_memalign, bool serialize);
-
-int
-buffer_set_init_lreg(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                     bool use_posix_memalign, bool serialize);
+                enum buffer_set_opts opts);
 
 static inline ssize_t
 buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
@@ -122,5 +133,11 @@ buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
 
 int
 buffer_set_apply_name(struct buffer_set *bs, const char *name);
+
+int
+buffer_set_user_cache_release_item(
+    struct buffer_item *bi, void (*revoke_cb)(struct buffer_item *, void *),
+    void *arg);
+
 
 #endif
