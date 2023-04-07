@@ -37,6 +37,7 @@ struct buffer_item
     void                        *bi_cache_revoke_arg;
     unsigned int                 bi_alloc_lineno:31;
     unsigned int                 bi_allocated:1;
+    unsigned int                 bi_user_cached:1;
     int                          bi_register_idx;
 };
 
@@ -50,6 +51,7 @@ struct buffer_set
     char                    bs_name[BUFFER_SET_NAME_MAX + 1];
     ssize_t                 bs_num_bufs;
     ssize_t                 bs_num_allocated;
+    ssize_t                 bs_num_user_cached;
     ssize_t                 bs_num_pndg_alloc;
     size_t                  bs_item_size;
     size_t                  bs_max_allocated;
@@ -131,5 +133,11 @@ buffer_user_list_total_bytes(const struct buffer_user_slist *bus,
 
 int
 buffer_set_apply_name(struct buffer_set *bs, const char *name);
+
+int
+buffer_set_user_cache_release_item(
+    struct buffer_item *bi, void (*revoke_cb)(struct buffer_item *, void *),
+    void *arg);
+
 
 #endif

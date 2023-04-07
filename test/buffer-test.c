@@ -81,6 +81,147 @@ buffer_test(bool serialize, bool lreg)
     NIOVA_ASSERT(rc == 0);
 }
 
+static void
+buffer_user_cache_test_cb(struct buffer_item *bi, void *arg)
+{
+    NIOVA_ASSERT(bi && bi->bi_user_cached && arg == bi->bi_cache_revoke_arg);
+
+    struct buffer_item **item = (struct buffer_item **)arg;
+
+    NIOVA_ASSERT(*item == bi);
+    *item = NULL;
+}
+
+static void
+buffer_user_cache_test(void)
+{
+    struct buffer_set bs;
+
+#define BUCT_NBUFS 2
+
+    size_t buf_sz = 64;
+    struct buffer_item *items[BUCT_NBUFS];
+
+    /* 1. Try the release call w/out setting BUFSET_OPT_USER_CACHE
+     */
+    int rc = buffer_set_init(&bs, BUCT_NBUFS, buf_sz, 0);
+    NIOVA_ASSERT(rc == 0);
+
+    struct buffer_item *bi = buffer_set_allocate_item(&bs);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(!bi->bi_user_cached);
+
+    rc = buffer_set_user_cache_release_item(bi, NULL, NULL);
+    NIOVA_ASSERT(rc == -EINVAL);
+
+    rc = buffer_set_user_cache_release_item(bi, buffer_user_cache_test_cb,
+                                            NULL);
+    NIOVA_ASSERT(rc == -EPERM);
+
+    buffer_set_release_item(bi);
+
+    rc = buffer_set_destroy(&bs);
+    NIOVA_ASSERT(rc == 0);
+
+    /* 2. Setup buffer_set w/ BUFSET_OPT_USER_CACHE w/ a single item
+     */
+    rc = buffer_set_init(&bs, 1, buf_sz, BUFSET_OPT_USER_CACHE);
+    NIOVA_ASSERT(rc == 0);
+
+    // 2a. allocate item and perform a typical release
+    bi = buffer_set_allocate_item(&bs);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(!bi->bi_user_cached);
+
+    buffer_set_release_item(bi);
+
+    NIOVA_ASSERT(bs.bs_num_user_cached == 0);
+
+    //
+    // 2b. allocate item, make it eligible for caching, then explicitly release
+    bi = buffer_set_allocate_item(&bs);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(!bi->bi_user_cached);
+
+    rc = buffer_set_user_cache_release_item(bi, buffer_user_cache_test_cb,
+                                            &items[0]);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(bi->bi_user_cached);
+    NIOVA_ASSERT(bs.bs_num_user_cached == 1);
+
+    buffer_set_release_item(bi);
+    items[0] = bi;
+    NIOVA_ASSERT(bs.bs_num_user_cached == 0);
+    NIOVA_ASSERT(items[0] == bi); // callback should *not* have run
+    items[0] = NULL;
+
+    //
+    // 2c. Observe item being removed via callback
+    bi = buffer_set_allocate_item(&bs);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(!bi->bi_user_cached);
+    items[0] = bi;
+
+    rc = buffer_set_user_cache_release_item(bi, buffer_user_cache_test_cb,
+                                            &items[0]);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(bi->bi_user_cached);
+    NIOVA_ASSERT(bs.bs_num_user_cached == 1);
+
+    // 2c.1 Second allocation will cause the callback to be issued
+    struct buffer_item *bi_new = buffer_set_allocate_item(&bs);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(!bi->bi_user_cached);
+    NIOVA_ASSERT(items[0] == NULL); // ensure the first item was removed
+
+    items[0] = bi_new;
+    // 2c.2 Cache the new item and observe it being released via set_destroy()
+    rc = buffer_set_user_cache_release_item(bi_new, buffer_user_cache_test_cb,
+                                            &items[0]);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(bi->bi_user_cached);
+    NIOVA_ASSERT(bs.bs_num_user_cached == 1);
+
+    rc = buffer_set_destroy(&bs); // destroy w/ cached item
+    NIOVA_ASSERT(rc == 0);
+
+    NIOVA_ASSERT(items[0] == NULL); // callback must have run on destroy
+
+    /* 3. Setup buffer_set w/ BUFSET_OPT_USER_CACHE w/ multiple items
+     */
+    rc = buffer_set_init(&bs, BUCT_NBUFS, buf_sz, BUFSET_OPT_USER_CACHE);
+    NIOVA_ASSERT(rc == 0);
+
+    bi = items[0] = buffer_set_allocate_item(&bs);
+    // 3a Cache item
+    rc = buffer_set_user_cache_release_item(bi, buffer_user_cache_test_cb,
+                                            &items[0]);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(bi);
+    NIOVA_ASSERT(bi->bi_user_cached);
+    NIOVA_ASSERT(bs.bs_num_user_cached == 1);
+
+    // 3b. Allocate a second item and ensure that the first was not release
+    for (int i = 0; i < 10; i++)
+    {
+        bi = buffer_set_allocate_item(&bs);
+        NIOVA_ASSERT(rc == 0);
+        NIOVA_ASSERT(items[0] != NULL); // ensure cached item remains
+        NIOVA_ASSERT(items[0]->bi_user_cached);
+        buffer_set_release_item(bi);
+    }
+
+    bi = items[0];
+    buffer_set_release_item(items[0]);
+    NIOVA_ASSERT(items[0] == bi); // callback should not have been issued
+
+    buffer_set_destroy(&bs);
+    NIOVA_ASSERT(items[0] == bi); // callback should not have been issued
+}
+
 int
 main(void)
 {
@@ -90,6 +231,8 @@ main(void)
     buffer_test(true, false);
 
     buffer_test(false, true);
+
+    buffer_user_cache_test();
 
     return 0;
 }
