@@ -31,6 +31,7 @@ enum buffer_set_lreg_stats
     BUFFER_SET_LREG_OUTSTANDING,  // signed int
     BUFFER_SET_LREG_TOTAL_ALLOCS, // unsigned int
     BUFFER_SET_LREG_MAX_USED,     // signed int
+    BUFFER_SET_LREG_USER_CACHED,  // signed int
     BUFFER_SET_LREG___MAX,
 };
 
@@ -79,6 +80,10 @@ buffer_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
             break;
         case BUFFER_SET_LREG_MAX_USED:
             lreg_value_fill_signed(lv, "max-in-use", bs->bs_max_allocated);
+            break;
+        case BUFFER_SET_LREG_USER_CACHED:
+            lreg_value_fill_signed(lv, "num-user-cached",
+                                   bs->bs_num_user_cached);
             break;
         };
         break;
@@ -157,6 +162,26 @@ buffer_set_navail(const struct buffer_set *bs)
     return navail;
 }
 
+static void
+buffer_item_release_init(struct buffer_item *bi);
+
+static void
+buffer_item_user_cache_revoke(struct buffer_item *bi)
+{
+    if (bi->bi_user_cached) // execute the callback
+    {
+        NIOVA_ASSERT(bi->bi_cache_revoke_cb != NULL);
+
+        bi->bi_cache_revoke_cb(bi, bi->bi_cache_revoke_arg);
+
+        struct buffer_set *bs = bi->bi_bs;
+        NIOVA_ASSERT(bs->bs_num_user_cached > 0);
+        bs->bs_num_user_cached--;
+
+        buffer_item_release_init(bi);
+    }
+}
+
 static struct buffer_item *
 buffer_set_allocate_item_locked(struct buffer_set *bs)
 {
@@ -173,7 +198,15 @@ buffer_set_allocate_item_locked(struct buffer_set *bs)
 
     NIOVA_ASSERT(!CIRCLEQ_EMPTY(&bs->bs_free_list));
 
+    // Allocate from the head
     struct buffer_item *bi = CIRCLEQ_FIRST(&bs->bs_free_list);
+
+    if (bi->bi_user_cached) // execute the callback
+    {
+        NIOVA_ASSERT(bs->bs_allow_user_cache);
+        buffer_item_user_cache_revoke(bi);
+    }
+
     CIRCLEQ_REMOVE(&bs->bs_free_list, bi, bi_lentry);
     CIRCLEQ_INSERT_TAIL(&bs->bs_inuse_list, bi, bi_lentry);
 
@@ -269,6 +302,17 @@ buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems)
     return 0;
 }
 
+static void
+buffer_item_release_init(struct buffer_item *bi)
+{
+    bi->bi_iov = bi->bi_iov_save;
+    bi->bi_allocated = false;
+    bi->bi_cache_revoke_cb = NULL;
+    bi->bi_user_cached = 0;
+
+    SLIST_ENTRY_INIT(&bi->bi_user_slentry);
+}
+
 void
 buffer_set_release_item(struct buffer_item *bi)
 {
@@ -280,19 +324,76 @@ buffer_set_release_item(struct buffer_item *bi)
 
     BS_LOCK(bs);
 
+    if (bi->bi_user_cached)
+    {
+        NIOVA_ASSERT(!bi->bi_allocated);
+
+        NIOVA_ASSERT(bs->bs_num_user_cached > 0);
+        bs->bs_num_user_cached--;
+
+        // Note that item was already added to the free list
+    }
+    else
+    {
+        NIOVA_ASSERT(bi->bi_allocated);
+        NIOVA_ASSERT(bs->bs_num_allocated > 0);
+        bs->bs_num_allocated--;
+
+        CIRCLEQ_REMOVE(&bs->bs_inuse_list, bi, bi_lentry);
+
+        // Release to the head since item is not user cached
+        CIRCLEQ_INSERT_HEAD(&bs->bs_free_list, bi, bi_lentry);
+    }
+
+    buffer_item_release_init(bi);
+
+    BS_UNLOCK(bs);
+}
+
+/**
+ * buffer_set_user_cache_release_item - enacts a "partial" release on the item
+ *    placing it into the free list but promises to execute the provided
+ *    callback prior to allocation the item to another user.
+ */
+int
+buffer_set_user_cache_release_item(
+    struct buffer_item *bi, void (*revoke_cb)(struct buffer_item *, void *),
+    void *arg)
+{
+    if (bi == NULL || revoke_cb == NULL)
+        return -EINVAL;
+
+    if (bi->bi_user_cached)
+        return -EALREADY;
+
+    struct buffer_set *bs = bi->bi_bs;
+    NIOVA_ASSERT(bs);
+
+    if (!bs->bs_allow_user_cache)
+        return -EPERM;
+
+    bi->bi_cache_revoke_cb = revoke_cb;
+    bi->bi_cache_revoke_arg = arg;
+    bi->bi_user_cached = 1;
+
+    BS_LOCK(bs);
+
     NIOVA_ASSERT(bi->bi_allocated);
     NIOVA_ASSERT(bs->bs_num_allocated > 0);
-    bi->bi_iov = bi->bi_iov_save;
     bi->bi_allocated = false;
-
     bs->bs_num_allocated--;
 
-    SLIST_ENTRY_INIT(&bi->bi_user_slentry);
+    bs->bs_num_user_cached++;
+    NIOVA_ASSERT(bs->bs_num_user_cached > 0);
 
     CIRCLEQ_REMOVE(&bs->bs_inuse_list, bi, bi_lentry);
+
+    // 'LRU' by placing at the tail (allocation occurs from head)
     CIRCLEQ_INSERT_TAIL(&bs->bs_free_list, bi, bi_lentry);
 
     BS_UNLOCK(bs);
+
+    return 0;
 }
 
 int
@@ -313,6 +414,9 @@ buffer_set_destroy(struct buffer_set *bs)
 
     CIRCLEQ_FOREACH_SAFE(bi, &bs->bs_free_list, bi_lentry, tmp)
     {
+        if (bi->bi_user_cached)
+            buffer_item_user_cache_revoke(bi);
+
         CIRCLEQ_REMOVE(&bs->bs_free_list, bi, bi_lentry);
         free(bi->bi_iov.iov_base);
         free(bi);
@@ -359,6 +463,12 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     bs->bs_num_bufs = 0;
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
+
+
+    if (opts & BUFSET_OPT_USER_CACHE)
+    {
+        bs->bs_allow_user_cache = 1;
+    }
 
     if (opts & BUFSET_OPT_SERIALIZE)
     {
