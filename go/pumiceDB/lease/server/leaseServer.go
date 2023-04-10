@@ -344,13 +344,23 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 }
 
 
-func (lso *LeaseServerObject) gcReqHandler(gcReq leaseLib.LeaseReq) {
-	for i:=0;i<len(gcReq.Resources);i++ {
-		resource := gcReq.Resources[i]
-		lease := lso.LeaseMap[resource].LeaseMetaInfo
+func (handler *LeaseServerReqHandler) gcReqHandler() {
+	for i:=0;i<len(handler.LeaseReq.Resources);i++ {
+		resource := handler.LeaseReq.Resources[i]
+		lease := handler.LeaseServerObj.LeaseMap[resource].LeaseMetaInfo
 		lease.LeaseState = leaseLib.EXPIRED
 		log.Info("Mark lease as stale")
-		//TODO Change leaseStatus in MAP and in rocksdb
+		//Write to RocksDB
+		valueBytes := bytes.Buffer{}
+        	enc := gob.NewEncoder(&valueBytes)
+        	err := enc.Encode(lease)
+        	if err != nil {
+                	log.Error(err)
+               		break
+        	}
+        	byteToStr := string(valueBytes.Bytes())
+		valLen := len(byteToStr)
+		handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler, resource.String(), int64(len(resource.String())), byteToStr, int64(valLen), handler.LeaseServerObj.LeaseColmFam)
 	}
 }
 
@@ -367,12 +377,6 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	}
 
 	log.Info("Apply for operation: ", applyLeaseReq.Operation)
-	//Handle GC request
-	if (applyLeaseReq.Operation == leaseLib.GC) {
-		log.Info("Apply for operation GC")
-		lso.gcReqHandler(applyLeaseReq)
-                return 0
-	}
 
 	//Handle client request
 	var returnObj leaseLib.LeaseRes
@@ -383,6 +387,14 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 		UserID:         applyArgs.UserID,
 		PmdbHandler:    applyArgs.PmdbHandler,
 	}
+	
+        //Handle GC request
+        if (applyLeaseReq.Operation == leaseLib.GC) {
+                leaseReq.gcReqHandler()
+                return 0
+        }
+
+	//Handler GET lease request
 	rc := leaseReq.applyLease()
 	log.Info("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
 	//Copy the encoded result in replyBuffer
@@ -407,6 +419,7 @@ func (lso *LeaseServerObject) leaderInit() {
 		}
 		leaseObj.LeaseMetaInfo.TTL = ttlDefault
 	}
+	lso.leader = true
 }
 
 func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
@@ -487,7 +500,6 @@ func (lso *LeaseServerObject) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 	if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_LEADER_STATE {
 		log.Info("Init callback in peer becoming leader.")
 		lso.leaderInit()
-		lso.leader = true
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BOOTUP_STATE {
 		log.Info("Init callback on peer bootup.")
 		lso.peerBootup(initPeerArgs.UserID)
