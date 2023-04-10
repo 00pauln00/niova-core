@@ -311,6 +311,32 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 	return err
 }
 
+func (clientObj *clientHandler) prepNSendReq(key string, value []byte, rncui string,
+	operation int, rso *requestResponseLib.KVResponse, isWrite bool) error {
+
+	var rqb bytes.Buffer
+	//Fill the request obj and encode it
+	err := prepareKVRequest(key, value, rncui, operation, &rqb)
+	if err != nil {
+		return err
+	}
+
+	//Send the request
+	rsb, err := clientObj.clientAPIObj.Request(rqb.Bytes(), "", isWrite)
+	if err != nil {
+		return err
+	}
+
+	//Decode the request
+	dec := gob.NewDecoder(bytes.NewBuffer(rsb))
+	err = dec.Decode(&rso)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (clientObj *clientHandler) write() {
 
 	clientObj.operation = "write"
@@ -337,34 +363,10 @@ func (clientObj *clientHandler) write() {
 			}()
 
 			var rso requestResponseLib.KVResponse
-			var rsb []byte
 
 			err := func() error {
-
-				//Fill the request object
-				var rqb bytes.Buffer
-				err := prepareKVRequest(key, val, uuid.NewV4().String()+":0:0:0:0", requestResponseLib.KV_WRITE, &rqb)
-				if err != nil {
-					log.Error("Error while preparing KV request : ", err)
-					return err
-				}
-
-				//Send the write request
-				rsb, err = clientObj.clientAPIObj.Request(rqb.Bytes(), "", true)
-				if err != nil {
-					log.Error("Error while sending the request : ", err)
-					return err
-				}
-
-				//Decode the request
-				dec := gob.NewDecoder(bytes.NewBuffer(rsb))
-				err = dec.Decode(&rso)
-				if err != nil {
-					log.Error("Decoding error : ", err)
-					return err
-				}
-
-				return nil
+				return clientObj.prepNSendReq(key, val, uuid.NewV4().String()+":0:0:0:0",
+					requestResponseLib.KV_WRITE, &rso, true)
 			}()
 
 			// preparing appReqObj to write to jsonOutfile
@@ -395,30 +397,8 @@ func (clientObj *clientHandler) read() {
 
 	clientObj.operation = "read"
 	err := func() error {
-		//Fill the request obj and encode it
-		var rqb bytes.Buffer
-		err := prepareKVRequest(clientObj.requestKey, []byte(""), "", requestResponseLib.KV_READ, &rqb)
-		if err != nil {
-			log.Error("Error while preparing KV request : ", err)
-			return err
-		}
-
-		//Send the request
-		rsb, err := clientObj.clientAPIObj.Request(rqb.Bytes(), "", false)
-		if err != nil {
-			log.Error("Error while sending the request : ", err)
-			return err
-		}
-
-		//Decode the request
-		dec := gob.NewDecoder(bytes.NewBuffer(rsb))
-		err = dec.Decode(&rso)
-		if err != nil {
-			log.Error("Decoding error : ", err)
-			return err
-		}
-
-		return nil
+		return clientObj.prepNSendReq(clientObj.requestKey, []byte(""), "",
+			requestResponseLib.KV_READ, &rso, false)
 	}()
 
 	if err == nil {
