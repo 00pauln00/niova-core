@@ -355,15 +355,15 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		//Take the lock as we are marking lease state as expired.
 		lso.listLock.Lock()
 		resource := handler.LeaseReq.Resources[i]
-		lease := handler.LeaseServerObj.LeaseMap[resource].LeaseMetaInfo
-		lease.LeaseState = leaseLib.EXPIRED
+		lease := handler.LeaseServerObj.LeaseMap[resource]
+		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
 
 		lso.listLock.Unlock()
 
 		//Write to RocksDB
 		valueBytes := bytes.Buffer{}
 		enc := gob.NewEncoder(&valueBytes)
-		err := enc.Encode(lease)
+		err := enc.Encode(lease.LeaseMetaInfo)
 		if err != nil {
 			log.Error(err)
 			break
@@ -489,7 +489,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				lt := obj.TimeStamp.LeaderTime
 				ttl := ttlDefault - int(currentTime.LeaderTime-lt)
 				if ttl <= 0 {
-					obj.LeaseState = leaseLib.STALE_INPROGRESS
+					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					resourceUUIDs = append(resourceUUIDs, obj.Resource)
 				} else {
 					break
