@@ -32,6 +32,7 @@ type clientHandler struct {
 	requestKey         string
 	requestValue       string
 	kvMap              map[string][]byte
+	reqResMap          map[*requestResponseLib.KVRequest]requestResponseLib.KVResponse
 	raftUUID           string
 	addr               string
 	port               string
@@ -223,6 +224,14 @@ func (cli *clientHandler) write2Json(toJson interface{}) {
 	}
 }
 
+func (cli *clientHandler) writeMap2Json(toJson map[*requestResponseLib.KVRequest]requestResponseLib.KVResponse) {
+	for k, v := range toJson {
+		kj, _ := json.Marshal(k)
+		vj, _ := json.Marshal(v)
+		fmt.Println("Key : ", string(kj), "\n Val : ", string(vj))
+	}
+}
+
 //Converts map[string][]byte to map[string]string
 func convMapToStr(map1 map[string][]byte) map[string]string {
 	map2 := make(map[string]string)
@@ -313,12 +322,18 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 	return err
 }
 
-func (clientObj *clientHandler) prepNSendReq(key string, value []byte, rncui string,
-	operation int, rso *requestResponseLib.KVResponse, isWrite bool) error {
+func (clientObj *clientHandler) prepNSendReq(rqo *requestResponseLib.KVRequest, rncui string,
+	rso *requestResponseLib.KVResponse, isWrite bool) error {
 
 	var rqb bytes.Buffer
 	//Fill the request obj and encode it
-	err := prepareKVRequest(key, value, rncui, operation, &rqb)
+	/*
+		err := prepareKVRequest(key, value, rncui, operation, &rqb)
+		if err != nil {
+			return err
+		}
+	*/
+	err := PumiceDBCommon.PrepareAppPumiceRequest(rqo, rncui, &rqb)
 	if err != nil {
 		return err
 	}
@@ -343,28 +358,33 @@ func (clientObj *clientHandler) write() {
 	var wg sync.WaitGroup
 	// Create a int channel of fixed size to enqueue max requests
 	requestLimiter := make(chan int, 100)
+	clientObj.reqResMap = make(map[*requestResponseLib.KVRequest]requestResponseLib.KVResponse)
+
+	// Create map of req and res objs
 	for key, val := range clientObj.kvMap {
+
+		rso := requestResponseLib.KVResponse{}
+		rqo := requestResponseLib.KVRequest{
+			Key:       key,
+			Value:     val,
+			Operation: requestResponseLib.KV_WRITE,
+		}
+		clientObj.reqResMap[&rqo] = rso
+	}
+	// iterate over req and res, while performing reqs
+	for rqo, rso := range clientObj.reqResMap {
 		wg.Add(1)
 		requestLimiter <- 1
-		go func(key string, val []byte) {
+		go func(rqo *requestResponseLib.KVRequest, rso *requestResponseLib.KVResponse) {
 			defer func() {
 				wg.Done()
 				<-requestLimiter
 			}()
 
-			var rso requestResponseLib.KVResponse
-
 			err := func() error {
-				return clientObj.prepNSendReq(key, val, uuid.NewV4().String()+":0:0:0:0",
-					requestResponseLib.KV_WRITE, &rso, true)
+				err := clientObj.prepNSendReq(rqo, uuid.NewV4().String()+":0:0:0:0", rso, true)
+				return err
 			}()
-
-			// preparing appReqObj to write to jsonOutfile
-			rqo := requestResponseLib.KVRequest{
-				Key:       key,
-				Value:     val,
-				Operation: requestResponseLib.KV_WRITE,
-			}
 
 			//Request status filler
 			if err != nil {
@@ -376,19 +396,24 @@ func (clientObj *clientHandler) write() {
 			mut.Lock()
 			clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
 			mut.Unlock()
-		}(key, val)
+		}(rqo, &rso)
 	}
 	wg.Wait()
 	clientObj.write2Json(clientObj.operationMetaObjs)
+	clientObj.writeMap2Json(clientObj.reqResMap)
 }
 
 func (clientObj *clientHandler) read() {
 	var rso requestResponseLib.KVResponse
+	rqo := requestResponseLib.KVRequest{
+		Key:       clientObj.requestKey,
+		Value:     []byte(""),
+		Operation: requestResponseLib.KV_WRITE,
+	}
 
 	clientObj.operation = "read"
 	err := func() error {
-		return clientObj.prepNSendReq(clientObj.requestKey, []byte(""), "",
-			requestResponseLib.KV_READ, &rso, false)
+		return clientObj.prepNSendReq(&rqo, "", &rso, false)
 	}()
 
 	if err == nil {
@@ -499,6 +524,7 @@ func (clientObj *clientHandler) rangeRead() {
 // check and fill request map acc to req count
 func (clientObj *clientHandler) prepWriteReq() {
 	// Fill kvMap with key/val from user or generate keys/vals
+	clientObj.kvMap = make(map[string][]byte)
 	if clientObj.count > 1 {
 		clientObj.kvMap = generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
 	} else {
