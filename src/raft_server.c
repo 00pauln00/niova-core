@@ -4130,7 +4130,8 @@ raft_server_reply_to_client(struct raft_instance *ri,
                             struct ctl_svc_node *csn)
 {
     if (!ri || !ri->ri_csn_this_peer || !ri->ri_csn_raft || !rncr ||
-        !raft_net_client_request_handle_has_reply_info(rncr))
+        !raft_net_client_request_handle_has_reply_info(rncr) ||
+        rncr->rncr_is_direct_req)
         return;
 
     /* Copy the reply info from the provided rncr pointer.  This reply info
@@ -4178,11 +4179,11 @@ raft_server_client_reply_init(const struct raft_instance *ri,
                               struct raft_net_client_request_handle *rncr,
                               enum raft_client_rpc_msg_type msg_type)
 {
-    NIOVA_ASSERT(ri && rncr && rncr->rncr_reply &&
+    NIOVA_ASSERT(ri && rncr && (rncr->rncr_is_direct_req || (rncr->rncr_reply &&
                  (msg_type == RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY ||
                   msg_type == RAFT_CLIENT_RPC_MSG_TYPE_REPLY) &&
                  raft_net_client_request_handle_has_reply_info(rncr) &&
-                 rncr->rncr_reply_data_size < rncr->rncr_reply_data_max_size);
+                 rncr->rncr_reply_data_size < rncr->rncr_reply_data_max_size)));
 
     struct raft_client_rpc_msg *reply = rncr->rncr_reply;
     memset(reply, 0, sizeof(struct raft_client_rpc_msg));
@@ -4280,7 +4281,7 @@ raft_server_net_client_request_init(
     enum raft_net_client_request_type type,
     const struct raft_client_rpc_msg *rpc_request,  const char *commit_data,
     const size_t commit_data_size, const struct sockaddr_in *from,
-    char *reply_buf, const size_t reply_buf_size)
+    char *reply_buf, const size_t reply_buf_size, bool is_direct_req)
 {
     NIOVA_ASSERT(ri && rncr && (rncr->rncr_is_direct_req || (reply_buf &&
                  reply_buf_size >= sizeof(struct raft_client_rpc_msg))));
@@ -4302,6 +4303,7 @@ raft_server_net_client_request_init(
     rncr->rncr_is_leader = raft_instance_is_leader(ri) ? true : false;
     rncr->rncr_entry_term = ri->ri_log_hdr.rlh_term;
     rncr->rncr_current_term = ri->ri_log_hdr.rlh_term;
+    rncr->rncr_is_direct_req = is_direct_req;
 
     //direct request will not have reply buffer
     if (reply_buf)
@@ -4330,7 +4332,8 @@ raft_server_net_client_request_init(
         raft_net_client_request_handle_set_reply_info(
             rncr, rpc_request->rcrm_sender_id, rpc_request->rcrm_msg_id);
 
-        NIOVA_ASSERT(raft_net_client_request_handle_has_reply_info(rncr));
+        NIOVA_ASSERT(is_direct_req ||
+                     raft_net_client_request_handle_has_reply_info(rncr));
     }
     else
     {
@@ -4352,17 +4355,19 @@ raft_server_net_client_request_init_client_rpc(
     struct raft_instance *ri, struct raft_net_client_request_handle *rncr,
     const struct raft_client_rpc_msg *rpc_request,
     const struct sockaddr_in *from, char *reply_buf,
-    const size_t reply_buf_size)
+    const size_t reply_buf_size, bool is_direct_req)
 {
     NIOVA_ASSERT(ri && rncr && rpc_request);
 
     raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_NONE,
                                         rpc_request, NULL, 0, from, reply_buf,
-                                        reply_buf_size);
+                                        reply_buf_size, is_direct_req);
 
-    raft_server_client_reply_init(
-        ri, rncr, (rpc_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING ?
+    // Reply is not sent for direct request enqueued from leader.
+    if (!is_direct_req)
+        raft_server_client_reply_init(
+           ri, rncr, (rpc_request->rcrm_type == RAFT_CLIENT_RPC_MSG_TYPE_PING ?
                    RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY :
                    RAFT_CLIENT_RPC_MSG_TYPE_REPLY));
 }
@@ -4440,7 +4445,8 @@ raft_server_client_rncr_prepare(struct raft_instance *ri,
 
     raft_server_net_client_request_init_client_rpc(ri, rncr, rcm, from,
                                                    (char *)bi->bi_iov.iov_base,
-                                                   bi->bi_bs->bs_item_size);
+                                                   bi->bi_bs->bs_item_size,
+                                                   false);
 
     // raft_server_net_client_request_init_client_rpc() clears out the rncr
     rncr->rncr_bi = bi;
@@ -4871,7 +4877,8 @@ raft_server_net_client_request_init_sm_apply(
     raft_server_net_client_request_init(ri, rncr,
                                         RAFT_NET_CLIENT_REQ_TYPE_COMMIT,
                                         NULL, commit_data, commit_data_size,
-                                        NULL, reply_buf, reply_buf_size);
+                                        NULL, reply_buf, reply_buf_size,
+                                        false);
 }
 
 /**
@@ -4924,7 +4931,7 @@ raft_server_state_machine_apply(struct raft_instance *ri)
 
     const raft_entry_idx_t apply_idx = ri->ri_last_applied_idx + 1;
 
-    struct raft_entry_header reh;
+    struct raft_entry_header reh = {0};
 
     int rc = raft_server_entry_header_read_by_store(ri, &reh, apply_idx);
     DBG_RAFT_INSTANCE_FATAL_IF((rc), ri,
@@ -5034,7 +5041,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
           * node is not the leader.
           */
          if (!rc_arr[i] && raft_instance_is_leader(ri) &&
-             raft_net_client_request_handle_has_reply_info(&rncr[i]))
+             raft_net_client_request_handle_has_reply_info(&rncr[i]) &&
+             uuid_compare(rncr->rncr_client_uuid, ri->ri_csn_this_peer->csn_uuid))
          {
              /* rncr and rcrm_data_size gets populated in
               * ri_server_sm_request_cb. raft_server_client_reply_init()
@@ -5070,7 +5078,8 @@ raft_server_state_machine_apply(struct raft_instance *ri)
     for (uint32_t i = 0; i < reh.reh_num_entries; i++)
     {
         if (raft_instance_is_leader(ri) && // Only issue if we're the leader!
-            raft_net_client_request_handle_has_reply_info(&rncr[i]))
+            raft_net_client_request_handle_has_reply_info(&rncr[i]) &&
+            uuid_compare(rncr->rncr_client_uuid, ri->ri_csn_this_peer->csn_uuid))
         {
             raft_server_reply_to_client(ri, &rncr[i], NULL);
         }
@@ -6338,24 +6347,35 @@ raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
     return 0;
 }
 
+/*
+ * Allow the application to enqueue the request directly on the leader.
+ * Application prepares the raft_client_rpc_msg structure and enqueues the
+ * request directly on the leader.
+ */
 int
 raft_server_enq_direct_raft_req_from_leader(char *req_buf, int64_t data_size)
 {
-    // Type case to rcm
     struct raft_client_rpc_msg *rcm =
          (struct raft_client_rpc_msg *)req_buf;
-    // Initialize rcm.
-    // Initialize pmdb_msg
-    // Copy kvdata to pmdb_msg
-    // Prepare rncr
-    struct raft_instance *ri = raft_net_get_instance(); //TODO how to get this ri pointer
+    struct raft_instance *ri = raft_net_get_instance();
+
+    struct buffer_item *bi =
+       buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
+
+    NIOVA_ASSERT(bi);
+
+    // Set the parameters for sender and destination id as leader uuid itself.
+    uuid_copy(rcm->rcrm_sender_id, ri->ri_csn_this_peer->csn_uuid);
+    uuid_copy(rcm->rcrm_dest_id, ri->ri_csn_this_peer->csn_uuid);
+
     struct raft_net_client_request_handle rncr = {0};
     raft_server_net_client_request_init_client_rpc(ri, &rncr, rcm, NULL,
-                                                   NULL,
-                                                   0);
+                                                   (char *)bi->bi_iov.iov_base,
+                                                   bi->bi_bs->bs_item_size, true);
 
-    // Perform this check before handing back the rncr.
-    // Enqueue the request.
+    rncr.rncr_bi = bi;
     raft_server_do_client_write(ri, &rncr);
+    // bi gets released in raft_server_client_rncr_complete
+
     return 0;
 }

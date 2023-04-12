@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	gopointer "github.com/mattn/go-pointer"
+	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
 	"io"
 	"math"
@@ -688,37 +689,73 @@ func PmdbInitRPCMsg(rcm *C.struct_raft_client_rpc_msg, dataSize uint32) {
 	rcm.rcrm_data_size = C.uint32_t(dataSize)
 }
 
-func PmdbEnqueueDirectWriteRequest(req interface{}) error {
-	var ReqBytes bytes.Buffer
-	enc := gob.NewEncoder(&ReqBytes)
-	err := enc.Encode(req)
+func PmdbEnqueueDirectWriteRequest(appReq interface{}) error {
+	var appBuf bytes.Buffer
+	var req PumiceDBCommon.PumiceRequest
+	var rncui_id C.struct_raft_net_client_user_id
+	var obj_id *C.pmdb_obj_id_t
+
+	//Encode the application request structure.
+	enc := gob.NewEncoder(&appBuf)
+	err := enc.Encode(appReq)
 	if err != nil {
 		log.Error("Failed to encode the stale lease processing request")
 		return err
 	}
-	data := ReqBytes.Bytes()
+
+	uuid := uuid.NewV4().String()
+	req.Rncui = fmt.Sprintf("%s:0:0:0:0", uuid)
+	req.ReqType = PumiceDBCommon.LEASE_REQ
+	req.ReqPayload = appBuf.Bytes()
+
+	//Encode the PumiceRequest
+	var reqBuf bytes.Buffer
+	pumiceEnc := gob.NewEncoder(&reqBuf)
+	err = pumiceEnc.Encode(req)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
+
+	data := reqBuf.Bytes()
+
+	//Prepare rncui c string
+	rncuiStrC := GoToCString(req.Rncui)
+	defer FreeCMem(rncuiStrC)
+
 	//Convert it to unsafe pointer (void * for C function)
 	kvdata := unsafe.Pointer(&data[0])
 
-	dataSize := int64(len(data))
+	dsize := int64(len(data))
+	rmsize := C.sizeof_struct_raft_client_rpc_msg
+	pmsize := C.sizeof_struct_pmdb_msg
+	pmdSize := C.sizeof_struct_pmdb_msg + C.int64_t(dsize)
 
+	//total size of the request buffer
+	totalSize := int64(rmsize) + int64(pmsize) + dsize
+	buf := C.malloc(C.size_t(totalSize))
 
-	buf := C.malloc(4 * 1024 * 1024)
-	rcm  := (*C.struct_raft_client_rpc_msg)(buf)
+	//Populate raft_client_rpc_msg structure
+	rcm := (*C.struct_raft_client_rpc_msg)(buf)
+	PmdbInitRPCMsg(rcm, uint32(pmdSize))
 
-	msgPointer := unsafe.Pointer(uintptr(buf) + C.sizeof_struct_raft_client_rpc_msg)
+	// Get the pointer for rcrm_data
+	rptr := unsafe.Pointer(uintptr(buf) + C.sizeof_struct_raft_client_rpc_msg)
 
-	log.Info("msgPointer in PmdbEnqueueDirectWriteRequest ", msgPointer)
+	//Prepare pmdb_obj_id
+	C.raft_net_client_user_id_parse(rncuiStrC, &rncui_id, 0)
+	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
-	pmdb_msg := (*C.struct_pmdb_msg)(msgPointer)
-	C.pmdb_msg_init(pmdb_msg, C.uint32_t(dataSize), C.pmdb_op_write, 0)
+	//Populate pmdb_msg structure
+	pmdb_msg := (*C.struct_pmdb_msg)(rptr)
+	C.pmdb_direct_msg_init(pmdb_msg, obj_id, C.uint32_t(dsize), C.pmdb_op_write, 0)
 
-	dataPtr := unsafe.Pointer(uintptr(msgPointer) + C.sizeof_struct_pmdb_msg)
-	C.memcpy(dataPtr, kvdata, C.size_t(dataSize))
-	pmdbMsgSize := C.sizeof_struct_pmdb_msg + C.int64_t(dataSize)
-	PmdbInitRPCMsg(rcm, uint32(pmdbMsgSize))
+	//Get the pointer to pmdbrm_data and store the PumiceRequest
+	dataPtr := unsafe.Pointer(uintptr(rptr) + C.sizeof_struct_pmdb_msg)
+	C.memcpy(dataPtr, kvdata, C.size_t(dsize))
 
-	totalSize := int64(pmdbMsgSize + C.sizeof_struct_raft_client_rpc_msg)
+	//Enqueue the direct request
+	//totalSize := int64(pmdSize + C.sizeof_struct_raft_client_rpc_msg)
 	C.raft_server_enq_direct_raft_req_from_leader((*C.char)(buf), C.int64_t(totalSize))
 	C.free(buf)
 
