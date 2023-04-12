@@ -31,6 +31,7 @@ import (
 type clientHandler struct {
 	requestKey         string
 	requestValue       string
+	kvMap              map[string][]byte
 	raftUUID           string
 	addr               string
 	port               string
@@ -98,6 +99,7 @@ func randSeq(n int, r *rand.Rand) []byte {
 	return b
 }
 
+// dummy function to mock user filling up multiple req
 func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	kvMap := make(map[string][]byte)
 	r := rand.New(rand.NewSource(seed))
@@ -329,31 +331,19 @@ func (clientObj *clientHandler) prepNSendReq(key string, value []byte, rncui str
 
 	//Decode the request
 	dec := gob.NewDecoder(bytes.NewBuffer(rsb))
-	err = dec.Decode(&rso)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return dec.Decode(&rso)
 }
 
 func (clientObj *clientHandler) write() {
 
 	clientObj.operation = "write"
-	kvMap := make(map[string][]byte)
-	// Fill kvMap with key/val from user or generate keys/vals
-	if clientObj.count > 1 {
-		kvMap = generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
-	} else {
-		kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
-	}
 
 	var opStat *opData
 	var mut sync.Mutex
 	var wg sync.WaitGroup
 	// Create a int channel of fixed size to enqueue max requests
 	requestLimiter := make(chan int, 100)
-	for key, val := range kvMap {
+	for key, val := range clientObj.kvMap {
 		wg.Add(1)
 		requestLimiter <- 1
 		go func(key string, val []byte) {
@@ -506,6 +496,16 @@ func (clientObj *clientHandler) rangeRead() {
 	clientObj.write2Json(clientObj.operationMetaObjs)
 }
 
+// check and fill request map acc to req count
+func (clientObj *clientHandler) prepWriteReq() {
+	// Fill kvMap with key/val from user or generate keys/vals
+	if clientObj.count > 1 {
+		clientObj.kvMap = generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+	} else {
+		clientObj.kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
+	}
+}
+
 func (clientObj *clientHandler) processReadWriteReq() {
 
 	//Wait till proxy is ready
@@ -513,10 +513,12 @@ func (clientObj *clientHandler) processReadWriteReq() {
 
 	switch clientObj.operation {
 	case "rw":
+		clientObj.prepWriteReq()
 		clientObj.write()
 		clientObj.read()
 		break
 	case "write":
+		clientObj.prepWriteReq()
 		clientObj.write()
 	case "read":
 		if !isRangeRequest(clientObj.requestKey) {
