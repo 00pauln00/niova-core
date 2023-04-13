@@ -238,6 +238,8 @@ func (handler *LeaseServerReqHandler) readLease() int {
 			ttl := l.LeaseMetaInfo.TTL -
 				int(currentTime.LeaderTime-l.LeaseMetaInfo.TimeStamp.LeaderTime)
 			if ttl < 0 {
+				log.Trace("Lookup validate marking lease as expired locally ",
+						l.LeaseMetaInfo.Resource, l.LeaseMetaInfo.Client)
 				l.LeaseMetaInfo.TTL = 0
 				l.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED_LOCALLY
 			} else {
@@ -357,7 +359,9 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		resource := handler.LeaseReq.Resources[i]
 		lease := handler.LeaseServerObj.LeaseMap[resource]
 		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
+		lease.LeaseMetaInfo.TTL = 0
 
+		log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
 		lso.listLock.Unlock()
 
 		//Write to RocksDB
@@ -490,6 +494,8 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				ttl := ttlDefault - int(currentTime.LeaderTime-lt)
 				if ttl <= 0 {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
+					log.Info("Enqueue lease for stale lease processing: ",
+							cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					resourceUUIDs = append(resourceUUIDs, obj.Resource)
 				} else {
 					break
