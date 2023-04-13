@@ -103,7 +103,6 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *leaseLib
 	var currentTime leaseLib.LeaderTS
 	lso.GetLeaderTimeStamp(&currentTime)
 
-	log.Info("Prepare write for operation: ", request.Operation)
 	if request.Operation == leaseLib.GC {
 		if request.InitiatorTerm == currentTime.LeaderTerm {
 			log.Info("Request for Stale lease processing from same term")
@@ -378,7 +377,6 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler,
 			resource.String(), int64(len(resource.String())), byteToStr, int64(valLen),
 			handler.LeaseServerObj.LeaseColmFam)
-		log.Info("Mark lease as stale")
 	}
 }
 
@@ -394,7 +392,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 		return -1
 	}
 
-	log.Info("Apply for operation: ", applyLeaseReq.Operation)
+	log.Trace("Apply for operation: ", applyLeaseReq.Operation)
 
 	//Handle client request
 	var returnObj leaseLib.LeaseRes
@@ -414,7 +412,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 	//Handler GET lease request
 	rc := leaseReq.applyLease()
-	log.Info("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
+	log.Trace("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
 	if rc == 0 && applyArgs.ReplyBuf != nil {
@@ -494,7 +492,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				ttl := ttlDefault - int(currentTime.LeaderTime-lt)
 				if ttl <= 0 {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
-					log.Info("Enqueue lease for stale lease processing: ",
+					log.Trace("Enqueue lease for stale lease processing: ",
 							cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					resourceUUIDs = append(resourceUUIDs, obj.Resource)
 				} else {
@@ -512,7 +510,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 			request.Resources = resourceUUIDs
 			request.InitiatorTerm = currentTime.LeaderTerm
 			//Send Request
-			log.Info("Send stale processing request")
+			log.Trace("Send stale lease processing request")
 			err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(request)
 			if err != nil {
 				log.Error("Failed to send stale lease processing request")

@@ -755,7 +755,6 @@ func PmdbEnqueueDirectWriteRequest(appReq interface{}) error {
 	C.memcpy(dataPtr, kvdata, C.size_t(dsize))
 
 	//Enqueue the direct request
-	//totalSize := int64(pmdSize + C.sizeof_struct_raft_client_rpc_msg)
 	C.raft_server_enq_direct_raft_req_from_leader((*C.char)(buf), C.int64_t(totalSize))
 	C.free(buf)
 
