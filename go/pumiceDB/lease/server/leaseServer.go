@@ -9,10 +9,8 @@ import (
 	"sync"
 	"time"
 	"unsafe"
-	//PumiceDBCommon "niova/go-pumicedb-lib/common"
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	//PumiceDBClient "niova/go-pumicedb-lib/client"
 )
 
 var ttlDefault = 60
@@ -24,7 +22,6 @@ type LeaseServerObject struct {
 	LeaseMap     map[uuid.UUID]*leaseLib.LeaseInfo
 	Pso          *PumiceDBServer.PmdbServerObject
 	listObj      *list.List
-	leader       bool
 	listLock     sync.RWMutex
 }
 
@@ -37,19 +34,12 @@ type LeaseServerReqHandler struct {
 }
 
 //Helper functions
-func checkMajorCorrectness(currentTerm int64, leaseTerm int64) {
-	if currentTerm != leaseTerm {
+func checkMajorCorrectness(cTerm int64, lTerm int64) {
+	if cTerm != lTerm {
 		log.Fatal("Major(Term) not matching")
 	}
 }
 
-func copyToResponse(lease *leaseLib.LeaseMeta, response *leaseLib.LeaseRes) {
-	response.Resource = lease.Resource
-	response.Client = lease.Client
-	response.LeaseState = lease.LeaseState
-	response.TTL = lease.TTL
-	response.TimeStamp = lease.TimeStamp
-}
 
 func isPermitted(entry *leaseLib.LeaseMeta, clientUUID uuid.UUID, currentTime leaseLib.LeaderTS, operation int) bool {
 	if (entry.LeaseState == leaseLib.INPROGRESS) || (entry.LeaseState == leaseLib.STALE_INPROGRESS) {
@@ -87,7 +77,6 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 	lso.Pso.LeaseAPI = lso
 	lso.listObj = list.New()
 	//Start the garbage collector thread
-	lso.leader = false
 	go lso.leaseGarbageCollector()
 }
 
@@ -121,8 +110,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *leaseLib
 				lso.LeaseMap[request.Resource].LeaseMetaInfo.TimeStamp = currentTime
 				lso.LeaseMap[request.Resource].LeaseMetaInfo.TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
-				//TODO: Pointer leak from list element
-				copyToResponse(&lso.LeaseMap[request.Resource].LeaseMetaInfo, reply)
+				copyToResponse(lso.LeaseMap[request.Resource].LeaseMetaInfo, reply)
 				//Update lease list
 				lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
 				return 0
@@ -195,13 +183,13 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 	}
 }
 
-func (handler *LeaseServerReqHandler) copyToResponse(lm leaseLib.LeaseMeta) {
-	handler.LeaseRes.Client = lm.Client
-	handler.LeaseRes.Resource = lm.Resource
-	handler.LeaseRes.Status = lm.Status
-	handler.LeaseRes.LeaseState = lm.LeaseState
-	handler.LeaseRes.TTL = lm.TTL
-	handler.LeaseRes.TimeStamp = lm.TimeStamp
+func copyToResponse(l leaseLib.LeaseMeta, r *leaseLib.LeaseRes) {
+	r.Client = l.Client
+	r.Resource = l.Resource
+	r.Status = l.Status
+	r.LeaseState = l.LeaseState
+	r.TTL = l.TTL
+	r.TimeStamp = l.TimeStamp
 }
 
 func (handler *LeaseServerReqHandler) readLease() int {
@@ -213,7 +201,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		l.LeaseMetaInfo.TTL = -1
 		l.LeaseMetaInfo.LeaseState = leaseLib.NULL
 		handler.LeaseServerObj.GetLeaderTimeStamp(&l.LeaseMetaInfo.TimeStamp)
-		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
+		copyToResponse(l.LeaseMetaInfo, handler.LeaseRes)
 
 	} else if handler.LeaseReq.Operation == leaseLib.LOOKUP_VALIDATE {
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
@@ -247,8 +235,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		}
 		lso.listLock.Unlock()
 
-		//*reply = *leaseObj
-		handler.copyToResponse(l.LeaseMetaInfo)
+		copyToResponse(l.LeaseMetaInfo, handler.LeaseRes)
 	}
 	return 0
 }
@@ -274,7 +261,6 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 		LeaseRes:       &returnObj,
 	}
 
-	//rc := lso.readLease(reqStruct, &returnObj)
 	rc := leaseReq.readLease()
 
 	if rc == 0 {
@@ -291,12 +277,11 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 }
 
 func (handler *LeaseServerReqHandler) applyLease() int {
-	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
 
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
-		lop = &lo
+		lop := &leaseLib.LeaseInfo{}
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
 
@@ -304,7 +289,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	lop.LeaseMetaInfo.TTL = ttlDefault
 	isLeaderFlag := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
 
-	handler.copyToResponse(lop.LeaseMetaInfo)
+	copyToResponse(lop.LeaseMetaInfo, handler.LeaseRes)
 
 	//Insert into list
 	lop.ListElement = &list.Element{}
@@ -312,7 +297,6 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	handler.LeaseServerObj.listObj.PushBack(lop)
 
 	valueBytes := bytes.Buffer{}
-	//gob.Register(leaseLib.LeaseStruct{})
 	enc := gob.NewEncoder(&valueBytes)
 	err := enc.Encode(lop.LeaseMetaInfo)
 	if err != nil {
@@ -336,17 +320,10 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	}
 
 	if isLeaderFlag == 0 {
-		//*reply = *leaseObj
-		handler.copyToResponse(lop.LeaseMetaInfo)
+		copyToResponse(lop.LeaseMetaInfo, handler.LeaseRes)
 		return 0
 	}
 
-	//Check if lease is added properly
-	_, isPresent1 := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-
-	if !isPresent1 {
-		log.Info("Just added lease but not present in map!")
-	}
 	return 1
 }
 
@@ -355,33 +332,33 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 	for i := 0; i < len(handler.LeaseReq.Resources); i++ {
 		//Take the lock as we are marking lease state as expired.
 		lso.listLock.Lock()
-		resource := handler.LeaseReq.Resources[i]
-		lease := handler.LeaseServerObj.LeaseMap[resource]
-		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
-		lease.LeaseMetaInfo.TTL = 0
+		r := handler.LeaseReq.Resources[i]
+		l := handler.LeaseServerObj.LeaseMap[r]
+		l.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
+		l.LeaseMetaInfo.TTL = 0
 
-		log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
+		log.Trace("Marking lease expired: ", l.LeaseMetaInfo.Resource, l.LeaseMetaInfo.Client)
 		lso.listLock.Unlock()
 
 		//Write to RocksDB
 		valueBytes := bytes.Buffer{}
 		enc := gob.NewEncoder(&valueBytes)
-		err := enc.Encode(lease.LeaseMetaInfo)
+		err := enc.Encode(l.LeaseMetaInfo)
 		if err != nil {
 			log.Error(err)
 			break
 		}
 		byteToStr := string(valueBytes.Bytes())
 		valLen := len(byteToStr)
-
+		keyLen := len(r.String())
+		
 		handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler,
-			resource.String(), int64(len(resource.String())), byteToStr, int64(valLen),
+			r.String(), int64(keyLen), byteToStr, int64(valLen),
 			handler.LeaseServerObj.LeaseColmFam)
 	}
 }
 
 func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
-	//var valueBytes bytes.Buffer
 	var copyErr error
 	var replySizeRc int64
 
@@ -396,7 +373,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 	//Handle client request
 	var returnObj leaseLib.LeaseRes
-	leaseReq := LeaseServerReqHandler{
+	lR := LeaseServerReqHandler{
 		LeaseServerObj: lso,
 		LeaseReq:       applyLeaseReq,
 		LeaseRes:       &returnObj,
@@ -406,12 +383,12 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 	//Handle GC request
 	if applyLeaseReq.Operation == leaseLib.GC {
-		leaseReq.gcReqHandler()
+		lR.gcReqHandler()
 		return 0
 	}
 
 	//Handler GET lease request
-	rc := leaseReq.applyLease()
+	rc := lR.applyLease()
 	log.Trace("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
@@ -428,14 +405,13 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 }
 
 func (lso *LeaseServerObject) leaderInit() {
-	for _, leaseObj := range lso.LeaseMap {
-		rc := lso.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
+	for _, lO := range lso.LeaseMap {
+		rc := lso.GetLeaderTimeStamp(&lO.LeaseMetaInfo.TimeStamp)
 		if rc != 0 {
 			log.Error("Unable to get timestamp (InitLeader)")
 		}
-		leaseObj.LeaseMetaInfo.TTL = ttlDefault
+		lO.LeaseMetaInfo.TTL = ttlDefault
 	}
-	lso.leader = true
 }
 
 func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
@@ -465,12 +441,12 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 	log.Info("GC routine running")
 	for {
 		<-ticker.C
-		var currentTime leaseLib.LeaderTS
-		err := lso.GetLeaderTimeStamp(&currentTime)
+		var cT leaseLib.LeaderTS
+		err := lso.GetLeaderTimeStamp(&cT)
 		if err != 0 {
 			continue
 		}
-		var resourceUUIDs []uuid.UUID
+		var rUUIDs []uuid.UUID
 		//Obtain lock
 		lso.listLock.Lock()
 		//Iterate over list
@@ -483,18 +459,18 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					obj.LeaseState != leaseLib.EXPIRED_LOCALLY {
 					continue
 				}
-				err = lso.GetLeaderTimeStamp(&currentTime)
+				err = lso.GetLeaderTimeStamp(&cT)
 				if err != 0 {
 					//Leader change, so stop the routine execution
 					break
 				}
 				lt := obj.TimeStamp.LeaderTime
-				ttl := ttlDefault - int(currentTime.LeaderTime-lt)
+				ttl := ttlDefault - int(cT.LeaderTime-lt)
 				if ttl <= 0 {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
 							cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
-					resourceUUIDs = append(resourceUUIDs, obj.Resource)
+					rUUIDs = append(rUUIDs, obj.Resource)
 				} else {
 					break
 				}
@@ -502,16 +478,17 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		}
 		//Collect till expired
 		lso.listLock.Unlock()
-
-		if len(resourceUUIDs) > 0 {
+		
+		//Send request only if stale lease are present
+		if len(rUUIDs) > 0 {
 			//Create request
-			var request leaseLib.LeaseReq
-			request.Operation = leaseLib.GC
-			request.Resources = resourceUUIDs
-			request.InitiatorTerm = currentTime.LeaderTerm
+			var r leaseLib.LeaseReq
+			r.Operation = leaseLib.GC
+			r.Resources = rUUIDs
+			r.InitiatorTerm = cT.LeaderTerm
 			//Send Request
 			log.Trace("Send stale lease processing request")
-			err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(request)
+			err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
 			if err != nil {
 				log.Error("Failed to send stale lease processing request")
 			}
@@ -528,7 +505,6 @@ func (lso *LeaseServerObject) Init(initPeerArgs *PumiceDBServer.PmdbCbArgs) {
 		lso.peerBootup(initPeerArgs.UserID)
 	} else if initPeerArgs.InitState == PumiceDBServer.INIT_BECOMING_CANDIDATE_STATE {
 		log.Info("Init callback on peer becoming candidate.")
-		lso.leader = false
 	} else {
 		log.Error("Invalid init state: %d", initPeerArgs.InitState)
 	}
