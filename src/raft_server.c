@@ -6355,6 +6355,9 @@ raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
 int
 raft_server_enq_direct_raft_req_from_leader(char *req_buf, int64_t data_size)
 {
+    if (FAULT_INJECT(raft_leader_ignore_direct_req))
+        return 0;
+
     struct raft_client_rpc_msg *rcm =
          (struct raft_client_rpc_msg *)req_buf;
     struct raft_instance *ri = raft_net_get_instance();
