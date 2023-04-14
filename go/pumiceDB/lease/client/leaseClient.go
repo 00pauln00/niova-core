@@ -167,9 +167,6 @@ func (lh *LeaseClientReqHandler) Get() error {
 	// decode req response
 	dec := gob.NewDecoder(bytes.NewBuffer(b))
 	err = dec.Decode(&lh.LeaseRes)
-	if err != nil {
-		return err
-	}
 
 	log.Info("Write request status - ", lh.LeaseRes.Status)
 
@@ -272,9 +269,6 @@ func (lh *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 		lh.LeaseRes.Status = leaseLib.SUCCESS
 		dec := gob.NewDecoder(bytes.NewBuffer(b))
 		err = dec.Decode(&lh.LeaseRes)
-		if err != nil {
-			return err
-		}
 	}
 	log.Info("Lease request status - ", lh.LeaseRes.Status)
 
