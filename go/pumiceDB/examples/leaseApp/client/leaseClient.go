@@ -255,16 +255,18 @@ func (lh *leaseHandler) performGetNLookup() error {
 Description: Perform REFRESH lease operation
 */
 func (lh *leaseHandler) refreshLease() error {
-	lh.cliReqArr[0].Err = lh.cliReqArr[0].Refresh()
-	if lh.cliReqArr[0].Err != nil {
-		log.Error(lh.cliReqArr[0].Err)
-		lh.cliReqArr[0].LeaseRes.Status = leaseLib.FAILURE
+	rq := lh.cliReqArr[0]
+
+	rq.Err = rq.Refresh()
+	if rq.Err != nil {
+		log.Error(rq.Err)
+		rq.LeaseRes.Status = leaseLib.FAILURE
 	} else {
-		lh.cliReqArr[0].LeaseRes.Status = leaseLib.SUCCESS
+		rq.LeaseRes.Status = leaseLib.SUCCESS
 	}
 	// Write the response to the json file.
 	lh.writeResToJson()
-	return lh.cliReqArr[0].Err
+	return rq.Err
 }
 
 func main() {
