@@ -115,17 +115,25 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, reply *leaseLib
 	//Check if its a refresh request
 	if request.Operation == leaseLib.REFRESH {
 		vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
-		if (isPresent) && (vdev_lease_info.LeaseMetaInfo.LeaseState != leaseLib.EXPIRED) {
+		if (isPresent) {
 			if isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client, currentTime, request.Operation) {
-				//Refresh the lease
-				lso.LeaseMap[request.Resource].LeaseMetaInfo.TimeStamp = currentTime
-				lso.LeaseMap[request.Resource].LeaseMetaInfo.TTL = ttlDefault
-				//Copy the encoded result in replyBuffer
-				//TODO: Pointer leak from list element
-				copyToResponse(&lso.LeaseMap[request.Resource].LeaseMetaInfo, reply)
-				//Update lease list
-				lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
-				return 0
+
+				if (vdev_lease_info.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED) {
+					// If refresh happens on expired lease, convert the refresh
+					//into raft write.
+					lso.LeaseMap[request.Resource].LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
+					return 1
+				} else {
+					lso.LeaseMap[request.Resource].LeaseMetaInfo.LeaseState = leaseLib.GRANTED
+					//Refresh the lease
+					lso.LeaseMap[request.Resource].LeaseMetaInfo.TimeStamp = currentTime
+					lso.LeaseMap[request.Resource].LeaseMetaInfo.TTL = ttlDefault
+					//Copy the encoded result in replyBuffer
+					copyToResponse(&lso.LeaseMap[request.Resource].LeaseMetaInfo, reply)
+					//Update lease list
+					lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
+					return 0
+				}
 			}
 		}
 		return -1
@@ -233,7 +241,6 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		lso := handler.LeaseServerObj
 		lso.listLock.Lock()
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
-			//TODO: Possible wrap around
 			ttl := l.LeaseMetaInfo.TTL -
 				int(currentTime.LeaderTime-l.LeaseMetaInfo.TimeStamp.LeaderTime)
 			if ttl < 0 {
@@ -247,7 +254,6 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		}
 		lso.listLock.Unlock()
 
-		//*reply = *leaseObj
 		handler.copyToResponse(l.LeaseMetaInfo)
 	}
 	return 0
@@ -274,7 +280,6 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 		LeaseRes:       &returnObj,
 	}
 
-	//rc := lso.readLease(reqStruct, &returnObj)
 	rc := leaseReq.readLease()
 
 	if rc == 0 {
@@ -294,6 +299,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
 
+	handler.LeaseServerObj.listLock.Lock()
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
 		lop = &lo
@@ -304,13 +310,21 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	lop.LeaseMetaInfo.TTL = ttlDefault
 	isLeaderFlag := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
 
-	handler.copyToResponse(lop.LeaseMetaInfo)
-
 	//Insert into list
 	lop.ListElement = &list.Element{}
 	lop.ListElement.Value = lop
-	handler.LeaseServerObj.listObj.PushBack(lop)
 
+	// If the refresh was converted to raft write, lease would be present
+	// on the list already, move it back as lease state changed to GRANTED
+	if handler.LeaseReq.Operation == leaseLib.REFRESH {
+		handler.LeaseServerObj.listObj.MoveToBack(lop.ListElement)
+	} else {
+		handler.LeaseServerObj.listObj.PushBack(lop)
+	}
+
+	handler.LeaseServerObj.listLock.Unlock()
+
+	handler.copyToResponse(lop.LeaseMetaInfo)
 	valueBytes := bytes.Buffer{}
 	//gob.Register(leaseLib.LeaseStruct{})
 	enc := gob.NewEncoder(&valueBytes)
@@ -319,9 +333,8 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 		log.Error(err)
 		return 1
 	}
-
+	
 	byteToStr := string(valueBytes.Bytes())
-	log.Trace("Value passed by client: ", byteToStr)
 
 	// Length of value.
 	valLen := len(byteToStr)
@@ -429,11 +442,14 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 func (lso *LeaseServerObject) leaderInit() {
 	for _, leaseObj := range lso.LeaseMap {
-		rc := lso.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
-		if rc != 0 {
-			log.Error("Unable to get timestamp (InitLeader)")
+		if (leaseObj.LeaseMetaInfo.LeaseState == leaseLib.GRANTED  ||
+			leaseObj.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED_LOCALLY) {
+			rc := lso.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
+			if rc != 0 {
+				log.Error("Unable to get timestamp (InitLeader)")
+			}
+			leaseObj.LeaseMetaInfo.TTL = ttlDefault
 		}
-		leaseObj.LeaseMetaInfo.TTL = ttlDefault
 	}
 	lso.leader = true
 }
@@ -455,7 +471,7 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 		lso.LeaseMap[kuuid] = &leaseInfo
 		leaseInfo.ListElement = &list.Element{}
 		leaseInfo.ListElement.Value = &leaseInfo
-		lso.listObj.PushBack(leaseInfo)
+		lso.listObj.PushBack(&leaseInfo)
 		delete(readResult, key)
 	}
 }
