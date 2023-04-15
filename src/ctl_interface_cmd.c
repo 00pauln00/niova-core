@@ -752,6 +752,14 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
                              lv->lrv_key_string,
                              LREG_VALUE_TO_OUT_SIGNED_INT(lv));
                 break;
+            case LREG_VAL_TYPE_SIGNED32_VAL:
+                rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
+                             "%s\n%s\"%s\" : %d",
+                             ctlic_scan_registry_sibling_helper(citer),
+                             tab_array,
+                             lv->lrv_key_string,
+                             (int)LREG_VALUE_TO_OUT_SIGNED_INT(lv));
+                break;
             case LREG_VAL_TYPE_UNSIGNED_VAL:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %lu",
