@@ -255,7 +255,7 @@ func (lh *leaseHandler) performGetNLookup() error {
 Description: Perform REFRESH lease operation
 */
 func (lh *leaseHandler) refreshLease() error {
-	rq := lh.cliReqArr[0]
+	rq := &lh.cliReqArr[0]
 
 	rq.Err = rq.Refresh()
 	if rq.Err != nil {
@@ -275,9 +275,7 @@ func main() {
 	// Load cmd params
 	lh.getCmdParams()
 
-	/*
-		Initialize Logging
-	*/
+	// Initialize Logging
 	err := PumiceDBCommon.InitLogger(lh.logFilePath)
 	if err != nil {
 		log.Error("Error while initializing the logger ", err)
@@ -291,21 +289,13 @@ func main() {
 	}
 
 	lh.cliReqArr[0].LeaseClientObj = &lh.clientObj
-	switch lh.cliOperation {
-	case leaseLib.GET:
-		fallthrough
-	case leaseLib.GET_VALIDATE:
-		fallthrough
-	case leaseLib.LOOKUP:
-		fallthrough
-	case leaseLib.LOOKUP_VALIDATE:
-		lh.prepReqs()
-		err = lh.performGetNLookup()
-	case leaseLib.REFRESH:
-		lh.prepReqs()
-		err = lh.refreshLease()
-	}
 
+	lh.prepReqs()
+	if lh.cliOperation == leaseLib.REFRESH {
+		err = lh.refreshLease()
+	} else {
+		err = lh.performGetNLookup()
+	}
 	if err != nil {
 		log.Info("Operation failed")
 	}
