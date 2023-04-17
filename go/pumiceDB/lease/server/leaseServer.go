@@ -303,6 +303,8 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
 		lop = &lo
+		lop.LeaseMetaInfo.Resource = handler.LeaseReq.Resource
+		lop.LeaseMetaInfo.Client = handler.LeaseReq.Client
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
 
@@ -333,7 +335,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 		log.Error(err)
 		return 1
 	}
-	
+
 	byteToStr := string(valueBytes.Bytes())
 
 	// Length of value.
