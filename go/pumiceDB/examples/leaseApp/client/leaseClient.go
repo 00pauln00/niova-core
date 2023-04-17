@@ -224,19 +224,24 @@ func (lh *leaseHandler) writeSingleResponseToJson(toJson interface{}) {
 /*
 Description : Perform lease operation for Get or Lookup
 */
-func (lh *leaseHandler) performGetNLookup() error {
+func (lh *leaseHandler) performLeaseOp() error {
 	for i := range lh.cliReqArr {
 		// perform op
-		if lh.cliOperation == leaseLib.GET || lh.cliOperation == leaseLib.GET_VALIDATE {
+		switch lh.cliOperation {
+		case leaseLib.GET, leaseLib.GET_VALIDATE:
 			lh.cliReqArr[i].Err = lh.cliReqArr[i].Get()
-		} else {
+		case leaseLib.LOOKUP, leaseLib.LOOKUP_VALIDATE:
 			lh.cliReqArr[i].Err = lh.cliReqArr[i].Lookup()
+		case leaseLib.REFRESH:
+			lh.cliReqArr[i].Err = lh.cliReqArr[i].Refresh()
+		default:
+			lh.err = errors.New("Invalid operation")
+			break
 		}
 		// check err
 		if lh.cliReqArr[i].Err != nil {
 			//TODO Check if we should stop the loop if any one req is failed
 			log.Error(lh.cliReqArr[i].Err)
-			lh.err = lh.cliReqArr[i].Err
 			lh.cliReqArr[i].LeaseRes.Status = leaseLib.FAILURE
 		} else {
 			lh.cliReqArr[i].LeaseRes.Status = leaseLib.SUCCESS
@@ -249,24 +254,6 @@ func (lh *leaseHandler) performGetNLookup() error {
 	lh.writeResToJson()
 
 	return lh.err
-}
-
-/*
-Description: Perform REFRESH lease operation
-*/
-func (lh *leaseHandler) refreshLease() error {
-	rq := &lh.cliReqArr[0]
-
-	rq.Err = rq.Refresh()
-	if rq.Err != nil {
-		log.Error(rq.Err)
-		rq.LeaseRes.Status = leaseLib.FAILURE
-	} else {
-		rq.LeaseRes.Status = leaseLib.SUCCESS
-	}
-	// Write the response to the json file.
-	lh.writeResToJson()
-	return rq.Err
 }
 
 func main() {
@@ -291,11 +278,7 @@ func main() {
 	lh.cliReqArr[0].LeaseClientObj = &lh.clientObj
 
 	lh.prepReqs()
-	if lh.cliOperation == leaseLib.REFRESH {
-		err = lh.refreshLease()
-	} else {
-		err = lh.performGetNLookup()
-	}
+	err = lh.performLeaseOp()
 	if err != nil {
 		log.Info("Operation failed")
 	}
