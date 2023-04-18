@@ -36,18 +36,24 @@ var (
 		"GET_VALIDATE":    leaseLib.GET_VALIDATE,
 		"LOOKUP_VALIDATE": leaseLib.LOOKUP_VALIDATE,
 	}
-	kvMap = make(map[uuid.UUID]uuid.UUID)
 )
 
 type leaseHandler struct {
 	clientObj    leaseClientLib.LeaseClient
 	cliReqArr    []leaseClientLib.LeaseClientReqHandler
+	rqArgs       reqArgs
 	cliOperation int
 	jsonFilePath string
 	logFilePath  string
 	numOfLeases  int
 	readJsonFile string
 	err          error
+}
+
+type reqArgs struct {
+	client    uuid.UUID
+	resource  uuid.UUID
+	operation int
 }
 
 func usage() {
@@ -106,20 +112,21 @@ func (handler *leaseHandler) getCmdParams() {
 		usage()
 		os.Exit(-1)
 	}
-	var tempReq leaseClientLib.LeaseClientReqHandler
-	tempReq.LeaseReq.Client, err = uuid.FromString(strClientUUID)
+	//var tempReq leaseClientLib.LeaseClientReqHandler
+	handler.rqArgs.client, err = uuid.FromString(strClientUUID)
+	//handler.clientObj.ClientUUID = tempReq.rqArgs.client
 	if err != nil {
 		usage()
 		os.Exit(-1)
 	}
 	if strResourceUUID != "" {
-		tempReq.LeaseReq.Resource, err = uuid.FromString(strResourceUUID)
+		handler.rqArgs.resource, err = uuid.FromString(strResourceUUID)
 		if err != nil {
 			usage()
 			os.Exit(-1)
 		}
 	}
-	handler.cliReqArr = append(handler.cliReqArr, tempReq)
+	//handler.cliReqArr = append(handler.cliReqArr, tempReq)
 }
 
 /*
@@ -161,21 +168,37 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 /*
 Description : Fill up cliReqArr with N number of client and resource UUIDs
 */
+//TODO Needed changes for removing req handling code
 func (lh *leaseHandler) prepReqs() {
-	if lh.cliReqArr[0].LeaseReq.Resource != uuid.Nil {
-		lh.numOfLeases = 1
-		lh.cliReqArr[0].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-		lh.cliReqArr[0].LeaseClientObj = &lh.clientObj
-		lh.cliReqArr[0].LeaseReq.Operation = lh.cliOperation
-	} else {
-		if lh.cliReqArr[0].LeaseReq.Operation == leaseLib.GET ||
-			lh.cliOperation == leaseLib.GET_VALIDATE {
-			for i := 0; i < lh.numOfLeases; i++ {
-				lh.cliReqArr[i].InitLeaseReq(uuid.NewV4().String(), uuid.NewV4().String(), lh.cliOperation)
-				lh.cliReqArr[i].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-				lh.cliReqArr[i].LeaseClientObj = &lh.clientObj
+	/*
+		if lh.cliReqArr[0].LeaseReq.Resource != uuid.Nil {
+			lh.numOfLeases = 1
+			lh.cliReqArr[0].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+			lh.cliReqArr[0].LeaseClientObj = &lh.clientObj
+			lh.cliReqArr[0].LeaseReq.Operation = lh.cliOperation
+		} else {
+			if lh.cliReqArr[0].LeaseReq.Operation == leaseLib.GET ||
+				lh.cliOperation == leaseLib.GET_VALIDATE {
+				for i := 0; i < lh.numOfLeases; i++ {
+					lh.cliReqArr[i].InitLeaseReq(uuid.NewV4().String(), uuid.NewV4().String(), lh.cliOperation)
+					lh.cliReqArr[i].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+					lh.cliReqArr[i].LeaseClientObj = &lh.clientObj
+				}
 			}
 		}
+	*/
+	for i := 0; i < lh.numOfLeases; i++ {
+		var rq leaseClientLib.LeaseClientReqHandler
+		/*
+			lh.cliReqArr[i].InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
+			lh.cliReqArr[i].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+			lh.cliReqArr[i].LeaseClientObj = &lh.clientObj
+		*/
+		rq.InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
+		rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+		rq.LeaseClientObj = &lh.clientObj
+
+		lh.cliReqArr = append(lh.cliReqArr, rq)
 	}
 }
 
@@ -224,19 +247,14 @@ func (lh *leaseHandler) writeSingleResponseToJson(toJson interface{}) {
 /*
 Description : Perform lease operation for Get or Lookup
 */
-func (lh *leaseHandler) performGetNLookup() error {
+func (lh *leaseHandler) performLeaseOp() error {
 	for i := range lh.cliReqArr {
 		// perform op
-		if lh.cliOperation == leaseLib.GET || lh.cliOperation == leaseLib.GET_VALIDATE {
-			lh.cliReqArr[i].Err = lh.cliReqArr[i].Get()
-		} else {
-			lh.cliReqArr[i].Err = lh.cliReqArr[i].Lookup()
-		}
+		lh.cliReqArr[i].Err = lh.cliReqArr[i].LeaseOperation()
 		// check err
 		if lh.cliReqArr[i].Err != nil {
 			//TODO Check if we should stop the loop if any one req is failed
 			log.Error(lh.cliReqArr[i].Err)
-			lh.err = lh.cliReqArr[i].Err
 			lh.cliReqArr[i].LeaseRes.Status = leaseLib.FAILURE
 		} else {
 			lh.cliReqArr[i].LeaseRes.Status = leaseLib.SUCCESS
@@ -249,24 +267,6 @@ func (lh *leaseHandler) performGetNLookup() error {
 	lh.writeResToJson()
 
 	return lh.err
-}
-
-/*
-Description: Perform REFRESH lease operation
-*/
-func (lh *leaseHandler) refreshLease() error {
-	rq := &lh.cliReqArr[0]
-
-	rq.Err = rq.Refresh()
-	if rq.Err != nil {
-		log.Error(rq.Err)
-		rq.LeaseRes.Status = leaseLib.FAILURE
-	} else {
-		rq.LeaseRes.Status = leaseLib.SUCCESS
-	}
-	// Write the response to the json file.
-	lh.writeResToJson()
-	return rq.Err
 }
 
 func main() {
@@ -282,20 +282,14 @@ func main() {
 	}
 
 	// Start pmdbClient
-	err = lh.startPMDBClient(lh.cliReqArr[0].LeaseReq.Client.String())
+	err = lh.startPMDBClient(lh.rqArgs.client.String())
 	if err != nil {
 		log.Error(err)
 		os.Exit(-1)
 	}
 
-	lh.cliReqArr[0].LeaseClientObj = &lh.clientObj
-
 	lh.prepReqs()
-	if lh.cliOperation == leaseLib.REFRESH {
-		err = lh.refreshLease()
-	} else {
-		err = lh.performGetNLookup()
-	}
+	err = lh.performLeaseOp()
 	if err != nil {
 		log.Info("Operation failed")
 	}

@@ -103,7 +103,7 @@ Arguments : LeaseReq, rncui, *response
 Return(s) : error
 Description : Wrapper function for ReadEncoded() function
 */
-func (clientObj LeaseClient) Read(reqBytes *[]byte, rncui string, response *[]byte) error {
+func (clientObj LeaseClient) read(reqBytes *[]byte, rncui string, response *[]byte) error {
 
 	reqArgs := &pmdbClient.PmdbReqArgs{
 		Rncui:      rncui,
@@ -145,13 +145,12 @@ func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation
 
 /*
 Structure : LeaseHandler
-Method	  : Get()
-Arguments :
+Method	  : LeaseOperation()
+Arguments : leaseLib.LeaseReq
 Return(s) : error
-Description : Handler function for get() operation
-              Acquire a lease on a particular resource
+Description : Handler function for all lease operations
 */
-func (lh *LeaseClientReqHandler) Get() error {
+func (lh *LeaseClientReqHandler) LeaseOperation() error {
 	var err error
 	var b []byte
 
@@ -159,68 +158,14 @@ func (lh *LeaseClientReqHandler) Get() error {
 	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
 
 	// send req
-	err = lh.LeaseClientObj.write(&lh.ReqBytes, lh.Rncui, &b)
-	if err != nil {
-		return err
+	switch lh.LeaseReq.Operation {
+	case leaseLib.GET, leaseLib.GET_VALIDATE:
+		fallthrough
+	case leaseLib.REFRESH:
+		err = lh.LeaseClientObj.write(&lh.ReqBytes, lh.Rncui, &b)
+	case leaseLib.LOOKUP, leaseLib.LOOKUP_VALIDATE:
+		err = lh.LeaseClientObj.read(&lh.ReqBytes, "", &b)
 	}
-
-	// decode req response
-	dec := gob.NewDecoder(bytes.NewBuffer(b))
-	err = dec.Decode(&lh.LeaseRes)
-
-	log.Info("Write request status - ", lh.LeaseRes.Status)
-
-	return err
-}
-
-/*
-Structure : LeaseHandler
-Method	  : lookup()
-Arguments : leaseLib.LeaseReq
-Return(s) : error
-Description : Handler function for lookup() operation
-              Lookup lease info of a particular resource
-*/
-func (lh *LeaseClientReqHandler) Lookup() error {
-	var err error
-	var b []byte
-
-	// Prepare reqBytes for pumiceReq type
-	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
-	err = lh.LeaseClientObj.Read(&lh.ReqBytes, "", &b)
-	if err != nil {
-		return err
-	} else if len(b) == 0 {
-		err = errors.New("Key not found")
-		return err
-	}
-
-	dec := gob.NewDecoder(bytes.NewBuffer(b))
-	err = dec.Decode(&lh.LeaseRes)
-	if err != nil {
-		return err
-	}
-
-	return err
-}
-
-/*
-Structure : LeaseHandler
-Method	  : refresh()
-Arguments : leaseLib.LeaseReq
-Return(s) : error
-Description : Handler function for refresh() operation
-              Refresh lease of a owned resource
-*/
-func (lh *LeaseClientReqHandler) Refresh() error {
-	var err error
-	var b []byte
-
-	// Prepare reqBytes for pumiceReq type
-	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
-
-	// send req
-	err = lh.LeaseClientObj.write(&lh.ReqBytes, lh.Rncui, &b)
 	if err != nil {
 		return err
 	}
@@ -232,7 +177,7 @@ func (lh *LeaseClientReqHandler) Refresh() error {
 		return err
 	}
 
-	log.Info("Refresh request status - ", lh.LeaseRes.Status)
+	log.Info("Lease request status - ", lh.LeaseRes.Status)
 
 	return err
 }
