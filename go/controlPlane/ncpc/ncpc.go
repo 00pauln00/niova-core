@@ -17,7 +17,6 @@ import (
 	"math/rand"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"os"
-	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,14 +24,17 @@ import (
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
-	maps "golang.org/x/exp/maps"
 )
 
+type clientReq struct {
+	Request requestResponseLib.KVRequest
+	Response requestResponseLib.KVResponse
+}
+
 type clientHandler struct {
-	requestKey         string
-	requestValue       string
-	kvMap              map[string][]byte
-	reqResMap          map[*requestResponseLib.KVRequest]requestResponseLib.KVResponse
+	requestKey		   string
+	requestValue	   string
+	clientReqArr	   []clientReq
 	raftUUID           string
 	addr               string
 	port               string
@@ -46,7 +48,6 @@ type clientHandler struct {
 	count              int
 	seed               int
 	lastKey            string
-	operationMetaObjs  []opData //For filling json data
 	clientAPIObj       serviceDiscovery.ServiceDiscoveryHandler
 	seqNum             uint64
 	valSize            int
@@ -100,10 +101,17 @@ func randSeq(n int, r *rand.Rand) []byte {
 	return b
 }
 
+func (co *clientHandler)appendReq(key string, value []byte) {
+	creq := clientReq{}
+	creq.Request.Key = key
+	creq.Request.Value = value
+
+	co.clientReqArr = append(co.clientReqArr, creq)
+}
+
 // dummy function to mock user filling up multiple req
-func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
-	kvMap := make(map[string][]byte)
-	r := rand.New(rand.NewSource(seed))
+func (co *clientHandler)generateVdevRange() {
+	r := rand.New(rand.NewSource(int64(co.seed)))
 	var nodeUUID []string
 	var vdevUUID []string
 	nodeNisdMap := make(map[string][]string)
@@ -115,19 +123,20 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 		HostName
 		NISD-UUIDs
 	*/
-	noUUID := count
-	for i := int64(0); i < noUUID; i++ {
+	noUUID := co.count
+	for i := int64(0); i < int64(noUUID); i++ {
 		randomNodeUUID := uuid.NewV4()
 		nodeUUID = append(nodeUUID, randomNodeUUID.String())
 		prefix := "node." + randomNodeUUID.String()
 
 		//NISD-UUIDs
-		for j := int64(0); j < noUUID; j++ {
+		for j := int64(0); j < int64(noUUID); j++ {
 			randUUID := uuid.NewV4()
 			nodeNisdMap[randomNodeUUID.String()] = append(nodeNisdMap[randomNodeUUID.String()], randUUID.String())
 		}
-		kvMap[prefix+".NISD-UUIDs"], _ = json.Marshal(nodeNisdMap[randomNodeUUID.String()])
 
+		nval, _ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
+		co.appendReq(prefix+".NISD-UUIDs", nval)
 	}
 	//NISD
 	/*
@@ -144,19 +153,22 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	for _, node := range nodeUUID {
 		for _, nisd := range nodeNisdMap[node] {
 			prefix := "nisd." + nisd
+			randomNodeUUID := uuid.NewV4()
 
 			//Node-UUID
-			kvMap[prefix+".Node-UUID"] = []byte(node)
+			co.appendReq(prefix+".Node-UUID", []byte(node))
+
+			nval,_ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
+			co.appendReq(prefix+".NISD-UUIDs", nval)
 
 			//Config-Info
-			configInfo := prefix + ".Config-Info"
-			kvMap[configInfo] = randSeq(valSize, r)
+			co.appendReq(prefix + ".Config-Info", randSeq(co.valSize, r))
 
 			//VDEV-UUID
-			for j := int64(0); j < noUUID; j++ {
+			for j := int64(0); j < int64(noUUID); j++ {
 				randUUID := uuid.NewV4()
 				partNodePrefix := prefix + "." + randUUID.String()
-				kvMap[partNodePrefix] = randSeq(valSize, r)
+				co.appendReq(partNodePrefix, randSeq(co.valSize, r))
 				vdevUUID = append(vdevUUID, randUUID.String())
 			}
 		}
@@ -170,17 +182,16 @@ func generateVdevRange(count int64, seed int64, valSize int) map[string][]byte {
 	*/
 	for i := int64(0); i < int64(len(vdevUUID)); i++ {
 		prefix := "v." + vdevUUID[i]
-		kvMap[prefix+".User-Token"] = randSeq(valSize, r)
+		co.appendReq(prefix+".User-Token", randSeq(co.valSize, r))
 
-		noChunck := count
+		noChunck := co.count
 		Cprefix := prefix + ".c"
-		for j := int64(0); j < noChunck; j++ {
+		for j := int64(0); j < int64(noChunck); j++ {
 			randUUID := uuid.NewV4()
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
-			kvMap[Chunckprefix] = randSeq(valSize, r)
+			co.appendReq(Chunckprefix, randSeq(co.valSize, r))
 		}
 	}
-	return kvMap
 }
 
 func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
@@ -196,6 +207,7 @@ func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
 
 //Function to get command line parameters
 func (handler *clientHandler) getCmdParams() {
+
 	flag.StringVar(&handler.requestKey, "k", "", "Key - For ReadRange pass '<prefix>*' e.g. : -k 'vdev.*'")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Addr value")
 	flag.StringVar(&handler.port, "p", "1999", "Port value")
@@ -216,19 +228,14 @@ func (handler *clientHandler) getCmdParams() {
 }
 
 //Write to Json
-func (cli *clientHandler) write2Json(toJson interface{}) {
-	file, err := json.MarshalIndent(toJson, "", " ")
+func (cli *clientHandler) write2Json() {
+	file, err := json.MarshalIndent(cli.clientReqArr, "", " ")
+	if err != nil {
+		log.Error("Failed to json.MarshalIndent cli.clientReqArr")
+	}
 	err = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
 	if err != nil {
 		log.Error("Error in writing output to the file : ", err)
-	}
-}
-
-func (cli *clientHandler) writeMap2Json(toJson map[*requestResponseLib.KVRequest]requestResponseLib.KVResponse) {
-	for k, v := range toJson {
-		kj, _ := json.Marshal(k)
-		vj, _ := json.Marshal(v)
-		fmt.Println("Key : ", string(kj), "\n Val : ", string(vj))
 	}
 }
 
@@ -312,7 +319,7 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 		log.Error("Invalid argument - key must be UUID")
 		return err
 	}
-	o.Cmd = clientObj.requestValue
+	o.Cmd = string(clientObj.requestValue)
 
 	enc := gob.NewEncoder(b)
 	err = enc.Encode(o)
@@ -322,149 +329,122 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 	return err
 }
 
-func (clientObj *clientHandler) prepNSendReq(rqo *requestResponseLib.KVRequest, rncui string,
-	rso *requestResponseLib.KVResponse, isWrite bool) error {
+func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error {
 
+	log.Info("Pre request for and itr: ", co.clientReqArr[itr].Request, itr)
 	var rqb bytes.Buffer
-	//Fill the request obj and encode it
-	/*
-		err := prepareKVRequest(key, value, rncui, operation, &rqb)
-		if err != nil {
-			return err
-		}
-	*/
-	err := PumiceDBCommon.PrepareAppPumiceRequest(rqo, rncui, &rqb)
+	err := PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[itr].Request,
+					rncui, &rqb)
 	if err != nil {
 		return err
 	}
 
 	//Send the request
-	rsb, err := clientObj.clientAPIObj.Request(rqb.Bytes(), "", isWrite)
+	rsb, err := co.clientAPIObj.Request(rqb.Bytes(), "", isWrite)
 	if err != nil {
 		return err
 	}
 
-	//Decode the request
+	log.Info("Received response and store to : ", co.clientReqArr[itr].Response)
+	//Decode the response to get the status of the operation. 
+	res := &co.clientReqArr[itr].Response
 	dec := gob.NewDecoder(bytes.NewBuffer(rsb))
-	return dec.Decode(&rso)
+	return dec.Decode(res)
 }
 
-func (clientObj *clientHandler) write() {
+func (co *clientHandler) write() error {
 
-	clientObj.operation = "write"
+	co.operation = "write"
 
-	var opStat *opData
-	var mut sync.Mutex
 	var wg sync.WaitGroup
+	var err error
 	// Create a int channel of fixed size to enqueue max requests
 	requestLimiter := make(chan int, 100)
-	clientObj.reqResMap = make(map[*requestResponseLib.KVRequest]requestResponseLib.KVResponse)
 
-	// Create map of req and res objs
-	for key, val := range clientObj.kvMap {
-
-		rso := requestResponseLib.KVResponse{}
-		rqo := requestResponseLib.KVRequest{
-			Key:       key,
-			Value:     val,
-			Operation: requestResponseLib.KV_WRITE,
-		}
-		clientObj.reqResMap[&rqo] = rso
-	}
 	// iterate over req and res, while performing reqs
-	for rqo, rso := range clientObj.reqResMap {
+	for i := 0; i < len(co.clientReqArr); i++ {
 		wg.Add(1)
 		requestLimiter <- 1
-		go func(rqo *requestResponseLib.KVRequest, rso *requestResponseLib.KVResponse) {
+		co.clientReqArr[i].Request.Operation = requestResponseLib.KV_WRITE
+		go func(itr int) {
 			defer func() {
 				wg.Done()
 				<-requestLimiter
 			}()
 
-			err := func() error {
-				err := clientObj.prepNSendReq(rqo, uuid.NewV4().String()+":0:0:0:0", rso, true)
+			err = func() error {
+				err := co.prepNSendReq(uuid.NewV4().String()+":0:0:0:0", true, itr)
 				return err
 			}()
-
-			//Request status filler
 			if err != nil {
-				opStat = prepareOutput(1, "write", rqo.Key, err.Error(), 0)
-			} else {
-				opStat = prepareOutput(rso.Status, "write", rqo.Key, string(rqo.Value), 0)
+				return
 			}
-
-			mut.Lock()
-			clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
-			mut.Unlock()
-		}(rqo, &rso)
+		}(i)
 	}
 	wg.Wait()
-	clientObj.write2Json(clientObj.operationMetaObjs)
-	clientObj.writeMap2Json(clientObj.reqResMap)
+	co.write2Json()
+	return err
 }
 
-func (clientObj *clientHandler) read() {
-	var rso requestResponseLib.KVResponse
-	rqo := requestResponseLib.KVRequest{
-		Key:       clientObj.requestKey,
-		Value:     []byte(""),
-		Operation: requestResponseLib.KV_WRITE,
-	}
+func (co *clientHandler) read() error {
 
-	clientObj.operation = "read"
+	//read single key passed from cmdline.
+	creq := clientReq{}
+	creq.Request.Operation = requestResponseLib.KV_READ
+	creq.Request.Key = co.requestKey
+	creq.Request.Value = []byte("")
+
+	co.clientReqArr = append(co.clientReqArr, creq)
+
+	co.operation = "read"
 	err := func() error {
-		return clientObj.prepNSendReq(&rqo, "", &rso, false)
+		return co.prepNSendReq("", false, 0)
 	}()
 
-	if err == nil {
-		opStat := prepareOutput(rso.Status, "read", rso.Key, string(rso.ResultMap[rso.Key]), 0)
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
-	} else {
-		opStat := prepareOutput(1, "read", rso.Key, err.Error(), 0)
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
-	}
-
-	clientObj.write2Json(clientObj.operationMetaObjs)
+	co.write2Json()
+	return err
 }
 
-func (clientObj *clientHandler) rangeRead() {
+func (co *clientHandler) rangeRead() {
 	var prefix, key string
 	var op int
 	var err error
 	var rqo requestResponseLib.KVRequest
 	var seqNum uint64
-	var opStat *opData
 
-	clientObj.operation = "read"
-	prefix = clientObj.requestKey[:len(clientObj.requestKey)-1]
-	key = clientObj.requestKey[:len(clientObj.requestKey)-1]
+	co.operation = "read"
+
+	prefix = co.requestKey[:len(co.requestKey)-1]
+	key = co.requestKey[:len(co.requestKey)-1]
 
 	op = requestResponseLib.KV_RANGE_READ
 	// get sequence number from arguments
-	seqNum = clientObj.seqNum
+	seqNum = co.seqNum
 	// Keep calling range request till ContinueRead is true
-	resultMap := make(map[string][]byte)
-	var count int
 
 	rqo.Prefix = prefix
 	rqo.Operation = op
-	rqo.Consistent = !clientObj.relaxedConsistency
+	rqo.Consistent = !co.relaxedConsistency
+	i := 0
 	for {
-		var rso requestResponseLib.KVResponse
 		var rqb bytes.Buffer
 		var rsb []byte
 
-		rqo.Key = key
-		rqo.SeqNum = seqNum
+		creq := clientReq{}
+		creq.Request.Key = key
+		creq.Request.SeqNum = seqNum
 
-		err = PumiceDBCommon.PrepareAppPumiceRequest(rqo, "", &rqb)
+		co.clientReqArr = append(co.clientReqArr, creq) 
+
+		rso := &co.clientReqArr[i].Response
+		err = PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[i].Request, "", &rqb)
 		if err != nil {
 			log.Error("Pumice request creation error : ", err)
 			break
 		}
 
 		//Send the range request
-		rsb, err = clientObj.clientAPIObj.Request(rqb.Bytes(), "", false)
+		rsb, err = co.clientAPIObj.Request(rqb.Bytes(), "", false)
 		if err != nil {
 			log.Error("Error while sending request : ", err)
 		}
@@ -476,15 +456,11 @@ func (clientObj *clientHandler) rangeRead() {
 		}
 		// decode the responseObj
 		dec := gob.NewDecoder(bytes.NewBuffer(rsb))
-		err = dec.Decode(&rso)
+		err = dec.Decode(rso)
 		if err != nil {
 			log.Error("Decoding error : ", err)
 			break
 		}
-
-		// copy result to global result variable
-		maps.Copy(resultMap, rso.ResultMap)
-		count += 1
 
 		//Change sequence number and key for next iteration
 		seqNum = rso.SeqNum
@@ -492,43 +468,25 @@ func (clientObj *clientHandler) rangeRead() {
 		if !rso.ContinueRead {
 			break
 		}
+		i = i + 1
 	}
 
 	//Fill the json
-	if err == nil {
-		sRMap := convMapToStr(resultMap)
-		opStat = prepareOutput(0, "range", rqo.Key, sRMap, seqNum)
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
-		//Validate the range output
-		fmt.Println("Generate the Data for read validation")
-		gKVMap := generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
-
-		// Get the expected data for read operation and compare against the output.
-		tPrefix := clientObj.requestKey[:len(clientObj.requestKey)-1]
-		fMap := filterKVPrefix(gKVMap, tPrefix)
-
-		compare := reflect.DeepEqual(resultMap, fMap)
-		if !compare {
-			fmt.Println("Range verification read failure")
-		}
-		fmt.Println("The range query was completed in", count, "iterations")
-
-	} else {
-		opStat = prepareOutput(1, "range", rqo.Key, err.Error(), seqNum)
-		clientObj.operationMetaObjs = append(clientObj.operationMetaObjs, *opStat)
-	}
-
-	clientObj.write2Json(clientObj.operationMetaObjs)
+	co.write2Json()
 }
 
 // check and fill request map acc to req count
 func (clientObj *clientHandler) prepWriteReq() {
-	// Fill kvMap with key/val from user or generate keys/vals
-	clientObj.kvMap = make(map[string][]byte)
-	if clientObj.count > 1 {
-		clientObj.kvMap = generateVdevRange(int64(clientObj.count), int64(clientObj.seed), clientObj.valSize)
+	// If key and value has been passed from cmdline
+	if clientObj.requestKey != "" && clientObj.requestValue != "" {
+		creq := clientReq{}
+		creq.Request.Key = clientObj.requestKey
+		creq.Request.Value = []byte(clientObj.requestValue)
+		clientObj.clientReqArr = append(clientObj.clientReqArr, creq)
+		log.Info("key value passed by user: ", creq.Request.Key, creq.Request.Value)
 	} else {
-		clientObj.kvMap[clientObj.requestKey] = []byte(clientObj.requestValue)
+		//Generate key/values from the application itself.
+		clientObj.generateVdevRange()
 	}
 }
 
@@ -688,7 +646,7 @@ func (clientObj *clientHandler) waitServiceInit(service string) {
 	err := clientObj.clientAPIObj.TillReady(service, clientObj.serviceRetry)
 	if err != nil {
 		opStat := prepareOutput(-1, "setup", "", err.Error(), 0)
-		clientObj.write2Json(opStat)
+		clientObj.writeData2Json(opStat)
 		log.Error(err)
 		os.Exit(1)
 	}
@@ -732,6 +690,15 @@ func getLeaseOperationType(op string) int {
 	}
 }
 
+//Write to Json
+func (cli *clientHandler) writeData2Json(data interface{}) {
+	file, err := json.MarshalIndent(data, "", " ")
+	err = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
+	if err != nil {
+		log.Error("Error in writing output to the file : ", err)
+	}
+}
+
 func (clientObj *clientHandler) performLeaseReq(resource, client string) error {
 	clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
@@ -754,7 +721,7 @@ func (clientObj *clientHandler) performLeaseReq(resource, client string) error {
 		return err
 	}
 
-	clientObj.write2Json(lrh)
+	clientObj.writeData2Json(lrh)
 
 	return err
 }
@@ -800,7 +767,7 @@ func main() {
 		err := clientObj.clientAPIObj.StartClientAPI(stop, clientObj.configPath)
 		if err != nil {
 			opStat := prepareOutput(-1, "setup", "", err.Error(), 0)
-			clientObj.write2Json(opStat)
+			clientObj.writeData2Json(opStat)
 			log.Error(err)
 			os.Exit(1)
 		}
