@@ -1,4 +1,4 @@
-name: holon_lease_recipes_workflow
+name: holon_lease_stale_recipes_workflow
 on:
   push:
     branches: [ master ]
@@ -60,7 +60,7 @@ jobs:
 
     - name: Copy script to run recipes
       run: cp ./code/scripts/run-recipes.sh /home/runner/work/niovad/niovad/build_dir/ &&
-           cp ./code/scripts/lease_recipes.txt /home/runner/work/niovad/niovad/build_dir/
+           cp ./code/scripts/lease_stale_recipes.txt /home/runner/work/niovad/niovad/build_dir/
 
     # Checkout holon repo
     - name: Checkout repository
