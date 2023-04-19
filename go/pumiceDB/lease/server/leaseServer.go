@@ -55,9 +55,26 @@ func isPermitted(entry *leaseLib.LeaseMeta, clientUUID uuid.UUID, currentTime le
 
 	//Check major correctness
 	checkMajorCorrectness(currentTime.LeaderTerm, entry.TimeStamp.LeaderTerm)
-	if (clientUUID == entry.Client) {
-		return true
+
+	//Check if existing lease is valid; by comparing only the minor
+	le := entry.TimeStamp.LeaderTime + int64(entry.TTL)
+	sv := le > currentTime.LeaderTime
+	if sv {
+		// if lease is valid and operation from same client, allow it
+		if (clientUUID == entry.Client) {
+			return true
+		}
+		return false
+	} else {
+		// If lease expired but refresh allowed from same client only
+		if (operation == leaseLib.REFRESH) && (clientUUID == entry.Client) {
+			return true
+		} else if (operation == leaseLib.GET) {
+			//GET allowed on expired lease from any client
+			return true
+		}
 	}
+
 	return false
 }
 
