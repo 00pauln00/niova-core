@@ -82,7 +82,7 @@ jobs:
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
-                             '/home/runner/work/niovad/niovad/build_dir/lease_recipes.txt'
+                             '/home/runner/work/niovad/niovad/build_dir/lease_stale_recipes.txt'
                              'lease'
                              '/home/runner/work/go/go/bin'
 
