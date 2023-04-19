@@ -52,21 +52,13 @@ func isPermitted(entry *leaseLib.LeaseMeta, clientUUID uuid.UUID, currentTime le
 	if (entry.LeaseState == leaseLib.INPROGRESS) || (entry.LeaseState == leaseLib.STALE_INPROGRESS) {
 		return false
 	}
-	le := entry.TimeStamp.LeaderTime + int64(entry.TTL)
 
-	//Check majot correctness
+	//Check major correctness
 	checkMajorCorrectness(currentTime.LeaderTerm, entry.TimeStamp.LeaderTerm)
-	//Check if existing lease is valid; by comparing only the minor
-	sv := le > currentTime.LeaderTime
-	//If valid, Check if client uuid is same and operation is refresh
-	if sv {
-		if (operation == leaseLib.REFRESH) && (clientUUID == entry.Client) {
-			return true
-		} else {
-			return false
-		}
+	if (clientUUID == entry.Client) {
+		return true
 	}
-	return true
+	return false
 }
 
 func Decode(payload []byte) (leaseLib.LeaseReq, error) {
