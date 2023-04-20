@@ -169,6 +169,7 @@ Description : Fill up cliReqArr with N number of client and resource UUIDs
 func (lh *leaseHandler) prepReqs() {
 	for i := 0; i < lh.numOfLeases; i++ {
 		var rq leaseClientLib.LeaseClientReqHandler
+		//TODO properly handle cases where client/resource is not passed
 		// if client and resource are empty, we fill the reqs with random uuid for testing
 		if lh.rqArgs.client == uuid.Nil && lh.rqArgs.resource == uuid.Nil {
 			lh.rqArgs.client = uuid.NewV4()
