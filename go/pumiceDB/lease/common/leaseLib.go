@@ -13,7 +13,7 @@ const (
 	REFRESH             = 3
 	GET_VALIDATE        = 4
 	LOOKUP_VALIDATE     = 5
-	GC		    = 6
+	STALE_REMOVAL	    = 6
 	//Status markers
 	INVALID             = 0
 	INPROGRESS          = 1

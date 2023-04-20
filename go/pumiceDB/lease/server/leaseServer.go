@@ -34,8 +34,8 @@ type LeaseServerReqHandler struct {
 }
 
 //Helper functions
-func checkMajorCorrectness(cT int64, lT int64) {
-	if cT != lT {
+func checkMajorCorrectness(currentTerm int64, leaseTerm int64) {
+	if currentTerm != leaseTerm {
 		log.Fatal("Major(Term) not matching")
 	}
 }
@@ -104,103 +104,131 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
 	return rc
 }
 
-func (lso *LeaseServerObject) prepare(rQ leaseLib.LeaseReq, rP *leaseLib.LeaseRes) int {
-	var cT leaseLib.LeaderTS
-	lso.GetLeaderTimeStamp(&cT)
+func (handler *LeaseServerReqHandler) doRefresh(currentTime leaseLib.LeaderTS) int {
+	vdev_lease_info, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
+        if (isPresent) {
+        	if isPermitted(&vdev_lease_info.LeaseMetaInfo, handler.LeaseReq.Client, currentTime, handler.LeaseReq.Operation) {
+                	if (vdev_lease_info.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED) {
+                        	// If refresh happens on expired lease, convert the refresh
+                                //into raft write.
+                                vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
+                                return 1
+                         } else {
+                                vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
+                                //Refresh the lease
+                                vdev_lease_info.LeaseMetaInfo.TimeStamp = currentTime
+                                vdev_lease_info.LeaseMetaInfo.TTL = ttlDefault
+                                //Copy the encoded result in replyBuffer
+                                copyToResponse(&vdev_lease_info.LeaseMetaInfo, handler.LeaseRes)
+                                //Update lease list
+                                handler.LeaseServerObj.listObj.MoveToBack(vdev_lease_info.ListElement)
+                                return 0
+                         }
+                 }
+        }
+	return -1
+}
 
-	if rQ.Operation == leaseLib.GC {
-		if rQ.InitiatorTerm == cT.LeaderTerm {
-			log.Info("Request for Stale lease processing from same term")
+func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *leaseLib.LeaseRes) int {
+	var ct leaseLib.LeaderTS
+	lso.GetLeaderTimeStamp(&ct)
+	
+
+	switch request.Operation {
+		case leaseLib.STALE_REMOVAL:
+			if request.InitiatorTerm == ct.LeaderTerm {
+                        	log.Info("Request for Stale lease processing from same term")
+                        	return 1
+                	}
+                	log.Info("GC request from previous term encountered")
+                	return -1
+
+		case leaseLib.REFRESH:
+			vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
+                	if (isPresent) {
+                        	if isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client, ct, request.Operation) {
+                                	if (vdev_lease_info.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED) {
+                                        	// If refresh happens on expired lease, convert the refresh
+                                        	//into raft write.
+                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
+                                        	return 1
+                                	} else {
+                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.LeaseState = leaseLib.GRANTED
+                                        	//Refresh the lease
+                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.TimeStamp = ct
+                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.TTL = ttlDefault
+                                        	//Copy the encoded result in replyBuffer
+                                        	copyToResponse(&lso.LeaseMap[request.Resource].LeaseMetaInfo, response)
+                                        	//Update lease list
+                                        	lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
+                                        	return 0
+                                	}
+                        	}
+                	}
+                	return -1
+
+		case leaseLib.GET:
+			vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
+                	if isPresent {
+                        	if !isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client,
+                                	ct, request.Operation) {
+                                	//Dont provide lease
+                                	return -1
+                        	}
+                	}
+                	var li leaseLib.LeaseInfo
+                	//Insert or update into MAP
+                	li.LeaseMetaInfo.Resource = request.Resource
+                	li.LeaseMetaInfo.Client = request.Client
+                	li.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
+                	lso.LeaseMap[request.Resource] = &li
 			return 1
-		}
-		log.Info("GC request from previous term encountered")
-		return -1
-	}
-
-	//Check if its a refresh request
-	if rQ.Operation == leaseLib.REFRESH {
-		vdev_lease_info, isPresent := lso.LeaseMap[rQ.Resource]
-		if (isPresent) {
-			if isPermitted(&vdev_lease_info.LeaseMetaInfo, rQ.Client, cT, rQ.Operation) {
-				if (vdev_lease_info.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED) {
-					// If refresh happens on expired lease, convert the refresh
-					//into raft write.
-					lso.LeaseMap[rQ.Resource].LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
-					return 1
-				} else {
-					lso.LeaseMap[rQ.Resource].LeaseMetaInfo.LeaseState = leaseLib.GRANTED
-					//Refresh the lease
-					lso.LeaseMap[rQ.Resource].LeaseMetaInfo.TimeStamp = cT
-					lso.LeaseMap[rQ.Resource].LeaseMetaInfo.TTL = ttlDefault
-					//Copy the encoded result in replyBuffer
-					copyToResponse(&lso.LeaseMap[rQ.Resource].LeaseMetaInfo, rP)
-					//Update lease list
-					lso.listObj.MoveToBack(lso.LeaseMap[rQ.Resource].ListElement)
-					return 0
-				}
-			}
-		}
-		return -1
-	} else if rQ.Operation == leaseLib.GET {
-		vdev_lease_info, isPresent := lso.LeaseMap[rQ.Resource]
-		if isPresent {
-			if !isPermitted(&vdev_lease_info.LeaseMetaInfo, rQ.Client,
-				cT, rQ.Operation) {
-				//Dont provide lease
-				return -1
-			}
-		}
-		var lI leaseLib.LeaseInfo
-		//Insert or update into MAP
-		lI.LeaseMetaInfo.Resource = rQ.Resource
-		lI.LeaseMetaInfo.Client = rQ.Client
-		lI.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
-		lso.LeaseMap[rQ.Resource] = &lI
-	} else {
-		log.Error("Invalid operation", rQ.Operation)
-		return -1
+		default:
+			log.Error("Invalid operation", request.Operation)
+                	return -1
 	}
 
 	return 1
+
 }
 
 func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
-	var cE error
-	var rS int64
+	var e error
+	var ret int64
 
 	//Decode request
-	rQ, err := Decode(wrPrepArgs.Payload)
+	rq, err := Decode(wrPrepArgs.Payload)
 	if err != nil {
 		log.Error(err)
 		return -1
 	}
 
-	var rO leaseLib.LeaseRes
+	var rs leaseLib.LeaseRes
 	lso.listLock.Lock()
-	rc := lso.prepare(rQ, &rO)
+	rc := lso.prepare(rq, &rs)
 	lso.listLock.Unlock()
 
 	if rc <= 0 {
 		//Dont continue write
-		_, cE = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
-		if cE != nil {
-			log.Error("Failed to Copy result in the buffer: %s", cE)
+		_, e = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
+		if e != nil {
+			log.Error("Failed to Copy result in the buffer: %s", e)
 			return -1
 		}
 		if rc == 0 {
-			rS, cE = lso.Pso.CopyDataToBuffer(rO, wrPrepArgs.ReplyBuf)
-			if cE != nil {
-				log.Error("Failed to Copy result in the buffer: %s", cE)
+			ret, e = lso.Pso.CopyDataToBuffer(rs, wrPrepArgs.ReplyBuf)
+			if e != nil {
+				log.Error("Failed to Copy result in the buffer: %s", e)
 				return -1
 			}
-			return rS
+			return ret
 		}
 		return -1
 	} else {
 		//Continue write
-		_, cE = lso.Pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
-		if cE != nil {
-			log.Error("Failed to Copy result in the buffer: %s", cE)
+		_, e = lso.Pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
+		if e != nil {
+			log.Error("Failed to Copy result in the buffer: %s", e)
 			return -1
 		}
 		return 0
@@ -208,8 +236,10 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 }
 
 func (handler *LeaseServerReqHandler) readLease() int {
+	log.Info("Read Req : ", handler)
 	if handler.LeaseReq.Operation == leaseLib.LOOKUP {
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
+		log.Info("Read Req p : ", isPresent, l)
 		if !isPresent {
 			return -1
 		}
@@ -293,7 +323,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 func (handler *LeaseServerReqHandler) applyLease() int {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
-
+	log.Info("Got apply req : ", handler)
 	handler.LeaseServerObj.listLock.Lock()
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
@@ -302,7 +332,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 		lop.LeaseMetaInfo.Client = handler.LeaseReq.Client
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
-
+	log.Info("Got apply req element : ", handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource])
 	lop.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 	lop.LeaseMetaInfo.TTL = ttlDefault
 	isLeaderFlag := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
@@ -413,7 +443,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	}
 
 	//Handle GC request
-	if applyLeaseReq.Operation == leaseLib.GC {
+	if applyLeaseReq.Operation == leaseLib.STALE_REMOVAL {
 		leaseReq.gcReqHandler()
 		return 0
 	}
@@ -436,6 +466,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 }
 
 func (lso *LeaseServerObject) leaderInit() {
+	log.Info("Leader Init : ", lso.LeaseMap)
 	for _, leaseObj := range lso.LeaseMap {
 		if (leaseObj.LeaseMetaInfo.LeaseState == leaseLib.GRANTED  ||
 			leaseObj.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED_LOCALLY) {
@@ -476,8 +507,8 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 	log.Info("GC routine running")
 	for {
 		<-t.C
-		var cT leaseLib.LeaderTS
-		err := lso.GetLeaderTimeStamp(&cT)
+		var ct leaseLib.LeaderTS
+		err := lso.GetLeaderTimeStamp(&ct)
 		if err != 0 {
 			continue
 		}
@@ -494,13 +525,13 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					obj.LeaseState != leaseLib.EXPIRED_LOCALLY {
 					continue
 				}
-				err = lso.GetLeaderTimeStamp(&cT)
+				err = lso.GetLeaderTimeStamp(&ct)
 				if err != 0 {
 					//Leader change, so stop the routine execution
 					break
 				}
 				lt := obj.TimeStamp.LeaderTime
-				ttl := ttlDefault - int(cT.LeaderTime-lt)
+				ttl := ttlDefault - int(ct.LeaderTime - lt)
 				if ttl <= 0 {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
@@ -516,13 +547,13 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 
 		if len(rUUIDs) > 0 {
 			//Create request
-			var rQ leaseLib.LeaseReq
-			rQ.Operation = leaseLib.GC
-			rQ.Resources = rUUIDs
-			rQ.InitiatorTerm = cT.LeaderTerm
+			var r leaseLib.LeaseReq
+			r.Operation = leaseLib.STALE_REMOVAL
+			r.Resources = rUUIDs
+			r.InitiatorTerm = ct.LeaderTerm
 			//Send Request
 			log.Trace("Send stale lease processing request")
-			err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(rQ)
+			err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
 			if err != nil {
 				log.Error("Failed to send stale lease processing request")
 			}
