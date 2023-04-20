@@ -112,9 +112,7 @@ func (handler *leaseHandler) getCmdParams() {
 		usage()
 		os.Exit(-1)
 	}
-	//var tempReq leaseClientLib.LeaseClientReqHandler
 	handler.rqArgs.client, err = uuid.FromString(strClientUUID)
-	//handler.clientObj.ClientUUID = tempReq.rqArgs.client
 	if err != nil {
 		usage()
 		os.Exit(-1)
@@ -168,33 +166,15 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 /*
 Description : Fill up cliReqArr with N number of client and resource UUIDs
 */
-//TODO Needed changes for removing req handling code
 func (lh *leaseHandler) prepReqs() {
-	/*
-		if lh.cliReqArr[0].LeaseReq.Resource != uuid.Nil {
-			lh.numOfLeases = 1
-			lh.cliReqArr[0].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-			lh.cliReqArr[0].LeaseClientObj = &lh.clientObj
-			lh.cliReqArr[0].LeaseReq.Operation = lh.cliOperation
-		} else {
-			if lh.cliReqArr[0].LeaseReq.Operation == leaseLib.GET ||
-				lh.cliOperation == leaseLib.GET_VALIDATE {
-				for i := 0; i < lh.numOfLeases; i++ {
-					lh.cliReqArr[i].InitLeaseReq(uuid.NewV4().String(), uuid.NewV4().String(), lh.cliOperation)
-					lh.cliReqArr[i].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-					lh.cliReqArr[i].LeaseClientObj = &lh.clientObj
-				}
-			}
-		}
-	*/
 	for i := 0; i < lh.numOfLeases; i++ {
 		var rq leaseClientLib.LeaseClientReqHandler
-		/*
-			lh.cliReqArr[i].InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
-			lh.cliReqArr[i].Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-			lh.cliReqArr[i].LeaseClientObj = &lh.clientObj
-		*/
-		rq.InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
+
+		if lh.cliOperation == leaseLib.GET || lh.cliOperation == leaseLib.GET_VALIDATE {
+			rq.InitLeaseReq(uuid.NewV4().String(), uuid.NewV4().String(), leaseLib.GET)
+		} else {
+			rq.InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
+		}
 		rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
 		rq.LeaseClientObj = &lh.clientObj
 

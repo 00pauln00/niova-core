@@ -127,18 +127,18 @@ func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation
 		log.Error(err)
 		return err
 	}
+	cUUID, err := uuid.FromString(client)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
+	if operation == leaseLib.GET_VALIDATE {
+		lh.LeaseReq.Operation = leaseLib.GET
+	}
 	lh.LeaseReq.Operation = operation
 	lh.LeaseReq.Resource = rUUID
-
-	if operation != leaseLib.LOOKUP {
-		cUUID, err := uuid.FromString(client)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		lh.LeaseReq.Client = cUUID
-	}
+	lh.LeaseReq.Client = cUUID
 
 	return err
 }
