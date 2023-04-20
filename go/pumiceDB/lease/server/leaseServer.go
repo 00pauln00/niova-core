@@ -326,13 +326,8 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	lop.ListElement = &list.Element{}
 	lop.ListElement.Value = lop
 
-	// If the refresh was converted to raft write, lease would be present
-	// on the list already, move it back as lease state changed to GRANTED
-	if handler.LeaseReq.Operation == leaseLib.REFRESH {
-		handler.LeaseServerObj.listObj.MoveToBack(lop.ListElement)
-	} else {
-		handler.LeaseServerObj.listObj.PushBack(lop)
-	}
+	//Any apply requires lease to be pushed back in the list
+	handler.LeaseServerObj.listObj.PushBack(lop)
 
 	handler.LeaseServerObj.listLock.Unlock()
 
@@ -382,7 +377,10 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		lease := handler.LeaseServerObj.LeaseMap[resource]
 		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
 		lease.LeaseMetaInfo.TTL = 0
-		
+	        
+		//Remove from list
+                handler.LeaseServerObj.listObj.Remove(lease.ListElement)
+
 		log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
 		lso.listLock.Unlock()
 
