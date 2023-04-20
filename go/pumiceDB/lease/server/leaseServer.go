@@ -467,14 +467,15 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 func (lso *LeaseServerObject) leaderInit() {
 	log.Info("Leader Init : ", lso.LeaseMap)
-	for _, leaseObj := range lso.LeaseMap {
-		if (leaseObj.LeaseMetaInfo.LeaseState == leaseLib.GRANTED  ||
-			leaseObj.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED_LOCALLY) {
-			rc := lso.GetLeaderTimeStamp(&leaseObj.LeaseMetaInfo.TimeStamp)
+	for _, lo := range lso.LeaseMap {
+		if (lo.LeaseMetaInfo.LeaseState == leaseLib.GRANTED  ||
+			lo.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED_LOCALLY || 
+			lo.LeaseMetaInfo.LeaseState == leaseLib.STALE_INPROGRESS) {
+			rc := lso.GetLeaderTimeStamp(&lo.LeaseMetaInfo.TimeStamp)
 			if rc != 0 {
 				log.Error("Unable to get timestamp (InitLeader)")
 			}
-			leaseObj.LeaseMetaInfo.TTL = ttlDefault
+			lo.LeaseMetaInfo.TTL = ttlDefault
 		}
 	}
 }
