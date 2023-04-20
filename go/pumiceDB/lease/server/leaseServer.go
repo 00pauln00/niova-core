@@ -112,7 +112,7 @@ func (handler *LeaseServerReqHandler) doRefresh(currentTime leaseLib.LeaderTS) i
                         	// If refresh happens on expired lease, convert the refresh
                                 //into raft write.
                                 vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
-                                return 1
+				return 1
                          } else {
                                 vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
                                 //Refresh the lease
@@ -144,28 +144,13 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
                 	return -1
 
 		case leaseLib.REFRESH:
-			vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
-                	if (isPresent) {
-                        	if isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client, ct, request.Operation) {
-                                	if (vdev_lease_info.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED) {
-                                        	// If refresh happens on expired lease, convert the refresh
-                                        	//into raft write.
-                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
-                                        	return 1
-                                	} else {
-                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.LeaseState = leaseLib.GRANTED
-                                        	//Refresh the lease
-                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.TimeStamp = ct
-                                        	lso.LeaseMap[request.Resource].LeaseMetaInfo.TTL = ttlDefault
-                                        	//Copy the encoded result in replyBuffer
-                                        	copyToResponse(&lso.LeaseMap[request.Resource].LeaseMetaInfo, response)
-                                        	//Update lease list
-                                        	lso.listObj.MoveToBack(lso.LeaseMap[request.Resource].ListElement)
-                                        	return 0
-                                	}
-                        	}
-                	}
-                	return -1
+
+			leaseReq := LeaseServerReqHandler{
+                		LeaseServerObj: lso,
+                		LeaseReq:       request,
+                		LeaseRes:       response,
+        		}
+			leaseReq.doRefresh(ct)
 
 		case leaseLib.GET:
 			vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
@@ -397,7 +382,7 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		lease := handler.LeaseServerObj.LeaseMap[resource]
 		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
 		lease.LeaseMetaInfo.TTL = 0
-
+		
 		log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
 		lso.listLock.Unlock()
 
