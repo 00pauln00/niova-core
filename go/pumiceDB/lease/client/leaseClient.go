@@ -5,7 +5,6 @@ import (
 	"common/leaseLib"
 	"encoding/gob"
 	"errors"
-	"fmt"
 
 	serviceDiscovery "common/clientAPI"
 	pmdbClient "niova/go-pumicedb-lib/client"
@@ -160,7 +159,6 @@ func (lh *LeaseClientReqHandler) LeaseOperation() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("XXX - ", lh.ReqBytes)
 
 	// send req
 	switch lh.LeaseReq.Operation {
