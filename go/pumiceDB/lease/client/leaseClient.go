@@ -5,6 +5,7 @@ import (
 	"common/leaseLib"
 	"encoding/gob"
 	"errors"
+	"fmt"
 
 	serviceDiscovery "common/clientAPI"
 	pmdbClient "niova/go-pumicedb-lib/client"
@@ -46,30 +47,30 @@ type LeaseClientReqHandler struct {
 	Err            error
 }
 
-func preparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
+func (lh *LeaseClientReqHandler) preparePumiceReq() error {
 	var err error
 	var pmdbReq PumiceDBCommon.PumiceRequest
 
 	var lrb bytes.Buffer
 	lEnc := gob.NewEncoder(&lrb)
-	err = lEnc.Encode(leaseReq)
+	err = lEnc.Encode(lh.LeaseReq)
 	if err != nil {
-		log.Error(err)
-		return nil
+		return err
 	}
 
 	pmdbReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 	pmdbReq.ReqType = PumiceDBCommon.LEASE_REQ
 	pmdbReq.ReqPayload = lrb.Bytes()
 
-	var prb bytes.Buffer
-	pEnc := gob.NewEncoder(&prb)
+	//TODO find implicit conversion from []byte to Buffer ptr
+	var b bytes.Buffer
+	pEnc := gob.NewEncoder(&b)
 	err = pEnc.Encode(pmdbReq)
 	if err != nil {
-		log.Error(err)
-		return nil
+		return err
 	}
-	return prb.Bytes()
+	lh.ReqBytes = b.Bytes()
+	return err
 }
 
 /*
@@ -155,7 +156,11 @@ func (lh *LeaseClientReqHandler) LeaseOperation() error {
 	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
-	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
+	err = lh.preparePumiceReq()
+	if err != nil {
+		return err
+	}
+	fmt.Println("XXX - ", lh.ReqBytes)
 
 	// send req
 	switch lh.LeaseReq.Operation {
@@ -195,7 +200,10 @@ func (lh *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
-	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
+	err = lh.preparePumiceReq()
+	if err != nil {
+		return err
+	}
 
 	if lh.LeaseReq.Operation != leaseLib.LOOKUP {
 		isWrite = true
