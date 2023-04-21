@@ -102,16 +102,18 @@ func randSeq(n int, r *rand.Rand) []byte {
 	return b
 }
 
-func (co *clientHandler)appendReq(key string, value []byte) {
+func (co *clientHandler)appendReq(kvArr *[]clientReq, key string, value []byte) {
 	creq := clientReq{}
 	creq.Request.Key = key
 	creq.Request.Value = value
 
-	co.clientReqArr = append(co.clientReqArr, creq)
+	*kvArr = append(*kvArr, creq)
 }
 
 // dummy function to mock user filling up multiple req
-func (co *clientHandler)generateVdevRange() {
+func (co *clientHandler)generateVdevRange() []clientReq {
+
+	var kvArr []clientReq
 	r := rand.New(rand.NewSource(int64(co.seed)))
 	var nodeUUID []string
 	var vdevUUID []string
@@ -137,7 +139,7 @@ func (co *clientHandler)generateVdevRange() {
 		}
 
 		nval, _ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
-		co.appendReq(prefix+".NISD-UUIDs", nval)
+		co.appendReq(&kvArr, prefix+".NISD-UUIDs", nval)
 	}
 	//NISD
 	/*
@@ -157,19 +159,19 @@ func (co *clientHandler)generateVdevRange() {
 			randomNodeUUID := uuid.NewV4()
 
 			//Node-UUID
-			co.appendReq(prefix+".Node-UUID", []byte(node))
+			co.appendReq(&kvArr, prefix+".Node-UUID", []byte(node))
 
 			nval,_ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
-			co.appendReq(prefix+".NISD-UUIDs", nval)
+			co.appendReq(&kvArr, prefix+".NISD-UUIDs", nval)
 
 			//Config-Info
-			co.appendReq(prefix + ".Config-Info", randSeq(co.valSize, r))
+			co.appendReq(&kvArr, prefix + ".Config-Info", randSeq(co.valSize, r))
 
 			//VDEV-UUID
 			for j := int64(0); j < int64(noUUID); j++ {
 				randUUID := uuid.NewV4()
 				partNodePrefix := prefix + "." + randUUID.String()
-				co.appendReq(partNodePrefix, randSeq(co.valSize, r))
+				co.appendReq(&kvArr, partNodePrefix, randSeq(co.valSize, r))
 				vdevUUID = append(vdevUUID, randUUID.String())
 			}
 		}
@@ -183,16 +185,17 @@ func (co *clientHandler)generateVdevRange() {
 	*/
 	for i := int64(0); i < int64(len(vdevUUID)); i++ {
 		prefix := "v." + vdevUUID[i]
-		co.appendReq(prefix+".User-Token", randSeq(co.valSize, r))
+		co.appendReq(&kvArr, prefix+".User-Token", randSeq(co.valSize, r))
 
 		noChunck := co.count
 		Cprefix := prefix + ".c"
 		for j := int64(0); j < int64(noChunck); j++ {
 			randUUID := uuid.NewV4()
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
-			co.appendReq(Chunckprefix, randSeq(co.valSize, r))
+			co.appendReq(&kvArr, Chunckprefix, randSeq(co.valSize, r))
 		}
 	}
+	return kvArr
 }
 
 func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
@@ -477,20 +480,24 @@ func (co *clientHandler) rangeRead() ([]byte, error) {
 }
 
 // check and fill request map acc to req count
-func (clientObj *clientHandler) prepWriteReq() {
-	// If key and value has been passed from cmdline
-	if clientObj.requestKey != "" && clientObj.requestValue != "" {
+func (clientObj *clientHandler) prepWriteReq(rArr []clientReq) {
+	clientObj.clientReqArr = rArr
+}
+
+func (clientObj *clientHandler) getKVArray() []clientReq{
+	var rArr []clientReq
+	if clientObj.requestKey == "" && clientObj.requestValue == "" {
+		rArr = clientObj.generateVdevRange()
+	} else {
 		creq := clientReq{}
 		creq.Request.Key = clientObj.requestKey
 		creq.Request.Value = []byte(clientObj.requestValue)
-		clientObj.clientReqArr = append(clientObj.clientReqArr, creq)
-	} else {
-		//Generate key/values from the application itself.
-		clientObj.generateVdevRange()
+		rArr = append(clientObj.clientReqArr, creq)
 	}
+	return rArr
 }
 
-func (clientObj *clientHandler) processReadWriteReq() ([]byte, error) {
+func (clientObj *clientHandler) processReadWriteReq(rArr []clientReq) ([]byte, error) {
 
 	//Wait till proxy is ready
 	err := clientObj.waitServiceInit("PROXY")
@@ -501,14 +508,14 @@ func (clientObj *clientHandler) processReadWriteReq() ([]byte, error) {
 	var data []byte
 	switch clientObj.operation {
 	case "rw":
-		clientObj.prepWriteReq()
+		clientObj.prepWriteReq(rArr)
 		data, err = clientObj.write(true)
 		if err == nil {
 			data, err = clientObj.read()
 		}
 		break
 	case "write":
-		clientObj.prepWriteReq()
+		clientObj.prepWriteReq(rArr)
 		data, err = clientObj.write(false)
 		break
 	case "read":
@@ -786,7 +793,8 @@ func main() {
 	case "write":
 		fallthrough
 	case "read":
-		rdata, err = clientObj.processReadWriteReq()
+		rArr := clientObj.getKVArray()
+		rdata, err = clientObj.processReadWriteReq(rArr)
 		break
 	case "config":
 		rdata, err = clientObj.processConfig()
