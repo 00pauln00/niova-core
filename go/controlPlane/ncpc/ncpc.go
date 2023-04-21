@@ -24,6 +24,7 @@ import (
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	maps "golang.org/x/exp/maps"
 )
 
 type clientReq struct {
@@ -331,7 +332,6 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 
 func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error {
 
-	log.Info("Pre request for and itr: ", co.clientReqArr[itr].Request, itr)
 	var rqb bytes.Buffer
 	err := PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[itr].Request,
 					rncui, &rqb)
@@ -345,7 +345,6 @@ func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error
 		return err
 	}
 
-	log.Info("Received response and store to : ", co.clientReqArr[itr].Response)
 	//Decode the response to get the status of the operation. 
 	res := &co.clientReqArr[itr].Response
 	dec := gob.NewDecoder(bytes.NewBuffer(rsb))
@@ -409,7 +408,6 @@ func (co *clientHandler) rangeRead() {
 	var prefix, key string
 	var op int
 	var err error
-	var rqo requestResponseLib.KVRequest
 	var seqNum uint64
 
 	co.operation = "read"
@@ -422,22 +420,21 @@ func (co *clientHandler) rangeRead() {
 	seqNum = co.seqNum
 	// Keep calling range request till ContinueRead is true
 
-	rqo.Prefix = prefix
-	rqo.Operation = op
-	rqo.Consistent = !co.relaxedConsistency
-	i := 0
+	creq := clientReq{}
+	creq.Request.Prefix = prefix
+	creq.Request.Operation = op
+	creq.Request.Consistent = !co.relaxedConsistency
+	creq.Request.Key = key
+	resultMap := make(map[string][]byte)
 	for {
 		var rqb bytes.Buffer
 		var rsb []byte
 
-		creq := clientReq{}
 		creq.Request.Key = key
 		creq.Request.SeqNum = seqNum
 
-		co.clientReqArr = append(co.clientReqArr, creq) 
-
-		rso := &co.clientReqArr[i].Response
-		err = PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[i].Request, "", &rqb)
+		rso := &creq.Response
+		err = PumiceDBCommon.PrepareAppPumiceRequest(creq.Request, "", &rqb)
 		if err != nil {
 			log.Error("Pumice request creation error : ", err)
 			break
@@ -452,6 +449,8 @@ func (co *clientHandler) rangeRead() {
 		if len(rsb) == 0 {
 			err = errors.New("Key not found")
 			log.Error("Empty response : ", err)
+			rso.Status = -1
+			rso.Key = key
 			break
 		}
 		// decode the responseObj
@@ -462,16 +461,19 @@ func (co *clientHandler) rangeRead() {
 			break
 		}
 
+		// copy result to global result variable
+		maps.Copy(resultMap, rso.ResultMap)
 		//Change sequence number and key for next iteration
 		seqNum = rso.SeqNum
 		key = rso.Key
 		if !rso.ContinueRead {
 			break
 		}
-		i = i + 1
 	}
+	co.clientReqArr = append(co.clientReqArr, creq) 
+	maps.Clear(co.clientReqArr[0].Response.ResultMap)
+	maps.Copy(co.clientReqArr[0].Response.ResultMap, resultMap)
 
-	//Fill the json
 	co.write2Json()
 }
 
@@ -483,7 +485,6 @@ func (clientObj *clientHandler) prepWriteReq() {
 		creq.Request.Key = clientObj.requestKey
 		creq.Request.Value = []byte(clientObj.requestValue)
 		clientObj.clientReqArr = append(clientObj.clientReqArr, creq)
-		log.Info("key value passed by user: ", creq.Request.Key, creq.Request.Value)
 	} else {
 		//Generate key/values from the application itself.
 		clientObj.generateVdevRange()
