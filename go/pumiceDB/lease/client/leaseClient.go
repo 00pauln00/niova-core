@@ -46,30 +46,30 @@ type LeaseClientReqHandler struct {
 	Err            error
 }
 
-func preparePumiceReq(leaseReq leaseLib.LeaseReq) []byte {
+func (lh *LeaseClientReqHandler) preparePumiceReq() error {
 	var err error
 	var pmdbReq PumiceDBCommon.PumiceRequest
 
 	var lrb bytes.Buffer
 	lEnc := gob.NewEncoder(&lrb)
-	err = lEnc.Encode(leaseReq)
+	err = lEnc.Encode(lh.LeaseReq)
 	if err != nil {
-		log.Error(err)
-		return nil
+		return err
 	}
 
 	pmdbReq.Rncui = uuid.NewV4().String() + ":0:0:0:0"
 	pmdbReq.ReqType = PumiceDBCommon.LEASE_REQ
 	pmdbReq.ReqPayload = lrb.Bytes()
 
-	var prb bytes.Buffer
-	pEnc := gob.NewEncoder(&prb)
+	//TODO find implicit conversion from []byte to Buffer ptr
+	var b bytes.Buffer
+	pEnc := gob.NewEncoder(&b)
 	err = pEnc.Encode(pmdbReq)
 	if err != nil {
-		log.Error(err)
-		return nil
+		return err
 	}
-	return prb.Bytes()
+	lh.ReqBytes = b.Bytes()
+	return err
 }
 
 /*
@@ -127,18 +127,18 @@ func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation
 		log.Error(err)
 		return err
 	}
+	cUUID, err := uuid.FromString(client)
+	if err != nil {
+		log.Error(err)
+		return err
+	}
 
+	if operation == leaseLib.GET_VALIDATE {
+		lh.LeaseReq.Operation = leaseLib.GET
+	}
 	lh.LeaseReq.Operation = operation
 	lh.LeaseReq.Resource = rUUID
-
-	if operation != leaseLib.LOOKUP {
-		cUUID, err := uuid.FromString(client)
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		lh.LeaseReq.Client = cUUID
-	}
+	lh.LeaseReq.Client = cUUID
 
 	return err
 }
@@ -155,7 +155,10 @@ func (lh *LeaseClientReqHandler) LeaseOperation() error {
 	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
-	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
+	err = lh.preparePumiceReq()
+	if err != nil {
+		return err
+	}
 
 	// send req
 	switch lh.LeaseReq.Operation {
@@ -195,7 +198,10 @@ func (lh *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 	var b []byte
 
 	// Prepare reqBytes for pumiceReq type
-	lh.ReqBytes = preparePumiceReq(lh.LeaseReq)
+	err = lh.preparePumiceReq()
+	if err != nil {
+		return err
+	}
 
 	if lh.LeaseReq.Operation != leaseLib.LOOKUP {
 		isWrite = true
