@@ -42,7 +42,7 @@ type LeaseClientReqHandler struct {
 	LeaseClientObj *LeaseClient
 	LeaseReq       leaseLib.LeaseReq
 	LeaseRes       leaseLib.LeaseRes
-	ReqBytes       []byte
+	ReqBuff        bytes.Buffer
 	Err            error
 }
 
@@ -61,15 +61,8 @@ func (lh *LeaseClientReqHandler) preparePumiceReq() error {
 	pmdbReq.ReqType = PumiceDBCommon.LEASE_REQ
 	pmdbReq.ReqPayload = lrb.Bytes()
 
-	//TODO find implicit conversion from []byte to Buffer ptr
-	var b bytes.Buffer
-	pEnc := gob.NewEncoder(&b)
-	err = pEnc.Encode(pmdbReq)
-	if err != nil {
-		return err
-	}
-	lh.ReqBytes = b.Bytes()
-	return err
+	pEnc := gob.NewEncoder(&lh.ReqBuff)
+	return pEnc.Encode(pmdbReq)
 }
 
 /*
@@ -161,13 +154,14 @@ func (lh *LeaseClientReqHandler) LeaseOperation() error {
 	}
 
 	// send req
+	rqb := lh.ReqBuff.Bytes()
 	switch lh.LeaseReq.Operation {
 	case leaseLib.GET, leaseLib.GET_VALIDATE:
 		fallthrough
 	case leaseLib.REFRESH:
-		err = lh.LeaseClientObj.write(&lh.ReqBytes, lh.Rncui, &b)
+		err = lh.LeaseClientObj.write(&rqb, lh.Rncui, &b)
 	case leaseLib.LOOKUP, leaseLib.LOOKUP_VALIDATE:
-		err = lh.LeaseClientObj.read(&lh.ReqBytes, "", &b)
+		err = lh.LeaseClientObj.read(&rqb, "", &b)
 	}
 	if err != nil {
 		return err
@@ -207,7 +201,7 @@ func (lh *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 		isWrite = true
 	}
 	// send req
-	b, err = lh.LeaseClientObj.ServiceDiscoveryObj.Request(lh.ReqBytes, lh.Rncui, isWrite)
+	b, err = lh.LeaseClientObj.ServiceDiscoveryObj.Request(lh.ReqBuff.Bytes(), lh.Rncui, isWrite)
 	if err != nil {
 		return err
 	}
