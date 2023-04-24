@@ -147,7 +147,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
 		case leaseLib.STALE_REMOVAL:
 			if request.InitiatorTerm == ct.LeaderTerm {
                         	log.Info("Request for Stale lease processing from same term")
-                        	return 1
+                        	return CONTINUE_WR
                 	}
                 	log.Info("GC request from previous term encountered")
                 	return ERROR
@@ -208,7 +208,7 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
                 	if e != nil {
                         	log.Error("Failed to Copy result in the buffer: %s", e)
                 	}
-			return 0
+			return -1
 
 		case SEND_RESPONSE:
 			_, e = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
