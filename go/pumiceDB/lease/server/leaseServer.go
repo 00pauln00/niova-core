@@ -17,6 +17,14 @@ var ttlDefault = 60
 var gcTimeout = 35
 var LEASE_COLUMN_FAMILY = "NIOVA_LEASE_CF"
 
+
+const (
+	//Go return codes
+	ERROR	    int = -1
+	SEND_RESPONSE	= 0
+	CONTINUE_WR	= 1
+)
+
 type LeaseServerObject struct {
 	LeaseColmFam string
 	LeaseMap     map[uuid.UUID]*leaseLib.LeaseInfo
@@ -112,7 +120,7 @@ func (handler *LeaseServerReqHandler) doRefresh(currentTime leaseLib.LeaderTS) i
                         	// If refresh happens on expired lease, convert the refresh
                                 //into raft write.
                                 vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
-				return 1
+				return CONTINUE_WR
                          } else {
                                 vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
                                 //Refresh the lease
@@ -122,11 +130,12 @@ func (handler *LeaseServerReqHandler) doRefresh(currentTime leaseLib.LeaderTS) i
                                 copyToResponse(&vdev_lease_info.LeaseMetaInfo, handler.LeaseRes)
                                 //Update lease list
                                 handler.LeaseServerObj.listObj.MoveToBack(vdev_lease_info.ListElement)
-                                return 0
+                                //Response from prepare itself
+				return SEND_RESPONSE
                          }
                  }
         }
-	return -1
+	return ERROR
 }
 
 func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *leaseLib.LeaseRes) int {
@@ -141,7 +150,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
                         	return 1
                 	}
                 	log.Info("GC request from previous term encountered")
-                	return -1
+                	return ERROR
 
 		case leaseLib.REFRESH:
 
@@ -150,7 +159,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
                 		LeaseReq:       request,
                 		LeaseRes:       response,
         		}
-			leaseReq.doRefresh(ct)
+			return leaseReq.doRefresh(ct)
 
 		case leaseLib.GET:
 			vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
@@ -158,7 +167,7 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
                         	if !isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client,
                                 	ct, request.Operation) {
                                 	//Dont provide lease
-                                	return -1
+                                	return ERROR
                         	}
                 	}
                 	var li leaseLib.LeaseInfo
@@ -167,13 +176,13 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
                 	li.LeaseMetaInfo.Client = request.Client
                 	li.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
                 	lso.LeaseMap[request.Resource] = &li
-			return 1
+			return CONTINUE_WR
 		default:
 			log.Error("Invalid operation", request.Operation)
-                	return -1
+                	return ERROR
 	}
 
-	return 1
+	return ERROR
 
 }
 
@@ -193,38 +202,43 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 	rc := lso.prepare(rq, &rs)
 	lso.listLock.Unlock()
 
-	if rc <= 0 {
-		//Dont continue write
-		_, e = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
-		if e != nil {
-			log.Error("Failed to Copy result in the buffer: %s", e)
-			return -1
-		}
-		if rc == 0 {
+	switch (rc) {
+		case ERROR:
+			_, e = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
+                	if e != nil {
+                        	log.Error("Failed to Copy result in the buffer: %s", e)
+                	}
+			return 0
+
+		case SEND_RESPONSE:
+			_, e = lso.Pso.CopyDataToBuffer(byte(0), wrPrepArgs.ContinueWr)
+                	if e != nil {
+                        	log.Error("Failed to Copy result in the buffer: %s", e)
+                        	return 0
+                	}
+
 			ret, e = lso.Pso.CopyDataToBuffer(rs, wrPrepArgs.ReplyBuf)
-			if e != nil {
-				log.Error("Failed to Copy result in the buffer: %s", e)
-				return -1
-			}
-			return ret
-		}
-		return -1
-	} else {
-		//Continue write
-		_, e = lso.Pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
-		if e != nil {
-			log.Error("Failed to Copy result in the buffer: %s", e)
-			return -1
-		}
-		return 0
+                        if e != nil {
+                                log.Error("Failed to Copy result in the buffer: %s", e)
+                                return 0
+                        }
+                        return ret
+
+		case CONTINUE_WR:
+			_, e = lso.Pso.CopyDataToBuffer(byte(1), wrPrepArgs.ContinueWr)
+                	if e != nil {
+                        	log.Error("Failed to Copy result in the buffer: %s", e)
+                        	return 0
+                	}
+                	return 0
 	}
+	
+	return 0
 }
 
 func (handler *LeaseServerReqHandler) readLease() int {
-	log.Info("Read Req : ", handler)
 	if handler.LeaseReq.Operation == leaseLib.LOOKUP {
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-		log.Info("Read Req p : ", isPresent, l)
 		if !isPresent {
 			return -1
 		}
@@ -308,7 +322,6 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 func (handler *LeaseServerReqHandler) applyLease() int {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
-	log.Info("Got apply req : ", handler)
 	handler.LeaseServerObj.listLock.Lock()
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
@@ -317,7 +330,6 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 		lop.LeaseMetaInfo.Client = handler.LeaseReq.Client
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
-	log.Info("Got apply req element : ", handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource])
 	lop.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 	lop.LeaseMetaInfo.TTL = ttlDefault
 	isLeaderFlag := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
