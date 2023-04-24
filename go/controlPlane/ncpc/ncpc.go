@@ -24,6 +24,7 @@ import (
 
 	uuid "github.com/satori/go.uuid"
 	log "github.com/sirupsen/logrus"
+	maps "golang.org/x/exp/maps"
 )
 
 type clientReq struct {
@@ -101,16 +102,18 @@ func randSeq(n int, r *rand.Rand) []byte {
 	return b
 }
 
-func (co *clientHandler)appendReq(key string, value []byte) {
+func (co *clientHandler)appendReq(kvArr *[]clientReq, key string, value []byte) {
 	creq := clientReq{}
 	creq.Request.Key = key
 	creq.Request.Value = value
 
-	co.clientReqArr = append(co.clientReqArr, creq)
+	*kvArr = append(*kvArr, creq)
 }
 
 // dummy function to mock user filling up multiple req
-func (co *clientHandler)generateVdevRange() {
+func (co *clientHandler)generateVdevRange() []clientReq {
+
+	var kvArr []clientReq
 	r := rand.New(rand.NewSource(int64(co.seed)))
 	var nodeUUID []string
 	var vdevUUID []string
@@ -136,7 +139,7 @@ func (co *clientHandler)generateVdevRange() {
 		}
 
 		nval, _ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
-		co.appendReq(prefix+".NISD-UUIDs", nval)
+		co.appendReq(&kvArr, prefix+".NISD-UUIDs", nval)
 	}
 	//NISD
 	/*
@@ -156,19 +159,19 @@ func (co *clientHandler)generateVdevRange() {
 			randomNodeUUID := uuid.NewV4()
 
 			//Node-UUID
-			co.appendReq(prefix+".Node-UUID", []byte(node))
+			co.appendReq(&kvArr, prefix+".Node-UUID", []byte(node))
 
 			nval,_ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
-			co.appendReq(prefix+".NISD-UUIDs", nval)
+			co.appendReq(&kvArr, prefix+".NISD-UUIDs", nval)
 
 			//Config-Info
-			co.appendReq(prefix + ".Config-Info", randSeq(co.valSize, r))
+			co.appendReq(&kvArr, prefix + ".Config-Info", randSeq(co.valSize, r))
 
 			//VDEV-UUID
 			for j := int64(0); j < int64(noUUID); j++ {
 				randUUID := uuid.NewV4()
 				partNodePrefix := prefix + "." + randUUID.String()
-				co.appendReq(partNodePrefix, randSeq(co.valSize, r))
+				co.appendReq(&kvArr, partNodePrefix, randSeq(co.valSize, r))
 				vdevUUID = append(vdevUUID, randUUID.String())
 			}
 		}
@@ -182,16 +185,17 @@ func (co *clientHandler)generateVdevRange() {
 	*/
 	for i := int64(0); i < int64(len(vdevUUID)); i++ {
 		prefix := "v." + vdevUUID[i]
-		co.appendReq(prefix+".User-Token", randSeq(co.valSize, r))
+		co.appendReq(&kvArr, prefix+".User-Token", randSeq(co.valSize, r))
 
 		noChunck := co.count
 		Cprefix := prefix + ".c"
 		for j := int64(0); j < int64(noChunck); j++ {
 			randUUID := uuid.NewV4()
 			Chunckprefix := Cprefix + strconv.Itoa(int(j)) + "." + randUUID.String()
-			co.appendReq(Chunckprefix, randSeq(co.valSize, r))
+			co.appendReq(&kvArr, Chunckprefix, randSeq(co.valSize, r))
 		}
 	}
+	return kvArr
 }
 
 func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
@@ -227,27 +231,12 @@ func (handler *clientHandler) getCmdParams() {
 	flag.Parse()
 }
 
-//Write to Json
-func (cli *clientHandler) write2Json() {
-	file, err := json.MarshalIndent(cli.clientReqArr, "", " ")
-	if err != nil {
-		log.Error("Failed to json.MarshalIndent cli.clientReqArr")
-	}
-	err = ioutil.WriteFile(cli.resultFile+".json", file, 0644)
+func (cli *clientHandler) complete(data []byte) error {
+	err := ioutil.WriteFile(cli.resultFile+".json", data, 0644)
 	if err != nil {
 		log.Error("Error in writing output to the file : ", err)
 	}
-}
-
-//Converts map[string][]byte to map[string]string
-func convMapToStr(map1 map[string][]byte) map[string]string {
-	map2 := make(map[string]string)
-
-	for k, v := range map1 {
-		map2[k] = string(v)
-	}
-
-	return map2
+	return err
 }
 
 func prepareOutput(status int, operation string, key string, value interface{}, seqNo uint64) *opData {
@@ -331,7 +320,6 @@ func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 
 func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error {
 
-	log.Info("Pre request for and itr: ", co.clientReqArr[itr].Request, itr)
 	var rqb bytes.Buffer
 	err := PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[itr].Request,
 					rncui, &rqb)
@@ -345,14 +333,13 @@ func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error
 		return err
 	}
 
-	log.Info("Received response and store to : ", co.clientReqArr[itr].Response)
 	//Decode the response to get the status of the operation. 
 	res := &co.clientReqArr[itr].Response
 	dec := gob.NewDecoder(bytes.NewBuffer(rsb))
 	return dec.Decode(res)
 }
 
-func (co *clientHandler) write() error {
+func (co *clientHandler) write(wresult bool) ([]byte, error) {
 
 	co.operation = "write"
 
@@ -382,11 +369,23 @@ func (co *clientHandler) write() error {
 		}(i)
 	}
 	wg.Wait()
-	co.write2Json()
-	return err
+	file, err := json.MarshalIndent(co.clientReqArr, "", " ")
+	if err != nil {
+		log.Error("Failed to json.MarshalIndent cli.clientReqArr")
+	}
+	//If calling function asked to write the result immediately
+	if wresult {
+		err = ioutil.WriteFile(co.resultFile+".json", file, 0644)
+		if err != nil {
+			log.Error("Error in writing output to the file : ", err)
+		}
+		return nil, err
+	}
+	//else return the result byte array
+	return json.MarshalIndent(co.clientReqArr, "", " ")
 }
 
-func (co *clientHandler) read() error {
+func (co *clientHandler) read() ([]byte, error) {
 
 	//read single key passed from cmdline.
 	creq := clientReq{}
@@ -401,15 +400,16 @@ func (co *clientHandler) read() error {
 		return co.prepNSendReq("", false, 0)
 	}()
 
-	co.write2Json()
-	return err
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(co.clientReqArr, "", " ")
 }
 
-func (co *clientHandler) rangeRead() {
+func (co *clientHandler) rangeRead() ([]byte, error) {
 	var prefix, key string
 	var op int
 	var err error
-	var rqo requestResponseLib.KVRequest
 	var seqNum uint64
 
 	co.operation = "read"
@@ -422,22 +422,21 @@ func (co *clientHandler) rangeRead() {
 	seqNum = co.seqNum
 	// Keep calling range request till ContinueRead is true
 
-	rqo.Prefix = prefix
-	rqo.Operation = op
-	rqo.Consistent = !co.relaxedConsistency
-	i := 0
+	creq := clientReq{}
+	creq.Request.Prefix = prefix
+	creq.Request.Operation = op
+	creq.Request.Consistent = !co.relaxedConsistency
+	creq.Request.Key = key
+	resultMap := make(map[string][]byte)
 	for {
 		var rqb bytes.Buffer
 		var rsb []byte
 
-		creq := clientReq{}
 		creq.Request.Key = key
 		creq.Request.SeqNum = seqNum
 
-		co.clientReqArr = append(co.clientReqArr, creq) 
-
-		rso := &co.clientReqArr[i].Response
-		err = PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[i].Request, "", &rqb)
+		rso := &creq.Response
+		err = PumiceDBCommon.PrepareAppPumiceRequest(creq.Request, "", &rqb)
 		if err != nil {
 			log.Error("Pumice request creation error : ", err)
 			break
@@ -452,6 +451,8 @@ func (co *clientHandler) rangeRead() {
 		if len(rsb) == 0 {
 			err = errors.New("Key not found")
 			log.Error("Empty response : ", err)
+			rso.Status = -1
+			rso.Key = key
 			break
 		}
 		// decode the responseObj
@@ -462,72 +463,81 @@ func (co *clientHandler) rangeRead() {
 			break
 		}
 
+		// copy result to global result variable
+		maps.Copy(resultMap, rso.ResultMap)
 		//Change sequence number and key for next iteration
 		seqNum = rso.SeqNum
 		key = rso.Key
 		if !rso.ContinueRead {
 			break
 		}
-		i = i + 1
 	}
+	co.clientReqArr = append(co.clientReqArr, creq) 
+	maps.Clear(co.clientReqArr[0].Response.ResultMap)
+	maps.Copy(co.clientReqArr[0].Response.ResultMap, resultMap)
 
-	//Fill the json
-	co.write2Json()
+	return json.MarshalIndent(co.clientReqArr, "", " ")
 }
 
 // check and fill request map acc to req count
-func (clientObj *clientHandler) prepWriteReq() {
-	// If key and value has been passed from cmdline
-	if clientObj.requestKey != "" && clientObj.requestValue != "" {
+func (clientObj *clientHandler) prepWriteReq(rArr []clientReq) {
+	clientObj.clientReqArr = rArr
+}
+
+func (clientObj *clientHandler) getKVArray() []clientReq{
+	var rArr []clientReq
+	if clientObj.requestKey == "" && clientObj.requestValue == "" {
+		rArr = clientObj.generateVdevRange()
+	} else {
 		creq := clientReq{}
 		creq.Request.Key = clientObj.requestKey
 		creq.Request.Value = []byte(clientObj.requestValue)
-		clientObj.clientReqArr = append(clientObj.clientReqArr, creq)
-		log.Info("key value passed by user: ", creq.Request.Key, creq.Request.Value)
-	} else {
-		//Generate key/values from the application itself.
-		clientObj.generateVdevRange()
+		rArr = append(clientObj.clientReqArr, creq)
 	}
+	return rArr
 }
 
-func (clientObj *clientHandler) processReadWriteReq() {
+func (clientObj *clientHandler) processReadWriteReq(rArr []clientReq) ([]byte, error) {
 
 	//Wait till proxy is ready
-	clientObj.waitServiceInit("PROXY")
+	err := clientObj.waitServiceInit("PROXY")
+	if err != nil {
+		return nil, err
+	}
 
+	var data []byte
 	switch clientObj.operation {
 	case "rw":
-		clientObj.prepWriteReq()
-		clientObj.write()
-		clientObj.read()
+		clientObj.prepWriteReq(rArr)
+		data, err = clientObj.write(true)
+		if err == nil {
+			data, err = clientObj.read()
+		}
 		break
 	case "write":
-		clientObj.prepWriteReq()
-		clientObj.write()
+		clientObj.prepWriteReq(rArr)
+		data, err = clientObj.write(false)
+		break
 	case "read":
 		if !isRangeRequest(clientObj.requestKey) {
-			clientObj.read()
+			data, err = clientObj.read()
 		} else {
-			clientObj.rangeRead()
+			data, err = clientObj.rangeRead()
 		}
+		break
 	default:
 		log.Error("Invalid operation type")
 	}
+	return data, err
 }
 
-func (clientObj *clientHandler) processConfig() {
-	rsb, err := clientObj.clientAPIObj.GetPMDBServerConfig()
-	log.Info("Response : ", string(rsb))
-	if err != nil {
-		log.Error("Unable to get the config data")
-	}
-	_ = ioutil.WriteFile(clientObj.resultFile+".json", rsb, 0644)
+func (clientObj *clientHandler) processConfig() ([]byte, error) {
+	return clientObj.clientAPIObj.GetPMDBServerConfig()
 }
 
-func (clientObj *clientHandler) processMembership() {
+func (clientObj *clientHandler) processMembership() ([]byte, error){
 	toJson := clientObj.clientAPIObj.GetMembership()
-	file, _ := json.MarshalIndent(toJson, "", " ")
-	_ = ioutil.WriteFile(clientObj.resultFile+".json", file, 0644)
+	return json.MarshalIndent(toJson, "", " ")
 }
 
 func (clientObj *clientHandler) processGeneral() {
@@ -596,29 +606,29 @@ func (clientObj *clientHandler) processNisd() {
 	}
 }
 
-func (clientObj *clientHandler) processGossip() {
+func (clientObj *clientHandler) processGossip() ([]byte, error) {
 	fileData, err := clientObj.clientAPIObj.GetPMDBServerConfig()
 	if err != nil {
 		log.Error("Error while getting pmdb server config data : ", err)
-		return
+		return nil, err
 	}
 	f, _ := os.OpenFile(clientObj.resultFile+".json", os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
 	f.WriteString(string(fileData))
 
-	ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+	return fileData, err
 }
 
-func (clientObj *clientHandler) processProxyStat() {
+func (clientObj *clientHandler) processProxyStat() ([]byte, error) {
 	clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 	clientObj.clientAPIObj.UseSpecificServerName = clientObj.requestKey
 	resBytes, err := clientObj.clientAPIObj.Request(nil, "/stat", false)
 	if err != nil {
 		log.Error("Error while sending request to proxy : ", err)
 	}
-	ioutil.WriteFile(clientObj.resultFile+".json", resBytes, 0644)
+	return resBytes, err
 }
 
-func (clientObj *clientHandler) processLookoutInfo() error {
+func (clientObj *clientHandler) processLookoutInfo() ([]byte, error) {
 	clientObj.clientAPIObj.ServerChooseAlgorithm = 2
 	clientObj.clientAPIObj.UseSpecificServerName = clientObj.rncui
 
@@ -628,28 +638,26 @@ func (clientObj *clientHandler) processLookoutInfo() error {
 	err := clientObj.prepareLOInfoRequest(&b)
 	if err != nil {
 		log.Error("Error while preparing lookout request")
-		return err
+		return nil, err
 	}
 
 	r, err = clientObj.clientAPIObj.Request(b.Bytes(), "/v1/", false)
 	if err != nil {
 		log.Error("Error while sending request : ", err)
-		return err
+		return nil, err
 	}
 
-	ioutil.WriteFile(clientObj.resultFile+".json", r, 0644)
-
-	return err
+	return r, err
 }
 
-func (clientObj *clientHandler) waitServiceInit(service string) {
+func (clientObj *clientHandler) waitServiceInit(service string) error {
 	err := clientObj.clientAPIObj.TillReady(service, clientObj.serviceRetry)
 	if err != nil {
 		opStat := prepareOutput(-1, "setup", "", err.Error(), 0)
 		clientObj.writeData2Json(opStat)
 		log.Error(err)
-		os.Exit(1)
 	}
+	return err
 }
 
 func (clientObj *clientHandler) initServiceDisHandler() {
@@ -699,7 +707,7 @@ func (cli *clientHandler) writeData2Json(data interface{}) {
 	}
 }
 
-func (clientObj *clientHandler) performLeaseReq(resource, client string) error {
+func (clientObj *clientHandler) performLeaseReq(resource, client string) ([]byte, error) {
 	clientObj.clientAPIObj.TillReady("PROXY", clientObj.serviceRetry)
 
 	op := getLeaseOperationType(clientObj.operation)
@@ -708,22 +716,22 @@ func (clientObj *clientHandler) performLeaseReq(resource, client string) error {
 	err := clientObj.prepareLeaseHandlers(&lrh)
 	if err != nil {
 		log.Error("Error while preparing lease handlers : ", err)
-		return err
+		return nil, err
 	}
 	err = lrh.InitLeaseReq(client, resource, op)
 	if err != nil {
 		log.Error("error while initializing lease req : ", err)
-		return err
+		return nil, err
 	}
 	err = lrh.LeaseOperationOverHTTP()
 	if err != nil {
 		log.Error("Error sending lease request : ", err)
-		return err
+		return nil, err
 	}
 
-	clientObj.writeData2Json(lrh)
+	data, err := json.MarshalIndent(lrh, "", " ")
 
-	return err
+	return data, err
 }
 
 func isRangeRequest(requestKey string) bool {
@@ -777,49 +785,59 @@ func main() {
 	clientObj.waitServiceInit("")
 
 	var passNext bool
+	var rdata []byte
+
 	switch clientObj.operation {
 	case "rw":
 		fallthrough
 	case "write":
 		fallthrough
 	case "read":
-		clientObj.processReadWriteReq()
-
+		rArr := clientObj.getKVArray()
+		rdata, err = clientObj.processReadWriteReq(rArr)
+		break
 	case "config":
-		clientObj.processConfig()
+		rdata, err = clientObj.processConfig()
+		break
 
 	case "membership":
-		clientObj.processMembership()
+		rdata, err = clientObj.processMembership()
+		break
 
 	case "general":
 		clientObj.processGeneral()
+		rdata = nil
+		break
 
 	case "nisd":
 		clientObj.processNisd()
+		rdata = nil
+		break
 
 	case "Gossip":
 		passNext = true
+		rdata = nil
+		break
 
 	case "NISDGossip":
 		nisdDataMap := clientObj.getNISDInfo()
-		fileData, _ := json.MarshalIndent(nisdDataMap, "", " ")
-		ioutil.WriteFile(clientObj.resultFile+".json", fileData, 0644)
+		rdata, _ = json.MarshalIndent(nisdDataMap, "", " ")
 		if !passNext {
 			break
 		}
 		fallthrough
 
 	case "PMDBGossip":
-		clientObj.processGossip()
+		rdata, err = clientObj.processGossip()
+		break
 
 	case "ProxyStat":
-		clientObj.processProxyStat()
+		rdata, err = clientObj.processProxyStat()
+		break
 
 	case "LookoutInfo":
-		err := clientObj.processLookoutInfo()
-		if err != nil {
-			break
-		}
+		rdata, err = clientObj.processLookoutInfo()
+		break
 
 	//Lease Operations
 	case "GetLease":
@@ -827,9 +845,14 @@ func main() {
 	case "LookupLease":
 		fallthrough
 	case "RefreshLease":
-		err := clientObj.performLeaseReq(clientObj.requestKey, clientObj.requestValue)
+		rdata, err = clientObj.performLeaseReq(clientObj.requestKey, clientObj.requestValue)
+		break
+	}
+
+	if rdata != nil {
+		err = clientObj.complete(rdata)
 		if err != nil {
-			break
+			log.Error("Failed to write the response to the file")
 		}
 	}
 }
