@@ -28,14 +28,14 @@ import (
 )
 
 type clientReq struct {
-	Request requestResponseLib.KVRequest
+	Request  requestResponseLib.KVRequest
 	Response requestResponseLib.KVResponse
 }
 
 type clientHandler struct {
-	requestKey		   string
-	requestValue	   string
-	clientReqArr	   []clientReq
+	requestKey         string
+	requestValue       string
+	clientReqArr       []clientReq
 	raftUUID           string
 	addr               string
 	port               string
@@ -76,11 +76,6 @@ type opData struct {
 	TimeDuration time.Duration `json:"Req_resolved_time"`
 }
 
-type multiWriteStatus struct {
-	Status int
-	Value  interface{}
-}
-
 type nisdData struct {
 	UUID      uuid.UUID `json:"UUID"`
 	Status    string    `json:"Status"`
@@ -102,7 +97,7 @@ func randSeq(n int, r *rand.Rand) []byte {
 	return b
 }
 
-func (co *clientHandler)appendReq(kvArr *[]clientReq, key string, value []byte) {
+func (co *clientHandler) appendReq(kvArr *[]clientReq, key string, value []byte) {
 	creq := clientReq{}
 	creq.Request.Key = key
 	creq.Request.Value = value
@@ -111,7 +106,7 @@ func (co *clientHandler)appendReq(kvArr *[]clientReq, key string, value []byte) 
 }
 
 // dummy function to mock user filling up multiple req
-func (co *clientHandler)generateVdevRange() []clientReq {
+func (co *clientHandler) generateVdevRange() []clientReq {
 
 	var kvArr []clientReq
 	r := rand.New(rand.NewSource(int64(co.seed)))
@@ -161,11 +156,11 @@ func (co *clientHandler)generateVdevRange() []clientReq {
 			//Node-UUID
 			co.appendReq(&kvArr, prefix+".Node-UUID", []byte(node))
 
-			nval,_ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
+			nval, _ := json.Marshal(nodeNisdMap[randomNodeUUID.String()])
 			co.appendReq(&kvArr, prefix+".NISD-UUIDs", nval)
 
 			//Config-Info
-			co.appendReq(&kvArr, prefix + ".Config-Info", randSeq(co.valSize, r))
+			co.appendReq(&kvArr, prefix+".Config-Info", randSeq(co.valSize, r))
 
 			//VDEV-UUID
 			for j := int64(0); j < int64(noUUID); j++ {
@@ -196,17 +191,6 @@ func (co *clientHandler)generateVdevRange() []clientReq {
 		}
 	}
 	return kvArr
-}
-
-func filterKVPrefix(kvMap map[string][]byte, prefix string) map[string][]byte {
-	resultantMap := make(map[string][]byte)
-	for key, value := range kvMap {
-		if strings.HasPrefix(key, prefix) {
-			resultantMap[key] = value
-		}
-	}
-
-	return resultantMap
 }
 
 //Function to get command line parameters
@@ -288,15 +272,6 @@ func (cli *clientHandler) getNISDInfo() map[string]nisdData {
 	return nisdDataMap
 }
 
-func prepareKVRequest(key string, value []byte, rncui string, operation int, retBytes *bytes.Buffer) error {
-	o := requestResponseLib.KVRequest{
-		Operation: operation,
-		Key:       key,
-		Value:     value,
-	}
-	return PumiceDBCommon.PrepareAppPumiceRequest(o, rncui, retBytes)
-}
-
 func (clientObj *clientHandler) prepareLOInfoRequest(b *bytes.Buffer) error {
 	//Request obj
 	var o requestResponseLib.LookoutRequest
@@ -322,7 +297,7 @@ func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error
 
 	var rqb bytes.Buffer
 	err := PumiceDBCommon.PrepareAppPumiceRequest(co.clientReqArr[itr].Request,
-					rncui, &rqb)
+		rncui, &rqb)
 	if err != nil {
 		return err
 	}
@@ -333,7 +308,7 @@ func (co *clientHandler) prepNSendReq(rncui string, isWrite bool, itr int) error
 		return err
 	}
 
-	//Decode the response to get the status of the operation. 
+	//Decode the response to get the status of the operation.
 	res := &co.clientReqArr[itr].Response
 	dec := gob.NewDecoder(bytes.NewBuffer(rsb))
 	return dec.Decode(res)
@@ -472,7 +447,7 @@ func (co *clientHandler) rangeRead() ([]byte, error) {
 			break
 		}
 	}
-	co.clientReqArr = append(co.clientReqArr, creq) 
+	co.clientReqArr = append(co.clientReqArr, creq)
 	maps.Clear(co.clientReqArr[0].Response.ResultMap)
 	maps.Copy(co.clientReqArr[0].Response.ResultMap, resultMap)
 
@@ -484,7 +459,7 @@ func (clientObj *clientHandler) prepWriteReq(rArr []clientReq) {
 	clientObj.clientReqArr = rArr
 }
 
-func (clientObj *clientHandler) getKVArray() []clientReq{
+func (clientObj *clientHandler) getKVArray() []clientReq {
 	var rArr []clientReq
 	if clientObj.requestKey == "" && clientObj.requestValue == "" {
 		rArr = clientObj.generateVdevRange()
@@ -535,7 +510,7 @@ func (clientObj *clientHandler) processConfig() ([]byte, error) {
 	return clientObj.clientAPIObj.GetPMDBServerConfig()
 }
 
-func (clientObj *clientHandler) processMembership() ([]byte, error){
+func (clientObj *clientHandler) processMembership() ([]byte, error) {
 	toJson := clientObj.clientAPIObj.GetMembership()
 	return json.MarshalIndent(toJson, "", " ")
 }

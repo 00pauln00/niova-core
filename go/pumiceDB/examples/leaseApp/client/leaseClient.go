@@ -19,14 +19,6 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-type state int
-
-const (
-	ACQUIRED      state = 0
-	FREE                = 1
-	TRANSITIONING       = 2
-)
-
 var (
 	operationsMap = map[string]int{
 		"GET":             leaseLib.GET,
@@ -124,7 +116,6 @@ func (handler *leaseHandler) getCmdParams() {
 			os.Exit(-1)
 		}
 	}
-	//handler.cliReqArr = append(handler.cliReqArr, tempReq)
 }
 
 /*

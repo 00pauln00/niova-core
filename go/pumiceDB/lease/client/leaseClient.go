@@ -14,23 +14,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type state int
-
-const (
-	ACQUIRED      state = 0
-	FREE                = 1
-	TRANSITIONING       = 2
-)
-
-var (
-	operationsMap = map[string]int{
-		"GET":     leaseLib.GET,
-		"PUT":     leaseLib.PUT,
-		"LOOKUP":  leaseLib.LOOKUP,
-		"REFRESH": leaseLib.REFRESH,
-	}
-)
-
 type LeaseClient struct {
 	RaftUUID            uuid.UUID
 	PmdbClientObj       *pmdbClient.PmdbClientObj
