@@ -669,18 +669,21 @@ func (*PmdbServerObject) GetCurrentHybridTime() float64 {
 }
 
 // Get the leader timestamp.
-func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) int {
+func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) error {
 
 	var ts_c C.struct_raft_leader_ts
+	err := errors.New("Not a leader")
+
 	rc := C.PmdbGetLeaderTimeStamp(&ts_c)
 
 	rc_go := int(rc)
 	if rc_go == 0 {
 		ts.Term = int64(ts_c.rlts_term)
 		ts.Time = int64(ts_c.rlts_time)
+		err = nil
 	}
 
-	return rc_go
+	return err
 }
 
 func PmdbInitRPCMsg(rcm *C.struct_raft_client_rpc_msg, dataSize uint32) {

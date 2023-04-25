@@ -104,7 +104,7 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 	go lso.leaseGarbageCollector()
 }
 
-func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) int {
+func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 	var plts PumiceDBServer.PmdbLeaderTS
 	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
 	ts.LeaderTerm = plts.Term
@@ -319,7 +319,7 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	return int64(rc)
 }
 
-func (handler *LeaseServerReqHandler) applyLease() int {
+func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
 	handler.LeaseServerObj.listLock.Lock()
@@ -330,9 +330,9 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 		lop.LeaseMetaInfo.Client = handler.LeaseReq.Client
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
+	err := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
 	lop.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 	lop.LeaseMetaInfo.TTL = ttlDefault
-	isLeaderFlag := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
 
 	//Insert into list
 	lop.ListElement = &list.Element{}
@@ -340,8 +340,14 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 
 	//Any apply requires lease to be pushed back in the list
 	handler.LeaseServerObj.listObj.PushBack(lop)
-
 	handler.LeaseServerObj.listLock.Unlock()
+
+	return lop, err
+}
+
+func (handler *LeaseServerReqHandler) applyLease() int {
+
+	lop, isleader := handler.initLease()
 
 	copyToResponse(&lop.LeaseMetaInfo, handler.LeaseRes)
 	valueBytes := bytes.Buffer{}
@@ -366,7 +372,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 		lop.LeaseMetaInfo.Status = leaseLib.SUCCESS
 	}
 
-	if isLeaderFlag == 0 {
+	if isleader == nil {
 		copyToResponse(&lop.LeaseMetaInfo, handler.LeaseRes)
 		return 0
 	}
@@ -380,22 +386,28 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	return 1
 }
 
-func (handler *LeaseServerReqHandler) gcReqHandler() {
+func (handler *LeaseServerReqHandler) setLeaseExpired(resource uuid.UUID) {
 	lso := handler.LeaseServerObj
+
+	lso.listLock.Lock()
+	lease := handler.LeaseServerObj.LeaseMap[resource]
+	lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
+	lease.LeaseMetaInfo.TTL = 0
+
+	//Remove from list
+	handler.LeaseServerObj.listObj.Remove(lease.ListElement)
+
+	log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
+	lso.listLock.Unlock()
+
+}
+
+func (handler *LeaseServerReqHandler) gcReqHandler() {
 	for i := 0; i < len(handler.LeaseReq.Resources); i++ {
-		//Take the lock as we are marking lease state as expired.
-		lso.listLock.Lock()
+		//Set lease as expired
 		resource := handler.LeaseReq.Resources[i]
+		handler.setLeaseExpired(resource)
 		lease := handler.LeaseServerObj.LeaseMap[resource]
-		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
-		lease.LeaseMetaInfo.TTL = 0
-	        
-		//Remove from list
-                handler.LeaseServerObj.listObj.Remove(lease.ListElement)
-
-		log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
-		lso.listLock.Unlock()
-
 		//Write to RocksDB
 		valueBytes := bytes.Buffer{}
 		enc := gob.NewEncoder(&valueBytes)
@@ -445,11 +457,15 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 	//Handler GET lease request
 	rc := leaseReq.applyLease()
-	log.Trace("(Apply) Lease request by client : ", applyLeaseReq.Client.String(), " for resource : ", applyLeaseReq.Resource.String())
+	log.Trace("(Apply) Lease request by client : ",
+				applyLeaseReq.Client.String(), " for resource : ",
+				applyLeaseReq.Resource.String())
+
 	//Copy the encoded result in replyBuffer
 	replySizeRc = 0
 	if rc == 0 && applyArgs.ReplyBuf != nil {
-		replySizeRc, copyErr = lso.Pso.CopyDataToBuffer(returnObj, applyArgs.ReplyBuf)
+		replySizeRc, copyErr = lso.Pso.CopyDataToBuffer(returnObj,
+														applyArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1
@@ -461,13 +477,12 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 }
 
 func (lso *LeaseServerObject) leaderInit() {
-	log.Info("Leader Init : ", lso.LeaseMap)
 	for _, lo := range lso.LeaseMap {
 		if (lo.LeaseMetaInfo.LeaseState == leaseLib.GRANTED  ||
 			lo.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED_LOCALLY || 
 			lo.LeaseMetaInfo.LeaseState == leaseLib.STALE_INPROGRESS) {
 			rc := lso.GetLeaderTimeStamp(&lo.LeaseMetaInfo.TimeStamp)
-			if rc != 0 {
+			if rc != nil {
 				log.Error("Unable to get timestamp (InitLeader)")
 			}
 			lo.LeaseMetaInfo.TTL = ttlDefault
@@ -505,7 +520,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		<-t.C
 		var ct leaseLib.LeaderTS
 		err := lso.GetLeaderTimeStamp(&ct)
-		if err != 0 {
+		if err != nil {
 			continue
 		}
 		var rUUIDs []uuid.UUID
@@ -522,7 +537,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					continue
 				}
 				err = lso.GetLeaderTimeStamp(&ct)
-				if err != 0 {
+				if err != nil {
 					//Leader change, so stop the routine execution
 					break
 				}
