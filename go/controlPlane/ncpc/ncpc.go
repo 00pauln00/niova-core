@@ -732,7 +732,6 @@ func main() {
 	flag.Usage = usage
 	if flag.NFlag() == 0 || !isSingleWriteReqValid(&clientObj) {
 		usage()
-		os.Exit(-1)
 	}
 
 	//Create logger
@@ -823,8 +822,10 @@ func main() {
 		rdata, err = clientObj.performLeaseReq(clientObj.requestKey, clientObj.requestValue)
 		break
 	}
-
-	if rdata != nil {
+	if err != nil {
+		log.Error(err)
+		os.Exit(-1)
+	} else if rdata != nil {
 		err = clientObj.complete(rdata)
 		if err != nil {
 			log.Error("Failed to write the response to the file")

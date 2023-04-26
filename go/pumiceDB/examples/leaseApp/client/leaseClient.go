@@ -184,7 +184,7 @@ func (lh *leaseHandler) validateCliReqArr() {
 			break
 		}
 	}
-	lh.writeSingleResponseToJson(mapString)
+	lh.writeValidationToJson(mapString)
 }
 
 /*
@@ -202,12 +202,12 @@ func (lh *leaseHandler) writeResToJson() {
 }
 
 /*
-Description : Write single response/error to json file
+Description : Write validation response/error to json file
 */
-func (lh *leaseHandler) writeSingleResponseToJson(toJson interface{}) {
+func (lh *leaseHandler) writeValidationToJson(toJson interface{}) {
 	var filename string
 	file, err := json.MarshalIndent(toJson, "", " ")
-	filename = lh.jsonFilePath + "_single_response"
+	filename = lh.jsonFilePath + "_summary"
 	err = ioutil.WriteFile(filename+".json", file, 0644)
 	if err != nil {
 		log.Error("Error writing to outfile : ", err)
