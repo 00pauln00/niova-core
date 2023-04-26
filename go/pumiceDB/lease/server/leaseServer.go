@@ -536,18 +536,21 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					//Leader change, so stop the routine execution
 					break
 				}
+
+				//Obtain lock
+				lso.listLock.Lock()
 				lt := obj.TimeStamp.LeaderTime
 				ttl := ttlDefault - int(ct.LeaderTime - lt)
 				if ttl <= 0 {
-					//Obtain lock
-					lso.listLock.Lock()
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
+					lso.listLock.Unlock()
 					log.Trace("Enqueue lease for stale lease processing: ",
 							cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					rUUIDs = append(rUUIDs, obj.Resource)
 					lso.listLock.Unlock()
 				} else {
-					log.Info("No lease for stale lease")
+					lso.listLock.Unlock()
+					log.Info("GC scanning finished")
 					break
 				}
 			}
