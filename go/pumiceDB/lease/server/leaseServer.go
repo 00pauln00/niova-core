@@ -483,6 +483,7 @@ func (lso *LeaseServerObject) leaderInit() {
 				log.Error("Unable to get timestamp (InitLeader)")
 			}
 			lo.LeaseMetaInfo.TTL = ttlDefault
+			lo.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 		}
 	}
 }
