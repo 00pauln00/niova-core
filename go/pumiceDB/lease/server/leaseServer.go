@@ -242,9 +242,6 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		if !isPresent {
 			return -1
 		}
-		l.LeaseMetaInfo.TTL = -1
-		l.LeaseMetaInfo.LeaseState = leaseLib.NULL
-		handler.LeaseServerObj.GetLeaderTimeStamp(&l.LeaseMetaInfo.TimeStamp)
 		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
 
 	} else if handler.LeaseReq.Operation == leaseLib.LOOKUP_VALIDATE {
@@ -265,8 +262,8 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		lso := handler.LeaseServerObj
 		lso.listLock.Lock()
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
-			ttl := l.LeaseMetaInfo.TTL -
-				int(currentTime.LeaderTime-l.LeaseMetaInfo.TimeStamp.LeaderTime)
+			ttl := ttlDefault -
+				int(currentTime.LeaderTime - l.LeaseMetaInfo.TimeStamp.LeaderTime)
 			if ttl < 0 {
 				log.Trace("Lookup validate marking lease as expired locally ",
 						l.LeaseMetaInfo.Resource, l.LeaseMetaInfo.Client)
@@ -524,8 +521,6 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 			continue
 		}
 		var rUUIDs []uuid.UUID
-		//Obtain lock
-		lso.listLock.Lock()
 		//Iterate over list
 		for e := lso.listObj.Front(); e != nil; e = e.Next() {
 			if cobj, ok := e.Value.(*leaseLib.LeaseInfo); ok {
@@ -544,17 +539,20 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				lt := obj.TimeStamp.LeaderTime
 				ttl := ttlDefault - int(ct.LeaderTime - lt)
 				if ttl <= 0 {
+					//Obtain lock
+					lso.listLock.Lock()
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
 							cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					rUUIDs = append(rUUIDs, obj.Resource)
+					lso.listLock.Unlock()
 				} else {
+					log.Info("No lease for stale lease")
 					break
 				}
 			}
 		}
 		//Collect till expired
-		lso.listLock.Unlock()
 
 		if len(rUUIDs) > 0 {
 			//Create request
