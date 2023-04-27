@@ -475,9 +475,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 func (lso *LeaseServerObject) leaderInit() {
 	for _, lo := range lso.LeaseMap {
-		if (lo.LeaseMetaInfo.LeaseState == leaseLib.GRANTED  ||
-			lo.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED_LOCALLY || 
-			lo.LeaseMetaInfo.LeaseState == leaseLib.STALE_INPROGRESS) {
+		if (lo.LeaseMetaInfo.LeaseState != leaseLib.EXPIRED) {
 			rc := lso.GetLeaderTimeStamp(&lo.LeaseMetaInfo.TimeStamp)
 			if rc != nil {
 				log.Error("Unable to get timestamp (InitLeader)")
@@ -522,6 +520,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 			continue
 		}
 		var rUUIDs []uuid.UUID
+		stopScan := false
 		//Iterate over list
 		for e := lso.listObj.Front(); e != nil; e = e.Next() {
 			if cobj, ok := e.Value.(*leaseLib.LeaseInfo); ok {
@@ -544,16 +543,18 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				ttl := ttlDefault - int(ct.LeaderTime - lt)
 				if ttl <= 0 {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
-					lso.listLock.Unlock()
 					log.Trace("Enqueue lease for stale lease processing: ",
 							cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					rUUIDs = append(rUUIDs, obj.Resource)
-					lso.listLock.Unlock()
 				} else {
-					lso.listLock.Unlock()
-					log.Info("GC scanning finished")
-					break
+					log.Trace("GC scanning finished")
+					stopScan = true
 				}
+				lso.listLock.Unlock()
+			}
+			//no more expired leases.
+			if stopScan {
+				break;
 			}
 		}
 		//Collect till expired
