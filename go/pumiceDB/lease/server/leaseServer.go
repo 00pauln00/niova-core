@@ -128,11 +128,14 @@ func (handler *LeaseServerReqHandler) doRefresh(currentTime leaseLib.LeaderTS) i
                                 vdev_lease_info.LeaseMetaInfo.TTL = ttlDefault
                                 //Copy the encoded result in replyBuffer
                                 copyToResponse(&vdev_lease_info.LeaseMetaInfo, handler.LeaseRes)
-                                //Update lease list
+				if (handler.LeaseServerObj.listObj.Back() != nil) {
+					listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), vdev_lease_info)
+				}
+				//Update lease list
                                 handler.LeaseServerObj.listObj.MoveToBack(vdev_lease_info.ListElement)
                                 //Response from prepare itself
 				return SEND_RESPONSE
-                         }
+			}
                  }
         }
 	return ERROR
@@ -316,6 +319,18 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	return int64(rc)
 }
 
+func listOrderSanityCheck(fe *leaseLib.LeaseInfo, se *leaseLib.LeaseInfo) {
+	log.Info("Sanity checks")
+	if ((fe != nil) && (se != nil)) {
+		exp_fe := fe.LeaseMetaInfo.TimeStamp.LeaderTime
+		exp_se := se.LeaseMetaInfo.TimeStamp.LeaderTime
+		log.Info("Time ", exp_fe, exp_se)
+		if (exp_fe > exp_se) {
+			log.Fatal("(Lease server) List ordering issue  detected")
+		}
+	}
+}
+
 func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
@@ -336,6 +351,9 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	lop.ListElement.Value = lop
 
 	//Any apply requires lease to be pushed back in the list
+	if (handler.LeaseServerObj.listObj.Back() != nil) {
+		listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
+	}
 	handler.LeaseServerObj.listObj.PushBack(lop)
 	handler.LeaseServerObj.listLock.Unlock()
 
