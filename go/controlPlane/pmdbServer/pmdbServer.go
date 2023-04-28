@@ -547,6 +547,9 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 			SnapMiss:     snapMiss,
 		}
 		readErr = err
+	} else {
+		log.Error("Invalid operation: ", reqStruct.Operation)
+		return -1
 	}
 
 	log.Trace("Response trace : ", resultResponse)

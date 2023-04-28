@@ -47,6 +47,7 @@ enum lreg_value_types
     LREG_VAL_TYPE_OBJECT,
     LREG_VAL_TYPE_ANON_OBJECT,
     LREG_VAL_TYPE_SIGNED_VAL,
+    LREG_VAL_TYPE_SIGNED32_VAL,
     LREG_VAL_TYPE_STRING,
     LREG_VAL_TYPE_UNSIGNED_VAL,
     LREG_VAL_TYPE_FLOAT_VAL,
@@ -859,6 +860,7 @@ lreg_value_fill_numeric(struct lreg_value *lv, const char *key,
                         const enum lreg_value_types type)
 {
     if (lv && (type == LREG_VAL_TYPE_SIGNED_VAL ||
+               type == LREG_VAL_TYPE_SIGNED32_VAL ||
                type == LREG_VAL_TYPE_UNSIGNED_VAL ||
                type == LREG_VAL_TYPE_FLOAT_VAL ||
                type == LREG_VAL_TYPE_BOOL))
@@ -866,7 +868,8 @@ lreg_value_fill_numeric(struct lreg_value *lv, const char *key,
         lreg_value_fill_key_and_type(lv, key, type);
         switch (type)
         {
-        case LREG_VAL_TYPE_SIGNED_VAL:
+        case LREG_VAL_TYPE_SIGNED_VAL: // fall through
+        case LREG_VAL_TYPE_SIGNED32_VAL:
             LREG_VALUE_TO_OUT_SIGNED_INT(lv) = lvdu.lrvdn_signed_val;
             break;
         case LREG_VAL_TYPE_UNSIGNED_VAL:
@@ -891,6 +894,15 @@ lreg_value_fill_bool(struct lreg_value *lv, const char *key,
     union lreg_value_data_numeric lvdu = {.lrvdn_bool_val = value};
 
     lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_BOOL);
+}
+
+static inline void
+lreg_value_fill_signed32(struct lreg_value *lv, const char *key,
+                         int32_t value)
+{
+    union lreg_value_data_numeric lvdu = {.lrvdn_signed_val = value};
+
+    lreg_value_fill_numeric(lv, key, lvdu, LREG_VAL_TYPE_SIGNED32_VAL);
 }
 
 static inline void
