@@ -135,6 +135,7 @@ func (handler *LeaseServerReqHandler) doRefresh() int {
 				vdev_lease_info.LeaseMetaInfo.TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
 				copyToResponse(&vdev_lease_info.LeaseMetaInfo, handler.LeaseRes)
+				log.Info("Refresh")
 				if handler.LeaseServerObj.listObj.Back() != nil {
 					listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), vdev_lease_info)
 				}
@@ -344,6 +345,7 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
 	err := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
+	log.Info("Timestamp : ", lop.LeaseMetaInfo.TimeStamp)
 	lop.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 	lop.LeaseMetaInfo.TTL = ttlDefault
 
@@ -352,7 +354,8 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	lop.ListElement.Value = lop
 
 	//Any apply requires lease to be pushed back in the list
-	if handler.LeaseServerObj.listObj.Back() != nil {
+	if ((handler.LeaseServerObj.listObj.Back() != nil) && (err == nil)) {
+		log.Info("Init lease", handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
 		listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
 	}
 	handler.LeaseServerObj.listObj.PushBack(lop)
@@ -493,14 +496,16 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 }
 
 func (lso *LeaseServerObject) leaderInit() {
-	for _, lo := range lso.LeaseMap {
-		if lo.LeaseMetaInfo.LeaseState != leaseLib.EXPIRED {
-			rc := lso.GetLeaderTimeStamp(&lo.LeaseMetaInfo.TimeStamp)
-			if rc != nil {
-				log.Error("Unable to get timestamp (InitLeader)")
+	for e := lso.listObj.Front(); e != nil; e = e.Next() {
+                if lo, ok := e.Value.(*leaseLib.LeaseInfo); ok {
+			if lo.LeaseMetaInfo.LeaseState != leaseLib.EXPIRED {
+				rc := lso.GetLeaderTimeStamp(&lo.LeaseMetaInfo.TimeStamp)
+				if rc != nil {
+					log.Error("Unable to get timestamp (InitLeader)")
+				}
+				lo.LeaseMetaInfo.TTL = ttlDefault
+				lo.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 			}
-			lo.LeaseMetaInfo.TTL = ttlDefault
-			lo.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 		}
 	}
 }
@@ -520,9 +525,11 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 		}
 		kuuid, _ := uuid.FromString(key)
 		lso.LeaseMap[kuuid] = &leaseInfo
-		leaseInfo.ListElement = &list.Element{}
-		leaseInfo.ListElement.Value = &leaseInfo
-		lso.listObj.PushBack(&leaseInfo)
+		if (leaseInfo.LeaseMetaInfo.LeaseState != leaseLib.EXPIRED) {
+			leaseInfo.ListElement = &list.Element{}
+			leaseInfo.ListElement.Value = &leaseInfo
+			lso.listObj.PushBack(&leaseInfo)
+		}
 		delete(readResult, key)
 	}
 }
