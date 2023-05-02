@@ -135,7 +135,6 @@ func (handler *LeaseServerReqHandler) doRefresh() int {
 				vdev_lease_info.LeaseMetaInfo.TTL = ttlDefault
 				//Copy the encoded result in replyBuffer
 				copyToResponse(&vdev_lease_info.LeaseMetaInfo, handler.LeaseRes)
-				log.Info("Refresh")
 				if handler.LeaseServerObj.listObj.Back() != nil {
 					listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), vdev_lease_info)
 				}
@@ -156,10 +155,10 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
 	switch request.Operation {
 	case leaseLib.STALE_REMOVAL:
 		if request.InitiatorTerm == ct.LeaderTerm {
-			log.Info("Request for Stale lease processing from same term")
+			log.Trace("Request for Stale lease processing from same term")
 			return CONTINUE_WR
 		}
-		log.Info("GC request from previous term encountered")
+		log.Trace("GC request from previous term encountered")
 		return ERROR
 
 	case leaseLib.REFRESH:
@@ -322,11 +321,10 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 }
 
 func listOrderSanityCheck(fe *leaseLib.LeaseInfo, se *leaseLib.LeaseInfo) {
-	log.Info("Sanity checks")
+ log.Trace("Sanity checks for list order")
 	if (fe != nil) && (se != nil) {
 		exp_fe := fe.LeaseMetaInfo.TimeStamp.LeaderTime
 		exp_se := se.LeaseMetaInfo.TimeStamp.LeaderTime
-		log.Info("Time ", exp_fe, exp_se)
 		if exp_fe > exp_se {
 			log.Fatal("(Lease server) List ordering issue  detected")
 		}
@@ -345,7 +343,6 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
 	}
 	err := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
-	log.Info("Timestamp : ", lop.LeaseMetaInfo.TimeStamp)
 	lop.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 	lop.LeaseMetaInfo.TTL = ttlDefault
 
@@ -355,7 +352,6 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 
 	//Any apply requires lease to be pushed back in the list
 	if ((handler.LeaseServerObj.listObj.Back() != nil) && (err == nil)) {
-		log.Info("Init lease", handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
 		listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
 	}
 	handler.LeaseServerObj.listObj.PushBack(lop)
@@ -394,13 +390,6 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	if isleader == nil {
 		copyToResponse(&lop.LeaseMetaInfo, handler.LeaseRes)
 		return 0
-	}
-
-	//Check if lease is added properly
-	_, isPresent1 := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-
-	if !isPresent1 {
-		log.Info("Just added lease but not present in map!")
 	}
 	return 1
 }
