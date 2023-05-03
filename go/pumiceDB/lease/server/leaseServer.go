@@ -415,11 +415,11 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		resource := handler.LeaseReq.Resources[i]
 		
 		handler.LeaseServerObj.leaseLock.Lock()
-		
+
 		//Update lease in map
 		lease, isPresent := handler.LeaseServerObj.LeaseMap[resource]
-		if !isPresent {
-			log.Error("GCed resource is not present ", resource)
+		if !((isPresent) && (lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS)){
+			log.Error("GCed resource is not present or have modified state", resource, lease.LeaseMetaInfo.LeaseState)
 			handler.LeaseServerObj.leaseLock.Unlock()
 			continue
 		}
