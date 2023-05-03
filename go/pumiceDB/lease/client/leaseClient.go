@@ -111,8 +111,9 @@ func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation
 
 	if operation == leaseLib.GET_VALIDATE {
 		lh.LeaseReq.Operation = leaseLib.GET
+	} else{
+		lh.LeaseReq.Operation = operation
 	}
-	lh.LeaseReq.Operation = operation
 	lh.LeaseReq.Resource = rUUID
 	lh.LeaseReq.Client = cUUID
 
