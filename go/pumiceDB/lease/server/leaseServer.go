@@ -408,39 +408,41 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 	return 1
 }
 
-func (handler *LeaseServerReqHandler) setLeaseExpired(resource uuid.UUID) {
-	lso := handler.LeaseServerObj
-
-	lso.leaseLock.Lock()
-	lease := handler.LeaseServerObj.LeaseMap[resource]
-	lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
-	lease.LeaseMetaInfo.TTL = 0
-
-	//Remove from list
-	handler.LeaseServerObj.listObj.Remove(lease.ListElement)
-
-	log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
-	lso.leaseLock.Unlock()
-
-}
 
 func (handler *LeaseServerReqHandler) gcReqHandler() {
 	for i := 0; i < len(handler.LeaseReq.Resources); i++ {
 		//Set lease as expired
 		resource := handler.LeaseReq.Resources[i]
-		handler.setLeaseExpired(resource)
-		lease := handler.LeaseServerObj.LeaseMap[resource]
+		
+		handler.LeaseServerObj.leaseLock.Lock()
+		
+		//Update lease in map
+		lease, isPresent := handler.LeaseServerObj.LeaseMap[resource]
+		if !isPresent {
+			log.Error("GCed resource is not present ", resource)
+			handler.LeaseServerObj.leaseLock.Unlock()
+			continue
+		}
+
+		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
+        	lease.LeaseMetaInfo.TTL = 0
+
+        	//Remove from list
+        	handler.LeaseServerObj.listObj.Remove(lease.ListElement)
+
 		//Write to RocksDB
 		valueBytes := bytes.Buffer{}
 		enc := gob.NewEncoder(&valueBytes)
 		err := enc.Encode(lease.LeaseMetaInfo)
 		if err != nil {
 			log.Error(err)
-			break
+			handler.LeaseServerObj.leaseLock.Unlock()
+			continue
 		}
+		handler.LeaseServerObj.leaseLock.Unlock()
+		
 		byteToStr := string(valueBytes.Bytes())
 		valLen := len(byteToStr)
-
 		handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler,
 			resource.String(), int64(len(resource.String())), byteToStr, int64(valLen),
 			handler.LeaseServerObj.LeaseColmFam)
