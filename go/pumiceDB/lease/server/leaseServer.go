@@ -118,32 +118,42 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 }
 
 func (handler *LeaseServerReqHandler) doRefresh() int {
-	vdev_lease_info, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-	if isPresent {
-		if handler.LeaseServerObj.isPermitted(&vdev_lease_info.LeaseMetaInfo, handler.LeaseReq.Client, handler.LeaseReq.Operation) {
-			if vdev_lease_info.LeaseMetaInfo.LeaseState == leaseLib.EXPIRED {
-				// If refresh happens on expired lease, convert the refresh
-				//into raft write.
-				vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
-				return CONTINUE_WR
-			} else {
-				vdev_lease_info.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
-				//Refresh the lease
-				var currentTime leaseLib.LeaderTS
-				handler.LeaseServerObj.GetLeaderTimeStamp(&currentTime)
-				vdev_lease_info.LeaseMetaInfo.TimeStamp = currentTime
-				vdev_lease_info.LeaseMetaInfo.TTL = ttlDefault
-				//Copy the encoded result in replyBuffer
-				copyToResponse(&vdev_lease_info.LeaseMetaInfo, handler.LeaseRes)
-				if handler.LeaseServerObj.listObj.Back() != nil {
-					listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), vdev_lease_info)
-				}
-				//Update lease list
-				handler.LeaseServerObj.listObj.MoveToBack(vdev_lease_info.ListElement)
-				//Response from prepare itself
-				return SEND_RESPONSE
-			}
-		}
+	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
+	if !((isPresent) && (handler.LeaseServerObj.isPermitted(&l.LeaseMetaInfo, 
+	handler.LeaseReq.Client, handler.LeaseReq.Operation))){
+		return ERROR
+	}
+
+	switch l.LeaseMetaInfo.LeaseState {
+		case leaseLib.EXPIRED:
+			l.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
+                        return CONTINUE_WR
+
+		case leaseLib.EXPIRED_LOCALLY:
+			fallthrough
+		case leaseLib.GRANTED:
+			l.LeaseMetaInfo.LeaseState = leaseLib.GRANTED                     
+                        
+			//Refresh the lease                            
+                        var currentTime leaseLib.LeaderTS              
+                        handler.LeaseServerObj.GetLeaderTimeStamp(&currentTime)                         
+                        l.LeaseMetaInfo.TimeStamp = currentTime                   
+                        l.LeaseMetaInfo.TTL = ttlDefault 
+                        
+			//Copy the encoded result in replyBuffer       
+                        copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)                
+                        
+			//List order sanity check
+			if handler.LeaseServerObj.listObj.Back() != nil {                               
+                        	listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), l)              
+                        }                                              
+                        
+			//Update lease list
+                        handler.LeaseServerObj.listObj.MoveToBack(l.ListElement)
+                        //Response from prepare itself
+                        return SEND_RESPONSE
+		default:
+			log.Error("Unexpected lease state encountered in refresh : ", l.LeaseMetaInfo.LeaseState)
 	}
 	return ERROR
 }
