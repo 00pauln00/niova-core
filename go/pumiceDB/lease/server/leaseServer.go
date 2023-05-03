@@ -165,6 +165,11 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
 	var ct leaseLib.LeaderTS
 	lso.GetLeaderTimeStamp(&ct)
 
+	//Obtain lock
+	lso.leaseLock.Lock()
+	defer lso.leaseLock.Unlock()
+
+	//Switch
 	switch request.Operation {
 	case leaseLib.STALE_REMOVAL:
 		if request.InitiatorTerm == ct.LeaderTerm {
@@ -219,9 +224,7 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 	}
 
 	var rs leaseLib.LeaseRes
-	lso.leaseLock.Lock()
 	rc := lso.prepare(rq, &rs)
-	lso.leaseLock.Unlock()
 
 	switch rc {
 	case ERROR:
@@ -258,30 +261,26 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 }
 
 func (handler *LeaseServerReqHandler) readLease() int {
-	if handler.LeaseReq.Operation == leaseLib.LOOKUP {
+	lso.leaseLock.Lock()
+	defer lso.leaseLock.Unlock()
+
+	switch handler.LeaseReq.Operation {
+	case leaseLib.LOOKUP:
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 		if !isPresent {
-			return -1
+			return ERROR
 		}
 		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
 
-	} else if handler.LeaseReq.Operation == leaseLib.LOOKUP_VALIDATE {
+	case leaseLib.LOOKUP_VALIDATE:
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-		if !isPresent {
-			return -1
+		if !((isPresent) && (l.LeaseMetaInfo.LeaseState != leaseLib.INPROGRESS)) {
+			return ERROR
 		}
 
-		if l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS {
-			return -1
-		}
-
-		//Take the lock as we are modifying lease parameters here.
 		lso := handler.LeaseServerObj
-		lso.leaseLock.Lock()
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
 			if handler.LeaseServerObj.isExpired(l.LeaseMetaInfo.TimeStamp) {
-				log.Trace("Lookup validate marking lease as expired locally ",
-					l.LeaseMetaInfo.Resource, l.LeaseMetaInfo.Client)
 				l.LeaseMetaInfo.TTL = 0
 				l.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED_LOCALLY
 			} else {
@@ -290,9 +289,10 @@ func (handler *LeaseServerReqHandler) readLease() int {
 				l.LeaseMetaInfo.TTL = int(l.LeaseMetaInfo.TimeStamp.LeaderTime - ct.LeaderTime + int64(l.LeaseMetaInfo.TTL))
 			}
 		}
-		lso.leaseLock.Unlock()
-
 		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
+	
+	default:
+		log.Error("Unkown read lease operation ", handler.LeaseReq.Operation)
 	}
 	return 0
 }
@@ -311,16 +311,17 @@ func (lso *LeaseServerObject) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	var returnObj leaseLib.LeaseRes
 	var replySize int64
 	var copyErr error
-
+	
+	//Prepare request obj
 	leaseReq := LeaseServerReqHandler{
 		LeaseServerObj: lso,
 		LeaseReq:       reqStruct,
 		LeaseRes:       &returnObj,
 	}
-
+	//Read lease
 	rc := leaseReq.readLease()
 
-	if rc == 0 {
+	if (rc == 0) {
 		replySize, copyErr = lso.Pso.CopyDataToBuffer(returnObj, readArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
