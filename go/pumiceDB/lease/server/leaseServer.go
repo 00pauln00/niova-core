@@ -474,30 +474,29 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 	}
 
 	//Handle GC request
-	if applyLeaseReq.Operation == leaseLib.STALE_REMOVAL {
+	switch applyLeaseReq.Operation {
+	case leaseLib.STALE_REMOVAL:
 		leaseReq.gcReqHandler()
 		return 0
-	}
-
-	//Handler GET lease request
-	rc := leaseReq.applyLease()
-	log.Trace("(Apply) Lease request by client : ",
-		applyLeaseReq.Client.String(), " for resource : ",
-		applyLeaseReq.Resource.String())
-
-	//Copy the encoded result in replyBuffer
-	replySizeRc = 0
-	if rc == 0 && applyArgs.ReplyBuf != nil {
-		replySizeRc, copyErr = lso.Pso.CopyDataToBuffer(returnObj,
-			applyArgs.ReplyBuf)
-		if copyErr != nil {
-			log.Error("Failed to Copy result in the buffer: %s", copyErr)
-			return -1
+	case leaseLib.REFRESH:
+		fallthrough
+	case leaseLib.GET:
+		rc := leaseReq.applyLease()
+        	if !((rc == 0) && (applyArgs.ReplyBuf != nil)) {
+                	return int64(rc)
 		}
-	} else {
-		return int64(rc)
+		replySizeRc, copyErr = lso.Pso.CopyDataToBuffer(returnObj,
+                        applyArgs.ReplyBuf)
+                if copyErr != nil {
+                        log.Error("Failed to Copy result in the buffer: %s", copyErr)
+                        return int64(ERROR)
+                }
+		return replySizeRc
+	default:
+		log.Error("Unkown lease operation identified in Apply callback : ", applyLeaseReq.Operation)
 	}
-	return replySizeRc
+
+	return int64(ERROR)
 }
 
 func (lso *LeaseServerObject) leaderInit() {
