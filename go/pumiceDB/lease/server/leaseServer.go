@@ -29,7 +29,7 @@ type LeaseServerObject struct {
 	LeaseMap     map[uuid.UUID]*leaseLib.LeaseInfo
 	Pso          *PumiceDBServer.PmdbServerObject
 	listObj      *list.List
-	listLock     sync.RWMutex
+	leaseLock     sync.RWMutex
 }
 
 type LeaseServerReqHandler struct {
@@ -67,6 +67,7 @@ func (lso *LeaseServerObject) isExpired(ts leaseLib.LeaderTS) bool {
 }
 
 func (lso *LeaseServerObject) isPermitted(entry *leaseLib.LeaseMeta, clientUUID uuid.UUID, operation int) bool {
+	//Check if provided lease operation is permitted for the current lease state
 	if (entry.LeaseState == leaseLib.INPROGRESS) || (entry.LeaseState == leaseLib.STALE_INPROGRESS) {
 		return false
 	}
@@ -118,6 +119,7 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 }
 
 func (handler *LeaseServerReqHandler) doRefresh() int {
+	
 	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !((isPresent) && (handler.LeaseServerObj.isPermitted(&l.LeaseMetaInfo, 
 	handler.LeaseReq.Client, handler.LeaseReq.Operation))){
@@ -131,6 +133,7 @@ func (handler *LeaseServerReqHandler) doRefresh() int {
 
 		case leaseLib.EXPIRED_LOCALLY:
 			fallthrough
+		
 		case leaseLib.GRANTED:
 			l.LeaseMetaInfo.LeaseState = leaseLib.GRANTED                     
                         
@@ -216,9 +219,9 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 	}
 
 	var rs leaseLib.LeaseRes
-	lso.listLock.Lock()
+	lso.leaseLock.Lock()
 	rc := lso.prepare(rq, &rs)
-	lso.listLock.Unlock()
+	lso.leaseLock.Unlock()
 
 	switch rc {
 	case ERROR:
@@ -274,7 +277,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 
 		//Take the lock as we are modifying lease parameters here.
 		lso := handler.LeaseServerObj
-		lso.listLock.Lock()
+		lso.leaseLock.Lock()
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
 			if handler.LeaseServerObj.isExpired(l.LeaseMetaInfo.TimeStamp) {
 				log.Trace("Lookup validate marking lease as expired locally ",
@@ -287,7 +290,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 				l.LeaseMetaInfo.TTL = int(l.LeaseMetaInfo.TimeStamp.LeaderTime - ct.LeaderTime + int64(l.LeaseMetaInfo.TTL))
 			}
 		}
-		lso.listLock.Unlock()
+		lso.leaseLock.Unlock()
 
 		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
 	}
@@ -344,7 +347,7 @@ func listOrderSanityCheck(fe *leaseLib.LeaseInfo, se *leaseLib.LeaseInfo) {
 func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
-	handler.LeaseServerObj.listLock.Lock()
+	handler.LeaseServerObj.leaseLock.Lock()
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
 		lop = &lo
@@ -365,7 +368,7 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 		listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
 	}
 	handler.LeaseServerObj.listObj.PushBack(lop)
-	handler.LeaseServerObj.listLock.Unlock()
+	handler.LeaseServerObj.leaseLock.Unlock()
 
 	return lop, err
 }
@@ -407,7 +410,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 func (handler *LeaseServerReqHandler) setLeaseExpired(resource uuid.UUID) {
 	lso := handler.LeaseServerObj
 
-	lso.listLock.Lock()
+	lso.leaseLock.Lock()
 	lease := handler.LeaseServerObj.LeaseMap[resource]
 	lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
 	lease.LeaseMetaInfo.TTL = 0
@@ -416,7 +419,7 @@ func (handler *LeaseServerReqHandler) setLeaseExpired(resource uuid.UUID) {
 	handler.LeaseServerObj.listObj.Remove(lease.ListElement)
 
 	log.Trace("Marking lease expired: ", lease.LeaseMetaInfo.Resource, lease.LeaseMetaInfo.Client)
-	lso.listLock.Unlock()
+	lso.leaseLock.Unlock()
 
 }
 
@@ -558,7 +561,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				}
 
 				//Obtain lock
-				lso.listLock.Lock()
+				lso.leaseLock.Lock()
 				if lso.isExpired(obj.TimeStamp) {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
@@ -568,7 +571,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					log.Trace("GC scanning finished")
 					stopScan = true
 				}
-				lso.listLock.Unlock()
+				lso.leaseLock.Unlock()
 			}
 			//no more expired leases.
 			if stopScan {
