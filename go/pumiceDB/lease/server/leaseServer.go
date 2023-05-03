@@ -261,8 +261,8 @@ func (lso *LeaseServerObject) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) i
 }
 
 func (handler *LeaseServerReqHandler) readLease() int {
-	lso.leaseLock.Lock()
-	defer lso.leaseLock.Unlock()
+	handler.LeaseServerObj.leaseLock.Lock()
+	defer handler.LeaseServerObj.leaseLock.Unlock()
 
 	switch handler.LeaseReq.Operation {
 	case leaseLib.LOOKUP:
@@ -550,6 +550,9 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		}
 		var rUUIDs []uuid.UUID
 		stopScan := false
+
+		//Obtain lock
+		lso.leaseLock.Lock()
 		//Iterate over list
 		for e := lso.listObj.Front(); e != nil; e = e.Next() {
 			if cobj, ok := e.Value.(*leaseLib.LeaseInfo); ok {
@@ -561,8 +564,6 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					continue
 				}
 
-				//Obtain lock
-				lso.leaseLock.Lock()
 				if lso.isExpired(obj.TimeStamp) {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
@@ -572,15 +573,17 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					log.Trace("GC scanning finished")
 					stopScan = true
 				}
-				lso.leaseLock.Unlock()
 			}
 			//no more expired leases.
 			if stopScan {
 				break
 			}
 		}
-		//Collect till expired
+		//Release lock
+		lso.leaseLock.Unlock()
 
+
+		//Send GC request if only expired lease found
 		if len(rUUIDs) > 0 {
 			//Create request
 			var r leaseLib.LeaseReq
