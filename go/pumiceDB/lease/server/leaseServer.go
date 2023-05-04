@@ -190,12 +190,11 @@ func (lso *LeaseServerObject) prepare(request leaseLib.LeaseReq, response *lease
 
 	case leaseLib.GET:
 		vdev_lease_info, isPresent := lso.LeaseMap[request.Resource]
-		if isPresent {
-			if !lso.isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client, request.Operation) {
-				//Dont provide lease
-				return ERROR
-			}
+		if (isPresent) && (!lso.isPermitted(&vdev_lease_info.LeaseMetaInfo, request.Client, request.Operation)) {
+			//Dont provide lease
+			return ERROR
 		}
+
 		var li leaseLib.LeaseInfo
 		//Insert or update into MAP
 		li.LeaseMetaInfo.Resource = request.Resource
@@ -274,7 +273,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 
 	case leaseLib.LOOKUP_VALIDATE:
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-		if !((isPresent) && (l.LeaseMetaInfo.LeaseState != leaseLib.INPROGRESS)) {
+		if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState != leaseLib.INPROGRESS) {
 			return ERROR
 		}
 
@@ -414,16 +413,18 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		//Set lease as expired
 		resource := handler.LeaseReq.Resources[i]
 		
+		//Obtain lock
 		handler.LeaseServerObj.leaseLock.Lock()
 
 		//Update lease in map
 		lease, isPresent := handler.LeaseServerObj.LeaseMap[resource]
-		if !((isPresent) && (lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS)){
+		if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
 			log.Error("GCed resource is not present or have modified state", resource, lease.LeaseMetaInfo.LeaseState)
 			handler.LeaseServerObj.leaseLock.Unlock()
 			continue
 		}
-
+		
+		//Set lease as expired
 		lease.LeaseMetaInfo.LeaseState = leaseLib.EXPIRED
         	lease.LeaseMetaInfo.TTL = 0
 
@@ -564,7 +565,6 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					obj.LeaseState != leaseLib.EXPIRED_LOCALLY {
 					continue
 				}
-
 				if lso.isExpired(obj.TimeStamp) {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
@@ -582,7 +582,6 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		}
 		//Release lock
 		lso.leaseLock.Unlock()
-
 
 		//Send GC request if only expired lease found
 		if len(rUUIDs) > 0 {
