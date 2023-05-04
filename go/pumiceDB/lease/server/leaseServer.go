@@ -444,9 +444,12 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		
 		byteToStr := string(valueBytes.Bytes())
 		valLen := len(byteToStr)
-		handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler,
+		rc := handler.LeaseServerObj.Pso.WriteKV(handler.UserID, handler.PmdbHandler,
 			resource.String(), int64(len(resource.String())), byteToStr, int64(valLen),
 			handler.LeaseServerObj.LeaseColmFam)
+		if (rc < 0) {
+			log.Error("Expired lease update to RocksDB failed")
+		}
 	}
 }
 
