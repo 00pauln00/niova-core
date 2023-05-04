@@ -273,7 +273,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 
 	case leaseLib.LOOKUP_VALIDATE:
 		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-		if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState != leaseLib.INPROGRESS) {
+		if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
 			return ERROR
 		}
 
