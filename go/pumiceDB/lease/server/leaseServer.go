@@ -121,8 +121,8 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 func (handler *LeaseServerReqHandler) doRefresh() int {
 	
 	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-	if !((isPresent) && (handler.LeaseServerObj.isPermitted(&l.LeaseMetaInfo, 
-	handler.LeaseReq.Client, handler.LeaseReq.Operation))){
+	if (!isPresent) || (isPresent && !handler.LeaseServerObj.isPermitted(&l.LeaseMetaInfo, 
+	handler.LeaseReq.Client, handler.LeaseReq.Operation)) {
 		return ERROR
 	}
 
