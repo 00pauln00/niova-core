@@ -288,7 +288,6 @@ func (handler *LeaseServerReqHandler) readLease() int {
 				l.LeaseMetaInfo.TTL = int(l.LeaseMetaInfo.TimeStamp.LeaderTime - ct.LeaderTime + int64(l.LeaseMetaInfo.TTL))
 			}
 		}
-		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
 
 	default:
 		log.Error("Unkown read lease operation ", handler.LeaseReq.Operation)
