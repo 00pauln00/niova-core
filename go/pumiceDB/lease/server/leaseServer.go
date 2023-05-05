@@ -15,6 +15,7 @@ import (
 
 var ttlDefault = 60
 var gcTimeout = 35
+var MAX_SINGLE_GC_REQ = 100
 var LEASE_COLUMN_FAMILY = "NIOVA_LEASE_CF"
 
 const (
@@ -268,7 +269,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 	defer handler.LeaseServerObj.leaseLock.Unlock()
 
 	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-        if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
+        if (!isPresent) {
         	return ERROR
         }
 
@@ -277,6 +278,10 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		break
 
 	case leaseLib.LOOKUP_VALIDATE:
+		if (l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
+			return ERROR
+		}
+
 		lso := handler.LeaseServerObj
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
 			if handler.LeaseServerObj.isExpired(l.LeaseMetaInfo.TimeStamp) {
@@ -291,7 +296,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 
 	default:
 		log.Error("Unkown read lease operation ", handler.LeaseReq.Operation)
-		return 0
+		return ERROR
 	}
 
 	copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
@@ -591,6 +596,13 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					log.Trace("Enqueue lease for stale lease processing: ",
 						cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					rUUIDs = append(rUUIDs, obj.Resource)
+					
+					if len(rUUIDs) == MAX_SINGLE_GC_REQ {
+						lso.sendGCReq(rUUIDs, ct.LeaderTerm)
+						//Reset the array
+						rUUIDs = nil
+					}
+
 				} else {
 					log.Trace("GC scanning finished")
 					stopScan = true
