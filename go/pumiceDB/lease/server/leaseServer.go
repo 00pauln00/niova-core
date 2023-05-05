@@ -121,12 +121,17 @@ func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 func (handler *LeaseServerReqHandler) doRefresh() int {
 
 	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-	if (!isPresent) || (isPresent && !handler.LeaseServerObj.isPermitted(&l.LeaseMetaInfo,
-		handler.LeaseReq.Client, handler.LeaseReq.Operation)) {
+	if (!isPresent) || (isPresent && (handler.LeaseReq.Client != l.LeaseMetaInfo.Client)) {
 		return ERROR
 	}
 
 	switch l.LeaseMetaInfo.LeaseState {
+	case leaseLib.INPROGRESS:
+		fallthrough
+	
+	case leaseLib.STALE_INPROGRESS:
+		return ERROR
+
 	case leaseLib.EXPIRED:
 		l.LeaseMetaInfo.LeaseState = leaseLib.INPROGRESS
 		return CONTINUE_WR
@@ -135,9 +140,8 @@ func (handler *LeaseServerReqHandler) doRefresh() int {
 		fallthrough
 
 	case leaseLib.GRANTED:
-		l.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
-
 		//Refresh the lease
+		l.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 		var currentTime leaseLib.LeaderTS
 		handler.LeaseServerObj.GetLeaderTimeStamp(&currentTime)
 		l.LeaseMetaInfo.TimeStamp = currentTime
@@ -263,20 +267,16 @@ func (handler *LeaseServerReqHandler) readLease() int {
 	handler.LeaseServerObj.leaseLock.Lock()
 	defer handler.LeaseServerObj.leaseLock.Unlock()
 
+	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
+        if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
+        	return ERROR
+        }
+
 	switch handler.LeaseReq.Operation {
 	case leaseLib.LOOKUP:
-		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-		if !isPresent {
-			return ERROR
-		}
-		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
+		break
 
 	case leaseLib.LOOKUP_VALIDATE:
-		l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-		if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
-			return ERROR
-		}
-
 		lso := handler.LeaseServerObj
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
 			if handler.LeaseServerObj.isExpired(l.LeaseMetaInfo.TimeStamp) {
@@ -292,7 +292,10 @@ func (handler *LeaseServerReqHandler) readLease() int {
 
 	default:
 		log.Error("Unkown read lease operation ", handler.LeaseReq.Operation)
+		return 0
 	}
+
+	copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
 	return 0
 }
 
