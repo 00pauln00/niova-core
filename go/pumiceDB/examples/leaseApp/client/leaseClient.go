@@ -160,14 +160,19 @@ Description : Fill up cliReqArr with N number of client and resource UUIDs
 func (lh *leaseHandler) prepReqs() {
 	for i := 0; i < lh.numOfLeases; i++ {
 		var rq leaseClientLib.LeaseClientReqHandler
-		// get random lease if resource not passed
+		var resource, client uuid.UUID
+		// generate uuids if client and resource is not passed
 		if lh.rqArgs.resource == uuid.Nil {
-			lh.rqArgs.resource = uuid.NewV4()
+			resource = uuid.NewV4()
+			client = uuid.NewV4()
+		} else {
+			resource = lh.rqArgs.resource
+			client = lh.rqArgs.client
 		}
-		rq.InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
+
+		rq.InitLeaseReq(client.String(),resource.String(), lh.cliOperation)
 		rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
 		rq.LeaseClientObj = &lh.clientObj
-
 		lh.cliReqArr = append(lh.cliReqArr, rq)
 	}
 }
