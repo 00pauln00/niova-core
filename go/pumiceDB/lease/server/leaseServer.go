@@ -23,6 +23,11 @@ const (
 	ERROR         int = -1
 	SEND_RESPONSE     = 0
 	CONTINUE_WR       = 1
+
+	//List operations
+	PUSH = 0
+	MOVE_TO_BACK = 1
+	REMOVE = 2
 )
 
 type LeaseServerObject struct {
@@ -100,6 +105,24 @@ func Decode(payload []byte) (leaseLib.LeaseReq, error) {
 	return *r, err
 }
 
+
+func (lso *LeaseServerObject) listOperation(element *leaseLib.LeaseInfo, opcode int, sanityCheck bool) {
+	//Sanity check
+	if ((sanityCheck) && (lso.listObj.Len() > 0)) {
+		listOrderSanityCheck(lso.listObj.Back().Value.(*leaseLib.LeaseInfo), element)
+        }
+	
+	switch opcode { 
+	case PUSH:	
+		lso.listObj.PushBack(element)
+	case MOVE_TO_BACK:
+		lso.listObj.MoveToBack(element.ListElement)
+	case REMOVE:
+		lso.listObj.Remove(element.ListElement)
+	}
+
+}
+
 func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObject) {
 	lso.Pso = pso
 	lso.LeaseMap = make(map[uuid.UUID]*leaseLib.LeaseInfo)
@@ -151,13 +174,8 @@ func (handler *LeaseServerReqHandler) doRefresh() int {
 		//Copy the encoded result in replyBuffer
 		copyToResponse(&l.LeaseMetaInfo, handler.LeaseRes)
 
-		//List order sanity check
-		if handler.LeaseServerObj.listObj.Back() != nil {
-			listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), l)
-		}
-
 		//Update lease list
-		handler.LeaseServerObj.listObj.MoveToBack(l.ListElement)
+		handler.LeaseServerObj.listOperation(l, MOVE_TO_BACK, true)
 		//Response from prepare itself
 		return SEND_RESPONSE
 	default:
@@ -367,10 +385,7 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	lop.ListElement.Value = lop
 
 	//Any apply requires lease to be pushed back in the list
-	if (handler.LeaseServerObj.listObj.Back() != nil) && (err == nil) {
-		listOrderSanityCheck(handler.LeaseServerObj.listObj.Back().Value.(*leaseLib.LeaseInfo), lop)
-	}
-	handler.LeaseServerObj.listObj.PushBack(lop)
+	handler.LeaseServerObj.listOperation(lop, PUSH, err != nil)
 	handler.LeaseServerObj.leaseLock.Unlock()
 
 	return lop, err
@@ -431,7 +446,7 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		lease.LeaseMetaInfo.TTL = 0
 
 		//Remove from list
-		handler.LeaseServerObj.listObj.Remove(lease.ListElement)
+		handler.LeaseServerObj.listOperation(lease, REMOVE, false)
 
 		//Write to RocksDB
 		valueBytes := bytes.Buffer{}
@@ -538,7 +553,7 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 		if leaseInfo.LeaseMetaInfo.LeaseState != leaseLib.EXPIRED {
 			leaseInfo.ListElement = &list.Element{}
 			leaseInfo.ListElement.Value = &leaseInfo
-			lso.listObj.PushBack(&leaseInfo)
+			lso.listOperation(&leaseInfo, PUSH, false)
 		}
 		delete(readResult, key)
 	}
