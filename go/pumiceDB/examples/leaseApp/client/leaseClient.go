@@ -34,6 +34,7 @@ type leaseHandler struct {
 	clientObj    leaseClientLib.LeaseClient
 	cliReqArr    []leaseClientLib.LeaseClientReqHandler
 	rqArgs       reqArgs
+	genUUIDs     bool
 	cliOperation int
 	jsonFilePath string
 	logFilePath  string
@@ -78,7 +79,7 @@ func (handler *leaseHandler) getCmdParams() {
 	var ok bool
 	var err error
 
-	flag.StringVar(&strClientUUID, "u", uuid.NewV4().String(), "ClientUUID - UUID of the requesting client")
+	flag.StringVar(&strClientUUID, "u", "", "ClientUUID - UUID of the requesting client")
 	flag.StringVar(&strResourceUUID, "v", "", "ResourceUUID - UUID of the requested resource")
 	flag.StringVar(&strRaftUUID, "ru", "NULL", "RaftUUID - UUID of the raft cluster")
 	flag.StringVar(&handler.jsonFilePath, "j", "/tmp", "Output file path")
@@ -103,6 +104,11 @@ func (handler *leaseHandler) getCmdParams() {
 	if err != nil {
 		usage()
 		os.Exit(-1)
+	}
+	//set flag to true so we generate new test UUIDs for leases in prepReqs
+	if strClientUUID == "" && strResourceUUID == "" {
+		handler.genUUIDs = true
+		strClientUUID = uuid.NewV4().String()
 	}
 	handler.rqArgs.client, err = uuid.FromString(strClientUUID)
 	if err != nil {
@@ -161,8 +167,9 @@ func (lh *leaseHandler) prepReqs() {
 	for i := 0; i < lh.numOfLeases; i++ {
 		var rq leaseClientLib.LeaseClientReqHandler
 		// get random lease if resource not passed
-		if lh.rqArgs.resource == uuid.Nil {
+		if lh.genUUIDs == true {
 			lh.rqArgs.resource = uuid.NewV4()
+			lh.rqArgs.client = uuid.NewV4()
 		}
 		rq.InitLeaseReq(lh.rqArgs.client.String(), lh.rqArgs.resource.String(), lh.cliOperation)
 		rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
