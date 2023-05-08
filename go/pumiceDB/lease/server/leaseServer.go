@@ -269,7 +269,7 @@ func (handler *LeaseServerReqHandler) readLease() int {
 	defer handler.LeaseServerObj.leaseLock.Unlock()
 
 	l, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
-        if (!isPresent) {
+        if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
         	return ERROR
         }
 
@@ -278,10 +278,6 @@ func (handler *LeaseServerReqHandler) readLease() int {
 		break
 
 	case leaseLib.LOOKUP_VALIDATE:
-		if (l.LeaseMetaInfo.LeaseState == leaseLib.INPROGRESS) {
-			return ERROR
-		}
-
 		lso := handler.LeaseServerObj
 		if l.LeaseMetaInfo.LeaseState == leaseLib.GRANTED {
 			if handler.LeaseServerObj.isExpired(l.LeaseMetaInfo.TimeStamp) {
