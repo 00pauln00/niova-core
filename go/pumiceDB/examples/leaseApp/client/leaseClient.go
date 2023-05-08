@@ -155,26 +155,49 @@ func (handler *leaseHandler) startPMDBClient(client string) error {
 }
 
 /*
+Description : Unmarshal requests from file to ReqArr
+*/
+func (lh *leaseHandler) readJsonToReqArr(path string) error {
+	j, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer j.Close()
+
+	b, err := ioutil.ReadAll(j)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal([]byte(b), &lh.cliReqArr)
+}
+
+/*
 Description : Fill up cliReqArr with N number of client and resource UUIDs
 */
-func (lh *leaseHandler) prepReqs() {
-	for i := 0; i < lh.numOfLeases; i++ {
-		var rq leaseClientLib.LeaseClientReqHandler
-		var resource, client uuid.UUID
-		// generate uuids if client and resource is not passed
-		if lh.rqArgs.resource == uuid.Nil {
-			resource = uuid.NewV4()
-			client = uuid.NewV4()
-		} else {
-			resource = lh.rqArgs.resource
-			client = lh.rqArgs.client
-		}
+func (lh *leaseHandler) prepReqs() error {
+	// if user provides file then read UUIDs from file
+	if lh.readJsonFile != "" {
+		return lh.readJsonToReqArr(lh.readJsonFile)
+	} else {
+		for i := 0; i < lh.numOfLeases; i++ {
+			var rq leaseClientLib.LeaseClientReqHandler
+			var resource, client uuid.UUID
+			// generate uuids if client and resource is not passed
+			if lh.rqArgs.resource == uuid.Nil {
+				resource = uuid.NewV4()
+				client = uuid.NewV4()
+			} else {
+				resource = lh.rqArgs.resource
+				client = lh.rqArgs.client
+			}
 
-		rq.InitLeaseReq(client.String(),resource.String(), lh.cliOperation)
-		rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-		rq.LeaseClientObj = &lh.clientObj
-		lh.cliReqArr = append(lh.cliReqArr, rq)
+			rq.InitLeaseReq(client.String(), resource.String(), lh.cliOperation)
+			rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
+			rq.LeaseClientObj = &lh.clientObj
+			lh.cliReqArr = append(lh.cliReqArr, rq)
+		}
 	}
+	return nil
 }
 
 func (lh *leaseHandler) validateCliReqArr() {
@@ -263,10 +286,13 @@ func main() {
 		os.Exit(-1)
 	}
 
-	lh.prepReqs()
+	err = lh.prepReqs()
+	if err != nil {
+		log.Info("Operation failed - ", err)
+	}
 	err = lh.performLeaseOp()
 	if err != nil {
-		log.Info("Operation failed")
+		log.Info("Operation failed - ", err)
 	}
 	log.Info("-----END OF EXECUTION-----")
 }
