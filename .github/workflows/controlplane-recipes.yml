@@ -83,6 +83,10 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: Create dir for cover data counters, metadata to be placed
+      run: mkdir  /home/runner/work/niovad/niovad/code_cov &&
+           export GOCOVERDIR=/work/niovad/niovad/code_cov
+
     - name:  run recipes for controlplane application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -92,6 +96,10 @@ jobs:
                              'controlplane'
                              '/home/runner/work/go/go/bin'
                              5
+
+    - name: Run go covdata tool to generate code cover report
+      run: cd /home/runner/work/niovad/niovad/code_cov &&
+           go tool covdata percent -i=./
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
