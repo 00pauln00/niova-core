@@ -13,7 +13,6 @@ install_all: compile pmdbserver proxyserver ncpcclient configapp testapp install
 
 install_only: compile pmdbserver proxyserver ncpcclient configapp testapp install
 
-
 compile:
 	echo "Compiling controlPlane"
 
