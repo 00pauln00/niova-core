@@ -137,7 +137,8 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 	var plts PumiceDBServer.PmdbLeaderTS
 	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
-	if (ts != nil) && (rc != nil) {
+	//Fill the timestamp onlt if parameter is not nill and the node is the leader
+	if (ts != nil) && (rc == nil) {
 		ts.LeaderTerm = plts.Term
 		ts.LeaderTime = plts.Time
 	}
