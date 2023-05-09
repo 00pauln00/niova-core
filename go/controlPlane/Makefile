@@ -2,6 +2,7 @@ DIR=/tmp/
 CGO_LDFLAGS=-L/${DIR}/lib/
 CGO_CFLAGS=-I/${DIR}/include/niova/
 LD_LIBRARY_PATH=/${DIR}/niova-core/lib/
+COVERPKGS=common/pmdbServer,../../pumiceDB/server,../../pumiceDB/common,../../serf/agent,../../http/client,../requestResponseLib,../../specificCompressionLib,../../lookout/ctlMonitor,../../pumiceDB/lease/server,../../pumiceDB/lease/common,../../lookout/prometheusHandler
 
 export CGO_LDFLAGS
 export CGO_CFLAGS
@@ -12,17 +13,21 @@ install_all: compile pmdbserver proxyserver ncpcclient configapp testapp install
 
 install_only: compile pmdbserver proxyserver ncpcclient configapp testapp install
 
+
 compile:
 	echo "Compiling controlPlane"
 
 pmdbserver:
-	cd pmdbServer && go mod tidy  && go build pmdbServer.go
+	cd pmdbServer && go mod tidy  && go build -cover -coverpkg=${COVERPKGS}
+
+#pmdbserver:
+#	cd pmdbServer && go mod tidy  && go build -cover pmdbServer.go
 
 proxyserver:
-	cd proxy && go mod tidy  && go build proxy.go
+	cd proxy && go mod tidy  && go build -cover proxy.go
 
 ncpcclient:
-	cd ncpc &&  go mod tidy && go build ncpc.go
+	cd ncpc &&  go mod tidy && go build -cover ncpc.go
 
 configapp:
 	cd configApplication && go mod tidy && go build configApplication.go
