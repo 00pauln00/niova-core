@@ -137,8 +137,10 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
 	var plts PumiceDBServer.PmdbLeaderTS
 	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
-	ts.LeaderTerm = plts.Term
-	ts.LeaderTime = plts.Time
+	if (ts != nil) && (rc != nil) {
+		ts.LeaderTerm = plts.Term
+		ts.LeaderTime = plts.Time
+	}
 	return rc
 }
 
@@ -385,7 +387,8 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	lop.ListElement.Value = lop
 
 	//Any apply requires lease to be pushed back in the list
-	handler.LeaseServerObj.listOperation(lop, PUSH, err != nil)
+	//Do list sanity check only if its a leader
+	handler.LeaseServerObj.listOperation(lop, PUSH, err == nil)
 	handler.LeaseServerObj.leaseLock.Unlock()
 
 	return lop, err
@@ -429,13 +432,14 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 	for i := 0; i < len(handler.LeaseReq.Resources); i++ {
 		//Set lease as expired
 		resource := handler.LeaseReq.Resources[i]
-
+		isLeader := handler.LeaseServerObj.GetLeaderTimeStamp(nil) == nil
+		
 		//Obtain lock
 		handler.LeaseServerObj.leaseLock.Lock()
 
 		//Update lease in map
 		lease, isPresent := handler.LeaseServerObj.LeaseMap[resource]
-		if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
+		if (!isPresent) || (isLeader && isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
 			log.Error("GCed resource is not present or have modified state", resource, lease.LeaseMetaInfo.LeaseState)
 			handler.LeaseServerObj.leaseLock.Unlock()
 			continue
@@ -530,6 +534,8 @@ func (lso *LeaseServerObject) leaderInit() {
 				}
 				lo.LeaseMetaInfo.TTL = ttlDefault
 				lo.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
+			} else {
+				log.Error("Leader marked as EXPIRED and present in the list")
 			}
 		}
 	}
