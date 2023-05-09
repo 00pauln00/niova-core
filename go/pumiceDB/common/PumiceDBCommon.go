@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"runtime/coverage"
 	"strings"
 	"unsafe"
 
@@ -76,6 +77,22 @@ func InitLogger(logPath string) error {
 		log.SetOutput(f)
 	}
 	return err
+}
+
+//emit code coverage data to the path file if it exists
+func EmitCoverData(path string) {
+	if path != "" {
+		go func() {
+			if err := coverage.WriteMetaDir(path); err != nil {
+				log.Error("Error while writing cover meta dir : ", err)
+			}
+			for {
+				if err := coverage.WriteCountersDir(path); err != nil {
+					log.Error("error while writing counter metadata : ", err)
+				}
+			}
+		}()
+	}
 }
 
 //Encode the data passed as interface and return the unsafe.Pointer

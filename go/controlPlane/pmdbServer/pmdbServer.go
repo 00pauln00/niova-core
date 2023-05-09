@@ -53,6 +53,7 @@ type pmdbServerHandler struct {
 	logDir            string
 	logLevel          string
 	gossipClusterFile string
+	coverageOutDir    string
 	servicePortRangeS uint16
 	servicePortRangeE uint16
 	hport             uint16
@@ -74,6 +75,8 @@ func main() {
 		log.Println(pErr)
 		return
 	}
+
+	PumiceDBCommon.EmitCoverData(serverHandler.coverageOutDir)
 
 	switch serverHandler.logLevel {
 	case "Info":
@@ -129,15 +132,15 @@ func main() {
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
-		LeaseEnabled: true,
+		LeaseEnabled:   true,
 	}
 
 	nso.leaseObj = leaseServerLib.LeaseServerObject{}
 	//Initalise leaseObj
 	nso.leaseObj.InitLeaseObject(nso.pso)
-
 	// Separate column families for application requests and lease
 	nso.pso.ColumnFamilies = []string{colmfamily, nso.leaseObj.LeaseColmFam}
+
 	// Start the pmdb server
 	//TODO Check error
 	go nso.pso.Run()
@@ -235,6 +238,7 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
 	flag.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
 	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
+	flag.StringVar(&handler.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
