@@ -9,6 +9,7 @@ APP_TYPE=${6}
 ENABLE_COALESCED_WR=${7}
 GO_PATH=${8}
 ENABLE_SYNC=${9}
+GO_COVER_PATH=${10}
 
 export ANSIBLE_LOOKUP_PLUGINS=$HOLON_LIBS
 export PYTHONPATH=$HOLON_LIBS
@@ -34,7 +35,8 @@ do
    elif [[ ( $# -eq 8 ) && $APP_TYPE == "controlplane" ]]
    then
       NCLIENTS=${8}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD  -e nclients=$NCLIENTS holon.yml
+      GO_COVER_PATH=${10}
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e nclients=$NCLIENTS -e cover=$GO_COVER_PATH holon.yml
    else
       ENABLE_COALESCED_WR=${7}
       ENABLE_SYNC=${8}
