@@ -28,17 +28,17 @@ do
    then
       GO_PATH=${7}
       GO_COVER_PATH=${8}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e cover=$GO_COVER_PATH holon.yml
    elif [ $# -eq 7 ]
    then
       NNISD=${6}
       GO_COVER_PATH=${7}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD -e cover=$GO_COVER_PATH holon.yml
    elif [[ ( $# -eq 9 ) && $APP_TYPE == "controlplane" ]]
    then
       NCLIENTS=${8}
       GO_COVER_PATH=${9}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e nclients=$NCLIENTS holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e nclients=$NCLIENTS -e cover=$GO_COVER_PATH holon.yml
    else
       ENABLE_COALESCED_WR=${7}
       ENABLE_SYNC=${8}
