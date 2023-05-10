@@ -100,6 +100,7 @@ jobs:
 
     - name: Run go covdata tool to generate code cover report
       run: cd /home/runner/work/niovad/niovad/code_cov &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
            go tool covdata percent -i=./
 
     - name: Prepare artifact filename
