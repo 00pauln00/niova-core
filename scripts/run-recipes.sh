@@ -28,23 +28,23 @@ do
    then
       GO_PATH=${7}
       GO_COVER_PATH=${8}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e cover=$GO_COVER_PATH holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e cover='/home/runner/work/niovad/niovad/code_cov' holon.yml
    elif [ $# -eq 6 ]
    then
       NNISD=${6}
       GO_COVER_PATH=${7}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD -e cover=$GO_COVER_PATH holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD -e cover='/home/runner/work/niovad/niovad/code_cov' holon.yml
    elif [[ ( $# -eq 8 ) && $APP_TYPE == "controlplane" ]]
    then
       NCLIENTS=${8}
       GO_COVER_PATH=${9}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e nclients=$NCLIENTS -e cover=$GO_COVER_PATH holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e app_name=$APP_TYPE -e nlookouts=$NLOOKOUT -e nnisds=$NNISD -e nclients=$NCLIENTS -e cover='/home/runner/work/niovad/niovad/code_cov' holon.yml
    else
       ENABLE_COALESCED_WR=${7}
       ENABLE_SYNC=${8}
       GO_PATH=${9}
       GO_COVER_PATH=${10}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC -e cover=$GO_COVER_PATH holon.yml
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC -e cover='/home/runner/work/niovad/niovad/code_cov' holon.yml
    fi
 
    if [ $? -ne 0 ]
