@@ -23,14 +23,16 @@ while IFS= read -r line; do
 done <$RECIPE_FILE
 for recipe in "${recipe_list[@]}"
 do
-   if [ $# -eq 7 ]
+   if [ $# -eq 8 ]
    then
       GO_PATH=${7}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE holon.yml
-   elif [ $# -eq 6 ]
+      GO_COVER_PATH=${8}
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e cover=$GO_COVER_PATH holon.yml
+   elif [ $# -eq 7 ]
    then
       NNISD=${6}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD holon.yml
+      GO_COVER_PATH=${7}
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e nnisds=$NNISD -e cover=$GO_COVER_PATH holon.yml
    elif [[ ( $# -eq 9 ) && $APP_TYPE == "controlplane" ]]
    then
       NCLIENTS=${8}
@@ -40,7 +42,8 @@ do
       ENABLE_COALESCED_WR=${7}
       ENABLE_SYNC=${8}
       GO_PATH=${9}
-      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC holon.yml
+      GO_COVER_PATH=${10}
+      ansible-playbook -e 'srv_port=4000' -e npeers=$NPEERS -e dir_path=$LOG_PATH -e 'client_port=14000' -e recipe=$recipe -e 'backend_type=pumicedb' -e app_name=$APP_TYPE -e coalesced_wr=$ENABLE_COALESCED_WR -e sync=$ENABLE_SYNC -e cover=$GO_COVER_PATH holon.yml
    fi
 
    if [ $? -ne 0 ]

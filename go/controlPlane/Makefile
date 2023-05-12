@@ -19,14 +19,11 @@ compile:
 pmdbserver:
 	cd pmdbServer && go mod tidy  && go build -cover -coverpkg=${COVERPKGS}
 
-#pmdbserver:
-#	cd pmdbServer && go mod tidy  && go build -cover pmdbServer.go
-
 proxyserver:
-	cd proxy && go mod tidy  && go build -cover proxy.go
+	cd proxy && go mod tidy  && go build -cover -coverpkg=${COVERPKGS}
 
 ncpcclient:
-	cd ncpc &&  go mod tidy && go build -cover ncpc.go
+	cd ncpc &&  go mod tidy && go build -cover -coverpkg=${COVERPKGS}
 
 configapp:
 	cd configApplication && go mod tidy && go build configApplication.go

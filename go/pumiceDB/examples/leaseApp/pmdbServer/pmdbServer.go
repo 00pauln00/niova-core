@@ -28,12 +28,13 @@ var ttlDefault = 60
 var colmfamily []string = []string{"PMDBTS_CF"}
 
 type leaseServer struct {
-	raftUUID string
-	peerUUID string
-	logDir   string
-	logLevel string
-	leaseObj leaseServerLib.LeaseServerObject
-	pso      *PumiceDBServer.PmdbServerObject
+	raftUUID       string
+	peerUUID       string
+	logDir         string
+	logLevel       string
+	leaseObj       leaseServerLib.LeaseServerObject
+	pso            *PumiceDBServer.PmdbServerObject
+	coverageOutDir string
 }
 
 func main() {
@@ -42,6 +43,8 @@ func main() {
 		log.Println("Invalid args - ", pErr)
 		return
 	}
+
+	PumiceDBCommon.EmitCoverData(lso.coverageOutDir)
 
 	switch lso.logLevel {
 	case "Info":
@@ -109,6 +112,7 @@ func parseArgs() (*leaseServer, error) {
 	defaultLog := "/" + "tmp" + "/" + lso.peerUUID + ".log"
 	flag.StringVar(&lso.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&lso.logLevel, "ll", "Info", "Log level")
+	flag.StringVar(&lso.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	if lso == nil {
