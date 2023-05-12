@@ -1492,6 +1492,11 @@ int PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts)
     return raft_server_get_leader_ts(ts);
 }
 
+bool PmdbIsLeader(void)
+{
+    return raft_server_is_leader();
+}
+
 /**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'
  *    context only.  This call is used by the application to stage KVs for

@@ -686,6 +686,11 @@ func PmdbGetLeaderTimeStamp(ts *PmdbLeaderTS) error {
 	return err
 }
 
+func PmdbIsLeader() bool {
+	rc := C.PmdbIsLeader()
+	return bool(rc)
+}
+
 func PmdbInitRPCMsg(rcm *C.struct_raft_client_rpc_msg, dataSize uint32) {
 	rcm.rcrm_type = C.RAFT_CLIENT_RPC_MSG_TYPE_WRITE
 	rcm.rcrm_version = 0

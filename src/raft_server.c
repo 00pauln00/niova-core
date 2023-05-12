@@ -6348,6 +6348,13 @@ raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
     return 0;
 }
 
+bool
+raft_server_is_leader(void)
+{
+    struct raft_instance *ri = raft_net_get_instance();
+    return raft_instance_is_leader(ri);
+}
+
 /*
  * Allow the application to enqueue the request directly on the leader.
  * Application prepares the raft_client_rpc_msg structure and enqueues the
