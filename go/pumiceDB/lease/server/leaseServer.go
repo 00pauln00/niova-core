@@ -170,7 +170,11 @@ func (handler *LeaseServerReqHandler) doRefresh() int {
 		//Refresh the lease
 		l.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 		var currentTime leaseLib.LeaderTS
-		handler.LeaseServerObj.GetLeaderTimeStamp(&currentTime)
+		err := handler.LeaseServerObj.GetLeaderTimeStamp(&currentTime)
+		if err != nil {
+			return ERROR
+		}
+		
 		l.LeaseMetaInfo.TimeStamp = currentTime
 		l.LeaseMetaInfo.TTL = ttlDefault
 
