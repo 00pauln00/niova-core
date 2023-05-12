@@ -616,9 +616,14 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					rUUIDs = append(rUUIDs, obj.Resource)
 					
 					if len(rUUIDs) == MAX_SINGLE_GC_REQ {
+						//Release lock
+						lso.leaseLock.Unlock()
+						//Send request
 						lso.sendGCReq(rUUIDs, ct.LeaderTerm)
 						//Reset the array
 						rUUIDs = nil
+						//Obtian lock
+						lso.leaseLock.Lock()
 					}
 
 				} else {
