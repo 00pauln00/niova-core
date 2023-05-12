@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime/coverage"
 	"strings"
+	"time"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -87,6 +88,7 @@ func EmitCoverData(path string) {
 				log.Error("Error while writing cover meta dir : ", err)
 			}
 			for {
+				time.Sleep(10 * time.Second)
 				if err := coverage.WriteCountersDir(path); err != nil {
 					log.Error("error while writing counter metadata : ", err)
 				}
