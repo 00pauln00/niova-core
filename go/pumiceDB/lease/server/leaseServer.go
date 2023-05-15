@@ -572,17 +572,31 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 
 func (lso *LeaseServerObject) sendGCReq(resourceUUIDs []uuid.UUID, leaderTerm int64) {
 	//Send GC request if only expired lease found
-	if len(resourceUUIDs) > 0 {
+	for {
 		//Create request
 		var r leaseLib.LeaseReq
 		r.Operation = leaseLib.STALE_REMOVAL
-		r.Resources = resourceUUIDs
 		r.InitiatorTerm = leaderTerm
+
+		//Cap maximum resource sent in a single request
+		if(len(resourceUUIDs) <= MAX_SINGLE_GC_REQ) {
+                       	r.Resources = resourceUUIDs
+                	resourceUUIDs = nil
+		} else {
+			r.Resources = resourceUUIDs[:MAX_SINGLE_GC_REQ]
+			resourceUUIDs = resourceUUIDs[MAX_SINGLE_GC_REQ:]
+		}
+
 		//Send Request
 		log.Trace("Send stale lease processing request")
 		err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
 		if err != nil {
 			log.Error("Failed to send stale lease processing request")
+		}
+		
+		//Break from loop
+		if(len(resourceUUIDs) == 0) {
+			break
 		}
 	}
 }
@@ -618,18 +632,6 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					log.Trace("Enqueue lease for stale lease processing: ",
 						cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					rUUIDs = append(rUUIDs, obj.Resource)
-					
-					if len(rUUIDs) == MAX_SINGLE_GC_REQ {
-						//Release lock
-						lso.leaseLock.Unlock()
-						//Send request
-						lso.sendGCReq(rUUIDs, ct.LeaderTerm)
-						//Reset the array
-						rUUIDs = nil
-						//Obtian lock
-						lso.leaseLock.Lock()
-					}
-
 				} else {
 					log.Trace("GC scanning finished")
 					stopScan = true
