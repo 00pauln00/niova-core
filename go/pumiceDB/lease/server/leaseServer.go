@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 	"unsafe"
+	"errors"
 )
 
 var ttlDefault = 60
@@ -135,10 +136,12 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 }
 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
+	if ts != nil {
+		return errors.New("Parameter is nil")
+	}
 	var plts PumiceDBServer.PmdbLeaderTS
 	rc := PumiceDBServer.PmdbGetLeaderTimeStamp(&plts)
-	//Fill the timestamp onlt if parameter is not nill and the node is the leader
-	if (ts != nil) && (rc == nil) {
+	if (rc == nil) {
 		ts.LeaderTerm = plts.Term
 		ts.LeaderTime = plts.Time
 	}
@@ -437,7 +440,7 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 	for i := 0; i < len(handler.LeaseReq.Resources); i++ {
 		//Set lease as expired
 		resource := handler.LeaseReq.Resources[i]
-		isLeader := handler.LeaseServerObj.GetLeaderTimeStamp(nil) == nil
+		isLeader := PumiceDBServer.PmdbIsLeader()
 		
 		//Obtain lock
 		handler.LeaseServerObj.leaseLock.Lock()
