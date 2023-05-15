@@ -575,6 +575,7 @@ func (handler *proxyHandler) killSignalHandler() {
 		<-sigs
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
 		_ = ioutil.WriteFile((handler.clientUUID.String())+".json", json_data, 0644)
+		PumiceDBCommon.EmitCoverData(handler.coverageOutDir)
 		log.Info("(Proxy) Received a kill signal")
 		os.Exit(1)
 	}()
@@ -621,8 +622,6 @@ func main() {
 		usage()
 		os.Exit(-1)
 	}
-
-	PumiceDBCommon.EmitCoverData(proxyObj.coverageOutDir)
 
 	//niovaServer.clientUUID = uuid.NewV4().String()
 	//Create log file

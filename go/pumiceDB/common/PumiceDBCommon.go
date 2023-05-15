@@ -9,7 +9,6 @@ import (
 	"os"
 	"runtime/coverage"
 	"strings"
-	"time"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -82,18 +81,14 @@ func InitLogger(logPath string) error {
 
 //emit code coverage data to the path file if it exists
 func EmitCoverData(path string) {
+	log.Info("Writing code coverage data to cover DIR")
 	if path != "" {
-		go func() {
-			if err := coverage.WriteMetaDir(path); err != nil {
-				log.Error("Error while writing cover meta dir : ", err)
-			}
-			for {
-				time.Sleep(10 * time.Second)
-				if err := coverage.WriteCountersDir(path); err != nil {
-					log.Error("error while writing counter metadata : ", err)
-				}
-			}
-		}()
+		if err := coverage.WriteMetaDir(path); err != nil {
+			log.Error("Error while writing cover meta dir : ", err)
+		}
+		if err := coverage.WriteCountersDir(path); err != nil {
+			log.Error("error while writing counter metadata : ", err)
+		}
 	}
 }
 
