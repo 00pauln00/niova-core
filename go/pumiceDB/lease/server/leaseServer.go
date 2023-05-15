@@ -136,7 +136,7 @@ func (lso *LeaseServerObject) InitLeaseObject(pso *PumiceDBServer.PmdbServerObje
 }
 
 func (lso *LeaseServerObject) GetLeaderTimeStamp(ts *leaseLib.LeaderTS) error {
-	if ts != nil {
+	if ts == nil {
 		return errors.New("Parameter is nil")
 	}
 	var plts PumiceDBServer.PmdbLeaderTS
