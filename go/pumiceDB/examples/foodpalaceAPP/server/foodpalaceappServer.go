@@ -3,12 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
-	"foodpalaceapp.com/foodpalaceapplib"
-	log "github.com/sirupsen/logrus"
-	"niova/go-pumicedb-lib/server"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
+	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"strconv"
 	"strings"
+
+	"foodpalaceapp.com/foodpalaceapplib"
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -30,6 +32,7 @@ type FoodpalaceServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
+	coverageOutDir string
 }
 
 //Method to initizalize logger.
@@ -98,8 +101,8 @@ func (fpso *FoodpalaceServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 	//Write key,values.
 	rc := fpso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler, fpAppKey,
-			int64(appKeyLen), fpAppValue,
-			int64(appValLen), colmfamily)
+		int64(appKeyLen), fpAppValue,
+		int64(appValLen), colmfamily)
 
 	return int64(rc)
 }
@@ -163,6 +166,7 @@ func foodPalaceServerNew() *FoodpalaceServer {
 	flag.StringVar(&fpso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&fpso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "./", "log directory path")
+	flag.StringVar(&fpso.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	log.Info("Raft UUID: ", fpso.raftUuid)
@@ -214,6 +218,7 @@ func main() {
 		PmdbAPI:        fpso,
 	}
 
+	go PumiceDBCommon.EmitCoverDataNKill(fpso.coverageOutDir)
 	//Start the pmdb server.
 	err := fpso.pso.Run()
 

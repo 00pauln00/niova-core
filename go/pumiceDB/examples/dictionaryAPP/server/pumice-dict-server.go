@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"niova/go-pumicedb-lib/common"
 	"niova/go-pumicedb-lib/server"
 	"strconv"
 	"strings"
@@ -29,6 +30,7 @@ type DictionaryServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
+	coverageOutDir string
 }
 
 func main() {
@@ -51,6 +53,7 @@ func main() {
 	//Create empty word map
 	word_map = make(map[string]int)
 
+	go PumiceDBCommon.EmitCoverDataNKill(dso.coverageOutDir)
 	// Start the pmdb server
 	err := dso.pso.Run()
 
@@ -64,6 +67,7 @@ func dictionaryServerNew() *DictionaryServer {
 
 	flag.StringVar(&dso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&dso.peerUuid, "u", "NULL", "peer uuid")
+	flag.StringVar(&dso.coverageOutDir, "cov", "", "Path to write code coverage data")
 
 	flag.Parse()
 	fmt.Println("Raft UUID: ", dso.raftUuid)

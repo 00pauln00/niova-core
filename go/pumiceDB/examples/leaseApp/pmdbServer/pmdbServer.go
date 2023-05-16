@@ -44,8 +44,6 @@ func main() {
 		return
 	}
 
-	PumiceDBCommon.EmitCoverData(lso.coverageOutDir)
-
 	switch lso.logLevel {
 	case "Info":
 		log.SetLevel(log.InfoLevel)
@@ -86,6 +84,7 @@ func main() {
 
 	// For lease application use lease column family
 	lso.pso.ColumnFamilies = []string{lso.leaseObj.LeaseColmFam}
+	go PumiceDBCommon.EmitCoverDataNKill()
 	// Start the pmdb server
 	err = lso.pso.Run()
 	if err != nil {

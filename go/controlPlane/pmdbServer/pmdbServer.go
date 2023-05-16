@@ -23,11 +23,9 @@ import (
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
-	"os/signal"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	uuid "github.com/satori/go.uuid"
@@ -143,22 +141,11 @@ func main() {
 
 	// Start the pmdb server
 	//TODO Check error
-	go serverHandler.killSignalHandler()
+	go PumiceDBCommon.EmitCoverDataNKill(nso.coverageOutDir)
 	go nso.pso.Run()
 
 	serverHandler.checkPMDBLiveness()
 	serverHandler.exportTags()
-}
-
-func (handler *pmdbServerHandler) killSignalHandler() {
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGTERM)
-	go func() {
-		<-sigs
-		log.Info("(PMDB Server) Received a kill signal")
-		PumiceDBCommon.EmitCoverData(handler.coverageOutDir)
-		os.Exit(1)
-	}()
 }
 
 func (handler *pmdbServerHandler) checkPMDBLiveness() {

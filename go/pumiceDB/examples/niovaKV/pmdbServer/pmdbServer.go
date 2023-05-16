@@ -4,10 +4,11 @@ import (
 	"common/requestResponseLib"
 	"errors"
 	"flag"
-	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -22,10 +23,11 @@ var seqno = 0
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct {
-	raftUUID string
-	peerUUID string
-	logDir   string
-	logLevel string
+	raftUUID       string
+	peerUUID       string
+	logDir         string
+	logLevel       string
+	coverageOutDir string
 }
 
 func main() {
@@ -70,6 +72,7 @@ func main() {
 		ColumnFamilies: []string{colmfamily},
 	}
 
+	go PumiceDBCommon.EmitCoverDataNKill(nso.coverageOutDir)
 	// Start the pmdb server
 	err = nso.pso.Run()
 
@@ -96,11 +99,13 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	defaultLog := "/" + "tmp" + "/" + handler.peerUUID + ".log"
 	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
+	flag.StringVar(&handler.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	nso := &NiovaKVServer{}
 	nso.raftUuid = handler.raftUUID
 	nso.peerUuid = handler.peerUUID
+	nso.coverageOutDir = handler.coverageOutDir
 
 	if nso == nil {
 		err = errors.New("Not able to parse the arguments")
@@ -116,6 +121,7 @@ type NiovaKVServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
+	coverageOutDir string
 }
 
 func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {
@@ -195,7 +201,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq,
-													readArgs.ReplyBuf)
+			readArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1

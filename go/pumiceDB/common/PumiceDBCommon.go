@@ -7,8 +7,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/signal"
 	"runtime/coverage"
 	"strings"
+	"syscall"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -90,6 +92,18 @@ func EmitCoverData(path string) {
 			log.Error("error while writing counter metadata : ", err)
 		}
 	}
+}
+
+// catch SIGTERM, emit cover data to path, exit
+func EmitCoverDataNKill(path string) {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		log.Info("Received a kill signal")
+		EmitCoverData(path)
+		os.Exit(1)
+	}()
 }
 
 //Encode the data passed as interface and return the unsafe.Pointer

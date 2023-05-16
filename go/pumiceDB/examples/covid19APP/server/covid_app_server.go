@@ -7,9 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"covidapplib/lib"
+	CovidAppLib "covidapplib/lib"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
+	PumiceDBServer "niova/go-pumicedb-lib/server"
+
 	log "github.com/sirupsen/logrus"
-	"niova/go-pumicedb-lib/server"
 )
 
 /*
@@ -61,6 +63,7 @@ func main() {
 	}
 
 	// Start the pmdb server
+	go PumiceDBCommon.EmitCoverDataNKill(cso.coverageOutDir)
 	err := cso.pso.Run()
 
 	if err != nil {
@@ -74,6 +77,7 @@ func parseArgs() *CovidServer {
 	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&cso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "/tmp/covidAppLog", "log dir")
+	flag.StringVar(&cso.coverageOutDir, "cov", "", "Path to write code coverage data")
 
 	flag.Parse()
 
@@ -123,6 +127,7 @@ type CovidServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
+	coverageOutDir string
 }
 
 func (cso *CovidServer) Init(initArgs *PumiceDBServer.PmdbCbArgs) {
@@ -174,7 +179,7 @@ func (cso *CovidServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	covidDataVal := fmt.Sprintf("%s %d %d", applyCovid.IsoCode,
-					applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
+		applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
 
 	//length of all values.
 	covidDataLen := len(covidDataVal)
@@ -232,7 +237,7 @@ func (cso *CovidServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	//Copy the encoded result in replyBuffer
 	replySize, copyErr := cso.pso.CopyDataToBuffer(resultCovid,
-							readArgs.ReplyBuf)
+		readArgs.ReplyBuf)
 	if copyErr != nil {
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1
