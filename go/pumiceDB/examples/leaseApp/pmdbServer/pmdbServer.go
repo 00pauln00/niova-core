@@ -84,7 +84,7 @@ func main() {
 
 	// For lease application use lease column family
 	lso.pso.ColumnFamilies = []string{lso.leaseObj.LeaseColmFam}
-	go PumiceDBCommon.EmitCoverDataNKill()
+	go PumiceDBCommon.EmitCoverDataNKill(lso.coverageOutDir)
 	// Start the pmdb server
 	err = lso.pso.Run()
 	if err != nil {
