@@ -141,7 +141,7 @@ func main() {
 
 	// Start the pmdb server
 	//TODO Check error
-	go PumiceDBCommon.EmitCoverDataNKill(nso.coverageOutDir)
+	go PumiceDBCommon.EmitCoverDataNKill(serverHandler.coverageOutDir)
 	go nso.pso.Run()
 
 	serverHandler.checkPMDBLiveness()
