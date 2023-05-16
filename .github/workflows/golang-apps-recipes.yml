@@ -103,6 +103,10 @@ jobs:
                              '/home/runner/work/go/go/bin'
                              '/home/runner/work/niovad/niovad/code_cov/'
 
+    - name: Sleep for 30 seconds
+      run: sleep 30s
+      shell: bash
+
     - name:  run recipes for niovakv application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
