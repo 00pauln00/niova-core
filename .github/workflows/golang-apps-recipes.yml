@@ -87,6 +87,7 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/covid_app_recipe.txt'
                              'covid'
                              '0'
+                             '0'
                              '/home/runner/work/go/go/bin'
                              '/home/runner/work/niovad/niovad/code_cov/'
 
@@ -98,6 +99,7 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/foodpalaceapp_recipe.txt'
                              'foodpalace'
                              '0'
+                             '0'
                              '/home/runner/work/go/go/bin'
                              '/home/runner/work/niovad/niovad/code_cov/'
 
@@ -108,6 +110,7 @@ jobs:
                              '/home/runner/work/niovad/niovad/holon_log' 5
                              '/home/runner/work/niovad/niovad/build_dir/niovakv_recipes.txt'
                              'niovakv'
+                             '0'
                              '0'
                              '/home/runner/work/go/go/bin'
                              '/home/runner/work/niovad/niovad/code_cov/'
