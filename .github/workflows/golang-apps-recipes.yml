@@ -19,11 +19,11 @@ jobs:
       run: sudo apt update
 
     # Install golang
-    - name: Install golang 1.18.3
+    - name: Install golang 1.20.3
       run: sudo rm -rf /usr/bin/go &&
-           sudo wget https://golang.org/dl/go1.18.3.linux-amd64.tar.gz &&
+           sudo wget https://golang.org/dl/go1.20.3.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
-           sudo tar -C /home/runner/work/go -xzf  go1.18.3.linux-amd64.tar.gz &&
+           sudo tar -C /home/runner/work/go -xzf  go1.20.3.linux-amd64.tar.gz &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
@@ -75,6 +75,10 @@ jobs:
     - name: List build directory
       run: ls -l /home/runner/work/niovad/niovad/build_dir
 
+    - name: Create dir for cover data counters, metadata to be placed
+      run: mkdir  /home/runner/work/niovad/niovad/code_cov &&
+           export GOCOVERDIR=/work/niovad/niovad/code_cov
+
     - name:  run recipe for covid application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -84,6 +88,7 @@ jobs:
                              'covid'
                              '0'
                              '/home/runner/work/go/go/bin'
+                             '/home/runner/work/niovad/niovad/code_cov/'
 
     - name:  run recipe for foodpalace application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
@@ -94,6 +99,7 @@ jobs:
                              'foodpalace'
                              '0'
                              '/home/runner/work/go/go/bin'
+                             '/home/runner/work/niovad/niovad/code_cov/'
 
     - name:  run recipes for niovakv application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
@@ -104,6 +110,12 @@ jobs:
                              'niovakv'
                              '0'
                              '/home/runner/work/go/go/bin'
+                             '/home/runner/work/niovad/niovad/code_cov/'
+
+    - name: Run go covdata tool to generate code cover report
+      run: cd /home/runner/work/niovad/niovad/code_cov &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
+           go tool covdata percent -i=./
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
