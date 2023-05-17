@@ -24,4 +24,3 @@ install:
 	cp pmdbServer/pmdbServer ${DIR}/libexec/niova/LeaseApp_pmdbServer
 	
 	cp client/leaseClient ${DIR}/libexec/niova/leaseClient
-
