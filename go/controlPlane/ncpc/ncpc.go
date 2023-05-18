@@ -693,7 +693,7 @@ func (clientObj *clientHandler) performLeaseReq(resource, client string) ([]byte
 		log.Error("Error while preparing lease handlers : ", err)
 		return nil, err
 	}
-	err = lrh.InitLeaseReq(client, resource, op)
+	err = lrh.InitLeaseReq(client, resource, uuid.NewV4().String()+":0:0:0:0", op)
 	if err != nil {
 		log.Error("error while initializing lease req : ", err)
 		return nil, err
