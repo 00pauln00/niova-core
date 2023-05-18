@@ -625,11 +625,12 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 			if cobj, ok := e.Value.(*leaseLib.LeaseInfo); ok {
 				//Check lease status before processing it.
 				obj := cobj.LeaseMetaInfo
-				if obj.LeaseState != leaseLib.GRANTED &&
-					obj.LeaseState != leaseLib.STALE_INPROGRESS &&
-					obj.LeaseState != leaseLib.EXPIRED_LOCALLY {
+				//We dont mark lease as stale if they are expired
+				//or inprogress
+				if (obj.LeaseState == leaseLib.EXPIRED) &&
+				   (obj.LeaseState == leaseLib.INPROGRESS) {
 					continue
-				}
+				} 
 				if lso.isExpired(obj.TimeStamp) {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
