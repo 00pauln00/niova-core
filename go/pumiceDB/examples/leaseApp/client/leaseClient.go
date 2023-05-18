@@ -170,9 +170,8 @@ func (lh *leaseHandler) prepReqs() {
 			client = lh.rqArgs.client
 		}
 
-		rq.InitLeaseReq(client.String(),resource.String(), lh.cliOperation)
-		rq.Rncui = getRNCUI(lh.clientObj.PmdbClientObj)
-		rq.LeaseClientObj = &lh.clientObj
+		rq.InitLeaseReq(client.String(), resource.String(),
+			getRNCUI(lh.clientObj.PmdbClientObj), lh.cliOperation, &lh.clientObj)
 		lh.cliReqArr = append(lh.cliReqArr, rq)
 	}
 }

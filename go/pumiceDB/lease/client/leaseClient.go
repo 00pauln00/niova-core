@@ -97,7 +97,7 @@ Arguments :
 Return(s) : error
 Description : Initialize the handler's leaseReq struct
 */
-func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation int) error {
+func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource, rncui string, operation int, clientObj *LeaseClient) error {
 	rUUID, err := uuid.FromString(resource)
 	if err != nil {
 		log.Error(err)
@@ -111,11 +111,13 @@ func (lh *LeaseClientReqHandler) InitLeaseReq(client, resource string, operation
 
 	if operation == leaseLib.GET_VALIDATE {
 		lh.LeaseReq.Operation = leaseLib.GET
-	} else{
+	} else {
 		lh.LeaseReq.Operation = operation
 	}
 	lh.LeaseReq.Resource = rUUID
 	lh.LeaseReq.Client = cUUID
+	lh.Rncui = rncui
+	lh.LeaseClientObj = clientObj
 
 	return err
 }
