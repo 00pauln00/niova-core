@@ -95,7 +95,8 @@ jobs:
       run: cd /home/runner/work/niovad/niovad/code_cov &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            echo "***** Code Coverage Report *****" &&
-           go tool covdata percent -i=./
+           go tool covdata percent -i=./ &&
+           echo "***** End *****"
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename
