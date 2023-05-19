@@ -627,7 +627,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				obj := cobj.LeaseMetaInfo
 				//We dont mark lease as stale if they are expired
 				//or inprogress
-				if (obj.LeaseState == leaseLib.EXPIRED) &&
+				if (obj.LeaseState == leaseLib.EXPIRED) ||
 				   (obj.LeaseState == leaseLib.INPROGRESS) {
 					continue
 				} 
