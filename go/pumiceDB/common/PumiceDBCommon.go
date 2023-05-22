@@ -100,7 +100,7 @@ func EmitCoverDataNKill(path string) {
 	signal.Notify(sigs, syscall.SIGTERM)
 	go func() {
 		<-sigs
-		log.Info("XXX - Received a kill signal")
+		log.Info("Received SIGTERM")
 		EmitCoverData(path)
 		os.Exit(1)
 	}()
