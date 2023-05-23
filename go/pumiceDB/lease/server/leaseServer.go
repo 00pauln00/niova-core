@@ -75,27 +75,26 @@ func (lso *LeaseServerObject) isExpired(ts leaseLib.LeaderTS) bool {
 
 func (lso *LeaseServerObject) isPermitted(entry *leaseLib.LeaseMeta, clientUUID uuid.UUID, operation int) bool {
 	//Check if provided lease operation is permitted for the current lease state
-	if (entry.LeaseState == leaseLib.INPROGRESS) || (entry.LeaseState == leaseLib.STALE_INPROGRESS) {
+	switch entry.LeaseState {
+	case leaseLib.INPROGRESS:
+		fallthrough
+	case leaseLib.STALE_INPROGRESS:
 		return false
-	}
-
-	//Check if existing lease is valid
-	if !lso.isExpired(entry.TimeStamp) {
-		// if lease is valid and operation from same client, allow it
-		if clientUUID == entry.Client {
-			return true
-		}
-		return false
-	} else {
-		// If lease expired but refresh allowed from same client only
+	case leaseLib.EXPIRED:
+		//Allow GET from any client
+                if (operation == leaseLib.GET) {
+                        return true
+                }
+                //Reject REFRESH from any client
+                return false
+	case leaseLib.GRANTED:
+		//Allow REFRESH from the same client
 		if (operation == leaseLib.REFRESH) && (clientUUID == entry.Client) {
-			return true
-		} else if operation == leaseLib.GET {
-			//GET allowed on expired lease from any client
-			return true
-		}
+                        return true
+                }
+		//Reject any other request
+                return false
 	}
-
 	return false
 }
 
