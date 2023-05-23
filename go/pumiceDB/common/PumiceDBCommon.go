@@ -83,25 +83,25 @@ func InitLogger(logPath string) error {
 
 //emit code coverage data to the path file if it exists
 func EmitCoverData(path string) {
-	log.Info("Writing code coverage data to cover DIR")
-	if path != "" {
-		if err := coverage.WriteMetaDir(path); err != nil {
-			log.Error("Error while writing cover meta dir : ", err)
-		}
-		if err := coverage.WriteCountersDir(path); err != nil {
-			log.Error("error while writing counter metadata : ", err)
-		}
+	log.Info("Writing code coverage data to : ", path)
+	if err := coverage.WriteMetaDir(path); err != nil {
+		log.Error("Error while writing cover meta dir : ", err)
+	}
+	if err := coverage.WriteCountersDir(path); err != nil {
+		log.Error("error while writing counter metadata : ", err)
 	}
 }
 
 // catch SIGTERM, emit cover data to path, exit
-func EmitCoverDataNKill(path string) {
+func HandleKillSignal(path string) {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM)
 	go func() {
 		<-sigs
 		log.Info("Received SIGTERM")
-		EmitCoverData(path)
+		if path != "" {
+			EmitCoverData(path)
+		}
 		os.Exit(1)
 	}()
 }

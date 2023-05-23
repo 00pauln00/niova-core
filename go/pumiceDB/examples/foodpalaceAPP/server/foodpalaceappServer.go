@@ -3,7 +3,6 @@ package main
 import (
 	"flag"
 	"fmt"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"strconv"
@@ -218,9 +217,8 @@ func main() {
 		PmdbAPI:        fpso,
 	}
 
-	go PumiceDBCommon.EmitCoverDataNKill(fpso.coverageOutDir)
 	//Start the pmdb server.
-	err := fpso.pso.Run()
+	err := fpso.pso.Run(fpso.coverageOutDir)
 
 	if err != nil {
 		log.Error(err)

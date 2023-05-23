@@ -53,9 +53,8 @@ func main() {
 	//Create empty word map
 	word_map = make(map[string]int)
 
-	go PumiceDBCommon.EmitCoverDataNKill(dso.coverageOutDir)
 	// Start the pmdb server
-	err := dso.pso.Run()
+	err := dso.pso.Run(dso.coverageOutDir)
 
 	if err != nil {
 		log.Fatal(err)

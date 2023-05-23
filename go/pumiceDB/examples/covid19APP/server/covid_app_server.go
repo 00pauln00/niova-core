@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	CovidAppLib "covidapplib/lib"
-	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 
 	log "github.com/sirupsen/logrus"
@@ -63,8 +62,7 @@ func main() {
 	}
 
 	// Start the pmdb server
-	go PumiceDBCommon.EmitCoverDataNKill(cso.coverageOutDir)
-	err := cso.pso.Run()
+	err := cso.pso.Run(cso.coverageOutDir)
 
 	if err != nil {
 		log.Error(err)

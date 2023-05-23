@@ -72,9 +72,8 @@ func main() {
 		ColumnFamilies: []string{colmfamily},
 	}
 
-	go PumiceDBCommon.EmitCoverDataNKill(nso.coverageOutDir)
 	// Start the pmdb server
-	err = nso.pso.Run()
+	err = nso.pso.Run(nso.coverageOutDir)
 
 	if err != nil {
 		log.Error(err)
