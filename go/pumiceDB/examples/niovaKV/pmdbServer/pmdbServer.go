@@ -23,11 +23,10 @@ var seqno = 0
 var colmfamily = "PMDBTS_CF"
 
 type pmdbServerHandler struct {
-	raftUUID       string
-	peerUUID       string
-	logDir         string
-	logLevel       string
-	coverageOutDir string
+	raftUUID string
+	peerUUID string
+	logDir   string
+	logLevel string
 }
 
 func main() {
@@ -73,7 +72,7 @@ func main() {
 	}
 
 	// Start the pmdb server
-	err = nso.pso.Run(nso.coverageOutDir)
+	err = nso.pso.Run()
 
 	if err != nil {
 		log.Error(err)
@@ -98,13 +97,11 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	defaultLog := "/" + "tmp" + "/" + handler.peerUUID + ".log"
 	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
-	flag.StringVar(&handler.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	nso := &NiovaKVServer{}
 	nso.raftUuid = handler.raftUUID
 	nso.peerUuid = handler.peerUUID
-	nso.coverageOutDir = handler.coverageOutDir
 
 	if nso == nil {
 		err = errors.New("Not able to parse the arguments")
@@ -120,7 +117,6 @@ type NiovaKVServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
-	coverageOutDir string
 }
 
 func (nso *NiovaKVServer) WritePrep(wrPrepArgs *PumiceDBServer.PmdbCbArgs) int64 {

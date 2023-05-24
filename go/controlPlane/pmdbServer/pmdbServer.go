@@ -53,7 +53,6 @@ type pmdbServerHandler struct {
 	logDir            string
 	logLevel          string
 	gossipClusterFile string
-	coverageOutDir    string
 	servicePortRangeS uint16
 	servicePortRangeE uint16
 	hport             uint16
@@ -141,7 +140,7 @@ func main() {
 
 	// Start the pmdb server
 	//TODO Check error
-	go nso.pso.Run(serverHandler.coverageOutDir)
+	go nso.pso.Run()
 
 	serverHandler.checkPMDBLiveness()
 	serverHandler.exportTags()
@@ -236,7 +235,6 @@ func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
 	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
 	flag.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
 	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
-	flag.StringVar(&handler.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)

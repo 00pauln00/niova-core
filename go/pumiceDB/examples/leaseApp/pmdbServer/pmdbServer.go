@@ -28,13 +28,12 @@ var ttlDefault = 60
 var colmfamily []string = []string{"PMDBTS_CF"}
 
 type leaseServer struct {
-	raftUUID       string
-	peerUUID       string
-	logDir         string
-	logLevel       string
-	leaseObj       leaseServerLib.LeaseServerObject
-	pso            *PumiceDBServer.PmdbServerObject
-	coverageOutDir string
+	raftUUID string
+	peerUUID string
+	logDir   string
+	logLevel string
+	leaseObj leaseServerLib.LeaseServerObject
+	pso      *PumiceDBServer.PmdbServerObject
 }
 
 func main() {
@@ -85,7 +84,7 @@ func main() {
 	// For lease application use lease column family
 	lso.pso.ColumnFamilies = []string{lso.leaseObj.LeaseColmFam}
 	// Start the pmdb server
-	err = lso.pso.Run(lso.coverageOutDir)
+	err = lso.pso.Run()
 	if err != nil {
 		log.Error(err)
 	}
@@ -110,7 +109,6 @@ func parseArgs() (*leaseServer, error) {
 	defaultLog := "/" + "tmp" + "/" + lso.peerUUID + ".log"
 	flag.StringVar(&lso.logDir, "l", defaultLog, "log dir")
 	flag.StringVar(&lso.logLevel, "ll", "Info", "Log level")
-	flag.StringVar(&lso.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	if lso == nil {

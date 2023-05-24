@@ -62,7 +62,7 @@ func main() {
 	}
 
 	// Start the pmdb server
-	err := cso.pso.Run(cso.coverageOutDir)
+	err := cso.pso.Run()
 
 	if err != nil {
 		log.Error(err)
@@ -75,7 +75,6 @@ func parseArgs() *CovidServer {
 	flag.StringVar(&cso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&cso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "/tmp/covidAppLog", "log dir")
-	flag.StringVar(&cso.coverageOutDir, "cov", "", "Path to write code coverage data")
 
 	flag.Parse()
 
@@ -125,7 +124,6 @@ type CovidServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
-	coverageOutDir string
 }
 
 func (cso *CovidServer) Init(initArgs *PumiceDBServer.PmdbCbArgs) {

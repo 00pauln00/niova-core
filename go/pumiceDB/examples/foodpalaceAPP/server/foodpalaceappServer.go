@@ -31,7 +31,6 @@ type FoodpalaceServer struct {
 	peerUuid       string
 	columnFamilies string
 	pso            *PumiceDBServer.PmdbServerObject
-	coverageOutDir string
 }
 
 //Method to initizalize logger.
@@ -165,7 +164,6 @@ func foodPalaceServerNew() *FoodpalaceServer {
 	flag.StringVar(&fpso.raftUuid, "r", "NULL", "raft uuid")
 	flag.StringVar(&fpso.peerUuid, "u", "NULL", "peer uuid")
 	flag.StringVar(&logDir, "l", "./", "log directory path")
-	flag.StringVar(&fpso.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 
 	log.Info("Raft UUID: ", fpso.raftUuid)
@@ -218,7 +216,7 @@ func main() {
 	}
 
 	//Start the pmdb server.
-	err := fpso.pso.Run(fpso.coverageOutDir)
+	err := fpso.pso.Run()
 
 	if err != nil {
 		log.Error(err)
