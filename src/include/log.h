@@ -22,7 +22,7 @@
 
 LREG_ROOT_ENTRY_EXPORT(log_entry_map);
 
-enum PACKED log_level
+enum log_level
 {
     LL_FATAL  = 0,
     LL_ERROR  = 1,
@@ -32,7 +32,7 @@ enum PACKED log_level
     LL_TRACE  = 5,
     LL_MAX    = 6,
     LL_ANY    = LL_MAX,
-};
+} PACKED;
 
 enum log_level
 log_level_get(void);
