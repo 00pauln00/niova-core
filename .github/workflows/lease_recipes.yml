@@ -89,7 +89,6 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/lease_recipes.txt'
                              'lease'
                              '/home/runner/work/go/go/bin'
-                             '/home/runner/work/niovad/niovad/code_cov/'
 
     - name: Run go covdata tool to generate code cover report
       run: cd /home/runner/work/niovad/niovad/code_cov &&

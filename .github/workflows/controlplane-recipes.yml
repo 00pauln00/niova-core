@@ -96,7 +96,6 @@ jobs:
                              'controlplane'
                              '/home/runner/work/go/go/bin'
                              5
-                             '/home/runner/work/niovad/niovad/code_cov/'
 
     - name: Run go covdata tool to generate code cover report
       run: cd /home/runner/work/niovad/niovad/code_cov &&
