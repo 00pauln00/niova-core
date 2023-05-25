@@ -80,7 +80,8 @@ jobs:
            export GOCOVERDIR=/work/niovad/niovad/code_cov
 
     - name:  run recipe for covid application
-      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+      run: export GOCOVERDIR=/work/niovad/niovad/code_cov && 
+           cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
@@ -92,7 +93,8 @@ jobs:
                              '/home/runner/work/niovad/niovad/code_cov/'
 
     - name:  run recipe for foodpalace application
-      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+      run: export GOCOVERDIR=/work/niovad/niovad/code_cov &&
+           cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
@@ -104,7 +106,8 @@ jobs:
                              '/home/runner/work/niovad/niovad/code_cov/'
 
     - name:  run recipes for niovakv application
-      run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
+      run: export GOCOVERDIR=/work/niovad/niovad/code_cov &&
+           cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
                              '/home/runner/work/niovad/niovad/holon_log' 5
