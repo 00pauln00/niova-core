@@ -93,15 +93,17 @@ func EmitCoverData(path string) {
 }
 
 // catch SIGTERM, emit cover data to path, exit
-func HandleKillSignal(path string) {
+func HandleKillSignal() {
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGTERM)
 	go func() {
 		<-sigs
 		log.Info("Received SIGTERM")
-		if path != "" {
-			EmitCoverData(path)
+		path := os.Getenv("GOCOVERDIR")
+		if path == "" {
+			path = "/tmp/niova-core/go-code-cov-" + string(os.Getpid())
 		}
+		EmitCoverData(path)
 		os.Exit(1)
 	}()
 }

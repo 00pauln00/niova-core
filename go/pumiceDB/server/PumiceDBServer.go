@@ -8,7 +8,6 @@ import (
 	"io"
 	"math"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
-	"os"
 	"reflect"
 	"strconv"
 	"strings"
@@ -306,7 +305,7 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 // Method version of PmdbStartServer()
 // writes metadata to 'path' while exiting
 func (pso *PmdbServerObject) Run() error {
-	go PumiceDBCommon.HandleKillSignal(os.Getenv("GOCOVERDIR"))
+	go PumiceDBCommon.HandleKillSignal()
 	return PmdbStartServer(pso)
 }
 

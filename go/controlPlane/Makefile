@@ -2,7 +2,12 @@ DIR=/tmp/
 CGO_LDFLAGS=-L/${DIR}/lib/
 CGO_CFLAGS=-I/${DIR}/include/niova/
 LD_LIBRARY_PATH=/${DIR}/niova-core/lib/
-COVERPKGS=common/pmdbServer,../../pumiceDB/server,../../pumiceDB/common,../../serf/agent,../../http/client,../requestResponseLib,../../specificCompressionLib,../../lookout/ctlMonitor,../../pumiceDB/lease/server,../../pumiceDB/lease/common,../../lookout/prometheusHandler
+
+PMDBCOVERPKGS=common/pmdbServer,../../pumiceDB/server,../../pumiceDB/common,../../serf/agent,../../http/client,../requestResponseLib,../../specificCompressionLib,../../lookout/ctlMonitor,../../pumiceDB/lease/server,../../pumiceDB/lease/common,../../lookout/prometheusHandler
+
+PROXYCOVERPKGS=controlplane/proxy,../../http/server,../../http/client,../../pumiceDB/client,../../pumiceDB/common,../../serf/agent,../requestResponseLib,../../specificCompressionLib
+
+NCPCCOVERPKGS=ctlplane/ncpc,../../serf/client,../../pumiceDB/common,../../pumiceDB/client,../../http/client,../requestResponseLib,../../serf/serviceDiscovery,../../specificCompressionLib/,../../pumiceDB/lease/common,../../pumiceDB/lease/client
 
 export CGO_LDFLAGS
 export CGO_CFLAGS
@@ -17,13 +22,13 @@ compile:
 	echo "Compiling controlPlane"
 
 pmdbserver:
-	cd pmdbServer && go mod tidy  && go build -cover -coverpkg=${COVERPKGS}
+	cd pmdbServer && go mod tidy  && go build -cover -coverpkg=${PMDBCOVERPKGS}
 
 proxyserver:
-	cd proxy && go mod tidy  && go build -cover -coverpkg=${COVERPKGS}
+	cd proxy && go mod tidy  && go build -cover -coverpkg=${PROXYCOVERPKGS}
 
 ncpcclient:
-	cd ncpc &&  go mod tidy && go build -cover -coverpkg=${COVERPKGS}
+	cd ncpc &&  go mod tidy && go build -cover -coverpkg=${NCPCCOVERPKGS}
 
 configapp:
 	cd configApplication && go mod tidy && go build configApplication.go
