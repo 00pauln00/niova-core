@@ -16,7 +16,7 @@ import (
 
 var ttlDefault = 60
 var gcTimeout = 35
-var MAX_SINGLE_GC_REQ = 100
+const MAX_SINGLE_GC_REQ = 100
 var LEASE_COLUMN_FAMILY = "NIOVA_LEASE_CF"
 
 const (
@@ -572,36 +572,35 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 	}
 }
 
-func (lso *LeaseServerObject) sendGCReq(resourceUUIDs []uuid.UUID, leaderTerm int64) {
+func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaderTerm int64) {
 	//Send GC request if only expired lease found
-	for {
-		//Create request
-		var r leaseLib.LeaseReq
-		r.Operation = leaseLib.STALE_REMOVAL
-		r.InitiatorTerm = leaderTerm
+	var r leaseLib.LeaseReq
+	r.Operation = leaseLib.STALE_REMOVAL
+	r.InitiatorTerm = leaderTerm
+	r.Resources = resourceUUIDs[:]
 
-		//Cap maximum resource sent in a single request
-		if(len(resourceUUIDs) <= MAX_SINGLE_GC_REQ) {
-                       	r.Resources = resourceUUIDs
-                	resourceUUIDs = nil
-		} else {
-			r.Resources = resourceUUIDs[:MAX_SINGLE_GC_REQ]
-			resourceUUIDs = resourceUUIDs[MAX_SINGLE_GC_REQ:]
-		}
+	//Send Request
+	log.Trace("Send stale lease processing request")
+	err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
+	switch err {
+	case -112:
+		log.Error("Retry stale lease request")
+		lso.leaseLock.Lock()
+		for i := 0; i < len(resourceUUIDs); i++ {
+			lease, isPresent := lso.LeaseMap[resourceUUIDs[i]]
+                	if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
+                        	log.Error("(sendGCReq) GCed resource is not present or have modified state", resourceUUIDs[i], lease.LeaseMetaInfo.LeaseState)
+                        	continue
+                	}
+			lease.LeaseMetaInfo.StaleRetry = true
+		}			
+		lso.leaseLock.Unlock()
+	default:
+		log.Error("Failed to send stale lease processing request")
 
-		//Send Request
-		log.Trace("Send stale lease processing request")
-		err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
-		if err != nil {
-			log.Error("Failed to send stale lease processing request")
-		}
-		
-		//Break from loop
-		if(len(resourceUUIDs) == 0) {
-			break
-		}
 	}
 }
+
 
 func (lso *LeaseServerObject) leaseGarbageCollector() {
 	//Init ticker
@@ -614,9 +613,9 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		if err != nil {
 			continue
 		}
-		var rUUIDs []uuid.UUID
+		var rUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID
 		stopScan := false
-
+		index := 0
 		//Obtain lock
 		lso.leaseLock.Lock()
 		//Iterate over list
@@ -626,15 +625,19 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 				obj := cobj.LeaseMetaInfo
 				//We dont mark lease as stale if they are expired
 				//or inprogress
-				if (obj.LeaseState == leaseLib.EXPIRED) ||
-				   (obj.LeaseState == leaseLib.INPROGRESS) {
+				if (!obj.StaleRetry) && ((obj.LeaseState == leaseLib.STALE_INPROGRESS) || (obj.LeaseState == leaseLib.EXPIRED) ||
+				   (obj.LeaseState == leaseLib.INPROGRESS)) {
 					continue
 				} 
+				
+
+				cobj.LeaseMetaInfo.StaleRetry = false
 				if lso.isExpired(obj.TimeStamp) {
 					cobj.LeaseMetaInfo.LeaseState = leaseLib.STALE_INPROGRESS
 					log.Trace("Enqueue lease for stale lease processing: ",
 						cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
-					rUUIDs = append(rUUIDs, obj.Resource)
+					rUUIDs[index] = obj.Resource
+					index += 1
 				} else {
 					log.Trace("GC scanning finished")
 					stopScan = true

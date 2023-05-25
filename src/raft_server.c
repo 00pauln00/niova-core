@@ -6364,7 +6364,7 @@ int
 raft_server_enq_direct_raft_req_from_leader(char *req_buf, int64_t data_size)
 {
     if (FAULT_INJECT(raft_leader_ignore_direct_req))
-        return 0;
+        return -EAGAIN;
 
     struct raft_client_rpc_msg *rcm =
          (struct raft_client_rpc_msg *)req_buf;

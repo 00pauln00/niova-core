@@ -697,7 +697,7 @@ func PmdbInitRPCMsg(rcm *C.struct_raft_client_rpc_msg, dataSize uint32) {
 	rcm.rcrm_data_size = C.uint32_t(dataSize)
 }
 
-func PmdbEnqueueDirectWriteRequest(appReq interface{}) error {
+func PmdbEnqueueDirectWriteRequest(appReq interface{}) int {
 	var appBuf bytes.Buffer
 	var req PumiceDBCommon.PumiceRequest
 	var rncui_id C.struct_raft_net_client_user_id
@@ -708,7 +708,7 @@ func PmdbEnqueueDirectWriteRequest(appReq interface{}) error {
 	err := enc.Encode(appReq)
 	if err != nil {
 		log.Error("Failed to encode the stale lease processing request")
-		return err
+		return -1
 	}
 
 	uuid := uuid.NewV4().String()
@@ -722,7 +722,7 @@ func PmdbEnqueueDirectWriteRequest(appReq interface{}) error {
 	err = pumiceEnc.Encode(req)
 	if err != nil {
 		log.Error(err)
-		return err
+		return -1
 	}
 
 	data := reqBuf.Bytes()
@@ -763,8 +763,8 @@ func PmdbEnqueueDirectWriteRequest(appReq interface{}) error {
 	C.memcpy(dataPtr, kvdata, C.size_t(dsize))
 
 	//Enqueue the direct request
-	C.raft_server_enq_direct_raft_req_from_leader((*C.char)(buf), C.int64_t(totalSize))
+	ret := C.raft_server_enq_direct_raft_req_from_leader((*C.char)(buf), C.int64_t(totalSize))
 	C.free(buf)
-
-	return nil
+	
+	return int(ret)
 }

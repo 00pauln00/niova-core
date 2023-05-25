@@ -57,6 +57,7 @@ type LeaseMeta struct {
 	LeaseState int
 	TTL        int
 	TimeStamp  LeaderTS
+	StaleRetry bool
 }
 
 type LeaseInfo struct {
