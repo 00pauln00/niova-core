@@ -572,7 +572,7 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 	}
 }
 
-func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaderTerm int64) {
+func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaderTerm int64, sleep *int64) {
 	//Send GC request if only expired lease found
 	var r leaseLib.LeaseReq
 	r.Operation = leaseLib.STALE_REMOVAL
@@ -595,6 +595,7 @@ func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UU
 			lease.LeaseMetaInfo.StaleRetry = true
 		}			
 		lso.leaseLock.Unlock()
+		*sleep = 0
 	default:
 		log.Error("Failed to send stale lease processing request")
 
@@ -604,15 +605,19 @@ func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UU
 
 func (lso *LeaseServerObject) leaseGarbageCollector() {
 	//Init ticker
-	t := time.NewTicker(time.Duration(gcTimeout) * time.Second)
+	//Sleep default at init
+	sleep := int64(ttlDefault)
 	log.Info("GC routine running")
 	for {
-		<-t.C
+		time.Sleep(time.Duration(sleep) * time.Second)
 		var ct leaseLib.LeaderTS
 		err := lso.GetLeaderTimeStamp(&ct)
 		if err != nil {
+			//Reset the sleep
+			sleep = int64(ttlDefault)
 			continue
 		}
+
 		var rUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID
 		stopScan := false
 		index := 0
@@ -637,7 +642,12 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 					log.Trace("Enqueue lease for stale lease processing: ",
 						cobj.LeaseMetaInfo.Resource, cobj.LeaseMetaInfo.Client)
 					rUUIDs[index] = obj.Resource
+					//Break if max resource in a request is reached
 					index += 1
+					if index == MAX_SINGLE_GC_REQ {
+						stopScan = true
+					}
+
 				} else {
 					log.Trace("GC scanning finished")
 					stopScan = true
@@ -645,14 +655,28 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 			}
 			//no more expired leases.
 			if stopScan {
+				if e.Next() != nil {
+					nextLease := e.Value.(*leaseLib.LeaseInfo).LeaseMetaInfo.TimeStamp.LeaderTime
+                        		var ct leaseLib.LeaderTS
+                        		lso.GetLeaderTimeStamp(&ct)
+                        		sleep = nextLease + int64(ttlDefault) - ct.LeaderTime
+					//Avoid negative value for sleep
+					if sleep < 0 {
+						sleep = 0
+					}
+
+				} else {
+					sleep = int64(ttlDefault)
+				}
 				break
 			}
 		}
+
 		//Release lock
 		lso.leaseLock.Unlock()
 
 		//Send GC request if only expired lease found
-		lso.sendGCReq(rUUIDs, ct.LeaderTerm)
+		lso.sendGCReq(rUUIDs, ct.LeaderTerm, &sleep)
 	}
 }
 
