@@ -589,13 +589,13 @@ func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UU
 	switch err {
 	case 0:
 		log.Info("GC request successful")	
-	case -112:
+	case -11:
 		log.Error("Retry stale lease request")
 		lso.leaseLock.Lock()
-		for i := 0; i < len(resourceUUIDs); i++ {
+		for i := 0; i < leaseCount; i++ {
 			lease, isPresent := lso.LeaseMap[resourceUUIDs[i]]
                 	if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
-                        	log.Error("(sendGCReq) GCed resource is not present or have modified state", resourceUUIDs[i], lease.LeaseMetaInfo.LeaseState)
+                        	log.Error("(sendGCReq) GCed resource is not present or have modified state", resourceUUIDs[i])
                         	continue
                 	}
 			lease.LeaseMetaInfo.StaleRetry = true
