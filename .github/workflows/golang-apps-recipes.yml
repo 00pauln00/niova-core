@@ -94,7 +94,7 @@ jobs:
 
     - name:  run recipe for foodpalace application
       env:
-        GOCOVERDIR: '/work/niovad/niovad/code_cov'
+        GOCOVERDIR: '/work/niovad/code_cov'
       run: echo "GOCOVERDIR=/home/niovad/code_cov/" >> $GITHUB_ENV &&
            cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -120,7 +120,7 @@ jobs:
                              '/home/runner/work/go/go/bin'
 
     - name: Run go covdata tool to generate code cover report
-      run: cd /home/runner/work/niovad/niovad/code_cov &&
+      run: cd /home/runner/work/niovad/code_cov &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            echo "***** Code Coverage Report *****" &&
            go tool covdata percent -i=./ &&
