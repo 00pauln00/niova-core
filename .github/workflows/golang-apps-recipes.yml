@@ -80,7 +80,7 @@ jobs:
            export GOCOVERDIR=/work/niovad/niovad/code_cov
 
     - name:  run recipe for covid application
-      run: export GOCOVERDIR=/work/niovad/niovad/code_cov && 
+      run: GOCOVERDIR=/work/niovad/niovad/code_cov && 
            cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
@@ -90,6 +90,7 @@ jobs:
                              '0'
                              '0'
                              '/home/runner/work/go/go/bin'
+      env: GOCOVERDIR: '/work/niovad/niovad/code_cov'
 
     - name:  run recipe for foodpalace application
       run: export GOCOVERDIR=/work/niovad/niovad/code_cov &&
@@ -102,6 +103,7 @@ jobs:
                              '0'
                              '0'
                              '/home/runner/work/go/go/bin'
+      env: GOCOVERDIR: '/work/niovad/niovad/code_cov'
 
     - name:  run recipes for niovakv application
       run: export GOCOVERDIR=/work/niovad/niovad/code_cov &&
@@ -114,6 +116,7 @@ jobs:
                              '0'
                              '0'
                              '/home/runner/work/go/go/bin'
+      env: GOCOVERDIR: '/work/niovad/niovad/code_cov'
 
     - name: Run go covdata tool to generate code cover report
       run: cd /home/runner/work/niovad/niovad/code_cov &&
