@@ -95,7 +95,7 @@ jobs:
     - name:  run recipe for foodpalace application
       env:
         GOCOVERDIR: '/work/niovad/niovad/code_cov'
-      run: echo GOCOVERDIR="/home/niovad/code_cov/" > .env &&
+      run: echo "GOCOVERDIR=/home/niovad/code_cov/" >> "$GITHUB_ENV" &&
            cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
                              '/home/runner/work/niovad/niovad/build_dir'
