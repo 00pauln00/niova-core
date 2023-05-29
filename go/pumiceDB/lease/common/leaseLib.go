@@ -33,7 +33,8 @@ type LeaseReq struct {
 	Resource  uuid.UUID
 	Operation int
 	InitiatorTerm int64
-	Resources     []uuid.UUID
+	LeaseCount int
+	Resources  []uuid.UUID
 }
 
 type LeaderTS struct {

@@ -436,7 +436,7 @@ func (handler *LeaseServerReqHandler) applyLease() int {
 }
 
 func (handler *LeaseServerReqHandler) gcReqHandler() {
-	for i := 0; i < len(handler.LeaseReq.Resources); i++ {
+	for i := 0; i < handler.LeaseReq.LeaseCount; i++ {
 		//Set lease as expired
 		resource := handler.LeaseReq.Resources[i]
 		isLeader := PumiceDBServer.PmdbIsLeader()
@@ -447,7 +447,7 @@ func (handler *LeaseServerReqHandler) gcReqHandler() {
 		//Update lease in map
 		lease, isPresent := handler.LeaseServerObj.LeaseMap[resource]
 		if (!isPresent) || (isLeader && isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
-			log.Error("GCed resource is not present or have modified state", resource, lease.LeaseMetaInfo.LeaseState)
+			log.Error("GCed resource is not present or have modified state : ", resource)
 			handler.LeaseServerObj.leaseLock.Unlock()
 			continue
 		}
@@ -572,17 +572,23 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 	}
 }
 
-func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaderTerm int64, sleep *int64) {
+func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaseCount int, leaderTerm int64, sleep *int64) {
 	//Send GC request if only expired lease found
+	if leaseCount == 0 {
+		return
+	}
 	var r leaseLib.LeaseReq
 	r.Operation = leaseLib.STALE_REMOVAL
 	r.InitiatorTerm = leaderTerm
 	r.Resources = resourceUUIDs[:]
+	r.LeaseCount = leaseCount
 
 	//Send Request
 	log.Trace("Send stale lease processing request")
 	err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
 	switch err {
+	case 0:
+		log.Info("GC request successful")	
 	case -112:
 		log.Error("Retry stale lease request")
 		lso.leaseLock.Lock()
@@ -597,7 +603,7 @@ func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UU
 		lso.leaseLock.Unlock()
 		*sleep = 0
 	default:
-		log.Error("Failed to send stale lease processing request")
+		log.Error("Failed to send stale lease processing request : ", err)
 
 	}
 }
@@ -676,7 +682,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		lso.leaseLock.Unlock()
 
 		//Send GC request if only expired lease found
-		lso.sendGCReq(rUUIDs, ct.LeaderTerm, &sleep)
+		lso.sendGCReq(rUUIDs, index, ct.LeaderTerm, &sleep)
 	}
 }
 
