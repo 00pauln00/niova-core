@@ -47,11 +47,15 @@ cd ~/temp/holon/ && ./run-recipes.sh "/home/$USER/temp/holon" "/home/$USER/temp/
 
 echo "Run covdata tool"
 cd ~/temp/code_cov
-RES=$(go tool covdata percent -i=./ | tail -1)
+TOTAL_COVER=$(go tool covdata percent -i=./ | tail -1)
+RES=$(go tool covdata func -i=./)
+echo "${TOTAL_COVER}"
 echo "${RES}"
 
 touch ~/temp/code_cov/total_code_cov
-echo "${RES}" > ~/temp/code_cov/total_code_cov
+touch ~/temp/code_cov/cov_report
+echo "${TOTAL_COVER}" > ~/temp/code_cov/total_code_cov
+echo "${RES}" > ~/temp/code_cov/cov_report
 
 echo "Export data to influxDB"
-python3 ~/temp/niova-core/scripts/load_cover_data.py ~/temp/code_cov/total_code_cov
+python3 ~/temp/niova-core/scripts/load_cover_data.py ~/temp/code_cov/total_code_cov ~/temp/code_cov/cov_report
