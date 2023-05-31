@@ -31,7 +31,7 @@ def write_worflow_timings_influxdb(data, workflow_name):
             workflow_run["run_started_at"], "%Y-%m-%dT%H:%M:%S%z"
         )
         # print(run_date, datetime.today().date())
-        if run_date.date() == datetime.today.date():
+        if run_date.date() >= datetime(2022, 8, 10).date():
             if workflow_run["name"] == workflow_name:
                 actions_url = "https://api.github.com/repos/00pauln00/niova-core/actions/runs/{}/jobs".format(
                     str(workflow_run["id"])
@@ -43,8 +43,8 @@ def write_worflow_timings_influxdb(data, workflow_name):
                 job_ids.append(workflow_run["id"])
                 branch_names.append(workflow_run["head_branch"])
 
-    pprint(len(job_ids))
-    pprint(len(branch_names))
+    #pprint(len(job_ids))
+    #pprint(len(branch_names))
 
     temp_dict = {}
     temp_dict.update({workflow_name: workflow_data})
@@ -84,33 +84,55 @@ def write_worflow_timings_influxdb(data, workflow_name):
                     failed_at = step["name"]
 
         ansible_op = parse_ansible_logs(influx_data["id"])
+        data = ansible_op[len(ansible_op) - 1]
+        if isinstance(data, dict):
+            code_coverage = data.get('code_coverage', {})
+        else:
+            code_coverage = {}
+        
+        if workflow_name == "holon_golang_apps_recipes_workflow" or workflow_name == "holon_controlplane_app_recipes_workflow" or workflow_name == "holon_lease_recipes_workflow":
+            for key, value in code_coverage.items():
+                coverage.append(
+                                {
+                                "measurement": "code_coverage",
+                                "tags": {
+                                        "workflow_name": workflow_name,
+                                        "job_id": str(influx_data["id"]),
+                                        "run_id": str(job_id),
+                                        "commit_id": str(influx_data["head_sha"]),
+                                        "branch_name": branch_name,
+                                        "library_name": key
+                                    },
+                                "fields": { "job_url": influx_data["html_url"],
+                                            "precentage": value
+                                    }
+                                }
+                )
         recipe_list = []
-        # recipe_entry = {}
-        for recipe in ansible_op:
+        for recipe in ansible_op[:-1]:
             tasks = recipe["tasks"]
             summary = recipe["summary"]
             total_recipe_time = sum(tasks.values())
             if summary["failed"] != 0:
                 recipe_body.append(
-                    {
-                        "measurement": "recipe_time",
-                        "tags": {
-                            "workflow_name": workflow_name,
-                            "job_id": str(influx_data["id"]),
-                            "run_id": str(job_id),
-                            "recipe_conclusion": "failure",
-                            "commit_id": str(influx_data["head_sha"]),
-                            "recipe_name": recipe["recipe_name"],
-                            "branch_name": branch_name,
-                        },
-                        "time": influx_data["started_at"],
-                        "fields": {"job_url": influx_data["html_url"]},
-                    }
-                )
+                        {
+                            "measurement": "recipe_time",
+                            "tags": {
+                                "workflow_name": workflow_name,
+                                "job_id": str(influx_data["id"]),
+                                "run_id": str(job_id),
+                                "recipe_conclusion": "failure",
+                                "commit_id": str(influx_data["head_sha"]),
+                                "recipe_name": recipe["recipe_name"],
+                                "branch_name": branch_name
+                            },
+                            "time": influx_data["started_at"],
+                            "fields": {"job_url": influx_data["html_url"]},
+                        }
+                    )
             else:
                 top3_tasks = sorted(tasks, key=tasks.get, reverse=True)[:3]
                 recipe_list.append(recipe["recipe_name"])
-                print(recipe["recipe_name"])
                 recipe_body.append(
                     {
                         "measurement": "recipe_time",
@@ -139,9 +161,9 @@ def write_worflow_timings_influxdb(data, workflow_name):
                             + str(tasks.get(top3_tasks[2])),
                         },
                     }
+
                 )
-            # pprint(recipe_body)
-        pprint(recipe_list)
+
         json_body.append(
             {
                 "measurement": "gitActions",
@@ -168,7 +190,6 @@ def write_worflow_timings_influxdb(data, workflow_name):
             }
         )
 
-
 def write_workflow_timings_local(data):
     dict_values = {}
     for i in data["workflow_runs"]:
@@ -180,7 +201,6 @@ def write_workflow_timings_local(data):
         extracted_date = i["updated_at"]
 
         if extracted_date[0:10] == date_time_str:
-            print("not breaking")
             # path till where we need to make date dir
             date_path = os.path.join(path, date_time_str)
             curr_time = time.strftime("%H:%M:%S", time.localtime())
@@ -281,22 +301,24 @@ path = "/home/nikhil/Desktop/work/paroscale/githubJsonOutput/27jul"
 
 
 workflow_names = [
+    "holon_golang_apps_recipes_workflow",
     "holon_basic_recipes_workflow",
     "holon_coalesced_wr_recipes_workflow",
     "holon_rebuild_recipes_workflow",
-    "holon_golang_apps_recipes_workflow",
     "holon_controlplane_app_recipes_workflow",
     "C/C++ CI",
     "holon_bulk_recovery_recipes_workflow",
     "holon_failover_workflow",
     "holon_prevote_recipes_workflow",
     "holon_coalesced_wr_recipes_workflow",
+    "holon_lease_recipes_workflow",
+    "holon_lease_stale_recipes_workflow",
 ]
 
 json_body = []
 recipe_body = []
+coverage = []
 while PageNo <= 5:
-    print("On page ", PageNo)
     url = "https://api.github.com/repos/00pauln00/niova-core/actions/runs?page={}&per_page=100".format(
         PageNo
     )
@@ -319,4 +341,4 @@ while PageNo <= 5:
 
 write_to_influxdb(json_body)
 write_to_influxdb(recipe_body)
-pprint(json_body)
+write_to_influxdb(coverage)
