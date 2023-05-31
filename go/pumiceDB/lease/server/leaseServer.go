@@ -572,10 +572,10 @@ func (lso *LeaseServerObject) peerBootup(userID unsafe.Pointer) {
 	}
 }
 
-func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaseCount int, leaderTerm int64, sleep *int64) {
+func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UUID, leaseCount int, leaderTerm int64) int {
 	//Send GC request if only expired lease found
 	if leaseCount == 0 {
-		return
+		return 0
 	}
 	var r leaseLib.LeaseReq
 	r.Operation = leaseLib.STALE_REMOVAL
@@ -586,26 +586,7 @@ func (lso *LeaseServerObject) sendGCReq(resourceUUIDs [MAX_SINGLE_GC_REQ]uuid.UU
 	//Send Request
 	log.Trace("Send stale lease processing request")
 	err := PumiceDBServer.PmdbEnqueueDirectWriteRequest(r)
-	switch err {
-	case 0:
-		log.Info("GC request successful")	
-	case -11:
-		log.Error("Retry stale lease request")
-		lso.leaseLock.Lock()
-		for i := 0; i < leaseCount; i++ {
-			lease, isPresent := lso.LeaseMap[resourceUUIDs[i]]
-                	if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
-                        	log.Error("(sendGCReq) GCed resource is not present or have modified state", resourceUUIDs[i])
-                        	continue
-                	}
-			lease.LeaseMetaInfo.StaleRetry = true
-		}			
-		lso.leaseLock.Unlock()
-		*sleep = 0
-	default:
-		log.Error("Failed to send stale lease processing request : ", err)
-
-	}
+	return err
 }
 
 
@@ -682,7 +663,27 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 		lso.leaseLock.Unlock()
 
 		//Send GC request if only expired lease found
-		lso.sendGCReq(rUUIDs, index, ct.LeaderTerm, &sleep)
+		rc := lso.sendGCReq(rUUIDs, index, ct.LeaderTerm)
+		switch rc {
+        	case 0:
+                	log.Trace("GC request successful")
+        	case -11:
+                	log.Error("Retry stale lease request")
+                	lso.leaseLock.Lock()
+                	for i := 0; i < index; i++ {
+                        	lease, isPresent := lso.LeaseMap[rUUIDs[i]]
+                        	if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
+                                	log.Error("(sendGCReq) GCed resource is not present or have modified state", rUUIDs[i])
+                                	continue
+                        	}
+                        	lease.LeaseMetaInfo.StaleRetry = true
+                	}
+                	lso.leaseLock.Unlock()
+                	sleep = 0
+        	default:
+                	log.Error("Failed to send stale lease processing request : ", err)
+
+        	}
 	}
 }
 
