@@ -378,14 +378,22 @@ func (handler *LeaseServerReqHandler) initLease() (*leaseLib.LeaseInfo, error) {
 	var lo leaseLib.LeaseInfo
 	var lop *leaseLib.LeaseInfo
 	handler.LeaseServerObj.leaseLock.Lock()
+	
+	//Check if resource is already present in the map, if not create new entry
 	lop, isPresent := handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource]
 	if !isPresent {
 		lop = &lo
 		lop.LeaseMetaInfo.Resource = handler.LeaseReq.Resource
 		lop.LeaseMetaInfo.Client = handler.LeaseReq.Client
 		handler.LeaseServerObj.LeaseMap[handler.LeaseReq.Resource] = lop
-	}
+	} 
+
 	err := handler.LeaseServerObj.GetLeaderTimeStamp(&lop.LeaseMetaInfo.TimeStamp)
+	//Check if lease state was set to inprogress in leader
+        if (err == nil) && (lop.LeaseMetaInfo.LeaseState != leaseLib.INPROGRESS) {
+		log.Fatal("Wrong state transition identified in GET lease, expected INPROGRESS, identified : ", lop.LeaseMetaInfo.LeaseState)
+        }
+
 	lop.LeaseMetaInfo.LeaseState = leaseLib.GRANTED
 	lop.LeaseMetaInfo.TTL = ttlDefault
 
@@ -519,7 +527,7 @@ func (lso *LeaseServerObject) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 		}
 		replySizeRc, copyErr = lso.Pso.CopyDataToBuffer(returnObj,
 			applyArgs.ReplyBuf)
-		if copyErr != nil {
+			if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return int64(ERROR)
 		}
@@ -615,10 +623,10 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
 			if cobj, ok := e.Value.(*leaseLib.LeaseInfo); ok {
 				//Check lease status before processing it.
 				obj := cobj.LeaseMetaInfo
-				//We dont mark lease as stale if they are expired
-				//or inprogress
-				if (!obj.StaleRetry) && ((obj.LeaseState == leaseLib.STALE_INPROGRESS) || (obj.LeaseState == leaseLib.EXPIRED) ||
-				   (obj.LeaseState == leaseLib.INPROGRESS)) {
+
+				//We dont process lease which are marked as STALE_INPROGRESS
+				//and if StaleRetry is set to false
+				if (!obj.StaleRetry && obj.LeaseState == leaseLib.STALE_INPROGRESS) {
 					continue
 				} 
 				
