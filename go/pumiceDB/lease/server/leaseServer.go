@@ -679,12 +679,12 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
                 	log.Error("Retry stale lease request")
                 	lso.leaseLock.Lock()
                 	for i := 0; i < index; i++ {
-                        	lease, isPresent := lso.LeaseMap[rUUIDs[i]]
-                        	if (!isPresent) || (isPresent && lease.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
+                        	l, isPresent := lso.LeaseMap[rUUIDs[i]]
+                        	if (!isPresent) || (isPresent && l.LeaseMetaInfo.LeaseState != leaseLib.STALE_INPROGRESS) {
                                 	log.Error("(sendGCReq) GCed resource is not present or have modified state", rUUIDs[i])
                                 	continue
                         	}
-                        	lease.LeaseMetaInfo.StaleRetry = true
+                        	l.LeaseMetaInfo.StaleRetry = true
                 	}
                 	lso.leaseLock.Unlock()
                 	sleep = 0
