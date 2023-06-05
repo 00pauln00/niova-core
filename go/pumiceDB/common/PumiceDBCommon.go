@@ -7,7 +7,10 @@ import (
 	"io"
 	"net"
 	"os"
+	"os/signal"
+	"runtime/coverage"
 	"strings"
+	"syscall"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -76,6 +79,33 @@ func InitLogger(logPath string) error {
 		log.SetOutput(f)
 	}
 	return err
+}
+
+//emit code coverage data to the path file if it exists
+func EmitCoverData(path string) {
+	log.Info("Writing code coverage data to : ", path)
+	if err := coverage.WriteMetaDir(path); err != nil {
+		log.Error("Error while writing cover meta dir : ", err)
+	}
+	if err := coverage.WriteCountersDir(path); err != nil {
+		log.Error("error while writing counter metadata : ", err)
+	}
+}
+
+// catch SIGTERM, emit cover data to path, exit
+func HandleKillSignal() {
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		log.Info("Received SIGTERM")
+		path := os.Getenv("GOCOVERDIR")
+		if path == "" {
+			path = "/tmp/niova-core/go-code-cov-" + string(os.Getpid())
+		}
+		EmitCoverData(path)
+		os.Exit(1)
+	}()
 }
 
 //Encode the data passed as interface and return the unsafe.Pointer
