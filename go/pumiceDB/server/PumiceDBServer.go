@@ -7,7 +7,6 @@ import (
 	"fmt"
 	gopointer "github.com/mattn/go-pointer"
 	uuid "github.com/satori/go.uuid"
-	log "github.com/sirupsen/logrus"
 	"io"
 	"math"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
@@ -16,7 +15,6 @@ import (
 	"strings"
 	"unsafe"
 
-	gopointer "github.com/mattn/go-pointer"
 	log "github.com/sirupsen/logrus"
 )
 
