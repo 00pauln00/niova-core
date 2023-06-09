@@ -91,6 +91,12 @@ int
 PmdbGetLeaderTimeStamp(struct raft_leader_ts *ts);
 
 /**
+ * PmdbIsLeader - Return true if the peer is leader.
+ */
+bool
+PmdbIsLeader(void);
+
+/**
  * PmdbWriteKV - to be called by the pumice-enabled application in 'apply'
  *    context only.  This call is used by the application to stage KVs for
  *    writing into rocksDB.  KVs added within a single instance of the 'apply'
