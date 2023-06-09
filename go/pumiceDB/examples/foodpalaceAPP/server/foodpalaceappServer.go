@@ -3,12 +3,13 @@ package main
 import (
 	"flag"
 	"fmt"
-	"foodpalaceapp.com/foodpalaceapplib"
-	log "github.com/sirupsen/logrus"
-	"niova/go-pumicedb-lib/server"
+	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
 	"strconv"
 	"strings"
+
+	"foodpalaceapp.com/foodpalaceapplib"
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -98,8 +99,8 @@ func (fpso *FoodpalaceServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 
 
 	//Write key,values.
 	rc := fpso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler, fpAppKey,
-			int64(appKeyLen), fpAppValue,
-			int64(appValLen), colmfamily)
+		int64(appKeyLen), fpAppValue,
+		int64(appValLen), colmfamily)
 
 	return int64(rc)
 }

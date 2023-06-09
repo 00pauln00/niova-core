@@ -4,10 +4,11 @@ import (
 	"common/requestResponseLib"
 	"errors"
 	"flag"
-	log "github.com/sirupsen/logrus"
 	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	PumiceDBServer "niova/go-pumicedb-lib/server"
 	"os"
+
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -195,7 +196,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 		//Copy the encoded result in replyBuffer
 		replySize, copyErr = nso.pso.CopyDataToBuffer(resultReq,
-													readArgs.ReplyBuf)
+			readArgs.ReplyBuf)
 		if copyErr != nil {
 			log.Error("Failed to Copy result in the buffer: %s", copyErr)
 			return -1

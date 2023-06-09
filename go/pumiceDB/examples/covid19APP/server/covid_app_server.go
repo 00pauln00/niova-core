@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"covidapplib/lib"
+	CovidAppLib "covidapplib/lib"
+	PumiceDBServer "niova/go-pumicedb-lib/server"
+
 	log "github.com/sirupsen/logrus"
-	"niova/go-pumicedb-lib/server"
 )
 
 /*
@@ -174,7 +175,7 @@ func (cso *CovidServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	covidDataVal := fmt.Sprintf("%s %d %d", applyCovid.IsoCode,
-					applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
+		applyCovid.TotalVaccinations, applyCovid.PeopleVaccinated)
 
 	//length of all values.
 	covidDataLen := len(covidDataVal)
@@ -232,7 +233,7 @@ func (cso *CovidServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 	//Copy the encoded result in replyBuffer
 	replySize, copyErr := cso.pso.CopyDataToBuffer(resultCovid,
-							readArgs.ReplyBuf)
+		readArgs.ReplyBuf)
 	if copyErr != nil {
 		log.Error("Failed to Copy result in the buffer: %s", copyErr)
 		return -1

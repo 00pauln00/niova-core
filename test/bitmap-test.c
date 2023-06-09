@@ -356,6 +356,77 @@ niova_bitmap_init_max_idx(void)
     NIOVA_ASSERT(niova_bitmap_nfree(&x) == x.nb_max_idx);
 }
 
+struct xarg
+{
+    struct niova_bitmap *x;
+    size_t cnt;
+    size_t total_bits;
+};
+
+static void
+niova_bitmap_iterate_cb(size_t idx, size_t len, void *arg)
+{
+    NIOVA_ASSERT(len > 0 && arg != NULL);
+    struct xarg *xarg = (struct xarg *)arg;
+
+    NIOVA_ASSERT(idx < niova_bitmap_size_bits(xarg->x));
+    NIOVA_ASSERT((idx + len) <= niova_bitmap_size_bits(xarg->x));
+
+    xarg->cnt++;
+    xarg->total_bits += len;
+}
+
+static void
+niova_bitmap_iterate_test(void)
+{
+    size_t size = 64;
+
+    struct niova_bitmap x = {0};
+    bitmap_word_t x_map[size];
+
+    struct xarg xarg = {.x = &x};
+
+    int rc = niova_bitmap_attach_and_init(&x, x_map, size);
+
+    rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(xarg.cnt == 0 && xarg.total_bits == 0);
+
+    for (int i = 0; i < size; i++)
+        x_map[i] = -1ULL;
+
+    rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(xarg.cnt == 1 &&
+                 xarg.total_bits == niova_bitmap_size_bits(&x));
+
+    xarg.cnt = 0;
+    xarg.total_bits = 0;
+
+    for (int i = 0; i < size; i++)
+        x_map[i] = 0x1010101010101010;
+
+    rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);
+    NIOVA_ASSERT(rc == 0);
+    // '8' is the number of ones groups in 0x1010101010101010
+    NIOVA_ASSERT(xarg.cnt == (8 * size) &&
+                 xarg.total_bits ==
+                 (number_of_ones_in_val(0x1010101010101010) * size));
+
+
+    xarg.cnt = 0;
+    xarg.total_bits = 0;
+
+    for (int i = 0; i < size; i++)
+        x_map[i] = 0x7070707070707070;
+
+    rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(xarg.cnt == (8 * size) &&
+                 xarg.total_bits ==
+                 (number_of_ones_in_val(0x7070707070707070) * size));
+}
+
 int
 main(void)
 {
@@ -384,6 +455,8 @@ main(void)
     niova_bitmap_bulk_unset_test();
 
     niova_bitmap_init_max_idx();
+
+    niova_bitmap_iterate_test();
 
     return 0;
 }

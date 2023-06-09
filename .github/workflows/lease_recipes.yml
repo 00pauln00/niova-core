@@ -19,11 +19,11 @@ jobs:
       run: sudo apt update
 
     # Install golang
-    - name: Install golang 1.18.3
+    - name: Install golang 1.20.3
       run: sudo rm -rf /usr/bin/go &&
-           sudo wget https://golang.org/dl/go1.18.3.linux-amd64.tar.gz &&
+           sudo wget https://golang.org/dl/go1.20.3.linux-amd64.tar.gz &&
            sudo mkdir /home/runner/work/go &&
-           sudo tar -C /home/runner/work/go -xzf  go1.18.3.linux-amd64.tar.gz &&
+           sudo tar -C /home/runner/work/go -xzf  go1.20.3.linux-amd64.tar.gz &&
            export PATH=$PATH:/home/runner/work/go/go/bin &&
            go version
 
@@ -77,6 +77,10 @@ jobs:
     - name: Create log directory for storing holon logs
       run: mkdir  /home/runner/work/niovad/niovad/holon_log
 
+    - name: Create dir for cover data counters, metadata to be placed
+      run: mkdir  /home/runner/work/niovad/niovad/code_cov &&
+           export GOCOVERDIR=/work/niovad/niovad/code_cov
+
     - name:  run recipes for lease application
       run: cd /home/runner/work/niovad/niovad/build_dir/holon/ &&
            ../run-recipes.sh '/home/runner/work/niovad/niovad/build_dir/holon'
@@ -85,6 +89,13 @@ jobs:
                              '/home/runner/work/niovad/niovad/build_dir/lease_recipes.txt'
                              'lease'
                              '/home/runner/work/go/go/bin'
+
+    - name: Run go covdata tool to generate code cover report
+      run: cd /home/runner/work/niovad/niovad/code_cov &&
+           export PATH=$PATH:/home/runner/work/go/go/bin &&
+           echo "***** Code Coverage Report *****" &&
+           go tool covdata percent -i=./ &&
+           echo "***** End *****"
 
     - name: Prepare artifact filename
       id: prepare_artifact_filename

@@ -386,4 +386,49 @@ niova_bitmap_compile_time_asserts(void)
 {
     COMPILE_TIME_ASSERT(NB_WORD_TYPE_SZ_BITS == 64);
 }
+
+static inline int
+niova_bitmap_iterate(const struct niova_bitmap *nb,
+                     void (*cb)(size_t idx, size_t len, void *), void *arg)
+{
+    if (nb == NULL || cb == NULL)
+        return -EINVAL;
+
+    size_t max_idx = niova_bitmap_size_bits(nb);
+    if (max_idx == NB_MAX_IDX_ANY)
+        return -EINVAL;
+
+    ssize_t idx = -1;
+    size_t len = 0;
+
+    for (size_t i = 0; i < max_idx; i++)
+    {
+        if (niova_bitmap_is_set(nb, i))
+        {
+            if (idx < 0)
+            {
+                idx = i;
+                len = 1;
+            }
+            else
+            {
+                len++;
+            }
+        }
+        else
+        {
+            if (idx >= 0)
+            {
+                cb(idx, len, arg);
+                idx = -1;
+            }
+        }
+    }
+
+    if (idx >= 0)
+        cb(idx, len, arg);
+
+    return 0;
+}
+
 #endif

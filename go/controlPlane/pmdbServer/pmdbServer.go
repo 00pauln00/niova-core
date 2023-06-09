@@ -129,15 +129,15 @@ func main() {
 		PmdbAPI:        nso,
 		SyncWrites:     false,
 		CoalescedWrite: true,
-		LeaseEnabled: true,
+		LeaseEnabled:   true,
 	}
 
 	nso.leaseObj = leaseServerLib.LeaseServerObject{}
 	//Initalise leaseObj
 	nso.leaseObj.InitLeaseObject(nso.pso)
-
 	// Separate column families for application requests and lease
 	nso.pso.ColumnFamilies = []string{colmfamily, nso.leaseObj.LeaseColmFam}
+
 	// Start the pmdb server
 	//TODO Check error
 	go nso.pso.Run()

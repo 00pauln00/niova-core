@@ -10,11 +10,14 @@ import (
 	log "github.com/sirupsen/logrus"
 	"io"
 	"math"
-	"niova/go-pumicedb-lib/common"
+	PumiceDBCommon "niova/go-pumicedb-lib/common"
 	"reflect"
 	"strconv"
 	"strings"
 	"unsafe"
+
+	gopointer "github.com/mattn/go-pointer"
+	log "github.com/sirupsen/logrus"
 )
 
 /*
@@ -303,7 +306,9 @@ func PmdbStartServer(pso *PmdbServerObject) error {
 }
 
 // Method version of PmdbStartServer()
+// writes metadata to 'path' while exiting
 func (pso *PmdbServerObject) Run() error {
+	go PumiceDBCommon.HandleKillSignal()
 	return PmdbStartServer(pso)
 }
 

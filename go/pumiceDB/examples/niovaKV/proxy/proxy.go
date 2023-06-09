@@ -31,8 +31,9 @@ import (
 
 type proxyHandler struct {
 	//Other
-	configPath string
-	logLevel   string
+	configPath     string
+	logLevel       string
+	coverageOutDir string
 
 	//Pmdb nivoa client
 	raftUUID                uuid.UUID
@@ -105,6 +106,7 @@ func (handler *proxyHandler) getCmdLineArgs() {
 	flag.StringVar(&tempClientUUID, "u", uuid.NewV4().String(), "client uuid")
 	flag.StringVar(&handler.logPath, "l", defaultLogPath, "log filepath")
 	flag.StringVar(&handler.configPath, "c", "./", "serf config path")
+	flag.StringVar(&handler.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.StringVar(&handler.serfAgentName, "n", "NULL", "serf agent name")
 	flag.StringVar(&handler.limit, "e", "500", "No of concurrent request")
 	flag.StringVar(&handler.serfLogger, "sl", "ignore", "serf logger file [default:ignore]")
@@ -340,6 +342,7 @@ func (handler *proxyHandler) killSignal_Handler() {
 		<-sigs
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
 		_ = ioutil.WriteFile(handler.clientUUID.String()+".json", json_data, 0644)
+		PumiceDBCommon.EmitCoverData(handler.coverageOutDir)
 		log.Info("(Proxy) Received a kill signal")
 		os.Exit(1)
 	}()

@@ -36,8 +36,9 @@ import (
 //Structure for proxy
 type proxyHandler struct {
 	//Other
-	configPath string
-	logLevel   string
+	configPath     string
+	logLevel       string
+	coverageOutDir string
 
 	//Niovakvserver
 	addr     net.IP
@@ -103,6 +104,7 @@ func (handler *proxyHandler) getCmdParams() {
 	flag.StringVar(&handler.logLevel, "ll", "", "Set log level for the execution")
 	flag.StringVar(&handler.requireStat, "s", "0", "HTTP server stat : provides status of requests, If needed provide 1")
 	flag.StringVar(&handler.serfPeersFilePath, "pa", "NULL", "Path to pmdb server serf configuration file")
+	flag.StringVar(&handler.coverageOutDir, "cov", "", "Path to write code coverage data")
 	flag.Parse()
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
 	//FIXME: For testing purpose
@@ -573,6 +575,7 @@ func (handler *proxyHandler) killSignalHandler() {
 		<-sigs
 		json_data, _ := json.MarshalIndent(handler.httpServerObj.Stat, "", " ")
 		_ = ioutil.WriteFile((handler.clientUUID.String())+".json", json_data, 0644)
+		PumiceDBCommon.EmitCoverData(handler.coverageOutDir)
 		log.Info("(Proxy) Received a kill signal")
 		os.Exit(1)
 	}()
@@ -619,6 +622,7 @@ func main() {
 		usage()
 		os.Exit(-1)
 	}
+
 	//niovaServer.clientUUID = uuid.NewV4().String()
 	//Create log file
 	err = PumiceDBCommon.InitLogger(proxyObj.logPath)
