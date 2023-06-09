@@ -90,7 +90,7 @@ def write_worflow_timings_influxdb(data, workflow_name):
         else:
             code_coverage = {}
         
-        if workflow_name == "holon_golang_apps_recipes_workflow" or workflow_name == "holon_controlplane_app_recipes_workflow" or workflow_name == "holon_lease_recipes_workflow":
+        if workflow_name == "holon_golang_apps_recipes_workflow" or workflow_name == "holon_controlplane_app_recipes_workflow" or workflow_name == "holon_lease_recipes_workflow"  or workflow_name == "holon_lease_stale_recipes_workflow":
             for key, value in code_coverage.items():
                 coverage.append(
                                 {
