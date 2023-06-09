@@ -676,7 +676,7 @@ func (lso *LeaseServerObject) leaseGarbageCollector() {
                         	l.LeaseMetaInfo.StaleRetry = true
                 	}
                 	lso.leaseLock.Unlock()
-                	sleep = 0
+                	sleep = 1
         	default:
                 	log.Error("Failed to send stale lease processing request : ", err)
 
