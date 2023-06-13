@@ -186,7 +186,7 @@ func (lh *LeaseClientReqHandler) LeaseOperationOverHTTP() error {
 		isWrite = true
 	}
 	// send req
-	b, err = lh.LeaseClientObj.ServiceDiscoveryObj.Request(lh.ReqBuff.Bytes(), lh.Rncui, isWrite)
+	b, err = lh.LeaseClientObj.ServiceDiscoveryObj.Request(lh.ReqBuff.Bytes(), "", isWrite)
 	if err != nil {
 		return err
 	}
