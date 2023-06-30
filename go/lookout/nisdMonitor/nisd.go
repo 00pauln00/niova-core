@@ -403,29 +403,6 @@ func (handler *nisdMonitor) loadConfigInfo() error {
 	return nil
 }
 
-func (handler *nisdMonitor) parsePortRange() error {
-	var p1, p2 int
-	var err error
-	pr := strings.Split(handler.PortRangeStr, " ")
-
-	p1, err = strconv.Atoi(pr[0])
-	if err != nil {
-		return err
-	}
-	p2, err = strconv.Atoi(pr[1])
-	if err != nil {
-		return err
-	}
-
-	for i := p1; i <= p2; i++ {
-		handler.PortRange = append(handler.PortRange, uint16(i))
-	}
-	if len(handler.PortRange) < 3 {
-		return errors.New("Not enough ports available in the specified range to start services")
-	}
-	return err
-}
-
 func main() {
 	var nisd nisdMonitor
 	var portAddr *int
