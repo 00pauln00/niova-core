@@ -51,6 +51,9 @@ type nisdMonitor struct {
 	endpointRoot  *string
 	httpPort      int
 	ctlPath       *string
+	promPath      string
+	standalone    bool
+	PortRangeStr  string
 	//serf
 	serfHandler       serfAgent.SerfAgentHandler
 	agentName         string
@@ -68,7 +71,7 @@ type nisdMonitor struct {
 var RecvdPort int
 var SetTagsInterval int = 10
 
-//NISD
+// NISD
 type udpMessage struct {
 	addr    net.Addr
 	message []byte
@@ -90,15 +93,19 @@ func (handler *nisdMonitor) parseCMDArgs() {
 	showHelpShort = flag.Bool("h", false, "")
 	showHelp = flag.Bool("help", false, "print help")
 
+	flag.BoolVar(&handler.standalone, "std", true, "Set flag to true to run lookout standalone for NISD")
 	flag.StringVar(&handler.udpPort, "u", "1054", "UDP port for NISD communication")
+	flag.StringVar(&handler.PortRangeStr, "p", "", "Port range for the lookout to export data endpoints to, should be space seperated")
 	flag.StringVar(&handler.agentName, "n", uuid.New().String(), "Agent name")
 	flag.StringVar(&handler.addr, "a", "127.0.0.1", "Agent addr")
 	flag.StringVar(&handler.gossipNodesPath, "c", "./gossipNodes", "PMDB server gossip info")
+	flag.StringVar(&handler.promPath, "pr", "./targets.json", "Prometheus targets info")
 	flag.StringVar(&handler.serfLogger, "s", "serf.log", "Serf logs")
 	flag.StringVar(&handler.raftUUID, "r", "", "Raft UUID")
 	flag.Parse()
 
 	nonParsed := flag.Args()
+	fmt.Println(nonParsed)
 	if len(nonParsed) > 0 {
 		fmt.Println("Unexpected argument found:", nonParsed[1])
 		usage(1)
@@ -132,7 +139,7 @@ func fillNisdCStruct(UUID string, ipaddr string, port int) []byte {
 	return returnData
 }
 
-//NISD
+// NISD
 func (handler *nisdMonitor) getConfigNSend(udpInfo udpMessage) {
 	//Get uuid from the byte array
 	data := udpInfo.message
@@ -221,7 +228,7 @@ func (handler *nisdMonitor) getCompressedGossipDataNISD() map[string]string {
 	return returnMap
 }
 
-//NISD
+// NISD
 func (handler *nisdMonitor) setTags() {
 	for {
 		tagData := handler.getCompressedGossipDataNISD()
@@ -233,7 +240,7 @@ func (handler *nisdMonitor) setTags() {
 	}
 }
 
-//NISD
+// NISD
 func (handler *nisdMonitor) startClientAPI() {
 	//Init niovakv client API
 	handler.storageClient = serviceDiscovery.ServiceDiscoveryHandler{
@@ -251,7 +258,7 @@ func (handler *nisdMonitor) startClientAPI() {
 	handler.storageClient.TillReady("", 0)
 }
 
-//NISD
+// NISD
 func (handler *nisdMonitor) startUDPListner() {
 	var err error
 	handler.udpSocket, err = net.ListenPacket("udp", ":"+handler.udpPort)
@@ -396,61 +403,84 @@ func (handler *nisdMonitor) loadConfigInfo() error {
 	return nil
 }
 
+func (handler *nisdMonitor) parsePortRange() error {
+	var p1, p2 int
+	var err error
+	pr := strings.Split(handler.PortRangeStr, " ")
+
+	p1, err = strconv.Atoi(pr[0])
+	if err != nil {
+		return err
+	}
+	p2, err = strconv.Atoi(pr[1])
+	if err != nil {
+		return err
+	}
+
+	for i := p1; i <= p2; i++ {
+		handler.PortRange = append(handler.PortRange, uint16(i))
+	}
+	if len(handler.PortRange) < 3 {
+		return errors.New("Not enough ports available in the specified range to start services")
+	}
+	return err
+}
+
 func main() {
 	var nisd nisdMonitor
+	var portAddr *int
 
 	//Get cmd line args
 	nisd.parseCMDArgs()
-
-	//Start pmdb service client discovery api
-	nisd.startClientAPI()
 
 	err := nisd.loadConfigInfo()
 	if err != nil {
 		fmt.Println("Error while loading config info - ", err)
 		os.Exit(1)
 	}
+	//Start pmdb service client discovery api
+	if !nisd.standalone {
+		nisd.startClientAPI()
 
-	//Start serf agent
-	nisd.ServicePortRangeS = nisd.PortRange[0]
-	nisd.ServicePortRangeE = nisd.PortRange[len(nisd.PortRange)-1]
-	err = nisd.startSerfAgent()
-	if err != nil {
-		fmt.Println("Error while starting serf agent : ", err)
-		os.Exit(1)
+		//Start serf agent
+		err = nisd.startSerfAgent()
+		nisd.ServicePortRangeS = nisd.PortRange[0]
+		nisd.ServicePortRangeE = nisd.PortRange[len(nisd.PortRange)-1]
+		if err != nil {
+			fmt.Println("Error while starting serf agent : ", err)
+			os.Exit(1)
+		}
+
+		//Start udp listener
+		go nisd.startUDPListner()
+
 	}
 
-	//Start udp listener
-	go nisd.startUDPListner()
-
-	portAddr := &RecvdPort
-
+	portAddr = &RecvdPort
 	//Start lookout monitoring
+	fmt.Println(nisd.PortRange)
 	nisd.lookout = lookout.EPContainer{
 		MonitorUUID: "*",
 		AppType:     "NISD",
 		//HttpPort:         nisd.findFreePort(),
-		PortRange:        nisd.PortRange,
-		CTLPath:          *nisd.ctlPath,
-		SerfMembershipCB: nisd.SerfMembership,
-		EnableHttp:       true,
-		RetPort:          portAddr,
+		PortRange: nisd.PortRange,
+		CTLPath:   *nisd.ctlPath,
+		PromPath:  nisd.promPath,
+		//SerfMembershipCB: nisd.SerfMembership,
+		EnableHttp: true,
+		RetPort:    portAddr,
 	}
-	errs := make(chan error, 1)
-	go func() {
-		errs <- nisd.lookout.Start()
-	}()
-	select {
-	case err = <-errs:
-		fmt.Println("Error while starting Lookout : ", err)
+	errs := nisd.lookout.Start()
+	if errs != nil {
+		fmt.Println("Error while starting Lookout : ", errs)
 		os.Exit(1)
-	default:
-		fmt.Println("Lookout started successfully")
 	}
+	fmt.Println("Lookout started successfully")
 
-	//Wait till http lookout http is up and running
-	nisd.checkHTTPLiveness()
-
-	//Set serf tags
-	nisd.setTags()
+	if !nisd.standalone {
+		//Wait till http lookout http is up and running
+		nisd.checkHTTPLiveness()
+		//Set serf tags
+		nisd.setTags()
+	}
 }
