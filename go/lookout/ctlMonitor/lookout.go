@@ -429,9 +429,15 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
 			// Parse nisd system info
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
+			// Parse nisd chunk info
+			if len(node.EPInfo.NISDChunk) == 0{
+                                continue
+                        } else{
+                                output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDChunk[0], labelMap)
 		}
 	}
 	fmt.Fprintln(w, output)
+	}
 }
 
 func (epc *EPContainer) serveHttp() error {
