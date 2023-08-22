@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <zlib.h>
 
 #include "common.h"
 #include "log.h"
@@ -237,13 +238,50 @@ simple_crc_t10dif_4096byte_buf(void)
     return;
 }
 
-
 static void
 micro_pthread_self(void)
 {
     static pthread_t val;
     val += pthread_self();
     (void)val;
+}
+
+unsigned       zlibBufs[1000][1024];
+unsigned char *zlibOutBuf;
+size_t         zlibOutBufSz;
+int            zlibLevel = 1;
+
+static void
+zlib_test_prep(bool compressible, int level)
+{
+    for (int i = 0; i < 1000; i++)
+    {
+        memset(zlibBufs[i], PRIME, 4096);
+        for (int j = 0; j < 1024; j++)
+        {
+            if (!compressible || (j & 0x1))
+                zlibBufs[i][j] = random_get();
+        }
+    }
+
+    zlibOutBufSz = compressBound(4096);
+    zlibOutBuf = malloc(zlibOutBufSz);
+    zlibLevel = MIN(level, 9);
+}
+
+static void
+zlib_test_4k(void)
+{
+    static int idx;
+
+    size_t my_buf_size = zlibOutBufSz;
+
+    int rc = compress2(zlibOutBuf, &my_buf_size,
+                       (unsigned char *)zlibBufs[idx % 1000], 4096, zlibLevel);
+//    fprintf(stdout, "my_buf_size=%zu\n", my_buf_size);
+    NIOVA_ASSERT(rc == Z_OK);
+
+    idx++;
 }
 
 static void
@@ -261,7 +299,7 @@ run_micro(void (*func)(void), size_t iterations, const char *name)
 
     unsigned long long num_nsecs = timespec_2_nsec(&ts[0]);
 
-    fprintf(stdout, "%9.3f\t\t%s\n",
+    fprintf(stdout, "%12.3f\t\t%s\n",
             (float)num_nsecs / (float)iterations, name);
 }
 
@@ -306,5 +344,22 @@ main(void)
               "uuid_generate_time");
     run_micro(micro_pthread_self, DEF_ITER,
               "pthread_self");
+
+    zlib_test_prep(true, 1);
+    run_micro(zlib_test_4k, 2000,
+              "zlib_compress_4k (compressible@L1)");
+
+    zlib_test_prep(false, 1);
+    run_micro(zlib_test_4k, 2000,
+              "zlib_compress_4k (uncompressible@L1)");
+
+    zlib_test_prep(true, 9);
+    run_micro(zlib_test_4k, 2000,
+              "zlib_compress_4k (compressible@L9)");
+
+    zlib_test_prep(false, 9);
+    run_micro(zlib_test_4k, 2000,
+              "zlib_compress_4k (uncompressible@L9)");
+
     return 0;
 }

@@ -65,6 +65,8 @@ AC_CHECK_HEADERS([uuid/uuid.h], [],
                  [AC_MSG_ERROR([failed to locate uuid/uuid.h])], [])
 AC_CHECK_HEADERS([backtrace.h], [],
                  [AC_MSG_ERROR([failed to locate backtrace.h])], [])
+AC_CHECK_HEADERS([zlib.h], [],
+                 [AC_MSG_ERROR([failed to locate zlib.h])], [])
 
 # rocksdb
 AC_CHECK_HEADERS([rocksdb/c.h], [],
@@ -111,6 +113,10 @@ AC_CHECK_LIB([uuid],[uuid_compare],,
 #pthread
 AC_CHECK_LIB([pthread],[pthread_join],,
              [AC_MSG_ERROR([Could not find pthread_join])])
+
+#zlib
+AC_CHECK_LIB([z],[compressBound],,
+             [AC_MSG_ERROR([Could not find compressBound])])
 
 #rocksdb
 # Rocksdb will not be included in the global LIB var
