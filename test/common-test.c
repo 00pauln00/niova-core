@@ -285,6 +285,10 @@ lowest_bit_tests(void)
 
     NIOVA_ASSERT(number_of_ones_in_val(x) == 1 && x == 1 && !val);
 
+    val = -1ULL;
+    x = lowest_bit_unset_and_return(&val);
+    NIOVA_ASSERT(NBBY * sizeof(uint64_t));
+
     val = 3;
     x = lowest_bit_unset_and_return(&val);
     NIOVA_ASSERT(number_of_ones_in_val(x) == 1 && x == 1 && val == 2);

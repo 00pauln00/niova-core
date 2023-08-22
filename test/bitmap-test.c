@@ -105,7 +105,7 @@ niova_bitmap_tests(size_t size)
         for (size_t i = 17; i >= 2; i--)
         {
             unsigned int idx = 0;
-            rc = niova_bitmap_lowest_free_bit_release(&x.nb, &idx);
+            rc = niova_bitmap_lowest_used_bit_release(&x.nb, &idx);
             NIOVA_ASSERT(!rc && idx == (nbits/i));
         }
         NIOVA_ASSERT(!niova_bitmap_inuse(&x.nb));
@@ -334,7 +334,11 @@ niova_bitmap_init_max_idx(void)
 
     x.nb_max_idx = 1;
     NIOVA_ASSERT(niova_bitmap_init(&x) == 0);
-    NIOVA_ASSERT(niova_bitmap_nfree(&x) == x.nb_max_idx);
+
+    size_t nfree = niova_bitmap_nfree(&x);
+
+    NIOVA_ASSERT(nfree == x.nb_max_idx);
+
 
     unsigned int idx = NB_MAX_IDX_ANY;
 
@@ -344,12 +348,12 @@ niova_bitmap_init_max_idx(void)
         NIOVA_ASSERT(!niova_bitmap_lowest_free_bit_assign(&x,  &idx));
         NIOVA_ASSERT(idx == i);
     }
+
     idx = NB_MAX_IDX_ANY;
     NIOVA_ASSERT(niova_bitmap_lowest_free_bit_assign(&x,  &idx) == -ENOSPC);
 
-    NIOVA_ASSERT(niova_bitmap_set(&x, x.nb_max_idx) == -EPERM);
-    NIOVA_ASSERT(niova_bitmap_unset(&x, x.nb_max_idx) == -EPERM);
-    NIOVA_ASSERT(niova_bitmap_lowest_free_bit_release(&x, &idx) == -EOPNOTSUPP);
+    NIOVA_ASSERT(niova_bitmap_set(&x, x.nb_max_idx) == -ERANGE);
+    NIOVA_ASSERT(niova_bitmap_unset(&x, x.nb_max_idx) == -ERANGE);
 
     x.nb_max_idx = 63;
     NIOVA_ASSERT(niova_bitmap_init(&x) == 0);

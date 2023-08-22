@@ -242,6 +242,7 @@ lowest_bit_unset_and_return(uint64_t *field)
     return x;
 }
 
+// Note a return of -1ULL means all bits are taken
 static inline uint64_t
 lowest_bit_set_and_return(uint64_t *field)
 {
