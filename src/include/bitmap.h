@@ -309,7 +309,7 @@ niova_bitmap_lowest_free_bit_assign(struct niova_bitmap *nb, unsigned int *idx)
         unsigned int sii = (start_idx + i) % nw;
         unsigned int lw_bits = 0;
 
-        if ((i == (nw - 1)) && (nb->nb_max_idx & NB_MAX_IDX_MASK))
+        if ((sii == (nw - 1)) && (nb->nb_max_idx & NB_MAX_IDX_MASK))
         {
             lw_bits =
                 NB_WORD_TYPE_SZ_BITS - (nb->nb_max_idx % NB_WORD_TYPE_SZ_BITS);
@@ -323,6 +323,8 @@ niova_bitmap_lowest_free_bit_assign(struct niova_bitmap *nb, unsigned int *idx)
 
             *idx = ((sii * NB_WORD_TYPE_SZ_BITS) +
                     (highest_set_bit_pos_from_val(x) - 1));
+
+            NIOVA_ASSERT(*idx < nb->nb_max_idx);
 
             nb->nb_alloc_hint = sii;
 

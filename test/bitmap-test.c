@@ -325,7 +325,7 @@ niova_bitmap_alloc_hint_test(void)
 static void
 niova_bitmap_init_max_idx(void)
 {
-    bitmap_word_t x_map[1] = {0};
+    bitmap_word_t x_map[32] = {0};
 
     struct niova_bitmap x =
         {.nb_nwords = 1, .nb_map = x_map, .nb_max_idx = 65};
@@ -358,6 +358,34 @@ niova_bitmap_init_max_idx(void)
     x.nb_max_idx = 63;
     NIOVA_ASSERT(niova_bitmap_init(&x) == 0);
     NIOVA_ASSERT(niova_bitmap_nfree(&x) == x.nb_max_idx);
+
+    for (unsigned int i = 0; i < x.nb_max_idx; i++)
+    {
+        idx = NB_MAX_IDX_ANY;
+        NIOVA_ASSERT(!niova_bitmap_lowest_free_bit_assign(&x,  &idx));
+        NIOVA_ASSERT(idx == i);
+    }
+
+    x.nb_max_idx = 1806;
+    x.nb_nwords = 29;
+    x.nb_alloc_hint = 28;
+    NIOVA_ASSERT(niova_bitmap_init(&x) == 0);
+    NIOVA_ASSERT(niova_bitmap_nfree(&x) == x.nb_max_idx);
+
+    for (unsigned int i = 0; i < x.nb_max_idx + 2; i++)
+    {
+        idx = NB_MAX_IDX_ANY;
+
+        int rc = niova_bitmap_lowest_free_bit_assign(&x, &idx);
+        if (i < x.nb_max_idx)
+        {
+            NIOVA_ASSERT(rc == 0);
+        }
+        else
+        {
+            NIOVA_ASSERT(rc == -ENOSPC);
+        }
+    }
 }
 
 struct xarg
