@@ -67,6 +67,8 @@ AC_CHECK_HEADERS([backtrace.h], [],
                  [AC_MSG_ERROR([failed to locate backtrace.h])], [])
 AC_CHECK_HEADERS([zlib.h], [],
                  [AC_MSG_ERROR([failed to locate zlib.h])], [])
+AC_CHECK_HEADERS([lz4.h], [],
+                 [AC_MSG_ERROR([failed to locate lz4.h])], [])
 
 # rocksdb
 AC_CHECK_HEADERS([rocksdb/c.h], [],
@@ -117,6 +119,10 @@ AC_CHECK_LIB([pthread],[pthread_join],,
 #zlib
 AC_CHECK_LIB([z],[compressBound],,
              [AC_MSG_ERROR([Could not find compressBound])])
+
+#lz4
+AC_CHECK_LIB([lz4],[LZ4_compress_default],,
+             [AC_MSG_ERROR([Could not find LZ4_compress_default])])
 
 #rocksdb
 # Rocksdb will not be included in the global LIB var

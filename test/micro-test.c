@@ -9,6 +9,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <zlib.h>
+#include <lz4.h>
 
 #include "common.h"
 #include "log.h"
@@ -264,7 +265,10 @@ zlib_test_prep(bool compressible, int level)
         }
     }
 
-    zlibOutBufSz = compressBound(4096);
+    if (zlibOutBuf)
+        free(zlibOutBuf);
+
+    zlibOutBufSz = MAX(compressBound(4096), LZ4_COMPRESSBOUND(4096));
     zlibOutBuf = malloc(zlibOutBufSz);
     zlibLevel = MIN(level, 9);
 }
@@ -281,6 +285,17 @@ zlib_test_4k(void)
 //    fprintf(stdout, "my_buf_size=%zu\n", my_buf_size);
     NIOVA_ASSERT(rc == Z_OK);
 
+    idx++;
+}
+
+static void
+lz4_test_4k(void)
+{
+    static int idx;
+
+    int rc = LZ4_compress_default((const char *)zlibBufs[idx % 1000],
+                                  (char *)zlibOutBuf, 4096, zlibOutBufSz);
+    NIOVA_ASSERT(rc > 0);
     idx++;
 }
 
@@ -360,6 +375,14 @@ main(void)
     zlib_test_prep(false, 9);
     run_micro(zlib_test_4k, 2000,
               "zlib_compress_4k (uncompressible@L9)");
+
+    zlib_test_prep(true, 1);
+    run_micro(lz4_test_4k, 2000,
+              "lz4_compress_4k (compressible)");
+
+    zlib_test_prep(false, 1);
+    run_micro(lz4_test_4k, 2000,
+              "lz4_compress_4k (uncompressible)");
 
     return 0;
 }
