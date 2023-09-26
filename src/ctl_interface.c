@@ -247,6 +247,45 @@ lctli_epoll_mgr_cb(const struct epoll_handle *eph, uint32_t events)
 }
 
 static int
+lctli_remove_subdirs(struct ctl_interface *lctli)
+{
+    int err = 0;
+
+    for (int i = 0; i < LCTLI_SUBDIR_MAX; i++)
+    {
+        char subdir_path[PATH_MAX];
+
+        int rc = snprintf(subdir_path, PATH_MAX, "%s/%s",
+                          lctli->lctli_path, lctliSubdirs[i]);
+
+        if (rc >= PATH_MAX)
+            return -ENAMETOOLONG;
+
+        else if (rc < 0)
+            return rc;
+
+        rc = rmdir(subdir_path);
+        SIMPLE_LOG_MSG(LL_DEBUG, "rmdir() %s: %s", subdir_path,
+                       rc ? strerror(errno) : "Success");
+
+        if (rc && !err)
+            err = -errno;
+    }
+
+    if (!err)
+    {
+        err = rmdir(lctli->lctli_path);
+        if (err)
+            err = -errno;
+
+        SIMPLE_LOG_MSG(LL_DEBUG, "rmdir() %s: %s", lctli->lctli_path,
+                       err ? strerror(err) : "Success");
+    }
+
+    return err;
+}
+
+static int
 lctli_prepare(struct ctl_interface *lctli)
 {
     if (!lctli)
@@ -268,6 +307,9 @@ lctli_prepare(struct ctl_interface *lctli)
 
         if (rc >= PATH_MAX)
             return -ENAMETOOLONG;
+
+        else if (rc < 0)
+            return rc;
 
         rc = file_util_pathname_build(subdir_path);
         if (rc)
@@ -688,6 +730,9 @@ lctli_subsystem_destroy(void)
         inotify_rm_watch(lctli->lctli_inotify_fd,
                          lctli->lctli_inotify_watch_fd);
     }
+
+    if (!system_info_uuid_is_present())
+        lctli_remove_subdirs(lctli);
 
     return;
 }
