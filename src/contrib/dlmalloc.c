@@ -586,6 +586,14 @@ MAX_RELEASE_CHECK_RATE   default: 4095 unless not HAVE_MMAP
 /* The maximum possible size_t value has all bits set */
 #define MAX_SIZE_T           (~(size_t)0)
 
+// Config options for NIOVA (start)
+#define USE_DL_PREFIX       1
+#define ONLY_MSPACES        1
+#define USE_LOCKS           0
+#define USE_SPIN_LOCKS      0
+#define USE_RECURSIVE_LOCKS 0
+// (end)
+
 #if ((defined(USE_LOCKS)) || \
      ((defined(USE_SPIN_LOCKS) && USE_SPIN_LOCKS != 0) || \
       (defined(USE_RECURSIVE_LOCKS) && USE_RECURSIVE_LOCKS != 0)))
