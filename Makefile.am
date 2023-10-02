@@ -305,6 +305,12 @@ test_io_iov_test_LDADD = src/libniova.la
 test_io_iov_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/io-iov-test
 
+noinst_PROGRAMS += test/mspace-test
+test_mspace_test_SOURCES = test/mspace-test.c
+test_mspace_test_LDADD = src/libniova.la
+test_mspace_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/mspace-test
+
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 
