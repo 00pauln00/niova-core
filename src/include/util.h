@@ -568,6 +568,17 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     (obj)->crc32_memb;                                                  \
 })
 
+#define NIOVA_CRC_OBJ_VERIFY(obj, type, crc32_memb, extra_contents)     \
+({                                                                      \
+    const size_t _offset =                                              \
+        (offsetof(type, crc32_memb) + sizeof(crc32_t));                 \
+    const unsigned char *_buf = (const unsigned char *)(obj) + _offset; \
+    const int _crc_len = sizeof(type) - _offset + extra_contents;       \
+    crc32_t _rc = niova_crc(_buf, _crc_len, 0) - (obj)->crc32_memb;     \
+    _rc;                                                                \
+})
+
+
 #define NIOVA_TIMER_START(name)                 \
     struct timespec io_op##name[2];             \
     niova_unstable_clock(&io_op##name[0]);

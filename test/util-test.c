@@ -10,9 +10,9 @@
 #include <unistd.h>
 //#include <uuid/uuid.h>
 
-
+#include "crc32.h"
 #include "util.h"
-
+#include "log.h"
 
 static void
 mk_time_string_test(void)
@@ -190,6 +190,54 @@ util_offset_cast_test(void)
     }
 }
 
+static void
+niova_crc_test(void)
+{
+    struct xx {
+        int header_ignore;
+        crc32_t obj_crc;
+        int a[100];
+        int b[];
+    };
+
+    struct xx crc_test = {0};
+
+    crc32_t crc = NIOVA_CRC_OBJ(&crc_test, struct xx, obj_crc, 0);
+    NIOVA_ASSERT(crc == crc_test.obj_crc);
+
+    // NIOVA_CRC_OBJ_VERIFY() is effectively equivalent to the check above
+    NIOVA_ASSERT(NIOVA_CRC_OBJ_VERIFY(&crc_test, struct xx, obj_crc, 0) == 0);
+
+    // Recalculate the crc and assert the ignored data has not altered the crc
+    crc_test.header_ignore = 1;
+    NIOVA_CRC_OBJ(&crc_test, struct xx, obj_crc, 0);
+    NIOVA_ASSERT(crc == crc_test.obj_crc);
+
+    NIOVA_ASSERT(NIOVA_CRC_OBJ_VERIFY(&crc_test, struct xx, obj_crc, 0) == 0);
+
+    // Invalidate the CRC and ensure that NIOVA_CRC_OBJ_VERIFY() fails
+    crc_test.a[0] = 1;
+    NIOVA_ASSERT(NIOVA_CRC_OBJ_VERIFY(&crc_test, struct xx, obj_crc, 0) != 0);
+
+    // Test w/ trailing data
+
+    char xbuf[sizeof(struct xx) * 2] = {0};
+
+    struct xx *crc_test_extra = (struct xx *)xbuf;
+
+    crc = NIOVA_CRC_OBJ(crc_test_extra, struct xx, obj_crc, sizeof(struct xx));
+    NIOVA_ASSERT(crc == crc_test_extra->obj_crc);
+    NIOVA_ASSERT(
+        NIOVA_CRC_OBJ_VERIFY(crc_test_extra, struct xx, obj_crc,
+                             sizeof(struct xx)) == 0);
+
+    xbuf[sizeof(struct xx) + 1] = 1;
+
+    NIOVA_ASSERT(
+        NIOVA_CRC_OBJ_VERIFY(crc_test_extra, struct xx, obj_crc,
+                             sizeof(struct xx)) != 0);
+}
+
 int
 main(void)
 {
@@ -198,5 +246,6 @@ main(void)
     niova_string_to_unsigned_long_long_test();
     niova_string_to_unsigned_int_test();
     niova_parse_comma_delimited_uint_string_test();
+    niova_crc_test();
     return 0;
 }
