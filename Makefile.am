@@ -105,7 +105,8 @@ RAFT_NET_CORE_SOURCES = \
 	src/raft_net.c
 
 raft_includedir = $(includedir)/niova/raft
-raft_include_HEADERS = src/include/raft_net.h src/include/raft.h
+raft_include_HEADERS = \
+        src/include/raft_net.h src/include/raft.h test/raft_test.h
 
 RAFT_SERVER_CORE_SOURCES = $(RAFT_NET_CORE_SOURCES) src/raft_server.c
 
