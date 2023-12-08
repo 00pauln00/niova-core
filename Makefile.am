@@ -152,48 +152,6 @@ test_raft_reference_server_LDADD = \
 	src/libniova.la src/libniova_raft.la $(ROCKSDB_LIBS) src/libniova_bt.la
 ## end Raft
 
-## Pumice
-lib_LTLIBRARIES += src/libniova_pumice.la
-src_libniova_pumice_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_pumice_la_LIBADD = src/libniova.la src/libniova_raft.la
-src_libniova_pumice_la_SOURCES = \
-	src/include/pumice_db.h src/include/pumice_db_net.h src/pumice_db.c
-
-lib_LTLIBRARIES += src/libniova_pumice_client.la
-src_libniova_pumice_client_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_pumice_client_la_LIBADD = \
-	src/libniova.la src/libniova_raft_client.la
-src_libniova_pumice_client_la_SOURCES = \
-	src/include/pumice_db_net.h \
-	src/include/pumice_db_client.h \
-	src/pumice_db_client.c
-
-my_libexec_PROGRAMS += test/pumice-reference-client
-test_pumice_reference_client_SOURCES =  \
-	test/pumice-reference-client.c
-test_pumice_reference_client_LDADD = \
-	src/libniova.la \
-	src/libniova_raft_client.la \
-	src/libniova_pumice_client.la \
-	src/libniova_bt.la
-
-my_libexec_PROGRAMS += test/pumice-reference-server
-test_pumice_reference_server_SOURCES =  \
-	test/pumice-reference-server.c
-test_pumice_reference_server_LDADD = \
-	src/libniova.la \
-	src/libniova_raft.la \
-	src/libniova_pumice.la \
-	src/libniova_bt.la	$(ROCKSDB_LIBS)
-
-raft_include_HEADERS += src/include/pumice_db_net.h \
-	src/include/pumice_db_client.h \
-	src/include/pumice_db.h
-
-## end Pumice
-
 ## Tests
 noinst_PROGRAMS += test/ref-tree-test
 test_ref_tree_test_SOURCES = test/ref-tree-test.c
