@@ -13,9 +13,11 @@
 #include "env.h"
 #include "epoll_mgr.h"
 #include "log.h"
-#include "raft_client.h"
 #include "system_info.h"
 #include "watchdog.h"
+
+#define RAFT_CLIENT_REQUEST_TIMEOUT_MAX_SECS 0xffffffffU
+#define RAFT_CLIENT_REQUEST_TIMEOUT_SECS 60
 
 static bool niovaEnvVarsSubsysInit = false;
 
