@@ -105,7 +105,8 @@ RAFT_NET_CORE_SOURCES = \
 	src/raft_net.c
 
 raft_includedir = $(includedir)/niova/raft
-raft_include_HEADERS = src/include/raft_net.h src/include/raft.h
+raft_include_HEADERS = \
+        src/include/raft_net.h src/include/raft.h test/raft_test.h
 
 RAFT_SERVER_CORE_SOURCES = $(RAFT_NET_CORE_SOURCES) src/raft_server.c
 
@@ -150,48 +151,6 @@ test_raft_reference_server_SOURCES =  \
 test_raft_reference_server_LDADD = \
 	src/libniova.la src/libniova_raft.la $(ROCKSDB_LIBS) src/libniova_bt.la
 ## end Raft
-
-## Pumice
-lib_LTLIBRARIES += src/libniova_pumice.la
-src_libniova_pumice_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_pumice_la_LIBADD = src/libniova.la src/libniova_raft.la
-src_libniova_pumice_la_SOURCES = \
-	src/include/pumice_db.h src/include/pumice_db_net.h src/pumice_db.c
-
-lib_LTLIBRARIES += src/libniova_pumice_client.la
-src_libniova_pumice_client_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_pumice_client_la_LIBADD = \
-	src/libniova.la src/libniova_raft_client.la
-src_libniova_pumice_client_la_SOURCES = \
-	src/include/pumice_db_net.h \
-	src/include/pumice_db_client.h \
-	src/pumice_db_client.c
-
-my_libexec_PROGRAMS += test/pumice-reference-client
-test_pumice_reference_client_SOURCES =  \
-	test/pumice-reference-client.c
-test_pumice_reference_client_LDADD = \
-	src/libniova.la \
-	src/libniova_raft_client.la \
-	src/libniova_pumice_client.la \
-	src/libniova_bt.la
-
-my_libexec_PROGRAMS += test/pumice-reference-server
-test_pumice_reference_server_SOURCES =  \
-	test/pumice-reference-server.c
-test_pumice_reference_server_LDADD = \
-	src/libniova.la \
-	src/libniova_raft.la \
-	src/libniova_pumice.la \
-	src/libniova_bt.la	$(ROCKSDB_LIBS)
-
-raft_include_HEADERS += src/include/pumice_db_net.h \
-	src/include/pumice_db_client.h \
-	src/include/pumice_db.h
-
-## end Pumice
 
 ## Tests
 noinst_PROGRAMS += test/ref-tree-test
@@ -328,3 +287,21 @@ gen-coverage:
 	lcov --no-external -b . --capture --directory . \
 		--output-file niova-coverage.out
 	genhtml ./niova-coverage.out --output-directory ./niova-coverage
+
+COVID_NKV_DIR := $(my_libexecdir)
+
+.PHONY: compile_go
+
+compile_go:
+	@echo "Compiling Go code for COVID-19 app"
+	cd ../../go/pumiceDB/examples/covid19APP/server && \
+    	CGO_LDFLAGS="-L$(my_libexecdir)/lib" CGO_CFLAGS="-I$(my_libexecdir)/include/niova" LD_LIBRARY_PATH="$(my_libexecdir)/lib" go mod tidy && go build -o $(COVID_NKV_DIR)/covid_app_server
+
+	cd ../../go/pumiceDB/examples/covid19APP/client && \
+    	CGO_LDFLAGS="-L$(my_libexecdir)/lib" CGO_CFLAGS="-I$(my_libexecdir)/include/niova" LD_LIBRARY_PATH="$(my_libexecdir)/lib" go mod tidy && go build -o $(COVID_NKV_DIR)/covid_app_client
+
+all: compile_go
+
+covid_nkv_install:
+	cp $(COVID_NKV_DIR)/covid_app_server $(COVID_NKV_DIR)/covid_app_client $(COVID_NKV_DIR)/vaccinations.csv $(COVID_NKV_DIR)
+
