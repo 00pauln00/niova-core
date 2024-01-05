@@ -17,4 +17,4 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - "/tmp/.niova:/tmp/.niova"
+      - "/tmp/.niova:/tmp/.niova:Z"
