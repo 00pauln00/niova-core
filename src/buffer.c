@@ -464,7 +464,6 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
 
-
     if (opts & BUFSET_OPT_USER_CACHE)
     {
         bs->bs_allow_user_cache = 1;
@@ -491,10 +490,13 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
         bi->bi_iov.iov_len = buf_size;
         bi->bi_register_idx = -1;
 
-        if (opts & BUFSET_OPT_MEMALIGN)
+        size_t alignment =
+            (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
+            (opts & BUFSET_OPT_MEMALIGN_L2)     ? L2_CACHELINE_SIZE_BYTES : 0;
+
+        if (alignment)
         {
-            bi->bi_iov.iov_base =
-                niova_posix_memalign(buf_size, BUFFER_SECTOR_SIZE);
+            bi->bi_iov.iov_base = niova_posix_memalign(buf_size, alignment);
 
             FATAL_IF(bi->bi_iov.iov_base == NULL, "niova_posix_memalign()");
         }

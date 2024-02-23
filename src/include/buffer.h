@@ -17,10 +17,12 @@
 
 enum buffer_set_opts
 {
-    BUFSET_OPT_MEMALIGN   = (1 << 0),
-    BUFSET_OPT_SERIALIZE  = (1 << 1),
-    BUFSET_OPT_USER_CACHE = (1 << 2),
-    BUFSET_OPT_LREG       = (1 << 3),
+    BUFSET_OPT_SERIALIZE       = (1 << 0),
+    BUFSET_OPT_USER_CACHE      = (1 << 1),
+    BUFSET_OPT_LREG            = (1 << 2),
+    BUFSET_OPT_MEMALIGN_L2     = (1 << 3),
+    BUFSET_OPT_MEMALIGN_SECTOR = (1 << 4),
+    BUFSET_OPT_MEMALIGN        = BUFSET_OPT_MEMALIGN_SECTOR,
 };
 
 struct buffer_set;
