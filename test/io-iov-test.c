@@ -142,6 +142,10 @@ iov_test(void)
     niova_io_iov_restore(iovs, n, idx, &save);
     NIOVA_ASSERT(niova_io_iovs_total_size_get(iovs, n) == (n * n));
 
+    // Consume everything in one shot:  niova-block issue #141
+    idx = niova_io_iovs_advance(iovs, n, n * n, NULL);
+    NIOVA_ASSERT(idx == -EXFULL);
+
     off_t off = 0;
     size_t niovs = n;
 

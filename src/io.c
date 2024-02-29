@@ -361,11 +361,23 @@ niova_io_iovs_advance(struct iovec *iovs, size_t niovs,
             break;
     }
 
-    if (bytes_already_consumed > 0)
+    if (idx == niovs)
     {
-        NIOVA_ASSERT(idx == niovs);
-        return -ERANGE;
+        if (bytes_already_consumed > 0)
+        {
+            NIOVA_ASSERT(idx == niovs);
+            return -ERANGE;
+        }
+        else
+        {
+            /* If this advance consumes all iov space, simply return w/out
+             * modifying any iov.
+             */
+            NIOVA_ASSERT(bytes_already_consumed == 0);
+            return -EXFULL;
+        }
     }
+
     NIOVA_ASSERT(idx < niovs);
 
     if (save_iov)
