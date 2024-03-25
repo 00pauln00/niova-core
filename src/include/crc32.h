@@ -17,9 +17,16 @@ crc_pcl(const unsigned char *buffer, int len, unsigned int crc_init);
 
 extern uint16_t
 crc_t10dif_pcl(uint16_t crc_init, const unsigned char *buffer, size_t len);
-#endif
 
 #define niova_crc crc_pcl
 #define niova_t10dif_crc crc_t10dif_pcl
+
+#elif defined(__aarch64__)
+extern uint32_t
+crc32_arm(uint32_t crc, const uint8_t *data, size_t size);
+
+#define niova_crc(buf, len, init) crc32_arm(init, buf, len)
+
+#endif
 
 #endif

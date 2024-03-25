@@ -13,6 +13,18 @@ my_include_HEADERS =
 
 ACLOCAL_AMFLAGS = -I m4
 
+if ARCH_X86
+ARCH_SOURCES = src/contrib/crc32c-pcl-intel-asm_64.S \
+        src/contrib/crct10dif-pcl-asm_64.S
+else
+if ARCH_ARM
+ARCH_SOURCES = src/contrib/crc32c_arm64.c
+AM_CFLAGS += -march=armv8-a+crc+crypto
+else
+ARCH_SOURCES =
+endif
+endif
+
 CORE_HDRS = src/include/atomic.h \
 	src/include/alloc.h \
         src/include/binary_hist.h \
@@ -58,9 +70,8 @@ CORE_SOURCES = $(CORE_HDRS) \
 	src/alloc.c \
         src/buffer.c \
         src/config_token.c \
-        src/contrib/crc32c-pcl-intel-asm_64.S \
-        src/contrib/crct10dif-pcl-asm_64.S \
         src/contrib/crc24q.c \
+        $(ARCH_SOURCES) \
         src/contrib/dlmalloc.c \
         src/ctl_interface.c \
         src/ctl_interface_cmd.c \

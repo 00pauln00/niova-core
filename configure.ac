@@ -197,4 +197,11 @@ AC_ARG_ENABLE(
 
 AC_CONFIG_FILES([niova.pc])
 
+AC_CANONICAL_HOST
+AS_CASE(["$host_cpu"],
+    [arm*|aarch64*], [arm=true],
+    [i?86|x86_64], [x86=true]
+)
+AM_CONDITIONAL([ARCH_ARM], [test x$arm = xtrue])
+AM_CONDITIONAL([ARCH_X86], [test x$x86 = xtrue])
 AC_OUTPUT

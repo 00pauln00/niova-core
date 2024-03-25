@@ -643,7 +643,7 @@ raft_server_entry_calc_crc(const struct raft_entry *re)
     const int crc_len = sizeof(struct raft_entry) + rh->reh_data_size - offset;
     NIOVA_ASSERT(crc_len >= 0);
 
-    crc32_t crc = crc_pcl(buf, crc_len, 0);
+    crc32_t crc = niova_crc(buf, crc_len, 0);
 
     DBG_RAFT_ENTRY(((rh->reh_crc && crc != rh->reh_crc) ? LL_WARN : LL_DEBUG),
                    &re->re_header, "calculated crc=%u", crc);
