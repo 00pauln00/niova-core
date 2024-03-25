@@ -13,8 +13,8 @@ jobs:
     name: Build on ${{ matrix.distro }} ${{ matrix.arch }}
 
     strategy:
-	matrix:
-		arch: [x64, aarch64]
+      matrix:
+        arch: [x64, aarch64]
 
     steps:
     - uses: actions/checkout@v2
