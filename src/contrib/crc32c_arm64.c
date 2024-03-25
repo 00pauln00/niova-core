@@ -53,7 +53,8 @@
     (P) += 4 * SEGMENTBYTES; \
   } while (0)
 
-static constexpr const uint32_t kCRC32Xor = static_cast<uint32_t>(0xffffffffU);
+// niova-core uses linux convention of 0 xor
+#define kCRC32Xor 0x0
 uint32_t crc32_arm(uint32_t crc, const uint8_t *data, size_t size) {
   int64_t length = size;
   uint32_t crc0, crc1, crc2, crc3;
