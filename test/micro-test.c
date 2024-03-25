@@ -199,6 +199,10 @@ simple_crc32_64byte_buf(void)
     val = crc_pcl((const unsigned char *)buffer, (sizeof(uint64_t) * 8),
                   0 ^ 0xFFFFFFFF) ^ 0xFFFFFFFF;
     (void)val;
+#elif defined(__aarch64__)
+    val = crc32_arm(0 ^ 0xFFFFFFFF, (const unsigned char *)buffer,
+		  (sizeof(uint64_t) * 8)) ^ 0xFFFFFFFF;
+    (void)val;
 #endif
 
     return;
