@@ -13,7 +13,6 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "./crc32c_internal.h"
 #include "crc32c/crc32c_config.h"
 
 #if HAVE_ARM64_CRC32C
@@ -62,6 +61,7 @@
 
 namespace crc32c {
 
+static constexpr const uint32_t kCRC32Xor = static_cast<uint32_t>(0xffffffffU);
 uint32_t ExtendArm64(uint32_t crc, const uint8_t *data, size_t size) {
   int64_t length = size;
   uint32_t crc0, crc1, crc2, crc3;
