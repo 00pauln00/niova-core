@@ -198,7 +198,7 @@ pmdb_obj_crc_calc(struct pmdb_object *obj)
     const int crc_len = sizeof(struct pmdb_object) - offset;
     NIOVA_ASSERT(crc_len >= 0);
 
-    obj->pmdb_obj_crc = crc_pcl(buf, crc_len, 0);
+    obj->pmdb_obj_crc = niova_crc(buf, crc_len, 0);
 }
 
 static void
