@@ -141,6 +141,48 @@ AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_destroy],,
 # restore the original LIBS
 LIBS=$LIBS_save
 
+AC_MSG_CHECKING([for 64-bit PMULL support])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <stdio.h>
+#include <stdint.h>
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+]], [[
+#if defined(__aarch64__)
+unsigned long hwcap = getauxval(AT_HWCAP);
+if (hwcap & HWCAP_PMULL)
+	return 0;
+#endif
+return -1;
+]])
+], [
+AC_DEFINE([HAVE_PMULL64], [1], [Define as 1 if you have 64b PMULL support])
+AC_MSG_RESULT([yes])
+], [
+AC_MSG_RESULT([no])
+])
+
+AC_MSG_CHECKING([if little-endian])
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+#include <stdio.h>
+]], [[
+#if defined(__aarch64__)
+    union {
+      unsigned int i;
+      char c[sizeof(unsigned int)];
+    } x;
+    x.i = 1;
+    return x.c[0];
+#endif
+return -1;
+]])
+], [
+AC_DEFINE([ARM_LE], [1], [System is little endian])
+AC_MSG_RESULT([yes])
+], [
+AC_MSG_RESULT([no])
+])
+
 AC_ARG_ENABLE(
     [asan],
     [AS_HELP_STRING([--enable-asan],[address sanitizer build])],

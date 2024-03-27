@@ -8,6 +8,7 @@
 #define NIOVA_CRC32_H 1
 
 #include "common.h"
+#include "niova_core_config.h"
 
 typedef uint32_t crc32_t;
 
@@ -26,6 +27,11 @@ extern uint32_t
 crc32_arm(uint32_t crc, const uint8_t *data, size_t size);
 
 #define niova_crc(buf, len, init) crc32_arm(init, buf, len)
+#if HAVE_PMULL64
+#define niova_t10dif_crc crc_t10dif_pmull_p64
+#else
+#define niova_t10dif_crc crc_t10dif_pmull_p8
+#endif
 
 #endif
 

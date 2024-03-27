@@ -62,41 +62,43 @@
 //  /white-papers/fast-crc-computation-generic-polynomials-pclmulqdq-paper.pdf
 //
 
-#include <linux/linkage.h>
-#include <asm/assembler.h>
+#include "niova_core_config.h"
+#ifdef ARM_LE
+	#define CPU_LE(code...) code
+#else
+	#define CPU_LE(code...)
+#endif
 
 	.text
-	.arch		armv8-a+crypto
+#define	init_crc		w0
+#define	buf			x1
+#define	len			x2
+#define	fold_consts_ptr		x3
 
-	init_crc	.req	w0
-	buf		.req	x1
-	len		.req	x2
-	fold_consts_ptr	.req	x3
+#define	fold_consts		v10
 
-	fold_consts	.req	v10
+#define	ad			v14
 
-	ad		.req	v14
+#define	k00_16			v15
+#define	k32_48			v16
 
-	k00_16		.req	v15
-	k32_48		.req	v16
+#define	t3			v17
+#define	t4			v18
+#define	t5			v19
+#define	t6			v20
+#define	t7			v21
+#define	t8			v22
+#define	t9			v23
 
-	t3		.req	v17
-	t4		.req	v18
-	t5		.req	v19
-	t6		.req	v20
-	t7		.req	v21
-	t8		.req	v22
-	t9		.req	v23
+#define	perm1			v24
+#define	perm2			v25
+#define	perm3			v26
+#define	perm4			v27
 
-	perm1		.req	v24
-	perm2		.req	v25
-	perm3		.req	v26
-	perm4		.req	v27
-
-	bd1		.req	v28
-	bd2		.req	v29
-	bd3		.req	v30
-	bd4		.req	v31
+#define	bd1			v28
+#define	bd2			v29
+#define	bd3			v30
+#define	bd4			v31
 
 	.macro		__pmull_init_p64
 	.endm
@@ -112,7 +114,11 @@
 	ushr		k00_16.2d, k32_48.2d, #32
 
 	// prepare the permutation vectors
-	mov_q		x5, 0x080f0e0d0c0b0a09
+	// mov_q	x5, 0x080f0e0d0c0b0a09
+	movz		x5, :abs_g3:0x080f0e0d0c0b0a09
+	movk		x5, :abs_g2_nc:0x080f0e0d0c0b0a09
+	movk		x5, :abs_g1_nc:0x080f0e0d0c0b0a09
+	movk		x5, :abs_g0_nc:0x080f0e0d0c0b0a09
 	movi		perm4.8b, #8
 	dup		perm1.2d, x5
 	eor		perm1.16b, perm1.16b, perm4.16b
@@ -131,7 +137,6 @@
 	tbl		bd4.16b, {\bd\().16b}, perm4.16b
 	.endm
 
-SYM_FUNC_START_LOCAL(__pmull_p8_core)
 .L__pmull_p8_core:
 	ext		t4.8b, ad.8b, ad.8b, #1			// A1
 	ext		t5.8b, ad.8b, ad.8b, #2			// A2
@@ -194,7 +199,6 @@ SYM_FUNC_START_LOCAL(__pmull_p8_core)
 	eor		t4.16b, t4.16b, t5.16b
 	eor		t6.16b, t6.16b, t3.16b
 	ret
-SYM_FUNC_END(__pmull_p8_core)
 
 	.macro		__pmull_p8, rq, ad, bd, i
 	.ifnc		\bd, fold_consts
@@ -263,7 +267,7 @@ CPU_LE(	ext		v12.16b, v12.16b, v12.16b, #8	)
 	cmp		len, #256
 	b.lt		.Lless_than_256_bytes_\@
 
-	adr_l		fold_consts_ptr, .Lfold_across_128_bytes_consts
+	/*adrl*/ adr		fold_consts_ptr, .Lfold_across_128_bytes_consts
 
 	// Load the first 128 data bytes.  Byte swapping is necessary to make
 	// the bit order match the polynomial coefficient order.
@@ -369,7 +373,7 @@ CPU_LE(	rev64		v0.16b, v0.16b			)
 CPU_LE(	ext		v0.16b, v0.16b, v0.16b, #8	)
 
 	// v1 = high order part of second chunk: v7 left-shifted by 'len' bytes.
-	adr_l		x4, .Lbyteshift_table + 16
+	/*adrl*/ adr		x4, .Lbyteshift_table + 16
 	sub		x4, x4, len
 	ld1		{v2.16b}, [x4]
 	tbl		v1.16b, {v7.16b}, v2.16b
@@ -429,14 +433,16 @@ CPU_LE(	ext		v0.16b, v0.16b, v0.16b, #8	)
 
 	umov		w0, v0.h[0]
 	.ifc		\p, p8
-	frame_pop
+// pop frame
+	ldr		x19, [sp, #16]
+	ldp		x29, x30, [sp], #32
 	.endif
 	ret
 
 .Lless_than_256_bytes_\@:
 	// Checksumming a buffer of length 16...255 bytes
 
-	adr_l		fold_consts_ptr, .Lfold_across_16_bytes_consts
+	/*adrl*/ adr		fold_consts_ptr, .Lfold_across_16_bytes_consts
 
 	// Load the first 16 data bytes.
 	ldr		q7, [buf], #0x10
@@ -465,10 +471,15 @@ CPU_LE(	ext		v7.16b, v7.16b, v7.16b, #8	)
 //
 // Assumes len >= 16.
 //
-SYM_FUNC_START(crc_t10dif_pmull_p8)
-	frame_push	1
+.globl crc_t10dif_pmull_p8
+.align 16
+crc_t10dif_pmull_p8:
+// push a new frame
+	stp		x29, x30, [sp, #-32]!
+	mov		x29, sp
+	str		x19, [sp, #16]
+
 	crc_t10dif_pmull p8
-SYM_FUNC_END(crc_t10dif_pmull_p8)
 
 	.align		5
 //
@@ -476,9 +487,10 @@ SYM_FUNC_END(crc_t10dif_pmull_p8)
 //
 // Assumes len >= 16.
 //
-SYM_FUNC_START(crc_t10dif_pmull_p64)
+.globl crc_t10dif_pmull_p64
+.align 16
+crc_t10dif_pmull_p64:
 	crc_t10dif_pmull	p64
-SYM_FUNC_END(crc_t10dif_pmull_p64)
 
 	.section	".rodata", "a"
 	.align		4

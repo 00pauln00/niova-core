@@ -18,8 +18,10 @@ ARCH_SOURCES = src/contrib/crc32c-pcl-intel-asm_64.S \
         src/contrib/crct10dif-pcl-asm_64.S
 else
 if ARCH_ARM
-ARCH_SOURCES = src/contrib/crc32c_arm64.c
+ARCH_SOURCES = src/contrib/crc32c_arm64.c \
+	       src/contrib/crct10dif-ce-arm64.S
 AM_CFLAGS += -march=armv8-a+crc+crypto
+AM_CCASFLAGS = -march=armv8-a+aes+crc+crypto
 else
 ARCH_SOURCES =
 endif
