@@ -158,6 +158,7 @@ return -1;
 ], [
 AC_DEFINE([HAVE_PMULL64], [1], [Define as 1 if you have 64b PMULL support])
 AC_MSG_RESULT([yes])
+AM_CFLAGS="$AM_CFLAGS -DHAVE_PMULL64"
 ], [
 AC_MSG_RESULT([no])
 ])
