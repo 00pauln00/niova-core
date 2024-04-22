@@ -149,10 +149,11 @@ struct log_entry_info
     do { thread_abort(); } while (0)
 #endif
 
-#define SIMPLE_LOG_MSG(level, message, ...)                       \
+#define SIMPLE_LOG_MSG_EXEC(level, exec, message, ...)            \
 do {                                                              \
     if ((level) <= log_level_get())                               \
     {                                                             \
+        exec;                                                     \
         struct timespec ts;                                       \
         niova_unstable_clock(&ts);                                \
         fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",    \
@@ -163,6 +164,9 @@ do {                                                              \
             LOG_ABORT;                                            \
     }                                                             \
 } while (0)
+
+#define SIMPLE_LOG_MSG(level, message, ...)                     \
+    SIMPLE_LOG_MSG_EXEC(level, {}, message, ##__VA_ARGS__)
 
 #define FUNC_ENTRY(level) \
     LOG_MSG(level, "enter")
@@ -181,7 +185,7 @@ do {                                                              \
  *    registry entry's level, and next from the file's level.  If neither are
  *    set, then use the level provided by the caller.
  */
-#define _LOG_MSG(user_lvl, tag, message, ...)          \
+#define _LOG_MSG(user_lvl, tag, exec, message, ...)    \
 do {                                                   \
     enum log_level lvl = user_lvl;                     \
                                                        \
@@ -197,14 +201,20 @@ do {                                                   \
         else if (logEntryFileInfo.lei_level != LL_ANY) \
             lvl = logEntryFileInfo.lei_level;          \
     }                                                  \
-    SIMPLE_LOG_MSG(lvl, message, ##__VA_ARGS__);       \
+    SIMPLE_LOG_MSG_EXEC(lvl, exec, message, ##__VA_ARGS__);     \
 } while (0)
 
+#define LOG_MSG_EXEC(user_lvl, exec, message, ...)               \
+    _LOG_MSG(user_lvl, NULL, exec, message, ##__VA_ARGS__)
+
+#define LOG_MSG_TAG_EXEC(user_lvl, tag, exec, message, ...)   \
+    _LOG_MSG(user_lvl, tag, exec, message, ##__VA_ARGS__)
+
 #define LOG_MSG(user_lvl, message, ...)         \
-    _LOG_MSG(user_lvl, NULL, message, ##__VA_ARGS__)
+    _LOG_MSG(user_lvl, NULL, {}, message, ##__VA_ARGS__)
 
 #define LOG_MSG_TAG(user_lvl, tag, message, ...)        \
-    _LOG_MSG(user_lvl, tag, message, ##__VA_ARGS__)
+    _LOG_MSG(user_lvl, tag, {}, message, ##__VA_ARGS__)
 
 #define FATAL_MSG(message, ...) \
     SIMPLE_LOG_MSG(LL_FATAL, message, ##__VA_ARGS__)
