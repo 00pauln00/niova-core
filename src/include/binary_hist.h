@@ -48,10 +48,8 @@ binary_hist_size(const struct binary_hist *bh)
 static inline long long
 binary_hist_get_cnt(const struct binary_hist *bh, int pos)
 {
-    if (!bh || pos >= bh->bh_num_buckets)
+    if (!bh || pos >= bh->bh_num_buckets || pos >= BIN_HIST_BUCKETS_MAX)
         return -EINVAL;
-
-    NIOVA_ASSERT(pos <= BIN_HIST_BUCKETS_MAX);
 
     return bh->bh_values[pos];
 }
