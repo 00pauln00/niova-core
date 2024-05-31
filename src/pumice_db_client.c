@@ -154,7 +154,8 @@ pmdb_client_request_cb(void *arg, ssize_t status, void *reply_buff)
         const struct pmdb_msg *reply = &pcreq->pcreq_msg_reply;
 
         // Incorrect size is translated to be a system error.
-        if (status != (sizeof(struct pmdb_msg) + reply->pmdbrm_data_size))
+        if (status !=
+            (ssize_t)((sizeof(struct pmdb_msg) + reply->pmdbrm_data_size)))
             status = -EMSGSIZE;
 
         else if (reply->pmdbrm_err)

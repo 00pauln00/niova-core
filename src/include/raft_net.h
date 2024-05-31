@@ -48,7 +48,7 @@ typedef bool     raft_net_timerfd_cb_ctx_bool_t;
 typedef void     raft_net_init_cb_ctx_t;
 
 typedef uint64_t raft_net_request_tag_t;
-#define RAFT_NET_TAG_NONE 0UL
+#define RAFT_NET_TAG_NONE 0L
 
 struct raft_client_rpc_msg;
 struct raft_net_client_request_handle;
