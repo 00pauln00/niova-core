@@ -275,7 +275,7 @@ conf_token_value_check_and_clear_ws(const struct conf_token *ct,
     if (!ct || !ctsp || !ctsp->ctsp_value_buf || !ctsp->ctsp_value_buf_size)
         return -EINVAL;
 
-    const ssize_t original_value_str_len =
+    const size_t original_value_str_len =
         strnlen(ctsp->ctsp_value_buf, ctsp->ctsp_value_buf_size);
 
     if (original_value_str_len == ctsp->ctsp_value_buf_size)
@@ -288,7 +288,7 @@ conf_token_value_check_and_clear_ws(const struct conf_token *ct,
                                               ctsp->ctsp_value_buf_size);
 
     // Recheck the string len.
-    const ssize_t new_value_str_len =
+    const size_t new_value_str_len =
         strnlen(ctsp->ctsp_value_buf, ctsp->ctsp_value_buf_size);
 
     NIOVA_ASSERT(new_value_str_len <= original_value_str_len);
