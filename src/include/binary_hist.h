@@ -42,6 +42,9 @@ binary_hist_init(struct binary_hist *bh, int start_bit, int num_buckets)
 static inline int
 binary_hist_size(const struct binary_hist *bh)
 {
+    if (!bh)
+	return -EINVAL;
+
     return bh->bh_num_buckets;
 }
 
