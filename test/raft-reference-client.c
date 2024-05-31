@@ -1368,10 +1368,15 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     if (rc)
         return rc;
 
+    NIOVA_ASSERT(
+        (LREG_USER_TYPE_HISTOGRAM__MAX - LREG_USER_TYPE_HISTOGRAM__MIN) >=
+        RAFT_INSTANCE_HIST_MAX);
+
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
-        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+        enum lreg_user_types x = i + LREG_USER_TYPE_HISTOGRAM__MIN;
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, x,
                        raft_client_test_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i],
                        LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
