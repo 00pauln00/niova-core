@@ -100,7 +100,8 @@ rsbr_get_num_log_headers(const struct raft_instance *ri)
 static inline bool
 rsbr_phys_idx_is_log_header(const struct raft_instance *ri, size_t phys_idx)
 {
-    return phys_idx < rsbr_get_num_log_headers(ri) ? true : false;
+    return (raft_entry_idx_t)phys_idx < rsbr_get_num_log_headers(ri) ?
+        true : false;
 }
 #if defined(__clang__)
 #pragma clang diagnostic pop
@@ -182,7 +183,7 @@ rsbp_entry_write(struct raft_instance *ri, const struct raft_entry *re,
                    rrc < 0 ? strerror(-rrc) : "Success", rrc, expected_size,
                    offset);
 
-    NIOVA_ASSERT(rrc == expected_size);
+    NIOVA_ASSERT(rrc == (ssize_t)expected_size);
 }
 
 static ssize_t
@@ -282,7 +283,7 @@ rsbp_header_load(struct raft_instance *ri)
     if (!ri)
         return -EINVAL;
 
-    const size_t num_headers = rsbr_get_num_log_headers(ri);
+    const raft_entry_idx_t num_headers = rsbr_get_num_log_headers(ri);
     NIOVA_ASSERT(num_headers > 0);
 
     struct raft_log_header most_recent_rlh = {0};
@@ -390,7 +391,8 @@ rsbp_header_write(struct raft_instance *ri)
                   raft_server_entry_to_total_size(re),
                   rsbr_raft_entry_to_phys_offset(ri, re));
 
-    int rc = (write_sz == raft_server_entry_to_total_size(re)) ? 0 : -EIO;
+    int rc = (write_sz == (ssize_t)raft_server_entry_to_total_size(re)) ?
+        0 : -EIO;
 
     int sync_rc = rsbp_sync(ri);
 
