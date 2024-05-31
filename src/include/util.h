@@ -104,12 +104,12 @@ niova_string_find_next_instance_of_char(const char *string, char char_to_find,
     if (!string || !max_len)
         return (ssize_t)-EINVAL;
 
-    ssize_t pos;
-    for (pos = 0; pos < (ssize_t)max_len; pos++)
+    size_t pos;
+    for (pos = 0; pos < max_len; pos++)
         if (string[pos] == char_to_find)
             break;
 
-    return pos < max_len ? pos : (ssize_t)-ENOENT;
+    return pos < max_len ? (ssize_t)pos : (ssize_t)-ENOENT;
 }
 
 static inline ssize_t
