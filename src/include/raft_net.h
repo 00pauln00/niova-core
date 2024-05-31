@@ -761,7 +761,7 @@ raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
                       RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
 
     if (rc < 0)
-	return rc;
+        return rc;
 
     return ((size_t)rc > (out_string_len - 1)) ? -ENOSPC : 0;
 }

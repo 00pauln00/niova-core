@@ -1106,11 +1106,11 @@ raft_client_test_instance_hist_lreg_multi_facet_handler(
     struct lreg_value *lv)
 {
     if (!lv || !rihs)
-	return -EINVAL;
+        return -EINVAL;
 
     int hsz = binary_hist_size(&rihs->rihs_bh);
     if (hsz < 0)
-	return hsz;
+        return hsz;
 
     if (lv->lrv_value_idx_in >= (uint32_t)hsz)
         return -EINVAL;

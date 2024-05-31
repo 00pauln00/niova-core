@@ -43,7 +43,7 @@ static inline int
 binary_hist_size(const struct binary_hist *bh)
 {
     if (!bh)
-	return -EINVAL;
+        return -EINVAL;
 
     return bh->bh_num_buckets;
 }
