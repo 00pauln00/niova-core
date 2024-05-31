@@ -55,7 +55,7 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
     else if (!S_ISREG(stb.st_mode))
         return -ENOTSUP;
 
-    else if (!proc_file && stb.st_size > output_size)
+    else if (!proc_file && (size_t)stb.st_size > output_size)
         return -E2BIG;
 
     else if (!proc_file && !stb.st_size) // nothing to read
@@ -67,8 +67,9 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
 
     bool close_fd = ret_fd ? false : true;
 
-    ssize_t io_rc = niova_io_read(fd, output_buf,
-                                  proc_file ? output_size : stb.st_size);
+    ssize_t io_rc =
+        niova_io_read(fd, output_buf,
+                      proc_file ? output_size : (size_t)stb.st_size);
     if (io_rc < 0)
     {
         io_rc = -errno;
@@ -80,7 +81,7 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
         close_fd = true;
     }
     else if ((!proc_file && io_rc != stb.st_size) ||
-             (proc_file && io_rc == output_size))
+             (proc_file && io_rc == (ssize_t)output_size))
     {
         io_rc = -EMSGSIZE;
         close_fd = true;
@@ -90,7 +91,7 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
         *ret_fd = fd;
     }
 
-    if (io_rc > 0 && io_rc < output_size)
+    if (io_rc > 0 && io_rc < (ssize_t)output_size)
         output_buf[io_rc] = '\0';  // terminate the output buffer
 
     if (close_fd)
