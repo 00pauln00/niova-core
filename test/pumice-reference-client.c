@@ -148,7 +148,7 @@ static util_thread_ctx_reg_int_t
 pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
                                 struct lreg_node *lrn, struct lreg_value *lv)
 {
-    if (!lv)
+    if (!lv || pmdbtcNumApps < 0)
         return -EINVAL;
 
     lv->get.lrv_num_keys_out = PMDB_TEST_APP_LREG_APP__MAX;
@@ -156,7 +156,7 @@ pmdbtc_test_apps_varray_lreg_cb(enum lreg_node_cb_ops op,
     NIOVA_ASSERT(lrn->lrn_vnode_child);
 
     struct lreg_vnode_data *vd = &lrn->lrn_lvd;
-    if (vd->lvd_index >= pmdbtcNumApps)
+    if (vd->lvd_index >= (unsigned int)pmdbtcNumApps)
         return -ERANGE;
 
     const struct pmdbtc_app *papp = &pmdbtcApps[vd->lvd_index];
@@ -247,7 +247,7 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
                                       struct lreg_node *lrn,
                                       struct lreg_value *lv)
 {
-    if (!lv)
+    if (!lv || pmdbtcHistoryCnt < 0)
         return -EINVAL;
 
     lv->get.lrv_num_keys_out = PMDB_TEST_REQ_LREG_APP__MAX;
@@ -255,7 +255,7 @@ pmdbtc_request_history_varray_lreg_cb(enum lreg_node_cb_ops op,
     NIOVA_ASSERT(lrn->lrn_vnode_child);
 
     struct lreg_vnode_data *vd = &lrn->lrn_lvd;
-    if (vd->lvd_index >= pmdbtcHistoryCnt)
+    if (vd->lvd_index >= (unsigned int)pmdbtcHistoryCnt)
         return -ERANGE;
 
     struct pmdbtc_request_history *req_hist = &pmdbtcReqHistory[vd->lvd_index];
@@ -752,7 +752,7 @@ pmdbtc_write_prep(struct pmdbtc_request *preq)
     if (preq->preq_pmdb_seqno != papp->papp_rtv.rtv_seqno)
         pmdbtc_app_rtv_fast_forward(papp, preq->preq_pmdb_seqno);
 
-    for (int i = 0; i < preq->preq_rtdb.rtdb_num_values; i++)
+    for (uint32_t i = 0; i < preq->preq_rtdb.rtdb_num_values; i++)
     {
         pmdbtc_app_rtv_increment(papp);
         preq->preq_rtv[i] = papp->papp_last_rtv_request;

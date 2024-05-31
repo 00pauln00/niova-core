@@ -29,7 +29,7 @@
  */
 struct raft_test_values
 {
-    uint64_t rtv_seqno;
+    int64_t rtv_seqno;
     union
     {
         uint64_t rtv_request_value;

@@ -162,7 +162,7 @@ rsc_leader_is_viable(void)
     return rRTI.rtti_leader_is_viable;
 }
 
-static uint64_t
+static int64_t
 rsc_get_committed_seqno(void)
 {
     return rRTI.rrti_committed.rtv_seqno;
@@ -323,7 +323,7 @@ rsc_init_global_raft_test_info(const struct raft_test_values *rtv)
      * force approach was taken after some failed experiments with
      * setstate_r().
      */
-    for (uint64_t i = 1; i <= rtv->rtv_seqno; i++)
+    for (int64_t i = 1; i <= rtv->rtv_seqno; i++)
     {
         uint32_t val = rsc_random_get(&randData);
         xor_all_values ^= val;
@@ -399,7 +399,7 @@ rsc_commit_seqno_validate(const struct raft_test_values *rtv,
 
     rsc_random_init(&rand_data, rand_state_buf);
 
-    for (uint64_t i = 1; i <= rtv->rtv_seqno; i++)
+    for (int64_t i = 1; i <= rtv->rtv_seqno; i++)
     {
         uint32_t tmp = rsc_random_get(&rand_data);
         locally_generated_seq ^= tmp;
