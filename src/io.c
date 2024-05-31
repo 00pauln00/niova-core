@@ -292,7 +292,7 @@ niova_io_copy_from_iovs(char *dest, const size_t dest_size,
     if (!dest || !dest_size || !src_iovs || !num_iovs)
         return -EINVAL;
 
-    ssize_t cnt = 0;
+    size_t cnt = 0;
 
     for (size_t i = 0; i < num_iovs && cnt < dest_size; i++)
     {
@@ -353,7 +353,7 @@ niova_io_iovs_advance(struct iovec *iovs, size_t niovs,
         return 0;
     }
 
-    ssize_t idx;
+    size_t idx;
     for (idx = 0; idx < niovs && bytes_already_consumed; idx++)
     {
         bytes_already_consumed -= iovs[idx].iov_len;
