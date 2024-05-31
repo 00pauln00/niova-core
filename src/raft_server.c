@@ -258,16 +258,17 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
                     raft_instance_is_leader(ri) ?
                     timespec_2_float(&ri->ri_leader.rls_leader_accumulated) :
                     (float)0.0);
-        break;
+            break;
         case RAFT_LREG_QUORUM_CNT:
             lreg_value_fill_signed(lv, "quorum-cnt",
                                    (raft_instance_is_leader(ri) ?
                                     ri->ri_leader.rls_quorum_ok_cnt : -1));
             break;
         case RAFT_LREG_HEARTBEAT_MSEC:
-            lreg_value_fill_signed(lv, "heartbeat-freq-msec",
-                                   (raft_instance_is_leader(ri) ?
-                                    raft_heartbeat_timeout_msec(ri) : -1));
+            lreg_value_fill_signed(
+                lv, "heartbeat-freq-msec",
+                (raft_instance_is_leader(ri) ?
+                 (long long)raft_heartbeat_timeout_msec(ri) : -1));
             break;
         case RAFT_LREG_CLIENT_REQUESTS:
             lreg_value_fill_string(
@@ -346,8 +347,8 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_signed(
                 lv, "coalesce-space-remaining",
                 (raft_instance_is_leader(ri) && ri->ri_coalesced_wr != NULL) ?
-                (RAFT_ENTRY_MAX_DATA_SIZE(ri) -
-                 ri->ri_coalesced_wr->rcwi_total_size) : -1LL);
+                (long long)((RAFT_ENTRY_MAX_DATA_SIZE(ri) -
+                             ri->ri_coalesced_wr->rcwi_total_size)) : -1LL);
             break;
         case RAFT_LREG_HIST_COMMIT_LAT:
             lreg_value_fill_histogram(
@@ -432,6 +433,7 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             rc = -EPERM;
             break;
         }
+        break;
 
     default:
         rc = -EOPNOTSUPP;
@@ -673,7 +675,7 @@ raft_server_wr_entries_get_total_size(const uint32_t *entry_sizes,
     if (!num_entries)
         return 0;
 
-    for (int i = 0; i < num_entries; i++)
+    for (uint32_t i = 0; i < num_entries; i++)
         total_size += entry_sizes[i];
 
     return total_size;
@@ -1010,7 +1012,7 @@ raft_server_read_entry_register_idx(struct raft_instance *ri,
 
     niova_mutex_lock(&ri->ri_compaction_mutex);
     // only one read at a time
-    NIOVA_ASSERT(ri->ri_pending_read_idx == ID_ANY_64bit);
+    NIOVA_ASSERT(ri->ri_pending_read_idx == RAFT_ENTRY_IDX_ANY);
 
     rc = raft_server_entry_has_been_compacted(ri, entry_idx, NULL);
     if (!rc)
@@ -1036,7 +1038,7 @@ raft_server_read_entry_unregister_idx(struct raft_instance *ri,
     niova_mutex_lock(&ri->ri_compaction_mutex);
 
     NIOVA_ASSERT(ri->ri_pending_read_idx == entry_idx);
-    ri->ri_pending_read_idx = ID_ANY_64bit;
+    ri->ri_pending_read_idx = RAFT_ENTRY_IDX_ANY;
 
     niova_mutex_unlock(&ri->ri_compaction_mutex);
 }
@@ -1053,7 +1055,7 @@ raft_server_compaction_try_increase_lowest_idx(
     NIOVA_ASSERT(new_lowest_idx > niova_atomic_read(&ri->ri_lowest_idx));
 
     // A read is currently operating in the compaction region
-    if (ri->ri_pending_read_idx != ID_ANY_64bit &&
+    if (ri->ri_pending_read_idx != RAFT_ENTRY_IDX_ANY &&
         ri->ri_pending_read_idx < new_lowest_idx)
         rc = -EAGAIN;
     else
@@ -1111,7 +1113,7 @@ raft_server_entry_read_by_store_common(struct raft_instance *ri,
         {
             // entry read errors are fatal
             DBG_RAFT_ENTRY_FATAL_IF(
-                (rrc != raft_server_entry_to_total_size(re)), reh,
+                (rrc != (ssize_t)raft_server_entry_to_total_size(re)), reh,
                 "invalid read size rrc=%zd, expected %zu: %s",
                 rrc, raft_server_entry_to_total_size(re), strerror((int)-rrc));
         }
@@ -1555,7 +1557,7 @@ raft_server_entries_scan(struct raft_instance *ri)
      */
     if (starting_entry > 0)
     {
-#define LOG_INITIAL_SCAN_SZ 1000UL
+#define LOG_INITIAL_SCAN_SZ 1000L
         int rc = raft_server_entries_scan_internal(
             ri, lowest_idx,
             MIN((lowest_idx + LOG_INITIAL_SCAN_SZ), entry_max_idx));
@@ -2598,7 +2600,7 @@ raft_server_leader_init_append_entry_msg(struct raft_instance *ri,
     raerq->raerqm_prev_log_index = rfi->rfi_next_idx - 1;
 
     // Copy the rls_prev_idx_term[] if it was refreshed above.
-    raerq->raerqm_prev_log_term = rc ? -1ULL : rfi->rfi_prev_idx_term;
+    raerq->raerqm_prev_log_term = rc ? -1LL : rfi->rfi_prev_idx_term;
 
     // If error, return -ESTALE to signify that the peer needs bulk recovery
     return rc ? -ESTALE : 0;
@@ -3023,7 +3025,7 @@ raft_server_append_entry_request_bounds_check(
     /* Sanity check the leader's request.  If the leader's lowest index is
      * higher than the pli then don't proceed with this msg.
      */
-    if (raerq->raerqm_prev_log_index != ID_ANY_64bit &&
+    if (raerq->raerqm_prev_log_index != RAFT_ENTRY_IDX_ANY &&
         raerq->raerqm_prev_log_index < raerq->raerqm_lowest_index)
     {
         DBG_RAFT_MSG(LL_WARN, rrm, "pli < leader-lowest-idx");
@@ -3232,11 +3234,11 @@ raft_server_process_append_entries_request_prep_reply(
      * set our next-idx to '0'.
      */
     rae_reply->raerpm_newly_initialized_peer =
-        current_idx == ID_ANY_64bit ? 1 : 0;
+        current_idx == RAFT_ENTRY_IDX_ANY ? 1 : 0;
 
     // Issue #27 - send synced-log-index in non_matching_prev_term case too
     rae_reply->raerpm_synced_log_index =
-        (!rc || non_matching_prev_term) ? current_idx : ID_ANY_64bit;
+        (!rc || non_matching_prev_term) ? current_idx : RAFT_ENTRY_IDX_ANY;
 
     raft_server_set_uuids_in_rpc_msg(ri, reply);
 
@@ -3609,7 +3611,7 @@ raft_server_leader_can_advance_commit_idx(struct raft_instance *ri,
      */
     return (committed_raft_idx >= rls->rls_initial_term_idx &&
             committed_raft_idx > ri->ri_commit_idx) ?
-        committed_raft_idx : ID_ANY_64bit;
+        committed_raft_idx : RAFT_ENTRY_IDX_ANY;
 }
 
 /**
@@ -3633,7 +3635,7 @@ raft_server_leader_try_advance_commit_idx(struct raft_instance *ri)
     const int64_t committed_raft_idx =
         raft_server_leader_can_advance_commit_idx(ri, false);
 
-    if (committed_raft_idx != ID_ANY_64bit)
+    if (committed_raft_idx != RAFT_ENTRY_IDX_ANY)
         raft_server_advance_commit_idx(ri, committed_raft_idx);
 }
 
@@ -3642,7 +3644,7 @@ raft_server_leader_try_advance_commit_idx_from_sync_thread(
     struct raft_instance *ri)
 {
     if (ri && (raft_server_leader_can_advance_commit_idx(ri, true) !=
-               ID_ANY_64bit))
+               RAFT_ENTRY_IDX_ANY))
         RAFT_NET_EVP_NOTIFY_NO_FAIL(ri, RAFT_EVP_ASYNC_COMMIT_IDX_ADV);
 }
 
@@ -3943,7 +3945,7 @@ raft_server_peer_recv_handler(struct raft_instance *ri,
 
     const struct raft_rpc_msg *rrm = (const struct raft_rpc_msg *)recv_buffer;
 
-    size_t expected_msg_size = sizeof(struct raft_rpc_msg);
+    ssize_t expected_msg_size = sizeof(struct raft_rpc_msg);
 
     if (rrm->rrm_type == RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST)
         expected_msg_size += rrm->rrm_append_entries_request.raerqm_entries_sz;
@@ -4017,7 +4019,7 @@ raft_leader_majority_followers_comm_window(const struct raft_instance *ri,
                    num_acked_within_window, num_raft_peers / 2 + 1,
                    num_raft_peers);
 
-    return (num_acked_within_window >= (num_raft_peers / 2 + 1)) ?
+    return (num_acked_within_window >= (size_t)((num_raft_peers / 2 + 1))) ?
         true : false;
 }
 
@@ -4286,6 +4288,8 @@ raft_server_net_client_request_init(
     NIOVA_ASSERT(ri && rncr && (rncr->rncr_is_direct_req || (reply_buf &&
                  reply_buf_size >= sizeof(struct raft_client_rpc_msg))));
 
+    (void)from;
+
     if (type == RAFT_NET_CLIENT_REQ_TYPE_NONE)
         FATAL_IF((!rpc_request || commit_data),
                  "invalid argument:  rpc_request may only be specified");
@@ -4310,7 +4314,7 @@ raft_server_net_client_request_init(
     {
         //memset the reply_buf to make sure garbage values are not used from it.
         memset(reply_buf, 0, sizeof(struct raft_client_rpc_msg));
- 
+
         rncr->rncr_reply = (struct raft_client_rpc_msg *)reply_buf;
     }
 
@@ -4385,6 +4389,8 @@ raft_server_write_coalesce_entry(struct raft_instance *ri, const char *data,
         ri && data && ri->ri_coalesced_wr &&
         ri->ri_coalesced_wr->rcwi_nentries < RAFT_ENTRY_NUM_ENTRIES &&
         ri->ri_coalesced_wr->rcwi_total_size < RAFT_ENTRY_MAX_DATA_SIZE(ri));
+
+    (void)opts;
 
     // Buffer should have space to accomodate this request.
     FATAL_IF((len + ri->ri_coalesced_wr->rcwi_total_size) >
@@ -4653,7 +4659,7 @@ raft_server_client_recv_handler(struct raft_instance *ri,
     NIOVA_ASSERT(ri && from);
 
     if (!recv_buffer || !recv_bytes || !ri->ri_server_sm_request_cb ||
-        recv_bytes < sizeof(struct raft_client_rpc_msg))
+        recv_bytes < (ssize_t)sizeof(struct raft_client_rpc_msg))
     {
         LOG_MSG(LL_NOTIFY, "sanity check fail, buf %p bytes %ld cb %p",
                 recv_buffer, recv_bytes, ri->ri_server_sm_request_cb);
@@ -5126,6 +5132,7 @@ static raft_server_epoll_remote_sender_t
 raft_server_remote_send_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
+    (void)events;
 
     FUNC_ENTRY(LL_DEBUG);
 
@@ -5147,6 +5154,7 @@ static raft_server_epoll_sm_apply_t
 raft_server_sm_apply_evp_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
+    (void)events;
 
     FUNC_ENTRY(LL_DEBUG);
 
@@ -5170,6 +5178,7 @@ raft_server_commit_idx_adv_evp_cb(const struct epoll_handle *eph,
 {
     NIOVA_ASSERT(eph);
     FUNC_ENTRY(LL_DEBUG);
+    (void)events;
 
     struct raft_instance *ri = eph->eph_arg;
     struct ev_pipe *evp = raft_net_evp_get(ri, RAFT_EVP_ASYNC_COMMIT_IDX_ADV);
@@ -5414,9 +5423,11 @@ raft_server_instance_hist_lreg_multi_facet_handler(
     struct raft_instance_hist_stats *rihs,
     struct lreg_value *lv)
 {
-    if (!lv ||
-        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh) ||
-        op != LREG_NODE_CB_OP_READ_VAL)
+    if (!lv || !rihs || op != LREG_NODE_CB_OP_READ_VAL)
+        return;
+
+    int hsz = binary_hist_size(&rihs->rihs_bh);
+    if (hsz < 0 || lv->lrv_value_idx_in >= (unsigned int)hsz)
         return;
 
     snprintf(lv->lrv_key_string, LREG_VALUE_STRING_MAX, "%lld",
@@ -5482,11 +5493,16 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
     lreg_node_init(&ri->ri_lreg, LREG_USER_TYPE_RAFT, raft_instance_lreg_cb,
                    ri, LREG_INIT_OPT_INLINED_CHILDREN);
 
+    NIOVA_ASSERT(
+        (LREG_USER_TYPE_HISTOGRAM__MAX - LREG_USER_TYPE_HISTOGRAM__MIN) >=
+        RAFT_INSTANCE_HIST_MAX);
+
     // Install the inlined objects into the parent
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
-        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+        enum lreg_user_types x = i + LREG_USER_TYPE_HISTOGRAM__MIN;
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, x,
                        raft_server_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i],
                        (LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO |
@@ -5725,7 +5741,7 @@ raft_server_reap_log(struct raft_instance *ri, ssize_t num_keep_entries)
     DBG_RAFT_INSTANCE((reaped ? LL_NOTIFY : LL_DEBUG), ri,
                       "num-keep-entries=%zd reap-idx=%ld reap=%s",
                       num_keep_entries,
-                      new_lowest_idx > lowest_idx ? new_lowest_idx : -1UL,
+                      new_lowest_idx > lowest_idx ? new_lowest_idx : -1L,
                       reaped ? "true" : "false");
 }
 
@@ -6365,6 +6381,8 @@ raft_server_enq_direct_raft_req_from_leader(char *req_buf, int64_t data_size)
 {
     if (FAULT_INJECT(raft_leader_ignore_direct_req))
         return -EAGAIN;
+
+    (void)data_size;
 
     struct raft_client_rpc_msg *rcm =
          (struct raft_client_rpc_msg *)req_buf;
