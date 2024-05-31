@@ -260,6 +260,8 @@ tcp_socket_recv_all(const struct tcp_socket_handle *tsh,
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
+    (void)from;
+
     ssize_t total_bytes = 0;
 
     for (int i = 0; i < max_attempts && iov->iov_len > 0; i++)
