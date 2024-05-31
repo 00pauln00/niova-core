@@ -143,8 +143,8 @@ buffer_set_navail_locked(const struct buffer_set *bs)
 
     NIOVA_ASSERT(bs->bs_num_allocated  >= 0);
     NIOVA_ASSERT(bs->bs_num_pndg_alloc >= 0);
-    NIOVA_ASSERT(bs->bs_num_bufs >= (bs->bs_num_allocated +
-                                     bs->bs_num_pndg_alloc));
+    NIOVA_ASSERT((ssize_t)bs->bs_num_bufs >=
+                 (bs->bs_num_allocated + bs->bs_num_pndg_alloc));
 
     return bs->bs_num_bufs - (bs->bs_num_allocated + bs->bs_num_pndg_alloc);
 }
@@ -257,7 +257,7 @@ buffer_set_allocate_item_from_pending(struct buffer_set *bs)
 int
 buffer_set_release_pending_alloc(struct buffer_set *bs, const size_t nitems)
 {
-    if (!bs || (ssize_t)nitems > bs->bs_num_bufs)
+    if (!bs || nitems > bs->bs_num_bufs)
         return -EINVAL;
 
     BS_LOCK(bs);
@@ -284,7 +284,7 @@ buffer_set_pending_alloc(struct buffer_set *bs, const size_t nitems)
 
     BS_LOCK(bs);
 
-    if (bs->bs_num_bufs < (ssize_t)nitems)
+    if (bs->bs_num_bufs < nitems)
     {
         BS_UNLOCK(bs);
         return -ENOMEM;

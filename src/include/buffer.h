@@ -51,7 +51,7 @@ SLIST_HEAD(buffer_user_slist, buffer_item);
 struct buffer_set
 {
     char                    bs_name[BUFFER_SET_NAME_MAX + 1];
-    ssize_t                 bs_num_bufs;
+    size_t                  bs_num_bufs;
     ssize_t                 bs_num_allocated;
     ssize_t                 bs_num_user_cached;
     ssize_t                 bs_num_pndg_alloc;
