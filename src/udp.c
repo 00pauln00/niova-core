@@ -228,7 +228,7 @@ udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
     else if (iovlen > IO_MAX_IOVS)
         return -E2BIG;
 
-    const ssize_t total_size = niova_io_iovs_total_size_get(iov, iovlen);
+    const size_t total_size = niova_io_iovs_total_size_get(iov, iovlen);
     if (!total_size || !udp_iov_size_ok(total_size))
         return -EMSGSIZE;
 
@@ -275,5 +275,5 @@ udp_socket_send(const struct udp_socket_handle *ush, const struct iovec *iov,
                 inet_ntoa(to->sin_addr), ntohs(to->sin_port),
                 total_sent, total_size);
 
-    return rc ? rc : total_sent;
+    return rc ? rc : (ssize_t)total_sent;
 }
