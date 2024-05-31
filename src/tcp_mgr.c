@@ -28,14 +28,13 @@ tcp_mgr_credits_set(niova_atomic32_t *credits, uint32_t cnt)
 static void *
 tcp_mgr_credits_malloc(niova_atomic32_t *credits, size_t sz)
 {
-    uint32_t new_credits = niova_atomic_dec(credits);
+    int32_t new_credits = niova_atomic_dec(credits);
     SIMPLE_LOG_MSG(LL_TRACE, "malloc sz %lu, new cred %u", sz, new_credits);
     if (new_credits < 0)
     {
         niova_atomic_inc(credits);
         return NULL;
     }
-
 
     void *buf = niova_malloc_can_fail(sz);
     if (!buf)
@@ -231,7 +230,7 @@ tcp_mgr_setup(struct tcp_mgr_instance *tmi, void *data,
         if (tmi->tmi_nworkers == 0)
             return rc;
 
-        for (int i = 0; i < tmi->tmi_nworkers; i++)
+        for (size_t i = 0; i < tmi->tmi_nworkers; i++)
             thread_creator_wait_until_ctl_loop_reached(&tmi->tmi_workers[i]);
     }
 
@@ -549,7 +548,7 @@ tcp_mgr_bulk_progress_recv(struct tcp_mgr_connection *tmc)
     else if (recv_bytes < 0)
         return recv_bytes;
 
-    NIOVA_ASSERT(recv_bytes <= tmc->tmc_bulk_remain);
+    NIOVA_ASSERT((size_t)recv_bytes <= tmc->tmc_bulk_remain);
 
     tmc->tmc_bulk_offset += recv_bytes;
     tmc->tmc_bulk_remain -= recv_bytes;
@@ -578,7 +577,7 @@ tcp_mgr_bulk_prepare_and_recv(struct tcp_mgr_connection *tmc, size_t bulk_size,
 
         int bytes_avail;
         ioctl(tmc->tmc_tsh.tsh_socket, FIONREAD, &bytes_avail);
-        if (bytes_avail >= bulk_size)
+        if (bytes_avail >= (ssize_t)bulk_size)
             buf = niova_malloc_can_fail(buf_size);
 
         if (!buf)
@@ -610,7 +609,7 @@ tcp_mgr_new_msg_handler(struct tcp_mgr_connection *tmc)
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
-    size_t header_size = tmc->tmc_header_size;
+    ssize_t header_size = tmc->tmc_header_size;
 
     NIOVA_ASSERT(tmi->tmi_recv_cb && tmi->tmi_bulk_size_cb && header_size &&
                  header_size <= TCP_MGR_MAX_HDR_SIZE);
@@ -805,6 +804,8 @@ tcp_mgr_handshake_cb(const struct epoll_handle *eph, uint32_t events)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(eph && eph->eph_arg);
+
+    (void)events;
     struct tcp_mgr_connection *tmc = eph->eph_arg;
     struct tcp_mgr_instance *tmi = tmc->tmc_tmi;
 
@@ -874,6 +875,8 @@ tcp_mgr_listen_cb(const struct epoll_handle *eph, uint32_t events)
 {
     SIMPLE_FUNC_ENTRY(LL_TRACE);
     NIOVA_ASSERT(eph && eph->eph_arg);
+
+    (void)events;
 
     struct tcp_mgr_instance *tmi = eph->eph_arg;
 

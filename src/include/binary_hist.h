@@ -16,9 +16,9 @@
 
 struct binary_hist
 {
-    const int bh_start_bit;
-    const int bh_num_buckets;
-    size_t    bh_values[BIN_HIST_BUCKETS_MAX];
+    const unsigned int bh_start_bit;
+    const unsigned int bh_num_buckets;
+    size_t             bh_values[BIN_HIST_BUCKETS_MAX];
 };
 
 static inline int
@@ -42,11 +42,14 @@ binary_hist_init(struct binary_hist *bh, int start_bit, int num_buckets)
 static inline int
 binary_hist_size(const struct binary_hist *bh)
 {
+    if (!bh)
+        return -EINVAL;
+
     return bh->bh_num_buckets;
 }
 
 static inline long long
-binary_hist_get_cnt(const struct binary_hist *bh, int pos)
+binary_hist_get_cnt(const struct binary_hist *bh, unsigned int pos)
 {
     if (!bh || pos >= bh->bh_num_buckets || pos >= BIN_HIST_BUCKETS_MAX)
         return -EINVAL;
@@ -107,7 +110,7 @@ binary_hist_incorporate_val_multi(struct binary_hist *bh,
 }
 
 static inline long long
-binary_hist_lower_bucket_range(const struct binary_hist *bh, int pos)
+binary_hist_lower_bucket_range(const struct binary_hist *bh, unsigned int pos)
 {
     if (!bh || pos >= bh->bh_num_buckets)
         return -EINVAL;
@@ -117,13 +120,13 @@ binary_hist_lower_bucket_range(const struct binary_hist *bh, int pos)
 }
 
 static inline long long
-binary_hist_upper_bucket_range(const struct binary_hist *bh, int pos)
+binary_hist_upper_bucket_range(const struct binary_hist *bh, unsigned int pos)
 {
     if (!bh || pos >= bh->bh_num_buckets)
         return -EINVAL;
 
     return pos == bh->bh_num_buckets - 1 ?
-        -1 : (unsigned long long)((1ULL << (pos + bh->bh_start_bit)) - 1);
+        -1LL : (long long)((1ULL << (pos + bh->bh_start_bit)) - 1);
 }
 
 static inline void
@@ -142,7 +145,7 @@ binary_hist_print(const struct binary_hist *bh, size_t num_hist,
             fprintf(stdout, "\thist-%zu = {", i);
 
         const struct binary_hist *b = &bh[i];
-        for (int j = 0; j < b->bh_num_buckets; j++)
+        for (unsigned int j = 0; j < b->bh_num_buckets; j++)
         {
             if (binary_hist_get_cnt(b, j))
             {

@@ -1501,6 +1501,9 @@ raft_net_client_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
                                  struct raft_client_rpc_msg *msg,
                                  struct raft_instance *ri)
 {
+    (void)tmc;
+    (void)ri;
+
     return msg->rcrm_data_size;
 }
 
@@ -1509,6 +1512,9 @@ raft_net_peer_msg_bulk_size_cb(struct tcp_mgr_connection *tmc,
                                struct raft_rpc_msg *msg,
                                struct raft_instance *ri)
 {
+    (void)tmc;
+    (void)ri;
+
     return msg->rrm_type != RAFT_RPC_MSG_TYPE_APPEND_ENTRIES_REQUEST ? 0
         : msg->rrm_append_entries_request.raerqm_entries_sz;
 }
@@ -1857,20 +1863,25 @@ raft_net_send_msg(struct raft_instance *ri, struct ctl_svc_node *csn,
         // communication from and to client should be through tcp.
         if (raft_instance_is_client(ri) || sock_src == RAFT_UDP_LISTEN_CLIENT)
             size_rc = raft_net_send_tcp(ri, csn, iov, niovs);
+
         else if (msg_size <= udp_get_max_size())
             size_rc = raft_net_send_udp(ri, csn, iov, niovs, sock_src);
+
         else if (!raft_net_tcp_disabled() && msg_size <= tcp_get_max_size())
             size_rc = raft_net_send_tcp(ri, csn, iov, niovs);
+
         else
             size_rc = -E2BIG;
     }
 
     SIMPLE_LOG_MSG(LL_DEBUG, "raft_net_send_msg(): size_rc=%ld msg_size=%zu",
                    size_rc, msg_size);
-    if (size_rc == msg_size)
-        raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
 
-    return size_rc == msg_size ? 0 : size_rc;
+    if (size_rc != (ssize_t)msg_size) // return the error
+        return size_rc;
+
+    raft_net_update_last_comm_time(ri, csn->csn_uuid, true);
+    return 0;
 }
 
 int
@@ -2158,6 +2169,7 @@ raft_net_timerfd_settime(struct raft_instance *ri, unsigned long long msecs)
 raft_net_timerfd_cb_ctx_t
 raft_net_timerfd_cb(const struct epoll_handle *eph, uint32_t events)
 {
+    (void)events;
     struct raft_instance *ri = eph->eph_arg;
 
     ssize_t rc = niova_io_fd_drain(ri->ri_timer_fd, NULL);
@@ -2196,6 +2208,7 @@ raft_net_udp_identify_socket(const struct raft_instance *ri, const int fd)
 static raft_net_cb_ctx_t
 raft_net_udp_cb(const struct epoll_handle *eph, uint32_t events)
 {
+    (void)events;
     SIMPLE_FUNC_ENTRY(LL_TRACE);
 
     static char sink_buf[NIOVA_MAX_UDP_SIZE];

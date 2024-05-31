@@ -48,7 +48,7 @@ typedef bool     raft_net_timerfd_cb_ctx_bool_t;
 typedef void     raft_net_init_cb_ctx_t;
 
 typedef uint64_t raft_net_request_tag_t;
-#define RAFT_NET_TAG_NONE 0UL
+#define RAFT_NET_TAG_NONE 0L
 
 struct raft_client_rpc_msg;
 struct raft_net_client_request_handle;
@@ -381,8 +381,9 @@ do {                                                                    \
                     (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,       \
                     ##__VA_ARGS__);                                     \
             break;                                                      \
-        case RAFT_CLIENT_RPC_MSG_TYPE_PING:        /* fall through */   \
+        case RAFT_CLIENT_RPC_MSG_TYPE_PING:                             \
             uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+            /* fall through */                                          \
         case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                       \
             LOG_MSG(log_level,                                          \
                     "CLI-%s %s id=%lx err=%hd:%hd "fmt,                 \
@@ -760,10 +761,10 @@ raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
     int rc = snprintf(out_string, out_string_len, RAFT_NET_CLIENT_USER_ID_FMT,
                       RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
 
-    if (rc > out_string_len - 1)
-        return -ENOSPC;
+    if (rc < 0)
+        return rc;
 
-    return (rc > out_string_len - 1) ? -ENOSPC : 0;
+    return ((size_t)rc > (out_string_len - 1)) ? -ENOSPC : 0;
 }
 
 #define raft_net_client_user_id_unparse raft_net_client_user_id_to_string

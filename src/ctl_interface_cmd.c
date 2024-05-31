@@ -200,7 +200,7 @@ ctlic_request_done(struct ctlic_request *cr)
 }
 
 #define CTLIC_OUTPUT_TMP_FILE(tmp_str, file_name)                \
-    const size_t CTLIC_OUTPUT_TMP_FILE_file_name_len =           \
+    const ssize_t CTLIC_OUTPUT_TMP_FILE_file_name_len =           \
         NUM_HEX_CHARS(pid_t) + strnlen((file_name), PATH_MAX);   \
     if (CTLIC_OUTPUT_TMP_FILE_file_name_len >= PATH_MAX - 2)     \
         return -ENAMETOOLONG;                                    \
@@ -690,7 +690,7 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
     struct ctlic_request *cr = citer->citer_cr;
     const bool open_stanza = citer->citer_open_stanza;
     const struct lreg_value *lv = &citer->citer_lv;
-    const size_t tab_depth = citer->citer_tab_depth;
+    const ssize_t tab_depth = citer->citer_tab_depth;
     const size_t sibling_number = citer->citer_sibling_num;
     const size_t starting_byte_cnt = citer->citer_starting_byte_cnt;
     const char *value_string = ctlic_citer_2_value_string(citer);
@@ -1161,9 +1161,9 @@ ctlic_scan_registry_cb(struct lreg_node *lrn, void *arg, const int depth);
 static bool
 ctlic_scan_registry_cb_CT_ID_WHERE(struct lreg_node *lrn,
                                    struct ctlic_iterator *parent_citer,
-                                   const int depth)
+                                   const unsigned int depth)
 {
-    NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
+    NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth > 0);
 
     struct ctlic_request *cr = parent_citer->citer_cr;
     struct ctlic_matched_token *cmt = ctlic_get_current_matched_token(cr);
@@ -1233,9 +1233,9 @@ ctlic_scan_registry_cb_CT_ID_WHERE(struct lreg_node *lrn,
 static bool
 ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
                                  struct ctlic_iterator *parent_citer,
-                                 const int depth)
+                                 const unsigned int depth)
 {
-    NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth >= 0);
+    NIOVA_ASSERT(parent_citer && parent_citer->citer_cr && depth > 0);
 
     struct ctlic_request *cr = parent_citer->citer_cr;
     struct ctlic_matched_token *cmt = ctlic_get_current_matched_token(cr);

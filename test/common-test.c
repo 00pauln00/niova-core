@@ -13,7 +13,7 @@ highest_set_bit_pos_from_val_test(void)
 {
     NIOVA_ASSERT(highest_set_bit_pos_from_val(128) == 8);
 
-    for (int i = 0; i < TYPE_SZ_BITS(unsigned long long); i++)
+    for (unsigned int i = 0; i < TYPE_SZ_BITS(unsigned long long); i++)
     {
         const unsigned long long val = 1ULL << i;
         NIOVA_ASSERT(i + 1 == highest_set_bit_pos_from_val(val));
@@ -32,7 +32,7 @@ highest_set_bit_pos_from_val_test(void)
 static void
 highest_power_of_two_test(void)
 {
-    for (int i = 0; i < TYPE_SZ_BITS(unsigned long long); i++)
+    for (unsigned int i = 0; i < TYPE_SZ_BITS(unsigned long long); i++)
     {
         const unsigned long long val = 1ULL << i;
 

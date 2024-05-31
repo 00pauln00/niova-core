@@ -64,7 +64,7 @@ util_thread_remove_event_src(struct epoll_handle *eph)
 
     pthread_mutex_lock(&utilThreadMutex);
 
-    for (int i = 0; i < utilThreadNumEpollHandles; i++)
+    for (size_t i = 0; i < utilThreadNumEpollHandles; i++)
     {
         if (eph == &utilThreadEpollHandles[i])
         {

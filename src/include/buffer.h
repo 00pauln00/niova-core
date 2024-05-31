@@ -51,7 +51,7 @@ SLIST_HEAD(buffer_user_slist, buffer_item);
 struct buffer_set
 {
     char                    bs_name[BUFFER_SET_NAME_MAX + 1];
-    ssize_t                 bs_num_bufs;
+    size_t                  bs_num_bufs;
     ssize_t                 bs_num_allocated;
     ssize_t                 bs_num_user_cached;
     ssize_t                 bs_num_pndg_alloc;
@@ -79,7 +79,7 @@ buffer_item_touch(struct buffer_item *bi)
 
     char *x = (char *)bi->bi_iov.iov_base;
 
-    for (off_t off = 0; off < bi->bi_iov.iov_len; off += buffer_page_size())
+    for (size_t off = 0; off < bi->bi_iov.iov_len; off += buffer_page_size())
             x[off] = 0xff;
 }
 

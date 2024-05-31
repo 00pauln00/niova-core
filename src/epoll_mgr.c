@@ -21,12 +21,14 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 typedef int epoll_mgr_thread_ctx_int_t;
 
-static size_t epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
+static long long epollMgrNumEvents = EPOLL_MGR_DEF_EVENTS;
 static pthread_mutex_t epollMgrInstallLock = PTHREAD_MUTEX_INITIALIZER;
 
 static void
 epoll_mgr_wake_cb(const struct epoll_handle *eph, uint32_t evs)
 {
+    (void)evs;
+
     uint64_t eventcnt;
     int rc = read(eph->eph_fd, &eventcnt, sizeof(eventcnt));
     SIMPLE_LOG_MSG(LL_TRACE, "read(): rc=%d evcnt=%lu", rc, eventcnt);

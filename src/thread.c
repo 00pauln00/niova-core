@@ -24,6 +24,7 @@ __thread const struct thread_ctl *thrCtl;
 static void
 thr_ctl_basic_sighandler(int signum)
 {
+    (void)signum;
     struct thread_ctl *tc = (struct thread_ctl *)thrCtl;
 
     if (tc)

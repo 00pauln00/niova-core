@@ -17,7 +17,7 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
-#define NUM_SECONDS_TO_RUN_TEST 2ULL
+#define NUM_SECONDS_TO_RUN_TEST 2L
 
 pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t cond = PTHREAD_COND_INITIALIZER;

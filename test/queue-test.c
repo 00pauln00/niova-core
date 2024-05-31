@@ -33,7 +33,7 @@ circleq_splice_tail_test(void)
 
 
     // Basic head insert operation
-    int i;
+    unsigned int i;
     for (i = 0; i < NUM_CES; i++)
     {
         ce[i].ce_value = i;
@@ -45,7 +45,7 @@ circleq_splice_tail_test(void)
     }
 
     // Foreach in both directions
-    int j = NUM_CES;
+    unsigned int j = NUM_CES;
     CIRCLEQ_FOREACH(tmp, &qx, ce_lentry)
     NIOVA_ASSERT(tmp->ce_value == --j);
 

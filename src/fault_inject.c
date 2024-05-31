@@ -284,7 +284,7 @@ fault_inject_set_lreg_install(struct fault_injection_set *fis)
     NIOVA_ASSERT(fis);
     SIMPLE_LOG_MSG(LL_DEBUG, "size=%zu", fis->finj_set_size);
 
-    for (int i = 0; i < fis->finj_set_size; i++)
+    for (size_t i = 0; i < fis->finj_set_size; i++)
     {
         struct lreg_node *lrn = &fis->finj_set[i].flti_lrn;
 
@@ -336,7 +336,7 @@ fault_inject_set_install(struct fault_injection *finj_set, size_t set_size,
     {
         struct fault_injection_set *fis = &faultInjectionSets[idx];
 
-        for (int i = 0; i < fis->finj_set_size; i++)
+        for (size_t i = 0; i < fis->finj_set_size; i++)
         {
             struct lreg_node *lrn = &fis->finj_set[i].flti_lrn;
 

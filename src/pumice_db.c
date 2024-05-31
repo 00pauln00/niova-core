@@ -369,7 +369,7 @@ pmdb_obj_to_reply(const struct pmdb_object *obj, struct pmdb_msg *reply,
     // if either term value is -1 then write_pending is false;
     reply->pmdbrm_write_pending =
         (obj->pmdb_obj_pending_term == current_raft_term &&
-         current_raft_term != ID_ANY_64bit) ? 1 : 0;
+         current_raft_term != RAFT_TERM_ANY) ? 1 : 0;
 }
 
 /**
@@ -415,7 +415,7 @@ pmdb_prep_raft_entry_write_obj(struct pmdb_object *obj, int64_t current_term)
      * apply context.  Otherwise, when called in write context, the object's
      * pending-term must be less than the current-term.
      */
-    if (current_term != ID_ANY_64bit)
+    if (current_term != RAFT_TERM_ANY)
         NIOVA_ASSERT(obj->pmdb_obj_pending_term < current_term);
 
     obj->pmdb_obj_pending_term = current_term;
@@ -519,6 +519,8 @@ static void
 pmdb_cowr_sub_app_put(struct pmdb_cowr_sub_app *sa,
                       const char *caller_func, const int caller_lineno)
 {
+    (void)caller_func;
+    (void)caller_lineno;
     SIMPLE_LOG_MSG(LL_DEBUG, "%s:%d", caller_func, caller_lineno);
     RT_PUT(pmdb_cowr_sub_app_tree, &pmdb_cowr_sub_apps, sa);
 }
@@ -565,6 +567,8 @@ pmdb_cowr_sub_app_add(const struct raft_net_client_user_id *rncui,
                       const char *caller_func, const int caller_lineno)
 {
     NIOVA_ASSERT(rncui);
+    (void)caller_func;
+    (void)caller_lineno;
 
     struct pmdb_cowr_sub_app cowr = {0};
     raft_net_client_user_id_copy(&cowr.pcwsa_rncui, rncui);
@@ -750,6 +754,9 @@ pmdb_range_read_req_add(const uint64_t seq_number,
                         const char *caller_func, const int caller_lineno)
 {
     // If there are any stale entries in range read req RB tree, release them all.
+    (void)caller_func;
+    (void)caller_lineno;
+
     if (pmdb_range_read_tree_term != current_term)
         pmdb_range_read_req_release_all();
 
@@ -933,7 +940,7 @@ pmdb_sm_handler_client_write(struct raft_net_client_request_handle *rncr)
      * that write did not yet (or ever) commit.
      */
     if (pmdb_req->pmdbrm_write_seqno <= obj.pmdb_obj_commit_seqno &&
-        obj.pmdb_obj_commit_seqno != ID_ANY_64bit)
+        obj.pmdb_obj_commit_seqno != RAFT_ENTRY_IDX_ANY)
     {
         raft_client_net_request_handle_error_set(rncr, -EALREADY, 0, 0);
     }
@@ -1469,9 +1476,7 @@ PmdbGetRoptionsWithSnapshot(const uint64_t seq_number,
 
 
     // Check if snapshot with the given seq_number is already created.
-    if (seq_number >= 0)
-        prrq = pmdb_range_read_req_lookup(seq_number, __func__, __LINE__);
-
+    prrq = pmdb_range_read_req_lookup(seq_number, __func__, __LINE__);
     if (!prrq)
     {
         // Get the latest sequence number and create snapshot against it.

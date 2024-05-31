@@ -233,6 +233,8 @@ lctli_epoll_mgr_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph);
 
+    (void)events;
+
     struct ctl_interface *lctli = eph->eph_arg;
 
     if (eph->eph_fd != lctli->lctli_inotify_fd)

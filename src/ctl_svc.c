@@ -329,6 +329,7 @@ ctl_svc_node_token_hndlr_HOSTNAME(struct ctl_svc_node *csn,
                                   const struct conf_token *ct,
                                   const char *val_buf, size_t val_buf_sz)
 {
+    (void)ct;
     if (csn->csn_type == CTL_SVC_NODE_TYPE_RAFT)
         return -EINVAL;
 
@@ -376,6 +377,8 @@ ctl_svc_node_token_hndlr_UUID(struct ctl_svc_node *csn,
                               const struct conf_token *ct,
                               const char *val_buf, size_t val_buf_sz)
 {
+    (void)ct;
+
     if (val_buf_sz > UUID_STR_LEN)
         return -ENAMETOOLONG;
 
@@ -423,6 +426,8 @@ ctl_svc_node_token_hndlr_PEER(struct ctl_svc_node *csn,
                               const struct conf_token *ct,
                               const char *val_buf, size_t val_buf_sz)
 {
+    (void)ct;
+
     if (val_buf_sz > UUID_STR_LEN)
         return -ENAMETOOLONG;
 
@@ -439,6 +444,8 @@ ctl_svc_node_token_hndlr_STORE(struct ctl_svc_node *csn,
                                const struct conf_token *ct,
                                const char *val_buf, size_t val_buf_sz)
 {
+    (void)ct;
+
     if (val_buf_sz > PATH_MAX)
         return -ENAMETOOLONG;
 
@@ -465,6 +472,8 @@ ctl_svc_node_token_hndlr_IPADDR(struct ctl_svc_node *csn,
                                 const struct conf_token *ct,
                                 const char *val_buf, size_t val_buf_sz)
 {
+    (void)ct;
+
     if (val_buf_sz >= IPV4_STRLEN) // IPV4_STRLEN includes NULL terminator
         return -ENAMETOOLONG;
 
@@ -679,7 +688,7 @@ ctl_svc_read_and_prep_conf_file(int ctl_svc_dir_fd, const char *input_file,
         return read_rc;
     }
 
-    const size_t null_cnt_end_of_buf =
+    const ssize_t null_cnt_end_of_buf =
         niova_count_nulls_from_end_of_buffer(file_buf, read_rc);
 
     NIOVA_ASSERT(read_rc >= null_cnt_end_of_buf);
@@ -693,7 +702,8 @@ ctl_svc_read_and_prep_conf_file(int ctl_svc_dir_fd, const char *input_file,
     }
 
     // Workaround for files which do not have a newline at the end.
-    if (read_rc && file_buf[read_rc - 1] != '\n' && read_rc < file_buf_sz)
+    if (read_rc && file_buf[read_rc - 1] != '\n' &&
+        read_rc < (ssize_t)file_buf_sz)
     {
         file_buf[read_rc] = '\n';
         read_rc += 1;

@@ -34,7 +34,7 @@ ev_pipe_notify(struct ev_pipe *evp)
 
     int rc = 0;
 
-    int64_t old_write_cnt = niova_atomic_read(&evp->evp_writer_cnt);
+    uint64_t old_write_cnt = niova_atomic_read(&evp->evp_writer_cnt);
 
     if (old_write_cnt < evp->evp_reader_cnt)
     {

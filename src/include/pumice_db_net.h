@@ -162,6 +162,7 @@ pmdb_request_options_init(pmdb_request_opts_t *pmdb_req, int use_user_buffer,
                   size_t get_buffer_size,
                   int timeout_sec)
 {
+    (void)use_user_buffer;
     pmdb_req->pro_non_blocking = non_blocking;
     pmdb_req->pro_get_response = get_response;
     pmdb_req->pro_stat = obj_stat;
@@ -225,6 +226,6 @@ pmdb_direct_msg_init(struct pmdb_msg *msg, pmdb_obj_id_t *obj,
     if (op == pmdb_op_write)
         msg->pmdbrm_write_seqno = sequence_num;
 }
- 
+
 
 #endif

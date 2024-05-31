@@ -16,7 +16,7 @@ static niova_atomic64_t numPingPongsDone;
 #define DEFAULT_RUN_TIME 10;
 #define DEFAULT_TCP_SIZE 1024*1024;
 
-static size_t tcpSize = DEFAULT_TCP_SIZE;
+static ssize_t tcpSize = DEFAULT_TCP_SIZE;
 static size_t runTime = DEFAULT_RUN_TIME;
 
 /**

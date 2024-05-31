@@ -104,12 +104,12 @@ niova_string_find_next_instance_of_char(const char *string, char char_to_find,
     if (!string || !max_len)
         return (ssize_t)-EINVAL;
 
-    ssize_t pos;
-    for (pos = 0; pos < (ssize_t)max_len; pos++)
+    size_t pos;
+    for (pos = 0; pos < max_len; pos++)
         if (string[pos] == char_to_find)
             break;
 
-    return pos < max_len ? pos : (ssize_t)-ENOENT;
+    return pos < max_len ? (ssize_t)pos : (ssize_t)-ENOENT;
 }
 
 static inline ssize_t
@@ -148,11 +148,11 @@ niova_clear_whitespace_from_end_of_string(char *string, const size_t max_len)
     }
 }
 
-static inline size_t
+static inline ssize_t
 niova_count_nulls_from_end_of_buffer(const char *buf, const size_t len)
 {
     if (!buf || !len)
-        return 0;
+        return -EINVAL;
 
     ssize_t cnt = 0;
     for (ssize_t pos = len - 1; pos > 0; pos--)

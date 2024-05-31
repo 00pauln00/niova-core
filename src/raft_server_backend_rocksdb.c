@@ -625,7 +625,8 @@ rsbr_entry_header_write_recovery_scrub(struct raft_instance *ri,
     rocksdb_writebatch_clear(rir->rir_writebatch);
 
     size_t entry_header_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(entry_header_key,
+                                (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
                                 RAFT_ENTRY_HEADER_KEY_PRINTF, entry_idx);
 
@@ -660,7 +661,8 @@ rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
      * 2) raft entry KV
      */
     size_t entry_header_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(entry_header_key,
+                                (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
                                 RAFT_ENTRY_HEADER_KEY_PRINTF, entry_idx);
 
@@ -669,7 +671,8 @@ rsbr_entry_write(struct raft_instance *ri, const struct raft_entry *re,
                            sizeof(struct raft_entry_header));
 
     size_t entry_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(entry_key,
+                                (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_key_len,
                                 RAFT_ENTRY_KEY_PRINTF, entry_idx);
 
@@ -763,7 +766,8 @@ rsbr_entry_header_read(struct raft_instance *ri, struct raft_entry_header *reh)
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     size_t entry_header_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(entry_header_key,
+                                (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
                                 RAFT_ENTRY_HEADER_KEY_PRINTF, reh->reh_index);
 
@@ -792,7 +796,7 @@ rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re)
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     size_t entry_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(entry_key, (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_key_len,
                                 RAFT_ENTRY_KEY_PRINTF,
                                 re->re_header.reh_index);
@@ -805,7 +809,8 @@ rsbr_entry_read(struct raft_instance *ri, struct raft_entry *re)
                 entry_key, strerror(rc));
 
     return rc < 0 ? rc :
-        re->re_header.reh_data_size + sizeof(struct raft_entry_header);
+        (ssize_t)(re->re_header.reh_data_size +
+                  sizeof(struct raft_entry_header));
 //Xxx this is wonky
 }
 
@@ -818,7 +823,7 @@ rsbr_header_load(struct raft_instance *ri)
     struct raft_instance_rocks_db *rir = rsbr_ri_to_rirdb(ri);
 
     size_t header_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(header_key, (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&header_key_len,
                                 RAFT_LOG_HEADER_FMT,
                                 ri->ri_raft_uuid_str,
@@ -849,7 +854,7 @@ rsbr_header_write(struct raft_instance *ri)
     rocksdb_writebatch_clear(rir->rir_writebatch);
 
     size_t key_len;
-    DECL_AND_FMT_STRING_RET_LEN(header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(header_key, (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&key_len, RAFT_LOG_HEADER_FMT,
                                 ri->ri_raft_uuid_str,
                                 ri->ri_this_peer_uuid_str);
@@ -897,7 +902,7 @@ rsbr_init_header(struct raft_instance *ri)
     rocksdb_writebatch_clear(rir->rir_writebatch);
 
     size_t key_len;
-    DECL_AND_FMT_STRING_RET_LEN(last_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(last_key, (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&key_len, RAFT_LOG_LASTENTRY_FMT,
                                 ri->ri_raft_uuid_str,
                                 ri->ri_this_peer_uuid_str);
@@ -1092,7 +1097,7 @@ rsbr_num_entries_calc(struct raft_instance *ri)
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "last-entry-index=%zd", last_entry_idx + 1);
 
-    return last_entry_idx >= 0UL ? last_entry_idx + 1 : last_entry_idx;
+    return last_entry_idx >= 0L ? last_entry_idx + 1 : last_entry_idx;
 }
 
 static void
@@ -1108,7 +1113,7 @@ rsbr_log_truncate(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
     rocksdb_writebatch_clear(rir->rir_writebatch);
 
     size_t entry_header_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(entry_header_key, (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&entry_header_key_len,
                                 RAFT_ENTRY_KEY_PRINTF, entry_idx);
 
@@ -1149,12 +1154,13 @@ rsbr_log_reap(struct raft_instance *ri, const raft_entry_idx_t entry_idx)
 
     size_t start_entry_key_len = 0;
     DECL_AND_FMT_STRING_RET_LEN(start_entry_key,
-                                RAFT_ROCKSDB_KEY_LEN_MAX,
+                                (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&start_entry_key_len,
                                 RAFT_ENTRY_KEY_PRINTF, (raft_entry_idx_t)0);
 
     size_t end_entry_key_len = 0;
-    DECL_AND_FMT_STRING_RET_LEN(end_entry_key, RAFT_ROCKSDB_KEY_LEN_MAX,
+    DECL_AND_FMT_STRING_RET_LEN(end_entry_key,
+                                (ssize_t)RAFT_ROCKSDB_KEY_LEN_MAX,
                                 (ssize_t *)&end_entry_key_len,
                                 RAFT_ENTRY_KEY_PRINTF, entry_idx);
 
@@ -1231,7 +1237,7 @@ rsbr_recovery_rsync_path_build(const char *base, const uuid_t peer_id,
                       base, ribSubDirs[RIR_SUBDIR_CHKPT_PEERS],
                       CHKPT_RESTORE_PATH_FMT_ARGS(db_uuid, peer_uuid));
 
-    return rc >= len ? -ENAMETOOLONG : 0;
+    return rc >= (ssize_t)len ? -ENAMETOOLONG : 0;
 }
 
 static int
@@ -1250,7 +1256,7 @@ rsbr_recovery_inprogress_path_build(const char *base,
                       base, RECOVERY_MARKER_NAME,
                       CHKPT_RESTORE_PATH_FMT_ARGS(db_uuid, peer_uuid));
 
-    return rc >= len ? -ENAMETOOLONG : 0;
+    return rc >= (ssize_t)len ? -ENAMETOOLONG : 0;
 }
 
 static int
@@ -1273,7 +1279,7 @@ rsbr_checkpoint_path_build(const char *base, const uuid_t peer_id,
                       initial ? ".in-progress_" : "",
                       CHKPT_PATH_FMT_ARGS(db_uuid, peer_uuid, sync_idx));
 
-    return rc > len ? -ENAMETOOLONG : 0;
+    return rc > (ssize_t)len ? -ENAMETOOLONG : 0;
 }
 
 static int
@@ -1677,7 +1683,7 @@ rsbr_bulk_recover_build_remote_path(const struct raft_recovery_handle *rrh,
 
     rc = snprintf(remote_path, len - 1, "%s:%s",
                   ctl_svc_node_peer_2_ipaddr(csn), remote_relative_path);
-    if (rc >= len)
+    if (rc >= (ssize_t)len)
     {
         LOG_MSG(LL_ERROR, "snprintf() overrun (rc=%d)", rc);
         rc = -ENAMETOOLONG;
@@ -2587,7 +2593,7 @@ rsbr_db_open_internal(const struct raft_instance *ri,
     if (cft && cft->rsrcfe_num_cf)
     {
         NIOVA_ASSERT(cft->rsrcfe_num_cf <= RAFT_ROCKSDB_MAX_CF);
-        for (int i = 0; i < cft->rsrcfe_num_cf; i++)
+        for (size_t i = 0; i < cft->rsrcfe_num_cf; i++)
             cft_opts[i] = rir->rir_options;
     }
     // Set prefix extractor for range queries

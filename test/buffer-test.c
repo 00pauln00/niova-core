@@ -63,7 +63,7 @@ buffer_test(bool serialize, bool lreg)
 
     struct buffer_item *bi_array[n - 1];
 
-    for (int i = 0; i < (n - 1); i++)
+    for (unsigned int i = 0; i < (n - 1); i++)
     {
         bi_array[i] = buffer_set_allocate_item_from_pending(&bs);
         NIOVA_ASSERT(bi_array[i]);
@@ -74,7 +74,7 @@ buffer_test(bool serialize, bool lreg)
     rc = buffer_set_destroy(&bs);
     NIOVA_ASSERT(rc == -EBUSY);
 
-    for (int i = 0; i < (n - 1); i++)
+    for (unsigned int i = 0; i < (n - 1); i++)
         buffer_set_release_item(bi_array[i]);
 
     rc = buffer_set_destroy(&bs);

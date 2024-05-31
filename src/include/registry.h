@@ -546,6 +546,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
     lreg_root_cb##name(enum lreg_node_cb_ops op, struct lreg_node *lrn, \
                        struct lreg_value *lreg_val)                     \
     {                                                                   \
+	(void)lrn;							\
         switch (op)                                                     \
         {                                                               \
         case LREG_NODE_CB_OP_GET_NODE_INFO:                             \
@@ -607,6 +608,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                              struct lreg_value *lreg_val)           \
     {                                                               \
         int rc = 0;                                                 \
+	(void)lrn;						    \
         switch (op)                                                 \
         {                                                           \
         case LREG_NODE_CB_OP_GET_NODE_INFO:                         \
@@ -638,7 +640,8 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                               struct lreg_node *lrn,                \
                               struct lreg_value *lreg_val)          \
     {                                                               \
-        switch (op)                                                 \
+	(void)lrn;						    \
+	switch (op)						    \
         {                                                           \
         case LREG_NODE_CB_OP_GET_NODE_INFO:                         \
             if (!lreg_val)                                          \
@@ -742,7 +745,7 @@ do {                                                               \
 } while (0)
 
 static inline void
-lreg_node_set_reverse_varray(struct lreg_node *lrn, int x)
+lreg_node_set_reverse_varray(struct lreg_node *lrn)
 {
     if (lrn)
         lrn->lrn_reverse_varray = 1;

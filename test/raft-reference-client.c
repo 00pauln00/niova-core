@@ -162,7 +162,7 @@ rsc_leader_is_viable(void)
     return rRTI.rtti_leader_is_viable;
 }
 
-static uint64_t
+static int64_t
 rsc_get_committed_seqno(void)
 {
     return rRTI.rrti_committed.rtv_seqno;
@@ -323,7 +323,7 @@ rsc_init_global_raft_test_info(const struct raft_test_values *rtv)
      * force approach was taken after some failed experiments with
      * setstate_r().
      */
-    for (uint64_t i = 1; i <= rtv->rtv_seqno; i++)
+    for (int64_t i = 1; i <= rtv->rtv_seqno; i++)
     {
         uint32_t val = rsc_random_get(&randData);
         xor_all_values ^= val;
@@ -399,7 +399,7 @@ rsc_commit_seqno_validate(const struct raft_test_values *rtv,
 
     rsc_random_init(&rand_data, rand_state_buf);
 
-    for (uint64_t i = 1; i <= rtv->rtv_seqno; i++)
+    for (int64_t i = 1; i <= rtv->rtv_seqno; i++)
     {
         uint32_t tmp = rsc_random_get(&rand_data);
         locally_generated_seq ^= tmp;
@@ -730,7 +730,7 @@ rsc_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 {
     SIMPLE_FUNC_ENTRY(LL_NOTIFY);
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > raft_net_max_rpc_size(ri->ri_store_type))
+        recv_bytes > (ssize_t)raft_net_max_rpc_size(ri->ri_store_type))
         return;
 
     const struct raft_client_rpc_msg *rcrm =
@@ -1105,8 +1105,14 @@ raft_client_test_instance_hist_lreg_multi_facet_handler(
     struct raft_instance_hist_stats *rihs,
     struct lreg_value *lv)
 {
-    if (!lv ||
-        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh))
+    if (!lv || !rihs)
+        return -EINVAL;
+
+    int hsz = binary_hist_size(&rihs->rihs_bh);
+    if (hsz < 0)
+        return hsz;
+
+    if (lv->lrv_value_idx_in >= (uint32_t)hsz)
         return -EINVAL;
 
     else if (op == LREG_NODE_CB_OP_WRITE_VAL)
@@ -1362,10 +1368,15 @@ raft_client_test_lreg_init(struct raft_instance *ri)
     if (rc)
         return rc;
 
+    NIOVA_ASSERT(
+        (LREG_USER_TYPE_HISTOGRAM__MAX - LREG_USER_TYPE_HISTOGRAM__MIN) >=
+        RAFT_INSTANCE_HIST_MAX);
+
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
-        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+        enum lreg_user_types x = i + LREG_USER_TYPE_HISTOGRAM__MIN;
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, x,
                        raft_client_test_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i],
                        LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);

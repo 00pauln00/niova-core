@@ -16,7 +16,7 @@ AC_SUBST(MAJOR_VERSION, niova_core_major)
 AC_SUBST(MINOR_VERSION, niova_core_minor)
 AC_SUBST(VERSION_SUFFIX, niova_core_suffix)
 
-AC_SUBST([AM_CFLAGS], ["-g -O2 -Wall"])
+AC_SUBST([AM_CFLAGS], ["-g -O2 -Wall -Wextra"])
 AC_SUBST([AM_CPPFLAGS], ["-Isrc/include -Isrc/contrib/include"])
 AC_SUBST([AM_LDFLAGS], [" "])
 

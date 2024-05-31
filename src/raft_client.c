@@ -461,10 +461,13 @@ raft_client_sub_app_destruct(struct raft_client_sub_app *destroy, void *arg)
     struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
 
     if (rcrh->rcrh_async_cb)
-        rcrh->rcrh_async_cb(rcrh->rcrh_arg,
-                            rcrh->rcrh_error ? err :
-                            rcrh->rcrh_reply_used_size,
-                            recv_iovs[1].iov_base);
+    {
+        ssize_t ret_err = rcrh->rcrh_reply_used_size;
+        if (rcrh->rcrh_error)
+            ret_err = err;
+
+        rcrh->rcrh_async_cb(rcrh->rcrh_arg, ret_err, recv_iovs[1].iov_base);
+    }
 
     if (rcrh->rcrh_blocking)
     {
@@ -528,6 +531,7 @@ raft_client_sub_app_done(struct raft_client_instance *rci,
                          const bool wakeup, const int error)
 {
     NIOVA_ASSERT(rci && sa);
+    (void)wakeup;
 
     DBG_RAFT_CLIENT_SUB_APP((error ? LL_NOTIFY : LL_DEBUG),
                             sa, "%s:%d err=%s",
@@ -1039,9 +1043,10 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             continue;
         }
 
-        const long long queued_ms =
-            timespec_2_msec(&now) -
-            timespec_2_msec(&sa->rcsa_rh.rcrh_submitted);
+        unsigned long long queued_ms =
+            MAX(0LL,
+                (long long)(timespec_2_msec(&now) -
+                            timespec_2_msec(&sa->rcsa_rh.rcrh_submitted)));
 
         DBG_RAFT_CLIENT_SUB_APP(
             LL_DEBUG, sa,
@@ -1049,7 +1054,7 @@ raft_client_check_pending_requests(struct raft_client_instance *rci)
             queued_ms, timespec_2_msec(&sa->rcsa_rh.rcrh_timeout),
             sa->rcsa_rh.rcrh_arg, sa->rcsa_rh.rcrh_rpc_request.rcrm_user_tag);
 
-        if (queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout) ||
+        if ((queued_ms > timespec_2_msec(&sa->rcsa_rh.rcrh_timeout)) ||
             FAULT_INJECT(async_raft_client_request_expire))
         {
             // Detect and stash expired requests
@@ -1719,11 +1724,13 @@ raft_client_reply_try_complete(struct raft_client_instance *rci,
             struct iovec *recv_iovs = &rcrh->rcrh_iovs[rcrh->rcrh_send_niovs];
             ssize_t rrc =
                 niova_io_copy_to_iovs(rcrm->rcrm_data, rcrm->rcrm_data_size,
-                                recv_iovs, rcrh->rcrh_recv_niovs);
-            NIOVA_ASSERT(rrc ==
-                         MIN(rcrm->rcrm_data_size,
-                             niova_io_iovs_total_size_get(
-                                 recv_iovs, rcrh->rcrh_recv_niovs)));
+                                      recv_iovs, rcrh->rcrh_recv_niovs);
+            NIOVA_ASSERT(rrc >= 0);
+            NIOVA_ASSERT(
+                (size_t)rrc ==
+                MIN(rcrm->rcrm_data_size,
+                    niova_io_iovs_total_size_get(
+                        recv_iovs, rcrh->rcrh_recv_niovs)));
 
             SIMPLE_LOG_MSG(LL_DEBUG, "Copied the contents");
             rcrh->rcrh_reply_used_size = (size_t)rrc;
@@ -1791,9 +1798,16 @@ raft_client_recv_handler(struct raft_instance *ri, const char *recv_buffer,
                          ssize_t recv_bytes, const struct sockaddr_in *from)
 {
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > raft_net_max_rpc_size(ri->ri_store_type) ||
         FAULT_INJECT(raft_client_recv_handler_bypass))
         return;
+
+    if (recv_bytes < (ssize_t)sizeof(struct raft_client_rpc_msg) ||
+        (size_t)recv_bytes > raft_net_max_rpc_size(ri->ri_store_type))
+    {
+        LOG_MSG(LL_NOTIFY, "invalid msg size (%zd) from %s:%u",
+                recv_bytes, inet_ntoa(from->sin_addr), ntohs(from->sin_port));
+        return;
+    }
 
     struct raft_client_instance *rci =
         raft_client_raft_instance_to_client_instance(ri);
@@ -2009,6 +2023,8 @@ raft_client_evp_cb(const struct epoll_handle *eph, uint32_t events)
 
     FUNC_ENTRY(LL_DEBUG);
 
+    (void)events;
+
     struct raft_instance *ri = eph->eph_arg;
 
     struct ev_pipe *evp = raft_net_evp_get(ri, RAFT_EVP_CLIENT);
@@ -2085,9 +2101,15 @@ raft_client_instance_hist_lreg_multi_facet_handler(
     struct raft_instance_hist_stats *rihs,
     struct lreg_value *lv)
 {
-    if (!lv ||
-        lv->lrv_value_idx_in >= binary_hist_size(&rihs->rihs_bh))
+    if (!lv || !rihs)
         return -EINVAL;
+
+    int hsz = binary_hist_size(&rihs->rihs_bh);
+    if (hsz < 0)
+        return hsz;
+
+    if (lv->lrv_value_idx_in >= (unsigned int)hsz)
+        return -ERANGE;
 
     else if (op == LREG_NODE_CB_OP_WRITE_VAL)
         return -EPERM;
@@ -2303,8 +2325,8 @@ raft_client_sub_app_req_history_lreg_cb(enum lreg_node_cb_ops op,
 
     size_t idx = vd->lvd_index;
 
-    const int64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
-    int64_t oldest_entry = cnt > rh->rcsarh_size ? (cnt % rh->rcsarh_size) : 0;
+    const uint64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
+    uint64_t oldest_entry = cnt > rh->rcsarh_size ? (cnt % rh->rcsarh_size) : 0;
 
     idx = (idx + oldest_entry) % rh->rcsarh_size;
 
@@ -2346,7 +2368,7 @@ static size_t
 raft_client_sub_app_req_history_size(
     const struct raft_client_sub_app_req_history *rh)
 {
-    const int64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
+    const uint64_t cnt = niova_atomic_read(&rh->rcsarh_cnt);
 
     return cnt > rh->rcsarh_size ? rh->rcsarh_size : cnt;
 }
@@ -2530,10 +2552,15 @@ raft_client_instance_lreg_init(struct raft_client_instance *rci,
 
     FATAL_IF((rc), "lreg_node_install(): %s", strerror(-rc));
 
+    NIOVA_ASSERT(
+        (LREG_USER_TYPE_HISTOGRAM__MAX - LREG_USER_TYPE_HISTOGRAM__MIN) >=
+        RAFT_INSTANCE_HIST_MAX);
+
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
     {
-        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, i,
+        enum lreg_user_types x = i + LREG_USER_TYPE_HISTOGRAM__MIN;
+        lreg_node_init(&ri->ri_rihs[i].rihs_lrn, x,
                        raft_client_instance_hist_lreg_cb,
                        (void *)&ri->ri_rihs[i],
                        LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);

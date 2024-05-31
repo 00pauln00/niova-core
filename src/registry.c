@@ -75,21 +75,15 @@ lreg_node_walk_vnode(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
 {
     NIOVA_ASSERT(parent->lrn_vnode_child);
 
-    unsigned int max_idx = parent->lrn_lvd.lvd_num_entries;
+    unsigned int cnt = parent->lrn_lvd.lvd_num_entries;
 
-    if (parent->lrn_reverse_varray)
+    for (unsigned int i = 0; i < cnt; i++)
     {
-        for (unsigned int i = max_idx - 1; i >= 0; i--)
-            if (!lreg_node_vnode_entry_exec(parent, lrn_wcb, cb_arg, i, depth,
-                                            user_type))
-                break;
-    }
-    else
-    {
-        for (unsigned int i = 0; i < max_idx; i++)
-            if (!lreg_node_vnode_entry_exec(parent, lrn_wcb, cb_arg, i, depth,
-                                            user_type))
-                break;
+        unsigned int idx = parent->lrn_reverse_varray ? (cnt - 1 - i) : i;
+
+        if (!lreg_node_vnode_entry_exec(parent, lrn_wcb, cb_arg, idx, depth,
+                                        user_type))
+            break;
     }
 }
 
@@ -262,28 +256,19 @@ lreg_node_recurse_from_parent(struct lreg_node *parent,
             struct lreg_node varray_child = *parent;
             lreg_value_vnode_data_to_lreg_node(&lrv, &varray_child);
 
-            if (parent->lrn_reverse_varray)
+            unsigned int cnt = lrv.get.lrv_varray_out.lvvd_num_keys_out;
+
+            for (unsigned int j = 0; j < cnt; j++)
             {
-                for (unsigned int j =
-                         lrv.get.lrv_varray_out.lvvd_num_keys_out - 1;
-                     j >= 0; j--)
-                {
-                    varray_child.lrn_lvd.lvd_index = j;
-                    lreg_node_recurse_from_parent(&varray_child, lrn_rcb,
-                                                  depth + 1);
-                }
-            }
-            else
-            {
-                for (unsigned int j = 0;
-                     j < lrv.get.lrv_varray_out.lvvd_num_keys_out; j++)
-                {
-                    varray_child.lrn_lvd.lvd_index = j;
-                    lreg_node_recurse_from_parent(&varray_child, lrn_rcb,
-                                                  depth + 1);
-                }
+                unsigned int idx =
+                    parent->lrn_reverse_varray ? (cnt - 1 - j) : i;
+
+                varray_child.lrn_lvd.lvd_index = idx;
+                lreg_node_recurse_from_parent(&varray_child, lrn_rcb,
+                                              depth + 1);
             }
         }
+
         lrn_rcb(&lrv, depth, i, true);
         if (i < num_keys - 1)
             SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, 0, indent, "", ',');
@@ -788,6 +773,8 @@ static util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
+
+    (void)events;
 
     if (eph->eph_fd != lRegEventFD)
     {

@@ -255,7 +255,7 @@ conf_token_set_parse_match_token(const char *input_buf, size_t input_buf_size,
             continue;
 
         // Check len prior to strncmp()
-        if (ct->ct_name_len + 1 > input_buf_size)
+        if ((ct->ct_name_len + 1U) > input_buf_size)
             return NULL;
 
         // The token string be immediately followed by a tab or space.
@@ -275,7 +275,7 @@ conf_token_value_check_and_clear_ws(const struct conf_token *ct,
     if (!ct || !ctsp || !ctsp->ctsp_value_buf || !ctsp->ctsp_value_buf_size)
         return -EINVAL;
 
-    const ssize_t original_value_str_len =
+    const size_t original_value_str_len =
         strnlen(ctsp->ctsp_value_buf, ctsp->ctsp_value_buf_size);
 
     if (original_value_str_len == ctsp->ctsp_value_buf_size)
@@ -288,7 +288,7 @@ conf_token_value_check_and_clear_ws(const struct conf_token *ct,
                                               ctsp->ctsp_value_buf_size);
 
     // Recheck the string len.
-    const ssize_t new_value_str_len =
+    const size_t new_value_str_len =
         strnlen(ctsp->ctsp_value_buf, ctsp->ctsp_value_buf_size);
 
     NIOVA_ASSERT(new_value_str_len <= original_value_str_len);

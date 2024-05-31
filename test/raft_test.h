@@ -29,7 +29,7 @@
  */
 struct raft_test_values
 {
-    uint64_t rtv_seqno;
+    int64_t rtv_seqno;
     union
     {
         uint64_t rtv_request_value;
@@ -106,9 +106,9 @@ do {                                                                    \
                 __uuid_str, raft_test_data_op_2_string((rtdb)->rtdb_op), \
                 (rtdb)->rtdb_num_values,                                \
                 ((rtdb)->rtdb_num_values > 0 ?                          \
-                 (rtdb)->rtdb_values[0].rtv_seqno : -1),                \
+                 (long)(rtdb)->rtdb_values[0].rtv_seqno : -1L),		\
                 ((rtdb)->rtdb_num_values > 0 ?                          \
-                 (rtdb)->rtdb_values[0].rtv_request_value : -1),        \
+                 (long)(rtdb)->rtdb_values[0].rtv_request_value : -1L),	\
                 ##__VA_ARGS__);                                         \
     }                                                                   \
 } while (0)

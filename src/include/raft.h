@@ -57,6 +57,9 @@
 
 #define RAFT_HEARTBEAT_FREQ_PER_ELECTION 10
 
+#define RAFT_ENTRY_IDX_ANY -1LL
+#define RAFT_TERM_ANY -1LL
+
 #define RAFT_MIN_APPEND_ENTRY_IDX -1
 
 #define RAFT_INSTANCE_2_SELF_UUID(ri) \
@@ -216,7 +219,7 @@ struct raft_recovery_handle
     int64_t         rrh_peer_chkpt_idx;
     ssize_t         rrh_chkpt_size;
     ssize_t         rrh_remaining;
-    ssize_t         rrh_completed;
+    size_t         rrh_completed;
     char            rrh_rate_bytes_per_sec[BW_RATE_LEN + 1];
     struct timespec rrh_start;
     bool            rrh_from_recovery_marker;

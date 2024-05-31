@@ -13,7 +13,7 @@ static niova_atomic64_t numPingPongsDone;
 
 #define OPTS "ht:s:"
 
-static size_t udpSize = 5000;
+static ssize_t udpSize = 5000;
 static size_t runTime = 1;
 
 /**
