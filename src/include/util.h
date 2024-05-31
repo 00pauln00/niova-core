@@ -148,11 +148,11 @@ niova_clear_whitespace_from_end_of_string(char *string, const size_t max_len)
     }
 }
 
-static inline size_t
+static inline ssize_t
 niova_count_nulls_from_end_of_buffer(const char *buf, const size_t len)
 {
     if (!buf || !len)
-        return 0;
+        return -EINVAL;
 
     ssize_t cnt = 0;
     for (ssize_t pos = len - 1; pos > 0; pos--)
