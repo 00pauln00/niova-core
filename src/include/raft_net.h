@@ -381,8 +381,9 @@ do {                                                                    \
                     (rcm)->rcrm_sys_error, (rcm)->rcrm_app_error,       \
                     ##__VA_ARGS__);                                     \
             break;                                                      \
-        case RAFT_CLIENT_RPC_MSG_TYPE_PING:        /* fall through */   \
+        case RAFT_CLIENT_RPC_MSG_TYPE_PING:                             \
             uuid_unparse((rcm)->rcrm_dest_id, __uuid_str);              \
+            /* fall through */                                          \
         case RAFT_CLIENT_RPC_MSG_TYPE_PING_REPLY:                       \
             LOG_MSG(log_level,                                          \
                     "CLI-%s %s id=%lx err=%hd:%hd "fmt,                 \
