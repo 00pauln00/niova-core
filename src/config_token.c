@@ -255,7 +255,7 @@ conf_token_set_parse_match_token(const char *input_buf, size_t input_buf_size,
             continue;
 
         // Check len prior to strncmp()
-        if (ct->ct_name_len + 1 > input_buf_size)
+        if ((ct->ct_name_len + 1U) > input_buf_size)
             return NULL;
 
         // The token string be immediately followed by a tab or space.
