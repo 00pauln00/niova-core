@@ -202,7 +202,7 @@ niova_bitmap_merge_test(void)
     rc = niova_bitmap_exclusive(&x, &y);
     FATAL_IF(rc, "niova_bitmap_exclusive(): %s", strerror(-rc));
 
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
     {
         x.nb_map[i] = 0xa55555555555555aULL;
         y.nb_map[i] = 0x5aaaaaaaaaaaaaa5ULL;
@@ -254,7 +254,7 @@ niova_bitmap_bulk_unset_test(void)
     rc = niova_bitmap_shared(&y, &x);
     FATAL_IF(rc != -ENOENT, "niova_bitmap_shared(): %s", strerror(-rc));
 
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
     {
         x.nb_map[i] = -1ULL;
         y.nb_map[i] = 0x5555555555555555ULL;
@@ -272,7 +272,7 @@ niova_bitmap_bulk_unset_test(void)
     rc = niova_bitmap_bulk_unset(&x, &y);
     FATAL_IF(rc, "niova_bitmap_unset(): %s", strerror(-rc));
 
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
     {
         niova_bitmap_init(&y);
 
@@ -424,7 +424,7 @@ niova_bitmap_iterate_test(void)
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(xarg.cnt == 0 && xarg.total_bits == 0);
 
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
         x_map[i] = -1ULL;
 
     rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);
@@ -435,7 +435,7 @@ niova_bitmap_iterate_test(void)
     xarg.cnt = 0;
     xarg.total_bits = 0;
 
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
         x_map[i] = 0x1010101010101010;
 
     rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);
@@ -449,7 +449,7 @@ niova_bitmap_iterate_test(void)
     xarg.cnt = 0;
     xarg.total_bits = 0;
 
-    for (int i = 0; i < size; i++)
+    for (size_t i = 0; i < size; i++)
         x_map[i] = 0x7070707070707070;
 
     rc = niova_bitmap_iterate(&x, niova_bitmap_iterate_cb, &xarg);

@@ -46,7 +46,7 @@ vote_sort(void)
     rc = raft_server_get_majority_entry_idx(mix2, ARRAY_SIZE(mix2), &idx);
     NIOVA_ASSERT(!rc && idx == 127);
 
-    for (int i = 0; i < ARRAY_SIZE(mix2); i++)
+    for (unsigned int i = 0; i < ARRAY_SIZE(mix2); i++)
     {
         switch (i)
         {

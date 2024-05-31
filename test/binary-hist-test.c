@@ -41,14 +41,14 @@ dump_hist(const struct binary_hist *bh)
 }
 
 static void
-fill_bh(int start_bit, int num_buckets)
+fill_bh(unsigned int start_bit, unsigned int num_buckets)
 {
     struct binary_hist bh;
 
     NIOVA_ASSERT(!binary_hist_init(&bh, start_bit, num_buckets));
     NIOVA_ASSERT(bh.bh_start_bit == start_bit);
     NIOVA_ASSERT(bh.bh_num_buckets == num_buckets);
-    NIOVA_ASSERT(binary_hist_size(&bh) == num_buckets);
+    NIOVA_ASSERT(binary_hist_size(&bh) == (int)num_buckets);
 
     for (int i = 0; i < binary_hist_size(&bh); i++)
     {

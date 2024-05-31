@@ -48,6 +48,7 @@ ev_pipe_test_cb(const struct epoll_handle *eph, uint32_t events)
 
     EV_PIPE_RESET(evp);
 
+    (void)events;
     struct item *item = NULL, *tmp = NULL;
     size_t num_completed = 0;
 

@@ -52,6 +52,7 @@ static void
 foo_cb(const struct epoll_handle *eph, uint32_t events)
 {
     (void)eph;
+    (void)events;
     return;
 }
 
@@ -83,6 +84,8 @@ static epoll_mgr_cb_ctx_t
 epoll_mgr_thread_test_cb(const struct epoll_handle *eph, uint32_t events)
 {
     NIOVA_ASSERT(eph && eph->eph_arg);
+
+    (void)events;
 
     struct epm_test_handle *eth = (struct epm_test_handle *)eph->eph_arg;
 
@@ -484,6 +487,8 @@ epm_ctx_test_ref_cb(void *arg, enum epoll_handle_ref_op op)
 static void
 epoll_mgr_context_event_cb(const struct epoll_handle *_eph, uint32_t _ev)
 {
+    (void)_eph;
+    (void)_ev;
     FATAL_MSG("unexpected event received");
 }
 
