@@ -742,7 +742,7 @@ do {                                                               \
 } while (0)
 
 static inline void
-lreg_node_set_reverse_varray(struct lreg_node *lrn, int x)
+lreg_node_set_reverse_varray(struct lreg_node *lrn)
 {
     if (lrn)
         lrn->lrn_reverse_varray = 1;
