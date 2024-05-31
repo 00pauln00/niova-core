@@ -730,7 +730,7 @@ rsc_recv_handler(struct raft_instance *ri, const char *recv_buffer,
 {
     SIMPLE_FUNC_ENTRY(LL_NOTIFY);
     if (!ri || !ri->ri_csn_leader || !recv_buffer || !recv_bytes || !from ||
-        recv_bytes > raft_net_max_rpc_size(ri->ri_store_type))
+        recv_bytes > (ssize_t)raft_net_max_rpc_size(ri->ri_store_type))
         return;
 
     const struct raft_client_rpc_msg *rcrm =
