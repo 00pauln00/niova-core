@@ -760,10 +760,10 @@ raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
     int rc = snprintf(out_string, out_string_len, RAFT_NET_CLIENT_USER_ID_FMT,
                       RAFT_NET_CLIENT_USER_ID_FMT_ARGS(rncui, uuid_str, 0));
 
-    if (rc > out_string_len - 1)
-        return -ENOSPC;
+    if (rc < 0)
+	return rc;
 
-    return (rc > out_string_len - 1) ? -ENOSPC : 0;
+    return ((size_t)rc > (out_string_len - 1)) ? -ENOSPC : 0;
 }
 
 #define raft_net_client_user_id_unparse raft_net_client_user_id_to_string
