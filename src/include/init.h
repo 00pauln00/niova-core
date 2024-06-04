@@ -20,20 +20,28 @@ init_ctx(void);
 bool
 destroy_ctx(void);
 
-init_ctx_t
-init_start(void)
-__attribute__ ((constructor (INIT_START_CTOR_PRIORITY)));
+init_ctx_t NIOVA_CONSTRUCTOR(INIT_START_CTOR_PRIORITY)
+init_start(void);
 
-init_ctx_t
-init_complete(void)
-__attribute__ ((constructor (INIT_COMPLETE_CTOR_PRIORITY)));
+init_ctx_t NIOVA_CONSTRUCTOR(INIT_COMPLETE_CTOR_PRIORITY)
+init_complete(void);
 
-destroy_ctx_t
-destroy_start(void)
-__attribute__ ((destructor (INIT_COMPLETE_CTOR_PRIORITY)));
+destroy_ctx_t NIOVA_DESTRUCTOR(INIT_COMPLETE_CTOR_PRIORITY)
+destroy_start(void);
 
-destroy_ctx_t
-destroy_complete(void)
-__attribute__ ((destructor (INIT_START_CTOR_PRIORITY)));
+destroy_ctx_t NIOVA_DESTRUCTOR(INIT_START_CTOR_PRIORITY)
+destroy_complete(void);
+
+void
+init_ctx_set(void);
+
+void
+init_ctx_unset(void);
+
+void
+destroy_ctx_set(void);
+
+void
+destroy_ctx_unset(void);
 
 #endif

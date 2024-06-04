@@ -30,6 +30,24 @@ destroy_ctx(void)
     return destroyCtx;
 }
 
+void
+init_ctx_set(void)
+{
+    initCtx = true;
+}
+
+void
+init_ctx_unset(void)
+{
+    initCtx = false;
+}
+
+void
+destroy_ctx_set(void)
+{
+    destroyCtx = true;
+}
+
 init_ctx_t
 init_start(void)
 {
@@ -52,6 +70,12 @@ init_complete(void)
     SIMPLE_LOG_MSG(LL_DEBUG, "hello");
 
     initCtx = false;
+}
+
+void
+destroy_ctx_unset(void)
+{
+    destroyCtx = false;
 }
 
 destroy_ctx_t
