@@ -299,6 +299,12 @@ thread_halt_and_destroy(struct thread_ctl *tc)
 
     thread_ctl_remove_from_watchdog(tc);
 
+    if (tc->tc_waiting_cond && tc->tc_waiting_mutex)
+    {
+        NIOVA_SET_COND_AND_WAKE(broadcast, {}, tc->tc_waiting_mutex,
+                                tc->tc_waiting_cond);
+    }
+
     void *retval;
     int my_errno = 0;
 

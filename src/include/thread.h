@@ -47,6 +47,8 @@ struct thread_ctl
     void                  *tc_arg;
     size_t                 tc_sig_cnt;
     struct watchdog_handle tc_watchdog_handle;
+    pthread_mutex_t       *tc_waiting_mutex;
+    pthread_cond_t        *tc_waiting_cond;
 };
 
 static inline enum tc_flags
@@ -157,6 +159,17 @@ static inline bool
 thread_ctl_thread_is_watched(const struct thread_ctl *tc)
 {
     return (tc && thread_ctl_has_flag(tc, TC_FLAG_WATCHDOG)) ? true : false;
+}
+
+static inline void
+thread_ctl_apply_cond_and_mutex(struct thread_ctl *tc, pthread_cond_t *cond,
+                                pthread_mutex_t *mutex)
+{
+    if (tc && cond && mutex)
+    {
+        tc->tc_waiting_cond = cond;
+        tc->tc_waiting_mutex = mutex;
+    }
 }
 
 thread_id_t
