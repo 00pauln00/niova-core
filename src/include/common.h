@@ -57,7 +57,7 @@
 
 #define PACKED __attribute__((packed))
 
-#define L2_CACHELINE_SIZE_BYTES 64
+#define L2_CACHELINE_SIZE_BYTES 64UL
 #define CACHE_ALIGN_MEMBER(memb) \
     __attribute__((aligned(L2_CACHELINE_SIZE_BYTES))) memb
 
