@@ -32,6 +32,7 @@ extern "C" {
 /* BEGIN IM specific defs */
 #define ONLY_MSPACES 1
 #define HAVE_MMAP 0
+//#define HAVE_MORECORE 0
 /* END IM specific defs */
 
 #ifndef ONLY_MSPACES
