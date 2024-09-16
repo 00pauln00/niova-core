@@ -13,6 +13,7 @@
 #include "crc32.h"
 #include "util.h"
 #include "log.h"
+#include "random.h"
 
 static void
 mk_time_string_test(void)
@@ -238,6 +239,31 @@ niova_crc_test(void)
                              sizeof(struct xx)) != 0);
 }
 
+static void
+niova_crc_continuation_test(void)
+{
+    uint32_t buf[1000];
+
+    for (int i = 0; i < 1000; i++)
+        buf[i] = random_get();
+
+    const crc32_t x = niova_crc((unsigned char *)buf, 1000 * sizeof(int), 0);
+    SIMPLE_LOG_MSG(LL_DEBUG, "0x%08x", x);
+
+    crc32_t y = 0;
+
+    for (int i = 0; i < 1000; i++)
+        y = niova_crc((unsigned char *)&buf[i], sizeof(int), y);
+
+    NIOVA_ASSERT(y == x);
+
+    y = 0;
+    for (int i = 0; i < 10; i++)
+        y = niova_crc((unsigned char *)&buf[i * 100], 100 * sizeof(int), y);
+
+    NIOVA_ASSERT(y == x);
+}
+
 int
 main(void)
 {
@@ -247,5 +273,6 @@ main(void)
     niova_string_to_unsigned_int_test();
     niova_parse_comma_delimited_uint_string_test();
     niova_crc_test();
+    niova_crc_continuation_test();
     return 0;
 }
