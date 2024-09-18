@@ -82,6 +82,10 @@
 #define MEMBER_SIZE(type, member)               \
     sizeof(((type *)0)->member)
 
+#define TYPEOF_MEMB(type, memb) typeof(((struct type *)0ULL)->memb)
+
+#define SIZEOF_TYPEOF_MEMB(type, memb) sizeof(TYPEOF_MEMB(type, memb))
+
 #define RAFT_PEER_ANY ID_ANY_8bit
 
 typedef uint8_t  raft_peer_t;
