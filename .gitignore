@@ -134,3 +134,4 @@ go/pumiceDB/examples/niovaKV/pmdbServer/pmdbServer
 go/pumiceDB/examples/niovaKV/proxy/proxy
 niova.pc
 
+test/mspace-test
