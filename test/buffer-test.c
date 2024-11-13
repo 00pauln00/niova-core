@@ -222,6 +222,56 @@ buffer_user_cache_test(void)
     NIOVA_ASSERT(items[0] == bi); // callback should not have been issued
 }
 
+static void
+buffer_initx_test(void)
+{
+    size_t size = 1024UL*1024UL;
+    void *base = malloc(size);
+    NIOVA_ASSERT(base != NULL);
+
+    struct buffer_set bs = {0};
+
+    enum buffer_set_opts opts = BUFSET_OPT_ALT_SOURCE_BUF;
+
+    struct buffer_set_args bsa =
+    {
+        .bsa_set = &bs,
+        .bsa_opts = opts,
+        .bsa_nbufs = 1024UL,
+        .bsa_buf_size = 1024UL,
+        .bsa_alt_source = NULL,
+        .bsa_alt_source_size = size,
+    };
+
+    int rc = buffer_set_initx(&bsa);
+    NIOVA_ASSERT(rc == -EINVAL);
+
+    bsa.bsa_alt_source = base;
+    bsa.bsa_alt_source_size -= 1;
+
+    rc = buffer_set_initx(&bsa);
+    NIOVA_ASSERT(rc == -EOVERFLOW);
+
+    bsa.bsa_alt_source_size += 1;
+
+    rc = buffer_set_initx(&bsa);
+    NIOVA_ASSERT(rc == 0);
+
+    NIOVA_ASSERT(bsa.bsa_alt_source_used == size);
+
+    struct buffer_item *bi = buffer_set_allocate_item(&bs);
+    NIOVA_ASSERT(bi && bi->bi_iov.iov_len == 1024UL);
+    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base >= (uintptr_t)base) &&
+                 ((uintptr_t)bi->bi_iov.iov_base < (((uintptr_t)base) + size)));
+
+    buffer_set_release_item(bi);
+
+    rc = buffer_set_destroy(&bs);
+    NIOVA_ASSERT(rc == 0);
+
+    free(base);
+}
+
 int
 main(void)
 {
@@ -231,6 +281,8 @@ main(void)
     buffer_test(true, false);
 
     buffer_test(false, true);
+
+    buffer_initx_test();
 
     buffer_user_cache_test();
 

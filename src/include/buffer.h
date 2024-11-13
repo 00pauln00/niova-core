@@ -22,6 +22,7 @@ enum buffer_set_opts
     BUFSET_OPT_LREG            = (1 << 2),
     BUFSET_OPT_MEMALIGN_L2     = (1 << 3),
     BUFSET_OPT_MEMALIGN_SECTOR = (1 << 4),
+    BUFSET_OPT_ALT_SOURCE_BUF  = (1 << 5),
     BUFSET_OPT_MEMALIGN        = BUFSET_OPT_MEMALIGN_SECTOR,
 };
 
@@ -48,24 +49,38 @@ SLIST_HEAD(buffer_user_slist, buffer_item);
 
 #define BUFFER_SET_NAME_MAX 32
 
+struct buffer_set_args
+{
+    struct buffer_set   *bsa_set;
+    size_t               bsa_nbufs;
+    size_t               bsa_buf_size;
+    void                *bsa_alt_source;
+    size_t               bsa_alt_source_size;
+    size_t               bsa_alt_source_used;
+    enum buffer_set_opts bsa_opts;
+};
+
 struct buffer_set
 {
-    char                    bs_name[BUFFER_SET_NAME_MAX + 1];
-    size_t                  bs_num_bufs;
-    ssize_t                 bs_num_allocated;
-    ssize_t                 bs_num_user_cached;
-    ssize_t                 bs_num_pndg_alloc;
-    size_t                  bs_item_size;
-    size_t                  bs_max_allocated;
-    size_t                  bs_total_alloc;
-    uint8_t                 bs_init:1;
-    uint8_t                 bs_serialize:1;
-    uint8_t                 bs_ctl_interface:1;
-    uint8_t                 bs_allow_user_cache:1;
-    struct buffer_list      bs_free_list;
-    struct buffer_list      bs_inuse_list;
-    pthread_mutex_t         bs_mutex;
-    struct lreg_node        bs_lrn;
+    char                bs_name[BUFFER_SET_NAME_MAX + 1];
+    size_t              bs_num_bufs;
+    ssize_t             bs_num_allocated;
+    ssize_t             bs_num_user_cached;
+    ssize_t             bs_num_pndg_alloc;
+    size_t              bs_item_size;
+    size_t              bs_max_allocated;
+    size_t              bs_total_alloc;
+    uint8_t             bs_init:1;
+    uint8_t             bs_serialize:1;
+    uint8_t             bs_ctl_interface:1;
+    uint8_t             bs_allow_user_cache:1;
+    uint8_t             bs_use_alt_source_buf:1;
+    void               *bs_alt_source_buf;
+    size_t              bs_alt_source_buf_size;
+    struct buffer_list  bs_free_list;
+    struct buffer_list  bs_inuse_list;
+    pthread_mutex_t     bs_mutex;
+    struct lreg_node    bs_lrn;
 };
 
 size_t
@@ -110,6 +125,9 @@ buffer_set_destroy(struct buffer_set *bs);
 int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
                 enum buffer_set_opts opts);
+
+int
+buffer_set_initx(struct buffer_set_args *bsa);
 
 static inline ssize_t
 buffer_user_list_total_bytes(const struct buffer_user_slist *bus,

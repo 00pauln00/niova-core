@@ -418,7 +418,10 @@ buffer_set_destroy(struct buffer_set *bs)
             buffer_item_user_cache_revoke(bi);
 
         CIRCLEQ_REMOVE(&bs->bs_free_list, bi, bi_lentry);
-        free(bi->bi_iov.iov_base);
+
+        if (!bs->bs_use_alt_source_buf)
+            free(bi->bi_iov.iov_base);
+
         free(bi);
 
         bs->bs_num_bufs--;
@@ -449,10 +452,17 @@ buffer_set_destroy(struct buffer_set *bs)
 }
 
 int
-buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                enum buffer_set_opts opts)
+buffer_set_initx(struct buffer_set_args *bsa)
 {
     buffer_page_size_set();
+
+    if (!bsa)
+        return -EINVAL;
+
+    enum buffer_set_opts opts = bsa->bsa_opts;
+    struct buffer_set *bs = bsa->bsa_set;
+    size_t buf_size = bsa->bsa_buf_size;
+    size_t nbufs = bsa->bsa_nbufs;
 
     if (!bs || !buf_size || bs->bs_init)
         return -EINVAL;
@@ -463,6 +473,22 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     bs->bs_num_bufs = 0;
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
+
+    if (opts & BUFSET_OPT_ALT_SOURCE_BUF)
+    {
+        if (bsa->bsa_alt_source == NULL)
+            return -EINVAL;
+
+        if (bsa->bsa_alt_source_size < (nbufs * buf_size))
+            return -EOVERFLOW;
+
+        bsa->bsa_alt_source_used = 0;
+
+        bs->bs_alt_source_buf = bsa->bsa_alt_source;
+        bs->bs_alt_source_buf_size = bsa->bsa_alt_source_size;
+
+        bs->bs_use_alt_source_buf = 1;
+    }
 
     if (opts & BUFSET_OPT_USER_CACHE)
     {
@@ -499,6 +525,13 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
             bi->bi_iov.iov_base = niova_posix_memalign(buf_size, alignment);
 
             FATAL_IF(bi->bi_iov.iov_base == NULL, "niova_posix_memalign()");
+        }
+        else if (bs->bs_use_alt_source_buf)
+        {
+            bi->bi_iov.iov_base =
+                ((char *)bs->bs_alt_source_buf) + bsa->bsa_alt_source_used;
+
+            bsa->bsa_alt_source_used += buf_size;
         }
         else
         {
@@ -545,6 +578,20 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
     }
 
     return error;
+}
+
+int
+buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
+                enum buffer_set_opts opts)
+{
+    struct buffer_set_args bsa = {
+        .bsa_set = bs,
+        .bsa_nbufs = nbufs,
+        .bsa_buf_size = buf_size,
+        .bsa_opts = opts,
+    };
+
+    return buffer_set_initx(&bsa);
 }
 
 int
