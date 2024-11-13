@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
       with:
         path: ./code
 
@@ -65,7 +65,7 @@ jobs:
 
     # Checkout holon repo
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
        repository: 00pauln00/holon
        #ref:
@@ -111,7 +111,7 @@ jobs:
       if: failure()
 
     - name: Archive the test results
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
          name: ${{ steps.prepare_artifact_filename.outputs.ARTIFACT_NAME }}
          path: /home/runner/work/niovad/niovad/holon_log
