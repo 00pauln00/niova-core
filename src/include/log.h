@@ -92,54 +92,54 @@ struct log_entry_info
     };
 };
 
-#define REGISTRY_ENTRY_FILE_GENERATE                  \
-    static struct log_entry_info logEntryFileInfo = { \
-        .lei_level = LL_ANY,                          \
-        .lei_file = __FILE__,                         \
-    };                                                \
-                                                      \
-    static struct lreg_node regFileEntry = {          \
-        .lrn_cb_arg = &logEntryFileInfo,              \
-        .lrn_user_type = LREG_USER_TYPE_LOG_file,     \
-        .lrn_statically_allocated = 1,                \
-        .lrn_array_element = 1,                       \
-        .lrn_cb = log_lreg_cb,                        \
-        .lrn_inlined_children = 1,                                       \
+#define REGISTRY_ENTRY_FILE_GENERATE                                    \
+    static struct log_entry_info logEntryFileInfo = {                   \
+        .lei_level = LL_ANY,                                            \
+        .lei_file = __FILE__,                                           \
+    };                                                                  \
+                                                                        \
+    static struct lreg_node regFileEntry = {                            \
+        .lrn_cb_arg = &logEntryFileInfo,                                \
+        .lrn_user_type = LREG_USER_TYPE_LOG_file,                       \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_array_element = 1,                                         \
+        .lrn_cb = log_lreg_cb,                                          \
+        .lrn_inlined_children = 1,                                      \
         .lrn_head = CIRCLEQ_HEAD_INITIALIZER(regFileEntry.lrn_head),    \
     }
 
 #define REGISTY_ENTRY_FUNCTION_GENERATE(tag)                            \
-    static struct log_entry_info logEntryInfo = {                          \
-        .lei_level = LL_ANY,                                               \
-        .lei_lineno = __LINE__,                                            \
-        .lei_func = __func__,                                              \
+    static struct log_entry_info logEntryInfo = {                       \
+        .lei_level = LL_ANY,                                            \
+        .lei_lineno = __LINE__,                                         \
+        .lei_func = __func__,                                           \
         .lei_tag = tag,                                                 \
-    };                                                                     \
-    static struct lreg_node logMsgLrn = {                                  \
-        .lrn_cb_arg = &logEntryInfo,                                       \
-        .lrn_user_type = LREG_USER_TYPE_LOG_func,                          \
-        .lrn_statically_allocated = 1,                                     \
-        .lrn_array_element = 1,                                            \
-        .lrn_inlined_member = 1,                                            \
-        .lrn_cb = log_lreg_cb,                                             \
-    };                                                                     \
-    int _node_install_rc = 0;                                              \
+    };                                                                  \
+    static struct lreg_node logMsgLrn = {                               \
+        .lrn_cb_arg = &logEntryInfo,                                    \
+        .lrn_user_type = LREG_USER_TYPE_LOG_func,                       \
+        .lrn_statically_allocated = 1,                                  \
+        .lrn_array_element = 1,                                         \
+        .lrn_inlined_member = 1,                                        \
+        .lrn_cb = log_lreg_cb,                                          \
+    };                                                                  \
+    int _node_install_rc = 0;                                           \
     if (lreg_node_needs_installation(&logMsgLrn))                       \
-    {                                                                      \
+    {                                                                   \
         _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY ||                   \
                      _node_install_rc == -EAGAIN);                      \
     }                                                                   \
-    if (lreg_node_needs_installation(&regFileEntry))                       \
-    {                                                                      \
-        _node_install_rc =                                                 \
-            lreg_node_install(&regFileEntry,                               \
-                              LREG_ROOT_ENTRY_PTR(log_entry_map));         \
-        NIOVA_ASSERT(!_node_install_rc ||                                  \
+    if (lreg_node_needs_installation(&regFileEntry))                    \
+    {                                                                   \
+        _node_install_rc =                                              \
+            lreg_node_install(&regFileEntry,                            \
+                              LREG_ROOT_ENTRY_PTR(log_entry_map));      \
+        NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY ||                   \
                      _node_install_rc == -EAGAIN);                      \
-    }                                                                      \
+    }                                                                   \
 
 
 // Allow users of _NIOVA_BACKTRACE_H_ to generate backtraces in abort ctx
@@ -158,7 +158,7 @@ do {                                                              \
         exec;                                                     \
         struct timespec ts;                                       \
         niova_unstable_clock(&ts);                                \
-        fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",    \
+        fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",  \
                 ts.tv_sec, ts.tv_nsec,                            \
                 ll_to_string(level), thread_name_get(), __func__, \
                 __LINE__, ##__VA_ARGS__);                         \
