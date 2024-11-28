@@ -128,7 +128,8 @@ struct log_entry_info
     {                                                                      \
         _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
-                     _node_install_rc == -EALREADY);                    \
+                     _node_install_rc == -EALREADY ||                   \
+                     _node_install_rc == -EAGAIN);                      \
     }                                                                   \
     if (lreg_node_needs_installation(&regFileEntry))                       \
     {                                                                      \
@@ -136,7 +137,8 @@ struct log_entry_info
             lreg_node_install(&regFileEntry,                               \
                               LREG_ROOT_ENTRY_PTR(log_entry_map));         \
         NIOVA_ASSERT(!_node_install_rc ||                                  \
-                     _node_install_rc == -EALREADY);                       \
+                     _node_install_rc == -EALREADY ||                   \
+                     _node_install_rc == -EAGAIN);                      \
     }                                                                      \
 
 
