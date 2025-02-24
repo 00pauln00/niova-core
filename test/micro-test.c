@@ -17,10 +17,37 @@
 #include "atomic.h"
 #include "crc32.h"
 #include "crc24q.h"
+#include "tree.h"
 
 #define DEF_ITER 200000000
 #define PRIME 1040071U
 #define SMALL_PRIME 7879U
+
+#define RB_TREE_SIZE 16384
+struct rb_xentry
+{
+    union
+    {
+        struct
+        {
+            RB_ENTRY(rb_xentry) rbx_tentry;
+            uint32_t            rbx_key;
+        };
+        char x[64];
+    };
+};
+
+static int
+rb_xentry_cmp(const struct rb_xentry *a, const struct rb_xentry *b)
+{
+    return a->rbx_key == b->rbx_key ? 0 :
+           a->rbx_key  > b->rbx_key ? 1 : -1;
+}
+
+RB_HEAD(rbx_tree, rb_xentry);
+RB_GENERATE(rbx_tree, rb_xentry, rbx_tentry, rb_xentry_cmp);
+
+struct rb_xentry rbxTreeEntries[RB_TREE_SIZE];
 
 size_t iterator;
 
@@ -300,7 +327,20 @@ lz4_test_4k(void)
 }
 
 static void
-run_micro(void (*func)(void), size_t iterations, const char *name)
+rb_tree_test(void)
+{
+    struct rbx_tree rbx_tree = {0};
+
+    for (unsigned int i = 0; i < RB_TREE_SIZE; i++)
+    {
+        rbxTreeEntries[i].rbx_key = random_get();
+        RB_INSERT(rbx_tree, &rbx_tree, &rbxTreeEntries[i]);
+    }
+}
+
+static void
+run_micro_x(void (*func)(void), size_t iterations, const char *name,
+            unsigned int sub_divisor)
 {
     struct timespec ts[2];
     niova_unstable_clock(&ts[0]);
@@ -314,8 +354,17 @@ run_micro(void (*func)(void), size_t iterations, const char *name)
 
     unsigned long long num_nsecs = timespec_2_nsec(&ts[0]);
 
-    fprintf(stdout, "%12.3f\t\t%s\n",
-            (float)num_nsecs / (float)iterations, name);
+    float val = (float)num_nsecs / (float)iterations;
+    if (sub_divisor)
+        val /= (float)sub_divisor;
+
+    fprintf(stdout, "%12.3f\t\t%s\n", val, name);
+}
+
+static void
+run_micro(void (*func)(void), size_t iterations, const char *name)
+{
+    return run_micro_x(func, iterations, name, 0);
 }
 
 int
@@ -383,6 +432,8 @@ main(void)
     zlib_test_prep(false, 1);
     run_micro(lz4_test_4k, 2000,
               "lz4_compress_4k (uncompressible)");
+
+    run_micro_x(rb_tree_test, 10, "rb_tree_insertion (16384)", RB_TREE_SIZE);
 
     return 0;
 }
