@@ -2,7 +2,7 @@ from curses.ascii import GS
 import json, sys, base64, requests
 from textwrap import indent
 from requests.structures import CaseInsensitiveDict
-import re, operator
+import re, operator, ast
 from pprint import pprint
 
 from sqlalchemy import true
@@ -50,6 +50,23 @@ def prepare_summary(recap_text):
 
     return json_res
 
+def code_coverage(coverage):
+    text = ' '.join(coverage)
+    pattern = r'\*+".*'
+    result = re.sub(pattern, '', text)
+    new = re.findall(r'Z\s+(.*?)%', str(result))
+    res = str(new)
+    coverage = res.strip().replace("\\t", "")
+    my_list = ast.literal_eval(coverage)
+    result = [re.sub(r'coverage:\s*', '', item) for item in my_list]
+    my_dict = {}
+    for item in my_list:
+        key_value = item.split("coverage: ")
+        key = key_value[0]
+        value = float(key_value[1])
+        my_dict[key] = value
+
+    return my_dict
 
 def prepare_tasks(recap_text):
     # regex to get the strings from after === till the last
@@ -81,7 +98,11 @@ def prepare_tasks(recap_text):
         # deleting the timestamp
         del task[0]
         timing = task[len(task) - 1]
-        timing = float(timing[: len(timing) - 1])
+        if task[0] == "basic_recipe_for_covid_goapp" or task[0] == "basic_recipe_for_foodpalace_goapp":
+            timing = timing[-5:] 
+            timing = float(timing[: len(timing) - 1])
+        else:
+            timing = float(timing[: len(timing) - 1])
         # deleting the time taken
         del task[len(task) - 1]
 
@@ -113,7 +134,7 @@ def get_job_logs(job_id):
 token = sys.argv[1]
 
 
-def runner(play_recap_text):
+def runner(play_recap_text, code_cov):
     result_dict = {}
     result_json = []
     for recap_text in play_recap_text:
@@ -122,6 +143,7 @@ def runner(play_recap_text):
         result_dict.update({"summary": prepare_summary(recap_text)})
         result_json.append(result_dict)
         result_dict = {}
+    result_json.append({"code_coverage": code_coverage(code_cov)})
     return result_json
 
 
@@ -132,8 +154,11 @@ def parse_ansible_logs(job_id):
     play_recap_text = re.findall(
         r"PLAY RECAP.*?recipe_name: *\W*\w*.*?\w.yml", str(logs), flags=re.DOTALL
     )
-
-    parsed_op = runner(play_recap_text)
+    
+    code_cov = re.findall(
+            r"(?s)Report(.*?)\*\*\*\* End \*\*\*\*", str(logs), flags=re.DOTALL
+            )
+    parsed_op = runner(play_recap_text, code_cov)
 
     # for recipe in parsed_op:
     #     summary = recipe['summary']
