@@ -1,4 +1,4 @@
-package main
+package PMDBServer
 
 import (
 	leaseServerLib "LeaseLib/leaseServer"
@@ -67,9 +67,9 @@ type pmdbServerHandler struct {
 	portRange         []uint16
 }
 
-func main() {
+func Run(args []string) {
 	serverHandler := pmdbServerHandler{}
-	nso, pErr := serverHandler.parseArgs()
+	nso, pErr := serverHandler.parseArgs(args)
 	if pErr != nil {
 		log.Println(pErr)
 		return
@@ -220,22 +220,23 @@ func (handler *pmdbServerHandler) checkHTTPLiveness() {
 	}
 }
 
-func (handler *pmdbServerHandler) parseArgs() (*NiovaKVServer, error) {
+func (handler *pmdbServerHandler) parseArgs(args []string) (*NiovaKVServer, error) {
 	var tempRaftUUID, tempPeerUUID string
 	var err error
 
-	flag.StringVar(&tempRaftUUID, "r", "NULL", "raft uuid")
-	flag.StringVar(&tempPeerUUID, "u", "NULL", "peer uuid")
+	fs := flag.NewFlagSet("PMDBServer", flag.ContinueOnError)
+	fs.StringVar(&tempRaftUUID, "r", "NULL", "raft uuid")
+	fs.StringVar(&tempPeerUUID, "u", "NULL", "peer uuid") //Conflict
 
 	/* If log path is not provided, it will use Default log path.
 	   default log path: /tmp/<peer-uuid>.log
 	*/
 	defaultLog := "/" + "tmp" + "/" + handler.peerUUID.String() + ".log"
-	flag.StringVar(&handler.logDir, "l", defaultLog, "log dir")
-	flag.StringVar(&handler.logLevel, "ll", "Info", "Log level")
-	flag.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
-	flag.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
-	flag.Parse()
+	fs.StringVar(&handler.logDir, "l", defaultLog, "log dir") //Conflict
+	fs.StringVar(&handler.logLevel, "ll", "Info", "Log level")
+	fs.StringVar(&handler.gossipClusterFile, "g", "NULL", "Serf agent port")
+	fs.BoolVar(&handler.prometheus, "p", false, "Enable prometheus")
+	fs.Parse(args)
 
 	handler.raftUUID, _ = uuid.FromString(tempRaftUUID)
 	handler.peerUUID, _ = uuid.FromString(tempPeerUUID)
@@ -468,7 +469,7 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	//For application request
-	log.Trace("Key passed by client: ", applyNiovaKV.Key)
+	log.Info("Key passed by client: ", applyNiovaKV.Key)
 
 	// length of key.
 	keyLength := len(applyNiovaKV.Key)
@@ -478,7 +479,7 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	// Length of value.
 	valLen := len(byteToStr)
 
-	log.Trace("Write the KeyValue by calling PmdbWriteKV")
+	log.Info("Write the KeyValue by calling PmdbWriteKV")
 	rc := nso.pso.WriteKV(applyArgs.UserID, applyArgs.PmdbHandler,
 		applyNiovaKV.Key,
 		int64(keyLength), byteToStr,
@@ -489,7 +490,7 @@ func (nso *NiovaKVServer) Apply(applyArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
 func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 
-	log.Trace("NiovaCtlPlane server: Read request received")
+	log.Info("NiovaCtlPlane server: Read request received")
 	var copyErr error
 	var replySize int64
 
@@ -503,9 +504,9 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 	}
 
 	//Lease request
-	log.Trace("Key passed by client: ", reqStruct.Key)
+	log.Info("Key passed by client: ", reqStruct.Key)
 	keyLen := len(reqStruct.Key)
-	log.Trace("Key length: ", keyLen)
+	log.Info("Key length: ", keyLen)
 
 	var readErr error
 	var resultResponse requestResponseLib.KVResponse
@@ -522,6 +523,7 @@ func (nso *NiovaKVServer) Read(readArgs *PumiceDBServer.PmdbCbArgs) int64 {
 			Key:       reqStruct.Key,
 			ResultMap: singleReadMap,
 		}
+		log.Info("Read result: ", resultResponse)
 		readErr = err
 
 	} else if reqStruct.Operation == requestResponseLib.KV_RANGE_READ {
