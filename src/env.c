@@ -186,7 +186,8 @@ env_parse_long(const char *ev_string, struct niova_env_var *nev)
         nev->nev_long_value = nev->nev_min;
     }
 
-    SIMPLE_LOG_MSG((nev->nev_long_value != nev->nev_default ?
+    SIMPLE_LOG_MSG(((nev->nev_long_value != nev->nev_default ||
+                     !nev->nev_present) ?
                     LL_WARN : LL_NOTIFY),
                    "env-var %s value %lld applied from environment",
                    nev->nev_name, nev->nev_long_value);
@@ -198,7 +199,6 @@ env_parse(const char *ev_string, struct niova_env_var *nev)
     if (!ev_string || !nev)
         return;
 
-    nev->nev_present = true;
     nev->nev_rc = 0; // may be overridden in env_parse_long()
 
     switch (nev->nev_type)
@@ -225,6 +225,9 @@ env_parse(const char *ev_string, struct niova_env_var *nev)
 
         break;
     }
+
+    if (!nev->nev_rc)
+        nev->nev_present = true;
 }
 
 void
