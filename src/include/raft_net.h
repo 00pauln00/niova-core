@@ -454,7 +454,7 @@ raft_net_compile_time_assert(void)
 }
 
 struct raft_instance *
-raft_net_get_instance(void);
+raft_net_init_instance(void);
 
 int
 raft_net_instance_startup(struct raft_instance *ri, bool client_mode);

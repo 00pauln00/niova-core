@@ -60,10 +60,10 @@ enum raft_net_recovery_lreg_values
     RAFT_NET_RECOVERY_LREG__NONE = 0,
 };
 
-struct raft_instance raftInstance = {
-//    .ri_store_type = RAFT_INSTANCE_STORE_ROCKSDB,
-    .ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
-};
+// struct raft_instance raftInstance = {
+// //    .ri_store_type = RAFT_INSTANCE_STORE_ROCKSDB,
+//     .ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
+// };
 
 static regex_t raftNetRncuiRegex;
 
@@ -78,12 +78,21 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops,
                                       struct lreg_value *, void *);
 
 struct raft_instance *
-raft_net_get_instance(void)
+raft_net_init_instance(void)
 {
-    // Xxx this needs to become more flexible so that more than 1 instance
-    //      may be serviced by a single process
-    return &raftInstance;
+    struct raft_instance *ri = (struct raft_instance *)calloc(1,
+                                    sizeof(struct raft_instance));
+    ri->ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE
+    return ri;
 }
+
+// struct raft_instance *
+// raft_net_get_instance(void)
+// {
+//     // Xxx this needs to become more flexible so that more than 1 instance
+//     //      may be serviced by a single process
+//     return &raftInstance;
+// }
 
 static unsigned int
 raft_net_lreg_num_keys(void)

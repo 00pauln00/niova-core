@@ -2653,7 +2653,7 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     if (!rci)
         return -ENOSPC;
 
-    struct raft_instance *ri = raft_net_get_instance();
+    struct raft_instance *ri = raft_net_init_instance();
     if (!ri)
     {
         raft_client_destroy((void *)rci);
