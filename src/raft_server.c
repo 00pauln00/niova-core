@@ -153,9 +153,12 @@ enum raft_instance_lreg_entry_values
     ((ri)->ri_max_entry_size - RAFT_ENTRY_HEADER_RESERVE)
 
 
-struct raft_server_instance {
-    struct raft_instance *ri;
-} raft_server_global_instance;
+struct raft_server_instance raft_server_global_instance;
+
+struct raft_server_instance * get_raft_server_instance(void)
+{
+    return &raft_server_global_instance;
+}
 
 void raft_server_global_instance_init(struct raft_instance *ri)
 {

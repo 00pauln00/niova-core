@@ -235,7 +235,9 @@ pmdb_object_net_init(struct pmdb_object *pmdb_obj,
 static rocksdb_t *
 pmdb_get_rocksdb_instance(void)
 {
-    rocksdb_t *db = raft_server_get_rocksdb_instance(raft_net_get_instance());
+    struct raft_server_instance *raft_server =
+        get_raft_server_instance();
+    rocksdb_t *db = raft_server_get_rocksdb_instance(raft_server->ri);
     NIOVA_ASSERT(db);
 
     return db;
@@ -1613,7 +1615,9 @@ PmdbExec(const char *raft_uuid_str, const char *raft_instance_uuid_str,
 int
 PmdbClose(void)
 {
-    return raft_net_instance_shutdown(raft_net_get_instance());
+    struct raft_server_instance *raft_server =
+        get_raft_server_instance();
+    return raft_net_instance_shutdown(raft_server->ri);
 }
 
 rocksdb_t *

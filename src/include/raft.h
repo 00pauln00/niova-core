@@ -131,6 +131,12 @@ enum raft_buf_set_nbuf
     RAFT_BS_LARGE_NBUF = TCP_MGR_NTHREADS,
 };
 
+struct raft_server_instance {
+    struct raft_instance *ri;
+};
+
+struct raft_server_instance * get_raft_server_instance(void);
+
 struct raft_vote_request_msg
 {
     int64_t rvrqm_proposed_term;
@@ -1159,6 +1165,10 @@ raft_server_backend_use_posix(struct raft_instance *ri);
 
 void
 raft_server_backend_use_rocksdb(struct raft_instance *ri);
+
+struct raft_server_instance * 
+get_raft_server_instance(void);
+
 
 int
 raft_server_instance_run(const char *raft_uuid_str,
