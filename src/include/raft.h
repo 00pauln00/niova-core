@@ -593,6 +593,7 @@ struct raft_instance
     struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member
     pthread_mutex_t                 ri_write_mutex;
+    regex_t                         raftNetRncuiRegex;
 };
 
 static inline struct raft_recovery_handle *

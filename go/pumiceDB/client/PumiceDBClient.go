@@ -293,7 +293,8 @@ func (obj *PmdbClientObj) writeKV(rncui string, key *C.char,
 
 	var rncui_id C.struct_raft_net_client_user_id
 
-	C.raft_net_client_user_id_parse(rncuiStrC, &rncui_id, 0)
+	C.pumice_client_rncui_id_parse(obj.pmdb, rncuiStrC, &rncui_id, 0)
+	
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
@@ -327,7 +328,8 @@ func (obj *PmdbClientObj) readKV(rncui string, key *C.char,
 
 	var rncui_id C.struct_raft_net_client_user_id
 
-	C.raft_net_client_user_id_parse(rncuiStrC, &rncui_id, 0)
+	C.pumice_client_rncui_id_parse(obj.pmdb, rncuiStrC, &rncui_id, 0)
+	
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
@@ -395,7 +397,8 @@ func (obj *PmdbClientObj) readKVZeroCopy(rncui string, key *C.char,
 
 	var rncui_id C.struct_raft_net_client_user_id
 
-	C.raft_net_client_user_id_parse(rncuiStrC, &rncui_id, 0)
+	C.pumice_client_rncui_id_parse(obj.pmdb, rncuiStrC, &rncui_id, 0)
+
 	var obj_id *C.pmdb_obj_id_t
 
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)

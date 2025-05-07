@@ -161,4 +161,7 @@ PmdbRncui2Key(const struct raft_net_client_user_id *rncui);
 size_t
 PmdbEntryKeyLen(void);
 
+void pumice_server_rncui_id_parse(const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version);
 #endif

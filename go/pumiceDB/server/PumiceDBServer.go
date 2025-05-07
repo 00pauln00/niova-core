@@ -754,7 +754,8 @@ func PmdbEnqueueDirectWriteRequest(appReq interface{}) int {
 	rptr := unsafe.Pointer(uintptr(buf) + C.sizeof_struct_raft_client_rpc_msg)
 
 	//Prepare pmdb_obj_id
-	C.raft_net_client_user_id_parse(rncuiStrC, &rncui_id, 0)
+	C.pumice_server_rncui_id_parse(rncuiStrC, &rncui_id, 0)
+
 	obj_id = (*C.pmdb_obj_id_t)(&rncui_id.rncui_key)
 
 	//Populate pmdb_msg structure

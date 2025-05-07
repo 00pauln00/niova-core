@@ -456,6 +456,9 @@ raft_net_compile_time_assert(void)
 struct raft_instance *
 raft_net_init_instance(void);
 
+void 
+raft_net_destroy_instance(struct raft_instance *ri);
+
 int
 raft_net_instance_startup(struct raft_instance *ri, bool client_mode);
 
@@ -770,7 +773,7 @@ raft_net_client_user_id_to_string(const struct raft_net_client_user_id *rncui,
 #define raft_net_client_user_id_unparse raft_net_client_user_id_to_string
 
 int
-raft_net_client_user_id_parse(const char *in,
+raft_net_client_user_id_parse(struct raft_instance *ri, const char *in,
                               struct raft_net_client_user_id *rncui,
                               const version_t version);
 void

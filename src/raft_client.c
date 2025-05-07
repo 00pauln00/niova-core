@@ -2775,3 +2775,13 @@ raft_client_ctor_init(void)
 
     return;
 }
+
+
+void raft_client_rncui_id_parse(raft_client_instance_t client_instance, const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version) 
+{    
+    struct raft_client_instance *rci =
+                raft_client_instance_lookup(client_instance);
+    raft_net_client_user_id_parse(RCI_2_RI(rci), in, rncui, version);
+}
