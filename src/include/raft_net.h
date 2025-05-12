@@ -791,4 +791,8 @@ int
 raft_net_sm_write_supplements_merge(struct raft_net_sm_write_supplements *dest,
                                     struct raft_net_sm_write_supplements *src);
 
+util_thread_ctx_reg_int_t
+raft_net_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                 struct lreg_value *lv);
+
 #endif

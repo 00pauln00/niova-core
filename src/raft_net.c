@@ -70,13 +70,10 @@ static regex_t raftNetRncuiRegex;
 REGISTRY_ENTRY_FILE_GENERATE;
 
 static util_thread_ctx_reg_int_t
-raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
-                             void *);
-
-static util_thread_ctx_reg_int_t
 raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops,
                                       struct lreg_value *, void *);
 
+//XXx deprecate!
 struct raft_instance *
 raft_net_get_instance(void)
 {
@@ -86,9 +83,9 @@ raft_net_get_instance(void)
 }
 
 static unsigned int
-raft_net_lreg_num_keys(void)
+raft_net_lreg_num_keys(const struct raft_instance *ri)
 {
-    return raft_instance_is_client(raft_net_get_instance()) ?
+    return raft_instance_is_client(ri) ?
         RAFT_NET_LREG__CLIENT_MAX : RAFT_NET_LREG__MAX;
 }
 
@@ -101,11 +98,6 @@ raft_net_lreg_recovery_num_keys(void)
             (ri->ri_needs_bulk_recovery || ri->ri_successful_recovery)) ?
         RAFT_NET_RECOVERY_LREG__MAX : RAFT_NET_RECOVERY_LREG__NONE;
 }
-
-LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_info, LREG_USER_TYPE_RAFT_NET,
-                                raft_net_lreg_num_keys(),
-                                raft_net_lreg_multi_facet_cb, NULL,
-                                LREG_INIT_OPT_NONE);
 
 LREG_ROOT_ENTRY_GENERATE_OBJECT(raft_net_bulk_recovery_info,
                                 LREG_USER_TYPE_RAFT_RECOVERY_NET,
@@ -407,16 +399,13 @@ raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
 
 static util_thread_ctx_reg_int_t
 raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
-                             void *arg)
+                              struct raft_instance *ri)
 {
-    if (arg)
+    if (!ri)
         return -EINVAL;
 
     else if (lv->lrv_value_idx_in >= RAFT_NET_LREG__MAX)
         return -ERANGE;
-
-    struct raft_instance *ri = raft_net_get_instance();
-    NIOVA_ASSERT(ri);
 
     int rc = 0;
     bool tmp_bool = false;
@@ -502,6 +491,50 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         break;
     default:
         rc = -EOPNOTSUPP;
+        break;
+    }
+
+    return rc;
+}
+
+util_thread_ctx_reg_int_t
+raft_net_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                 struct lreg_value *lv)
+{
+    struct raft_instance *ri = lrn->lrn_cb_arg;
+    if (!ri)
+        return -EINVAL;
+
+    if (lv)
+        lv->get.lrv_num_keys_out = raft_net_lreg_num_keys(ri);
+
+    int rc = 0;
+
+    switch (op)
+    {
+    case LREG_NODE_CB_OP_GET_NAME:
+        if (!lv)
+            return -EINVAL;
+
+        lreg_value_fill_key_and_type(lv, "raft-net-info", LREG_VAL_TYPE_OBJECT);
+        break;
+
+    case LREG_NODE_CB_OP_READ_VAL:
+    case LREG_NODE_CB_OP_WRITE_VAL: //fall through
+        rc = lv ? raft_net_lreg_multi_facet_cb(op, lv, ri) : -EINVAL;
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_QUEUED_NODE:
+        break;
+
+    case LREG_NODE_CB_OP_INSTALL_NODE:
+        break;
+
+    case LREG_NODE_CB_OP_DESTROY_NODE:
+	break;
+
+    default:
+        rc = -ENOENT;
         break;
     }
 
@@ -2556,7 +2589,6 @@ raft_net_init(void)
     if (entry_cnt++ > 0)
         return;
 
-    LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
     int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);

@@ -134,6 +134,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_NEWEST_UNSYNC_ENTRY_CRC,   // uint32
     RAFT_LREG_LOWEST_IDX,         // int64
     RAFT_LREG_CHKPT_IDX,          // int64
+    RAFT_LREG_NET,                // raft net object
     RAFT_LREG_COALESCE_ITEMS,     // int64
     RAFT_LREG_COALESCE_SPACE_AVAIL, // int64
     RAFT_LREG_HIST_COALESCED_WR_CNT,  // hist object
@@ -337,6 +338,11 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
         case RAFT_LREG_SYNC_CNT:
             lreg_value_fill_unsigned(lv, "sync-cnt", ri->ri_sync_cnt);
             break;
+        case RAFT_LREG_NET:
+            lreg_value_fill_object(lv, "raft-net-info",
+                                   LREG_USER_TYPE_RAFT_NET);
+            break;
+
         case RAFT_LREG_COALESCE_ITEMS:
             lreg_value_fill_signed(
                 lv, "coalesce-items-pending",
@@ -5497,6 +5503,8 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
         (LREG_USER_TYPE_HISTOGRAM__MAX - LREG_USER_TYPE_HISTOGRAM__MIN) >=
         RAFT_INSTANCE_HIST_MAX);
 
+    int rc = 0;
+
     // Install the inlined objects into the parent
     for (enum raft_instance_hist_types i = RAFT_INSTANCE_HIST_MIN;
          i < RAFT_INSTANCE_HIST_MAX; i++)
@@ -5508,16 +5516,21 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
                        (LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO |
                         LREG_INIT_OPT_INLINED_MEMBER));
 
-        int rc =
-            lreg_node_install(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
+        rc = lreg_node_install(&ri->ri_rihs[i].rihs_lrn, &ri->ri_lreg);
 
         if (rc)
             return rc;
     }
 
-    // Last, install the parent w/ it's child objects already in place
-    return lreg_node_install(&ri->ri_lreg,
-                             LREG_ROOT_ENTRY_PTR(raft_root_entry));
+    lreg_node_init(&ri->ri_net_lreg, LREG_USER_TYPE_RAFT_NET,
+                   raft_net_lreg_cb, (void *)ri, LREG_INIT_OPT_INLINED_MEMBER);
+
+    rc = lreg_node_install(&ri->ri_net_lreg, &ri->ri_lreg);
+
+    if (!rc) // Last, install the parent w/ it's child objects already in place
+        lreg_node_install(&ri->ri_lreg, LREG_ROOT_ENTRY_PTR(raft_root_entry));
+
+    return rc;
 }
 
 #if 0
