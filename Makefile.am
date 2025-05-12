@@ -112,101 +112,6 @@ src_libniova_bt_la_LDFLAGS = \
 src_libniova_bt_la_SOURCES = src/niova_backtrace.c \
 	src/include/src/niova_backtrace.h
 
-## Raft
-RAFT_NET_CORE_SOURCES = \
-	src/include/raft_net.h \
-	src/include/raft.h \
-	src/raft_net.c
-
-raft_includedir = $(includedir)/niova/raft
-raft_include_HEADERS = src/include/raft_net.h src/include/raft.h
-
-RAFT_SERVER_CORE_SOURCES = $(RAFT_NET_CORE_SOURCES) src/raft_server.c
-
-RAFT_SERVER_BACKEND_SOURCES = \
-        src/include/raft_server_backend_rocksdb.h \
-        src/raft_server_backend_posix.c \
-        src/raft_server_backend_rocksdb.c
-
-raft_include_HEADERS += src/include/raft_server_backend_rocksdb.h
-
-RAFT_CLIENT_CORE_SOURCES = \
-	src/include/raft_net.h \
-	src/include/raft.h \
-	src/include/raft_client.h \
-	src/raft_net.c \
-	src/raft_client.c
-
-raft_include_HEADERS += src/include/raft_client.h
-
-lib_LTLIBRARIES += src/libniova_raft.la
-src_libniova_raft_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-# Make libniova a dependency so that constructors execute in the correct order
-src_libniova_raft_la_LIBADD = src/libniova.la
-src_libniova_raft_la_SOURCES = \
-	$(RAFT_SERVER_CORE_SOURCES) $(RAFT_SERVER_BACKEND_SOURCES)
-
-lib_LTLIBRARIES += src/libniova_raft_client.la
-src_libniova_raft_client_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_raft_client_la_LIBADD = src/libniova.la
-src_libniova_raft_client_la_SOURCES = $(RAFT_CLIENT_CORE_SOURCES)
-
-my_libexec_PROGRAMS += test/raft-reference-client
-test_raft_reference_client_SOURCES = test/raft-reference-client.c
-test_raft_reference_client_LDADD = \
-	src/libniova.la src/libniova_raft_client.la src/libniova_bt.la
-
-my_libexec_PROGRAMS += test/raft-reference-server
-test_raft_reference_server_SOURCES =  \
-	test/raft-reference-server.c
-test_raft_reference_server_LDADD = \
-	src/libniova.la src/libniova_raft.la $(ROCKSDB_LIBS) src/libniova_bt.la
-## end Raft
-
-## Pumice
-lib_LTLIBRARIES += src/libniova_pumice.la
-src_libniova_pumice_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_pumice_la_LIBADD = src/libniova.la src/libniova_raft.la
-src_libniova_pumice_la_SOURCES = \
-	src/include/pumice_db.h src/include/pumice_db_net.h src/pumice_db.c
-
-lib_LTLIBRARIES += src/libniova_pumice_client.la
-src_libniova_pumice_client_la_LDFLAGS = \
-	-version-info @MAJOR_VERSION@:@MINOR_VERSION@:@VERSION_SUFFIX@
-src_libniova_pumice_client_la_LIBADD = \
-	src/libniova.la src/libniova_raft_client.la
-src_libniova_pumice_client_la_SOURCES = \
-	src/include/pumice_db_net.h \
-	src/include/pumice_db_client.h \
-	src/pumice_db_client.c
-
-my_libexec_PROGRAMS += test/pumice-reference-client
-test_pumice_reference_client_SOURCES =  \
-	test/pumice-reference-client.c
-test_pumice_reference_client_LDADD = \
-	src/libniova.la \
-	src/libniova_raft_client.la \
-	src/libniova_pumice_client.la \
-	src/libniova_bt.la
-
-my_libexec_PROGRAMS += test/pumice-reference-server
-test_pumice_reference_server_SOURCES =  \
-	test/pumice-reference-server.c
-test_pumice_reference_server_LDADD = \
-	src/libniova.la \
-	src/libniova_raft.la \
-	src/libniova_pumice.la \
-	src/libniova_bt.la	$(ROCKSDB_LIBS)
-
-raft_include_HEADERS += src/include/pumice_db_net.h \
-	src/include/pumice_db_client.h \
-	src/include/pumice_db.h
-
-## end Pumice
-
 ## Tests
 noinst_PROGRAMS += test/ref-tree-test
 test_ref_tree_test_SOURCES = test/ref-tree-test.c
@@ -300,12 +205,6 @@ test_epoll_mgr_test_SOURCES =  \
 test_epoll_mgr_test_LDADD = src/libniova.la src/libniova_bt.la
 TESTS += test/epoll-mgr-test
 
-noinst_PROGRAMS += test/raft-net-test
-test_raft_net_test_SOURCES =   \
-	$(RAFT_NET_CORE_SOURCES) test/raft-net-test.c
-test_raft_net_test_LDADD = src/libniova.la src/libniova_bt.la
-test_raft_net_test_CFLAGS = $(AM_CFLAGS)
-TESTS += test/raft-net-test
 
 noinst_PROGRAMS += test/bitmap-test
 test_bitmap_test_SOURCES = test/bitmap-test.c
