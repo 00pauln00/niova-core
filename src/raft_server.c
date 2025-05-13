@@ -135,6 +135,7 @@ enum raft_instance_lreg_entry_values
     RAFT_LREG_LOWEST_IDX,         // int64
     RAFT_LREG_CHKPT_IDX,          // int64
     RAFT_LREG_NET,                // raft net object
+    RAFT_LREG_RECOVERY_INFO, // raft recovery object
     RAFT_LREG_COALESCE_ITEMS,     // int64
     RAFT_LREG_COALESCE_SPACE_AVAIL, // int64
     RAFT_LREG_HIST_COALESCED_WR_CNT,  // hist object
@@ -342,7 +343,10 @@ raft_instance_lreg_multi_facet_cb(enum lreg_node_cb_ops op,
             lreg_value_fill_object(lv, "raft-net-info",
                                    LREG_USER_TYPE_RAFT_NET);
             break;
-
+        case RAFT_LREG_RECOVERY_INFO:
+            lreg_value_fill_object(lv, "raft-recovery-info",
+                                   LREG_USER_TYPE_RAFT_RECOVERY_NET);
+            break;
         case RAFT_LREG_COALESCE_ITEMS:
             lreg_value_fill_signed(
                 lv, "coalesce-items-pending",
@@ -5526,6 +5530,11 @@ raft_server_instance_lreg_init(struct raft_instance *ri)
                    raft_net_lreg_cb, (void *)ri, LREG_INIT_OPT_INLINED_MEMBER);
 
     rc = lreg_node_install(&ri->ri_net_lreg, &ri->ri_lreg);
+
+    lreg_node_init(&ri->ri_net_bulk_recovery_lreg, LREG_USER_TYPE_RAFT_RECOVERY_NET,
+                   raft_net_bulk_recovery_lreg_cb, (void *)ri, LREG_INIT_OPT_INLINED_MEMBER);
+
+    rc = lreg_node_install(&ri->ri_net_bulk_recovery_lreg, &ri->ri_lreg);
 
     if (!rc) // Last, install the parent w/ it's child objects already in place
         lreg_node_install(&ri->ri_lreg, LREG_ROOT_ENTRY_PTR(raft_root_entry));

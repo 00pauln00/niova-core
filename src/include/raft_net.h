@@ -795,4 +795,7 @@ util_thread_ctx_reg_int_t
 raft_net_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
                  struct lreg_value *lv);
 
+util_thread_ctx_reg_int_t
+raft_net_bulk_recovery_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
+                 struct lreg_value *lv);
 #endif
