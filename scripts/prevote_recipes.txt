@@ -1,4 +1,0 @@
-prevote_checkquorum.yml
-prevote_corner_case1.yml
-prevote_corner_case2.yml
-prevote_raft_guarantee_liveness.yml

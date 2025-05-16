@@ -1,1 +1,0 @@
-foodpalace_golang_operation_all.yml

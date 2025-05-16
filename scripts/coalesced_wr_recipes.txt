@@ -1,2 +1,0 @@
-coalesced_writes_with_single_client.yml
-pmdb_coalesced_wr_discard_old_leader_uncommitted_writes.yml
