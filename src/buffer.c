@@ -520,18 +520,19 @@ buffer_set_initx(struct buffer_set_args *bsa)
             (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
             (opts & BUFSET_OPT_MEMALIGN_L2)     ? L2_CACHELINE_SIZE_BYTES : 0;
 
-        if (alignment)
-        {
-            bi->bi_iov.iov_base = niova_posix_memalign(buf_size, alignment);
 
-            FATAL_IF(bi->bi_iov.iov_base == NULL, "niova_posix_memalign()");
-        }
-        else if (bs->bs_use_alt_source_buf)
+        if (bs->bs_use_alt_source_buf)
         {
             bi->bi_iov.iov_base =
                 ((char *)bs->bs_alt_source_buf) + bsa->bsa_alt_source_used;
 
             bsa->bsa_alt_source_used += buf_size;
+        }
+        else if (alignment)
+        {
+            bi->bi_iov.iov_base = niova_posix_memalign(buf_size, alignment);
+
+            FATAL_IF(bi->bi_iov.iov_base == NULL, "niova_posix_memalign()");
         }
         else
         {
@@ -550,7 +551,8 @@ buffer_set_initx(struct buffer_set_args *bsa)
         CIRCLEQ_INSERT_HEAD(&bs->bs_free_list, bi, bi_lentry);
         bs->bs_num_bufs++;
 
-        buffer_item_touch(bi);
+        if (!(opts & BUFSET_OPT_ALT_SOURCE_BUF))
+            buffer_item_touch(bi);
     }
 
     if (!error)
