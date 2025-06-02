@@ -28,6 +28,7 @@ var HttpPort int
 type EPContainer struct {
 	MonitorUUID      string
 	CTLPath          string
+	PromPath         string
 	AppType          string
 	HttpPort         int
 	EnableHttp       bool
@@ -39,6 +40,7 @@ type EPContainer struct {
 	run              bool
 	httpQuery        map[string](chan []byte)
 	PortRange        []uint16
+	PromPort         int
 	RetPort          *int
 }
 
@@ -427,9 +429,15 @@ func (epc *EPContainer) MetricsHandler(w http.ResponseWriter, r *http.Request) {
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDRootEntry[0], labelMap)
 			// Parse nisd system info
 			output += prometheus_handler.GenericPromDataParser(node.EPInfo.SysInfo, labelMap)
+			// Parse nisd chunk info
+			if len(node.EPInfo.NISDChunk) == 0{
+                                continue
+                        } else{
+                                output += prometheus_handler.GenericPromDataParser(node.EPInfo.NISDChunk[0], labelMap)
 		}
 	}
 	fmt.Fprintln(w, output)
+	}
 }
 
 func (epc *EPContainer) serveHttp() error {
@@ -479,6 +487,22 @@ func (epc *EPContainer) MarkAlive(serviceUUID string) error {
 	return nil
 }
 
+func (epc *EPContainer) writePromPath() error {
+	f, err := os.OpenFile(epc.PromPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(strconv.Itoa(epc.HttpPort))
+	if err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (epc *EPContainer) Start() error {
 	var err error
 	errs := make(chan error, 1)
@@ -498,6 +522,13 @@ func (epc *EPContainer) Start() error {
 		}
 	}
 
+	fmt.Println("============================")
+	fmt.Println(epc.HttpPort)
+	fmt.Println("============================")
+	err = epc.writePromPath()
+	if err != nil {
+		return err
+	}
 	//Setup lookout
 	err = epc.init()
 	if err != nil {

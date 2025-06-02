@@ -88,6 +88,24 @@ type NISDRoot struct {
 	AltName               string `json:"alt-name"`
 }
 
+type NISDChunkInfo struct {
+        NumDataPblks           int    `json:"num-data-pblks" type:"counter" metric:"nisd_chunk_num_data_pblks"`
+        NumMetaPblks           int    `json:"num-meta-pblks" type:"counter" metric:"nisd_chunk_num_meta_pblks"`
+        NumReservedMetaPblks   int    `json:"num-reserved-meta-pblks" type:"counter" metric:"nisd_chunk_num_reserved_meta_pblks"`
+        ChunkMergeCnt          int    `json:"chunk-merge-cnt" type:"counter" metric:"nisd_chunk_chunk_merge_cnt"`
+	VblkRead               int    `json:"vblks-read" type:"counter" metric:"nisd_chunk_vblks-read"`
+	VblkWritten            int    `json:"vblks-written" type:"counter" metric:"nisd_chunk_vblks-written"`
+	ChunkMergeStatus       string `json:"chunk-merge-status" type:"counter" metric:"nisd_chunk_chunk_merge_status`
+	MetablockSeqn          int    `json:"metablock-seqno" type:"counter" metric:"nisd_chunk_metablock_seqno"`
+	ReadOpSeqno            int    `json:"read-op-seqno" type:"counter" metric:"nisd_chunk_read_op_seq"`
+	MergeReadOpSeqno       int    `json:"merge-read-op-seqno" type:"counter" metric:"nisd_chunk_merge_read_op_seqno"`
+	ClientRecoverySeqno    int    `json:"client-recovery-seqno" type:"counter" metric:"nisd_chunk_client_recovery_seqno"`
+	NumCme                 int    `json:"num-cme" type:"counter" metric:"nisd_chunk_num_cme"`
+	RefCnt                 int    `json:"ref-cnt" type:"counter" metric:"nisd_chunk_ref_cnt"`
+	McibHits               int    `json:"mcib-hits" type:"counter" metric:"nisd_chunk_mcib_hits"`
+	mcibMisses             int    `json:"mcib-misses" type:"counter" metric:"nisd_chunk_mcib_misses"`
+}
+
 type Histogram struct {
 	Num1       int `json:"1,omitempty"`
 	Num2       int `json:"2,omitempty"`
@@ -142,10 +160,11 @@ type RaftInfo struct {
 }
 
 type CtlIfOut struct {
-	SysInfo         SystemInfo `json:"system_info,omitempty"`
-	RaftRootEntry   []RaftInfo `json:"raft_root_entry,omitempty"`
-	NISDInformation []NISDInfo `json:"niorq_mgr_root_entry,omitempty"`
-	NISDRootEntry   []NISDRoot `json:"nisd_root_entry,omitempty"`
+	SysInfo         SystemInfo      `json:"system_info,omitempty"`
+	RaftRootEntry   []RaftInfo      `json:"raft_root_entry,omitempty"`
+	NISDInformation []NISDInfo      `json:"niorq_mgr_root_entry,omitempty"`
+	NISDRootEntry   []NISDRoot      `json:"nisd_root_entry,omitempty"`
+	NISDChunk       []NISDChunkInfo `json:"nisd_chunks,omitempty"`
 }
 
 type NcsiEP struct {
@@ -363,7 +382,7 @@ func (ep *NcsiEP) update(ctlData *CtlIfOut, op EPcmdType) {
 		ep.EPInfo.NISDInformation = ctlData.NISDInformation
 		ep.EPInfo.NISDRootEntry = ctlData.NISDRootEntry
 		ep.EPInfo.SysInfo = ctlData.SysInfo
-
+		ep.EPInfo.NISDChunk = ctlData.NISDChunk
 	default:
 		log.Printf("invalid op=%d \n", op)
 	}
