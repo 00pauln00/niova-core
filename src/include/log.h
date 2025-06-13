@@ -32,7 +32,7 @@ enum log_level
     LL_TRACE  = 5,
     LL_MAX    = 6,
     LL_ANY    = LL_MAX,
-} PACKED;
+};
 
 enum log_level
 log_level_get(void);
@@ -151,24 +151,24 @@ struct log_entry_info
     do { thread_abort(); } while (0)
 #endif
 
-#define SIMPLE_LOG_MSG_EXEC(level, exec, message, ...)            \
-do {                                                              \
-    if ((level) <= log_level_get())                               \
-    {                                                             \
-        exec;                                                     \
-        struct timespec ts;                                       \
-        niova_unstable_clock(&ts);                                \
-        fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",  \
-                ts.tv_sec, ts.tv_nsec,                            \
-                ll_to_string(level), thread_name_get(), __func__, \
-                __LINE__, ##__VA_ARGS__);                         \
-        if ((level) == LL_FATAL)                                  \
-            LOG_ABORT;                                            \
-    }                                                             \
+#define SIMPLE_LOG_MSG_EXEC(usr_level, sys_level, exec, message, ...)   \
+do {                                                                    \
+    if ((usr_level) <= (sys_level))                                     \
+    {                                                                   \
+        exec;                                                           \
+        struct timespec ts;                                             \
+        niova_unstable_clock(&ts);                                      \
+        fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",        \
+                ts.tv_sec, ts.tv_nsec,                                  \
+                ll_to_string(usr_level), thread_name_get(), __func__,   \
+                __LINE__, ##__VA_ARGS__);                               \
+        if ((usr_level) == LL_FATAL)                                    \
+            LOG_ABORT;                                                  \
+    }                                                                   \
 } while (0)
 
 #define SIMPLE_LOG_MSG(level, message, ...)                     \
-    SIMPLE_LOG_MSG_EXEC(level, {}, message, ##__VA_ARGS__)
+    SIMPLE_LOG_MSG_EXEC(level, log_level_get(), {}, message, ##__VA_ARGS__)
 
 #define FUNC_ENTRY(level) \
     LOG_MSG(level, "enter")
@@ -187,23 +187,23 @@ do {                                                              \
  *    registry entry's level, and next from the file's level.  If neither are
  *    set, then use the level provided by the caller.
  */
-#define _LOG_MSG(user_lvl, tag, exec, message, ...)    \
-do {                                                   \
-    enum log_level lvl = user_lvl;                     \
-                                                       \
-    if (!init_ctx())                                   \
-    {                                                  \
-        REGISTY_ENTRY_FUNCTION_GENERATE(tag);          \
-                                                       \
-        logEntryInfo.lei_exec_cnt++;                   \
-                                                       \
-        if (logEntryInfo.lei_level != LL_ANY)          \
-            lvl = logEntryInfo.lei_level;              \
-                                                       \
-        else if (logEntryFileInfo.lei_level != LL_ANY) \
-            lvl = logEntryFileInfo.lei_level;          \
-    }                                                  \
-    SIMPLE_LOG_MSG_EXEC(lvl, exec, message, ##__VA_ARGS__);     \
+#define _LOG_MSG(user_lvl, tag, exec, message, ...)                     \
+do {                                                                    \
+    enum log_level sys_lvl = log_level_get();                           \
+                                                                        \
+    if (!init_ctx())                                                    \
+    {                                                                   \
+        REGISTY_ENTRY_FUNCTION_GENERATE(tag);                           \
+                                                                        \
+        logEntryInfo.lei_exec_cnt++;                                    \
+                                                                        \
+        if (logEntryInfo.lei_level != LL_ANY)                           \
+            sys_lvl = logEntryInfo.lei_level;                           \
+                                                                        \
+        else if (logEntryFileInfo.lei_level != LL_ANY)                  \
+            sys_lvl = logEntryFileInfo.lei_level;                           \
+    }                                                                   \
+    SIMPLE_LOG_MSG_EXEC(user_lvl, sys_lvl, exec, message, ##__VA_ARGS__); \
 } while (0)
 
 #define LOG_MSG_EXEC(user_lvl, exec, message, ...)               \
