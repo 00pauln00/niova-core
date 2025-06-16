@@ -594,6 +594,10 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     (long long)(timespec_2_nsec(&io_op##name[1]) -      \
                 timespec_2_nsec(&io_op##name[0]))
 
+#define NIOVA_TIMER_MSEC_DIFF(name)                     \
+    (long long)(timespec_2_msec(&io_op##name[1]) -      \
+                timespec_2_msec(&io_op##name[0]))
+
 // binary_hist.h is not included here, caller must include itself
 #define NIOVA_TIMER_STOP_and_HIST_ADD(name, hist)               \
 {                                                               \
@@ -611,6 +615,14 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
         binary_hist_incorporate_val((hist), elapsed_nsec);      \
 }
 
+#define NIOVA_TIMER_STOP_and_HIST_ADD_MSEC(name, hist)               \
+{                                                               \
+    NIOVA_TIMER_STOP(name);                                     \
+    const long long elapsed_msec = NIOVA_TIMER_MSEC_DIFF(name); \
+    if (elapsed_nsec > 0)                                       \
+        binary_hist_incorporate_val((hist), elapsed_msec);      \
+}
+
 // Another form of the API which takes the name of an existing ts array
 #define NIOVA_TIMER_START_TS(ts_array)                 \
     niova_unstable_clock(&(ts_array)[0]);
@@ -625,6 +637,10 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
 #define NIOVA_TIMER_NSEC_DIFF_TS(ts_array)                     \
     (long long)(timespec_2_nsec(&(ts_array)[1]) -      \
                 timespec_2_nsec(&(ts_array)[0]))
+
+#define NIOVA_TIMER_MSEC_DIFF_TS(ts_array)                     \
+    (long long)(timespec_2_msec(&(ts_array)[1]) -      \
+                timespec_2_msec(&(ts_array)[0]))
 
 // binary_hist.h is not included here, caller must include itself
 #define NIOVA_TIMER_STOP_TS_and_HIST_ADD(ts_array, hist)               \
@@ -641,6 +657,14 @@ niova_mutex_unlock(pthread_mutex_t *mutex)
     const long long elapsed_nsec = NIOVA_TIMER_NSEC_DIFF_TS(ts_array); \
     if (elapsed_nsec > 0)                                       \
         binary_hist_incorporate_val((hist), elapsed_nsec);      \
+}
+
+#define NIOVA_TIMER_STOP_TS_and_HIST_ADD_MSEC(ts_array, hist)               \
+{                                                               \
+    NIOVA_TIMER_STOP_TS(ts_array);                                     \
+    const long long elapsed_msec = NIOVA_TIMER_MSEC_DIFF_TS(ts_array); \
+    if (elapsed_msec > 0)                                       \
+        binary_hist_incorporate_val((hist), elapsed_msec);      \
 }
 
 #endif
