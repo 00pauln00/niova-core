@@ -163,9 +163,11 @@ main(void)
     vote_sort();
     ws_test();
 
-    int rc = raft_net_client_user_id_parse(
+    struct raft_instance *ri = raft_net_init_instance();
+    int rc = raft_net_client_user_id_parse(ri,
         "1a636bd0-d27d-11ea-8cad-90324b2d1e89:2341523123:32452300123:1:0",
         &rncui, 0);
+    raft_net_destroy_instance(ri);
 
     NIOVA_ASSERT(!rc);
 

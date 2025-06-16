@@ -48,4 +48,8 @@ PmdbClientDestroy(pmdb_t pmdb);
 int
 PmdbGetLeaderInfo(pmdb_t pmdb, raft_client_leader_info_t *leader_info);
 
+void pumice_client_rncui_id_parse(pmdb_t pmdb, const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version);
+
 #endif

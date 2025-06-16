@@ -2653,7 +2653,7 @@ raft_client_init(const char *raft_uuid_str, const char *raft_client_uuid_str,
     if (!rci)
         return -ENOSPC;
 
-    struct raft_instance *ri = raft_net_get_instance();
+    struct raft_instance *ri = raft_net_init_instance();
     if (!ri)
     {
         raft_client_destroy((void *)rci);
@@ -2774,4 +2774,14 @@ raft_client_ctor_init(void)
     LREG_ROOT_ENTRY_INSTALL(raft_client_root_entry);
 
     return;
+}
+
+
+void raft_client_rncui_id_parse(raft_client_instance_t client_instance, const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version) 
+{    
+    struct raft_client_instance *rci =
+                raft_client_instance_lookup(client_instance);
+    raft_net_client_user_id_parse(RCI_2_RI(rci), in, rncui, version);
 }

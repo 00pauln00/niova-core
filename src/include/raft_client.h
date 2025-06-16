@@ -85,4 +85,8 @@ raft_client_request_submit(raft_client_instance_t rci,
 int
 raft_client_get_leader_info(raft_client_instance_t client_instance,
                             raft_client_leader_info_t *leader_info);
+
+void raft_client_rncui_id_parse(raft_client_instance_t client_instance, const char *in,
+                              struct raft_net_client_user_id *rncui,
+                              const version_t version);
 #endif

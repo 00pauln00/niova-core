@@ -131,6 +131,12 @@ enum raft_buf_set_nbuf
     RAFT_BS_LARGE_NBUF = TCP_MGR_NTHREADS,
 };
 
+struct raft_server_instance {
+    struct raft_instance *ri;
+};
+
+struct raft_server_instance * get_raft_server_instance(void);
+
 struct raft_vote_request_msg
 {
     int64_t rvrqm_proposed_term;
@@ -587,6 +593,7 @@ struct raft_instance
     struct buffer_set               ri_buf_set[RAFT_BUF_SET_MAX];
     struct raft_instance_co_wr     *ri_coalesced_wr; //must be the last member
     pthread_mutex_t                 ri_write_mutex;
+    regex_t                         raftNetRncuiRegex;
 };
 
 static inline struct raft_recovery_handle *
@@ -1159,6 +1166,10 @@ raft_server_backend_use_posix(struct raft_instance *ri);
 
 void
 raft_server_backend_use_rocksdb(struct raft_instance *ri);
+
+struct raft_server_instance * 
+get_raft_server_instance(void);
+
 
 int
 raft_server_instance_run(const char *raft_uuid_str,

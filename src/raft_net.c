@@ -65,7 +65,7 @@ struct raft_instance raftInstance = {
     .ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE,
 };
 
-static regex_t raftNetRncuiRegex;
+//static regex_t raftNetRncuiRegex;
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
@@ -76,6 +76,21 @@ raft_net_lreg_multi_facet_cb(enum lreg_node_cb_ops, struct lreg_value *,
 static util_thread_ctx_reg_int_t
 raft_net_recovery_lreg_multi_facet_cb(enum lreg_node_cb_ops,
                                       struct lreg_value *, void *);
+
+struct raft_instance *
+raft_net_init_instance(void)
+{
+    struct raft_instance *ri = (struct raft_instance *)calloc(1,
+                                    sizeof(struct raft_instance));
+    ri->ri_store_type = RAFT_INSTANCE_STORE_POSIX_FLAT_FILE;
+    return ri;
+}
+
+void 
+raft_net_destroy_instance(struct raft_instance *ri)
+{
+    free(ri);    
+}
 
 struct raft_instance *
 raft_net_get_instance(void)
@@ -1269,6 +1284,9 @@ raft_net_instance_shutdown(struct raft_instance *ri)
 
     raft_net_conf_destroy(ri);
 
+
+    regfree(&(ri->raftNetRncuiRegex));
+
     return rc;
 }
 
@@ -1686,6 +1704,9 @@ raft_net_instance_startup(struct raft_instance *ri, bool client_mode)
     }
 
     ri->ri_proc_state = RAFT_PROC_STATE_RUNNING;
+
+    rc = regcomp(&(ri->raftNetRncuiRegex), RNCUI_V0_REGEX_BASE, 0);
+    NIOVA_ASSERT(!rc);
 
     return 0;
 }
@@ -2366,7 +2387,7 @@ raft_net_write_supp_add(struct raft_net_wr_supp *ws, const char *key,
 }
 
 int
-raft_net_client_user_id_parse(const char *in,
+raft_net_client_user_id_parse(struct raft_instance *ri, const char *in,
                               struct raft_net_client_user_id *rncui,
                               const version_t version)
 {
@@ -2387,7 +2408,7 @@ raft_net_client_user_id_parse(const char *in,
 
     const char *uuid_str = NULL;
 
-    int rc = regexec(&raftNetRncuiRegex, local_str, 0, NULL, 0);
+    int rc = regexec(&(ri->raftNetRncuiRegex), local_str, 0, NULL, 0);
     if (!rc)
     {
         const char *sep = RAFT_NET_CLIENT_USER_ID_V0_STR_SEP;
@@ -2559,16 +2580,12 @@ raft_net_init(void)
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_info);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(raft_net_bulk_recovery_info);
 
-    int rc = regcomp(&raftNetRncuiRegex, RNCUI_V0_REGEX_BASE, 0);
-    NIOVA_ASSERT(!rc);
-
     FUNC_EXIT(LL_NOTIFY);
 
     return;
 }
 
-static destroy_ctx_t NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
-raft_net_destroy(void)
-{
-    regfree(&raftNetRncuiRegex);
-}
+// static destroy_ctx_t NIOVA_DESTRUCTOR(RAFT_SYS_CTOR_PRIORITY)
+// raft_net_destroy(void)
+// {
+// }

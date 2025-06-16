@@ -152,10 +152,27 @@ enum raft_instance_lreg_entry_values
 #define RAFT_ENTRY_MAX_DATA_SIZE(ri) \
     ((ri)->ri_max_entry_size - RAFT_ENTRY_HEADER_RESERVE)
 
+
+struct raft_server_instance raft_server_global_instance;
+
+struct raft_server_instance * get_raft_server_instance(void)
+{
+    return &raft_server_global_instance;
+}
+
+void raft_server_global_instance_init(struct raft_instance *ri)
+{
+    NIOVA_ASSERT(ri);
+    memset(&raft_server_global_instance, 0,
+           sizeof(raft_server_global_instance));
+    raft_server_global_instance.ri = ri;
+}
+
 static util_thread_ctx_reg_int_t
 raft_instance_lreg_peer_vstats_cb(enum lreg_node_cb_ops op,
                                   struct lreg_node *lrn,
                                   struct lreg_value *lv);
+
 
 static void
 raft_server_set_sync_freq(struct raft_instance *ri,
@@ -6223,7 +6240,12 @@ raft_server_instance_run(const char *raft_uuid_str,
     if (!raft_uuid_str || !this_peer_uuid_str || !sm_request_handler)
         return -EINVAL;
 
-    struct raft_instance *ri = NULL;
+    struct raft_instance *ri = raft_net_init_instance();
+    if (!ri)
+            return -ENOENT;
+
+    raft_server_global_instance_init(ri);
+        
     int remaining_recovery_tries = RAFT_SERVER_RECOVERY_ATTEMPTS;
     bool restart_post_recovery;
     int rc = 0;
@@ -6231,10 +6253,6 @@ raft_server_instance_run(const char *raft_uuid_str,
     do
     {
         restart_post_recovery = false;
-
-        ri = raft_net_get_instance();
-        if (!ri)
-            return -ENOENT;
 
         /* Bulk recovery does not require the raft or db subsystems to be
          * running.
@@ -6353,7 +6371,9 @@ raft_server_instance_run(const char *raft_uuid_str,
 int
 raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
 {
-    struct raft_instance *ri = raft_net_get_instance();
+    struct raft_instance *ri = raft_server_global_instance.ri;
+    if (!ri)
+        return -EINVAL;
 
     if (!raft_instance_is_leader(ri) || !leader_ts)
         return -EINVAL;
@@ -6367,7 +6387,9 @@ raft_server_get_leader_ts(struct raft_leader_ts *leader_ts)
 bool
 raft_server_is_leader(void)
 {
-    struct raft_instance *ri = raft_net_get_instance();
+    struct raft_instance *ri = raft_server_global_instance.ri;
+    if (!ri)
+        return false;
     return raft_instance_is_leader(ri);
 }
 
@@ -6386,7 +6408,9 @@ raft_server_enq_direct_raft_req_from_leader(char *req_buf, int64_t data_size)
 
     struct raft_client_rpc_msg *rcm =
          (struct raft_client_rpc_msg *)req_buf;
-    struct raft_instance *ri = raft_net_get_instance();
+    struct raft_instance *ri = raft_server_global_instance.ri;
+    if (!ri)
+        return -EINVAL;
 
     struct buffer_item *bi =
        buffer_set_allocate_item(&ri->ri_buf_set[RAFT_BUF_SET_LARGE]);
