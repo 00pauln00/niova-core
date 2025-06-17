@@ -39,6 +39,6 @@ fi
 # async mode add "-a"
 
 LD_LIBRARY_PATH=/usr/local/niova/lib \
-               gdb -ex=r --args /usr/local/niova/libexec/niova/NKV_pmdbServer \
+               gdb -ex=r --args /usr/local/niova/libexec/niova/raft-reference-server \
                -r ${RAFT_UUID} -u ${PEER_UUID} 2> /tmp/${PEER_UUID}.peer
 
