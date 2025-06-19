@@ -19,8 +19,6 @@
 #include "init.h"
 #include "log.h"
 #include "tcp_mgr.h"
-#include "raft.h"
-#include "raft_net.h"
 #include "ref_tree_proto.h"
 #include "regex_defines.h"
 #include "registry.h"
