@@ -238,12 +238,31 @@ struct {                                           \
 /*
  * Singly-linked Tail queue functions.
  */
+
+/**
+ * STAILQ_CONCAT() places the contents of head2 at the end of head1.
+ */
 #define STAILQ_CONCAT(head1, head2) do {                   \
         if (!STAILQ_EMPTY((head2))) {                      \
                 *(head1)->stqh_last = (head2)->stqh_first; \
                 (head1)->stqh_last = (head2)->stqh_last;   \
                 STAILQ_INIT((head2));                      \
         }                                                  \
+} while (0)
+
+/**
+ * STAILQ_CONCAT_TO_HEAD() places the contents of 'src' to the head of 'dest'.
+ */
+#define STAILQ_CONCAT_TO_HEAD(src, dest) do {                 \
+        if (!STAILQ_EMPTY((src))) {                           \
+            if (STAILQ_EMPTY((dest))) {                       \
+                *(dest) = *(src);                             \
+            } else {                                          \
+                *(src)->stqh_last = (dest)->stqh_first;       \
+                (dest)->stqh_first = (src)->stqh_first;       \
+            }                                                 \
+            STAILQ_INIT((src));                               \
+        }                                                     \
 } while (0)
 
 #define STAILQ_EMPTY(head)      ((head)->stqh_first == NULL)

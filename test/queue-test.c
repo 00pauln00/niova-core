@@ -220,6 +220,74 @@ list_queue_checks(void)
     NIOVA_ASSERT(LIST_EMPTY(&head));
 }
 
+static void
+stailq_test()
+{
+    struct stailq_entry
+    {
+        int                        se_num;
+        STAILQ_ENTRY(stailq_entry) se_lentry;
+    };
+
+#define STAILQ_TEST_NELEM 4
+
+    STAILQ_HEAD(stailq_head, stailq_entry);
+    struct stailq_head head = STAILQ_HEAD_INITIALIZER(head);
+
+    struct stailq_entry x[STAILQ_TEST_NELEM] = {0};
+
+    int i;
+
+    // Test queue
+    for (i = 0; i < STAILQ_TEST_NELEM; i++)
+    {
+        x[i].se_num = i;
+        STAILQ_INSERT_TAIL(&head, &x[i], se_lentry);
+    }
+
+    i = 0;
+
+    struct stailq_entry *tmp;
+    STAILQ_FOREACH(tmp, &head, se_lentry)
+    {
+        NIOVA_ASSERT(tmp->se_num == i++);
+    }
+
+    // Test stack
+    STAILQ_INIT(&head);
+    for (i = 0; i < STAILQ_TEST_NELEM; i++)
+    {
+        x[i].se_num = i;
+        STAILQ_INSERT_HEAD(&head, &x[i], se_lentry);
+    }
+
+    i = STAILQ_TEST_NELEM - 1;
+
+    STAILQ_FOREACH(tmp, &head, se_lentry)
+    {
+        NIOVA_ASSERT(tmp->se_num == i--);
+    }
+
+    // Test concat to head
+    struct stailq_entry y[STAILQ_TEST_NELEM] = {0};
+    struct stailq_head src = STAILQ_HEAD_INITIALIZER(src);
+
+    for (i = 0; i < STAILQ_TEST_NELEM; i++)
+    {
+        y[i].se_num = i + STAILQ_TEST_NELEM;
+        STAILQ_INSERT_HEAD(&src, &y[i], se_lentry);
+    }
+
+    STAILQ_CONCAT_TO_HEAD(&src, &head);
+
+    i = (2 * STAILQ_TEST_NELEM) - 1;
+
+    STAILQ_FOREACH(tmp, &head, se_lentry)
+    {
+        NIOVA_ASSERT(tmp->se_num == i--);
+    }
+}
+
 int
 main(void)
 {
@@ -227,4 +295,6 @@ main(void)
     circleq_splice_tail_test();
 
     list_queue_checks();
+
+    stailq_test();
 }
