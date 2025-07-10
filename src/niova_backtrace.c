@@ -42,6 +42,18 @@ niova_backtrace_full_cb(void *data, uintptr_t pc, const char *filename, int line
 }
 
 void
+niova_backtrace_dump_pc(uintptr_t pc)
+{
+    pthread_mutex_lock(&niovaBacktraceMutex);
+    niovaBacktraceStackNum = 0;
+    if (niovaBacktraceState)
+        backtrace_pcinfo(niovaBacktraceState, pc, niova_backtrace_full_cb,
+                         niova_backtrace_error_cb, NULL);
+
+    pthread_mutex_unlock(&niovaBacktraceMutex);
+}
+
+void
 niova_backtrace_dump_simple(void)
 {
     pthread_mutex_lock(&niovaBacktraceMutex);
