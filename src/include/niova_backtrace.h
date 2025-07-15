@@ -13,6 +13,6 @@ void
 niova_backtrace_dump(void);
 
 void
-niova_backtrace_dump_pc(uintptr_t pc);
+niova_backtrace_dump_pc(uintptr_t pc, int stack_num);
 
 #endif
