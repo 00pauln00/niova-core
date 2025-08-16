@@ -34,7 +34,7 @@ REGISTRY_ENTRY_FILE_GENERATE;
  */
 ssize_t
 file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
-                        size_t output_size, int *ret_fd)
+                        size_t output_size, int *ret_fd, struct stat *ret_stb)
 {
     if (!file_name || !output_buf || !output_size ||
         !(dirfd >= 0 || dirfd == AT_FDCWD || output_buf[0] == '/'))
@@ -60,6 +60,9 @@ file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
 
     else if (!proc_file && !stb.st_size) // nothing to read
         return -ENODATA;
+
+    if (ret_stb)
+        *ret_stb = stb;
 
     int fd = openat(dirfd, file_name, O_RDONLY);
     if (fd < 0)

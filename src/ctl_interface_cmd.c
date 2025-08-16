@@ -92,6 +92,7 @@ struct ctlic_request
     size_t                       cr_current_token;
     size_t                       cr_output_byte_cnt;
     size_t                       cr_current_tab_depth;
+    struct stat                  cr_stb;
     char                         cr_value_buf[CTLIC_MAX_VALUE_SIZE + 1];
     struct ctlic_matched_token   cr_matched_token[CTLIC_MAX_TOKENS_PER_REQ];
     struct ctlic_file            cr_file[CTLIC_NUM_FILES];
@@ -285,7 +286,8 @@ ctlic_open_and_read_input_file(const struct ctli_cmd_handle *cch,
 
     cf_in->cf_nbytes_written =
         file_util_open_and_read(cch->ctlih_input_dirfd, input_cmd_file,
-                                cf_in->cf_buffer, CTLIC_BUFFER_SIZE, NULL);
+                                cf_in->cf_buffer, CTLIC_BUFFER_SIZE, NULL,
+                                &cr->cr_stb);
 
     if (cf_in->cf_nbytes_written < 0)
     {

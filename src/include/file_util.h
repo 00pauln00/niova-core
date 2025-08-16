@@ -11,7 +11,7 @@
 
 ssize_t
 file_util_open_and_read(int dirfd, const char *file_name, char *output_buf,
-                        size_t output_size, int *ret_fd);
+                        size_t output_size, int *ret_fd, struct stat *ret_stb);
 
 int
 file_util_pathname_build(const char *path);

@@ -194,7 +194,7 @@ main(void)
     {
         ssize_t read_rc =
             file_util_open_and_read(AT_FDCWD, cttTestItems[i].ctti_conf_name,
-                                    buf, CONF_FILE_MAX_FILE_SIZE, NULL);
+                                    buf, CONF_FILE_MAX_FILE_SIZE, NULL, NULL);
         if (read_rc < 0)
         {
             rc = read_rc;

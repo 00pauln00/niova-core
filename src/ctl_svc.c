@@ -678,7 +678,7 @@ ctl_svc_read_and_prep_conf_file(int ctl_svc_dir_fd, const char *input_file,
     // Read the file contents into 'file_buf'.
     ssize_t read_rc =
         file_util_open_and_read(ctl_svc_dir_fd, input_file, file_buf,
-                                file_buf_sz, NULL);
+                                file_buf_sz, NULL, NULL);
     if (read_rc < 0)
     {
         LOG_MSG(LL_NOTIFY, "file_util_open_and_read(`%s'): %s",

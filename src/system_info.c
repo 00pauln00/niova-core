@@ -267,8 +267,9 @@ system_info_auto_detect_uuid(void)
     if (rc >= PATH_MAX)
         return -ENAMETOOLONG;
 
-    ssize_t rrc = file_util_open_and_read(AT_FDCWD, proc_cmdline_path, buf,
-                                          SYS_INFO_PROCESS_CMDLINE_LEN, NULL);
+    ssize_t rrc =
+        file_util_open_and_read(AT_FDCWD, proc_cmdline_path, buf,
+                                SYS_INFO_PROCESS_CMDLINE_LEN, NULL, NULL);
     if (rrc < 0) // Xxx this may happen if our buffer is too small
     {
         SIMPLE_LOG_MSG(LL_ERROR, "file_util_open_and_read(): %s",
