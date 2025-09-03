@@ -144,6 +144,12 @@ static struct fault_injection coreFaultInjections[] =
         .flti_when = FAULT_INJECT_PERIOD_every_time,
         .flti_enabled = 0,
     },
+     [FAULT_INJECT_raft_server_atomicity_check] = {
+        .flti_name = "raft_server_atomicity_check",
+        .flti_when = FAULT_INJECT_PERIOD_one_time_only,
+        .flti_enabled = 0,
+    },
+
 };
 
 static struct fault_injection_set
