@@ -99,6 +99,11 @@ static struct fault_injection coreFaultInjections[] =
         .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
         .flti_enabled = 0,
     },
+    [FAULT_INJECT_raft_sub_apply] = {
+        .flti_name = "raft_sub_apply",
+        .flti_when = FAULT_INJECT_PERIOD_every_time_unless_bypassed,
+        .flti_enabled = 0,
+    },
     [FAULT_INJECT_raft_pvc_becomes_candidate] = {
         .flti_name = "raft_pvc_becomes_candidate",
         .flti_when = FAULT_INJECT_PERIOD_one_time_only,
