@@ -34,7 +34,6 @@ typedef bool (*lrn_walk_cb_t)(struct lreg_node *, void *, const int);
 struct lreg_value;
 typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
                                  const bool);
-
 #define LREG_VALUE_STRING_MAX 255
 #define LREG_NODE_KEYS_MAX 65536
 
@@ -1025,8 +1024,11 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
     return -ENOENT;
 }
 
+struct lreg_handle;
+extern struct lreg_handle default_lreg;
 void
-lreg_set_thread_ctx(pthread_t pthread_id);
+lreg_set_thread_ctx(struct lreg_handle *h);
+struct lreg_handle *lreg_get_thread_ctx(void);
 
 bool
 lreg_thread_ctx(void);

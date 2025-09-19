@@ -20,24 +20,36 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static struct lreg_node_list lRegInstallQueue;
+/*static struct lreg_node_list lRegInstallQueue;
 static struct lreg_destroy_queue lRegDestroyQueue;
 static struct lreg_node lRegRootNode;
 static bool lRegInitialized = false;
 static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
 static int lRegEventFD = -1;
 static pthread_t lRegThreadCtx;
-static struct epoll_handle *lregEph;
+static struct epoll_handle *lregEph;*/
 const char *lRegSeparatorString = "::";
+struct lreg_handle {
+    struct lreg_node_list install_queue;
+    struct lreg_destroy_queue destroy_queue;
+    struct lreg_node root_node;
+    bool                initialized;
+    pthread_mutex_t     mutex;
+    int                 event_fd;
+    pthread_t           thread_ctx;
+    struct epoll_handle *eph;
+};
 
+struct lreg_handle default_lreg; // Default instance for backward compatibility
+static __thread struct lreg_handle *current_lreg = NULL; // Thread-local current handle
 struct lreg_node_lookup_handle
 {
     const char       *lnlh_name;
     struct lreg_node *lnlh_node;
 };
 
-#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lRegMutex)
-#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lRegMutex)
+#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lreg_get_thread_ctx()->mutex)
+#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lreg_get_thread_ctx()->mutex)
 
 
 
@@ -47,9 +59,9 @@ struct lreg_node_lookup_handle
 struct lreg_node *
 lreg_root_node_get(void)
 {
-    NIOVA_ASSERT(lRegInitialized);
-
-    return &lRegRootNode;
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    NIOVA_ASSERT(h && h->initialized);
+    return &h->root_node;
 }
 
 static bool
@@ -460,10 +472,11 @@ lreg_install_get_queued_node(void)
     struct lreg_node *install = NULL;
 
     LREG_NODE_INSTALL_LOCK;
-    if (!CIRCLEQ_EMPTY(&lRegInstallQueue))
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    if (!CIRCLEQ_EMPTY(&h->install_queue))
     {
-        install = CIRCLEQ_FIRST(&lRegInstallQueue);
-        CIRCLEQ_REMOVE(&lRegInstallQueue, install, lrn_lentry);
+        install = CIRCLEQ_FIRST(&h->install_queue);
+        CIRCLEQ_REMOVE(&h->install_queue, install, lrn_lentry);
     }
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -476,9 +489,10 @@ lreg_remove_get_queued_node(void)
     struct lreg_node *remove = NULL;
 
     LREG_NODE_INSTALL_LOCK;
+    struct lreg_handle *h = lreg_get_thread_ctx();
 
-    if ((remove = STAILQ_FIRST(&lRegDestroyQueue)))
-        STAILQ_REMOVE_HEAD(&lRegDestroyQueue, lrn_removal_lentry);
+    if ((remove = STAILQ_FIRST(&h->destroy_queue)))
+        STAILQ_REMOVE_HEAD(&h->destroy_queue, lrn_removal_lentry);
 
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -512,17 +526,20 @@ lreg_notify(void)
 {
     FUNC_ENTRY(LL_DEBUG);
     uint64_t val = 1;
-
-    return write(lRegEventFD, &val, sizeof(val));
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    return write(h->event_fd, &val, sizeof(val));
 }
 
 bool
 lreg_install_has_queued_nodes(void)
 {
-    LREG_NODE_INSTALL_LOCK;
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    pthread_mutex_lock(&h->mutex);
+
     bool empty =
-        (CIRCLEQ_EMPTY(&lRegInstallQueue) && STAILQ_EMPTY(&lRegDestroyQueue));
-    LREG_NODE_INSTALL_UNLOCK;
+        (CIRCLEQ_EMPTY(&h->install_queue) && STAILQ_EMPTY(&h->destroy_queue));
+
+    pthread_mutex_unlock(&h->mutex);
 
     return !empty;
 }
@@ -538,12 +555,17 @@ lreg_node_install_queue(struct lreg_node *child)
                       "LREG_NODE_CB_OP_INSTALL_QUEUED_NODE cb failed: %s",
                       strerror(-rc));
 
-    LREG_NODE_INSTALL_LOCK;
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    if (!h) {
+        FATAL_MSG("registry context not set in thread %lu", (unsigned long)pthread_self());
+        return -EINVAL;
+    }
+    pthread_mutex_lock(&h->mutex);
 
-    CIRCLEQ_INSERT_TAIL(&lRegInstallQueue, child, lrn_lentry);
+    CIRCLEQ_INSERT_TAIL(&h->install_queue, child, lrn_lentry);
     child->lrn_async_install = 1;
 
-    LREG_NODE_INSTALL_UNLOCK;
+    pthread_mutex_unlock(&h->mutex);
 
     lreg_notify();
 }
@@ -551,13 +573,14 @@ lreg_node_install_queue(struct lreg_node *child)
 static lreg_destroy_ctx_t
 lreg_node_remove_queue(struct lreg_node *child)
 {
-    LREG_NODE_INSTALL_LOCK;
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    pthread_mutex_lock(&h->mutex); 
 
-    STAILQ_INSERT_TAIL(&lRegDestroyQueue, child, lrn_removal_lentry);
+    STAILQ_INSERT_TAIL(&h->destroy_queue, child, lrn_removal_lentry);
     child->lrn_async_remove = 1;
 
-    LREG_NODE_INSTALL_UNLOCK;
-
+    pthread_mutex_unlock(&h->mutex);
+    
     lreg_notify();
 }
 
@@ -766,7 +789,8 @@ lreg_util_processor(void)
 int
 lreg_get_eventfd(void)
 {
-    return lRegEventFD;
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    return h->event_fd;
 }
 
 static util_thread_ctx_t
@@ -775,11 +799,11 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     FUNC_ENTRY(LL_DEBUG);
 
     (void)events;
-
-    if (eph->eph_fd != lRegEventFD)
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    if (eph->eph_fd != h->event_fd)
     {
         LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
-                eph->eph_fd, lRegEventFD);
+                eph->eph_fd, h->event_fd);
 
         return;
     }
@@ -790,7 +814,7 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
      * occur where an item is on the list w/out an accompanying event in
      * the fd.
      */
-    ssize_t rrc = niova_io_read(lRegEventFD, (char *)&x, sizeof(eventfd_t));
+    ssize_t rrc = niova_io_read(h->event_fd, (char *)&x, sizeof(eventfd_t));
     if (rrc == -EAGAIN)
         return;
 
@@ -839,53 +863,79 @@ lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
 }
 
 void
-lreg_set_thread_ctx(pthread_t pthread_id)
+lreg_set_thread_ctx(struct lreg_handle *h)
 {
-    lRegThreadCtx = pthread_id;
+     current_lreg = h;
+}
+
+struct lreg_handle *lreg_get_thread_ctx(void)
+{
+    return current_lreg;
 }
 
 bool
 lreg_thread_ctx(void)
 {
-    return (lRegInitialized && pthread_self() == lRegThreadCtx) ? true : false;
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    return (h && h->initialized && pthread_self() == h->thread_ctx);
 }
 
 int
 lreg_remove_event_src(void)
 {
-    return util_thread_remove_event_src(lregEph);
+    struct lreg_handle *h = lreg_get_thread_ctx();
+    return util_thread_remove_event_src(h->eph);
+}
+
+int lreg_handle_init(struct lreg_handle *h,
+                     lrn_cb_t root_cb,
+                     void *root_arg)
+{
+    if (!h)
+        return -EINVAL;
+    if (h->initialized)
+        return -EALREADY;
+
+    CIRCLEQ_INIT(&h->install_queue);
+    STAILQ_INIT(&h->destroy_queue);
+
+    h->root_node.lrn_root_node = 1;
+
+    lreg_node_init(&h->root_node, LREG_USER_TYPE_ROOT,
+                   root_cb, root_arg, LREG_INIT_OPT_STATIC);
+
+    pthread_mutex_init(&h->mutex, NULL);
+
+    h->event_fd = eventfd(0, EFD_NONBLOCK);
+    if (h->event_fd < 0)
+        return -errno;
+
+    int rc = util_thread_install_event_src(h->event_fd, EPOLLIN,
+                                           lreg_util_thread_cb, NULL, &h->eph);
+    if (rc || !h->eph)
+        return rc ? rc : -EINVAL;
+
+    h->initialized = true;
+    h->thread_ctx = pthread_self();
+
+    return 0;
 }
 
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_init(void)
 {
-    NIOVA_ASSERT(!lRegInitialized);
+    int rc = lreg_handle_init(&default_lreg, lreg_root_node_cb, NULL);
+    FATAL_IF(rc, "lreg_handle_init(): %s", strerror(-rc));
 
-    CIRCLEQ_INIT(&lRegInstallQueue);
-    STAILQ_INIT(&lRegDestroyQueue);
-
-    lRegRootNode.lrn_root_node = 1;
-
-    lreg_node_init(&lRegRootNode, LREG_USER_TYPE_ROOT, lreg_root_node_cb,
-                   NULL, LREG_INIT_OPT_STATIC);
-
-    lRegEventFD = eventfd(0, EFD_NONBLOCK);
-    FATAL_IF((lRegEventFD < 0), "eventfd(): %s", strerror(-lRegEventFD));
-
-    int rc = util_thread_install_event_src(lRegEventFD, EPOLLIN,
-                                           lreg_util_thread_cb, NULL, &lregEph);
-
-    FATAL_IF((rc || !lregEph), "util_thread_install_event_src(): %s",
-             strerror(-rc));
-
-    lRegInitialized = true;
+    // Attach to TLS for main thread
+    lreg_set_thread_ctx(&default_lreg);
 
     /* NOTE:  util_thread_subsytem_init() calls lreg_set_thread_ctx().  This
      *        is due to the constructor startup order which prioritizes
      *        registry initialization.
      */
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello lRegEventFD=%d", lRegEventFD);
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello lRegEventFD=%d", default_lreg.event_fd);
 }
 
 static destroy_ctx_t NIOVA_DESTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
@@ -893,13 +943,13 @@ lreg_subsystem_destroy(void)
 {
     //Remove from util thread?
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread lRegEventFD=%d", lRegEventFD);
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread lRegEventFD=%d", default_lreg.event_fd);
 
-    if (lRegEventFD >= 0)
+    if (default_lreg.event_fd >= 0)
     {
-        int rc = close(lRegEventFD);
+        int rc = close(default_lreg.event_fd);
         if (rc)
             SIMPLE_LOG_MSG(LL_ERROR, "close(lRegEventFD=%d): %s",
-                           lRegEventFD, strerror(-rc));
+                           default_lreg.event_fd, strerror(-rc));
     }
 }
