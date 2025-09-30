@@ -98,14 +98,14 @@ struct log_entry_info
         .lei_file = __FILE__,                                           \
     };                                                                  \
                                                                         \
-    static struct lreg_node regFileEntry = {                            \
+    STATIC_STRUCT_LREG_NODE regFileEntry = {                            \
         .lrn_cb_arg = &logEntryFileInfo,                                \
         .lrn_user_type = LREG_USER_TYPE_LOG_file,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_array_element = 1,                                         \
         .lrn_cb = log_lreg_cb,                                          \
         .lrn_inlined_children = 1,                                      \
-        .lrn_head = CIRCLEQ_HEAD_INITIALIZER(regFileEntry.lrn_head),    \
+        .lrn_needs_list_init = 1,                                       \
     }
 
 #define REGISTY_ENTRY_FUNCTION_GENERATE(tag)                            \
@@ -115,7 +115,7 @@ struct log_entry_info
         .lei_func = __func__,                                           \
         .lei_tag = tag,                                                 \
     };                                                                  \
-    static struct lreg_node logMsgLrn = {                               \
+    STATIC_STRUCT_LREG_NODE logMsgLrn = {                               \
         .lrn_cb_arg = &logEntryInfo,                                    \
         .lrn_user_type = LREG_USER_TYPE_LOG_func,                       \
         .lrn_statically_allocated = 1,                                  \
