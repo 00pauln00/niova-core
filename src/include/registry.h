@@ -1025,11 +1025,24 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
     return -ENOENT;
 }
 
+typedef struct {
+    struct lreg_node_list   lrh_installq;
+    struct lreg_destroy_queue lrh_destroyq;
+    struct lreg_node        lrh_root;
+    bool                    lrh_init;
+    pthread_mutex_t         lrh_mutex;
+    int                     lrh_eventfd;
+    pthread_t               lrh_thread;
+    struct epoll_handle    *lrh_eph;
+} lreg_handle_t;
+
 void
 lreg_set_thread_ctx(pthread_t pthread_id);
 
 bool
 lreg_thread_ctx(void);
+
+void lreg_init_handle(lreg_handle_t *h);
 
 lreg_install_int_ctx_t
 lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install);
