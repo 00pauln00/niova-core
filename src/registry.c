@@ -20,15 +20,11 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-static struct lreg_node_list lRegInstallQueue;
-static struct lreg_destroy_queue lRegDestroyQueue;
-static struct lreg_node lRegRootNode;
-static bool lRegInitialized = false;
-static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
-static int lRegEventFD = -1;
-static pthread_t lRegThreadCtx;
-static struct epoll_handle *lregEph;
 const char *lRegSeparatorString = "::";
+
+static __thread lreg_handle_t thr_lreg_handle;
+static lreg_handle_t main_lreg_handle;
+
 
 struct lreg_node_lookup_handle
 {
@@ -36,8 +32,8 @@ struct lreg_node_lookup_handle
     struct lreg_node *lnlh_node;
 };
 
-#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lRegMutex)
-#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lRegMutex)
+#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&main_lreg_handle.lrh_mutex)
+#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&main_lreg_handle.lrh_mutex)
 
 
 
@@ -47,9 +43,9 @@ struct lreg_node_lookup_handle
 struct lreg_node *
 lreg_root_node_get(void)
 {
-    NIOVA_ASSERT(lRegInitialized);
+    NIOVA_ASSERT(main_lreg_handle.lrh_init);
 
-    return &lRegRootNode;
+    return &main_lreg_handle.lrh_root;
 }
 
 static bool
@@ -165,9 +161,11 @@ lreg_node_lookup_walk_cb(struct lreg_node *lrn, void *arg, const int depth)
 static int
 lreg_node_lookup(const char *registry_path, struct lreg_node **lrn)
 {
-    if (!lrn)
+    if (!lrn) 
+	{
         return -EINVAL;
-
+	}
+	SIMPLE_LOG_MSG(LL_WARN, "lreg_node_lookup for path: %s", registry_path);
     char *tmp = strndup(registry_path, LREG_VALUE_STRING_MAX);
     if (!tmp)
     {
@@ -396,6 +394,8 @@ lreg_node_install_internal(struct lreg_node *child)
         -ESTALE :
         lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_NODE, child, NULL);
 
+	SIMPLE_LOG_MSG(LL_WARN, "rc to make install complete: %lu\n", rc);
+
     if (!rc)
     {
         CIRCLEQ_INSERT_HEAD(&parent->lrn_head, child, lrn_lentry);
@@ -460,10 +460,10 @@ lreg_install_get_queued_node(void)
     struct lreg_node *install = NULL;
 
     LREG_NODE_INSTALL_LOCK;
-    if (!CIRCLEQ_EMPTY(&lRegInstallQueue))
+    if (!CIRCLEQ_EMPTY(&main_lreg_handle.lrh_installq))
     {
-        install = CIRCLEQ_FIRST(&lRegInstallQueue);
-        CIRCLEQ_REMOVE(&lRegInstallQueue, install, lrn_lentry);
+        install = CIRCLEQ_FIRST(&main_lreg_handle.lrh_installq);
+        CIRCLEQ_REMOVE(&main_lreg_handle.lrh_installq, install, lrn_lentry);
     }
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -477,8 +477,8 @@ lreg_remove_get_queued_node(void)
 
     LREG_NODE_INSTALL_LOCK;
 
-    if ((remove = STAILQ_FIRST(&lRegDestroyQueue)))
-        STAILQ_REMOVE_HEAD(&lRegDestroyQueue, lrn_removal_lentry);
+    if ((remove = STAILQ_FIRST(&main_lreg_handle.lrh_destroyq)))
+        STAILQ_REMOVE_HEAD(&main_lreg_handle.lrh_destroyq, lrn_removal_lentry);
 
     LREG_NODE_INSTALL_UNLOCK;
 
@@ -513,7 +513,7 @@ lreg_notify(void)
     FUNC_ENTRY(LL_DEBUG);
     uint64_t val = 1;
 
-    return write(lRegEventFD, &val, sizeof(val));
+    return write(main_lreg_handle.lrh_eventfd, &val, sizeof(val));
 }
 
 bool
@@ -521,7 +521,7 @@ lreg_install_has_queued_nodes(void)
 {
     LREG_NODE_INSTALL_LOCK;
     bool empty =
-        (CIRCLEQ_EMPTY(&lRegInstallQueue) && STAILQ_EMPTY(&lRegDestroyQueue));
+        (CIRCLEQ_EMPTY(&main_lreg_handle.lrh_installq) && STAILQ_EMPTY(&main_lreg_handle.lrh_destroyq));
     LREG_NODE_INSTALL_UNLOCK;
 
     return !empty;
@@ -530,9 +530,15 @@ lreg_install_has_queued_nodes(void)
 static lreg_install_ctx_t
 lreg_node_install_queue(struct lreg_node *child)
 {
+	lreg_handle_t *h = &main_lreg_handle;
     // Notify owner that node is queuing for async install
     int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_QUEUED_NODE, child,
                                    NULL);
+	SIMPLE_LOG_MSG(LL_WARN, "Worker thread %lu installing node, lrh_root=%p, lrh_installq=%p",
+               (unsigned long)pthread_self(),
+               &h->lrh_root,
+               &h->lrh_installq);
+
     if (rc)
         DBG_LREG_NODE(LL_WARN, child,
                       "LREG_NODE_CB_OP_INSTALL_QUEUED_NODE cb failed: %s",
@@ -540,7 +546,7 @@ lreg_node_install_queue(struct lreg_node *child)
 
     LREG_NODE_INSTALL_LOCK;
 
-    CIRCLEQ_INSERT_TAIL(&lRegInstallQueue, child, lrn_lentry);
+    CIRCLEQ_INSERT_TAIL(&h->lrh_installq, child, lrn_lentry);
     child->lrn_async_install = 1;
 
     LREG_NODE_INSTALL_UNLOCK;
@@ -553,7 +559,7 @@ lreg_node_remove_queue(struct lreg_node *child)
 {
     LREG_NODE_INSTALL_LOCK;
 
-    STAILQ_INSERT_TAIL(&lRegDestroyQueue, child, lrn_removal_lentry);
+    STAILQ_INSERT_TAIL(&main_lreg_handle.lrh_destroyq, child, lrn_removal_lentry);
     child->lrn_async_remove = 1;
 
     LREG_NODE_INSTALL_UNLOCK;
@@ -598,7 +604,7 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
         return -EAGAIN;
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
-    DBG_LREG_NODE(LL_DEBUG, child, "child (install-here=%d)", install_here);
+    DBG_LREG_NODE(LL_WARN, child, "child (install-here=%d)", install_here);
 
     child->lrn_parent_for_install_only = parent;
 
@@ -655,6 +661,7 @@ lreg_node_wait_for_install_state(const struct lreg_node *lrn,
 
     while (!(lrn->lrn_install_state & state))
     {
+		SIMPLE_LOG_MSG(LL_WARN, "lrn install state= %d, state=%d", lrn->lrn_install_state, state);
         size_t sleep_ms = MIN(1000, remaining_ms);
         struct timespec ts = {0}, rem = {0};
 
@@ -668,7 +675,7 @@ lreg_node_wait_for_install_state(const struct lreg_node *lrn,
         }
 
         remaining_ms -= sleep_ms;
-
+		SIMPLE_LOG_MSG(LL_WARN, "reamining time: %lu ", remaining_ms);	
         FATAL_IF(remaining_ms <= 0, "");
         if (remaining_ms <= 0)
             return -ETIMEDOUT;
@@ -693,12 +700,19 @@ void
 lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
                lrn_cb_t cb, void *cb_arg, enum lreg_init_options opts)
 {
+	SIMPLE_LOG_MSG(LL_WARN, " user type passed is %lu", user_type);
     if (!lrn)
+	{
+		SIMPLE_LOG_MSG(LL_WARN,"lregnode not initialised");
         return;
+	}
+	SIMPLE_LOG_MSG(LL_WARN,"lregnode has some data");
 
     if (!(opts & LREG_INIT_OPT_STATIC))
+	{
+		SIMPLE_LOG_MSG(LL_WARN, "memset the lrn");
         memset(lrn, 0, sizeof(*lrn));
-
+	}
     lrn->lrn_user_type = user_type;
 
     lrn->lrn_statically_allocated = !!(opts & LREG_INIT_OPT_STATIC);
@@ -712,11 +726,16 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
 
     CIRCLEQ_ENTRY_INIT(&lrn->lrn_lentry);
     CIRCLEQ_INIT(&lrn->lrn_head);
-
-    if (user_type != LREG_USER_TYPE_ROOT)
+	
+	SIMPLE_LOG_MSG(LL_WARN, "user type is %lu, lregusertype is %lu", user_type, LREG_USER_TYPE_ROOT);
+    if (user_type != LREG_USER_TYPE_ROOT) 
+	{
+		SIMPLE_LOG_MSG(LL_WARN, " In if condition is user type root");
         DBG_LREG_NODE(LL_DEBUG, lrn, "");
-    else
+	} else {
+		SIMPLE_LOG_MSG(LL_WARN, " In else condition is user type root");
         lrn->lrn_install_state = LREG_NODE_INSTALLED;
+	}
 }
 
 static util_thread_ctx_reg_int_t
@@ -766,20 +785,21 @@ lreg_util_processor(void)
 int
 lreg_get_eventfd(void)
 {
-    return lRegEventFD;
+    return main_lreg_handle.lrh_eventfd;
 }
 
 static util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
-
+	SIMPLE_LOG_MSG(LL_WARN, "calling lreg_util_thread_cb : util thread handle");
     (void)events;
 
-    if (eph->eph_fd != lRegEventFD)
+    lreg_handle_t *lregh = &main_lreg_handle;	
+    if (eph->eph_fd != lregh->lrh_eventfd)
     {
         LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
-                eph->eph_fd, lRegEventFD);
+                eph->eph_fd, lregh->lrh_eventfd);
 
         return;
     }
@@ -790,7 +810,7 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
      * occur where an item is on the list w/out an accompanying event in
      * the fd.
      */
-    ssize_t rrc = niova_io_read(lRegEventFD, (char *)&x, sizeof(eventfd_t));
+    ssize_t rrc = niova_io_read(lregh->lrh_eventfd, (char *)&x, sizeof(eventfd_t));
     if (rrc == -EAGAIN)
         return;
 
@@ -837,55 +857,77 @@ lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install)
 
     return 0;
 }
-
-void
 lreg_set_thread_ctx(pthread_t pthread_id)
 {
-    lRegThreadCtx = pthread_id;
+	thr_lreg_handle.lrh_thread = pthread_id;
+	thr_lreg_handle.lrh_init = true;
 }
 
 bool
 lreg_thread_ctx(void)
 {
-    return (lRegInitialized && pthread_self() == lRegThreadCtx) ? true : false;
+
+    return (thr_lreg_handle.lrh_init && pthread_self() == thr_lreg_handle.lrh_thread) ? true : false;
+    //return (lRegInitialized && pthread_self() == lRegThreadCtx) ? true : false;
 }
 
 int
 lreg_remove_event_src(void)
 {
-    return util_thread_remove_event_src(lregEph);
+    return util_thread_remove_event_src(main_lreg_handle.lrh_eph);
 }
+void
+lreg_init_handle(lreg_handle_t *h)
+{
+    NIOVA_ASSERT(h);
 
+    // Only initialize if not done yet
+    if (!h->lrh_init) {
+        // Initialize queues
+        CIRCLEQ_INIT(&h->lrh_installq);
+        STAILQ_INIT(&h->lrh_destroyq);
+
+        // Initialize mutex
+        pthread_mutex_init(&h->lrh_mutex, NULL);
+
+        // Initialize root node
+        h->lrh_root.lrn_root_node = 1;
+		SIMPLE_LOG_MSG(LL_WARN,"lreg_init_handle: paasing LREG_USER_TYPE_ROOT= %lu", LREG_USER_TYPE_ROOT);
+        lreg_node_init(&h->lrh_root,
+                       LREG_USER_TYPE_ROOT,
+                       lreg_root_node_cb,
+                       NULL,
+                       LREG_INIT_OPT_STATIC);
+
+        // Mark as initialized
+        h->lrh_init = false;
+		SIMPLE_LOG_MSG(LL_WARN, "lreg_init_handle: in-memory init done for handle %p", (void*)h);
+    }
+}
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
 lreg_subsystem_init(void)
 {
-    NIOVA_ASSERT(!lRegInitialized);
+	SIMPLE_LOG_MSG(LL_WARN, "lreg_subsystem_init updating the global variables\n");
+	
+	lreg_init_handle(&main_lreg_handle);
 
-    CIRCLEQ_INIT(&lRegInstallQueue);
-    STAILQ_INIT(&lRegDestroyQueue);
+    main_lreg_handle.lrh_eventfd = eventfd(0, EFD_NONBLOCK);
+    FATAL_IF((main_lreg_handle.lrh_eventfd < 0), "eventfd(): %s", strerror(-main_lreg_handle.lrh_eventfd));
 
-    lRegRootNode.lrn_root_node = 1;
+    int rc = util_thread_install_event_src(main_lreg_handle.lrh_eventfd, EPOLLIN,
+                                           lreg_util_thread_cb, NULL, &main_lreg_handle.lrh_eph);
 
-    lreg_node_init(&lRegRootNode, LREG_USER_TYPE_ROOT, lreg_root_node_cb,
-                   NULL, LREG_INIT_OPT_STATIC);
-
-    lRegEventFD = eventfd(0, EFD_NONBLOCK);
-    FATAL_IF((lRegEventFD < 0), "eventfd(): %s", strerror(-lRegEventFD));
-
-    int rc = util_thread_install_event_src(lRegEventFD, EPOLLIN,
-                                           lreg_util_thread_cb, NULL, &lregEph);
-
-    FATAL_IF((rc || !lregEph), "util_thread_install_event_src(): %s",
+    FATAL_IF((rc || !main_lreg_handle.lrh_eph), "util_thread_install_event_src(): %s",
              strerror(-rc));
 
-    lRegInitialized = true;
+    main_lreg_handle.lrh_init = true;
 
     /* NOTE:  util_thread_subsytem_init() calls lreg_set_thread_ctx().  This
      *        is due to the constructor startup order which prioritizes
      *        registry initialization.
      */
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello lRegEventFD=%d", lRegEventFD);
+    SIMPLE_LOG_MSG(LL_DEBUG, "hello lRegEventFD=%d", main_lreg_handle.lrh_eventfd);
 }
 
 static destroy_ctx_t NIOVA_DESTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
@@ -893,13 +935,13 @@ lreg_subsystem_destroy(void)
 {
     //Remove from util thread?
 
-    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread lRegEventFD=%d", lRegEventFD);
+    SIMPLE_LOG_MSG(LL_DEBUG, "goodbye, svc thread lRegEventFD=%d", main_lreg_handle.lrh_eventfd);
 
-    if (lRegEventFD >= 0)
+    if (main_lreg_handle.lrh_eventfd >= 0)
     {
-        int rc = close(lRegEventFD);
+        int rc = close(main_lreg_handle.lrh_eventfd);
         if (rc)
             SIMPLE_LOG_MSG(LL_ERROR, "close(lRegEventFD=%d): %s",
-                           lRegEventFD, strerror(-rc));
+                           main_lreg_handle.lrh_eventfd, strerror(-rc));
     }
 }
