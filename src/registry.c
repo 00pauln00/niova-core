@@ -384,6 +384,19 @@ lreg_node_install_internal(struct lreg_node *child)
     NIOVA_ASSERT(parent && (!lreg_node_needs_installation(parent) ||
                             child->lrn_inlined_member));
 
+    /* REGISTRY_PER_THREAD does not allow us to the statically initialize the
+     * the list head with CIRCLEQ_HEAD_INITIALIZER().
+     */
+    if (parent->lrn_needs_list_init)
+    {
+        NIOVA_ASSERT(parent->lrn_head.cqh_first == NULL);
+        NIOVA_ASSERT(parent->lrn_head.cqh_last == NULL);
+
+        CIRCLEQ_INIT(&parent->lrn_head);
+
+        parent->lrn_needs_list_init = 0;
+    }
+
     /* This is really required only for LREG_VAL_TYPE_ARRAY and
      * LREG_VAL_TYPE_OBJECT.  Statically allocated nodes may not have
      * initialized their list heads.  Other should have called
