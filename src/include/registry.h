@@ -35,6 +35,13 @@ struct lreg_value;
 typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
                                  const bool);
 
+
+#ifdef REGISTRY_PER_THREAD
+#define STATIC_STRUCT_LREG_NODE static __thread struct lreg_node
+#else
+#define STATIC_STRUCT_LREG_NODE static struct lreg_node
+#endif
+
 #define LREG_VALUE_STRING_MAX 255
 #define LREG_NODE_KEYS_MAX 65536
 
@@ -320,6 +327,7 @@ struct lreg_node
                          lrn_inlined_member               : 1,
                          lrn_inlined_children             : 1,
                          lrn_async_install                : 1,
+                         lrn_needs_list_init              : 1,
                          lrn_async_remove                 : 1;
     void                    *lrn_cb_arg;
     //xxx lrn_cb can be moved into a static array indexed by lrn_user_type
