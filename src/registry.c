@@ -20,21 +20,9 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#if 0
-static struct lreg_node_list lRegInstallQueue;
-static struct lreg_destroy_queue lRegDestroyQueue;
-static struct lreg_node lRegRootNode;
-static bool lRegInitialized = false;
-static pthread_mutex_t lRegMutex = PTHREAD_MUTEX_INITIALIZER;
-static int lRegEventFD = -1;
-static pthread_t lRegThreadCtx;
-static struct epoll_handle *lregEph;
-#endif
 const char *lRegSeparatorString = "::";
 
 static __thread lreg_handle_t thr_lreg_handle;
-lreg_handle_t *main_lreg_handle;
-
 
 struct lreg_node_lookup_handle
 {
@@ -550,43 +538,16 @@ lreg_install_has_queued_nodes(void)
     return !empty;
 }
 
-/* at top of registry.c or above function */
-static inline lreg_handle_t *
-lreg_current_or_main_handle(void)
-{
-    /* prefer thread-local handle if initialized */
-    if (thr_lreg_handle.lrh_init)
-        return &thr_lreg_handle;
-
-    /* fallback to main handle if available */
-    if (main_lreg_handle && main_lreg_handle->lrh_init)
-        return main_lreg_handle;
-
-    /* nothing valid */
-    return NULL;
-}
-
-
 static lreg_install_ctx_t
 lreg_node_install_queue(struct lreg_node *child)
 {
-	lreg_handle_t *h = main_lreg_handle;
-/*	if (!h) {
-        SIMPLE_LOG_MSG(LL_ERROR, "lreg_node_install_queue: no valid lreg_handle for thread %lu",
-                       (unsigned long)pthread_self());
-         return error or simply skip until handle is initialized 
-        return;
-    }
-	
-	SIMPLE_LOG_MSG(LL_WARN, "lreg_node_install_queue: using handle %p (init=%d, eventfd=%d) for thread %lu",
-                   (void *)h, h->lrh_init, h->lrh_eventfd, (unsigned long)pthread_self());*/
     // Notify owner that node is queuing for async install
     int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_QUEUED_NODE, child,
                                    NULL);
 	SIMPLE_LOG_MSG(LL_WARN, "Worker thread %lu installing node, lrh_root=%p, lrh_installq=%p",
                (unsigned long)pthread_self(),
-               &h->lrh_root,
-               &h->lrh_installq);
+               &thr_lreg_handle.lrh_root,
+               &thr_lreg_handle.lrh_installq);
 
     if (rc)
         DBG_LREG_NODE(LL_WARN, child,
@@ -595,7 +556,7 @@ lreg_node_install_queue(struct lreg_node *child)
 
     LREG_NODE_INSTALL_LOCK;
 
-    CIRCLEQ_INSERT_TAIL(&h->lrh_installq, child, lrn_lentry);
+    CIRCLEQ_INSERT_TAIL(&thr_lreg_handle.lrh_installq, child, lrn_lentry);
     child->lrn_async_install = 1;
 
     LREG_NODE_INSTALL_UNLOCK;
@@ -844,10 +805,10 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 	SIMPLE_LOG_MSG(LL_WARN, "calling lreg_util_thread_cb : util thread handle");
     (void)events;
 
-    if (eph->eph_fd != main_lreg_handle->lrh_eventfd)
+    if (eph->eph_fd != thr_lreg_handle.lrh_eventfd)
     {
         LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
-                eph->eph_fd, main_lreg_handle->lrh_eventfd);
+                eph->eph_fd, thr_lreg_handle.lrh_eventfd);
 
         return;
     }
@@ -858,7 +819,7 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
      * occur where an item is on the list w/out an accompanying event in
      * the fd.
      */
-    ssize_t rrc = niova_io_read(main_lreg_handle->lrh_eventfd, (char *)&x, sizeof(eventfd_t));
+    ssize_t rrc = niova_io_read(thr_lreg_handle.lrh_eventfd, (char *)&x, sizeof(eventfd_t));
     if (rrc == -EAGAIN)
         return;
 
@@ -910,19 +871,19 @@ void
 lreg_set_thread_ctx(pthread_t pthread_id)
 {
 	thr_lreg_handle.lrh_thread = pthread_id;
-	// Copy the main_lreg_handle into thr_lreg_handle.
+	// Copy the thr_lreg_handle into thr_lreg_handle.
     if (!thr_lreg_handle.lrh_init) {
-		SIMPLE_LOG_MSG(LL_WARN, "lreg_set_thread_ctx: initializing TLS handle for thread %lu",
-                       (unsigned long)pthread_id);
+		//SIMPLE_LOG_MSG(LL_WARN, "lreg_set_thread_ctx: initializing TLS handle for thread %lu",
+//                       (unsigned long)pthread_id);
         lreg_init_handle(&thr_lreg_handle);
 		// all other parameters remains the same.
 		// duplicate the file descriptor. using dup2()
-        if (main_lreg_handle && main_lreg_handle->lrh_eventfd >= 0) {
-            thr_lreg_handle.lrh_eventfd = dup(main_lreg_handle->lrh_eventfd);
+        /*if (thr_lreg_handle && thr_lreg_handle.lrh_eventfd >= 0) {
+            //thr_lreg_handle.lrh_eventfd = dup(thr_lreg_handle->lrh_eventfd);
             FATAL_IF(thr_lreg_handle.lrh_eventfd < 0,
-                     "dup(main_lreg_handle->lrh_eventfd) failed: %s",
+                     "dup(thr_lreg_handle->lrh_eventfd) failed: %s",
                      strerror(errno));
-        }
+        }*/
 		// Install epoll source for this thread
         int rc = util_thread_install_event_src(thr_lreg_handle.lrh_eventfd,
                                                EPOLLIN,
@@ -988,7 +949,6 @@ lreg_subsystem_init(void)
 	SIMPLE_LOG_MSG(LL_WARN, "lreg_subsystem_init updating the global variables\n");
 	
 	lreg_init_handle(&thr_lreg_handle);
-	main_lreg_handle = &thr_lreg_handle;
 
     thr_lreg_handle.lrh_eventfd = eventfd(0, EFD_NONBLOCK);
     FATAL_IF((thr_lreg_handle.lrh_eventfd < 0), "eventfd(): %s", strerror(-thr_lreg_handle.lrh_eventfd));
