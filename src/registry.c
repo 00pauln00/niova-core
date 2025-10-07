@@ -22,7 +22,13 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 const char *lRegSeparatorString = "::";
 
-static __thread lreg_handle_t thr_lreg_handle;
+//static __thread lreg_handle_t thr_lreg_handle;
+#ifdef REGISTRY_PER_THREAD
+#define STATIC_STRUCT_LREG_HANDLE static __thread lreg_handle_t
+#else
+#define STATIC_STRUCT_LREG_HANDLE static lreg_handle_t
+#endif
+STATIC_STRUCT_LREG_HANDLE thr_lreg_handle;
 
 struct lreg_node_lookup_handle
 {
@@ -555,7 +561,8 @@ lreg_node_install_queue(struct lreg_node *child)
                       strerror(-rc));
 
     LREG_NODE_INSTALL_LOCK;
-
+	
+	SIMPLE_LOG_MSG(LL_WARN, "lrh_installq =%p", &thr_lreg_handle.lrh_installq);
     CIRCLEQ_INSERT_TAIL(&thr_lreg_handle.lrh_installq, child, lrn_lentry);
     child->lrn_async_install = 1;
 
@@ -612,6 +619,12 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
 
     else if (!lreg_node_install_prep_ok(child))
         return -EAGAIN;
+	
+#ifdef REGISTRY_PER_THREAD
+    SIMPLE_LOG_MSG(LL_WARN, "REGISTRY_PER_THREAD is ENABLED");
+#else
+    SIMPLE_LOG_MSG(LL_WARN, "REGISTRY_PER_THREAD is DISABLED");
+#endif
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
     DBG_LREG_NODE(LL_WARN, child, "child (install-here=%d)", install_here);
@@ -893,9 +906,6 @@ lreg_set_thread_ctx(pthread_t pthread_id)
         FATAL_IF(rc || !thr_lreg_handle.lrh_eph,
                  "util_thread_install_event_src() failed: %s", strerror(-rc));
 
-        // Mark as initialized
-        thr_lreg_handle.lrh_init = true;
-
         SIMPLE_LOG_MSG(LL_WARN, "Thread %lu initialized TLS handle with eventfd=%d",
                        (unsigned long)pthread_self(),
                        thr_lreg_handle.lrh_eventfd);
@@ -939,7 +949,7 @@ lreg_init_handle(lreg_handle_t *h)
                        LREG_INIT_OPT_STATIC);
 
         // Mark as initialized
-        h->lrh_init = false;
+        h->lrh_init = true;
 		SIMPLE_LOG_MSG(LL_WARN, "lreg_init_handle: in-memory init done for handle %p", (void*)h);
     }
 }
@@ -958,8 +968,6 @@ lreg_subsystem_init(void)
 
     FATAL_IF((rc || !thr_lreg_handle.lrh_eph), "util_thread_install_event_src(): %s",
              strerror(-rc));
-
-    thr_lreg_handle.lrh_init = true;
 
     /* NOTE:  util_thread_subsytem_init() calls lreg_set_thread_ctx().  This
      *        is due to the constructor startup order which prioritizes
