@@ -391,9 +391,10 @@ lreg_node_install_internal(struct lreg_node *child)
 {
     NIOVA_ASSERT(child);
 
-    DBG_LREG_NODE(LL_DEBUG, child, "");
-
     struct lreg_node *parent = child->lrn_parent_for_install_only;
+
+    DBG_LREG_NODE(LL_DEBUG, child, "child");
+    DBG_LREG_NODE(LL_DEBUG, parent, "parent");
 
     NIOVA_ASSERT(parent && (!lreg_node_needs_installation(parent) ||
                             child->lrn_inlined_member));
@@ -417,7 +418,10 @@ lreg_node_install_internal(struct lreg_node *child)
      * lreg_node_init().
      */
     if (child->lrn_statically_allocated)
+    {
         CIRCLEQ_INIT(&child->lrn_head);
+        child->lrn_needs_list_init = 0;
+    }
 
     int rc = child->lrn_may_destroy ?
         -ESTALE :
@@ -736,14 +740,17 @@ lreg_node_init(struct lreg_node *lrn, enum lreg_user_types user_type,
     lrn->lrn_statically_allocated = !!(opts & LREG_INIT_OPT_STATIC);
     lrn->lrn_ignore_items_with_value_zero =
         !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO);
+
     lrn->lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY);
     lrn->lrn_inlined_member = !!(opts & LREG_INIT_OPT_INLINED_MEMBER);
     lrn->lrn_inlined_children = !!(opts & LREG_INIT_OPT_INLINED_CHILDREN);
+
     lrn->lrn_cb = cb;
     lrn->lrn_cb_arg = cb_arg;
 
     CIRCLEQ_ENTRY_INIT(&lrn->lrn_lentry);
     CIRCLEQ_INIT(&lrn->lrn_head);
+    lrn->lrn_needs_list_init = 0;
 
     if (user_type != LREG_USER_TYPE_ROOT)
         DBG_LREG_NODE(LL_DEBUG, lrn, "");

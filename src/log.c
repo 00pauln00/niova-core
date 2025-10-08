@@ -345,9 +345,9 @@ log_subsys_init(void)
     if (ev && ev->nev_present)
         log_level_set(ev->nev_long_value);
 
-    LREG_ROOT_ENTRY_INSTALL(log_entry_map);
-    LREG_ROOT_OBJECT_ENTRY_INSTALL(log_subsystem);
-    SIMPLE_LOG_MSG(LL_DEBUG, "hello");
+    LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(log_entry_map);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL_ALREADY_OK(log_subsystem);
+    SIMPLE_LOG_MSG(LL_WARN, "hello");
 };
 
 destroy_ctx_t

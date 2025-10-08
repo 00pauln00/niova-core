@@ -38,8 +38,10 @@ typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
 
 #ifdef REGISTRY_PER_THREAD
 #define STATIC_STRUCT_LREG_NODE static __thread struct lreg_node
+#define GLOBAL_STRUCT_LREG_NODE __thread struct lreg_node
 #else
 #define STATIC_STRUCT_LREG_NODE static struct lreg_node
+#define GLOBAL_STRUCT_LREG_NODE struct lreg_node
 #endif
 
 #define LREG_VALUE_STRING_MAX 255
@@ -589,10 +591,11 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         return 0;                                                       \
     }                                                                   \
                                                                         \
-    struct lreg_node rootEntry__##name = {                              \
+    GLOBAL_STRUCT_LREG_NODE rootEntry__##name = {                       \
         .lrn_cb_arg = (void *)1,                                        \
         .lrn_user_type = user_type,                                     \
         .lrn_statically_allocated = 1,                                  \
+        .lrn_needs_list_init = 1,                                       \
         .lrn_cb = lreg_root_cb##name                                    \
     }                                                                   \
 
@@ -683,13 +686,14 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         return 0;                                                   \
     }                                                               \
                                                                     \
-    struct lreg_node rootEntry__##name = {                          \
+    GLOBAL_STRUCT_LREG_NODE rootEntry__##name = {                   \
         .lrn_cb_arg = (void *)1,                                    \
         .lrn_user_type = user_type,                                 \
         .lrn_statically_allocated = 1,                              \
+        .lrn_needs_list_init = 1,                                   \
         .lrn_cb = lreg_root_cb_parent##name,                        \
     };                                                              \
-    struct lreg_node childEntry__##name = {                         \
+    GLOBAL_STRUCT_LREG_NODE childEntry__##name = {                  \
         .lrn_user_type = user_type,                                 \
         .lrn_statically_allocated = 1,                                  \
         .lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY),  \
@@ -697,6 +701,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO),                   \
         .lrn_cb = lreg_root_cb_child##name,                         \
         .lrn_cb_arg = arg,                                          \
+        .lrn_needs_list_init = 1,                                   \
     };                                                              \
 
 #define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys, \
@@ -706,7 +711,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                                   LREG_VAL_TYPE_OBJECT, opts)
 
 #define LREG_ROOT_ENTRY_EXPORT(name) \
-    extern struct lreg_node rootEntry__##name
+    extern GLOBAL_STRUCT_LREG_NODE rootEntry__##name
 
 #define LREG_ROOT_ENTRY_PTR(name) \
     &rootEntry__##name
@@ -720,19 +725,27 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                                    lreg_root_node_get()))
 
 // Don't crash if the node is already installed.
-#define LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name)                   \
+#define LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name)                      \
 do {                                                                  \
-    int rc = lreg_node_install(LREG_ROOT_ENTRY_PTR(name),  \
-                                       lreg_root_node_get());      \
-    NIOVA_ASSERT(!rc || rc == -EALREADY);                          \
+    int rc = lreg_node_install(LREG_ROOT_ENTRY_PTR(name),             \
+                               lreg_root_node_get());                 \
+    NIOVA_ASSERT(!rc || rc == -EALREADY);                             \
 } while (0)
 
-#define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                    \
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                       \
 do {                                                               \
-    LREG_ROOT_ENTRY_INSTALL(name);                              \
-                                                                \
+    LREG_ROOT_ENTRY_INSTALL(name);                                 \
+                                                                   \
     NIOVA_ASSERT(                                                       \
         !lreg_node_install(&childEntry__##name, LREG_ROOT_ENTRY_PTR(name))); \
+} while (0)
+
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ALREADY_OK(name)            \
+do {                                                               \
+    LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name);                           \
+    int rc = lreg_node_install(&childEntry__##name,                     \
+                               LREG_ROOT_ENTRY_PTR(name));              \
+    NIOVA_ASSERT(!rc || rc == -EALREADY);                               \
 } while (0)
 
 #define LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(name)                    \

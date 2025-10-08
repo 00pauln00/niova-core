@@ -121,6 +121,7 @@ struct log_entry_info
         .lrn_statically_allocated = 1,                                  \
         .lrn_array_element = 1,                                         \
         .lrn_inlined_member = 1,                                        \
+        .lrn_needs_list_init = 1,                                       \
         .lrn_cb = log_lreg_cb,                                          \
     };                                                                  \
     int _node_install_rc = 0;                                           \
