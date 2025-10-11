@@ -205,6 +205,9 @@ util_thread_subsystem_init(void)
     rc = util_thread_get_id(&util_thread);
     FATAL_IF((rc || !util_thread), "util_thread_get_id(): %s", strerror(-rc));
 
+    // Set the registry thread_ctx to the util_thread
+    lreg_set_thread_ctx(util_thread);
+
     thread_creator_wait_until_ctl_loop_reached(&utilThread.ut_tc);
 }
 
