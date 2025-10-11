@@ -823,7 +823,7 @@ lreg_get_eventfd(void)
     return LRI_INSTANCE_IS_READY ? lriActive->lri_eventfd : -ENODEV;
 }
 
-static util_thread_ctx_t
+util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 {
     FUNC_ENTRY(LL_DEBUG);
@@ -1032,11 +1032,11 @@ lreg_subsystem_destroy(void)
     if (!lriActive)
         return;
 
-    int rc = lreg_instance_destroy(lriActive);
-    if (rc)
-        SIMPLE_LOG_MSG(LL_WARN, "lri_instance_destroy(): %s", strerror(-rc));
-
     SIMPLE_LOG_MSG(LL_DEBUG,
                    "goodbye, svc thread lriActive->lri_eventfd=%d",
                    lriActive->lri_eventfd);
+
+    int rc = lreg_instance_destroy(lriActive);
+    if (rc)
+        SIMPLE_LOG_MSG(LL_WARN, "lri_instance_destroy(): %s", strerror(-rc));
 }
