@@ -28,18 +28,6 @@ struct lreg_node_lookup_handle
     struct lreg_node *lnlh_node;
 };
 
-struct lreg_instance
-{
-    struct lreg_node          lri_root;
-    pthread_mutex_t           lri_mutex;
-    struct lreg_node_list     lri_installq;
-    struct lreg_destroy_queue lri_destroyq;
-    uint8_t                   lri_init:1;
-    int                       lri_eventfd;
-    pthread_t                 lri_pthread;
-    struct epoll_handle      *lri_eph;
-};
-
 #define LRI_INSTANCE_IS_READY                    \
     (lriActive && lriActive->lri_init)
 

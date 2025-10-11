@@ -348,6 +348,18 @@ struct lreg_node
     };
 };
 
+struct lreg_instance
+{
+    struct lreg_node          lri_root;
+    pthread_mutex_t           lri_mutex;
+    struct lreg_node_list     lri_installq;
+    struct lreg_destroy_queue lri_destroyq;
+    uint8_t                   lri_init:1;
+    int                       lri_eventfd;
+    pthread_t                 lri_pthread;
+    struct epoll_handle      *lri_eph;
+};
+
 static inline void
 lreg_value_vnode_data_to_lreg_node(const struct lreg_value *lrv,
                                    struct lreg_node *lrn)
@@ -1073,5 +1085,11 @@ lreg_get_eventfd(void);
 int
 lreg_node_wait_for_install_state(const struct lreg_node *lrn,
                                  enum lreg_node_states state);
+
+int
+lreg_instance_init(struct lreg_instance *lri, bool set_as_active_instance);
+
+util_thread_ctx_t
+lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events);
 
 #endif //_REGISTRY_H
