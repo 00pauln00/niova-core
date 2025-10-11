@@ -335,6 +335,13 @@ log_level_get(void)
     return masterLogLevel;
 }
 
+void
+log_lreg_subsys_init(void)
+{
+    LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(log_entry_map);
+    LREG_ROOT_OBJECT_ENTRY_INSTALL_ALREADY_OK(log_subsystem);
+}
+
 init_ctx_t
 log_subsys_init(void)
 {
@@ -345,8 +352,8 @@ log_subsys_init(void)
     if (ev && ev->nev_present)
         log_level_set(ev->nev_long_value);
 
-    LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(log_entry_map);
-    LREG_ROOT_OBJECT_ENTRY_INSTALL_ALREADY_OK(log_subsystem);
+    log_lreg_subsys_init();
+
     SIMPLE_LOG_MSG(LL_WARN, "hello");
 };
 

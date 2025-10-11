@@ -329,6 +329,7 @@ static init_ctx_t NIOVA_CONSTRUCTOR(SYSTEM_INFO_CTOR_PRIORITY)
 system_info_subsystem_init(void)
 {
     FUNC_ENTRY(LL_DEBUG);
+
     LREG_ROOT_OBJECT_ENTRY_INSTALL(system_info);
 
     niova_realtime_coarse_clock(&systemInfoStartTime);

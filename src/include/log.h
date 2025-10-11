@@ -126,7 +126,7 @@ struct log_entry_info
     };                                                                  \
     if (lreg_node_needs_installation(&logMsgLrn))                       \
     {                                                                   \
-        LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(log_entry_map);              \
+        log_lreg_subsys_init();                                         \
                                                                         \
         int _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
@@ -309,5 +309,8 @@ log_subsys_init(void) __attribute__ ((constructor (LOG_SUBSYS_CTOR_PRIORITY)));
 destroy_ctx_t
 log_subsys_destroy(void)
 __attribute__ ((destructor (LOG_SUBSYS_CTOR_PRIORITY)));
+
+void
+log_lreg_subsys_init(void);
 
 #endif //NIOVA_LOG_H
