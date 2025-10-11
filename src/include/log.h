@@ -124,24 +124,25 @@ struct log_entry_info
         .lrn_needs_list_init = 1,                                       \
         .lrn_cb = log_lreg_cb,                                          \
     };                                                                  \
-    int _node_install_rc = 0;                                           \
     if (lreg_node_needs_installation(&logMsgLrn))                       \
     {                                                                   \
-        _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
+        LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(log_entry_map);              \
+                                                                        \
+        int _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY ||                   \
                      _node_install_rc == -EAGAIN);                      \
+                                                                        \
+        if (lreg_node_needs_installation(&regFileEntry))                \
+        {                                                               \
+            _node_install_rc =                                          \
+                lreg_node_install(&regFileEntry,                        \
+                                  LREG_ROOT_ENTRY_PTR(log_entry_map));  \
+            NIOVA_ASSERT(!_node_install_rc ||                           \
+                         _node_install_rc == -EALREADY ||               \
+                         _node_install_rc == -EAGAIN);                  \
+        }                                                               \
     }                                                                   \
-    if (lreg_node_needs_installation(&regFileEntry))                    \
-    {                                                                   \
-        _node_install_rc =                                              \
-            lreg_node_install(&regFileEntry,                            \
-                              LREG_ROOT_ENTRY_PTR(log_entry_map));      \
-        NIOVA_ASSERT(!_node_install_rc ||                               \
-                     _node_install_rc == -EALREADY ||                   \
-                     _node_install_rc == -EAGAIN);                      \
-    }                                                                   \
-
 
 // Allow users of _NIOVA_BACKTRACE_H_ to generate backtraces in abort ctx
 #ifdef _NIOVA_BACKTRACE_H_
