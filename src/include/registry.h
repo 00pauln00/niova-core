@@ -1094,4 +1094,7 @@ lreg_instance_init(struct lreg_instance *lri, bool set_as_active_instance);
 util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events);
 
+int
+lreg_instance_attach_to_active_default(void);
+
 #endif //_REGISTRY_H

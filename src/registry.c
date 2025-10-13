@@ -39,16 +39,21 @@ struct lreg_node_lookup_handle
 
 STATIC_STRUCT_LREG_INSTANCE_PTR lriActive;
 
+struct lreg_instance *lriActiveDefault;
+
 static struct lreg_instance lregThrInstanceDef =
 {
     .lri_eventfd = -1,
     .lri_mutex = PTHREAD_MUTEX_INITIALIZER,
 };
 
-#define LREG_NODE_INSTALL_LOCK   \
-    pthread_mutex_lock(&lriActive->lri_mutex)
-#define LREG_NODE_INSTALL_UNLOCK \
-    pthread_mutex_unlock(&lriActive->lri_mutex)
+static pthread_mutex_t lregSubsysMutex = PTHREAD_MUTEX_INITIALIZER;
+
+#define LREG_SUBSYS_LOCK   pthread_mutex_lock(&lregSubsysMutex)
+#define LREG_SUBSYS_UNLOCK pthread_mutex_unlock(&lregSubsysMutex)
+
+#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lriActive->lri_mutex)
+#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lriActive->lri_mutex)
 
 /**
  * lreg_root_node_get - returns the root node of the local registry.
@@ -955,8 +960,15 @@ lreg_instance_init(struct lreg_instance *lri, bool set_as_active_instance)
 
         if (set_as_active_instance)
         {
-            SIMPLE_LOG_MSG(LL_NOTIFY, "set lriActive tp %p", lri);
+            SIMPLE_LOG_MSG(LL_NOTIFY,
+                           "set lriActive and lriActiveDefault tp %p", lri);
+
+            LREG_SUBSYS_LOCK;
+
             lriActive = lri;
+            lriActiveDefault = lri;
+
+            LREG_SUBSYS_UNLOCK;
         }
     }
 
@@ -995,6 +1007,38 @@ lreg_instance_destroy(struct lreg_instance *lri)
         lriActive = NULL;
 
     lri->lri_init = 0;
+
+    return rc;
+}
+
+int
+lreg_instance_attach_to_active_default(void)
+{
+    int rc = 0;
+
+    LREG_SUBSYS_LOCK;
+
+    if (lriActive != NULL)
+        return -EALREADY;
+
+    else if (lriActiveDefault == NULL)
+        rc = -ENODEV;
+
+    else if (lriActiveDefault->lri_disallow_other_threads)
+        rc = -EPERM;
+
+    if (!rc)
+    {
+        SIMPLE_LOG_MSG(
+            LL_NOTIFY,
+            "pthread-%lu attaches to lriActiveDefault=%p (thread-%lu)",
+            pthread_self(), lriActiveDefault, lriActiveDefault->lri_pthread);
+
+        lriActiveDefault->lri_ref_cnt++;
+        lriActive = lriActiveDefault;
+    }
+
+    LREG_SUBSYS_UNLOCK;
 
     return rc;
 }

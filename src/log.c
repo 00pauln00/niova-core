@@ -336,8 +336,16 @@ log_level_get(void)
 }
 
 void
-log_lreg_subsys_init(void)
+log_lreg_subsys_init(struct lreg_instance *active_instance)
 {
+    if (!init_ctx() && active_instance == NULL && lreg_root_node_get() == NULL)
+    {
+        int rc = lreg_instance_attach_to_active_default();
+
+        FATAL_IF(rc, "lreg_instance_attach_to_active_default(): %s",
+                 strerror(-rc));
+    }
+
     LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(log_entry_map);
     LREG_ROOT_OBJECT_ENTRY_INSTALL_ALREADY_OK(log_subsystem);
 }
@@ -352,7 +360,7 @@ log_subsys_init(void)
     if (ev && ev->nev_present)
         log_level_set(ev->nev_long_value);
 
-    log_lreg_subsys_init();
+    log_lreg_subsys_init(NULL);
 
     SIMPLE_LOG_MSG(LL_WARN, "hello");
 };
