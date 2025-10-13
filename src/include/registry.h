@@ -315,26 +315,26 @@ STAILQ_HEAD(lreg_destroy_queue, lreg_node);
  */
 struct lreg_node
 {
-    enum lreg_user_types  lrn_user_type;
-    enum lreg_node_states lrn_install_state;
-    uint8_t              lrn_tmp_node                     : 1,
-                         lrn_statically_allocated         : 1,
-                         lrn_root_node                    : 1,
-                         lrn_monitor                      : 1,
-                         lrn_may_destroy                  : 1,
-                         lrn_array_element                : 1,
-                         lrn_ignore_items_with_value_zero : 1,
-                         lrn_reverse_varray               : 1,
-                         lrn_vnode_child                  : 1,
-                         lrn_inlined_member               : 1,
-                         lrn_inlined_children             : 1,
-                         lrn_async_install                : 1,
-                         lrn_needs_list_init              : 1,
-                         lrn_async_remove                 : 1;
-    void                    *lrn_cb_arg;
+    enum lreg_user_types        lrn_user_type;
+    enum lreg_node_states       lrn_install_state;
+    uint16_t                    lrn_tmp_node:1;
+    uint16_t                    lrn_statically_allocated:1;
+    uint16_t                    lrn_root_node:1;
+    uint16_t                    lrn_monitor:1;
+    uint16_t                    lrn_may_destroy:1;
+    uint16_t                    lrn_array_element:1;
+    uint16_t                    lrn_ignore_items_with_value_zero:1;
+    uint16_t                    lrn_reverse_varray:1;
+    uint16_t                    lrn_vnode_child:1;
+    uint16_t                    lrn_inlined_member:1;
+    uint16_t                    lrn_inlined_children:1;
+    uint16_t                    lrn_async_install:1;
+    uint16_t                    lrn_needs_list_init:1;
+    uint16_t                    lrn_async_remove:1;
+    void                       *lrn_cb_arg;
     //xxx lrn_cb can be moved into a static array indexed by lrn_user_type
-    lrn_cb_t                 lrn_cb;
-    CIRCLEQ_ENTRY(lreg_node) lrn_lentry;
+    lrn_cb_t                    lrn_cb;
+    CIRCLEQ_ENTRY(lreg_node)    lrn_lentry;
     union
     {
         struct lreg_node_list   lrn_head; //arrays and objects
