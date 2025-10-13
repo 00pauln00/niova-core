@@ -355,6 +355,7 @@ struct lreg_instance
     struct lreg_node_list     lri_installq;
     struct lreg_destroy_queue lri_destroyq;
     uint8_t                   lri_init:1;
+    uint8_t                   lri_destroyed:1;
     uint8_t                   lri_disallow_other_threads:1;
     int                       lri_eventfd;
     pthread_t                 lri_pthread;
@@ -1095,6 +1096,6 @@ util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events);
 
 int
-lreg_instance_attach_to_active_default(void);
+lreg_instance_attach_to_active_default(bool);
 
 #endif //_REGISTRY_H

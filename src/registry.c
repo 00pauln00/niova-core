@@ -831,10 +831,12 @@ lreg_get_eventfd(void)
 util_thread_ctx_t
 lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 {
-    FUNC_ENTRY(LL_DEBUG);
+    FUNC_ENTRY(LL_TRACE);
 
     (void)events;
+    (void)eph;
 
+#if 0
     if (eph->eph_fd != lriActive->lri_eventfd)
     {
         LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
@@ -842,6 +844,7 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
 
         return;
     }
+#endif
 
     eventfd_t x = {0};
 
@@ -988,7 +991,9 @@ lreg_instance_destroy(struct lreg_instance *lri)
           STAILQ_EMPTY(&lri->lri_destroyq)))
         return -EBUSY;
 
-    int rc = 0;
+    int rc = epoll_handle_del(lri->lri_eph->eph_mgr, lri->lri_eph);
+    if (rc)
+        SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_handle_del(): %s", strerror(-rc));
 
     if (lri->lri_eventfd >= 0)
     {
@@ -996,9 +1001,10 @@ lreg_instance_destroy(struct lreg_instance *lri)
         if (rc < 0)
         {
             rc = -errno;
-            SIMPLE_LOG_MSG(LL_WARN, "close(%d): %s",
-                           lri->lri_eventfd, strerror(-rc));
         }
+
+        SIMPLE_LOG_MSG((rc ? LL_WARN : LL_NOTIFY), "close(%d): %s",
+                       lri->lri_eventfd, strerror(-rc));
 
         lri->lri_eventfd = -1;
     }
@@ -1006,20 +1012,30 @@ lreg_instance_destroy(struct lreg_instance *lri)
     if (lri == lriActive)
         lriActive = NULL;
 
-    lri->lri_init = 0;
+    lri->lri_destroyed = 1;
 
     return rc;
 }
 
 int
-lreg_instance_attach_to_active_default(void)
+lreg_instance_attach_to_active_default(bool deactive_lri_active)
 {
     int rc = 0;
 
     LREG_SUBSYS_LOCK;
 
+    if (deactive_lri_active && lriActive)
+    {
+        int xrc = lreg_instance_destroy(lriActive);
+        if (xrc)
+            SIMPLE_LOG_MSG(LL_WARN, "lreg_instance_destroy(): %s",
+                           strerror(-xrc));
+
+        lriActive = NULL;
+    }
+
     if (lriActive != NULL)
-        return -EALREADY;
+        rc = -EALREADY;
 
     else if (lriActiveDefault == NULL)
         rc = -ENODEV;
@@ -1037,7 +1053,6 @@ lreg_instance_attach_to_active_default(void)
         lriActiveDefault->lri_ref_cnt++;
         lriActive = lriActiveDefault;
     }
-
     LREG_SUBSYS_UNLOCK;
 
     return rc;

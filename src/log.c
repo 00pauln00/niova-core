@@ -340,7 +340,7 @@ log_lreg_subsys_init(struct lreg_instance *active_instance)
 {
     if (!init_ctx() && active_instance == NULL && lreg_root_node_get() == NULL)
     {
-        int rc = lreg_instance_attach_to_active_default();
+        int rc = lreg_instance_attach_to_active_default(false);
 
         FATAL_IF(rc, "lreg_instance_attach_to_active_default(): %s",
                  strerror(-rc));
@@ -362,7 +362,7 @@ log_subsys_init(void)
 
     log_lreg_subsys_init(NULL);
 
-    SIMPLE_LOG_MSG(LL_WARN, "hello");
+    SIMPLE_LOG_MSG(LL_NOTIFY, "hello");
 };
 
 destroy_ctx_t
