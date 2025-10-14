@@ -991,9 +991,14 @@ lreg_instance_destroy(struct lreg_instance *lri)
           STAILQ_EMPTY(&lri->lri_destroyq)))
         return -EBUSY;
 
-    int rc = epoll_handle_del(lri->lri_eph->eph_mgr, lri->lri_eph);
-    if (rc)
-        SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_handle_del(): %s", strerror(-rc));
+    if (lri->lri_eph)
+    {
+        int xrc = epoll_handle_del(lri->lri_eph->eph_mgr, lri->lri_eph);
+        if (xrc)
+            SIMPLE_LOG_MSG(LL_NOTIFY, "epoll_handle_del(): %s", strerror(-xrc));
+    }
+
+    int rc = 0;
 
     if (lri->lri_eventfd >= 0)
     {
