@@ -153,7 +153,7 @@ util_thread_main(void *arg)
         NIOVA_ASSERT(rc == 0);
 
         rc = util_thread_install_event_src(lri->lri_eventfd, EPOLLIN,
-                                           lreg_util_thread_cb, NULL,
+                                           lreg_util_thread_cb, lri,
                                            &lri->lri_eph);
         FATAL_IF((rc || !lri->lri_eph), "util_thread_install_event_src(): %s",
                  strerror(-rc));

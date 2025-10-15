@@ -1070,9 +1070,6 @@ lreg_thread_ctx(void);
 lreg_install_int_ctx_t
 lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install);
 
-bool
-lreg_install_has_queued_nodes(void);
-
 int
 lreg_notify(void);
 
@@ -1080,10 +1077,10 @@ int
 lreg_remove_event_src(void);
 
 int
-lreg_util_processor(void);
+lreg_util_processor(struct lreg_instance *lri);
 
 int
-lreg_get_eventfd(void);
+lreg_get_eventfd(struct lreg_instance *lri);
 
 int
 lreg_node_wait_for_install_state(const struct lreg_node *lrn,
@@ -1097,5 +1094,12 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events);
 
 int
 lreg_instance_attach_to_active_default(bool);
+
+int
+lreg_instance_attach_to_instance(struct lreg_instance *lri);
+
+int
+lreg_instance_detach_from_instance(struct lreg_instance *lri);
+
 
 #endif //_REGISTRY_H

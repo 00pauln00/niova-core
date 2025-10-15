@@ -52,8 +52,8 @@ static pthread_mutex_t lregSubsysMutex = PTHREAD_MUTEX_INITIALIZER;
 #define LREG_SUBSYS_LOCK   pthread_mutex_lock(&lregSubsysMutex)
 #define LREG_SUBSYS_UNLOCK pthread_mutex_unlock(&lregSubsysMutex)
 
-#define LREG_NODE_INSTALL_LOCK   pthread_mutex_lock(&lriActive->lri_mutex)
-#define LREG_NODE_INSTALL_UNLOCK pthread_mutex_unlock(&lriActive->lri_mutex)
+#define LREG_NODE_INSTALL_LOCK(lri)   pthread_mutex_lock(&(lri)->lri_mutex)
+#define LREG_NODE_INSTALL_UNLOCK(lri) pthread_mutex_unlock(&(lri)->lri_mutex)
 
 /**
  * lreg_root_node_get - returns the root node of the local registry.
@@ -385,15 +385,9 @@ lreg_parent_may_accept_child(struct lreg_node *child, struct lreg_node *parent)
  *    registry service thread.
  */
 static lreg_svc_ctx_t // or init_ctx_t
-lreg_node_install_internal(struct lreg_node *child)
+lreg_node_install_internal(struct lreg_node *child, struct lreg_instance *lri)
 {
-    NIOVA_ASSERT(child);
-
-    if (!LRI_INSTANCE_IS_READY)
-    {
-        SIMPLE_LOG_MSG(LL_WARN, "lriActive->lri_init is false");
-        return;
-    }
+    NIOVA_ASSERT(child && lri && lri->lri_init);
 
     struct lreg_node *parent = child->lrn_parent_for_install_only;
 
@@ -490,60 +484,50 @@ lreg_node_remove_internal(struct lreg_node *child)
  *    it.
  */
 static lreg_svc_lrn_ctx_t
-lreg_install_get_queued_node(void)
+lreg_install_get_queued_node(struct lreg_instance *lri)
 {
-    NIOVA_ASSERT(LRI_INSTANCE_IS_READY);
+    NIOVA_ASSERT(lri && lri->lri_init);
 
     struct lreg_node *install = NULL;
 
-    LREG_NODE_INSTALL_LOCK;
-    if (!CIRCLEQ_EMPTY(&lriActive->lri_installq))
+    LREG_NODE_INSTALL_LOCK(lri);
+
+    if (!CIRCLEQ_EMPTY(&lri->lri_installq))
     {
-        install = CIRCLEQ_FIRST(&lriActive->lri_installq);
-        CIRCLEQ_REMOVE(&lriActive->lri_installq, install, lrn_lentry);
+        install = CIRCLEQ_FIRST(&lri->lri_installq);
+        CIRCLEQ_REMOVE(&lri->lri_installq, install, lrn_lentry);
     }
-    LREG_NODE_INSTALL_UNLOCK;
+
+    LREG_NODE_INSTALL_UNLOCK(lri);
 
     return install;
 }
 
 static lreg_svc_lrn_ctx_t
-lreg_remove_get_queued_node(void)
+lreg_remove_get_queued_node(struct lreg_instance *lri)
 {
-    NIOVA_ASSERT(LRI_INSTANCE_IS_READY);
+    NIOVA_ASSERT(lri && lri->lri_init);
 
     struct lreg_node *remove = NULL;
 
-    LREG_NODE_INSTALL_LOCK;
+    LREG_NODE_INSTALL_LOCK(lri);
 
     if ((remove = STAILQ_FIRST(&lriActive->lri_destroyq)))
         STAILQ_REMOVE_HEAD(&lriActive->lri_destroyq, lrn_removal_lentry);
 
-    LREG_NODE_INSTALL_UNLOCK;
+    LREG_NODE_INSTALL_UNLOCK(lri);
 
     return remove;
 }
 
-/**
- * lreg_process_install_queue - called only by the service thread to install
- *    the registry nodes which are on the install queue.
- */
-static lreg_svc_ctx_t
-lreg_process_install_queue(void)
+static int
+lreg_notify_internal(struct lreg_instance *lri)
 {
-    struct lreg_node *install;
+    NIOVA_ASSERT(lri && lri->lri_init);
 
-    while ((install = lreg_install_get_queued_node()))
-        lreg_node_install_internal(install);
-}
+    uint64_t val = 1;
 
-static lreg_svc_ctx_t
-lreg_process_remove_queue(void)
-{
-    struct lreg_node *remove;
-
-    while ((remove = lreg_remove_get_queued_node()))
-        lreg_node_remove_internal(remove);
+    return write(lri->lri_eventfd, &val, sizeof(val));
 }
 
 int
@@ -551,35 +535,13 @@ lreg_notify(void)
 {
     FUNC_ENTRY(LL_DEBUG);
 
-    uint64_t val = 1;
-
-    return write(lriActive->lri_eventfd, &val, sizeof(val));
-}
-
-bool
-lreg_install_has_queued_nodes(void)
-{
-    if (!LRI_INSTANCE_IS_READY)
-        return false;
-
-    LREG_NODE_INSTALL_LOCK;
-    bool empty =
-        (CIRCLEQ_EMPTY(&lriActive->lri_installq) &&
-         STAILQ_EMPTY(&lriActive->lri_destroyq));
-    LREG_NODE_INSTALL_UNLOCK;
-
-    return !empty;
+    return lriActive ? lreg_notify_internal(lriActive) : -ENODEV;
 }
 
 static lreg_install_ctx_t
-lreg_node_install_queue(struct lreg_node *child)
+lreg_node_install_queue(struct lreg_node *child, struct lreg_instance *lri)
 {
-    if (!LRI_INSTANCE_IS_READY)
-    {
-        SIMPLE_LOG_MSG(LL_WARN,
-                       "lreg_node_install_queue() lri instance is not ready");
-        return;
-    }
+    NIOVA_ASSERT(lri && lri->lri_init);
 
     // Notify owner that node is queuing for async install
     int rc = lreg_node_exec_lrn_cb(LREG_NODE_CB_OP_INSTALL_QUEUED_NODE, child,
@@ -589,29 +551,29 @@ lreg_node_install_queue(struct lreg_node *child)
                       "LREG_NODE_CB_OP_INSTALL_QUEUED_NODE cb failed: %s",
                       strerror(-rc));
 
-    LREG_NODE_INSTALL_LOCK;
+    LREG_NODE_INSTALL_LOCK(lri);
 
     CIRCLEQ_INSERT_TAIL(&lriActive->lri_installq, child, lrn_lentry);
     child->lrn_async_install = 1;
 
-    LREG_NODE_INSTALL_UNLOCK;
+    LREG_NODE_INSTALL_UNLOCK(lri);
 
-    lreg_notify();
+    lreg_notify_internal(lri);
 }
 
 static lreg_destroy_ctx_t
-lreg_node_remove_queue(struct lreg_node *child)
+lreg_node_remove_queue(struct lreg_node *child, struct lreg_instance *lri)
 {
-    NIOVA_ASSERT(LRI_INSTANCE_IS_READY);
+    NIOVA_ASSERT(lri && lri->lri_init);
 
-    LREG_NODE_INSTALL_LOCK;
+    LREG_NODE_INSTALL_LOCK(lri);
 
     STAILQ_INSERT_TAIL(&lriActive->lri_destroyq, child, lrn_removal_lentry);
     child->lrn_async_remove = 1;
 
-    LREG_NODE_INSTALL_UNLOCK;
+    LREG_NODE_INSTALL_UNLOCK(lri);
 
-    lreg_notify();
+    lreg_notify_internal(lri);
 }
 
 /**
@@ -628,6 +590,8 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
 
     if (!LRI_INSTANCE_IS_READY)
         return -ENODEV;
+
+    struct lreg_instance *lri = lriActive;
 
     NIOVA_ASSERT(child && parent);
     NIOVA_ASSERT(child != parent);
@@ -659,7 +623,8 @@ lreg_node_install(struct lreg_node *child, struct lreg_node *parent)
     child->lrn_parent_for_install_only = parent;
 
     install_here ?
-        lreg_node_install_internal(child) : lreg_node_install_queue(child);
+        lreg_node_install_internal(child, lri) :
+        lreg_node_install_queue(child, lri);
 
     return 0;
 }
@@ -678,6 +643,11 @@ lreg_node_remove(struct lreg_node *child, struct lreg_node *parent)
              !lreg_node_children_are_inlined(child))
         return -EBUSY;
 
+    if (!LRI_INSTANCE_IS_READY)
+        return -ENODEV;
+
+    struct lreg_instance *lri = lriActive;
+
     const bool remove_here = init_ctx() || destroy_ctx() || lreg_thread_ctx();
 
     DBG_LREG_NODE(LL_DEBUG, parent, "parent");
@@ -690,7 +660,8 @@ lreg_node_remove(struct lreg_node *child, struct lreg_node *parent)
     child->lrn_parent_for_remove_only = parent;
 
     remove_here ?
-        lreg_node_remove_internal(child) : lreg_node_remove_queue(child);
+        lreg_node_remove_internal(child) :
+        lreg_node_remove_queue(child, lri);
 
     return 0;
 }
@@ -811,21 +782,29 @@ lreg_root_node_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
 }
 
 int
-lreg_util_processor(void)
+lreg_util_processor(struct lreg_instance *lri)
 {
-    if (!lreg_thread_ctx())
-        return -EXDEV;
+    if (!lri || !lri->lri_init)
+        return -EINVAL;
 
-    lreg_process_install_queue();
-    lreg_process_remove_queue();
+    struct lreg_node *lrn = NULL;
+
+    while ((lrn = lreg_install_get_queued_node(lri)))
+        lreg_node_install_internal(lrn, lri);
+
+    while ((lrn = lreg_remove_get_queued_node(lri)))
+        lreg_node_remove_internal(lrn);
 
     return 0;
 }
 
 int
-lreg_get_eventfd(void)
+lreg_get_eventfd(struct lreg_instance *lri)
 {
-    return LRI_INSTANCE_IS_READY ? lriActive->lri_eventfd : -ENODEV;
+    if (!lri || !lri->lri_init)
+        return -EINVAL;
+
+    return lri->lri_eventfd;
 }
 
 util_thread_ctx_t
@@ -834,17 +813,9 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     FUNC_ENTRY(LL_TRACE);
 
     (void)events;
-    (void)eph;
 
-#if 0
-    if (eph->eph_fd != lriActive->lri_eventfd)
-    {
-        LOG_MSG(LL_ERROR, "invalid fd=%d, expected %d",
-                eph->eph_fd, lriActive->lri_eventfd);
-
-        return;
-    }
-#endif
+    struct lreg_instance *lri = (struct lreg_instance *)eph->eph_arg;
+    NIOVA_ASSERT(lri && lri->lri_init);
 
     eventfd_t x = {0};
 
@@ -852,7 +823,7 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
      * occur where an item is on the list w/out an accompanying event in
      * the fd.
      */
-    ssize_t rrc = niova_io_read(lriActive->lri_eventfd, (char *)&x,
+    ssize_t rrc = niova_io_read(lri->lri_eventfd, (char *)&x,
                                 sizeof(eventfd_t));
     if (rrc == -EAGAIN)
         return;
@@ -860,11 +831,14 @@ lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events)
     FATAL_IF(rrc != sizeof(eventfd_t),
              "Invalid read size (%ld) from eventfd read x=%lu", rrc, x);
 
-    int rc = lreg_util_processor();
+    /* Note that in -DREGISTRY_PER_THREAD=1 the lri may have been initialized
+     * by a different thread.
+     */
+    int rc = lreg_util_processor(lri);
     if (rc == -EXDEV)
     {
         SIMPLE_LOG_MSG(LL_WARN, "util thread is not longer lreg handler");
-        lreg_notify();
+        lreg_notify(); //XXX fixme
     }
     else
     {
@@ -1022,6 +996,18 @@ lreg_instance_destroy(struct lreg_instance *lri)
     return rc;
 }
 
+static void
+lreg_instance_attach_to_instance_internal_locked(struct lreg_instance *lri)
+{
+    SIMPLE_LOG_MSG(
+        LL_NOTIFY,
+        "pthread-%lu attaches to lriActiveDefault=%p (thread-%lu)",
+        pthread_self(), lriActiveDefault, lriActiveDefault->lri_pthread);
+
+    lri->lri_ref_cnt++;
+    lriActive = lri;
+}
+
 int
 lreg_instance_attach_to_active_default(bool deactive_lri_active)
 {
@@ -1050,17 +1036,57 @@ lreg_instance_attach_to_active_default(bool deactive_lri_active)
 
     if (!rc)
     {
-        SIMPLE_LOG_MSG(
-            LL_NOTIFY,
-            "pthread-%lu attaches to lriActiveDefault=%p (thread-%lu)",
-            pthread_self(), lriActiveDefault, lriActiveDefault->lri_pthread);
-
-        lriActiveDefault->lri_ref_cnt++;
-        lriActive = lriActiveDefault;
+        lreg_instance_attach_to_instance_internal_locked(lriActiveDefault);
     }
     LREG_SUBSYS_UNLOCK;
 
     return rc;
+}
+
+int
+lreg_instance_detach_from_instance(struct lreg_instance *lri)
+{
+    if (lri == NULL || !lri->lri_init)
+        return -EINVAL;
+
+    if (lri->lri_disallow_other_threads)
+        return -EPERM;
+
+    int rc = -EXDEV;
+
+    LREG_SUBSYS_LOCK;
+
+    if (lriActive == lri)
+    {
+        FATAL_IF(lri->lri_ref_cnt <= 0, "lri->lri_ref_cnt=%ld",
+                 lri->lri_ref_cnt);
+
+        lri->lri_ref_cnt--;
+
+        rc = 0;
+    }
+
+    LREG_SUBSYS_UNLOCK;
+
+    return rc;
+}
+
+int
+lreg_instance_attach_to_instance(struct lreg_instance *lri)
+{
+    if (lri == NULL || !lri->lri_init)
+        return -EINVAL;
+
+    if (lri->lri_disallow_other_threads)
+        return -EPERM;
+
+    LREG_SUBSYS_LOCK;
+
+    lreg_instance_attach_to_instance_internal_locked(lri);
+
+    LREG_SUBSYS_UNLOCK;
+
+    return 0;
 }
 
 static init_ctx_t NIOVA_CONSTRUCTOR(LREG_SUBSYS_CTOR_PRIORITY)
@@ -1074,7 +1100,7 @@ lreg_subsystem_init(void)
     FATAL_IF(rc, "lreg_instance_init(): %s", strerror(-rc));
 
     rc = util_thread_install_event_src(lri->lri_eventfd, EPOLLIN,
-                                       lreg_util_thread_cb, NULL,
+                                       lreg_util_thread_cb, lri,
                                        &lri->lri_eph);
 
     FATAL_IF((rc || !lri->lri_eph), "util_thread_install_event_src(): %s",
