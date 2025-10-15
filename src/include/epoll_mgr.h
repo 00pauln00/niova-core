@@ -45,6 +45,7 @@ struct epoll_handle
     epoll_mgr_cb_t        eph_cb;
     epoll_mgr_ref_cb_t    eph_ref_cb;
     epoll_mgr_ctx_op_cb_t eph_ctx_cb;
+    struct epoll_mgr     *eph_mgr;
     CIRCLEQ_ENTRY(epoll_handle) eph_lentry;
     SLIST_ENTRY(epoll_handle) eph_cb_lentry;
 };

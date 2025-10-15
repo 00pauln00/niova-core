@@ -121,6 +121,9 @@ util_thread_install_event_src(int fd, int events,
     return rc;
 }
 
+// For use w/ -DREGISTRY_PER_THREAD=1
+struct lreg_instance utilThreadLregInstance;
+
 static util_thread_ctx_t *
 util_thread_main(void *arg)
 {
@@ -139,13 +142,32 @@ util_thread_main(void *arg)
 
     NIOVA_ASSERT(util_thread_ctx());
 
+    if (lreg_root_node_get() == NULL)
+    {
+        /* In the case where -DREGISTRY_PER_THREAD=1 lriActive will be NULL in
+         * this thread context.
+         */
+        struct lreg_instance *lri = &utilThreadLregInstance;
+
+        rc = lreg_instance_init(lri, true);
+        NIOVA_ASSERT(rc == 0);
+
+        rc = util_thread_install_event_src(lri->lri_eventfd, EPOLLIN,
+                                           lreg_util_thread_cb, lri,
+                                           &lri->lri_eph);
+        FATAL_IF((rc || !lri->lri_eph), "util_thread_install_event_src(): %s",
+                 strerror(-rc));
+
+        NIOVA_ASSERT(lreg_root_node_get() == &utilThreadLregInstance.lri_root);
+    }
+
     THREAD_LOOP_WITH_CTL(tc)
     {
-        int rc = epoll_mgr_wait_and_process_events(&ut->ut_epm, 1000);
+        int xrc = epoll_mgr_wait_and_process_events(&ut->ut_epm, 1000);
 
-        if (rc < 0 && rc != -EINTR)
+        if (xrc < 0 && xrc != -EINTR)
             LOG_MSG(LL_WARN, "epoll_mgr_wait_and_process_events(): %s",
-                    strerror(-rc));
+                    strerror(-xrc));
     }
 
     return NULL;

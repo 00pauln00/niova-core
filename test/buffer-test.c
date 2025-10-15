@@ -6,6 +6,7 @@
 
 #include "buffer.h"
 #include "log.h"
+#include "registry.h"
 
 static void
 buffer_test(bool serialize, bool lreg)
@@ -276,6 +277,10 @@ int
 main(void)
 {
     NIOVA_ASSERT(buffer_page_size() == 0);
+
+#ifdef REGISTRY_PER_THREAD
+    lreg_instance_attach_to_active_default(true);
+#endif
 
     buffer_test(false, false);
     buffer_test(true, false);

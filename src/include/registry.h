@@ -35,6 +35,15 @@ struct lreg_value;
 typedef void (*lrn_recurse_cb_t)(struct lreg_value *, const int, const int,
                                  const bool);
 
+
+#ifdef REGISTRY_PER_THREAD
+#define STATIC_STRUCT_LREG_NODE static __thread struct lreg_node
+#define GLOBAL_STRUCT_LREG_NODE __thread struct lreg_node
+#else
+#define STATIC_STRUCT_LREG_NODE static struct lreg_node
+#define GLOBAL_STRUCT_LREG_NODE struct lreg_node
+#endif
+
 #define LREG_VALUE_STRING_MAX 255
 #define LREG_NODE_KEYS_MAX 65536
 
@@ -306,25 +315,26 @@ STAILQ_HEAD(lreg_destroy_queue, lreg_node);
  */
 struct lreg_node
 {
-    enum lreg_user_types  lrn_user_type;
-    enum lreg_node_states lrn_install_state;
-    uint8_t              lrn_tmp_node                     : 1,
-                         lrn_statically_allocated         : 1,
-                         lrn_root_node                    : 1,
-                         lrn_monitor                      : 1,
-                         lrn_may_destroy                  : 1,
-                         lrn_array_element                : 1,
-                         lrn_ignore_items_with_value_zero : 1,
-                         lrn_reverse_varray               : 1,
-                         lrn_vnode_child                  : 1,
-                         lrn_inlined_member               : 1,
-                         lrn_inlined_children             : 1,
-                         lrn_async_install                : 1,
-                         lrn_async_remove                 : 1;
-    void                    *lrn_cb_arg;
+    enum lreg_user_types        lrn_user_type;
+    enum lreg_node_states       lrn_install_state;
+    uint16_t                    lrn_tmp_node:1;
+    uint16_t                    lrn_statically_allocated:1;
+    uint16_t                    lrn_root_node:1;
+    uint16_t                    lrn_monitor:1;
+    uint16_t                    lrn_may_destroy:1;
+    uint16_t                    lrn_array_element:1;
+    uint16_t                    lrn_ignore_items_with_value_zero:1;
+    uint16_t                    lrn_reverse_varray:1;
+    uint16_t                    lrn_vnode_child:1;
+    uint16_t                    lrn_inlined_member:1;
+    uint16_t                    lrn_inlined_children:1;
+    uint16_t                    lrn_async_install:1;
+    uint16_t                    lrn_needs_list_init:1;
+    uint16_t                    lrn_async_remove:1;
+    void                       *lrn_cb_arg;
     //xxx lrn_cb can be moved into a static array indexed by lrn_user_type
-    lrn_cb_t                 lrn_cb;
-    CIRCLEQ_ENTRY(lreg_node) lrn_lentry;
+    lrn_cb_t                    lrn_cb;
+    CIRCLEQ_ENTRY(lreg_node)    lrn_lentry;
     union
     {
         struct lreg_node_list   lrn_head; //arrays and objects
@@ -336,6 +346,21 @@ struct lreg_node
         struct lreg_node       *lrn_parent_for_install_only;
         STAILQ_ENTRY(lreg_node) lrn_removal_lentry;
     };
+};
+
+struct lreg_instance
+{
+    struct lreg_node          lri_root;
+    pthread_mutex_t           lri_mutex;
+    struct lreg_node_list     lri_installq;
+    struct lreg_destroy_queue lri_destroyq;
+    uint8_t                   lri_init:1;
+    uint8_t                   lri_destroyed:1;
+    uint8_t                   lri_disallow_other_threads:1;
+    int                       lri_eventfd;
+    pthread_t                 lri_pthread;
+    int64_t                   lri_ref_cnt; // protected by LREG_SUBSYS_LOCK
+    struct epoll_handle      *lri_eph;
 };
 
 static inline void
@@ -581,10 +606,11 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         return 0;                                                       \
     }                                                                   \
                                                                         \
-    struct lreg_node rootEntry__##name = {                              \
+    GLOBAL_STRUCT_LREG_NODE rootEntry__##name = {                       \
         .lrn_cb_arg = (void *)1,                                        \
         .lrn_user_type = user_type,                                     \
         .lrn_statically_allocated = 1,                                  \
+        .lrn_needs_list_init = 1,                                       \
         .lrn_cb = lreg_root_cb##name                                    \
     }                                                                   \
 
@@ -675,13 +701,14 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
         return 0;                                                   \
     }                                                               \
                                                                     \
-    struct lreg_node rootEntry__##name = {                          \
+    GLOBAL_STRUCT_LREG_NODE rootEntry__##name = {                   \
         .lrn_cb_arg = (void *)1,                                    \
         .lrn_user_type = user_type,                                 \
         .lrn_statically_allocated = 1,                              \
+        .lrn_needs_list_init = 1,                                   \
         .lrn_cb = lreg_root_cb_parent##name,                        \
     };                                                              \
-    struct lreg_node childEntry__##name = {                         \
+    GLOBAL_STRUCT_LREG_NODE childEntry__##name = {                  \
         .lrn_user_type = user_type,                                 \
         .lrn_statically_allocated = 1,                                  \
         .lrn_reverse_varray = !!(opts & LREG_INIT_OPT_REVERSE_VARRAY),  \
@@ -689,6 +716,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
             !!(opts & LREG_INIT_OPT_IGNORE_NUM_VAL_ZERO),                   \
         .lrn_cb = lreg_root_cb_child##name,                         \
         .lrn_cb_arg = arg,                                          \
+        .lrn_needs_list_init = 1,                                   \
     };                                                              \
 
 #define LREG_ROOT_ENTRY_GENERATE_OBJECT(name, user_type, num_keys, \
@@ -698,7 +726,7 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                                   LREG_VAL_TYPE_OBJECT, opts)
 
 #define LREG_ROOT_ENTRY_EXPORT(name) \
-    extern struct lreg_node rootEntry__##name
+    extern GLOBAL_STRUCT_LREG_NODE rootEntry__##name
 
 #define LREG_ROOT_ENTRY_PTR(name) \
     &rootEntry__##name
@@ -712,19 +740,27 @@ lreg_node_object_init(struct lreg_node *, enum lreg_user_types, bool);
                                    lreg_root_node_get()))
 
 // Don't crash if the node is already installed.
-#define LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name)                   \
+#define LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name)                      \
 do {                                                                  \
-    int rc = lreg_node_install(LREG_ROOT_ENTRY_PTR(name),  \
-                                       lreg_root_node_get());      \
-    NIOVA_ASSERT(!rc || rc == -EALREADY);                          \
+    int rc = lreg_node_install(LREG_ROOT_ENTRY_PTR(name),             \
+                               lreg_root_node_get());                 \
+    NIOVA_ASSERT(!rc || rc == -EALREADY);                             \
 } while (0)
 
-#define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                    \
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL(name)                       \
 do {                                                               \
-    LREG_ROOT_ENTRY_INSTALL(name);                              \
-                                                                \
+    LREG_ROOT_ENTRY_INSTALL(name);                                 \
+                                                                   \
     NIOVA_ASSERT(                                                       \
         !lreg_node_install(&childEntry__##name, LREG_ROOT_ENTRY_PTR(name))); \
+} while (0)
+
+#define LREG_ROOT_OBJECT_ENTRY_INSTALL_ALREADY_OK(name)            \
+do {                                                               \
+    LREG_ROOT_ENTRY_INSTALL_ALREADY_OK(name);                           \
+    int rc = lreg_node_install(&childEntry__##name,                     \
+                               LREG_ROOT_ENTRY_PTR(name));              \
+    NIOVA_ASSERT(!rc || rc == -EALREADY);                               \
 } while (0)
 
 #define LREG_ROOT_OBJECT_ENTRY_INSTALL_RESCAN_LCTLI(name)                    \
@@ -1025,7 +1061,7 @@ lreg_node_key_lookup(struct lreg_node *lrn, struct lreg_value *lv,
     return -ENOENT;
 }
 
-void
+int
 lreg_set_thread_ctx(pthread_t pthread_id);
 
 bool
@@ -1034,9 +1070,6 @@ lreg_thread_ctx(void);
 lreg_install_int_ctx_t
 lreg_node_wait_for_completion(const struct lreg_node *lrn, bool install);
 
-bool
-lreg_install_has_queued_nodes(void);
-
 int
 lreg_notify(void);
 
@@ -1044,13 +1077,29 @@ int
 lreg_remove_event_src(void);
 
 int
-lreg_util_processor(void);
+lreg_util_processor(struct lreg_instance *lri);
 
 int
-lreg_get_eventfd(void);
+lreg_get_eventfd(struct lreg_instance *lri);
 
 int
 lreg_node_wait_for_install_state(const struct lreg_node *lrn,
                                  enum lreg_node_states state);
+
+int
+lreg_instance_init(struct lreg_instance *lri, bool set_as_active_instance);
+
+util_thread_ctx_t
+lreg_util_thread_cb(const struct epoll_handle *eph, uint32_t events);
+
+int
+lreg_instance_attach_to_active_default(bool);
+
+int
+lreg_instance_attach_to_instance(struct lreg_instance *lri);
+
+int
+lreg_instance_detach_from_instance(struct lreg_instance *lri);
+
 
 #endif //_REGISTRY_H

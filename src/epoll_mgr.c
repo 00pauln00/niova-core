@@ -265,6 +265,8 @@ epoll_handle_add(struct epoll_mgr *epm, struct epoll_handle *eph)
     {
         eph->eph_installed = 1;
         epm->epm_num_handles++;
+
+        eph->eph_mgr = epm;
     }
 
     pthread_mutex_unlock(&epm->epm_mutex);

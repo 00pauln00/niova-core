@@ -160,4 +160,7 @@ buffer_set_user_cache_release_item(
     void *arg);
 
 
+registry_thread_t
+buffer_set_lreg_init(void);
+
 #endif

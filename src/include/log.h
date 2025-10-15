@@ -98,14 +98,14 @@ struct log_entry_info
         .lei_file = __FILE__,                                           \
     };                                                                  \
                                                                         \
-    static struct lreg_node regFileEntry = {                            \
+    STATIC_STRUCT_LREG_NODE regFileEntry = {                            \
         .lrn_cb_arg = &logEntryFileInfo,                                \
         .lrn_user_type = LREG_USER_TYPE_LOG_file,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_array_element = 1,                                         \
         .lrn_cb = log_lreg_cb,                                          \
         .lrn_inlined_children = 1,                                      \
-        .lrn_head = CIRCLEQ_HEAD_INITIALIZER(regFileEntry.lrn_head),    \
+        .lrn_needs_list_init = 1,                                       \
     }
 
 #define REGISTY_ENTRY_FUNCTION_GENERATE(tag)                            \
@@ -115,32 +115,34 @@ struct log_entry_info
         .lei_func = __func__,                                           \
         .lei_tag = tag,                                                 \
     };                                                                  \
-    static struct lreg_node logMsgLrn = {                               \
+    STATIC_STRUCT_LREG_NODE logMsgLrn = {                               \
         .lrn_cb_arg = &logEntryInfo,                                    \
         .lrn_user_type = LREG_USER_TYPE_LOG_func,                       \
         .lrn_statically_allocated = 1,                                  \
         .lrn_array_element = 1,                                         \
         .lrn_inlined_member = 1,                                        \
+        .lrn_needs_list_init = 1,                                       \
         .lrn_cb = log_lreg_cb,                                          \
     };                                                                  \
-    int _node_install_rc = 0;                                           \
     if (lreg_node_needs_installation(&logMsgLrn))                       \
     {                                                                   \
-        _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
+        log_lreg_subsys_init(NULL);                                     \
+                                                                        \
+        int _node_install_rc = lreg_node_install(&logMsgLrn, &regFileEntry); \
         NIOVA_ASSERT(!_node_install_rc ||                               \
                      _node_install_rc == -EALREADY ||                   \
                      _node_install_rc == -EAGAIN);                      \
+                                                                        \
+        if (lreg_node_needs_installation(&regFileEntry))                \
+        {                                                               \
+            _node_install_rc =                                          \
+                lreg_node_install(&regFileEntry,                        \
+                                  LREG_ROOT_ENTRY_PTR(log_entry_map));  \
+            NIOVA_ASSERT(!_node_install_rc ||                           \
+                         _node_install_rc == -EALREADY ||               \
+                         _node_install_rc == -EAGAIN);                  \
+        }                                                               \
     }                                                                   \
-    if (lreg_node_needs_installation(&regFileEntry))                    \
-    {                                                                   \
-        _node_install_rc =                                              \
-            lreg_node_install(&regFileEntry,                            \
-                              LREG_ROOT_ENTRY_PTR(log_entry_map));      \
-        NIOVA_ASSERT(!_node_install_rc ||                               \
-                     _node_install_rc == -EALREADY ||                   \
-                     _node_install_rc == -EAGAIN);                      \
-    }                                                                   \
-
 
 // Allow users of _NIOVA_BACKTRACE_H_ to generate backtraces in abort ctx
 #ifdef _NIOVA_BACKTRACE_H_
@@ -307,5 +309,8 @@ log_subsys_init(void) __attribute__ ((constructor (LOG_SUBSYS_CTOR_PRIORITY)));
 destroy_ctx_t
 log_subsys_destroy(void)
 __attribute__ ((destructor (LOG_SUBSYS_CTOR_PRIORITY)));
+
+void
+log_lreg_subsys_init(struct lreg_instance *lri);
 
 #endif //NIOVA_LOG_H

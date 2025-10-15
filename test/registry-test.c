@@ -78,7 +78,10 @@ registry_test_install_and_remove_node(void)
 int
 main(void)
 {
-    FUNC_ENTRY(LL_WARN);
+#ifdef REGISTRY_PER_THREAD
+    lreg_instance_attach_to_active_default(true);
+#endif
+
     registry_test_install_and_remove_node();
 
     return 0;
@@ -176,6 +179,7 @@ registry_test_destroy(void)
         DBG_LREG_NODE(LL_FATAL, lrn, "invalid state detected (pre)");
     }
 
+#ifndef REGISTRY_PER_THREAD
     // Remove the lrn entry now w/ the macro (equiv to lreg_node_remove())
     LREG_ROOT_ENTRY_REMOVE(test_entry_init_ctx);
 
@@ -183,4 +187,6 @@ registry_test_destroy(void)
     {
         DBG_LREG_NODE(LL_FATAL, lrn, "invalid state detected (post)");
     }
+#endif
+
 }
