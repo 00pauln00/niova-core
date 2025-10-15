@@ -607,10 +607,16 @@ buffer_set_apply_name(struct buffer_set *bs, const char *name)
     return 0;
 }
 
+void
+buffer_set_lreg_init(void)
+{
+    LREG_ROOT_ENTRY_INSTALL(buffer_set_nodes);
+}
+
 static init_ctx_t NIOVA_CONSTRUCTOR(BUFFER_SET_CTOR_PRIORITY)
 buffer_set_ctor(void)
 {
-    LREG_ROOT_ENTRY_INSTALL(buffer_set_nodes);
+    buffer_set_lreg_init();
 
     return;
 }

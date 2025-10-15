@@ -99,6 +99,10 @@ typedef void      thread_exec_ctx_t;
 typedef bool      thread_exec_ctx_bool_t;
 typedef uint64_t  thread_exec_ctx_u64_t;
 
+// Functions that are useful when -DREGISTRY_PER_THREAD=1 is set
+typedef void registry_thread_t;
+typedef int registry_thread_int_t;
+
 #define ID_ANY_8bit  255
 #define ID_ANY_16bit 65535
 #define ID_ANY_32bit -1U
