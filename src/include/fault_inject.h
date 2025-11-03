@@ -25,6 +25,7 @@ enum fault_inject_entries
     FAULT_INJECT_raft_client_recv_handler_bypass,
     FAULT_INJECT_raft_client_recv_handler_process_reply_bypass,
     FAULT_INJECT_raft_server_bypass_sm_apply,
+    FAULT_INJECT_raft_server_fail_partial_apply,
     FAULT_INJECT_coalesced_writes,
     FAULT_INJECT_ignore_einprogress,
     FAULT_INJECT_raft_force_set_max_scan_entries,

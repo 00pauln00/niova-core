@@ -12,6 +12,7 @@
 #include <limits.h>
 #include <regex.h>
 #include <dirent.h>
+#include <utime.h>
 
 #define _GNU_SOURCE
 #include <pthread.h>
@@ -299,6 +300,19 @@ lctli_prepare(struct ctl_interface *lctli)
     int rc = file_util_pathname_build(lctli->lctli_path);
     if (rc)
         return rc;
+
+    time_t now = niova_realtime_coarse_clock_get_sec();
+
+    struct utimbuf x = {
+        .modtime = now,
+        .actime = now,
+    };
+
+    // Notify niova-lookout that the process has returned
+    rc = utime(lctli->lctli_path, &x);
+    if (rc)
+        SIMPLE_LOG_MSG(LL_WARN, "utimes(%s): %s",
+                       lctli->lctli_path, strerror(errno));
 
     for (int i = 0; i < LCTLI_SUBDIR_MAX; i++)
     {
