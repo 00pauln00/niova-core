@@ -32,6 +32,9 @@ struct buffer_item
     struct buffer_set           *bi_bs;
     struct iovec                 bi_iov; // may be modified by user
     const struct iovec           bi_iov_save;
+    struct ibv_mr               *bi_mr;//ibv registered mr. should be destroyed when buffer is deallocated
+    uint32_t                     bi_lkey;// lkey by ibv mr
+    uint32_t                     bi_rkey;// rkey by ibv mr
     CIRCLEQ_ENTRY(buffer_item)   bi_lentry;
     SLIST_ENTRY(buffer_item)     bi_user_slentry;
     const char                  *bi_allocator_func;
