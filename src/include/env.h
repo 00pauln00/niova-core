@@ -46,6 +46,8 @@ enum niova_env_var_num
     NIOVA_ENV_VAR_tcp_disable,
     NIOVA_ENV_VAR_niova_thread_cnt,
     NIOVA_ENV_VAR_apply_handler_version,
+    NIOVA_ENV_VAR_gossip_path,
+    NIOVA_ENV_VAR_gossip_key,
     NIOVA_ENV_VAR__MAX,
     NIOVA_ENV_VAR__MIN = NIOVA_ENV_VAR_alloc_log_level,
 } PACKED;

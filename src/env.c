@@ -141,6 +141,19 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_default   = -1,  // Default to -1 (not set), must be overridden
         .nev_min       = 0,
         .nev_max       = LLONG_MAX,  // Use LLONG_MAX since nev_max is long long
+    },
+    [NIOVA_ENV_VAR_gossip_path] = {
+        .nev_name      = "NIOVA_GOSSIP_PATH",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
+        .nev_var_num   = NIOVA_ENV_VAR_gossip_path,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+    },
+    [NIOVA_ENV_VAR_gossip_key] = {
+        .nev_name      = "NIOVA_GOSSIP_KEY",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
+        .nev_var_num   = NIOVA_ENV_VAR_gossip_key,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
     },
 };
