@@ -133,6 +133,16 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_cb        = tcp_mgr_set_thread_cnt_env_cb,
         .nev_present   = false,
     },
+    [NIOVA_ENV_VAR_apply_handler_version] = {
+        .nev_name      = "NIOVA_APPLY_HANDLER_VERSION",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_NET,
+        .nev_var_num   = NIOVA_ENV_VAR_apply_handler_version,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
+        .nev_default   = -1,  // Default to -1 (not set), must be overridden
+        .nev_min       = 0,
+        .nev_max       = LLONG_MAX,  // Use LLONG_MAX since nev_max is long long
+        .nev_present   = false,
+    },
 };
 
 static void
