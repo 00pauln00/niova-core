@@ -144,16 +144,23 @@ static struct niova_env_var niovaEnvVars[] = {
     },
     [NIOVA_ENV_VAR_gossip_path] = {
         .nev_name      = "NIOVA_GOSSIP_PATH",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_BLOCK,
         .nev_var_num   = NIOVA_ENV_VAR_gossip_path,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
         .nev_present   = false,
     },
     [NIOVA_ENV_VAR_gossip_key] = {
         .nev_name      = "NIOVA_GOSSIP_KEY",
-        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_CTL_INTERFACE,
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_BLOCK,
         .nev_var_num   = NIOVA_ENV_VAR_gossip_key,
         .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+    },
+    [NIOVA_ENV_VAR_cmi_worker_cnt] = {
+        .nev_name      = "NIOVA_CMI_WORKER_COUNT",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_BLOCK,
+        .nev_var_num   = NIOVA_ENV_VAR_cmi_worker_cnt,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
         .nev_present   = false,
     },
 };
