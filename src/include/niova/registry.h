@@ -8,11 +8,11 @@
 #define _REGISTRY_H 1
 
 #include "atomic.h"
-#include "ctor.h"
-#include "init.h"
-#include "queue.h"
-#include "util.h"
-#include "util_thread.h"
+#include "niova/ctor.h"
+#include "niova/init.h"
+#include "niova/queue.h"
+#include "niova/util.h"
+#include "niova/util_thread.h"
 
 /* "Install and destroy context" is designated for threads other than the
  * lreg service thread which may add new registry objects.

@@ -5,10 +5,10 @@
  */
 #define _GNU_SOURCE         /* See feature_test_macros(7) */
 
-#include "common.h"
-#include "log.h"
-#include "thread.h"
-#include "util.h"
+#include "niova/common.h"
+#include "niova/log.h"
+#include "niova/thread.h"
+#include "niova/util.h"
 
 #include <pthread.h>
 #include <unistd.h>

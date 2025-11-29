@@ -6,7 +6,7 @@
 
 #include <unistd.h>
 
-#include "log.h"
+#include "niova/log.h"
 #include "popen_cmd.h"
 
 static int

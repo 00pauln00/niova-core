@@ -8,14 +8,14 @@
 #include <sys/eventfd.h>
 #include <unistd.h>
 
-#include "alloc.h"
-#include "common.h"
-#include "ctor.h"
-#include "env.h"
-#include "epoll_mgr.h"
-#include "log.h"
-#include "queue.h"
-#include "registry.h"
+#include "niova/alloc.h"
+#include "niova/common.h"
+#include "niova/ctor.h"
+#include "niova/env.h"
+#include "niova/epoll_mgr.h"
+#include "niova/log.h"
+#include "niova/queue.h"
+#include "niova/registry.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

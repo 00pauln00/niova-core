@@ -6,9 +6,9 @@
 
 #include <unistd.h>
 
-#include "random.h"
-#include "common.h"
-#include "log.h"
+#include "niova/random.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
 #define OPTS "s:hn:v"
 

@@ -11,9 +11,9 @@
 #include <zlib.h>
 #include <lz4.h>
 
-#include "common.h"
-#include "log.h"
-#include "random.h"
+#include "niova/common.h"
+#include "niova/log.h"
+#include "niova/random.h"
 #include "atomic.h"
 #include "crc32.h"
 #include "crc24q.h"

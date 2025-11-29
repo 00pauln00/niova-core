@@ -6,11 +6,11 @@
 #ifndef NIOVA_FAULT_INJECT_H
 #define NIOVA_FAULT_INJECT_H 1
 
-#include "common.h"
+#include "niova/common.h"
 
 #include "atomic.h"
-#include "registry.h"
-#include "util.h"
+#include "niova/registry.h"
+#include "niova/util.h"
 
 enum fault_inject_entries
 {

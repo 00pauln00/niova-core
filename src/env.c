@@ -6,15 +6,15 @@
 
 #include <stdlib.h>
 
-#include "ctor.h"
+#include "niova/ctor.h"
 
-#include "alloc.h"
-#include "ctl_svc.h"
-#include "env.h"
-#include "epoll_mgr.h"
-#include "log.h"
-#include "system_info.h"
-#include "watchdog.h"
+#include "niova/alloc.h"
+#include "niova/ctl_svc.h"
+#include "niova/env.h"
+#include "niova/epoll_mgr.h"
+#include "niova/log.h"
+#include "niova/system_info.h"
+#include "niova/watchdog.h"
 
 static bool niovaEnvVarsSubsysInit = false;
 

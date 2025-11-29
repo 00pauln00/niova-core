@@ -8,8 +8,8 @@
 
 #include <stdio.h>
 
-#include "common.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
 #define BIN_HIST_BUCKETS_MAX 20
 #define BIN_HIST_MAX_BIT 64

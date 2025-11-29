@@ -3,10 +3,10 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2020
  */
-#include "common.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
-#include "queue.h"
+#include "niova/queue.h"
 
 struct circleq_entry
 {

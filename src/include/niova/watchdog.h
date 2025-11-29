@@ -7,9 +7,9 @@
 #ifndef _WATCHDOG_H_
 #define _WATCHDOG_H_ 1
 
-#include "init.h"
-#include "ctor.h"
-#include "queue.h"
+#include "niova/init.h"
+#include "niova/ctor.h"
+#include "niova/queue.h"
 
 #define WATCHDOG_DEFAULT_FREQUENCY 60
 #define WATCHDOG_MAX_FREQUENCY     1000

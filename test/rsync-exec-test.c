@@ -7,10 +7,10 @@
 #include <regex.h>
 
 
-#include "io.h"
-#include "log.h"
-#include "regex_defines.h"
-#include "util.h"
+#include "niova/io.h"
+#include "niova/log.h"
+#include "niova/regex_defines.h"
+#include "niova/util.h"
 
 char *rsyncBin = "/usr/bin/rsync";
 char *rsyncArgsDryRun[] = {

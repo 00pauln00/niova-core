@@ -13,7 +13,7 @@
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 
-#include "common.h"
+#include "niova/common.h"
 
 #define NIOVA_MIN_TCP_PORT     1
 #define NIOVA_MAX_TCP_PORT     65535

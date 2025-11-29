@@ -7,9 +7,9 @@
 #ifndef __NIOVA_TCP_MGR_H_
 #define __NIOVA_TCP_MGR_H_ 1
 
-#include "epoll_mgr.h"
-#include "tcp.h"
-#include "env.h"
+#include "niova/epoll_mgr.h"
+#include "niova/tcp.h"
+#include "niova/env.h"
 
 #define TCP_MGR_MAX_HDR_SIZE 65000
 #define TCP_MGR_MAX_BULK_SIZE 256*1024*1024

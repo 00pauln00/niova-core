@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "crc24q.h"
+#include "niova/contrib/crc24q.h"
 
 #ifdef REBUILD_CRC_TABLE
 /*

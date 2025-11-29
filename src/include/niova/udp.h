@@ -13,7 +13,7 @@
 #include <netinet/udp.h>
 #include <arpa/inet.h>
 
-#include "common.h"
+#include "niova/common.h"
 
 #define NIOVA_MIN_UDP_PORT     1
 #define NIOVA_MAX_UDP_PORT     65535

@@ -11,8 +11,8 @@
 #endif
 #include <stdlib.h>
 
-#include "common.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
 extern enum log_level allocLogLevel;
 

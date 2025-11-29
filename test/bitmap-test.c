@@ -6,8 +6,8 @@
 
 #include <stdio.h>
 
-#include "random.h"
-#include "log.h"
+#include "niova/random.h"
+#include "niova/log.h"
 #include "bitmap.h"
 
 static void

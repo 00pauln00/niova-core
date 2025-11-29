@@ -6,7 +6,7 @@
 
 #include "niova_backtrace.h"
 
-#include "log.h"
+#include "niova/log.h"
 #include "udp.h"
 
 static niova_atomic64_t numPingPongsDone;

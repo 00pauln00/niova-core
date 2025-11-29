@@ -7,7 +7,7 @@
 #ifndef NIOVA_CRC32_H
 #define NIOVA_CRC32_H 1
 
-#include "common.h"
+#include "niova/common.h"
 
 typedef uint32_t crc32_t;
 

@@ -1,12 +1,12 @@
 #include <sys/ioctl.h>
 
-#include "alloc.h"
-#include "log.h"
-#include "epoll_mgr.h"
-#include "io.h"
-#include "tcp.h"
-#include "tcp_mgr.h"
-#include "util.h"
+#include "niova/alloc.h"
+#include "niova/log.h"
+#include "niova/epoll_mgr.h"
+#include "niova/io.h"
+#include "niova/tcp.h"
+#include "niova/tcp_mgr.h"
+#include "niova/util.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

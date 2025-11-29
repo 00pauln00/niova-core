@@ -62,7 +62,7 @@
 //  /white-papers/fast-crc-computation-generic-polynomials-pclmulqdq-paper.pdf
 //
 
-#include "niova_core_config.h"
+//#include "niova_core_config.h"
 #ifdef ARM_LE
 	#define CPU_LE(code...) code
 #else

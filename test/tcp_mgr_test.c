@@ -1,11 +1,11 @@
 #include <stdio.h>
 
-#include "alloc.h"
+#include "niova/alloc.h"
 #include "atomic.h"
-#include "epoll_mgr.h"
-#include "random.h"
-#include "tcp_mgr.h"
-#include "util.h"
+#include "niova/epoll_mgr.h"
+#include "niova/random.h"
+#include "niova/tcp_mgr.h"
+#include "niova/util.h"
 
 #define OPTS "c:x:t:"
 

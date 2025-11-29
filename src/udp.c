@@ -6,10 +6,10 @@
 
 #include <fcntl.h>
 
-#include "log.h"
-#include "env.h"
-#include "udp.h"
-#include "io.h"
+#include "niova/log.h"
+#include "niova/env.h"
+#include "niova/udp.h"
+#include "niova/io.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

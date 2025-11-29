@@ -8,7 +8,7 @@
 #include <backtrace.h>
 #include <stdio.h>
 
-#include "log.h"
+#include "niova/log.h"
 
 static struct backtrace_state *niovaBacktraceState;
 static pthread_mutex_t niovaBacktraceMutex = PTHREAD_MUTEX_INITIALIZER;

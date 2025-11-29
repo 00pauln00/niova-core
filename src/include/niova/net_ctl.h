@@ -7,7 +7,7 @@
 #ifndef _NET_CTL_SVC_H_
 #define _NET_CTL_SVC_H_ 1
 
-#include "common.h"
+#include "niova/common.h"
 
 enum nctl_ops
 {

@@ -7,7 +7,7 @@
 #ifndef _CTLI_CMD_H
 #define _CTLI_CMD_H 1
 
-#include "util_thread.h"
+#include "niova/util_thread.h"
 
 struct ctli_cmd_handle;
 

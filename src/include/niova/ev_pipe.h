@@ -8,7 +8,7 @@
 #define _EV_PIPE_ 1
 
 #include "atomic.h"
-#include "common.h"
+#include "niova/common.h"
 
 #define EV_PIPE_WRITE_SZ 1
 #define EV_PIPE_SZ       4096

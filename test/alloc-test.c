@@ -4,8 +4,8 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2021
  */
 
-#include "alloc.h"
-#include "random.h"
+#include "niova/alloc.h"
+#include "niova/random.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

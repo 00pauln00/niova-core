@@ -15,9 +15,9 @@
 #include <unistd.h>
 
 #include "atomic.h"
-#include "common.h"
-#include "queue.h"
-#include "watchdog.h"
+#include "niova/common.h"
+#include "niova/queue.h"
+#include "niova/watchdog.h"
 
 #define MAX_THREAD_NAME 31UL
 

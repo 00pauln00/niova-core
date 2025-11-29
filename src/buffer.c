@@ -7,12 +7,12 @@
 #include <sys/uio.h>
 #include <unistd.h>
 
-#include "common.h"
+#include "niova/common.h"
 
-#include "alloc.h"
-#include "buffer.h"
-#include "log.h"
-#include "registry.h"
+#include "niova/alloc.h"
+#include "niova/buffer.h"
+#include "niova/log.h"
+#include "niova/registry.h"
 
 static size_t bufferSetPageSize;
 static size_t bufferSetPageBits;

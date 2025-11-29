@@ -6,13 +6,13 @@
 
 #include <pthread.h>
 
-#include "common.h"
-#include "ctor.h"
-#include "epoll_mgr.h"
-#include "init.h"
-#include "log.h"
-#include "thread.h"
-#include "util_thread.h"
+#include "niova/common.h"
+#include "niova/ctor.h"
+#include "niova/epoll_mgr.h"
+#include "niova/init.h"
+#include "niova/log.h"
+#include "niova/thread.h"
+#include "niova/util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

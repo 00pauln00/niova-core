@@ -4,9 +4,9 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2019
  */
 
-#include "common.h"
-#include "log.h"
-#include "random.h"
+#include "niova/common.h"
+#include "niova/log.h"
+#include "niova/random.h"
 
 static void
 highest_set_bit_pos_from_val_test(void)

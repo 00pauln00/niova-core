@@ -4,11 +4,11 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2020
  */
 
-#include "ctor.h"
-#include "fault_inject.h"
-#include "log.h"
-#include "registry.h"
-#include "util_thread.h"
+#include "niova/ctor.h"
+#include "niova/fault_inject.h"
+#include "niova/log.h"
+#include "niova/registry.h"
+#include "niova/util_thread.h"
 
 #ifdef NIOVA_FAULT_INJECTION_ENABLED
 static const bool faultInjectionEnabled = true;

@@ -11,10 +11,10 @@
 #include <errno.h>
 #include <limits.h>
 
-#include "common.h"
-#include "io.h"
-#include "log.h"
-#include "registry.h"
+#include "niova/common.h"
+#include "niova/io.h"
+#include "niova/log.h"
+#include "niova/registry.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

@@ -6,16 +6,16 @@
 #define _GNU_SOURCE 1 // for O_DIRECT
 #include <libaio.h>
 
-#include "common.h"
-#include "log.h"
-#include "lock.h"
+#include "niova/common.h"
+#include "niova/log.h"
+#include "niova/lock.h"
 
 #include "metablock.h"
 #include "metaroot.h"
 #include "generic_metablock.h"
 #include "superblock.h"
 #include "niosd_io.h"
-#include "registry.h"
+#include "niova/registry.h"
 
 static void
 spin_lock_test(void)

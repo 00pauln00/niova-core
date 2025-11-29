@@ -2,8 +2,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "log.h"
-#include "alloc.h"
+#include "niova/log.h"
+#include "niova/alloc.h"
 #include "dlmalloc.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;

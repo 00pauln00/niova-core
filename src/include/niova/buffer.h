@@ -10,10 +10,10 @@
 #include <stdint.h>
 #include <pthread.h>
 
-#include "common.h"
-#include "queue.h"
-#include "ref_tree_proto.h"
-#include "registry.h"
+#include "niova/common.h"
+#include "niova/queue.h"
+#include "niova/ref_tree_proto.h"
+#include "niova/registry.h"
 
 enum buffer_set_opts
 {

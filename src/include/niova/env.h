@@ -6,7 +6,7 @@
 #ifndef _NIOVA_ENV_H_
 #define _NIOVA_ENV_H_ 1
 
-#include "init.h"
+#include "niova/init.h"
 
 typedef void env_cb_ctx_t;
 

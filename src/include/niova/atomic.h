@@ -9,7 +9,7 @@
 #ifndef NIOVA_ATOMIC_H
 #define NIOVA_ATOMIC_H 1
 
-#include "common.h"
+#include "niova/common.h"
 
 typedef volatile long long int niova_atomic64_t;
 typedef volatile int           niova_atomic32_t;

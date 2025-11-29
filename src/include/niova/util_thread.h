@@ -7,9 +7,9 @@
 #ifndef _UTIL_THREAD_H_
 #define _UTIL_THREAD_H_ 1
 
-#include "init.h"
-#include "ctor.h"
-#include "epoll_mgr.h"
+#include "niova/init.h"
+#include "niova/ctor.h"
+#include "niova/epoll_mgr.h"
 
 typedef void util_thread_ctx_t;
 typedef void util_thread_ctx_reg_t;

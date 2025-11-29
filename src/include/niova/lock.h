@@ -6,7 +6,7 @@
 #ifndef NIOVA_LOCK_H
 #define NIOVA_LOCK_H 1
 
-#include "log.h"
+#include "niova/log.h"
 #include <pthread.h>
 #include <errno.h>
 

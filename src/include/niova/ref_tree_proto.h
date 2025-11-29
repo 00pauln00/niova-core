@@ -9,8 +9,8 @@
 
 #include <pthread.h>
 
-#include "log.h"
-#include "tree.h"
+#include "niova/log.h"
+#include "contrib/tree.h"
 
 #define REF_TREE_PROTOTYPE RB_PROTOTYPE
 

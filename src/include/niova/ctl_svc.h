@@ -10,14 +10,14 @@
 #include <limits.h>
 #include <uuid/uuid.h>
 
-#include "common.h"
-#include "init.h"
-#include "ctor.h"
-#include "env.h"
-#include "ref_tree_proto.h"
+#include "niova/common.h"
+#include "niova/init.h"
+#include "niova/ctor.h"
+#include "niova/env.h"
+#include "niova/ref_tree_proto.h"
 #include "net_ctl.h"
-#include "registry.h"
-#include "tcp_mgr.h"
+#include "niova/registry.h"
+#include "niova/tcp_mgr.h"
 
 #define CTL_SVC_DEFAULT_LOCAL_DIR "/etc/niova/ctl-svc/local"
 #define CTL_SVC_MAX_RAFT_PEERS 11

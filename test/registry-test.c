@@ -6,11 +6,11 @@
 
 #include "niova_backtrace.h"
 
-#include "ctor.h"
-#include "init.h"
-#include "registry.h"
-#include "log.h"
-//#include "ctl_interface.h"
+#include "niova/ctor.h"
+#include "niova/init.h"
+#include "niova/registry.h"
+#include "niova/log.h"
+//#include "niova/ctl_interface.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

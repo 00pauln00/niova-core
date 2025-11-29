@@ -7,9 +7,9 @@
 #ifndef _CTL_INTERFACE_
 #define _CTL_INTERFACE_ 1
 
-#include "common.h"
-#include "ctor.h"
-#include "registry.h"
+#include "niova/common.h"
+#include "niova/ctor.h"
+#include "niova/registry.h"
 
 #define INOTIFY_BUFFER_SIZE 4096
 

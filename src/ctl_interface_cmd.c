@@ -13,16 +13,16 @@
 #include <stdio.h>
 #include <linux/limits.h>
 
-#include "common.h"
-#include "config_token.h"
-#include "ctl_interface.h"
-#include "ctl_interface_cmd.h"
-#include "file_util.h"
-#include "io.h"
-#include "log.h"
-#include "random.h"
-#include "registry.h"
-#include "util_thread.h"
+#include "niova/common.h"
+#include "niova/config_token.h"
+#include "niova/ctl_interface.h"
+#include "niova/ctl_interface_cmd.h"
+#include "niova/file_util.h"
+#include "niova/io.h"
+#include "niova/log.h"
+#include "niova/random.h"
+#include "niova/registry.h"
+#include "niova/util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

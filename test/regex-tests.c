@@ -4,9 +4,9 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
 
-#include "log.h"
+#include "niova/log.h"
 
-#include "regex_defines.h"
+#include "niova/regex_defines.h"
 #include <regex.h>
 
 struct regex_item

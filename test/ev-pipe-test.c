@@ -3,13 +3,13 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <pauln@niova.io> 2020
  */
-#include "common.h"
-#include "ev_pipe.h"
-#include "log.h"
-#include "queue.h"
-#include "thread.h"
-#include "util.h"
-#include "util_thread.h"
+#include "niova/common.h"
+#include "niova/ev_pipe.h"
+#include "niova/log.h"
+#include "niova/queue.h"
+#include "niova/thread.h"
+#include "niova/util.h"
+#include "niova/util_thread.h"
 
 struct ev_pipe evPipe;
 struct epoll_handle *epollHandle;

@@ -4,8 +4,8 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2021
  */
 
-#include "buffer.h"
-#include "log.h"
+#include "niova/buffer.h"
+#include "niova/log.h"
 
 static void
 buffer_test(bool serialize, bool lreg)

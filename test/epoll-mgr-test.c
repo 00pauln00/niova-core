@@ -9,12 +9,12 @@
 
 #include "niova_backtrace.h"
 
-#include "common.h"
-#include "epoll_mgr.h"
-#include "ev_pipe.h"
-#include "log.h"
-#include "ref_tree_proto.h"
-#include "thread.h"
+#include "niova/common.h"
+#include "niova/epoll_mgr.h"
+#include "niova/ev_pipe.h"
+#include "niova/log.h"
+#include "niova/ref_tree_proto.h"
+#include "niova/thread.h"
 
 enum epm_mgr_test_threads
 {

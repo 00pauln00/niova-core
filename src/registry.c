@@ -10,13 +10,13 @@
 #include <string.h>
 #include <sys/eventfd.h>
 
-#include "log.h"
-#include "lock.h"
-#include "registry.h"
-#include "util_thread.h"
-#include "ev_pipe.h"
-#include "init.h"
-#include "io.h"
+#include "niova/log.h"
+#include "niova/lock.h"
+#include "niova/registry.h"
+#include "niova/util_thread.h"
+#include "niova/ev_pipe.h"
+#include "niova/init.h"
+#include "niova/io.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

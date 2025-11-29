@@ -11,7 +11,7 @@
 #include <pthread.h>
 
 #include "atomic.h"
-#include "thread.h"
+#include "niova/thread.h"
 
 /**
  * There should be 1 event per fd (I think, based on my reading of the kernel's

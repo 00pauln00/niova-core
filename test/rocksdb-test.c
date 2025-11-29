@@ -12,9 +12,9 @@
 
 #include <rocksdb/c.h>
 
-#include "common.h"
-#include "log.h"
-#include "random.h"
+#include "niova/common.h"
+#include "niova/log.h"
+#include "niova/random.h"
 
 #define OPTS "hi:sp:DdW"
 static size_t testIterations = 10000;

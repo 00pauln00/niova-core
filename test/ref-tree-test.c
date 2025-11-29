@@ -4,11 +4,11 @@
  * Written by Paul Nowoczynski <00pauln00@gmail.com> 2018
  */
 
-#include "common.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
-#include "alloc.h"
-#include "ref_tree_proto.h"
+#include "niova/alloc.h"
+#include "niova/ref_tree_proto.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

@@ -4,8 +4,8 @@
  * Written by Paul Nowoczynski <pauln@niova.io> 2019
  */
 
-#include "env.h"
-#include "log.h"
+#include "niova/env.h"
+#include "niova/log.h"
 
 enum log_level allocLogLevel = LL_DEBUG;
 

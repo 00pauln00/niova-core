@@ -11,8 +11,8 @@
 //#include <uuid/uuid.h>
 
 #include "crc32.h"
-#include "util.h"
-#include "log.h"
+#include "niova/util.h"
+#include "niova/log.h"
 
 static void
 mk_time_string_test(void)

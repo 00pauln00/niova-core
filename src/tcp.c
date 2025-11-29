@@ -5,9 +5,9 @@
  */
 
 #include <fcntl.h>
-#include "io.h"
-#include "tcp.h"
-#include "log.h"
+#include "niova/io.h"
+#include "niova/tcp.h"
+#include "niova/log.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

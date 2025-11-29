@@ -7,10 +7,10 @@
 #include <syscall.h>
 #include <uuid/uuid.h>
 
-#include "common.h"
-#include "log.h"
-#include "random.h"
-#include "util.h"
+#include "niova/common.h"
+#include "niova/log.h"
+#include "niova/random.h"
+#include "niova/util.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

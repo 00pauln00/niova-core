@@ -13,17 +13,17 @@
 #include <regex.h>
 #include <limits.h>
 
-#include "common.h"
+#include "niova/common.h"
 
-#include "ctl_interface.h"
-#include "env.h"
-#include "init.h"
-#include "file_util.h"
-#include "log.h"
-#include "regex_defines.h"
-#include "registry.h"
-#include "system_info.h"
-#include "util_thread.h"
+#include "niova/ctl_interface.h"
+#include "niova/env.h"
+#include "niova/init.h"
+#include "niova/file_util.h"
+#include "niova/log.h"
+#include "niova/regex_defines.h"
+#include "niova/registry.h"
+#include "niova/system_info.h"
+#include "niova/util_thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

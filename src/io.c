@@ -11,9 +11,9 @@
 #include <fcntl.h>
 #include <errno.h>
 
-#include "common.h"
-#include "io.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/io.h"
+#include "niova/log.h"
 
 ssize_t
 niova_io_read(int fd, char *buf, size_t size)

@@ -8,9 +8,9 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "env.h"
-#include "ctor.h"
-#include "log.h"
+#include "niova/env.h"
+#include "niova/ctor.h"
+#include "niova/log.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

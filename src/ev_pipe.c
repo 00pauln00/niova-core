@@ -16,9 +16,9 @@
 #include <unistd.h>
 #undef _GNU_SOURCE
 
-#include "common.h"
-#include "ev_pipe.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/ev_pipe.h"
+#include "niova/log.h"
 
 #define PIPE_DRAIN_SIZE 256
 

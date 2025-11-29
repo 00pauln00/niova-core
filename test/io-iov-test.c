@@ -3,10 +3,10 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <pauln@niova.io> 2021
  */
-#include "common.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
-#include "io.h"
+#include "niova/io.h"
 
 static int
 iov_test_copy_from_iovs(void)

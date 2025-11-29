@@ -9,9 +9,9 @@
 
 #include <uuid/uuid.h>
 
-#include "init.h"
-#include "ctor.h"
-#include "env.h"
+#include "niova/init.h"
+#include "niova/ctor.h"
+#include "niova/env.h"
 
 void
     system_info_get_uuid(uuid_t);

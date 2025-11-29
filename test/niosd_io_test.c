@@ -13,15 +13,15 @@
 #include <sys/epoll.h>
 #include <fcntl.h>
 
-#include "init.h"
-#include "log.h"
-#include "registry.h"
-#include "ctl_interface.h"
-#include "random.h"
-#include "alloc.h"
+#include "niova/init.h"
+#include "niova/log.h"
+#include "niova/registry.h"
+#include "niova/ctl_interface.h"
+#include "niova/random.h"
+#include "niova/alloc.h"
 
 #include "niosd_io.h"
-#include "epoll_mgr.h"
+#include "niova/epoll_mgr.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

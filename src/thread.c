@@ -13,8 +13,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "log.h"
-#include "thread.h"
+#include "niova/log.h"
+#include "niova/thread.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

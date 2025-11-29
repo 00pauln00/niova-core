@@ -9,7 +9,7 @@
 
 #include <regex.h>
 
-#include "common.h"
+#include "niova/common.h"
 
 enum conf_token_id
 {

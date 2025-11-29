@@ -6,8 +6,8 @@
 
 #include <poll.h>
 
-#include "log.h"
-#include "tcp.h"
+#include "niova/log.h"
+#include "niova/tcp.h"
 
 static niova_atomic64_t numPingPongsDone;
 

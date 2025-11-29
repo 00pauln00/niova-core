@@ -8,14 +8,14 @@
 #include <pthread.h>
 #undef _GNU_SOURCE
 
-#include "common.h"
-#include "watchdog.h"
-#include "ctor.h"
-#include "queue.h"
-#include "log.h"
-#include "thread.h"
-#include "registry.h"
-#include "env.h"
+#include "niova/common.h"
+#include "niova/watchdog.h"
+#include "niova/ctor.h"
+#include "niova/queue.h"
+#include "niova/log.h"
+#include "niova/thread.h"
+#include "niova/registry.h"
+#include "niova/env.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

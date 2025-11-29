@@ -10,9 +10,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
-#include "log.h"
-#include "config_token.h"
-#include "file_util.h"
+#include "niova/log.h"
+#include "niova/config_token.h"
+#include "niova/file_util.h"
 
 #define CONF_FILE_MAX_FILE_SIZE 1024
 #define CONF_FILE_MAX_VALUE_SIZE 256

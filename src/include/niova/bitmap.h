@@ -6,8 +6,8 @@
 #ifndef __NIOVA_BITMAP_H
 #define __NIOVA_BITMAP_H 1
 
-#include "common.h"
-#include "log.h"
+#include "niova/common.h"
+#include "niova/log.h"
 
 typedef uint64_t bitmap_word_t;
 typedef uint32_t bitmap_word32_t;

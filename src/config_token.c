@@ -6,9 +6,9 @@
 
 #include <ctype.h>
 
-#include "log.h"
-#include "config_token.h"
-#include "regex_defines.h"
+#include "niova/log.h"
+#include "niova/config_token.h"
+#include "niova/regex_defines.h"
 
 REGISTRY_ENTRY_FILE_GENERATE;
 

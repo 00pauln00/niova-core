@@ -16,8 +16,8 @@
 #include <uuid/uuid.h>
 
 // Do not include "log.h" here!
-#include "common.h"
-#include "regex_defines.h"
+#include "niova/common.h"
+#include "niova/regex_defines.h"
 
 #define CTIME_R_STR_LEN 26
 #define MK_TIME_STR_LEN 65

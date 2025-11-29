@@ -13,12 +13,12 @@
 #undef _GNU_SOURCE
 #endif
 
-#include "common.h"
+#include "niova/common.h"
 
-#include "init.h"
-#include "thread.h"
-#include "util.h"
-#include "registry.h"
+#include "niova/init.h"
+#include "niova/thread.h"
+#include "niova/util.h"
+#include "niova/registry.h"
 
 LREG_ROOT_ENTRY_EXPORT(log_entry_map);
 
