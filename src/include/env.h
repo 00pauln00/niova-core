@@ -50,6 +50,7 @@ enum niova_env_var_num
     NIOVA_ENV_VAR_gossip_path,
     NIOVA_ENV_VAR_gossip_key,
     NIOVA_ENV_VAR_cmi_worker_cnt,
+    NIOVA_ENV_VAR_proxy_addr,
     NIOVA_ENV_VAR__MAX,
     NIOVA_ENV_VAR__MIN = NIOVA_ENV_VAR_alloc_log_level,
 } PACKED;

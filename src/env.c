@@ -163,6 +163,13 @@ static struct niova_env_var niovaEnvVars[] = {
         .nev_type      = NIOVA_ENV_VAR_TYPE_LONG,
         .nev_present   = false,
     },
+    [NIOVA_ENV_VAR_proxy_addr] = {
+        .nev_name      = "NIOVA_CMI_PROXY_ADDR",
+        .nev_subsystem = NIOVA_ENV_SUBSYSTEM_BLOCK,
+        .nev_var_num   = NIOVA_ENV_VAR_proxy_addr,
+        .nev_type      = NIOVA_ENV_VAR_TYPE_STRING,
+        .nev_present   = false,
+    },
 };
 
 static void
