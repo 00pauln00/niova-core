@@ -90,6 +90,7 @@ struct niova_vbasic_allocator
 {
     const size_t nvba_unit_size; // size represented by each bit
     uint64_t     nvba_bitmap;
+    char        *nvba_region_ptr;
     char         nvba_region[];
 };
 
@@ -106,8 +107,7 @@ niova_vbasic_nassigned(const struct niova_vbasic_allocator *nvba)
 }
 
 static inline int
-niova_vbasic_init(struct niova_vbasic_allocator *nvba,
-                  size_t region_size)
+niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
 {
     if (!nvba)
         return -EINVAL;
@@ -118,7 +118,38 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba,
 
     CONST_OVERRIDE(size_t, nvba->nvba_unit_size, unit_size);
     nvba->nvba_bitmap = 0;
+    nvba->nvba_region_ptr = &nvba->nvba_region[0];
+    return 0;
+}
 
+static inline int
+niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
+                          size_t region_size, unsigned int unit_size,
+                          size_t region_off, size_t alignment)
+{
+    if (!nvba)
+        return -EINVAL;
+
+    if (unit_size == 0)
+        return -EINVAL;
+
+    /* Unit size is multiple of alignment */
+    if (unit_size & (alignment - 1))
+        return -EINVAL;
+
+    if (region_size / unit_size > NIOVA_VBA_MAX_BITS)
+        return -EINVAL;
+
+    /* Region off can't go beyond alignment size */
+    if (region_off > alignment)
+        return -EINVAL;
+
+    CONST_OVERRIDE(size_t, nvba->nvba_unit_size, unit_size);
+    nvba->nvba_bitmap = 0;
+    nvba->nvba_region_ptr = &nvba->nvba_region[region_off];
+    /* Address must be aligned at the boundery */
+    if ((uintptr_t)nvba->nvba_region_ptr & (alignment - 1))
+        return -EFAULT;
     return 0;
 }
 
@@ -159,7 +190,7 @@ niova_vbasic_malloc(struct niova_vbasic_allocator *nvba, size_t size_in_bytes,
     if (offset < 0)
         return offset;
 
-    char *ptr = &nvba->nvba_region[offset * nvba->nvba_unit_size];
+    char *ptr = &nvba->nvba_region_ptr[offset * nvba->nvba_unit_size];
 
     *ret_ptr = ptr;
 
@@ -175,11 +206,11 @@ niova_vbasic_free(struct niova_vbasic_allocator *nvba, const void *ptr,
 
     const char *my_ptr = (const char *)ptr;
 
-    if (my_ptr < &nvba->nvba_region[0] ||
-        my_ptr > &nvba->nvba_region[NIOVA_VBA_MAX_BITS * nvba->nvba_unit_size])
+    if (my_ptr < nvba->nvba_region_ptr ||
+        my_ptr > &nvba->nvba_region_ptr[NIOVA_VBA_MAX_BITS * nvba->nvba_unit_size])
         return -ERANGE; // ptr value not within the allocation region
 
-    const uintptr_t ptr_diff = my_ptr - &nvba->nvba_region[0];
+    const uintptr_t ptr_diff = my_ptr - nvba->nvba_region_ptr;
 
     if (ptr_diff % nvba->nvba_unit_size)
         return -EFAULT; // ptr is not aligned with the unit size
@@ -193,4 +224,11 @@ niova_vbasic_free(struct niova_vbasic_allocator *nvba, const void *ptr,
     return nconsective_bits_release(&nvba->nvba_bitmap, offset, nunits);
 }
 
+static inline uintptr_t
+niova_vbasic_get_start_addr(struct niova_vbasic_allocator *nvba)
+{
+    if (!nvba)
+        return (uintptr_t) NULL;
+    return (uintptr_t)nvba->nvba_region_ptr;
+}
 #endif
