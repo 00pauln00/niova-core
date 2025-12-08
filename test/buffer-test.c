@@ -257,7 +257,7 @@ buffer_initx_test(void)
     rc = buffer_set_initx(&bsa);
     NIOVA_ASSERT(rc == 0);
 
-    NIOVA_ASSERT(bsa.bsa_alt_source_used == size);
+    NIOVA_ASSERT(bsa.bsa_used_off == size);
 
     struct buffer_item *bi = buffer_set_allocate_item(&bs);
     NIOVA_ASSERT(bi && bi->bi_iov.iov_len == 1024UL);
