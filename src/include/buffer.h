@@ -15,6 +15,8 @@
 #include "ref_tree_proto.h"
 #include "registry.h"
 
+#define BUFFER_SECTOR_SIZE 512UL
+
 enum buffer_set_opts
 {
     BUFSET_OPT_SERIALIZE       = (1 << 0),
@@ -54,9 +56,12 @@ struct buffer_set_args
     struct buffer_set   *bsa_set;
     size_t               bsa_nbufs;
     size_t               bsa_buf_size;
+    void                *bsa_region;
+    size_t               bsa_region_size;
     void                *bsa_alt_source;
     size_t               bsa_alt_source_size;
-    size_t               bsa_alt_source_used;
+    uint8_t              bsa_use_alt_source_buf;
+    size_t               bsa_used_off;
     enum buffer_set_opts bsa_opts;
 };
 
@@ -70,6 +75,8 @@ struct buffer_set
     size_t              bs_item_size;
     size_t              bs_max_allocated;
     size_t              bs_total_alloc;
+    uint8_t             bs_ibv_registered:1;
+    uint8_t             bs_uring_registered:1;
     uint8_t             bs_init:1;
     uint8_t             bs_serialize:1;
     uint8_t             bs_ctl_interface:1;
@@ -79,6 +86,8 @@ struct buffer_set
     size_t              bs_alt_source_buf_size;
     struct buffer_list  bs_free_list;
     struct buffer_list  bs_inuse_list;
+    size_t              bs_region_size;
+    uint8_t            *bs_region;
     pthread_mutex_t     bs_mutex;
     struct lreg_node    bs_lrn;
 };
@@ -159,5 +168,6 @@ buffer_set_user_cache_release_item(
     struct buffer_item *bi, void (*revoke_cb)(struct buffer_item *, void *),
     void *arg);
 
-
+int
+buffer_get_alignment(enum buffer_set_opts opts);
 #endif
