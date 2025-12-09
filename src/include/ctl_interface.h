@@ -25,7 +25,10 @@ int
 lctli_get_inotify_fd(void);
 
 const char *
-lctli_get_inotify_path(void);
+lctli_get_path(void);
+
+const char *
+lctli_get_base_path(void);
 
 int
 lctli_init_subdir_rescan(enum lreg_user_types reg_type);

@@ -151,7 +151,7 @@ system_info_multi_facet_cb(enum lreg_node_cb_ops op, struct lreg_value *lv,
         break;
     case SYS_INFO_KEY_CTL_INTERFACE_PATH:
         lreg_value_fill_string(lv, "ctl_interface_path",
-                               lctli_get_inotify_path());
+                               lctli_get_path());
         break;
     case SYS_INFO_KEY_PID:
         lreg_value_fill_unsigned(lv, "pid", getpid());
