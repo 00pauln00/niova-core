@@ -87,7 +87,7 @@ struct buffer_set
     struct buffer_list  bs_free_list;
     struct buffer_list  bs_inuse_list;
     size_t              bs_region_size;
-    uint8_t            *bs_region;
+    void               *bs_region;
     pthread_mutex_t     bs_mutex;
     struct lreg_node    bs_lrn;
 };

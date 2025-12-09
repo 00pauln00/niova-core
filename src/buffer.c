@@ -469,12 +469,20 @@ buffer_set_initx(struct buffer_set_args *bsa)
     size_t buf_size = bsa->bsa_buf_size;
     size_t nbufs = bsa->bsa_nbufs;
     size_t s_region_size = bsa->bsa_region_size;
-    uint8_t *s_region = bsa->bsa_region;
+    void *s_region = bsa->bsa_region;
 
-    if (!bs || !buf_size || !s_region_size || bs->bs_init)
+    if (!bs || !buf_size || !s_region || !s_region_size || bs->bs_init)
         return -EINVAL;
 
+    if (s_region_size < (nbufs * buf_size))
+        return -EOVERFLOW;
+
     memset(bs, 0, sizeof(struct buffer_set));
+
+    int align =  buffer_get_alignment(bsa->bsa_opts);
+    NIOVA_ASSERT(((uintptr_t)s_region & ~(align - 1)) == 0);
+    NIOVA_ASSERT(bsa->bsa_use_alt_source_buf ||
+                 (s_region_size & ~(align - 1)) == 0);
 
     bs->bs_region = s_region;
     bs->bs_region_size = s_region_size;
@@ -482,13 +490,6 @@ buffer_set_initx(struct buffer_set_args *bsa)
     bs->bs_num_bufs = 0;
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
-
-    /* Return if alt source size does not cover all buffers in the set */
-    if (opts & BUFSET_OPT_ALT_SOURCE_BUF)
-    {
-        if (bsa->bsa_alt_source_size < (nbufs * buf_size))
-            return -EOVERFLOW;
-    }
 
     if (opts & BUFSET_OPT_USER_CACHE)
     {
@@ -500,10 +501,6 @@ buffer_set_initx(struct buffer_set_args *bsa)
         bs->bs_serialize = 1;
         pthread_mutex_init(&bs->bs_mutex, NULL);
     }
-
-    size_t alignment =
-            (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
-            (opts & BUFSET_OPT_MEMALIGN_L2)     ? L2_CACHELINE_SIZE_BYTES : 0;
 
     int rc = 0;
     size_t off = 0;
@@ -520,12 +517,24 @@ buffer_set_initx(struct buffer_set_args *bsa)
         bi->bi_iov.iov_len = buf_size;
         bi->bi_register_idx = -1;
 
-        bi->bi_iov.iov_base = (char *)s_region + off;
+        NIOVA_ASSERT(off + buf_size <= s_region_size);
+
+        uintptr_t raw_base = (uintptr_t) ((char *)s_region + off);
+        uintptr_t aligned_base =
+            (uintptr_t) (align ? raw_base & ~(align - 1) :  raw_base);
+
+        bi->bi_iov.iov_base =  (void *)aligned_base;
         off += buf_size;
+
+        SIMPLE_LOG_MSG(LL_WARN, "raw[%ld] 0x%lx aligned[%ld] 0x%lx "
+                       "fragmentation %ld alignment %d",
+                       i, raw_base, i, aligned_base,
+                       (size_t)(aligned_base - raw_base),
+                       align);
         FATAL_IF(bi->bi_iov.iov_base == NULL, "iov_base == NULL");
-        FATAL_IF(alignment &&
-                 ((uintptr_t)bi->bi_iov.iov_base & (alignment - 1)),
-                 "iov_base & (alignment - 1) != 0");
+        FATAL_IF(align &&
+                 (((uintptr_t)bi->bi_iov.iov_base & ~(align - 1)) != 0),
+                 "iov_base & ~(align - 1) != 0");
         NIOVA_ASSERT(off <= s_region_size);
         CONST_OVERRIDE(struct iovec, bi->bi_iov_save, bi->bi_iov);
 
