@@ -125,8 +125,8 @@ int
 buffer_set_destroy(struct buffer_set *bs);
 
 int
-buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                enum buffer_set_opts opts);
+buffer_set_init(struct buffer_set *bs, void *region, size_t region_size,
+                size_t nbufs, size_t buf_size, enum buffer_set_opts opts);
 
 int
 buffer_set_initx(struct buffer_set_args *bsa);

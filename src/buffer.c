@@ -529,7 +529,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
         bi->bi_iov.iov_base = (void *)aligned_base;
         off += buf_size;
 
-        SIMPLE_LOG_MSG(LL_WARN, "raw[%ld] 0x%lx aligned[%ld] 0x%lx "
+        SIMPLE_LOG_MSG(LL_DEBUG, "raw[%ld] 0x%lx aligned[%ld] 0x%lx "
                        "fragmentation %ld alignment %d",
                        i, raw_base, i, aligned_base,
                        (size_t)(aligned_base - raw_base),
@@ -548,7 +548,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
             buffer_item_touch(bi);
     }
     bsa->bsa_used_off = off;
-    NIOVA_ASSERT(bsa->bsa_used_off == s_region_size);
+    NIOVA_ASSERT(bsa->bsa_used_off <= s_region_size);
 
     if (!rc)
     {
@@ -578,8 +578,8 @@ buffer_set_initx(struct buffer_set_args *bsa)
 }
 
 int
-buffer_set_init2(struct buffer_set *bs, void *region, size_t region_size,
-                 size_t nbufs, size_t buf_size, enum buffer_set_opts opts)
+buffer_set_init(struct buffer_set *bs, void *region, size_t region_size,
+                size_t nbufs, size_t buf_size, enum buffer_set_opts opts)
 {
     struct buffer_set_args bsa = {
         .bsa_set = bs,
@@ -587,22 +587,6 @@ buffer_set_init2(struct buffer_set *bs, void *region, size_t region_size,
         .bsa_buf_size = buf_size,
         .bsa_region = region,
         .bsa_region_size = region_size,
-        .bsa_opts = opts,
-    };
-
-    return buffer_set_initx(&bsa);
-}
-
-int
-buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                enum buffer_set_opts opts)
-{
-    struct buffer_set_args bsa = {
-        .bsa_set = bs,
-        .bsa_nbufs = nbufs,
-        .bsa_buf_size = buf_size,
-        .bsa_region = NULL,
-        .bsa_region_size = 0,
         .bsa_opts = opts,
     };
 

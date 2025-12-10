@@ -91,7 +91,6 @@ struct niova_vbasic_allocator
     unsigned int nvba_alignment;
     const size_t nvba_unit_size; // size represented by each bit
     uint64_t     nvba_bitmap;
-    size_t       nvba_region_size;
     char        *nvba_region_ptr;
     char         nvba_region[];
 };
@@ -123,11 +122,13 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
     nvba->nvba_bitmap = 0;
     nvba->nvba_alignment = 0;
 
-    nvba->nvba_region_size = region_size;
     nvba->nvba_region_ptr = &nvba->nvba_region[0];
     return 0;
 }
 
+/**
+ * To callers: Always allocate region size inclusive of alignment
+ */
 static inline int
 niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
                           size_t region_size, unsigned int unit_size,
@@ -136,15 +137,30 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     if (!nvba)
         return -EINVAL;
 
-    if (unit_size == 0)
+    if (unit_size == 0 || region_size == 0)
         return -EINVAL;
 
     /* alignment is power of 2 */
     if (alignment == 0 || (alignment & (alignment - 1)))
         return -EINVAL;
 
+    if (alignment > unit_size)
+        return -EINVAL;
+
     /* Unit size is multiple of alignment */
     if (unit_size & (alignment - 1))
+        return -EINVAL;
+
+    if (region_size < NIOVA_VBA_MAX_BITS)
+        return -EINVAL;
+
+    if (region_size / unit_size > NIOVA_VBA_MAX_BITS)
+        return -EINVAL;
+
+    const unsigned int nunits =
+        (region_size / unit_size) + (region_size % unit_size ? 1 : 0);
+
+    if (nunits > NIOVA_VBA_MAX_BITS)
         return -EINVAL;
 
     CONST_OVERRIDE(size_t, nvba->nvba_unit_size, unit_size);
@@ -155,12 +171,6 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     uintptr_t aligned = alignment ? ALIGN_UP(raw, alignment) : raw;
     NIOVA_ASSERT(!alignment || (aligned & (alignment - 1)) == 0);
 
-    size_t fragmented_bytes = (size_t) (aligned - raw);
-    region_size = region_size - fragmented_bytes;
-    if (region_size / unit_size >= NIOVA_VBA_MAX_BITS)
-        return -EINVAL;
-
-    nvba->nvba_region_size = region_size;
     nvba->nvba_region_ptr = (char *)aligned;
     return 0;
 }

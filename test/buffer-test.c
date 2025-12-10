@@ -16,17 +16,18 @@ buffer_test(bool serialize, bool lreg)
         (serialize ? BUFSET_OPT_SERIALIZE : 0) |
         (lreg ? BUFSET_OPT_LREG : 0);
 
-    int rc = buffer_set_init(NULL, 0, 0, opts);
+    int rc = buffer_set_init(NULL, NULL, 0, 0, 0, opts);
     NIOVA_ASSERT(rc == -EINVAL);
 
     // page size is set on first call to set_init()
     NIOVA_ASSERT(buffer_page_size() == 4096);
 
-    rc = buffer_set_init(&bs, 0, 0, opts);
+    rc = buffer_set_init(&bs, NULL, 0, 0, 0, opts);
     NIOVA_ASSERT(rc == -EINVAL);
 
+    char buf[10];
     // init and destroy 'bs'
-    rc = buffer_set_init(&bs, 1, 1, opts);
+    rc = buffer_set_init(&bs, &buf[0], 1, 1, 1, opts);
 
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == 1);
@@ -47,7 +48,7 @@ buffer_test(bool serialize, bool lreg)
 
     // reserved ops
     const size_t n = 10;
-    rc = buffer_set_init(&bs, n, 1, opts);
+    rc = buffer_set_init(&bs, &buf[0], 10, n, 1, opts);
 
     NIOVA_ASSERT(rc == 0);
     NIOVA_ASSERT(buffer_set_navail(&bs) == n);
@@ -97,14 +98,16 @@ buffer_user_cache_test(void)
 {
     struct buffer_set bs;
 
+#define BUCT_BUFSZ 128
 #define BUCT_NBUFS 2
 
+    char buf[BUCT_BUFSZ];
     size_t buf_sz = 64;
     struct buffer_item *items[BUCT_NBUFS];
 
     /* 1. Try the release call w/out setting BUFSET_OPT_USER_CACHE
      */
-    int rc = buffer_set_init(&bs, BUCT_NBUFS, buf_sz, 0);
+    int rc = buffer_set_init(&bs, &buf[0], BUCT_BUFSZ, BUCT_NBUFS, buf_sz, 0);
     NIOVA_ASSERT(rc == 0);
 
     struct buffer_item *bi = buffer_set_allocate_item(&bs);
@@ -125,7 +128,8 @@ buffer_user_cache_test(void)
 
     /* 2. Setup buffer_set w/ BUFSET_OPT_USER_CACHE w/ a single item
      */
-    rc = buffer_set_init(&bs, 1, buf_sz, BUFSET_OPT_USER_CACHE);
+    rc = buffer_set_init(&bs, &buf[0], BUCT_BUFSZ, 1, buf_sz,
+                         BUFSET_OPT_USER_CACHE);
     NIOVA_ASSERT(rc == 0);
 
     // 2a. allocate item and perform a typical release
@@ -192,7 +196,8 @@ buffer_user_cache_test(void)
 
     /* 3. Setup buffer_set w/ BUFSET_OPT_USER_CACHE w/ multiple items
      */
-    rc = buffer_set_init(&bs, BUCT_NBUFS, buf_sz, BUFSET_OPT_USER_CACHE);
+    rc = buffer_set_init(&bs, &buf[0], BUCT_BUFSZ,BUCT_NBUFS, buf_sz,
+                         BUFSET_OPT_USER_CACHE);
     NIOVA_ASSERT(rc == 0);
 
     bi = items[0] = buffer_set_allocate_item(&bs);
