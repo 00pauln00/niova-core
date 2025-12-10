@@ -99,6 +99,10 @@
 
 #define ALIGN_UP(x, a) ((x + a - 1) & ~(a - 1))
 
+#define ALIGNUP_PTR(p, a) \
+     (__typeof__(p))((((uintptr_t)(p)) + \
+     ((uintptr_t)(a) - 1)) & ~((uintptr_t)(a) - 1))
+
 typedef uint8_t  raft_peer_t;
 typedef int64_t  raft_entry_idx_t;
 typedef uint32_t version_t;

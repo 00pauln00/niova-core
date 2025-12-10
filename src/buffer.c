@@ -476,17 +476,20 @@ buffer_set_initx(struct buffer_set_args *bsa)
     if (s_region_size < (nbufs * buf_size))
         return -EOVERFLOW;
 
-    memset(bs, 0, sizeof(struct buffer_set));
-
-    unsigned int align = buffer_get_alignment(bsa->bsa_opts);
+    unsigned int align = opts & BUFSET_OPT_ALT_SOURCE_BUF_ALIGN ?
+        bsa->bsa_alignment : buffer_get_alignment(bsa->bsa_opts);
 
     /* Alignment should be power of 2 */
     if (align && (align & (align - 1)))
         return -EINVAL;
 
+    if (align && (((uintptr_t)s_region & (align - 1)) != 0))
+        return -EINVAL;
+
     NIOVA_ASSERT(!align || ((uintptr_t)s_region & (align - 1)) == 0);
     NIOVA_ASSERT(!align || (align && ((s_region_size & (align - 1)) == 0)));
 
+    memset(bs, 0, sizeof(struct buffer_set));
     bs->bs_region = s_region;
     bs->bs_region_size = s_region_size;
     bs->bs_item_size = buf_size;
@@ -523,8 +526,8 @@ buffer_set_initx(struct buffer_set_args *bsa)
         NIOVA_ASSERT(off + buf_size <= s_region_size);
 
         uintptr_t raw_base = (uintptr_t) ((char *)s_region + off);
-        uintptr_t aligned_base =
-            (uintptr_t) (align ? ALIGN_UP(raw_base, align) :  raw_base);
+        uintptr_t aligned_base = (uintptr_t) (align ?
+                ALIGNUP_PTR(raw_base, align) :  raw_base);
 
         bi->bi_iov.iov_base = (void *)aligned_base;
         off += buf_size;
