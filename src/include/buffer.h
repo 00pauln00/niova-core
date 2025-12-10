@@ -25,6 +25,7 @@ enum buffer_set_opts
     BUFSET_OPT_MEMALIGN_L2     = (1 << 3),
     BUFSET_OPT_MEMALIGN_SECTOR = (1 << 4),
     BUFSET_OPT_ALT_SOURCE_BUF  = (1 << 5),
+    BUFSET_OPT_ALT_SOURCE_BUF_ALIGN = (1 << 6),
     BUFSET_OPT_MEMALIGN        = BUFSET_OPT_MEMALIGN_SECTOR,
 };
 
@@ -58,9 +59,6 @@ struct buffer_set_args
     size_t               bsa_buf_size;
     void                *bsa_region;
     size_t               bsa_region_size;
-    void                *bsa_alt_source;
-    size_t               bsa_alt_source_size;
-    uint8_t              bsa_use_alt_source_buf;
     size_t               bsa_used_off;
     enum buffer_set_opts bsa_opts;
 };
@@ -75,15 +73,10 @@ struct buffer_set
     size_t              bs_item_size;
     size_t              bs_max_allocated;
     size_t              bs_total_alloc;
-    uint8_t             bs_ibv_registered:1;
-    uint8_t             bs_uring_registered:1;
     uint8_t             bs_init:1;
     uint8_t             bs_serialize:1;
     uint8_t             bs_ctl_interface:1;
     uint8_t             bs_allow_user_cache:1;
-    uint8_t             bs_use_alt_source_buf:1;
-    void               *bs_alt_source_buf;
-    size_t              bs_alt_source_buf_size;
     struct buffer_list  bs_free_list;
     struct buffer_list  bs_inuse_list;
     size_t              bs_region_size;
@@ -168,6 +161,6 @@ buffer_set_user_cache_release_item(
     struct buffer_item *bi, void (*revoke_cb)(struct buffer_item *, void *),
     void *arg);
 
-int
+unsigned int
 buffer_get_alignment(enum buffer_set_opts opts);
 #endif

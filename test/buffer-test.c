@@ -239,20 +239,20 @@ buffer_initx_test(void)
         .bsa_opts = opts,
         .bsa_nbufs = 1024UL,
         .bsa_buf_size = 1024UL,
-        .bsa_alt_source = NULL,
-        .bsa_alt_source_size = size,
+        .bsa_region = NULL,
+        .bsa_region_size = size,
     };
 
     int rc = buffer_set_initx(&bsa);
     NIOVA_ASSERT(rc == -EINVAL);
 
-    bsa.bsa_alt_source = base;
-    bsa.bsa_alt_source_size -= 1;
+    bsa.bsa_region = base;
+    bsa.bsa_region_size -= 1;
 
     rc = buffer_set_initx(&bsa);
     NIOVA_ASSERT(rc == -EOVERFLOW);
 
-    bsa.bsa_alt_source_size += 1;
+    bsa.bsa_region_size += 1;
 
     rc = buffer_set_initx(&bsa);
     NIOVA_ASSERT(rc == 0);

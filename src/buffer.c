@@ -122,7 +122,7 @@ buffer_page_size_set(void)
     NIOVA_ASSERT(bufferSetPageBits == 12);
 }
 
-int
+unsigned int
 buffer_get_alignment(enum buffer_set_opts opts)
 {
     return (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
@@ -428,11 +428,10 @@ buffer_set_destroy(struct buffer_set *bs)
 
         bs->bs_num_bufs--;
     }
-    if (!bs->bs_use_alt_source_buf)
-        free(bs->bs_region);
 
     NIOVA_ASSERT(!bs->bs_num_bufs);
 
+    bs->bs_region = NULL;
     bs->bs_init = 0;
 
     if (bs->bs_serialize)
@@ -479,10 +478,14 @@ buffer_set_initx(struct buffer_set_args *bsa)
 
     memset(bs, 0, sizeof(struct buffer_set));
 
-    int align =  buffer_get_alignment(bsa->bsa_opts);
-    NIOVA_ASSERT(((uintptr_t)s_region & ~(align - 1)) == 0);
-    NIOVA_ASSERT(bsa->bsa_use_alt_source_buf ||
-                 (s_region_size & ~(align - 1)) == 0);
+    unsigned int align = buffer_get_alignment(bsa->bsa_opts);
+
+    /* Alignment should be power of 2 */
+    if (align && (align & (align - 1)))
+        return -EINVAL;
+
+    NIOVA_ASSERT(!align || ((uintptr_t)s_region & (align - 1)) == 0);
+    NIOVA_ASSERT(!align || (align && ((s_region_size & (align - 1)) == 0)));
 
     bs->bs_region = s_region;
     bs->bs_region_size = s_region_size;
@@ -521,9 +524,9 @@ buffer_set_initx(struct buffer_set_args *bsa)
 
         uintptr_t raw_base = (uintptr_t) ((char *)s_region + off);
         uintptr_t aligned_base =
-            (uintptr_t) (align ? raw_base & ~(align - 1) :  raw_base);
+            (uintptr_t) (align ? ALIGN_UP(raw_base, align) :  raw_base);
 
-        bi->bi_iov.iov_base =  (void *)aligned_base;
+        bi->bi_iov.iov_base = (void *)aligned_base;
         off += buf_size;
 
         SIMPLE_LOG_MSG(LL_WARN, "raw[%ld] 0x%lx aligned[%ld] 0x%lx "
@@ -533,8 +536,8 @@ buffer_set_initx(struct buffer_set_args *bsa)
                        align);
         FATAL_IF(bi->bi_iov.iov_base == NULL, "iov_base == NULL");
         FATAL_IF(align &&
-                 (((uintptr_t)bi->bi_iov.iov_base & ~(align - 1)) != 0),
-                 "iov_base & ~(align - 1) != 0");
+                 ((uintptr_t)bi->bi_iov.iov_base & (align - 1)) != 0,
+                 "iov_base & (align - 1) != 0");
         NIOVA_ASSERT(off <= s_region_size);
         CONST_OVERRIDE(struct iovec, bi->bi_iov_save, bi->bi_iov);
 
@@ -545,8 +548,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
             buffer_item_touch(bi);
     }
     bsa->bsa_used_off = off;
-    NIOVA_ASSERT(bsa->bsa_use_alt_source_buf ||
-                 bsa->bsa_used_off == s_region_size);
+    NIOVA_ASSERT(bsa->bsa_used_off == s_region_size);
 
     if (!rc)
     {
@@ -576,6 +578,22 @@ buffer_set_initx(struct buffer_set_args *bsa)
 }
 
 int
+buffer_set_init2(struct buffer_set *bs, void *region, size_t region_size,
+                 size_t nbufs, size_t buf_size, enum buffer_set_opts opts)
+{
+    struct buffer_set_args bsa = {
+        .bsa_set = bs,
+        .bsa_nbufs = nbufs,
+        .bsa_buf_size = buf_size,
+        .bsa_region = region,
+        .bsa_region_size = region_size,
+        .bsa_opts = opts,
+    };
+
+    return buffer_set_initx(&bsa);
+}
+
+int
 buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
                 enum buffer_set_opts opts)
 {
@@ -583,6 +601,8 @@ buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
         .bsa_set = bs,
         .bsa_nbufs = nbufs,
         .bsa_buf_size = buf_size,
+        .bsa_region = NULL,
+        .bsa_region_size = 0,
         .bsa_opts = opts,
     };
 

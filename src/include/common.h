@@ -97,6 +97,8 @@
 
 #define RAFT_PEER_ANY ID_ANY_8bit
 
+#define ALIGN_UP(x, a) ((x + a - 1) & ~(a - 1))
+
 typedef uint8_t  raft_peer_t;
 typedef int64_t  raft_entry_idx_t;
 typedef uint32_t version_t;
