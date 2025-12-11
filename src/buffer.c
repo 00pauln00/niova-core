@@ -512,7 +512,6 @@ buffer_set_initx(struct buffer_set_args *bsa)
     size_t off = 0;
     size_t shifted = 0;
     uintptr_t prev_end = (uintptr_t)NULL;
-    uintptr_t curr_end = (uintptr_t)NULL;
     for (size_t i = 0; i < nbufs; i++)
     {
         struct buffer_item *bi = calloc(1, sizeof(struct buffer_item));
@@ -538,10 +537,8 @@ buffer_set_initx(struct buffer_set_args *bsa)
         /* Rule out buffer address overlap */
         NIOVA_ASSERT(!prev_end || aligned_base >= prev_end);
 
-        curr_end =
+        prev_end =
             (uintptr_t)((char *)bi->bi_iov.iov_base + bi->bi_iov.iov_len);
-        if (!prev_end)
-            prev_end = curr_end;
 
         /* Account for shifting as well due to alignment */
         off += buf_size + shifted;

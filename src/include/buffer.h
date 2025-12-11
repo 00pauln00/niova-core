@@ -59,8 +59,8 @@ struct buffer_set_args
     size_t               bsa_buf_size;
     void                *bsa_region;
     size_t               bsa_region_size;
-    unsigned int         bsa_alignment; //used by tests
     size_t               bsa_used_off;
+    unsigned int         bsa_alignment; //used by tests
     enum buffer_set_opts bsa_opts;
 };
 

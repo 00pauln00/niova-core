@@ -89,7 +89,7 @@ alloc_env_var_cb(const struct niova_env_var *nev);
 struct niova_vbasic_allocator
 {
     unsigned int nvba_alignment;
-    const size_t nvba_unit_size; // size represented by each bit
+    uint32_t     nvba_unit_size; // size represented by each bit
     uint64_t     nvba_bitmap;
     char        *nvba_region_ptr;
     char         nvba_region[];
@@ -115,10 +115,10 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
 
     unsigned int unit_size = region_size / NIOVA_VBA_MAX_BITS;
 
-    if (unit_size == 0)
+    if (unit_size == 0 || unit_size > UINT32_MAX)
         return -EINVAL;
 
-    CONST_OVERRIDE(size_t, nvba->nvba_unit_size, unit_size);
+    CONST_OVERRIDE(uint32_t, nvba->nvba_unit_size, unit_size);
     nvba->nvba_bitmap = 0;
     nvba->nvba_alignment = 0;
 
@@ -131,41 +131,51 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
  */
 static inline int
 niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
-                          size_t region_size, unsigned int unit_size,
+                          size_t region_size, size_t unit_size,
                           size_t alignment)
 {
     if (!nvba)
         return -EINVAL;
 
-    if (unit_size == 0 || region_size == 0)
-        return -EINVAL;
+    if (region_size == 0)
+        return -ENODATA;
 
     /* alignment is power of 2 */
     if (alignment == 0 || (alignment & (alignment - 1)))
+        return -EDOM;
+
+    unit_size = (unit_size == 0) ? region_size / NIOVA_VBA_MAX_BITS : unit_size;
+
+    if (unit_size == 0 || unit_size > UINT32_MAX)
         return -EINVAL;
 
     if (alignment > unit_size)
-        return -EINVAL;
+        return -EOVERFLOW;
 
     /* Unit size is multiple of alignment */
     if (unit_size & (alignment - 1))
+        return -EDOM;
+
+    if (region_size < unit_size)
         return -EINVAL;
 
-    if (region_size < NIOVA_VBA_MAX_BITS)
-        return -EINVAL;
-
-    if (region_size / unit_size > NIOVA_VBA_MAX_BITS)
-        return -EINVAL;
-
-    const unsigned int nunits =
-        (region_size / unit_size) + (region_size % unit_size ? 1 : 0);
+    const unsigned int nunits = region_size / unit_size;
 
     if (nunits > NIOVA_VBA_MAX_BITS)
-        return -EINVAL;
+        return -EOVERFLOW;
 
-    CONST_OVERRIDE(size_t, nvba->nvba_unit_size, unit_size);
+    CONST_OVERRIDE(uint32_t, nvba->nvba_unit_size, unit_size);
     nvba->nvba_bitmap = 0;
     nvba->nvba_alignment = alignment;
+
+    /* Support < NIOVA_VBA_MAX_BITS num of units. Make rest of the bits in the
+     * bitmap 1 so that those bits are unavailable.
+     */
+    if (nunits < NIOVA_VBA_MAX_BITS)
+    {
+        uint64_t bitmap_mask = (nunits == 0) ? 0ULL : ((1ULL << nunits) - 1ULL);
+        nvba->nvba_bitmap = ~bitmap_mask;
+    }
 
     uintptr_t raw = (uintptr_t)&nvba->nvba_region[0];
     uintptr_t aligned = alignment ? ALIGN_UP(raw, alignment) : raw;
