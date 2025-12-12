@@ -132,37 +132,69 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
 static inline int
 niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
                           size_t region_size, size_t unit_size,
-                          size_t alignment)
+                          uint32_t alignment)
 {
+    int rc = 0, err_loc = 0;
+
     if (!nvba)
-        return -EINVAL;
+    {
+        err_loc = 1;
+        rc = -EINVAL;
+        goto xerror;
+    }
 
     if (region_size == 0)
-        return -ENODATA;
+    {
+        err_loc = 2;
+        rc = -ENODATA;
+        goto xerror;
+    }
 
     /* alignment is power of 2 */
-    if (alignment == 0 || (alignment & (alignment - 1)))
-        return -EDOM;
+    if (number_of_ones_in_val32(alignment) != 1)
+    {
+        err_loc = 3;
+        rc = -EDOM;
+        goto xerror;
+    }
 
-    unit_size = (unit_size == 0) ? region_size / NIOVA_VBA_MAX_BITS : unit_size;
+    /* Use max unit size in case its not specified */
+    unit_size = (unit_size == 0) ? (UINT32_MAX & ~(alignment - 1)) : unit_size;
 
     if (unit_size == 0 || unit_size > UINT32_MAX)
-        return -EINVAL;
+    {
+        err_loc = 4;
+        rc = -EINVAL;
+        goto xerror;
+    }
 
-    if (alignment > unit_size)
-        return -EOVERFLOW;
+    if ((size_t)alignment > unit_size)
+    {
+        err_loc = 5;
+        rc = -EOVERFLOW;
+        goto xerror;
+    }
 
     /* Unit size is multiple of alignment */
     if (unit_size & (alignment - 1))
-        return -EDOM;
+    {
+        err_loc = 6;
+        rc = -EDOM;
+        goto xerror;
+    }
 
     if (region_size < unit_size)
-        return -EINVAL;
+    {
+        err_loc = 7;
+        rc = -EINVAL;
+        goto xerror;
+    }
 
-    const unsigned int nunits = region_size / unit_size;
+    unsigned int nunits = region_size / unit_size;
 
+    /* Max cap is this many num of units */
     if (nunits > NIOVA_VBA_MAX_BITS)
-        return -EOVERFLOW;
+        nunits = NIOVA_VBA_MAX_BITS;
 
     CONST_OVERRIDE(uint32_t, nvba->nvba_unit_size, unit_size);
     nvba->nvba_bitmap = 0;
@@ -182,7 +214,12 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     NIOVA_ASSERT(!alignment || (aligned & (alignment - 1)) == 0);
 
     nvba->nvba_region_ptr = (char *)aligned;
-    return 0;
+
+xerror:
+    SIMPLE_LOG_MSG(LL_DEBUG,
+                   "reg_sz %ld usize %ld align %u err_loc %d error %d",
+                   region_size, unit_size, alignment, err_loc, rc);
+    return rc;
 }
 
 static inline int
@@ -261,8 +298,6 @@ niova_vbasic_free(struct niova_vbasic_allocator *nvba, const void *ptr,
 static inline uintptr_t
 niova_vbasic_get_start_addr(struct niova_vbasic_allocator *nvba)
 {
-    if (!nvba)
-        return (uintptr_t) NULL;
-    return (uintptr_t)nvba->nvba_region_ptr;
+    return nvba ? (uintptr_t)nvba->nvba_region_ptr : (uintptr_t)NULL;
 }
 #endif

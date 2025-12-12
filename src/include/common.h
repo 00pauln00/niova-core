@@ -97,11 +97,19 @@
 
 #define RAFT_PEER_ANY ID_ANY_8bit
 
-#define ALIGN_UP(x, a) ((x + a - 1) & ~(a - 1))
+#define CT_ASSERT(expr) _Static_assert(expr, "compile-time check failed")
+
+#define IS_POWER2(x) (((x) & ((x) - 1ULL)) == 0ULL)
+
+#define IS_ALIGNED(x, a) (((x) & ((a) - 1ULL)) == 0ULL)
+
+#define ALIGN_UP(x, a) (((x) + (a) - 1ULL) & ~((a) - 1ULL))
+
+#define IS_ALIGNED_PTR(p, a) \
+    ((uintptr_t)((uintptr_t)(p) & (((uintptr_t)(a) - 1ULL))) == 0ULL)
 
 #define ALIGNUP_PTR(p, a) \
-     (__typeof__(p))((((uintptr_t)(p)) + \
-     ((uintptr_t)(a) - 1)) & ~((uintptr_t)(a) - 1))
+     (void *)(((uintptr_t)(p) + ((uintptr_t)(a) - 1ULL)) & ~((uintptr_t)(a) - 1ULL))
 
 typedef uint8_t  raft_peer_t;
 typedef int64_t  raft_entry_idx_t;
@@ -118,6 +126,32 @@ typedef uint64_t  thread_exec_ctx_u64_t;
 #define ID_ANY_16bit 65535
 #define ID_ANY_32bit -1U
 #define ID_ANY_64bit -1ULL
+
+#define RUN_COMPILE_TIME_TESTS()      \
+    CT_ASSERT(ALIGN_UP(768, 1024) == 1024); \
+    CT_ASSERT(ALIGN_UP(0,   8) == 0); \
+    CT_ASSERT(ALIGN_UP(15,  8) == 16); \
+    CT_ASSERT(ALIGN_UP(31,  32) == 32); \
+    CT_ASSERT(ALIGN_UP(33,  32) == 64); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0x1234ABCD9876ULL, 16) \
+              == 0x1234ABCD9880ULL); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0x1234ABCD9876ULL, 64) \
+              == 0x1234ABCD9880ULL); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0x1000FFEEAA11ULL, 512) \
+              == 0x1000FFEEAC00ULL); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0xFEEDFACE0ABCDULL, 2097152) \
+              == 0xFEEDFAD000000ULL); \
+    CT_ASSERT(IS_POWER2(1)); \
+    CT_ASSERT(IS_POWER2(4)); \
+    CT_ASSERT(!IS_POWER2(5)); \
+    CT_ASSERT(IS_ALIGNED(4096, 64)); \
+    CT_ASSERT(!IS_ALIGNED(4100, 64)); \
+    CT_ASSERT(IS_ALIGNED_PTR((void*)0x1234ABCDF000ULL, 16)); \
+    CT_ASSERT(!IS_ALIGNED_PTR((void*)0x1234ABCDF008ULL, 16)); \
+    CT_ASSERT(IS_ALIGNED_PTR((void*)0xDEADBEEF12340000ULL, 128)); \
+    CT_ASSERT(!IS_ALIGNED_PTR((void*)0xDEADBEEF12340088ULL, 128)); \
+
+RUN_COMPILE_TIME_TESTS();
 
 static inline void
 common_compile_time_asserts(void)

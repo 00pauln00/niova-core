@@ -174,8 +174,28 @@ niova_vbasic_alloc_alignment_test(void)
     //unit size should be multiple of alignmnent
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 81, 16) == -EDOM);
 
-    //does not allow more than 64 num of units
-    NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 32, 16) == -EOVERFLOW);
+    //Allow more than 64 num of units
+    NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 32, 16) == 0);
+     memset(nvba, 0, sizeof(*nvba));
+
+    //pass unit size 0, results in region size < unit size
+    NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 0, 16) == -EINVAL);
+
+    //should succeed
+    NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, UINT32_MAX,
+                                           0, 16) == 0);
+
+    //only one unit allocated but rest not available
+    NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == NIOVA_VBA_MAX_BITS - 1);
+
+    //space is not available for max bytes as there is one unit and it has
+    //smaller size
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, UINT32_MAX) == -ENOSPC);
+
+    //space available for UINT32_MAX & ~(16 - 1) size i.e max unit size
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba,
+                                          UINT32_MAX & ~(16 - 1)) == 0);
+    memset(nvba, 0, sizeof(*nvba));
 
      //region smaller than unit size
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 63, 64, 16) == -EINVAL);

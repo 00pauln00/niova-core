@@ -473,6 +473,9 @@ buffer_set_initx(struct buffer_set_args *bsa)
     if (!bs || !buf_size || !s_region || !s_region_size || bs->bs_init)
         return -EINVAL;
 
+    if (bsa->bsa_used_off != 0)
+        return -EINVAL;
+
     if (s_region_size < (nbufs * buf_size))
         return -EOVERFLOW;
 
@@ -480,16 +483,17 @@ buffer_set_initx(struct buffer_set_args *bsa)
         bsa->bsa_alignment : buffer_get_alignment(bsa->bsa_opts);
 
     /* Alignment should be power of 2 */
-    if (align && (align & (align - 1)))
+    if (align && !IS_POWER2(align))
         return -EINVAL;
 
-    if (align && (((uintptr_t)s_region & (align - 1)) != 0))
+    if (align && !IS_ALIGNED_PTR(s_region, align))
         return -EINVAL;
 
-    NIOVA_ASSERT(!align || ((uintptr_t)s_region & (align - 1)) == 0);
-    NIOVA_ASSERT(!align || (align && ((s_region_size & (align - 1)) == 0)));
+    NIOVA_ASSERT(!align || IS_ALIGNED_PTR(s_region, align));
+    NIOVA_ASSERT(!align || IS_ALIGNED(s_region_size, align));
 
     memset(bs, 0, sizeof(struct buffer_set));
+
     bs->bs_region = s_region;
     bs->bs_region_size = s_region_size;
     bs->bs_item_size = buf_size;
@@ -508,16 +512,20 @@ buffer_set_initx(struct buffer_set_args *bsa)
         pthread_mutex_init(&bs->bs_mutex, NULL);
     }
 
-    int rc = 0;
+    SIMPLE_LOG_MSG(LL_DEBUG, "s_region %p s_region_end 0x%lx size %ld "
+                   "bf_sz %ld bf_cnt %ld alignment %u",
+                   s_region, (uintptr_t)((char *)s_region + s_region_size),
+                   s_region_size, buf_size, nbufs, align);
+    int error = 0;
     size_t off = 0;
-    size_t shifted = 0;
     uintptr_t prev_end = (uintptr_t)NULL;
+
     for (size_t i = 0; i < nbufs; i++)
     {
         struct buffer_item *bi = calloc(1, sizeof(struct buffer_item));
         if (!bi)
         {
-            rc = -ENOMEM;
+            error = -ENOMEM;
             break;
         }
 
@@ -529,8 +537,8 @@ buffer_set_initx(struct buffer_set_args *bsa)
 
         uintptr_t raw_base = (uintptr_t)((char *)s_region + off);
         uintptr_t aligned_base = (uintptr_t)(align ?
-                ALIGNUP_PTR(raw_base, align) :  raw_base);
-        shifted = (size_t)(aligned_base - raw_base);
+                (uintptr_t)ALIGNUP_PTR(raw_base, align) :  raw_base);
+        size_t shifted = (size_t)(aligned_base - raw_base);
 
         bi->bi_iov.iov_base = (void *)aligned_base;
 
@@ -543,14 +551,14 @@ buffer_set_initx(struct buffer_set_args *bsa)
         /* Account for shifting as well due to alignment */
         off += buf_size + shifted;
 
-        SIMPLE_LOG_MSG(LL_DEBUG, "raw[%ld] 0x%lx aligned[%ld] 0x%lx "
-                       "fragmentation %ld alignment %d",
-                       i, raw_base, i, aligned_base,
+        SIMPLE_LOG_MSG(LL_DEBUG,
+                       "bf_sz %ld raw[%ld] 0x%lx aligned[%ld] 0x%lx "
+                       "end[%ld] 0x%lx fragmentation %ld alignment %u",
+                       buf_size, i, raw_base, i, aligned_base, i, prev_end,
                        shifted, align);
-        FATAL_IF(bi->bi_iov.iov_base == NULL, "iov_base == NULL");
-        FATAL_IF(align &&
-                 ((uintptr_t)bi->bi_iov.iov_base & (align - 1)) != 0,
-                 "iov_base & (align - 1) != 0");
+
+        FATAL_IF(align && (!IS_ALIGNED_PTR(bi->bi_iov.iov_base, align)),
+                 "iov_base not aligned!");
         NIOVA_ASSERT(off <= s_region_size);
         CONST_OVERRIDE(struct iovec, bi->bi_iov_save, bi->bi_iov);
 
@@ -563,7 +571,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
     bsa->bsa_used_off = off;
     NIOVA_ASSERT(bsa->bsa_used_off <= s_region_size);
 
-    if (!rc)
+    if (!error)
     {
         if (opts & BUFSET_OPT_LREG)
         {
@@ -587,7 +595,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
         buffer_set_destroy(bs);
     }
 
-    return rc;
+    return error;
 }
 
 int
