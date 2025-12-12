@@ -107,9 +107,20 @@ static pthread_mutex_t lctlMutex = PTHREAD_MUTEX_INITIALIZER;
 static int numLocalCtlIfs;
 
 const char *
-lctli_get_inotify_path(void)
+lctli_get_path(void)
 {
     return localCtlIf[LCTLI_DEFAULT_IDX].lctli_path;
+}
+
+const char *
+lctli_get_base_path(void)
+{
+    const struct niova_env_var *base_ev =
+        env_get(NIOVA_ENV_VAR_inotify_base_path);
+    if (base_ev && base_ev->nev_present)
+        return base_ev->nev_string;
+
+    return DEFAULT_INOTIFY_PATH;
 }
 
 int
