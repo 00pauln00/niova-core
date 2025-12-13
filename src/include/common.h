@@ -151,8 +151,6 @@ typedef uint64_t  thread_exec_ctx_u64_t;
     CT_ASSERT(IS_ALIGNED_PTR((void*)0xDEADBEEF12340000ULL, 128)); \
     CT_ASSERT(!IS_ALIGNED_PTR((void*)0xDEADBEEF12340088ULL, 128)); \
 
-RUN_COMPILE_TIME_TESTS();
-
 static inline void
 common_compile_time_asserts(void)
 {
@@ -161,6 +159,7 @@ common_compile_time_asserts(void)
     COMPILE_TIME_ASSERT((ssize_t)-ENOLCK == (int)-ENOLCK);
     COMPILE_TIME_ASSERT(false == 0);
     COMPILE_TIME_ASSERT(true == 1);
+    RUN_COMPILE_TIME_TESTS();
 }
 
 static inline unsigned long long
