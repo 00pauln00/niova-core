@@ -85,16 +85,16 @@ void
 alloc_env_var_cb(const struct niova_env_var *nev);
 
 #define NIOVA_VBA_MAX_BITS (NBBY * sizeof(uint64_t))
-#define NIOVA_VBA_NUNITS_MASK ((1ULL << 24) - 1) //24 bits
-#define NIOVA_VBA_REGSZ_MASK ((1ULL << 40) - 1) //40 bits
-#define NIOVA_NUNITS_BITS 24
+#define NIOVA_VBA_NUNITS_MASK ((1ULL << 7) - 1) //7 bits
+#define NIOVA_VBA_REGSZ_MASK ((1ULL << 57) - 1) //57 bits
+#define NIOVA_NUNITS_BITS 7
 
 struct niova_vbasic_allocator
 {
     unsigned int nvba_alignment;
     uint32_t     nvba_unit_size; // size represented by each bit
-    uint64_t     nvba_regsz_nunits;//upper 40 bits for reg size and lower
-                                   //24 bits for nunits
+    uint64_t     nvba_nunits:7;
+    uint64_t     nvba_region_sz:57;
     uint64_t     nvba_bitmap;
     char        *nvba_region_ptr;
     char         nvba_region[];
@@ -129,10 +129,8 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
 
     uint32_t nunits = region_size / unit_size;
 
-    /* Encode nunits and region size */
-    nvba->nvba_regsz_nunits =
-        ((region_size & NIOVA_VBA_REGSZ_MASK) << NIOVA_NUNITS_BITS) |
-        (nunits & NIOVA_VBA_NUNITS_MASK);
+    nvba->nvba_nunits = nunits & NIOVA_VBA_NUNITS_MASK;
+    nvba->nvba_region_sz = region_size & NIOVA_VBA_REGSZ_MASK;
 
     nvba->nvba_region_ptr = &nvba->nvba_region[0];
     return 0;
@@ -258,10 +256,8 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
         goto xerror;
     }
 
-    /* Encode nunits and region size */
-    nvba->nvba_regsz_nunits =
-        ((region_size & NIOVA_VBA_REGSZ_MASK) << NIOVA_NUNITS_BITS) |
-        (nunits & NIOVA_VBA_NUNITS_MASK);
+    nvba->nvba_nunits = nunits & NIOVA_VBA_NUNITS_MASK;
+    nvba->nvba_region_sz = region_size & NIOVA_VBA_REGSZ_MASK;
 
     NIOVA_ASSERT(!alignment || IS_ALIGNED_PTR(aligned, alignment));
     nvba->nvba_region_ptr = (char *)aligned;
@@ -282,8 +278,8 @@ niova_vbasic_space_avail(const struct niova_vbasic_allocator *nvba,
         return -EINVAL;
 
     const unsigned int nunits =
-        (size_in_bytes / nvba->nvba_unit_size +
-         (size_in_bytes % nvba->nvba_unit_size ? 1 : 0));
+        (size_in_bytes / nvba->nvba_unit_size) +
+         (size_in_bytes % nvba->nvba_unit_size ? 1 : 0);
 
     if (nunits > NIOVA_VBA_MAX_BITS)
         return -E2BIG;

@@ -205,7 +205,11 @@ nconsective_bits_avail(const uint64_t *field, unsigned int nbits)
         return -EINVAL;
 
     const uint64_t ifield = ~(*field);
-    uint64_t mask = (1ULL << nbits) - 1;
+    uint64_t mask;
+    if (nbits == field_size)
+        mask = UINT64_MAX;
+    else
+        mask = (1ULL << nbits) - 1;
 
     for (unsigned int i = 0; i <= (field_size - nbits); i++)
     {
