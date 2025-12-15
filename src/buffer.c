@@ -126,7 +126,8 @@ unsigned int
 buffer_get_alignment(enum buffer_set_opts opts)
 {
     return (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
-           (opts & BUFSET_OPT_MEMALIGN_L2) ? L2_CACHELINE_SIZE_BYTES : 0;
+           (opts & BUFSET_OPT_MEMALIGN_L2) ? L2_CACHELINE_SIZE_BYTES :
+           (opts & BUFSET_OPT_ALT_SOURCE_BUF_ALIGN) ? BUFFER_SECTOR_SIZE : 0;
 }
 
 size_t
@@ -458,36 +459,71 @@ buffer_set_destroy(struct buffer_set *bs)
 int
 buffer_set_initx(struct buffer_set_args *bsa)
 {
+    struct buffer_set *bs = NULL;
+    size_t s_region_size = 0;
+    void *s_region = NULL;
+    enum buffer_set_opts opts = 0;
+    size_t nbufs = 0;
+    size_t buf_size = 0;
+    int err_loc = 0;
+    int rc = 0;
+
     buffer_page_size_set();
 
     if (!bsa)
-        return -EINVAL;
+    {
+        rc = -EINVAL;
+        err_loc = 1;
+        goto xerror;
+    }
 
-    enum buffer_set_opts opts = bsa->bsa_opts;
-    struct buffer_set *bs = bsa->bsa_set;
-    size_t buf_size = bsa->bsa_buf_size;
-    size_t nbufs = bsa->bsa_nbufs;
-    size_t s_region_size = bsa->bsa_region_size;
-    void *s_region = bsa->bsa_region;
+    opts = bsa->bsa_opts;
+    buf_size = bsa->bsa_buf_size;
+    nbufs = bsa->bsa_nbufs;
+    s_region_size = bsa->bsa_region_size;
+    s_region = bsa->bsa_region;
+    bs = bsa->bsa_set;
 
     if (!bs || !buf_size || !s_region || !s_region_size || bs->bs_init)
-        return -EINVAL;
+    {
+        rc = -EINVAL;
+        err_loc = 2;
+        goto xerror;
+    }
 
     if (bsa->bsa_used_off != 0)
-        return -EINVAL;
+    {
+        rc = -EINVAL;
+        err_loc = 3;
+        goto xerror;
+    }
 
     if (s_region_size < (nbufs * buf_size))
-        return -EOVERFLOW;
+    {
+        rc = -EOVERFLOW;
+        err_loc = 4;
+        goto xerror;
+    }
 
     unsigned int align = opts & BUFSET_OPT_ALT_SOURCE_BUF_ALIGN ?
         bsa->bsa_alignment : buffer_get_alignment(bsa->bsa_opts);
 
     /* Alignment should be power of 2 */
     if (align && !IS_POWER2(align))
-        return -EINVAL;
+    {
+
+        rc = -EINVAL;
+        err_loc = 5;
+        goto xerror;
+    }
 
     if (align && !IS_ALIGNED_PTR(s_region, align))
-        return -EINVAL;
+    {
+        rc = -EINVAL;
+        err_loc = 6;
+        goto xerror;
+    }
+
 
     NIOVA_ASSERT(!align || IS_ALIGNED_PTR(s_region, align));
     NIOVA_ASSERT(!align || IS_ALIGNED(s_region_size, align));
@@ -516,7 +552,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
                    "bf_sz %ld bf_cnt %ld alignment %u",
                    s_region, (uintptr_t)((char *)s_region + s_region_size),
                    s_region_size, buf_size, nbufs, align);
-    int error = 0;
+
     size_t off = 0;
     uintptr_t prev_end = (uintptr_t)NULL;
 
@@ -525,8 +561,9 @@ buffer_set_initx(struct buffer_set_args *bsa)
         struct buffer_item *bi = calloc(1, sizeof(struct buffer_item));
         if (!bi)
         {
-            error = -ENOMEM;
-            break;
+            rc = -ENOMEM;
+            err_loc = 7;
+            goto xerror;
         }
 
         bi->bi_bs = bs;
@@ -571,31 +608,31 @@ buffer_set_initx(struct buffer_set_args *bsa)
     bsa->bsa_used_off = off;
     NIOVA_ASSERT(bsa->bsa_used_off <= s_region_size);
 
-    if (!error)
+    if (opts & BUFSET_OPT_LREG)
     {
-        if (opts & BUFSET_OPT_LREG)
-        {
-            lreg_node_init(&bs->bs_lrn, LREG_USER_TYPE_BUFFER_SET,
-                           buffer_lreg_cb, bs, LREG_INIT_OPT_NONE);
+        lreg_node_init(&bs->bs_lrn, LREG_USER_TYPE_BUFFER_SET,
+                       buffer_lreg_cb, bs, LREG_INIT_OPT_NONE);
 
-            int rc = lreg_node_install(&bs->bs_lrn,
-                                       LREG_ROOT_ENTRY_PTR(buffer_set_nodes));
-            NIOVA_ASSERT(rc == 0);
+        rc = lreg_node_install(&bs->bs_lrn,
+                               LREG_ROOT_ENTRY_PTR(buffer_set_nodes));
+        NIOVA_ASSERT(rc == 0);
 
-            rc = lreg_node_wait_for_completion(&bs->bs_lrn, true);
-            NIOVA_ASSERT(rc == 0);
+        rc = lreg_node_wait_for_completion(&bs->bs_lrn, true);
+        NIOVA_ASSERT(rc == 0);
 
-            bs->bs_ctl_interface = 1;
-        }
-
-        bs->bs_init = true;
+        bs->bs_ctl_interface = 1;
     }
-    else
-    {
+
+    bs->bs_init = true;
+
+xerror:
+    if (rc)
         buffer_set_destroy(bs);
-    }
 
-    return error;
+    SIMPLE_LOG_MSG(LL_DEBUG, "region %p region_sz %ld nbufs %ld bf_sz %ld "
+                   "err_loc: %d rc %d",
+                   s_region, s_region_size, nbufs, buf_size, err_loc, rc);
+    return rc;
 }
 
 int
