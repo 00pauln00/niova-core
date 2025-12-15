@@ -125,9 +125,19 @@ buffer_page_size_set(void)
 unsigned int
 buffer_get_alignment(enum buffer_set_opts opts)
 {
-    return (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
-           (opts & BUFSET_OPT_MEMALIGN_L2) ? L2_CACHELINE_SIZE_BYTES :
-           (opts & BUFSET_OPT_ALT_SOURCE_BUF_ALIGN) ? BUFFER_SECTOR_SIZE : 0;
+    switch(opts)
+    {
+    case BUFSET_OPT_MEMALIGN_SECTOR:
+        return BUFFER_SECTOR_SIZE;
+    case BUFSET_OPT_MEMALIGN_L2:
+        return L2_CACHELINE_SIZE_BYTES;
+    case BUFSET_OPT_ALT_SOURCE_BUF_ALIGN:
+        return BUFFER_SECTOR_SIZE;
+    default:
+        break;
+    }
+
+    return 0;
 }
 
 size_t
