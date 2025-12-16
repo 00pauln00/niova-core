@@ -85,9 +85,10 @@ void
 alloc_env_var_cb(const struct niova_env_var *nev);
 
 #define NIOVA_VBA_MAX_BITS (NBBY * sizeof(uint64_t))
-#define NIOVA_VBA_NUNITS_MASK ((1ULL << 7) - 1) //7 bits
-#define NIOVA_VBA_REGSZ_MASK ((1ULL << 57) - 1) //57 bits
-#define NIOVA_NUNITS_BITS 7
+#define NIOVA_VBA_REGSZ_BITS 57
+#define NIOVA_VBA_NUNITS_BITS 7
+#define NIOVA_VBA_NUNITS_MASK ((1ULL << NIOVA_VBA_NUNITS_BITS) - 1)
+#define NIOVA_VBA_REGSZ_MASK ((1ULL << NIOVA_VBA_REGSZ_BITS) - 1)
 
 struct niova_vbasic_allocator
 {
@@ -127,18 +128,10 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
     nvba->nvba_bitmap = 0;
     nvba->nvba_alignment = 0;
 
-    uint32_t nunits = region_size / unit_size;
-
-    nvba->nvba_nunits = nunits & NIOVA_VBA_NUNITS_MASK;
-    nvba->nvba_region_sz = region_size & NIOVA_VBA_REGSZ_MASK;
-
     nvba->nvba_region_ptr = &nvba->nvba_region[0];
     return 0;
 }
 
-/**
- * To callers: Always allocate region size inclusive of alignment
- */
 static inline int
 niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
                           size_t region_size, size_t unit_size,
@@ -161,10 +154,17 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
         goto xerror;
     }
 
-    /* alignment is power of 2 */
-    if (number_of_ones_in_val32(alignment) != 1)
+    if (region_size > NIOVA_VBA_REGSZ_MASK)
     {
         err_loc = 3;
+        rc = -EOVERFLOW;
+        goto xerror;
+    }
+
+    /* alignment is power of 2 */
+    if (alignment && number_of_ones_in_val32(alignment) != 1)
+    {
+        err_loc = 4;
         rc = -EDOM;
         goto xerror;
     }
@@ -176,7 +176,7 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     size_t shifted = (size_t)(aligned - raw);
     if (shifted >= region_size)
     {
-        err_loc = 4;
+        err_loc = 5;
         rc = -ENOSPC;
         goto xerror;
     }
@@ -185,42 +185,34 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     if (unit_size == 0)
     {
         unit_size = region_size / NIOVA_VBA_MAX_BITS;
-        region_size -= region_size % NIOVA_VBA_MAX_BITS;
 
-        /* Align unit size */
-        unit_size &= ~(alignment - 1);
+        /* Align down unit size */
+        unit_size = alignment ? unit_size & ~(alignment - 1) : unit_size;
     }
 
     if (unit_size == 0 || unit_size > UINT32_MAX)
     {
-        err_loc = 5;
+        err_loc = 6;
         rc = -EINVAL;
         goto xerror;
     }
 
     if (unit_size < (size_t)alignment)
     {
-        err_loc = 6;
+        err_loc = 7;
         rc = -EOVERFLOW;
         goto xerror;
     }
 
     /* Unit size is multiple of alignment */
-    if (unit_size & (alignment - 1))
+    if (alignment && (unit_size & (alignment - 1)))
     {
-        err_loc = 7;
+        err_loc = 8;
         rc = -EDOM;
         goto xerror;
     }
 
     if (unit_size > region_size)
-    {
-        err_loc = 8;
-        rc = -EINVAL;
-        goto xerror;
-    }
-
-    if (region_size > NIOVA_VBA_REGSZ_MASK)
     {
         err_loc = 9;
         rc = -EINVAL;
@@ -256,14 +248,14 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
         goto xerror;
     }
 
-    nvba->nvba_nunits = nunits & NIOVA_VBA_NUNITS_MASK;
-    nvba->nvba_region_sz = region_size & NIOVA_VBA_REGSZ_MASK;
+    nvba->nvba_region_sz = region_size;
+    nvba->nvba_nunits = nunits;
 
     NIOVA_ASSERT(!alignment || IS_ALIGNED_PTR(aligned, alignment));
     nvba->nvba_region_ptr = (char *)aligned;
 
 xerror:
-    SIMPLE_LOG_MSG(LL_DEBUG, "reg_sz %ld nvba %p bmap 0x%lx usize %ld "
+    SIMPLE_LOG_MSG(LL_WARN, "reg_sz %ld nvba %p bmap 0x%lx usize %ld "
                    "nunits=%u align %u err_loc %d error %d",
                    region_size, nvba, nvba ? nvba->nvba_bitmap : 0,
                    unit_size, nunits, alignment, err_loc, rc);

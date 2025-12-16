@@ -9,9 +9,10 @@
 
 REGISTRY_ENTRY_FILE_GENERATE;
 
-#define NUNITS_BITS 24
-#define REGSZ_MASK ((1ULL << 40) - 1)
-#define NUNITS_MASK ((1ULL << 24) - 1)
+#define NUNITS_BITS 7
+#define REGSZ_BITS 57
+#define REGSZ_MASK ((1ULL << REGSZ_BITS) - 1)
+#define NUNITS_MASK ((1ULL << NUNITS_BITS) - 1)
 
 static void
 niova_vbasic_alloc_test2(void)
@@ -162,7 +163,7 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(niova_vbasic_init_aligned(NULL, 65536, 4096, 0) == -EINVAL);
 
     //alignment 0
-    NIOVA_ASSERT(niova_vbasic_init_aligned(&tnvba, 65536, 4096, 0) == -EDOM);
+    NIOVA_ASSERT(niova_vbasic_init_aligned(&tnvba, 65536, 4096, 0) == 0);
 
     struct niova_vbasic_allocator *nvba =
         niova_malloc(sizeof(struct niova_vbasic_allocator) + 4096);
@@ -183,8 +184,8 @@ niova_vbasic_alloc_alignment_test(void)
     //Allow more than 64 num of units but underlying code caps it to 64
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 32, 16) == 0);
 
-    reg_size = nvba->nvba_region_sz & REGSZ_MASK;
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    reg_size = nvba->nvba_region_sz;
+    nunits = nvba->nvba_nunits;
 
     //due to region base alignment we might see reduced region size and less
     //nunits as we do not support partial unit
@@ -202,7 +203,7 @@ niova_vbasic_alloc_alignment_test(void)
     //pass unit size 0, expect max 64 units
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 0, 16) == 0);
 
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    nunits = nvba->nvba_nunits;
 
     NIOVA_ASSERT(nunits && nunits <= NIOVA_VBA_MAX_BITS);
 
@@ -212,8 +213,8 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, UINT32_MAX,
                                            0, 16) == 0);
 
-    reg_size = nvba->nvba_region_sz & REGSZ_MASK;
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    reg_size = nvba->nvba_region_sz;
+    nunits = nvba->nvba_nunits;
 
     //should be valid and below set value
     NIOVA_ASSERT(reg_size && reg_size <= UINT32_MAX);
@@ -238,14 +239,14 @@ niova_vbasic_alloc_alignment_test(void)
     // Less than 64 nunits supported
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 256, 16) == 0);
 
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    nunits = nvba->nvba_nunits;
 
     //non-allocatable units has all bits set
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == NIOVA_VBA_MAX_BITS - nunits);
 
     //space is available in all inited units
-    reg_size = nvba->nvba_region_sz & REGSZ_MASK;
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    reg_size = nvba->nvba_region_sz;
+    nunits = nvba->nvba_nunits;
 
     NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 256 * nunits) == 0);
 
@@ -261,8 +262,8 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 64, 16) == 0);
     NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
 
-    reg_size = nvba->nvba_region_sz & REGSZ_MASK;
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    reg_size = nvba->nvba_region_sz;
+    nunits = nvba->nvba_nunits;
 
     ptr = NULL;
     // alloc entire region
@@ -298,8 +299,8 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, reg_size, 64, 64) == 0);
     NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
 
-    reg_size = nvba->nvba_region_sz & REGSZ_MASK;
-    nunits = nvba->nvba_nunits & NUNITS_MASK;
+    reg_size = nvba->nvba_region_sz;
+    nunits = nvba->nvba_nunits;
 
     NIOVA_ASSERT(reg_size >= nunits * 64);
     NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size + 1) == -E2BIG);
