@@ -521,15 +521,14 @@ buffer_set_initx(struct buffer_set_args *bsa)
     /* Alignment should be power of 2 */
     if (align && !IS_POWER2(align))
     {
-
-        rc = -EINVAL;
+        rc = -EDOM;
         err_loc = 5;
         goto xerror;
     }
 
     if (align && !IS_ALIGNED_PTR(s_region, align))
     {
-        rc = -EINVAL;
+        rc = -EFAULT;
         err_loc = 6;
         goto xerror;
     }
@@ -583,8 +582,9 @@ buffer_set_initx(struct buffer_set_args *bsa)
         NIOVA_ASSERT(off + buf_size <= s_region_size);
 
         uintptr_t raw_base = (uintptr_t)((char *)s_region + off);
-        uintptr_t aligned_base = (uintptr_t)(align ?
-                (uintptr_t)ALIGNUP_PTR(raw_base, align) :  raw_base);
+        uintptr_t aligned_base =
+            (uintptr_t)(align ?
+                        (uintptr_t)ALIGNUP_PTR(raw_base, align) :  raw_base);
         size_t shifted = (size_t)(aligned_base - raw_base);
 
         bi->bi_iov.iov_base = (void *)aligned_base;

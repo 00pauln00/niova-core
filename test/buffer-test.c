@@ -280,14 +280,12 @@ buffer_initx_test(void)
 }
 
 static void
-buffer_initx_memalign_l2_test(void)
+buffer_initx_memalign_test(size_t nbufs, size_t buf_size,
+                           unsigned int alignment,
+                           enum buffer_set_opts opts)
 {
-    enum buffer_set_opts opts = BUFSET_OPT_MEMALIGN_L2;
-    unsigned alignment = buffer_get_alignment(opts);
-    size_t buf_size = 268;
     size_t buf_size_aligned = ALIGN_UP(buf_size, alignment);
-    size_t num_bufs = 100;
-    size_t region_size = ALIGN_UP(buf_size_aligned * num_bufs, alignment);
+    size_t region_size = ALIGN_UP(buf_size_aligned * nbufs, alignment);
     void *base = malloc(region_size);
     NIOVA_ASSERT(base != NULL);
 
@@ -297,7 +295,7 @@ buffer_initx_memalign_l2_test(void)
     {
         .bsa_set = &bs,
         .bsa_opts = opts,
-        .bsa_nbufs = num_bufs,
+        .bsa_nbufs = nbufs,
         .bsa_buf_size = buf_size,
         .bsa_region = base,
         .bsa_region_size = region_size,
@@ -305,13 +303,13 @@ buffer_initx_memalign_l2_test(void)
     };
 
     uint8_t initialized = 1;
-    //either base is aligned on 1MB boundary or it is not
+    //either base is aligned on boundary or it is not
     int rc = buffer_set_initx(&bsa);
     NIOVA_ASSERT(rc == 0 ||
-                 (rc == -EINVAL && ((uintptr_t)base & (alignment - 1))));
+                 (rc == -EFAULT && !IS_ALIGNED_PTR(base, alignment)));
 
     // if base was not aligned, free it and allocate by using memalign
-    if (rc == -EINVAL)
+    if (rc == -EFAULT)
     {
         free(base);
         base = NULL;
@@ -330,228 +328,47 @@ buffer_initx_memalign_l2_test(void)
 
     NIOVA_ASSERT(bsa.bsa_used_off <= region_size);
 
-    struct buffer_item *bi = buffer_set_allocate_item(&bs);
-    NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size);
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base >= (uintptr_t)base) &&
-                 ((uintptr_t)bi->bi_iov.iov_base <
-                  (((uintptr_t)base) + region_size)));
+    struct buffer_item **bi_array =
+        (struct buffer_item **)calloc(nbufs, sizeof(struct buffer_item *));
+    NIOVA_ASSERT(bi_array);
 
-    //Buffer base is aligned at 1024 boundary
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base & (alignment - 1)) == 0);
-    buffer_set_release_item(bi);
+    uintptr_t curr_base = (uintptr_t)NULL;
+    uintptr_t region_end = (uintptr_t)((char *)base + region_size);
+
+    for (size_t i = 0; i < nbufs; i++)
+    {
+        struct buffer_item *bi = buffer_set_allocate_item(&bs);
+        NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size);
+
+        curr_base = (uintptr_t)(bi->bi_iov.iov_base);
+        NIOVA_ASSERT(curr_base >= (uintptr_t)base && curr_base < region_end);
+        NIOVA_ASSERT(IS_ALIGNED_PTR(curr_base, alignment));
+
+        bi_array[i] = bi;
+    }
+
+    for (size_t i = 0; i < nbufs; i++)
+    {
+        buffer_set_release_item(bi_array[i]);
+    }
 
     rc = buffer_set_destroy(&bs);
     NIOVA_ASSERT(rc == 0);
 
+    free(bi_array);
     free(base);
 }
 
 static void
-buffer_initx_memalign_1m_test(void)
+buffer_initx_trigger_memalign_tests()
 {
-    unsigned alignment = 1024 * 1024;
-    size_t buf_size = 768 * 1024;
-    size_t buf_size_aligned = ALIGN_UP(buf_size, alignment);
-    size_t num_bufs = 10;
-    size_t region_size = ALIGN_UP(buf_size_aligned * num_bufs, alignment);
-    void *base = malloc(region_size);
-    NIOVA_ASSERT(base != NULL);
+    enum buffer_set_opts opts =
+        BUFSET_OPT_ALT_SOURCE_BUF | BUFSET_OPT_ALT_SOURCE_BUF_ALIGN;
 
-    struct buffer_set bs = {0};
-
-    enum buffer_set_opts opts = BUFSET_OPT_ALT_SOURCE_BUF |
-                                BUFSET_OPT_ALT_SOURCE_BUF_ALIGN;
-
-    struct buffer_set_args bsa =
-    {
-        .bsa_set = &bs,
-        .bsa_opts = opts,
-        .bsa_nbufs = num_bufs,
-        .bsa_buf_size = buf_size,
-        .bsa_region = base,
-        .bsa_region_size = region_size,
-        .bsa_alignment = alignment,
-    };
-
-    int8_t initialized = 1;
-    //either base is aligned on 1MB boundary or it is not
-    int rc = buffer_set_initx(&bsa);
-    NIOVA_ASSERT(rc == 0 ||
-                 (rc == -EINVAL && ((uintptr_t)base & (alignment - 1))));
-
-    // if base was not aligned, free it and allocate by using memalign
-    if (rc == -EINVAL)
-    {
-        free(base);
-        base = NULL;
-        initialized = 0;
-    }
-
-    if (!base)
-    {
-        rc = posix_memalign(&base, alignment, region_size);
-        NIOVA_ASSERT(rc == 0 && base);
-        bsa.bsa_region = base;
-    }
-
-    rc = !initialized ? buffer_set_initx(&bsa) : 0;
-    NIOVA_ASSERT(rc == 0);
-
-    NIOVA_ASSERT(bsa.bsa_used_off <= region_size);
-
-    struct buffer_item *bi = buffer_set_allocate_item(&bs);
-    NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size);
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base >= (uintptr_t)base) &&
-                 ((uintptr_t)bi->bi_iov.iov_base <
-                  (((uintptr_t)base) + region_size)));
-
-    //Buffer base is aligned at 1024 boundary
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base & (alignment - 1)) == 0);
-    buffer_set_release_item(bi);
-
-    rc = buffer_set_destroy(&bs);
-    NIOVA_ASSERT(rc == 0);
-
-    free(base);
-}
-
-
-static void
-buffer_initx_memalign_2k_test(void)
-{
-    unsigned alignment = 2048;
-    size_t buf_size = 1280;
-    size_t buf_size_aligned = ALIGN_UP(buf_size, alignment);
-    size_t num_bufs = 1024;
-    size_t region_size = ALIGN_UP(buf_size_aligned * num_bufs, alignment);
-    void *base = malloc(region_size);
-    NIOVA_ASSERT(base != NULL);
-
-    struct buffer_set bs = {0};
-
-    enum buffer_set_opts opts = BUFSET_OPT_ALT_SOURCE_BUF |
-                                BUFSET_OPT_ALT_SOURCE_BUF_ALIGN;
-
-    struct buffer_set_args bsa =
-    {
-        .bsa_set = &bs,
-        .bsa_opts = opts,
-        .bsa_nbufs = num_bufs,
-        .bsa_buf_size = buf_size,
-        .bsa_region = base,
-        .bsa_region_size = region_size,
-        .bsa_alignment = alignment,
-    };
-
-    uint8_t initialized = 1;
-    //either base is aligned on 2048 boundary or it is not
-    int rc = buffer_set_initx(&bsa);
-    NIOVA_ASSERT(rc == 0 ||
-                 (rc == -EINVAL && ((uintptr_t)base & (alignment - 1))));
-
-    // if base was not aligned, free it and allocate by using memalign
-    if (rc == -EINVAL)
-    {
-        free(base);
-        base = NULL;
-        initialized = 0;
-    }
-
-    if (!base)
-    {
-        rc = posix_memalign(&base, alignment, region_size);
-        NIOVA_ASSERT(rc == 0 && base);
-        bsa.bsa_region = base;
-    }
-
-    rc = !initialized ? buffer_set_initx(&bsa) : 0;
-    NIOVA_ASSERT(rc == 0);
-
-    NIOVA_ASSERT(bsa.bsa_used_off <= region_size);
-
-    struct buffer_item *bi = buffer_set_allocate_item(&bs);
-    NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size);
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base >= (uintptr_t)base) &&
-                 ((uintptr_t)bi->bi_iov.iov_base <
-                  (((uintptr_t)base) + region_size)));
-
-    //Buffer base is aligned at 1024 boundary
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base & (alignment - 1)) == 0);
-    buffer_set_release_item(bi);
-
-    rc = buffer_set_destroy(&bs);
-    NIOVA_ASSERT(rc == 0);
-
-    free(base);
-}
-
-static void
-buffer_initx_memalign_1k_test(void)
-{
-    unsigned int alignment = 1024;
-    size_t buf_size = 768;
-    size_t buf_size_aligned = ALIGN_UP(buf_size, alignment);
-    size_t num_bufs = 1024;
-    size_t region_size = ALIGN_UP(buf_size_aligned * num_bufs, alignment);
-    void *base = malloc(region_size);
-    NIOVA_ASSERT(base != NULL);
-
-    struct buffer_set bs = {0};
-
-    enum buffer_set_opts opts = BUFSET_OPT_ALT_SOURCE_BUF |
-                                BUFSET_OPT_ALT_SOURCE_BUF_ALIGN;
-
-    struct buffer_set_args bsa =
-    {
-        .bsa_set = &bs,
-        .bsa_opts = opts,
-        .bsa_nbufs = num_bufs,
-        .bsa_buf_size = buf_size,
-        .bsa_region = base,
-        .bsa_region_size = region_size,
-        .bsa_alignment = alignment,
-    };
-
-    uint8_t initialized = 1;
-    //either base is aligned on 1024 boundary or it is not
-    int rc = buffer_set_initx(&bsa);
-    NIOVA_ASSERT(rc == 0 ||
-                 (rc == -EINVAL && ((uintptr_t)base & (alignment - 1))));
-
-    // if base was not aligned, free it and allocate by using memalign
-    if (rc == -EINVAL)
-    {
-        free(base);
-        base = NULL;
-        initialized = 0;
-    }
-
-    if (!base)
-    {
-        rc = posix_memalign(&base, alignment, region_size);
-        NIOVA_ASSERT(rc == 0 && base);
-        bsa.bsa_region =  base;
-    }
-
-    rc = !initialized ? buffer_set_initx(&bsa) : 0;
-    NIOVA_ASSERT(rc == 0);
-
-    NIOVA_ASSERT(bsa.bsa_used_off <= region_size);
-
-    struct buffer_item *bi = buffer_set_allocate_item(&bs);
-    NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size);
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base >= (uintptr_t)base) &&
-                 ((uintptr_t)bi->bi_iov.iov_base <
-                  (((uintptr_t)base) + region_size)));
-
-    //Buffer base is aligned at 1024 boundary
-    NIOVA_ASSERT(((uintptr_t)bi->bi_iov.iov_base & (alignment - 1)) == 0);
-    buffer_set_release_item(bi);
-
-    rc = buffer_set_destroy(&bs);
-    NIOVA_ASSERT(rc == 0);
-
-    free(base);
+    buffer_initx_memalign_test(1024, 768, 1024, opts);
+    buffer_initx_memalign_test(1024, 1280, 2048, opts);
+    buffer_initx_memalign_test(10, 768 * 1024, 1024 * 1024, opts);
+    buffer_initx_memalign_test(100, 268, 64, BUFSET_OPT_MEMALIGN_L2);
 }
 
 int
@@ -567,10 +384,7 @@ main(void)
     buffer_initx_test();
 
     buffer_user_cache_test();
+    buffer_initx_trigger_memalign_tests();
 
-    buffer_initx_memalign_1k_test();
-    buffer_initx_memalign_2k_test();
-    buffer_initx_memalign_1m_test();
-    buffer_initx_memalign_l2_test();
     return 0;
 }
