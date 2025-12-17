@@ -14,6 +14,8 @@ REGISTRY_ENTRY_FILE_GENERATE;
 #define REGSZ_MASK ((1ULL << REGSZ_BITS) - 1)
 #define NUNITS_MASK ((1ULL << NUNITS_BITS) - 1)
 
+unsigned int randSeed;
+
 static void
 niova_vbasic_alloc_test2(void)
 {
@@ -145,6 +147,12 @@ test_vbasic_random_stress_full(void)
         int rc = niova_vbasic_init_aligned(nvba, region_size, unit_size,
                                            alignment);
 
+        // Log the parameters so that error-inducing parameters can be captured
+        SIMPLE_LOG_MSG((rc ? LL_NOTIFY : LL_DEBUG),
+                       "seed/rand=%u/%u region_sz=%zu unit_sz=%zu align=%zu %s",
+                       randSeed, r, region_size, unit_size, alignment,
+                       strerror(-rc));
+
         /* ---------------- Init expectations ---------------- */
 
         if (rc != 0)
@@ -218,21 +226,20 @@ test_vbasic_random_stress_full(void)
 
         while (nlive--)
         {
-            niova_vbasic_free(nvba,
-                              live[nlive].ptr,
-                              live[nlive].units * unit_size);
+            int xrc = niova_vbasic_free(nvba,
+                                        live[nlive].ptr,
+                                        live[nlive].units * unit_size);
+
+            FATAL_IF(xrc, "niova_vbasic_free(): %s", strerror(-xrc));
         }
 
-        if (nvba->nvba_bitmap != initial_bitmap)
-        {
-            fprintf(
-                stderr,
-                "LEAK: iter=%d nunits=%zu bitmap=0x%016lx expected=0x%016lx\n",
-                iter,
-                nunits,
-                nvba->nvba_bitmap,
-                initial_bitmap);
-        }
+        FATAL_IF(nvba->nvba_bitmap != initial_bitmap,
+                 "LEAK: iter=%d nunits=%zu bitmap=0x%016lx expected=0x%016lx\n",
+                 iter,
+                 nunits,
+                 nvba->nvba_bitmap,
+                 initial_bitmap);
+
         niova_free(raw);
     }
 }
@@ -641,6 +648,13 @@ niova_vbasic_alloc_alignment_test(void)
 int
 main(void)
 {
+    randSeed = getpid();
+
+    int rc = random_init(randSeed);
+    FATAL_IF(rc, "random_init(): %s", strerror(-rc));
+
+    SIMPLE_LOG_MSG(LL_WARN, "seed=%u", randSeed);
+
     niova_vbasic_alloc_test();
     niova_vbasic_alloc_test2();
     niova_vbasic_alloc_alignment_test();
