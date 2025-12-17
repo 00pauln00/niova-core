@@ -99,7 +99,7 @@
 
 #define CT_ASSERT(expr) _Static_assert(expr, "compile-time check failed")
 
-#define IS_POWER2(x) (((x) & ((x) - 1ULL)) == 0ULL)
+#define IS_POWER2(x) ((x) && (((x) & ((x) - 1ULL)) == 0ULL))
 
 #define IS_ALIGNED(x, a) (((x) & ((a) - 1ULL)) == 0ULL)
 
@@ -242,7 +242,11 @@ nconsective_bits_assign(uint64_t *field, unsigned int nbits)
     }
 
     const uint64_t ifield = ~(*field);
-    uint64_t mask = (1ULL << nbits) - 1;
+    uint64_t mask;
+    if (nbits == field_size)
+        mask = UINT64_MAX;
+    else
+        mask = (1ULL << nbits) - 1;
 
     for (unsigned int i = 0; i <= (field_size - nbits); i++)
     {

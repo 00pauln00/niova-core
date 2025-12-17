@@ -98,6 +98,305 @@ niova_vbasic_alloc_test2(void)
 }
 
 static void
+test_vbasic_random_stress_full(void)
+{
+    const size_t MAX_REGION_SIZE = (1ULL << 30); /* 1 GiB */
+
+    for (int iter = 0; iter < 20000; iter++)
+    {
+        unsigned r = random_get();
+
+        /* ---------------- Geometry ---------------- */
+
+        size_t nunits = 1 + (r % 64);
+        size_t shift = 4 + (r % 20);     /* 16B .. 8MB */
+        size_t unit_size = 1ULL << shift;
+
+        /* alignment: power-of-2 <= unit_size */
+        size_t align_shift = random_get() % (shift + 1);
+        size_t alignment = 1ULL << align_shift;
+
+        size_t max_unit_size =
+            MIN(((1ULL << 57) - 1) / nunits,
+                MAX_REGION_SIZE / nunits);
+
+        if (unit_size > max_unit_size)
+            unit_size = max_unit_size;
+
+        if (unit_size == 0)
+            continue;
+
+        size_t region_size = nunits * unit_size;
+        if (region_size < unit_size)
+            continue;
+
+        /* ---------------- Allocation ---------------- */
+
+        size_t total_size =
+            sizeof(struct niova_vbasic_allocator) + region_size;
+
+        void *raw = NULL;
+        raw = niova_malloc(total_size);
+        NIOVA_ASSERT(raw != NULL);
+
+        struct niova_vbasic_allocator *nvba =
+            (struct niova_vbasic_allocator *)raw;
+
+        int rc = niova_vbasic_init_aligned(nvba, region_size, unit_size,
+                                           alignment);
+
+        /* ---------------- Init expectations ---------------- */
+
+        if (rc != 0)
+        {
+            /*
+             * All of these are VALID failures depending on geometry
+             * and base alignment.
+             */
+            NIOVA_ASSERT(rc == -EINVAL   ||
+                         rc == -EDOM     ||
+                         rc == -ENODATA  ||
+                         rc == -EOVERFLOW);
+            niova_free(raw);
+            continue;
+        }
+
+        /* ---------------- Alloc / Free churn ---------------- */
+
+        uint64_t initial_bitmap = nvba->nvba_bitmap;
+        struct
+        {
+            void   *ptr;
+            size_t  units;
+            uint8_t poison;
+        } live[64] = {0};
+
+        int nlive = 0;
+
+        for (int step = 0; step < 1500; step++)
+        {
+            unsigned rv = random_get();
+            if ((rv & 1) && nlive < (int)nunits)
+            {
+                size_t req_units = 1 + (rv % nunits);
+                void *ptr = NULL;
+                rc = niova_vbasic_malloc(nvba,
+                                         req_units * unit_size,
+                                         &ptr);
+                NIOVA_ASSERT(rc == 0 || rc == -ENOSPC);
+                if (rc == 0)
+                {
+                    NIOVA_ASSERT(IS_ALIGNED_PTR(ptr, alignment));
+
+                    live[nlive].ptr   = ptr;
+                    live[nlive].units = req_units;
+                    live[nlive].poison =
+                        (uint8_t)(0xA5 + (nlive & 0x1F));
+
+                    uint8_t *p = ptr;
+                    for (size_t u = 0; u < req_units; u++)
+                        p[u * unit_size] = live[nlive].poison;
+
+                    nlive++;
+                }
+            }
+            else if (nlive > 0)
+            {
+                int idx = rv % nlive;
+                uint8_t *p = live[idx].ptr;
+
+                for (size_t u = 0; u < live[idx].units; u++)
+                    NIOVA_ASSERT(p[u * unit_size] == live[idx].poison);
+
+                NIOVA_ASSERT(niova_vbasic_free(nvba,
+                             live[idx].ptr,live[idx].units * unit_size) == 0);
+                live[idx] = live[--nlive];
+            }
+        }
+
+        /* ---------------- Cleanup ---------------- */
+
+        while (nlive--)
+        {
+            niova_vbasic_free(nvba,
+                              live[nlive].ptr,
+                              live[nlive].units * unit_size);
+        }
+
+        if (nvba->nvba_bitmap != initial_bitmap)
+        {
+            fprintf(
+                stderr,
+                "LEAK: iter=%d nunits=%zu bitmap=0x%016lx expected=0x%016lx\n",
+                iter,
+                nunits,
+                nvba->nvba_bitmap,
+                initial_bitmap);
+        }
+        niova_free(raw);
+    }
+}
+
+static void
+test_vbasic_nunits_lt_64(void)
+{
+    struct niova_vbasic_allocator nvba;
+    const size_t unit = 64;
+    const size_t requested_nunits = 16;
+    const size_t region = unit * requested_nunits;
+    int rc;
+
+    rc = niova_vbasic_init_aligned(&nvba, region, unit, unit);
+    NIOVA_ASSERT(rc == 0);
+
+    /* IMPORTANT: use allocator-derived nunits */
+    const size_t nunits = nvba.nvba_nunits;
+
+    void *ptrs[nunits];
+
+    for (size_t i = 0; i < nunits; i++) {
+        rc = niova_vbasic_space_avail(&nvba, unit);
+        NIOVA_ASSERT(rc == 0);
+
+        rc = niova_vbasic_malloc(&nvba, unit, &ptrs[i]);
+        NIOVA_ASSERT(rc == 0);
+        NIOVA_ASSERT(ptrs[i] != NULL);
+
+        size_t map = niova_vbasic_nassigned(&nvba);
+
+        /* bitmap includes non-allocatable bits */
+        size_t expected =
+            (NIOVA_VBA_MAX_BITS - nunits) + (i + 1);
+
+        NIOVA_ASSERT(map == expected);
+    }
+
+    /* After exhausting all allocatable units, space must be unavailable */
+    rc = niova_vbasic_space_avail(&nvba, unit);
+    NIOVA_ASSERT(rc != 0);
+}
+
+static void
+test_vbasic_nunits_eq(void)
+{
+    struct niova_vbasic_allocator nvba;
+    const size_t unit = 128;
+    const size_t requested_nunits = NIOVA_VBA_MAX_BITS;
+    const size_t region = unit * requested_nunits;
+    int rc;
+
+    rc = niova_vbasic_init_aligned(&nvba, region, unit, unit);
+    NIOVA_ASSERT(rc == 0);
+
+    /* Use allocator-derived nunits */
+    const size_t nunits = nvba.nvba_nunits;
+    NIOVA_ASSERT(nunits > 0);   /* sanity */
+
+    void *ptrs[nunits];
+
+    /* Allocate all effective units */
+    for (size_t i = 0; i < nunits; i++) {
+        rc = niova_vbasic_space_avail(&nvba, unit);
+        NIOVA_ASSERT(rc == 0);
+
+        rc = niova_vbasic_malloc(&nvba, unit, &ptrs[i]);
+        NIOVA_ASSERT(rc == 0);
+        NIOVA_ASSERT(ptrs[i] != NULL);
+
+        /*
+         * Map semantics:
+         * - masked bits may exist
+         * - so nassigned() counts masked + allocated
+         */
+        size_t expected =
+            (NIOVA_VBA_MAX_BITS - nunits) + (i + 1);
+
+        NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == expected);
+    }
+
+    /* Full */
+    rc = niova_vbasic_space_avail(&nvba, unit);
+    NIOVA_ASSERT(rc != 0);
+    NIOVA_ASSERT(
+        niova_vbasic_nassigned(&nvba) ==
+        NIOVA_VBA_MAX_BITS);
+
+    /* Free first and last */
+    rc = niova_vbasic_free(&nvba, ptrs[0], unit);
+    NIOVA_ASSERT(rc == 0);
+
+    rc = niova_vbasic_free(&nvba, ptrs[nunits - 1], unit);
+    NIOVA_ASSERT(rc == 0);
+
+    NIOVA_ASSERT(
+        niova_vbasic_nassigned(&nvba) ==
+        NIOVA_VBA_MAX_BITS - 2);
+
+    /* Allocate twice */
+    void *p;
+
+    rc = niova_vbasic_space_avail(&nvba, unit);
+    NIOVA_ASSERT(rc == 0);
+    rc = niova_vbasic_malloc(&nvba, unit, &p);
+    NIOVA_ASSERT(rc == 0);
+
+    rc = niova_vbasic_space_avail(&nvba, unit);
+    NIOVA_ASSERT(rc == 0);
+    rc = niova_vbasic_malloc(&nvba, unit, &p);
+    NIOVA_ASSERT(rc == 0);
+
+    NIOVA_ASSERT(
+        niova_vbasic_nassigned(&nvba) ==
+        NIOVA_VBA_MAX_BITS);
+}
+
+static void
+test_vbasic_nunits_gt_64_capped(void)
+{
+    struct niova_vbasic_allocator nvba;
+    const size_t unit = 256;
+    const size_t requested_nunits = 80;
+    const size_t region = unit * requested_nunits;
+    int rc;
+
+    rc = niova_vbasic_init_aligned(&nvba, region, unit, unit);
+    NIOVA_ASSERT(rc == 0);
+
+    void *ptrs[64];
+
+    for (size_t i = 0; i < 64; i++) {
+        rc = niova_vbasic_space_avail(&nvba, unit);
+        NIOVA_ASSERT(rc == 0);
+
+        rc = niova_vbasic_malloc(&nvba, unit, &ptrs[i]);
+        NIOVA_ASSERT(rc == 0);
+        NIOVA_ASSERT(ptrs[i] != NULL);
+
+        NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == i + 1);
+    }
+
+    /* Cap must apply */
+    rc = niova_vbasic_space_avail(&nvba, unit);
+    NIOVA_ASSERT(rc != 0);
+    NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == 64);
+
+    /* Free + reallocate */
+    rc = niova_vbasic_free(&nvba, ptrs[10], unit);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == 63);
+
+    void *p;
+
+    rc = niova_vbasic_space_avail(&nvba, unit);
+    NIOVA_ASSERT(rc == 0);
+
+    rc = niova_vbasic_malloc(&nvba, unit, &p);
+    NIOVA_ASSERT(rc == 0);
+
+    NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == 64);
+}
+
+static void
 niova_vbasic_alloc_test(void)
 {
     struct niova_vbasic_allocator tnvba;
@@ -163,7 +462,7 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(niova_vbasic_init_aligned(NULL, 65536, 4096, 0) == -EINVAL);
 
     //alignment 0
-    NIOVA_ASSERT(niova_vbasic_init_aligned(&tnvba, 65536, 4096, 0) == 0);
+    NIOVA_ASSERT(niova_vbasic_init_aligned(&tnvba, 65536, 4096, 0) == -EDOM);
 
     struct niova_vbasic_allocator *nvba =
         niova_malloc(sizeof(struct niova_vbasic_allocator) + 4096);
@@ -336,6 +635,10 @@ main(void)
     niova_vbasic_alloc_test();
     niova_vbasic_alloc_test2();
     niova_vbasic_alloc_alignment_test();
+    test_vbasic_random_stress_full();
+    test_vbasic_nunits_lt_64();
+    test_vbasic_nunits_eq();
+    test_vbasic_nunits_gt_64_capped();
 
     return 0;
 }

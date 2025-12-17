@@ -127,6 +127,7 @@ niova_vbasic_init(struct niova_vbasic_allocator *nvba, size_t region_size)
     CONST_OVERRIDE(uint32_t, nvba->nvba_unit_size, unit_size);
     nvba->nvba_bitmap = 0;
     nvba->nvba_alignment = 0;
+    nvba->nvba_region_sz = region_size;
 
     nvba->nvba_region_ptr = &nvba->nvba_region[0];
     return 0;
@@ -162,7 +163,7 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     }
 
     /* alignment is power of 2 */
-    if (alignment && number_of_ones_in_val32(alignment) != 1)
+    if (!IS_POWER2(alignment))
     {
         err_loc = 4;
         rc = -EDOM;
@@ -255,7 +256,8 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     nvba->nvba_region_ptr = (char *)aligned;
 
 xerror:
-    SIMPLE_LOG_MSG(LL_WARN, "reg_sz %ld nvba %p bmap 0x%lx usize %ld "
+    enum log_level log_lvl = rc ? LL_ERROR : LL_NOTIFY;
+    SIMPLE_LOG_MSG(log_lvl, "reg_sz %ld nvba %p bmap 0x%lx usize %ld "
                    "nunits=%u align %u err_loc %d error %d",
                    region_size, nvba, nvba ? nvba->nvba_bitmap : 0,
                    unit_size, nunits, alignment, err_loc, rc);
@@ -315,13 +317,16 @@ niova_vbasic_free(struct niova_vbasic_allocator *nvba, const void *ptr,
     if (!nvba || !ptr || !size_in_bytes)
         return -EINVAL;
 
-    const char *my_ptr = (const char *)ptr;
+    uintptr_t my_ptr = (uintptr_t)ptr;
+    uintptr_t region_base = (uintptr_t)nvba->nvba_region_ptr;
+    uintptr_t region_end =
+        (uintptr_t)((char *)region_base + nvba->nvba_region_sz);
 
-    if (my_ptr < nvba->nvba_region_ptr ||
-        my_ptr > &nvba->nvba_region_ptr[NIOVA_VBA_MAX_BITS * nvba->nvba_unit_size])
+    if (my_ptr < region_base || my_ptr >= region_end)
         return -ERANGE; // ptr value not within the allocation region
 
-    const uintptr_t ptr_diff = my_ptr - nvba->nvba_region_ptr;
+    const uintptr_t ptr_diff =
+        (uintptr_t)((char *)my_ptr - nvba->nvba_region_ptr);
 
     if (ptr_diff % nvba->nvba_unit_size)
         return -EFAULT; // ptr is not aligned with the unit size

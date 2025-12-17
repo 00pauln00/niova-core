@@ -296,7 +296,7 @@ buffer_initx_memalign_test(size_t nbufs, size_t buf_size,
         .bsa_set = &bs,
         .bsa_opts = opts,
         .bsa_nbufs = nbufs,
-        .bsa_buf_size = buf_size,
+        .bsa_buf_size = buf_size_aligned,
         .bsa_region = base,
         .bsa_region_size = region_size,
         .bsa_alignment = alignment,
@@ -338,7 +338,7 @@ buffer_initx_memalign_test(size_t nbufs, size_t buf_size,
     for (size_t i = 0; i < nbufs; i++)
     {
         struct buffer_item *bi = buffer_set_allocate_item(&bs);
-        NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size);
+        NIOVA_ASSERT(bi && bi->bi_iov.iov_len == buf_size_aligned);
 
         curr_base = (uintptr_t)(bi->bi_iov.iov_base);
         NIOVA_ASSERT(curr_base >= (uintptr_t)base && curr_base < region_end);
