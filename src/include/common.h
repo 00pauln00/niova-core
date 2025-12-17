@@ -159,6 +159,10 @@ common_compile_time_asserts(void)
     COMPILE_TIME_ASSERT((ssize_t)-ENOLCK == (int)-ENOLCK);
     COMPILE_TIME_ASSERT(false == 0);
     COMPILE_TIME_ASSERT(true == 1);
+
+    COMPILE_TIME_ASSERT(IS_POWER2(0) == 0);
+    COMPILE_TIME_ASSERT(IS_POWER2(1));
+
     RUN_COMPILE_TIME_TESTS();
 }
 
