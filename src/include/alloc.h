@@ -90,6 +90,20 @@ alloc_env_var_cb(const struct niova_env_var *nev);
 #define NIOVA_VBA_NUNITS_MASK ((1ULL << NIOVA_VBA_NUNITS_BITS) - 1)
 #define NIOVA_VBA_REGSZ_MASK ((1ULL << NIOVA_VBA_REGSZ_BITS) - 1)
 
+/**
+ * niova_vbasic_allocator - structure for managing a "very basic allocation"
+ *    scheme.  This is typically used for providing a simple allocator for
+ *    statically allocated heaps.  Allocations may consist multiple units so
+ *    long as contiguous ranges are available.
+ * @nvba_alignment: optional alignment parameter
+ * @nvba_unit_size: size of the allocation unit
+ * @nvba_nunits: the number of allocatable units (used for testing)
+ * @nvba_region_sz: the effective region size used by the vba (for testing)
+ * @nvba_bitmap: allocation bitmap
+ * @nvba_region_ptr: holds address of the usable region which may have been
+ *    adjusted to meet the reqested alignment
+ * @nvba_region:  the underlying buffer area
+ */
 struct niova_vbasic_allocator
 {
     unsigned int nvba_alignment;
