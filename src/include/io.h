@@ -160,4 +160,19 @@ niova_io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
 ssize_t
 niova_io_memset_iovs(struct iovec *iovs, size_t num_iovs, int c, size_t len);
 
+/**
+ * Callback type for iovec iteration.
+ *
+ * @data:      Pointer to data within current iovec segment
+ * @len:       Length of data in this segment
+ * @user_ctx:  User's context
+ *
+ * Returns: 0 on success, negative error code to abort iteration.
+ */
+typedef int (*niova_iov_cb_t)(const void *data, size_t len, void *user_ctx);
+
+ssize_t
+niova_io_iterate_iovs(const struct iovec *iovs, size_t niovs,
+                      size_t num_bytes, niova_iov_cb_t cb, void *user_ctx);
+
 #endif
