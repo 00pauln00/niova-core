@@ -155,31 +155,25 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     int rc = 0, err_loc = 0;
     unsigned int nunits = 0;
 
-    if (!nvba)
+    // Basic parameter checks
+    if (!nvba || region_size == 0 || alignment == 0)
     {
-        err_loc = 1;
+        err_loc = 0;
         rc = -EINVAL;
-        goto xerror;
-    }
-
-    if (region_size == 0)
-    {
-        err_loc = 2;
-        rc = -ENODATA;
         goto xerror;
     }
 
     if (region_size > NIOVA_VBA_REGSZ_MASK)
     {
-        err_loc = 3;
+        err_loc = 1;
         rc = -E2BIG;
         goto xerror;
     }
 
-    // Check that alignment is power of 2 and that the value is non-zero
+    // Check that alignment is power of 2
     if (number_of_ones_in_val32(alignment) != 1)
     {
-        err_loc = 4;
+        err_loc = 2;
         rc = -EDOM;
         goto xerror;
     }
@@ -190,7 +184,7 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
 
     if (shifted >= region_size)
     {
-        err_loc = 5;
+        err_loc = 3;
         rc = -ENOSPC;
         goto xerror;
     }
@@ -208,14 +202,14 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
 
     if (unit_size == 0 || unit_size > UINT32_MAX)
     {
-        err_loc = 6;
+        err_loc = 4;
         rc = -EINVAL;
         goto xerror;
     }
 
     if (unit_size < (size_t)alignment)
     {
-        err_loc = 7;
+        err_loc = 5;
         rc = -EOVERFLOW;
         goto xerror;
     }
@@ -223,7 +217,7 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
     /* Unit size is multiple of alignment */
     if (unit_size & (alignment - 1))
     {
-        err_loc = 8;
+        err_loc = 6;
         rc = -EDOM;
         goto xerror;
     }
@@ -232,7 +226,7 @@ niova_vbasic_init_aligned(struct niova_vbasic_allocator *nvba,
 
     if (nunits == 0)
     {
-        err_loc = 9;
+        err_loc = 7;
         rc = -EINVAL;
         goto xerror;
     }

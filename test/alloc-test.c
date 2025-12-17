@@ -462,14 +462,23 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(niova_vbasic_init_aligned(NULL, 65536, 4096, 0) == -EINVAL);
 
     //alignment 0
-    NIOVA_ASSERT(niova_vbasic_init_aligned(&tnvba, 65536, 4096, 0) == -EDOM);
+    NIOVA_ASSERT(niova_vbasic_init_aligned(&tnvba, 65536, 4096, 0) == -EINVAL);
+
+    // invalid alignment
+    NIOVA_ASSERT(
+        niova_vbasic_init_aligned(&tnvba, 65536, 4096, 3) == -EDOM);
+
+    // too large of a region
+    NIOVA_ASSERT(
+        niova_vbasic_init_aligned(&tnvba, NIOVA_VBA_REGSZ_MASK + 1, 4096, 128)
+        == -E2BIG);
 
     struct niova_vbasic_allocator *nvba =
         niova_malloc(sizeof(struct niova_vbasic_allocator) + 4096);
     NIOVA_ASSERT(nvba);
 
     //region size zero
-    NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 0, 64, 15) == -ENODATA);
+    NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 0, 64, 16) == -EINVAL);
 
     //alignment should be power of 2
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 64, 15) == -EDOM);
