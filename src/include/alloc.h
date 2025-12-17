@@ -94,8 +94,8 @@ struct niova_vbasic_allocator
 {
     unsigned int nvba_alignment;
     uint32_t     nvba_unit_size; // size represented by each bit
-    uint64_t     nvba_nunits:7;
-    uint64_t     nvba_region_sz:57;
+    uint64_t     nvba_nunits:NIOVA_VBA_NUNITS_BITS;
+    uint64_t     nvba_region_sz:NIOVA_VBA_REGSZ_BITS;
     uint64_t     nvba_bitmap;
     char        *nvba_region_ptr;
     char         nvba_region[];
