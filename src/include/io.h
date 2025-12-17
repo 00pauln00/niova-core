@@ -8,6 +8,7 @@
 #define _NIOVA_IO_H_ 1
 
 #include <errno.h>
+#include <stdint.h>
 #include <sys/uio.h>
 #include <sys/socket.h>
 
@@ -41,6 +42,26 @@ niova_io_iovs_total_size_get(const struct iovec *iovs, const size_t iovlen)
             total_size += iovs[i].iov_len;
 
     return total_size;
+}
+
+static inline ssize_t
+niova_io_iovs_total_size_get_w_align_check(const struct iovec *iovs,
+                                          const size_t iovlen, uint32_t align)
+{
+    size_t total_size = 0;
+
+    if (!iovs || !iovlen)
+        return -EINVAL;
+
+    for (size_t i = 0; i < iovlen; i++)
+    {
+        if ((iovs[i].iov_len % align)!= 0)
+            return -EINVAL;
+
+        total_size += iovs[i].iov_len;
+    }
+
+    return (ssize_t)total_size;
 }
 
 static inline ssize_t
