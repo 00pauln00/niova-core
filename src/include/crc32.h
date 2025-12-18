@@ -9,6 +9,8 @@
 
 #include "common.h"
 
+#define CRC_T10DIF_MIN_LEN 16
+
 typedef uint32_t crc32_t;
 
 #if defined(__x86_64__)
