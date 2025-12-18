@@ -3,10 +3,19 @@
  * Proprietary and confidential
  * Written by Paul Nowoczynski <pauln@niova.io> 2021
  */
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
 #include "common.h"
 #include "log.h"
+#include "random.h"
 
 #include "io.h"
+
+#define TEST_MAX_IOVS 64
+#define TEST_ITERATIONS 10000
+#define SUM_CHUNK_SIZE 16
 
 static int
 iov_test_copy_from_iovs(void)
@@ -460,9 +469,371 @@ iov_test_iovs_memset(void)
     return 0;
 }
 
+/**
+ * Helper to allocate and initialize iovs with random sizes from a buffer
+ */
+static struct iovec *
+allocate_and_init_iovs(const unsigned char *buffer, size_t buffer_size,
+                       size_t min_size, size_t max_size, size_t *out_niovs)
+{
+    struct iovec *iovs = malloc(TEST_MAX_IOVS * sizeof(struct iovec));
+    NIOVA_ASSERT(iovs != NULL);
+
+    size_t niovs = 0;
+    size_t offset = 0;
+
+    while (offset < buffer_size && niovs < TEST_MAX_IOVS)
+    {
+        size_t remaining = buffer_size - offset;
+        size_t iov_size;
+
+        if (remaining <= min_size || niovs == TEST_MAX_IOVS - 1)
+        {
+            iov_size = remaining;
+        }
+        else
+        {
+            size_t max_iov_size = MIN(max_size, remaining);
+            iov_size =
+                min_size + (random_get() % (max_iov_size - min_size + 1));
+        }
+
+        unsigned char *iov_buffer = malloc(iov_size);
+        NIOVA_ASSERT(iov_buffer != NULL);
+
+        memcpy(iov_buffer, buffer + offset, iov_size);
+
+        iovs[niovs].iov_base = iov_buffer;
+        iovs[niovs].iov_len = iov_size;
+
+        offset += iov_size;
+        niovs++;
+    }
+
+    *out_niovs = niovs;
+    return iovs;
+}
+
+/**
+ * Helper to free iovs allocated by allocate_and_init_iovs
+ */
+static void
+free_iovs(struct iovec *iovs, size_t niovs)
+{
+    for (size_t i = 0; i < niovs; i++)
+        free(iovs[i].iov_base);
+    free(iovs);
+}
+
+/**
+ * Context for read test callback
+ */
+struct read_test_ctx
+{
+    unsigned char *dest_buffer;
+    size_t offset;
+    uint32_t *sum_array;  // Array to store sum of each 16-byte chunk
+    size_t sum_count;     // Number of sums computed
+    uint32_t current_sum; // Current sum being accumulated
+    size_t bytes_in_sum;  // Bytes accumulated in current sum
+};
+
+/**
+ * Callback to read data from iovs into a buffer and compute sums
+ */
+static int
+read_callback(const void *data, size_t len, void *user_ctx)
+{
+    struct read_test_ctx *ctx = (struct read_test_ctx *)user_ctx;
+
+    const unsigned char *bytes = (const unsigned char *)data;
+
+    // Copy data to destination buffer
+    memcpy(ctx->dest_buffer + ctx->offset, data, len);
+
+    // Compute sums of SUM_CHUNK_SIZE consecutive bytes
+    for (size_t i = 0; i < len; i++)
+    {
+        ctx->current_sum += bytes[i];
+        ctx->bytes_in_sum++;
+
+        if (ctx->bytes_in_sum == SUM_CHUNK_SIZE)
+        {
+            ctx->sum_array[ctx->sum_count++] = ctx->current_sum;
+            ctx->current_sum = 0;
+            ctx->bytes_in_sum = 0;
+        }
+    }
+
+    ctx->offset += len;
+
+    return 0;
+}
+
+/**
+ * Context for write test callback
+ */
+struct write_test_ctx
+{
+    const unsigned char *src_buffer;
+    size_t offset;
+};
+
+/**
+ * Callback to write data from buffer into iovs
+ */
+static int
+write_callback(const void *data, size_t len, void *user_ctx)
+{
+    struct write_test_ctx *ctx = (struct write_test_ctx *)user_ctx;
+
+    memcpy((void *)data, ctx->src_buffer + ctx->offset, len);
+    ctx->offset += len;
+
+    return 0;
+}
+
+/**
+ * Test niova_io_iterate_iovs for reading from iovs
+ */
+static int
+iov_test_iterate_read(void)
+{
+    int failures = 0;
+
+    for (int iter = 0; iter < TEST_ITERATIONS; iter++)
+    {
+        // Generate buffer with random values
+        // Make it a multiple of SUM_CHUNK_SIZE for sum computation
+        size_t buffer_size = 256 + (random_get() % (8192 - 256 + 1));
+        buffer_size = (buffer_size / SUM_CHUNK_SIZE) * SUM_CHUNK_SIZE;
+
+        unsigned char *src_buffer = malloc(buffer_size);
+        NIOVA_ASSERT(src_buffer != NULL);
+
+        for (size_t i = 0; i < buffer_size; i++)
+            src_buffer[i] = (unsigned char)(random_get() & 0xFF);
+
+        // Compute expected sums from source buffer
+        size_t num_sums = buffer_size / SUM_CHUNK_SIZE;
+        uint32_t *expected_sums = malloc(num_sums * sizeof(uint32_t));
+        NIOVA_ASSERT(expected_sums != NULL);
+
+        for (size_t i = 0; i < num_sums; i++)
+        {
+            uint32_t sum = 0;
+            for (size_t j = 0; j < SUM_CHUNK_SIZE; j++)
+                sum += src_buffer[i * SUM_CHUNK_SIZE + j];
+            expected_sums[i] = sum;
+        }
+
+        // (16 < iov_sizes < 512)
+        size_t min_iov = 16;
+        size_t max_iov = 512;
+
+        size_t niovs;
+        struct iovec *iovs = allocate_and_init_iovs(src_buffer, buffer_size,
+                                                    min_iov, max_iov, &niovs);
+
+        unsigned char *dest_buffer = calloc(1, buffer_size);
+        NIOVA_ASSERT(dest_buffer != NULL);
+
+        uint32_t *computed_sums = calloc(num_sums, sizeof(uint32_t));
+        NIOVA_ASSERT(computed_sums != NULL);
+
+        struct read_test_ctx ctx = {.dest_buffer = dest_buffer,
+                                    .offset = 0,
+                                    .sum_array = computed_sums,
+                                    .sum_count = 0,
+                                    .current_sum = 0,
+                                    .bytes_in_sum = 0};
+
+        ssize_t rc = niova_io_iterate_iovs(iovs, niovs, buffer_size,
+                                           read_callback, &ctx);
+
+        if (rc != (ssize_t)buffer_size)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "iter %d: Expected %zu bytes, got %zd",
+                           iter, buffer_size, rc);
+            failures++;
+        }
+
+        // Verify data matches
+        if (memcmp(src_buffer, dest_buffer, buffer_size) != 0)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "iter %d: Data mismatch", iter);
+            failures++;
+        }
+
+        // Verify sums match
+        if (ctx.sum_count != num_sums)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR,
+                           "iter %d: Sum count mismatch: expected %zu, got %zu",
+                           iter, num_sums, ctx.sum_count);
+            failures++;
+        }
+        else
+        {
+            if (memcmp(computed_sums, expected_sums,
+                       num_sums * sizeof(uint32_t)) != 0)
+            {
+            SIMPLE_LOG_MSG(LL_ERROR, "iter %d: Sums mismatch", iter);
+            failures++;
+            }
+        }
+
+        free(src_buffer);
+        free(dest_buffer);
+        free(expected_sums);
+        free(computed_sums);
+        free_iovs(iovs, niovs);
+    }
+
+    return failures;
+}
+
+/**
+ * Test niova_io_iterate_iovs for writing to iovs
+ */
+static int
+iov_test_iterate_write(void)
+{
+    int failures = 0;
+
+    for (int iter = 0; iter < TEST_ITERATIONS; iter++)
+    {
+        // Generate buffer with random values
+        size_t buffer_size = 256 + (random_get() % (8192 - 256 + 1));
+
+        unsigned char *src_buffer = malloc(buffer_size);
+        NIOVA_ASSERT(src_buffer != NULL);
+
+        for (size_t i = 0; i < buffer_size; i++)
+            src_buffer[i] = (unsigned char)(random_get() & 0xFF);
+
+        // (16 < iov_sizes < 512)
+        size_t min_iov = 16;
+        size_t max_iov = 512;
+
+        size_t niovs;
+        struct iovec *temp_iovs = allocate_and_init_iovs(
+            src_buffer, buffer_size, min_iov, max_iov, &niovs);
+
+        struct write_test_ctx ctx = {
+            .src_buffer = src_buffer, .offset = 0};
+
+        ssize_t rc = niova_io_iterate_iovs(temp_iovs, niovs, buffer_size,
+                                           write_callback, &ctx);
+
+        if (rc != (ssize_t)buffer_size)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "iter %d: Expected %zu bytes, got %zd",
+                           iter, buffer_size, rc);
+            failures++;
+        }
+
+        // Reconstruct buffer from iovs and verify
+        unsigned char *verify_buffer = malloc(buffer_size);
+        NIOVA_ASSERT(verify_buffer != NULL);
+
+        size_t offset = 0;
+        for (size_t i = 0; i < niovs; i++)
+        {
+            memcpy(verify_buffer + offset, temp_iovs[i].iov_base,
+                   temp_iovs[i].iov_len);
+            offset += temp_iovs[i].iov_len;
+        }
+
+        if (memcmp(src_buffer, verify_buffer, buffer_size) != 0)
+        {
+            SIMPLE_LOG_MSG(LL_ERROR, "iter %d: Data mismatch after write",
+                           iter);
+            failures++;
+        }
+
+        free(src_buffer);
+        free(verify_buffer);
+        free_iovs(temp_iovs, niovs);
+    }
+
+    return failures;
+}
+
+/**
+ * Test specific cases and behaviors of niova_io_iterate_iovs
+ */
+static int
+iov_test_iterate_cases(void)
+{
+    int failures = 0;
+
+    ssize_t rc;
+
+    // Partial read (num_bytes < total iov size)
+    unsigned char buffer[100];
+    for (size_t i = 0; i < 100; i++)
+        buffer[i] = (unsigned char)i;
+
+    struct iovec iovs[3] = {{.iov_base = buffer, .iov_len = 30},
+                            {.iov_base = buffer + 30, .iov_len = 30},
+                            {.iov_base = buffer + 60, .iov_len = 40}};
+
+    unsigned char dest[50];
+    uint32_t sums[10];
+    struct read_test_ctx ctx = {.dest_buffer = dest,
+                                .offset = 0,
+                                .sum_array = sums,
+                                .sum_count = 0,
+                                .current_sum = 0,
+                                .bytes_in_sum = 0};
+
+    rc = niova_io_iterate_iovs(iovs, 3, 50, read_callback, &ctx);
+    if (rc != 50)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Partial read expected 50 bytes, got %zd", rc);
+        failures++;
+    }
+
+    if (memcmp(buffer, dest, 50) != 0)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "Partial read data mismatch");
+        failures++;
+    }
+
+    // SIZE_MAX should iterate over everything
+    unsigned char dest4[100];
+    uint32_t sums4[10];
+    struct read_test_ctx ctx4 = {.dest_buffer = dest4,
+                                 .offset = 0,
+                                 .sum_array = sums4,
+                                 .sum_count = 0,
+                                 .current_sum = 0,
+                                 .bytes_in_sum = 0};
+
+    rc = niova_io_iterate_iovs(iovs, 3, SIZE_MAX, read_callback, &ctx4);
+    if (rc != 100)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "SIZE_MAX read expected 100 bytes, got %zd",
+                       rc);
+        failures++;
+    }
+
+    if (memcmp(buffer, dest4, 100) != 0)
+    {
+        SIMPLE_LOG_MSG(LL_ERROR, "SIZE_MAX read data mismatch");
+        failures++;
+    }
+
+    return failures;
+}
+
 int
 main(void)
 {
+    unsigned int seed = (unsigned int)time(NULL);
+    random_init(seed);
+
     NIOVA_ASSERT(!iov_test_basic());
     NIOVA_ASSERT(!iov_test());
     NIOVA_ASSERT(!iov_test_num_to_meet_size());
@@ -472,6 +843,9 @@ main(void)
     NIOVA_ASSERT(!iov_test_copy_from_iovs());
     NIOVA_ASSERT(!iov_test_copy_from_iovs1());
     NIOVA_ASSERT(!iov_test_iovs_memset());
+    NIOVA_ASSERT(!iov_test_iterate_cases());
+    NIOVA_ASSERT(!iov_test_iterate_read());
+    NIOVA_ASSERT(!iov_test_iterate_write());
 
     return 0;
 }
