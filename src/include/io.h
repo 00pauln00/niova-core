@@ -46,17 +46,21 @@ niova_io_iovs_total_size_get(const struct iovec *iovs, const size_t iovlen)
 
 static inline ssize_t
 niova_io_iovs_total_size_get_w_align_check(const struct iovec *iovs,
-                                          const size_t iovlen, uint32_t align)
+                                           const size_t iovlen, uint32_t align)
 {
     size_t total_size = 0;
 
     if (!iovs || !iovlen)
         return -EINVAL;
 
+    // If align is zero or not power of 2
+    if (align == 0 || (align & (align - 1)) != 0)
+        return -EINVAL;
+
     for (size_t i = 0; i < iovlen; i++)
     {
-        if ((iovs[i].iov_len % align)!= 0)
-            return -EINVAL;
+        if ((iovs[i].iov_len % align) != 0)
+            return -EFAULT;
 
         total_size += iovs[i].iov_len;
     }
