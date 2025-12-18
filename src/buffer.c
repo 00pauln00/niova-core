@@ -125,7 +125,9 @@ buffer_page_size_set(void)
 unsigned int
 buffer_get_alignment(enum buffer_set_opts opts)
 {
-    switch(opts)
+    enum buffer_set_opts align_opts = opts & BUFFSET_OPT_ALIGNMENT_FLAGS_MASK;
+
+    switch(align_opts)
     {
     case BUFSET_OPT_MEMALIGN_SECTOR:
         return BUFFER_SECTOR_SIZE;
@@ -134,7 +136,7 @@ buffer_get_alignment(enum buffer_set_opts opts)
     case BUFSET_OPT_ALT_SOURCE_BUF_ALIGN:
         return BUFFER_SECTOR_SIZE;
     default:
-        break;
+        FATAL_IF(0, "Multiple alignment flags! %d", align_opts);
     }
 
     return 0;
