@@ -30,8 +30,7 @@ enum buffer_set_opts
     BUFSET_OPT_LREG            = (1 << 2),
     BUFSET_OPT_MEMALIGN_L2     = (1 << 3),
     BUFSET_OPT_MEMALIGN_SECTOR = (1 << 4),
-    BUFSET_OPT_ALT_SOURCE_BUF  = (1 << 5),
-    BUFSET_OPT_ALT_SOURCE_BUF_ALIGN = (1 << 6),
+    BUFSET_OPT_MMAP_REGION     = (1 << 5),
     BUFSET_OPT_MEMALIGN        = BUFSET_OPT_MEMALIGN_SECTOR,
 };
 
