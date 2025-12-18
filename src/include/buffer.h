@@ -18,10 +18,9 @@
 #define BUFFER_SECTOR_SIZE 512UL
 
 #define BUFFSET_OPT_ALIGNMENT_FLAGS_MASK \
-    (BUFSET_OPT_MEMALIGN_L2 | \
-     BUFSET_OPT_MEMALIGN_SECTOR | \
-     BUFSET_OPT_ALT_SOURCE_BUF_ALIGN | \
-     BUFSET_OPT_MEMALIGN) \
+    (BUFSET_OPT_MEMALIGN_L2     |        \
+     BUFSET_OPT_MEMALIGN_SECTOR |        \
+     BUFSET_OPT_MEMALIGN)                \
 
 enum buffer_set_opts
 {
@@ -103,7 +102,7 @@ buffer_item_touch(struct buffer_item *bi)
     char *x = (char *)bi->bi_iov.iov_base;
 
     for (size_t off = 0; off < bi->bi_iov.iov_len; off += buffer_page_size())
-            x[off] = 0xff;
+        x[off] = 0xff;
 }
 
 size_t
