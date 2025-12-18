@@ -21,8 +21,6 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 LREG_ROOT_ENTRY_GENERATE(buffer_set_nodes, LREG_USER_TYPE_BUFFER_SET);
 
-#define BUFFER_SECTOR_SIZE 512UL
-
 enum buffer_set_lreg_stats
 {
     BUFFER_SET_NAME,              // string
@@ -122,6 +120,24 @@ buffer_page_size_set(void)
 
     bufferSetPageBits = highest_set_bit_pos_from_val(bufferSetPageSize) - 1;
     NIOVA_ASSERT(bufferSetPageBits == 12);
+}
+
+unsigned int
+buffer_get_alignment(enum buffer_set_opts opts)
+{
+    switch(opts)
+    {
+    case BUFSET_OPT_MEMALIGN_SECTOR:
+        return BUFFER_SECTOR_SIZE;
+    case BUFSET_OPT_MEMALIGN_L2:
+        return L2_CACHELINE_SIZE_BYTES;
+    case BUFSET_OPT_ALT_SOURCE_BUF_ALIGN:
+        return BUFFER_SECTOR_SIZE;
+    default:
+        break;
+    }
+
+    return 0;
 }
 
 size_t
@@ -419,15 +435,14 @@ buffer_set_destroy(struct buffer_set *bs)
 
         CIRCLEQ_REMOVE(&bs->bs_free_list, bi, bi_lentry);
 
-        if (!bs->bs_use_alt_source_buf)
-            free(bi->bi_iov.iov_base);
-
         free(bi);
 
         bs->bs_num_bufs--;
     }
+
     NIOVA_ASSERT(!bs->bs_num_bufs);
 
+    bs->bs_region = NULL;
     bs->bs_init = 0;
 
     if (bs->bs_serialize)
@@ -454,41 +469,88 @@ buffer_set_destroy(struct buffer_set *bs)
 int
 buffer_set_initx(struct buffer_set_args *bsa)
 {
+    struct buffer_set *bs = NULL;
+    size_t s_region_size = 0;
+    void *s_region = NULL;
+    enum buffer_set_opts opts = 0;
+    size_t nbufs = 0;
+    size_t buf_size = 0;
+    int err_loc = 0;
+    int rc = 0;
+
     buffer_page_size_set();
 
     if (!bsa)
-        return -EINVAL;
+    {
+        rc = -EINVAL;
+        err_loc = 1;
+        goto xerror;
+    }
 
-    enum buffer_set_opts opts = bsa->bsa_opts;
-    struct buffer_set *bs = bsa->bsa_set;
-    size_t buf_size = bsa->bsa_buf_size;
-    size_t nbufs = bsa->bsa_nbufs;
+    opts = bsa->bsa_opts;
+    buf_size = bsa->bsa_buf_size;
+    nbufs = bsa->bsa_nbufs;
+    s_region_size = bsa->bsa_region_size;
+    s_region = bsa->bsa_region;
+    bs = bsa->bsa_set;
 
-    if (!bs || !buf_size || bs->bs_init)
-        return -EINVAL;
+    if (!bs || !buf_size || !s_region || !s_region_size || bs->bs_init)
+    {
+        rc = -EINVAL;
+        err_loc = 2;
+        goto xerror;
+    }
+
+    if (bsa->bsa_used_off != 0)
+    {
+        rc = -EINVAL;
+        err_loc = 3;
+        goto xerror;
+    }
+
+    if (s_region_size < (nbufs * buf_size))
+    {
+        rc = -EOVERFLOW;
+        err_loc = 4;
+        goto xerror;
+    }
+
+    unsigned int align = opts & BUFSET_OPT_ALT_SOURCE_BUF_ALIGN ?
+        bsa->bsa_alignment : buffer_get_alignment(bsa->bsa_opts);
+
+    /* Alignment should be power of 2 */
+    if (align && !IS_POWER2(align))
+    {
+        rc = -EDOM;
+        err_loc = 5;
+        goto xerror;
+    }
+
+    if (align && !IS_ALIGNED(buf_size, align))
+    {
+        rc = -EDOM;
+        err_loc = 6;
+        goto xerror;
+    }
+
+    if (align && !IS_ALIGNED_PTR(s_region, align))
+    {
+        rc = -EFAULT;
+        err_loc = 7;
+        goto xerror;
+    }
+
+    NIOVA_ASSERT(!align || IS_ALIGNED_PTR(s_region, align));
+    NIOVA_ASSERT(!align || IS_ALIGNED(s_region_size, align));
 
     memset(bs, 0, sizeof(struct buffer_set));
 
+    bs->bs_region = s_region;
+    bs->bs_region_size = s_region_size;
     bs->bs_item_size = buf_size;
     bs->bs_num_bufs = 0;
     CIRCLEQ_INIT(&bs->bs_free_list);
     CIRCLEQ_INIT(&bs->bs_inuse_list);
-
-    if (opts & BUFSET_OPT_ALT_SOURCE_BUF)
-    {
-        if (bsa->bsa_alt_source == NULL)
-            return -EINVAL;
-
-        if (bsa->bsa_alt_source_size < (nbufs * buf_size))
-            return -EOVERFLOW;
-
-        bsa->bsa_alt_source_used = 0;
-
-        bs->bs_alt_source_buf = bsa->bsa_alt_source;
-        bs->bs_alt_source_buf_size = bsa->bsa_alt_source_size;
-
-        bs->bs_use_alt_source_buf = 1;
-    }
 
     if (opts & BUFSET_OPT_USER_CACHE)
     {
@@ -501,51 +563,48 @@ buffer_set_initx(struct buffer_set_args *bsa)
         pthread_mutex_init(&bs->bs_mutex, NULL);
     }
 
-    int error = 0;
+    SIMPLE_LOG_MSG(LL_NOTIFY, "s_region %p s_region_end 0x%lx size %ld "
+                   "bf_sz %ld bf_cnt %ld alignment %u",
+                   s_region, (uintptr_t)((char *)s_region + s_region_size),
+                   s_region_size, buf_size, nbufs, align);
+
+    size_t off = 0;
+    uintptr_t prev_end = (uintptr_t)NULL;
 
     for (size_t i = 0; i < nbufs; i++)
     {
         struct buffer_item *bi = calloc(1, sizeof(struct buffer_item));
         if (!bi)
         {
-            error = -ENOMEM;
-            break;
+            rc = -ENOMEM;
+            err_loc = 8;
+            goto xerror;
         }
 
         bi->bi_bs = bs;
         bi->bi_iov.iov_len = buf_size;
         bi->bi_register_idx = -1;
 
-        size_t alignment =
-            (opts & BUFSET_OPT_MEMALIGN_SECTOR) ? BUFFER_SECTOR_SIZE :
-            (opts & BUFSET_OPT_MEMALIGN_L2)     ? L2_CACHELINE_SIZE_BYTES : 0;
+        NIOVA_ASSERT(off + buf_size <= s_region_size);
 
+        bi->bi_iov.iov_base = (char *)s_region + off;
 
-        if (bs->bs_use_alt_source_buf)
-        {
-            bi->bi_iov.iov_base =
-                ((char *)bs->bs_alt_source_buf) + bsa->bsa_alt_source_used;
+        /* Rule out buffer address overlap */
+        NIOVA_ASSERT(!prev_end || (uintptr_t)(bi->bi_iov.iov_base) >= prev_end);
 
-            bsa->bsa_alt_source_used += buf_size;
-        }
-        else if (alignment)
-        {
-            bi->bi_iov.iov_base = niova_posix_memalign(buf_size, alignment);
+        prev_end =
+            (uintptr_t)((char *)bi->bi_iov.iov_base + bi->bi_iov.iov_len);
 
-            FATAL_IF(bi->bi_iov.iov_base == NULL, "niova_posix_memalign()");
-        }
-        else
-        {
-            bi->bi_iov.iov_base = malloc(buf_size);
-        }
+        off += buf_size;
 
-        if (!bi->bi_iov.iov_base)
-        {
-            free(bi);
-            error = -ENOMEM;
-            break;
-        }
+        SIMPLE_LOG_MSG(LL_NOTIFY,
+                       "bf_sz %ld base[%ld] 0x%lx end[%ld] 0x%lx alignment %u",
+                       buf_size, i, (uintptr_t)(bi->bi_iov.iov_base),
+                       i, prev_end, align);
 
+        FATAL_IF(align && (!IS_ALIGNED_PTR(bi->bi_iov.iov_base, align)),
+                 "iov_base not aligned!");
+        NIOVA_ASSERT(off <= s_region_size);
         CONST_OVERRIDE(struct iovec, bi->bi_iov_save, bi->bi_iov);
 
         CIRCLEQ_INSERT_HEAD(&bs->bs_free_list, bi, bi_lentry);
@@ -554,42 +613,47 @@ buffer_set_initx(struct buffer_set_args *bsa)
         if (!(opts & BUFSET_OPT_ALT_SOURCE_BUF))
             buffer_item_touch(bi);
     }
+    bsa->bsa_used_off = off;
+    NIOVA_ASSERT(bsa->bsa_used_off <= s_region_size);
 
-    if (!error)
+    if (opts & BUFSET_OPT_LREG)
     {
-        if (opts & BUFSET_OPT_LREG)
-        {
-            lreg_node_init(&bs->bs_lrn, LREG_USER_TYPE_BUFFER_SET,
-                           buffer_lreg_cb, bs, LREG_INIT_OPT_NONE);
+        lreg_node_init(&bs->bs_lrn, LREG_USER_TYPE_BUFFER_SET,
+                       buffer_lreg_cb, bs, LREG_INIT_OPT_NONE);
 
-            int rc = lreg_node_install(&bs->bs_lrn,
-                                       LREG_ROOT_ENTRY_PTR(buffer_set_nodes));
-            NIOVA_ASSERT(rc == 0);
+        rc = lreg_node_install(&bs->bs_lrn,
+                               LREG_ROOT_ENTRY_PTR(buffer_set_nodes));
+        NIOVA_ASSERT(rc == 0);
 
-            rc = lreg_node_wait_for_completion(&bs->bs_lrn, true);
-            NIOVA_ASSERT(rc == 0);
+        rc = lreg_node_wait_for_completion(&bs->bs_lrn, true);
+        NIOVA_ASSERT(rc == 0);
 
-            bs->bs_ctl_interface = 1;
-        }
-
-        bs->bs_init = true;
+        bs->bs_ctl_interface = 1;
     }
-    else
-    {
+
+    bs->bs_init = true;
+
+xerror:
+    if (rc)
         buffer_set_destroy(bs);
-    }
 
-    return error;
+    enum log_level log_lvl = rc ? LL_ERROR : LL_DEBUG;
+    SIMPLE_LOG_MSG(log_lvl, "region %p region_sz %ld nbufs %ld bf_sz %ld "
+                   "err_loc: %d rc %d",
+                   s_region, s_region_size, nbufs, buf_size, err_loc, rc);
+    return rc;
 }
 
 int
-buffer_set_init(struct buffer_set *bs, size_t nbufs, size_t buf_size,
-                enum buffer_set_opts opts)
+buffer_set_init(struct buffer_set *bs, void *region, size_t region_size,
+                size_t nbufs, size_t buf_size, enum buffer_set_opts opts)
 {
     struct buffer_set_args bsa = {
         .bsa_set = bs,
         .bsa_nbufs = nbufs,
         .bsa_buf_size = buf_size,
+        .bsa_region = region,
+        .bsa_region_size = region_size,
         .bsa_opts = opts,
     };
 

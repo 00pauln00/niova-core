@@ -97,6 +97,20 @@
 
 #define RAFT_PEER_ANY ID_ANY_8bit
 
+#define CT_ASSERT(expr) _Static_assert(expr, "compile-time check failed")
+
+#define IS_POWER2(x) ((x) && (((x) & ((x) - 1ULL)) == 0ULL))
+
+#define IS_ALIGNED(x, a) (((x) & ((a) - 1ULL)) == 0ULL)
+
+#define ALIGN_UP(x, a) (((x) + (a) - 1ULL) & ~((a) - 1ULL))
+
+#define IS_ALIGNED_PTR(p, a) \
+    ((uintptr_t)((uintptr_t)(p) & (((uintptr_t)(a) - 1ULL))) == 0ULL)
+
+#define ALIGNUP_PTR(p, a) \
+     (void *)(((uintptr_t)(p) + ((uintptr_t)(a) - 1ULL)) & ~((uintptr_t)(a) - 1ULL))
+
 typedef uint8_t  raft_peer_t;
 typedef int64_t  raft_entry_idx_t;
 typedef uint32_t version_t;
@@ -113,6 +127,30 @@ typedef uint64_t  thread_exec_ctx_u64_t;
 #define ID_ANY_32bit -1U
 #define ID_ANY_64bit -1ULL
 
+#define RUN_COMPILE_TIME_TESTS()      \
+    CT_ASSERT(ALIGN_UP(768, 1024) == 1024); \
+    CT_ASSERT(ALIGN_UP(0,   8) == 0); \
+    CT_ASSERT(ALIGN_UP(15,  8) == 16); \
+    CT_ASSERT(ALIGN_UP(31,  32) == 32); \
+    CT_ASSERT(ALIGN_UP(33,  32) == 64); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0x1234ABCD9876ULL, 16) \
+              == 0x1234ABCD9880ULL); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0x1234ABCD9876ULL, 64) \
+              == 0x1234ABCD9880ULL); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0x1000FFEEAA11ULL, 512) \
+              == 0x1000FFEEAC00ULL); \
+    CT_ASSERT((uintptr_t)ALIGNUP_PTR((void*)(uintptr_t)0xFEEDFACE0ABCDULL, 2097152) \
+              == 0xFEEDFAD000000ULL); \
+    CT_ASSERT(IS_POWER2(1)); \
+    CT_ASSERT(IS_POWER2(4)); \
+    CT_ASSERT(!IS_POWER2(5)); \
+    CT_ASSERT(IS_ALIGNED(4096, 64)); \
+    CT_ASSERT(!IS_ALIGNED(4100, 64)); \
+    CT_ASSERT(IS_ALIGNED_PTR((void*)0x1234ABCDF000ULL, 16)); \
+    CT_ASSERT(!IS_ALIGNED_PTR((void*)0x1234ABCDF008ULL, 16)); \
+    CT_ASSERT(IS_ALIGNED_PTR((void*)0xDEADBEEF12340000ULL, 128)); \
+    CT_ASSERT(!IS_ALIGNED_PTR((void*)0xDEADBEEF12340088ULL, 128)); \
+
 static inline void
 common_compile_time_asserts(void)
 {
@@ -121,6 +159,11 @@ common_compile_time_asserts(void)
     COMPILE_TIME_ASSERT((ssize_t)-ENOLCK == (int)-ENOLCK);
     COMPILE_TIME_ASSERT(false == 0);
     COMPILE_TIME_ASSERT(true == 1);
+
+    COMPILE_TIME_ASSERT(IS_POWER2(0) == 0);
+    COMPILE_TIME_ASSERT(IS_POWER2(1));
+
+    RUN_COMPILE_TIME_TESTS();
 }
 
 static inline unsigned long long
@@ -166,7 +209,11 @@ nconsective_bits_avail(const uint64_t *field, unsigned int nbits)
         return -EINVAL;
 
     const uint64_t ifield = ~(*field);
-    uint64_t mask = (1ULL << nbits) - 1;
+    uint64_t mask;
+    if (nbits == field_size)
+        mask = UINT64_MAX;
+    else
+        mask = (1ULL << nbits) - 1;
 
     for (unsigned int i = 0; i <= (field_size - nbits); i++)
     {
@@ -199,7 +246,11 @@ nconsective_bits_assign(uint64_t *field, unsigned int nbits)
     }
 
     const uint64_t ifield = ~(*field);
-    uint64_t mask = (1ULL << nbits) - 1;
+    uint64_t mask;
+    if (nbits == field_size)
+        mask = UINT64_MAX;
+    else
+        mask = (1ULL << nbits) - 1;
 
     for (unsigned int i = 0; i <= (field_size - nbits); i++)
     {
