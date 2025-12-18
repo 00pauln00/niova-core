@@ -267,7 +267,7 @@ niova_crc32_continuation_test(void)
 static void
 niova_crc16_continuation_test(void)
 {
-    uint32_t buf[500];
+    uint32_t buf[501];
 
     for (int i = 0; i < 500; i++)
         buf[i] = random_get();
@@ -291,6 +291,14 @@ niova_crc16_continuation_test(void)
     y = niova_t10dif_crc(y, (unsigned char *)&buf[480], 20 * sizeof(int));
 
     NIOVA_ASSERT(y == x);
+
+    //Testing with unaligned access
+    y = 0;
+    unsigned char *unaligned_buf = ((unsigned char *)buf) + 1;
+    memmove(unaligned_buf, buf, 500 * sizeof(int));
+    y = niova_t10dif_crc(0, unaligned_buf, 500 * sizeof(int));
+    NIOVA_ASSERT(y == x);
+
 }
 
 int
