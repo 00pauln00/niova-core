@@ -8,6 +8,7 @@
 #define _NIOVA_IO_H_ 1
 
 #include <errno.h>
+#include <stdint.h>
 #include <sys/uio.h>
 #include <sys/socket.h>
 
@@ -41,6 +42,30 @@ niova_io_iovs_total_size_get(const struct iovec *iovs, const size_t iovlen)
             total_size += iovs[i].iov_len;
 
     return total_size;
+}
+
+static inline ssize_t
+niova_io_iovs_total_size_get_w_align_check(const struct iovec *iovs,
+                                           const size_t iovlen, uint32_t align)
+{
+    size_t total_size = 0;
+
+    if (!iovs || !iovlen)
+        return -EINVAL;
+
+    // If align is zero or not power of 2
+    if (align == 0 || (align & (align - 1)) != 0)
+        return -EINVAL;
+
+    for (size_t i = 0; i < iovlen; i++)
+    {
+        if ((iovs[i].iov_len % align) != 0)
+            return -EFAULT;
+
+        total_size += iovs[i].iov_len;
+    }
+
+    return (ssize_t)total_size;
 }
 
 static inline ssize_t
@@ -159,5 +184,20 @@ niova_io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
 
 ssize_t
 niova_io_memset_iovs(struct iovec *iovs, size_t num_iovs, int c, size_t len);
+
+/**
+ * Callback type for iovec iteration.
+ *
+ * @data:      Pointer to data within current iovec segment
+ * @len:       Length of data in this segment
+ * @user_ctx:  User's context
+ *
+ * Returns: 0 on success, negative error code to abort iteration.
+ */
+typedef int (*niova_iov_cb_t)(const void *data, size_t len, void *user_ctx);
+
+ssize_t
+niova_io_iterate_iovs(const struct iovec *iovs, size_t niovs,
+                      size_t num_bytes, niova_iov_cb_t cb, void *user_ctx);
 
 #endif

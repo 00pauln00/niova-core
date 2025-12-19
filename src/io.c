@@ -417,3 +417,41 @@ niova_io_iov_restore(struct iovec *iovs, size_t niovs, size_t save_idx,
 
     return 0;
 }
+
+/**
+ * iovec iterator - calls callback once per iovec.
+ *
+ * @iovs:      Array of iovecs containing the data
+ * @niovs:     Number of iovecs in the array
+ * @num_bytes: Number of bytes to iterate over, or SIZE_MAX to iterate over
+ *             everything
+ * @cb:        Callback function invoked for each iovec segment
+ * @user_ctx:  Context pointer passed through to callback
+ *
+ */
+ssize_t
+niova_io_iterate_iovs(const struct iovec *iovs, size_t niovs, size_t num_bytes,
+                      niova_iov_cb_t cb, void *user_ctx)
+{
+    if (!iovs || !niovs || !cb)
+        return -EINVAL;
+
+    if (num_bytes == 0)
+        return 0;
+
+    size_t bytes_processed = 0;
+
+    for (size_t iov_idx = 0; bytes_processed < num_bytes && iov_idx < niovs;
+         iov_idx++)
+    {
+        size_t segment_len =
+            MIN(iovs[iov_idx].iov_len, num_bytes - bytes_processed);
+        int cb_rc = cb(iovs[iov_idx].iov_base, segment_len, user_ctx);
+        if (cb_rc != 0)
+            return cb_rc;
+
+        bytes_processed += segment_len;
+    }
+
+    return (ssize_t)bytes_processed;
+}
