@@ -236,13 +236,9 @@ buffer_initx_test(void)
 
     struct buffer_set bs = {0};
 
-    enum buffer_set_opts opts = BUFSET_OPT_ALT_SOURCE_BUF |
-                                BUFSET_OPT_ALT_SOURCE_BUF_ALIGN;
-
     struct buffer_set_args bsa =
     {
         .bsa_set = &bs,
-        .bsa_opts = opts,
         .bsa_nbufs = 1024UL,
         .bsa_buf_size = 1024UL,
         .bsa_region = NULL,
@@ -362,12 +358,9 @@ buffer_initx_memalign_test(size_t nbufs, size_t buf_size,
 static void
 buffer_initx_trigger_memalign_tests()
 {
-    enum buffer_set_opts opts =
-        BUFSET_OPT_ALT_SOURCE_BUF | BUFSET_OPT_ALT_SOURCE_BUF_ALIGN;
-
-    buffer_initx_memalign_test(1024, 768, 1024, opts);
-    buffer_initx_memalign_test(1024, 1280, 2048, opts);
-    buffer_initx_memalign_test(10, 768 * 1024, 1024 * 1024, opts);
+    buffer_initx_memalign_test(1024, 768, 1024, 0);
+    buffer_initx_memalign_test(1024, 1280, 2048, 0);
+    buffer_initx_memalign_test(10, 768 * 1024, 1024 * 1024, 0);
     buffer_initx_memalign_test(100, 268, 64, BUFSET_OPT_MEMALIGN_L2);
 }
 

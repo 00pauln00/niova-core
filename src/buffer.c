@@ -125,19 +125,14 @@ buffer_page_size_set(void)
 unsigned int
 buffer_get_alignment(enum buffer_set_opts opts)
 {
-    switch(opts)
-    {
-    case BUFSET_OPT_MEMALIGN_SECTOR:
+    // Start from the largest and work downwards
+    if (opts & BUFSET_OPT_MEMALIGN_SECTOR || opts & BUFSET_OPT_MEMALIGN)
         return BUFFER_SECTOR_SIZE;
-    case BUFSET_OPT_MEMALIGN_L2:
-        return L2_CACHELINE_SIZE_BYTES;
-    case BUFSET_OPT_ALT_SOURCE_BUF_ALIGN:
-        return BUFFER_SECTOR_SIZE;
-    default:
-        break;
-    }
 
-    return 0;
+    if (opts & BUFSET_OPT_MEMALIGN_L2)
+        return L2_CACHELINE_SIZE_BYTES;
+
+    return 0; // No alignment flag was detected
 }
 
 size_t
@@ -515,7 +510,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
         goto xerror;
     }
 
-    unsigned int align = opts & BUFSET_OPT_ALT_SOURCE_BUF_ALIGN ?
+    unsigned int align = bsa->bsa_alignment ?
         bsa->bsa_alignment : buffer_get_alignment(bsa->bsa_opts);
 
     /* Alignment should be power of 2 */
@@ -610,7 +605,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
         CIRCLEQ_INSERT_HEAD(&bs->bs_free_list, bi, bi_lentry);
         bs->bs_num_bufs++;
 
-        if (!(opts & BUFSET_OPT_ALT_SOURCE_BUF))
+        if (!(opts & BUFSET_OPT_MMAP_REGION))
             buffer_item_touch(bi);
     }
     bsa->bsa_used_off = off;
