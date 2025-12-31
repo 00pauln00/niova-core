@@ -151,20 +151,29 @@ struct log_entry_info
     do { thread_abort(); } while (0)
 #endif
 
-#define SIMPLE_LOG_MSG_EXEC(usr_level, sys_level, exec, message, ...)   \
-do {                                                                    \
-    if ((usr_level) <= (sys_level))                                     \
-    {                                                                   \
-        exec;                                                           \
-        struct timespec ts;                                             \
-        niova_unstable_clock(&ts);                                      \
-        fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",        \
-                ts.tv_sec, ts.tv_nsec,                                  \
-                ll_to_string(usr_level), thread_name_get(), __func__,   \
-                __LINE__, ##__VA_ARGS__);                               \
-        if ((usr_level) == LL_FATAL)                                    \
-            LOG_ABORT;                                                  \
-    }                                                                   \
+#define SIMPLE_LOG_MSG_EXEC(usr_level, sys_level, exec, message, ...)        \
+do {                                                                         \
+    if ((usr_level) <= (sys_level))                                          \
+    {                                                                        \
+        exec;                                                                \
+        struct timespec ts;                                                  \
+        niova_unstable_clock(&ts);                                           \
+        if (thrCoName)                                                       \
+        {                                                                    \
+            fprintf(stderr, "<%ld.%09lu:%s:%s:%s.%x:%s@%d> " message "\n",   \
+                    ts.tv_sec, ts.tv_nsec, ll_to_string(usr_level),          \
+                    thread_name_get(), thrCoName, (int)threadCoID, __func__, \
+                    __LINE__, ##__VA_ARGS__);                                \
+        }                                                                    \
+        else                                                                 \
+        {                                                                    \
+            fprintf(stderr, "<%ld.%09lu:%s:%s:%s@%d> " message "\n",         \
+                    ts.tv_sec, ts.tv_nsec, ll_to_string(usr_level),          \
+                    thread_name_get(), __func__, __LINE__, ##__VA_ARGS__);   \
+        }                                                                    \
+        if ((usr_level) == LL_FATAL)                                         \
+            LOG_ABORT;                                                       \
+    }                                                                        \
 } while (0)
 
 #define SIMPLE_LOG_MSG(level, message, ...)                     \

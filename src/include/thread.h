@@ -25,6 +25,8 @@
 
 extern __thread char thrName[MAX_THREAD_NAME + 1];
 extern __thread const struct thread_ctl *thrCtl;
+extern __thread const char *thrCoName; // Coroutine name
+extern __thread int threadCoID;        // Coroutine ID
 
 enum tc_flags
 {
@@ -250,4 +252,19 @@ thread_has_exited(const struct thread_ctl *tc)
 {
     return (tc && thread_ctl_has_flag(tc, TC_FLAG_EXITED)) ? true : false;
 }
+
+static inline void
+thread_co_info_unset(void)
+{
+    thrCoName = NULL;
+    threadCoID = 0;
+}
+
+static inline void
+thread_co_info_set(const char *name, int id)
+{
+    thrCoName = name;
+    threadCoID = id;
+}
+
 #endif

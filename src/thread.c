@@ -20,6 +20,8 @@ REGISTRY_ENTRY_FILE_GENERATE;
 
 __thread char thrName[MAX_THREAD_NAME + 1];
 __thread const struct thread_ctl *thrCtl;
+__thread const char *thrCoName; // Coroutine name
+__thread int threadCoID;        // Coroutine ID
 
 static void
 thr_ctl_basic_sighandler(int signum)
