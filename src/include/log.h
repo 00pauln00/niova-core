@@ -160,7 +160,7 @@ do {                                                                         \
         niova_unstable_clock(&ts);                                           \
         if (thrCoName)                                                       \
         {                                                                    \
-            fprintf(stderr, "<%ld.%09lu:%s:%s:%s.%x:%s@%d> " message "\n",   \
+            fprintf(stderr, "<%ld.%09lu:%s:%s,%s.%x:%s@%d> " message "\n",   \
                     ts.tv_sec, ts.tv_nsec, ll_to_string(usr_level),          \
                     thread_name_get(), thrCoName, (int)threadCoID, __func__, \
                     __LINE__, ##__VA_ARGS__);                                \
