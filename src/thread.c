@@ -22,6 +22,7 @@ __thread char thrName[MAX_THREAD_NAME + 1];
 __thread const struct thread_ctl *thrCtl;
 __thread const char *thrCoName; // Coroutine name
 __thread int threadCoID;        // Coroutine ID
+__thread int threadCoYieldCnt;  // Coroutine yield counter
 
 static void
 thr_ctl_basic_sighandler(int signum)

@@ -27,6 +27,7 @@ extern __thread char thrName[MAX_THREAD_NAME + 1];
 extern __thread const struct thread_ctl *thrCtl;
 extern __thread const char *thrCoName; // Coroutine name
 extern __thread int threadCoID;        // Coroutine ID
+extern __thread int threadCoYieldCnt;  // Coroutine yield counter
 
 enum tc_flags
 {
@@ -257,14 +258,14 @@ static inline void
 thread_co_info_unset(void)
 {
     thrCoName = NULL;
-    threadCoID = 0;
 }
 
 static inline void
-thread_co_info_set(const char *name, int id)
+thread_co_info_set(const char *name, int id, int yield_cnt)
 {
     thrCoName = name;
     threadCoID = id;
+    threadCoYieldCnt = yield_cnt;
 }
 
 #endif
