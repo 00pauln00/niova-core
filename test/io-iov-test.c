@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/random.h>
 
 #include "common.h"
 #include "log.h"
@@ -13,9 +14,13 @@
 
 #include "io.h"
 
-#define TEST_MAX_IOVS 64
-#define TEST_ITERATIONS 10000
+#define TEST_MAX_IOVS 257
+#define TEST_ITERATIONS 1000 * 1000
 #define SUM_CHUNK_SIZE 16
+#define TEST_MIN_BUFFER_SIZE 256
+#define TEST_MAX_BUFFER_SIZE 8192
+#define TEST_MIN_IOV_SIZE 16
+#define TEST_MAX_IOV_SIZE 512
 
 static int
 iov_test_copy_from_iovs(void)
@@ -605,14 +610,15 @@ iov_test_iterate_read(void)
     {
         // Generate buffer with random values
         // Make it a multiple of SUM_CHUNK_SIZE for sum computation
-        size_t buffer_size = 256 + (random_get() % (8192 - 256 + 1));
+        size_t buffer_size = TEST_MIN_BUFFER_SIZE +
+            (random_get() % (TEST_MAX_BUFFER_SIZE - TEST_MIN_BUFFER_SIZE + 1));
         buffer_size = (buffer_size / SUM_CHUNK_SIZE) * SUM_CHUNK_SIZE;
 
         unsigned char *src_buffer = malloc(buffer_size);
         NIOVA_ASSERT(src_buffer != NULL);
 
-        for (size_t i = 0; i < buffer_size; i++)
-            src_buffer[i] = (unsigned char)(random_get() & 0xFF);
+        NIOVA_ASSERT(
+            getrandom(src_buffer, buffer_size, 0) == (ssize_t)buffer_size);
 
         // Compute expected sums from source buffer
         size_t num_sums = buffer_size / SUM_CHUNK_SIZE;
@@ -628,8 +634,8 @@ iov_test_iterate_read(void)
         }
 
         // (16 < iov_sizes < 512)
-        size_t min_iov = 16;
-        size_t max_iov = 512;
+        size_t min_iov = TEST_MIN_IOV_SIZE;
+        size_t max_iov = TEST_MAX_IOV_SIZE;
 
         size_t niovs;
         struct iovec *iovs = allocate_and_init_iovs(src_buffer, buffer_size,
@@ -704,17 +710,18 @@ iov_test_iterate_write(void)
     for (int iter = 0; iter < TEST_ITERATIONS; iter++)
     {
         // Generate buffer with random values
-        size_t buffer_size = 256 + (random_get() % (8192 - 256 + 1));
+        size_t buffer_size = TEST_MIN_BUFFER_SIZE +
+            (random_get() % (TEST_MAX_BUFFER_SIZE - TEST_MIN_BUFFER_SIZE + 1));
 
         unsigned char *src_buffer = malloc(buffer_size);
         NIOVA_ASSERT(src_buffer != NULL);
 
-        for (size_t i = 0; i < buffer_size; i++)
-            src_buffer[i] = (unsigned char)(random_get() & 0xFF);
+        NIOVA_ASSERT(
+            getrandom(src_buffer, buffer_size, 0) == (ssize_t)buffer_size);
 
         // (16 < iov_sizes < 512)
-        size_t min_iov = 16;
-        size_t max_iov = 512;
+        size_t min_iov = TEST_MIN_IOV_SIZE;
+        size_t max_iov = TEST_MAX_IOV_SIZE;
 
         size_t niovs;
         struct iovec *temp_iovs = allocate_and_init_iovs(
