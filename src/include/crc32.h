@@ -11,6 +11,9 @@
 
 #define CRC_T10DIF_MIN_LEN 16
 
+#define CRC_T10DIF_SIZE (sizeof(uint16_t))
+#define CRC_32_SIZE (sizeof(uint32_t))
+
 typedef uint32_t crc32_t;
 
 #if defined(__x86_64__)
