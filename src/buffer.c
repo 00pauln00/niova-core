@@ -465,6 +465,7 @@ int
 buffer_set_initx(struct buffer_set_args *bsa)
 {
     struct buffer_set *bs = NULL;
+    size_t prologue_size = 0;
     size_t s_region_size = 0;
     void *s_region = NULL;
     enum buffer_set_opts opts = 0;
@@ -483,6 +484,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
     }
 
     opts = bsa->bsa_opts;
+    prologue_size = bsa->bsa_prologue_size;
     buf_size = bsa->bsa_buf_size;
     nbufs = bsa->bsa_nbufs;
     s_region_size = bsa->bsa_region_size;
@@ -503,7 +505,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
         goto xerror;
     }
 
-    if (s_region_size < (nbufs * buf_size))
+    if (s_region_size < (nbufs * (buf_size + prologue_size)))
     {
         rc = -EOVERFLOW;
         err_loc = 4;
@@ -528,10 +530,17 @@ buffer_set_initx(struct buffer_set_args *bsa)
         goto xerror;
     }
 
+    if (align && prologue_size && !IS_ALIGNED(prologue_size, align))
+    {
+        rc = -EDOM;
+        err_loc = 7;
+        goto xerror;
+    }
+
     if (align && !IS_ALIGNED_PTR(s_region, align))
     {
         rc = -EFAULT;
-        err_loc = 7;
+        err_loc = 8;
         goto xerror;
     }
 
@@ -559,11 +568,12 @@ buffer_set_initx(struct buffer_set_args *bsa)
     }
 
     SIMPLE_LOG_MSG(LL_NOTIFY, "s_region %p s_region_end 0x%lx size %ld "
-                   "bf_sz %ld bf_cnt %ld alignment %u",
+                   "prlg_sz %ld bf_sz %ld bf_cnt %ld alignment %u",
                    s_region, (uintptr_t)((char *)s_region + s_region_size),
-                   s_region_size, buf_size, nbufs, align);
+                   s_region_size, prologue_size, buf_size, nbufs, align);
 
     size_t off = 0;
+    uintptr_t prologue_start = (uintptr_t)NULL;
     uintptr_t prev_end = (uintptr_t)NULL;
 
     for (size_t i = 0; i < nbufs; i++)
@@ -572,7 +582,7 @@ buffer_set_initx(struct buffer_set_args *bsa)
         if (!bi)
         {
             rc = -ENOMEM;
-            err_loc = 8;
+            err_loc = 9;
             goto xerror;
         }
 
@@ -580,25 +590,43 @@ buffer_set_initx(struct buffer_set_args *bsa)
         bi->bi_iov.iov_len = buf_size;
         bi->bi_register_idx = -1;
 
-        NIOVA_ASSERT(off + buf_size <= s_region_size);
+        NIOVA_ASSERT(off + buf_size + prologue_size <= s_region_size);
 
-        bi->bi_iov.iov_base = (char *)s_region + off;
 
-        /* Rule out buffer address overlap */
-        NIOVA_ASSERT(!prev_end || (uintptr_t)(bi->bi_iov.iov_base) >= prev_end);
+        /* |<---hidden---->|<------exposed------>|
+         * |----------contiguous region----------|
+         * |---------------|---------------------|
+         * |<--prologue--->|<-----iov_base------>|
+         */
+
+        prologue_start = (uintptr_t)((char *)s_region + off);
+
+        char *iov_base = (char *)s_region + off + prologue_size;
+        bi->bi_iov.iov_base = iov_base;
+
+        /* Rule out buffer/prologue address overlap */
+        NIOVA_ASSERT(!prev_end || prologue_start >= prev_end);
+
+        NIOVA_ASSERT(
+            (uintptr_t)iov_base == (prologue_start + (uintptr_t)prologue_size));
 
         prev_end =
             (uintptr_t)((char *)bi->bi_iov.iov_base + bi->bi_iov.iov_len);
 
-        off += buf_size;
+        off += buf_size + prologue_size;
 
         SIMPLE_LOG_MSG(LL_NOTIFY,
-                       "bf_sz %ld base[%ld] 0x%lx end[%ld] 0x%lx alignment %u",
-                       buf_size, i, (uintptr_t)(bi->bi_iov.iov_base),
-                       i, prev_end, align);
+            "prlg_sz %ld bf_sz %ld base[%ld] 0x%lx end[%ld] 0x%lx alignment %u",
+            prologue_size, buf_size, i,
+            (uintptr_t)(bi->bi_iov.iov_base), i, prev_end, align);
+
+        FATAL_IF(align && prologue_size &&
+                 (!IS_ALIGNED_PTR(prologue_start, align)),
+                 "prologue start not aligned!");
 
         FATAL_IF(align && (!IS_ALIGNED_PTR(bi->bi_iov.iov_base, align)),
                  "iov_base not aligned!");
+
         NIOVA_ASSERT(off <= s_region_size);
         CONST_OVERRIDE(struct iovec, bi->bi_iov_save, bi->bi_iov);
 
