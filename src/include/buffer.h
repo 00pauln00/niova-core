@@ -61,6 +61,7 @@ struct buffer_set_args
     struct buffer_set   *bsa_set;
     size_t               bsa_nbufs;
     size_t               bsa_buf_size;
+    size_t               bsa_prologue_size;
     void                *bsa_region;
     size_t               bsa_region_size;
     size_t               bsa_used_off;
