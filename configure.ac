@@ -78,10 +78,6 @@ AC_CHECK_HEADERS([zlib.h], [],
 AC_CHECK_HEADERS([lz4.h], [],
                  [AC_MSG_ERROR([failed to locate lz4.h])], [])
 
-# rocksdb
-AC_CHECK_HEADERS([rocksdb/c.h], [],
-                 [AC_MSG_ERROR([failed to locate rocksdb/c.h])], [])
-
 # Checks for typedefs, structures, and compiler characteristics.
 AC_HEADER_STAT
 AC_C_CONST
@@ -131,23 +127,6 @@ AC_CHECK_LIB([z],[compressBound],,
 #lz4
 AC_CHECK_LIB([lz4],[LZ4_compress_default],,
              [AC_MSG_ERROR([Could not find LZ4_compress_default])])
-
-#rocksdb
-# Rocksdb will not be included in the global LIB var
-LIBS_save=$LIBS
-AC_CHECK_LIB([rocksdb],[rocksdb_writebatch_delete_range],
-             [
-                AC_SUBST(ROCKSDB_LIBS, [-lrocksdb])
-             ],
-             [AC_MSG_ERROR([Could not find rocksdb_writebatch_delete_range])])
-AC_CHECK_LIB([rocksdb],[rocksdb_delete_file_in_range],,
-             [AC_MSG_ERROR([rocksdb_delete_file_in_range])])
-AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_create],,
-             [AC_MSG_ERROR([rocksdb_checkpoint_object_create])])
-AC_CHECK_LIB([rocksdb],[rocksdb_checkpoint_object_destroy],,
-             [AC_MSG_ERROR([rocksdb_checkpoint_object_destroy])])
-# restore the original LIBS
-LIBS=$LIBS_save
 
 if [test x$arm == xtrue] ; then
 AC_MSG_CHECKING([for 64-bit PMULL support])
