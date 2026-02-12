@@ -20,7 +20,7 @@ export default function DataView({
     if (loading) {
         return <div>Loading...</div>;
     } else if (error) {
-        return <div>Error! {error}</div>;
+        return <div>Error! {error.toString()}</div>;
     } else if (data) {
         return (
             <ReactJson

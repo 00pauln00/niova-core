@@ -34,16 +34,20 @@ const resolvers = {
     },
 };
 
-const app = express();
-const server = new ApolloServer({ typeDefs, resolvers });
-server.applyMiddleware({ app });
+async function main() {
+    const app = express();
+    const server = new ApolloServer({ typeDefs, resolvers });
+    await server.start();
+    server.applyMiddleware({ app });
 
-app.use((_req, res) => {
-    res.status(200);
-    res.send('Hello!');
-    res.end();
-});
+    app.use((_req, res) => {
+        res.status(200);
+        res.send('Hello!');
+        res.end();
+    });
 
-app.listen({ port: SERVER_PORT }, () =>
-    console.log(`Server ready at http://localhost:${SERVER_PORT}${server.graphqlPath}`)
-);
+    app.listen({ port: SERVER_PORT }, () =>
+        console.log(`Server ready at http://localhost:${SERVER_PORT}${server.graphqlPath}`)
+    );
+}
+main();
