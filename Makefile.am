@@ -224,6 +224,12 @@ test_mspace_test_LDADD = src/libniova.la
 test_mspace_test_CFLAGS = $(AM_CFLAGS)
 TESTS += test/mspace-test
 
+noinst_PROGRAMS += test/rb-tree-arg-test
+test_rb_tree_arg_test_SOURCES = test/rb-tree-arg-test.c
+test_rb_tree_arg_test_LDADD = src/libniova.la
+test_rb_tree_arg_test_CFLAGS = $(AM_CFLAGS)
+TESTS += test/rb-tree-arg-test
+
 autofmt:
 	uncrustify -c tools/uncrustify.cfg --no-backup `find . -name "*.[ch]"` | tee /dev/null
 
