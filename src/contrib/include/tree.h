@@ -405,8 +405,8 @@ struct {                                                 \
 /* Generates prototypes and inline functions */
 #define    RB_PROTOTYPE(name, type, field, cmp) \
     RB_PROTOTYPE_INTERNAL(name, type, field, cmp)
-#define    RB_PROTOTYPE_ARG(name, type, field, cmp, arg)    \
-    RB_PROTOTYPE_INTERNAL_ARG(name, type, field, cmp, arg)
+#define    RB_PROTOTYPE_ARG(name, type, field, cmp)    \
+    RB_PROTOTYPE_INTERNAL_ARG(name, type, field, cmp)
 #define    RB_PROTOTYPE_STATIC(name, type, field, cmp) \
     RB_PROTOTYPE_INTERNAL_STATIC(name, type, field, cmp)
 
