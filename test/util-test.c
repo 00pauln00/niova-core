@@ -240,7 +240,7 @@ niova_crc_test(void)
 }
 
 static void
-niova_crc32_continuation_test(void)
+niova_crc_continuation_test(void)
 {
     uint32_t buf[1000];
 
@@ -264,43 +264,6 @@ niova_crc32_continuation_test(void)
     NIOVA_ASSERT(y == x);
 }
 
-static void
-niova_crc16_continuation_test(void)
-{
-    uint32_t buf[501];
-
-    for (int i = 0; i < 500; i++)
-        buf[i] = random_get();
-
-    const uint16_t x = niova_t10dif_crc(0, (unsigned char *)buf,
-                                        500 * sizeof(int));
-    SIMPLE_LOG_MSG(LL_DEBUG, "t10dif 0x%04x", x);
-
-    uint16_t y = 0;
-
-    y = 0;
-    for (int i = 0; i < 10; i++)
-        y = niova_t10dif_crc(y, (unsigned char *)&buf[i * 50],
-                             50 * sizeof(int));
-    NIOVA_ASSERT(y == x);
-
-    y = 0;
-    y = niova_t10dif_crc(y, (unsigned char *)buf, 250 * sizeof(int));
-    y = niova_t10dif_crc(y, (unsigned char *)&buf[250], 150 * sizeof(int));
-    y = niova_t10dif_crc(y, (unsigned char *)&buf[400], 80 * sizeof(int));
-    y = niova_t10dif_crc(y, (unsigned char *)&buf[480], 20 * sizeof(int));
-
-    NIOVA_ASSERT(y == x);
-
-    //Testing with unaligned access
-    y = 0;
-    unsigned char *unaligned_buf = ((unsigned char *)buf) + 1;
-    memmove(unaligned_buf, buf, 500 * sizeof(int));
-    y = niova_t10dif_crc(0, unaligned_buf, 500 * sizeof(int));
-    NIOVA_ASSERT(y == x);
-
-}
-
 int
 main(void)
 {
@@ -310,7 +273,6 @@ main(void)
     niova_string_to_unsigned_int_test();
     niova_parse_comma_delimited_uint_string_test();
     niova_crc_test();
-    niova_crc32_continuation_test();
-    niova_crc16_continuation_test();
+    niova_crc_continuation_test();
     return 0;
 }
