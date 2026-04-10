@@ -27,6 +27,7 @@ enum buffer_set_lreg_stats
     BUFFER_SET_LREG_ITEM_SZ,      // unsigned int
     BUFFER_SET_LREG_NUM_BUFS,     // signed int
     BUFFER_SET_LREG_OUTSTANDING,  // signed int
+    BUFFER_SET_LREG_PNDG,          // signed int
     BUFFER_SET_LREG_TOTAL_ALLOCS, // unsigned int
     BUFFER_SET_LREG_MAX_USED,     // signed int
     BUFFER_SET_LREG_USER_CACHED,  // signed int
@@ -72,6 +73,9 @@ buffer_lreg_cb(enum lreg_node_cb_ops op, struct lreg_node *lrn,
             break;
         case BUFFER_SET_LREG_OUTSTANDING:
             lreg_value_fill_signed(lv, "in-use", bs->bs_num_allocated);
+            break;
+        case BUFFER_SET_LREG_PNDG:
+            lreg_value_fill_unsigned(lv, "pdng-alloc", bs->bs_num_pndg_alloc);
             break;
         case BUFFER_SET_LREG_TOTAL_ALLOCS:
             lreg_value_fill_unsigned(lv, "total-used", bs->bs_total_alloc);
