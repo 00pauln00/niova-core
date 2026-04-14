@@ -229,10 +229,10 @@ struct {                                 \
     RB_FOREACH_REVERSE_SAFE(x, _RT_##name, &(head)->rt_head, y)
 
 #define RT_MIN_SERIALIZED_NOREF(name, head)     \
-    RB_MIN(__RT_##name, &(head)->rt_head)
+    RB_MIN(_RT_##name, &(head)->rt_head)
 
 #define RT_NEXT_SERIALIZED_NOREF(name, x)       \
-    RB_NEXT(__RT_##name, y)
+    RB_NEXT(_RT_##name, x)
 
 #define RT_REMOVE_IGNORE_REF_LOCKED(name, head, elm)    \
     RB_REMOVE(_RT_##name, &(head)->rt_head, elm);
