@@ -757,10 +757,6 @@ lreg_node_set_reverse_varray(struct lreg_node *lrn)
         lrn->lrn_reverse_varray = 1;
 }
 
-lreg_user_int_ctx_t
-lreg_node_recurse(const char *);
-//lreg_node_recurse(const char *, lrn_recurse_cb_t);
-
 void
 lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
                void *cb_arg, const int depth,
