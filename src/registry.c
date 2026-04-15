@@ -75,6 +75,13 @@ lreg_node_walk_vnode(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
 {
     NIOVA_ASSERT(parent->lrn_vnode_child);
 
+    if (parent->lrn_lvd.lvd_vobject)
+    {
+        lreg_node_vnode_entry_exec(parent, lrn_wcb, cb_arg, 0, depth,
+                                   user_type);
+        return;
+    }
+
     unsigned int cnt = parent->lrn_lvd.lvd_num_entries;
 
     for (unsigned int i = 0; i < cnt; i++)
@@ -261,12 +268,21 @@ lreg_node_recurse_from_parent(struct lreg_node *parent,
             for (unsigned int j = 0; j < cnt; j++)
             {
                 unsigned int idx =
-                    parent->lrn_reverse_varray ? (cnt - 1 - j) : i;
+                    parent->lrn_reverse_varray ? (cnt - 1 - j) : j;
 
                 varray_child.lrn_lvd.lvd_index = idx;
                 lreg_node_recurse_from_parent(&varray_child, lrn_rcb,
                                               depth + 1);
             }
+        }
+        else if (lrv.get.lrv_value_type_out == LREG_VAL_TYPE_VOBJECT)
+        {
+            struct lreg_node vobject_child = *parent;
+
+            lreg_value_vnode_data_to_lreg_node(&lrv, &vobject_child);
+            vobject_child.lrn_lvd.lvd_index = 0;
+
+            lreg_node_recurse_from_parent(&vobject_child, lrn_rcb, depth + 1);
         }
 
         lrn_rcb(&lrv, depth, i, true);
@@ -286,25 +302,25 @@ lreg_node_recurse_json_cb(struct lreg_value *lrv, const int depth,
     int indent = (depth + 1) * 4;
 
     if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_ARRAY ||
-        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_OBJECT)
+        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_VARRAY ||
+        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_OBJECT ||
+        LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_VOBJECT)
     {
+        const bool is_array =
+            (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_ARRAY ||
+             LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_VARRAY);
+
         if (done)
         {
             SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %c", depth, element_number,
-                           indent, "",
-                           LREG_VALUE_TO_REQ_TYPE(lrv) ==
-                           LREG_VAL_TYPE_ARRAY ?
-                           ']' : '}');
+                           indent, "", is_array ? ']' : '}');
         }
         else
         {
             SIMPLE_LOG_MSG(LL_WARN, "%d:%d %*s %s\"%s\": %c", depth,
                            element_number, indent, "",
                            element_number ? "" : "",
-                           lrv->lrv_key_string,
-                           LREG_VALUE_TO_REQ_TYPE(lrv) ==
-                           LREG_VAL_TYPE_ARRAY ?
-                           '[' : '{');
+                           lrv->lrv_key_string, is_array ? '[' : '{');
         }
     }
     else if (LREG_VALUE_TO_REQ_TYPE(lrv) == LREG_VAL_TYPE_STRING && !done)

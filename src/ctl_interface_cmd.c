@@ -642,6 +642,7 @@ ctlic_scan_registry_sibling_helper(const struct ctlic_iterator *citer)
          (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_VARRAY ||
+          LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_VOBJECT ||
           LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ANON_OBJECT)))
         ret = ",";
 
@@ -661,6 +662,7 @@ ctlic_citer_2_value_string(const struct ctlic_iterator *citer)
     switch (LREG_VALUE_TO_REQ_TYPE(&citer->citer_lv))
     {
     case LREG_VAL_TYPE_OBJECT:
+    case LREG_VAL_TYPE_VOBJECT:
     case LREG_VAL_TYPE_ANON_OBJECT:
         value_string = citer->citer_open_stanza ? "{" : "}";
         break;
@@ -721,6 +723,7 @@ ctlic_scan_registry_cb_output_writer(struct ctlic_iterator *citer)
                 break;
             case LREG_VAL_TYPE_ARRAY:
             case LREG_VAL_TYPE_VARRAY:
+            case LREG_VAL_TYPE_VOBJECT:
             case LREG_VAL_TYPE_OBJECT:
                 rc = dprintf(cr->cr_file[CTLIC_OUTPUT_FILE].cf_fd,
                              "%s\n%s\"%s\" : %s",
@@ -1344,6 +1347,7 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
                 (LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_OBJECT ||
                  LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ANON_OBJECT ||
                  LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_ARRAY ||
+                 LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_VOBJECT ||
                  LREG_VALUE_TO_REQ_TYPE(kv_lv) == LREG_VAL_TYPE_VARRAY))
             {
                 struct ctlic_iterator sub_obj_kv_citer = kv_citer;
@@ -1354,7 +1358,8 @@ ctlic_scan_registry_cb_CT_ID_GET(struct lreg_node *lrn,
 
                 DBG_CITER(LL_DEBUG, &sub_obj_kv_citer, "sub-obj");
 
-                if (LREG_VALUE_TO_REQ_TYPE(kv_lv) != LREG_VAL_TYPE_VARRAY)
+                if (LREG_VALUE_TO_REQ_TYPE(kv_lv) != LREG_VAL_TYPE_VARRAY &&
+                    LREG_VALUE_TO_REQ_TYPE(kv_lv) != LREG_VAL_TYPE_VOBJECT)
                 {
                     lreg_node_walk(lrn, ctlic_scan_registry_cb,
                                    (void *)&sub_obj_kv_citer,
