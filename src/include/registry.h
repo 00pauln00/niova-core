@@ -43,6 +43,7 @@ enum lreg_value_types
     LREG_VAL_TYPE_NONE,
     LREG_VAL_TYPE_ARRAY,
     LREG_VAL_TYPE_VARRAY, // virtual array (not attached to an lreg_node)
+    LREG_VAL_TYPE_VOBJECT, // virtual object (not attached to an lreg_node)
     LREG_VAL_TYPE_BOOL,
     LREG_VAL_TYPE_OBJECT,
     LREG_VAL_TYPE_ANON_OBJECT,
@@ -353,6 +354,7 @@ lreg_value_vnode_data_to_lreg_node(const struct lreg_value *lrv,
 
     lrn->lrn_lvd.lvd_user_type = LREG_VALUE_TO_USER_TYPE(lrv);
     lrn->lrn_lvd.lvd_num_entries = lrv->get.lrv_varray_out.lvvd_num_keys_out;
+    lrn->lrn_lvd.lvd_varray = !lrv->get.lrv_varray_out.lvvd_vobject;
     lrn->lrn_lvd.lvd_vobject = lrv->get.lrv_varray_out.lvvd_vobject;
 }
 
@@ -755,10 +757,6 @@ lreg_node_set_reverse_varray(struct lreg_node *lrn)
         lrn->lrn_reverse_varray = 1;
 }
 
-lreg_user_int_ctx_t
-lreg_node_recurse(const char *);
-//lreg_node_recurse(const char *, lrn_recurse_cb_t);
-
 void
 lreg_node_walk(const struct lreg_node *parent, lrn_walk_cb_t lrn_wcb,
                void *cb_arg, const int depth,
@@ -855,7 +853,9 @@ lreg_value_is_array_or_object(const struct lreg_value *lv)
 {
     if (lv &&
         (LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_OBJECT ||
+         LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_VOBJECT ||
          LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ANON_OBJECT ||
+         LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_VARRAY ||
          LREG_VALUE_TO_REQ_TYPE(lv) == LREG_VAL_TYPE_ARRAY))
         return true;
 
@@ -959,6 +959,18 @@ lreg_value_fill_varray(struct lreg_value *lv, const char *key,
     lv->get.lrv_user_type_out = user_type;
     lv->get.lrv_varray_out.lvvd_num_keys_out = num_entries;
     lv->get.lrv_varray_out.lvvd_cb = cb;
+}
+
+static inline void
+lreg_value_fill_vobject(struct lreg_value *lv, const char *key,
+                        enum lreg_user_types user_type, lrn_cb_t cb)
+{
+    lreg_value_fill_key_and_type(lv, key, LREG_VAL_TYPE_VOBJECT);
+
+    lv->get.lrv_user_type_out = user_type;
+    lv->get.lrv_varray_out.lvvd_num_keys_out = 1;
+    lv->get.lrv_varray_out.lvvd_cb = cb;
+    lv->get.lrv_varray_out.lvvd_vobject = 1;
 }
 
 static inline void
