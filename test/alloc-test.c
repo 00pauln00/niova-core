@@ -262,7 +262,7 @@ test_vbasic_nunits_lt_64(void)
     void *ptrs[nunits];
 
     for (size_t i = 0; i < nunits; i++) {
-        rc = niova_vbasic_space_avail(&nvba, unit);
+        rc = niova_vbasic_space_avail(&nvba, unit, 1);
         NIOVA_ASSERT(rc == 0);
 
         rc = niova_vbasic_malloc(&nvba, unit, &ptrs[i]);
@@ -279,7 +279,7 @@ test_vbasic_nunits_lt_64(void)
     }
 
     /* After exhausting all allocatable units, space must be unavailable */
-    rc = niova_vbasic_space_avail(&nvba, unit);
+    rc = niova_vbasic_space_avail(&nvba, unit, 1);
     NIOVA_ASSERT(rc != 0);
 }
 
@@ -303,7 +303,7 @@ test_vbasic_nunits_eq(void)
 
     /* Allocate all effective units */
     for (size_t i = 0; i < nunits; i++) {
-        rc = niova_vbasic_space_avail(&nvba, unit);
+        rc = niova_vbasic_space_avail(&nvba, unit, 1);
         NIOVA_ASSERT(rc == 0);
 
         rc = niova_vbasic_malloc(&nvba, unit, &ptrs[i]);
@@ -322,7 +322,7 @@ test_vbasic_nunits_eq(void)
     }
 
     /* Full */
-    rc = niova_vbasic_space_avail(&nvba, unit);
+    rc = niova_vbasic_space_avail(&nvba, unit, 1);
     NIOVA_ASSERT(rc != 0);
     NIOVA_ASSERT(
         niova_vbasic_nassigned(&nvba) ==
@@ -342,12 +342,12 @@ test_vbasic_nunits_eq(void)
     /* Allocate twice */
     void *p;
 
-    rc = niova_vbasic_space_avail(&nvba, unit);
+    rc = niova_vbasic_space_avail(&nvba, unit, 1);
     NIOVA_ASSERT(rc == 0);
     rc = niova_vbasic_malloc(&nvba, unit, &p);
     NIOVA_ASSERT(rc == 0);
 
-    rc = niova_vbasic_space_avail(&nvba, unit);
+    rc = niova_vbasic_space_avail(&nvba, unit, 1);
     NIOVA_ASSERT(rc == 0);
     rc = niova_vbasic_malloc(&nvba, unit, &p);
     NIOVA_ASSERT(rc == 0);
@@ -372,7 +372,7 @@ test_vbasic_nunits_gt_64_capped(void)
     void *ptrs[64];
 
     for (size_t i = 0; i < 64; i++) {
-        rc = niova_vbasic_space_avail(&nvba, unit);
+        rc = niova_vbasic_space_avail(&nvba, unit, 1);
         NIOVA_ASSERT(rc == 0);
 
         rc = niova_vbasic_malloc(&nvba, unit, &ptrs[i]);
@@ -383,7 +383,7 @@ test_vbasic_nunits_gt_64_capped(void)
     }
 
     /* Cap must apply */
-    rc = niova_vbasic_space_avail(&nvba, unit);
+    rc = niova_vbasic_space_avail(&nvba, unit, 1);
     NIOVA_ASSERT(rc != 0);
     NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == 64);
 
@@ -394,7 +394,7 @@ test_vbasic_nunits_gt_64_capped(void)
 
     void *p;
 
-    rc = niova_vbasic_space_avail(&nvba, unit);
+    rc = niova_vbasic_space_avail(&nvba, unit, 1);
     NIOVA_ASSERT(rc == 0);
 
     rc = niova_vbasic_malloc(&nvba, unit, &p);
@@ -422,9 +422,9 @@ niova_vbasic_alloc_test(void)
     int rc = niova_vbasic_init(nvba, 4001);
     NIOVA_ASSERT(!rc);
 
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size) == 0);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size + 1) == -E2BIG);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1, 1) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size, 1) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size + 1, 1) == -E2BIG);
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == 0);
 
     char *ptr = NULL;
@@ -444,7 +444,7 @@ niova_vbasic_alloc_test(void)
                  ptr == nvba->nvba_region_ptr);
     // enospc test
     NIOVA_ASSERT(niova_vbasic_malloc(nvba, 1, (void *)&ptr) == -ENOSPC);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == -ENOSPC);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1, 1) == -ENOSPC);
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == NIOVA_VBA_MAX_BITS);
 
     // free it
@@ -508,7 +508,7 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(nunits > 0 && nunits <= 64);
 
     //check space availability
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size, 1) == 0);
 
     //check if all units are free
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == 0);
@@ -537,10 +537,10 @@ niova_vbasic_alloc_alignment_test(void)
 
     //space should be available
     NIOVA_ASSERT(niova_vbasic_space_avail(nvba,
-                                          nunits * nvba->nvba_unit_size) == 0);
+                                          nunits * nvba->nvba_unit_size, 1) == 0);
 
     //goes beyond 64 units
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size + 1024) == -E2BIG);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size + 1024, 1) == -E2BIG);
 
     memset(nvba, 0, sizeof(*nvba));
 
@@ -563,7 +563,7 @@ niova_vbasic_alloc_alignment_test(void)
     reg_size = nvba->nvba_region_sz;
     nunits = nvba->nvba_nunits;
 
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 256 * nunits) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 256 * nunits, 1) == 0);
 
     void *ptr = NULL;
     //allocate more than inited units
@@ -575,7 +575,7 @@ niova_vbasic_alloc_alignment_test(void)
 
     //ok
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, 4096, 64, 16) == 0);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1, 1) == 0);
 
     reg_size = nvba->nvba_region_sz;
     nunits = nvba->nvba_nunits;
@@ -594,7 +594,7 @@ niova_vbasic_alloc_alignment_test(void)
 
     // enospc test
     NIOVA_ASSERT(niova_vbasic_malloc(nvba, 1, &ptr) == -ENOSPC);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == -ENOSPC);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1, 1) == -ENOSPC);
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == NIOVA_VBA_MAX_BITS);
 
     // free it
@@ -612,13 +612,13 @@ niova_vbasic_alloc_alignment_test(void)
     NIOVA_ASSERT(nvba);
 
     NIOVA_ASSERT(niova_vbasic_init_aligned(nvba, reg_size, 64, 64) == 0);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1, 1) == 0);
 
     reg_size = nvba->nvba_region_sz;
     nunits = nvba->nvba_nunits;
 
     NIOVA_ASSERT(reg_size >= nunits * 64);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size + 1) == -E2BIG);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, reg_size + 1, 1) == -E2BIG);
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == 0);
 
     ptr = NULL;
@@ -641,7 +641,7 @@ niova_vbasic_alloc_alignment_test(void)
     //free the vba
     NIOVA_ASSERT(niova_vbasic_free(nvba, ptr, nunits * 64) == 0);
 
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, nunits * 64) == 0);
+    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, nunits * 64, 1) == 0);
     niova_free(nvba);
 }
 
