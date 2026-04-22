@@ -269,22 +269,38 @@ xerror:
 }
 
 static inline int
-niova_vbasic_space_avail(const struct niova_vbasic_allocator *nvba,
-                         size_t size_in_bytes)
+niova_vbasic_space_avail_nitems(const struct niova_vbasic_allocator *nvba,
+                                size_t size_in_bytes, size_t nitems)
 {
-    if (!nvba || !size_in_bytes)
+    if (!nvba || !size_in_bytes || !nitems)
         return -EINVAL;
 
     const unsigned int nunits =
         (size_in_bytes / nvba->nvba_unit_size) +
          (size_in_bytes % nvba->nvba_unit_size ? 1 : 0);
 
-    if (nunits > NIOVA_VBA_MAX_BITS)
+    if (nunits * nitems > NIOVA_VBA_MAX_BITS)
         return -E2BIG;
 
-    int rc = nconsective_bits_avail(&nvba->nvba_bitmap, nunits);
+    int rc = 0;
+    unsigned int offset = 0;
+    for (size_t i = 0; i < nitems; i++)
+    {
+        rc = nconsective_bits_avail_offset(&nvba->nvba_bitmap, nunits, offset);
+        if (rc < 0)
+            return rc;
 
-    return rc >= 0 ? 0 : rc; // return '0' on successful_ping_until_viable
+        offset = rc + nunits;
+    }
+
+    return 0; // return '0' on successful_ping_until_viable
+}
+
+static inline int
+niova_vbasic_space_avail(const struct niova_vbasic_allocator *nvba,
+                         size_t size_in_bytes)
+{
+    return niova_vbasic_space_avail_nitems(nvba, size_in_bytes, 1);
 }
 
 static inline int

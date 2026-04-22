@@ -201,11 +201,12 @@ number_of_ones_in_val32(unsigned int val)
 }
 
 static inline int
-nconsective_bits_avail(const uint64_t *field, unsigned int nbits)
+nconsective_bits_avail_offset(const uint64_t *field, unsigned int nbits,
+                              unsigned int offset)
 {
     const unsigned int field_size = NBBY * sizeof(uint64_t);
 
-    if (!field || nbits <= 0 || nbits > field_size)
+    if (!field || nbits <= 0 || nbits > field_size || offset > field_size)
         return -EINVAL;
 
     const uint64_t ifield = ~(*field);
@@ -215,7 +216,7 @@ nconsective_bits_avail(const uint64_t *field, unsigned int nbits)
     else
         mask = (1ULL << nbits) - 1;
 
-    for (unsigned int i = 0; i <= (field_size - nbits); i++)
+    for (unsigned int i = offset; i <= (field_size - nbits); i++)
     {
         uint64_t shifted_mask = mask << i;
         if ((ifield & shifted_mask) == shifted_mask)
@@ -223,6 +224,12 @@ nconsective_bits_avail(const uint64_t *field, unsigned int nbits)
     }
 
     return -ENOSPC;
+}
+
+static inline int
+nconsective_bits_avail(const uint64_t *field, unsigned int nbits)
+{
+    return nconsective_bits_avail_offset(field, nbits, 0);
 }
 
 static inline int

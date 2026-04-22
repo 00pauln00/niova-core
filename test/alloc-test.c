@@ -403,6 +403,230 @@ test_vbasic_nunits_gt_64_capped(void)
     NIOVA_ASSERT(niova_vbasic_nassigned(&nvba) == 64);
 }
 
+static inline int
+test_vbasic_solution_find_run(const unsigned int *solution, size_t nunits,
+                              size_t req_units, size_t start)
+{
+    if (!solution || !req_units || req_units > nunits || start > nunits)
+        return -EINVAL;
+
+    for (size_t off = start; off + req_units <= nunits; off++)
+    {
+        bool available = true;
+
+        for (size_t i = 0; i < req_units; i++)
+        {
+            if (solution[off + i])
+            {
+                available = false;
+                break;
+            }
+        }
+
+        if (available)
+            return (int)off;
+    }
+
+    return -ENOSPC;
+}
+
+static inline int
+test_vbasic_solution_space_avail(const unsigned int *solution, size_t nunits,
+                                 size_t req_units, size_t nitems)
+{
+    if (!solution || !req_units || !nitems)
+        return -EINVAL;
+
+    if (req_units > nunits || req_units * nitems > nunits)
+        return -E2BIG;
+
+    size_t start = 0;
+
+    for (size_t i = 0; i < nitems; i++)
+    {
+        int rc = test_vbasic_solution_find_run(solution, nunits,
+                                               req_units, start);
+
+        if (rc < 0)
+            return rc;
+
+        start = (size_t)rc + req_units;
+    }
+
+    return 0;
+}
+
+static void
+test_vbasic_random_nitems_solution(void)
+{
+    enum
+    {
+        TEST_NUNITS = NIOVA_VBA_MAX_BITS,
+        TEST_UNIT_SIZE = 64,
+        TEST_ITERS = 1000000,
+    };
+
+    struct niova_vbasic_allocator *nvba =
+        niova_malloc(sizeof(*nvba) + TEST_NUNITS * TEST_UNIT_SIZE);
+    struct
+    {
+        void         *ptr;
+        unsigned int  offset;
+        unsigned int  units;
+        unsigned int  id;
+    } live[TEST_NUNITS] = {0};
+    unsigned int solution[TEST_NUNITS] = {0};
+    unsigned int next_id = 1;
+    uint64_t initial_bitmap;
+    size_t effective_nunits;
+    int nlive = 0;
+    int rc;
+
+    rc = niova_vbasic_init_aligned(nvba, TEST_NUNITS * TEST_UNIT_SIZE,
+                                   TEST_UNIT_SIZE, TEST_UNIT_SIZE);
+    NIOVA_ASSERT(rc == 0);
+    NIOVA_ASSERT(nvba->nvba_nunits > 0 &&
+                 nvba->nvba_nunits <= TEST_NUNITS);
+
+    effective_nunits = nvba->nvba_nunits;
+    initial_bitmap = nvba->nvba_bitmap;
+
+    for (size_t i = effective_nunits; i < TEST_NUNITS; i++)
+        solution[i] = UINT_MAX;
+
+    for (int iter = 0; iter < TEST_ITERS; iter++)
+    {
+        const unsigned int r = random_get();
+        const bool do_free = nlive && ((r & 7) < 3);
+
+        if (do_free)
+        {
+            const int idx = r % nlive;
+
+            LOG_MSG(LL_TRACE,
+                    "iter=%d free ptr=%p off=%u units=%u id=%u bitmap=0x%lx",
+                    iter, live[idx].ptr, live[idx].offset, live[idx].units,
+                    live[idx].id, nvba->nvba_bitmap);
+
+            for (size_t i = 0; i < live[idx].units; i++)
+                NIOVA_ASSERT(solution[live[idx].offset + i] == live[idx].id);
+
+            rc = niova_vbasic_free(nvba, live[idx].ptr,
+                                   live[idx].units * TEST_UNIT_SIZE);
+            LOG_MSG(LL_TRACE,
+                    "iter=%d free rc=%d ptr=%p off=%u units=%u bitmap=0x%lx",
+                    iter, rc, live[idx].ptr, live[idx].offset,
+                    live[idx].units, nvba->nvba_bitmap);
+            NIOVA_ASSERT(rc == 0);
+
+            for (size_t i = 0; i < live[idx].units; i++)
+                solution[live[idx].offset + i] = 0;
+
+            live[idx] = live[--nlive];
+            continue;
+        }
+
+        size_t req_units;
+        size_t nitems;
+
+        if (!(iter & 0x3ff))
+        {
+            req_units = 1 + (r % TEST_NUNITS);
+            nitems = random_get() % (effective_nunits + 2);
+        }
+        else
+        {
+            req_units = 1 + (r % 8);
+            nitems = 1 + (random_get() % 8);
+        }
+
+        const size_t size = req_units * TEST_UNIT_SIZE;
+        const int expected = test_vbasic_solution_space_avail(solution,
+                                                              TEST_NUNITS,
+                                                              req_units,
+                                                              nitems);
+
+        LOG_MSG(LL_TRACE,
+                "iter=%d space_avail size=%zu req_units=%zu nitems=%zu "
+                "expected=%d bitmap=0x%lx",
+                iter, size, req_units, nitems, expected, nvba->nvba_bitmap);
+        rc = niova_vbasic_space_avail_nitems(nvba, size, nitems);
+        LOG_MSG(LL_TRACE,
+                "iter=%d space_avail rc=%d size=%zu req_units=%zu nitems=%zu "
+                "bitmap=0x%lx",
+                iter, rc, size, req_units, nitems, nvba->nvba_bitmap);
+        NIOVA_ASSERT(rc == expected);
+
+        if (expected)
+            continue;
+
+        for (size_t item = 0; item < nitems; item++)
+        {
+            const int expected_off =
+                test_vbasic_solution_find_run(solution, TEST_NUNITS,
+                                              req_units, 0);
+            void *ptr = NULL;
+
+            NIOVA_ASSERT(expected_off >= 0);
+            NIOVA_ASSERT(nlive < TEST_NUNITS);
+
+            LOG_MSG(LL_TRACE,
+                    "iter=%d malloc size=%zu req_units=%zu expected_off=%d "
+                    "item=%zu/%zu bitmap=0x%lx",
+                    iter, size, req_units, expected_off, item + 1, nitems,
+                    nvba->nvba_bitmap);
+            rc = niova_vbasic_malloc(nvba, size, &ptr);
+            LOG_MSG(LL_TRACE,
+                    "iter=%d malloc rc=%d ptr=%p size=%zu req_units=%zu "
+                    "expected_off=%d bitmap=0x%lx",
+                    iter, rc, ptr, size, req_units, expected_off,
+                    nvba->nvba_bitmap);
+            NIOVA_ASSERT(rc == 0);
+            NIOVA_ASSERT(ptr ==
+                         &nvba->nvba_region_ptr[expected_off * TEST_UNIT_SIZE]);
+
+            live[nlive].ptr = ptr;
+            live[nlive].offset = (unsigned int)expected_off;
+            live[nlive].units = (unsigned int)req_units;
+            live[nlive].id = next_id++;
+
+            for (size_t i = 0; i < req_units; i++)
+            {
+                NIOVA_ASSERT(solution[expected_off + i] == 0);
+                solution[expected_off + i] = live[nlive].id;
+            }
+
+            nlive++;
+        }
+    }
+
+    while (nlive > 0)
+    {
+        const int idx = --nlive;
+
+        LOG_MSG(LL_TRACE,
+                "cleanup free ptr=%p off=%u units=%u id=%u bitmap=0x%lx",
+                live[idx].ptr, live[idx].offset, live[idx].units,
+                live[idx].id, nvba->nvba_bitmap);
+        rc = niova_vbasic_free(nvba, live[idx].ptr,
+                               live[idx].units * TEST_UNIT_SIZE);
+        LOG_MSG(LL_TRACE,
+                "cleanup free rc=%d ptr=%p off=%u units=%u bitmap=0x%lx",
+                rc, live[idx].ptr, live[idx].offset, live[idx].units,
+                nvba->nvba_bitmap);
+        NIOVA_ASSERT(rc == 0);
+
+        for (size_t i = 0; i < live[idx].units; i++)
+            solution[live[idx].offset + i] = 0;
+    }
+
+    for (size_t i = 0; i < effective_nunits; i++)
+        NIOVA_ASSERT(solution[i] == 0);
+
+    NIOVA_ASSERT(nvba->nvba_bitmap == initial_bitmap);
+    niova_free(nvba);
+}
+
 static void
 niova_vbasic_alloc_test(void)
 {
@@ -423,8 +647,13 @@ niova_vbasic_alloc_test(void)
     NIOVA_ASSERT(!rc);
 
     NIOVA_ASSERT(niova_vbasic_space_avail(nvba, 1) == 0);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size) == 0);
-    NIOVA_ASSERT(niova_vbasic_space_avail(nvba, max_allocatable_size + 1) == -E2BIG);
+
+    NIOVA_ASSERT(
+        niova_vbasic_space_avail(nvba, max_allocatable_size) == 0);
+
+    NIOVA_ASSERT(
+        niova_vbasic_space_avail(nvba, max_allocatable_size + 1) == -E2BIG);
+
     NIOVA_ASSERT(niova_vbasic_nassigned(nvba) == 0);
 
     char *ptr = NULL;
@@ -662,6 +891,7 @@ main(void)
     test_vbasic_nunits_lt_64();
     test_vbasic_nunits_eq();
     test_vbasic_nunits_gt_64_capped();
+    test_vbasic_random_nitems_solution();
 
     return 0;
 }
